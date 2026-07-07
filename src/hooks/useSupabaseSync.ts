@@ -16,6 +16,13 @@ function mapRowToUnit(row: any): Unit {
     maxHp: row.max_hp,
     isHero: row.is_hero,
     formation: row.formation,
+    aggressiveness: row.aggressiveness || 3,
+    baseMorale: row.base_morale || 3,
+    currentMorale: row.current_morale || 3,
+    baseAc: row.base_ac || 10,
+    currentAc: row.current_ac || 10,
+    isRouting: row.is_routing || false,
+    weaponString: row.weapon_string || '',
   };
 }
 
@@ -33,11 +40,20 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     max_hp: unit.maxHp,
     is_hero: unit.isHero,
     formation: unit.formation,
+    aggressiveness: unit.aggressiveness || 3,
+    base_morale: unit.baseMorale || 3,
+    current_morale: unit.currentMorale || 3,
+    base_ac: unit.baseAc || 10,
+    current_ac: unit.currentAc || 10,
+    is_routing: unit.isRouting || false,
+    weapon_string: unit.weaponString || '',
   };
 }
 
 // --- Singleton channel manager ---
-const channelMap = new Map<string, any>(); // scenarioId -> channel
+const channelMap = new Map<string, any>();
+const listenerMap = new Map<string, Array<(payload: any) => void>>();
+const seededMap = new Map<string, boolean>(); // Track seeded status per scenario
 
 function getOrCreateChannel(scenarioId: string) {
   if (!channelMap.has(scenarioId)) {
@@ -67,8 +83,6 @@ function getOrCreateChannel(scenarioId: string) {
   return channelMap.get(scenarioId);
 }
 
-const listenerMap = new Map<string, Array<(payload: any) => void>>();
-
 function addListener(scenarioId: string, callback: (payload: any) => void) {
   if (!listenerMap.has(scenarioId)) {
     listenerMap.set(scenarioId, []);
@@ -84,14 +98,12 @@ function removeListener(scenarioId: string, callback: (payload: any) => void) {
   }
 }
 
-// --- Hook ---
 export function useSupabaseSync(scenarioId: string = 'default_mvp') {
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
   const callbackRef = useRef<(payload: any) => void>();
-  const seededRef = useRef<boolean>(false); // prevent duplicate seeding
+  const seedingAttempted = useRef(false);
 
   // 1. Load units on mount
   useEffect(() => {
@@ -203,20 +215,25 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     return true;
   }, [scenarioId]);
 
-  // 4. Seed demo units – now with a ref to prevent double‑seeding
+  // 4. Seed demo units
   const seedDemoUnits = useCallback(async () => {
-    // Prevent multiple calls
-    if (seededRef.current) {
-      console.log('[seedDemoUnits] Already seeded, skipping.');
+    if (seededMap.get(scenarioId)) {
+      console.log('[seedDemoUnits] Already seeded for scenario:', scenarioId);
       return;
     }
 
-    console.log('[seedDemoUnits] Checking for existing units...');
+    if (seedingAttempted.current) {
+      console.log('[seedDemoUnits] Seed already attempted for this hook instance');
+      return;
+    }
+
+    seedingAttempted.current = true;
+
+    console.log('[seedDemoUnits] Checking for existing units in scenario:', scenarioId);
     try {
-      // Use count to check existence
-      const { count, error } = await supabase
+      const { data: existingUnits, error } = await supabase
         .from('units')
-        .select('*', { count: 'exact', head: true })
+        .select('id, name')
         .eq('scenario_id', scenarioId);
 
       if (error) {
@@ -224,71 +241,127 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
         return;
       }
 
-      if (count && count > 0) {
-        console.log(`[seedDemoUnits] Found ${count} units, skipping seed.`);
-        seededRef.current = true;
-        return;
-      }
+      const existingCount = existingUnits?.length || 0;
+      console.log(`[seedDemoUnits] Found ${existingCount} units.`);
 
-      console.log('[seedDemoUnits] No units found, inserting demo units...');
-      const demoUnits: Unit[] = [
+      const demoUnits = [
         {
           id: crypto.randomUUID(),
           name: 'Blue Knight',
           hex: { q: 0, r: 0, s: 0 },
           facing: 0,
-          team: 'blue',
+          team: 'blue' as const,
           hp: 10,
           maxHp: 10,
           isHero: true,
-          formation: 'Tight',
+          formation: 'Tight' as const,
+          aggressiveness: 3,
+          baseMorale: 3,
+          currentMorale: 3,
+          baseAc: 10,
+          currentAc: 10,
+          isRouting: false,
+          weaponString: 'Longsword,single,1d8,1',
         },
         {
           id: crypto.randomUUID(),
           name: 'Yellow Archer',
           hex: { q: 3, r: -2, s: -1 },
           facing: 3,
-          team: 'yellow',
+          team: 'yellow' as const,
           hp: 6,
           maxHp: 6,
           isHero: false,
-          formation: 'Loose',
+          formation: 'Loose' as const,
+          aggressiveness: 3,
+          baseMorale: 3,
+          currentMorale: 3,
+          baseAc: 10,
+          currentAc: 10,
+          isRouting: false,
+          weaponString: 'Shortbow,single,1d6,6',
         },
         {
           id: crypto.randomUUID(),
           name: 'Violet Mage',
           hex: { q: -2, r: 4, s: -2 },
           facing: 2,
-          team: 'violet',
+          team: 'violet' as const,
           hp: 8,
           maxHp: 8,
           isHero: true,
-          formation: 'Scattered',
+          formation: 'Scattered' as const,
+          aggressiveness: 3,
+          baseMorale: 3,
+          currentMorale: 3,
+          baseAc: 10,
+          currentAc: 10,
+          isRouting: false,
+          weaponString: 'Fireball,area,6d6,4;Staff,single,1d6,1',
         },
       ];
 
+      if (existingCount >= 3) {
+        console.log('[seedDemoUnits] All 3 demo units found, skipping seed.');
+        seededMap.set(scenarioId, true);
+        return;
+      }
+
+      if (existingCount > 0 && existingCount < 3) {
+        console.log(`[seedDemoUnits] Found ${existingCount} units but expected 3. Checking for missing ones...`);
+        const existingNames = new Set(existingUnits?.map(u => u.name) || []);
+        const missingUnits = demoUnits.filter(u => !existingNames.has(u.name));
+
+        if (missingUnits.length === 0) {
+          seededMap.set(scenarioId, true);
+          return;
+        }
+
+        console.log(`[seedDemoUnits] Missing ${missingUnits.length} units:`, missingUnits.map(u => u.name));
+
+        for (const unit of missingUnits) {
+          const { error: insertError } = await supabase
+            .from('units')
+            .insert(mapUnitToRow(unit, scenarioId));
+          if (insertError) {
+            console.error('[seedDemoUnits] Insert failed for', unit.name, ':', insertError);
+          } else {
+            console.log('[seedDemoUnits] Inserted missing unit:', unit.name);
+          }
+        }
+
+        seededMap.set(scenarioId, true);
+        return;
+      }
+
+      console.log('[seedDemoUnits] No units found, inserting all 3 demo units...');
       for (const unit of demoUnits) {
         const { error: insertError } = await supabase
           .from('units')
           .insert(mapUnitToRow(unit, scenarioId));
         if (insertError) {
-          console.error('[seedDemoUnits] Insert failed:', insertError);
+          console.error('[seedDemoUnits] Insert failed for', unit.name, ':', insertError);
+        } else {
+          console.log('[seedDemoUnits] Inserted unit:', unit.name);
         }
       }
-      seededRef.current = true;
-      console.log('[seedDemoUnits] Demo units inserted.');
+
+      seededMap.set(scenarioId, true);
+      console.log('[seedDemoUnits] Demo units insertion complete.');
     } catch (err) {
       console.error('[seedDemoUnits] Unexpected error:', err);
     }
   }, [scenarioId]);
 
-  // 5. Clear units (optional)
+  // 5. Clear units
   const clearUnits = useCallback(async () => {
     const { error } = await supabase
       .from('units')
       .delete()
       .eq('scenario_id', scenarioId);
     if (error) console.error('Clear units error:', error);
+    seededMap.delete(scenarioId);
+    seedingAttempted.current = false;
   }, [scenarioId]);
 
   return {

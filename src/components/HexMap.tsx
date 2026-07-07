@@ -2,9 +2,12 @@
 'use client';
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { useHexGrid } from '@/hooks/useHexGrid';
+import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { Hex } from '@/types/gameProtocol';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
+import { useScenarios } from '@/hooks/useScenarios';
+import { supabase } from '@/lib/supabaseClient';
+import { parseWeapons, getWeaponDisplayText } from '@/lib/weaponParser';
 
 interface HexMapProps {
   scenarioId: string;
@@ -13,13 +16,9 @@ interface HexMapProps {
 export function HexMap({ scenarioId }: HexMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedHex, setSelectedHex] = useState<Hex | null>(null);
-
   const { units, moveUnit, loading, error, seedDemoUnits } = useSupabaseSync(scenarioId);
-
-  // Seed demo units only once per scenario
-  useEffect(() => {
-    seedDemoUnits();
-  }, [seedDemoUnits]);
+  const { getMyRole, updateScreenshot, unsubscribeFromPresence, subscribeToPresence } = useScenarios();
+  const [isGM, setIsGM] = useState(false);
 
   const handleUnitMove = useCallback((unitId: string, targetHex: Hex) => {
     moveUnit(unitId, targetHex);
@@ -33,6 +32,9 @@ export function HexMap({ scenarioId }: HexMapProps) {
     handleWheel,
     hoveredHex,
     draggingUnitId,
+    offsetX,
+    offsetY,
+    zoom,
   } = useHexGrid({
     canvasRef,
     size: 80,
@@ -48,10 +50,230 @@ export function HexMap({ scenarioId }: HexMapProps) {
     },
   });
 
-  // Go back to lobby: clear stored scenario and reload
-  const goToLobby = () => {
+  useEffect(() => {
+    seedDemoUnits();
+    getMyRole(scenarioId).then(role => {
+      const gm = role === 'GM';
+      setIsGM(gm);
+      if (gm) {
+        subscribeToPresence(scenarioId, () => {});
+      }
+    });
+  }, [scenarioId, seedDemoUnits, getMyRole, subscribeToPresence]);
+
+  // --- Screenshot capture with zoom-to-fit ---
+  const captureAndUploadScreenshot = useCallback(async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    try {
+      if (units.length === 0) {
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        const response = await fetch(dataUrl);
+        const blob = await response.blob();
+        const fileName = `scenario-${scenarioId}-${Date.now()}.jpg`;
+        const { error } = await supabase.storage
+          .from('scenario_screenshots')
+          .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
+        if (error) throw error;
+        const { data: urlData } = supabase.storage.from('scenario_screenshots').getPublicUrl(fileName);
+        await updateScreenshot(scenarioId, urlData.publicUrl);
+        return;
+      }
+
+      const size = 80;
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity;
+      for (const unit of units) {
+        const pos = hexToPixel(unit.hex, size);
+        minX = Math.min(minX, pos.x);
+        minY = Math.min(minY, pos.y);
+        maxX = Math.max(maxX, pos.x);
+        maxY = Math.max(maxY, pos.y);
+      }
+
+      const padding = Math.max((maxX - minX) * 0.2, 100);
+      minX -= padding;
+      minY -= padding;
+      maxX += padding;
+      maxY += padding;
+
+      const worldWidth = maxX - minX;
+      const worldHeight = maxY - minY;
+      const rect = canvas.getBoundingClientRect();
+      const displayWidth = rect.width;
+      const displayHeight = rect.height;
+      const zoomX = displayWidth / worldWidth;
+      const zoomY = displayHeight / worldHeight;
+      const fitZoom = Math.min(zoomX, zoomY, 2);
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      const fitOffsetX = displayWidth / 2 - centerX * fitZoom;
+      const fitOffsetY = displayHeight / 2 - centerY * fitZoom;
+
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = displayWidth * dpr;
+      canvas.height = displayHeight * dpr;
+      canvas.style.width = `${displayWidth}px`;
+      canvas.style.height = `${displayHeight}px`;
+      ctx.scale(dpr, dpr);
+
+      const drawFitGrid = () => {
+        ctx.clearRect(0, 0, displayWidth, displayHeight);
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, displayWidth, displayHeight);
+
+        const gridRadius = 8;
+        const hexes: Hex[] = [];
+        for (let q = -gridRadius; q <= gridRadius; q++) {
+          for (let r = -gridRadius; r <= gridRadius; r++) {
+            const s = -q - r;
+            if (Math.abs(s) <= gridRadius) hexes.push({ q, r, s });
+          }
+        }
+
+        const drawHex = (hex: Hex) => {
+          const pos = hexToPixel(hex, size);
+          const cx = pos.x * fitZoom + fitOffsetX;
+          const cy = pos.y * fitZoom + fitOffsetY;
+          ctx.beginPath();
+          for (let i = 0; i < 6; i++) {
+            const angle = Math.PI / 180 * (60 * i - 30);
+            const px = cx + size * fitZoom * Math.cos(angle);
+            const py = cy + size * fitZoom * Math.sin(angle);
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+          ctx.fill();
+          ctx.strokeStyle = '#2a2a4a';
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+        };
+
+        for (const hex of hexes) {
+          drawHex(hex);
+        }
+
+        const teamColors: Record<string, string> = {
+          blue: '#0072B2',
+          yellow: '#F0E442',
+          black: '#333333',
+          violet: '#CC79A7',
+        };
+
+        for (const unit of units) {
+          const pos = hexToPixel(unit.hex, size);
+          const cx = pos.x * fitZoom + fitOffsetX;
+          const cy = pos.y * fitZoom + fitOffsetY;
+          const radius = size * fitZoom * 0.4;
+          const fillColor = teamColors[unit.team] || '#888';
+
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+          ctx.fillStyle = fillColor;
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `${Math.max(10, radius * 0.7)}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(unit.name.substring(0, 4), cx, cy - radius - 2);
+
+          const hpWidth = radius * 1.6;
+          const hpX = cx - hpWidth / 2;
+          const hpY = cy + radius + 4;
+          const hpHeight = 4;
+          ctx.fillStyle = '#222222';
+          ctx.fillRect(hpX, hpY, hpWidth, hpHeight);
+          const hpRatio = Math.max(0, unit.hp / unit.maxHp);
+          ctx.fillStyle = hpRatio > 0.5 ? '#44ff44' : '#ff4444';
+          ctx.fillRect(hpX, hpY, hpWidth * hpRatio, hpHeight);
+
+          if (!unit.isHero && unit.formation !== 'Scattered') {
+            const angle = (60 * unit.facing - 30) * Math.PI / 180;
+            const tipX = cx + size * fitZoom * Math.cos(angle);
+            const tipY = cy + size * fitZoom * Math.sin(angle);
+            const baseRadius = size * fitZoom * 0.7;
+            const halfSpread = 0.4;
+            const baseX1 = cx + baseRadius * Math.cos(angle - halfSpread);
+            const baseY1 = cy + baseRadius * Math.sin(angle - halfSpread);
+            const baseX2 = cx + baseRadius * Math.cos(angle + halfSpread);
+            const baseY2 = cy + baseRadius * Math.sin(angle + halfSpread);
+            ctx.beginPath();
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(baseX1, baseY1);
+            ctx.lineTo(baseX2, baseY2);
+            ctx.closePath();
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+        }
+      };
+
+      drawFitGrid();
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      canvas.width = displayWidth * dpr;
+      canvas.height = displayHeight * dpr;
+      canvas.style.width = `${displayWidth}px`;
+      canvas.style.height = `${displayHeight}px`;
+      ctx.scale(dpr, dpr);
+
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      const fileName = `scenario-${scenarioId}-${Date.now()}.jpg`;
+      const { error } = await supabase.storage
+        .from('scenario_screenshots')
+        .upload(fileName, blob, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+
+      if (error) {
+        console.error('Upload failed:', error);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('scenario_screenshots')
+        .getPublicUrl(fileName);
+
+      await updateScreenshot(scenarioId, urlData.publicUrl);
+      console.log('[Screenshot] Uploaded successfully:', urlData.publicUrl);
+    } catch (err) {
+      console.error('Screenshot capture error:', err);
+    }
+  }, [canvasRef, units, scenarioId, updateScreenshot, zoom, offsetX, offsetY]);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (isGM) {
+        captureAndUploadScreenshot();
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isGM, captureAndUploadScreenshot]);
+
+  const goToLobby = async () => {
+    if (isGM) {
+      await captureAndUploadScreenshot();
+    }
+    unsubscribeFromPresence(scenarioId);
     localStorage.removeItem('currentScenarioId');
-    window.location.reload(); // simple reload to reset state
+    window.location.reload();
   };
 
   if (loading) return (
@@ -67,12 +289,11 @@ export function HexMap({ scenarioId }: HexMapProps) {
 
   return (
     <div className="relative w-full h-screen bg-[#0d0d1a] overflow-hidden">
-      {/* Back button */}
       <button
         onClick={goToLobby}
         className="absolute top-4 left-4 z-10 bg-gray-800 hover:bg-gray-700 text-white px-3 py-1 rounded shadow-lg text-sm"
       >
-        ← Back to Lobby
+        ← Exit Session
       </button>
 
       <canvas
@@ -92,6 +313,7 @@ export function HexMap({ scenarioId }: HexMapProps) {
         <div className="text-green-400 text-xs">🟢 Realtime active</div>
         <div className="text-gray-400 text-xs">Units: {units.length}</div>
         <div className="text-gray-500 text-xs">Scenario: {scenarioId.slice(0, 8)}…</div>
+        {isGM && <div className="text-yellow-400 text-xs">👑 DM</div>}
       </div>
     </div>
   );

@@ -7,7 +7,15 @@ export interface Hex {
   s: number; // s = -q - r
 }
 
-// --- Unit Data (MVP subset) ---
+// --- Weapon (parsed from weaponString) ---
+export interface Weapon {
+  name: string;
+  targetType: 'single' | 'area';
+  damageDice: string;
+  range: number;  // 1 = adjacent (melee), >1 = ranged
+}
+
+// --- Unit Data ---
 export interface Unit {
   id: string;
   templateId?: string;
@@ -18,7 +26,14 @@ export interface Unit {
   hp: number;
   maxHp: number;
   isHero: boolean;
-  formation: 'Tight' | 'Loose' | 'Scattered' | 'Routed';
+  formation: 'Tight' | 'Loose' | 'Scattered' | 'Routed' | 'Phalanx' | 'Shield Wall';
+  aggressiveness: number;
+  baseMorale: number;
+  currentMorale: number;
+  baseAc: number;
+  currentAc: number;
+  isRouting: boolean;
+  weaponString: string;  // NEW
 }
 
 // --- Scenario & Participants ---
@@ -27,10 +42,11 @@ export interface Scenario {
   name: string;
   creatorId: string;
   creatorName: string;
-  passwordHash?: string;    // will be plaintext for MVP
+  passwordHash?: string;
   mapData?: any;
   createdAt: string;
   updatedAt: string;
+  screenshotUrl: string | null;
 }
 
 export interface Participant {
@@ -39,6 +55,85 @@ export interface Participant {
   userId: string;
   role: 'GM' | 'AssistGM' | 'SuperPlayer' | 'Player';
   joinedAt: string;
+}
+
+// --- Unit Template (Master List) ---
+export interface UnitTemplate {
+  id: string;
+  name: string;
+  raceId: string;
+  raceName?: string;
+  modelTypeId: string;
+  modelTypeName?: string;
+  isHero: boolean;
+  isPlayerHero: boolean;
+  bodyCount: number;
+  level: number;
+  hp: number;
+  armorId: string;
+  armorName?: string;
+  isShielded: boolean;
+  baseAc: number;
+  weaponString: string;  // NEW
+  mountId: string;
+  mountName?: string;
+  movementPoints: number;
+  aggressiveness: number;
+  baseMorale: number;
+  troopScale: number;
+  formationAvailability: string[];
+  costGp: number;
+  acSpecialModifier: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// --- Lookup Tables ---
+export interface Race {
+  id: string;
+  name: string;
+  defaultTroopScale: number;
+  baseSpeed: number;
+  acBonus: number;
+  iconUrl: string | null;
+}
+
+export interface WeaponLookup {
+  id: string;
+  name: string;
+  damageDice: string;
+  special: string | null;
+  costGp: number;
+}
+
+export interface Armor {
+  id: string;
+  name: string;
+  acBonus: number;
+  movementPenalty: number;
+  costGp: number;
+}
+
+export interface Formation {
+  id: string;
+  name: string;
+  acModifier: number;
+  movementModifier: number;
+  attackModifier: number;
+}
+
+export interface ModelType {
+  id: string;
+  name: string;
+  isMounted: boolean;
+  iconUrl: string | null;
+}
+
+export interface Mount {
+  id: string;
+  name: string;
+  speed: number;
+  costGp: number;
 }
 
 // --- Web Worker Message Protocol ---
@@ -54,14 +149,14 @@ export type WorkerMessageType =
 export interface WorkerMessage<T = any> {
   type: WorkerMessageType;
   payload: T;
-  messageId?: string; // For request/response tracking
+  messageId?: string;
 }
 
 // --- Payloads for each message type ---
 export interface MoveUnitPayload {
   unitId: string;
   targetHex: Hex;
-  newFacing?: number; // optional, if you want to rotate at destination
+  newFacing?: number;
 }
 
 export interface AttackPayload {
@@ -71,7 +166,7 @@ export interface AttackPayload {
 
 export interface LockUnitPayload {
   unitId: string;
-  lockedBy: string; // user ID
+  lockedBy: string;
 }
 
 export interface UnlockUnitPayload {
