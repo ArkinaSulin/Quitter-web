@@ -51,7 +51,7 @@ interface UseHexGridProps {
 
 export function useHexGrid({
   canvasRef,
-  size = 80,           // bigger hexes
+  size = 80,
   gridRadius = 8,
   units = [],
   onHexHover,
@@ -78,7 +78,6 @@ export function useHexGrid({
     violet: '#CC79A7',
   };
 
-  // --- Pre-compute hexes ---
   const hexes = useMemo(() => {
     const result: Hex[] = [];
     for (let q = -gridRadius; q <= gridRadius; q++) {
@@ -90,7 +89,6 @@ export function useHexGrid({
     return result;
   }, [gridRadius]);
 
-  // --- Drawing functions ---
   const drawHex = useCallback(
     (ctx: CanvasRenderingContext2D, hex: Hex, fillColor: string, strokeColor: string, lineWidth: number = 1) => {
       const { x, y } = hexToPixel(hex, size * zoom);
@@ -135,13 +133,37 @@ export function useHexGrid({
         return;
       }
 
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
-      ctx.fillStyle = fillColor;
-      ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      // Determine if mounted: mountId exists and is not empty
+      const isMounted = unit.mountId && unit.mountId !== '';
+
+      if (isMounted) {
+        // Draw triangle for mounted
+        // base width = radius * 1.8, height = radius * 5 (same as before)
+        ctx.save();
+        ctx.translate(cx, cy);
+        const baseWidth = radius * 1.8;
+        const height = radius * 5;
+        ctx.beginPath();
+        ctx.moveTo(0, -height / 2);
+        ctx.lineTo(-baseWidth / 2, height / 2);
+        ctx.lineTo(baseWidth / 2, height / 2);
+        ctx.closePath();
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        // Circle for foot
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
 
       ctx.fillStyle = '#ffffff';
       ctx.font = `${Math.max(10, radius * 0.7)}px sans-serif`;
@@ -327,25 +349,21 @@ export function useHexGrid({
     const rect = parent.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
 
-    // Set canvas size
     canvas.width = rect.width * window.devicePixelRatio;
     canvas.height = rect.height * window.devicePixelRatio;
     canvas.style.width = `${rect.width}px`;
     canvas.style.height = `${rect.height}px`;
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
-    // Center if not yet centered
     if (!hasCentered.current) {
       setOffsetX(rect.width / 2);
       setOffsetY(rect.height / 2);
       hasCentered.current = true;
-      // Wait for next render to draw with centered offsets
       return;
     }
 
-    // Draw with current offsets
     drawGrid(ctx, canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio);
-  }, [drawGrid, canvasRef]); // will re-run after offsetX/Y change because drawGrid changes
+  }, [drawGrid, canvasRef]);
 
   return {
     handleMouseMove,

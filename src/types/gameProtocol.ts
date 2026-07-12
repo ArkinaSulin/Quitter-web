@@ -10,9 +10,11 @@ export interface Hex {
 // --- Weapon (parsed from weaponString) ---
 export interface Weapon {
   name: string;
+  attackBonus: number;
   targetType: 'single' | 'area';
   damageDice: string;
-  range: number;  // 1 = adjacent (melee), >1 = ranged
+  range: number;        // hexes
+  magicRadius: number;  // Ft (0 for non-area)
 }
 
 // --- Unit Data ---
@@ -33,7 +35,7 @@ export interface Unit {
   baseAc: number;
   currentAc: number;
   isRouting: boolean;
-  weaponString: string;  // NEW
+  weaponString: string;
 }
 
 // --- Scenario & Participants ---
@@ -63,18 +65,22 @@ export interface UnitTemplate {
   name: string;
   raceId: string;
   raceName?: string;
+  raceBaseHd?: number | null;
   modelTypeId: string;
   modelTypeName?: string;
+  modelTypeIconUrl?: string | null; // Added for convenience
   isHero: boolean;
   isPlayerHero: boolean;
   bodyCount: number;
   level: number;
   hp: number;
+  unitHp: number;
+  attack: number;
   armorId: string;
   armorName?: string;
   isShielded: boolean;
   baseAc: number;
-  weaponString: string;  // NEW
+  weaponString: string;
   mountId: string;
   mountName?: string;
   movementPoints: number;
@@ -83,7 +89,7 @@ export interface UnitTemplate {
   troopScale: number;
   formationAvailability: string[];
   costGp: number;
-  acSpecialModifier: string;
+  acSpecialModifier?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -96,6 +102,7 @@ export interface Race {
   baseSpeed: number;
   acBonus: number;
   iconUrl: string | null;
+  base_hd: number;
 }
 
 export interface WeaponLookup {
@@ -122,7 +129,8 @@ export interface Formation {
   attackModifier: number;
 }
 
-export interface ModelType {
+// Renamed from ModelType to UnitType
+export interface UnitType {
   id: string;
   name: string;
   isMounted: boolean;
