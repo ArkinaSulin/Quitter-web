@@ -312,27 +312,6 @@ export function TokenRenderer({
         ctx.fillText('?', 4 + iconSize / 2, iconY + iconSize / 2);
       }
 
-      // Morale hearts - FIX: removed the cap on heart size
-      const availableWidth = tokenWidth - (iconSize + 8) * 2 - 8;
-      // Removed Math.min cap - hearts now fill the available width
-      const maxHeartSize = availableWidth / (maxMorale * 1.1);
-      const heartSize = Math.max(10, maxHeartSize);
-      const maxHearts = Math.max(maxMorale, 1);
-      const maxHeartsPerRow = Math.floor(availableWidth / (heartSize * 1.1));
-      const rows = Math.ceil(maxHearts / maxHeartsPerRow);
-      const heartsPerRow = Math.min(maxHearts, maxHeartsPerRow);
-      const totalHeartsWidth = (heartsPerRow - 1) * heartSize * 1.1;
-      const startX = (tokenWidth - totalHeartsWidth) / 2;
-      const startY = infoY + (infoHeight - rows * heartSize * 1.1) / 2 + heartSize / 2;
-      for (let i = 0; i < maxHearts; i++) {
-        const row = Math.floor(i / heartsPerRow);
-        const col = i % heartsPerRow;
-        const x = startX + col * heartSize * 1.1;
-        const y = startY + row * heartSize * 1.1;
-        const isFilled = i < morale;
-        drawHeart(ctx, x, y, heartSize, isFilled);
-      }
-
       const weaponShape = TEAM_SHAPES[team] || 'circle';
       drawShapeUnder(tokenWidth - iconSize/2 - 4, iconY + iconSize/2, iconSize, weaponShape, shapeColor);
       if (weaponIconUrl) {
@@ -352,6 +331,53 @@ export function TokenRenderer({
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('⚔️', tokenWidth - iconSize / 2 - 4, iconY + iconSize / 2);
+      }
+
+      // --- CORRECTED HEART LOGIC ---
+      // Only draw up to maxMorale hearts (morale capacity)
+      const totalHeartsToDraw = Math.max(0, Math.min(10, maxMorale));
+
+      // morale is the current morale value (out of maxMorale)
+      const heartsFilled = Math.max(0, Math.min(morale, maxMorale));
+
+      const heartAreaTop = infoY + 2;
+      const heartAreaBottom = tokenHeight - 4;
+      const heartAreaHeight = heartAreaBottom - heartAreaTop;
+
+      // Middle 50% horizontally (25% margin on each side)
+      const marginX = tokenWidth * 0.25;
+      const heartAreaLeft = marginX;
+      const heartAreaRight = tokenWidth - marginX;
+      const heartAreaWidth = heartAreaRight - heartAreaLeft;
+
+      const heartsPerRow = 5;
+      const numRows = 2;
+
+      // Calculate heart size to fill the available width with heartsPerRow hearts, side-touching
+      const heartSize = Math.max(6, heartAreaWidth / heartsPerRow);
+
+      // Calculate total height of all rows
+      const totalHeartHeight = numRows * heartSize * 1.05; // 5% gap between rows
+      const verticalPadding = Math.max(0, (heartAreaHeight - totalHeartHeight) / 2);
+
+      // --- CENTERING FIX: centers the row of hearts within the middle 50% area ---
+      // We want the centers of the hearts to be evenly spaced and centered.
+      // The span of centers is from startX to startX + (heartsPerRow - 1) * heartSize.
+      // The center of that span is startX + (heartsPerRow - 1) * heartSize / 2.
+      // We want that to equal heartAreaLeft + heartAreaWidth / 2.
+      const centerOfArea = heartAreaLeft + heartAreaWidth / 2;
+      const startX = centerOfArea - ((heartsPerRow - 1) * heartSize) / 2;
+      const startY = heartAreaTop + verticalPadding;
+
+      // Draw only up to totalHeartsToDraw hearts (morale capacity)
+      for (let i = 0; i < totalHeartsToDraw; i++) {
+        const row = Math.floor(i / heartsPerRow);
+        const col = i % heartsPerRow;
+        const x = startX + col * heartSize;
+        const y = startY + row * heartSize * 1.05;
+        // Filled if index is less than heartsFilled
+        const isFilled = i < heartsFilled;
+        drawHeart(ctx, x, y, heartSize, isFilled);
       }
 
       ctx.fillStyle = '#FFFFFF';
