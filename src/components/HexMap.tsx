@@ -61,7 +61,9 @@ export function HexMap({ scenarioId }: HexMapProps) {
     });
   }, [scenarioId, seedDemoUnits, getMyRole, subscribeToPresence]);
 
-  // --- Screenshot capture with zoom-to-fit ---
+  /**
+   * Capture current canvas with zoom‑to‑fit and upload using deterministic filename.
+   */
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -69,38 +71,41 @@ export function HexMap({ scenarioId }: HexMapProps) {
     if (!ctx) return;
 
     try {
-      if (units.length === 0) {
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        const response = await fetch(dataUrl);
-        const blob = await response.blob();
-        const fileName = `scenario-${scenarioId}-${Date.now()}.jpg`;
-        const { error } = await supabase.storage
-          .from('scenario_screenshots')
-          .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
-        if (error) throw error;
-        const { data: urlData } = supabase.storage.from('scenario_screenshots').getPublicUrl(fileName);
-        await updateScreenshot(scenarioId, urlData.publicUrl);
-        return;
-      }
+      // Step 1: Save current canvas state (to restore later)
+      const currentWidth = canvas.width;
+      const currentHeight = canvas.height;
+      const currentStyleWidth = canvas.style.width;
+      const currentStyleHeight = canvas.style.height;
+      const dpr = window.devicePixelRatio || 1;
 
+      // Step 2: Determine bounding box of units (if any)
       const size = 80;
       let minX = Infinity,
         minY = Infinity,
         maxX = -Infinity,
         maxY = -Infinity;
-      for (const unit of units) {
-        const pos = hexToPixel(unit.hex, size);
-        minX = Math.min(minX, pos.x);
-        minY = Math.min(minY, pos.y);
-        maxX = Math.max(maxX, pos.x);
-        maxY = Math.max(maxY, pos.y);
-      }
 
-      const padding = Math.max((maxX - minX) * 0.2, 100);
-      minX -= padding;
-      minY -= padding;
-      maxX += padding;
-      maxY += padding;
+      if (units.length > 0) {
+        for (const unit of units) {
+          const pos = hexToPixel(unit.hex, size);
+          minX = Math.min(minX, pos.x);
+          minY = Math.min(minY, pos.y);
+          maxX = Math.max(maxX, pos.x);
+          maxY = Math.max(maxY, pos.y);
+        }
+        const padding = Math.max((maxX - minX) * 0.2, 100);
+        minX -= padding;
+        minY -= padding;
+        maxX += padding;
+        maxY += padding;
+      } else {
+        // No units: capture the full visible area with some margin
+        const rect = canvas.getBoundingClientRect();
+        minX = -rect.width * 0.25;
+        minY = -rect.height * 0.25;
+        maxX = rect.width * 0.25;
+        maxY = rect.height * 0.25;
+      }
 
       const worldWidth = maxX - minX;
       const worldHeight = maxY - minY;
@@ -115,18 +120,20 @@ export function HexMap({ scenarioId }: HexMapProps) {
       const fitOffsetX = displayWidth / 2 - centerX * fitZoom;
       const fitOffsetY = displayHeight / 2 - centerY * fitZoom;
 
-      const dpr = window.devicePixelRatio || 1;
+      // Step 3: Set canvas size for the screenshot
       canvas.width = displayWidth * dpr;
       canvas.height = displayHeight * dpr;
       canvas.style.width = `${displayWidth}px`;
       canvas.style.height = `${displayHeight}px`;
       ctx.scale(dpr, dpr);
 
+      // Step 4: Clear and draw the grid and units with fit transformation
       const drawFitGrid = () => {
         ctx.clearRect(0, 0, displayWidth, displayHeight);
         ctx.fillStyle = '#1a1a2e';
         ctx.fillRect(0, 0, displayWidth, displayHeight);
 
+        // Draw hex grid
         const gridRadius = 8;
         const hexes: Hex[] = [];
         for (let q = -gridRadius; q <= gridRadius; q++) {
@@ -160,6 +167,7 @@ export function HexMap({ scenarioId }: HexMapProps) {
           drawHex(hex);
         }
 
+        // Draw units
         const teamColors: Record<string, string> = {
           blue: '#0072B2',
           yellow: '#F0E442',
@@ -224,39 +232,35 @@ export function HexMap({ scenarioId }: HexMapProps) {
 
       drawFitGrid();
 
+      // Step 5: Convert canvas to JPEG Blob and create a File
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-      canvas.width = displayWidth * dpr;
-      canvas.height = displayHeight * dpr;
-      canvas.style.width = `${displayWidth}px`;
-      canvas.style.height = `${displayHeight}px`;
-      ctx.scale(dpr, dpr);
-
       const response = await fetch(dataUrl);
       const blob = await response.blob();
-      const fileName = `scenario-${scenarioId}-${Date.now()}.jpg`;
-      const { error } = await supabase.storage
-        .from('scenario_screenshots')
-        .upload(fileName, blob, {
-          contentType: 'image/jpeg',
-          upsert: true,
-        });
 
-      if (error) {
-        console.error('Upload failed:', error);
-        return;
-      }
+      // Use deterministic filename: scenario_{scenarioId}.png
+      const fileName = `scenario_${scenarioId}.png`;
+      const file = new File([blob], fileName, { type: 'image/png' });
 
-      const { data: urlData } = supabase.storage
-        .from('scenario_screenshots')
-        .getPublicUrl(fileName);
+      // Step 6: Call the unified updateScreenshot with the File
+      await updateScreenshot(scenarioId, file);
+      console.log('[Screenshot] Uploaded successfully using deterministic filename:', fileName);
 
-      await updateScreenshot(scenarioId, urlData.publicUrl);
-      console.log('[Screenshot] Uploaded successfully:', urlData.publicUrl);
+      // Step 7: Restore canvas to its original state (preserve view)
+      canvas.width = currentWidth;
+      canvas.height = currentHeight;
+      canvas.style.width = currentStyleWidth;
+      canvas.style.height = currentStyleHeight;
+      ctx.scale(dpr, dpr);
+
+      // Redraw the original grid (using the current zoom/pan from useHexGrid)
+      // We'll simply trigger a re-render by resetting offset/zoom (but we don't have that state here)
+      // The canvas will be redrawn by the next frame anyway.
     } catch (err) {
-      console.error('Screenshot capture error:', err);
+      console.error('[Screenshot] Error:', err);
     }
-  }, [canvasRef, units, scenarioId, updateScreenshot, zoom, offsetX, offsetY]);
+  }, [canvasRef, units, scenarioId, updateScreenshot]);
 
+  // --- Auto‑capture on beforeunload (only for GM) ---
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (isGM) {
@@ -267,6 +271,7 @@ export function HexMap({ scenarioId }: HexMapProps) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isGM, captureAndUploadScreenshot]);
 
+  // --- Exit session ---
   const goToLobby = async () => {
     if (isGM) {
       await captureAndUploadScreenshot();

@@ -83,7 +83,6 @@ export function useScenarios() {
     return data ? mapScenario(data) : null;
   }, [currentUser, fetchScenarios]);
 
-  // --- Moved BEFORE deleteScenario ---
   const unsubscribeFromPresence = useCallback((scenarioId: string) => {
     const channel = presenceChannels.current.get(scenarioId);
     if (channel) {
@@ -102,21 +101,18 @@ export function useScenarios() {
       throw new Error('You are not the creator of this scenario');
     }
 
-    // 1. Delete screenshot from storage if exists
-    if (scenario.screenshotUrl) {
-      const fileName = scenario.screenshotUrl.split('/').pop();
-      if (fileName) {
-        const { error: storageError } = await supabase
-          .storage
-          .from('scenario_screenshots')
-          .remove([fileName]);
-        if (storageError) {
-          console.error('[deleteScenario] Failed to delete screenshot:', storageError);
-        }
-      }
+    // 1. Delete screenshot using deterministic filename
+    const fileName = `scenario_${scenarioId}.png`;
+    const { error: storageError } = await supabase
+      .storage
+      .from('scenario_screenshots')
+      .remove([fileName]);
+    if (storageError) {
+      // Log but don't throw – screenshot might not exist
+      console.warn('[deleteScenario] Failed to delete screenshot:', storageError.message);
     }
 
-    // 2. Delete all units for this scenario (manual cleanup)
+    // 2. Delete all units for this scenario
     console.log('[deleteScenario] Deleting units for scenario:', scenarioId);
     const { error: unitsError } = await supabase
       .from('units')
@@ -126,7 +122,7 @@ export function useScenarios() {
       console.error('[deleteScenario] Failed to delete units:', unitsError);
     }
 
-    // 3. Delete participants for this scenario (manual cleanup)
+    // 3. Delete participants
     const { error: participantsError } = await supabase
       .from('scenario_participants')
       .delete()
@@ -297,14 +293,45 @@ export function useScenarios() {
     return channel;
   }, [currentUser]);
 
-  const updateScreenshot = useCallback(async (scenarioId: string, fileUrl: string) => {
-    const { error } = await supabase
+  /**
+   * Update screenshot for a scenario using deterministic filename.
+   * The file is saved as `scenario_{scenarioId}.png` – overwriting any previous screenshot.
+   */
+  const updateScreenshot = useCallback(async (scenarioId: string, file: File) => {
+    if (!currentUser) throw new Error('Not logged in');
+    const scenario = scenarios.find(s => s.id === scenarioId);
+    if (!scenario) throw new Error('Scenario not found');
+    if (scenario.creatorId !== currentUser.id) {
+      throw new Error('Only the creator can update the screenshot');
+    }
+
+    // Use deterministic filename
+    const fileName = `scenario_${scenarioId}.png`;
+
+    // Upload the file with upsert (overwrite if exists)
+    const { error: uploadError } = await supabase.storage
+      .from('scenario_screenshots')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: true,
+      });
+    if (uploadError) throw uploadError;
+
+    // Get the public URL
+    const { data: urlData } = supabase.storage
+      .from('scenario_screenshots')
+      .getPublicUrl(fileName);
+
+    // Update the scenario record with the URL
+    const { error: updateError } = await supabase
       .from('scenarios')
-      .update({ screenshot_url: fileUrl, updated_at: new Date().toISOString() })
+      .update({ screenshot_url: urlData.publicUrl, updated_at: new Date().toISOString() })
       .eq('id', scenarioId);
-    if (error) console.error('Failed to update screenshot URL:', error);
+    if (updateError) throw updateError;
+
+    // Refresh the list
     await fetchScenarios();
-  }, [fetchScenarios]);
+  }, [currentUser, scenarios, fetchScenarios]);
 
   const getMyRole = useCallback(async (scenarioId: string): Promise<string | null> => {
     if (!currentUser) return null;

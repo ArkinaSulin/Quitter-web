@@ -7,17 +7,19 @@ export interface Hex {
   s: number; // s = -q - r
 }
 
-// --- Weapon (parsed from weaponString) ---
+// --- Weapon (stored as JSON in unit_templates.weapon_string) ---
 export interface Weapon {
   name: string;
   attackBonus: number;
   targetType: 'single' | 'area';
   damageDice: string;
   range: number;        // hexes
-  magicRadius: number;  // Ft (0 for non-area)
+  magicRadius: number;  // feet
+  reach: boolean;       // weapon has reach (e.g., pike, lance)
+  notes: string;        // descriptive notes (e.g., "Versatile", "Finesse")
 }
 
-// --- Unit Data ---
+// --- Unit Data (for game map) ---
 export interface Unit {
   id: string;
   templateId?: string;
@@ -35,7 +37,10 @@ export interface Unit {
   baseAc: number;
   currentAc: number;
   isRouting: boolean;
-  weaponString: string;
+  weaponString: string;   // JSON array of Weapon objects
+  sizeCategory: number;   // 100, 200, 300, 400
+  visualScale: number;    // 50-149
+  customImageUrl?: string | null;
 }
 
 // --- Scenario & Participants ---
@@ -68,9 +73,9 @@ export interface UnitTemplate {
   raceBaseHd?: number | null;
   modelTypeId: string;
   modelTypeName?: string;
-  modelTypeIconUrl?: string | null; // Added for convenience
+  modelTypeIconUrl?: string | null;
   isHero: boolean;
-  isPlayerHero: boolean;
+  // isPlayerHero removed
   bodyCount: number;
   level: number;
   hp: number;
@@ -80,16 +85,18 @@ export interface UnitTemplate {
   armorName?: string;
   isShielded: boolean;
   baseAc: number;
-  weaponString: string;
+  weaponString: string;   // JSON array of Weapon objects
   mountId: string;
   mountName?: string;
   movementPoints: number;
   aggressiveness: number;
   baseMorale: number;
-  troopScale: number;
+  sizeCategory: number;   // 100, 200, 300, 400
+  visualScale: number;    // 50-149
   formationAvailability: string[];
   costGp: number;
   acSpecialModifier?: string;
+  customImageUrl?: string | null;  // custom unit/hero image URL
   createdAt: string;
   updatedAt: string;
 }
@@ -98,19 +105,26 @@ export interface UnitTemplate {
 export interface Race {
   id: string;
   name: string;
-  defaultTroopScale: number;
+  defaultTroopScale: number; // legacy – will be removed; use visual_scale
   baseSpeed: number;
   acBonus: number;
   iconUrl: string | null;
   base_hd: number;
+  size_category: number;    // 100, 200, 300, 400
+  visual_scale: number;     // 50-149
 }
 
 export interface WeaponLookup {
   id: string;
   name: string;
   damageDice: string;
-  special: string | null;
+  notes: string | null;
   costGp: number;
+  attackBonus?: number;
+  magicRadius?: number;
+  range?: number;
+  targetType?: string;      // 'single' or 'area'
+  reach?: boolean;
 }
 
 export interface Armor {
@@ -129,7 +143,6 @@ export interface Formation {
   attackModifier: number;
 }
 
-// Renamed from ModelType to UnitType
 export interface UnitType {
   id: string;
   name: string;
@@ -142,6 +155,7 @@ export interface Mount {
   name: string;
   speed: number;
   costGp: number;
+  size_category: number;   // 100, 200, 300, 400
 }
 
 // --- Web Worker Message Protocol ---

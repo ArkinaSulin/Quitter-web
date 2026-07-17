@@ -204,6 +204,7 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
           >
             Delete Scenario
           </button>
+          {/* Upload Screenshot button removed */}
         </div>
         <div className="space-y-3">
           <button
