@@ -1,6 +1,7 @@
 // app/layout.tsx
 import type { Metadata } from 'next';
 import './globals.css';
+import { MessageProvider } from '@/contexts/MessageContext';
 
 export const metadata: Metadata = {
   title: 'QuiTTER - Quick Terrestrial Tactical Encounter Rules',
@@ -14,7 +15,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <MessageProvider>
+          {children}
+        </MessageProvider>
+      </body>
     </html>
   );
 }

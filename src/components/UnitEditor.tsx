@@ -9,73 +9,7 @@ import { UnitTemplate, Race, Armor, Formation, UnitType, Mount } from '@/types/g
 import { parseWeapons, stringifyWeapons, Weapon as WeaponType } from '@/lib/weaponParser';
 import { TokenPreview } from '@/components/TokenRenderer/TokenPreview';
 import { Team } from '@/components/TokenRenderer/tokenUtils';
-
-function mapTemplate(row: any): UnitTemplate {
-  return {
-    id: row.id,
-    name: row.name,
-    raceId: row.race_id || '',
-    raceName: row.races?.name || '',
-    raceBaseHd: row.races?.base_hd || null,
-    modelTypeId: row.model_type_id || '',
-    modelTypeName: row.unit_types?.name || '',
-    modelTypeIconUrl: row.unit_types?.icon_url || null,
-    isHero: row.is_hero || false,
-    bodyCount: row.body_count || 1,
-    level: row.level || 1,
-    hp: row.hp || 10,
-    unitHp: row.unit_hp || 0,
-    attack: row.attack || 10,
-    armorId: row.armor_id || '',
-    armorName: row.armors?.name || '',
-    isShielded: row.is_shielded || false,
-    baseAc: row.base_ac || 10,
-    weaponString: row.weapon_string || '',
-    mountId: row.mount_id || '',
-    mountName: row.mounts?.name || '',
-    movementPoints: row.movement_points || 3,
-    aggressiveness: row.aggressiveness || 3,
-    baseMorale: row.base_morale || 3,
-    sizeCategory: row.size_category || 100,
-    visualScale: row.visual_scale || 100,
-    formationAvailability: row.formation_availability || ['Scattered', 'Routed'],
-    costGp: row.cost_gp || 0,
-    customImageUrl: row.custom_image_url || null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-function mapTemplateToRow(template: UnitTemplate) {
-  const unitHp = (template.hp || 0) * (template.bodyCount || 1);
-  const attack = getAttackFromLevel(template.level || 1);
-  return {
-    id: template.id,
-    name: template.name,
-    race_id: template.raceId || null,
-    model_type_id: template.modelTypeId || null,
-    is_hero: template.isHero || false,
-    body_count: template.bodyCount || 1,
-    level: template.level || 1,
-    hp: template.hp || 10,
-    unit_hp: unitHp,
-    attack: attack,
-    armor_id: template.armorId || null,
-    is_shielded: template.isShielded || false,
-    base_ac: template.baseAc || 10,
-    weapon_string: template.weaponString || '',
-    mount_id: template.mountId || null,
-    movement_points: template.movementPoints || 3,
-    aggressiveness: template.aggressiveness || 3,
-    base_morale: template.baseMorale || 3,
-    size_category: template.sizeCategory || 100,
-    visual_scale: template.visualScale || 100,
-    formation_availability: template.formationAvailability || ['Scattered', 'Routed'],
-    cost_gp: template.costGp || 0,
-    custom_image_url: template.customImageUrl || null,
-    updated_at: new Date().toISOString(),
-  };
-}
+import { mapTemplate, mapTemplateToRow } from '@/lib/templateMappers';
 
 function getAttackFromLevel(level: number): number {
   const profBonus = getProficiencyBonus(level);
@@ -111,7 +45,6 @@ function snapSizeCategory(value: number): number {
   return closest;
 }
 
-// --- Image upload helpers ---
 async function resizeImage(file: File, maxWidth: number, maxHeight: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -201,34 +134,27 @@ export default function UnitEditor() {
   const [weaponNotes, setWeaponNotes] = useState<string>('');
   const [weaponError, setWeaponError] = useState('');
   const [weaponSearchTerm, setWeaponSearchTerm] = useState('');
-  const [showWeaponSuggestions, setShowWeaponSuggestions] = useState(false);
 
   const [showCloneModal, setShowCloneModal] = useState(false);
   const [cloneName, setCloneName] = useState('');
   const [cloneError, setCloneError] = useState('');
 
-  // --- State for Hero forcing bodyCount = 1 ---
   const [previousHeroBodyCount, setPreviousHeroBodyCount] = useState<number>(10);
   const [wasHeroChecked, setWasHeroChecked] = useState<boolean>(false);
-
-  // --- State for 400% locking (store previous values) ---
   const [previousHeroState, setPreviousHeroState] = useState<boolean>(false);
   const [previousBodyCount, setPreviousBodyCount] = useState<number>(10);
   const [wasAt400, setWasAt400] = useState<boolean>(false);
 
-  // --- Image picker state ---
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [userImages, setUserImages] = useState<string[]>([]);
   const [loadingImages, setLoadingImages] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // --- Preview container refs ---
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [previewWidth, setPreviewWidth] = useState<number>(400);
   const previewWidthRef = useRef(previewWidth);
   const observerRef = useRef<ResizeObserver | null>(null);
 
-  // --- Image picker helpers ---
   const loadUserImages = async () => {
     setLoadingImages(true);
     try {
@@ -288,7 +214,6 @@ export default function UnitEditor() {
     }
   };
 
-  // --- Helper to update preview width ---
   const updatePreviewWidth = () => {
     const container = previewContainerRef.current;
     if (!container) return;
@@ -326,7 +251,6 @@ export default function UnitEditor() {
     };
   }, []);
 
-  // --- Helper functions ---
   const getWeapons = (): WeaponType[] => {
     if (!formData) return [];
     return parseWeapons(formData.weaponString);
@@ -342,7 +266,13 @@ export default function UnitEditor() {
     if (!formData) return 10;
     const selectedRace = races.find(r => r.id === formData.raceId);
     const selectedArmor = formData.armorId ? armors.find(a => a.id === formData.armorId) : null;
-    let ac = formData.baseAc + (selectedArmor?.ac_bonus || 0) + (formData.isShielded ? 2 : 0) + (selectedRace?.acBonus || 0);
+    let ac = formData.baselineAc || 10;
+    // Add race bonus
+    ac += (selectedRace?.acBonus || 0);
+    // Add armor bonus
+    ac += (selectedArmor?.ac_bonus || 0);
+    // Add shield
+    if (formData.isShielded) ac += 2;
     return Math.max(0, Math.min(30, ac));
   };
 
@@ -401,7 +331,6 @@ export default function UnitEditor() {
     updateFormData('formationAvailability', newFormations);
   };
 
-  // --- Auto-remove Phalanx/Shield Wall when mounted ---
   useEffect(() => {
     if (!formData) return;
     const isMounted = formData.mountId !== '';
@@ -414,28 +343,26 @@ export default function UnitEditor() {
     }
   }, [formData?.mountId]);
 
-  // --- Hero checkbox logic: force bodyCount = 1 ---
   useEffect(() => {
     if (!formData) return;
     const hero = formData.isHero;
     if (hero) {
       if (!wasHeroChecked) {
-        setPreviousHeroBodyCount(formData.bodyCount);
+        setPreviousHeroBodyCount(formData.troopCount);
         setWasHeroChecked(true);
       }
-      if (formData.bodyCount !== 1) {
-        updateFormData('bodyCount', 1);
+      if (formData.troopCount !== 1) {
+        updateFormData('troopCount', 1);
       }
     } else {
       if (wasHeroChecked) {
         const restoreCount = previousHeroBodyCount > 0 ? previousHeroBodyCount : 1;
-        updateFormData('bodyCount', restoreCount);
+        updateFormData('troopCount', restoreCount);
         setWasHeroChecked(false);
       }
     }
-  }, [formData?.isHero, formData?.bodyCount]);
+  }, [formData?.isHero, formData?.troopCount]);
 
-  // --- 400% Logic (Gargantuan) ---
   useEffect(() => {
     if (!formData) return;
     const isGargantuan = formData.sizeCategory === 400;
@@ -443,25 +370,24 @@ export default function UnitEditor() {
     if (isGargantuan) {
       if (!wasAt400) {
         setPreviousHeroState(formData.isHero);
-        setPreviousBodyCount(formData.bodyCount || 1);
+        setPreviousBodyCount(formData.troopCount || 1);
         setWasAt400(true);
       }
       if (!formData.isHero) {
         updateFormData('isHero', true);
       }
-      if (formData.bodyCount !== 1) {
-        updateFormData('bodyCount', 1);
+      if (formData.troopCount !== 1) {
+        updateFormData('troopCount', 1);
       }
     } else {
       if (wasAt400) {
         updateFormData('isHero', previousHeroState);
-        updateFormData('bodyCount', previousBodyCount);
+        updateFormData('troopCount', previousBodyCount);
         setWasAt400(false);
       }
     }
   }, [formData?.sizeCategory]);
 
-  // --- Data fetching ---
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -469,12 +395,12 @@ export default function UnitEditor() {
           .from('unit_templates')
           .select(`
             *,
-            races(name, icon_url, base_hd),
+            races(name, icon_url, base_hd, size_category, visual_scale, can_charge),
             unit_types(name, icon_url),
             armors(name),
             mounts(name)
           `)
-          .order('name');
+          .order('unit_name');
 
         if (templateError) throw templateError;
         setTemplates((templateData || []).map(mapTemplate));
@@ -520,7 +446,6 @@ export default function UnitEditor() {
     fetchData();
   }, []);
 
-  // --- Select template ---
   useEffect(() => {
     if (selectedId === 'new') {
       return;
@@ -535,11 +460,11 @@ export default function UnitEditor() {
         setWasAt400(found.sizeCategory === 400);
         if (found.sizeCategory === 400) {
           setPreviousHeroState(found.isHero);
-          setPreviousBodyCount(found.bodyCount);
+          setPreviousBodyCount(found.troopCount);
         }
         if (found.isHero) {
           setWasHeroChecked(true);
-          setPreviousHeroBodyCount(found.bodyCount > 0 ? found.bodyCount : 1);
+          setPreviousHeroBodyCount(found.troopCount > 0 ? found.troopCount : 1);
         } else {
           setWasHeroChecked(false);
         }
@@ -551,7 +476,6 @@ export default function UnitEditor() {
     }
   }, [selectedId, templates]);
 
-  // --- Weapon modal functions ---
   const openAddWeapon = () => {
     setEditingWeaponIndex(null);
     setWeaponName('');
@@ -564,7 +488,6 @@ export default function UnitEditor() {
     setWeaponReach(false);
     setWeaponNotes('');
     setWeaponError('');
-    setShowWeaponSuggestions(false);
     setShowWeaponModal(true);
   };
 
@@ -583,7 +506,6 @@ export default function UnitEditor() {
     setWeaponReach(w.reach || false);
     setWeaponNotes(w.notes || '');
     setWeaponError('');
-    setShowWeaponSuggestions(false);
     setShowWeaponModal(true);
   };
 
@@ -608,7 +530,6 @@ export default function UnitEditor() {
     setWeaponMagicRadius(weapon.magic_radius || 0);
     setWeaponReach(weapon.reach || false);
     setWeaponNotes(weapon.notes || '');
-    setShowWeaponSuggestions(false);
   };
 
   const getWeaponSuggestions = () => {
@@ -672,29 +593,32 @@ export default function UnitEditor() {
     updateFormData('weaponString', weaponString);
   };
 
-  // --- Unit CRUD ---
   const createBlankTemplate = (): UnitTemplate => {
     const firstRace = races[0];
     const firstUnitType = unitTypes[0];
     return {
       id: crypto.randomUUID(),
-      name: 'New Unit',
+      unitName: 'New Unit',
       raceId: firstRace?.id || '',
       raceName: firstRace?.name || '',
       raceBaseHd: firstRace?.base_hd || null,
+      raceIconUrl: firstRace?.icon_url || '',
+      raceCanCharge: firstRace?.can_charge || false,
       modelTypeId: firstUnitType?.id || '',
       modelTypeName: firstUnitType?.name || '',
       modelTypeIconUrl: firstUnitType?.icon_url || null,
+      unitTypeIconUrl: firstUnitType?.icon_url || null,
       isHero: false,
-      bodyCount: 1,
+      troopCount: 1,
       level: 1,
-      hp: firstRace?.base_hd || 10,
+      troopHp: firstRace?.base_hd || 10,
       unitHp: (firstRace?.base_hd || 10) * 1,
-      attack: 10,
+      numberOfAttacks: 10,
       armorId: '',
       armorName: '',
       isShielded: false,
       baseAc: 10,
+      baselineAc: 10,
       weaponString: '',
       mountId: '',
       mountName: '',
@@ -704,7 +628,9 @@ export default function UnitEditor() {
       sizeCategory: firstRace?.size_category || 100,
       visualScale: firstRace?.visual_scale || 100,
       formationAvailability: ['Scattered', 'Routed'],
-      costGp: 0,
+      equipCostGp: 0,
+      weeklyCostGp: 4 * (formData.level * formData.level),
+      canCharge: false,
       customImageUrl: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -720,14 +646,14 @@ export default function UnitEditor() {
     setWasAt400(blank.sizeCategory === 400);
     if (blank.sizeCategory === 400) {
       setPreviousHeroState(blank.isHero);
-      setPreviousBodyCount(blank.bodyCount);
+      setPreviousBodyCount(blank.troopCount);
     }
     setWasHeroChecked(false);
   };
 
   const handleClone = () => {
     if (!formData) return;
-    setCloneName(`${formData.name} (Clone)`);
+    setCloneName(`${formData.unitName} (Clone)`);
     setCloneError('');
     setShowCloneModal(true);
   };
@@ -738,7 +664,7 @@ export default function UnitEditor() {
       setCloneError('Name is required');
       return;
     }
-    if (templates.some(t => t.name === cloneName.trim())) {
+    if (templates.some(t => t.unitName === cloneName.trim())) {
       setCloneError('A unit with this name already exists');
       return;
     }
@@ -746,12 +672,13 @@ export default function UnitEditor() {
       const newUnit: UnitTemplate = {
         ...formData,
         id: crypto.randomUUID(),
-        name: cloneName.trim(),
-        costGp: 0,
+        unitName: cloneName.trim(),
+        equipCostGp: 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         formationAvailability: [...formData.formationAvailability],
         customImageUrl: formData.customImageUrl || null,
+        unitTypeIconUrl: formData.unitTypeIconUrl || null,
       };
       const { data, error } = await supabase
         .from('unit_templates')
@@ -765,7 +692,7 @@ export default function UnitEditor() {
       setFormData(mapped);
       setShowCloneModal(false);
       setCloneName('');
-      setSuccess(`Unit "${mapped.name}" cloned successfully!`);
+      setSuccess(`Unit "${mapped.unitName}" cloned successfully!`);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       setCloneError(err.message || 'Failed to clone unit');
@@ -778,12 +705,12 @@ export default function UnitEditor() {
       return;
     }
 
-    if (!formData.name.trim()) {
+    if (!formData.unitName.trim()) {
       setError('Unit name is required');
       return;
     }
 
-    const duplicate = templates.find(t => t.name === formData.name.trim() && t.id !== formData.id);
+    const duplicate = templates.find(t => t.unitName === formData.unitName.trim() && t.id !== formData.id);
     if (duplicate) {
       setError('A unit with this name already exists');
       return;
@@ -801,7 +728,10 @@ export default function UnitEditor() {
       const selectedArmor = formData.armorId ? armors.find(a => a.id === formData.armorId) : null;
       const selectedMount = formData.mountId ? mounts.find(m => m.id === formData.mountId) : null;
 
-      let ac = formData.baseAc + (selectedArmor?.ac_bonus || 0) + (formData.isShielded ? 2 : 0) + (selectedRace?.acBonus || 0);
+      let ac = formData.baselineAc || 10;
+      ac += (selectedRace?.acBonus || 0);
+      ac += (selectedArmor?.ac_bonus || 0);
+      if (formData.isShielded) ac += 2;
       ac = Math.max(0, Math.min(30, ac));
 
       let movement = formData.movementPoints || 3;
@@ -822,10 +752,11 @@ export default function UnitEditor() {
 
       const updatedUnit = {
         ...formData,
-        ac: ac,
+        baselineAc: ac,
         movementPoints: finalMovement,
-        costGp: cost || 0,
-        attack: getAttackFromLevel(formData.level || 1),
+        equipCostGp: cost || 0,
+        // numberOfAttacks: getAttackFromLevel(formData.level || 1), // remove that line
+        numberOfAttacks: formData.numberOfAttacks,
         updatedAt: new Date().toISOString(),
       };
 
@@ -835,7 +766,7 @@ export default function UnitEditor() {
       let result;
 
       if (existsInDB) {
-        console.log('🔄 Updating existing unit:', formData.id);
+        console.log('Updating existing unit:', formData.id);
         const { data, error } = await supabase
           .from('unit_templates')
           .update(rowData)
@@ -843,13 +774,13 @@ export default function UnitEditor() {
           .select();
 
         if (error) {
-          console.error('❌ Update error:', error);
+          console.error('Update error:', error);
           throw error;
         }
         result = data;
-        console.log('✅ Update result:', result);
+        console.log('Update result:', result);
       } else {
-        console.log('🟢 Inserting new unit');
+        console.log('Inserting new unit');
         const { id, ...insertData } = rowData;
         const { data, error } = await supabase
           .from('unit_templates')
@@ -857,15 +788,15 @@ export default function UnitEditor() {
           .select();
 
         if (error) {
-          console.error('❌ Insert error:', error);
+          console.error('Insert error:', error);
           throw error;
         }
         result = data;
-        console.log('✅ Insert result:', result);
+        console.log('Insert result:', result);
       }
 
       if (!result || result.length === 0) {
-        console.error('⚠️ No data returned. result:', result);
+        console.error('No data returned. result:', result);
         throw new Error('No data returned from save operation');
       }
 
@@ -881,24 +812,24 @@ export default function UnitEditor() {
       setFormData(mapped);
 
       setError(null);
-      setSuccess(`Unit "${mapped.name}" saved successfully!`);
+      setSuccess(`Unit "${mapped.unitName}" saved successfully!`);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      console.error('💥 Save error:', err);
+      console.error('Save error:', err);
       setError(err.message || 'Failed to save unit');
     }
   };
 
   const handleSaveAs = () => {
     if (!formData) return;
-    setCloneName(`${formData.name} (Copy)`);
+    setCloneName(`${formData.unitName} (Copy)`);
     setCloneError('');
     setShowCloneModal(true);
   };
 
   const handleDelete = async () => {
     if (!formData) return;
-    if (!confirm(`Delete unit "${formData.name}"?`)) return;
+    if (!confirm(`Delete unit "${formData.unitName}"?`)) return;
     try {
       const { error } = await supabase
         .from('unit_templates')
@@ -925,17 +856,17 @@ export default function UnitEditor() {
   const selectedRace = races.find(r => r.id === formData?.raceId);
   const selectedUnitType = unitTypes.find(ut => ut.id === formData?.modelTypeId);
 
-  const effectiveBodyCount = formData ? Math.round((formData.bodyCount || 1) * (1 - testCasualtyPercent / 100)) : 0;
+  const effectiveBodyCount = formData ? Math.round((formData.troopCount || 1) * (1 - testCasualtyPercent / 100)) : 0;
   const effectiveMorale = formData ? Math.round((formData.baseMorale || 3) * (testMoralePercent / 100)) : 0;
-  const effectiveHp = formData && formData.isHero ? Math.round((formData.hp || 10) * (1 - testCasualtyPercent / 100)) : 0;
-  const maxHp = formData?.hp || 10;
-
-  const isMountedPreview = formData?.mountId !== '';
+  const effectiveHp = formData && formData.isHero ? Math.round((formData.troopHp || 10) * (1 - testCasualtyPercent / 100)) : 0;
+  const maxHp = formData?.troopHp || 10;
 
   const getSizeLabel = (size: number) => SIZE_LABELS[size] || 'Medium';
   const isGargantuan = formData?.sizeCategory === 400;
+
   const filteredMounts = mounts.filter(m => {
     if (!formData) return true;
+    if (m.id === formData.mountId) return true;
     return m.size_category > formData.sizeCategory;
   });
 
@@ -993,9 +924,9 @@ export default function UnitEditor() {
                       : 'bg-gray-700 border-gray-600 hover:bg-gray-600'
                   }`}
                 >
-                  <div className="font-medium truncate">{template.name}</div>
+                  <div className="font-medium truncate">{template.unitName}</div>
                   <div className="text-xs text-gray-400">
-                    Cost: {template.costGp || 0}gp · {template.raceName || 'No Race'}
+                    Cost: {template.equipCostGp || 0}gp · {template.raceName || 'No Race'}
                   </div>
                 </div>
               );
@@ -1008,11 +939,11 @@ export default function UnitEditor() {
             <div className="max-w-3xl space-y-4">
               {/* Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Unit Name</label>
                 <input
                   type="text"
-                  value={formData.name || ''}
-                  onChange={(e) => updateFormData('name', e.target.value)}
+                  value={formData.unitName || ''}
+                  onChange={(e) => updateFormData('unitName', e.target.value)}
                   className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
                 />
               </div>
@@ -1026,14 +957,25 @@ export default function UnitEditor() {
                     value={formData.raceId || ''}
                     onChange={(e) => {
                       const race = races.find(r => r.id === e.target.value);
-                      const currentHp = formData?.hp || 0;
+                      const currentHp = formData?.troopHp || 0;
                       const newHp = (race?.base_hd && (currentHp === 10 || currentHp === 0)) ? race.base_hd : currentHp;
+
+                      let newSize = race?.size_category || 100;
+                      if (formData?.mountId) {
+                        const mount = mounts.find(m => m.id === formData.mountId);
+                        if (mount) {
+                          newSize = Math.max(race?.size_category || 100, mount.size_category);
+                        }
+                      }
+
                       setFormData(prev => prev ? {
                         ...prev,
                         raceId: e.target.value,
                         raceName: race?.name || '',
-                        hp: newHp,
-                        sizeCategory: race?.size_category || 100,
+                        raceIconUrl: race?.icon_url || '',
+                        raceCanCharge: race?.can_charge || false,
+                        troopHp: newHp,
+                        sizeCategory: newSize,
                         visualScale: race?.visual_scale || 100,
                       } : null);
                     }}
@@ -1061,11 +1003,11 @@ export default function UnitEditor() {
               {/* HP, Troop Count, Unit HP */}
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">HP</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">HP per Troop</label>
                   <input
                     type="number"
-                    value={formData.hp || 10}
-                    onChange={(e) => updateFormData('hp', parseInt(e.target.value) || 10)}
+                    value={formData.troopHp || 10}
+                    onChange={(e) => updateFormData('troopHp', parseInt(e.target.value) || 10)}
                     min={1}
                     className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
                   />
@@ -1075,8 +1017,8 @@ export default function UnitEditor() {
                   <label className="block text-sm font-medium text-gray-300 mb-1">Troop Count</label>
                   <input
                     type="number"
-                    value={formData.bodyCount || 1}
-                    onChange={(e) => updateFormData('bodyCount', parseInt(e.target.value) || 1)}
+                    value={formData.troopCount || 1}
+                    onChange={(e) => updateFormData('troopCount', parseInt(e.target.value) || 1)}
                     min={1}
                     disabled={isGargantuan || formData.isHero}
                     className={`w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400 ${
@@ -1092,7 +1034,7 @@ export default function UnitEditor() {
                   <label className="block text-sm font-medium text-gray-300 mb-1">Unit HP (Auto)</label>
                   <input
                     type="text"
-                    value={(formData.hp || 0) * (formData.bodyCount || 1)}
+                    value={(formData.troopHp || 0) * (formData.troopCount || 1)}
                     disabled
                     className="w-full bg-gray-700 text-yellow-400 px-3 py-2 rounded border border-gray-600 cursor-not-allowed"
                   />
@@ -1102,24 +1044,26 @@ export default function UnitEditor() {
               {/* Base AC, Attack, Movement */}
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Base AC (Natural/Class)</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Baseline AC</label>
                   <input
                     type="number"
-                    value={formData.baseAc || 10}
-                    onChange={(e) => updateFormData('baseAc', parseInt(e.target.value) || 10)}
+                    value={formData.baselineAc || 10}
+                    onChange={(e) => updateFormData('baselineAc', parseInt(e.target.value) || 10)}
                     min={1}
                     max={30}
                     className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
                   />
+                  <p className="text-xs text-gray-500 mt-1">Base AC + Armor + Shield = Baseline AC</p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Attack (Auto)</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Number of Attacks</label>
                   <input
-                    type="text"
-                    value={getAttackFromLevel(formData.level || 1)}
-                    disabled
-                    className="w-full bg-gray-700 text-yellow-400 px-3 py-2 rounded border border-gray-600 cursor-not-allowed"
+                    type="number"
+                    value={formData.numberOfAttacks || 1}
+                    onChange={(e) => updateFormData('numberOfAttacks', parseInt(e.target.value) || 1)}
+                    min={1}
+                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
                   />
                 </div>
 
@@ -1184,20 +1128,31 @@ export default function UnitEditor() {
                     onChange={(e) => {
                       const selectedValue = e.target.value;
                       const mount = mounts.find(m => m.id === selectedValue);
-                      setFormData(prev => prev ? {
-                        ...prev,
-                        mountId: selectedValue,
-                        mountName: mount?.name || ''
-                      } : null);
-                      if (mount && mount.name !== 'None') {
+
+                      if (mount) {
+                        setFormData(prev => prev ? {
+                          ...prev,
+                          mountId: selectedValue,
+                          mountName: mount.name,
+                          sizeCategory: mount.size_category,
+                        } : null);
                         const mountedUnitType = unitTypes.find(m => m.isMounted === true);
                         if (mountedUnitType) {
                           setFormData(prev => prev ? {
                             ...prev,
                             modelTypeId: mountedUnitType.id,
-                            modelTypeName: mountedUnitType.name
+                            modelTypeName: mountedUnitType.name,
+                            unitTypeIconUrl: mountedUnitType.icon_url || null,
                           } : null);
                         }
+                      } else {
+                        const race = races.find(r => r.id === formData?.raceId);
+                        setFormData(prev => prev ? {
+                          ...prev,
+                          mountId: '',
+                          mountName: '',
+                          sizeCategory: race?.size_category || 100,
+                        } : null);
                       }
                     }}
                     className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
@@ -1243,7 +1198,7 @@ export default function UnitEditor() {
                   </datalist>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Visual Scale (read‑only)</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Visual Scale (read-only)</label>
                   <input
                     type="text"
                     value={`${formData.visualScale || 100}%`}
@@ -1280,15 +1235,29 @@ export default function UnitEditor() {
                 </div>
               </div>
 
-              {/* Hero Checkbox (only one) */}
+              {/* Can Charge */}
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={formData.canCharge || false}
+                    onChange={(e) => updateFormData('canCharge', e.target.checked)}
+                    className="w-4 h-4 accent-yellow-400"
+                  />
+                  Can Charge (override for race/mount)
+                </label>
+                <p className="text-xs text-gray-500 mt-1">
+                  Race: {selectedRace?.can_charge ? 'Yes' : 'No'} · Mount: {formData.mountId ? mounts.find(m => m.id === formData.mountId)?.can_charge ? 'Yes' : 'No' : 'N/A'}
+                </p>
+              </div>
+
+              {/* Hero Checkbox */}
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-300">
                   <input
                     type="checkbox"
                     checked={formData.isHero || false}
-                    onChange={(e) => {
-                      updateFormData('isHero', e.target.checked);
-                    }}
+                    onChange={(e) => updateFormData('isHero', e.target.checked)}
                     disabled={isGargantuan}
                     className={`w-4 h-4 accent-yellow-400 ${
                       isGargantuan ? 'opacity-50 cursor-not-allowed' : ''
@@ -1368,6 +1337,7 @@ export default function UnitEditor() {
                         onClick={() => {
                           updateFormData('modelTypeId', ut.id);
                           updateFormData('modelTypeName', ut.name);
+                          updateFormData('unitTypeIconUrl', ut.icon_url || null);
                         }}
                         className={`border-2 rounded p-1 cursor-pointer transition flex flex-col items-center ${
                           isSelected ? 'border-yellow-400 bg-yellow-400/20' : 'border-gray-600 hover:border-gray-400'
@@ -1485,7 +1455,7 @@ export default function UnitEditor() {
               {/* Calculated fields summary */}
               <div className="grid grid-cols-4 gap-4 p-4 bg-gray-800 rounded border border-gray-700">
                 <div>
-                  <label className="block text-xs text-gray-400">AC (Auto)</label>
+                  <label className="block text-xs text-gray-400">AC</label>
                   <div className="text-xl font-bold text-yellow-400">{calculateAC()}</div>
                 </div>
                 <div>
@@ -1500,6 +1470,18 @@ export default function UnitEditor() {
                   <label className="block text-xs text-gray-400">Weapons</label>
                   <div className="text-xl font-bold text-yellow-400">{getWeapons().length}</div>
                 </div>
+              </div>
+
+              {/* Weekly Cost */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Weekly Cost (gp)</label>
+                <input
+                  type="number"
+                  value={formData.weeklyCostGp || 0}
+                  onChange={(e) => updateFormData('weeklyCostGp', parseInt(e.target.value) || 0)}
+                  min={0}
+                  className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
+                />
               </div>
 
               {/* Save buttons */}
@@ -1535,7 +1517,7 @@ export default function UnitEditor() {
         <div className="flex-[0_0_30%] min-w-[240px] max-w-[40%] p-4 border-l border-gray-700 bg-[#0d0d1a] overflow-y-auto">
           {formData ? (
             <div className="space-y-6">
-              {/* Token Preview - Responsive */}
+              {/* Token Preview */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Token Preview</label>
                 <div
@@ -1545,28 +1527,28 @@ export default function UnitEditor() {
                 >
                   <TokenPreview
                     key={formData?.id + '-' + (formData?.modelTypeId || 'none') + '-' + previewWidth}
-                    unitName={formData.name || 'Unit'}
+                    unitName={formData.unitName || 'Unit'}
                     bodyCount={effectiveBodyCount}
-                    maxBodyCount={formData.bodyCount || 1}
+                    maxBodyCount={formData.troopCount || 1}
                     formation={testFormation}
                     team={previewTeam}
                     troopScale={formData.visualScale || 100}
                     sizeCategory={formData.sizeCategory || 100}
-                    isMounted={isMountedPreview}
                     isRouted={testFormation === 'Routed'}
                     morale={effectiveMorale}
                     maxMorale={formData.baseMorale || 3}
                     isHero={formData.isHero || false}
-                    raceIconUrl={selectedRace?.icon_url}
-                    weaponIconUrl={selectedUnitType?.icon_url || undefined}
-                    customImageUrl={formData.customImageUrl || selectedRace?.icon_url || undefined}
+                    raceIconUrl={formData.raceIconUrl || selectedRace?.icon_url}
+                    unitTypeIconUrl={formData.unitTypeIconUrl || selectedUnitType?.icon_url || undefined}
+                    customImageUrl={formData.customImageUrl || formData.raceIconUrl || selectedRace?.icon_url || undefined}
                     width={previewWidth}
+                    height={previewWidth * 0.75}
                     currentHp={effectiveHp}
                     maxHp={maxHp}
+                    mountId={formData.mountId || null}
                     onImageClick={openImagePicker}
                   />
                 </div>
-                {/* Refresh button and width display removed */}
                 <button
                   onClick={openImagePicker}
                   className="mt-2 ml-2 px-3 py-1 bg-blue-600 text-white rounded text-xs"
@@ -1654,7 +1636,6 @@ export default function UnitEditor() {
             <h2 className="text-xl font-bold mb-4 text-white">Select Unit Image</h2>
             <div className="flex-1 overflow-y-auto">
               <div className="grid grid-cols-4 gap-2 mb-4">
-                {/* Race images */}
                 {races.map(race => race.icon_url && (
                   <div
                     key={`race-${race.id}`}
@@ -1672,7 +1653,6 @@ export default function UnitEditor() {
                     <span className="text-xs text-gray-400 text-center block truncate">{race.name}</span>
                   </div>
                 ))}
-                {/* User uploaded images */}
                 {loadingImages ? (
                   <div className="col-span-4 text-center text-gray-400">Loading...</div>
                 ) : (
@@ -1697,7 +1677,6 @@ export default function UnitEditor() {
                   <div className="col-span-4 text-center text-gray-500">No user images yet.</div>
                 )}
               </div>
-              {/* Upload button */}
               <div className="flex items-center gap-4 mt-2">
                 <label className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition cursor-pointer">
                   {uploading ? 'Uploading...' : 'Upload Image'}

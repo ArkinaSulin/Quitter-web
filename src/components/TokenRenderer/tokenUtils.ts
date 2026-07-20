@@ -2,6 +2,7 @@
 
 import { Unit } from '@/types/gameProtocol';
 
+// ---- Team definitions ----
 export const TEAM_COLORS = {
   blue: '#0072B2',
   yellow: '#F0E442',
@@ -13,6 +14,8 @@ export const TEAM_COLORS = {
 
 export type Team = keyof typeof TEAM_COLORS;
 
+export const TEAMS = Object.keys(TEAM_COLORS) as Team[];
+
 export const TEAM_SHAPES: Record<Team, string> = {
   blue: 'circle',
   yellow: 'triangle',
@@ -22,12 +25,13 @@ export const TEAM_SHAPES: Record<Team, string> = {
   green: 'cross',
 };
 
+// ---- Formation configuration ----
 export interface FormationConfig {
   dotsPerRow: number;
   rowSpacing: number;
   isMounted: boolean;
-  triangleBaseModifier: number;
-  triangleHeightModifier: number;
+  triangleWidthMultiplier: number;
+  triangleHeightMultiplier: number;
   scatteredLayout: 'random' | 'circle';
 }
 
@@ -36,54 +40,49 @@ export function getFormationConfig(
   isMounted: boolean,
   troopScale: number = 100
 ): FormationConfig {
-  // Base row capacity: 10 per row
   let baseRows = 10;
 
-  // ---- FIX: Correctly handle all size categories ----
-  // Medium (100): 10 per row
-  // Large (200): 5 per row (÷2)
-  // Huge (300): 3 per row (÷3, rounded down)
-  // Gargantuan (400): 1 per row (hero only)
   if (troopScale >= 400) {
     baseRows = 1;
   } else if (troopScale >= 300) {
-    baseRows = Math.floor(baseRows / 3); // 10 → 3
+    baseRows = Math.floor(baseRows / 3);
   } else if (troopScale >= 200) {
-    baseRows = Math.floor(baseRows / 2); // 10 → 5
+    baseRows = Math.floor(baseRows / 2);
   }
-  // else baseRows stays 10 (Medium)
 
   let dotsPerRow = baseRows;
-  let rowSpacing = 1.8;
-  let triangleBaseModifier = 1.25;
-  let triangleHeightModifier = 2.5;
+  let rowSpacing = 2.0;
+  let triangleWidthMultiplier = 1.3;
+  let triangleHeightMultiplier = (5 / 3) * triangleWidthMultiplier;
   let scatteredLayout: 'random' | 'circle' = 'random';
 
+  // Determine effective formation – mounted Phalanx/Shield Wall become Routed
+  let effectiveFormation = formation;
+  if (isMounted && (formation === 'Phalanx' || formation === 'Shield Wall')) {
+    effectiveFormation = 'Routed';
+  }
+
   if (isMounted) {
-    rowSpacing = 4.0;
-    if (formation === 'Phalanx' || formation === 'Shield Wall') {
-      formation = 'Routed';
-    }
-    if (formation === 'Scattered') {
+    if (effectiveFormation === 'Scattered') {
       scatteredLayout = 'circle';
       dotsPerRow = Math.min(Math.floor(baseRows / 2), 10);
-    } else if (formation === 'Routed') {
+    } else if (effectiveFormation === 'Routed') {
       scatteredLayout = 'random';
       dotsPerRow = Math.floor(baseRows / 2);
-    } else if (formation === 'Tight') {
-      dotsPerRow = baseRows;
-    } else {
-      dotsPerRow = Math.floor(baseRows / 2);
     }
-  } else {
-    switch (formation) {
+    // Removed the 1.2 multiplier for triangles.
+  }
+
+  // Apply formation-specific dotsPerRow for both mounted and foot
+  if (!isMounted || (effectiveFormation !== 'Scattered' && effectiveFormation !== 'Routed')) {
+    switch (effectiveFormation) {
       case 'Loose':
         dotsPerRow = baseRows;
-        rowSpacing = 1.8;
+        rowSpacing = 2.0;
         break;
       case 'Tight':
         dotsPerRow = baseRows * 2;
-        rowSpacing = 1.8;
+        rowSpacing = 2.0;
         break;
       case 'Phalanx':
         dotsPerRow = baseRows * 2;
@@ -96,11 +95,11 @@ export function getFormationConfig(
       case 'Scattered':
       case 'Routed':
         dotsPerRow = baseRows;
-        rowSpacing = 1.8;
+        rowSpacing = 2.0;
         break;
       default:
         dotsPerRow = baseRows;
-        rowSpacing = 1.8;
+        rowSpacing = 2.0;
     }
   }
 
@@ -108,25 +107,33 @@ export function getFormationConfig(
     dotsPerRow: Math.max(1, dotsPerRow),
     rowSpacing,
     isMounted,
-    triangleBaseModifier,
-    triangleHeightModifier,
+    triangleWidthMultiplier,
+    triangleHeightMultiplier,
     scatteredLayout,
   };
 }
 
-export function getDotColor(team: Team): string {
-  const bg = TEAM_COLORS[team];
+// ---- Color utilities ----
+export function getDotColor(team: Team | string | undefined): string {
+  if (!team || !TEAM_COLORS[team as Team]) {
+    return '#000000';
+  }
+  const bg = TEAM_COLORS[team as Team];
   const luminance = getLuminance(bg);
   return luminance > 0.6 ? '#000000' : '#FFFFFF';
 }
 
 function getLuminance(hex: string): number {
+  if (!hex || typeof hex !== 'string' || !hex.startsWith('#')) {
+    return 0.5;
+  }
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
   const b = parseInt(hex.slice(5, 7), 16) / 255;
   return 0.299 * r + 0.587 * g + 0.114 * b;
 }
 
+// ---- Random helpers ----
 export function seededRandom(seed: number): () => number {
   return function () {
     seed = (seed * 9301 + 49297) % 233280;
@@ -134,6 +141,7 @@ export function seededRandom(seed: number): () => number {
   };
 }
 
+// ---- Dot position generation ----
 export function generateDotPositions(
   bodyCount: number,
   maxBodyCount: number,
@@ -145,7 +153,13 @@ export function generateDotPositions(
   troopScale: number,
   seed: number = 42
 ): Array<{ x: number; y: number; isDead: boolean; direction?: number }> {
-  const config = getFormationConfig(formation, isMounted, troopScale);
+  // Determine effective formation for layout
+  let effectiveFormation = formation;
+  if (isMounted && (formation === 'Phalanx' || formation === 'Shield Wall')) {
+    effectiveFormation = 'Routed';
+  }
+
+  const config = getFormationConfig(effectiveFormation, isMounted, troopScale);
   const random = seededRandom(seed);
 
   const topStart = tokenHeight * 0.08;
@@ -153,7 +167,8 @@ export function generateDotPositions(
   const availableHeight = topEnd - topStart;
   const padding = dotRadius * 0.5;
 
-  if (formation === 'Routed' && isMounted && config.scatteredLayout === 'random') {
+  // Routed mounted: random layout
+  if (effectiveFormation === 'Routed' && isMounted && config.scatteredLayout === 'random') {
     return generateRandomPositions(
       bodyCount,
       maxBodyCount,
@@ -167,7 +182,8 @@ export function generateDotPositions(
     );
   }
 
-  if (formation === 'Scattered' && isMounted && config.scatteredLayout === 'circle') {
+  // Scattered mounted: circle layout
+  if (effectiveFormation === 'Scattered' && isMounted && config.scatteredLayout === 'circle') {
     return generateCirclePositions(
       bodyCount,
       maxBodyCount,
@@ -181,7 +197,8 @@ export function generateDotPositions(
     );
   }
 
-  if (formation === 'Scattered' || formation === 'Routed') {
+  // Scattered/Routed for foot: random distribution
+  if (effectiveFormation === 'Scattered' || effectiveFormation === 'Routed') {
     return generateScatteredPositions(
       bodyCount,
       maxBodyCount,
@@ -195,6 +212,7 @@ export function generateDotPositions(
     );
   }
 
+  // Regular formations
   const dotsPerRow = config.dotsPerRow;
   const rows = Math.ceil(maxBodyCount / dotsPerRow);
   let rowSpacing = dotRadius * 2 * config.rowSpacing;
@@ -225,6 +243,7 @@ export function generateDotPositions(
   return positions;
 }
 
+// ---- Internal helper functions ----
 function generateRandomPositions(
   bodyCount: number,
   maxBodyCount: number,

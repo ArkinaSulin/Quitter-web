@@ -7,7 +7,7 @@ export interface Hex {
   s: number; // s = -q - r
 }
 
-// --- Weapon (stored as JSON in unit_templates.weapon_string) ---
+// --- Weapon (stored as JSON) ---
 export interface Weapon {
   name: string;
   attackBonus: number;
@@ -19,31 +19,95 @@ export interface Weapon {
   notes: string;        // descriptive notes (e.g., "Versatile", "Finesse")
 }
 
-// --- Unit Data (for game map) ---
+// --- Unit Template (Master List / Blueprint) ---
+export interface UnitTemplate {
+  id: string;
+  unitName: string;                   // was: name
+  raceId: string;
+  raceName?: string;                  // from join
+  raceBaseHd?: number | null;         // from join
+  raceIconUrl?: string;               // from join
+  raceCanCharge?: boolean;            // from join (race.can_charge)
+  modelTypeId: string;
+  modelTypeName?: string;
+  modelTypeIconUrl?: string | null;
+  isHero: boolean;
+  troopCount: number;                 // was: bodyCount
+  level: number;
+  troopHp: number;                    // was: hp
+  unitHp: number;                     // was: unitHp (calculated: troopHp * troopCount)
+  numberOfAttacks: number;            // was: attack
+  armorId: string;
+  armorName?: string;
+  isShielded: boolean;
+  baseAc: number;                     // from race (kept in template)
+  baselineAc: number;                 // new: AC after equipment (enters battle with this)
+  weaponString: string;
+  mountId: string;
+  mountName?: string;
+  movementPoints: number;
+  aggressiveness: number;
+  baseMorale: number;
+  sizeCategory: number;               // 100, 200, 300, 400
+  visualScale: number;                // 50-149
+  formationAvailability: string[];
+  equipCostGp: number;                // was: costGp
+  weeklyCostGp: number;              // new
+  customImageUrl?: string | null;
+  unitTypeIconUrl?: string | null;
+  canCharge: boolean;                 // new: override for race/mount can_charge
+//  acSpecialModifier?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// --- Unit (Instance on the battlefield) ---
 export interface Unit {
   id: string;
-  templateId?: string;
-  name: string;
-  hex: Hex;
-  facing: number; // 0-5 (vertex index)
-  team: 'blue' | 'yellow' | 'black' | 'violet';
-  hp: number;
-  maxHp: number;
+  scenarioId: string;
+  templateId: string | null;
+  unitName: string;                   // was: name
+  raceId: string;                     // new: copied from template
+  raceName: string;                   // new: copied from template
+  armorId: string;                    // new: copied from template
+  armorName: string;                  // new: copied from template
+  mountId: string | null;
+  mountName: string;                  // new: copied from template
   isHero: boolean;
-  formation: 'Tight' | 'Loose' | 'Scattered' | 'Routed' | 'Phalanx' | 'Shield Wall';
+  troopCount: number;                 // was: bodyCount
+  maxTroopCount: number;              // was: maxBodyCount
+  level: number;                      // new: copied from template
+  unitHp: number;                     // was: maxHp (now renamed)
+  maxUnitHp: number;                  // was: maxHp (renamed)
+  currentUnitHp: number;              // was: hp (renamed)
+  numberOfAttacks: number;            // was: attack
+  isShielded: boolean;
+  baselineAc: number;                 // new: AC after equipment (copied from template)
+  currentAc: number;                  // dynamic battlefield AC
+  weaponString: string;
+  movementPoints: number;             // max movement (copied from template)
+  movementPointsAvailable: number;    // new: remaining for current turn
   aggressiveness: number;
   baseMorale: number;
   currentMorale: number;
-  baseAc: number;
-  currentAc: number;
+  sizeCategory: number;
+  visualScale: number;
+  currentFormation: string;           // was: formation
+  formationAvailability: string[];
+  equipCostGp: number;                // was: costGp
+  raceIconUrl?: string;
+  unitTypeIconUrl?: string;
+  customImageUrl?: string;
+  canCharge: boolean;                 // new: calculated from race.canCharge || mount.canCharge
+  hex: Hex;
+  facing: number;
+  team: string;
   isRouting: boolean;
-  weaponString: string;   // JSON array of Weapon objects
-  sizeCategory: number;   // 100, 200, 300, 400
-  visualScale: number;    // 50-149
-  customImageUrl?: string | null;
+  hidden: boolean;
+  actionsAvailable: number;           // new: remaining actions for current turn
 }
 
-// --- Scenario & Participants ---
+// --- Scenario ---
 export interface Scenario {
   id: string;
   name: string;
@@ -56,6 +120,7 @@ export interface Scenario {
   screenshotUrl: string | null;
 }
 
+// --- Participant ---
 export interface Participant {
   id: string;
   scenarioId: string;
@@ -64,54 +129,18 @@ export interface Participant {
   joinedAt: string;
 }
 
-// --- Unit Template (Master List) ---
-export interface UnitTemplate {
-  id: string;
-  name: string;
-  raceId: string;
-  raceName?: string;
-  raceBaseHd?: number | null;
-  modelTypeId: string;
-  modelTypeName?: string;
-  modelTypeIconUrl?: string | null;
-  isHero: boolean;
-  // isPlayerHero removed
-  bodyCount: number;
-  level: number;
-  hp: number;
-  unitHp: number;
-  attack: number;
-  armorId: string;
-  armorName?: string;
-  isShielded: boolean;
-  baseAc: number;
-  weaponString: string;   // JSON array of Weapon objects
-  mountId: string;
-  mountName?: string;
-  movementPoints: number;
-  aggressiveness: number;
-  baseMorale: number;
-  sizeCategory: number;   // 100, 200, 300, 400
-  visualScale: number;    // 50-149
-  formationAvailability: string[];
-  costGp: number;
-  acSpecialModifier?: string;
-  customImageUrl?: string | null;  // custom unit/hero image URL
-  createdAt: string;
-  updatedAt: string;
-}
-
 // --- Lookup Tables ---
 export interface Race {
   id: string;
   name: string;
-  defaultTroopScale: number; // legacy – will be removed; use visual_scale
+  defaultTroopScale: number;
   baseSpeed: number;
   acBonus: number;
   iconUrl: string | null;
   base_hd: number;
-  size_category: number;    // 100, 200, 300, 400
-  visual_scale: number;     // 50-149
+  size_category: number;
+  visual_scale: number;
+  can_charge: boolean;               // new
 }
 
 export interface WeaponLookup {
@@ -123,7 +152,7 @@ export interface WeaponLookup {
   attackBonus?: number;
   magicRadius?: number;
   range?: number;
-  targetType?: string;      // 'single' or 'area'
+  targetType?: string;
   reach?: boolean;
 }
 
@@ -155,7 +184,8 @@ export interface Mount {
   name: string;
   speed: number;
   costGp: number;
-  size_category: number;   // 100, 200, 300, 400
+  size_category: number;
+  can_charge: boolean;               // new
 }
 
 // --- Web Worker Message Protocol ---
@@ -174,7 +204,6 @@ export interface WorkerMessage<T = any> {
   messageId?: string;
 }
 
-// --- Payloads for each message type ---
 export interface MoveUnitPayload {
   unitId: string;
   targetHex: Hex;
@@ -199,7 +228,6 @@ export interface UndoPayload {
   // empty
 }
 
-// --- Worker Response ---
 export interface WorkerResponse<T = any> {
   type: 'SUCCESS' | 'ERROR' | 'STATE_UPDATE';
   payload: T;
@@ -207,7 +235,6 @@ export interface WorkerResponse<T = any> {
   error?: string;
 }
 
-// --- Supabase Realtime Sync Events ---
 export interface SyncEvent {
   type: 'UNIT_MOVED' | 'UNIT_ATTACKED' | 'UNIT_LOCKED' | 'UNIT_UNLOCKED';
   payload: any;

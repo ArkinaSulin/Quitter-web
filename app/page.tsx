@@ -1,6 +1,7 @@
+// app/page.tsx
 'use client';
 
-import { HexMap } from '@/components/HexMap';
+import { ScenarioMap } from '@/components/ScenarioMap/ScenarioMap';
 import Lobby from '@/components/Lobby';
 import { useState } from 'react';
 
@@ -28,7 +29,7 @@ export default function Home() {
 
   return (
     <main className="w-screen h-screen overflow-hidden">
-      <HexMap scenarioId={selectedScenarioId} />
+      <ScenarioMap scenarioId={selectedScenarioId} />
     </main>
   );
 }

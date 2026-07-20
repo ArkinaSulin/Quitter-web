@@ -1,28 +1,56 @@
 // src/hooks/useSupabaseSync.ts
+'use client';
+
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Unit, Hex } from '@/types/gameProtocol';
+import { Unit, Hex, UnitTemplate } from '@/types/gameProtocol';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // --- Converters ---
 function mapRowToUnit(row: any): Unit {
   return {
     id: row.id,
-    name: row.name,
-    hex: { q: row.hex_q, r: row.hex_r, s: row.hex_s },
-    facing: row.facing,
-    team: row.team,
-    hp: row.hp,
-    maxHp: row.max_hp,
-    isHero: row.is_hero,
-    formation: row.formation,
+    scenarioId: row.scenario_id,
+    templateId: row.template_id || null,
+    unitName: row.unit_name || '',
+    raceId: row.race_id || '',
+    raceName: row.race_name || '',
+    armorId: row.armor_id || '',
+    armorName: row.armor_name || '',
+    mountId: row.mount_id || null,
+    mountName: row.mount_name || '',
+    isHero: row.is_hero || false,
+    troopCount: row.troop_count || 1,
+    maxTroopCount: row.max_troop_count || 1,
+    level: row.level || 1,
+    unitHp: row.unit_hp || 0,
+    maxUnitHp: row.max_unit_hp || 0,
+    currentUnitHp: row.current_unit_hp || 0,
+    numberOfAttacks: row.number_of_attacks || 1,
+    isShielded: row.is_shielded || false,
+    baselineAc: row.baseline_ac || 10,
+    currentAc: row.current_ac || 10,
+    weaponString: row.weapon_string || '',
+    movementPoints: row.movement_points || 3,
+    movementPointsAvailable: row.movement_points_available || 0,
     aggressiveness: row.aggressiveness || 3,
     baseMorale: row.base_morale || 3,
     currentMorale: row.current_morale || 3,
-    baseAc: row.base_ac || 10,
-    currentAc: row.current_ac || 10,
+    sizeCategory: row.size_category || 100,
+    visualScale: row.visual_scale || 100,
+    currentFormation: row.current_formation || 'Scattered',
+    formationAvailability: row.formation_availability || ['Scattered', 'Routed'],
+    equipCostGp: row.equip_cost_gp || 0,
+    raceIconUrl: row.race_icon_url || '',
+    unitTypeIconUrl: row.unit_type_icon_url || '',
+    customImageUrl: row.custom_image_url || '',
+    canCharge: row.can_charge || false,
+    hex: { q: row.hex_q, r: row.hex_r, s: row.hex_s },
+    facing: row.facing || 0,
+    team: row.team || 'black',
     isRouting: row.is_routing || false,
-    weaponString: row.weapon_string || '',
+    hidden: row.hidden || false,
+    actionsAvailable: row.actions_available || 0,
   };
 }
 
@@ -30,30 +58,54 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
   return {
     id: unit.id,
     scenario_id: scenarioId,
-    name: unit.name,
+    unit_name: unit.unitName,
+    template_id: unit.templateId,
+    race_id: unit.raceId,
+    race_name: unit.raceName,
+    armor_id: unit.armorId,
+    armor_name: unit.armorName,
+    mount_id: unit.mountId,
+    mount_name: unit.mountName,
+    is_hero: unit.isHero,
+    troop_count: unit.troopCount,
+    max_troop_count: unit.maxTroopCount,
+    level: unit.level,
+    unit_hp: unit.unitHp,
+    max_unit_hp: unit.maxUnitHp,
+    current_unit_hp: unit.currentUnitHp,
+    number_of_attacks: unit.numberOfAttacks,
+    is_shielded: unit.isShielded,
+    baseline_ac: unit.baselineAc,
+    current_ac: unit.currentAc,
+    weapon_string: unit.weaponString,
+    movement_points: unit.movementPoints,
+    movement_points_available: unit.movementPointsAvailable,
+    aggressiveness: unit.aggressiveness,
+    base_morale: unit.baseMorale,
+    current_morale: unit.currentMorale,
+    size_category: unit.sizeCategory,
+    visual_scale: unit.visualScale,
+    current_formation: unit.currentFormation,
+    formation_availability: unit.formationAvailability,
+    equip_cost_gp: unit.equipCostGp,
+    race_icon_url: unit.raceIconUrl || '',
+    unit_type_icon_url: unit.unitTypeIconUrl || '',
+    custom_image_url: unit.customImageUrl || '',
+    can_charge: unit.canCharge || false,
     hex_q: unit.hex.q,
     hex_r: unit.hex.r,
     hex_s: unit.hex.s,
     facing: unit.facing,
     team: unit.team,
-    hp: unit.hp,
-    max_hp: unit.maxHp,
-    is_hero: unit.isHero,
-    formation: unit.formation,
-    aggressiveness: unit.aggressiveness || 3,
-    base_morale: unit.baseMorale || 3,
-    current_morale: unit.currentMorale || 3,
-    base_ac: unit.baseAc || 10,
-    current_ac: unit.currentAc || 10,
-    is_routing: unit.isRouting || false,
-    weapon_string: unit.weaponString || '',
+    is_routing: unit.isRouting,
+    hidden: unit.hidden,
+    actions_available: unit.actionsAvailable || 0,
   };
 }
 
 // --- Singleton channel manager ---
 const channelMap = new Map<string, any>();
 const listenerMap = new Map<string, Array<(payload: any) => void>>();
-const seededMap = new Map<string, boolean>(); // Track seeded status per scenario
 
 function getOrCreateChannel(scenarioId: string) {
   if (!channelMap.has(scenarioId)) {
@@ -103,7 +155,6 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const callbackRef = useRef<(payload: any) => void>();
-  const seedingAttempted = useRef(false);
 
   // 1. Load units on mount
   useEffect(() => {
@@ -133,7 +184,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     return () => { isMounted = false; };
   }, [scenarioId]);
 
-  // 2. Singleton Realtime subscription
+  // 2. Realtime subscription
   useEffect(() => {
     getOrCreateChannel(scenarioId);
 
@@ -215,153 +266,165 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     return true;
   }, [scenarioId]);
 
-  // 4. Seed demo units
-  const seedDemoUnits = useCallback(async () => {
-    if (seededMap.get(scenarioId)) {
-      console.log('[seedDemoUnits] Already seeded for scenario:', scenarioId);
-      return;
-    }
-
-    if (seedingAttempted.current) {
-      console.log('[seedDemoUnits] Seed already attempted for this hook instance');
-      return;
-    }
-
-    seedingAttempted.current = true;
-
-    console.log('[seedDemoUnits] Checking for existing units in scenario:', scenarioId);
-    try {
-      const { data: existingUnits, error } = await supabase
-        .from('units')
-        .select('id, name')
-        .eq('scenario_id', scenarioId);
-
-      if (error) {
-        console.error('[seedDemoUnits] Check failed:', error);
-        return;
-      }
-
-      const existingCount = existingUnits?.length || 0;
-      console.log(`[seedDemoUnits] Found ${existingCount} units.`);
-
-      const demoUnits = [
-        {
-          id: crypto.randomUUID(),
-          name: 'Blue Knight',
-          hex: { q: 0, r: 0, s: 0 },
-          facing: 0,
-          team: 'blue' as const,
-          hp: 10,
-          maxHp: 10,
-          isHero: true,
-          formation: 'Tight' as const,
-          aggressiveness: 3,
-          baseMorale: 3,
-          currentMorale: 3,
-          baseAc: 10,
-          currentAc: 10,
-          isRouting: false,
-          weaponString: 'Longsword,single,1d8,1',
-        },
-        {
-          id: crypto.randomUUID(),
-          name: 'Yellow Archer',
-          hex: { q: 3, r: -2, s: -1 },
-          facing: 3,
-          team: 'yellow' as const,
-          hp: 6,
-          maxHp: 6,
-          isHero: false,
-          formation: 'Loose' as const,
-          aggressiveness: 3,
-          baseMorale: 3,
-          currentMorale: 3,
-          baseAc: 10,
-          currentAc: 10,
-          isRouting: false,
-          weaponString: 'Shortbow,single,1d6,6',
-        },
-        {
-          id: crypto.randomUUID(),
-          name: 'Violet Mage',
-          hex: { q: -2, r: 4, s: -2 },
-          facing: 2,
-          team: 'violet' as const,
-          hp: 8,
-          maxHp: 8,
-          isHero: true,
-          formation: 'Scattered' as const,
-          aggressiveness: 3,
-          baseMorale: 3,
-          currentMorale: 3,
-          baseAc: 10,
-          currentAc: 10,
-          isRouting: false,
-          weaponString: 'Fireball,area,6d6,4;Staff,single,1d6,1',
-        },
-      ];
-
-      if (existingCount >= 3) {
-        console.log('[seedDemoUnits] All 3 demo units found, skipping seed.');
-        seededMap.set(scenarioId, true);
-        return;
-      }
-
-      if (existingCount > 0 && existingCount < 3) {
-        console.log(`[seedDemoUnits] Found ${existingCount} units but expected 3. Checking for missing ones...`);
-        const existingNames = new Set(existingUnits?.map(u => u.name) || []);
-        const missingUnits = demoUnits.filter(u => !existingNames.has(u.name));
-
-        if (missingUnits.length === 0) {
-          seededMap.set(scenarioId, true);
-          return;
-        }
-
-        console.log(`[seedDemoUnits] Missing ${missingUnits.length} units:`, missingUnits.map(u => u.name));
-
-        for (const unit of missingUnits) {
-          const { error: insertError } = await supabase
-            .from('units')
-            .insert(mapUnitToRow(unit, scenarioId));
-          if (insertError) {
-            console.error('[seedDemoUnits] Insert failed for', unit.name, ':', insertError);
-          } else {
-            console.log('[seedDemoUnits] Inserted missing unit:', unit.name);
-          }
-        }
-
-        seededMap.set(scenarioId, true);
-        return;
-      }
-
-      console.log('[seedDemoUnits] No units found, inserting all 3 demo units...');
-      for (const unit of demoUnits) {
-        const { error: insertError } = await supabase
-          .from('units')
-          .insert(mapUnitToRow(unit, scenarioId));
-        if (insertError) {
-          console.error('[seedDemoUnits] Insert failed for', unit.name, ':', insertError);
-        } else {
-          console.log('[seedDemoUnits] Inserted unit:', unit.name);
-        }
-      }
-
-      seededMap.set(scenarioId, true);
-      console.log('[seedDemoUnits] Demo units insertion complete.');
-    } catch (err) {
-      console.error('[seedDemoUnits] Unexpected error:', err);
-    }
-  }, [scenarioId]);
-
-  // 5. Clear units
+  // 4. Clear units
   const clearUnits = useCallback(async () => {
     const { error } = await supabase
       .from('units')
       .delete()
       .eq('scenario_id', scenarioId);
     if (error) console.error('Clear units error:', error);
-    seededMap.delete(scenarioId);
-    seedingAttempted.current = false;
+  }, [scenarioId]);
+
+  // 5. Add unit from template
+  const addUnitFromTemplate = useCallback(async (template: UnitTemplate, hex: Hex, team: string = 'black') => {
+    let defaultFormation = 'Scattered';
+    if (template.formationAvailability && template.formationAvailability.includes('Loose')) {
+      defaultFormation = 'Loose';
+    }
+
+    // Safety: ensure HP is never null/undefined
+    const troopHp = template.troopHp ?? 1;
+    const troopCount = template.troopCount ?? 1;
+    const unitHpValue = template.unitHp ?? (troopHp * troopCount);
+    const maxUnitHpValue = unitHpValue;
+    const currentUnitHpValue = maxUnitHpValue;
+
+    // Calculate canCharge from race or mount
+    let canCharge = template.canCharge || false;
+    if (template.raceCanCharge) canCharge = true;
+    // Note: mount canCharge is not available in template object here
+    // It would need to be joined from mounts table if needed
+
+    const newUnit: Unit = {
+      id: crypto.randomUUID(),
+      scenarioId: scenarioId,
+      templateId: template.id,
+      unitName: template.unitName,
+      raceId: template.raceId || '',
+      raceName: template.raceName || '',
+      armorId: template.armorId || '',
+      armorName: template.armorName || '',
+      mountId: template.mountId || null,
+      mountName: template.mountName || '',
+      isHero: template.isHero || false,
+      troopCount: troopCount,
+      maxTroopCount: troopCount,
+      level: template.level || 1,
+      unitHp: unitHpValue,
+      maxUnitHp: maxUnitHpValue,
+      currentUnitHp: currentUnitHpValue,
+      numberOfAttacks: template.numberOfAttacks || 1,
+      isShielded: template.isShielded || false,
+      baselineAc: template.baselineAc || 10,
+      currentAc: template.baselineAc || 10,
+      weaponString: template.weaponString || '',
+      movementPoints: template.movementPoints || 3,
+      movementPointsAvailable: template.movementPoints || 3,
+      aggressiveness: template.aggressiveness || 3,
+      baseMorale: template.baseMorale || 3,
+      currentMorale: template.baseMorale || 3,
+      sizeCategory: template.sizeCategory || 100,
+      visualScale: template.visualScale || 100,
+      currentFormation: defaultFormation,
+      formationAvailability: template.formationAvailability || ['Scattered', 'Routed'],
+      equipCostGp: template.equipCostGp || 0,
+      raceIconUrl: template.raceIconUrl || '',
+      unitTypeIconUrl: template.unitTypeIconUrl || '',
+      customImageUrl: template.customImageUrl || '',
+      canCharge: canCharge,
+      hex: hex,
+      facing: 0,
+      team: team,
+      isRouting: false,
+      hidden: false,
+      actionsAvailable: 0,
+    };
+
+    const { error } = await supabase
+      .from('units')
+      .insert(mapUnitToRow(newUnit, scenarioId));
+
+    if (error) {
+      console.error('[addUnitFromTemplate] Insert failed:', error);
+      return false;
+    }
+
+    setUnits(prev => [...prev, newUnit]);
+    return true;
+  }, [scenarioId]);
+
+  // 6. Delete a single unit
+  const deleteUnit = useCallback(async (unitId: string) => {
+    const { error } = await supabase
+      .from('units')
+      .delete()
+      .eq('id', unitId)
+      .eq('scenario_id', scenarioId);
+    if (error) {
+      console.error('[deleteUnit] Failed:', error);
+      return false;
+    }
+    setUnits(prev => prev.filter(u => u.id !== unitId));
+    return true;
+  }, [scenarioId]);
+
+  // 7. Update unit stats
+  const updateUnit = useCallback(async (unitId: string, updates: Partial<Unit>) => {
+    const dbUpdates: any = {};
+    if (updates.hex) {
+      dbUpdates.hex_q = updates.hex.q;
+      dbUpdates.hex_r = updates.hex.r;
+      dbUpdates.hex_s = updates.hex.s;
+    }
+    if (updates.facing !== undefined) dbUpdates.facing = updates.facing;
+    if (updates.team !== undefined) dbUpdates.team = updates.team;
+    if (updates.currentUnitHp !== undefined) dbUpdates.current_unit_hp = updates.currentUnitHp;
+    if (updates.maxUnitHp !== undefined) dbUpdates.max_unit_hp = updates.maxUnitHp;
+    if (updates.isHero !== undefined) dbUpdates.is_hero = updates.isHero;
+    if (updates.currentFormation !== undefined) dbUpdates.current_formation = updates.currentFormation;
+    if (updates.aggressiveness !== undefined) dbUpdates.aggressiveness = updates.aggressiveness;
+    if (updates.baseMorale !== undefined) dbUpdates.base_morale = updates.baseMorale;
+    if (updates.currentMorale !== undefined) dbUpdates.current_morale = updates.currentMorale;
+    if (updates.currentAc !== undefined) dbUpdates.current_ac = updates.currentAc;
+    if (updates.baselineAc !== undefined) dbUpdates.baseline_ac = updates.baselineAc;
+    if (updates.isRouting !== undefined) dbUpdates.is_routing = updates.isRouting;
+    if (updates.weaponString !== undefined) dbUpdates.weapon_string = updates.weaponString;
+    if (updates.hidden !== undefined) dbUpdates.hidden = updates.hidden;
+    if (updates.unitTypeIconUrl !== undefined) dbUpdates.unit_type_icon_url = updates.unitTypeIconUrl;
+    if (updates.troopCount !== undefined) dbUpdates.troop_count = updates.troopCount;
+    if (updates.maxTroopCount !== undefined) dbUpdates.max_troop_count = updates.maxTroopCount;
+    if (updates.movementPointsAvailable !== undefined) dbUpdates.movement_points_available = updates.movementPointsAvailable;
+    if (updates.actionsAvailable !== undefined) dbUpdates.actions_available = updates.actionsAvailable;
+    if (updates.unitName !== undefined) dbUpdates.unit_name = updates.unitName;
+    if (updates.raceName !== undefined) dbUpdates.race_name = updates.raceName;
+    if (updates.armorName !== undefined) dbUpdates.armor_name = updates.armorName;
+    if (updates.mountName !== undefined) dbUpdates.mount_name = updates.mountName;
+    if (updates.canCharge !== undefined) dbUpdates.can_charge = updates.canCharge;
+
+    setUnits(prev =>
+      prev.map(u => u.id === unitId ? { ...u, ...updates } : u)
+    );
+
+    const { error } = await supabase
+      .from('units')
+      .update(dbUpdates)
+      .eq('id', unitId)
+      .eq('scenario_id', scenarioId);
+
+    if (error) {
+      console.error('[updateUnit] Failed:', error);
+      const { data } = await supabase
+        .from('units')
+        .select('*')
+        .eq('id', unitId)
+        .single();
+      if (data) {
+        const rolledBack = mapRowToUnit(data);
+        setUnits(prev => prev.map(u => u.id === unitId ? rolledBack : u));
+      }
+      return false;
+    }
+    return true;
   }, [scenarioId]);
 
   return {
@@ -370,7 +433,9 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     moveUnit,
     loading,
     error,
-    seedDemoUnits,
     clearUnits,
+    addUnitFromTemplate,
+    deleteUnit,
+    updateUnit,
   };
 }
