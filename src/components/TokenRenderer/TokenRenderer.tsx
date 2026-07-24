@@ -7,15 +7,15 @@ import { Team } from './tokenUtils';
 
 export interface TokenRendererProps {
   unitName: string;
-  bodyCount: number;
-  maxBodyCount: number;
-  formation: 'Loose' | 'Tight' | 'Scattered' | 'Phalanx' | 'Shield Wall' | 'Routed';
+  troopCount: number;
+  maxTroopCount: number;
+  currentFormation: 'Loose' | 'Tight' | 'Scattered' | 'Phalanx' | 'Shield Wall' | 'Routed';
   team: Team;
-  troopScale: number;
+  visualScale: number;
   sizeCategory: number;
   isRouted: boolean;
-  morale: number;
-  maxMorale: number;
+  currentMorale: number;
+  baseMorale: number;
   isHero: boolean;
   raceIconUrl?: string;
   unitTypeIconUrl?: string;
@@ -24,8 +24,8 @@ export interface TokenRendererProps {
   height?: number;
   showInfo?: boolean;
   onRender?: (dataURL: string) => void;
-  currentHp?: number;
-  maxHp?: number;
+  currentUnitHp?: number;
+  maxUnitHp?: number;
   onImageClick?: () => void;
   mountId?: string | null;
 }
@@ -34,15 +34,15 @@ export function TokenRenderer(props: TokenRendererProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const {
     unitName,
-    bodyCount,
-    maxBodyCount,
-    formation,
+    troopCount,
+    maxTroopCount,
+    currentFormation,
     team,
-    troopScale,
+    visualScale,
     sizeCategory,
     isRouted,
-    morale,
-    maxMorale,
+    currentMorale,
+    baseMorale,
     isHero,
     raceIconUrl,
     unitTypeIconUrl,
@@ -51,8 +51,8 @@ export function TokenRenderer(props: TokenRendererProps) {
     height,
     showInfo = true,
     onRender,
-    currentHp = 50,
-    maxHp = 100,
+    currentUnitHp = 50,
+    maxUnitHp = 100,
     onImageClick,
     mountId = null,
   } = props;
@@ -122,25 +122,25 @@ export function TokenRenderer(props: TokenRendererProps) {
 
     const unit = {
       id: 'preview',
-      name: unitName,
+      unitName: unitName,
       hex: { q: 0, r: 0, s: 0 },
       facing: 0,
       team: team,
-      hp: currentHp,
-      maxHp: maxHp,
+      currentUnitHp: currentUnitHp,
+      maxUnitHp: maxUnitHp,
       isHero: isHero,
-      formation: formation,
+      currentFormation: currentFormation,
       aggressiveness: 3,
-      baseMorale: maxMorale,
-      currentMorale: morale,
+      baseMorale: baseMorale,
+      currentMoraleModifier: currentMorale,
       baseAc: 10,
       currentAc: 10,
       isRouting: isRouted,
       weaponString: '',
       templateId: null,
-      bodyCount: bodyCount,
-      maxBodyCount: maxBodyCount,
-      visualScale: troopScale,
+      currentTroopCount: troopCount,
+      maxTroopCount: maxTroopCount,
+      visualScale: visualScale,
       sizeCategory: sizeCategory,
       mountId: mountId,
       raceIconUrl: raceIconUrl || '',
@@ -167,7 +167,7 @@ export function TokenRenderer(props: TokenRendererProps) {
 
     const dataURL = canvas.toDataURL('image/png');
     if (onRender) onRender(dataURL);
-  }, [width, logicalHeight, onRender, preloadedImages, imagesLoaded, mountId, unitName, bodyCount, maxBodyCount, formation, team, troopScale, sizeCategory, isRouted, morale, maxMorale, isHero, raceIconUrl, unitTypeIconUrl, customImageUrl, currentHp, maxHp, showInfo]);
+  }, [width, logicalHeight, onRender, preloadedImages, imagesLoaded, mountId, unitName, troopCount, maxTroopCount, currentFormation, team, visualScale, sizeCategory, isRouted, currentMorale, baseMorale, isHero, raceIconUrl, unitTypeIconUrl, customImageUrl, currentUnitHp, maxUnitHp, showInfo]);
 
   useEffect(() => {
     if (imagesLoaded) {

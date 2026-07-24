@@ -111,7 +111,7 @@ export function ContextMenu({
             className="px-3 py-1 hover:bg-red-700 cursor-pointer text-red-400"
             onClick={() => {
               // Single confirmation here
-              if (confirm(`Delete unit "${unit.name}"?`)) {
+              if (confirm(`Delete unit "${unit.unitName}"?`)) {
                 onDeleteUnit();
                 onClose();
               }

@@ -22,7 +22,7 @@ export function mapTemplate(row: any): UnitTemplate {
     troopCount: row.troop_count || 1,
     level: row.level || 1,
     troopHp: row.troop_hp || 10,
-    unitHp: row.unit_hp || 0,
+    maxUnitHp: row.max_unit_hp || 1,
     numberOfAttacks: row.number_of_attacks || 10,
     armorId: row.armor_id || '',
     armorName: row.armors?.name || '',
@@ -52,7 +52,7 @@ export function mapTemplate(row: any): UnitTemplate {
  * Used by UnitEditor for save operations.
  */
 export function mapTemplateToRow(template: UnitTemplate) {
-  const unitHp = (template.troopHp || 0) * (template.troopCount || 1);
+  const maxUnitHp = (template.troopHp || 1) * (template.troopCount || 1);
   const weeklyCost = 4*(template.level *template.level || 1);
   return {
     id: template.id,
@@ -63,7 +63,7 @@ export function mapTemplateToRow(template: UnitTemplate) {
     troop_count: template.troopCount || 20,
     level: template.level || 2,
     troop_hp: template.troopHp || 10,
-    unit_hp: unitHp,
+    max_unit_hp: maxUnitHp,
     number_of_attacks: template.numberOfAttacks || 1,
     armor_id: template.armorId || null,
     is_shielded: template.isShielded || false,

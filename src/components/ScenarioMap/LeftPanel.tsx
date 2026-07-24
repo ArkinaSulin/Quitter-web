@@ -9,15 +9,12 @@ import { UnitTemplate } from '@/types/gameProtocol';
 interface LeftPanelProps {
   scenarioId: string;
   onPlaceUnit: (template: UnitTemplate, hex: { q: number; r: number; s: number }) => void;
+  onUnitDragStart: (template: UnitTemplate) => void;
 }
 
-export function LeftPanel({ scenarioId, onPlaceUnit }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, onPlaceUnit, onUnitDragStart }: LeftPanelProps) {
   const [unitSelectorExpanded, setUnitSelectorExpanded] = useState(true);
   const [messagesExpanded, setMessagesExpanded] = useState(true);
-
-  const handleDragStart = (template: UnitTemplate) => {
-    window.dispatchEvent(new CustomEvent('unitDragStart', { detail: { template } }));
-  };
 
   const isCollapsed = !unitSelectorExpanded && !messagesExpanded;
 
@@ -45,7 +42,7 @@ export function LeftPanel({ scenarioId, onPlaceUnit }: LeftPanelProps) {
           </div>
           {unitSelectorExpanded && (
             <div className="flex-1 overflow-hidden">
-              <UnitSelector scenarioId={scenarioId} onDragStart={handleDragStart} />
+              <UnitSelector scenarioId={scenarioId} onUnitDragStart={onUnitDragStart} />
             </div>
           )}
         </div>

@@ -15,8 +15,7 @@ export interface Weapon {
   damageDice: string;
   range: number;        // hexes
   magicRadius: number;  // feet
-  reach: boolean;       // weapon has reach (e.g., pike, lance)
-  notes: string;        // descriptive notes (e.g., "Versatile", "Finesse")
+  is_reach: boolean;    // weapon has reach (e.g., pike, lance)
 }
 
 // --- Unit Template (Master List / Blueprint) ---
@@ -35,7 +34,7 @@ export interface UnitTemplate {
   troopCount: number;                 // was: bodyCount
   level: number;
   troopHp: number;                    // was: hp
-  unitHp: number;                     // was: unitHp (calculated: troopHp * troopCount)
+  maxUnitHp: number;                  // was: unitHp (calculated: troopHp * troopCount)
   numberOfAttacks: number;            // was: attack
   armorId: string;
   armorName?: string;
@@ -48,7 +47,7 @@ export interface UnitTemplate {
   movementPoints: number;
   aggressiveness: number;
   baseMorale: number;
-  sizeCategory: number;               // 100, 200, 300, 400
+  sizeCategory: number;               // 75 (Small), 100 (Medium), 200 (Large), 300 (Huge), 400 (Gargantuan)
   visualScale: number;                // 50-149
   formationAvailability: string[];
   equipCostGp: number;                // was: costGp
@@ -69,15 +68,14 @@ export interface Unit {
   unitName: string;                   // was: name
   raceId: string;                     // new: copied from template
   raceName: string;                   // new: copied from template
-  armorId: string;                    // new: copied from template
   armorName: string;                  // new: copied from template
   mountId: string | null;
   mountName: string;                  // new: copied from template
   isHero: boolean;
-  troopCount: number;                 // was: bodyCount
+  currentTroopCount: number;          // was: bodyCount
   maxTroopCount: number;              // was: maxBodyCount
   level: number;                      // new: copied from template
-  unitHp: number;                     // was: maxHp (now renamed)
+  troopHp: number;                     // was: maxHp (now renamed)
   maxUnitHp: number;                  // was: maxHp (renamed)
   currentUnitHp: number;              // was: hp (renamed)
   numberOfAttacks: number;            // was: attack
@@ -89,7 +87,7 @@ export interface Unit {
   movementPointsAvailable: number;    // new: remaining for current turn
   aggressiveness: number;
   baseMorale: number;
-  currentMorale: number;
+  currentMoraleModifier: number;
   sizeCategory: number;
   visualScale: number;
   currentFormation: string;           // was: formation
@@ -135,8 +133,8 @@ export interface Race {
   name: string;
   defaultTroopScale: number;
   baseSpeed: number;
-  acBonus: number;
-  iconUrl: string | null;
+  ac_bonus: number;
+  icon_url: string | null;
   base_hd: number;
   size_category: number;
   visual_scale: number;
@@ -146,22 +144,21 @@ export interface Race {
 export interface WeaponLookup {
   id: string;
   name: string;
-  damageDice: string;
-  notes: string | null;
-  costGp: number;
-  attackBonus?: number;
-  magicRadius?: number;
+  damage_dice: string;
+  cost_gp: number;
+  attack_bonus?: number;
+  magic_radius?: number;
   range?: number;
-  targetType?: string;
-  reach?: boolean;
+  target_type?: string;
+  is_reach?: boolean;
 }
 
 export interface Armor {
   id: string;
   name: string;
-  acBonus: number;
-  movementPenalty: number;
-  costGp: number;
+  ac_bonus: number;
+  movement_penalty: number;
+  cost_gp: number;
 }
 
 export interface Formation {
@@ -176,14 +173,14 @@ export interface UnitType {
   id: string;
   name: string;
   isMounted: boolean;
-  iconUrl: string | null;
+  icon_url: string | null;
 }
 
 export interface Mount {
   id: string;
   name: string;
   speed: number;
-  costGp: number;
+  cost_gp: number;
   size_category: number;
   can_charge: boolean;               // new
 }

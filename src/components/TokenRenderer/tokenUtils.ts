@@ -143,8 +143,8 @@ export function seededRandom(seed: number): () => number {
 
 // ---- Dot position generation ----
 export function generateDotPositions(
-  bodyCount: number,
-  maxBodyCount: number,
+  troopCount: number,
+  maxTroopCount: number,
   formation: string,
   isMounted: boolean,
   tokenWidth: number,
@@ -170,8 +170,8 @@ export function generateDotPositions(
   // Routed mounted: random layout
   if (effectiveFormation === 'Routed' && isMounted && config.scatteredLayout === 'random') {
     return generateRandomPositions(
-      bodyCount,
-      maxBodyCount,
+      troopCount,
+      maxTroopCount,
       tokenWidth,
       topStart,
       topEnd,
@@ -185,8 +185,8 @@ export function generateDotPositions(
   // Scattered mounted: circle layout
   if (effectiveFormation === 'Scattered' && isMounted && config.scatteredLayout === 'circle') {
     return generateCirclePositions(
-      bodyCount,
-      maxBodyCount,
+      troopCount,
+      maxTroopCount,
       tokenWidth,
       topStart,
       topEnd,
@@ -200,8 +200,8 @@ export function generateDotPositions(
   // Scattered/Routed for foot: random distribution
   if (effectiveFormation === 'Scattered' || effectiveFormation === 'Routed') {
     return generateScatteredPositions(
-      bodyCount,
-      maxBodyCount,
+      troopCount,
+      maxTroopCount,
       tokenWidth,
       topStart,
       topEnd,
@@ -214,7 +214,7 @@ export function generateDotPositions(
 
   // Regular formations
   const dotsPerRow = config.dotsPerRow;
-  const rows = Math.ceil(maxBodyCount / dotsPerRow);
+  const rows = Math.ceil(maxTroopCount / dotsPerRow);
   let rowSpacing = dotRadius * 2 * config.rowSpacing;
   const totalHeight = rows * rowSpacing;
   if (totalHeight > availableHeight) {
@@ -227,14 +227,14 @@ export function generateDotPositions(
 
   for (let row = 0; row < rows; row++) {
     const startIdx = row * dotsPerRow;
-    const endIdx = Math.min(startIdx + dotsPerRow, maxBodyCount);
+    const endIdx = Math.min(startIdx + dotsPerRow, maxTroopCount);
     const countInRow = endIdx - startIdx;
     const spacing = tokenWidth / (countInRow + 1);
     const y = startY + row * rowSpacing;
 
     for (let col = 0; col < countInRow; col++) {
       const i = startIdx + col;
-      const isDead = i >= bodyCount;
+      const isDead = i >= troopCount;
       const x = spacing + col * spacing;
       positions.push({ x, y, isDead });
     }
@@ -245,8 +245,8 @@ export function generateDotPositions(
 
 // ---- Internal helper functions ----
 function generateRandomPositions(
-  bodyCount: number,
-  maxBodyCount: number,
+  troopCount: number,
+  maxTroopCount: number,
   tokenWidth: number,
   topStart: number,
   topEnd: number,
@@ -261,7 +261,8 @@ function generateRandomPositions(
   const placeDot = (index: number, isDead: boolean) => {
     let attempts = 0;
     let placed = false;
-    let x: number, y: number;
+    let x = padding + random() * (tokenWidth - 2 * padding);
+    let y = topStart + padding + random() * (topEnd - topStart - 2 * padding);
 
     while (!placed && attempts < 200) {
       x = padding + random() * (tokenWidth - 2 * padding);
@@ -287,10 +288,10 @@ function generateRandomPositions(
     return { x, y, isDead, direction };
   };
 
-  for (let i = bodyCount; i < maxBodyCount; i++) {
+  for (let i = troopCount; i < maxTroopCount; i++) {
     positions.push(placeDot(i, true));
   }
-  for (let i = 0; i < bodyCount; i++) {
+  for (let i = 0; i < troopCount; i++) {
     positions.push(placeDot(i, false));
   }
 
@@ -298,8 +299,8 @@ function generateRandomPositions(
 }
 
 function generateCirclePositions(
-  bodyCount: number,
-  maxBodyCount: number,
+  troopCount: number,
+  maxTroopCount: number,
   tokenWidth: number,
   topStart: number,
   topEnd: number,
@@ -309,29 +310,39 @@ function generateCirclePositions(
   isMounted: boolean
 ): Array<{ x: number; y: number; isDead: boolean; direction?: number }> {
   const positions: Array<{ x: number; y: number; isDead: boolean; direction?: number }> = [];
-  const count = maxBodyCount;
+  const count = Math.min(maxTroopCount, 40);
   const centerX = tokenWidth / 2;
   const centerY = (topStart + topEnd) / 2;
-  const radius = Math.min(tokenWidth, topEnd - topStart) * 0.35;
+  const outerRadius = Math.min(tokenWidth, topEnd - topStart) * 0.50;
 
-  const maxPerCircle = 8;
-  const numCircles = Math.ceil(count / maxPerCircle);
-  const perCircle = Math.ceil(count / numCircles);
+  // ≤ 20: 2 rings (outer 12, inner 8). > 20: 3 rings (outer 21, mid 13, inner 6).
+  // Proportional radii = equal arc distance on every ring.
+  const rings = count <= 20
+    ? [
+        { limit: 12, radius: outerRadius },
+        { limit: 8, radius: outerRadius * 8 / 12 },
+      ]
+    : [
+        { limit: 21, radius: outerRadius },
+        { limit: 13, radius: outerRadius * 13 / 21 },
+        { limit: 6, radius: outerRadius * 6 / 21 },
+      ];
 
-  for (let c = 0; c < numCircles; c++) {
-    const startIdx = c * perCircle;
-    const endIdx = Math.min(startIdx + perCircle, count);
-    const circleCount = endIdx - startIdx;
-    const circleRadius = radius * (1 - c * 0.3);
+  let globalIdx = 0;
+  for (const ring of rings) {
+    const ringCount = Math.min(ring.limit, count - globalIdx);
+    if (ringCount <= 0) break;
+
     const angleOffset = random() * 2 * Math.PI;
 
-    for (let i = startIdx; i < endIdx; i++) {
-      const isDead = i >= bodyCount;
-      const angle = angleOffset + (i - startIdx) / circleCount * 2 * Math.PI;
-      const x = centerX + circleRadius * Math.cos(angle);
-      const y = centerY + circleRadius * Math.sin(angle);
+    for (let i = 0; i < ringCount; i++) {
+      const isDead = globalIdx >= troopCount;
+      const angle = angleOffset + (i / ringCount) * 2 * Math.PI;
+      const x = centerX + ring.radius * Math.cos(angle);
+      const y = centerY + ring.radius * Math.sin(angle);
       const direction = Math.atan2(y - centerY, x - centerX);
       positions.push({ x, y, isDead, direction });
+      globalIdx++;
     }
   }
 
@@ -339,8 +350,8 @@ function generateCirclePositions(
 }
 
 function generateScatteredPositions(
-  bodyCount: number,
-  maxBodyCount: number,
+  troopCount: number,
+  maxTroopCount: number,
   tokenWidth: number,
   topStart: number,
   topEnd: number,
@@ -356,7 +367,8 @@ function generateScatteredPositions(
   const placeDot = (index: number, isDead: boolean) => {
     let attempts = 0;
     let placed = false;
-    let x: number, y: number;
+    let x = padding + random() * (tokenWidth - 2 * padding);
+    let y = topStart + padding + random() * (topEnd - topStart - 2 * padding);
 
     while (!placed && attempts < maxAttempts) {
       x = padding + random() * (tokenWidth - 2 * padding);
@@ -381,10 +393,10 @@ function generateScatteredPositions(
     return { x, y, isDead, direction: isMounted ? random() * 2 * Math.PI : undefined };
   };
 
-  for (let i = bodyCount; i < maxBodyCount; i++) {
+  for (let i = troopCount; i < maxTroopCount; i++) {
     positions.push(placeDot(i, true));
   }
-  for (let i = 0; i < bodyCount; i++) {
+  for (let i = 0; i < troopCount; i++) {
     positions.push(placeDot(i, false));
   }
 

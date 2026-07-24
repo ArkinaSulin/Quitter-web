@@ -9,10 +9,10 @@ import { mapTemplate } from '@/lib/templateMappers';
 
 interface UnitSelectorProps {
   scenarioId: string;
-  onDragStart: (template: UnitTemplate) => void;
+  onUnitDragStart: (template: UnitTemplate) => void;
 }
 
-export function UnitSelector({ scenarioId, onDragStart }: UnitSelectorProps) {
+export function UnitSelector({ scenarioId, onUnitDragStart }: UnitSelectorProps) {
   const [templates, setTemplates] = useState<UnitTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -94,8 +94,7 @@ export function UnitSelector({ scenarioId, onDragStart }: UnitSelectorProps) {
           filtered.map((template) => (
             <div
               key={template.id}
-              draggable
-              onDragStart={() => onDragStart(template)}
+              onMouseDown={(e) => { if (e.button === 0) onUnitDragStart(template); }}
               className="bg-gray-700 hover:bg-gray-600 rounded p-2 cursor-grab active:cursor-grabbing transition select-none border border-gray-600"
             >
               <div className="flex items-center gap-2">

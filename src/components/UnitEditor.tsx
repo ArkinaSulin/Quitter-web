@@ -8,21 +8,9 @@ import { supabase } from '@/lib/supabaseClient';
 import { UnitTemplate, Race, Armor, Formation, UnitType, Mount } from '@/types/gameProtocol';
 import { parseWeapons, stringifyWeapons, Weapon as WeaponType } from '@/lib/weaponParser';
 import { TokenPreview } from '@/components/TokenRenderer/TokenPreview';
+import { getMaxTroopCount } from '@/lib/unitCaps';
 import { Team } from '@/components/TokenRenderer/tokenUtils';
 import { mapTemplate, mapTemplateToRow } from '@/lib/templateMappers';
-
-function getAttackFromLevel(level: number): number {
-  const profBonus = getProficiencyBonus(level);
-  return 8 + profBonus;
-}
-
-function getProficiencyBonus(level: number): number {
-  if (level <= 4) return 2;
-  if (level <= 8) return 3;
-  if (level <= 12) return 4;
-  if (level <= 16) return 5;
-  return 6;
-}
 
 function isValidDamageDice(dice: string): boolean {
   const pattern = /^(\d+d\d+)([+-]\d+)?(\+\d+d\d+)*([+-]\d+)?$/;
@@ -30,13 +18,14 @@ function isValidDamageDice(dice: string): boolean {
 }
 
 const SIZE_LABELS: Record<number, string> = {
+  75: 'Small',
   100: 'Medium',
   200: 'Large',
   300: 'Huge',
   400: 'Gargantuan',
 };
 
-const SIZE_VALUES = [100, 200, 300, 400];
+const SIZE_VALUES = [75, 100, 200, 300, 400];
 
 function snapSizeCategory(value: number): number {
   const closest = SIZE_VALUES.reduce((prev, curr) =>
@@ -119,7 +108,7 @@ export default function UnitEditor() {
   const [previewTeam, setPreviewTeam] = useState<Team>('blue');
 
   const [testCasualtyPercent, setTestCasualtyPercent] = useState<number>(0);
-  const [testMoralePercent, setTestMoralePercent] = useState<number>(100);
+  const [testMoraleModifier, setTestMoraleModifier] = useState<number>(0);
   const [testFormation, setTestFormation] = useState<'Loose' | 'Tight' | 'Scattered' | 'Phalanx' | 'Shield Wall' | 'Routed'>('Loose');
 
   const [showWeaponModal, setShowWeaponModal] = useState(false);
@@ -131,7 +120,7 @@ export default function UnitEditor() {
   const [weaponRange, setWeaponRange] = useState(1);
   const [weaponMagicRadius, setWeaponMagicRadius] = useState<number>(0);
   const [weaponReach, setWeaponReach] = useState<boolean>(false);
-  const [weaponNotes, setWeaponNotes] = useState<string>('');
+
   const [weaponError, setWeaponError] = useState('');
   const [weaponSearchTerm, setWeaponSearchTerm] = useState('');
 
@@ -150,7 +139,7 @@ export default function UnitEditor() {
   const [loadingImages, setLoadingImages] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const [previewWidth, setPreviewWidth] = useState<number>(400);
   const previewWidthRef = useRef(previewWidth);
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -266,9 +255,9 @@ export default function UnitEditor() {
     if (!formData) return 10;
     const selectedRace = races.find(r => r.id === formData.raceId);
     const selectedArmor = formData.armorId ? armors.find(a => a.id === formData.armorId) : null;
-    let ac = formData.baselineAc || 10;
+    let ac = formData.baseAc || 10;
     // Add race bonus
-    ac += (selectedRace?.acBonus || 0);
+    ac += (selectedRace?.ac_bonus || 0);
     // Add armor bonus
     ac += (selectedArmor?.ac_bonus || 0);
     // Add shield
@@ -306,7 +295,16 @@ export default function UnitEditor() {
 
   const updateFormData = (field: keyof UnitTemplate, value: any) => {
     if (!formData) return;
-    setFormData(prev => prev ? { ...prev, [field]: value } : null);
+
+    // copy current formData to updated
+    const updated = { ...formData, [field]: value };
+
+    // Recalculate weeklyCostGp if level changes 
+    if (field === 'level') {
+      const newLevel = Math.max(1, value);
+      updated.weeklyCostGp = 4 * (newLevel * newLevel);
+    }
+    setFormData(updated);
   };
 
   const toggleFormation = (formationName: string) => {
@@ -341,6 +339,9 @@ export default function UnitEditor() {
         setFormData(prev => prev ? { ...prev, formationAvailability: filtered } : null);
       }
     }
+
+    const cap = getMaxTroopCount(formData.sizeCategory || 100, isMounted);
+    updateFormData('troopCount', cap);
   }, [formData?.mountId]);
 
   useEffect(() => {
@@ -386,6 +387,10 @@ export default function UnitEditor() {
         setWasAt400(false);
       }
     }
+
+    // Auto-set troop count to max for this size
+    const cap = getMaxTroopCount(formData.sizeCategory || 100, !!formData.mountId);
+    updateFormData('troopCount', cap);
   }, [formData?.sizeCategory]);
 
   useEffect(() => {
@@ -486,7 +491,6 @@ export default function UnitEditor() {
     setWeaponAttackBonus(0);
     setWeaponMagicRadius(0);
     setWeaponReach(false);
-    setWeaponNotes('');
     setWeaponError('');
     setShowWeaponModal(true);
   };
@@ -504,7 +508,6 @@ export default function UnitEditor() {
     setWeaponAttackBonus(w.attackBonus);
     setWeaponMagicRadius(w.magicRadius);
     setWeaponReach(w.reach || false);
-    setWeaponNotes(w.notes || '');
     setWeaponError('');
     setShowWeaponModal(true);
   };
@@ -513,13 +516,12 @@ export default function UnitEditor() {
     id: string;
     name: string;
     damage_dice: string;
-    notes: string | null;
     cost_gp: number;
     attack_bonus?: number;
     magic_radius?: number;
     range?: number;
     target_type?: string;
-    reach?: boolean;
+    is_reach?: boolean;
   }) => {
     setWeaponName(weapon.name);
     setWeaponSearchTerm(weapon.name);
@@ -528,8 +530,7 @@ export default function UnitEditor() {
     setWeaponRange(weapon.range || 1);
     setWeaponTargetType((weapon.target_type === 'area' ? 'area' : 'single') as 'single' | 'area');
     setWeaponMagicRadius(weapon.magic_radius || 0);
-    setWeaponReach(weapon.reach || false);
-    setWeaponNotes(weapon.notes || '');
+    setWeaponReach(weapon.is_reach || false);
   };
 
   const getWeaponSuggestions = () => {
@@ -567,7 +568,6 @@ export default function UnitEditor() {
       range: weaponRange,
       magicRadius: weaponTargetType === 'area' ? weaponMagicRadius : 0,
       reach: weaponReach,
-      notes: weaponNotes.trim() || '',
     };
 
     const currentWeapons = getWeapons();
@@ -601,7 +601,7 @@ export default function UnitEditor() {
       unitName: 'New Unit',
       raceId: firstRace?.id || '',
       raceName: firstRace?.name || '',
-      raceBaseHd: firstRace?.base_hd || null,
+      raceBaseHd: firstRace?.base_hd || 1,
       raceIconUrl: firstRace?.icon_url || '',
       raceCanCharge: firstRace?.can_charge || false,
       modelTypeId: firstUnitType?.id || '',
@@ -609,11 +609,11 @@ export default function UnitEditor() {
       modelTypeIconUrl: firstUnitType?.icon_url || null,
       unitTypeIconUrl: firstUnitType?.icon_url || null,
       isHero: false,
-      troopCount: 1,
+      troopCount: getMaxTroopCount(firstRace?.size_category || 100, false),
       level: 1,
       troopHp: firstRace?.base_hd || 10,
-      unitHp: (firstRace?.base_hd || 10) * 1,
-      numberOfAttacks: 10,
+      maxUnitHp: (firstRace?.base_hd || 10) * getMaxTroopCount(firstRace?.size_category || 100, false),
+      numberOfAttacks: 1,
       armorId: '',
       armorName: '',
       isShielded: false,
@@ -629,7 +629,7 @@ export default function UnitEditor() {
       visualScale: firstRace?.visual_scale || 100,
       formationAvailability: ['Scattered', 'Routed'],
       equipCostGp: 0,
-      weeklyCostGp: 4 * (formData.level * formData.level),
+      weeklyCostGp: 4,
       canCharge: false,
       customImageUrl: null,
       createdAt: new Date().toISOString(),
@@ -674,6 +674,7 @@ export default function UnitEditor() {
         id: crypto.randomUUID(),
         unitName: cloneName.trim(),
         equipCostGp: 0,
+        weeklyCostGp: 4 * (formData.level * formData.level),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         formationAvailability: [...formData.formationAvailability],
@@ -728,8 +729,8 @@ export default function UnitEditor() {
       const selectedArmor = formData.armorId ? armors.find(a => a.id === formData.armorId) : null;
       const selectedMount = formData.mountId ? mounts.find(m => m.id === formData.mountId) : null;
 
-      let ac = formData.baselineAc || 10;
-      ac += (selectedRace?.acBonus || 0);
+      let ac = formData.baseAc || 10;
+      ac += (selectedRace?.ac_bonus || 0);
       ac += (selectedArmor?.ac_bonus || 0);
       if (formData.isShielded) ac += 2;
       ac = Math.max(0, Math.min(30, ac));
@@ -757,6 +758,7 @@ export default function UnitEditor() {
         equipCostGp: cost || 0,
         // numberOfAttacks: getAttackFromLevel(formData.level || 1), // remove that line
         numberOfAttacks: formData.numberOfAttacks,
+        weeklyCostGp: 4 * (formData.level * formData.level),
         updatedAt: new Date().toISOString(),
       };
 
@@ -856,13 +858,15 @@ export default function UnitEditor() {
   const selectedRace = races.find(r => r.id === formData?.raceId);
   const selectedUnitType = unitTypes.find(ut => ut.id === formData?.modelTypeId);
 
-  const effectiveBodyCount = formData ? Math.round((formData.troopCount || 1) * (1 - testCasualtyPercent / 100)) : 0;
-  const effectiveMorale = formData ? Math.round((formData.baseMorale || 3) * (testMoralePercent / 100)) : 0;
-  const effectiveHp = formData && formData.isHero ? Math.round((formData.troopHp || 10) * (1 - testCasualtyPercent / 100)) : 0;
-  const maxHp = formData?.troopHp || 10;
+  const effectiveTroopCount = formData ? Math.round((formData.troopCount || 1) * (1 - testCasualtyPercent / 100)) : 0;
+  const baseMoraleVal = formData?.baseMorale || 3;
+  const effectiveMorale = formData ? Math.max(-baseMoraleVal, Math.min(10 - baseMoraleVal, testMoraleModifier)) : 0;
+  const maxUnitHpValue = (formData?.troopHp || 10) * (formData?.troopCount || 1);
+  const effectiveUnitHp = formData && formData.isHero ? Math.round(maxUnitHpValue * (1 - testCasualtyPercent / 100)) : 0;
 
   const getSizeLabel = (size: number) => SIZE_LABELS[size] || 'Medium';
   const isGargantuan = formData?.sizeCategory === 400;
+  const troopCap = getMaxTroopCount(formData?.sizeCategory || 100, !!formData?.mountId);
 
   const filteredMounts = mounts.filter(m => {
     if (!formData) return true;
@@ -937,15 +941,32 @@ export default function UnitEditor() {
         <div className="flex-1 min-w-0 p-6 overflow-y-auto bg-[#0d0d1a]">
           {formData ? (
             <div className="max-w-3xl space-y-4">
-              {/* Name */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Unit Name</label>
-                <input
-                  type="text"
-                  value={formData.unitName || ''}
-                  onChange={(e) => updateFormData('unitName', e.target.value)}
-                  className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                />
+              {/* Unit Name + Hero */}
+              <div className="flex items-end gap-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Unit Name</label>
+                  <input
+                    type="text"
+                    value={formData.unitName || ''}
+                    onChange={(e) => updateFormData('unitName', e.target.value)}
+                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
+                  />
+                </div>
+                <div className="flex items-center gap-2 pb-1">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-300 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={formData.isHero || false}
+                      onChange={(e) => updateFormData('isHero', e.target.checked)}
+                      disabled={isGargantuan}
+                      className={`w-4 h-4 accent-yellow-400 ${
+                        isGargantuan ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    />
+                    Hero Unit
+                    {isGargantuan && <span className="text-xs text-gray-500">(forced)</span>}
+                  </label>
+                </div>
               </div>
 
               {/* Race & Level */}
@@ -1018,8 +1039,12 @@ export default function UnitEditor() {
                   <input
                     type="number"
                     value={formData.troopCount || 1}
-                    onChange={(e) => updateFormData('troopCount', parseInt(e.target.value) || 1)}
+                    onChange={(e) => {
+                      const raw = parseInt(e.target.value) || 1;
+                      updateFormData('troopCount', Math.min(raw, troopCap));
+                    }}
                     min={1}
+                    max={troopCap}
                     disabled={isGargantuan || formData.isHero}
                     className={`w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400 ${
                       (isGargantuan || formData.isHero) ? 'opacity-50 cursor-not-allowed' : ''
@@ -1027,6 +1052,9 @@ export default function UnitEditor() {
                   />
                   {(isGargantuan || formData.isHero) && (
                     <p className="text-xs text-gray-500 mt-1">Fixed at 1 for Hero or Gargantuan</p>
+                  )}
+                  {!isGargantuan && !formData.isHero && (formData.troopCount || 1) > troopCap && (
+                    <p className="text-xs text-yellow-400 mt-1">Capped at {troopCap} for this size</p>
                   )}
                 </div>
 
@@ -1044,11 +1072,11 @@ export default function UnitEditor() {
               {/* Base AC, Attack, Movement */}
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Baseline AC</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Racial AC</label>
                   <input
                     type="number"
-                    value={formData.baselineAc || 10}
-                    onChange={(e) => updateFormData('baselineAc', parseInt(e.target.value) || 10)}
+                    value={formData.baseAc || 10}
+                    onChange={(e) => updateFormData('baseAc', parseInt(e.target.value) || 10)}
                     min={1}
                     max={30}
                     className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
@@ -1079,8 +1107,8 @@ export default function UnitEditor() {
                 </div>
               </div>
 
-              {/* Armor, Shield, Mount */}
-              <div className="grid grid-cols-3 gap-4 items-end">
+              {/* Armor + Shield */}
+              <div className="grid grid-cols-2 gap-4 items-end">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1">Armor</label>
                   <select
@@ -1119,7 +1147,10 @@ export default function UnitEditor() {
                     Shield (+2 AC)
                   </label>
                 </div>
+              </div>
 
+              {/* Mount + Can Charge */}
+              <div className="grid grid-cols-2 gap-4 items-end">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1">Mount</label>
                   <select
@@ -1168,6 +1199,21 @@ export default function UnitEditor() {
                     <p className="text-xs text-gray-500 mt-1">No suitable mounts for this size.</p>
                   )}
                 </div>
+
+                <div className="flex items-center h-full">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={formData.canCharge || false}
+                      onChange={(e) => updateFormData('canCharge', e.target.checked)}
+                      className="w-4 h-4 accent-yellow-400"
+                    />
+                    Can Charge
+                  </label>
+                  <span className="text-xs text-gray-500 ml-2">
+                    Race: {selectedRace?.can_charge ? 'Yes' : 'No'} · Mount: {formData.mountId ? mounts.find(m => m.id === formData.mountId)?.can_charge ? 'Yes' : 'No' : 'N/A'}
+                  </span>
+                </div>
               </div>
 
               {/* Size Category + Visual Scale */}
@@ -1178,9 +1224,9 @@ export default function UnitEditor() {
                   </label>
                   <input
                     type="range"
-                    min="100"
+                    min="75"
                     max="400"
-                    step="100"
+                    step="25"
                     value={formData.sizeCategory || 100}
                     onChange={(e) => {
                       const raw = parseInt(e.target.value);
@@ -1191,6 +1237,7 @@ export default function UnitEditor() {
                     list="size-ticks"
                   />
                   <datalist id="size-ticks">
+                    <option value="75" label="Small" />
                     <option value="100" label="Medium" />
                     <option value="200" label="Large" />
                     <option value="300" label="Huge" />
@@ -1233,39 +1280,6 @@ export default function UnitEditor() {
                     className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
                   />
                 </div>
-              </div>
-
-              {/* Can Charge */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-gray-300">
-                  <input
-                    type="checkbox"
-                    checked={formData.canCharge || false}
-                    onChange={(e) => updateFormData('canCharge', e.target.checked)}
-                    className="w-4 h-4 accent-yellow-400"
-                  />
-                  Can Charge (override for race/mount)
-                </label>
-                <p className="text-xs text-gray-500 mt-1">
-                  Race: {selectedRace?.can_charge ? 'Yes' : 'No'} · Mount: {formData.mountId ? mounts.find(m => m.id === formData.mountId)?.can_charge ? 'Yes' : 'No' : 'N/A'}
-                </p>
-              </div>
-
-              {/* Hero Checkbox */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-gray-300">
-                  <input
-                    type="checkbox"
-                    checked={formData.isHero || false}
-                    onChange={(e) => updateFormData('isHero', e.target.checked)}
-                    disabled={isGargantuan}
-                    className={`w-4 h-4 accent-yellow-400 ${
-                      isGargantuan ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  />
-                  Hero Unit
-                  {isGargantuan && <span className="text-xs text-gray-500">(forced for Gargantuan)</span>}
-                </label>
               </div>
 
               {/* Weapons */}
@@ -1335,9 +1349,16 @@ export default function UnitEditor() {
                       <div
                         key={ut.id}
                         onClick={() => {
-                          updateFormData('modelTypeId', ut.id);
-                          updateFormData('modelTypeName', ut.name);
-                          updateFormData('unitTypeIconUrl', ut.icon_url || null);
+                          setFormData(prev => prev ? {
+                            ...prev,
+                            modelTypeId: ut.id,
+                            modelTypeName: ut.name,
+                            unitTypeIconUrl: ut.icon_url || null,
+                          } : null);
+                          
+                          //updateFormData('modelTypeId', ut.id);
+                          // updateFormData('modelTypeName', ut.name);
+                          // updateFormData('unitTypeIconUrl', ut.icon_url || null);
                         }}
                         className={`border-2 rounded p-1 cursor-pointer transition flex flex-col items-center ${
                           isSelected ? 'border-yellow-400 bg-yellow-400/20' : 'border-gray-600 hover:border-gray-400'
@@ -1463,25 +1484,13 @@ export default function UnitEditor() {
                   <div className="text-xl font-bold text-yellow-400">{calculateMovement()}</div>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400">Cost (gp)</label>
+                  <label className="block text-xs text-gray-400">Equip Cost (gp)</label>
                   <div className="text-xl font-bold text-yellow-400">{calculateCost()}</div>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400">Weapons</label>
-                  <div className="text-xl font-bold text-yellow-400">{getWeapons().length}</div>
+                  <label className="block text-xs text-gray-400">Weekly Cost (gp)</label>
+                  <div className="text-xl font-bold text-yellow-400">{formData.weeklyCostGp || 0}</div>
                 </div>
-              </div>
-
-              {/* Weekly Cost */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Weekly Cost (gp)</label>
-                <input
-                  type="number"
-                  value={formData.weeklyCostGp || 0}
-                  onChange={(e) => updateFormData('weeklyCostGp', parseInt(e.target.value) || 0)}
-                  min={0}
-                  className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                />
               </div>
 
               {/* Save buttons */}
@@ -1528,23 +1537,23 @@ export default function UnitEditor() {
                   <TokenPreview
                     key={formData?.id + '-' + (formData?.modelTypeId || 'none') + '-' + previewWidth}
                     unitName={formData.unitName || 'Unit'}
-                    bodyCount={effectiveBodyCount}
-                    maxBodyCount={formData.troopCount || 1}
-                    formation={testFormation}
+                    troopCount={effectiveTroopCount}
+                    maxTroopCount={formData.troopCount || 1}
+                    currentFormation={testFormation}
                     team={previewTeam}
-                    troopScale={formData.visualScale || 100}
+                    visualScale={formData.visualScale || 100}
                     sizeCategory={formData.sizeCategory || 100}
                     isRouted={testFormation === 'Routed'}
-                    morale={effectiveMorale}
-                    maxMorale={formData.baseMorale || 3}
+                    currentMorale={effectiveMorale}
+                    baseMorale={formData.baseMorale || 3}
                     isHero={formData.isHero || false}
-                    raceIconUrl={formData.raceIconUrl || selectedRace?.icon_url}
+                    raceIconUrl={formData.raceIconUrl || selectedRace?.icon_url || undefined}
                     unitTypeIconUrl={formData.unitTypeIconUrl || selectedUnitType?.icon_url || undefined}
                     customImageUrl={formData.customImageUrl || formData.raceIconUrl || selectedRace?.icon_url || undefined}
                     width={previewWidth}
                     height={previewWidth * 0.75}
-                    currentHp={effectiveHp}
-                    maxHp={maxHp}
+                    currentUnitHp={effectiveUnitHp}
+                    maxUnitHp={maxUnitHpValue}
                     mountId={formData.mountId || null}
                     onImageClick={openImagePicker}
                   />
@@ -1591,13 +1600,13 @@ export default function UnitEditor() {
               </div>
 
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Morale test: {testMoralePercent}%</label>
+                <label className="block text-xs text-gray-400 mb-1">Morale modifier: {effectiveMorale >= 0 ? '+' : ''}{effectiveMorale}</label>
                 <input
                   type="range"
-                  min="0"
-                  max="100"
-                  value={testMoralePercent}
-                  onChange={(e) => setTestMoralePercent(parseInt(e.target.value))}
+                  min={-(formData?.baseMorale || 3)}
+                  max={10 - (formData?.baseMorale || 3)}
+                  value={effectiveMorale}
+                  onChange={(e) => setTestMoraleModifier(parseInt(e.target.value))}
                   className="w-full accent-yellow-400"
                 />
               </div>
@@ -1794,15 +1803,6 @@ export default function UnitEditor() {
                     />
                     Reach (e.g., pike, lance)
                   </label>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-300 mb-1">Notes</label>
-                  <textarea
-                    value={weaponNotes}
-                    onChange={(e) => setWeaponNotes(e.target.value)}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400 h-16 resize-none"
-                    placeholder="Optional: Versatile, Finesse, etc."
-                  />
                 </div>
                 {weaponError && <p className="text-red-400 text-sm">{weaponError}</p>}
                 <div className="flex justify-end gap-2 pt-2">

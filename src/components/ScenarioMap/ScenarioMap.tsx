@@ -3,7 +3,7 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
-import { Hex, UnitTemplate } from '@/types/gameProtocol';
+import { Hex, Unit, UnitTemplate } from '@/types/gameProtocol';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios } from '@/hooks/useScenarios';
 import { useMessages } from '@/contexts/MessageContext';
@@ -78,7 +78,6 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
     handleMouseDown,
     handleMouseUp,
     handleRightClick,
-    handleWheel,
     hoveredHex,
     draggingUnitId,
     offsetX,
@@ -94,10 +93,10 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
     units: units,
     onUnitMove: handleUnitMove,
     onHexClick: (hex) => setSelectedHex(hex),
-    onHexRightClick: (hex, unit) => {
+    onHexRightClick: (hex, unit, clientX, clientY) => {
       if (unit) {
         setContextMenuUnit(unit);
-        setContextMenuPos({ x: window.event?.clientX || 0, y: window.event?.clientY || 0 });
+        setContextMenuPos({ x: clientX, y: clientY });
       }
     },
     onUnitHover: (unit, screenX, screenY) => {
@@ -134,13 +133,9 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
   }, [isInitialLoad, loading, canvasRef, centerMap]);
 
   // ---- Drag from panel ----
-  useEffect(() => {
-    const handleDragStart = (e: CustomEvent) => {
-      setDraggingTemplate(e.detail.template);
-      setIsDraggingFromPanel(true);
-    };
-    window.addEventListener('unitDragStart', handleDragStart as EventListener);
-    return () => window.removeEventListener('unitDragStart', handleDragStart as EventListener);
+  const handleUnitDragStart = useCallback((template: UnitTemplate) => {
+    setDraggingTemplate(template);
+    setIsDraggingFromPanel(true);
   }, []);
 
   useEffect(() => {
@@ -148,8 +143,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
     const onMouseMove = (e: MouseEvent) => {
       e.preventDefault();
       if (canvasRef.current) {
-        const rect = canvasRef.current.getBoundingClientRect();
-        const hex = getHexFromScreen(e.clientX - rect.left, e.clientY - rect.top);
+        const hex = getHexFromScreen(e.clientX, e.clientY);
         setGhostHex(hex);
       }
     };
@@ -160,11 +154,16 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
       }
       if (canvasRef.current && draggingTemplate) {
         const rect = canvasRef.current.getBoundingClientRect();
-        const hex = getHexFromScreen(e.clientX - rect.left, e.clientY - rect.top);
-        if (hex) {
-          const success = await addUnitFromTemplate(draggingTemplate, hex, 'black');
-          if (success) addMessage(`Placed ${draggingTemplate.name} at (${hex.q}, ${hex.r})`);
-          else addMessage(`Failed to place ${draggingTemplate.name}`);
+        const inCanvas =
+          e.clientX >= rect.left && e.clientX <= rect.right &&
+          e.clientY >= rect.top && e.clientY <= rect.bottom;
+        if (inCanvas) {
+          const hex = getHexFromScreen(e.clientX, e.clientY);
+          if (hex) {
+            const success = await addUnitFromTemplate(draggingTemplate, hex, 'black');
+            if (success) addMessage(`Placed ${draggingTemplate.unitName} at (${hex.q}, ${hex.r})`);
+            else addMessage(`Failed to place ${draggingTemplate.unitName}`);
+          }
         }
       }
       setIsDraggingFromPanel(false);
@@ -184,11 +183,11 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
   // Simplified: template now has raceIconUrl and unitTypeIconUrl
   const handlePlaceUnit = useCallback(async (template: UnitTemplate, hex: Hex) => {
     const success = await addUnitFromTemplate(template, hex, 'black');
-    if (success) addMessage(`Placed ${template.name} at (${hex.q}, ${hex.r})`);
-    else addMessage(`Failed to place ${template.name}`);
+    if (success) addMessage(`Placed ${template.unitName} at (${hex.q}, ${hex.r})`);
+    else addMessage(`Failed to place ${template.unitName}`);
   }, [addUnitFromTemplate, addMessage]);
 
-  // ---- Screenshot capture (unchanged) ----
+  // ---- Screenshot capture ----
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;
     if (!canvas) {
@@ -208,6 +207,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
       const displayWidth = rect.width;
       const displayHeight = rect.height;
 
+      // Calculate bounds (units or full grid)
       let minX = Infinity,
         minY = Infinity,
         maxX = -Infinity,
@@ -269,6 +269,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
       ctx.fillStyle = '#1a1a2e';
       ctx.fillRect(0, 0, displayWidth, displayHeight);
 
+      // Draw hex grid
       const gridRadius = 8;
       const hexes: Hex[] = [];
       for (let q = -gridRadius; q <= gridRadius; q++) {
@@ -300,67 +301,25 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
 
       for (const hex of hexes) drawHex(hex);
 
-      const teamColors: Record<string, string> = {
-        blue: '#0072B2',
-        yellow: '#F0E442',
-        black: '#333333',
-        violet: '#CC79A7',
-        orange: '#D55E00',
-        green: '#009E73',
-      };
+      // Draw units using drawToken
+      const tokenWidth = TOKEN_WIDTH * fitZoom;
+      const tokenHeight = TOKEN_HEIGHT * fitZoom;
 
       for (const unit of units) {
         const pos = hexToPixel(unit.hex, HEX_SIZE);
         const cx = pos.x * fitZoom + fitOffsetX;
         const cy = pos.y * fitZoom + fitOffsetY;
-        const radius = HEX_SIZE * fitZoom * 0.4;
-        const fillColor = teamColors[unit.team] || '#888';
 
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
-        ctx.fillStyle = fillColor;
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `${Math.max(10, radius * 0.7)}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(unit.name.substring(0, 4), cx, cy - radius - 2);
-
-        const hpWidth = radius * 1.6;
-        const hpX = cx - hpWidth / 2;
-        const hpY = cy + radius + 4;
-        const hpHeight = 4;
-        ctx.fillStyle = '#222222';
-        ctx.fillRect(hpX, hpY, hpWidth, hpHeight);
-        const hpRatio = Math.max(0, unit.hp / unit.maxHp);
-        ctx.fillStyle = hpRatio > 0.5 ? '#44ff44' : '#ff4444';
-        ctx.fillRect(hpX, hpY, hpWidth * hpRatio, hpHeight);
-
-        if (!unit.isHero && unit.formation !== 'Scattered') {
-          const angle = (60 * unit.facing - 30) * Math.PI / 180;
-          const tipX = cx + HEX_SIZE * fitZoom * Math.cos(angle);
-          const tipY = cy + HEX_SIZE * fitZoom * Math.sin(angle);
-          const baseRadius = HEX_SIZE * fitZoom * 0.7;
-          const halfSpread = 0.4;
-          const baseX1 = cx + baseRadius * Math.cos(angle - halfSpread);
-          const baseY1 = cy + baseRadius * Math.sin(angle - halfSpread);
-          const baseX2 = cx + baseRadius * Math.cos(angle + halfSpread);
-          const baseY2 = cy + baseRadius * Math.sin(angle + halfSpread);
-          ctx.beginPath();
-          ctx.moveTo(tipX, tipY);
-          ctx.lineTo(baseX1, baseY1);
-          ctx.lineTo(baseX2, baseY2);
-          ctx.closePath();
-          ctx.fillStyle = '#ffffff';
-          ctx.fill();
-          ctx.strokeStyle = '#000000';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-        }
+        await drawToken({
+          unit,
+          ctx,
+          x: cx,
+          y: cy,
+          width: tokenWidth,
+          height: tokenHeight,
+          zoom: fitZoom,
+          showDetails: true,
+        });
       }
 
       const dataUrl = canvas.toDataURL('image/png');
@@ -430,7 +389,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
 
       {/* Floating Left Panel */}
       <div className="absolute top-14 left-2 z-10">
-        <LeftPanel scenarioId={scenarioId} onPlaceUnit={handlePlaceUnit} />
+        <LeftPanel scenarioId={scenarioId} onPlaceUnit={handlePlaceUnit} onUnitDragStart={handleUnitDragStart} />
       </div>
 
       {/* Canvas */}
@@ -441,7 +400,6 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onContextMenu={handleRightClick}
-        onWheel={handleWheel}
       />
 
       {/* Ghost preview */}
@@ -472,15 +430,15 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
           y={contextMenuPos.y}
           isGM={isGM}
           onClose={() => { setContextMenuUnit(null); setContextMenuPos(null); }}
-          onRotate={(dir) => addMessage(`Rotate ${dir} for ${contextMenuUnit.name}`)}
-          onChangeFormation={(formation) => addMessage(`Set formation ${formation} for ${contextMenuUnit.name}`)}
-          onSelectWeapon={(idx) => addMessage(`Selected weapon ${idx} for ${contextMenuUnit.name}`)}
-          onAssignTeam={(team) => addMessage(`Assign team ${team} to ${contextMenuUnit.name}`)}
-          onToggleHide={() => addMessage(`Toggle hide for ${contextMenuUnit.name}`)}
+          onRotate={(dir) => addMessage(`Rotate ${dir} for ${contextMenuUnit.unitName}`)}
+          onChangeFormation={(formation) => addMessage(`Set formation ${formation} for ${contextMenuUnit.unitName}`)}
+          onSelectWeapon={(idx) => addMessage(`Selected weapon ${idx} for ${contextMenuUnit.unitName}`)}
+          onAssignTeam={(team) => addMessage(`Assign team ${team} to ${contextMenuUnit.unitName}`)}
+          onToggleHide={() => addMessage(`Toggle hide for ${contextMenuUnit.unitName}`)}
           onDeleteUnit={async () => {
             const success = await deleteUnit(contextMenuUnit.id);
-            if (success) addMessage(`Deleted ${contextMenuUnit.name}`);
-            else addMessage(`Failed to delete ${contextMenuUnit.name}`);
+            if (success) addMessage(`Deleted ${contextMenuUnit.unitName}`);
+            else addMessage(`Failed to delete ${contextMenuUnit.unitName}`);
           }}
         />
       )}

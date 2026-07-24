@@ -1,12 +1,11 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  // Your existing webpack config (if you need it for production)
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
   webpack: (config) => {
     config.resolve.fallback = { fs: false };
     return config;
   },
-  // Add this line to silence the Turbopack warning
   turbopack: {},
 };
 
-module.exports = nextConfig;
+export default nextConfig;

@@ -113,18 +113,18 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     } else {
       drawRaceFallback(ctx, x, y, width, topAreaHeight);
     }
-    drawHeroHpBar(ctx, x, y, width, height, unit.hp, unit.maxHp);
-    drawName(ctx, unit.name, x, y, width, height, team, false);
+    drawHeroHpBar(ctx, x, y, width, height, unit.currentUnitHp, unit.maxUnitHp);
+    drawName(ctx, unit.unitName, x, y, width, height, team, false);
     ctx.restore();
     return;
   }
 
   // ---- Normal unit ----
-  const bodyCount = unit.bodyCount || 10;
-  const maxBodyCount = unit.maxBodyCount || 10;
+  const troopCount = Math.min(unit.currentTroopCount ?? 10, 200);
+  const maxTroopCount = Math.min(unit.maxTroopCount || 10, 200);
   const visualScale = unit.visualScale || 100;
   const sizeCategory = unit.sizeCategory || 100;
-  const formation = unit.formation || 'Tight';
+  const formation = unit.currentFormation || 'Tight';
   const isRouted = unit.isRouting || false;
   const isMounted = !!unit.mountId;
 
@@ -135,13 +135,13 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
   }
 
   const config = getFormationConfig(effectiveFormation, isMounted, sizeCategory);
-  const dotRadius = Math.min(width, height) * 0.02 * (visualScale / 100) * (sizeCategory / 100);
+  const dotRadius = Math.min(width, height) * 0.025 * (visualScale / 100) * (sizeCategory / 100);
   const dotsPerRow = config.dotsPerRow;
   const dotColor = getDotColor(team);
 
   const positions = generateDotPositions(
-    bodyCount,
-    maxBodyCount,
+    troopCount,
+    maxTroopCount,
     effectiveFormation,
     isMounted,
     width,
@@ -183,11 +183,11 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     for (const pos of frontRowDots) {
       if (!pos.isDead) {
         const sx = x - width/2 + pos.x;
-        const sy = y - height/2 + pos.y - dotRadius * 2;
-        const shieldRadius = dotRadius * 0.7;
-        const shieldOffsetY = dotRadius * 0.35;
+        const sy = y - height/2 + pos.y - dotRadius * 2.5;
+        const shieldRadius = dotRadius * 1.3;
+        const shieldOffsetY = dotRadius * 0.5;
         ctx.beginPath();
-        ctx.arc(sx, sy + shieldOffsetY, shieldRadius, Math.PI, 0, false);
+        ctx.ellipse(sx, sy + dotRadius, shieldRadius, shieldOffsetY, 0, Math.PI, 0, false);
         ctx.strokeStyle = dotColor;
         ctx.lineWidth = 2;
         ctx.stroke();
@@ -214,8 +214,10 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
       ctx.closePath();
       if (isDead) {
         ctx.strokeStyle = dotColor;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 3]);
         ctx.stroke();
+        ctx.setLineDash([]);
       } else {
         ctx.fillStyle = dotColor;
         ctx.fill();
@@ -226,8 +228,10 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
       ctx.arc(px, py, dotRadius, 0, 2 * Math.PI);
       if (isDead) {
         ctx.strokeStyle = dotColor;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 3]);
         ctx.stroke();
+        ctx.setLineDash([]);
       } else {
         ctx.fillStyle = dotColor;
         ctx.fill();
@@ -274,8 +278,8 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
       raceIconUrl,
       unitTypeIconUrl,
       customImageUrl,
-      unit.currentMorale || 0,
       unit.baseMorale || 10,
+      unit.currentMoraleModifier || 0,
       unit.isHero || false,
       team,
       preloadedImages
@@ -283,7 +287,7 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
   }
 
   // ---- Name ----
-  drawName(ctx, unit.name, x, y, width, height, team, false);
+  drawName(ctx, unit.unitName, x, y, width, height, team, false);
 
   ctx.restore();
 }
@@ -431,8 +435,8 @@ function drawBottomInfo(
   raceIconUrl?: string,
   unitTypeIconUrl?: string,
   customImageUrl?: string,
-  morale?: number,
-  maxMorale?: number,
+  baseMorale?: number,
+  moraleModifier?: number,
   isHero?: boolean,
   team?: string,
   preloadedImages?: Map<string, HTMLImageElement>
@@ -508,9 +512,11 @@ function drawBottomInfo(
     ctx.fillText('⚔️', cx + width/2 - iconSize/2 - 4, iconY + iconSize/2);
   }
 
-  if (!isHero && morale !== undefined && maxMorale !== undefined) {
-    const totalHearts = Math.max(0, Math.min(10, maxMorale));
-    const heartsFilled = Math.max(0, Math.min(morale, maxMorale));
+  if (!isHero && baseMorale !== undefined && moraleModifier !== undefined) {
+    const effectiveMorale = baseMorale + moraleModifier;
+    const totalHearts = Math.max(0, Math.min(10, Math.max(baseMorale, effectiveMorale)));
+    const heartsFilled = Math.max(0, Math.min(effectiveMorale, totalHearts));
+    const baseHeartCount = Math.min(baseMorale, heartsFilled);
     const heartAreaLeft = cx - width * 0.25;
     const heartAreaRight = cx + width * 0.25;
     const heartAreaWidth = heartAreaRight - heartAreaLeft;
@@ -528,13 +534,17 @@ function drawBottomInfo(
       const col = i % heartsPerRow;
       const hx = startX + col * heartSize;
       const hy = startY + row * heartSize * 0.6;
-      const filled = i < heartsFilled;
-      drawHeart(ctx, hx, hy, heartSize, filled);
+      if (i < heartsFilled) {
+        const color = i < baseHeartCount ? '#FF4444' : '#FFD700';
+        drawHeart(ctx, hx, hy, heartSize, color);
+      } else {
+        drawHeart(ctx, hx, hy, heartSize);
+      }
     }
   }
 }
 
-function drawHeart(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, filled: boolean) {
+function drawHeart(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, fillColor?: string) {
   const s = size / 2;
   ctx.save();
   ctx.translate(x, y);
@@ -544,16 +554,18 @@ function drawHeart(ctx: CanvasRenderingContext2D, x: number, y: number, size: nu
   ctx.bezierCurveTo(-6, -3, -10, 3, 0, 10);
   ctx.bezierCurveTo(10, 3, 6, -3, 0, 3);
   ctx.closePath();
-  if (filled) {
-    ctx.fillStyle = '#FF4444';
+  if (fillColor) {
+    ctx.fillStyle = fillColor;
     ctx.fill();
-    ctx.strokeStyle = '#CC2222';
+    ctx.strokeStyle = fillColor === '#FF4444' ? '#CC2222' : '#CCB000';
     ctx.lineWidth = 0.5;
     ctx.stroke();
   } else {
     ctx.strokeStyle = '#FF4444';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 3]);
     ctx.stroke();
+    ctx.setLineDash([]);
   }
   ctx.restore();
 }

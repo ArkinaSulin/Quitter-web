@@ -42,7 +42,7 @@ export interface UseHexGridProps {
   units: Unit[];
   onUnitMove: (unitId: string, targetHex: Hex) => void;
   onHexClick?: (hex: Hex) => void;
-  onHexRightClick?: (hex: Hex, unit?: Unit) => void;
+  onHexRightClick?: (hex: Hex, unit: Unit | undefined, clientX: number, clientY: number) => void;
   onUnitHover?: (unit: Unit, screenX: number, screenY: number) => void;
   onUnitLeave?: () => void;
   onAttack?: (attackerId: string, targetId: string) => void;
@@ -313,7 +313,7 @@ export function useHexGrid({
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (hex) {
       const unit = getUnitAt(hex);
-      if (onHexRightClick) onHexRightClick(hex, unit);
+      if (onHexRightClick) onHexRightClick(hex, unit, e.clientX, e.clientY);
     }
   }, [getHexFromScreen, getUnitAt, onHexRightClick]);
 

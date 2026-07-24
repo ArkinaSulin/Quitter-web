@@ -7,6 +7,7 @@ export interface Weapon {
   damageDice: string;
   range: number; // in hexes (1 = adjacent)
   magicRadius: number; // in hexes (0 for non-area)
+  reach: boolean;
 }
 
 /**
@@ -31,6 +32,7 @@ export function parseWeapons(weaponString: string): Weapon[] {
         damageDice: parts[3] || '1d2',
         range: parseInt(parts[4]) || 1,
         magicRadius: parseInt(parts[5]) || 0,
+        reach: parts[6] === 'true',
       };
     });
 }
@@ -44,7 +46,7 @@ export function stringifyWeapons(weapons: Weapon[]): string {
   }
   return weapons
     .map(w =>
-      `${w.name},${w.attackBonus},${w.targetType},${w.damageDice},${w.range},${w.magicRadius}`
+      `${w.name},${w.attackBonus},${w.targetType},${w.damageDice},${w.range},${w.magicRadius},${w.reach}`
     )
     .join(';');
 }

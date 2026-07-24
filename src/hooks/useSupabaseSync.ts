@@ -4,6 +4,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Unit, Hex, UnitTemplate } from '@/types/gameProtocol';
+import { getMaxTroopCount } from '@/lib/unitCaps';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // --- Converters ---
@@ -15,16 +16,15 @@ function mapRowToUnit(row: any): Unit {
     unitName: row.unit_name || '',
     raceId: row.race_id || '',
     raceName: row.race_name || '',
-    armorId: row.armor_id || '',
     armorName: row.armor_name || '',
     mountId: row.mount_id || null,
     mountName: row.mount_name || '',
     isHero: row.is_hero || false,
-    troopCount: row.troop_count || 1,
+    currentTroopCount: row.current_troop_count || 1,
     maxTroopCount: row.max_troop_count || 1,
     level: row.level || 1,
-    unitHp: row.unit_hp || 0,
-    maxUnitHp: row.max_unit_hp || 0,
+    troopHp: row.troop_hp || 1,
+    maxUnitHp: row.max_unit_hp || 1,
     currentUnitHp: row.current_unit_hp || 0,
     numberOfAttacks: row.number_of_attacks || 1,
     isShielded: row.is_shielded || false,
@@ -35,7 +35,7 @@ function mapRowToUnit(row: any): Unit {
     movementPointsAvailable: row.movement_points_available || 0,
     aggressiveness: row.aggressiveness || 3,
     baseMorale: row.base_morale || 3,
-    currentMorale: row.current_morale || 3,
+    currentMoraleModifier: row.current_morale_modifier || 0,
     sizeCategory: row.size_category || 100,
     visualScale: row.visual_scale || 100,
     currentFormation: row.current_formation || 'Scattered',
@@ -60,18 +60,17 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     scenario_id: scenarioId,
     unit_name: unit.unitName,
     template_id: unit.templateId,
-    race_id: unit.raceId,
+    race_id: unit.raceId || null,
     race_name: unit.raceName,
-    armor_id: unit.armorId,
     armor_name: unit.armorName,
     mount_id: unit.mountId,
     mount_name: unit.mountName,
     is_hero: unit.isHero,
-    troop_count: unit.troopCount,
+    current_troop_count: unit.currentTroopCount,
     max_troop_count: unit.maxTroopCount,
     level: unit.level,
-    unit_hp: unit.unitHp,
-    max_unit_hp: unit.maxUnitHp,
+    troop_hp: unit.troopHp ||1,
+    max_unit_hp: unit.maxUnitHp || 1,
     current_unit_hp: unit.currentUnitHp,
     number_of_attacks: unit.numberOfAttacks,
     is_shielded: unit.isShielded,
@@ -82,7 +81,7 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     movement_points_available: unit.movementPointsAvailable,
     aggressiveness: unit.aggressiveness,
     base_morale: unit.baseMorale,
-    current_morale: unit.currentMorale,
+    current_morale_modifier: unit.currentMoraleModifier,
     size_category: unit.sizeCategory,
     visual_scale: unit.visualScale,
     current_formation: unit.currentFormation,
@@ -284,9 +283,8 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
 
     // Safety: ensure HP is never null/undefined
     const troopHp = template.troopHp ?? 1;
-    const troopCount = template.troopCount ?? 1;
-    const unitHpValue = template.unitHp ?? (troopHp * troopCount);
-    const maxUnitHpValue = unitHpValue;
+    const troopCount = Math.min(template.troopCount ?? 1, getMaxTroopCount(template.sizeCategory || 100, !!template.mountId));
+    const maxUnitHpValue = template.maxUnitHp ?? (troopHp * troopCount);
     const currentUnitHpValue = maxUnitHpValue;
 
     // Calculate canCharge from race or mount
@@ -302,15 +300,14 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       unitName: template.unitName,
       raceId: template.raceId || '',
       raceName: template.raceName || '',
-      armorId: template.armorId || '',
       armorName: template.armorName || '',
       mountId: template.mountId || null,
       mountName: template.mountName || '',
       isHero: template.isHero || false,
-      troopCount: troopCount,
+      currentTroopCount: troopCount,
       maxTroopCount: troopCount,
       level: template.level || 1,
-      unitHp: unitHpValue,
+      troopHp: troopHp,
       maxUnitHp: maxUnitHpValue,
       currentUnitHp: currentUnitHpValue,
       numberOfAttacks: template.numberOfAttacks || 1,
@@ -322,7 +319,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       movementPointsAvailable: template.movementPoints || 3,
       aggressiveness: template.aggressiveness || 3,
       baseMorale: template.baseMorale || 3,
-      currentMorale: template.baseMorale || 3,
+      currentMoraleModifier: 0,
       sizeCategory: template.sizeCategory || 100,
       visualScale: template.visualScale || 100,
       currentFormation: defaultFormation,
@@ -340,12 +337,13 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       actionsAvailable: 0,
     };
 
+    const row = mapUnitToRow(newUnit, scenarioId);
     const { error } = await supabase
       .from('units')
-      .insert(mapUnitToRow(newUnit, scenarioId));
+      .insert(row);
 
     if (error) {
-      console.error('[addUnitFromTemplate] Insert failed:', error);
+      console.error('[DEBUG-b7e3] Insert failed:', error.message, 'details:', error.details, 'hint:', error.hint, 'row:', JSON.stringify(row));
       return false;
     }
 
@@ -384,14 +382,14 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     if (updates.currentFormation !== undefined) dbUpdates.current_formation = updates.currentFormation;
     if (updates.aggressiveness !== undefined) dbUpdates.aggressiveness = updates.aggressiveness;
     if (updates.baseMorale !== undefined) dbUpdates.base_morale = updates.baseMorale;
-    if (updates.currentMorale !== undefined) dbUpdates.current_morale = updates.currentMorale;
+    if (updates.currentMoraleModifier !== undefined) dbUpdates.current_morale_modifier = updates.currentMoraleModifier;
     if (updates.currentAc !== undefined) dbUpdates.current_ac = updates.currentAc;
     if (updates.baselineAc !== undefined) dbUpdates.baseline_ac = updates.baselineAc;
     if (updates.isRouting !== undefined) dbUpdates.is_routing = updates.isRouting;
     if (updates.weaponString !== undefined) dbUpdates.weapon_string = updates.weaponString;
     if (updates.hidden !== undefined) dbUpdates.hidden = updates.hidden;
     if (updates.unitTypeIconUrl !== undefined) dbUpdates.unit_type_icon_url = updates.unitTypeIconUrl;
-    if (updates.troopCount !== undefined) dbUpdates.troop_count = updates.troopCount;
+    if (updates.currentTroopCount !== undefined) dbUpdates.current_troop_count = updates.currentTroopCount;
     if (updates.maxTroopCount !== undefined) dbUpdates.max_troop_count = updates.maxTroopCount;
     if (updates.movementPointsAvailable !== undefined) dbUpdates.movement_points_available = updates.movementPointsAvailable;
     if (updates.actionsAvailable !== undefined) dbUpdates.actions_available = updates.actionsAvailable;
