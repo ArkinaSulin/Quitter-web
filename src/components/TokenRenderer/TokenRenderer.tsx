@@ -9,7 +9,7 @@ export interface TokenRendererProps {
   unitName: string;
   troopCount: number;
   maxTroopCount: number;
-  currentFormation: 'Loose' | 'Tight' | 'Scattered' | 'Phalanx' | 'Shield Wall' | 'Routed';
+  currentFormation: 'Open Order' | 'Close Order' | 'Scattered' | 'Phalanx' | 'Shield Wall' | 'Routed';
   team: Team;
   visualScale: number;
   sizeCategory: number;
@@ -129,6 +129,7 @@ export function TokenRenderer(props: TokenRendererProps) {
       currentUnitHp: currentUnitHp,
       maxUnitHp: maxUnitHp,
       isHero: isHero,
+      attachedToUnitId: null,
       currentFormation: currentFormation,
       aggressiveness: 3,
       baseMorale: baseMorale,

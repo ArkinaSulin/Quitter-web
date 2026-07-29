@@ -76,11 +76,11 @@ export function getFormationConfig(
   // Apply formation-specific dotsPerRow for both mounted and foot
   if (!isMounted || (effectiveFormation !== 'Scattered' && effectiveFormation !== 'Routed')) {
     switch (effectiveFormation) {
-      case 'Loose':
+      case 'Open Order':
         dotsPerRow = baseRows;
         rowSpacing = 2.0;
         break;
-      case 'Tight':
+      case 'Close Order':
         dotsPerRow = baseRows * 2;
         rowSpacing = 2.0;
         break;
@@ -118,6 +118,7 @@ export function getDotColor(team: Team | string | undefined): string {
   if (!team || !TEAM_COLORS[team as Team]) {
     return '#000000';
   }
+  if (team === 'violet' || team === 'orange') return '#000000';
   const bg = TEAM_COLORS[team as Team];
   const luminance = getLuminance(bg);
   return luminance > 0.6 ? '#000000' : '#FFFFFF';
@@ -232,10 +233,17 @@ export function generateDotPositions(
     const spacing = tokenWidth / (countInRow + 1);
     const y = startY + row * rowSpacing;
 
+    let staggerOffset = 0;
+    if (effectiveFormation === 'Phalanx' && !isMounted) {
+      if (row === 0) staggerOffset = -dotRadius;
+      else if (row === 1) staggerOffset = -dotRadius * 0.5;
+      else if (row === 3) staggerOffset = dotRadius * 0.5;
+    }
+
     for (let col = 0; col < countInRow; col++) {
       const i = startIdx + col;
       const isDead = i >= troopCount;
-      const x = spacing + col * spacing;
+      const x = spacing + col * spacing + staggerOffset;
       positions.push({ x, y, isDead });
     }
   }

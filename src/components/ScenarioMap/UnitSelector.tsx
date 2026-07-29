@@ -98,9 +98,9 @@ export function UnitSelector({ scenarioId, onUnitDragStart }: UnitSelectorProps)
               className="bg-gray-700 hover:bg-gray-600 rounded p-2 cursor-grab active:cursor-grabbing transition select-none border border-gray-600"
             >
               <div className="flex items-center gap-2">
-                {template.raceIconUrl && (
+                {(template.customImageUrl || template.raceIconUrl) && (
                   <img
-                    src={template.raceIconUrl}
+                    src={template.customImageUrl || template.raceIconUrl}
                     alt={template.raceName || 'Race'}
                     className="w-6 h-6 rounded object-contain flex-shrink-0"
                   />

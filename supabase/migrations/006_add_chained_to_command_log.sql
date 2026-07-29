@@ -1,0 +1,1 @@
+ALTER TABLE command_log ADD COLUMN chained BOOLEAN NOT NULL DEFAULT false;

@@ -95,9 +95,15 @@ export function useScenarios() {
 
   const deleteScenario = useCallback(async (scenarioId: string) => {
     if (!currentUser) throw new Error('Not logged in');
-    const scenario = scenarios.find(s => s.id === scenarioId);
-    if (!scenario) throw new Error('Scenario not found');
-    if (scenario.creatorId !== currentUser.id) {
+
+    // Verify ownership by querying DB directly (avoids stale local scenarios list)
+    const { data: scenario, error: fetchError } = await supabase
+      .from('scenarios')
+      .select('creator_id')
+      .eq('id', scenarioId)
+      .single();
+    if (fetchError || !scenario) throw new Error('Scenario not found');
+    if (scenario.creator_id !== currentUser.id) {
       throw new Error('You are not the creator of this scenario');
     }
 
@@ -143,7 +149,7 @@ export function useScenarios() {
 
     // 6. Refresh the list
     await fetchScenarios();
-  }, [currentUser, scenarios, fetchScenarios, unsubscribeFromPresence]);
+  }, [currentUser, fetchScenarios, unsubscribeFromPresence]);
 
   const joinScenario = useCallback(async (scenarioId: string, password?: string) => {
     if (!currentUser) throw new Error('Not logged in');
@@ -299,39 +305,50 @@ export function useScenarios() {
    */
   const updateScreenshot = useCallback(async (scenarioId: string, file: File) => {
     if (!currentUser) throw new Error('Not logged in');
-    const scenario = scenarios.find(s => s.id === scenarioId);
-    if (!scenario) throw new Error('Scenario not found');
-    if (scenario.creatorId !== currentUser.id) {
+
+    // Verify ownership by querying DB directly (avoids stale local scenarios list)
+    const { data: scenario, error: fetchError } = await supabase
+      .from('scenarios')
+      .select('creator_id')
+      .eq('id', scenarioId)
+      .single();
+    if (fetchError || !scenario) throw new Error('Scenario not found');
+    if (scenario.creator_id !== currentUser.id) {
       throw new Error('Only the creator can update the screenshot');
     }
 
     // Use deterministic filename
     const fileName = `scenario_${scenarioId}.png`;
+    const storageBucket = supabase.storage.from('scenario_screenshots');
 
-    // Upload the file with upsert (overwrite if exists)
-    const { error: uploadError } = await supabase.storage
-      .from('scenario_screenshots')
-      .upload(fileName, file, {
-        cacheControl: '3600',
-        upsert: true,
-      });
+    // Delete any existing screenshot first, then upload fresh
+    // (explicit delete+insert is more reliable than upsert with RLS)
+    const { error: deleteError } = await storageBucket.remove([fileName]);
+    if (deleteError) {
+      console.warn('[updateScreenshot] Could not delete existing screenshot:', deleteError.message);
+    }
+
+    const { error: uploadError } = await storageBucket.upload(fileName, file, {
+      cacheControl: '3600',
+    });
     if (uploadError) throw uploadError;
 
-    // Get the public URL
+    // Get the public URL with cache-busting timestamp
     const { data: urlData } = supabase.storage
       .from('scenario_screenshots')
       .getPublicUrl(fileName);
+    const cacheBustedUrl = `${urlData.publicUrl}?t=${Date.now()}`;
 
     // Update the scenario record with the URL
     const { error: updateError } = await supabase
       .from('scenarios')
-      .update({ screenshot_url: urlData.publicUrl, updated_at: new Date().toISOString() })
+      .update({ screenshot_url: cacheBustedUrl, updated_at: new Date().toISOString() })
       .eq('id', scenarioId);
     if (updateError) throw updateError;
 
-    // Refresh the list
+    // Refresh the local list
     await fetchScenarios();
-  }, [currentUser, scenarios, fetchScenarios]);
+  }, [currentUser, fetchScenarios]);
 
   const getMyRole = useCallback(async (scenarioId: string): Promise<string | null> => {
     if (!currentUser) return null;
@@ -352,6 +369,31 @@ export function useScenarios() {
     fetchScenarios();
   }, [fetchScenarios]);
 
+  const fetchScenarioMapData = useCallback(async (scenarioId: string): Promise<any | null> => {
+    const { data, error } = await supabase
+      .from('scenarios')
+      .select('map_data')
+      .eq('id', scenarioId)
+      .single();
+    if (error) {
+      console.error('Error fetching map data:', error);
+      return null;
+    }
+    return data?.map_data || null;
+  }, []);
+
+  const updateScenarioMapData = useCallback(async (scenarioId: string, mapData: any): Promise<boolean> => {
+    const { error } = await supabase
+      .from('scenarios')
+      .update({ map_data: mapData, updated_at: new Date().toISOString() })
+      .eq('id', scenarioId);
+    if (error) {
+      console.error('Error updating map data:', error);
+      return false;
+    }
+    return true;
+  }, []);
+
   return {
     scenarios,
     loading,
@@ -365,5 +407,7 @@ export function useScenarios() {
     subscribeToPresence,
     unsubscribeFromPresence,
     updateScreenshot,
+    fetchScenarioMapData,
+    updateScenarioMapData,
   };
 }

@@ -1,10 +1,19 @@
 // src/components/TokenRenderer/drawToken.ts
 import { Unit } from '@/types/gameProtocol';
 import { Team, TEAM_COLORS, TEAM_SHAPES, getDotColor, generateDotPositions, getFormationConfig } from './tokenUtils';
+import { ALLIANCE_COLORS, AllianceGroup } from '@/types/gameProtocol';
 
 const imageCache = new Map<string, HTMLImageElement>();
 
-function loadImage(url: string): Promise<HTMLImageElement> {
+const HERO_SQUARE_RATIOS: Record<number, number> = {
+  75: 0.375,
+  100: 1 / 2,
+  200: 4 / 6,
+  300: 5 / 6,
+  400: 1,
+};
+
+export function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     if (imageCache.has(url)) {
       const cached = imageCache.get(url);
@@ -24,6 +33,15 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
+function computeScatterSeed(unit: Unit, turnNumber: number): number {
+  const str = `${turnNumber}|${unit.hex.q},${unit.hex.r}|${unit.currentTroopCount}`;
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) + str.charCodeAt(i);
+  }
+  return hash >>> 0;
+}
+
 export interface DrawTokenOptions {
   unit: Unit;
   ctx: CanvasRenderingContext2D;
@@ -34,6 +52,9 @@ export interface DrawTokenOptions {
   zoom?: number;
   showDetails?: boolean;
   preloadedImages?: Map<string, HTMLImageElement>;
+  turnNumber?: number;
+  teamAlliances?: Record<string, AllianceGroup>;
+  isAttached?: boolean;
 }
 
 export async function drawToken(options: DrawTokenOptions): Promise<void> {
@@ -46,6 +67,7 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     zoom = 1,
     showDetails = true,
     preloadedImages,
+    turnNumber = 0,
   } = options;
 
   const team = unit.team || 'black';
@@ -60,7 +82,41 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
   const unitTypeIconUrl = unit.unitTypeIconUrl || '';
   const customImageUrl = unit.customImageUrl || '';
 
+  // ---- Preload hero image before rotation scope ----
+  let heroImage: HTMLImageElement | undefined;
+  if (unit.isHero) {
+    const imageUrl = customImageUrl || raceIconUrl;
+    if (imageUrl) {
+      if (preloadedImages?.has(imageUrl)) {
+        heroImage = preloadedImages.get(imageUrl);
+      } else if (imageCache.has(imageUrl)) {
+        heroImage = imageCache.get(imageUrl);
+      } else {
+        try { heroImage = await loadImage(imageUrl); } catch { /* ignore */ }
+      }
+    }
+  }
+
   ctx.save();
+
+  // ---- Facing rotation ----
+  if (unit.facing) {
+    const facingAngle = (unit.facing * Math.PI) / 3;
+    ctx.translate(x, y);
+    ctx.rotate(facingAngle);
+    ctx.translate(-x, -y);
+  }
+
+  try {
+
+  const alliance = (options.teamAlliances && options.teamAlliances[team]) || 'friendly';
+  const allianceColor = ALLIANCE_COLORS[alliance];
+
+  // ---- Hero square token ----
+  if (unit.isHero) {
+    drawHeroSquareToken(ctx, x, y, width, height, unit, heroImage, team, shape, allianceColor, options.isAttached || false);
+    return;
+  }
 
   // ---- Background rectangle ----
   ctx.beginPath();
@@ -74,57 +130,28 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
   ctx.lineTo(x - halfW, y - halfH + radius);
   ctx.quadraticCurveTo(x - halfW, y - halfH, x - halfW + radius, y - halfH);
   ctx.closePath();
-  ctx.fillStyle = teamColor + '40';
+  ctx.fillStyle = teamColor + 'BF';
   ctx.fill();
   ctx.strokeStyle = teamColor;
   ctx.lineWidth = 2;
   ctx.stroke();
 
+  // ---- Alliance ring ----
+  ctx.strokeStyle = allianceColor;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
   // ---- Team shape overlay ----
   const overlaySize = Math.min(width, height) * 0.7;
   const teamShapeOffsetX = overlaySize * 0.3;
-  drawTeamShape(ctx, x - teamShapeOffsetX, y - height / 6, overlaySize, shape, '#999999', 0.35);
-
-  // ---- Hero handling ----
-  if (unit.isHero) {
-    const imageUrl = customImageUrl || raceIconUrl;
-    const topAreaHeight = height * 0.667;
-    const padding = Math.min(width, height) * 0.05;
-    if (imageUrl) {
-      try {
-        let img: HTMLImageElement | undefined;
-        if (preloadedImages?.has(imageUrl)) {
-          img = preloadedImages.get(imageUrl);
-        } else {
-          img = await loadImage(imageUrl);
-        }
-        if (img) {
-          const imageSize = Math.min(width - padding * 2, topAreaHeight - padding * 2);
-          const ix = x - imageSize / 2;
-          const shapeCenterY = y - height / 6;
-          const iy = shapeCenterY - imageSize / 2;
-          ctx.drawImage(img, ix, iy, imageSize, imageSize);
-        } else {
-          drawRaceFallback(ctx, x, y, width, topAreaHeight);
-        }
-      } catch {
-        drawRaceFallback(ctx, x, y, width, topAreaHeight);
-      }
-    } else {
-      drawRaceFallback(ctx, x, y, width, topAreaHeight);
-    }
-    drawHeroHpBar(ctx, x, y, width, height, unit.currentUnitHp, unit.maxUnitHp);
-    drawName(ctx, unit.unitName, x, y, width, height, team, false);
-    ctx.restore();
-    return;
-  }
+  drawTeamShape(ctx, x - teamShapeOffsetX, y - height / 6, overlaySize, shape, '#999999', getTeamShapeAlpha(team));
 
   // ---- Normal unit ----
   const troopCount = Math.min(unit.currentTroopCount ?? 10, 200);
   const maxTroopCount = Math.min(unit.maxTroopCount || 10, 200);
   const visualScale = unit.visualScale || 100;
   const sizeCategory = unit.sizeCategory || 100;
-  const formation = unit.currentFormation || 'Tight';
+  const formation = unit.currentFormation || 'Close Order';
   const isRouted = unit.isRouting || false;
   const isMounted = !!unit.mountId;
 
@@ -148,29 +175,26 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     height,
     dotRadius,
     sizeCategory,
-    42
+    computeScatterSeed(unit, turnNumber)
   );
 
   // ---- Phalanx pikes (only if not mounted and formation is actually Phalanx) ----
   if (formation === 'Phalanx' && !isRouted && !isMounted) {
-    const topEdge = y - height / 2;
-    const secondRankTop = y - height / 2 + 0.5 * dotRadius;
-    const maxRows = Math.min(2, Math.ceil(positions.length / dotsPerRow));
-    for (let row = 0; row < maxRows; row++) {
+    const rows = Math.ceil(positions.length / dotsPerRow);
+    const pikeRows = Math.min(3, rows);
+    for (let row = 0; row < pikeRows; row++) {
       const startIdx = row * dotsPerRow;
       const endIdx = Math.min((row + 1) * dotsPerRow, positions.length);
-      const offsetX = (row + 1) * 0.5 * dotRadius;
-      const endY = row === 0 ? topEdge : secondRankTop;
       for (let i = startIdx; i < endIdx; i++) {
         const pos = positions[i];
         if (!pos.isDead) {
-          const px = x - width/2 + pos.x + offsetX;
+          const px = x - width/2 + pos.x;
           const py = y - height/2 + pos.y;
           ctx.beginPath();
-          ctx.moveTo(px, py);
-          ctx.lineTo(px, endY);
+          ctx.moveTo(px + dotRadius, py + dotRadius);
+          ctx.lineTo(px + dotRadius, py + dotRadius - dotRadius * 8);
           ctx.strokeStyle = dotColor;
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = 1;
           ctx.stroke();
         }
       }
@@ -186,11 +210,15 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
         const sy = y - height/2 + pos.y - dotRadius * 2.5;
         const shieldRadius = dotRadius * 1.3;
         const shieldOffsetY = dotRadius * 0.5;
+        ctx.save();
+        ctx.translate(sx, sy + dotRadius);
+        ctx.rotate(-Math.PI / 18);
         ctx.beginPath();
-        ctx.ellipse(sx, sy + dotRadius, shieldRadius, shieldOffsetY, 0, Math.PI, 0, false);
+        ctx.ellipse(0, 0, shieldRadius, shieldOffsetY, 0, Math.PI, 0, false);
         ctx.strokeStyle = dotColor;
         ctx.lineWidth = 2;
         ctx.stroke();
+        ctx.restore();
       }
     }
   }
@@ -215,7 +243,7 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
       if (isDead) {
         ctx.strokeStyle = dotColor;
         ctx.lineWidth = 1;
-        ctx.setLineDash([2, 3]);
+        ctx.setLineDash([1, 2]);
         ctx.stroke();
         ctx.setLineDash([]);
       } else {
@@ -229,7 +257,7 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
       if (isDead) {
         ctx.strokeStyle = dotColor;
         ctx.lineWidth = 1;
-        ctx.setLineDash([2, 3]);
+        ctx.setLineDash([1, 1]);
         ctx.stroke();
         ctx.setLineDash([]);
       } else {
@@ -244,28 +272,33 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     const flagSize = Math.min(width, height) * 0.35;
     const flagX = x - flagSize / 2;
     const flagY = y - height * 0.667 / 2 + (height * 0.667 - flagSize) / 2;
-    ctx.save();
-    ctx.fillStyle = '#888888';
-    ctx.fillRect(flagX + flagSize * 0.1, flagY, 2, flagSize * 0.8);
-    ctx.shadowColor = 'rgba(0,0,0,0.3)';
-    ctx.shadowBlur = 4;
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.moveTo(flagX + flagSize * 0.15, flagY);
-    ctx.lineTo(flagX + flagSize * 0.9, flagY + flagSize * 0.35);
-    ctx.lineTo(flagX + flagSize * 0.15, flagY + flagSize * 0.7);
-    ctx.closePath();
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = '#333333';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(flagX + flagSize * 0.15, flagY);
-    ctx.lineTo(flagX + flagSize * 0.9, flagY + flagSize * 0.35);
-    ctx.lineTo(flagX + flagSize * 0.15, flagY + flagSize * 0.7);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.restore();
+    try {
+      const img = await loadImage('/images/whiteflag.png');
+      ctx.drawImage(img, flagX, flagY, flagSize, flagSize);
+    } catch {
+      ctx.save();
+      ctx.fillStyle = '#888888';
+      ctx.fillRect(flagX + flagSize * 0.1, flagY, 2, flagSize * 0.8);
+      ctx.shadowColor = 'rgba(0,0,0,0.3)';
+      ctx.shadowBlur = 4;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.moveTo(flagX + flagSize * 0.15, flagY);
+      ctx.lineTo(flagX + flagSize * 0.9, flagY + flagSize * 0.35);
+      ctx.lineTo(flagX + flagSize * 0.15, flagY + flagSize * 0.7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#333333';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(flagX + flagSize * 0.15, flagY);
+      ctx.lineTo(flagX + flagSize * 0.9, flagY + flagSize * 0.35);
+      ctx.lineTo(flagX + flagSize * 0.15, flagY + flagSize * 0.7);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // ---- Bottom info ----
@@ -289,7 +322,109 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
   // ---- Name ----
   drawName(ctx, unit.unitName, x, y, width, height, team, false);
 
-  ctx.restore();
+  } finally {
+    ctx.restore();
+  }
+}
+
+// ---- Hero square helpers ----
+function getHeroSquareSize(unitTokenHeight: number, sizeCategory: number): number {
+  const ratio = HERO_SQUARE_RATIOS[sizeCategory] || 0.5;
+  return unitTokenHeight * ratio;
+}
+
+function roundedSquarePath(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, radius: number) {
+  const half = size / 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - half + radius, cy - half);
+  ctx.lineTo(cx + half - radius, cy - half);
+  ctx.quadraticCurveTo(cx + half, cy - half, cx + half, cy - half + radius);
+  ctx.lineTo(cx + half, cy + half - radius);
+  ctx.quadraticCurveTo(cx + half, cy + half, cx + half - radius, cy + half);
+  ctx.lineTo(cx - half + radius, cy + half);
+  ctx.quadraticCurveTo(cx - half, cy + half, cx - half, cy + half - radius);
+  ctx.lineTo(cx - half, cy - half + radius);
+  ctx.quadraticCurveTo(cx - half, cy - half, cx - half + radius, cy - half);
+  ctx.closePath();
+}
+
+function drawHeroSquareHpBar(ctx: CanvasRenderingContext2D, cx: number, cy: number, squareSize: number, hp: number, maxHp: number) {
+  const hpAreaTop = cy - squareSize / 2 + squareSize * 0.75;
+  const hpAreaHeight = squareSize * 0.25;
+  const barWidth = squareSize * 0.9;
+  const barHeight = Math.max(3, hpAreaHeight * 0.45);
+  const barX = cx - barWidth / 2;
+  const barY = hpAreaTop + (hpAreaHeight - barHeight) / 2;
+  const hpPercent = Math.max(0, Math.min(1, hp / maxHp));
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(barX, barY, barWidth, barHeight);
+  ctx.fillStyle = '#FF4444';
+  ctx.fillRect(barX, barY, barWidth * hpPercent, barHeight);
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(barX, barY, barWidth, barHeight);
+}
+
+function drawHeroSquareToken(
+  ctx: CanvasRenderingContext2D,
+  cx: number, cy: number,
+  tokenWidth: number, tokenHeight: number,
+  unit: Unit,
+  heroImage: HTMLImageElement | undefined,
+  team: string,
+  shape: string,
+  allianceColor: string,
+  isAttached: boolean,
+) {
+  const teamColor = TEAM_COLORS[team as Team] || '#333333';
+  const heroSize = getHeroSquareSize(tokenHeight, unit.sizeCategory || 100);
+  const displaySize = isAttached ? heroSize / 2 : heroSize;
+  const halfSize = displaySize / 2;
+  const cornerRadius = Math.max(2, displaySize * 0.08);
+
+  roundedSquarePath(ctx, cx, cy, displaySize, cornerRadius);
+  ctx.fillStyle = teamColor + 'BF';
+  ctx.fill();
+  ctx.strokeStyle = teamColor;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.strokeStyle = allianceColor;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  const displayTop = cy - halfSize;
+  const displayHeight = displaySize * 0.75;
+  const displayCenterY = displayTop + displayHeight / 2;
+
+  const teamShapeX = cx - halfSize + displaySize * 0.35;
+  const teamShapeSize = displaySize * 0.8
+  drawTeamShape(ctx, teamShapeX, displayCenterY, teamShapeSize, shape, '#999999', getTeamShapeAlpha(team));
+
+  const iconX = cx + halfSize - displaySize * 0.35;
+  const iconSize = displaySize * 0.7;
+  if (heroImage) {
+    ctx.save();
+    ctx.drawImage(heroImage, iconX - iconSize / 2, displayCenterY - iconSize / 2, iconSize, iconSize);
+    ctx.restore();
+  } else {
+    const x = iconX - iconSize / 2;
+    const y = displayCenterY - iconSize / 2;
+    ctx.fillStyle = '#666';
+    ctx.fillRect(x, y, iconSize, iconSize);
+    ctx.fillStyle = '#FFF';
+    ctx.font = `${iconSize * 0.4}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('?', iconX, displayCenterY);
+  }
+
+  drawHeroSquareHpBar(ctx, cx, cy, displaySize, unit.currentUnitHp, unit.maxUnitHp);
+
+  if (!isAttached) {
+    drawName(ctx, unit.unitName, cx, cy, tokenWidth, tokenHeight, team, true);
+  }
 }
 
 // ---- Helper functions ----
@@ -349,6 +484,12 @@ function drawTeamShape(ctx: CanvasRenderingContext2D, cx: number, cy: number, si
   ctx.restore();
 }
 
+function getTeamShapeAlpha(team: string): number {
+  if (team === 'violet') return 1;
+  if (team === 'yellow' || team === 'orange') return 0.7;
+  return 0.35;
+}
+
 function drawRaceFallback(ctx: CanvasRenderingContext2D, cx: number, cy: number, width: number, topAreaHeight: number) {
   const iconSize = Math.min(width, topAreaHeight) * 0.3;
   const x = cx - iconSize / 2;
@@ -387,42 +528,12 @@ function drawName(ctx: CanvasRenderingContext2D, name: string, cx: number, cy: n
   ctx.save();
   ctx.shadowColor = 'rgba(0,0,0,0.8)';
   ctx.shadowBlur = 6;
-  ctx.fillStyle = getDotColor(team);
+  ctx.fillStyle = '#FFFFFF';
   ctx.font = `bold ${fontSize}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   const nameY = cy + height/2 - 1;
   ctx.fillText(testName, cx, nameY);
-  ctx.restore();
-}
-
-function drawHeroHpBar(ctx: CanvasRenderingContext2D, cx: number, cy: number, width: number, height: number, hp: number, maxHp: number) {
-  const infoY = cy + height / 6;
-  const infoHeight = height / 3;
-  const barWidth = width * 0.75;
-  const barHeight = infoHeight * 0.3;
-  const barX = cx - width * 0.5;
-  const barY = infoY + (infoHeight - barHeight) / 3;
-  const hpPercent = Math.max(0, Math.min(1, hp / maxHp));
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(barX, barY, barWidth, barHeight);
-  ctx.fillStyle = '#FF4444';
-  ctx.fillRect(barX + barWidth * (1 - hpPercent), barY, barWidth * hpPercent, barHeight);
-  ctx.strokeStyle = '#000';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(barX, barY, barWidth, barHeight);
-
-  const textX = cx + width * 0.46;
-  const textY = infoY + infoHeight * 0.25;
-  ctx.save();
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = `bold ${infoHeight * 0.35}px sans-serif`;
-  ctx.fillText(`${Math.floor(hp)}`, textX, textY);
-  ctx.fillStyle = '#AAAAAA';
-  ctx.font = `${infoHeight * 0.25}px sans-serif`;
-  ctx.fillText(`${Math.floor(maxHp)}`, textX, textY + infoHeight * 0.35);
   ctx.restore();
 }
 
@@ -459,21 +570,18 @@ function drawBottomInfo(
 
   const leftIcon = customImageUrl || raceIconUrl;
   if (leftIcon) {
-    const img = preloadedImages?.get(leftIcon);
+    const img = preloadedImages?.get(leftIcon) || imageCache.get(leftIcon);
     if (img) {
       ctx.drawImage(img, cx - width/2 + 4, iconY, iconSize, iconSize);
     } else {
-      loadImage(leftIcon).then(img => {
-        ctx.drawImage(img, cx - width/2 + 4, iconY, iconSize, iconSize);
-      }).catch(() => {
-        ctx.fillStyle = '#888';
-        ctx.fillRect(cx - width/2 + 4, iconY, iconSize, iconSize);
-        ctx.fillStyle = '#FFF';
-        ctx.font = `${iconSize * 0.5}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('?', cx - width/2 + 4 + iconSize/2, iconY + iconSize/2);
-      });
+      loadImage(leftIcon).catch(() => {});
+      ctx.fillStyle = '#888';
+      ctx.fillRect(cx - width/2 + 4, iconY, iconSize, iconSize);
+      ctx.fillStyle = '#FFF';
+      ctx.font = `${iconSize * 0.5}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', cx - width/2 + 4 + iconSize/2, iconY + iconSize/2);
     }
   } else {
     ctx.fillStyle = '#888';
@@ -486,21 +594,18 @@ function drawBottomInfo(
   }
 
   if (unitTypeIconUrl) {
-    const img = preloadedImages?.get(unitTypeIconUrl);
+    const img = preloadedImages?.get(unitTypeIconUrl) || imageCache.get(unitTypeIconUrl);
     if (img) {
       ctx.drawImage(img, cx + width/2 - iconSize - 4, iconY, iconSize, iconSize);
     } else {
-      loadImage(unitTypeIconUrl).then(img => {
-        ctx.drawImage(img, cx + width/2 - iconSize - 4, iconY, iconSize, iconSize);
-      }).catch(() => {
-        ctx.fillStyle = '#888';
-        ctx.fillRect(cx + width/2 - iconSize - 4, iconY, iconSize, iconSize);
-        ctx.fillStyle = '#FFF';
-        ctx.font = `${iconSize * 0.5}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('⚔️', cx + width/2 - iconSize/2 - 4, iconY + iconSize/2);
-      });
+      loadImage(unitTypeIconUrl).catch(() => {});
+      ctx.fillStyle = '#888';
+      ctx.fillRect(cx + width/2 - iconSize - 4, iconY, iconSize, iconSize);
+      ctx.fillStyle = '#FFF';
+      ctx.font = `${iconSize * 0.5}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('⚔️', cx + width/2 - iconSize/2 - 4, iconY + iconSize/2);
     }
   } else {
     ctx.fillStyle = '#888';
@@ -563,7 +668,7 @@ function drawHeart(ctx: CanvasRenderingContext2D, x: number, y: number, size: nu
   } else {
     ctx.strokeStyle = '#FF4444';
     ctx.lineWidth = 1;
-    ctx.setLineDash([2, 3]);
+    ctx.setLineDash([1, 1]);
     ctx.stroke();
     ctx.setLineDash([]);
   }

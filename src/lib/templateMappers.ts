@@ -1,5 +1,5 @@
 // src/lib/templateMappers.ts
-import { UnitTemplate } from '@/types/gameProtocol';
+import { UnitTemplate, getOrganizationLevel } from '@/types/gameProtocol';
 
 /**
  * Map a database row from unit_templates to a UnitTemplate object (camelCase).

@@ -6,6 +6,8 @@ Status: `ready-for-agent`
 
 The unit system had accumulated inconsistencies between TypeScript interfaces, the Supabase schema, and rendering logic. Field names mismatched between code and database (`troopCount` vs `currentTroopCount`, `currentMorale` vs `currentMoraleModifier`), causing insert failures at runtime. The drag-and-drop from the unit selector panel to the scenario map used a broken hybrid of native HTML5 `draggable` and custom mouse events that often failed. Lookup table types used camelCase that didn't match the snake_case Supabase columns, producing TypeScript errors. The mounted Scattered formation's circle layout was cramped with 3 uneven rings and a tiny inner radius. The Small size category (needed for future Small creatures like kobold riders) was missing. There were no tests to prevent regressions.
 
+Beyond the core unit rendering, the screenshot capture pipeline had two bugs: screenshots only uploaded on the first exit (subsequent exits left the old image unchanged) and the lobby card cropped the map with `object-cover`. The delete-scenario flow also failed to remove the screenshot from storage because `updateScreenshot` and `deleteScenario` depended on a stale local `scenarios` array. The canvas rendering had a ref-vs-state timing gap that left tokens invisible until the user panned or zoomed.
+
 ## Solution
 
 1. **Drag refactored to pure mouse events** — replaced `draggable`/`onDragStart` with `onMouseDown`/`mousemove`/`mouseup` on `window`, matching the existing token move pattern.
@@ -18,6 +20,13 @@ The unit system had accumulated inconsistencies between TypeScript interfaces, t
 8. **Shared cap function** — `getMaxTroopCount` extracted to a shared module used by both the hook and the UI.
 9. **Testing** — Vitest installed, 45 tests across 3 pure-function modules.
 10. **Dashed hollow rendering** — Dead infantry dots, dead mounted triangles, and hollow/reduced morale hearts use `lineWidth: 1` with `setLineDash([2, 3])` instead of solid strokes, making them visually distinct from filled elements at a distance.
+11. **Deterministic scatter seed** — Replaced `Math.random()` with a djb2 hash of turn number, hex coordinates, and current troop count. Scattered dots change only when a unit moves, takes casualties, or the turn advances — stable during pan/zoom/hover.
+12. **Ref/state timing fix** — `useHexGrid` passes `zoom`, `offsetX`, `offsetY` as parameters to `customDraw` instead of relying on refs synced via a late-running effect. Eliminated the "tokens invisible until zoom/pan" bug.
+13. **Screenshot reliability** — Each `drawToken` call wrapped in try/catch so one failing unit doesn't abort the capture. Removed `beforeunload` handler (fire-and-forget async can't complete before page teardown). Screenshot ownership checks query the DB directly instead of the local `scenarios` array.
+14. **Screenshot upload strategy** — Explicit `remove()` + `upload()` replaces `upsert: true` (which was incompatible with storage RLS). Public URL includes a cache-busting `?t=<timestamp>` query parameter.
+15. **Delete scenario ownership** — `deleteScenario` also queries the DB directly for ownership, matching the `updateScreenshot` pattern.
+16. **Storage RLS policies** — Three SQL policies on the `scenario_screenshots` bucket: INSERT, UPDATE, DELETE for authenticated users.
+17. **Lobby card display** — Changed `object-cover` to `object-contain` so the entire map is visible in the scenario card without cropping.
 
 ## User Stories
 
@@ -36,6 +45,11 @@ The unit system had accumulated inconsistencies between TypeScript interfaces, t
 13. As a GM, I want the troop count to auto-adjust to the maximum allowed when changing size or mount, so I don't have to manually recalculate valid troop ranges.
 14. As a GM, I want the mounted Scattered circle rings to fill from the outside first, so that casualties and missing troops leave the inner rings empty while the outer formation stays intact.
 15. As a GM, I want dead and reduced-morale tokens to use dashed lines instead of solid strokes, so that I can distinguish depleted units from full-strength ones at a glance.
+16. As a GM, I want scattered dots to stay in place during pan/zoom/hover, so the display is stable during normal map interaction.
+17. As a GM, I want tokens visible immediately when entering a scenario, without needing to zoom or pan first, so I can see the battle layout at a glance.
+18. As a GM, I want the scenario screenshot to update on every exit, so the lobby card always shows the latest unit positions.
+19. As a GM, I want the scenario screenshot deleted when I delete the scenario, so orphaned files don't accumulate in storage.
+20. As a GM, I want the lobby card to show the entire map without cropping, so I can see the full battle layout at a glance from the card.
 
 ## Implementation Decisions
 
@@ -48,9 +62,15 @@ The unit system had accumulated inconsistencies between TypeScript interfaces, t
 - **`armor_id` not copied** from template to `Unit` — armor's AC bonus is baked into `baselineAc` at template save time. The `units` table has no `armor_id` column.
 - **Dot radius**: `Math.min(width, height) * 0.025 * (visualScale / 100) * (sizeCategory / 100)` — tuned by the user for visual clarity.
 - **`Weapon.notes` removed** — column deleted from Supabase, all code references removed. Weapon CSV format now has 7 fields (name, attackBonus, targetType, damageDice, range, magicRadius, is_reach).
-- **Shared function module**: `getMaxTroopCount` lives in `src/lib/unitCaps.ts` and is imported by both `useSupabaseSync.ts` (map placement) and `UnitEditor.tsx` (UI clamping and auto-set).
+- **Shared function module**: `getMaxTroopCount` lives in a shared `unitCaps.ts` module imported by both the sync hook (map placement) and UI (clamping and auto-set).
 - **UnitEditor auto-set**: When size or mount changes, troop count auto-adjusts to the cap via `useEffect`. Initial blank form also starts at the cap for the race's size.
-- **Dashed hollow rendering**: Dead infantry dots, dead mounted triangles, and reduced-morale hearts all use `ctx.setLineDash([2, 3])` with `lineWidth: 1` and reset to `[]` after stroking. This replaces `lineWidth: 1.5` with solid strokes, making hollow/depleted elements visually distinct without changing the overall shape geometry.
+- **Dashed hollow rendering**: Dead infantry dots, dead mounted triangles, and reduced-morale hearts all use `ctx.setLineDash([2, 3])` with `lineWidth: 1` and reset to `[]` after stroking.
+- **Scatter seed**: djb2 hash of `"${turnNumber}|${hex.q},${hex.r}|${currentTroopCount}"`. `turnNumber` defaults to `0` (future hookup point when a turn system is added). No randomness — fully deterministic from game state. Non-scattered formations unaffected (grid-based positions).
+- **customDraw signature**: `(ctx, width, height, zoom, offsetX, offsetY)` — `useHexGrid` passes the current state values directly. No more ref syncing effects.
+- **Screenshot ownership**: Both `updateScreenshot` and `deleteScenario` query `creator_id` directly from the `scenarios` table via a fresh SELECT, eliminating dependency on the local `scenarios` array which could be stale on fresh mounts.
+- **Screenshot upload**: `storageBucket.remove([fileName])` (allowed to fail — file may not exist on first upload) followed by `storageBucket.upload(fileName, file)`. Public URL includes `?t=${Date.now()}` for cache busting.
+- **Supabase storage policies**: Three RLS policies on `scenario_screenshots` bucket (INSERT, UPDATE, DELETE) for authenticated users. The app-side ownership check (creator query) is the authorization boundary — storage policies are bucket-wide.
+- **Lobby card**: `object-contain` instead of `object-cover` on the scenario screenshot image.
 
 ## Testing Decisions
 
@@ -61,7 +81,7 @@ The unit system had accumulated inconsistencies between TypeScript interfaces, t
   - `templateMappers` (7 tests) — snake_case/camelCase conversion, field defaults, joined relations, save-row format, HP calculation (`troopHp × troopCount`), weekly cost calculation (`4 × level²`), roundtrip
   - `tokenUtils` (26 tests) — formation configs per size/mounted, dot colors per team, seeded random determinism, dot position counts and dead/alive flags, circle ring distributions (2-ring ≤20 mode, 3-ring >20 mode, 40 cap, partial fills), empty unit, Tight formation bounds
 - **Prior art**: No existing tests — these are the first tests in the repo.
-- **Not tested**: Canvas rendering (`drawToken.ts`), React components, drag-and-drop integration — would require browser automation.
+- **Not tested**: Canvas rendering (`drawToken.ts`), React components, drag-and-drop integration, screenshot capture pipeline — would require browser automation or Supabase test fixtures.
 
 ## Out of Scope
 
@@ -71,9 +91,13 @@ The unit system had accumulated inconsistencies between TypeScript interfaces, t
 - Web Worker integration tests
 - Per-race differentiation of troop caps (Small/Medium grouped together)
 - Troop count cap enforcement in the save handler (only at map-insert and UI)
+- Turn system integration (turnNumber seed parameter wired but defaults to 0 — no UI yet)
+- Screenshot capture on GM disconnect (no network to upload through)
 
 ## Further Notes
 
 - The `dotRadius` multiplier was tuned from `0.02` to `0.025` by the user for better visual appearance across all size categories.
-- Soft caps are a gameplay guidance, not a hard limit — if a future need arises for more troops, the cap values can be adjusted in one place (`src/lib/unitCaps.ts`).
+- Soft caps are a gameplay guidance, not a hard limit — if a future need arises for more troops, the cap values can be adjusted in one place (`getMaxTroopCount`).
 - The `setup-matt-pocock-skills` setup was run as part of this session — `docs/agents/` and `AGENTS.md` were created if not present.
+- Storage RLS policies were added via SQL in the Supabase SQL editor: INSERT, UPDATE, DELETE on `scenario_screenshots` for `authenticated` users. Without the UPDATE policy, subsequent screenshot uploads (which overwrite the same filename) silently fail.
+- The `beforeunload` event was removed as a screenshot trigger because it cannot reliably complete async work (fetch, Supabase upload) before the page tears down. Screenshots are now only taken via the explicit "Exit" button click path.

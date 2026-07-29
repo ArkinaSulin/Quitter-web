@@ -4,7 +4,7 @@
 **Project Name:** QuiTTER (Quick Terrestrial Tactical Encounter Rules)
 **Purpose:** A digital tabletop wargame / tactical RPG designed to complement D&D 5e, providing a simple yet historically- and logically-grounded mass combat system for DMs and their players.
 **Target Audience:** D&D DMs and players (expected ~50 users max). The system is designed to be intuitive for anyone familiar with D&D 5e, with special focus on tactical positioning, morale, and formation-based combat.
-**Current Phase:** Unit Editor is complete. Scenario Mode (ScenarioMap with token movement and game logic) is the next major milestone.
+**Current Phase:** Scenario Mode is operational — hex grid with tokens, drag-and-drop movement, morale system, formation changes, GM tools, alliance management, real-time multiplayer sync, and map editor for background image alignment. Combat resolution (AGR checks, damage, routing trigger) is the next milestone.
 
 ## 2. Tech Stack & Architecture
 | Layer | Technology | Purpose |
@@ -54,8 +54,8 @@ The game is designed around two psychological stats that interact dynamically:
 |-----------|---------------|----------|-------------|---------|
 | Shield Wall | ×0.5 | +3 | +1 | Attack/retaliate at 50% damage |
 | Phalanx | ×0.5 | +1 | +1 | Double damage vs FIRST enemies entering Kill Zone |
-| Tight line | ×1.0 | +1 | +1 | Standard |
-| Loose Line | ×1.0 | 0 | 0 | No bonuses or penalties |
+| Close Order | ×1.0 | +1 | +1 | Standard |
+| Open Order | ×1.0 | 0 | 0 | No bonuses or penalties |
 | Scattered | ×1.5 | 0 | -1 | No Zone of Control |
 | Routed | ×1.5 | 0 | 0 | No ZoC, must flee; can be rallied by Heroes |
 
@@ -102,6 +102,11 @@ Standard lookup tables with:
 - name (TEXT)
 - ac_bonus / movement_penalty / cost_gp (numeric)
 - icon_url (TEXT, optional)
+- formations also has four modifier columns, all consumed at runtime via `unitStats.ts`:
+  - `ac_modifier` (INTEGER) — added to `baselineAc` for effective AC
+  - `movement_modifier` (INTEGER) — added to `movementPoints` for effective max movement
+  - `attack_modifier` (INTEGER) — added to each weapon's `attackBonus` for effective attack
+  - `morale_modifier` (INTEGER, default 0) — added as a term in the effective morale formula (Routed: -2, Scattered: +1, Open Order: 0, Close Order: +1, Phalanx: +2, Shield Wall: +2)
 
 ### 4.5 unit_templates – The Core Table (Blueprint)
 | Column | Type | Description |
@@ -210,18 +215,24 @@ Stores actual on‑map units (copied from templates with per‑instance stats).
 src/
 ├── app/
 │   ├── layout.tsx                    # Root layout with MessageProvider
-│   └── page.tsx                      # Home page (Lobby → ScenarioMap)
+│   ├── page.tsx                      # Home page (Lobby → ScenarioMap)
+│   └── api/
+│       └── map-images/route.ts       # GET — lists map background images from /public/images/maps/
 │
 ├── components/
 │   ├── Lobby.tsx                     # Scenario management
 │   ├── UnitEditor.tsx                # Unit template editor (complete)
 │   ├── Toast.tsx                     # Toast notifications
+│   ├── MapEditorView.tsx             # Full-screen map editor with hex grid + background alignment panel
 │   │
 │   ├── ScenarioMap/                  # Scenario map components
 │   │   ├── ScenarioMap.tsx           # Main map component
-│   │   ├── LeftPanel.tsx             # Floating left panel with collapsible sections
+│   │   ├── LeftPanel.tsx             # Floating left panel — composes PanelsContainer + PanelSections
+│   │   ├── PanelsContainer.tsx       # Resizable, anchored container for panel sections
+│   │   ├── PanelSection.tsx          # Collapsible section (expanded↔compact button)
 │   │   ├── UnitSelector.tsx          # Searchable template list with drag
 │   │   ├── MessagesPanel.tsx         # Game log with auto-scroll
+│   │   ├── AlliancePanel.tsx         # GM-only team alliance assignment (3 boxes)
 │   │   ├── ContextMenu.tsx           # Right-click context menu
 │   │   └── UnitTooltip.tsx           # Hover tooltip with unit stats
 │   │
@@ -232,26 +243,32 @@ src/
 │       ├── tokenUtils.ts             # Colors, formations, dot generation
 │       └── useTokenRenderer.tsx      # Hook for preview
 │
+├── game/
+│   └── GameEngine.ts                 # Pure undo/redo stack + command execution
+│
 ├── contexts/
 │   └── MessageContext.tsx            # Message bus for game log
 │
 ├── hooks/
 │   ├── useHexGrid.ts                 # Hex grid rendering + mouse interactions
+│   ├── useGameEngine.ts              # React bridge to GameEngine + command_log persistence
 │   ├── useSupabaseSync.ts            # Unit state management with Realtime sync
-│   └── useScenarios.ts               # Scenario CRUD + presence
+│   ├── useScenarios.ts               # Scenario CRUD + presence
+│   └── useTeamAlliances.ts           # Team-to-alliance mapping per scenario
 │
 ├── lib/
 │   ├── supabaseClient.ts             # Supabase client setup
 │   ├── weaponParser.ts               # Weapon JSON serialization/deserialization
-│   └── templateMappers.ts            # Shared UnitTemplate ↔ Database mappers
+│   ├── templateMappers.ts            # Shared UnitTemplate ↔ Database mappers
+│   ├── unitMorale.ts                 # Morale calculation helpers: wounds, isolation, enemy threats, routing check
+│   ├── unitCombat.ts                 # Combat resolution: row capacity, AGR, attack rolls, damage, retaliation
+│   ├── unitStats.ts                  # Formation stat modifier computations (AC, movement, attack, morale)
 │
 ├── types/
-│   └── gameProtocol.ts               # Unit, Hex, Scenario, UnitTemplate types
+│   └── gameProtocol.ts               # Unit, Hex, Scenario, UnitTemplate types + alliance/formation constants
 │
-└── workers/
-    └── gameWorker.ts                 # Web Worker skeleton (not yet used)
 ```
-
+│
 ## 6. Key Components & Data Flow
 
 ### 6.1 Lobby (src/components/Lobby.tsx)
@@ -309,8 +326,15 @@ User → UnitEditor → Supabase (unit_templates, lookups)
   - Routed Flag: White flag icon when isRouting = true.
 - Morale Hearts: 2 rows of 5, side-touching, filled based on morale (non-hero only). Positioned in bottom 1/3 area, centered.
 - Hero Rendering: Custom image centered in top 2/3, HP bar (`currentUnitHp / maxUnitHp`, left 75%) + HP numbers (right 25%), name at bottom edge.
+- Facing Rotation: When `unit.facing` is set, the entire token rotates by `facing × π/3` radians around its center. Implemented via `ctx.save()` + `ctx.translate(center)` + `ctx.rotate(angle)` + `ctx.translate(-center)` at the top, with a single `ctx.restore()` in a `finally` block. The rotation scope is guaranteed synchronous — all `await` calls happen before `ctx.save()`, and all icon drawing uses synchronous cache lookup with fallback rectangles (no `.then()` callbacks).
+- Alliance Ring: A 4px-thick border ring in the alliance color (blue for friendly, orange-red for enemy, gray for neutral) is stroked on top of the team border.
 - Icon Priority: custom_image_url overrides race_icon_url.
 - Name Placement: Unit name (`unitName`) sits flush with the bottom edge (1px padding) under the morale hearts.
+
+**Async Rendering Pattern:**
+- Hero image is preloaded before `ctx.save()`: checks `preloadedImages`, then `imageCache`, then `await loadImage()`. The loaded image is stored in a local `heroImage` variable; the hero path inside the rotation scope uses it synchronously with zero `await` calls.
+- Bottom-info icons (race/weapon-type) check `preloadedImages?.get(url) || imageCache.get(url)` synchronously. If uncached, a fallback rectangle is drawn and `loadImage(url)` is fired purely to warm the module-level cache for the next redraw. No `.then()` callbacks draw to the canvas.
+- The `loadImage` function (module-level, with in-memory `imageCache`) is exported for screenshot preloading from `ScenarioMap.tsx`.
 
 **Key Function:**
 ```
@@ -323,16 +347,18 @@ const x = spacing + col * spacing; // perfect centering
 **Purpose:** Render the game map with floating UI panels.
 **UI Layout:**
 - Top Bar: Title "Scenario Map - {DM/Player}" + Exit Session button (top-right).
-- Floating Left Panel: Positioned under top bar, contains:
-  - Unit Selector (collapsible) – Searchable list of templates with drag-to-place.
-  - Messages Panel (collapsible) – Real-time game log with scroll.
+- Floating Left Panel: Positioned under top bar, uses the PanelsContainer framework (see §6.11). Contains collapsible sections:
+  - Alliances (GM-only) – Drag-and-drop team alliance assignment (3 boxes: Friendly, Enemy, Neutral).
+  - Unit Selector (GM-only) – Searchable template list with drag-to-place.
+  - Messages – Real-time game log with auto-scroll.
 - Canvas: Full map area with hex grid and tokens.
 - Debug Panel: Lower-right corner (hover coords, selected hex, unit count).
 
 **Panel Behavior:**
-- Both sections independently collapsible (▶/▼ toggle).
-- When one section collapses, the other expands to fill available space.
-- When both collapsed, panel shrinks to minimal width (~48px) showing only toggle icons.
+- Each section independently collapsible (toggle header ↔ compact button).
+- When one section collapses, the others expand to fill remaining space equally.
+- When all sections collapsed, panel shrinks to a small stack of buttons (label abbreviations).
+- Panel is anchored at top-left; bottom and right edges are draggable to resize height/width.
 
 **Map Interaction:**
 - Left-click: Select hex.
@@ -341,9 +367,17 @@ const x = spacing + col * spacing; // perfect centering
 - Right-click on unit: Context menu.
 - Scroll wheel: Zoom (centered on mouse position).
 
+**Token Rendering (customDraw):**
+- The `customDraw` callback is an `async` function that iterates over all units and `await`s each `drawToken()` call sequentially. This guarantees one unit's rotation scope (`ctx.save()`→drawing→`ctx.restore()`) completes before the next unit begins, preventing transform leaks.
+- The screenshot capture path preloads all unique image URLs into the module cache via `Promise.all(loadImage(url))` before the draw loop, ensuring every image is rendered on the first capture attempt.
+
 **Context Menu:**
-- Rotate Left/Right: Changes unit facing.
-- Formations: Only shows formations available in formation_availability.
+- Rotate Left/Right: Changes unit facing. Hidden for hero units (heroes have no facing per game rules).
+- Formations: Only shows formations available in formation_availability. Hidden for hero units (heroes have no formation mechanics). Options are filtered by organization level:
+  - Target org level < current org level: always selectable (downward change, any amount).
+  - Target org level = current org level: already selected, disabled.
+  - Target org level = current org level + 1: selectable (upward by +1 per action).
+  - Target org level > current org level + 1: greyed out / disabled.
 - Weapons: Lists all weapons from weapon_string.
 - Team Assignment (GM only): Any of 6 teams.
 - Hide/Unhide (GM only): Toggle visibility.
@@ -352,7 +386,7 @@ const x = spacing + col * spacing; // perfect centering
 **Token Placement:**
 - Drag template from Unit Selector panel onto map hex.
 - Default team: 'black' (DM/monster side).
-- Default formation: 'Loose' if available, otherwise 'Scattered'.
+- Default formation: 'Open Order' if available, otherwise 'Scattered'.
 
 **Data Flow:**
 ```
@@ -377,8 +411,8 @@ clearUnits()                                        // Remove all units from sce
 **Default Formation Logic:**
 ```
 let defaultFormation = 'Scattered';
-if (template.formation_availability?.includes('Loose')) {
-  defaultFormation = 'Loose';
+  if (template.formation_availability?.includes('Open Order')) {
+    defaultFormation = 'Open Order';
 }
 ```
 
@@ -408,6 +442,62 @@ if (template.formation_availability?.includes('Loose')) {
 - `mapTemplateToRow(template: UnitTemplate)` – Converts camelCase TypeScript object to snake_case database row.
 - Usage: Shared between UnitEditor and UnitSelector to ensure consistent field mapping.
 
+### 6.9 Game Engine (src/game/GameEngine.ts)
+**Purpose:** Pure TypeScript class for action execution and undo stack management.
+
+- `execute(action, state)` — Apply action to state, push entry to stack.
+- `undo()` — Pop top entry, revert state via stored deltas.
+- `canUndo()`, `peekUndo()` — Introspection for UI.
+- Stack capped at 50 entries.
+- Each entry stores `{ actionType, delta: { field, from, to }[] }` for rewind (not counter-action).
+- Unit DELETE is reversible: stores `{ field: 'hidden', from: false, to: true }` so undo restores visibility.
+
+### 6.10 Game Engine Bridge (src/hooks/useGameEngine.ts)
+**Purpose:** React hook bridging GameEngine to Supabase persistence and UI.
+
+- Wraps `GameEngine` execute/undo with `command_log` DB inserts (RLS-protected).
+- Convenience methods: `rotateUnit`, `changeFormation`, `assignTeam`, `toggleHide`, `placeUnit`, `moveUnitRecorded`.
+- `undo(scenarioId)` — rewind by permission:
+  - Player can undo their own top-of-stack entry.
+  - GM can undo any entry (notified via toast).
+- Persists action + deltas to `command_log` table; soft-deletes on undo (`deleted_at`).
+- Messages pushed through MessageContext on success/failure.
+
+### 6.11 Panel Framework (src/components/ScenarioMap/)
+
+**Purpose:** A resizable, anchored panel container that can host any number of collapsible sections. Designed as a "put more panels in it" framework — new sections are added declaratively in `LeftPanel.tsx`.
+
+**Architecture:**
+
+| Component | Role |
+|-----------|------|
+| `PanelsContainer.tsx` | Outer container — anchored top-left, resizable via drag handles on right edge, bottom edge, and bottom-right corner. Manages width/height state with configurable min/max constraints (default: 320×500, min: 200×200). Collapses to `width: auto` when all sections are closed. |
+| `PanelSection.tsx` | One collapsible section. Expanded state shows a header bar (▼ + label) and a scrollable content area. Collapsed state shows a compact button (40×40px) with a short text label. Uses `flex-1` / `flex-none` to distribute space. |
+| `LeftPanel.tsx` | Orchestrator — defines the panel list declaratively, filters by role (`isGM`), manages `expanded` state per panel. Currently hosts: Alliances (GM), Unit Selector (GM), Messages (all). |
+
+**Adding a new panel:**
+In `LeftPanel.tsx`, add an entry to the `panels` array:
+```tsx
+{
+  id: 'my-panel',
+  label: 'My Panel',
+  shortLabel: 'MP',
+  requiresGM: true,       // false = visible to all
+  content: <MyComponent />,
+}
+```
+The panel automatically gets collapsible behavior, resize support, and role gating. No changes to `PanelsContainer` or `PanelSection` needed.
+
+**Resize behavior:**
+- Right edge: horizontal drag handle — changes width (min 200px).
+- Bottom edge: vertical drag handle — changes height (min 200px, max viewport - 100px).
+- Bottom-right corner: 45° triangle — drags both axes simultaneously.
+- Handles highlight on hover (yellow/50). State is reset on each drag (no persistence).
+
+**Role gating:**
+- Panels with `requiresGM: true` are only rendered when `isGM` is true.
+- `isGM` currently checks `role === 'GM'` from `scenario_participants`. No "Assist GM" role exists yet — to add it, broaden the check in `ScenarioMap.tsx:595` (e.g., `role === 'GM' || role === 'ASSISTANT_DM'`).
+
 ## 7. Core Game Mechanics (Design Document)
 
 ### 7.1 Unit Facing (Vertex-based)
@@ -427,41 +517,89 @@ Units face a vertex (pointy corner), not an edge.
 - Flanks: The remaining 2 hexes (left/right).
 - Special Cases: Heroes and Scattered formations have NO facing.
 
-### 7.2 Combat Resolution
-1. Attack: Roll AGR to attack. Fail = Brace.
-2. Damage: Resolve melee damage.
-3. Retaliation: If attacker is in target's kill zone or flank:
-   - Defender retaliates (100% if kill zone, 50% if flank) if they have Reach and attacker doesn't.
-   - Else, attacker strikes first, then defender retaliates.
-4. Rear Attack: Attacker resolves damage. The defender does not retaliate.
-5. Threat Calculation: Total Threat = sum of all attacker's position bonuses + attacker's level bonus + defender's wounds (reduced current MOR) + defender's isolation penalty.
-6. Morale Check: If Threat ≥ Morale Capacity → Rout instantly.
+### 7.2 Combat Resolution (Implemented)
+
+Combat is resolved via pure functions in `unitCombat.ts`. The flow:
+
+**Step 1 — Combat Position:** Determined from attacker hex, defender hex, and defender facing.
+- Front (Kill Zone): attacker in defender's front 2 hexes → full retaliation
+- Flank: attacker on either side hex → half retaliation
+- Rear: attacker behind defender → no AGR check, no retaliation
+
+**Step 2 — AGR Check:** Roll D10 ≤ attacker's `aggressiveness`. Fails → no attack (action wasted). Skipped for rear attacks.
+
+**Step 3 — First Strike:** The one with Reach attacks first. If both have or both lack Reach, attacker attacks first.
+
+**Step 4 — Attack Rolls:** Number of attacks = `rowCapacity × numberOfAttacks`. Row capacity based on size category (Medium=10, Large=5, Huge=2, Gargantuan=1). Each attack:
+- Roll D20 (1=auto-miss, 20=auto-hit + double damage)
+- Hit if `D20 + weapon.attackBonus + formation.attack_modifier + 8 ≥ target.currentAc`
+- Damage = weapon damage dice roll, doubled on crit
+- Capped at target's `troopHp` (one troop max per hit)
+- Damage subtracted from `currentUnitHp`; troop count = `ceil(newHp / troopHp)`
+
+**Step 5 — Morale Check:** After first strike, the target checks effective morale using `computeEffectiveMoraleModifier` (wounds at new HP, isolation, enemy threats, formation). If `baseMorale + currentMoraleModifier + effectiveMod ≤ 0` → routs with chained ROUT cascade to adjacent non-hero units.
+
+**Step 6 — Retaliation:** If target didn't rout and position ≠ rear:
+- Front: full attacks (`defender.rowCapacity × defender.numberOfAttacks`)
+- Flank: half attacks (rounded down)
+- No AGR check needed (reflexive response)
+
+**Step 7 — Attacker Morale Check:** After retaliation, attacker checks effective morale (same formula). If broken → routs with cascade.
+
+**Undo:** The entire ATTACK command stores damage deltas (`currentUnitHp`, `currentTroopCount`) as sub-steps, with any ROUT entries chained for batch undo.
 
 ### 7.3 Aggressiveness (AGR)
 - Roll d10 at start of turn.
 - To attack: roll ≤ AGR.
-- Failure: Hesitate (cannot attack, but Brace for +1 AC).
+- Failure: Hesitate (cannot attack this action).
 - Level Modifier: Higher-level enemies shake attacker's nerves; modifier = floor(Defender Level ÷ Attacker Level) - 1.
   - Higher Attacker: +1 bonus (look down at target).
   - Defender equal or less than double Attacker level: 0 penalty (fair fight).
   - Defender equal or more than double Attacker level: +[# of times] penalty (intimidated).
 - Minimum: AGR = 1.
 
-### 7.4 Morale Capacity (MOR) & Threat
-**Threat Sources:**
-| Source | Threat |
-|--------|--------|
-| Front/Side Contact | 1 |
-| Rear Contact | 2 |
-| Level Bonus | +0 (1-4), +1 (5-9), +2 (10-14), +3 (15-19), +4 (20+) |
-| Wounds | -1 MOR per 10% HP lost |
-| Isolation | -1 MOR if not adjacent to friendly unit |
+> **(Optional rule — Brace on Hesitation):** The original design gave a unit that failed AGR +1 AC (Brace) as a consolation. This creates a timing dilemma: how long does the brace last? Until the unit's next turn? Until it attacks again? Both answers cause problems — a braced unit that attacks again immediately gets no defensive benefit (making the mechanic pointless), while a brace that lasts until next turn gives an unearned defensive bonus. The current implementation omits brace entirely. Groups that want it should define a clear expiration trigger (e.g., "lasts until the unit's next activation").
 
-**Breaking Point:**
-- Threat ≥ current MOR → unit breaks instantly.
-- Drops to Scattered formation.
-- Moves 1 hex away from the biggest threat.
-- One movement per turn.
+### 7.4 Morale Capacity (MOR) & Effective Morale
+
+**Effective Morale Formula:**
+```
+effectiveMorale = baseMorale + currentMoraleModifier + situationalModifier
+```
+
+**Situational Modifier (computed on the fly, never persisted):**
+```
+situationalModifier = wounds + isolatedPenalty - enemyThreats + formationMoraleModifier
+```
+
+| Factor | Calculation | Range |
+|--------|------------|-------|
+| Wounds | `-Math.floor((1 - currentHp/maxHp) * 10)` | 0 to -10 |
+| Isolation | `-1` if no same-alliance unit in 6 adjacent hexes | 0 or -1 |
+| Enemy front/side threats | Sum of `threatFromLevel(enemy.level)` for enemies in front or side hexes | 0 to -N |
+| Enemy rear threats | Sum of `threatFromLevel(enemy.level) + 1` for enemies in rear hexes | 0 to -N |
+| Formation morale modifier | `formations.morale_modifier` looked up by `currentFormation` name | varies (Routed -2, Scattered +1, Close Order +1, Phalanx +2, Shield Wall +2) |
+
+**Threat from Level:**
+| Level Range | Threat Value |
+|------------|-------------|
+| 1–4 | 1 |
+| 5–10 | 2 |
+| 11–15 | 3 |
+| 16–19 | 4 |
+| 20 | 5 |
+
+**Morale Display:**
+- Tooltip shows MOR line: `effectiveMorale = baseMorale + modifier` with modifier color-coded. Includes "(incl. formation +N)" when formation modifier is non-zero.
+- Morale factors section lists each factor (wounds, isolation, enemies, formation) individually. Formation line only shown when non-zero, color-coded green (positive) or red (negative).
+- Token hearts: `totalHearts = min(10, max(baseMorale, effectiveMorale))`. Hearts up to `effectiveMorale` are filled (red up to baseMorale, gold above). Remaining hearts are hollow (dashed outline with `[1,1]` pattern).
+- Heroes do not display morale or morale factors in their tooltip and are immune to routing.
+
+**Routing Trigger — Cascade:**
+- After a MOVE action, a synthetic post-move state is built (mover placed at target hex, all other units unchanged). The mover PLUS every non-hero, non-routing unit **adjacent** to the target hex is evaluated for routing.
+- For each candidate whose `effectiveMorale ≤ 0`, a separate `ROUT` entry is recorded with `chained: true`, linking each ROUT to the preceding MOVE. All ROUT entries spawned by one MOVE are `chained=true`, so Ctrl+Z unwinds the entire cascade (MOVE → ROUT(A) → ROUT(B)) as one batch.
+- Each ROUT sets `isRouting=true` and `currentFormation='Routed'`.
+- Heroes and already-routing units skip evaluation entirely.
 
 ### 7.5 Routing & Pursuit
 **Routing:**
@@ -477,9 +615,54 @@ Units face a vertex (pointy corner), not an edge.
 - When user starts dragging a unit, broadcast lock_unit via Supabase Realtime.
 - Other clients disable drag events on that unit until lock released (on drop or timeout).
 
-### 7.7 Undo + Game Log
-- Undo: Snapshot of entire game state before each action.
-- Game Log: Text box in Messages Panel logging all events.
+### 7.7 Undo/Redo System (Command Log)
+Undo is "rewind" not "counter-action":
+
+- Each action stores deltas: `[{ field, from, to }]` describing what changed.
+- Undo pops entries from the stack and replays `from` values to revert; entries pushed to redo stack.
+- Redo pops from redo stack, re-applies `to` values, restores DB entries (removes `deleted_at`).
+- Stack size: 50 entries max (oldest dropped). Separate redo stack also 50 max.
+- Persistence: command_log table in Supabase (`scenario_id, user_id, action_type, delta, removed_by, deleted_at`).
+- RLS: insert own action, select scenario-scoped, update own entry or any GM entry.
+- Action types: `MOVE | ROTATE | FORMATION | TEAM | HIDE | TOGGLE_HIDE | PLACE | ATTACK | DAMAGE | HEAL | ROUT | DELETE | ALLIANCE`.
+
+**Chained undo:** A `chained` boolean on `CommandEntry` (and `command_log.chained` column) marks an entry as a direct consequence of the entry before it. When undoing, the engine collects all consecutive `chained=true` entries plus their root cause (`chained=false`) from the top of the stack and returns the entire chain as a batch. The batch is soft-deleted atomically. Permission is checked against every entry in the chain (player can only undo through their own entries; GM bypasses).
+
+Example: `MOVE(chained=false) → ROUT(Troop A, chained=true) → ROUT(Troop B, chained=true)` — one undo unwinds all three entries (cascade from a single MOVE spawning multiple routs). If no routing occurs, `MOVE` is recorded with no chain. `MOVE(chained=false) → MOVE(chained=false) → ROUT(chained=true)` — first undo unwinds ROUT+last MOVE; second undo unwinds the first MOVE alone.
+
+- `ALLIANCE` actions: sub-steps store `{ field: 'alliance_group', from, to }`. Undo/redo route through `updateAlliance` callback instead of `updateUnit`, updating both local state and the `team_alliances` DB table.
+- Deleting a unit sets `{ field: 'isDeleted', from: false, to: true }` so undo restores the unit (no DB DELETE).
+- Undo button in ScenarioMap top bar shows "Undo (N)" when chain length > 1 (amber when undo available, gray when disabled). Ctrl+Z/Ctrl+Y for keyboard.
+- Keyboard shortcuts: Q/E rotate selected non-hero unit, Ctrl+Z undo, Ctrl+Y redo.
+
+### 7.8 Alliance Groups
+Teams are assigned to alliance groups per scenario (GM-only):
+
+| Group | Color | Behavior |
+|-------|-------|----------|
+| Friendly | Blue (`#0072B2`) | Same side — no threat generated |
+| Enemy | Orange-red (`#D55E00`) | DM-controlled — generates threat to all friendly units |
+| Neutral | Light gray (`#E0E0E0`) | Does not generate threat but receives threat from any group |
+
+- GM assigns teams via AlliancePanel (3 group boxes — Friendly, Enemy, Neutral — with draggable team pills).
+- Each token gets a thick border ring in the alliance color.
+- Alliance changes are recorded in the command log as `ALLIANCE` action type and are fully undoable/redoable via Ctrl+Z/Ctrl+Y. Undo restores the previous alliance group.
+- Storage: `team_alliances` table (scenario_id, team, alliance_group).
+
+### 7.9 Formation Stat Modifiers
+
+The `formations` lookup table has four modifier columns. All are applied on-the-fly (never persisted to unit DB fields):
+
+| Modifier | Computation | Display |
+|----------|-------------|---------|
+| `ac_modifier` | `effectiveAc = baselineAc + formation.ac_modifier` | Tooltip: "20 = 18 + 2 (Shield Wall)" |
+| `movement_modifier` | `effectiveMaxMovement = max(1, movementPoints + formation.movement_modifier)` | Tooltip shows `available / effectiveMax` with breakdown |
+| `attack_modifier` | `effectiveAttackBonus = weapon.attackBonus + formation.attack_modifier` | Tooltip weapon list: "+5 atk [base +3, formation +2]" |
+| `morale_modifier` | Added as term in `computeEffectiveMoraleModifier` | Tooltip morale factors: "formation +1" |
+
+**Utility module** (`unitStats.ts`): `computeEffectiveAc`, `computeEffectiveMovement`, `computeEffectiveAttackBonus`, `getFormationModifier`.
+
+**Data flow**: Formations are fetched on mount in `ScenarioMap` as `Record<string, Formation>` keyed by name. Each unit's current formation is looked up by `unit.currentFormation`. The modifiers are passed to `UnitTooltip` and the `customDraw` pipeline (for morale).
 
 ## 8. Role Permissions (RBAC)
 | Role | Abilities |
@@ -493,8 +676,8 @@ Units face a vertex (pointy corner), not an edge.
 - Role enum in scenario_participants table.
 - Creator vs GM: Creator is not necessarily GM. First player to join defaults to GM.
 
-## 9. Web Worker Protocol
-All communication follows `{ type, payload }` format.
+## 9. (Legacy) Web Worker Protocol
+*The web worker was removed in favor of direct GameEngine execution. This section is kept for reference.*
 
 **Example Messages:**
 ```
@@ -504,17 +687,8 @@ All communication follows `{ type, payload }` format.
 { type: 'UNDO', payload: {} }
 ```
 
-**Worker Response:**
-```
-{ type: 'STATE_UPDATED', payload: { ... } }
-{ type: 'ERROR', error: '...' }
-```
-
 ## 10. Data Safety Philosophy
-- Wrap all Web Worker calculations in try...catch – never crash the UI.
 - Use Supabase upsert to avoid primary-key conflicts.
-- Autosave full game state to IndexedDB before any Worker processes a turn.
-- On page load, restore from IndexedDB if available.
 
 ## 11. Screenshot System
 - Filename: `scenario_{id}.png` (deterministic, overwritten on each upload).
@@ -551,7 +725,7 @@ All communication follows `{ type, payload }` format.
 - Screenshot System (deterministic filenames, automatic cleanup)
 - Context Menu (rotate, formations filtered by availability, weapons, team assignment, hide, delete)
 - Mouse Interaction (left-click select, left-drag move/attack, middle-drag pan, scroll zoom)
-- Token Placement (drag from Unit Selector panel, default team: black, default formation: Loose/Scattered)
+- Token Placement (drag from Unit Selector panel, default team: black, default formation: Open Order/Scattered)
 - Shared Mappers (templateMappers.ts for consistent UnitTemplate mapping)
 - Database Schema Refactor (renamed fields, new fields, consistent naming across UnitTemplate and Unit)
 - Pure mouse-tracking drag: Unit selector drag replaced native HTML5 `draggable` with custom `mousedown`/`mousemove`/`mouseup` matching existing token move pattern in `useHexGrid`
@@ -561,22 +735,41 @@ All communication follows `{ type, payload }` format.
 - Token rendering improvements: Shield Wall shields use `ctx.ellipse` with separate X/Y radii for wider flatter shape; troop count `??` fallback so zero troops shows zero dots
 - Morale test slider in UnitEditor changed from percentage to modifier range `[-baseMorale, 10-baseMorale]`
 - Zero TypeScript errors outside pre-existing `next.config.ts`
+- Token rotation synced: all `await` calls moved before `ctx.save()`; all icon drawing uses synchronous cache lookup with fallback; `.then()` callbacks eliminated from canvas drawing
+- `customDraw` loop sequential: each `drawToken` is `await`ed, preventing rotation transform leaks between units
+- Screenshot image preload: all unique image URLs loaded into cache before the draw loop so screenshots render completely on first capture
+- Alliance undo: `ALLIANCE` action type added to GameEngine; `useGameEngine` branches on `step.type === 'ALLIANCE'` in execute/undo/redo, routing through `updateAlliance` callback; Alliance changes recorded in command_log and fully reversible
+- Alliance panel drag-and-drop: native HTML5 DnD replaces click-to-cycle; team pills draggable between Friendly/Enemy/Neutral boxes with visual highlight
+- Alliance button text: uses luminance-based `getDotColor()` for readable text on all team colors (black on yellow/violet/orange, white on blue/black/green)
+- Hero context menu reduced: Rotate and Formations options hidden for heroes; Q/E keyboard shortcuts skip hero units
+- Delete confirm deduplicated: removed redundant `confirm()` from ScenarioMap callback (single confirm in ContextMenu only)
+- Morale system: `computeEffectiveMoraleModifier` utility in `unitMorale.ts` — computes wounds, isolation, enemy threats by facing; tooltip shows MOR breakdown with all factors; token hearts reflect effective morale (hollow for reduced)
+- Token visual polish: unit names always white with dark shadow; team background at 75% opacity (`'BF'`); team shape alpha varies per team (violet 1.0, yellow/orange 0.7, others 0.35); violet/orange dot color black via explicit override; hollow hearts use `[1,1]` dash pattern
+- Map Editor (`MapEditorView.tsx`): full-screen hex grid with left-side control panel for background image alignment (image dropdown from `/api/map-images`, offset X/Y sliders, scale slider 0.1–10, manual Save button); wired into Lobby as GM-only per-scenario button
+- Canvas sizing fix: `useHexGrid` draw function reads `canvas.getBoundingClientRect()` instead of `parentElement?.getBoundingClientRect()`, so canvas correctly fills flex-allocated space alongside panels
+- Background image rendering: drawn in world-space at `(offsetX * zoom, offsetY * zoom)` with `naturalSize * scale * zoom` dimensions, stays locked to the grid at any zoom level
+- Panel framework: `PanelsContainer` + `PanelSection` declarative pattern for resizable, collapsible left panel; auto-collapse width/height when all sections closed; drag handles on right, bottom, and corner
+- UnitSelector custom image: prefers `template.customImageUrl` over `template.raceIconUrl`
+- Formation context menu restrictions: organization level filtering (+1 per action, any down allowed, unavailable options greyed out)
+- Routing cascade: after MOVE, evaluates mover + adjacent non-hero, non-routing units at target hex; each routing unit gets its own `ROUT` entry with `chained: true`; all entries from one MOVE form a single undo chain
+- Hero morale immunity: MOR line, Threat, and morale factors hidden in hero tooltip; routing check skips heroes
+- Formation modifiers propagation: all four formation modifier columns (`ac_modifier`, `movement_modifier`, `attack_modifier`, `morale_modifier`) now consumed at runtime via `unitStats.ts`. Effective AC, movement, attack bonus, and morale include formation modifiers.
+- Tooltip formation breakdowns: AC shows "base + formation", movement denominator is effective max, weapons show effective attack bonus with breakdown, morale factors include "formation" line.
+- Chained undo: `chained` boolean on `command_log` links causally related entries. `GameEngine` chain-aware undo/redo returns `CommandEntry[]`. UI shows "Undo (N)" for chain length. ROUT entries chain to their triggering MOVE.
+- Database migration `006_add_chained_to_command_log.sql` — adds `chained BOOLEAN NOT NULL DEFAULT false` column.
+- Combat system (`unitCombat.ts`): pure functions for row capacity, combat position, AGR check, reach-based first strike, attack rolls (D20 vs AC), damage capped at troopHp, retaliation (front full/flank half/rear none), morale routing cascade after each combat phase. All wired into `ScenarioMap.onAttack` as async execute with chained ROUT.
 
 ### 14.2 What's Next
-- Combat Resolution (AGR check, damage, Threat, routing, pursuit)
+- Weapon selection (attacker picks which weapon to use in combat)
 - Role Permissions (enforce RBAC in UI)
-- Formation Changes (on-the-fly via context menu)
 - Facing & Kill Zone (visual feedback)
 - Unit Locking (soft lock via Supabase Realtime)
-- Undo & Game Log (snapshots, events)
 - Hex Grid Extensibility (auto-expand)
-- Map Editor (button exists, not implemented)
 - Web Worker (skeleton only, not integrated)
 - Mobile Responsiveness (not a priority)
 - Troop count soft caps per size category (Medium 80, Large 20, Huge 6 – enforcement style pending)
 
 ### 14.3 Known Gaps
-- Map Editor: Button exists but does nothing.
 - Web Worker: Skeleton only; not integrated.
 - Mobile Responsiveness: Not a priority.
 - TokenRenderer flickering: Can be optimized with debounce.
@@ -640,8 +833,8 @@ await updateScreenshot(scenarioId, file); // upsert: true
 ### 15.6 Default Formation Logic
 ```
 let defaultFormation = 'Scattered';
-if (template.formation_availability?.includes('Loose')) {
-  defaultFormation = 'Loose';
+  if (template.formation_availability?.includes('Open Order')) {
+    defaultFormation = 'Open Order';
 }
 ```
 
@@ -723,7 +916,7 @@ export function mapTemplateToRow(template: UnitTemplate) {
 3.4 Units on the Map (Instances, placement)
   3.4.1 Dragging from Unit Selector panel
   3.4.2 Default team: Black (DM/monster side)
-  3.4.3 Default formation: Loose (or Scattered if unavailable)
+  3.4.3 Default formation: Open Order (or Scattered if unavailable)
 3.5 Screenshots (Automatic, manual upload)
 3.6 The Interface
   3.6.1 Top Bar (Title, role, Exit button)
@@ -790,14 +983,18 @@ A token is divided into:
 - Lower ⅓: Information area (icons, morale hearts, name)
 
 ### Background & Team Colors
-- The top ⅔ background is a lighter hue of its team color.
+- The token background fill is the team color at 75% opacity (`teamColor + 'BF'`). The full-opacity team color is used for the border stroke.
 - Team Colors: Blue (#0072B2), Yellow (#F0E442), Violet (#CC79A7), Black (#333333), Orange (#D55E00), Green (#009E73).
 - Chosen for colorblind-friendliness (red-green safe).
 
 ### Team Shape Overlay
-- A grey team shape overlay appears on top of the background.
+- A grey (`#999999`) team shape overlay appears on top of the background. Alpha varies per team via `getTeamShapeAlpha`: violet=1.0 (full opacity for color-blind visibility), yellow/orange=0.7, others=0.35.
 - Team Shapes: Circle, Triangle, Star, Square, Diamond, Cross.
 - For heroes, the shape is shifted to the left (30% offset) so it peeks out from behind the hero image.
+- Dot color (used for troop counters, status indicators): yellow returns black via luminance rule; violet and orange explicitly return black via override; all others follow the luminance formula.
+
+### Unit Name
+- Unit name is drawn along the bottom edge of the token in white (`#FFFFFF`) with a dark shadow (`rgba(0,0,0,0.8)`, 6px blur) for readability on any team background.
 
 ### Unit Token Variations
 
@@ -808,8 +1005,8 @@ Casualties are represented as hollow dots (circles) of the same size.
 
 | Formation | Medium (100%) | Large (200%) | Huge (300%) |
 |-----------|--------------|-------------|-------------|
-| Loose | 10 / 8 | 5 / 4 | 3 / 2 |
-| Tight | 20 / 4 | 10 / 2 | 6 / 1 |
+| Open Order | 10 / 8 | 5 / 4 | 3 / 2 |
+| Close Order | 20 / 4 | 10 / 2 | 6 / 1 |
 | Phalanx / Shield Wall | 20 / 4 | 10 / 2 | 6 / 1 |
 | Scattered | Random distribution, maintain distance | Random distribution, maintain distance | Random distribution, maintain distance |
 | Routed | Random distribution + white flag | Random distribution + white flag | Random distribution + white flag |
@@ -837,14 +1034,15 @@ Casualties are represented as hollow triangles.
 - No troop dots, no hearts, no formation effects.
 
 ### Lower ⅓ Information Area (All Non-Hero Units)
-- Left 25%: Racial portrait or custom image.
+- Left 25%: Racial portrait or custom image (custom overrides race).
 - Right 25%: Unit type image (showing primary weapon or unit type icon).
 - Middle 50%: Up to 10 hearts representing morale capacity, arranged in 2 rows of 5 when >5 hearts.
   - Hearts are centered horizontally and vertically within the middle 50%.
   - `totalHearts = min(10, max(baseMorale, effectiveMorale))` to leave room for boosted hearts.
-  - Effective morale = `baseMorale + currentMoraleModifier`.
-  - Hearts up to `baseMorale` are filled. Hearts from `baseMorale+1` to `effectiveMorale` are filled in gold (boosted).
-  - Remaining hearts are hollow (reduced morale).
-  - Drawn via `drawHeart(ctx, x, y, size, fillColor?)` — accepts optional `fillColor` string (defaults to team color, gold for boosted).
+  - Effective morale = `baseMorale + currentMoraleModifier + computedSituationalModifier` (wounds, isolation, enemy threats).
+  - Hearts up to `min(baseMorale, effectiveMorale)` are filled in red (#FF4444).
+  - Hearts from `baseMorale+1` to `effectiveMorale` are filled in gold (#FFD700) (boosted by positive modifiers).
+  - Remaining hearts are hollow — drawn with a `[1,1]` dash pattern to avoid deforming the bezier curve at small sizes.
+  - Drawn via `drawHeart(ctx, x, y, size, fillColor?)` — accepts optional `fillColor` string.
 - Shield Wall formation: shields drawn behind front-row dots using `ctx.ellipse` with separate X/Y radii for a wider, flatter shape.
-- Unit Name (`unitName`): Along the lower edge of the token, flush with the bottom (1px padding).
+- Unit Name (`unitName`): Along the lower edge of the token, flush with the bottom (1px padding), in white with dark shadow.

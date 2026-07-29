@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useScenarios } from '@/hooks/useScenarios';
 import { signInWithGoogle, signOut } from '@/lib/supabaseClient';
 import Toast from '@/components/Toast';
+import { MapEditorView } from '@/components/MapEditorView';
 
 interface LobbyProps {
   onJoinScenario: (scenarioId: string) => void;
@@ -36,6 +37,7 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
   const [signInError, setSignInError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
+  const [mapEditorScenarioId, setMapEditorScenarioId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeScenarioId) return;
@@ -214,8 +216,8 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
             Unit Editor
           </button>
           <button
-            onClick={() => alert('Map Editor – not yet implemented')}
-            disabled={!currentUser}
+            onClick={() => selectedScenarioId && setMapEditorScenarioId(selectedScenarioId)}
+            disabled={!selectedScenarioId || !currentUser}
             className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Map Editor
@@ -249,7 +251,7 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
                   <img
                     src={scenario.screenshotUrl}
                     alt={`Screenshot of ${scenario.name}`}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                   />
                 ) : (
                   <span className="text-gray-500">[Screenshot]</span>
@@ -326,6 +328,13 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {mapEditorScenarioId && (
+        <MapEditorView
+          scenarioId={mapEditorScenarioId}
+          onClose={() => setMapEditorScenarioId(null)}
+        />
       )}
 
       {showJoinModal && (

@@ -7,8 +7,8 @@ import {
 } from './tokenUtils';
 
 describe('getFormationConfig', () => {
-  it('returns default config for Loose foot formation', () => {
-    const config = getFormationConfig('Loose', false);
+  it('returns default config for Open Order foot formation', () => {
+    const config = getFormationConfig('Open Order', false);
 
     expect(config.dotsPerRow).toBe(10);
     expect(config.rowSpacing).toBe(2.0);
@@ -16,8 +16,8 @@ describe('getFormationConfig', () => {
     expect(config.scatteredLayout).toBe('random');
   });
 
-  it('doubles dotsPerRow for Tight formation', () => {
-    const config = getFormationConfig('Tight', false);
+  it('doubles dotsPerRow for Close Order formation', () => {
+    const config = getFormationConfig('Close Order', false);
     expect(config.dotsPerRow).toBe(20);
   });
 
@@ -34,17 +34,17 @@ describe('getFormationConfig', () => {
   });
 
   it('reduces rows for Large size (200)', () => {
-    const config = getFormationConfig('Loose', false, 200);
+    const config = getFormationConfig('Open Order', false, 200);
     expect(config.dotsPerRow).toBe(5);
   });
 
   it('reduces rows for Huge size (300)', () => {
-    const config = getFormationConfig('Loose', false, 300);
+    const config = getFormationConfig('Open Order', false, 300);
     expect(config.dotsPerRow).toBe(3);
   });
 
   it('sets rows to 1 for Gargantuan size (400)', () => {
-    const config = getFormationConfig('Loose', false, 400);
+    const config = getFormationConfig('Open Order', false, 400);
     expect(config.dotsPerRow).toBe(1);
   });
 
@@ -60,7 +60,7 @@ describe('getFormationConfig', () => {
   });
 
   it('clamps dotsPerRow to at least 1', () => {
-    const config = getFormationConfig('Loose', false, 999);
+    const config = getFormationConfig('Open Order', false, 999);
     expect(config.dotsPerRow).toBe(1);
   });
 });
@@ -68,12 +68,13 @@ describe('getFormationConfig', () => {
 describe('getDotColor', () => {
   it('returns white for dark teams', () => {
     expect(getDotColor('blue')).toBe('#FFFFFF');
-    expect(getDotColor('violet')).toBe('#FFFFFF');
     expect(getDotColor('green')).toBe('#FFFFFF');
   });
 
   it('returns black for light teams', () => {
     expect(getDotColor('yellow')).toBe('#000000');
+    expect(getDotColor('violet')).toBe('#000000');
+    expect(getDotColor('orange')).toBe('#000000');
   });
 
   it('returns black for undefined or unknown team', () => {
@@ -109,14 +110,14 @@ describe('generateDotPositions', () => {
   const dotRadius = 4;
 
   it('generates correct number of positions for full health unit', () => {
-    const positions = generateDotPositions(10, 10, 'Loose', false, tokenWidth, tokenHeight, dotRadius, 100);
+    const positions = generateDotPositions(10, 10, 'Open Order', false, tokenWidth, tokenHeight, dotRadius, 100);
 
     expect(positions).toHaveLength(10);
     expect(positions.every(p => !p.isDead)).toBe(true);
   });
 
   it('marks excess positions as dead for damaged units', () => {
-    const positions = generateDotPositions(7, 10, 'Loose', false, tokenWidth, tokenHeight, dotRadius, 100);
+    const positions = generateDotPositions(7, 10, 'Open Order', false, tokenWidth, tokenHeight, dotRadius, 100);
 
     expect(positions).toHaveLength(10);
     const alive = positions.filter(p => !p.isDead).length;
@@ -126,8 +127,8 @@ describe('generateDotPositions', () => {
     expect(dead).toBe(3);
   });
 
-  it('uses row-by-row centering for Tight formation', () => {
-    const positions = generateDotPositions(20, 20, 'Tight', false, 160, 120, 4, 100);
+  it('uses row-by-row centering for Close Order formation', () => {
+    const positions = generateDotPositions(20, 20, 'Close Order', false, 160, 120, 4, 100);
 
     // All positions should be within token bounds
     for (const pos of positions) {
@@ -193,7 +194,7 @@ describe('generateDotPositions', () => {
   });
 
   it('returns positions for empty unit', () => {
-    const positions = generateDotPositions(0, 0, 'Loose', false, 160, 120, 4, 100);
+    const positions = generateDotPositions(0, 0, 'Open Order', false, 160, 120, 4, 100);
 
     expect(positions).toHaveLength(0);
   });

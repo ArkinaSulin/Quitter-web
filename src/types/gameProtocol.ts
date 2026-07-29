@@ -1,10 +1,36 @@
 // src/types/gameProtocol.ts
 
+export const ORGANIZATION_LEVEL: Record<string, number> = {
+  'Routed': 0,
+  'Scattered': 0,
+  'Open Order': 1,
+  'Close Order': 2,
+  'Phalanx': 3,
+  'Shield Wall': 3,
+};
+
+export function getOrganizationLevel(formation: string): number {
+  return ORGANIZATION_LEVEL[formation] ?? 0;
+}
+
+export type AllianceGroup = 'friendly' | 'enemy' | 'neutral';
+
+export const ALLIANCE_COLORS: Record<AllianceGroup, string> = {
+  friendly: '#0072B2',
+  enemy: '#D55E00',
+  neutral: '#E0E0E0',
+};
+
 // --- Core Geometry ---
 export interface Hex {
   q: number;
   r: number;
   s: number; // s = -q - r
+}
+
+/** Cube-coordinate hex distance */
+export function hexDistance(a: Hex, b: Hex): number {
+  return Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(a.s - b.s));
 }
 
 // --- Weapon (stored as JSON) ---
@@ -72,6 +98,7 @@ export interface Unit {
   mountId: string | null;
   mountName: string;                  // new: copied from template
   isHero: boolean;
+  attachedToUnitId: string | null;    // new: hero attached to a unit
   currentTroopCount: number;          // was: bodyCount
   maxTroopCount: number;              // was: maxBodyCount
   level: number;                      // new: copied from template
@@ -102,6 +129,8 @@ export interface Unit {
   team: string;
   isRouting: boolean;
   hidden: boolean;
+  isDeleted: boolean;                  // soft delete — reversed by undo
+  organizationLevel: number;           // computed from currentFormation via ORGANIZATION_LEVEL map
   actionsAvailable: number;           // new: remaining actions for current turn
 }
 
@@ -161,12 +190,22 @@ export interface Armor {
   cost_gp: number;
 }
 
+export interface SizeCategory {
+  size_category: number;
+  name: string;
+  row_capacity: number;
+  max_troops: number;
+  max_troops_mounted: number;
+}
+
 export interface Formation {
   id: string;
   name: string;
-  acModifier: number;
-  movementModifier: number;
-  attackModifier: number;
+  ac_modifier: number;
+  movement_multiplier: number;
+  attack_modifier: number;
+  morale_modifier: number;
+  row_capacity_multiplier: number;
 }
 
 export interface UnitType {

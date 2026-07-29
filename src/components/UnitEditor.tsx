@@ -1,14 +1,13 @@
 // src/components/UnitEditor.tsx
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import NextImage from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
-import { UnitTemplate, Race, Armor, Formation, UnitType, Mount } from '@/types/gameProtocol';
+import { UnitTemplate, Race, Armor, Formation, UnitType, Mount, SizeCategory } from '@/types/gameProtocol';
 import { parseWeapons, stringifyWeapons, Weapon as WeaponType } from '@/lib/weaponParser';
 import { TokenPreview } from '@/components/TokenRenderer/TokenPreview';
-import { getMaxTroopCount } from '@/lib/unitCaps';
 import { Team } from '@/components/TokenRenderer/tokenUtils';
 import { mapTemplate, mapTemplateToRow } from '@/lib/templateMappers';
 
@@ -103,13 +102,25 @@ export default function UnitEditor() {
   const [formations, setFormations] = useState<Formation[]>([]);
   const [unitTypes, setUnitTypes] = useState<UnitType[]>([]);
   const [mounts, setMounts] = useState<Mount[]>([]);
+  const [sizeCategories, setSizeCategories] = useState<SizeCategory[]>([]);
 
   const [formData, setFormData] = useState<UnitTemplate | null>(null);
   const [previewTeam, setPreviewTeam] = useState<Team>('blue');
 
   const [testCasualtyPercent, setTestCasualtyPercent] = useState<number>(0);
   const [testMoraleModifier, setTestMoraleModifier] = useState<number>(0);
-  const [testFormation, setTestFormation] = useState<'Loose' | 'Tight' | 'Scattered' | 'Phalanx' | 'Shield Wall' | 'Routed'>('Loose');
+  const [testFormation, setTestFormation] = useState<'Open Order' | 'Close Order' | 'Scattered' | 'Phalanx' | 'Shield Wall' | 'Routed'>('Open Order');
+
+  const getMaxTroopForSize = useCallback((sizeCategory: number, isMounted: boolean): number => {
+    const sc = sizeCategories.find(s => s.size_category === sizeCategory);
+    if (!sc) {
+      if (sizeCategory >= 400) return 1;
+      if (sizeCategory >= 300) return 6;
+      if (sizeCategory >= 200) return 20;
+      return isMounted ? 40 : 80;
+    }
+    return isMounted ? sc.max_troops_mounted : sc.max_troops;
+  }, [sizeCategories]);
 
   const [showWeaponModal, setShowWeaponModal] = useState(false);
   const [editingWeaponIndex, setEditingWeaponIndex] = useState<number | null>(null);
@@ -340,9 +351,9 @@ export default function UnitEditor() {
       }
     }
 
-    const cap = getMaxTroopCount(formData.sizeCategory || 100, isMounted);
+    const cap = getMaxTroopForSize(formData.sizeCategory || 100, isMounted);
     updateFormData('troopCount', cap);
-  }, [formData?.mountId]);
+  }, [formData?.mountId, getMaxTroopForSize]);
 
   useEffect(() => {
     if (!formData) return;
@@ -389,9 +400,9 @@ export default function UnitEditor() {
     }
 
     // Auto-set troop count to max for this size
-    const cap = getMaxTroopCount(formData.sizeCategory || 100, !!formData.mountId);
+    const cap = getMaxTroopForSize(formData.sizeCategory || 100, !!formData.mountId);
     updateFormData('troopCount', cap);
-  }, [formData?.sizeCategory]);
+  }, [formData?.sizeCategory, getMaxTroopForSize]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -417,6 +428,7 @@ export default function UnitEditor() {
           formationsRes,
           unitTypesRes,
           mountsRes,
+          sizeCatsRes,
         ] = await Promise.all([
           supabase.from('races').select('*').order('name'),
           supabase.from('weapons').select('*').order('name'),
@@ -424,6 +436,7 @@ export default function UnitEditor() {
           supabase.from('formations').select('*').order('name'),
           supabase.from('unit_types').select('*').order('name'),
           supabase.from('mounts').select('*').order('name'),
+          supabase.from('size_categories').select('*'),
         ]);
 
         if (racesRes.error) throw racesRes.error;
@@ -432,6 +445,7 @@ export default function UnitEditor() {
         if (formationsRes.error) throw formationsRes.error;
         if (unitTypesRes.error) throw unitTypesRes.error;
         if (mountsRes.error) throw mountsRes.error;
+        if (sizeCatsRes.error) throw sizeCatsRes.error;
 
         setRaces(racesRes.data || []);
         setWeaponsLookup(weaponsRes.data || []);
@@ -439,6 +453,7 @@ export default function UnitEditor() {
         setFormations(formationsRes.data || []);
         setUnitTypes(unitTypesRes.data || []);
         setMounts(mountsRes.data || []);
+        setSizeCategories(sizeCatsRes.data || []);
 
         setLoading(false);
       } catch (err: any) {
@@ -609,10 +624,10 @@ export default function UnitEditor() {
       modelTypeIconUrl: firstUnitType?.icon_url || null,
       unitTypeIconUrl: firstUnitType?.icon_url || null,
       isHero: false,
-      troopCount: getMaxTroopCount(firstRace?.size_category || 100, false),
+      troopCount: getMaxTroopForSize(firstRace?.size_category || 100, false),
       level: 1,
       troopHp: firstRace?.base_hd || 10,
-      maxUnitHp: (firstRace?.base_hd || 10) * getMaxTroopCount(firstRace?.size_category || 100, false),
+      maxUnitHp: (firstRace?.base_hd || 10) * getMaxTroopForSize(firstRace?.size_category || 100, false),
       numberOfAttacks: 1,
       armorId: '',
       armorName: '',
@@ -866,7 +881,7 @@ export default function UnitEditor() {
 
   const getSizeLabel = (size: number) => SIZE_LABELS[size] || 'Medium';
   const isGargantuan = formData?.sizeCategory === 400;
-  const troopCap = getMaxTroopCount(formData?.sizeCategory || 100, !!formData?.mountId);
+  const troopCap = getMaxTroopForSize(formData?.sizeCategory || 100, !!formData?.mountId);
 
   const filteredMounts = mounts.filter(m => {
     if (!formData) return true;
@@ -1396,9 +1411,9 @@ export default function UnitEditor() {
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-2">
                     {formations
-                      .filter(f => ['Tight', 'Loose', 'Scattered'].includes(f.name))
+                      .filter(f => ['Close Order', 'Open Order', 'Scattered'].includes(f.name))
                       .sort((a, b) => {
-                        const order = ['Tight', 'Loose', 'Scattered'];
+                        const order = ['Close Order', 'Open Order', 'Scattered'];
                         return order.indexOf(a.name) - order.indexOf(b.name);
                       })
                       .map(formation => {
@@ -1614,7 +1629,7 @@ export default function UnitEditor() {
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Formation preview</label>
                 <div className="grid grid-cols-2 gap-1">
-                  {['Loose', 'Tight', 'Scattered', 'Phalanx', 'Shield Wall', 'Routed'].map((f) => (
+                  {['Open Order', 'Close Order', 'Scattered', 'Phalanx', 'Shield Wall', 'Routed'].map((f) => (
                     <label key={f} className="flex items-center gap-1 text-xs text-gray-300">
                       <input
                         type="radio"

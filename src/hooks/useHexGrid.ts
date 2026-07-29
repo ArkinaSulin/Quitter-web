@@ -46,8 +46,9 @@ export interface UseHexGridProps {
   onUnitHover?: (unit: Unit, screenX: number, screenY: number) => void;
   onUnitLeave?: () => void;
   onAttack?: (attackerId: string, targetId: string) => void;
-  customDraw?: (ctx: CanvasRenderingContext2D, width: number, height: number) => void;
+  customDraw?: (ctx: CanvasRenderingContext2D, width: number, height: number, zoom: number, offsetX: number, offsetY: number) => void;
   autoCenter?: boolean;
+  backgroundImage?: { url: string; offsetX: number; offsetY: number; scale: number } | null;
 }
 
 export function useHexGrid({
@@ -63,6 +64,7 @@ export function useHexGrid({
   onAttack,
   customDraw,
   autoCenter = true,
+  backgroundImage,
 }: UseHexGridProps) {
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
@@ -76,6 +78,28 @@ export function useHexGrid({
   const [lastHoveredUnit, setLastHoveredUnit] = useState<Unit | null>(null);
 
   const rafIdRef = useRef<number | null>(null);
+
+  const bgImageRef = useRef<HTMLImageElement | null>(null);
+  const [bgLoaded, setBgLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!backgroundImage?.url) {
+      bgImageRef.current = null;
+      setBgLoaded(false);
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      bgImageRef.current = img;
+      setBgLoaded(true);
+    };
+    img.onerror = () => {
+      bgImageRef.current = null;
+      setBgLoaded(false);
+    };
+    img.src = backgroundImage.url;
+  }, [backgroundImage?.url]);
 
   // ---- Center map ----
   const centerMap = useCallback(() => {
@@ -109,7 +133,7 @@ export function useHexGrid({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.parentElement?.getBoundingClientRect();
+    const rect = canvas.getBoundingClientRect();
     if (!rect) return;
 
     canvas.width = rect.width * dpr;
@@ -124,6 +148,16 @@ export function useHexGrid({
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = '#1a1a2e';
     ctx.fillRect(0, 0, width, height);
+
+    // Draw background image
+    if (bgImageRef.current && backgroundImage) {
+      const img = bgImageRef.current;
+      const imgW = img.naturalWidth * backgroundImage.scale * zoom;
+      const imgH = img.naturalHeight * backgroundImage.scale * zoom;
+      const imgX = backgroundImage.offsetX * zoom + offsetX - imgW / 2;
+      const imgY = backgroundImage.offsetY * zoom + offsetY - imgH / 2;
+      ctx.drawImage(img, imgX, imgY, imgW, imgH);
+    }
 
     const hexes: Hex[] = [];
     for (let q = -gridRadius; q <= gridRadius; q++) {
@@ -158,9 +192,9 @@ export function useHexGrid({
     for (const hex of hexes) drawHex(hex);
 
     if (customDraw) {
-      customDraw(ctx, width, height);
+      customDraw(ctx, width, height, zoom, offsetX, offsetY);
     }
-  }, [canvasRef, size, gridRadius, offsetX, offsetY, zoom, customDraw]);
+  }, [canvasRef, size, gridRadius, offsetX, offsetY, zoom, customDraw, bgLoaded, backgroundImage]);
 
   useEffect(() => {
     draw();
@@ -226,7 +260,7 @@ export function useHexGrid({
   }, [canvasRef, offsetX, offsetY, zoom, size]);
 
   const getUnitAt = useCallback((hex: Hex): Unit | undefined => {
-    return units.find(u => u.hex.q === hex.q && u.hex.r === hex.r && u.hex.s === hex.s);
+    return units.find(u => !u.isDeleted && !u.attachedToUnitId && u.hex.q === hex.q && u.hex.r === hex.r && u.hex.s === hex.s);
   }, [units]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {

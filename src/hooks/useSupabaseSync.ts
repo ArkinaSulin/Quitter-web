@@ -3,8 +3,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Unit, Hex, UnitTemplate } from '@/types/gameProtocol';
-import { getMaxTroopCount } from '@/lib/unitCaps';
+import { Unit, Hex, UnitTemplate, getOrganizationLevel, SizeCategory } from '@/types/gameProtocol';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // --- Converters ---
@@ -20,6 +19,7 @@ function mapRowToUnit(row: any): Unit {
     mountId: row.mount_id || null,
     mountName: row.mount_name || '',
     isHero: row.is_hero || false,
+    attachedToUnitId: row.attached_to_unit_id || null,
     currentTroopCount: row.current_troop_count || 1,
     maxTroopCount: row.max_troop_count || 1,
     level: row.level || 1,
@@ -39,6 +39,7 @@ function mapRowToUnit(row: any): Unit {
     sizeCategory: row.size_category || 100,
     visualScale: row.visual_scale || 100,
     currentFormation: row.current_formation || 'Scattered',
+    organizationLevel: getOrganizationLevel(row.current_formation || 'Scattered'),
     formationAvailability: row.formation_availability || ['Scattered', 'Routed'],
     equipCostGp: row.equip_cost_gp || 0,
     raceIconUrl: row.race_icon_url || '',
@@ -50,6 +51,7 @@ function mapRowToUnit(row: any): Unit {
     team: row.team || 'black',
     isRouting: row.is_routing || false,
     hidden: row.hidden || false,
+    isDeleted: row.is_deleted || false,
     actionsAvailable: row.actions_available || 0,
   };
 }
@@ -66,6 +68,7 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     mount_id: unit.mountId,
     mount_name: unit.mountName,
     is_hero: unit.isHero,
+    attached_to_unit_id: unit.attachedToUnitId || null,
     current_troop_count: unit.currentTroopCount,
     max_troop_count: unit.maxTroopCount,
     level: unit.level,
@@ -85,6 +88,7 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     size_category: unit.sizeCategory,
     visual_scale: unit.visualScale,
     current_formation: unit.currentFormation,
+    organization_level: unit.organizationLevel,
     formation_availability: unit.formationAvailability,
     equip_cost_gp: unit.equipCostGp,
     race_icon_url: unit.raceIconUrl || '',
@@ -98,6 +102,7 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     team: unit.team,
     is_routing: unit.isRouting,
     hidden: unit.hidden,
+    is_deleted: unit.isDeleted,
     actions_available: unit.actionsAvailable || 0,
   };
 }
@@ -153,32 +158,40 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sizeCategories, setSizeCategories] = useState<SizeCategory[]>([]);
   const callbackRef = useRef<(payload: any) => void>();
+  const unitsRef = useRef(units);
+  unitsRef.current = units;
 
   // 1. Load units on mount
   useEffect(() => {
     let isMounted = true;
 
-    const fetchUnits = async () => {
+    const fetchInitial = async () => {
       try {
-        const { data, error } = await supabase
-          .from('units')
-          .select('*')
-          .eq('scenario_id', scenarioId);
+        const [unitsRes, sizeCatRes] = await Promise.all([
+          supabase.from('units').select('*').eq('scenario_id', scenarioId),
+          supabase.from('size_categories').select('*'),
+        ]);
 
-        if (error) throw error;
-        if (isMounted && data) {
-          const mapped = data.map(mapRowToUnit);
-          setUnits(mapped);
+        if (unitsRes.error) throw unitsRes.error;
+        if (sizeCatRes.error) throw sizeCatRes.error;
+
+        if (isMounted) {
+          if (unitsRes.data) {
+            const mapped = unitsRes.data.map(mapRowToUnit);
+            setUnits(mapped);
+          }
+          if (sizeCatRes.data) setSizeCategories(sizeCatRes.data);
           setLoading(false);
         }
       } catch (err: any) {
         console.error('[Supabase] Fetch error:', err);
-        if (isMounted) setError(err.message || 'Failed to load units');
+        if (isMounted) setError(err.message || 'Failed to load initial data');
       }
     };
 
-    fetchUnits();
+    fetchInitial();
 
     return () => { isMounted = false; };
   }, [scenarioId]);
@@ -277,13 +290,17 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
   // 5. Add unit from template
   const addUnitFromTemplate = useCallback(async (template: UnitTemplate, hex: Hex, team: string = 'black') => {
     let defaultFormation = 'Scattered';
-    if (template.formationAvailability && template.formationAvailability.includes('Loose')) {
-      defaultFormation = 'Loose';
+    if (template.formationAvailability && template.formationAvailability.includes('Open Order')) {
+      defaultFormation = 'Open Order';
     }
 
     // Safety: ensure HP is never null/undefined
     const troopHp = template.troopHp ?? 1;
-    const troopCount = Math.min(template.troopCount ?? 1, getMaxTroopCount(template.sizeCategory || 100, !!template.mountId));
+    const sc = sizeCategories.find(s => s.size_category === (template.sizeCategory || 100));
+    const scSize = template.sizeCategory || 100;
+    const scFallback = scSize >= 400 ? 1 : scSize >= 300 ? 6 : scSize >= 200 ? 20 : template.mountId ? 40 : 80;
+    const maxTroops = sc ? (template.mountId ? sc.max_troops_mounted : sc.max_troops) : scFallback;
+    const troopCount = Math.min(template.troopCount ?? 1, maxTroops);
     const maxUnitHpValue = template.maxUnitHp ?? (troopHp * troopCount);
     const currentUnitHpValue = maxUnitHpValue;
 
@@ -293,17 +310,20 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     // Note: mount canCharge is not available in template object here
     // It would need to be joined from mounts table if needed
 
+    const instanceNumber = template.id ? (unitsRef.current.filter(u => u.templateId === template.id).length) + 1 : 1;
+
     const newUnit: Unit = {
       id: crypto.randomUUID(),
       scenarioId: scenarioId,
       templateId: template.id,
-      unitName: template.unitName,
+      unitName: `${template.unitName} ${instanceNumber}`,
       raceId: template.raceId || '',
       raceName: template.raceName || '',
       armorName: template.armorName || '',
       mountId: template.mountId || null,
       mountName: template.mountName || '',
       isHero: template.isHero || false,
+      attachedToUnitId: null,
       currentTroopCount: troopCount,
       maxTroopCount: troopCount,
       level: template.level || 1,
@@ -323,6 +343,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       sizeCategory: template.sizeCategory || 100,
       visualScale: template.visualScale || 100,
       currentFormation: defaultFormation,
+      organizationLevel: getOrganizationLevel(defaultFormation),
       formationAvailability: template.formationAvailability || ['Scattered', 'Routed'],
       equipCostGp: template.equipCostGp || 0,
       raceIconUrl: template.raceIconUrl || '',
@@ -334,6 +355,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       team: team,
       isRouting: false,
       hidden: false,
+      isDeleted: false,
       actionsAvailable: 0,
     };
 
@@ -348,8 +370,8 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     }
 
     setUnits(prev => [...prev, newUnit]);
-    return true;
-  }, [scenarioId]);
+    return newUnit.id;
+  }, [scenarioId, sizeCategories]);
 
   // 6. Delete a single unit
   const deleteUnit = useCallback(async (unitId: string) => {
@@ -379,7 +401,8 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     if (updates.currentUnitHp !== undefined) dbUpdates.current_unit_hp = updates.currentUnitHp;
     if (updates.maxUnitHp !== undefined) dbUpdates.max_unit_hp = updates.maxUnitHp;
     if (updates.isHero !== undefined) dbUpdates.is_hero = updates.isHero;
-    if (updates.currentFormation !== undefined) dbUpdates.current_formation = updates.currentFormation;
+    if (updates.attachedToUnitId !== undefined) dbUpdates.attached_to_unit_id = updates.attachedToUnitId;
+    if (updates.currentFormation !== undefined) { dbUpdates.current_formation = updates.currentFormation; dbUpdates.organization_level = getOrganizationLevel(updates.currentFormation); }
     if (updates.aggressiveness !== undefined) dbUpdates.aggressiveness = updates.aggressiveness;
     if (updates.baseMorale !== undefined) dbUpdates.base_morale = updates.baseMorale;
     if (updates.currentMoraleModifier !== undefined) dbUpdates.current_morale_modifier = updates.currentMoraleModifier;
@@ -388,6 +411,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     if (updates.isRouting !== undefined) dbUpdates.is_routing = updates.isRouting;
     if (updates.weaponString !== undefined) dbUpdates.weapon_string = updates.weaponString;
     if (updates.hidden !== undefined) dbUpdates.hidden = updates.hidden;
+    if (updates.isDeleted !== undefined) dbUpdates.is_deleted = updates.isDeleted;
     if (updates.unitTypeIconUrl !== undefined) dbUpdates.unit_type_icon_url = updates.unitTypeIconUrl;
     if (updates.currentTroopCount !== undefined) dbUpdates.current_troop_count = updates.currentTroopCount;
     if (updates.maxTroopCount !== undefined) dbUpdates.max_troop_count = updates.maxTroopCount;
