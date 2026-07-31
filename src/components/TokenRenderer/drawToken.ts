@@ -1,5 +1,5 @@
 // src/components/TokenRenderer/drawToken.ts
-import { Unit } from '@/types/gameProtocol';
+import { Unit, Formation, SizeCategory } from '@/types/gameProtocol';
 import { Team, TEAM_COLORS, TEAM_SHAPES, getDotColor, generateDotPositions, getFormationConfig } from './tokenUtils';
 import { ALLIANCE_COLORS, AllianceGroup } from '@/types/gameProtocol';
 
@@ -55,6 +55,8 @@ export interface DrawTokenOptions {
   turnNumber?: number;
   teamAlliances?: Record<string, AllianceGroup>;
   isAttached?: boolean;
+  formationsMap?: Record<string, Formation>;
+  sizeCategories?: SizeCategory[];
 }
 
 export async function drawToken(options: DrawTokenOptions): Promise<void> {
@@ -68,6 +70,8 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     showDetails = true,
     preloadedImages,
     turnNumber = 0,
+    formationsMap,
+    sizeCategories,
   } = options;
 
   const team = unit.team || 'black';
@@ -114,6 +118,7 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
 
   // ---- Hero square token ----
   if (unit.isHero) {
+    if (unit.currentUnitHp <= 0) ctx.filter = 'grayscale(100%)';
     drawHeroSquareToken(ctx, x, y, width, height, unit, heroImage, team, shape, allianceColor, options.isAttached || false);
     return;
   }
@@ -161,7 +166,13 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     effectiveFormation = 'Routed';
   }
 
-  const config = getFormationConfig(effectiveFormation, isMounted, sizeCategory);
+  const sizeCat = sizeCategories?.find(s => s.size_category === (unit.sizeCategory || 100));
+  const formationEntry = formationsMap?.[unit.currentFormation || 'Close Order'];
+  const rowCap = sizeCat?.row_capacity ?? 10;
+  const rowCapMult = formationEntry?.row_capacity_multiplier ?? 2;
+  const visualDotsPerRow = rowCap * rowCapMult;
+
+  const config = getFormationConfig(effectiveFormation, isMounted, sizeCategory, visualDotsPerRow);
   const dotRadius = Math.min(width, height) * 0.025 * (visualScale / 100) * (sizeCategory / 100);
   const dotsPerRow = config.dotsPerRow;
   const dotColor = getDotColor(team);
@@ -175,7 +186,8 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     height,
     dotRadius,
     sizeCategory,
-    computeScatterSeed(unit, turnNumber)
+    computeScatterSeed(unit, turnNumber),
+    visualDotsPerRow,
   );
 
   // ---- Phalanx pikes (only if not mounted and formation is actually Phalanx) ----
@@ -314,6 +326,7 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
       unit.baseMorale || 10,
       unit.currentMoraleModifier || 0,
       unit.isHero || false,
+      unit.ignoreMoraleChecks || false,
       team,
       preloadedImages
     );
@@ -549,6 +562,7 @@ function drawBottomInfo(
   baseMorale?: number,
   moraleModifier?: number,
   isHero?: boolean,
+  ignoreMoraleChecks?: boolean,
   team?: string,
   preloadedImages?: Map<string, HTMLImageElement>
 ) {
@@ -617,7 +631,7 @@ function drawBottomInfo(
     ctx.fillText('⚔️', cx + width/2 - iconSize/2 - 4, iconY + iconSize/2);
   }
 
-  if (!isHero && baseMorale !== undefined && moraleModifier !== undefined) {
+  if (!isHero && !ignoreMoraleChecks && baseMorale !== undefined && moraleModifier !== undefined) {
     const effectiveMorale = baseMorale + moraleModifier;
     const totalHearts = Math.max(0, Math.min(10, Math.max(baseMorale, effectiveMorale)));
     const heartsFilled = Math.max(0, Math.min(effectiveMorale, totalHearts));

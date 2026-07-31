@@ -646,6 +646,7 @@ export default function UnitEditor() {
       equipCostGp: 0,
       weeklyCostGp: 4,
       canCharge: false,
+      ignoreMoraleChecks: false,
       customImageUrl: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1294,6 +1295,16 @@ export default function UnitEditor() {
                     max={10}
                     className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
                   />
+                </div>
+                <div className="flex items-center gap-2 self-end pb-2">
+                  <input
+                    type="checkbox"
+                    id="ignoreMoraleChecks"
+                    checked={formData.ignoreMoraleChecks || false}
+                    onChange={(e) => updateFormData('ignoreMoraleChecks', e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-yellow-400 focus:ring-yellow-400"
+                  />
+                  <label htmlFor="ignoreMoraleChecks" className="text-sm text-gray-300">Ignore morale checks (fearless)</label>
                 </div>
               </div>
 

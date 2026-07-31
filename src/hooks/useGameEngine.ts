@@ -6,6 +6,7 @@ import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { computeEffectiveMovement } from '@/lib/unitStats';
 import { useMessages } from '@/contexts/MessageContext';
 import { GameEngine, ActionType, SubStep, CommandEntry } from '@/game/GameEngine';
+import { getActiveGroups, advanceTurn } from '@/lib/turnState';
 
 interface UseGameEngineProps {
   scenarioId: string;
@@ -15,6 +16,7 @@ interface UseGameEngineProps {
   updateUnit: (unitId: string, updates: Partial<Unit>) => Promise<boolean>;
   moveUnit: (unitId: string, targetHex: Hex) => Promise<boolean>;
   updateAlliance?: (team: string, group: AllianceGroup) => Promise<void>;
+  updateScenarioField?: (scenarioId: string, fields: Record<string, any>) => Promise<boolean>;
 }
 
 export function useGameEngine({
@@ -25,6 +27,7 @@ export function useGameEngine({
   updateUnit,
   moveUnit,
   updateAlliance,
+  updateScenarioField,
 }: UseGameEngineProps) {
   const engineRef = useRef(new GameEngine());
   const { addMessage } = useMessages();
@@ -51,6 +54,14 @@ export function useGameEngine({
         if (step.type === 'ALLIANCE' && updateAlliance) {
           for (const change of step.changes) {
             await updateAlliance(step.unitId, change.to);
+          }
+        } else if (step.type === 'SCENARIO' && updateScenarioField) {
+          const update: any = {};
+          for (const change of step.changes) {
+            update[change.field] = change.to;
+          }
+          if (Object.keys(update).length > 0) {
+            await updateScenarioField(scenarioId, update);
           }
         } else {
           const update: any = {};
@@ -79,7 +90,7 @@ export function useGameEngine({
       addMessage(description);
       return entry;
     },
-    [scenarioId, playerId, playerName, updateUnit, updateAlliance, addMessage],
+    [scenarioId, playerId, playerName, updateUnit, updateAlliance, updateScenarioField, addMessage],
   );
 
   const undo = useCallback(async (): Promise<CommandEntry[] | null> => {
@@ -91,6 +102,14 @@ export function useGameEngine({
         if (step.type === 'ALLIANCE' && updateAlliance) {
           for (const change of step.changes) {
             await updateAlliance(step.unitId, change.from);
+          }
+        } else if (step.type === 'SCENARIO' && updateScenarioField) {
+          const update: any = {};
+          for (const change of step.changes) {
+            update[change.field] = change.from;
+          }
+          if (Object.keys(update).length > 0) {
+            await updateScenarioField(scenarioId, update);
           }
         } else {
           const update: any = {};
@@ -115,7 +134,7 @@ export function useGameEngine({
 
     addMessage(`Undid: ${chain[0].description}${chain.length > 1 ? ` (+${chain.length - 1} more)` : ''}`);
     return chain;
-  }, [playerId, isGM, updateUnit, updateAlliance, addMessage]);
+  }, [playerId, isGM, updateUnit, updateAlliance, updateScenarioField, scenarioId, addMessage]);
 
   const redo = useCallback(async (): Promise<CommandEntry[] | null> => {
     const chain = engineRef.current.redo(playerId, isGM);
@@ -126,6 +145,14 @@ export function useGameEngine({
         if (step.type === 'ALLIANCE' && updateAlliance) {
           for (const change of step.changes) {
             await updateAlliance(step.unitId, change.to);
+          }
+        } else if (step.type === 'SCENARIO' && updateScenarioField) {
+          const update: any = {};
+          for (const change of step.changes) {
+            update[change.field] = change.to;
+          }
+          if (Object.keys(update).length > 0) {
+            await updateScenarioField(scenarioId, update);
           }
         } else {
           const update: any = {};
@@ -149,7 +176,7 @@ export function useGameEngine({
 
     addMessage(`Redid: ${chain[0].description}${chain.length > 1 ? ` (+${chain.length - 1} more)` : ''}`);
     return chain;
-  }, [playerId, isGM, updateUnit, updateAlliance, addMessage]);
+  }, [playerId, isGM, updateUnit, updateAlliance, updateScenarioField, scenarioId, addMessage]);
 
   const canUndo = useCallback((): boolean => {
     return engineRef.current.canUndo(playerId, isGM);
@@ -218,20 +245,31 @@ export function useGameEngine({
         Math.round(unit.movementPointsAvailable / oldEffectiveMax * newEffectiveMax),
       );
 
+      const changes: { field: string; from: any; to: any }[] = [
+        { field: 'currentFormation', from: unit.currentFormation, to: formation },
+        { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: newAvailable },
+      ];
+
+      if (unit.isRouting && formation !== 'Routed') {
+        const effectiveMorale = unit.baseMorale + unit.currentMoraleModifier + (newForm?.morale_modifier ?? 0);
+        if (effectiveMorale <= 0) {
+          addMessage(`${unit.unitName} cannot rally — effective morale ${effectiveMorale}`);
+          return;
+        }
+        changes.push({ field: 'isRouting', from: true, to: false });
+      }
+
       const subSteps: SubStep[] = [
         {
           type: 'FORMATION',
           description: `${unit.unitName} changed formation to ${formation}`,
           unitId: unit.id,
-          changes: [
-            { field: 'currentFormation', from: unit.currentFormation, to: formation },
-            { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: newAvailable },
-          ],
+          changes,
         },
       ];
       await execute('FORMATION', subSteps, subSteps[0].description);
     },
-    [execute],
+    [execute, addMessage],
   );
 
   const assignTeam = useCallback(
@@ -283,14 +321,15 @@ export function useGameEngine({
   );
 
   const attachHero = useCallback(
-    async (hero: Unit, targetUnit: Unit): Promise<void> => {
+    async (hero: Unit, targetUnit: Unit, position: 'front' | 'back'): Promise<void> => {
       const subSteps: SubStep[] = [
         {
           type: 'ATTACH_HERO',
-          description: `${hero.unitName} attached to ${targetUnit.unitName}`,
+          description: `${hero.unitName} attached to ${targetUnit.unitName} (${position})`,
           unitId: hero.id,
           changes: [
             { field: 'attachedToUnitId', from: null, to: targetUnit.id },
+            { field: 'attachedPosition', from: null, to: position },
             { field: 'hex', from: { ...hero.hex }, to: { ...targetUnit.hex } },
           ],
         },
@@ -317,6 +356,56 @@ export function useGameEngine({
     [execute],
   );
 
+  const endTurn = useCallback(
+    async (args: {
+      currentAlliance: AllianceGroup | null;
+      alliances: Record<string, AllianceGroup>;
+      units: Unit[];
+      formationsMap: Record<string, Formation>;
+      turnNumber: number;
+    }): Promise<{ next: AllianceGroup; wrapped: boolean }> => {
+      const activeGroups = getActiveGroups(args.alliances);
+      const { next, wrapped } = advanceTurn(args.currentAlliance, activeGroups);
+      const newTurnNumber = wrapped ? args.turnNumber + 1 : args.turnNumber;
+
+      const subSteps: SubStep[] = [
+        {
+          type: 'SCENARIO',
+          description: `Turn advances — ${next} turn begins`,
+          unitId: scenarioId,
+          changes: [
+            { field: 'current_turn_alliance', from: args.currentAlliance ?? null, to: next },
+            { field: 'turn_number', from: args.turnNumber, to: newTurnNumber },
+          ],
+        },
+      ];
+
+      const activeTeams = new Set<string>();
+      for (const [team, group] of Object.entries(args.alliances)) {
+        if (group === next) activeTeams.add(team);
+      }
+
+      for (const unit of args.units) {
+        if (unit.isDeleted || !activeTeams.has(unit.team)) continue;
+        const mult = args.formationsMap[unit.currentFormation]?.movement_multiplier ?? 1;
+        const maxMP = computeEffectiveMovement(unit, mult);
+        subSteps.push({
+          type: 'END_TURN',
+          description: `${unit.unitName} refreshed (${maxMP} MP, 2 actions)`,
+          unitId: unit.id,
+          changes: [
+            { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: maxMP },
+            { field: 'actionsAvailable', from: unit.actionsAvailable, to: 2 },
+          ],
+        });
+      }
+
+      await execute('END_TURN', subSteps, `End Turn — ${next} turn begins`);
+      return { next, wrapped };
+    },
+    [execute, scenarioId],
+  );
+
   return {
     execute,
     undo,
@@ -334,5 +423,6 @@ export function useGameEngine({
     placeUnit,
     attachHero,
     detachHero,
+    endTurn,
   };
 }

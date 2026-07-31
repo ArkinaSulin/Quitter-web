@@ -5,7 +5,7 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
-import { resolveCombatSequence, computeRowCapacity } from '@/lib/unitCombat';
+import { resolveCombatSequence, computeRowCapacity, determineCombatPosition, isInFrontArc } from '@/lib/unitCombat';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios } from '@/hooks/useScenarios';
 import { useMessages } from '@/contexts/MessageContext';
@@ -15,9 +15,9 @@ import { LeftPanel } from './LeftPanel';
 import { ContextMenu } from './ContextMenu';
 import { UnitTooltip } from './UnitTooltip';
 import { drawToken, loadImage } from '@/components/TokenRenderer/drawToken';
-import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
+import { computeEffectiveMoraleModifier, computeThreatRating } from '@/lib/unitMorale';
 import { supabase } from '@/lib/supabaseClient';
-import { getFormationModifier, getFormationMultiplier } from '@/lib/unitStats';
+import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement } from '@/lib/unitStats';
 
 interface ScenarioMapProps {
   scenarioId: string;
@@ -46,19 +46,16 @@ function DragGhost({ hex, zoom, offsetX, offsetY }: { hex: Hex; zoom: number; of
 export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedHex, setSelectedHex] = useState<Hex | null>(null);
-  const { units, moveUnit, loading, error, addUnitFromTemplate, deleteUnit, updateUnit } = useSupabaseSync(scenarioId);
-  const { getMyRole, updateScreenshot, unsubscribeFromPresence, subscribeToPresence, fetchScenarios, currentUser, fetchScenarioMapData } = useScenarios();
+  const { units, moveUnit, loading, error, addUnitFromTemplate, deleteUnit, updateUnit, sizeCategories } = useSupabaseSync(scenarioId);
+  const { getMyRole, updateScreenshot, unsubscribeFromPresence, subscribeToPresence, fetchScenarios, currentUser, fetchScenarioMapData, updateScenarioField } = useScenarios();
   const { addMessage } = useMessages();
   const [isGM, setIsGM] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [turn, setTurn] = useState(1);
+  const [currentTurnAlliance, setCurrentTurnAlliance] = useState<AllianceGroup | null>(null);
+  const [turnNumber, setTurnNumber] = useState(0);
   const [backgroundConfig, setBackgroundConfig] = useState<{ imageUrl: string; offsetX: number; offsetY: number; scale: number } | null>(null);
   const [formationsMap, setFormationsMap] = useState<Record<string, Formation>>({});
-
-  const handleEndTurn = useCallback(() => {
-    setTurn(t => t + 1);
-    addMessage(`Turn ${turn + 1} begins`);
-  }, [turn, addMessage]);
+  const [overlayMap, setOverlayMap] = useState<Record<string, string>>({});
 
   // Drag from panel
   const [isDraggingFromPanel, setIsDraggingFromPanel] = useState(false);
@@ -73,6 +70,12 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
   const [contextMenuUnit, setContextMenuUnit] = useState<Unit | null>(null);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
 
+  // Attach position modal
+  const [attachModal, setAttachModal] = useState<{
+    hero: Unit;
+    target: Unit;
+  } | null>(null);
+
   const playerId = currentUser?.id || '';
   const playerName =
     currentUser?.user_metadata?.full_name ||
@@ -84,7 +87,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
 
 
   const {
-    execute, moveUnitRecorded, rotateUnit, changeFormation, assignTeam, toggleHide, placeUnit, attachHero, detachHero, undo, canUndo, redo, canRedo, peekUndoChainLength,
+    execute, moveUnitRecorded, rotateUnit, changeFormation, assignTeam, toggleHide, placeUnit, attachHero, detachHero, endTurn, undo, canUndo, redo, canRedo, peekUndoChainLength,
   } = useGameEngine({
     scenarioId,
     playerId,
@@ -93,7 +96,20 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
     updateUnit,
     moveUnit,
     updateAlliance: setAlliance,
+    updateScenarioField,
   });
+
+  const handleEndTurn = useCallback(async () => {
+    const { next, wrapped } = await endTurn({
+      currentAlliance: currentTurnAlliance,
+      alliances,
+      units,
+      formationsMap,
+      turnNumber,
+    });
+    setCurrentTurnAlliance(next);
+    if (wrapped) setTurnNumber(t => t + 1);
+  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber]);
 
   const handleUnitMove = useCallback(async (unitId: string, targetHex: Hex) => {
     const unit = units.find(u => u.id === unitId);
@@ -106,7 +122,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
 
     const candidates = new Set<string>([unit.id]);
     for (const u of units) {
-      if (u.isDeleted || u.isHero || u.isRouting) continue;
+      if (u.isDeleted || u.ignoreMoraleChecks || u.isRouting) continue;
       if (u.id !== unit.id && hexDistance(u.hex, targetHex) === 1) {
         candidates.add(u.id);
       }
@@ -145,7 +161,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
     }], `${team} → ${targetGroup}`);
   }, [alliances, execute]);
 
-  const handleAttachHero = useCallback(async (heroId: string, targetUnitId: string) => {
+  const handleAttachHero = useCallback(async (heroId: string, targetUnitId: string, position: 'front' | 'back') => {
     const hero = units.find(u => u.id === heroId);
     const target = units.find(u => u.id === targetUnitId);
     if (!hero || !target) return;
@@ -157,8 +173,8 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
       addMessage(`${target.unitName} already has a hero attached`);
       return;
     }
-    await attachHero(hero, target);
-    addMessage(`${hero.unitName} attached to ${target.unitName}`);
+    await attachHero(hero, target, position);
+    addMessage(`${hero.unitName} attached to ${target.unitName} (${position})`);
   }, [units, attachHero, addMessage]);
 
   const handleDetachHero = useCallback(async (heroId: string) => {
@@ -202,10 +218,10 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
     const tokenWidth = TOKEN_WIDTH * currentZoom;
     const tokenHeight = TOKEN_HEIGHT * currentZoom;
 
-    function getAttachedHeroPos(unitHex: { q: number; r: number; s: number }, facing: number) {
+    function getAttachedHeroPos(unitHex: { q: number; r: number; s: number }, facing: number, attachedPosition: 'front' | 'back' | null) {
       const pos = hexToPixel(unitHex, HEX_SIZE);
-      const frontVertexIndex = (facing + 5) % 6;
-      const angle = (60 * frontVertexIndex - 30) * Math.PI / 180;
+      const vertexIndex = attachedPosition === 'back' ? (facing + 2) % 6 : (facing + 5) % 6;
+      const angle = (60 * vertexIndex - 30) * Math.PI / 180;
       return {
         x: pos.x + HEX_SIZE * 0.75 * Math.cos(angle),
         y: pos.y + HEX_SIZE * 0.75 * Math.sin(angle),
@@ -234,8 +250,10 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
           height: tokenHeight,
           zoom: currentZoom,
           showDetails: true,
-          turnNumber: turn,
+          turnNumber: turnNumber,
           teamAlliances: alliances,
+          formationsMap,
+          sizeCategories,
         });
       } catch (err) {
         console.error('drawToken error:', err);
@@ -244,7 +262,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
 
       const attachedHero = units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted);
       if (attachedHero) {
-        const heroPos = getAttachedHeroPos(unit.hex, unit.facing);
+        const heroPos = getAttachedHeroPos(unit.hex, unit.facing, attachedHero.attachedPosition);
         const heroCx = heroPos.x * currentZoom + offsetX;
         const heroCy = heroPos.y * currentZoom + offsetY;
         const heroFormationMoraleMod = getFormationModifier(formationsMap, attachedHero.currentFormation, 'morale_modifier');
@@ -259,16 +277,42 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
             height: tokenHeight,
             zoom: currentZoom,
             showDetails: true,
-            turnNumber: turn,
+            turnNumber: turnNumber,
             teamAlliances: alliances,
             isAttached: true,
+            formationsMap,
+            sizeCategories,
           });
         } catch (err) {
           console.error('drawToken error (attached hero):', err);
         }
       }
     }
-  }, [units, turn, alliances, isGM, formationsMap]);
+  }, [units, turnNumber, alliances, isGM, formationsMap, sizeCategories]);
+
+  const HEX_DIRS = [
+    { q: 1, r: 0, s: -1 },
+    { q: 0, r: 1, s: -1 },
+    { q: -1, r: 1, s: 0 },
+    { q: -1, r: 0, s: 1 },
+    { q: 0, r: -1, s: 1 },
+    { q: 1, r: -1, s: 0 },
+  ];
+
+  function getOverlayForUnit(unit: Unit): Record<string, string> {
+    const result: Record<string, string> = {};
+    if (unit.isHero || unit.isRouting || unit.currentFormation === 'Scattered') return result;
+    for (const dir of HEX_DIRS) {
+      const nq = unit.hex.q + dir.q;
+      const nr = unit.hex.r + dir.r;
+      const key = `${nq},${nr}`;
+      const pos = determineCombatPosition({ q: nq, r: nr, s: -nq - nr }, unit.hex, unit.facing);
+      if (pos === 'front') {
+        result[key] = 'rgba(255, 100, 100, 0.5)';
+      }
+    }
+    return result;
+  }
 
   const {
     handleMouseMove,
@@ -312,8 +356,8 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
 
       const targetHasHero = units.some(u => u.attachedToUnitId === targetId && !u.isDeleted);
       const canAttach = attacker.isHero && (attacker.sizeCategory || 100) <= 200 && !target.isHero && !target.attachedToUnitId && !target.isDeleted && !targetHasHero && attacker.team === target.team;
-      if (canAttach && confirm(`Attach ${attacker.unitName} to ${target.unitName}?`)) {
-        handleAttachHero(attacker.id, target.id);
+      if (canAttach) {
+        setAttachModal({ hero: attacker, target });
         return;
       }
 
@@ -340,8 +384,40 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
       const defenderWeapons = parseWeapons(target.weaponString || '');
       const defWeapon = defenderWeapons[0] || null;
 
+      // Front-arc validation for melee attackers
+      if (weapon.range <= 1) {
+        if (attacker.isRouting) {
+          addMessage(`${attacker.unitName} (Routed) cannot initiate attacks`);
+          return;
+        }
+        if (attacker.currentFormation === 'Scattered') {
+          addMessage(`${attacker.unitName} (Scattered) cannot initiate melee`);
+          return;
+        }
+        if (!attacker.isHero && !isInFrontArc(attacker.hex, attacker.facing, target.hex)) {
+          addMessage(`${attacker.unitName} cannot attack ${target.unitName}: target not in front arc`);
+          return;
+        }
+      }
+
       const formationAtkMod = getFormationModifier(formationsMap, attacker.currentFormation, 'attack_modifier');
-      const formationRowCapMult = getFormationMultiplier(formationsMap, attacker.currentFormation, 'row_capacity_multiplier');
+      const attackCapMult = getFormationMultiplier(formationsMap, attacker.currentFormation, 'attack_capacity_multiplier');
+      const defAttackCapMult = getFormationMultiplier(formationsMap, target.currentFormation, 'attack_capacity_multiplier');
+      const attackerRowCap = getRowCapacity(sizeCategories, attacker.sizeCategory);
+      const defenderRowCap = getRowCapacity(sizeCategories, target.sizeCategory);
+      const defenderVisualDpr = getVisualDotsPerRow(formationsMap, defenderRowCap, target.currentFormation);
+      const isRanged = weapon.range > 1;
+      const isRear = determineCombatPosition(attacker.hex, target.hex, target.facing) === 'rear';
+      const attachedDefenderHero = (() => {
+        const hero = units.find(u => u.attachedToUnitId === target.id && !u.isDeleted);
+        if (!hero) return null;
+        return { currentAc: hero.currentAc, troopHp: hero.troopHp };
+      })();
+      const attachedAttackerHero = (() => {
+        const hero = units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted);
+        if (!hero) return null;
+        return { currentAc: hero.currentAc, troopHp: hero.troopHp };
+      })();
 
       const outcome = resolveCombatSequence(
         attacker,
@@ -349,69 +425,133 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
         { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach },
         defWeapon ? { attackBonus: defWeapon.attackBonus, damageDice: defWeapon.damageDice, is_reach: defWeapon.reach } : null,
         formationAtkMod,
-        formationRowCapMult,
+        attackCapMult,
+        defAttackCapMult,
+        attackerRowCap,
+        defenderRowCap,
+        defenderVisualDpr,
+        isRanged,
+        isRear,
+        attachedDefenderHero,
+        attachedAttackerHero,
         Math.random,
       );
 
       const subSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
 
       if (!outcome.aggrPassed) {
-        addMessage(`${attacker.unitName} AGR check (need ≤${attacker.aggressiveness}, rolled ${outcome.aggrRoll}) — failed, no attack`);
+        const threatPenalty = Math.max(0, Math.round(computeThreatRating(target) / computeThreatRating(attacker)) - 1);
+        addMessage(`${attacker.unitName} AGR check (AGR ${attacker.aggressiveness}${threatPenalty > 0 ? ` - ${threatPenalty} threat` : ''} → need ≤${attacker.aggressiveness - threatPenalty}, rolled ${outcome.aggrRoll}) — failed, no attack`);
         return;
       }
 
-      const newDefenderHp = Math.max(0, target.currentUnitHp - outcome.firstStrikeDamage);
+      // Damage direction depends on who struck first
+      const damageToDefender = outcome.strikerFirst === 'attacker' ? outcome.firstStrikeDamage : outcome.retaliationDamage;
+      const damageToAttacker = outcome.strikerFirst === 'defender' ? outcome.firstStrikeDamage : outcome.retaliationDamage;
+
+      // Apply damage to defender (target)
+      const newDefenderHp = Math.max(0, target.currentUnitHp - damageToDefender);
       const newDefenderTroops = Math.ceil(newDefenderHp / target.troopHp);
       const defenderTroopsKilled = target.currentTroopCount - newDefenderTroops;
-
-      const defenderChanges: { field: string; from: any; to: any }[] = [
-        { field: 'currentUnitHp', from: target.currentUnitHp, to: newDefenderHp },
-        { field: 'currentTroopCount', from: target.currentTroopCount, to: newDefenderTroops },
-      ];
-      subSteps.push({
-        type: 'DAMAGE',
-        description: `${target.unitName} took ${outcome.firstStrikeDamage} damage`,
-        unitId: target.id,
-        changes: defenderChanges,
-      });
-
-      let desc = `${attacker.unitName} attacks ${target.unitName} with ${weapon.name}`;
-      const hits = outcome.firstStrikeAttacks.filter(a => a.isHit).length;
-      desc += ` — ${outcome.firstStrikeAttacks.length} attacks, ${hits} hits, ${outcome.firstStrikeDamage} damage (${defenderTroopsKilled} troops)`;
-
-      let attackerRouted = false;
-      let defenderRouted = false;
-      let newAttackerHp = attacker.currentUnitHp;
-      let attMoraleBreak = 0;
-
-      if (outcome.retaliationDamage > 0) {
-        newAttackerHp = Math.max(0, attacker.currentUnitHp - outcome.retaliationDamage);
-        const newAttackerTroops = Math.ceil(newAttackerHp / attacker.troopHp);
-        const attackerTroopsKilled = attacker.currentTroopCount - newAttackerTroops;
-
+      if (damageToDefender > 0) {
         subSteps.push({
           type: 'DAMAGE',
-          description: `${attacker.unitName} took ${outcome.retaliationDamage} retaliation damage`,
+          description: `${target.unitName} took ${damageToDefender} damage`,
+          unitId: target.id,
+          changes: [
+            { field: 'currentUnitHp', from: target.currentUnitHp, to: newDefenderHp },
+            { field: 'currentTroopCount', from: target.currentTroopCount, to: newDefenderTroops },
+          ],
+        });
+      }
+
+      // Apply damage to attacker
+      const newAttackerHp = Math.max(0, attacker.currentUnitHp - damageToAttacker);
+      const newAttackerTroops = Math.ceil(newAttackerHp / attacker.troopHp);
+      const attackerTroopsKilled = attacker.currentTroopCount - newAttackerTroops;
+      if (damageToAttacker > 0) {
+        subSteps.push({
+          type: 'DAMAGE',
+          description: `${attacker.unitName} took ${damageToAttacker} damage`,
           unitId: attacker.id,
           changes: [
             { field: 'currentUnitHp', from: attacker.currentUnitHp, to: newAttackerHp },
             { field: 'currentTroopCount', from: attacker.currentTroopCount, to: newAttackerTroops },
           ],
         });
+      }
 
-        const retHits = outcome.retaliationAttacks.filter(a => a.isHit).length;
-        desc += `. ${target.unitName} retaliates — ${outcome.retaliationAttacks.length} attacks, ${retHits} hits, ${outcome.retaliationDamage} damage (${attackerTroopsKilled} troops)`;
+      // Build description
+      const firstStriker = outcome.strikerFirst === 'attacker' ? attacker : target;
+      const firstStrikerHits = outcome.firstStrikeAttacks.filter(a => a.isHit).length;
+      let desc = `${attacker.unitName} attacks ${target.unitName} with ${weapon.name}`;
+      desc += ` — ${firstStriker.unitName} strikes first — ${outcome.firstStrikeAttacks.length} attacks, ${firstStrikerHits} hits, ${outcome.firstStrikeDamage} damage (${outcome.strikerFirst === 'attacker' ? defenderTroopsKilled : attackerTroopsKilled} troops)`;
 
+      // Hero damage from first strike (hero on whoever received the first strike)
+      if (outcome.firstStrikeHeroDamage > 0) {
+        const heroHostId = outcome.strikerFirst === 'attacker' ? target.id : attacker.id;
+        const heroUnit = units.find(u => u.attachedToUnitId === heroHostId && !u.isDeleted);
+        if (heroUnit) {
+          const newHeroHp = Math.max(0, heroUnit.currentUnitHp - outcome.firstStrikeHeroDamage);
+          const newHeroTroops = Math.ceil(newHeroHp / heroUnit.troopHp);
+          const heroTroopsKilled = heroUnit.currentTroopCount - newHeroTroops;
+          subSteps.push({
+            type: 'DAMAGE',
+            description: `${heroUnit.unitName} took ${outcome.firstStrikeHeroDamage} damage (attached hero)`,
+            unitId: heroUnit.id,
+            changes: [
+              { field: 'currentUnitHp', from: heroUnit.currentUnitHp, to: newHeroHp },
+              { field: 'currentTroopCount', from: heroUnit.currentTroopCount, to: newHeroTroops },
+            ],
+          });
+          desc += `. ${heroUnit.unitName} (hero) took ${outcome.firstStrikeHeroDamage} damage (${heroTroopsKilled} troops)`;
+        }
+      }
+
+      // Retaliation
+      let attackerRouted = false;
+      let defenderRouted = false;
+      let attMoraleBreak = 0;
+      let defMoraleBreak = 0;
+
+      if (outcome.retaliationDamage > 0) {
+        const retaliator = outcome.strikerFirst === 'attacker' ? target : attacker;
+        const retaliatorHits = outcome.retaliationAttacks.filter(a => a.isHit).length;
+        desc += `. ${retaliator.unitName} retaliates — ${outcome.retaliationAttacks.length} attacks, ${retaliatorHits} hits, ${outcome.retaliationDamage} damage (${outcome.strikerFirst === 'attacker' ? attackerTroopsKilled : defenderTroopsKilled} troops)`;
+
+        // Hero damage from retaliation (hero on whoever received the retaliation)
+        if (outcome.retaliationHeroDamage > 0) {
+          const heroHostId = outcome.strikerFirst === 'attacker' ? attacker.id : target.id;
+          const heroUnit = units.find(u => u.attachedToUnitId === heroHostId && !u.isDeleted);
+          if (heroUnit) {
+            const newHeroHp = Math.max(0, heroUnit.currentUnitHp - outcome.retaliationHeroDamage);
+            const newHeroTroops = Math.ceil(newHeroHp / heroUnit.troopHp);
+            const heroTroopsKilled = heroUnit.currentTroopCount - newHeroTroops;
+            subSteps.push({
+              type: 'DAMAGE',
+              description: `${heroUnit.unitName} took ${outcome.retaliationHeroDamage} retaliation damage (attached hero)`,
+              unitId: heroUnit.id,
+              changes: [
+                { field: 'currentUnitHp', from: heroUnit.currentUnitHp, to: newHeroHp },
+                { field: 'currentTroopCount', from: heroUnit.currentTroopCount, to: newHeroTroops },
+              ],
+            });
+            desc += `. ${heroUnit.unitName} (hero) took ${outcome.retaliationHeroDamage} retaliation damage (${heroTroopsKilled} troops)`;
+          }
+        }
+
+        // Morale check for attacker after retaliation
         const attackerFormationMorMod = getFormationModifier(formationsMap, attacker.currentFormation, 'morale_modifier');
         const attModUnit = { ...attacker, currentUnitHp: newAttackerHp };
         attMoraleBreak = attModUnit.baseMorale + attModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(attModUnit, units, alliances, attackerFormationMorMod);
-        attackerRouted = !attModUnit.isHero && !attModUnit.isRouting && (attMoraleBreak <= 0);
+        attackerRouted = !attModUnit.ignoreMoraleChecks && !attModUnit.isRouting && (attMoraleBreak <= 0);
       }
 
+      // Morale check for defender
       const defenderFormationMorMod = getFormationModifier(formationsMap, target.currentFormation, 'morale_modifier');
       const defModUnit = { ...target, currentUnitHp: newDefenderHp };
       const defEffectiveMod = defModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(defModUnit, units, alliances, defenderFormationMorMod);
-      defenderRouted = !defModUnit.isHero && !defModUnit.isRouting && (defModUnit.baseMorale + defEffectiveMod <= 0);
+      defenderRouted = !defModUnit.ignoreMoraleChecks && !defModUnit.isRouting && (defModUnit.baseMorale + defEffectiveMod <= 0);
 
       await execute('ATTACK', subSteps, desc);
 
@@ -433,7 +573,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
         addMessage(`${target.unitName} routed!`);
 
         for (const u of units) {
-          if (u.id === attacker.id || u.id === target.id || u.isDeleted || u.isHero || u.isRouting) continue;
+          if (u.id === attacker.id || u.id === target.id || u.isDeleted || u.ignoreMoraleChecks || u.isRouting) continue;
           if (hexDistance(u.hex, target.hex) === 1) {
             const formationMorMod = getFormationModifier(formationsMap, u.currentFormation, 'morale_modifier');
             const effectiveMod = u.currentMoraleModifier + computeEffectiveMoraleModifier(u, units, alliances, formationMorMod);
@@ -450,7 +590,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
         addMessage(`${attacker.unitName} routed!`);
 
         for (const u of units) {
-          if (u.id === attacker.id || u.id === target.id || u.isDeleted || u.isHero || u.isRouting) continue;
+          if (u.id === attacker.id || u.id === target.id || u.isDeleted || u.ignoreMoraleChecks || u.isRouting) continue;
           if (hexDistance(u.hex, attacker.hex) === 1) {
             const formationMorMod = getFormationModifier(formationsMap, u.currentFormation, 'morale_modifier');
             const effectiveMod = u.currentMoraleModifier + computeEffectiveMoraleModifier(u, units, alliances, formationMorMod);
@@ -465,7 +605,118 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
     customDraw,
     autoCenter: isInitialLoad,
     backgroundImage: backgroundConfig ? { url: backgroundConfig.imageUrl, offsetX: backgroundConfig.offsetX, offsetY: backgroundConfig.offsetY, scale: backgroundConfig.scale } : null,
+    overlayMap,
   });
+
+  // Compute overlay map from hover or drag
+  function getReachableHexes(
+    unit: Unit,
+    maxMP: number,
+    occupied: Set<string>,
+    threatHexes: Set<string>,
+  ): Set<string> {
+    const reachable = new Set<string>();
+
+    if (unit.isRouting || unit.currentFormation === 'Scattered') {
+      const visited = new Set<string>();
+      const queue: { q: number; r: number; dist: number }[] = [];
+      queue.push({ q: unit.hex.q, r: unit.hex.r, dist: 0 });
+      visited.add(`${unit.hex.q},${unit.hex.r}`);
+
+      while (queue.length > 0) {
+        const { q, r, dist } = queue.shift()!;
+        if (dist > 0) reachable.add(`${q},${r}`);
+        if (dist >= maxMP) continue;
+        for (const dir of HEX_DIRS) {
+          const nq = q + dir.q;
+          const nr = r + dir.r;
+          const key = `${nq},${nr}`;
+          if (visited.has(key) || occupied.has(key)) continue;
+          visited.add(key);
+          if (threatHexes.has(key)) {
+            reachable.add(key);
+          } else {
+            queue.push({ q: nq, r: nr, dist: dist + 1 });
+          }
+        }
+      }
+    } else {
+      const visited = new Set<string>();
+      const queue: { q: number; r: number; facing: number; mpUsed: number }[] = [];
+      queue.push({ q: unit.hex.q, r: unit.hex.r, facing: unit.facing, mpUsed: 0 });
+      visited.add(`${unit.hex.q},${unit.hex.r},${unit.facing}`);
+
+      while (queue.length > 0) {
+        const { q, r, facing, mpUsed } = queue.shift()!;
+        if (mpUsed >= maxMP) continue;
+
+        const frontDirs = [(facing + 4) % 6, (facing + 5) % 6];
+        for (const dirIdx of frontDirs) {
+          const dir = HEX_DIRS[dirIdx];
+          const nq = q + dir.q;
+          const nr = r + dir.r;
+          const key = `${nq},${nr}`;
+          if (occupied.has(key)) continue;
+          const stateKey = `${nq},${nr},${facing}`;
+          if (visited.has(stateKey)) continue;
+          visited.add(stateKey);
+          reachable.add(key);
+          if (!threatHexes.has(key)) {
+            queue.push({ q: nq, r: nr, facing, mpUsed: mpUsed + 1 });
+          }
+        }
+
+        for (const newFacing of [(facing + 5) % 6, (facing + 1) % 6]) {
+          const stateKey = `${q},${r},${newFacing}`;
+          if (visited.has(stateKey)) continue;
+          visited.add(stateKey);
+          queue.push({ q, r, facing: newFacing, mpUsed: mpUsed + 1 });
+        }
+      }
+    }
+
+    return reachable;
+  }
+
+  useEffect(() => {
+    if (draggingUnitId) {
+      const draggedUnit = units.find(u => u.id === draggingUnitId);
+      if (!draggedUnit) { setOverlayMap({}); return; }
+      const draggedGroup = alliances[draggedUnit.team] || 'friendly';
+      const occupied = new Set(units.filter(u => !u.isDeleted && !u.attachedToUnitId).map(u => `${u.hex.q},${u.hex.r}`));
+
+      // Red threat hexes: front arcs of opposite units
+      const threatHexes = new Set<string>();
+      for (const unit of units) {
+        if (unit.isDeleted || unit.id === draggingUnitId || unit.attachedToUnitId || unit.isHero || unit.isRouting) continue;
+        const unitGroup = alliances[unit.team] || 'friendly';
+        if (unitGroup === draggedGroup) continue;
+        for (const dir of HEX_DIRS) {
+          const nq = unit.hex.q + dir.q;
+          const nr = unit.hex.r + dir.r;
+          const key = `${nq},${nr}`;
+          if (occupied.has(key)) continue;
+          const pos = determineCombatPosition({ q: nq, r: nr, s: -nq - nr }, unit.hex, unit.facing);
+          if (pos === 'front') threatHexes.add(key);
+        }
+      }
+
+      // White reachable hexes for the dragged unit
+      const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
+      const maxMP = computeEffectiveMovement(draggedUnit, movementMult);
+      const whiteHexes = getReachableHexes(draggedUnit, maxMP, occupied, threatHexes);
+
+      const combined: Record<string, string> = {};
+      for (const key of Array.from(whiteHexes)) combined[key] = 'rgba(255, 255, 255, 0.5)';
+      for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
+
+      setOverlayMap(combined);
+    } else if (hoveredUnit) {
+      setOverlayMap(getOverlayForUnit(hoveredUnit));
+    } else {
+      setOverlayMap({});
+    }
+  }, [draggingUnitId, hoveredUnit, units, alliances, formationsMap]);
 
   // Center map on initial load
   useEffect(() => {
@@ -803,6 +1054,42 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
     });
   }, [scenarioId, fetchScenarioMapData]);
 
+  // ---- Load & track turn state ----
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from('scenarios')
+      .select('current_turn_alliance, turn_number')
+      .eq('id', scenarioId)
+      .single()
+      .then(({ data, error }) => {
+        if (cancelled || error || !data) return;
+        setCurrentTurnAlliance(data.current_turn_alliance || null);
+        setTurnNumber(data.turn_number || 0);
+      });
+    return () => { cancelled = true; };
+  }, [scenarioId]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`scenario_turn:${scenarioId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'scenarios', filter: `id=eq.${scenarioId}` },
+        (payload: any) => {
+          const row = payload.new;
+          if (row.current_turn_alliance !== undefined) {
+            setCurrentTurnAlliance(row.current_turn_alliance || null);
+          }
+          if (row.turn_number !== undefined) {
+            setTurnNumber(row.turn_number || 0);
+          }
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [scenarioId]);
+
   // ---- Keyboard shortcuts ----
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -833,7 +1120,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
           <span className="text-white text-lg font-semibold">
             Scenario Map - {isGM ? 'DM' : 'Player'}
           </span>
-          <span className="text-white text-sm font-mono">Turn {turn}</span>
+          <span className="text-white text-sm font-mono">Turn {turnNumber}</span>
           <button
             onClick={undo}
             disabled={!canUndo()}
@@ -845,14 +1132,18 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
           >
             {`Undo${peekUndoChainLength() > 1 ? ` (${peekUndoChainLength()})` : ''}`}
           </button>
-          {isGM && (
-            <>
-              <button onClick={handleEndTurn} className="bg-blue-800 hover:bg-blue-700 text-white px-3 py-1 rounded shadow-lg text-sm">
-                End Turn
-              </button>
-
-            </>
-          )}
+          <button
+            onClick={handleEndTurn}
+            className={`px-3 py-1 rounded shadow-lg text-sm ${
+              currentTurnAlliance === 'enemy'
+                ? 'bg-[#D55E00] hover:bg-[#c74f00] text-white'
+                : currentTurnAlliance === 'neutral'
+                  ? 'bg-[#E0E0E0] hover:bg-[#d0d0d0] text-black'
+                  : 'bg-[#0072B2] hover:bg-[#00619c] text-white'
+            }`}
+          >
+            {`End Turn (${currentTurnAlliance ?? 'friendly'})`}
+          </button>
         </div>
         <button onClick={goToLobby} className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1 rounded shadow-lg text-sm">
           Exit Session
@@ -928,10 +1219,45 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
               changes: [{ field: 'isDeleted', from: false, to: true }],
             }], `Removed ${contextMenuUnit.unitName}`);
           }}
-          onAttachHero={(heroId, targetUnitId) => handleAttachHero(heroId, targetUnitId)}
+          onAttachHero={(heroId, targetUnitId) => {
+            const hero = units.find(u => u.id === heroId);
+            const target = units.find(u => u.id === targetUnitId);
+            if (hero && target) setAttachModal({ hero, target });
+          }}
           onDetachHero={(heroId) => handleDetachHero(heroId)}
           units={units}
         />
+      )}
+
+      {/* Attach Position Modal */}
+      {attachModal && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[280px]">
+            <p className="text-white text-sm mb-4 text-center">
+              {attachModal.hero.unitName} → {attachModal.target.unitName}
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => { handleAttachHero(attachModal.hero.id, attachModal.target.id, 'front'); setAttachModal(null); }}
+              >
+                Leader mode (Front)
+              </button>
+              <button
+                className="bg-teal-700 hover:bg-teal-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => { handleAttachHero(attachModal.hero.id, attachModal.target.id, 'back'); setAttachModal(null); }}
+              >
+                Protected mode (rear)
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => setAttachModal(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Debug Panel */}

@@ -49,9 +49,11 @@ function mapRowToUnit(row: any): Unit {
     hex: { q: row.hex_q, r: row.hex_r, s: row.hex_s },
     facing: row.facing || 0,
     team: row.team || 'black',
+    attachedPosition: row.attached_position || null,
     isRouting: row.is_routing || false,
     hidden: row.hidden || false,
     isDeleted: row.is_deleted || false,
+    ignoreMoraleChecks: row.ignore_morale_checks || false,
     actionsAvailable: row.actions_available || 0,
   };
 }
@@ -69,6 +71,7 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     mount_name: unit.mountName,
     is_hero: unit.isHero,
     attached_to_unit_id: unit.attachedToUnitId || null,
+    ...(unit.attachedPosition ? { attached_position: unit.attachedPosition } : {}),
     current_troop_count: unit.currentTroopCount,
     max_troop_count: unit.maxTroopCount,
     level: unit.level,
@@ -103,6 +106,7 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     is_routing: unit.isRouting,
     hidden: unit.hidden,
     is_deleted: unit.isDeleted,
+    ignore_morale_checks: unit.ignoreMoraleChecks,
     actions_available: unit.actionsAvailable || 0,
   };
 }
@@ -215,7 +219,14 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
 
         if (eventType === 'UPDATE' && newRow) {
           const updatedUnit = mapRowToUnit(newRow);
-          return prevUnits.map(u => u.id === updatedUnit.id ? updatedUnit : u);
+          return prevUnits.map(u => {
+            if (u.id !== updatedUnit.id) return u;
+            // Preserve attachedPosition from local state if DB has null (migration may not be applied yet)
+            if (u.attachedPosition && !updatedUnit.attachedPosition) {
+              return { ...updatedUnit, attachedPosition: u.attachedPosition };
+            }
+            return updatedUnit;
+          });
         }
 
         if (eventType === 'DELETE' && oldRow) {
@@ -324,6 +335,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       mountName: template.mountName || '',
       isHero: template.isHero || false,
       attachedToUnitId: null,
+      attachedPosition: null,
       currentTroopCount: troopCount,
       maxTroopCount: troopCount,
       level: template.level || 1,
@@ -342,9 +354,9 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       currentMoraleModifier: 0,
       sizeCategory: template.sizeCategory || 100,
       visualScale: template.visualScale || 100,
-      currentFormation: defaultFormation,
-      organizationLevel: getOrganizationLevel(defaultFormation),
-      formationAvailability: template.formationAvailability || ['Scattered', 'Routed'],
+      currentFormation: template.isHero ? 'Hero' : defaultFormation,
+      organizationLevel: getOrganizationLevel(template.isHero ? 'Hero' : defaultFormation),
+      formationAvailability: template.isHero ? ['Hero'] : (template.formationAvailability || ['Scattered', 'Routed']),
       equipCostGp: template.equipCostGp || 0,
       raceIconUrl: template.raceIconUrl || '',
       unitTypeIconUrl: template.unitTypeIconUrl || '',
@@ -356,6 +368,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       isRouting: false,
       hidden: false,
       isDeleted: false,
+      ignoreMoraleChecks: template.ignoreMoraleChecks || false,
       actionsAvailable: 0,
     };
 
@@ -402,6 +415,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     if (updates.maxUnitHp !== undefined) dbUpdates.max_unit_hp = updates.maxUnitHp;
     if (updates.isHero !== undefined) dbUpdates.is_hero = updates.isHero;
     if (updates.attachedToUnitId !== undefined) dbUpdates.attached_to_unit_id = updates.attachedToUnitId;
+    if (updates.attachedPosition !== undefined) dbUpdates.attached_position = updates.attachedPosition;
     if (updates.currentFormation !== undefined) { dbUpdates.current_formation = updates.currentFormation; dbUpdates.organization_level = getOrganizationLevel(updates.currentFormation); }
     if (updates.aggressiveness !== undefined) dbUpdates.aggressiveness = updates.aggressiveness;
     if (updates.baseMorale !== undefined) dbUpdates.base_morale = updates.baseMorale;
@@ -409,6 +423,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     if (updates.currentAc !== undefined) dbUpdates.current_ac = updates.currentAc;
     if (updates.baselineAc !== undefined) dbUpdates.baseline_ac = updates.baselineAc;
     if (updates.isRouting !== undefined) dbUpdates.is_routing = updates.isRouting;
+    if (updates.ignoreMoraleChecks !== undefined) dbUpdates.ignore_morale_checks = updates.ignoreMoraleChecks;
     if (updates.weaponString !== undefined) dbUpdates.weapon_string = updates.weaponString;
     if (updates.hidden !== undefined) dbUpdates.hidden = updates.hidden;
     if (updates.isDeleted !== undefined) dbUpdates.is_deleted = updates.isDeleted;
@@ -442,7 +457,14 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
         .single();
       if (data) {
         const rolledBack = mapRowToUnit(data);
-        setUnits(prev => prev.map(u => u.id === unitId ? rolledBack : u));
+        setUnits(prev => prev.map(u => {
+          if (u.id !== unitId) return u;
+          // Preserve attachedPosition if DB doesn't have it yet (migration not applied)
+          if (u.attachedPosition && !rolledBack.attachedPosition) {
+            return { ...rolledBack, attachedPosition: u.attachedPosition };
+          }
+          return rolledBack;
+        }));
       }
       return false;
     }
@@ -459,5 +481,6 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     addUnitFromTemplate,
     deleteUnit,
     updateUnit,
+    sizeCategories,
   };
 }

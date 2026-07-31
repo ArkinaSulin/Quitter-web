@@ -38,7 +38,8 @@ export interface FormationConfig {
 export function getFormationConfig(
   formation: string,
   isMounted: boolean,
-  troopScale: number = 100
+  troopScale: number = 100,
+  visualDotsPerRow?: number,
 ): FormationConfig {
   let baseRows = 10;
 
@@ -48,6 +49,18 @@ export function getFormationConfig(
     baseRows = Math.floor(baseRows / 3);
   } else if (troopScale >= 200) {
     baseRows = Math.floor(baseRows / 2);
+  }
+
+  // If visualDotsPerRow provided from DB, use it directly (skip hardcoded logic)
+  if (visualDotsPerRow !== undefined) {
+    return {
+      dotsPerRow: Math.max(1, visualDotsPerRow),
+      rowSpacing: 2.0,
+      isMounted,
+      triangleWidthMultiplier: 1.3,
+      triangleHeightMultiplier: (5 / 3) * 1.3,
+      scatteredLayout: 'random',
+    };
   }
 
   let dotsPerRow = baseRows;
@@ -70,7 +83,6 @@ export function getFormationConfig(
       scatteredLayout = 'random';
       dotsPerRow = Math.floor(baseRows / 2);
     }
-    // Removed the 1.2 multiplier for triangles.
   }
 
   // Apply formation-specific dotsPerRow for both mounted and foot
@@ -152,7 +164,8 @@ export function generateDotPositions(
   tokenHeight: number,
   dotRadius: number,
   troopScale: number,
-  seed: number = 42
+  seed: number = 42,
+  visualDotsPerRow?: number,
 ): Array<{ x: number; y: number; isDead: boolean; direction?: number }> {
   // Determine effective formation for layout
   let effectiveFormation = formation;
@@ -160,7 +173,7 @@ export function generateDotPositions(
     effectiveFormation = 'Routed';
   }
 
-  const config = getFormationConfig(effectiveFormation, isMounted, troopScale);
+  const config = getFormationConfig(effectiveFormation, isMounted, troopScale, visualDotsPerRow);
   const random = seededRandom(seed);
 
   const topStart = tokenHeight * 0.08;

@@ -49,6 +49,7 @@ export interface UseHexGridProps {
   customDraw?: (ctx: CanvasRenderingContext2D, width: number, height: number, zoom: number, offsetX: number, offsetY: number) => void;
   autoCenter?: boolean;
   backgroundImage?: { url: string; offsetX: number; offsetY: number; scale: number } | null;
+  overlayMap?: Record<string, string> | null;
 }
 
 export function useHexGrid({
@@ -65,6 +66,7 @@ export function useHexGrid({
   customDraw,
   autoCenter = true,
   backgroundImage,
+  overlayMap = null,
 }: UseHexGridProps) {
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
@@ -189,12 +191,16 @@ export function useHexGrid({
       ctx.stroke();
     };
 
-    for (const hex of hexes) drawHex(hex);
+    for (const hex of hexes) {
+      const key = `${hex.q},${hex.r}`;
+      const fill = overlayMap?.[key];
+      drawHex(hex, fill || undefined);
+    }
 
     if (customDraw) {
       customDraw(ctx, width, height, zoom, offsetX, offsetY);
     }
-  }, [canvasRef, size, gridRadius, offsetX, offsetY, zoom, customDraw, bgLoaded, backgroundImage]);
+  }, [canvasRef, size, gridRadius, offsetX, offsetY, zoom, customDraw, bgLoaded, backgroundImage, overlayMap]);
 
   useEffect(() => {
     draw();

@@ -9,20 +9,29 @@ const HEX_DIRS = [
   { q: 1, r: -1, s: 0 },
 ];
 
-function threatFromLevel(level: number): number {
-  if (level >= 20) return 5;
-  if (level >= 16) return 4;
-  if (level >= 11) return 3;
-  if (level >= 5) return 2;
-  return 1;
+export function computeThreatRating(unit: Unit): number {
+  const levelComp = unit.level >= 19 ? 6
+    : unit.level >= 13 ? 5
+    : unit.level >= 8 ? 4
+    : unit.level >= 5 ? 3
+    : unit.level >= 3 ? 2
+    : unit.level === 2 ? 1
+    : 0;
+  const sizeComp = (unit.sizeCategory / 100) ** 2;
+  const countComp = unit.currentTroopCount >= 50 ? 4
+    : unit.currentTroopCount >= 20 ? 3
+    : unit.currentTroopCount >= 10 ? 2
+    : unit.currentTroopCount >= 5 ? 1
+    : 0;
+  return levelComp + sizeComp + countComp;
 }
 
-function calcWounds(unit: Unit): number {
+export function calcWounds(unit: Unit): number {
   const pctLost = 1 - unit.currentUnitHp / unit.maxUnitHp;
   return -Math.floor(pctLost * 10);
 }
 
-function calcIsolation(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>): boolean {
+export function calcIsolation(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>): boolean {
   const unitAlliance = alliances[unit.team] || 'friendly';
   const adjHexes = HEX_DIRS.map(d => ({ q: unit.hex.q + d.q, r: unit.hex.r + d.r, s: unit.hex.s + d.s }));
   return !units.some(u =>
@@ -33,7 +42,7 @@ function calcIsolation(unit: Unit, units: Unit[], alliances: Record<string, Alli
   );
 }
 
-function calcEnemyThreats(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>): { frontSide: number; rear: number } {
+export function calcEnemyThreats(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>): { frontSide: number; rear: number } {
   const unitAlliance = alliances[unit.team] || 'friendly';
   const frontDirs = [(unit.facing + 4) % 6, (unit.facing + 5) % 6];
   const sideDirs = [unit.facing % 6, (unit.facing + 3) % 6];
@@ -41,6 +50,7 @@ function calcEnemyThreats(unit: Unit, units: Unit[], alliances: Record<string, A
 
   let frontSide = 0;
   let rear = 0;
+  const myThreat = computeThreatRating(unit);
 
   for (const other of units) {
     if (other.isDeleted || other.id === unit.id) continue;
@@ -53,7 +63,7 @@ function calcEnemyThreats(unit: Unit, units: Unit[], alliances: Record<string, A
     const dirIdx = HEX_DIRS.findIndex(d => d.q === dq && d.r === dr && d.s === ds);
     if (dirIdx === -1) continue;
 
-    const threat = threatFromLevel(other.level);
+    const threat = Math.round(computeThreatRating(other) / myThreat);
     if (frontDirs.includes(dirIdx) || sideDirs.includes(dirIdx)) {
       frontSide += threat;
     } else if (rearDirs.includes(dirIdx)) {

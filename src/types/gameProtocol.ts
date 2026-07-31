@@ -3,6 +3,7 @@
 export const ORGANIZATION_LEVEL: Record<string, number> = {
   'Routed': 0,
   'Scattered': 0,
+  'Hero': 0,
   'Open Order': 1,
   'Close Order': 2,
   'Phalanx': 3,
@@ -81,6 +82,7 @@ export interface UnitTemplate {
   customImageUrl?: string | null;
   unitTypeIconUrl?: string | null;
   canCharge: boolean;                 // new: override for race/mount can_charge
+  ignoreMoraleChecks: boolean;        // unit never routs
 //  acSpecialModifier?: string;
   createdAt: string;
   updatedAt: string;
@@ -99,6 +101,7 @@ export interface Unit {
   mountName: string;                  // new: copied from template
   isHero: boolean;
   attachedToUnitId: string | null;    // new: hero attached to a unit
+  attachedPosition: 'front' | 'back' | null; // new: hero's position on the host unit
   currentTroopCount: number;          // was: bodyCount
   maxTroopCount: number;              // was: maxBodyCount
   level: number;                      // new: copied from template
@@ -130,6 +133,7 @@ export interface Unit {
   isRouting: boolean;
   hidden: boolean;
   isDeleted: boolean;                  // soft delete — reversed by undo
+  ignoreMoraleChecks: boolean;         // unit never routs (undead, heroes, etc.)
   organizationLevel: number;           // computed from currentFormation via ORGANIZATION_LEVEL map
   actionsAvailable: number;           // new: remaining actions for current turn
 }
@@ -145,6 +149,8 @@ export interface Scenario {
   createdAt: string;
   updatedAt: string;
   screenshotUrl: string | null;
+  currentTurnAlliance: AllianceGroup | null;
+  turnNumber: number;
 }
 
 // --- Participant ---
@@ -206,6 +212,7 @@ export interface Formation {
   attack_modifier: number;
   morale_modifier: number;
   row_capacity_multiplier: number;
+  attack_capacity_multiplier: number;
 }
 
 export interface UnitType {

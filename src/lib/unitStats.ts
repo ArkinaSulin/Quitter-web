@@ -1,4 +1,4 @@
-import { Unit, Formation } from '@/types/gameProtocol';
+import { Unit, Formation, SizeCategory } from '@/types/gameProtocol';
 
 export function computeEffectiveAc(unit: Unit, formationModifier: number): number {
   return unit.baselineAc + formationModifier;
@@ -24,4 +24,18 @@ export function getFormationMultiplier(formations: Record<string, Formation>, fo
   const f = formations[formationName];
   if (!f) return 1;
   return (f[key] as number) ?? 1;
+}
+
+export function getRowCapacity(sizeCategories: SizeCategory[], sizeCategory: number): number {
+  const sc = sizeCategories.find(s => s.size_category === sizeCategory);
+  if (sc) return sc.row_capacity;
+  if (sizeCategory >= 400) return 1;
+  if (sizeCategory >= 300) return 2;
+  if (sizeCategory >= 200) return 5;
+  return 10;
+}
+
+export function getVisualDotsPerRow(formationsMap: Record<string, Formation>, rowCapacity: number, formationName: string): number {
+  const mult = getFormationMultiplier(formationsMap, formationName, 'row_capacity_multiplier');
+  return Math.max(1, rowCapacity * mult);
 }

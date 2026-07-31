@@ -14,6 +14,8 @@ function mapScenario(row: any): Scenario {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     screenshotUrl: row.screenshot_url || null,
+    currentTurnAlliance: row.current_turn_alliance || null,
+    turnNumber: row.turn_number || 0,
   };
 }
 
@@ -194,7 +196,7 @@ export function useScenarios() {
 
   const checkDMOnline = useCallback(async (scenarioId: string): Promise<boolean> => {
     return new Promise((resolve) => {
-      const channel = supabase.channel(`presence:${scenarioId}`, {
+      const channel = supabase.channel(`presence_check:${scenarioId}`, {
         config: { presence: { key: `${scenarioId}` } },
       });
       let resolved = false;
@@ -394,6 +396,18 @@ export function useScenarios() {
     return true;
   }, []);
 
+  const updateScenarioField = useCallback(async (scenarioId: string, fields: Record<string, any>): Promise<boolean> => {
+    const { error } = await supabase
+      .from('scenarios')
+      .update({ ...fields, updated_at: new Date().toISOString() })
+      .eq('id', scenarioId);
+    if (error) {
+      console.error('Error updating scenario:', error);
+      return false;
+    }
+    return true;
+  }, []);
+
   return {
     scenarios,
     loading,
@@ -409,5 +423,6 @@ export function useScenarios() {
     updateScreenshot,
     fetchScenarioMapData,
     updateScenarioMapData,
+    updateScenarioField,
   };
 }
