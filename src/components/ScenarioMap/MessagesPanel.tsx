@@ -17,8 +17,11 @@ export function MessagesPanel() {
         <div className="text-gray-500 italic select-none">No messages yet</div>
       )}
       {messages.map((msg, idx) => (
-        <div key={idx} className="text-gray-300 border-b border-gray-800 pb-1 select-none">
-          {msg}
+        <div
+          key={idx}
+          className={`border-b border-gray-800 pb-1 select-none ${msg.tone === 'error' ? 'text-red-400 font-bold' : 'text-gray-300'}`}
+        >
+          {msg.text}
         </div>
       ))}
       <div ref={bottomRef} />

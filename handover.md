@@ -138,7 +138,36 @@ Implemented the first slice of the turn system:
 - **Reset:** on a group's turn, every non-deleted unit whose team is in that group resets `movementPointsAvailable = computeEffectiveMovement(unit, formation.movement_multiplier)` and `actionsAvailable = 2`.
 - **Atomic + undoable:** `END_TURN` is one command; a new `SCENARIO` sub-step type applies scenario-row changes. Undo reverts `current_turn_alliance`/`turn_number` and restores each unit's previous MP/actions. `execute`/`undo`/`redo` in `useGameEngine.ts` gained the `SCENARIO` branch (wired to `updateScenarioField`).
 - **Sync:** ScenarioMap fetches the scenario row on mount and subscribes to `postgres_changes` on `scenarios` (filter `id=eq`) so all clients track the active group + turn number. The scatter seed (`turnNumber` prop into `drawToken`) now uses the persisted turn number.
-- **Helpers:** `src/lib/turnState.ts` — `ALLIANCE_ORDER`, `getActiveGroups(alliances)`, `advanceTurn(current, activeGroups) → { next, wrapped }` (pure, tested in `turnState.test.ts`: 13 cases).
+- **Helpers:** `src/lib/turnState.ts` — `ALLIANCE_ORDER`, `getActiveGroups(alliances)`, `advanceTurn(current, activeGroups) → { next, wrapped }` (pure, tested in `turnState.test.ts`: 11 cases).
+
+### Movement & action tracking — full turn economy
+**Files:** `src/lib/moveCost.ts` (+ test), `src/lib/formationCost.ts` (+ test), `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`, `src/components/ScenarioMap/UnitTooltip.tsx`, `src/components/ScenarioMap/MessagesPanel.tsx`, `src/contexts/MessageContext.tsx`, `src/hooks/useSupabaseSync.ts`, `.scratch/movement-actions-tracking/spec.md`
+
+Implemented the MP/action spend so `movement_points_available` / `actions_available` are actually consumed and reset each turn:
+
+- **Move cost** (`moveCost.ts`): pure `computeReachableMap(unit, maxMP, occupied, threatHexes) → Map<"q,r", { cost, path, finalFacing }>` over state space `(hex, facing)` — 1 MP per front-arc step, 1 MP per 60° turn. Threat hexes are reachable destinations but never passed through; occupied hexes excluded; Routed/Scattered/**Hero** move any direction at 1 MP/hex (heroes = loose like Scattered, matching their threat/flank treatment). Replaces the old `getReachableHexes` in `ScenarioMap.tsx` so the drag overlay and the executed move cost share one source. Executed-move reach = leftover MP + action pools; **overlay = `computeMovePool`** (a full pool when actions ≥ 1, else leftover MP).
+- **Action-refill model** (`moveCost.ts`): **one action = one full MP pool.** Units start/reset at **2 actions / 0 MP** — MP is materialized when a move converts an action, and the cost is spent from **already-materialized MP first** (an action converts a fresh pool only when MP is exhausted, so leftover MP is never wasted). `computeMoveBudget` → `movementPointsAvailable + maxMP × max(1, actions)`; `applyMoveCost` → final MP = last pool's remainder (0 on exact pool), final actions = unconverted pools left; `applyMpSpend` → single-MP spends convert a remaining action into a full pool when MP is insufficient; `computeMovePool` → full pool when actions ≥ 1 (used for overlay + tooltip), else leftover MP; `isMoveAffordable` → true iff actions stay ≥ 0. Heroes **ignore** rotate/formation MP; attach/detach cost the **hero's** MP.
+- **Formation rescale** (`formationCost.ts`): pure `applyFormationChange(currentMP, steps, oldMax, newMax)` — 1 MP per org-level step, then proportional rescale `× newMax/oldMax`, `floor`ed and clamped to `[0, newMax]`. Replaces the old `Math.round` proportional-only logic. MP stays **integer** (dry-run verdict: fractions don't matter).
+- **Deltas** (undoable via existing field-replay): `MOVE` via `applyMoveCost` (path MP spent first, action converts a fresh pool only when MP exhausted); `ROTATE` −1 MP via `applyMpSpend` (non-hero only, action only on refill); `FORMATION` via `applyFormationChange` (hero skips MP); `ATTACH_HERO`/`DETACH_HERO` −1 hero MP via `applyMpSpend`; `ATTACK` adds an `ATTACK` sub-step deducting 1 action (spent even on AGR failure). `END_TURN` resets to **2 actions / 0 MP**.
+- **Soft enforcement (never hard-blocks):** `handleUnitMove` rejects only hexes unreachable within leftover MP + action pools; a move that is **not affordable** (`isMoveAffordable` — cost exceeds leftover MP + action pools) shows a **confirm modal**, and confirming deducts fully (may go negative) and pushes a **red error notification**. Same confirm modal for an attack with 0 actions (covers haste double-attack, detach-reposition edge cases).
+- **Message channel:** `MessageContext` messages are now `GameMessage { text, tone }` with a new `addError()`; `MessagesPanel` renders error-tone rows red.
+- **Tooltip:** `Move: {floor(movementPointsAvailable)}/{max}` (actual materialized MP, drains 3→2→1→0 per pool) + `Actions: {n}/2` with a `(1 = full move)` hint (red when ≤ 0).
+- **Spawn:** `addUnitFromTemplate` starts units at **2 actions / 0 MP** (`movementPointsAvailable: 0`).
+- **Tests:** `moveCost.test.ts` (28) + `formationCost.test.ts` (6); full suite 145 passing; `tsc --noEmit` clean.
+
+### Tabbed left panel + Map editor as a tab
+**Files:** `src/components/ScenarioMap/LeftPanel.tsx`, `src/components/ScenarioMap/PanelsContainer.tsx`, `src/components/ScenarioMap/PanelSection.tsx`, `src/components/ScenarioMap/ScenarioMap.tsx`, `src/components/Lobby.tsx`, `src/components/MapEditorView.tsx` (deleted)
+
+Redesigned the left panel from collapsible sections into a **tabbed panel**:
+
+- **Tab bar** on top (always visible), fixed order: Map · Alliances · Unit Selector · Messages. Clicking a tab toggles that panel open/closed; multiple can be open at once and stack **vertically in fixed order**, sharing height equally.
+- **Default state:** first *available* tab open, rest closed (GM → Map; Player → Messages). `userTouched` ref means the default only applies before the user interacts.
+- `PanelsContainer` now takes a `tabs` prop and renders the tab bar + stacked open panels; auto-sizes and hides resize handles when all tabs are closed. `PanelSection` is now just a scrollable content region.
+- **Icons:** Map (map glyph) · Alliances (handshake) · Unit Selector (crossed swords) · Messages (word bubble).
+- **Bug fix:** `PanelsContainer` shell is `flex flex-col` with tab bar `flex-none` and body `flex-1 min-h-0` — the previous fixed height + `h-full` body + in-flow tab bar overflowed the container, clipping the bottommost panel (Messages) and causing the panel to jump when that tab was opened. Default width raised 320 → 400 so all four labeled tabs fit.
+- **Dock toggle:** a large *hollow* triangle moves the panel between the top-left and top-right edges. When docked left it sits at the **right end** of the tab bar (pointing `>`); when docked right at the **left end** (pointing `<`) — it always hangs at the leading end, pointing toward the destination. State (`panelSide`) lives in ScenarioMap, in-memory. When docked right the width-resize handles mirror: right-edge → left-edge and bottom-right corner → bottom-left corner, with inverted drag math (`newWidth = startSize.width - dx`) and `nesw-resize` cursor, so the panel stays resizable off the screen edge; bottom handle unchanged.
+- **Map editor moved in:** the previously-unused `MapEditorPanel.tsx` is wired into a GM-only **Map** tab (leftmost). ScenarioMap passes `backgroundConfig` + `onSaveBackground` (sets `backgroundConfig` live + persists via `updateScenarioMapData`), so alignment is WYSIWYG on the real map.
+- **Lobby cleanup:** the Map Editor button, `mapEditorScenarioId` state, and the full-screen `MapEditorView.tsx` overlay were removed; the file was deleted.
 
 ## Changes by File
 
@@ -154,6 +183,8 @@ Implemented the first slice of the turn system:
 | `src/components/TokenRenderer/drawToken.ts` | `ignoreMoraleChecks` param on `drawBottomInfo`; heart rendering skips immune units; unconscious hero grayscale at `currentUnitHp <= 0` |
 | `src/lib/templateMappers.ts` | `ignoreMoraleChecks` in `mapTemplate`/`mapTemplateToRow` |
 | `src/lib/unitCombat.test.ts` | Updated `makeUnit` and `callCombat` for new fields |
+| `src/components/TokenRenderer/drawToken.ts` | Action badge: small square above the bottom info band (non-hero, right edge) / above the HP bar (hero, bottom-right) showing remaining `actionsAvailable` — white (≥2) / yellow (1) / red (0); `getActionColor` + `drawActionBadge` helpers; skips attached heroes and units without `actionsAvailable` |
+| `src/components/TokenRenderer/TokenRenderer.tsx` | Preview fake unit gains `actionsAvailable: 2` so the badge shows in token previews |
 | `src/components/UnitEditor.tsx` | "Ignore morale checks (fearless)" checkbox; `ignoreMoraleChecks` default in blank template |
 | `supabase/migrations/013_turn_tracking.sql` | New migration: `scenarios.current_turn_alliance` (CHECK), `scenarios.turn_number` default 0 |
 | `src/lib/turnState.ts` | New pure module: `ALLIANCE_ORDER`, `getActiveGroups`, `advanceTurn` |
@@ -162,10 +193,15 @@ Implemented the first slice of the turn system:
 | `src/hooks/useScenarios.ts` | `mapScenario` maps the two new fields; new `updateScenarioField(scenarioId, fields)` |
 | `src/game/GameEngine.ts` | `ActionType` += `'END_TURN'`, `'SCENARIO'` |
 | `src/hooks/useGameEngine.ts` | `updateScenarioField` prop; `SCENARIO` branch in execute/undo/redo; new `endTurn()` building the atomic command |
-| `src/components/ScenarioMap/ScenarioMap.tsx` | Scenario turn fetch + realtime subscription; `currentTurnAlliance`/`turnNumber` state replace local `turn`; alliance-colored End Turn button visible to all; scatter seed uses persisted turn number |
+| `src/components/ScenarioMap/ScenarioMap.tsx` | Scenario turn fetch + realtime subscription; `currentTurnAlliance`/`turnNumber` state replace local `turn`; alliance-colored End Turn button visible to all; scatter seed uses persisted turn number; `handleSaveBackground` + `backgroundConfig`/`onSaveBackground` props to LeftPanel; `panelSide` state + wrapper `left-2`/`right-2` positioning for the dock toggle |
+| `src/components/ScenarioMap/PanelsContainer.tsx` | Refactored to tabbed shell: `tabs` prop renders a tab bar above stacked open panels; `flex flex-col` layout (tab bar `flex-none`, body `flex-1 min-h-0`) fixes overflow that clipped the bottommost panel; auto-sizes + hides resize handles when all tabs closed; `side`/`onToggleSide` large hollow dock-toggle triangle at the leading end of the tab bar; width-handle + corner mirror when docked right |
+| `src/components/ScenarioMap/PanelSection.tsx` | Simplified to a scrollable content region (`flex-1 min-h-0 overflow-y-auto`); collapsed-icon-button mode removed |
+| `src/components/ScenarioMap/LeftPanel.tsx` | Rewritten around tabs (Map · Alliances · Unit Selector · Messages); GM-only Map tab (leftmost) hosts `MapEditorPanel`; handshake/crossed-swords icons; first-available-tab-open default (GM → Map); forwards `side`/`onToggleSide` to PanelsContainer |
+| `src/components/Lobby.tsx` | Removed Map Editor button + `mapEditorScenarioId` state + `MapEditorView` overlay/import |
+| `src/components/MapEditorView.tsx` | Deleted (full-screen overlay replaced by the Map tab editor) |
 
 ## Pending
 - Migration 013 (`turn_tracking`) — **written, needs `supabase db push`/manual apply**
 - Migrations 010 (`attached_position`), 011 (`Hero` formation), and 012 (`ignore_morale_checks`) — user applied all three to the DB
 - `UnitEditor.tsx`: `isHero` toggle should force `'Hero'` formation / disable other formation checkboxes — **postponed** until the consolidated interface update
-- Movement & action tracking — End Turn + turn counter implemented; still open from `.scratch/movement-actions-tracking/spec.md`: MP/action deduction in `MOVE`/`ROTATE`/`FORMATION`/`ATTACH_HERO`/`DETACH_HERO`/`ATTACK` sub-steps, `computeMoveCost` pure function extraction, drag-overlay `maxMP` clamp to remaining MP, tooltip `Actions: n/2`, `actionsAvailable` default → 2 at spawn
+- Movement & action tracking — **implemented** (see new feature section). No DB migration needed (MP stays INTEGER). Only migration 013 remains to be applied.

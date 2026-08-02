@@ -131,6 +131,9 @@ export default function UnitEditor() {
   const [weaponRange, setWeaponRange] = useState(1);
   const [weaponMagicRadius, setWeaponMagicRadius] = useState<number>(0);
   const [weaponReach, setWeaponReach] = useState<boolean>(false);
+  const [weaponFreeAction, setWeaponFreeAction] = useState<boolean>(false);
+  const [weaponNoRetaliation, setWeaponNoRetaliation] = useState<boolean>(false);
+  const [weaponIgnoreAttackMultiplier, setWeaponIgnoreAttackMultiplier] = useState<boolean>(false);
 
   const [weaponError, setWeaponError] = useState('');
   const [weaponSearchTerm, setWeaponSearchTerm] = useState('');
@@ -506,6 +509,9 @@ export default function UnitEditor() {
     setWeaponAttackBonus(0);
     setWeaponMagicRadius(0);
     setWeaponReach(false);
+    setWeaponFreeAction(false);
+    setWeaponNoRetaliation(false);
+    setWeaponIgnoreAttackMultiplier(false);
     setWeaponError('');
     setShowWeaponModal(true);
   };
@@ -523,8 +529,17 @@ export default function UnitEditor() {
     setWeaponAttackBonus(w.attackBonus);
     setWeaponMagicRadius(w.magicRadius);
     setWeaponReach(w.reach || false);
+    setWeaponFreeAction(w.freeAction || false);
+    setWeaponNoRetaliation(w.noRetaliation || false);
+    setWeaponIgnoreAttackMultiplier(w.ignoreAttackMultiplier || false);
     setWeaponError('');
     setShowWeaponModal(true);
+  };
+
+  const handleWeaponRangeChange = (value: number) => {
+    const next = Math.max(1, value);
+    setWeaponRange(next);
+    setWeaponNoRetaliation(next > 1);
   };
 
   const selectWeaponFromLookup = (weapon: {
@@ -542,12 +557,13 @@ export default function UnitEditor() {
     setWeaponSearchTerm(weapon.name);
     setWeaponDamageDice(weapon.damage_dice);
     setWeaponAttackBonus(weapon.attack_bonus || 0);
-    setWeaponRange(weapon.range || 1);
+    const nextRange = weapon.range || 1;
+    setWeaponRange(nextRange);
+    setWeaponNoRetaliation(nextRange > 1);
     setWeaponTargetType((weapon.target_type === 'area' ? 'area' : 'single') as 'single' | 'area');
     setWeaponMagicRadius(weapon.magic_radius || 0);
     setWeaponReach(weapon.is_reach || false);
   };
-
   const getWeaponSuggestions = () => {
     if (!weaponSearchTerm.trim()) return [];
     const term = weaponSearchTerm.toLowerCase();
@@ -583,6 +599,9 @@ export default function UnitEditor() {
       range: weaponRange,
       magicRadius: weaponTargetType === 'area' ? weaponMagicRadius : 0,
       reach: weaponReach,
+      freeAction: weaponFreeAction,
+      noRetaliation: weaponNoRetaliation,
+      ignoreAttackMultiplier: weaponIgnoreAttackMultiplier,
     };
 
     const currentWeapons = getWeapons();
@@ -1801,7 +1820,7 @@ export default function UnitEditor() {
                   <input
                     type="number"
                     value={weaponRange}
-                    onChange={(e) => setWeaponRange(Math.max(1, parseInt(e.target.value) || 1))}
+                    onChange={(e) => handleWeaponRangeChange(parseInt(e.target.value) || 1)}
                     min={1}
                     className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
                   />
@@ -1828,6 +1847,39 @@ export default function UnitEditor() {
                       className="w-4 h-4 accent-yellow-400"
                     />
                     Reach (e.g., pike, lance)
+                  </label>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={weaponFreeAction}
+                      onChange={(e) => setWeaponFreeAction(e.target.checked)}
+                      className="w-4 h-4 accent-purple-400"
+                    />
+                    Free Action (costs no action to attack)
+                  </label>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={weaponNoRetaliation}
+                      onChange={(e) => setWeaponNoRetaliation(e.target.checked)}
+                      className="w-4 h-4 accent-blue-400"
+                    />
+                    No Retaliation (defender can't strike back)
+                  </label>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={weaponIgnoreAttackMultiplier}
+                      onChange={(e) => setWeaponIgnoreAttackMultiplier(e.target.checked)}
+                      className="w-4 h-4 accent-teal-400"
+                    />
+                    Ignore Attack Multiplier (unscaled attack count)
                   </label>
                 </div>
                 {weaponError && <p className="text-red-400 text-sm">{weaponError}</p>}

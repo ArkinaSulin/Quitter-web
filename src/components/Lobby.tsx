@@ -4,9 +4,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useScenarios } from '@/hooks/useScenarios';
-import { signInWithGoogle, signOut } from '@/lib/supabaseClient';
+import { useProfile } from '@/hooks/useProfile';
+import { supabase, signInWithGoogle, signOut } from '@/lib/supabaseClient';
 import Toast from '@/components/Toast';
-import { MapEditorView } from '@/components/MapEditorView';
 
 interface LobbyProps {
   onJoinScenario: (scenarioId: string) => void;
@@ -37,7 +37,25 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
   const [signInError, setSignInError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
-  const [mapEditorScenarioId, setMapEditorScenarioId] = useState<string | null>(null);
+  const [showDisplayNameModal, setShowDisplayNameModal] = useState(false);
+  const [displayNameInput, setDisplayNameInput] = useState('');
+  const [displayNameError, setDisplayNameError] = useState<string | null>(null);
+  const [accessRequest, setAccessRequest] = useState('');
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const [accessSubmitted, setAccessSubmitted] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [pendingProfiles, setPendingProfiles] = useState<{ id: string; display_name: string; request_note: string }[]>([]);
+  const [approvedUsers, setApprovedUsers] = useState<{
+    id: string;
+    display_name: string;
+    role: string;
+    last_active_at: string | null;
+    last_changed_by_name: string | null;
+    last_role_change_at: string | null;
+  }[]>([]);
+  const [adminError, setAdminError] = useState<string | null>(null);
+
+  const { displayName, role, requestNote, updateDisplayName, updateRequestNote, approvePlayer } = useProfile(currentUser?.id);
 
   useEffect(() => {
     if (!activeScenarioId) return;
@@ -54,6 +72,12 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
     };
   }, [activeScenarioId, subscribeToPresence, unsubscribeFromPresence]);
 
+  useEffect(() => {
+    if (requestNote && accessRequest === '') {
+      setAccessRequest(requestNote);
+    }
+  }, [requestNote, accessRequest]);
+
   const handleSignIn = async () => {
     try {
       setSignInError(null);
@@ -61,6 +85,76 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
     } catch (err: any) {
       setSignInError(err.message || 'Google sign‑in failed.');
     }
+  };
+
+  const openDisplayNameModal = () => {
+    if (!currentUser) return;
+    setDisplayNameInput(displayName || currentUser.user_metadata?.full_name || currentUser.email || '');
+    setDisplayNameError(null);
+    setShowDisplayNameModal(true);
+  };
+
+  const handleChangeDisplayName = async () => {
+    const ok = await updateDisplayName(displayNameInput);
+    if (!ok) {
+      setDisplayNameError('Please enter a non-empty display name.');
+      return;
+    }
+    setShowDisplayNameModal(false);
+  };
+
+  const handleRequestAccess = async () => {
+    if (!accessRequest.trim()) {
+      setAccessError('Please tell us a little about yourself.');
+      return;
+    }
+    const ok = await updateRequestNote(accessRequest.trim());
+    if (!ok) {
+      setAccessError('Failed to submit your request. Please try again.');
+      return;
+    }
+    setAccessError(null);
+    setAccessSubmitted(true);
+  };
+
+  const openAdminPanel = async () => {
+    setShowAdminPanel(true);
+    setAdminError(null);
+    const [pendingRes, approvedRes] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('id, display_name, request_note')
+        .is('role', null)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('profile_access')
+        .select('id, display_name, role, last_active_at, last_changed_by_name, last_role_change_at')
+        .not('role', 'is', null)
+        .order('last_active_at', { ascending: false }),
+    ]);
+    setPendingProfiles(pendingRes.data || []);
+    setApprovedUsers(approvedRes.data || []);
+  };
+
+  const handleApprove = async (targetUserId: string, newRole: 'admin' | 'dm' | 'player') => {
+    setAdminError(null);
+    const { ok, error } = await approvePlayer(targetUserId, newRole);
+    if (!ok) {
+      setAdminError(error || 'Failed to change role.');
+      return;
+    }
+    await openAdminPanel();
+  };
+
+  const handleRoleChange = async (
+    user: { id: string; display_name: string; role: string },
+    newRole: 'admin' | 'dm' | 'player',
+  ) => {
+    if (newRole === user.role) return;
+    if (user.role === 'admin' && newRole !== 'admin') {
+      if (!confirm(`Demote ${user.display_name} from admin? This action is audited.`)) return;
+    }
+    await handleApprove(user.id, newRole);
   };
 
   const handleCreate = async () => {
@@ -131,8 +225,24 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
     }
   };
 
+  const formatDateTime = (dateString?: string | null) => {
+    if (!dateString) return 'Never';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Never';
+      return date.toLocaleString();
+    } catch {
+      return 'Never';
+    }
+  };
+
   const selectedScenario = scenarios.find(s => s.id === selectedScenarioId);
   const isCreator = selectedScenario && currentUser && selectedScenario.creatorId === currentUser.id;
+
+  const isPending = !!currentUser && role === null;
+  const canCreateScenario = role === 'admin' || role === 'dm';
+  const canUseUnitEditor = canCreateScenario;
+  const canJoin = role !== null;
 
   const renderHeader = () => (
     <div className="flex flex-col items-center px-6 py-3 border-b border-gray-700 bg-[#0d0d1a]">
@@ -142,9 +252,13 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
       <div className="flex items-center justify-center gap-3 mt-1">
         {currentUser ? (
           <>
-            <span className="text-sm text-gray-300">
-              {currentUser.user_metadata?.full_name || currentUser.email}
-            </span>
+            <button
+              onClick={openDisplayNameModal}
+              title="Change display name"
+              className="text-sm text-gray-300 hover:text-white hover:underline"
+            >
+              {displayName || currentUser.user_metadata?.full_name || currentUser.email}
+            </button>
             <button
               onClick={signOut}
               className="text-sm text-red-400 hover:text-red-300"
@@ -178,49 +292,56 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
     return (
       <div className="w-64 p-4 border-r border-gray-700 flex flex-col justify-between h-full bg-[#0d0d1a]">
         <div className="space-y-3">
-          <button
-            onClick={() => setShowCreateModal(true)}
-            disabled={!currentUser}
-            className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            New Scenario
-          </button>
-          <button
-            onClick={() => {
-              if (selectedScenarioId) {
-                const scenario = scenarios.find(s => s.id === selectedScenarioId);
-                if (scenario) {
-                  handleJoinClick(scenario.id, !!scenario.passwordHash);
+          {role === 'admin' && (
+            <button
+              onClick={openAdminPanel}
+              className="w-full py-2 bg-gray-700 border-2 border-yellow-400 text-white rounded hover:bg-gray-600 transition"
+            >
+              Admin Panel
+            </button>
+          )}
+          {canUseUnitEditor && (
+            <button
+              onClick={() => router.push('/unit-editor')}
+              className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+            >
+              Unit Editor
+            </button>
+          )}
+          {canCreateScenario && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              disabled={!currentUser}
+              className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              New Scenario
+            </button>
+          )}
+          {canJoin && (
+            <button
+              onClick={() => {
+                if (selectedScenarioId) {
+                  const scenario = scenarios.find(s => s.id === selectedScenarioId);
+                  if (scenario) {
+                    handleJoinClick(scenario.id, !!scenario.passwordHash);
+                  }
                 }
-              }
-            }}
-            disabled={!isJoinEnabled}
-            className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Join Scenario
-          </button>
+              }}
+              disabled={!isJoinEnabled}
+              className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Join Scenario
+            </button>
+          )}
+          {/* Upload Screenshot button removed */}
+        </div>
+        <div className="space-y-3">
           <button
             onClick={handleDelete}
             disabled={!isDeleteEnabled}
             className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Delete Scenario
-          </button>
-          {/* Upload Screenshot button removed */}
-        </div>
-        <div className="space-y-3">
-          <button
-            onClick={() => router.push('/unit-editor')}
-            className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
-          >
-            Unit Editor
-          </button>
-          <button
-            onClick={() => selectedScenarioId && setMapEditorScenarioId(selectedScenarioId)}
-            disabled={!selectedScenarioId || !currentUser}
-            className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Map Editor
           </button>
         </div>
       </div>
@@ -279,13 +400,47 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
       {toast && <Toast message={toast} duration={5000} onClose={() => setToast(null)} />}
       {renderHeader()}
 
-      <div className="flex flex-1 overflow-hidden">
-        {renderLeftPanel()}
-
-        <div className="flex-1 p-4 overflow-y-auto bg-[#0d0d1a]">
-          {renderCards()}
+      {currentUser && loading ? (
+        <div className="flex-1 flex items-center justify-center text-gray-400">Loading...</div>
+      ) : isPending ? (
+        <div className="flex-1 flex items-start justify-center p-6 overflow-y-auto">
+          <div className="bg-gray-800 p-6 rounded-lg w-[420px] border border-gray-700 mt-8">
+            <h2 className="text-lg font-bold text-white mb-1">Your account is awaiting approval</h2>
+            <p className="text-sm text-gray-400 mb-4">
+              Access to scenarios is by approval. Tell the administrator a little about yourself to request access.
+            </p>
+            {(accessSubmitted || requestNote) && (
+              <p className="text-sm text-green-400 bg-green-900/20 border border-green-700 rounded p-3 mb-3">
+                Request submitted — an administrator will review it soon. You can update your note below.
+              </p>
+            )}
+            <textarea
+              rows={3}
+              value={accessRequest}
+              onChange={(e) => { setAccessRequest(e.target.value); setAccessError(null); }}
+              placeholder="e.g. Your name and why you want to play"
+              className="w-full bg-gray-700 text-white p-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400 mb-2"
+            />
+            {accessError && <p className="text-red-400 text-sm mb-2">{accessError}</p>}
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+                onClick={handleRequestAccess}
+              >
+                {accessSubmitted || requestNote ? 'Update Request' : 'Request Access'}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex flex-1 overflow-hidden">
+          {renderLeftPanel()}
+
+          <div className="flex-1 p-4 overflow-y-auto bg-[#0d0d1a]">
+            {renderCards()}
+          </div>
+        </div>
+      )}
 
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
@@ -330,13 +485,6 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
         </div>
       )}
 
-      {mapEditorScenarioId && (
-        <MapEditorView
-          scenarioId={mapEditorScenarioId}
-          onClose={() => setMapEditorScenarioId(null)}
-        />
-      )}
-
       {showJoinModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
           <div className="bg-gray-800 p-6 rounded-lg w-96 border border-gray-700">
@@ -368,6 +516,140 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
                 onClick={() => performJoin(showJoinModal.scenarioId, joinPassword)}
               >
                 Join
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showDisplayNameModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-6 rounded-lg w-96 border border-gray-700">
+            <h2 className="text-xl font-bold mb-4 text-white">Change Display Name</h2>
+            <div>
+              <label className="block text-sm text-gray-300">Display Name</label>
+              <input
+                type="text"
+                autoFocus
+                className="w-full bg-gray-700 text-white p-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
+                value={displayNameInput}
+                onChange={(e) => {
+                  setDisplayNameInput(e.target.value);
+                  setDisplayNameError(null);
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && handleChangeDisplayName()}
+              />
+            </div>
+            {displayNameError && <p className="text-red-400 text-sm mt-1">{displayNameError}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
+                onClick={() => setShowDisplayNameModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+                onClick={handleChangeDisplayName}
+              >
+                Change
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showAdminPanel && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-6 rounded-lg w-[640px] border border-gray-700 max-h-[80vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4 text-white">Admin Panel</h2>
+            {adminError && (
+              <p className="text-red-400 text-sm bg-red-900/30 border border-red-700 rounded p-2 mb-3">
+                {adminError}
+              </p>
+            )}
+
+            <h3 className="text-sm text-gray-300 mb-2 font-semibold">Approved Users</h3>
+            {approvedUsers.length === 0 ? (
+              <p className="text-gray-500 text-sm mb-4">No approved users yet.</p>
+            ) : (
+              <table className="w-full text-sm mb-5">
+                <thead>
+                  <tr className="text-left text-gray-400 border-b border-gray-600">
+                    <th className="py-1 pr-2">Name</th>
+                    <th className="py-1 pr-2">Role</th>
+                    <th className="py-1 pr-2">Last Access</th>
+                    <th className="py-1">Last Changed By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {approvedUsers.map(u => (
+                    <tr key={u.id} className="border-b border-gray-700">
+                      <td className="py-1 pr-2 text-white">
+                        {u.display_name}
+                        {u.id === currentUser?.id && <span className="text-gray-500 text-xs ml-1">(you)</span>}
+                      </td>
+                      <td className="py-1 pr-2">
+                        <select
+                          value={u.role}
+                          disabled={u.id === currentUser?.id}
+                          onChange={(e) => handleRoleChange(u, e.target.value as 'admin' | 'dm' | 'player')}
+                          className="bg-gray-700 text-white p-1 rounded border border-gray-600 focus:outline-none focus:border-yellow-400 disabled:opacity-50"
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="dm">DM</option>
+                          <option value="player">Player</option>
+                        </select>
+                      </td>
+                      <td className="py-1 pr-2 text-gray-300">{formatDateTime(u.last_active_at)}</td>
+                      <td className="py-1 text-gray-300">
+                        {u.last_changed_by_name
+                          ? `${u.last_changed_by_name} · ${formatDateTime(u.last_role_change_at)}`
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            <h3 className="text-sm text-gray-300 mb-2 font-semibold">Pending Access Requests</h3>
+            {pendingProfiles.length === 0 ? (
+              <p className="text-gray-500 text-sm mb-4">No pending requests.</p>
+            ) : (
+              <div className="space-y-3 mb-4">
+                {pendingProfiles.map(p => (
+                  <div key={p.id} className="bg-gray-700 rounded p-3 border border-gray-600">
+                    <div className="font-semibold text-white">{p.display_name}</div>
+                    {p.request_note && <div className="text-sm text-gray-300 mt-1">"{p.request_note}"</div>}
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => handleApprove(p.id, 'player')}
+                        className="px-3 py-1 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition text-sm"
+                      >
+                        Player
+                      </button>
+                      <button
+                        onClick={() => handleApprove(p.id, 'dm')}
+                        className="px-3 py-1 bg-blue-800 border-2 border-yellow-400 text-white rounded hover:bg-blue-700 transition text-sm"
+                      >
+                        DM
+                      </button>
+                      <button
+                        onClick={() => handleApprove(p.id, 'admin')}
+                        className="px-3 py-1 bg-purple-800 border-2 border-yellow-400 text-white rounded hover:bg-purple-700 transition text-sm"
+                      >
+                        Admin
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end">
+              <button
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
+                onClick={() => setShowAdminPanel(false)}
+              >
+                Close
               </button>
             </div>
           </div>

@@ -163,7 +163,18 @@ Standard lookup tables with:
 | role | TEXT | 'GM', 'AssistGM', 'SuperPlayer', 'Player' |
 | joined_at | TIMESTAMPTZ | Timestamp |
 
-### 4.8 units – Instance Table (Battlefield State)
+### 4.8 profiles – Global User Display Name
+`auth.users` is reserved by Supabase, so profile data lives here, keyed on `auth.uid()`.
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | PK, FK to auth.users (ON DELETE CASCADE) |
+| display_name | TEXT | User-editable global display name |
+| created_at | TIMESTAMPTZ | Timestamp |
+| updated_at | TIMESTAMPTZ | Timestamp |
+
+RLS: any signed-in user can SELECT names; users INSERT/UPDATE only their own row. Rows are created lazily by each user's client (`src/hooks/useProfile.ts`), seeded from `user_metadata` fallback (`full_name → name → email`). Edited via the clickable name chip in the Lobby header; consumed by ScenarioMap's `playerName` (message/command-log senders).
+
+### 4.9 units – Instance Table (Battlefield State)
 Stores actual on‑map units (copied from templates with per‑instance stats).
 | Column | Type | Description |
 |--------|------|-------------|
@@ -223,16 +234,16 @@ src/
 │   ├── Lobby.tsx                     # Scenario management
 │   ├── UnitEditor.tsx                # Unit template editor (complete)
 │   ├── Toast.tsx                     # Toast notifications
-│   ├── MapEditorView.tsx             # Full-screen map editor with hex grid + background alignment panel
 │   │
 │   ├── ScenarioMap/                  # Scenario map components
 │   │   ├── ScenarioMap.tsx           # Main map component
-│   │   ├── LeftPanel.tsx             # Floating left panel — composes PanelsContainer + PanelSections
-│   │   ├── PanelsContainer.tsx       # Resizable, anchored container for panel sections
-│   │   ├── PanelSection.tsx          # Collapsible section (expanded↔compact button)
+│   │   ├── LeftPanel.tsx             # Floating left panel — tabbed (Map / Alliances / Unit Selector / Messages)
+│   │   ├── PanelsContainer.tsx       # Resizable, tabbed container shell
+│   │   ├── PanelSection.tsx          # Scrollable content region for one open panel
 │   │   ├── UnitSelector.tsx          # Searchable template list with drag
 │   │   ├── MessagesPanel.tsx         # Game log with auto-scroll
 │   │   ├── AlliancePanel.tsx         # GM-only team alliance assignment (3 boxes)
+│   │   ├── MapEditorPanel.tsx        # GM-only background image alignment (tab in LeftPanel)
 │   │   ├── ContextMenu.tsx           # Right-click context menu
 │   │   └── UnitTooltip.tsx           # Hover tooltip with unit stats
 │   │
@@ -325,6 +336,7 @@ User → UnitEditor → Supabase (unit_templates, lookups)
   - Mounted Units: Rendered as triangles when mount_id is not null.
   - Routed Flag: White flag icon when isRouting = true.
 - Morale Hearts: 2 rows of 5, side-touching, filled based on morale (non-hero only). Positioned in bottom 1/3 area, centered.
+- Action Badge: A small square at the token's right edge, sitting directly above the bottom info band (non-hero) or above the HP bar (hero, bottom-right). Shows remaining `actionsAvailable` as a bold number color-coded by remaining count: white = full (≥2), yellow = 1, red = 0. Skips attached heroes and units with no `actionsAvailable`.
 - Hero Rendering: Custom image centered in top 2/3, HP bar (`currentUnitHp / maxUnitHp`, left 75%) + HP numbers (right 25%), name at bottom edge.
 - Facing Rotation: When `unit.facing` is set, the entire token rotates by `facing × π/3` radians around its center. Implemented via `ctx.save()` + `ctx.translate(center)` + `ctx.rotate(angle)` + `ctx.translate(-center)` at the top, with a single `ctx.restore()` in a `finally` block. The rotation scope is guaranteed synchronous — all `await` calls happen before `ctx.save()`, and all icon drawing uses synchronous cache lookup with fallback rectangles (no `.then()` callbacks).
 - Alliance Ring: A 4px-thick border ring in the alliance color (blue for friendly, orange-red for enemy, gray for neutral) is stroked on top of the team border.
@@ -347,7 +359,8 @@ const x = spacing + col * spacing; // perfect centering
 **Purpose:** Render the game map with floating UI panels.
 **UI Layout:**
 - Top Bar: Title "Scenario Map - {DM/Player}" + Exit Session button (top-right).
-- Floating Left Panel: Positioned under top bar, uses the PanelsContainer framework (see §6.11). Contains collapsible sections:
+- Floating Left Panel: Positioned under top bar, uses the tabbed PanelsContainer framework (see §6.11). Contains tabbed sections (fixed DM use order):
+  - Map (GM-only) – Background image alignment (pick image, offset X/Y, scale, Save). Changes apply live to the map canvas and persist via `map_data`.
   - Alliances (GM-only) – Drag-and-drop team alliance assignment (3 boxes: Friendly, Enemy, Neutral).
   - Unit Selector (GM-only) – Searchable template list with drag-to-place.
   - Messages – Real-time game log with auto-scroll.
@@ -355,10 +368,12 @@ const x = spacing + col * spacing; // perfect centering
 - Debug Panel: Lower-right corner (hover coords, selected hex, unit count).
 
 **Panel Behavior:**
-- Each section independently collapsible (toggle header ↔ compact button).
-- When one section collapses, the others expand to fill remaining space equally.
-- When all sections collapsed, panel shrinks to a small stack of buttons (label abbreviations).
-- Panel is anchored at top-left; bottom and right edges are draggable to resize height/width.
+- Tab bar at top lists every available panel (icon + label); clicking a tab toggles that panel open/closed.
+- Multiple panels can be open at once — they stack vertically in fixed order (Map top, then Alliances, then Unit Selector, then Messages), each sharing the container height equally.
+- On entry, the first *available* panel is open by default (GM: Map; Player: Messages); all others closed.
+- When all panels closed, the panel shrinks to just the tab strip.
+- Panel is anchored top-left by default; bottom and right edges are draggable to resize height/width.
+- Docking: a large hollow triangle moves the panel between the left and right edges. When docked left the triangle sits at the **right end** of the tab bar pointing `>`; when docked right it sits at the **left end** pointing `<`. When docked right, the width-resize handles mirror to the left edge / bottom-left corner (with inverted drag math) so the panel stays resizable; the bottom handle is unchanged. Dock side is in-memory only (resets on reload).
 
 **Map Interaction:**
 - Left-click: Select hex.
@@ -431,8 +446,10 @@ let defaultFormation = 'Scattered';
 ### 6.7 Message Context (src/contexts/MessageContext.tsx)
 **Purpose:** Message bus for game log.
 **Features:**
-- addMessage(msg: string) – Append message to log.
-- clearMessages() – Clear all messages.
+- `messages: GameMessage[]` where `GameMessage = { text: string, tone: 'default' | 'error' }`.
+- `addMessage(msg: string)` – Append a default-tone message to log.
+- `addError(msg: string)` – Append an error-tone message (rendered red in MessagesPanel); used for soft-enforcement over-budget notifications.
+- `clearMessages()` – Clear all messages.
 - Messages automatically scroll to bottom.
 
 ### 6.8 Shared Mappers (src/lib/templateMappers.ts)
@@ -456,7 +473,8 @@ let defaultFormation = 'Scattered';
 **Purpose:** React hook bridging GameEngine to Supabase persistence and UI.
 
 - Wraps `GameEngine` execute/undo with `command_log` DB inserts (RLS-protected).
-- Convenience methods: `rotateUnit`, `changeFormation`, `assignTeam`, `toggleHide`, `placeUnit`, `moveUnitRecorded`.
+- Convenience methods: `rotateUnit`, `changeFormation`, `assignTeam`, `toggleHide`, `placeUnit`, `moveUnitRecorded(unit, targetHex, cost)`, `attachHero`, `detachHero`, `endTurn`.
+- MP/action deltas ride along in each command's sub-steps so undo restores them: `MOVE` −path cost MP & −1 action; `ROTATE` −1 MP; `FORMATION` uses `applyFormationChange` (org-level steps + proportional floor rescale); `ATTACH_HERO`/`DETACH_HERO` −1 MP; `ATTACK` −1 action (spent even on AGR failure); `END_TURN` resets MP + 2 actions.
 - `undo(scenarioId)` — rewind by permission:
   - Player can undo their own top-of-stack entry.
   - GM can undo any entry (notified via toast).
@@ -471,9 +489,9 @@ let defaultFormation = 'Scattered';
 
 | Component | Role |
 |-----------|------|
-| `PanelsContainer.tsx` | Outer container — anchored top-left, resizable via drag handles on right edge, bottom edge, and bottom-right corner. Manages width/height state with configurable min/max constraints (default: 320×500, min: 200×200). Collapses to `width: auto` when all sections are closed. |
-| `PanelSection.tsx` | One collapsible section. Expanded state shows a header bar (▼ + label) and a scrollable content area. Collapsed state shows a compact button (40×40px) with a short text label. Uses `flex-1` / `flex-none` to distribute space. |
-| `LeftPanel.tsx` | Orchestrator — defines the panel list declaratively, filters by role (`isGM`), manages `expanded` state per panel. Currently hosts: Alliances (GM), Unit Selector (GM), Messages (all). |
+| `PanelsContainer.tsx` | Outer container — docked to the left or right edge (`side` prop), resizable via drag handles (right or left edge, bottom edge, bottom-right or bottom-left corner). Manages width/height state with configurable min/max constraints (default: 400×500, min: 200×200). Uses a `flex flex-col` shell (tab bar `flex-none`, body `flex-1 min-h-0`) so open panels never overflow the container. Renders a tab bar (from `tabs` prop) above the stacked open panels, with a large hollow dock-toggle triangle at the leading end of the tab bar (right end when docked left, left end when docked right). Collapses to auto-size when no tab is active. |
+| `PanelSection.tsx` | One open panel's scrollable content region. Uses `flex-1 min-h-0 overflow-y-auto` so open panels share height equally. |
+| `LeftPanel.tsx` | Orchestrator — defines the panel list declaratively, filters by role (`isGM`), manages open/closed state per panel (default: first available tab open). Currently hosts (in order): Map (GM), Alliances (GM), Unit Selector (GM), Messages (all). |
 
 **Adding a new panel:**
 In `LeftPanel.tsx`, add an entry to the `panels` array:
@@ -481,12 +499,11 @@ In `LeftPanel.tsx`, add an entry to the `panels` array:
 {
   id: 'my-panel',
   label: 'My Panel',
-  shortLabel: 'MP',
   requiresGM: true,       // false = visible to all
   content: <MyComponent />,
 }
 ```
-The panel automatically gets collapsible behavior, resize support, and role gating. No changes to `PanelsContainer` or `PanelSection` needed.
+The panel automatically gets a tab, open/close toggling, vertical stacking, resize support, and role gating. No changes to `PanelsContainer` or `PanelSection` needed.
 
 **Resize behavior:**
 - Right edge: horizontal drag handle — changes width (min 200px).
@@ -656,13 +673,41 @@ The `formations` lookup table has four modifier columns. All are applied on-the-
 | Modifier | Computation | Display |
 |----------|-------------|---------|
 | `ac_modifier` | `effectiveAc = baselineAc + formation.ac_modifier` | Tooltip: "20 = 18 + 2 (Shield Wall)" |
-| `movement_modifier` | `effectiveMaxMovement = max(1, movementPoints + formation.movement_modifier)` | Tooltip shows `available / effectiveMax` with breakdown |
+| `movement_multiplier` | `effectiveMaxMovement = max(1, floor(movementPoints × movement_multiplier))` | Tooltip shows `Move: {available}/{effectiveMax}` with `(base N × mult)` breakdown when ≠ 1 |
 | `attack_modifier` | `effectiveAttackBonus = weapon.attackBonus + formation.attack_modifier` | Tooltip weapon list: "+5 atk [base +3, formation +2]" |
 | `morale_modifier` | Added as term in `computeEffectiveMoraleModifier` | Tooltip morale factors: "formation +1" |
 
-**Utility module** (`unitStats.ts`): `computeEffectiveAc`, `computeEffectiveMovement`, `computeEffectiveAttackBonus`, `getFormationModifier`.
+**Utility module** (`unitStats.ts`): `computeEffectiveAc`, `computeEffectiveMovement`, `computeEffectiveAttackBonus`, `getFormationModifier`, `getFormationMultiplier`.
 
 **Data flow**: Formations are fetched on mount in `ScenarioMap` as `Record<string, Formation>` keyed by name. Each unit's current formation is looked up by `unit.currentFormation`. The modifiers are passed to `UnitTooltip` and the `customDraw` pipeline (for morale).
+
+### 7.10 Turn Economy — Movement Cost, Actions & Soft Enforcement
+
+**Turn reset (End Turn):** when a group's turn starts, every non-deleted unit on a team in that group resets `movementPointsAvailable = 0` and `actionsAvailable = 2`. MP is **not granted up front** — it is materialized only when a move converts an action into a full pool (see below). Turn order cycles friendly → enemy → neutral, skipping empty groups; `turn_number` increments on a full cycle. See §6.10 `endTurn` / `src/lib/turnState.ts`.
+
+**Action cost table** (`useGameEngine.ts` / `ScenarioMap.tsx`) — MP comes from the **acting unit** (the hero for attach/detach):
+
+| Player action | Command | Action | MP |
+|---|---|---|---|
+| Move (drag to hex) | `MOVE` | −1 per full MP pool (`ceil(pathCost / maxMP)`) | −path cost |
+| Attack (drag onto enemy) | `ATTACK` | −1 (even on AGR failure) | 0 |
+| Rotate (context menu / Q/E) | `ROTATE` | 0 (1 only if MP < 1 triggers a refill) | −1 — **units only, heroes ignore** |
+| Formation change | `FORMATION` | 0 | org-level steps + proportional floor rescale — **heroes skip MP** |
+| Attach / Detach hero | `ATTACH_HERO` / `DETACH_HERO` | 0 (1 only if hero MP < 1) | −1 — **from the hero, not the host unit** |
+| Hide / Team / Delete / Place | `TOGGLE_HIDE` / `TEAM` / `DELETE` / `PLACE` | 0 | 0 |
+| Rout (morale-induced) | `ROUT` | 0 | 0 |
+
+**Movement — "1 action = 1 full MP pool"** (`src/lib/moveCost.ts`): `computeReachableMap(unit, maxMP, occupied, threatHexes)` over state space `(hex, facing)` — 1 MP per hex entered from the front arc, 1 MP per 60° turn. Threat hexes are reachable as destinations but never passed through; occupied hexes are never reachable; Routed/Scattered/**Hero** units move any direction at 1 MP/hex (no facing cost). Units start at **2 actions / 0 MP**; MP is **materialized when a move converts an action** into a full pool. A move's cost is spent from **already-materialized MP first**, and an action converts to a fresh full pool only when MP is exhausted. **Movement budget** = `movementPointsAvailable + maxMP × max(1, actionsAvailable)` (`computeMoveBudget`): leftover MP + every remaining action as a full pool, so a unit with 2 actions and maxMP 5 can cover up to 10 hexes. `applyMoveCost` computes the executed accounting (final MP = remainder of the last pool — 0 on an exact pool — final actions = unconverted pools left); `applyMpSpend` does the same for single-MP spends, converting an action into a full pool when MP is insufficient. The executed move accepts any hex within that budget; the **drag overlay shades one move's reach** (`computeMovePool`, i.e. a full pool when actions ≥ 1) so players see where the current move can go — dropping beyond it just spends leftover MP / refills the next pool.
+
+**Formation rescale** (`src/lib/formationCost.ts`): `applyFormationChange(currentMP, steps, oldMax, newMax)` — 1 MP per organizational-level step, then `(currentMP − steps) × newMax/oldMax`, floored and clamped to `[0, newMax]`. MP is tracked as an integer throughout.
+
+**Soft enforcement (never hard-blocks):**
+- A move to a hex outside its action-budget reach is rejected with a message.
+- A move with **0 actions left** (MP already depleted) triggers a **confirm modal**; confirming deducts the full cost (MP/actions may go negative) and pushes a **red notification** (`addError`) to the message log.
+- An attack with `actionsAvailable < 1` triggers the same confirm modal + red notification (covers haste double-attack and detach-reposition edge cases).
+- Points going negative is a visible over-budget flag; `END_TURN` resets everything.
+
+**Tooltip:** shows `Move: {floor(movementPointsAvailable)}/{max}` (actual materialized MP — drains 3→2→1→0 per action pool) and `Actions: {n}/2` with a `(1 = full move)` hint (red when ≤ 0). Tokens show an action badge (white ≥2 / yellow 1 / red ≤0) — see §6.3.
 
 ## 8. Role Permissions (RBAC)
 | Role | Abilities |
@@ -732,6 +777,7 @@ The `formations` lookup table has four modifier columns. All are applied on-the-
 - Unit field alignment: `troopCount` → `currentTroopCount`, `currentMorale` → `currentMoraleModifier`, `armorId` removed from `Unit` interface and all mappers
 - TypeScript type cleanup: lookup table types (`Armor`, `Race`, `UnitType`, `Mount`) switched to snake_case matching Supabase columns; `Weapon.is_reach` replaces `reach`; `notes` removed from `Weapon` and `WeaponLookup`
 - Morale heart display: boosted morale (base+modifier > base) shows gold hearts; `drawHeart` accepts optional `fillColor` string instead of `filled: boolean`; `drawBottomInfo` uses `(baseMorale, moraleModifier)` signature
+- Action badge on tokens: small square above the info band (non-hero, right edge) or above the HP bar (hero, bottom-right) shows remaining `actionsAvailable` — white (≥2) / yellow (1) / red (0); skips attached heroes and preview units without `actionsAvailable`
 - Token rendering improvements: Shield Wall shields use `ctx.ellipse` with separate X/Y radii for wider flatter shape; troop count `??` fallback so zero troops shows zero dots
 - Morale test slider in UnitEditor changed from percentage to modifier range `[-baseMorale, 10-baseMorale]`
 - Zero TypeScript errors outside pre-existing `next.config.ts`
@@ -745,10 +791,10 @@ The `formations` lookup table has four modifier columns. All are applied on-the-
 - Delete confirm deduplicated: removed redundant `confirm()` from ScenarioMap callback (single confirm in ContextMenu only)
 - Morale system: `computeEffectiveMoraleModifier` utility in `unitMorale.ts` — computes wounds, isolation, enemy threats by facing; tooltip shows MOR breakdown with all factors; token hearts reflect effective morale (hollow for reduced)
 - Token visual polish: unit names always white with dark shadow; team background at 75% opacity (`'BF'`); team shape alpha varies per team (violet 1.0, yellow/orange 0.7, others 0.35); violet/orange dot color black via explicit override; hollow hearts use `[1,1]` dash pattern
-- Map Editor (`MapEditorView.tsx`): full-screen hex grid with left-side control panel for background image alignment (image dropdown from `/api/map-images`, offset X/Y sliders, scale slider 0.1–10, manual Save button); wired into Lobby as GM-only per-scenario button
+- Map Editor: background image alignment moved into the ScenarioMap left panel (`MapEditorPanel.tsx` in the Map tab — image dropdown from `/api/map-images`, offset X/Y sliders, scale slider, manual Save button). GM-only; changes apply live to the map canvas and persist via `map_data`. The full-screen `MapEditorView.tsx` and its Lobby button were removed.
 - Canvas sizing fix: `useHexGrid` draw function reads `canvas.getBoundingClientRect()` instead of `parentElement?.getBoundingClientRect()`, so canvas correctly fills flex-allocated space alongside panels
 - Background image rendering: drawn in world-space at `(offsetX * zoom, offsetY * zoom)` with `naturalSize * scale * zoom` dimensions, stays locked to the grid at any zoom level
-- Panel framework: `PanelsContainer` + `PanelSection` declarative pattern for resizable, collapsible left panel; auto-collapse width/height when all sections closed; drag handles on right, bottom, and corner
+- Panel framework: `PanelsContainer` + `PanelSection` declarative pattern for the resizable left panel — tab bar on top (icon + label), multiple open panels stack vertically in fixed order (Map → Alliances → Unit Selector → Messages) sharing height equally; `flex flex-col` shell keeps open panels inside the container; auto-size when all tabs closed; drag handles on right, bottom, and corner
 - UnitSelector custom image: prefers `template.customImageUrl` over `template.raceIconUrl`
 - Formation context menu restrictions: organization level filtering (+1 per action, any down allowed, unavailable options greyed out)
 - Routing cascade: after MOVE, evaluates mover + adjacent non-hero, non-routing units at target hex; each routing unit gets its own `ROUT` entry with `chained: true`; all entries from one MOVE form a single undo chain

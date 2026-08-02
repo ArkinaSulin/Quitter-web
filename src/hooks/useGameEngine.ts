@@ -2,9 +2,11 @@
 
 import { useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { computeEffectiveMovement } from '@/lib/unitStats';
-import { useMessages } from '@/contexts/MessageContext';
+import { applyFormationChange } from '@/lib/formationCost';
+import { applyMoveCost, applyMpSpend } from '@/lib/moveCost';
+import { useMessageSync } from '@/hooks/useMessageSync';
 import { GameEngine, ActionType, SubStep, CommandEntry } from '@/game/GameEngine';
 import { getActiveGroups, advanceTurn } from '@/lib/turnState';
 
@@ -30,7 +32,7 @@ export function useGameEngine({
   updateScenarioField,
 }: UseGameEngineProps) {
   const engineRef = useRef(new GameEngine());
-  const { addMessage } = useMessages();
+  const { addMessage } = useMessageSync(scenarioId);
 
   const execute = useCallback(
     async (
@@ -199,11 +201,31 @@ export function useGameEngine({
   }, [playerId, isGM]);
 
   const moveUnitRecorded = useCallback(
-    async (unit: Unit, targetHex: Hex): Promise<void> => {
+    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number): Promise<void> => {
+      const { movementPointsAvailable, actionsAvailable } = applyMoveCost(unit, cost, maxMP);
       const subSteps: SubStep[] = [
         {
           type: 'MOVE',
           description: `${unit.unitName} moved to (${targetHex.q}, ${targetHex.r})`,
+          unitId: unit.id,
+          changes: [
+            { field: 'hex', from: { ...unit.hex }, to: { ...targetHex } },
+            { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: movementPointsAvailable },
+            { field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsAvailable },
+          ],
+        },
+      ];
+      await execute('MOVE', subSteps, subSteps[0].description);
+    },
+    [execute],
+  );
+
+  const moveUnitFree = useCallback(
+    async (unit: Unit, targetHex: Hex): Promise<void> => {
+      const subSteps: SubStep[] = [
+        {
+          type: 'MOVE',
+          description: `${unit.unitName} moved freely to (${targetHex.q}, ${targetHex.r})`,
           unitId: unit.id,
           changes: [
             { field: 'hex', from: { ...unit.hex }, to: { ...targetHex } },
@@ -216,15 +238,25 @@ export function useGameEngine({
   );
 
   const rotateUnit = useCallback(
-    async (unit: Unit, direction: 'left' | 'right'): Promise<void> => {
+    async (unit: Unit, direction: 'left' | 'right', maxMP: number): Promise<void> => {
       const step = direction === 'left' ? -1 : 1;
       const newFacing = ((unit.facing + step) % 6 + 6) % 6;
+      const changes: { field: string; from: any; to: any }[] = [
+        { field: 'facing', from: unit.facing, to: newFacing },
+      ];
+      if (!unit.isHero) {
+        const { movementPointsAvailable, actionsAvailable } = applyMpSpend(unit, 1, maxMP);
+        changes.push({ field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: movementPointsAvailable });
+        if (actionsAvailable !== unit.actionsAvailable) {
+          changes.push({ field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsAvailable });
+        }
+      }
       const subSteps: SubStep[] = [
         {
           type: 'ROTATE',
           description: `${unit.unitName} rotated ${direction}`,
           unitId: unit.id,
-          changes: [{ field: 'facing', from: unit.facing, to: newFacing }],
+          changes,
         },
       ];
       await execute('ROTATE', subSteps, subSteps[0].description);
@@ -240,15 +272,21 @@ export function useGameEngine({
       const newMult = newForm?.movement_multiplier ?? 1;
       const oldEffectiveMax = computeEffectiveMovement(unit, oldMult);
       const newEffectiveMax = computeEffectiveMovement(unit, newMult);
-      const newAvailable = Math.min(
+      const steps = Math.abs(getOrganizationLevel(unit.currentFormation) - getOrganizationLevel(formation));
+      const newAvailable = applyFormationChange(
+        unit.movementPointsAvailable,
+        steps,
+        oldEffectiveMax,
         newEffectiveMax,
-        Math.round(unit.movementPointsAvailable / oldEffectiveMax * newEffectiveMax),
       );
 
       const changes: { field: string; from: any; to: any }[] = [
         { field: 'currentFormation', from: unit.currentFormation, to: formation },
-        { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: newAvailable },
       ];
+
+      if (!unit.isHero) {
+        changes.push({ field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: newAvailable });
+      }
 
       if (unit.isRouting && formation !== 'Routed') {
         const effectiveMorale = unit.baseMorale + unit.currentMoraleModifier + (newForm?.morale_modifier ?? 0);
@@ -321,17 +359,23 @@ export function useGameEngine({
   );
 
   const attachHero = useCallback(
-    async (hero: Unit, targetUnit: Unit, position: 'front' | 'back'): Promise<void> => {
+    async (hero: Unit, targetUnit: Unit, position: 'front' | 'back', heroMaxMP: number): Promise<void> => {
+      const { movementPointsAvailable, actionsAvailable } = applyMpSpend(hero, 1, heroMaxMP);
+      const changes: { field: string; from: any; to: any }[] = [
+        { field: 'attachedToUnitId', from: null, to: targetUnit.id },
+        { field: 'attachedPosition', from: null, to: position },
+        { field: 'hex', from: { ...hero.hex }, to: { ...targetUnit.hex } },
+        { field: 'movementPointsAvailable', from: hero.movementPointsAvailable, to: movementPointsAvailable },
+      ];
+      if (actionsAvailable !== hero.actionsAvailable) {
+        changes.push({ field: 'actionsAvailable', from: hero.actionsAvailable, to: actionsAvailable });
+      }
       const subSteps: SubStep[] = [
         {
           type: 'ATTACH_HERO',
           description: `${hero.unitName} attached to ${targetUnit.unitName} (${position})`,
           unitId: hero.id,
-          changes: [
-            { field: 'attachedToUnitId', from: null, to: targetUnit.id },
-            { field: 'attachedPosition', from: null, to: position },
-            { field: 'hex', from: { ...hero.hex }, to: { ...targetUnit.hex } },
-          ],
+          changes,
         },
       ];
       await execute('ATTACH_HERO', subSteps, subSteps[0].description);
@@ -340,15 +384,21 @@ export function useGameEngine({
   );
 
   const detachHero = useCallback(
-    async (hero: Unit): Promise<void> => {
+    async (hero: Unit, heroMaxMP: number): Promise<void> => {
+      const { movementPointsAvailable, actionsAvailable } = applyMpSpend(hero, 1, heroMaxMP);
+      const changes: { field: string; from: any; to: any }[] = [
+        { field: 'attachedToUnitId', from: hero.attachedToUnitId, to: null },
+        { field: 'movementPointsAvailable', from: hero.movementPointsAvailable, to: movementPointsAvailable },
+      ];
+      if (actionsAvailable !== hero.actionsAvailable) {
+        changes.push({ field: 'actionsAvailable', from: hero.actionsAvailable, to: actionsAvailable });
+      }
       const subSteps: SubStep[] = [
         {
           type: 'DETACH_HERO',
           description: `${hero.unitName} detached from unit`,
           unitId: hero.id,
-          changes: [
-            { field: 'attachedToUnitId', from: hero.attachedToUnitId, to: null },
-          ],
+          changes,
         },
       ];
       await execute('DETACH_HERO', subSteps, subSteps[0].description);
@@ -363,7 +413,7 @@ export function useGameEngine({
       units: Unit[];
       formationsMap: Record<string, Formation>;
       turnNumber: number;
-    }): Promise<{ next: AllianceGroup; wrapped: boolean }> => {
+    }): Promise<{ next: AllianceGroup; wrapped: boolean; turnNumber: number }> => {
       const activeGroups = getActiveGroups(args.alliances);
       const { next, wrapped } = advanceTurn(args.currentAlliance, activeGroups);
       const newTurnNumber = wrapped ? args.turnNumber + 1 : args.turnNumber;
@@ -387,21 +437,19 @@ export function useGameEngine({
 
       for (const unit of args.units) {
         if (unit.isDeleted || !activeTeams.has(unit.team)) continue;
-        const mult = args.formationsMap[unit.currentFormation]?.movement_multiplier ?? 1;
-        const maxMP = computeEffectiveMovement(unit, mult);
         subSteps.push({
           type: 'END_TURN',
-          description: `${unit.unitName} refreshed (${maxMP} MP, 2 actions)`,
+          description: `${unit.unitName} refreshed (0 MP, 2 actions)`,
           unitId: unit.id,
           changes: [
-            { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: maxMP },
+            { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: 0 },
             { field: 'actionsAvailable', from: unit.actionsAvailable, to: 2 },
           ],
         });
       }
 
       await execute('END_TURN', subSteps, `End Turn — ${next} turn begins`);
-      return { next, wrapped };
+      return { next, wrapped, turnNumber: newTurnNumber };
     },
     [execute, scenarioId],
   );
@@ -415,6 +463,7 @@ export function useGameEngine({
     peekUndo,
     peekRedo,
     moveUnitRecorded,
+    moveUnitFree,
     peekUndoChainLength,
     rotateUnit,
     changeFormation,

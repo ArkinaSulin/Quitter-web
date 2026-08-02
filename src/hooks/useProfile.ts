@@ -1,0 +1,201 @@
+// src/hooks/useProfile.ts
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';
+
+export type ProfileRole = 'admin' | 'dm' | 'player' | null;
+
+interface CachedProfile {
+  displayName: string;
+  role: ProfileRole;
+  requestNote: string;
+}
+
+// Session cache so Lobby -> ScenarioMap share the profile without refetching.
+const profileCache = new Map<string, CachedProfile>();
+
+function metadataFallbackName(user: any): string {
+  return (
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email ||
+    'Unknown'
+  );
+}
+
+/**
+ * Loads (creating if missing) the signed-in user's profile and exposes their display
+ * name, access role (admin / dm / player / null = pending) and request note.
+ *
+ * `updateDisplayName` / `updateRequestNote` persist only the user's own editable
+ * columns (role is server-protected); `approvePlayer` runs the admin-only RPC.
+ */
+export function useProfile(userId: string | null | undefined) {
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [role, setRole] = useState<ProfileRole>(null);
+  const [requestNote, setRequestNote] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+
+    if (profileCache.has(userId)) {
+      const cached = profileCache.get(userId)!;
+      setDisplayName(cached.displayName);
+      setRole(cached.role);
+      setRequestNote(cached.requestNote);
+      setLoading(false);
+      return;
+    }
+
+    (async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const user = userData?.user;
+        if (cancelled || !user) return;
+
+        const { data: rows } = await supabase
+          .from('profiles')
+          .select('id, display_name, role, request_note')
+          .eq('id', userId)
+          .maybeSingle();
+        if (rows?.display_name) {
+          const cached: CachedProfile = {
+            displayName: rows.display_name,
+            role: rows.role || null,
+            requestNote: rows.request_note || '',
+          };
+          profileCache.set(userId, cached);
+          if (!cancelled) {
+            setDisplayName(cached.displayName);
+            setRole(cached.role);
+            setRequestNote(cached.requestNote);
+          }
+          return;
+        }
+
+        const fallback = metadataFallbackName(user);
+        const { data: inserted, error: insertError } = await supabase
+          .from('profiles')
+          .upsert({ id: userId, display_name: fallback }, { onConflict: 'id' })
+          .select('display_name, role, request_note')
+          .maybeSingle();
+
+        if (insertError) {
+          console.error('[useProfile] Failed to create profile:', insertError);
+        }
+        const cached: CachedProfile = {
+          displayName: inserted?.display_name || fallback,
+          role: inserted?.role || null,
+          requestNote: inserted?.request_note || '',
+        };
+        profileCache.set(userId, cached);
+        if (!cancelled) {
+          setDisplayName(cached.displayName);
+          setRole(cached.role);
+          setRequestNote(cached.requestNote);
+        }
+      } catch (err) {
+        console.error('[useProfile] Error loading profile:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  // Heartbeat: keep last_active_at fresh so admins can see real "last access".
+  useEffect(() => {
+    if (!userId) return;
+    const touch = () => {
+      supabase
+        .from('profiles')
+        .update({ last_active_at: new Date().toISOString() })
+        .eq('id', userId)
+        .then(({ error }) => {
+          if (error) console.error('[useProfile] Heartbeat failed:', error);
+        });
+    };
+    touch();
+    const interval = setInterval(touch, 60_000);
+    return () => clearInterval(interval);
+  }, [userId]);
+
+  const updateDisplayName = useCallback(
+    async (name: string): Promise<boolean> => {
+      const trimmed = (name || '').trim();
+      if (!trimmed || !userId) return false;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ display_name: trimmed, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('[useProfile] Failed to update display name:', error);
+        return false;
+      }
+
+      const cached = profileCache.get(userId) || { displayName: displayName || '', role: role || null, requestNote };
+      cached.displayName = trimmed;
+      profileCache.set(userId, cached);
+      setDisplayName(trimmed);
+      return true;
+    },
+    [userId, displayName, role, requestNote],
+  );
+
+  const updateRequestNote = useCallback(
+    async (note: string): Promise<boolean> => {
+      if (!userId) return false;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ request_note: note, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('[useProfile] Failed to update request note:', error);
+        return false;
+      }
+
+      const cached = profileCache.get(userId) || { displayName: displayName || '', role: role || null, requestNote: '' };
+      cached.requestNote = note;
+      profileCache.set(userId, cached);
+      setRequestNote(note);
+      return true;
+    },
+    [userId, displayName, role],
+  );
+
+  const approvePlayer = useCallback(
+    async (targetUserId: string, newRole: 'admin' | 'dm' | 'player'): Promise<{ ok: boolean; error?: string }> => {
+      const { data, error } = await supabase.rpc('set_player_role', {
+        target_user_id: targetUserId,
+        new_role: newRole,
+      });
+      if (error) {
+        console.error('[useProfile] Failed to approve player:', error);
+        return { ok: false, error: error.message };
+      }
+      return { ok: !!data };
+    },
+    [],
+  );
+
+  return {
+    displayName,
+    role,
+    requestNote,
+    loading,
+    updateDisplayName,
+    updateRequestNote,
+    approvePlayer,
+  };
+}

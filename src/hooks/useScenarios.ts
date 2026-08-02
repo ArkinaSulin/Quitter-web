@@ -196,7 +196,7 @@ export function useScenarios() {
 
   const checkDMOnline = useCallback(async (scenarioId: string): Promise<boolean> => {
     return new Promise((resolve) => {
-      const channel = supabase.channel(`presence_check:${scenarioId}`, {
+      const channel = supabase.channel(`presence:${scenarioId}`, {
         config: { presence: { key: `${scenarioId}` } },
       });
       let resolved = false;

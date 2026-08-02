@@ -94,13 +94,13 @@ export interface CombatOutcome {
   retaliationCount: number;
 }
 
-function computeAttackCount(unit: Unit, rowCapacity: number, attackCapacityMultiplier: number, visualDotsPerRow: number, isDefenderSide: boolean): number {
+function computeAttackCount(unit: Unit, rowCapacity: number, attackCapacityMultiplier: number, visualDotsPerRow: number, isDefenderSide: boolean, ignoreMultiplier = false): number {
   if (unit.isHero) return unit.numberOfAttacks;
   if (isDefenderSide) {
     const rows = Math.ceil(unit.currentTroopCount / visualDotsPerRow);
     return rows * unit.numberOfAttacks;
   }
-  const effectiveCapacity = Math.min(unit.currentTroopCount, rowCapacity * attackCapacityMultiplier);
+  const effectiveCapacity = Math.min(unit.currentTroopCount, ignoreMultiplier ? rowCapacity : rowCapacity * attackCapacityMultiplier);
   return effectiveCapacity * unit.numberOfAttacks;
 }
 
@@ -118,7 +118,7 @@ function executeAttacks(
   for (let i = 0; i < count; i++) {
     const roll = rollD20(rng);
     const isCrit = roll === 20;
-    const attackValue = roll + attackBonus + 8;
+    const attackValue = roll + attackBonus;
     const isHit = roll === 1 ? false : isCrit ? true : attackValue >= targetAc;
     let rawDamage = 0;
     if (isHit) {
@@ -160,7 +160,7 @@ function executeSplitAttacks(
 export function resolveCombatSequence(
   attacker: Unit,
   defender: Unit,
-  attackerWeapon: { attackBonus: number; damageDice: string; is_reach: boolean },
+  attackerWeapon: { attackBonus: number; damageDice: string; is_reach: boolean; noRetaliation?: boolean; freeAction?: boolean; ignoreAttackMultiplier?: boolean },
   defenderWeapon: { attackBonus: number; damageDice: string; is_reach: boolean } | null,
   formationAttackModifier: number,
   attackCapacityMultiplier: number,
@@ -174,10 +174,10 @@ export function resolveCombatSequence(
   attachedAttackerHero: { currentAc: number; troopHp: number } | null,
   rng: () => number,
 ): CombatOutcome {
-  // AGR check: skip if hero, ranged, target routed, or rear attack
+  // AGR check: skip if hero, ranged, target routed, rear attack, or a free/no-retaliation weapon
   let aggrPassed = true;
   let aggrRoll = 1;
-  if (!attacker.isHero && !isRanged && !defender.isRouting && !isRearAttack) {
+  if (!attacker.isHero && !isRanged && !defender.isRouting && !isRearAttack && !attackerWeapon.noRetaliation && !attackerWeapon.freeAction) {
     const threat = Math.round(computeThreatRating(defender) / computeThreatRating(attacker));
     const penalty = Math.max(0, threat - 1);
     aggrRoll = Math.floor(rng() * 10) + 1;
@@ -199,9 +199,12 @@ export function resolveCombatSequence(
     };
   }
 
-  // Who strikes first? Routed defender never strikes first.
+  // Who strikes first? A defender attacked from the rear, a routed defender, noRetaliation
+  // weapons, and ranged attacks all let the attacker strike first (the defender can't react).
   let strikerFirst: 'attacker' | 'defender';
-  if (defender.isRouting) {
+  if (attackerWeapon.noRetaliation || isRanged || isRearAttack) {
+    strikerFirst = 'attacker';
+  } else if (defender.isRouting) {
     strikerFirst = 'attacker';
   } else {
     const attackerReach = attackerWeapon.is_reach;
@@ -224,7 +227,7 @@ export function resolveCombatSequence(
 
   // --- First strike ---
   if (strikerFirst === 'attacker') {
-    const attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false);
+    const attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false, attackerWeapon.ignoreAttackMultiplier ?? false);
     const effBonus = attackerWeapon.attackBonus + formationAttackModifier;
 
     if (attachedDefenderHero) {
@@ -259,7 +262,7 @@ export function resolveCombatSequence(
 
   // --- Retaliation ---
   if (strikerFirst === 'attacker') {
-    if (!defender.isRouting) {
+    if (!defender.isRouting && !attackerWeapon.noRetaliation && !isRanged && !isRearAttack) {
       const rawPosition = determineCombatPosition(attacker.hex, defender.hex, defender.facing);
       const retPos = determineRetaliationPosition(defender.currentFormation, rawPosition);
       if (retPos !== 'rear') {
@@ -310,5 +313,32 @@ export function resolveCombatSequence(
     retaliationDamage,
     retaliationHeroDamage,
     retaliationCount,
+  };
+}
+
+/**
+ * Retaliation is resolved from pre-attack state, so when the first strike kills
+ * or routs the retaliator it must be suppressed post-hoc.
+ *
+ * In ordered combat (one side holds the reach advantage) the non-reach side is
+ * denied its counterattack if the first strike killed or routed it. In
+ * simultaneous combat (equal reach, or both sides lacking reach) the exchange
+ * happens anyway — a unit that is killed or routed still gets its swings in —
+ * so nothing is suppressed.
+ */
+export function suppressRetaliation(
+  outcome: CombatOutcome,
+  retaliatorKilled: boolean,
+  retaliatorRouted: boolean,
+  simultaneous: boolean,
+): CombatOutcome {
+  if (simultaneous) return outcome;
+  if (!retaliatorKilled && !retaliatorRouted) return outcome;
+  return {
+    ...outcome,
+    retaliationAttacks: [],
+    retaliationDamage: 0,
+    retaliationHeroDamage: 0,
+    retaliationCount: 0,
   };
 }

@@ -14,6 +14,9 @@ describe('parseWeapons', () => {
       range: 1,
       magicRadius: 0,
       reach: false,
+      noRetaliation: false,
+      freeAction: false,
+      ignoreAttackMultiplier: false,
     });
   });
 
@@ -45,8 +48,35 @@ describe('parseWeapons', () => {
     expect(result[0].magicRadius).toBe(2);
   });
 
+  it('parses noRetaliation and freeAction flags', () => {
+    const flagged = parseWeapons('Butt End,2,single,1d4,1,0,false,true,true');
+    const onlyNoRet = parseWeapons('Shield Bash,1,single,1d4,1,0,false,true,false');
+
+    expect(flagged[0].noRetaliation).toBe(true);
+    expect(flagged[0].freeAction).toBe(true);
+    expect(onlyNoRet[0].noRetaliation).toBe(true);
+    expect(onlyNoRet[0].freeAction).toBe(false);
+  });
+
+  it('parses ignoreAttackMultiplier flag', () => {
+    const flagged = parseWeapons('Mass Volley,2,single,1d4,3,0,false,false,false,true');
+    const unflagged = parseWeapons('Spear,3,single,1d6+1,1,0,false,false,false,false');
+
+    expect(flagged[0].ignoreAttackMultiplier).toBe(true);
+    expect(unflagged[0].ignoreAttackMultiplier).toBe(false);
+  });
+
+  it('defaults missing flags to false for older 7-field strings', () => {
+    const old = parseWeapons('Spear,3,single,1d6+1,1,0,true');
+
+    expect(old[0].noRetaliation).toBe(false);
+    expect(old[0].freeAction).toBe(false);
+    expect(old[0].ignoreAttackMultiplier).toBe(false);
+    expect(old[0].reach).toBe(true);
+  });
+
   it('falls back to defaults for missing fields', () => {
-    const result = parseWeapons(',,,,,');
+    const result = parseWeapons(',,,,,,false');
 
     expect(result[0].name).toBe('Unknown');
     expect(result[0].attackBonus).toBe(0);
@@ -55,16 +85,27 @@ describe('parseWeapons', () => {
     expect(result[0].range).toBe(1);
     expect(result[0].magicRadius).toBe(0);
     expect(result[0].reach).toBe(false);
+    expect(result[0].noRetaliation).toBe(false);
+    expect(result[0].freeAction).toBe(false);
+    expect(result[0].ignoreAttackMultiplier).toBe(false);
   });
 });
 
 describe('stringifyWeapons', () => {
   it('converts a weapon back to CSV string', () => {
     const weapons = [
-      { name: 'Spear', attackBonus: 3, targetType: 'single' as const, damageDice: '1d6+1', range: 1, magicRadius: 0, reach: false },
+      { name: 'Spear', attackBonus: 3, targetType: 'single' as const, damageDice: '1d6+1', range: 1, magicRadius: 0, reach: false, noRetaliation: false, freeAction: false, ignoreAttackMultiplier: false },
     ];
 
-    expect(stringifyWeapons(weapons)).toBe('Spear,3,single,1d6+1,1,0,false');
+    expect(stringifyWeapons(weapons)).toBe('Spear,3,single,1d6+1,1,0,false,false,false,false');
+  });
+
+  it('roundtrips flags', () => {
+    const weapons = [
+      { name: 'Butt End', attackBonus: 2, targetType: 'single' as const, damageDice: '1d4', range: 1, magicRadius: 0, reach: false, noRetaliation: true, freeAction: true, ignoreAttackMultiplier: false },
+    ];
+
+    expect(stringifyWeapons(weapons)).toBe('Butt End,2,single,1d4,1,0,false,true,true,false');
   });
 
   it('returns empty string for empty array', () => {
@@ -72,26 +113,26 @@ describe('stringifyWeapons', () => {
   });
 
   it('roundtrips: stringify(parse(input)) === input for canonical input', () => {
-    const input = 'Spear,3,single,1d6+1,1,0,false;Pike,2,single,1d10,2,0,true';
+    const input = 'Spear,3,single,1d6+1,1,0,false,false,false,false;Pike,2,single,1d10,2,0,true,false,false,true';
     expect(stringifyWeapons(parseWeapons(input))).toBe(input);
   });
 });
 
 describe('formatWeaponDisplay', () => {
   it('formats a melee weapon', () => {
-    const weapon = { name: 'Spear', attackBonus: 3, targetType: 'single' as const, damageDice: '1d6+1', range: 1, magicRadius: 0, reach: false };
+    const weapon = { name: 'Spear', attackBonus: 3, targetType: 'single' as const, damageDice: '1d6+1', range: 1, magicRadius: 0, reach: false, noRetaliation: false, freeAction: false, ignoreAttackMultiplier: false };
 
     expect(formatWeaponDisplay(weapon)).toBe('Spear (+3 atk, 1d6+1, Adjacent)');
   });
 
   it('formats a ranged weapon', () => {
-    const weapon = { name: 'Javelin', attackBonus: 4, targetType: 'single' as const, damageDice: '1d6', range: 2, magicRadius: 0, reach: false };
+    const weapon = { name: 'Javelin', attackBonus: 4, targetType: 'single' as const, damageDice: '1d6', range: 2, magicRadius: 0, reach: false, noRetaliation: false, freeAction: false, ignoreAttackMultiplier: false };
 
     expect(formatWeaponDisplay(weapon)).toBe('Javelin (+4 atk, 1d6, 2 hexes)');
   });
 
   it('formats an area weapon with radius', () => {
-    const weapon = { name: 'Fireball', attackBonus: 7, targetType: 'area' as const, damageDice: '8d6', range: 4, magicRadius: 2, reach: false };
+    const weapon = { name: 'Fireball', attackBonus: 7, targetType: 'area' as const, damageDice: '8d6', range: 4, magicRadius: 2, reach: false, noRetaliation: false, freeAction: false, ignoreAttackMultiplier: false };
 
     expect(formatWeaponDisplay(weapon)).toBe('Fireball (+7 atk, 8d6, 4 hexes, radius 2)');
   });

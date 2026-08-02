@@ -3,11 +3,17 @@
 
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 
-type Message = string;
-type State = Message[];
+export type MessageTone = 'default' | 'error';
 
-type Action = 
-  | { type: 'ADD_MESSAGE'; payload: string }
+export interface GameMessage {
+  text: string;
+  tone: MessageTone;
+}
+
+type State = GameMessage[];
+
+type Action =
+  | { type: 'ADD_MESSAGE'; payload: GameMessage }
   | { type: 'CLEAR_MESSAGES' };
 
 const messageReducer = (state: State, action: Action): State => {
@@ -24,6 +30,7 @@ const messageReducer = (state: State, action: Action): State => {
 interface MessageContextType {
   messages: State;
   addMessage: (msg: string) => void;
+  addError: (msg: string) => void;
   clearMessages: () => void;
 }
 
@@ -32,11 +39,12 @@ const MessageContext = createContext<MessageContextType | undefined>(undefined);
 export const MessageProvider = ({ children }: { children: ReactNode }) => {
   const [messages, dispatch] = useReducer(messageReducer, []);
 
-  const addMessage = (msg: string) => dispatch({ type: 'ADD_MESSAGE', payload: msg });
+  const addMessage = (msg: string) => dispatch({ type: 'ADD_MESSAGE', payload: { text: msg, tone: 'default' } });
+  const addError = (msg: string) => dispatch({ type: 'ADD_MESSAGE', payload: { text: msg, tone: 'error' } });
   const clearMessages = () => dispatch({ type: 'CLEAR_MESSAGES' });
 
   return (
-    <MessageContext.Provider value={{ messages, addMessage, clearMessages }}>
+    <MessageContext.Provider value={{ messages, addMessage, addError, clearMessages }}>
       {children}
     </MessageContext.Provider>
   );

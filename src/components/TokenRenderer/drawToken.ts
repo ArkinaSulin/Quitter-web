@@ -330,6 +330,17 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
       team,
       preloadedImages
     );
+
+    if (typeof unit.actionsAvailable === 'number') {
+      const infoY = y + height / 6;
+      const badgeH = height * 0.16;
+      const badgeW = badgeH;
+      drawActionBadge(
+        ctx,
+        { left: x + width / 2 - 2 - badgeW, top: infoY - 2 - badgeH, width: badgeW, height: badgeH },
+        unit.actionsAvailable,
+      );
+    }
   }
 
   // ---- Name ----
@@ -434,6 +445,17 @@ function drawHeroSquareToken(
   }
 
   drawHeroSquareHpBar(ctx, cx, cy, displaySize, unit.currentUnitHp, unit.maxUnitHp);
+
+  if (!isAttached && typeof unit.actionsAvailable === 'number') {
+    const hpAreaTop = cy - displaySize / 2 + displaySize * 0.75;
+    const badgeH = displaySize * 0.16;
+    const badgeW = badgeH;
+    drawActionBadge(
+      ctx,
+      { left: cx + halfSize - 2 - badgeW, top: hpAreaTop - 2 - badgeH, width: badgeW, height: badgeH },
+      unit.actionsAvailable,
+    );
+  }
 
   if (!isAttached) {
     drawName(ctx, unit.unitName, cx, cy, tokenWidth, tokenHeight, team, true);
@@ -548,6 +570,30 @@ function drawName(ctx: CanvasRenderingContext2D, name: string, cx: number, cy: n
   const nameY = cy + height/2 - 1;
   ctx.fillText(testName, cx, nameY);
   ctx.restore();
+}
+
+function getActionColor(actions: number): string {
+  if (actions <= 0) return '#FF4444';
+  if (actions === 1) return '#FFD700';
+  return '#FFFFFF';
+}
+
+function drawActionBadge(
+  ctx: CanvasRenderingContext2D,
+  box: { left: number; top: number; width: number; height: number },
+  actions: number,
+) {
+  const color = getActionColor(actions);
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(box.left, box.top, box.width, box.height);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(box.left, box.top, box.width, box.height);
+  ctx.fillStyle = color;
+  ctx.font = `bold ${box.height * 0.62}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(actions), box.left + box.width / 2, box.top + box.height / 2);
 }
 
 function drawBottomInfo(

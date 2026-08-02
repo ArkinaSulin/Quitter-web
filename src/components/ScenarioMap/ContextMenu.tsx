@@ -3,6 +3,8 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Unit } from '@/types/gameProtocol';
+import { areHexesAdjacent } from '@/lib/unitMorale';
+import { parseWeapons } from '@/lib/weaponParser';
 import { TEAM_COLORS } from '@/components/TokenRenderer/tokenUtils';
 
 interface ContextMenuProps {
@@ -10,6 +12,7 @@ interface ContextMenuProps {
   x: number;
   y: number;
   isGM: boolean;
+  selectedWeapon?: number;
   onClose: () => void;
   onRotate: (direction: 'left' | 'right') => void;
   onChangeFormation: (formation: string) => void;
@@ -27,6 +30,7 @@ export function ContextMenu({
   x,
   y,
   isGM,
+  selectedWeapon = 0,
   onClose,
   onRotate,
   onChangeFormation,
@@ -51,7 +55,7 @@ export function ContextMenu({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onClose]);
 
-  const weapons = unit.weaponString ? unit.weaponString.split(';').map(w => w.trim()) : [];
+  const weapons = parseWeapons(unit.weaponString || '');
   const teamNames = Object.keys(TEAM_COLORS);
 
   const availableFormations = unit.formationAvailability || ['Open Order', 'Close Order', 'Phalanx', 'Shield Wall', 'Scattered'];
@@ -74,12 +78,13 @@ export function ContextMenu({
   const attachableTargets = units.filter(u =>
     u.id !== unit.id && !u.isDeleted && !u.isHero &&
     u.team === unit.team &&
-    !units.some(h => h.attachedToUnitId === u.id && !h.isDeleted)
+    !units.some(h => h.attachedToUnitId === u.id && !h.isDeleted) &&
+    areHexesAdjacent(unit.hex, u.hex)
   );
 
   function handleAttachClick() {
     if (attachableTargets.length === 0) {
-      alert('No valid target units to attach to (must be same team, not a hero, no attached hero)');
+      alert('No adjacent valid target units to attach to (must be same team, adjacent, not a hero, no attached hero)');
       return;
     }
     setShowAttachSubmenu(!showAttachSubmenu);
@@ -157,9 +162,16 @@ export function ContextMenu({
       )}
 
       {/* Weapons */}
-      {weapons.length > 0 && weapons.map((w, idx) => (
-        <div key={idx} className="px-3 py-1 hover:bg-gray-700 cursor-pointer" onClick={() => { onSelectWeapon(idx); onClose(); }}>
-          {w}
+      {weapons.length > 0 && (
+        <div className="px-3 py-1 text-gray-400 text-xs">Select Weapon (active: {weapons[selectedWeapon]?.name ?? '—'}):</div>
+      )}
+      {weapons.map((w, idx) => (
+        <div key={idx} className="px-3 py-1 hover:bg-gray-700 cursor-pointer flex items-center gap-2" onClick={() => { onSelectWeapon(idx); onClose(); }}>
+          <span className="w-3 text-emerald-400">{idx === selectedWeapon ? '✓' : ''}</span>
+          <span className="flex-1">{w.name}</span>
+          {w.freeAction && <span className="text-xs px-1 rounded bg-purple-900 text-purple-300" title="Free action">F</span>}
+          {w.noRetaliation && <span className="text-xs px-1 rounded bg-blue-900 text-blue-300" title="No retaliation">NR</span>}
+          {w.ignoreAttackMultiplier && <span className="text-xs px-1 rounded bg-teal-900 text-teal-300" title="Ignores attack multiplier">IM</span>}
         </div>
       ))}
       {weapons.length === 0 && (

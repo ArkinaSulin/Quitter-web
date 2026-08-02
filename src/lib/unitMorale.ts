@@ -1,4 +1,4 @@
-import { Unit, AllianceGroup } from '@/types/gameProtocol';
+import { Unit, AllianceGroup, Hex } from '@/types/gameProtocol';
 
 const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
@@ -31,14 +31,17 @@ export function calcWounds(unit: Unit): number {
   return -Math.floor(pctLost * 10);
 }
 
+export function areHexesAdjacent(a: Hex, b: Hex): boolean {
+  return HEX_DIRS.some(d => a.q + d.q === b.q && a.r + d.r === b.r && a.s + d.s === b.s);
+}
+
 export function calcIsolation(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>): boolean {
   const unitAlliance = alliances[unit.team] || 'friendly';
-  const adjHexes = HEX_DIRS.map(d => ({ q: unit.hex.q + d.q, r: unit.hex.r + d.r, s: unit.hex.s + d.s }));
   return !units.some(u =>
     !u.isDeleted &&
     u.id !== unit.id &&
     (alliances[u.team] || 'friendly') === unitAlliance &&
-    adjHexes.some(h => h.q === u.hex.q && h.r === u.hex.r)
+    areHexesAdjacent(unit.hex, u.hex)
   );
 }
 
@@ -48,12 +51,12 @@ export function calcEnemyThreats(unit: Unit, units: Unit[], alliances: Record<st
   const sideDirs = [unit.facing % 6, (unit.facing + 3) % 6];
   const rearDirs = [(unit.facing + 1) % 6, (unit.facing + 2) % 6];
 
-  let frontSide = 0;
-  let rear = 0;
+  let frontSideSum = 0;
+  let rearSum = 0;
   const myThreat = computeThreatRating(unit);
 
   for (const other of units) {
-    if (other.isDeleted || other.id === unit.id) continue;
+    if (other.isDeleted || other.id === unit.id || other.isRouting) continue;
     const otherAlliance = alliances[other.team] || 'friendly';
     if (otherAlliance === unitAlliance) continue;
 
@@ -63,15 +66,18 @@ export function calcEnemyThreats(unit: Unit, units: Unit[], alliances: Record<st
     const dirIdx = HEX_DIRS.findIndex(d => d.q === dq && d.r === dr && d.s === ds);
     if (dirIdx === -1) continue;
 
-    const threat = Math.round(computeThreatRating(other) / myThreat);
+    const threat = computeThreatRating(other);
     if (frontDirs.includes(dirIdx) || sideDirs.includes(dirIdx)) {
-      frontSide += threat;
+      frontSideSum += threat;
     } else if (rearDirs.includes(dirIdx)) {
-      rear += threat + 1;
+      rearSum += threat * 2;
     }
   }
 
-  return { frontSide, rear };
+  return {
+    frontSide: Math.round(frontSideSum / myThreat),
+    rear: Math.round(rearSum / myThreat),
+  };
 }
 
 export function computeEffectiveMoraleModifier(

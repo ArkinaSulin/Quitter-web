@@ -149,6 +149,8 @@ export function TokenRenderer(props: TokenRendererProps) {
       customImageUrl: customImageUrl || '',
       hidden: false,
       formationAvailability: [],
+      movementPointsAvailable: 0,
+      actionsAvailable: 2,
     } as any;
 
     const tokenWidth = width * 0.9;

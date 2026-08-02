@@ -348,7 +348,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       currentAc: template.baselineAc || 10,
       weaponString: template.weaponString || '',
       movementPoints: template.movementPoints || 3,
-      movementPointsAvailable: template.movementPoints || 3,
+      movementPointsAvailable: 0,
       aggressiveness: template.aggressiveness || 3,
       baseMorale: template.baseMorale || 3,
       currentMoraleModifier: 0,
@@ -369,7 +369,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       hidden: false,
       isDeleted: false,
       ignoreMoraleChecks: template.ignoreMoraleChecks || false,
-      actionsAvailable: 0,
+      actionsAvailable: 2,
     };
 
     const row = mapUnitToRow(newUnit, scenarioId);

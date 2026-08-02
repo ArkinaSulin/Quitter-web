@@ -8,8 +8,10 @@ import {
   rollD20,
   rollDamage,
   resolveCombatSequence,
+  suppressRetaliation,
 } from './unitCombat';
 import { Unit, Hex } from '@/types/gameProtocol';
+import type { CombatOutcome } from './unitCombat';
 
 function makeUnit(overrides: Partial<Unit> = {}): Unit {
   return {
@@ -257,11 +259,12 @@ describe('resolveCombatSequence', () => {
   const visualDotsPerRow = 20;
 
   // Helper to call with default extra params
+  type WeaponArg = { attackBonus: number; damageDice: string; is_reach: boolean; noRetaliation?: boolean; freeAction?: boolean; ignoreAttackMultiplier?: boolean };
   function callCombat(
     att: Unit,
     def: Unit,
-    atkW = aw,
-    defW = dw,
+    atkW: WeaponArg = aw,
+    defW: WeaponArg | null = dw,
     formationAtkMod = 0,
     attackCapMult = 1,
     isRanged = false,
@@ -340,11 +343,47 @@ describe('resolveCombatSequence', () => {
     expect(result.firstStrikeCount).toBe(20);
   });
 
+  it('ignoreAttackMultiplier weapon skips the attack capacity multiplier', () => {
+    const result = callCombat(attacker, defender, { ...aw, ignoreAttackMultiplier: true }, dw, 0, 2);
+    // min(80, 10*1) * 1 = 10
+    expect(result.firstStrikeCount).toBe(10);
+  });
+
+  it('ranged attack strikes first and provokes no retaliation', () => {
+    const result = callCombat(attacker, defender, aw, dw, 0, 1, true);
+    expect(result.aggrPassed).toBe(true);
+    expect(result.strikerFirst).toBe('attacker');
+    expect(result.firstStrikeCount).toBeGreaterThan(0);
+    expect(result.retaliationCount).toBe(0);
+    expect(result.retaliationDamage).toBe(0);
+  });
+
+  it('reach defender cannot strike first or retaliate against a ranged attack', () => {
+    const noReach = { ...aw, is_reach: false };
+    const withReach = { ...dw, is_reach: true };
+    const result = callCombat(attacker, defender, noReach, withReach, 0, 1, true);
+    expect(result.strikerFirst).toBe('attacker');
+    expect(result.retaliationCount).toBe(0);
+    expect(result.retaliationDamage).toBe(0);
+  });
+
   it('rear attack skips AGR and retaliation', () => {
     const rearAttacker = { ...attacker, hex: { q: 0, r: 1, s: -1 } };
     const result = callCombat(rearAttacker, defender, aw, dw, 0, 1, false, true);
     expect(result.aggrPassed).toBe(true);
+    expect(result.strikerFirst).toBe('attacker');
     expect(result.firstStrikeCount).toBeGreaterThan(0);
+    expect(result.retaliationDamage).toBe(0);
+  });
+
+  it('rear attack strikes first even when the defender has reach', () => {
+    const rearAttacker = { ...attacker, hex: { q: 0, r: 1, s: -1 } };
+    const noReach = { ...aw, is_reach: false };
+    const withReach = { ...dw, is_reach: true };
+    const result = callCombat(rearAttacker, defender, noReach, withReach, 0, 1, false, true);
+    expect(result.strikerFirst).toBe('attacker');
+    expect(result.firstStrikeCount).toBeGreaterThan(0);
+    expect(result.retaliationCount).toBe(0);
     expect(result.retaliationDamage).toBe(0);
   });
 
@@ -453,5 +492,91 @@ describe('resolveCombatSequence', () => {
     // min(80, 10*1) * 1 = 10 attacks → ceil(10 * 0.25) = 3 to hero, 7 to unit
     expect(result.firstStrikeAttacks.length).toBe(10);
     expect(result.firstStrikeHeroDamage).toBeGreaterThanOrEqual(0);
+  });
+
+  it('AGR skips when attacker weapon has freeAction', () => {
+    const lowAggrAttacker = { ...attacker, aggressiveness: 1 };
+    const freeW = { ...aw, freeAction: true };
+    const result = callCombat(lowAggrAttacker, defender, freeW);
+    expect(result.aggrPassed).toBe(true);
+  });
+
+  it('AGR skips when attacker weapon has noRetaliation', () => {
+    const lowAggrAttacker = { ...attacker, aggressiveness: 1 };
+    const safeW = { ...aw, noRetaliation: true };
+    const result = callCombat(lowAggrAttacker, defender, safeW);
+    expect(result.aggrPassed).toBe(true);
+  });
+
+  it('noRetaliation forces attacker to strike first even when defender has reach', () => {
+    const safeW = { ...aw, noRetaliation: true, is_reach: false };
+    const reachDefW = { ...dw, is_reach: true };
+    const result = callCombat(attacker, defender, safeW, reachDefW);
+    expect(result.strikerFirst).toBe('attacker');
+  });
+
+  it('noRetaliation suppresses retaliation entirely', () => {
+    const safeW = { ...aw, noRetaliation: true };
+    // Front attack, defender not routed → would normally retaliate at full capacity
+    const result = callCombat(attacker, defender, safeW);
+    expect(result.aggrPassed).toBe(true);
+    expect(result.firstStrikeCount).toBeGreaterThan(0);
+    expect(result.retaliationCount).toBe(0);
+    expect(result.retaliationDamage).toBe(0);
+  });
+
+  it('flagged noRetaliation attack still splits 25% to an attached hero', () => {
+    const safeW = { ...aw, noRetaliation: true };
+    const attachedHero = { currentAc: 12, troopHp: 8 };
+    const result = callCombat(attacker, defender, safeW, dw, 0, 1, false, false, attachedHero);
+    expect(result.firstStrikeAttacks.length).toBe(10);
+    expect(result.retaliationDamage).toBe(0);
+  });
+});
+
+describe('suppressRetaliation', () => {
+  function makeOutcome(): CombatOutcome {
+    const att = makeUnit({ id: 'a', unitName: 'A', aggressiveness: 7, sizeCategory: 100, numberOfAttacks: 1, currentAc: 14, troopHp: 10, currentTroopCount: 80, maxTroopCount: 80, hex: { q: 0, r: -1, s: 1 } });
+    const def = makeUnit({ id: 'd', unitName: 'D', sizeCategory: 100, numberOfAttacks: 1, currentAc: 14, troopHp: 10, currentTroopCount: 80, maxTroopCount: 80, hex: { q: 0, r: 0, s: 0 }, facing: 0 });
+    const result = resolveCombatSequence(
+      att, def,
+      { attackBonus: 3, damageDice: '1d8', is_reach: false },
+      { attackBonus: 2, damageDice: '1d6', is_reach: false },
+      0, 1, 1, 10, 10, 20, false, false, null, null, seededRng(42),
+    );
+    return { ...result, retaliationAttacks: [{ roll: 12, isCrit: false, attackValue: 15, isHit: true, rawDamage: 5, actualDamage: 5 }], retaliationDamage: 5, retaliationCount: 2 };
+  }
+
+  it('suppresses retaliation in ordered combat when the retaliator was killed', () => {
+    const result = suppressRetaliation(makeOutcome(), true, false, false);
+    expect(result.retaliationDamage).toBe(0);
+    expect(result.retaliationHeroDamage).toBe(0);
+    expect(result.retaliationAttacks).toHaveLength(0);
+    expect(result.retaliationCount).toBe(0);
+    expect(result.firstStrikeDamage).toBeGreaterThan(0);
+  });
+
+  it('suppresses retaliation in ordered combat when the retaliator routed', () => {
+    const result = suppressRetaliation(makeOutcome(), false, true, false);
+    expect(result.retaliationDamage).toBe(0);
+    expect(result.retaliationCount).toBe(0);
+  });
+
+  it('keeps retaliation in ordered combat when the retaliator survived', () => {
+    const result = suppressRetaliation(makeOutcome(), false, false, false);
+    expect(result.retaliationDamage).toBe(5);
+    expect(result.retaliationCount).toBe(2);
+  });
+
+  it('keeps retaliation in simultaneous combat even when the retaliator was killed', () => {
+    const result = suppressRetaliation(makeOutcome(), true, false, true);
+    expect(result.retaliationDamage).toBe(5);
+    expect(result.retaliationCount).toBe(2);
+  });
+
+  it('keeps retaliation in simultaneous combat even when the retaliator routed', () => {
+    const result = suppressRetaliation(makeOutcome(), false, true, true);
+    expect(result.retaliationDamage).toBe(5);
+    expect(result.retaliationCount).toBe(2);
   });
 });

@@ -14,11 +14,11 @@ A complete attack/damage system with seven phases, all computed on the fly (no p
 
 1. **Position check** — determines whether the attacker is in the defender's front, flank, or rear based on hex positions and defender facing
 2. **Aggressiveness (AGR) check** — roll D10; must ≤ AGR to attack; fail = no attack (action wasted). Skipped if attacker is in the defender's rear
-3. **Reach check** — the side with a Reach weapon strikes first; if both have or both lack Reach, the attacker strikes first
+3. **Reach check** — the side with a Reach weapon strikes first; if both have or both lack Reach, the attacker strikes first. Equal reach makes combat **simultaneous**; mismatched reach makes it **ordered** (the non-reach side loses its counterattack if the first strike kills or routs it)
 4. **Attack rolls** — each front-row troop makes `numberOfAttacks` attacks. For each: roll D20; 1=auto-miss, 20=auto-hit+double damage; hit if `D20 + attackBonus + 8 ≥ target.currentAc`. Damage = weapon damage dice, capped at target's `troopHp`. Accumulated damage subtracts from `currentUnitHp`. Troop count = `ceil(currentUnitHp / troopHp)`.
 5. **Defender morale check** — after first strike, defender evaluates effective morale (wounds at new HP, isolation, enemy threats, formation). If ≤ 0 → routs with chained ROUT cascade to adjacent non-hero units.
-6. **Retaliation** — if defender didn't rout and position isn't rear: full attacks if front, half (rounded down) if flank, none if rear. No AGR check (reflexive). Same attack roll and damage formula.
-7. **Attacker morale check** — after retaliation, attacker evaluates effective morale. If ≤ 0 → routs with cascade.
+6. **Retaliation** — if the retaliator wasn't killed or routed by the first strike, and position isn't rear: full attacks if front, half (rounded down) if flank, none if rear. No AGR check (reflexive). Same attack roll and damage formula. Suppression is decided by reach: when reach is **equal** the exchange is simultaneous — a unit killed or routed by the first strike still lands its retaliation, and both sides' morale is evaluated after the exchange. When reach **differs**, the non-reach side is denied its counterattack if the first strike killed or routed it (`suppressRetaliation`).
+7. **Attacker morale check** — after retaliation, attacker evaluates effective morale. If ≤ 0 → routs with cascade. In simultaneous combat the defender's morale is also evaluated after its retaliation damage lands.
 
 All damage deltas (`currentUnitHp`, `currentTroopCount`) are stored as sub-steps in the ATTACK command entry. Any ROUT entries are chained (`chained: true`) so one Ctrl+Z undoes the entire combat sequence.
 
@@ -31,11 +31,11 @@ All damage deltas (`currentUnitHp`, `currentTroopCount`) are stored as sub-steps
 5. As a player, I want my unit (in the defender's rear) to skip the AGR check completely, so that rear attacks are a reliable way to break stalemates.
 7. As a player, I want the side with a Reach weapon to strike first, so that pikes and lances have tactical initiative.
 8. As a player, when both sides have or both lack Reach, I want the attacker to strike first, so that the initiating side has a natural advantage.
-9. As a player, I want each attack roll to follow D&D-style: natural 1 auto-misses, natural 20 auto-hits and doubles damage, and a hit requires `D20 + attackBonus + 8 ≥ target.currentAc`, so that the system is familiar to D&D players.
+9. As a player, I want each attack roll to follow D&D-style: natural 1 auto-misses, natural 20 auto-hits and doubles damage, and a hit requires `D20 + attackBonus ≥ target.currentAc`, so that the system is familiar to D&D players.
 10. As a player, I want single-target weapon damage capped at the target's `troopHp` per hit, so that one attack can kill at most one troop regardless of overkill.
 11. As a player, I want cumulative damage across multiple attacks to be tracked on `currentUnitHp`, with troop count recalculated as `ceil(currentUnitHp / troopHp)`, so that accumulated wounds can kill additional troops even if no single hit was lethal.
 12. As a player, when my unit takes damage in combat, I want its effective morale recalculated with the new wound penalty, so that a bloody counter-attack can shatter my unit before it retaliates.
-13. As a player, when my enemy's morale breaks after my first strike, I want them to rout immediately and skip their retaliation, so that breaking morale has a direct defensive benefit.
+13. As a player, when the reach advantage lets my first strike kill or rout the enemy before they can counter, I want them to rout immediately and skip their retaliation, so that Reach has a direct defensive benefit in ordered combat. When reach is equal, combat is simultaneous — a killed or routed unit still lands its retaliation.
 14. As a player, I want my unit to retaliate at full capacity if the attacker is in my front, half capacity on my flank, and not at all to my rear, so that positioning behind an enemy is rewarded.
 15. As a player, I want retaliation attacks to follow the same roll formula as the first strike, so that combat outcomes are consistent.
 16. As a player, I want retaliation to require no AGR check, so that counter-attacks are a reflexive response.
@@ -56,7 +56,8 @@ All damage deltas (`currentUnitHp`, `currentTroopCount`) are stored as sub-steps
 - **`computeTotalAttacks(rowCapacity, numberOfAttacks)`**: Multiplies row capacity by the unit's `numberOfAttacks` stat (attacks per front-row troop).
 - **`determineCombatPosition(attackerHex, defenderHex, defenderFacing)`**: Uses the same 6-direction cube-coordinate system as the existing morale module. Maps the attacker hex relative to the defender to 'front' (kill zone), 'flank' (side), or 'rear' (behind).
 - **`rollD20(rng)`** / **`rollDamage(diceStr, rng)`**: Dice helpers accepting a seedable RNG function for deterministic testing.
-- **`resolveCombatSequence(attacker, defender, attackerWeapon, defenderWeapon, formationAttackModifier, rng)`**: Orchestrates the full 7-phase sequence. Returns a `CombatOutcome` with all attack results, damage totals, and the striker-priority decision.
+- **`resolveCombatSequence(attacker, defender, attackerWeapon, defenderWeapon, formationAttackModifier, rng)`**: Orchestrates the full 7-phase sequence. Returns a `CombatOutcome` with all attack results, damage totals, and the striker-priority decision. Special denials (rear attack, ranged, `noRetaliation`, already-routing defender) are applied here.
+- **`suppressRetaliation(outcome, retaliatorKilled, retaliatorRouted, simultaneous)`**: Post-hoc denial for the ordered case. When reach is **mismatched** and the retaliator was killed or routed by the first strike, zeroes out the retaliation; in **simultaneous** combat nothing is suppressed. Called by `onAttack` after computing the retaliator's state from first-strike damage only.
 - **`executeAttacks(count, attackBonus, damageDice, targetAc, targetTroopHp, rng)`**: Internal worker that generates `count` attack rolls, applies the hit formula, caps damage at `targetTroopHp`, and returns the aggregate.
 
 ### Data Flow
