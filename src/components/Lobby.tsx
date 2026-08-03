@@ -11,9 +11,10 @@ import Toast from '@/components/Toast';
 interface LobbyProps {
   onJoinScenario: (scenarioId: string) => void;
   onNewScenario: (scenarioId: string) => void;
+  onReplayScenario: (scenarioId: string) => void;
 }
 
-export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
+export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario }: LobbyProps) {
   const router = useRouter();
   const {
     scenarios,
@@ -331,6 +332,17 @@ export default function Lobby({ onJoinScenario, onNewScenario }: LobbyProps) {
               className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Join Scenario
+            </button>
+          )}
+          {canJoin && (
+            <button
+              onClick={() => {
+                if (selectedScenarioId) onReplayScenario(selectedScenarioId);
+              }}
+              disabled={!isJoinEnabled}
+              className="w-full py-2 bg-gray-700 border-2 border-yellow-400 text-white rounded hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Replay Scenario
             </button>
           )}
           {/* Upload Screenshot button removed */}

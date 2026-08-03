@@ -299,7 +299,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
   }, [scenarioId]);
 
   // 5. Add unit from template
-  const addUnitFromTemplate = useCallback(async (template: UnitTemplate, hex: Hex, team: string = 'black') => {
+  const addUnitFromTemplate = useCallback(async (template: UnitTemplate, hex: Hex, team: string = 'black'): Promise<Unit | null> => {
     let defaultFormation = 'Scattered';
     if (template.formationAvailability && template.formationAvailability.includes('Open Order')) {
       defaultFormation = 'Open Order';
@@ -379,11 +379,11 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
 
     if (error) {
       console.error('[DEBUG-b7e3] Insert failed:', error.message, 'details:', error.details, 'hint:', error.hint, 'row:', JSON.stringify(row));
-      return false;
+      return null;
     }
 
     setUnits(prev => [...prev, newUnit]);
-    return newUnit.id;
+    return newUnit;
   }, [scenarioId, sizeCategories]);
 
   // 6. Delete a single unit

@@ -50,6 +50,9 @@ export interface UseHexGridProps {
   autoCenter?: boolean;
   backgroundImage?: { url: string; offsetX: number; offsetY: number; scale: number } | null;
   overlayMap?: Record<string, string> | null;
+  /** Read-only mode: pan/zoom/hover enabled, but unit drag-move, attack, and
+   *  context menu are disabled (used by replay). */
+  readOnly?: boolean;
 }
 
 export function useHexGrid({
@@ -67,6 +70,7 @@ export function useHexGrid({
   autoCenter = true,
   backgroundImage,
   overlayMap = null,
+  readOnly = false,
 }: UseHexGridProps) {
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
@@ -298,25 +302,30 @@ export function useHexGrid({
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (!hex) return;
 
-    if (e.button === 0) {
-      const unit = getUnitAt(hex);
-      if (unit) {
-        setDraggingUnitId(unit.id);
-        setDragStartPos({ x: e.clientX, y: e.clientY });
-        setMouseDownTarget('unit');
-        return;
-      }
-      setMouseDownTarget('hex');
-      return;
-    }
-
     if (e.button === 1) {
       e.preventDefault();
       setIsPanning(true);
       setPanStart({ x: e.clientX, y: e.clientY });
       setMouseDownTarget('hex');
+      return;
     }
-  }, [getHexFromScreen, getUnitAt]);
+
+    // In read-only (replay) mode, left-click never starts a drag or a hex select;
+    // pan (button 1) and hover still work. Right-click is handled separately.
+    if (e.button !== 0 || readOnly) {
+      setMouseDownTarget('none');
+      return;
+    }
+
+    const unit = getUnitAt(hex);
+    if (unit) {
+      setDraggingUnitId(unit.id);
+      setDragStartPos({ x: e.clientX, y: e.clientY });
+      setMouseDownTarget('unit');
+      return;
+    }
+    setMouseDownTarget('hex');
+  }, [getHexFromScreen, getUnitAt, readOnly]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (draggingUnitId && dragStartPos) {
@@ -350,12 +359,13 @@ export function useHexGrid({
 
   const handleRightClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
+    if (readOnly) return;
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (hex) {
       const unit = getUnitAt(hex);
       if (onHexRightClick) onHexRightClick(hex, unit, e.clientX, e.clientY);
     }
-  }, [getHexFromScreen, getUnitAt, onHexRightClick]);
+  }, [getHexFromScreen, getUnitAt, onHexRightClick, readOnly]);
 
   return {
     handleMouseMove,

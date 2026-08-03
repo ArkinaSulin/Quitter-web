@@ -64,6 +64,7 @@ export function useScenarios() {
       creator_id: currentUser.id,
       creator_name: creatorName,
       password_hash: password?.trim() || null,
+      free_move: true,
     };
     const { data, error } = await supabase
       .from('scenarios')

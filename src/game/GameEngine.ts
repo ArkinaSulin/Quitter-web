@@ -13,6 +13,8 @@ export interface SubStep {
   description: string;
   unitId: string;
   changes: UnitChange[];
+  /** Snapshot carried for replay (e.g. full unit on PLACE). Ignored by live apply. */
+  payload?: unknown;
 }
 
 export interface CommandEntry {
@@ -151,5 +153,23 @@ export class GameEngine {
 
   getRedoStackSize(): number {
     return this.redoStack.length;
+  }
+
+  /** Replace the entire undo stack (e.g. hydrated from the command_log). */
+  loadStack(entries: CommandEntry[]): void {
+    this.stack = [...entries];
+    if (this.stack.length > this.maxSize) {
+      this.stack = this.stack.slice(this.stack.length - this.maxSize);
+    }
+    this.redoStack = [];
+  }
+
+  /** Append an entry received from another client's realtime command_log insert. */
+  pushExternal(entry: CommandEntry): void {
+    if (this.stack.some(e => e.id === entry.id)) return;
+    this.stack.push(entry);
+    if (this.stack.length > this.maxSize) {
+      this.stack.shift();
+    }
   }
 }

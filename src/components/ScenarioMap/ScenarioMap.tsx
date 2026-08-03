@@ -13,9 +13,11 @@ import { useGameEngine } from '@/hooks/useGameEngine';
 import { useTeamAlliances } from '@/hooks/useTeamAlliances';
 import { useMessageSync } from '@/hooks/useMessageSync';
 import { useProfile } from '@/hooks/useProfile';
+import { useReplay } from '@/hooks/useReplay';
 import { LeftPanel } from './LeftPanel';
 import { ContextMenu } from './ContextMenu';
 import { UnitTooltip } from './UnitTooltip';
+import { ReplayOverlay } from './ReplayOverlay';
 import { drawToken, loadImage } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier, computeThreatRating, areHexesAdjacent } from '@/lib/unitMorale';
 import { supabase } from '@/lib/supabaseClient';
@@ -23,6 +25,8 @@ import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisual
 
 interface ScenarioMapProps {
   scenarioId: string;
+  /** Standalone replay session (Mode 1). When true, the map opens in replay mode. */
+  replayMode?: boolean;
 }
 
 const HEX_SIZE = 100;
@@ -92,7 +96,7 @@ function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alliances: 
   return threats;
 }
 
-export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
+export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedHex, setSelectedHex] = useState<Hex | null>(null);
   const { units, moveUnit, loading, error, addUnitFromTemplate, deleteUnit, updateUnit, sizeCategories } = useSupabaseSync(scenarioId);
@@ -141,6 +145,10 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
     target: Unit;
   } | null>(null);
 
+  // End Turn reminder: shown when the DM ends a turn while Free Move is still on
+  // (soft reminder only — the turn still advances if confirmed).
+  const [freeMoveEndTurnConfirm, setFreeMoveEndTurnConfirm] = useState(false);
+
   // Per-unit selected weapon index (defaults to 0); session-local UI affordance
   const [selectedWeapons, setSelectedWeapons] = useState<Record<string, number>>({});
 
@@ -153,11 +161,19 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
     currentUser?.email ||
     'Unknown';
 
+  const replay = useReplay(scenarioId, { initialMode: replayMode ? 'replay' : 'play', playerId });
+  const inReplay = replay.mode === 'replay';
+
   const { alliances, setAlliance } = useTeamAlliances(scenarioId, isGM);
+
+  // Display state: live units/alliances in play mode, replay cursor state in replay mode.
+  const displayUnits = inReplay ? replay.replayUnits : units;
+  const displayAlliances = inReplay ? replay.replayAlliances : alliances;
+  const displayTurnNumber = inReplay ? replay.replayTurnNumber : turnNumber;
 
 
   const {
-    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, assignTeam, toggleHide, placeUnit, attachHero, detachHero, endTurn, undo, canUndo, redo, canRedo, peekUndoChainLength,
+    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, assignTeam, toggleHide, placeUnit, attachHero, detachHero, endTurn, undo, canUndo, redo, canRedo, peekUndoChainLength, hydrateFromLog, subscribeToCommandLog,
   } = useGameEngine({
     scenarioId,
     playerId,
@@ -170,6 +186,14 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
   });
 
   const handleEndTurn = useCallback(async () => {
+    if (freeMove) {
+      setFreeMoveEndTurnConfirm(true);
+      return;
+    }
+    await performEndTurn();
+  }, [freeMove]);
+
+  const performEndTurn = useCallback(async () => {
     const { next, wrapped, turnNumber: newTurnNumber } = await endTurn({
       currentAlliance: currentTurnAlliance,
       alliances,
@@ -372,7 +396,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
       };
     }
 
-    for (const unit of units) {
+    for (const unit of displayUnits) {
       if (unit.isDeleted || unit.attachedToUnitId) continue;
       if (unit.hidden) {
         if (!isGM) continue;
@@ -383,7 +407,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
       const pos = hexToPixel(unit.hex, HEX_SIZE);
       const cx = pos.x * currentZoom + offsetX;
       const cy = pos.y * currentZoom + offsetY;
-      const unitMoraleMod = unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, units, alliances, formationMoraleMod);
+      const unitMoraleMod = unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, displayUnits, displayAlliances, formationMoraleMod);
       try {
         await drawToken({
           unit: { ...unit, currentMoraleModifier: unitMoraleMod },
@@ -394,8 +418,8 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
           height: tokenHeight,
           zoom: currentZoom,
           showDetails: true,
-          turnNumber: turnNumber,
-          teamAlliances: alliances,
+          turnNumber: displayTurnNumber,
+          teamAlliances: displayAlliances,
           formationsMap,
           sizeCategories,
         });
@@ -404,13 +428,13 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
       }
       if (unit.hidden) ctx.restore();
 
-      const attachedHero = units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted);
+      const attachedHero = displayUnits.find(u => u.attachedToUnitId === unit.id && !u.isDeleted);
       if (attachedHero) {
         const heroPos = getAttachedHeroPos(unit.hex, unit.facing, attachedHero.attachedPosition);
         const heroCx = heroPos.x * currentZoom + offsetX;
         const heroCy = heroPos.y * currentZoom + offsetY;
         const heroFormationMoraleMod = getFormationModifier(formationsMap, attachedHero.currentFormation, 'morale_modifier');
-        const heroMoraleMod = attachedHero.currentMoraleModifier + computeEffectiveMoraleModifier(attachedHero, units, alliances, heroFormationMoraleMod);
+        const heroMoraleMod = attachedHero.currentMoraleModifier + computeEffectiveMoraleModifier(attachedHero, displayUnits, displayAlliances, heroFormationMoraleMod);
         try {
           await drawToken({
             unit: { ...attachedHero, currentMoraleModifier: heroMoraleMod },
@@ -421,8 +445,8 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
             height: tokenHeight,
             zoom: currentZoom,
             showDetails: true,
-            turnNumber: turnNumber,
-            teamAlliances: alliances,
+            turnNumber: displayTurnNumber,
+            teamAlliances: displayAlliances,
             isAttached: true,
             formationsMap,
             sizeCategories,
@@ -432,7 +456,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
         }
       }
     }
-  }, [units, turnNumber, alliances, isGM, formationsMap, sizeCategories]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, formationsMap, sizeCategories]);
 
   function getOverlayForUnit(unit: Unit): Record<string, string> {
     const result: Record<string, string> = {};
@@ -781,10 +805,11 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
     canvasRef,
     size: HEX_SIZE,
     gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
-    units: units,
-    onUnitMove: handleUnitMove,
+    units: displayUnits,
+    onUnitMove: inReplay ? () => {} : handleUnitMove,
     onHexClick: (hex) => setSelectedHex(hex),
     onHexRightClick: (hex, unit, clientX, clientY) => {
+      if (inReplay) return;
       if (unit && !unit.isDeleted && (isGM || !unit.hidden)) {
         setContextMenuUnit(unit);
         setContextMenuPos({ x: clientX, y: clientY });
@@ -799,11 +824,12 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
       setHoveredUnit(null);
       setTooltipPos(null);
     },
-    onAttack: handleAttackRequest,
+    onAttack: inReplay ? undefined : handleAttackRequest,
     customDraw,
     autoCenter: isInitialLoad,
     backgroundImage: backgroundConfig ? { url: backgroundConfig.imageUrl, offsetX: backgroundConfig.offsetX, offsetY: backgroundConfig.offsetY, scale: backgroundConfig.scale } : null,
     overlayMap,
+    readOnly: inReplay,
   });
 
   useEffect(() => {
@@ -859,6 +885,15 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
     }
   }, [isInitialLoad, loading, canvasRef, centerMap]);
 
+  // Rebuild the undo stack from the persisted command log after units load, and
+  // keep it in sync with other clients' actions in real time.
+  useEffect(() => {
+    if (loading) return;
+    hydrateFromLog();
+    const unsubscribe = subscribeToCommandLog();
+    return unsubscribe;
+  }, [loading, scenarioId, hydrateFromLog, subscribeToCommandLog]);
+
   // ---- Drag from panel ----
   const handleUnitDragStart = useCallback((template: UnitTemplate) => {
     setDraggingTemplate(template);
@@ -892,9 +927,9 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
               addMessage(`Can't place ${draggingTemplate.unitName}: hex occupied by ${existing.unitName}`);
               return;
             }
-            const unitId = await addUnitFromTemplate(draggingTemplate, hex, 'black');
-            if (unitId) {
-              await placeUnit(draggingTemplate.unitName, unitId, hex);
+            const unit = await addUnitFromTemplate(draggingTemplate, hex, 'black');
+            if (unit) {
+              await placeUnit(unit);
             } else {
               addMessage(`Failed to place ${draggingTemplate.unitName}`);
             }
@@ -1226,6 +1261,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
   // ---- Keyboard shortcuts ----
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (inReplay) return;
       if (e.ctrlKey && e.key === 'z') {
         e.preventDefault();
         undo();
@@ -1240,7 +1276,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, contextMenuUnit, rotateUnit]);
+  }, [inReplay, undo, redo, contextMenuUnit, rotateUnit]);
 
   if (loading) return <div className="w-full h-screen bg-[#0d0d1a] text-white flex items-center justify-center">Loading scenario...</div>;
   if (error) return <div className="w-full h-screen bg-[#0d0d1a] text-red-500 flex items-center justify-center">Error: {error}</div>;
@@ -1253,67 +1289,97 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
           <span className="text-white text-lg font-semibold">
             Scenario Map - {isGM ? 'DM' : 'Player'}
           </span>
-          <span className="text-white text-sm font-mono">Turn {turnNumber}</span>
-          <button
-            onClick={undo}
-            disabled={!canUndo()}
-            className={`px-3 py-1 rounded shadow-lg text-sm ${
-              canUndo()
-                ? 'bg-amber-700 hover:bg-amber-600 text-white'
-                : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            {`Undo${peekUndoChainLength() > 1 ? ` (${peekUndoChainLength()})` : ''}`}
-          </button>
-          <button
-            onClick={isGM ? handleToggleFreeMove : undefined}
-            disabled={!isGM}
-            title={isGM ? 'Toggle free movement (no MP/action cost for any player)' : 'Only the DM can toggle free movement'}
-            className={`px-3 py-1 rounded shadow-lg text-sm ${
-              freeMove
-                ? isGM
-                  ? 'bg-emerald-700 hover:bg-emerald-600 text-white'
-                  : 'bg-emerald-900 text-emerald-300 cursor-not-allowed'
-                : isGM
-                  ? 'bg-gray-800 hover:bg-gray-700 text-white'
-                  : 'bg-gray-800 text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            {`Free Move: ${freeMove ? 'ON' : 'OFF'}`}
-          </button>
-          <button
-            onClick={handleEndTurn}
-            className={`px-3 py-1 rounded shadow-lg text-sm ${
-              currentTurnAlliance === 'enemy'
-                ? 'bg-[#D55E00] hover:bg-[#c74f00] text-white'
-                : currentTurnAlliance === 'neutral'
-                  ? 'bg-[#E0E0E0] hover:bg-[#d0d0d0] text-black'
-                  : 'bg-[#0072B2] hover:bg-[#00619c] text-white'
-            }`}
-          >
-            {`End Turn (${currentTurnAlliance ?? 'friendly'})`}
+          {!inReplay && (
+            <button
+              onClick={undo}
+              disabled={!canUndo()}
+              className={`px-3 py-1 rounded shadow-lg text-sm ${
+                canUndo()
+                  ? 'bg-amber-700 hover:bg-amber-600 text-white'
+                  : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              {`Undo${peekUndoChainLength() > 1 ? ` (${peekUndoChainLength()})` : ''}`}
+            </button>
+          )}
+          <span className="text-white text-sm font-mono">Turn {displayTurnNumber}</span>
+          {!inReplay && (
+            <button
+              onClick={isGM ? handleEndTurn : undefined}
+              disabled={!isGM}
+              title={isGM ? 'Advance to the next group' : 'Only the DM can end the turn'}
+              className={`px-3 py-1 rounded shadow-lg text-sm ${
+                currentTurnAlliance === 'enemy'
+                  ? 'bg-[#D55E00] hover:bg-[#c74f00] text-white'
+                  : currentTurnAlliance === 'neutral'
+                    ? 'bg-[#E0E0E0] hover:bg-[#d0d0d0] text-black'
+                    : 'bg-[#0072B2] hover:bg-[#00619c] text-white'
+              } ${!isGM ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {`End Turn (${currentTurnAlliance ?? 'friendly'})`}
+            </button>
+          )}
+          {!inReplay && (
+            <button
+              onClick={isGM ? handleToggleFreeMove : undefined}
+              disabled={!isGM}
+              title={isGM ? 'Toggle free movement (no MP/action cost for any player)' : 'Only the DM can toggle free movement'}
+              className={`px-3 py-1 rounded shadow-lg text-sm ${
+                freeMove
+                  ? isGM
+                    ? 'bg-emerald-700 hover:bg-emerald-600 text-white'
+                    : 'bg-emerald-900 text-emerald-300 cursor-not-allowed'
+                  : isGM
+                    ? 'bg-gray-800 hover:bg-gray-700 text-white'
+                    : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              {`Free Move: ${freeMove ? 'ON' : 'OFF'}`}
+            </button>
+          )}
+          {/* Mode 2 (join scenario): GM enters/leaves replay of the live session */}
+          {!replayMode && isGM && !inReplay && (
+            <button
+              onClick={() => replay.setMode('replay')}
+              className="px-3 py-1 rounded shadow-lg text-sm bg-amber-700 hover:bg-amber-600 text-white"
+            >
+              Replay scenario
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Mode 2 in-session replay: Back to Play returns to live play */}
+          {!replayMode && isGM && inReplay && (
+            <button
+              onClick={() => replay.setMode('play')}
+              className="px-3 py-1 rounded shadow-lg text-sm bg-emerald-700 hover:bg-emerald-600 text-white"
+            >
+              Back to Play
+            </button>
+          )}
+          <button onClick={goToLobby} className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1 rounded shadow-lg text-sm">
+            Exit to Lobby
           </button>
         </div>
-        <button onClick={goToLobby} className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1 rounded shadow-lg text-sm">
-          Exit Session
-        </button>
       </div>
 
-      {/* Floating Left Panel */}
-      <div className={`absolute top-14 z-10 ${panelSide === 'left' ? 'left-2' : 'right-2'}`}>
-        <LeftPanel
-          scenarioId={scenarioId}
-          onUnitDragStart={handleUnitDragStart}
-          isGM={isGM}
-          alliances={alliances}
-          onMoveTeam={handleMoveTeam}
-          backgroundConfig={backgroundConfig}
-          onSaveBackground={handleSaveBackground}
-          onPreviewMapConfig={handlePreviewMapConfig}
-          side={panelSide}
-          onToggleSide={() => setPanelSide(s => (s === 'left' ? 'right' : 'left'))}
-        />
-      </div>
+      {/* Floating Left Panel — hidden in replay (no editing tools) */}
+      {!inReplay && (
+        <div className={`absolute top-14 z-10 ${panelSide === 'left' ? 'left-2' : 'right-2'}`}>
+          <LeftPanel
+            scenarioId={scenarioId}
+            onUnitDragStart={handleUnitDragStart}
+            isGM={isGM}
+            alliances={alliances}
+            onMoveTeam={handleMoveTeam}
+            backgroundConfig={backgroundConfig}
+            onSaveBackground={handleSaveBackground}
+            onPreviewMapConfig={handlePreviewMapConfig}
+            side={panelSide}
+            onToggleSide={() => setPanelSide(s => (s === 'left' ? 'right' : 'left'))}
+          />
+        </div>
+      )}
 
       {/* Canvas */}
       <canvas
@@ -1329,7 +1395,7 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
       {isDraggingFromPanel && ghostHex && (
         <DragGhost hex={ghostHex} zoom={zoom} offsetX={offsetX} offsetY={offsetY} />
       )}
-      {draggingUnitId && hoveredHex && units.some(
+      {draggingUnitId && hoveredHex && displayUnits.some(
         u => u.id === draggingUnitId && (u.hex.q !== hoveredHex.q || u.hex.r !== hoveredHex.r)
       ) && (
         <DragGhost hex={hoveredHex} zoom={zoom} offsetX={offsetX} offsetY={offsetY} />
@@ -1341,12 +1407,12 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
           unit={hoveredUnit}
           x={tooltipPos.x}
           y={tooltipPos.y}
-          attachedHero={units.find(u => u.attachedToUnitId === hoveredUnit.id && !u.isDeleted) || undefined}
-          units={units}
-          alliances={alliances}
+          attachedHero={displayUnits.find(u => u.attachedToUnitId === hoveredUnit.id && !u.isDeleted) || undefined}
+          units={displayUnits}
+          alliances={displayAlliances}
           formation={formationsMap[hoveredUnit.currentFormation] ?? null}
           attachedHeroFormation={(() => {
-            const hero = units.find(u => u.attachedToUnitId === hoveredUnit.id && !u.isDeleted);
+            const hero = displayUnits.find(u => u.attachedToUnitId === hoveredUnit.id && !u.isDeleted);
             return hero ? (formationsMap[hero.currentFormation] ?? null) : undefined;
           })()}
         />
@@ -1384,6 +1450,23 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
           }}
           onDetachHero={(heroId) => handleDetachHero(heroId)}
           units={units}
+        />
+      )}
+
+      {/* Replay overlay — distinct frame + playback controls */}
+      {inReplay && (
+        <ReplayOverlay
+          step={replay.cursor}
+          totalSteps={replay.steps.length}
+          playing={replay.playing}
+          speed={replay.speed}
+          controllerName={replay.controllerId === playerId ? 'You' : replay.controllerId ? 'Another player' : null}
+          onSeek={replay.seek}
+          onPlay={replay.play}
+          onPause={replay.pause}
+          onStepFwd={replay.stepFwd}
+          onStepBack={replay.stepBack}
+          onSpeedChange={replay.setSpeed}
         />
       )}
 
@@ -1430,6 +1513,32 @@ export function ScenarioMap({ scenarioId }: ScenarioMapProps) {
               <button
                 className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
                 onClick={() => setPendingAttack(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Free Move end-turn reminder (soft — turn still advances if confirmed) */}
+      {freeMoveEndTurnConfirm && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-yellow-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Free Move is still ON</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              You are ending the turn while Free Move is enabled. Movements still cost no MP/actions. Do you want to continue?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={async () => { setFreeMoveEndTurnConfirm(false); await performEndTurn(); }}
+              >
+                End Turn anyway
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => setFreeMoveEndTurnConfirm(false)}
               >
                 Cancel
               </button>

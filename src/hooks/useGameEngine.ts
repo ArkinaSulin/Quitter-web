@@ -9,6 +9,7 @@ import { applyMoveCost, applyMpSpend } from '@/lib/moveCost';
 import { useMessageSync } from '@/hooks/useMessageSync';
 import { GameEngine, ActionType, SubStep, CommandEntry } from '@/game/GameEngine';
 import { getActiveGroups, advanceTurn } from '@/lib/turnState';
+import { buildStackFromLog, rowToEntry, CommandLogRow } from '@/lib/commandHistory';
 
 interface UseGameEngineProps {
   scenarioId: string;
@@ -94,6 +95,41 @@ export function useGameEngine({
     },
     [scenarioId, playerId, playerName, updateUnit, updateAlliance, updateScenarioField, addMessage],
   );
+
+  const hydrateFromLog = useCallback(async (): Promise<void> => {
+    const { data, error } = await supabase
+      .from('command_log')
+      .select('id, scenario_id, player_id, player_name, action_type, description, sub_steps, chained, created_at')
+      .eq('scenario_id', scenarioId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.error('[CommandLog] Hydrate failed:', error);
+      return;
+    }
+    engineRef.current.loadStack(buildStackFromLog((data ?? []) as CommandLogRow[]));
+  }, [scenarioId]);
+
+  const subscribeToCommandLog = useCallback((): (() => void) => {
+    const channel = supabase
+      .channel(`command-log-${scenarioId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'command_log',
+          filter: `scenario_id=eq.${scenarioId}`,
+        },
+        payload => {
+          engineRef.current.pushExternal(rowToEntry(payload.new as CommandLogRow));
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [scenarioId]);
 
   const undo = useCallback(async (): Promise<CommandEntry[] | null> => {
     const chain = engineRef.current.undo(playerId, isGM);
@@ -342,15 +378,16 @@ export function useGameEngine({
   );
 
   const placeUnit = useCallback(
-    async (templateName: string, unitId: string, hex: Hex): Promise<void> => {
+    async (unit: Unit): Promise<void> => {
       const subSteps: SubStep[] = [
         {
           type: 'PLACE',
-          description: `Placed ${templateName} at (${hex.q}, ${hex.r})`,
-          unitId,
+          description: `Placed ${unit.unitName} at (${unit.hex.q}, ${unit.hex.r})`,
+          unitId: unit.id,
           changes: [
             { field: 'isDeleted', from: true, to: false },
           ],
+          payload: unit,
         },
       ];
       await execute('PLACE', subSteps, subSteps[0].description);
@@ -473,5 +510,7 @@ export function useGameEngine({
     attachHero,
     detachHero,
     endTurn,
+    hydrateFromLog,
+    subscribeToCommandLog,
   };
 }

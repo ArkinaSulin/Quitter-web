@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Unit } from '@/types/gameProtocol';
+import { Unit, getOrganizationLevel } from '@/types/gameProtocol';
 import { areHexesAdjacent } from '@/lib/unitMorale';
 import { parseWeapons } from '@/lib/weaponParser';
 import { TEAM_COLORS } from '@/components/TokenRenderer/tokenUtils';
@@ -46,13 +46,22 @@ export function ContextMenu({
   const [showAttachSubmenu, setShowAttachSubmenu] = useState(false);
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: MouseEvent | PointerEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    // Capture phase so this fires before any other handler (drag, canvas, panel)
+    // could stop propagation; pointerdown covers mouse, touch, and pen.
+    document.addEventListener('pointerdown', handleClickOutside, true);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handleClickOutside, true);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [onClose]);
 
   const weapons = parseWeapons(unit.weaponString || '');
@@ -60,13 +69,22 @@ export function ContextMenu({
 
   const availableFormations = unit.formationAvailability || ['Open Order', 'Close Order', 'Phalanx', 'Shield Wall', 'Scattered'];
 
+  // Order formations by organization level, higher on top. Disable any formation
+  // more than +1 org level above the current one (recomputed on every render).
+  const currentOrgLevel = getOrganizationLevel(unit.currentFormation);
   const formationOptions = [
-    { label: 'Line - Open Order', value: 'Open Order' },
-    { label: 'Line - Close Order', value: 'Close Order' },
-    { label: 'Line - Phalanx', value: 'Phalanx' },
-    { label: 'Line - Shield Wall', value: 'Shield Wall' },
-    { label: 'Scattered', value: 'Scattered' },
-  ].filter(opt => availableFormations.includes(opt.value));
+    { value: 'Open Order' },
+    { value: 'Close Order' },
+    { value: 'Phalanx' },
+    { value: 'Shield Wall' },
+    { value: 'Scattered' },
+  ]
+    .filter(opt => availableFormations.includes(opt.value))
+    .sort((a, b) => getOrganizationLevel(b.value) - getOrganizationLevel(a.value))
+    .map(opt => ({
+      value: opt.value,
+      disabled: getOrganizationLevel(opt.value) > currentOrgLevel + 1,
+    }));
 
   const canAttach = unit.isHero && (unit.sizeCategory || 100) <= 200 && !unit.attachedToUnitId && !!onAttachHero;
   const isAttachedHero = unit.isHero && !!unit.attachedToUnitId;
@@ -111,8 +129,12 @@ export function ContextMenu({
       {!unit.isHero && !unit.attachedToUnitId && (
         <>
           {formationOptions.map(opt => (
-            <div key={opt.value} className="px-3 py-1 hover:bg-gray-700 cursor-pointer" onClick={() => { onChangeFormation(opt.value); onClose(); }}>
-              {opt.label}
+            <div
+              key={opt.value}
+              className={`px-3 py-1 ${opt.disabled ? 'text-gray-600 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}`}
+              onClick={() => { if (opt.disabled) return; onChangeFormation(opt.value); onClose(); }}
+            >
+              {opt.value}
             </div>
           ))}
           {formationOptions.length === 0 && (
