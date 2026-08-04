@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeReachableMap, computeMoveBudget, computeMovePool, applyMoveCost, applyMpSpend, isMoveAffordable } from './moveCost';
+import { computeReachableMap, computeChargeReachable, computeMoveBudget, computeMovePool, applyMoveCost, applyMpSpend, isMoveAffordable } from './moveCost';
 import { Hex } from '@/types/gameProtocol';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
@@ -195,5 +195,47 @@ describe('isMoveAffordable', () => {
   it('false when cost exceeds leftover MP + actions (confirm modal)', () => {
     expect(isMoveAffordable({ movementPointsAvailable: 0, actionsAvailable: 0 }, 1, 5)).toBe(false);
     expect(isMoveAffordable({ movementPointsAvailable: 2, actionsAvailable: 0 }, 3, 5)).toBe(false);
+  });
+});
+
+describe('computeChargeReachable — front-arc BFS wedge', () => {
+  it('fans out a wedge: 1 step -> 2 hexes, 2 steps -> 3, 3 steps -> 4', () => {
+    const map = computeChargeReachable({ hex: h(0, 0), facing: 0 }, new Set(), 3);
+    // facing 0 front dirs: (0,-1) and (1,-1)
+    expect(map.get('0,-1')).toBe(1);
+    expect(map.get('1,-1')).toBe(1);
+    expect(map.get('0,-2')).toBe(2);
+    expect(map.get('1,-2')).toBe(2);
+    expect(map.get('2,-2')).toBe(2);
+    expect(map.get('0,-3')).toBe(3);
+    expect(map.get('1,-3')).toBe(3);
+    expect(map.get('2,-3')).toBe(3);
+    expect(map.get('3,-3')).toBe(3);
+    expect(map.size).toBe(2 + 3 + 4);
+  });
+
+  it('blocks an occupied hex and everything reachable only through it', () => {
+    const occupied = new Set(['1,-1']);
+    const map = computeChargeReachable({ hex: h(0, 0), facing: 0 }, occupied, 3);
+    expect(map.has('1,-1')).toBe(false);
+    // Only reachable via (1,-1): gone. (1,-2) is still reachable via (0,-1)->(1,-2).
+    expect(map.has('2,-2')).toBe(false);
+    expect(map.has('3,-3')).toBe(false);
+    // the rest of the wedge survives
+    expect(map.get('0,-1')).toBe(1);
+    expect(map.get('0,-2')).toBe(2);
+    expect(map.get('1,-2')).toBe(2);
+    expect(map.get('0,-3')).toBe(3);
+    expect(map.get('1,-3')).toBe(3);
+    expect(map.get('2,-3')).toBe(3);
+    expect(map.size).toBe(6);
+  });
+
+  it('honors maxHexes (one action pool)', () => {
+    const map = computeChargeReachable({ hex: h(0, 0), facing: 0 }, new Set(), 1);
+    expect(map.get('0,-1')).toBe(1);
+    expect(map.get('1,-1')).toBe(1);
+    expect(map.has('0,-2')).toBe(false);
+    expect(map.size).toBe(2);
   });
 });

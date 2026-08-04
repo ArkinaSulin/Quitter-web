@@ -5,7 +5,9 @@ import { supabase } from '@/lib/supabaseClient';
 import { Unit, Hex, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { computeEffectiveMovement } from '@/lib/unitStats';
 import { applyFormationChange } from '@/lib/formationCost';
+import { nextLowerFormation } from '@/lib/formationCost';
 import { applyMoveCost, applyMpSpend } from '@/lib/moveCost';
+import { parseWeapons } from '@/lib/weaponParser';
 import { useMessageSync } from '@/hooks/useMessageSync';
 import { GameEngine, ActionType, SubStep, CommandEntry } from '@/game/GameEngine';
 import { getActiveGroups, advanceTurn } from '@/lib/turnState';
@@ -16,6 +18,7 @@ interface UseGameEngineProps {
   playerId: string;
   playerName: string;
   isGM: boolean;
+  freeMove: boolean;
   updateUnit: (unitId: string, updates: Partial<Unit>) => Promise<boolean>;
   moveUnit: (unitId: string, targetHex: Hex) => Promise<boolean>;
   updateAlliance?: (team: string, group: AllianceGroup) => Promise<void>;
@@ -27,6 +30,7 @@ export function useGameEngine({
   playerId,
   playerName,
   isGM,
+  freeMove,
   updateUnit,
   moveUnit,
   updateAlliance,
@@ -280,7 +284,7 @@ export function useGameEngine({
       const changes: { field: string; from: any; to: any }[] = [
         { field: 'facing', from: unit.facing, to: newFacing },
       ];
-      if (!unit.isHero) {
+      if (!unit.isHero && !freeMove) {
         const { movementPointsAvailable, actionsAvailable } = applyMpSpend(unit, 1, maxMP);
         changes.push({ field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: movementPointsAvailable });
         if (actionsAvailable !== unit.actionsAvailable) {
@@ -297,11 +301,19 @@ export function useGameEngine({
       ];
       await execute('ROTATE', subSteps, subSteps[0].description);
     },
-    [execute],
+    [execute, freeMove],
   );
 
   const changeFormation = useCallback(
     async (unit: Unit, formation: string, formationsMap: Record<string, Formation>): Promise<void> => {
+      // Shield Wall requires a shield in hand — a two-handed weapon blocks it.
+      if (formation === 'Shield Wall') {
+        const activeWeapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
+        if (activeWeapon?.isTwoHanded) {
+          addMessage(`${unit.unitName} cannot form Shield Wall while wielding ${activeWeapon.name} (two-handed)`);
+          return;
+        }
+      }
       const oldForm = formationsMap[unit.currentFormation];
       const newForm = formationsMap[formation];
       const oldMult = oldForm?.movement_multiplier ?? 1;
@@ -320,7 +332,7 @@ export function useGameEngine({
         { field: 'currentFormation', from: unit.currentFormation, to: formation },
       ];
 
-      if (!unit.isHero) {
+      if (!unit.isHero && !freeMove) {
         changes.push({ field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: newAvailable });
       }
 
@@ -343,7 +355,7 @@ export function useGameEngine({
       ];
       await execute('FORMATION', subSteps, subSteps[0].description);
     },
-    [execute, addMessage],
+    [execute, addMessage, freeMove],
   );
 
   const assignTeam = useCallback(
@@ -359,6 +371,39 @@ export function useGameEngine({
       await execute('TEAM', subSteps, subSteps[0].description);
     },
     [execute],
+  );
+
+  const selectWeapon = useCallback(
+    async (unit: Unit, weaponIndex: number): Promise<void> => {
+      const weapons = parseWeapons(unit.weaponString || '');
+      const nextWeapon = weapons[weaponIndex];
+      if (!nextWeapon) return;
+
+      // A two-handed weapon cannot be used while in Shield Wall.
+      if (nextWeapon.isTwoHanded && unit.currentFormation === 'Shield Wall') {
+        addMessage(`${unit.unitName} cannot wield ${nextWeapon.name} in Shield Wall — drop the formation first`);
+        return;
+      }
+
+      // Shield is unusable while a two-handed weapon is active: effective AC = baseline - 2.
+      const shieldPenalty = unit.isShielded && nextWeapon.isTwoHanded ? 2 : 0;
+      const nextAc = (unit.baselineAc || 10) - shieldPenalty;
+      const fromAc = unit.currentAc;
+
+      const subSteps: SubStep[] = [
+        {
+          type: 'WEAPON_SELECT',
+          description: `${unit.unitName} switches to ${nextWeapon.name}${shieldPenalty > 0 ? ' (drops shield, -2 AC)' : ''}`,
+          unitId: unit.id,
+          changes: [
+            { field: 'activeWeaponIndex', from: unit.activeWeaponIndex ?? 0, to: weaponIndex },
+            { field: 'currentAc', from: fromAc, to: nextAc },
+          ],
+        },
+      ];
+      await execute('WEAPON_SELECT', subSteps, subSteps[0].description);
+    },
+    [execute, addMessage],
   );
 
   const toggleHide = useCallback(
@@ -443,6 +488,26 @@ export function useGameEngine({
     [execute],
   );
 
+  const charge = useCallback(
+    async (unit: Unit): Promise<void> => {
+      // Charge! only locks the unit into charging state. No MP/action is deducted
+      // here — those are consumed normally during the subsequent charge move.
+      const subSteps: SubStep[] = [
+        {
+          type: 'CHARGE',
+          description: `${unit.unitName} starts a charge`,
+          unitId: unit.id,
+          changes: [
+            { field: 'isCharging', from: false, to: true },
+            { field: 'chargeDistance', from: 0, to: 0 },
+          ],
+        },
+      ];
+      await execute('CHARGE', subSteps, subSteps[0].description);
+    },
+    [execute],
+  );
+
   const endTurn = useCallback(
     async (args: {
       currentAlliance: AllianceGroup | null;
@@ -466,6 +531,31 @@ export function useGameEngine({
           ],
         },
       ];
+
+      // Charge forfeit: units in the ending group that charged but never used their
+      // free attack drop one organization level and clear their charge state.
+      const endingTeams = new Set<string>();
+      for (const [team, group] of Object.entries(args.alliances)) {
+        if (group === args.currentAlliance) endingTeams.add(team);
+      }
+
+      for (const unit of args.units) {
+        if (unit.isDeleted || !unit.isCharging || !endingTeams.has(unit.team)) continue;
+        const lower = nextLowerFormation(unit.currentFormation);
+        const changes: { field: string; from: any; to: any }[] = [
+          { field: 'isCharging', from: true, to: false },
+          { field: 'chargeDistance', from: unit.chargeDistance, to: 0 },
+        ];
+        if (lower) {
+          changes.push({ field: 'currentFormation', from: unit.currentFormation, to: lower });
+        }
+        subSteps.push({
+          type: 'CHARGE_END',
+          description: `${unit.unitName} forfeited its charge — ${lower ? `dropped to ${lower}` : 'charge ended'}`,
+          unitId: unit.id,
+          changes,
+        });
+      }
 
       const activeTeams = new Set<string>();
       for (const [team, group] of Object.entries(args.alliances)) {
@@ -504,12 +594,14 @@ export function useGameEngine({
     peekUndoChainLength,
     rotateUnit,
     changeFormation,
+    selectWeapon,
     assignTeam,
     toggleHide,
     placeUnit,
     attachHero,
     detachHero,
     endTurn,
+    charge,
     hydrateFromLog,
     subscribeToCommandLog,
   };

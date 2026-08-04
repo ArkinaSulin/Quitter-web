@@ -95,6 +95,7 @@ The game is designed around two psychological stats that interact dynamically:
 | range | INTEGER | Effective range in hexes |
 | target_type | TEXT | 'single' or 'area' |
 | is_reach | BOOLEAN | True if weapon has Reach (e.g., pike, lance) |
+| is_two_handed | BOOLEAN | True if weapon is two-handed (occupies both hands — no shield, no Shield Wall) |
 
 ### 4.4 Lookup Tables (armors, formations, unit_types)
 Standard lookup tables with:
@@ -122,10 +123,10 @@ Standard lookup tables with:
 | max_unit_hp | INTEGER | Total HP (auto‑calculated = troop_hp × troop_count) |
 | number_of_attacks | INTEGER | Number of attacks per action |
 | armor_id | UUID | FK to armors |
+| weapon_string | JSON | JSON array of Weapon objects |
 | is_shielded | BOOLEAN | Shield equipped (+2 AC) |
 | base_ac | INTEGER | Natural AC from race |
 | baseline_ac | INTEGER | AC after equipment adjustments (enters battle with this) |
-| weapon_string | JSON | JSON array of Weapon objects |
 | mount_id | UUID | FK to mounts |
 | movement_points | INTEGER | Base movement |
 | aggressiveness | INTEGER | 1–10 |
@@ -219,6 +220,7 @@ Stores actual on‑map units (copied from templates with per‑instance stats).
 | is_routing | BOOLEAN | Routing flag |
 | hidden | BOOLEAN | Hidden from non-GM players |
 | actions_available | INTEGER | Remaining actions for current turn |
+| active_weapon_index | INTEGER | Index of the active weapon in weapon_string (0 = first) |
 | updated_at | TIMESTAMPTZ | Timestamp |
 
 ## 5. File Structure
@@ -836,6 +838,14 @@ The `formations` lookup table has four modifier columns. All are applied on-the-
   }
 ]
 ```
+
+The runtime `weapon_string` is a CSV, not JSON: 11 fields separated by commas, weapons by semicolons.
+```
+Name,AttackBonus,TargetType,DamageDice,Range,MagicRadius,Reach,NoRetaliation,FreeAction,IgnoreAttackMultiplier,IsTwoHanded
+Longsword,5,single,1d8,1,0,false,false,false,false,false
+Greatsword,5,single,2d6,1,0,false,false,false,false,true
+```
+Missing trailing fields (older strings) default to `false`.
 
 ### 15.2 Size Category Logic (Rank Capacity)
 ```

@@ -115,6 +115,47 @@ function key(q: number, r: number): string {
 }
 
 /**
+ * Charge corridor for a charging unit: a front-arc BFS wedge. Each step moves into
+ * one of the two front-arc hexes (relative to the fixed facing — no turning), up to
+ * `maxHexes` (the unit's one-action MP pool). An occupied hex blocks the lane (cannot
+ * be entered or passed through). Returns hex key -> step cost (1..maxHexes).
+ *
+ * Geometry: facing 0 (front dirs (0,-1),(1,-1)) from the origin fans out as
+ * 1 hex -> 2 hexes, 2 hexes -> 3, 3 -> 4, etc. Only formed (non-loose) units can
+ * charge; Scattered/Routed/Hero cannot.
+ */
+export function computeChargeReachable(
+  unit: { hex: Hex; facing: number },
+  occupied: Set<string>,
+  maxHexes = 2,
+): Map<string, number> {
+  const result = new Map<string, number>();
+  const frontDirs = [(unit.facing + 4) % 6, (unit.facing + 5) % 6];
+
+  const visited = new Set<string>([key(unit.hex.q, unit.hex.r)]);
+  const queue: { q: number; r: number; cost: number }[] = [
+    { q: unit.hex.q, r: unit.hex.r, cost: 0 },
+  ];
+
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    if (cur.cost >= maxHexes) continue;
+    for (const dirIdx of frontDirs) {
+      const dir = HEX_DIRS[dirIdx];
+      const nq = cur.q + dir.q;
+      const nr = cur.r + dir.r;
+      const k = key(nq, nr);
+      if (visited.has(k) || occupied.has(k)) continue;
+      visited.add(k);
+      const cost = cur.cost + 1;
+      result.set(k, cost);
+      queue.push({ q: nq, r: nr, cost });
+    }
+  }
+  return result;
+}
+
+/**
  * Single-source BFS over (hex, facing) for formed units:
  *   - entering a hex from the front arc costs 1 MP
  *   - each 60° turn costs 1 MP

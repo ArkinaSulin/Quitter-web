@@ -1,4 +1,5 @@
 import { Unit, Formation, SizeCategory } from '@/types/gameProtocol';
+import { parseWeapons } from '@/lib/weaponParser';
 
 export function computeEffectiveAc(unit: Unit, formationModifier: number): number {
   return unit.baselineAc + formationModifier;
@@ -38,4 +39,15 @@ export function getRowCapacity(sizeCategories: SizeCategory[], sizeCategory: num
 export function getVisualDotsPerRow(formationsMap: Record<string, Formation>, rowCapacity: number, formationName: string): number {
   const mult = getFormationMultiplier(formationsMap, formationName, 'row_capacity_multiplier');
   return Math.max(1, rowCapacity * mult);
+}
+
+/**
+ * Shield penalty while wielding a two-handed weapon. A shielded unit loses its
+ * shield bonus (2 AC) whenever the active weapon is two-handed. Units without a
+ * shield are unaffected.
+ */
+export function getShieldPenalty(unit: Pick<Unit, 'isShielded' | 'weaponString' | 'activeWeaponIndex'>): number {
+  if (!unit.isShielded) return 0;
+  const activeWeapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
+  return activeWeapon?.isTwoHanded ? 2 : 0;
 }

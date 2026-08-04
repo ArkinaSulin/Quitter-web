@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Command Log & Undo System
 
@@ -145,6 +145,28 @@ The message panel continues to display the flat `string[]` from the message cont
 ### Removed
 
 The unused `src/workers/gameWorker.ts` was removed. Its stub handlers were never wired into the application. All game logic now lives in `GameEngine.ts` and `useGameEngine.ts`.
+
+## Cross-Session Undo, Realtime Sync & Replay
+
+The command log is the single source of truth for undo **and** replay.
+
+### Cross-session undo (hydrate)
+- **`buildStackFromLog(rows)`** (`src/lib/commandHistory.ts`): rebuilds the engine's undo stack from persisted `command_log` rows — ordered by `created_at`, `chained` grouping preserved, capped at 50, JSON `sub_steps` parsed.
+- **`useGameEngine.hydrateFromLog(scenarioId)`**: fetches non-deleted rows for the scenario and `loadStack`s them into the engine. Called once on ScenarioMap mount after units load.
+- Because the log is scenario-scoped, every client hydrates the **same full timeline** — so the sequential-LIFO rule (own-actions only, DM any, no skipping) is enforced against the global top, not just the local client's own commands.
+
+### Realtime sync
+- **`useGameEngine.subscribeToCommandLog(scenarioId)`**: subscribes to `postgres_changes` INSERTs on `command_log` (filtered by `scenario_id`) and appends remote entries via `GameEngine.pushExternal` (deduped by entry id, respects the 50 cap). Keeps every client's undo stack current mid-session.
+- `GameEngine` gained `loadStack(entries)` (replace stack + clear redo) and `pushExternal(entry)` (dedupe append). `SubStep` gained an optional `payload` (JSONB-safe) used to carry full unit snapshots on PLACE for replay — ignored by the live DB-apply path.
+
+### Replay (read-only playback)
+- **`buildReplayTimeline(rows)`** (`src/lib/commandHistory.ts`): builds a net timeline (soft-deleted/undone rows skipped) from the log head alone — each step is one command group (a non-chained entry + its chained follow-ups) with a full `ReplayState` snapshot (units map, alliances, scenario fields). No baseline snapshot is needed: every unit is seeded by its full-snapshot PLACE payload, so replay is immune to template edits and unit deletion.
+- **`replayStateToUnits(state)`**: converts a step's unit map into a renderable `Unit[]`.
+- **`useReplay(scenarioId)`** (`src/hooks/useReplay.ts`): fetches the log → timeline; playback state (`cursor`, `playing`, `speed` 0.5/1/2/4, seek/play/pause/step fwd/back); derives `replayUnits`/`replayAlliances`/`replayTurnNumber` at the cursor (cursor 0 = empty world). Co-watch via a shared-registry realtime broadcast channel `replay:${scenarioId}` (StrictMode-safe like `useMessageSync`): anyone can grab the clicker and broadcast `seek`/`play`/`pause`/`mode`; viewers follow seeks but keep their own speed.
+- **ReplayOverlay** (`src/components/ScenarioMap/ReplayOverlay.tsx`): amber REPLAY frame + banner + playback bar (play/pause, scrubber, frame-step, speed). Distinct from live play so there's never ambiguity.
+- **Two entry modes**: Mode 1 — Lobby "Replay Scenario" button opens the map with `replayMode` prop (standalone read-only). Mode 2 — GM-only "Replay scenario" toggle inside a live session (`replay.setMode('replay'/'play')`) pulls the whole session into replay together; "Back to Play" restores gameplay.
+- **`useHexGrid` `readOnly`**: pan/zoom/hover enabled, but unit drag-move, attack, and context menu disabled — used by both replay and DM-gone lock.
+- Migration 019 adds a `select_log_any_approved` SELECT policy so any approved user can watch replays of any scenario.
 
 ## Testing Decisions
 

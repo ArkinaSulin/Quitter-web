@@ -1,6 +1,6 @@
 import { Unit, Hex } from '@/types/gameProtocol';
 
-export type ActionType = 'MOVE' | 'ROTATE' | 'FORMATION' | 'TEAM' | 'HIDE' | 'TOGGLE_HIDE' | 'PLACE' | 'ATTACK' | 'DAMAGE' | 'HEAL' | 'ROUT' | 'DELETE' | 'ALLIANCE' | 'ATTACH_HERO' | 'DETACH_HERO' | 'END_TURN' | 'SCENARIO';
+export type ActionType = 'MOVE' | 'ROTATE' | 'FORMATION' | 'TEAM' | 'HIDE' | 'TOGGLE_HIDE' | 'PLACE' | 'ATTACK' | 'DAMAGE' | 'HEAL' | 'ROUT' | 'DELETE' | 'ALLIANCE' | 'ATTACH_HERO' | 'DETACH_HERO' | 'END_TURN' | 'SCENARIO' | 'CHARGE' | 'CHARGE_END' | 'WEAPON_SELECT' | 'CAST';
 
 export interface UnitChange {
   field: string;

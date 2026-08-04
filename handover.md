@@ -1,3 +1,189 @@
+# Handover — 2026-08-03
+
+## Role → Capability Access Matrix
+**Files:** `supabase/migrations/025_access_matrix.sql` (new), `src/hooks/useProfile.ts`, `src/components/Lobby.tsx`, `app/unit-editor/page.tsx`
+
+Privileges are now **data, not code** — editing a row in the `access_roles` table changes what a role can do (server-side RLS **and** client button visibility) with no code change.
+
+- **Migration 025**: `access_roles(role PK, can_use_unit_editor, can_create_scenario, can_join_game, can_view_replay)` seeded `admin`/`dm` = all true, `player` = join+replay, `pending` = replay only. RLS: read-open. `user_has_access(permission)` SECURITY DEFINER helper (NULL profile role → `'pending'`). The 016 RLS policies for `scenarios` INSERT (was `role IN ('admin','dm')`) and `scenario_participants` INSERT (was `role IS NOT NULL`) now call `user_has_access('create_scenario')` / `user_has_access('join_game')`.
+- **`useProfile`**: loads the matrix once per session (module cache), exposes `access { canUseUnitEditor, canCreateScenario, canJoinGame, canViewReplay }` derived from the current role.
+- **`Lobby.tsx`**: button flags (`canCreateScenario`, `canUseUnitEditor`, `canJoin`, `canReplay`) come from the matrix instead of hard-coded role checks.
+- **`app/unit-editor/page.tsx`**: guard now checks `access.canUseUnitEditor`.
+- Admin panel stays hard-coded to `role === 'admin'` (not a matrix capability); `set_player_role` RPC unchanged.
+
+## Pending Users: Reliable Signup + Read-Only Lobby & Replay
+**Files:** `supabase/migrations/023_profile_trigger.sql` (new), `supabase/migrations/024_replay_pending.sql` (new), `src/components/Lobby.tsx`, `app/unit-editor/page.tsx`
+
+**Bug fixed — new signups never appeared as pending.** Profile rows were created lazily by the client (`useProfile` upsert on first load); if `getUser()` raced or the upsert failed, the user had NO profile row — they saw the awaiting-approval screen and could submit a request (an UPDATE matching 0 rows), but nothing persisted and the admin panel listed nothing. Live DB had only 2 profiles, both approved, 0 pending.
+
+- **Migration 023**: `handle_new_user()` SECURITY DEFINER trigger on `auth.users` AFTER INSERT auto-creates the pending profile (`display_name` from `raw_user_meta_data.full_name → name → email`; `role` NULL = pending). Runs as owner → bypasses the client/RLS fragility. Client upsert stays as idempotent fallback.
+- **Pending users now get a read-only lobby**: banner ("Your account is awaiting approval — you can browse scenarios and watch replays while your access is reviewed") + request-note form **and** the normal lobby (scenario cards + left panel). Replay button uses new `canReplay = !!currentUser` (was `canJoin`), so pending users can replay; Join stays `canJoin` (pending can't play). Create/UnitEditor/Admin still role-gated; Delete requires `isCreator`.
+- **Migration 024**: `command_log` SELECT policy `select_log_pending` — any authenticated user with a `profiles` row (pending included) can read logs for replay (read-only).
+- **Search bar** (all users): filters scenario cards by name **and** the creator's live `profiles.display_name` (fetched once per scenario list; falls back to `scenarios.creator_name`), so renames are honored.
+- **Unit-editor auth guard**: `/unit-editor` now redirects to the Lobby unless the user's role is `admin`/`dm` (the URL was previously open to pending/players).
+
+## Two-Handed Weapons & Shield Rules
+**Files:** `src/lib/weaponParser.ts` (+tests), `src/lib/unitStats.ts` (+ `unitStats.test.ts` new), `src/types/gameProtocol.ts`, `src/game/GameEngine.ts`, `src/hooks/useGameEngine.ts`, `src/hooks/useSupabaseSync.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`, `src/components/ScenarioMap/ContextMenu.tsx`, `src/components/ScenarioMap/UnitTooltip.tsx`, `src/components/UnitEditor.tsx`, `supabase/migrations/022_is_two_handed.sql`, `.scratch/two-handed-weapons/spec.md`
+
+- **`Weapon.isTwoHanded`** added to the CSV weapon string as field #11 (`...IgnoreAttackMultiplier,IsTwoHanded`); older strings default to `false`. `WeaponLookup.is_two_handed`, `Unit.activeWeaponIndex`.
+- **Active weapon is now a broadcast unit field** (`units.active_weapon_index`), replacing the old session-local `selectedWeapons` state in `ScenarioMap.tsx`. Switching weapons is a logged `WEAPON_SELECT` command (free move — no MP/action), so undo/redo + realtime sync work; defender retaliation now uses the defender's active weapon (was always weapon[0]).
+- **Rules** (reversible/effective — `isShielded` never mutated):
+  - `getShieldPenalty(unit)`: 2 when shielded + active weapon two-handed, else 0. `selectWeapon` rewrites `currentAc = baselineAc - shieldPenalty`; tooltip shows `baseline − 2 (two-handed)` and Shielded reads `Yes (dropped — two-handed)`.
+  - Selecting a 2H weapon while in Shield Wall is **blocked** (error message); `changeFormation` to Shield Wall is blocked when the active weapon is two-handed; ContextMenu disables the Shield Wall option.
+  - Placement: a shielded unit spawned with a two-handed first weapon starts at `currentAc = baselineAc - 2`.
+- **UI**: ContextMenu `2H` badge; UnitTooltip `[2H]` marker; UnitEditor Add/Edit Weapon modal Two-Handed checkbox (from `weaponsLookup.is_two_handed`).
+- **Migration 022**: `weapons.is_two_handed`, `units.active_weapon_index`. **Apply to DB.** User will set `is_two_handed = true` on real weapon rows manually.
+- Tests: weaponParser + new unitStats `getShieldPenalty` suite; 203 passing, tsc clean.
+
+## Centaur Race Fields Not Loading (HD / speed / canCharge)
+**Files:** `src/types/gameProtocol.ts`, `src/components/UnitEditor.tsx`
+
+The `Race` type declared `baseSpeed`/`defaultTroopScale`, but the DB column is `base_speed` (and `defaultTroopScale` doesn't exist) — so race speed was never read. The race `<select>` handler also never applied HD, speed, or canCharge.
+
+- `Race.baseSpeed` → `base_speed` (removed the nonexistent `defaultTroopScale`).
+- Race dropdown `onChange` now sets `level = base_hd`, `movementPoints = base_speed`, `canCharge = can_charge`.
+- `createBlankTemplate` seeds the same from the first race.
+- Templates saved *before* this fix keep stale values — reopen + re-save to pick up corrected defaults.
+
+## Combat Retaliation — Reach Simultaneous vs Ordered
+**Files:** `src/lib/unitCombat.ts`, `src/lib/unitCombat.test.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`, `.scratch/combat-system/spec.md`
+
+Reach now decides both strike order and retaliation suppression:
+- `suppressDefenderRetaliation` replaced by **`suppressRetaliation(outcome, retaliatorKilled, retaliatorRouted, simultaneous)`**.
+- **Equal reach = simultaneous**: both sides exchange regardless of killed/routed; morale evaluated after both strikes.
+- **Mismatched reach = ordered**: the non-reach side is denied its counterattack if the first strike killed or routed it.
+- `performAttack` derives the retaliator's killed/routed from first-strike damage only (no circularity — the retaliator never takes its own retaliation), then final HP/morale both ways. Denial message: `. X killed/routed by the first strike — no retaliation` for either side.
+- Tests: 3 old swapped for 5 new. Combat spec marked `done`.
+
+## Routing Units Exert No Threat + Tooltip Readout
+**Files:** `src/lib/unitMorale.ts`, `src/lib/unitMorale.test.ts`, `src/components/ScenarioMap/UnitTooltip.tsx`
+
+- `calcEnemyThreats` now skips `other.isRouting` — a routed enemy pressures no one's morale (matches `computeThreatHexes`). 2 tests added.
+- Tooltip `Threat:` row reads `0 routed, was X.XX` for a routing unit.
+
+## Map Editor Real-Time Preview + 10× Scale
+**Files:** `src/components/ScenarioMap/MapEditorPanel.tsx`
+
+- Image select, Offset X/Y, and Scale sliders now forward `onPreviewChange` immediately — the map reflects changes live; Save still persists to `map_data`.
+- Scale range raised to `0.1–10` (was 0.1–3).
+
+## Cross-Session Undo + Realtime Command Log Sync
+**Files:** `src/lib/commandHistory.ts` (+ tests), `src/game/GameEngine.ts`, `src/hooks/useGameEngine.ts`, `src/hooks/useSupabaseSync.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`, `vitest.config.ts`
+
+- **`commandHistory.ts`** (new, pure): `buildStackFromLog(rows)` rebuilds the undo stack from `command_log` (created_at order, `chained` preserved, 50-cap, JSON `sub_steps`); `buildReplayTimeline(rows)` builds a net timeline (skips soft-deleted/undone rows) with full `ReplayState` snapshots per command group; `replayStateToUnits(state)` renders a step's units.
+- **`GameEngine`**: `SubStep.payload` (JSONB-safe snapshot, ignored by live apply, read by replay); `loadStack()` + `pushExternal()` (dedupe append, 50-cap).
+- **`useGameEngine`**: `hydrateFromLog(scenarioId)` rebuilds the stack on mount; `subscribeToCommandLog(scenarioId)` appends remote inserts in real time (postgres_changes, deduped). Because the log is scenario-scoped, every client sees the **same global timeline**, enforcing the sequential-LIFO undo rule across clients.
+- **`useSupabaseSync`**: `addUnitFromTemplate` returns the **full spawned `Unit`** (not just id); `placeUnit(unit)` records the complete unit snapshot as a PLACE payload — replay never depends on live templates or unit rows.
+- **`vitest.config.ts`** (new): declares the `@` → `./src` alias. Previously unset; tests only passed because libs imported *types* from `@/types/gameProtocol` (esbuild-elided). `formationCost.ts` imports a *value* (`getOrganizationLevel`), forcing the fix.
+- Migration 018 (`baseline_snapshot`) was **created then dropped** — replay starts from the log head; no baseline needed.
+
+## Replay (Read-Only Playback)
+**Files:** `src/hooks/useReplay.ts` (new), `src/components/ScenarioMap/ReplayOverlay.tsx` (new), `src/hooks/useHexGrid.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`, `src/components/Lobby.tsx`, `app/page.tsx`, `supabase/migrations/019_replay_watch.sql`
+
+- **`useReplay`**: loads `command_log` → `buildReplayTimeline`; playback cursor/playing/speed (0.5/1/2/4), seek/play/pause/step; derives `replayUnits`/`replayAlliances`/`replayTurnNumber` at cursor (0 = empty world). Co-watch via shared-registry realtime broadcast channel `replay:${scenarioId}` — pass-the-clicker: anyone can grab control, viewers follow seeks but keep their own speed.
+- **ReplayOverlay**: amber REPLAY frame + banner + playback bar (play/pause, scrubber, frame-step, speed). Distinct from live UI.
+- **Mode 1** — Lobby "Replay Scenario" button → map opens with `replayMode` prop. **Mode 2** — GM-only "Replay scenario" toggle in the live top bar flips the whole session into replay; "Back to Play" returns.
+- **`useHexGrid.readOnly`**: pan/zoom/hover preserved; unit drag-move, attack, context menu disabled (shared by replay and DM-gone lock).
+- Migration 019: `select_log_any_approved` SELECT policy on `command_log` so any approved user can watch replays.
+
+## Top Bar Restructure
+**Files:** `src/components/ScenarioMap/ScenarioMap.tsx`
+
+- Live play: `Scenario Map - [role] | Undo | Turn [n] | End Turn | Free Move | Replay scenario` + far right `Exit to Lobby`.
+- In-session replay (GM): `... | Turn [n]` + far right `Back to Play`, `Exit to Lobby`. Standalone replay: `... | Turn [n]` + `Exit to Lobby`.
+- **End Turn is GM-only** (disabled/greyed for players — fixes players incrementing the local counter without DM). **Free Move** is GM-only.
+
+## New Scenario Starts With Free Move ON + End-Turn Reminder
+**Files:** `src/hooks/useScenarios.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`
+
+- `createScenario` inserts `free_move: true`.
+- DM clicking End Turn while Free Move is ON gets a yellow soft-reminder modal ("End Turn anyway" / "Cancel") — no enforcement.
+
+## Context Menu — Formation Ordering + Click-Outside
+**Files:** `src/components/ScenarioMap/ContextMenu.tsx`
+
+- Formations shown **by org level descending** (higher on top), "Line - " prefixes removed, options more than +1 org level above current are disabled (recomputed each render).
+- Closes on **any click outside** via `pointerdown` capture (covers mouse/touch/pen before other handlers) + Escape.
+
+## DM-Leave Disables All Player Controls
+**Files:** `src/hooks/useScenarios.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`
+
+- Every client now subscribes to presence (previously only the GM did); on DM-leave, non-GM clients set `dmGone` → `controlsLocked` (reuses the replay read-only path): no drag/attack/context menu, Undo/End Turn/Free Move hidden, LeftPanel hidden, keyboard gated, pending modals no-op. Red banner "GM has left — controls disabled". Pan/zoom/tooltip stay; `Exit to Lobby` remains.
+- Note: presence `timeout` config is **not supported** client-side in `@supabase/realtime-js@2.109` (verified) — hard-disconnect detection is server-default (~20s); graceful exits are instant.
+
+## Charge! Mechanic
+**Files:** `src/lib/moveCost.ts` (+ tests), `src/lib/formationCost.ts` (+ tests), `src/lib/unitCombat.ts`, `src/lib/unitMorale.ts` (+ test), `src/types/gameProtocol.ts`, `src/hooks/useSupabaseSync.ts`, `src/game/GameEngine.ts`, `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`, `src/components/ScenarioMap/ContextMenu.tsx`, `src/components/ScenarioMap/UnitTooltip.tsx`, `supabase/migrations/020_charge.sql`, `.scratch/charge-mechanic/spec.md`
+
+- **`computeChargeReachable`**: front-arc BFS wedge (no turning) bounded by one action's MP pool — 1→2 hexes, 2→3, 3→4 fan; occupied blocks.
+- **`nextLowerFormation`**: Phalanx/Shield Wall → Close Order → Open Order → Scattered (floor; never Routed).
+- **`resolveCombatSequence(..., isCharging)`**: threads the existing `executeAttacks` double-damage flag (was always `false`).
+- **Charge flow**: Charge! (prereq ≥1 action, not Scattered) locks Rotate + Formation and sets `isCharging`/`chargeDistance` — **no MP/action deducted at initiation** (consumed normally during the charge move). Overlay: cost-1 amber (premature), cost-2+ white. Full charge (≥2 hexes) → drag onto enemy = free double-damage attack, then drop 1 org level. Premature → confirm modal (attack normally, costs an action, still drops org). End turn forfeits unused free attacks (org drop).
+- **Threat doubling**: `computeThreatRating` returns 2× while charging (tooltip `X.XX (2× charging)`; feeds enemy morale + AGR).
+- **Free Move also makes rotate/formation free**: `useGameEngine` gained a `freeMove` prop; rotate/formation skip MP accounting when on.
+- Migration 020: `units.is_charging`, `units.charge_distance`.
+
+## Changes by File (this session)
+
+| File | What |
+|---|---|
+| `src/lib/unitCombat.ts` | `suppressRetaliation` (replaces `suppressDefenderRetaliation`); `resolveCombatSequence` `isCharging` param → 6 call sites |
+| `src/lib/unitCombat.test.ts` | 5 new suppression tests; `makeUnit` gains `isCharging`/`chargeDistance` |
+| `src/lib/unitMorale.ts` | `calcEnemyThreats` skips `isRouting`; `computeThreatRating` doubles when `isCharging` |
+| `src/lib/unitMorale.test.ts` | routing-threat + charging-threat tests; `makeUnit` gains new fields |
+| `src/lib/moveCost.ts` | `computeChargeReachable` front-arc wedge |
+| `src/lib/moveCost.test.ts` | charge wedge tests (fan-out, occupied blocking, cap) |
+| `src/lib/formationCost.ts` | `nextLowerFormation` |
+| `src/lib/formationCost.test.ts` | descent + floor tests |
+| `src/lib/commandHistory.ts` | **new** — `buildStackFromLog`, `buildReplayTimeline`, `replayStateToUnits` |
+| `src/lib/commandHistory.test.ts` | **new** — stack order/cap/chaining, net timeline, PLACE seeding |
+| `src/game/GameEngine.ts` | `SubStep.payload`; `loadStack`/`pushExternal`; `ActionType` += `CHARGE`, `CHARGE_END` |
+| `src/hooks/useGameEngine.ts` | `hydrateFromLog`, `subscribeToCommandLog`, `charge`, `performChargeEnd` forfeit in `endTurn`, `freeMove` prop |
+| `src/hooks/useSupabaseSync.ts` | `addUnitFromTemplate` returns `Unit`; `isCharging`/`chargeDistance` mapping; `placeUnit(unit)` payload |
+| `src/hooks/useReplay.ts` | **new** — timeline, playback, co-watch, mode |
+| `src/hooks/useScenarios.ts` | `free_move: true` on create; presence subscribe shared |
+| `src/hooks/useHexGrid.ts` | `readOnly` mode (replay + DM-gone) |
+| `src/components/ScenarioMap/ScenarioMap.tsx` | displayUnits switch, replay mode, DM-gone lock, charge overlay/move/attack, top bar, GM-only End Turn, free-move reminder modal |
+| `src/components/ScenarioMap/ReplayOverlay.tsx` | **new** — replay frame + playback bar |
+| `src/components/ScenarioMap/ContextMenu.tsx` | org-level ordering, Charge!, rotate/formation lock, pointerdown/Escape close |
+| `src/components/ScenarioMap/UnitTooltip.tsx` | `0 routed, was X` + `(2× charging)` |
+| `src/components/ScenarioMap/MapEditorPanel.tsx` | real-time preview, scale max 10 |
+| `src/components/Lobby.tsx` | "Replay Scenario" button |
+| `app/page.tsx` | `{ scenarioId, replay }` session state |
+| `vitest.config.ts` | **new** — `@` alias |
+| `supabase/migrations/019_replay_watch.sql` | **new** — approved-user SELECT on `command_log` |
+| `supabase/migrations/020_charge.sql` | **new** — `is_charging`, `charge_distance` |
+| `src/lib/weaponParser.ts` | `Weapon.isTwoHanded` — CSV field #11 (parse/stringify, old strings → false) |
+| `src/lib/unitStats.ts` | **new** `getShieldPenalty(unit)` (2 when shielded + active 2H weapon) + `unitStats.test.ts` |
+| `src/game/GameEngine.ts` | `ActionType` += `WEAPON_SELECT` |
+| `src/hooks/useGameEngine.ts` | `selectWeapon` (free-move, blocks 2H in Shield Wall, rewrites `currentAc`); `changeFormation` Shield Wall block |
+| `src/hooks/useSupabaseSync.ts` | maps/persists `active_weapon_index`; spawn shield-drop at `baselineAc - 2` for shielded 2H first weapon |
+| `src/components/ScenarioMap/ScenarioMap.tsx` | removed `selectedWeapons`; uses `unit.activeWeaponIndex`; defender retaliation uses active weapon |
+| `src/components/ScenarioMap/ContextMenu.tsx` | `2H` badge; Shield Wall disabled for active 2H |
+| `src/components/ScenarioMap/UnitTooltip.tsx` | `[2H]` marker; AC breakdown `baseline − 2 (two-handed)`; Shielded `Yes (dropped — two-handed)` |
+| `src/components/UnitEditor.tsx` | Two-Handed checkbox in weapon modal; race dropdown applies HD/speed/canCharge; `createBlankTemplate` seeds race fields |
+| `src/types/gameProtocol.ts` | `WeaponLookup.is_two_handed`; `Unit.activeWeaponIndex`; `Race.baseSpeed` → `base_speed` (removed `defaultTroopScale`) |
+| `supabase/migrations/022_is_two_handed.sql` | **new** — `weapons.is_two_handed`, `units.active_weapon_index` |
+| `supabase/migrations/023_profile_trigger.sql` | **new** — `handle_new_user` trigger auto-creates pending profile on auth.users INSERT |
+| `supabase/migrations/024_replay_pending.sql` | **new** — `command_log` SELECT policy for pending users (read-only replay) |
+| `supabase/migrations/025_access_matrix.sql` | **new** — `access_roles` matrix + `user_has_access`; 016 RLS policies rewritten to read the matrix |
+| `src/components/Lobby.tsx` | pending banner + read-only lobby, `canReplay`, scenario search bar (name + live creator alias) |
+| `src/hooks/useProfile.ts` | loads `access_roles` matrix; exposes `access { canUseUnitEditor, canCreateScenario, canJoinGame, canViewReplay }` |
+| `app/unit-editor/page.tsx` | role guard — redirect to Lobby unless `access.canUseUnitEditor` |
+
+## Migrations
+- **019** (`replay_watch`), **020** (`charge`), **022** (`is_two_handed`), **023** (`profile_trigger`), **024** (`replay_pending`), **025** (`access_matrix`) — **written, apply to DB**.
+- 018 (`baseline_snapshot`) — **created then dropped** (replay starts from log head). If previously applied, run `ALTER TABLE scenarios DROP COLUMN IF EXISTS baseline_snapshot;`.
+
+## Pending
+- Migrations 019 (`replay_watch`), 020 (`charge`), 022 (`is_two_handed`), 023 (`profile_trigger`), 024 (`replay_pending`), and 025 (`access_matrix`) — apply to the DB.
+- Set `weapons.is_two_handed = true` on real two-handed weapon rows in the DB (user-managed).
+- Reopen + re-save templates created before the race-field fix so they pick up corrected HD/speed/canCharge defaults.
+- `UnitEditor.tsx`: `isHero` toggle should force `'Hero'` formation / disable other formation checkboxes — **postponed** until the consolidated interface update.
+- Replay animation smoothing (currently step-through states, no smooth movement).
+- Replay co-watch "pings" (ephemeral control-click attention rings) — deferred.
+
+---
+
 # Handover — 2026-07-30
 
 ## Bug Fixes
@@ -199,9 +385,3 @@ Redesigned the left panel from collapsible sections into a **tabbed panel**:
 | `src/components/ScenarioMap/LeftPanel.tsx` | Rewritten around tabs (Map · Alliances · Unit Selector · Messages); GM-only Map tab (leftmost) hosts `MapEditorPanel`; handshake/crossed-swords icons; first-available-tab-open default (GM → Map); forwards `side`/`onToggleSide` to PanelsContainer |
 | `src/components/Lobby.tsx` | Removed Map Editor button + `mapEditorScenarioId` state + `MapEditorView` overlay/import |
 | `src/components/MapEditorView.tsx` | Deleted (full-screen overlay replaced by the Map tab editor) |
-
-## Pending
-- Migration 013 (`turn_tracking`) — **written, needs `supabase db push`/manual apply**
-- Migrations 010 (`attached_position`), 011 (`Hero` formation), and 012 (`ignore_morale_checks`) — user applied all three to the DB
-- `UnitEditor.tsx`: `isHero` toggle should force `'Hero'` formation / disable other formation checkboxes — **postponed** until the consolidated interface update
-- Movement & action tracking — **implemented** (see new feature section). No DB migration needed (MP stays INTEGER). Only migration 013 remains to be applied.

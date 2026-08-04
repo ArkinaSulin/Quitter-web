@@ -63,6 +63,24 @@ describe('getFormationConfig', () => {
     const config = getFormationConfig('Open Order', false, 999);
     expect(config.dotsPerRow).toBe(1);
   });
+
+  it('keeps rowSpacing 2.0 for Open Order when visualDotsPerRow is provided', () => {
+    const config = getFormationConfig('Open Order', false, 100, 20);
+    expect(config.dotsPerRow).toBe(20);
+    expect(config.rowSpacing).toBe(2.0);
+  });
+
+  it('keeps rowSpacing 1.0 for Phalanx when visualDotsPerRow is provided', () => {
+    const config = getFormationConfig('Phalanx', false, 100, 20);
+    expect(config.dotsPerRow).toBe(20);
+    expect(config.rowSpacing).toBe(1.0);
+  });
+
+  it('keeps rowSpacing 1.0 for Shield Wall when visualDotsPerRow is provided', () => {
+    const config = getFormationConfig('Shield Wall', false, 100, 20);
+    expect(config.dotsPerRow).toBe(20);
+    expect(config.rowSpacing).toBe(1.0);
+  });
 });
 
 describe('getDotColor', () => {
@@ -137,6 +155,20 @@ describe('generateDotPositions', () => {
       expect(pos.y).toBeGreaterThanOrEqual(0);
       expect(pos.y).toBeLessThanOrEqual(120);
     }
+  });
+
+  it('packs Phalanx rows close together (rowSpacing 1.0) even with visualDotsPerRow', () => {
+    const openPositions = generateDotPositions(40, 40, 'Open Order', false, 160, 120, 4, 100, 42, 20);
+    const phalanxPositions = generateDotPositions(40, 40, 'Phalanx', false, 160, 120, 4, 100, 42, 20);
+
+    // Two troops stacked in the same column, consecutive rows (0-based index + dotsPerRow).
+    const openGap = openPositions[20].y - openPositions[0].y;
+    const phalanxGap = phalanxPositions[20].y - phalanxPositions[0].y;
+
+    // Phalanx/Shield Wall must be meaningfully tighter than Open Order.
+    expect(phalanxGap).toBeLessThan(openGap);
+    // Near-touching: one dot diameter (2 * dotRadius = 8) center-to-center.
+    expect(phalanxGap).toBeCloseTo(8, 1);
   });
 
   it('uses 2 rings (12+8) for mounted Scattered ≤ 20 troops', () => {

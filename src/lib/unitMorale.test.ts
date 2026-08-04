@@ -54,8 +54,11 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     isRouting: false,
     hidden: false,
     isDeleted: false,
+    isCharging: false,
+    chargeDistance: 0,
     organizationLevel: 1,
     actionsAvailable: 1,
+    activeWeaponIndex: 0,
     ...overrides,
   };
 }
@@ -92,6 +95,11 @@ describe('computeThreatRating', () => {
     expect(computeThreatRating(makeUnit({ ...threat1 }))).toBe(1);
     expect(computeThreatRating(makeUnit({ ...threat3 }))).toBe(3);
     expect(computeThreatRating(makeUnit({ ...threat9 }))).toBe(9);
+  });
+
+  it('doubles a charging unit\'s threat', () => {
+    expect(computeThreatRating(makeUnit({ ...threat3, isCharging: true }))).toBe(6);
+    expect(computeThreatRating(makeUnit({ ...threat9, isCharging: true }))).toBe(18);
   });
 });
 

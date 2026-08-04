@@ -51,15 +51,34 @@ export function getFormationConfig(
     baseRows = Math.floor(baseRows / 2);
   }
 
-  // If visualDotsPerRow provided from DB, use it directly (skip hardcoded logic)
+  // Determine effective formation – mounted Phalanx/Shield Wall become Routed
+  let effectiveFormation = formation;
+  if (isMounted && (formation === 'Phalanx' || formation === 'Shield Wall')) {
+    effectiveFormation = 'Routed';
+  }
+
+  // Scatter layout depends on formation, not on row capacity — preserve it even
+  // when visualDotsPerRow comes from the DB (mounted Scattered = circle, else random).
+  let scatteredLayout: 'random' | 'circle' = 'random';
+  if (isMounted && effectiveFormation === 'Scattered') {
+    scatteredLayout = 'circle';
+  }
+
+  // If visualDotsPerRow provided from DB, use it directly (skip hardcoded logic).
+  // Formation-specific row spacing is still honored — Phalanx/Shield Wall pack
+  // their ranks close together (nearly touching), everything else spreads 2.0.
   if (visualDotsPerRow !== undefined) {
+    let rowSpacing = 2.0;
+    if (effectiveFormation === 'Phalanx' || effectiveFormation === 'Shield Wall') {
+      rowSpacing = 1.0;
+    }
     return {
       dotsPerRow: Math.max(1, visualDotsPerRow),
-      rowSpacing: 2.0,
+      rowSpacing,
       isMounted,
       triangleWidthMultiplier: 1.3,
       triangleHeightMultiplier: (5 / 3) * 1.3,
-      scatteredLayout: 'random',
+      scatteredLayout,
     };
   }
 
@@ -67,13 +86,6 @@ export function getFormationConfig(
   let rowSpacing = 2.0;
   let triangleWidthMultiplier = 1.3;
   let triangleHeightMultiplier = (5 / 3) * triangleWidthMultiplier;
-  let scatteredLayout: 'random' | 'circle' = 'random';
-
-  // Determine effective formation – mounted Phalanx/Shield Wall become Routed
-  let effectiveFormation = formation;
-  if (isMounted && (formation === 'Phalanx' || formation === 'Shield Wall')) {
-    effectiveFormation = 'Routed';
-  }
 
   if (isMounted) {
     if (effectiveFormation === 'Scattered') {
@@ -155,6 +167,15 @@ export function seededRandom(seed: number): () => number {
 }
 
 // ---- Dot position generation ----
+export interface DotLayoutOverride {
+  /** Keep default (uncompressed) row spacing even when the rows overflow the band. Default true. */
+  fitVertical?: boolean;
+  /** Override the top bound of the troop band (fraction of tokenHeight). */
+  top?: number;
+  /** Override the bottom bound of the troop band (fraction of tokenHeight). */
+  bottom?: number;
+}
+
 export function generateDotPositions(
   troopCount: number,
   maxTroopCount: number,
@@ -166,6 +187,8 @@ export function generateDotPositions(
   troopScale: number,
   seed: number = 42,
   visualDotsPerRow?: number,
+  chargeStagger: boolean = false,
+  layout?: DotLayoutOverride,
 ): Array<{ x: number; y: number; isDead: boolean; direction?: number }> {
   // Determine effective formation for layout
   let effectiveFormation = formation;
@@ -176,8 +199,8 @@ export function generateDotPositions(
   const config = getFormationConfig(effectiveFormation, isMounted, troopScale, visualDotsPerRow);
   const random = seededRandom(seed);
 
-  const topStart = tokenHeight * 0.08;
-  const topEnd = tokenHeight * 0.667;
+  const topStart = tokenHeight * (layout?.top ?? 0.08);
+  const topEnd = tokenHeight * (layout?.bottom ?? 0.667);
   const availableHeight = topEnd - topStart;
   const padding = dotRadius * 0.5;
 
@@ -231,7 +254,7 @@ export function generateDotPositions(
   const rows = Math.ceil(maxTroopCount / dotsPerRow);
   let rowSpacing = dotRadius * 2 * config.rowSpacing;
   const totalHeight = rows * rowSpacing;
-  if (totalHeight > availableHeight) {
+  if ((layout?.fitVertical ?? true) && totalHeight > availableHeight) {
     rowSpacing = availableHeight / rows;
     rowSpacing = Math.max(rowSpacing, dotRadius * 1.5);
   }
@@ -258,6 +281,20 @@ export function generateDotPositions(
       const isDead = i >= troopCount;
       const x = spacing + col * spacing + staggerOffset;
       positions.push({ x, y, isDead });
+    }
+  }
+
+  // Charging mounted: shift the whole formation into a forward-tip chevron. The
+  // center column rides up toward the token's forward (top) edge while columns
+  // further outward drop progressively lower. Centered on the token's midline so
+  // it works for odd and even column counts alike.
+  if (chargeStagger && isMounted) {
+    const centerX = tokenWidth / 2;
+    const halfSpan = tokenWidth / 2 - dotRadius;
+    const amplitude = rowSpacing * 0.6;
+    for (const pos of positions) {
+      const frac = halfSpan > 0 ? Math.min(1, Math.abs(pos.x - centerX) / halfSpan) : 0;
+      pos.y += -amplitude + amplitude * 2 * frac;
     }
   }
 
@@ -361,7 +398,7 @@ function generateCirclePositions(
       const angle = angleOffset + (i / ringCount) * 2 * Math.PI;
       const x = centerX + ring.radius * Math.cos(angle);
       const y = centerY + ring.radius * Math.sin(angle);
-      const direction = Math.atan2(y - centerY, x - centerX);
+      const direction = Math.atan2(y - centerY, x - centerX) + Math.PI;
       positions.push({ x, y, isDead, direction });
       globalIdx++;
     }

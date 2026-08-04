@@ -173,6 +173,7 @@ export function resolveCombatSequence(
   attachedDefenderHero: { currentAc: number; troopHp: number } | null,
   attachedAttackerHero: { currentAc: number; troopHp: number } | null,
   rng: () => number,
+  isCharging = false,
 ): CombatOutcome {
   // AGR check: skip if hero, ranged, target routed, rear attack, or a free/no-retaliation weapon
   let aggrPassed = true;
@@ -231,12 +232,12 @@ export function resolveCombatSequence(
     const effBonus = attackerWeapon.attackBonus + formationAttackModifier;
 
     if (attachedDefenderHero) {
-      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defender.currentAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, false);
+      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defender.currentAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging);
       firstStrikeAttacks = split.attacks;
       firstStrikeDamage = split.unitDamage;
       firstStrikeHeroDamage = split.heroDamage;
     } else {
-      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defender.currentAc, defender.troopHp, rng, false);
+      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defender.currentAc, defender.troopHp, rng, isCharging);
       firstStrikeAttacks = result.attacks;
       firstStrikeDamage = result.totalDamage;
     }
@@ -287,18 +288,18 @@ export function resolveCombatSequence(
     const attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false);
       const effBonus = attackerWeapon.attackBonus + formationAttackModifier;
 
-      if (attachedDefenderHero) {
-        const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defender.currentAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, false);
-        retaliationAttacks = split.attacks;
-        retaliationDamage = split.unitDamage;
-        retaliationHeroDamage = split.heroDamage;
-      } else {
-        const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defender.currentAc, defender.troopHp, rng, false);
-        retaliationAttacks = result.attacks;
-        retaliationDamage = result.totalDamage;
-      }
-      retaliationCount = attackerCount;
+    if (attachedDefenderHero) {
+      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defender.currentAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging);
+      retaliationAttacks = split.attacks;
+      retaliationDamage = split.unitDamage;
+      retaliationHeroDamage = split.heroDamage;
+    } else {
+      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defender.currentAc, defender.troopHp, rng, isCharging);
+      retaliationAttacks = result.attacks;
+      retaliationDamage = result.totalDamage;
     }
+    retaliationCount = attackerCount;
+  }
   }
 
   return {

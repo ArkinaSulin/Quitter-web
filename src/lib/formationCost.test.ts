@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyFormationChange } from './formationCost';
+import { applyFormationChange, nextLowerFormation } from './formationCost';
 
 describe('applyFormationChange', () => {
   it('deducts 1 MP per org-level step before rescaling', () => {
@@ -32,5 +32,19 @@ describe('applyFormationChange', () => {
     expect(applyFormationChange(4, 1, 4, 3)).toBe(2);
     // (5-1) * 2/4 = 2.0 -> 2
     expect(applyFormationChange(5, 1, 4, 2)).toBe(2);
+  });
+});
+
+describe('nextLowerFormation', () => {
+  it('drops one organization level down the chain', () => {
+    expect(nextLowerFormation('Phalanx')).toBe('Close Order');
+    expect(nextLowerFormation('Shield Wall')).toBe('Close Order');
+    expect(nextLowerFormation('Close Order')).toBe('Open Order');
+    expect(nextLowerFormation('Open Order')).toBe('Scattered');
+  });
+
+  it('returns null at the floor (Scattered/Routed)', () => {
+    expect(nextLowerFormation('Scattered')).toBeNull();
+    expect(nextLowerFormation('Routed')).toBeNull();
   });
 });

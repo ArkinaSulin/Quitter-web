@@ -23,7 +23,8 @@ export function computeThreatRating(unit: Unit): number {
     : unit.currentTroopCount >= 10 ? 2
     : unit.currentTroopCount >= 5 ? 1
     : 0;
-  return levelComp + sizeComp + countComp;
+  const rating = levelComp + sizeComp + countComp;
+  return unit.isCharging ? rating * 2 : rating;
 }
 
 export function calcWounds(unit: Unit): number {

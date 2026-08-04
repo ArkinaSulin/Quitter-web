@@ -270,7 +270,7 @@ export function useHexGrid({
   }, [canvasRef, offsetX, offsetY, zoom, size]);
 
   const getUnitAt = useCallback((hex: Hex): Unit | undefined => {
-    return units.find(u => !u.isDeleted && !u.attachedToUnitId && u.hex.q === hex.q && u.hex.r === hex.r && u.hex.s === hex.s);
+    return units.find(u => !u.isDeleted && !u.attachedToUnitId && u.currentUnitHp > 0 && u.hex.q === hex.q && u.hex.r === hex.r && u.hex.s === hex.s);
   }, [units]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {

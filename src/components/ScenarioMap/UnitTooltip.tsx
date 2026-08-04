@@ -3,7 +3,7 @@
 import React from 'react';
 import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { computeEffectiveMoraleModifier, computeThreatRating, calcWounds, calcIsolation, calcEnemyThreats } from '@/lib/unitMorale';
-import { computeEffectiveAc, computeEffectiveMovement, computeEffectiveAttackBonus } from '@/lib/unitStats';
+import { computeEffectiveAc, computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty } from '@/lib/unitStats';
 import { parseWeapons } from '@/lib/weaponParser';
 
 interface UnitTooltipProps {
@@ -31,9 +31,12 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const threatRating = computeThreatRating(unit);
   const morTotal = unit.baseMorale + effectiveMoraleModifier;
   const effectiveAc = computeEffectiveAc(unit, formationAcMod);
+  const shieldPenalty = getShieldPenalty(unit);
   const effectiveMaxMovement = computeEffectiveMovement(unit, formationMovMult);
 
   const weapons = parseWeapons(unit.weaponString || '');
+  const activeWeapon = weapons[unit.activeWeaponIndex ?? 0];
+  const shieldDropped = shieldPenalty > 0;
 
   return (
     <>
@@ -51,7 +54,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
                 const effectiveAtk = computeEffectiveAttackBonus(w.attackBonus, formationAtkMod);
                 return (
                   <div key={i}>
-                    {w.name} (+{showTroops && formationAtkMod !== 0 ? `${effectiveAtk} atk [base +${w.attackBonus}, formation +${formationAtkMod}]` : `${effectiveAtk} atk`}, {w.damageDice})
+                    {w.name}{w.isTwoHanded && <span className="text-red-400 ml-1" title="Two-handed (no shield, no Shield Wall)">[2H]</span>} (+{showTroops && formationAtkMod !== 0 ? `${effectiveAtk} atk [base +${w.attackBonus}, formation +${formationAtkMod}]` : `${effectiveAtk} atk`}, {w.damageDice})
                   </div>
                 );
               })}
@@ -69,7 +72,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
             ? <><span className="text-gray-400">MOR:</span><span className="text-yellow-400">fearless</span></>
             : <><span className="text-gray-400">MOR:</span><span className="text-yellow-400">{morTotal} = {unit.baseMorale} {effectiveMoraleModifier >= 0 ? '+ ' : '- '}{Math.abs(effectiveMoraleModifier)}{formationMorMod !== 0 ? ` (incl. formation ${formationMorMod >= 0 ? '+' : ''}${formationMorMod})` : ''}</span></>
         )}
-        <span className="text-gray-400">Threat:</span><span>{unit.isRouting ? `0 routed, was ${threatRating.toFixed(2)}` : threatRating.toFixed(2)}</span>
+        <span className="text-gray-400">Threat:</span><span>{unit.isRouting ? `0 routed, was ${threatRating.toFixed(2)}` : `${threatRating.toFixed(2)}${unit.isCharging ? ' (2× charging)' : ''}`}</span>
       </div>
 
       <div className="border-t border-gray-600 my-1.5" />
@@ -83,19 +86,20 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
         <span className="text-gray-400">HP:</span><span>{unit.currentUnitHp}/{unit.maxUnitHp}</span>
         <span className="text-gray-400">Move:</span><span>{Math.floor(unit.movementPointsAvailable)}/{effectiveMaxMovement}{showTroops && formationMovMult !== 1 ? ` (base ${unit.movementPoints} × ${formationMovMult})` : ''}</span>
         <span className="text-gray-400">Actions:</span><span className={unit.actionsAvailable <= 0 ? 'text-red-400' : ''}>{unit.actionsAvailable}/2 <span className="text-gray-500">(1 = full move)</span></span>
-        <span className="text-gray-400">AC:</span><span>{showTroops ? `${effectiveAc} = ${unit.baselineAc}${formationAcMod !== 0 ? ` + ${formationAcMod} (formation)` : ''}${formationAcMod >= 0 ? ' +0' : ''}` : effectiveAc}</span>
+        <span className="text-gray-400">AC:</span><span>{showTroops ? `${effectiveAc - shieldPenalty} = ${unit.baselineAc}${shieldPenalty > 0 ? ` - ${shieldPenalty} (two-handed)` : ''}${formationAcMod !== 0 ? ` + ${formationAcMod} (formation)` : ''}${formationAcMod >= 0 && shieldPenalty === 0 ? ' +0' : ''}` : effectiveAc - shieldPenalty}</span>
       </div>
 
       <div className="border-t border-gray-600 my-1.5" />
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
-        <span className="text-gray-400">Shielded:</span><span>{unit.isShielded ? 'Yes' : 'No'}</span>
+        <span className="text-gray-400">Shielded:</span><span>{shieldDropped ? <span className="text-red-400">Yes (dropped — two-handed)</span> : (unit.isShielded ? 'Yes' : 'No')}</span>
         {showTroops && (
           <><span className="text-gray-400">Formation:</span><span className="capitalize">{unit.currentFormation}{formationMod ? ` (org lv ${unit.organizationLevel})` : ''}</span></>
         )}
         {!showTroops && (
           <><span className="text-gray-400">Mounted:</span><span>{unit.mountName ? 'Yes' : 'No'}</span></>
         )}
+        <span className="text-gray-400">Can Charge:</span><span>{unit.isCharging ? <span className="text-yellow-400">Yes (charging)</span> : unit.canCharge ? 'Yes' : 'No'}</span>
       </div>
 
       {showTroops && (

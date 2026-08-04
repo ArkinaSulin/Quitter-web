@@ -4,6 +4,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { drawToken } from './drawToken';
 import { Team } from './tokenUtils';
+import { Formation, SizeCategory } from '@/types/gameProtocol';
 
 export interface TokenRendererProps {
   unitName: string;
@@ -28,6 +29,9 @@ export interface TokenRendererProps {
   maxUnitHp?: number;
   onImageClick?: () => void;
   mountId?: string | null;
+  sizeCategories?: SizeCategory[];
+  formations?: Formation[];
+  isCharging?: boolean;
 }
 
 export function TokenRenderer(props: TokenRendererProps) {
@@ -55,6 +59,9 @@ export function TokenRenderer(props: TokenRendererProps) {
     maxUnitHp = 100,
     onImageClick,
     mountId = null,
+    sizeCategories,
+    formations,
+    isCharging = false,
   } = props;
 
   const isMounted = !!mountId;
@@ -151,6 +158,7 @@ export function TokenRenderer(props: TokenRendererProps) {
       formationAvailability: [],
       movementPointsAvailable: 0,
       actionsAvailable: 2,
+      isCharging,
     } as any;
 
     const tokenWidth = width * 0.9;
@@ -166,11 +174,15 @@ export function TokenRenderer(props: TokenRendererProps) {
       zoom: 1,
       showDetails: showInfo,
       preloadedImages: preloadedImages,
+      sizeCategories,
+      formationsMap: formations
+        ? Object.fromEntries(formations.map(f => [f.name, f]))
+        : undefined,
     });
 
     const dataURL = canvas.toDataURL('image/png');
     if (onRender) onRender(dataURL);
-  }, [width, logicalHeight, onRender, preloadedImages, imagesLoaded, mountId, unitName, troopCount, maxTroopCount, currentFormation, team, visualScale, sizeCategory, isRouted, currentMorale, baseMorale, isHero, raceIconUrl, unitTypeIconUrl, customImageUrl, currentUnitHp, maxUnitHp, showInfo]);
+  }, [width, logicalHeight, onRender, preloadedImages, imagesLoaded, mountId, unitName, troopCount, maxTroopCount, currentFormation, team, visualScale, sizeCategory, isRouted, currentMorale, baseMorale, isHero, raceIconUrl, unitTypeIconUrl, customImageUrl, currentUnitHp, maxUnitHp, showInfo, sizeCategories, formations, isCharging]);
 
   useEffect(() => {
     if (imagesLoaded) {

@@ -4,6 +4,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Unit, Hex, UnitTemplate, getOrganizationLevel, SizeCategory } from '@/types/gameProtocol';
+import { parseWeapons } from '@/lib/weaponParser';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // --- Converters ---
@@ -20,7 +21,7 @@ function mapRowToUnit(row: any): Unit {
     mountName: row.mount_name || '',
     isHero: row.is_hero || false,
     attachedToUnitId: row.attached_to_unit_id || null,
-    currentTroopCount: row.current_troop_count || 1,
+    currentTroopCount: row.current_troop_count ?? 1,
     maxTroopCount: row.max_troop_count || 1,
     level: row.level || 1,
     troopHp: row.troop_hp || 1,
@@ -54,7 +55,10 @@ function mapRowToUnit(row: any): Unit {
     hidden: row.hidden || false,
     isDeleted: row.is_deleted || false,
     ignoreMoraleChecks: row.ignore_morale_checks || false,
+    isCharging: row.is_charging || false,
+    chargeDistance: row.charge_distance || 0,
     actionsAvailable: row.actions_available || 0,
+    activeWeaponIndex: row.active_weapon_index || 0,
   };
 }
 
@@ -107,7 +111,10 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     hidden: unit.hidden,
     is_deleted: unit.isDeleted,
     ignore_morale_checks: unit.ignoreMoraleChecks,
+    is_charging: unit.isCharging || false,
+    charge_distance: unit.chargeDistance || 0,
     actions_available: unit.actionsAvailable || 0,
+    active_weapon_index: unit.activeWeaponIndex || 0,
   };
 }
 
@@ -321,6 +328,13 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     // Note: mount canCharge is not available in template object here
     // It would need to be joined from mounts table if needed
 
+    // Placement check: a shield cannot be used while wielding a two-handed weapon.
+    // The active weapon at placement is the first in the string (index 0), so a
+    // shielded unit holding a two-handed weapon spawns at AC baseline - 2.
+    const activeWeaponIndex = 0;
+    const spawnWeapons = parseWeapons(template.weaponString || '');
+    const shieldDroppedAtSpawn = template.isShielded && (spawnWeapons[activeWeaponIndex]?.isTwoHanded || false);
+
     const instanceNumber = template.id ? (unitsRef.current.filter(u => u.templateId === template.id).length) + 1 : 1;
 
     const newUnit: Unit = {
@@ -345,7 +359,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       numberOfAttacks: template.numberOfAttacks || 1,
       isShielded: template.isShielded || false,
       baselineAc: template.baselineAc || 10,
-      currentAc: template.baselineAc || 10,
+      currentAc: shieldDroppedAtSpawn ? (template.baselineAc || 10) - 2 : (template.baselineAc || 10),
       weaponString: template.weaponString || '',
       movementPoints: template.movementPoints || 3,
       movementPointsAvailable: 0,
@@ -369,7 +383,10 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       hidden: false,
       isDeleted: false,
       ignoreMoraleChecks: template.ignoreMoraleChecks || false,
+      isCharging: false,
+      chargeDistance: 0,
       actionsAvailable: 2,
+      activeWeaponIndex,
     };
 
     const row = mapUnitToRow(newUnit, scenarioId);
@@ -437,6 +454,9 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     if (updates.armorName !== undefined) dbUpdates.armor_name = updates.armorName;
     if (updates.mountName !== undefined) dbUpdates.mount_name = updates.mountName;
     if (updates.canCharge !== undefined) dbUpdates.can_charge = updates.canCharge;
+    if (updates.isCharging !== undefined) dbUpdates.is_charging = updates.isCharging;
+    if (updates.chargeDistance !== undefined) dbUpdates.charge_distance = updates.chargeDistance;
+    if (updates.activeWeaponIndex !== undefined) dbUpdates.active_weapon_index = updates.activeWeaponIndex;
 
     setUnits(prev =>
       prev.map(u => u.id === unitId ? { ...u, ...updates } : u)

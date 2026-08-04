@@ -1,6 +1,6 @@
 // src/components/TokenRenderer/drawToken.ts
 import { Unit, Formation, SizeCategory } from '@/types/gameProtocol';
-import { Team, TEAM_COLORS, TEAM_SHAPES, getDotColor, generateDotPositions, getFormationConfig } from './tokenUtils';
+import { Team, TEAM_COLORS, TEAM_SHAPES, getDotColor, generateDotPositions, getFormationConfig, FormationConfig } from './tokenUtils';
 import { ALLIANCE_COLORS, AllianceGroup } from '@/types/gameProtocol';
 
 const imageCache = new Map<string, HTMLImageElement>();
@@ -40,6 +40,71 @@ function computeScatterSeed(unit: Unit, turnNumber: number): number {
     hash = ((hash << 5) + hash) + str.charCodeAt(i);
   }
   return hash >>> 0;
+}
+
+/** Phalanx pikes and Shield Wall shields, drawn behind the troop dots. */
+function drawFormationExtras(
+  ctx: CanvasRenderingContext2D,
+  opts: {
+    formation: string;
+    isRouted: boolean;
+    isMounted: boolean;
+    positions: Array<{ x: number; y: number; isDead: boolean; direction?: number }>;
+    dotsPerRow: number;
+    dotRadius: number;
+    dotColor: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  },
+): void {
+  const { formation, isRouted, isMounted, positions, dotsPerRow, dotRadius, dotColor, x, y, width, height } = opts;
+
+  // ---- Phalanx pikes (only if not mounted and formation is actually Phalanx) ----
+  if (formation === 'Phalanx' && !isRouted && !isMounted) {
+    const rows = Math.ceil(positions.length / dotsPerRow);
+    const pikeRows = Math.min(3, rows);
+    for (let row = 0; row < pikeRows; row++) {
+      const startIdx = row * dotsPerRow;
+      const endIdx = Math.min((row + 1) * dotsPerRow, positions.length);
+      for (let i = startIdx; i < endIdx; i++) {
+        const pos = positions[i];
+        if (!pos.isDead) {
+          const px = x - width / 2 + pos.x;
+          const py = y - height / 2 + pos.y;
+          ctx.beginPath();
+          ctx.moveTo(px + dotRadius * 0.5, py + dotRadius);
+          ctx.lineTo(px + dotRadius * 0.5, py + dotRadius - dotRadius * 8);
+          ctx.strokeStyle = dotColor;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  // ---- Shield Wall shields (only if not mounted and formation is actually Shield Wall) ----
+  if (formation === 'Shield Wall' && !isRouted && !isMounted) {
+    const frontRowDots = positions.slice(0, dotsPerRow);
+    for (const pos of frontRowDots) {
+      if (!pos.isDead) {
+        const sx = x - width / 2 + pos.x;
+        const sy = y - height / 2 + pos.y - dotRadius * 2.5;
+        const shieldRadius = dotRadius * 1.3;
+        const shieldOffsetY = dotRadius * 0.5;
+        ctx.save();
+        ctx.translate(sx, sy + dotRadius);
+        ctx.rotate(-Math.PI / 18);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, shieldRadius, shieldOffsetY, 0, Math.PI, 0, false);
+        ctx.strokeStyle = dotColor;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
 }
 
 export interface DrawTokenOptions {
@@ -158,6 +223,7 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
   const sizeCategory = unit.sizeCategory || 100;
   const formation = unit.currentFormation || 'Close Order';
   const isRouted = unit.isRouting || false;
+  const isCorpse = (unit.currentUnitHp ?? 0) <= 0;
   const isMounted = !!unit.mountId;
 
   // Determine effective formation for rendering decisions
@@ -188,52 +254,23 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     sizeCategory,
     computeScatterSeed(unit, turnNumber),
     visualDotsPerRow,
+    !!unit.isCharging,
   );
 
-  // ---- Phalanx pikes (only if not mounted and formation is actually Phalanx) ----
-  if (formation === 'Phalanx' && !isRouted && !isMounted) {
-    const rows = Math.ceil(positions.length / dotsPerRow);
-    const pikeRows = Math.min(3, rows);
-    for (let row = 0; row < pikeRows; row++) {
-      const startIdx = row * dotsPerRow;
-      const endIdx = Math.min((row + 1) * dotsPerRow, positions.length);
-      for (let i = startIdx; i < endIdx; i++) {
-        const pos = positions[i];
-        if (!pos.isDead) {
-          const px = x - width/2 + pos.x;
-          const py = y - height/2 + pos.y;
-          ctx.beginPath();
-          ctx.moveTo(px + dotRadius, py + dotRadius);
-          ctx.lineTo(px + dotRadius, py + dotRadius - dotRadius * 8);
-          ctx.strokeStyle = dotColor;
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
-      }
-    }
-  }
-
-  // ---- Shield Wall shields (only if not mounted and formation is actually Shield Wall) ----
-  if (formation === 'Shield Wall' && !isRouted && !isMounted) {
-    const frontRowDots = positions.slice(0, dotsPerRow);
-    for (const pos of frontRowDots) {
-      if (!pos.isDead) {
-        const sx = x - width/2 + pos.x;
-        const sy = y - height/2 + pos.y - dotRadius * 2.5;
-        const shieldRadius = dotRadius * 1.3;
-        const shieldOffsetY = dotRadius * 0.5;
-        ctx.save();
-        ctx.translate(sx, sy + dotRadius);
-        ctx.rotate(-Math.PI / 18);
-        ctx.beginPath();
-        ctx.ellipse(0, 0, shieldRadius, shieldOffsetY, 0, Math.PI, 0, false);
-        ctx.strokeStyle = dotColor;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
-  }
+  // ---- Phalanx pikes / Shield Wall shields (drawn behind the troops) ----
+  drawFormationExtras(ctx, {
+    formation,
+    isRouted,
+    isMounted,
+    positions,
+    dotsPerRow,
+    dotRadius,
+    dotColor,
+    x,
+    y,
+    width,
+    height,
+  });
 
   // ---- Troops ----
   for (const pos of positions) {
@@ -279,8 +316,8 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     }
   }
 
-  // ---- Routed flag ----
-  if (isRouted) {
+  // ---- Routed flag (hidden on corpses — hollow dots only) ----
+  if (isRouted && !isCorpse) {
     const flagSize = Math.min(width, height) * 0.35;
     const flagX = x - flagSize / 2;
     const flagY = y - height * 0.667 / 2 + (height * 0.667 - flagSize) / 2;
@@ -313,8 +350,8 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     }
   }
 
-  // ---- Bottom info ----
-  if (showDetails) {
+  // ---- Bottom info (hidden on corpses) ----
+  if (showDetails && !isCorpse) {
     drawBottomInfo(
       ctx,
       x, y, width, height,
@@ -343,11 +380,197 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     }
   }
 
-  // ---- Name ----
-  drawName(ctx, unit.unitName, x, y, width, height, team, false);
+  // ---- Name (hidden on corpses) ----
+  if (!isCorpse) {
+    drawName(ctx, unit.unitName, x, y, width, height, team, false);
+  }
 
   } finally {
     ctx.restore();
+  }
+}
+
+export interface SpellCastTokenSnapshot {
+  team: string;
+  currentFormation: string;
+  currentTroopCount: number;
+  maxTroopCount: number;
+  sizeCategory: number;
+  visualScale: number;
+  mountId: string | null;
+}
+
+export interface DrawSpellCastTokenOptions {
+  snapshot: SpellCastTokenSnapshot;
+  ctx: CanvasRenderingContext2D;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Deterministic scatter seed so every client draws the same layout. */
+  seed: number;
+  sizeCategories?: SizeCategory[];
+  formationsMap?: Record<string, Formation>;
+}
+
+export interface SpellCastLayout {
+  positions: Array<{ x: number; y: number; isDead: boolean; direction?: number }>;
+  dotRadius: number;
+  isMounted: boolean;
+  config: FormationConfig;
+  dotColor: string;
+}
+
+/**
+ * Computes the troop layout for a unit in the area-magic targeting window:
+ * full token height (no bottom 1/3 info bar), default (uncompressed) row spacing.
+ * Exported so the targeting UI can draw the token and count covered troops from
+ * the same positions.
+ */
+export function computeSpellCastLayout(
+  snapshot: SpellCastTokenSnapshot,
+  width: number,
+  height: number,
+  seed: number,
+  sizeCategories?: SizeCategory[],
+  formationsMap?: Record<string, Formation>,
+): SpellCastLayout {
+  const team = snapshot.team || 'black';
+  const troopCount = Math.min(snapshot.currentTroopCount ?? 10, 200);
+  const maxTroopCount = Math.min(snapshot.maxTroopCount || 10, 200);
+  const visualScale = snapshot.visualScale || 100;
+  const sizeCategory = snapshot.sizeCategory || 100;
+  const formation = snapshot.currentFormation || 'Close Order';
+  const isMounted = !!snapshot.mountId;
+
+  let effectiveFormation = formation;
+  if (isMounted && (formation === 'Phalanx' || formation === 'Shield Wall')) {
+    effectiveFormation = 'Routed';
+  }
+
+  const sizeCat = sizeCategories?.find(s => s.size_category === sizeCategory);
+  const formationEntry = formationsMap?.[formation];
+  const rowCap = sizeCat?.row_capacity ?? 10;
+  const rowCapMult = formationEntry?.row_capacity_multiplier ?? 2;
+  const visualDotsPerRow = rowCap * rowCapMult;
+
+  const config = getFormationConfig(effectiveFormation, isMounted, sizeCategory, visualDotsPerRow);
+  const dotRadius = Math.min(width, height) * 0.025 * (visualScale / 100) * (sizeCategory / 100);
+  const dotColor = getDotColor(team);
+
+  const positions = generateDotPositions(
+    troopCount,
+    maxTroopCount,
+    effectiveFormation,
+    isMounted,
+    width,
+    height,
+    dotRadius,
+    sizeCategory,
+    seed,
+    visualDotsPerRow,
+    false,
+    { fitVertical: false, top: 0.05, bottom: 0.95 },
+  );
+
+  return { positions, dotRadius, isMounted, config, dotColor };
+}
+
+/**
+ * Draws a unit's troop layout inside a token frame for the area-magic targeting
+ * window: no bottom 1/3 info bar, default (uncompressed) row spacing spanning the
+ * full token height, and troops facing north (upward), consistent with the map token.
+ * regardless of the unit's actual map facing.
+ */
+export function drawSpellCastToken(options: DrawSpellCastTokenOptions): void {
+  const { snapshot, ctx, x, y, width, height, seed, sizeCategories, formationsMap } = options;
+
+  const team = snapshot.team || 'black';
+  const teamColor = TEAM_COLORS[team as Team] || '#333333';
+  const halfW = width / 2;
+  const halfH = height / 2;
+  const corner = 4;
+
+  // ---- Background (rounded rectangle, matching the map token) ----
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x - halfW + corner, y - halfH);
+  ctx.lineTo(x + halfW - corner, y - halfH);
+  ctx.quadraticCurveTo(x + halfW, y - halfH, x + halfW, y - halfH + corner);
+  ctx.lineTo(x + halfW, y + halfH - corner);
+  ctx.quadraticCurveTo(x + halfW, y + halfH, x + halfW - corner, y + halfH);
+  ctx.lineTo(x - halfW + corner, y + halfH);
+  ctx.quadraticCurveTo(x - halfW, y + halfH, x - halfW, y + halfH - corner);
+  ctx.lineTo(x - halfW, y - halfH + corner);
+  ctx.quadraticCurveTo(x - halfW, y - halfH, x - halfW + corner, y - halfH);
+  ctx.closePath();
+  ctx.fillStyle = teamColor + 'BF';
+  ctx.fill();
+  ctx.strokeStyle = teamColor;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+
+  const { positions, dotRadius, isMounted, config, dotColor } = computeSpellCastLayout(snapshot, width, height, seed, sizeCategories, formationsMap);
+  const isRouted = snapshot.currentFormation === 'Routed';
+
+  // ---- Phalanx pikes / Shield Wall shields (drawn behind the troops) ----
+  drawFormationExtras(ctx, {
+    formation: snapshot.currentFormation,
+    isRouted,
+    isMounted,
+    positions,
+    dotsPerRow: config.dotsPerRow,
+    dotRadius,
+    dotColor,
+    x,
+    y,
+    width,
+    height,
+  });
+
+  // ---- Troops (facing north, consistent with the map token) ----
+  for (const pos of positions) {
+    const { x: dx, y: dy, isDead, direction } = pos;
+    const px = x - width / 2 + dx;
+    const py = y - height / 2 + dy;
+
+    if (isMounted) {
+      const baseWidth = dotRadius * config.triangleWidthMultiplier;
+      const triHeight = dotRadius * config.triangleHeightMultiplier;
+      ctx.save();
+      ctx.translate(px, py);
+      if (direction !== undefined) ctx.rotate(direction);
+      ctx.beginPath();
+      ctx.moveTo(0, -triHeight / 2);
+      ctx.lineTo(-baseWidth / 2, triHeight / 2);
+      ctx.lineTo(baseWidth / 2, triHeight / 2);
+      ctx.closePath();
+      if (isDead) {
+        ctx.strokeStyle = dotColor;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([1, 2]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        ctx.fillStyle = dotColor;
+        ctx.fill();
+      }
+      ctx.restore();
+    } else {
+      ctx.beginPath();
+      ctx.arc(px, py, dotRadius, 0, 2 * Math.PI);
+      if (isDead) {
+        ctx.strokeStyle = dotColor;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([1, 1]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        ctx.fillStyle = dotColor;
+        ctx.fill();
+      }
+    }
   }
 }
 

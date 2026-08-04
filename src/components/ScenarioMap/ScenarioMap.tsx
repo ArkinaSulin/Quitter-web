@@ -8,7 +8,7 @@ import { parseWeapons } from '@/lib/weaponParser';
 import { resolveCombatSequence, computeRowCapacity, determineCombatPosition, isInFrontArc, suppressRetaliation } from '@/lib/unitCombat';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios } from '@/hooks/useScenarios';
-import { computeReachableMap, computeMoveBudget, computeMovePool, isMoveAffordable, applyMpSpend } from '@/lib/moveCost';
+import { computeReachableMap, computeMoveBudget, computeMovePool, isMoveAffordable, applyMpSpend, computeChargeReachable } from '@/lib/moveCost';
 import { useGameEngine } from '@/hooks/useGameEngine';
 import { useTeamAlliances } from '@/hooks/useTeamAlliances';
 import { useMessageSync } from '@/hooks/useMessageSync';
@@ -18,10 +18,14 @@ import { LeftPanel } from './LeftPanel';
 import { ContextMenu } from './ContextMenu';
 import { UnitTooltip } from './UnitTooltip';
 import { ReplayOverlay } from './ReplayOverlay';
-import { drawToken, loadImage } from '@/components/TokenRenderer/drawToken';
+import { drawToken, loadImage, SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier, computeThreatRating, areHexesAdjacent } from '@/lib/unitMorale';
 import { supabase } from '@/lib/supabaseClient';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement } from '@/lib/unitStats';
+import { nextLowerFormation } from '@/lib/formationCost';
+import { useMagicCast } from '@/hooks/useMagicCast';
+import { resolveSpellDamage } from '@/lib/spellDamage';
+import { MagicCastModal } from './MagicCastModal';
 
 interface ScenarioMapProps {
   scenarioId: string;
@@ -70,7 +74,7 @@ const HEX_DIRS = [
 function computeOccupiedHexes(allUnits: Unit[], excludeUnitId?: string): Set<string> {
   return new Set(
     allUnits
-      .filter(u => !u.isDeleted && !u.attachedToUnitId && u.id !== excludeUnitId)
+      .filter(u => !u.isDeleted && !u.attachedToUnitId && u.currentUnitHp > 0 && u.id !== excludeUnitId)
       .map(u => `${u.hex.q},${u.hex.r}`),
   );
 }
@@ -103,10 +107,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const { getMyRole, updateScreenshot, unsubscribeFromPresence, subscribeToPresence, fetchScenarios, currentUser, fetchScenarioMapData, updateScenarioField, updateScenarioMapData } = useScenarios();
   const { addMessage, addError } = useMessageSync(scenarioId);
   const [isGM, setIsGM] = useState(false);
+  const [dmGone, setDmGone] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [currentTurnAlliance, setCurrentTurnAlliance] = useState<AllianceGroup | null>(null);
   const [turnNumber, setTurnNumber] = useState(0);
   const [freeMove, setFreeMove] = useState(false);
+  const [isEndingTurn, setIsEndingTurn] = useState(false);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
   const [panelSide, setPanelSide] = useState<'left' | 'right'>('left');
   const [formationsMap, setFormationsMap] = useState<Record<string, Formation>>({});
@@ -145,12 +151,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     target: Unit;
   } | null>(null);
 
+  // Premature charge attack: attacker attacked before moving the full 2 hexes.
+  const [pendingChargeAttack, setPendingChargeAttack] = useState<{
+    attacker: Unit;
+    target: Unit;
+  } | null>(null);
+
+  // Over-budget spell resolve (soft enforcement): caster has no actions left.
+  const [pendingCastOverBudget, setPendingCastOverBudget] = useState(false);
+
   // End Turn reminder: shown when the DM ends a turn while Free Move is still on
   // (soft reminder only — the turn still advances if confirmed).
   const [freeMoveEndTurnConfirm, setFreeMoveEndTurnConfirm] = useState(false);
-
-  // Per-unit selected weapon index (defaults to 0); session-local UI affordance
-  const [selectedWeapons, setSelectedWeapons] = useState<Record<string, number>>({});
 
   const playerId = currentUser?.id || '';
   const { displayName } = useProfile(playerId || null);
@@ -161,8 +173,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     currentUser?.email ||
     'Unknown';
 
+  const magicCast = useMagicCast(scenarioId);
+
   const replay = useReplay(scenarioId, { initialMode: replayMode ? 'replay' : 'play', playerId });
   const inReplay = replay.mode === 'replay';
+  const controlsLocked = inReplay || dmGone;
 
   const { alliances, setAlliance } = useTeamAlliances(scenarioId, isGM);
 
@@ -173,37 +188,45 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
 
   const {
-    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, assignTeam, toggleHide, placeUnit, attachHero, detachHero, endTurn, undo, canUndo, redo, canRedo, peekUndoChainLength, hydrateFromLog, subscribeToCommandLog,
+    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, placeUnit, attachHero, detachHero, endTurn, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, hydrateFromLog, subscribeToCommandLog,
   } = useGameEngine({
     scenarioId,
     playerId,
     playerName,
     isGM,
+    freeMove,
     updateUnit,
     moveUnit,
     updateAlliance: setAlliance,
     updateScenarioField,
   });
 
+  const performEndTurn = useCallback(async () => {
+    if (isEndingTurn) return;
+    setIsEndingTurn(true);
+    try {
+      const { next, wrapped, turnNumber: newTurnNumber } = await endTurn({
+        currentAlliance: currentTurnAlliance,
+        alliances,
+        units,
+        formationsMap,
+        turnNumber,
+      });
+      setCurrentTurnAlliance(next);
+      if (wrapped) setTurnNumber(newTurnNumber);
+    } finally {
+      setIsEndingTurn(false);
+    }
+  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, isEndingTurn]);
+
   const handleEndTurn = useCallback(async () => {
+    if (isEndingTurn) return;
     if (freeMove) {
       setFreeMoveEndTurnConfirm(true);
       return;
     }
     await performEndTurn();
-  }, [freeMove]);
-
-  const performEndTurn = useCallback(async () => {
-    const { next, wrapped, turnNumber: newTurnNumber } = await endTurn({
-      currentAlliance: currentTurnAlliance,
-      alliances,
-      units,
-      formationsMap,
-      turnNumber,
-    });
-    setCurrentTurnAlliance(next);
-    if (wrapped) setTurnNumber(newTurnNumber);
-  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber]);
+  }, [freeMove, isEndingTurn, performEndTurn]);
 
   const handleToggleFreeMove = useCallback(async () => {
     if (!isGM) return;
@@ -280,6 +303,32 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const unit = units.find(u => u.id === unitId);
     if (!unit) return;
 
+    // Charging units may only move forward through the front-arc charge wedge.
+    if (unit.isCharging) {
+      const occupied = computeOccupiedHexes(units, unitId);
+      const maxMP = unitMaxMP(unit);
+      const chargeReach = computeChargeReachable(unit, occupied, maxMP);
+      const cost = chargeReach.get(`${targetHex.q},${targetHex.r}`);
+      if (!cost) {
+        addMessage(`${unit.unitName} cannot move there — outside the charge route`);
+        return;
+      }
+      const overBudget = !isMoveAffordable(unit, cost, maxMP);
+      if (overBudget) {
+        setPendingMove({ unit, targetHex, cost });
+        return;
+      }
+      await performMove(unit, targetHex, cost, false, maxMP);
+      // Track distance moved during this charge (2 hexes = full charge).
+      await execute('CHARGE', [{
+        type: 'CHARGE',
+        description: `${unit.unitName} advanced ${cost} hex(es) in its charge`,
+        unitId: unit.id,
+        changes: [{ field: 'chargeDistance', from: unit.chargeDistance, to: unit.chargeDistance + cost }],
+      }], `${unit.unitName} advanced ${cost} hex(es) in its charge`, { chained: true });
+      return;
+    }
+
     if (freeMove) {
       const occupied = computeOccupiedHexes(units, unitId);
       if (occupied.has(`${targetHex.q},${targetHex.r}`)) {
@@ -307,7 +356,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return;
     }
     await performMove(unit, targetHex, entry.cost, false, effectiveMax);
-  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree]);
+  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, unitMaxMP]);
 
   const handleMoveTeam = useCallback(async (team: string, targetGroup: AllianceGroup) => {
     const currentGroup = alliances[team] || 'friendly';
@@ -396,7 +445,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       };
     }
 
-    for (const unit of displayUnits) {
+    // Corpses (HP <= 0) draw first so live tokens stacked on their hex render on top.
+    const drawOrder = [...displayUnits].sort((a, b) =>
+      ((a.currentUnitHp ?? 0) <= 0 ? 0 : 1) - ((b.currentUnitHp ?? 0) <= 0 ? 0 : 1));
+
+    for (const unit of drawOrder) {
       if (unit.isDeleted || unit.attachedToUnitId) continue;
       if (unit.hidden) {
         if (!isGM) continue;
@@ -473,10 +526,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     return result;
   }
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean) => {
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean }) => {
     if (overBudget) {
       addError(`${attacker.unitName} attacked with no actions left — over budget`);
     }
+    const isChargingAttack = options?.isCharging ?? false;
 
     const formationAtkMod = getFormationModifier(formationsMap, attacker.currentFormation, 'attack_modifier');
     const attackCapMult = getFormationMultiplier(formationsMap, attacker.currentFormation, 'attack_capacity_multiplier');
@@ -484,9 +538,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const attackerRowCap = getRowCapacity(sizeCategories, attacker.sizeCategory);
     const defenderRowCap = getRowCapacity(sizeCategories, target.sizeCategory);
     const defenderVisualDpr = getVisualDotsPerRow(formationsMap, defenderRowCap, target.currentFormation);
-    const weapon = parseWeapons(attacker.weaponString || '')[selectedWeapons[attacker.id] ?? 0];
+    const weapon = parseWeapons(attacker.weaponString || '')[attacker.activeWeaponIndex ?? 0];
     if (!weapon) return;
-    const defWeapon = parseWeapons(target.weaponString || '')[0] || null;
+    const defWeapon = parseWeapons(target.weaponString || '')[target.activeWeaponIndex ?? 0] || null;
     const isRanged = weapon.range > 1;
     const isRear = determineCombatPosition(attacker.hex, target.hex, target.facing) === 'rear';
     const attachedDefenderHero = (() => {
@@ -516,11 +570,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       attachedDefenderHero,
       attachedAttackerHero,
       Math.random,
+      isChargingAttack,
     );
 
     const subSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
 
-    if (!weapon.freeAction) {
+    if (!weapon.freeAction && !isChargingAttack) {
       subSteps.push({
         type: 'ATTACK',
         description: `${attacker.unitName} spent an action attacking ${target.unitName}`,
@@ -616,6 +671,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const weaponTags: string[] = [];
     if (weapon.freeAction) weaponTags.push('FREE');
     if (weapon.noRetaliation) weaponTags.push('NO RETALIATION');
+    if (isChargingAttack) weaponTags.push('CHARGE');
     let desc = `${attacker.unitName} attacks ${target.unitName} with ${weapon.name}${weaponTags.length > 0 ? ` (${weaponTags.join(', ')})` : ''}`;
     desc += ` — ${firstStriker.unitName} strikes first — ${outcome.firstStrikeAttacks.length} attacks, ${firstStrikerHits} hits${firstStrikeCrits > 0 ? `, ${firstStrikeCrits} critical` : ''}, ${outcome.firstStrikeDamage} damage (${outcome.strikerFirst === 'attacker' ? defenderTroopsKilled : attackerTroopsKilled} troops)`;
 
@@ -731,12 +787,34 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         }
       }
     }
-  }, [units, alliances, formationsMap, sizeCategories, execute, addMessage, addError, selectedWeapons]);
+  }, [units, alliances, formationsMap, sizeCategories, execute, addMessage, addError]);
+
+  const performChargeEnd = useCallback(async (attacker: Unit, dropOrg: boolean) => {
+    const changes: { field: string; from: any; to: any }[] = [
+      { field: 'isCharging', from: true, to: false },
+      { field: 'chargeDistance', from: attacker.chargeDistance, to: 0 },
+    ];
+    let dropText = '';
+    if (dropOrg) {
+      const lower = nextLowerFormation(attacker.currentFormation);
+      if (lower) {
+        changes.push({ field: 'currentFormation', from: attacker.currentFormation, to: lower });
+        dropText = ` — dropped to ${lower}`;
+      }
+    }
+    await execute('CHARGE_END', [{
+      type: 'CHARGE_END',
+      description: `${attacker.unitName} ended its charge${dropText}`,
+      unitId: attacker.id,
+      changes,
+    }], `${attacker.unitName} ended its charge${dropText}`, { chained: true });
+  }, [execute]);
 
   const handleAttackRequest = useCallback(async (attackerId: string, targetId: string) => {
     const attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return;
+    if ((target.currentUnitHp ?? 0) <= 0) return;
 
     const targetHasHero = units.some(u => u.attachedToUnitId === targetId && !u.isDeleted);
     const canAttach = attacker.isHero && (attacker.sizeCategory || 100) <= 200 && !target.isHero && !target.attachedToUnitId && !target.isDeleted && !targetHasHero && attacker.team === target.team;
@@ -753,7 +831,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
 
     const attackerWeapons = parseWeapons(attacker.weaponString || '');
-    const weapon = attackerWeapons[selectedWeapons[attacker.id] ?? 0];
+    const weapon = attackerWeapons[attacker.activeWeaponIndex ?? 0];
     if (!weapon) {
       addMessage(`${attacker.unitName} has no weapon to attack with`);
       return;
@@ -762,6 +840,33 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const dist = hexDistance(attacker.hex, target.hex);
     if (weapon.range <= 1 && dist > 1) {
       addMessage(`WARNING: ${weapon.name} is melee (range ${weapon.range}), but target is ${dist} hexes away`);
+      return;
+    }
+
+    // Area-effect weapons open the shared magic targeting window instead of melee.
+    if (weapon.targetType === 'area') {
+      if (attacker.isRouting) {
+        addMessage(`${attacker.unitName} (Routed) cannot cast spells`);
+        return;
+      }
+      const snapshot: SpellCastTokenSnapshot = {
+        team: target.team,
+        currentFormation: target.currentFormation,
+        currentTroopCount: target.currentTroopCount,
+        maxTroopCount: target.maxTroopCount,
+        sizeCategory: target.sizeCategory,
+        visualScale: target.visualScale,
+        mountId: target.mountId,
+      };
+      magicCast.openCast({
+        casterId: playerId,
+        casterName: playerName,
+        casterUnitId: attacker.id,
+        targetUnitId: target.id,
+        targetUnitName: target.unitName,
+        weapon,
+        snapshot,
+      });
       return;
     }
 
@@ -781,12 +886,142 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }
     }
 
+    // Charging attacker: a full charge (2 hexes moved) grants a free double-damage
+    // attack; an early attack is premature and requires confirmation.
+    if (attacker.isCharging) {
+      if (attacker.chargeDistance < 2) {
+        setPendingChargeAttack({ attacker, target });
+        return;
+      }
+      await performAttack(attacker, target, false, { isCharging: true });
+      await performChargeEnd(attacker, true);
+      return;
+    }
+
     if (attacker.actionsAvailable < 1 && !weapon.freeAction) {
       setPendingAttack({ attacker, target });
       return;
     }
     await performAttack(attacker, target, false);
-  }, [units, alliances, performAttack, addMessage, selectedWeapons]);
+  }, [units, alliances, performAttack, performChargeEnd, addMessage, magicCast, playerId, playerName]);
+
+  // Resolve an area spell: roll weapon damage + per-troop saving throws, apply the
+  // damage through the command engine (undoable), then run morale/rout like combat.
+  const handleResolveCast = useCallback(async (overBudget: boolean) => {
+    const cast = magicCast.cast;
+    if (!cast || cast.resolved || !cast.circle || cast.affectedCount <= 0) return;
+    if (!isGM && playerId !== cast.casterId) return;
+
+    const target = units.find(u => u.id === cast.targetUnitId);
+    const caster = units.find(u => u.id === cast.casterUnitId);
+    if (!target || !caster) {
+      addError('Spell target or caster is no longer on the map — cast cancelled');
+      magicCast.cancelCast();
+      return;
+    }
+
+    if (overBudget) {
+      addError(`${caster.unitName} cast with no actions left — over budget`);
+    }
+
+    const result = resolveSpellDamage({
+      damageDice: cast.weapon.damageDice,
+      saveBonus: cast.saveBonus,
+      saveDC: cast.saveDC,
+      halfOnSave: cast.halfOnSave,
+      affectedCount: cast.affectedCount,
+      troopHp: target.troopHp,
+      rng: Math.random,
+    });
+
+    const newHp = Math.max(0, target.currentUnitHp - result.totalDamage);
+    const newTroops = Math.ceil(newHp / target.troopHp);
+    const troopsKilled = target.currentTroopCount - newTroops;
+
+    const subSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
+    if (!cast.weapon.freeAction) {
+      subSteps.push({
+        type: 'CAST',
+        description: `${caster.unitName} spent an action casting ${cast.weapon.name}`,
+        unitId: caster.id,
+        changes: [{ field: 'actionsAvailable', from: caster.actionsAvailable, to: caster.actionsAvailable - 1 }],
+      });
+    }
+    if (result.totalDamage > 0) {
+      subSteps.push({
+        type: 'DAMAGE',
+        description: `${target.unitName} took ${result.totalDamage} damage from ${cast.weapon.name}`,
+        unitId: target.id,
+        changes: [
+          { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+          { field: 'currentTroopCount', from: target.currentTroopCount, to: newTroops },
+        ],
+      });
+    }
+
+    const savedCount = result.perTroop.filter(t => t.success).length;
+    const failedCount = result.perTroop.length - savedCount;
+    const desc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${result.baseDamage}, ${cast.affectedCount} troop(s) affected, ${savedCount} saved, ${failedCount} failed — ${result.totalDamage} total damage (${troopsKilled} troop(s))`;
+
+    await execute('CAST', subSteps, desc);
+
+    // Morale check + rout cascade for the target (same rules as normal combat).
+    const targetKilled = newHp <= 0;
+    const targetFormationMorMod = getFormationModifier(formationsMap, target.currentFormation, 'morale_modifier');
+    const modUnit = { ...target, currentUnitHp: newHp };
+    const effMod = modUnit.currentMoraleModifier + computeEffectiveMoraleModifier(modUnit, units, alliances, targetFormationMorMod);
+    const targetRouted = !targetKilled && !modUnit.ignoreMoraleChecks && !modUnit.isRouting && (modUnit.baseMorale + effMod <= 0);
+
+    async function routeUnit(unit: Unit, reason: string, killed: boolean): Promise<void> {
+      const name = unit.unitName;
+      const verb = !killed ? 'routed' : unit.isHero ? 'down' : 'annihilated';
+      await execute('ROUT', [{
+        type: 'ROUT',
+        description: `${name} ${verb} (${reason})`,
+        unitId: unit.id,
+        changes: [
+          { field: 'isRouting', from: false, to: true },
+          { field: 'currentFormation', from: unit.currentFormation, to: 'Routed' },
+        ],
+      }], `${name} ${verb}!`, { chained: true });
+    }
+
+    if (targetRouted || targetKilled) {
+      await routeUnit(target, targetKilled ? 'destroyed by magic' : `morale ${modUnit.baseMorale + effMod} after magic`, targetKilled);
+      for (const u of units) {
+        if (u.id === caster.id || u.id === target.id || u.isDeleted || u.ignoreMoraleChecks || u.isRouting) continue;
+        if (hexDistance(u.hex, target.hex) === 1) {
+          const fMorMod = getFormationModifier(formationsMap, u.currentFormation, 'morale_modifier');
+          const eMod = u.currentMoraleModifier + computeEffectiveMoraleModifier(u, units, alliances, fMorMod);
+          if (u.baseMorale + eMod <= 0) {
+            await routeUnit(u, `morale ${u.baseMorale + eMod} near fleeing ${target.unitName}`, false);
+          }
+        }
+      }
+    }
+
+    magicCast.sendResolve({
+      baseDamage: result.baseDamage,
+      totalDamage: result.totalDamage,
+      troopsKilled,
+      newHp,
+      savedCount,
+      failedCount,
+      description: desc,
+    });
+  }, [magicCast, units, alliances, formationsMap, isGM, playerId, execute, addError]);
+
+  const requestResolveCast = useCallback(() => {
+    const cast = magicCast.cast;
+    if (!cast || cast.resolved || !cast.circle || cast.affectedCount <= 0) return;
+    if (!isGM && playerId !== cast.casterId) return;
+    const caster = units.find(u => u.id === cast.casterUnitId);
+    if (caster && caster.actionsAvailable < 1 && !cast.weapon.freeAction) {
+      setPendingCastOverBudget(true);
+      return;
+    }
+    handleResolveCast(false);
+  }, [magicCast, units, isGM, playerId, handleResolveCast]);
 
   const {
     handleMouseMove,
@@ -806,10 +1041,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     size: HEX_SIZE,
     gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
     units: displayUnits,
-    onUnitMove: inReplay ? () => {} : handleUnitMove,
+    onUnitMove: controlsLocked ? () => {} : handleUnitMove,
     onHexClick: (hex) => setSelectedHex(hex),
     onHexRightClick: (hex, unit, clientX, clientY) => {
-      if (inReplay) return;
+      if (controlsLocked) return;
       if (unit && !unit.isDeleted && (isGM || !unit.hidden)) {
         setContextMenuUnit(unit);
         setContextMenuPos({ x: clientX, y: clientY });
@@ -824,12 +1059,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setHoveredUnit(null);
       setTooltipPos(null);
     },
-    onAttack: inReplay ? undefined : handleAttackRequest,
+    onAttack: controlsLocked ? undefined : handleAttackRequest,
     customDraw,
     autoCenter: isInitialLoad,
     backgroundImage: backgroundConfig ? { url: backgroundConfig.imageUrl, offsetX: backgroundConfig.offsetX, offsetY: backgroundConfig.offsetY, scale: backgroundConfig.scale } : null,
     overlayMap,
-    readOnly: inReplay,
+    readOnly: controlsLocked,
   });
 
   useEffect(() => {
@@ -848,6 +1083,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             const key = `${q},${rr}`;
             if (!occupied.has(key)) combined[key] = 'rgba(255, 255, 255, 0.5)';
           }
+        }
+        setOverlayMap(combined);
+        return;
+      }
+
+      // Charging units show the front-arc charge wedge: cost-1 hexes amber (charge
+      // route — premature if you stop), cost 2+ white (full charge, free attack).
+      if (draggedUnit.isCharging) {
+        const combined: Record<string, string> = {};
+        const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
+        const effectiveMax = computeEffectiveMovement(draggedUnit, movementMult);
+        const chargeReach = computeChargeReachable(draggedUnit, occupied, effectiveMax);
+        for (const [key, cost] of Array.from(chargeReach.entries())) {
+          combined[key] = cost >= 2 ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';
         }
         setOverlayMap(combined);
         return;
@@ -1102,7 +1351,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         };
       };
 
-      for (const unit of units) {
+      const screenshotDrawOrder = [...units].sort((a, b) =>
+        ((a.currentUnitHp ?? 0) <= 0 ? 0 : 1) - ((b.currentUnitHp ?? 0) <= 0 ? 0 : 1));
+
+      for (const unit of screenshotDrawOrder) {
         if (unit.isDeleted || unit.attachedToUnitId) continue;
         if (unit.hidden) {
           ctx.save();
@@ -1185,14 +1437,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     window.location.reload();
   };
 
-  // ---- Role detection ----
+  // ---- Role detection + presence ----
   useEffect(() => {
+    let subscribed: any = null;
     getMyRole(scenarioId).then(role => {
       const gm = role === 'GM';
       setIsGM(gm);
-      if (gm) subscribeToPresence(scenarioId, () => {});
+      // Every client subscribes to presence so a DM exit locks the map.
+      subscribed = subscribeToPresence(scenarioId, () => {
+        if (!gm) setDmGone(true);
+      });
     });
-  }, [scenarioId, getMyRole, subscribeToPresence]);
+    return () => {
+      if (subscribed) unsubscribeFromPresence(scenarioId);
+    };
+  }, [scenarioId, getMyRole, subscribeToPresence, unsubscribeFromPresence]);
 
   // ---- Load formations lookup ----
   useEffect(() => {
@@ -1261,22 +1520,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // ---- Keyboard shortcuts ----
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (inReplay) return;
+      if (controlsLocked) return;
       if (e.ctrlKey && e.key === 'z') {
         e.preventDefault();
         undo();
       } else if (e.ctrlKey && e.key === 'y') {
         e.preventDefault();
         redo();
-      } else if ((e.key === 'q' || e.key === 'Q') && contextMenuUnit && !contextMenuUnit.isHero) {
+      } else if ((e.key === 'q' || e.key === 'Q') && contextMenuUnit && !contextMenuUnit.isHero && !contextMenuUnit.isCharging) {
         rotateUnit(contextMenuUnit, 'left', unitMaxMP(contextMenuUnit));
-      } else if ((e.key === 'e' || e.key === 'E') && contextMenuUnit && !contextMenuUnit.isHero) {
+      } else if ((e.key === 'e' || e.key === 'E') && contextMenuUnit && !contextMenuUnit.isHero && !contextMenuUnit.isCharging) {
         rotateUnit(contextMenuUnit, 'right', unitMaxMP(contextMenuUnit));
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [inReplay, undo, redo, contextMenuUnit, rotateUnit]);
+  }, [controlsLocked, undo, redo, contextMenuUnit, rotateUnit]);
 
   if (loading) return <div className="w-full h-screen bg-[#0d0d1a] text-white flex items-center justify-center">Loading scenario...</div>;
   if (error) return <div className="w-full h-screen bg-[#0d0d1a] text-red-500 flex items-center justify-center">Error: {error}</div>;
@@ -1289,7 +1548,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           <span className="text-white text-lg font-semibold">
             Scenario Map - {isGM ? 'DM' : 'Player'}
           </span>
-          {!inReplay && (
+          {!controlsLocked && (
             <button
               onClick={undo}
               disabled={!canUndo()}
@@ -1303,10 +1562,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             </button>
           )}
           <span className="text-white text-sm font-mono">Turn {displayTurnNumber}</span>
-          {!inReplay && (
+          {!controlsLocked && (
             <button
               onClick={isGM ? handleEndTurn : undefined}
-              disabled={!isGM}
+              disabled={!isGM || isEndingTurn}
               title={isGM ? 'Advance to the next group' : 'Only the DM can end the turn'}
               className={`px-3 py-1 rounded shadow-lg text-sm ${
                 currentTurnAlliance === 'enemy'
@@ -1314,12 +1573,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                   : currentTurnAlliance === 'neutral'
                     ? 'bg-[#E0E0E0] hover:bg-[#d0d0d0] text-black'
                     : 'bg-[#0072B2] hover:bg-[#00619c] text-white'
-              } ${!isGM ? 'opacity-50 cursor-not-allowed' : ''}`}
+              } ${!isGM || isEndingTurn ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              {`End Turn (${currentTurnAlliance ?? 'friendly'})`}
+              {`End Turn${isEndingTurn ? '…' : ''} (${currentTurnAlliance ?? 'friendly'})`}
             </button>
           )}
-          {!inReplay && (
+          {!controlsLocked && (
             <button
               onClick={isGM ? handleToggleFreeMove : undefined}
               disabled={!isGM}
@@ -1338,7 +1597,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             </button>
           )}
           {/* Mode 2 (join scenario): GM enters/leaves replay of the live session */}
-          {!replayMode && isGM && !inReplay && (
+          {!replayMode && isGM && !controlsLocked && (
             <button
               onClick={() => replay.setMode('replay')}
               className="px-3 py-1 rounded shadow-lg text-sm bg-amber-700 hover:bg-amber-600 text-white"
@@ -1363,8 +1622,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         </div>
       </div>
 
-      {/* Floating Left Panel — hidden in replay (no editing tools) */}
-      {!inReplay && (
+      {/* Floating Left Panel — hidden in replay or when the DM is gone */}
+      {!controlsLocked && (
         <div className={`absolute top-14 z-10 ${panelSide === 'left' ? 'left-2' : 'right-2'}`}>
           <LeftPanel
             scenarioId={scenarioId}
@@ -1425,14 +1684,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           x={contextMenuPos.x}
           y={contextMenuPos.y}
           isGM={isGM}
-          selectedWeapon={selectedWeapons[contextMenuUnit.id] ?? 0}
+          selectedWeapon={contextMenuUnit.activeWeaponIndex ?? 0}
           onClose={() => { setContextMenuUnit(null); setContextMenuPos(null); }}
           onRotate={(dir) => rotateUnit(contextMenuUnit, dir, unitMaxMP(contextMenuUnit))}
           onChangeFormation={(formation) => changeFormation(contextMenuUnit, formation, formationsMap)}
-          onSelectWeapon={(idx) => {
-            setSelectedWeapons(prev => ({ ...prev, [contextMenuUnit.id]: idx }));
-            addMessage(`${contextMenuUnit.unitName} selected weapon: ${parseWeapons(contextMenuUnit.weaponString || '')[idx]?.name ?? idx}`);
-          }}
+          onCharge={() => charge(contextMenuUnit)}
+          onSelectWeapon={(idx) => selectWeapon(contextMenuUnit, idx)}
           onAssignTeam={(team) => assignTeam(contextMenuUnit, team)}
           onToggleHide={() => toggleHide(contextMenuUnit)}
           onDeleteUnit={async () => {
@@ -1470,6 +1727,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         />
       )}
 
+      {/* DM gone banner — controls disabled, map stays viewable */}
+      {dmGone && !isGM && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 bg-red-900/90 border border-red-500 rounded shadow-lg">
+          <span className="text-red-200 font-semibold text-sm">GM has left — controls disabled</span>
+        </div>
+      )}
+
       {/* Over-budget confirmations (soft enforcement) */}
       {pendingMove && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -1481,7 +1745,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             <div className="flex flex-col gap-2">
               <button
                 className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => { const pm = pendingMove; setPendingMove(null); await performMove(pm.unit, pm.targetHex, pm.cost, true, unitMaxMP(pm.unit)); }}
+                onClick={async () => { const pm = pendingMove; setPendingMove(null); if (!controlsLocked) await performMove(pm.unit, pm.targetHex, pm.cost, true, unitMaxMP(pm.unit)); }}
               >
                 Yes, move anyway
               </button>
@@ -1506,13 +1770,70 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             <div className="flex flex-col gap-2">
               <button
                 className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => { const pa = pendingAttack; setPendingAttack(null); await performAttack(pa.attacker, pa.target, true); }}
+                onClick={async () => { const pa = pendingAttack; setPendingAttack(null); if (!controlsLocked) await performAttack(pa.attacker, pa.target, true); }}
               >
                 Yes, attack anyway
               </button>
               <button
                 className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
                 onClick={() => setPendingAttack(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Over-budget spell resolve confirm */}
+      {pendingCastOverBudget && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-red-800 rounded-xl shadow-2xl p-6 min-w-[320px]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Cast with no actions?</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              The caster has no actions left, but can still cast the spell.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => { setPendingCastOverBudget(false); if (!controlsLocked) handleResolveCast(true); }}
+              >
+                Yes, cast anyway
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => setPendingCastOverBudget(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Premature charge attack confirm */}
+      {pendingChargeAttack && (        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Charge incomplete?</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              {pendingChargeAttack.attacker.unitName} attacks before completing its 2-hex charge — this loses the free charge attack. Attack as normal instead (costs 1 action)?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={async () => {
+                  const pca = pendingChargeAttack;
+                  setPendingChargeAttack(null);
+                  if (controlsLocked) return;
+                  await performAttack(pca.attacker, pca.target, false);
+                  await performChargeEnd(pca.attacker, true);
+                }}
+              >
+                Yes, attack normally
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => setPendingChargeAttack(null)}
               >
                 Cancel
               </button>
@@ -1576,6 +1897,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             </div>
           </div>
         </div>
+      )}
+
+      {/* Magic cast targeting window (realtime-synced) */}
+      {magicCast.cast && (
+        <MagicCastModal
+          cast={magicCast.cast}
+          playerId={playerId}
+          isGM={isGM}
+          sizeCategories={sizeCategories}
+          formationsMap={formationsMap}
+          onCancel={magicCast.cancelCast}
+          onPlaceCircle={magicCast.placeCircle}
+          onOverrideCount={magicCast.overrideCount}
+          onSetSave={magicCast.setSave}
+          onRequestResolve={requestResolveCast}
+        />
       )}
 
       {/* Debug Panel */}

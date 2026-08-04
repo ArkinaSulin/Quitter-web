@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Morale, Routing, Map Editor & Token Visual Polish
 
@@ -51,10 +51,11 @@ The game lacks a functional morale system — situational factors (wounds, isola
 - **MapEditorView**: A full-viewport overlay (`fixed inset-0 z-50`) opened from the Lobby's "Map Editor" button. Contains the hex grid canvas and a left-side control panel.
 - **Layout**: Matches ScenarioMap's pattern — canvas fills viewport, panel floats via `absolute top-0 left-0 z-10`. The "Back" button is prominent in the panel header so the user can always return to the Lobby.
 - **Image source**: `GET /api/map-images` lists files from `/public/images/maps/` as `{ name, url }[]`. The dropdown calls this endpoint on mount.
-- **Persistence**: `updateScenarioMapData(scenarioId, { backgroundImageUrl, bgOffsetX, bgOffsetY, bgScale })` stores settings in `scenario.map_data` (a JSONB column). Loading happens via `fetchScenarioMapData` on mount. Separate from the "Save Background" button (manual save, not auto-save).
+- **Persistence**: `updateScenarioMapData(scenarioId, { backgroundImageUrl, bgOffsetX, bgOffsetY, bgScale })` stores settings in `scenario.map_data` (a JSONB column). Loading happens via `fetchScenarioMapData` on mount. Separate from the "Save Map Settings" button (manual save, not auto-save).
+- **Real-time preview**: `MapEditorPanel` forwards `imageUrl`, `offsetX`, `offsetY`, and `scale` changes to `onPreviewMapConfig` as the sliders/select move, so the map reflects them live — no need to click Save to see alignment. Save only persists to `map_data`.
 - **Canvas sizing**: The `useHexGrid` draw function sizes to `canvas.getBoundingClientRect()` (not the parent element), so the canvas correctly fills the flex-allocated space alongside the panel.
 - **Background image rendering**: In `useHexGrid`, the image is drawn in world-space coordinates: `(offsetX * zoom, offsetY * zoom)` for center position, `(naturalSize * scale * zoom)` for dimensions. Both position and size multiply by `zoom`, so the image stays locked to the grid at any magnification.
-- **Scale range**: 0.1 to 10 (step 0.1), so small maps can be blown up for fine alignment.
+- **Scale range**: 0.1 to 10 (step 0.05), so small maps can be blown up for fine alignment. The code was previously capped at 3× — raised to 10×.
 
 ### Morale System
 
@@ -69,6 +70,7 @@ The game lacks a functional morale system — situational factors (wounds, isola
 - **Wounds**: `-Math.floor(pctLost * 10)` where `pctLost = 1 - currentUnitHp / maxUnitHp`. At 10% HP loss = -1, at 50% = -5, at 100% = -10.
 - **Isolation**: `true` if no same-alliance unit occupies any of the 6 adjacent hexes. Penalty: -1.
 - **Enemy threats**: For each enemy unit in an adjacent hex, classify direction (front/side or rear) based on the unit's facing. Threat value from enemy's level: 1-4→1, 5-10→2, 11-15→3, 16-19→4, 20→5. Rear attacks add +1 to the threat value. Front/side and rear values are summed separately for display.
+- **Routing enemies exert no threat**: `calcEnemyThreats` skips any enemy with `isRouting === true` — a routed unit does not pressure friendly morale (matches the move-path `computeThreatHexes` filter). A routing unit's own tooltip Threat row reads `0 routed, was X.XX` (its former rating for reference).
 - **Factor display in tooltip**: Each factor shown in the "Morale factors" section with color coding (red for negative, green for zero). The MOR line shows `effectiveTotal = baseMorale + effectiveModifier`.
 - **`currentMoraleModifier`** is preserved as the manual/GM-adjustment field (DB-persisted). The computed situational modifier is added on top at display/routing time only — it is never persisted.
 - **The computed modifier is a pure function** derived entirely from unit state, units list, and alliances. It lives in a shared utility module consumed by both `UnitTooltip` and the render pipeline.

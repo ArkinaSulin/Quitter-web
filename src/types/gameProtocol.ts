@@ -134,8 +134,11 @@ export interface Unit {
   hidden: boolean;
   isDeleted: boolean;                  // soft delete — reversed by undo
   ignoreMoraleChecks: boolean;         // unit never routs (undead, heroes, etc.)
+  isCharging: boolean;                 // mid-charge: rotate/formation locked, corridor move
+  chargeDistance: number;              // hexes moved during the current charge (0 = not charged)
   organizationLevel: number;           // computed from currentFormation via ORGANIZATION_LEVEL map
   actionsAvailable: number;           // new: remaining actions for current turn
+  activeWeaponIndex: number;           // index into weaponString of the active weapon (0 = first)
 }
 
 // --- Scenario ---
@@ -166,8 +169,7 @@ export interface Participant {
 export interface Race {
   id: string;
   name: string;
-  defaultTroopScale: number;
-  baseSpeed: number;
+  base_speed: number;
   ac_bonus: number;
   icon_url: string | null;
   base_hd: number;
@@ -186,6 +188,7 @@ export interface WeaponLookup {
   range?: number;
   target_type?: string;
   is_reach?: boolean;
+  is_two_handed?: boolean;
 }
 
 export interface Armor {

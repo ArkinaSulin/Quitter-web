@@ -20,6 +20,7 @@ interface ContextMenuProps {
   onAssignTeam: (team: string) => void;
   onToggleHide: () => void;
   onDeleteUnit: () => void;
+  onCharge?: () => void;
   onAttachHero?: (heroId: string, targetUnitId: string) => void;
   onDetachHero?: (heroId: string) => void;
   units: Unit[];
@@ -38,6 +39,7 @@ export function ContextMenu({
   onAssignTeam,
   onToggleHide,
   onDeleteUnit,
+  onCharge,
   onAttachHero,
   onDetachHero,
   units,
@@ -72,6 +74,7 @@ export function ContextMenu({
   // Order formations by organization level, higher on top. Disable any formation
   // more than +1 org level above the current one (recomputed on every render).
   const currentOrgLevel = getOrganizationLevel(unit.currentFormation);
+  const activeWeaponIsTwoHanded = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0]?.isTwoHanded || false;
   const formationOptions = [
     { value: 'Open Order' },
     { value: 'Close Order' },
@@ -83,7 +86,7 @@ export function ContextMenu({
     .sort((a, b) => getOrganizationLevel(b.value) - getOrganizationLevel(a.value))
     .map(opt => ({
       value: opt.value,
-      disabled: getOrganizationLevel(opt.value) > currentOrgLevel + 1,
+      disabled: getOrganizationLevel(opt.value) > currentOrgLevel + 1 || (opt.value === 'Shield Wall' && activeWeaponIsTwoHanded),
     }));
 
   const canAttach = unit.isHero && (unit.sizeCategory || 100) <= 200 && !unit.attachedToUnitId && !!onAttachHero;
@@ -116,23 +119,40 @@ export function ContextMenu({
     >
       {!unit.isHero && !unit.attachedToUnitId && (
         <>
-          <div className="px-3 py-1 hover:bg-gray-700 cursor-pointer" onClick={() => { onRotate('left'); onClose(); }}>
+          <div
+            className={`px-3 py-1 ${unit.isCharging ? 'text-gray-600 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}`}
+            onClick={() => { if (unit.isCharging) return; onRotate('left'); onClose(); }}
+          >
             Rotate Left
           </div>
-          <div className="px-3 py-1 hover:bg-gray-700 cursor-pointer" onClick={() => { onRotate('right'); onClose(); }}>
+          <div
+            className={`px-3 py-1 ${unit.isCharging ? 'text-gray-600 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}`}
+            onClick={() => { if (unit.isCharging) return; onRotate('right'); onClose(); }}
+          >
             Rotate Right
           </div>
+          {unit.canCharge && !unit.isRouting && unit.currentFormation !== 'Scattered' && !unit.isCharging && unit.actionsAvailable >= 1 && onCharge && (
+            <div
+              className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
+              onClick={() => { onCharge(); onClose(); }}
+            >
+              Charge!
+            </div>
+          )}
           <div className="border-t border-gray-700 my-1" />
         </>
       )}
 
       {!unit.isHero && !unit.attachedToUnitId && (
         <>
+          {unit.isCharging && (
+            <div className="px-3 py-1 text-gray-500 italic text-xs">Formation locked while charging</div>
+          )}
           {formationOptions.map(opt => (
             <div
               key={opt.value}
-              className={`px-3 py-1 ${opt.disabled ? 'text-gray-600 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}`}
-              onClick={() => { if (opt.disabled) return; onChangeFormation(opt.value); onClose(); }}
+              className={`px-3 py-1 ${opt.disabled || unit.isCharging ? 'text-gray-600 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}`}
+              onClick={() => { if (opt.disabled || unit.isCharging) return; onChangeFormation(opt.value); onClose(); }}
             >
               {opt.value}
             </div>
@@ -191,6 +211,7 @@ export function ContextMenu({
         <div key={idx} className="px-3 py-1 hover:bg-gray-700 cursor-pointer flex items-center gap-2" onClick={() => { onSelectWeapon(idx); onClose(); }}>
           <span className="w-3 text-emerald-400">{idx === selectedWeapon ? '✓' : ''}</span>
           <span className="flex-1">{w.name}</span>
+          {w.isTwoHanded && <span className="text-xs px-1 rounded bg-red-900 text-red-300" title="Two-handed (no shield, no Shield Wall)">2H</span>}
           {w.freeAction && <span className="text-xs px-1 rounded bg-purple-900 text-purple-300" title="Free action">F</span>}
           {w.noRetaliation && <span className="text-xs px-1 rounded bg-blue-900 text-blue-300" title="No retaliation">NR</span>}
           {w.ignoreAttackMultiplier && <span className="text-xs px-1 rounded bg-teal-900 text-teal-300" title="Ignores attack multiplier">IM</span>}

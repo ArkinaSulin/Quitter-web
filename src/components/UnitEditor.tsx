@@ -90,13 +90,14 @@ export default function UnitEditor() {
   const router = useRouter();
   const [templates, setTemplates] = useState<UnitTemplate[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [unitSearchTerm, setUnitSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const [races, setRaces] = useState<Race[]>([]);
   const [weaponsLookup, setWeaponsLookup] = useState<
-    { id: string; name: string; damage_dice: string; notes: string | null; cost_gp: number; attack_bonus?: number; magic_radius?: number; range?: number; target_type?: string; reach?: boolean }[]
+    { id: string; name: string; damage_dice: string; notes: string | null; cost_gp: number; attack_bonus?: number; magic_radius?: number; range?: number; target_type?: string; reach?: boolean; is_two_handed?: boolean }[]
   >([]);
   const [armors, setArmors] = useState<Armor[]>([]);
   const [formations, setFormations] = useState<Formation[]>([]);
@@ -110,6 +111,7 @@ export default function UnitEditor() {
   const [testCasualtyPercent, setTestCasualtyPercent] = useState<number>(0);
   const [testMoraleModifier, setTestMoraleModifier] = useState<number>(0);
   const [testFormation, setTestFormation] = useState<'Open Order' | 'Close Order' | 'Scattered' | 'Phalanx' | 'Shield Wall' | 'Routed'>('Open Order');
+  const [testCharge, setTestCharge] = useState(false);
 
   const getMaxTroopForSize = useCallback((sizeCategory: number, isMounted: boolean): number => {
     const sc = sizeCategories.find(s => s.size_category === sizeCategory);
@@ -134,6 +136,7 @@ export default function UnitEditor() {
   const [weaponFreeAction, setWeaponFreeAction] = useState<boolean>(false);
   const [weaponNoRetaliation, setWeaponNoRetaliation] = useState<boolean>(false);
   const [weaponIgnoreAttackMultiplier, setWeaponIgnoreAttackMultiplier] = useState<boolean>(false);
+  const [weaponIsTwoHanded, setWeaponIsTwoHanded] = useState<boolean>(false);
 
   const [weaponError, setWeaponError] = useState('');
   const [weaponSearchTerm, setWeaponSearchTerm] = useState('');
@@ -512,6 +515,7 @@ export default function UnitEditor() {
     setWeaponFreeAction(false);
     setWeaponNoRetaliation(false);
     setWeaponIgnoreAttackMultiplier(false);
+    setWeaponIsTwoHanded(false);
     setWeaponError('');
     setShowWeaponModal(true);
   };
@@ -532,6 +536,7 @@ export default function UnitEditor() {
     setWeaponFreeAction(w.freeAction || false);
     setWeaponNoRetaliation(w.noRetaliation || false);
     setWeaponIgnoreAttackMultiplier(w.ignoreAttackMultiplier || false);
+    setWeaponIsTwoHanded(w.isTwoHanded || false);
     setWeaponError('');
     setShowWeaponModal(true);
   };
@@ -552,9 +557,9 @@ export default function UnitEditor() {
     range?: number;
     target_type?: string;
     is_reach?: boolean;
+    is_two_handed?: boolean;
   }) => {
     setWeaponName(weapon.name);
-    setWeaponSearchTerm(weapon.name);
     setWeaponDamageDice(weapon.damage_dice);
     setWeaponAttackBonus(weapon.attack_bonus || 0);
     const nextRange = weapon.range || 1;
@@ -563,6 +568,7 @@ export default function UnitEditor() {
     setWeaponTargetType((weapon.target_type === 'area' ? 'area' : 'single') as 'single' | 'area');
     setWeaponMagicRadius(weapon.magic_radius || 0);
     setWeaponReach(weapon.is_reach || false);
+    setWeaponIsTwoHanded(weapon.is_two_handed || false);
   };
   const getWeaponSuggestions = () => {
     if (!weaponSearchTerm.trim()) return [];
@@ -602,6 +608,7 @@ export default function UnitEditor() {
       freeAction: weaponFreeAction,
       noRetaliation: weaponNoRetaliation,
       ignoreAttackMultiplier: weaponIgnoreAttackMultiplier,
+      isTwoHanded: weaponIsTwoHanded,
     };
 
     const currentWeapons = getWeapons();
@@ -656,7 +663,7 @@ export default function UnitEditor() {
       weaponString: '',
       mountId: '',
       mountName: '',
-      movementPoints: 3,
+      movementPoints: firstRace?.base_speed || 3,
       aggressiveness: 3,
       baseMorale: 3,
       sizeCategory: firstRace?.size_category || 100,
@@ -664,7 +671,7 @@ export default function UnitEditor() {
       formationAvailability: ['Scattered', 'Routed'],
       equipCostGp: 0,
       weeklyCostGp: 4,
-      canCharge: false,
+      canCharge: firstRace?.can_charge || false,
       ignoreMoraleChecks: false,
       customImageUrl: null,
       createdAt: new Date().toISOString(),
@@ -950,8 +957,19 @@ export default function UnitEditor() {
               Clone
             </button>
           </div>
+          <div className="mb-4">
+            <input
+              type="text"
+              placeholder="Search units..."
+              value={unitSearchTerm}
+              onChange={(e) => setUnitSearchTerm(e.target.value)}
+              className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
+            />
+          </div>
           <div className="flex-1 overflow-y-auto space-y-1">
-            {templates.map(template => {
+            {templates
+              .filter(t => t.unitName.toLowerCase().includes(unitSearchTerm.toLowerCase()))
+              .map(template => {
               const isSelected = template.id === selectedId;
               return (
                 <div
@@ -1031,6 +1049,9 @@ export default function UnitEditor() {
                         raceIconUrl: race?.icon_url || '',
                         raceCanCharge: race?.can_charge || false,
                         troopHp: newHp,
+                        level: race?.base_hd || 1,
+                        movementPoints: race?.base_speed || 3,
+                        canCharge: race?.can_charge || false,
                         sizeCategory: newSize,
                         visualScale: race?.visual_scale || 100,
                       } : null);
@@ -1600,6 +1621,9 @@ export default function UnitEditor() {
                     currentUnitHp={effectiveUnitHp}
                     maxUnitHp={maxUnitHpValue}
                     mountId={formData.mountId || null}
+                    sizeCategories={sizeCategories}
+                    formations={formations}
+                    isCharging={testCharge}
                     onImageClick={openImagePicker}
                   />
                 </div>
@@ -1672,6 +1696,16 @@ export default function UnitEditor() {
                       {f}
                     </label>
                   ))}
+                  <label className="flex items-center gap-1 text-xs text-gray-300">
+                    <input
+                      type="checkbox"
+                      name="testCharge"
+                      checked={testCharge}
+                      onChange={(e) => setTestCharge(e.target.checked)}
+                      className="accent-yellow-400"
+                    />
+                    Charge
+                  </label>
                 </div>
               </div>
             </div>
@@ -1731,7 +1765,9 @@ export default function UnitEditor() {
                   <div className="col-span-4 text-center text-gray-500">No user images yet.</div>
                 )}
               </div>
-              <div className="flex items-center gap-4 mt-2">
+            </div>
+            <div className="mt-4 flex items-center justify-between">
+              <div className="flex items-center gap-4">
                 <label className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition cursor-pointer">
                   {uploading ? 'Uploading...' : 'Upload Image'}
                   <input
@@ -1749,8 +1785,6 @@ export default function UnitEditor() {
                   Remove Custom
                 </button>
               </div>
-            </div>
-            <div className="mt-4 flex justify-end">
               <button
                 onClick={() => setShowImagePicker(false)}
                 className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
@@ -1776,10 +1810,7 @@ export default function UnitEditor() {
                   <input
                     type="text"
                     value={weaponName}
-                    onChange={(e) => {
-                      setWeaponName(e.target.value);
-                      setWeaponSearchTerm(e.target.value);
-                    }}
+                    onChange={(e) => setWeaponName(e.target.value)}
                     className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
                     placeholder="e.g., Longsword"
                   />
@@ -1847,6 +1878,17 @@ export default function UnitEditor() {
                       className="w-4 h-4 accent-yellow-400"
                     />
                     Reach (e.g., pike, lance)
+                  </label>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={weaponIsTwoHanded}
+                      onChange={(e) => setWeaponIsTwoHanded(e.target.checked)}
+                      className="w-4 h-4 accent-red-400"
+                    />
+                    Two-Handed (occupies both hands — no shield, no Shield Wall)
                   </label>
                 </div>
                 <div>
