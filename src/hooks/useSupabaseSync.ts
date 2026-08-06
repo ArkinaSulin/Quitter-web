@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { Unit, Hex, UnitTemplate, SizeCategory, getOrganizationLevel } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
 import { alphaLabel } from '@/lib/unitNaming';
-import { normalizeLocalAssetUrl } from '@/lib/imageUrls';
+import { normalizeLocalAssetUrl, raceIconFromName } from '@/lib/imageUrls';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // --- Converters ---
@@ -44,7 +44,7 @@ function mapRowToUnit(row: any): Unit {
     organizationLevel: getOrganizationLevel(row.current_formation || 'Scattered'),
     formationAvailability: row.formation_availability || ['Scattered', 'Routed'],
     equipCostGp: row.equip_cost_gp || 0,
-    raceIconUrl: normalizeLocalAssetUrl(row.race_icon_url),
+    raceIconUrl: raceIconFromName(row.race_name, row.race_icon_url),
     unitTypeIconUrl: normalizeLocalAssetUrl(row.unit_type_icon_url),
     customImageUrl: normalizeLocalAssetUrl(row.custom_image_url),
     canCharge: row.can_charge || false,
@@ -375,7 +375,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       organizationLevel: getOrganizationLevel(template.isHero ? 'Hero' : defaultFormation),
       formationAvailability: template.isHero ? ['Hero'] : (template.formationAvailability || ['Scattered', 'Routed']),
       equipCostGp: template.equipCostGp || 0,
-      raceIconUrl: normalizeLocalAssetUrl(template.raceIconUrl),
+      raceIconUrl: raceIconFromName(template.raceName, template.raceIconUrl),
       unitTypeIconUrl: normalizeLocalAssetUrl(template.unitTypeIconUrl),
       customImageUrl: normalizeLocalAssetUrl(template.customImageUrl),
       canCharge: canCharge,

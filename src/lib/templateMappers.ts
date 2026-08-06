@@ -1,6 +1,6 @@
 // src/lib/templateMappers.ts
 import { UnitTemplate, getOrganizationLevel } from '@/types/gameProtocol';
-import { normalizeLocalAssetUrl } from '@/lib/imageUrls';
+import { normalizeLocalAssetUrl, raceIconFromName } from '@/lib/imageUrls';
 
 /**
  * Map a database row from unit_templates to a UnitTemplate object (camelCase).
@@ -13,7 +13,7 @@ export function mapTemplate(row: any): UnitTemplate {
     raceId: row.race_id || '',
     raceName: row.races?.name || '',
     raceBaseHd: row.races?.base_hd || null,
-    raceIconUrl: normalizeLocalAssetUrl(row.races?.icon_url),
+    raceIconUrl: raceIconFromName(row.races?.name, row.races?.icon_url),
     raceCanCharge: row.races?.can_charge || false,
     modelTypeId: row.model_type_id || '',
     modelTypeName: row.unit_types?.name || '',

@@ -10,6 +10,7 @@ import { parseWeapons, stringifyWeapons, Weapon as WeaponType } from '@/lib/weap
 import { TokenPreview } from '@/components/TokenRenderer/TokenPreview';
 import { Team } from '@/components/TokenRenderer/tokenUtils';
 import { mapTemplate, mapTemplateToRow } from '@/lib/templateMappers';
+import { raceIconFromName } from '@/lib/imageUrls';
 
 function isValidDamageDice(dice: string): boolean {
   const pattern = /^(\d+d\d+)([+-]\d+)?(\+\d+d\d+)*([+-]\d+)?$/;
@@ -641,7 +642,7 @@ export default function UnitEditor() {
       raceId: firstRace?.id || '',
       raceName: firstRace?.name || '',
       raceBaseHd: firstRace?.base_hd || 1,
-      raceIconUrl: firstRace?.icon_url || '',
+      raceIconUrl: raceIconFromName(firstRace?.name, firstRace?.icon_url),
       raceCanCharge: firstRace?.can_charge || false,
       modelTypeId: firstUnitType?.id || '',
       modelTypeName: firstUnitType?.name || '',
@@ -1041,7 +1042,7 @@ export default function UnitEditor() {
                         ...prev,
                         raceId: e.target.value,
                         raceName: race?.name || '',
-                        raceIconUrl: race?.icon_url || '',
+                        raceIconUrl: raceIconFromName(race?.name, race?.icon_url),
                         raceCanCharge: race?.can_charge || false,
                         troopHp: newHp,
                         level: race?.base_hd || 1,
@@ -1713,23 +1714,26 @@ export default function UnitEditor() {
             <h2 className="text-xl font-bold mb-4 text-white">Select Unit Image</h2>
             <div className="flex-1 overflow-y-auto">
               <div className="grid grid-cols-4 gap-2 mb-4">
-                {races.map(race => race.icon_url && (
-                  <div
-                    key={`race-${race.id}`}
-                    onClick={() => selectImage(race.icon_url!)}
-                    className="border-2 border-gray-600 rounded p-1 cursor-pointer hover:border-yellow-400 transition"
-                  >
-                    <NextImage
-                      src={race.icon_url}
-                      alt={race.name}
-                      width={64}
-                      height={64}
-                      className="object-contain w-full h-auto"
-                      unoptimized
-                    />
-                    <span className="text-xs text-gray-400 text-center block truncate">{race.name}</span>
-                  </div>
-                ))}
+                {races.map(race => {
+                  const icon = raceIconFromName(race.name, race.icon_url);
+                  return icon && (
+                    <div
+                      key={`race-${race.id}`}
+                      onClick={() => selectImage(icon)}
+                      className="border-2 border-gray-600 rounded p-1 cursor-pointer hover:border-yellow-400 transition"
+                    >
+                      <NextImage
+                        src={icon}
+                        alt={race.name}
+                        width={64}
+                        height={64}
+                        className="object-contain w-full h-auto"
+                        unoptimized
+                      />
+                      <span className="text-xs text-gray-400 text-center block truncate">{race.name}</span>
+                    </div>
+                  );
+                })}
                 {loadingImages ? (
                   <div className="col-span-4 text-center text-gray-400">Loading...</div>
                 ) : (
