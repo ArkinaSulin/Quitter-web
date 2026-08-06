@@ -1,4 +1,5 @@
-import { Unit, AllianceGroup, Hex } from '@/types/gameProtocol';
+import { Unit, AllianceGroup, Hex, Formation } from '@/types/gameProtocol';
+import { getThreatMode } from './formationRules';
 
 const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
@@ -46,7 +47,7 @@ export function calcIsolation(unit: Unit, units: Unit[], alliances: Record<strin
   );
 }
 
-export function calcEnemyThreats(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>): { frontSide: number; rear: number } {
+export function calcEnemyThreats(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>, formation: Formation | null = null): { frontSide: number; rear: number; frontSideSum: number; rearSum: number; myThreat: number } {
   const unitAlliance = alliances[unit.team] || 'friendly';
   const frontDirs = [(unit.facing + 4) % 6, (unit.facing + 5) % 6];
   const sideDirs = [unit.facing % 6, (unit.facing + 3) % 6];
@@ -68,16 +69,21 @@ export function calcEnemyThreats(unit: Unit, units: Unit[], alliances: Record<st
     if (dirIdx === -1) continue;
 
     const threat = computeThreatRating(other);
-    if (frontDirs.includes(dirIdx) || sideDirs.includes(dirIdx)) {
-      frontSideSum += threat;
-    } else if (rearDirs.includes(dirIdx)) {
+    const arc: 'front' | 'flank' | 'rear' = frontDirs.includes(dirIdx) ? 'front' : rearDirs.includes(dirIdx) ? 'rear' : 'flank';
+    const mode = formation ? getThreatMode(formation, arc) : (arc === 'rear' ? 'double' : 'normal');
+    if (mode === 'double') {
       rearSum += threat * 2;
+    } else if (mode === 'normal') {
+      frontSideSum += threat;
     }
   }
 
   return {
     frontSide: Math.round(frontSideSum / myThreat),
     rear: Math.round(rearSum / myThreat),
+    frontSideSum,
+    rearSum,
+    myThreat,
   };
 }
 

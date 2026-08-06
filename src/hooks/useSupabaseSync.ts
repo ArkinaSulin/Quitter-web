@@ -3,8 +3,9 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Unit, Hex, UnitTemplate, getOrganizationLevel, SizeCategory } from '@/types/gameProtocol';
+import { Unit, Hex, UnitTemplate, SizeCategory, getOrganizationLevel } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
+import { alphaLabel } from '@/lib/unitNaming';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // --- Converters ---
@@ -27,7 +28,6 @@ function mapRowToUnit(row: any): Unit {
     troopHp: row.troop_hp || 1,
     maxUnitHp: row.max_unit_hp || 1,
     currentUnitHp: row.current_unit_hp || 0,
-    numberOfAttacks: row.number_of_attacks || 1,
     isShielded: row.is_shielded || false,
     baselineAc: row.baseline_ac || 10,
     currentAc: row.current_ac || 10,
@@ -82,7 +82,6 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     troop_hp: unit.troopHp ||1,
     max_unit_hp: unit.maxUnitHp || 1,
     current_unit_hp: unit.currentUnitHp,
-    number_of_attacks: unit.numberOfAttacks,
     is_shielded: unit.isShielded,
     baseline_ac: unit.baselineAc,
     current_ac: unit.currentAc,
@@ -335,13 +334,17 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     const spawnWeapons = parseWeapons(template.weaponString || '');
     const shieldDroppedAtSpawn = template.isShielded && (spawnWeapons[activeWeaponIndex]?.isTwoHanded || false);
 
-    const instanceNumber = template.id ? (unitsRef.current.filter(u => u.templateId === template.id).length) + 1 : 1;
+    // Universal scenario serial: the first unit ever placed is A, then B, ...
+    // regardless of template / team / alliance, so "Human Soldier A" and
+    // "Human Guard A" can never collide. Soft-deleted units stay in state, so
+    // the count is monotonic and serials are never reused.
+    const instanceNumber = unitsRef.current.length + 1;
 
     const newUnit: Unit = {
       id: crypto.randomUUID(),
       scenarioId: scenarioId,
       templateId: template.id,
-      unitName: `${template.unitName} ${instanceNumber}`,
+      unitName: `${template.unitName} ${alphaLabel(instanceNumber)}`,
       raceId: template.raceId || '',
       raceName: template.raceName || '',
       armorName: template.armorName || '',
@@ -356,7 +359,6 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       troopHp: troopHp,
       maxUnitHp: maxUnitHpValue,
       currentUnitHp: currentUnitHpValue,
-      numberOfAttacks: template.numberOfAttacks || 1,
       isShielded: template.isShielded || false,
       baselineAc: template.baselineAc || 10,
       currentAc: shieldDroppedAtSpawn ? (template.baselineAc || 10) - 2 : (template.baselineAc || 10),

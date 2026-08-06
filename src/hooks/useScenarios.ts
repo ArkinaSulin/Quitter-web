@@ -1,6 +1,7 @@
 // src/hooks/useScenarios.ts
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { supabase, getCurrentUser } from '@/lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/hooks/useAuth';
 import { Scenario } from '@/types/gameProtocol';
 
 function mapScenario(row: any): Scenario {
@@ -16,6 +17,7 @@ function mapScenario(row: any): Scenario {
     screenshotUrl: row.screenshot_url || null,
     currentTurnAlliance: row.current_turn_alliance || null,
     turnNumber: row.turn_number || 0,
+    roomOpen: row.room_open ?? true,
   };
 }
 
@@ -23,16 +25,9 @@ export function useScenarios() {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const { user: currentUser } = useAuth();
   const presenceChannels = useRef<Map<string, any>>(new Map());
   const presenceCallbacks = useRef<Map<string, () => void>>(new Map());
-
-  useEffect(() => {
-    getCurrentUser().then(({ data, error }) => {
-      if (error) console.error('Auth error:', error);
-      else setCurrentUser(data?.user || null);
-    });
-  }, []);
 
   const fetchScenarios = useCallback(async () => {
     setLoading(true);
@@ -176,7 +171,12 @@ export function useScenarios() {
       .eq('user_id', currentUser.id)
       .maybeSingle();
     if (checkError) throw checkError;
+    // Existing participants can always re-enter, even while the room is closed.
     if (existing) return scenario;
+
+    if (!scenario.roomOpen) {
+      throw new Error('This room is closed. Ask the Game Master to open it before you can join.');
+    }
 
     const { count, error: countError } = await supabase
       .from('scenario_participants')

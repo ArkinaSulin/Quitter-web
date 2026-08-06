@@ -3,6 +3,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Hex, Unit } from '@/types/gameProtocol';
+import { isUnitInteractable } from '@/lib/unitInteractions';
 
 // ---- Hex math (pointy-top) ----
 export function hexToPixel(hex: Hex, size: number): { x: number; y: number } {
@@ -46,6 +47,10 @@ export interface UseHexGridProps {
   onUnitHover?: (unit: Unit, screenX: number, screenY: number) => void;
   onUnitLeave?: () => void;
   onAttack?: (attackerId: string, targetId: string) => void;
+  /** Permission gate for grabbing a token (drag-move/attack). Return false to silently not grab. */
+  canGrabUnit?: (unit: Unit) => boolean;
+  /** Ctrl/meta + left-click handler (attention ping). */
+  onPing?: (hex: Hex) => void;
   customDraw?: (ctx: CanvasRenderingContext2D, width: number, height: number, zoom: number, offsetX: number, offsetY: number) => void;
   autoCenter?: boolean;
   backgroundImage?: { url: string; offsetX: number; offsetY: number; scale: number } | null;
@@ -66,6 +71,8 @@ export function useHexGrid({
   onUnitHover,
   onUnitLeave,
   onAttack,
+  canGrabUnit,
+  onPing,
   customDraw,
   autoCenter = true,
   backgroundImage,
@@ -270,7 +277,7 @@ export function useHexGrid({
   }, [canvasRef, offsetX, offsetY, zoom, size]);
 
   const getUnitAt = useCallback((hex: Hex): Unit | undefined => {
-    return units.find(u => !u.isDeleted && !u.attachedToUnitId && u.currentUnitHp > 0 && u.hex.q === hex.q && u.hex.r === hex.r && u.hex.s === hex.s);
+    return units.find(u => isUnitInteractable(u) && u.hex.q === hex.q && u.hex.r === hex.r && u.hex.s === hex.s);
   }, [units]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -317,15 +324,22 @@ export function useHexGrid({
       return;
     }
 
+    // Ctrl/meta + left-click = attention ping (feature #4). Never starts a drag.
+    if (e.ctrlKey || e.metaKey) {
+      if (onPing) onPing(hex);
+      setMouseDownTarget('none');
+      return;
+    }
+
     const unit = getUnitAt(hex);
-    if (unit) {
+    if (unit && (canGrabUnit ? canGrabUnit(unit) : true)) {
       setDraggingUnitId(unit.id);
       setDragStartPos({ x: e.clientX, y: e.clientY });
       setMouseDownTarget('unit');
       return;
     }
     setMouseDownTarget('hex');
-  }, [getHexFromScreen, getUnitAt, readOnly]);
+  }, [getHexFromScreen, getUnitAt, readOnly, canGrabUnit, onPing]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (draggingUnitId && dragStartPos) {
@@ -360,6 +374,8 @@ export function useHexGrid({
   const handleRightClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     if (readOnly) return;
+    // On macOS, ctrl+click fires a contextmenu event — it's a ping here, not a menu.
+    if (e.ctrlKey || e.metaKey) return;
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (hex) {
       const unit = getUnitAt(hex);

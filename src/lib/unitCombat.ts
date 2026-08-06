@@ -1,5 +1,6 @@
-import { Unit, Hex } from '@/types/gameProtocol';
+import { Unit, Hex, Formation, hexDistance } from '@/types/gameProtocol';
 import { computeThreatRating } from './unitMorale';
+import { getRetaliationMode, getEffectivePosition, beAttackedModifier, beAttackedModifierNote, Arc } from './formationRules';
 
 const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
@@ -50,10 +51,42 @@ export function determineCombatPosition(
   return 'flank';
 }
 
-export function determineRetaliationPosition(defenderFormation: string, rawPosition: 'front' | 'flank' | 'rear'): 'front' | 'flank' | 'rear' {
-  if (defenderFormation === 'Scattered' || defenderFormation === 'Scattered' || defenderFormation === 'Hero') return 'flank';
-  if (defenderFormation === 'Routed') return 'rear';
+/**
+ * Effective combat position for a defender, applying formation rules:
+ *   - Hero:     all sides are FRONT (no behind)
+ *   - Scattered: all sides are FLANK (side)
+ *   - Routed:    all sides are REAR
+ *   - otherwise the raw geometric position is used.
+ */
+export function getEffectiveCombatPosition(
+  unit: Pick<Unit, 'isHero' | 'currentFormation' | 'isRouting'>,
+  rawPosition: 'front' | 'flank' | 'rear',
+): 'front' | 'flank' | 'rear' {
+  if (unit.isHero || unit.currentFormation === 'Hero') return 'front';
+  if (unit.isRouting || unit.currentFormation === 'Routed') return 'rear';
+  if (unit.currentFormation === 'Scattered') return 'flank';
   return rawPosition;
+}
+
+export function determineRetaliationPosition(defenderFormation: string, rawPosition: 'front' | 'flank' | 'rear'): 'front' | 'flank' | 'rear' {
+  if (defenderFormation === 'Scattered') return 'flank';
+  if (defenderFormation === 'Routed') return 'rear';
+  if (defenderFormation === 'Hero') return 'front';
+  return rawPosition;
+}
+
+/**
+ * Resolve a defender's effective position for retaliation. Prefers the data-driven
+ * formation row; falls back to the unit-based rules when the row is unavailable
+ * (e.g. callers that don't load the formations table).
+ */
+export function resolveRetaliationPosition(
+  unit: Pick<Unit, 'isHero' | 'currentFormation' | 'isRouting'>,
+  form: Formation | null | undefined,
+  rawPosition: 'front' | 'flank' | 'rear',
+): 'front' | 'flank' | 'rear' {
+  if (form) return getEffectivePosition(form, rawPosition);
+  return getEffectiveCombatPosition(unit, rawPosition);
 }
 
 export function rollD20(rng: () => number): number {
@@ -92,16 +125,20 @@ export interface CombatOutcome {
   retaliationDamage: number;
   retaliationHeroDamage: number;
   retaliationCount: number;
+  /** Human-readable explanation of count modifiers on the first strike (e.g. "-50% ranged vs Open Order"). */
+  firstStrikeCountNote?: string;
+  /** Human-readable explanation of count modifiers on the retaliation. */
+  retaliationCountNote?: string;
 }
 
-function computeAttackCount(unit: Unit, rowCapacity: number, attackCapacityMultiplier: number, visualDotsPerRow: number, isDefenderSide: boolean, ignoreMultiplier = false): number {
-  if (unit.isHero) return unit.numberOfAttacks;
+function computeAttackCount(unit: Unit, rowCapacity: number, attackCapacityMultiplier: number, visualDotsPerRow: number, isDefenderSide: boolean, weaponAttacks: number): number {
+  if (unit.isHero) return weaponAttacks;
   if (isDefenderSide) {
     const rows = Math.ceil(unit.currentTroopCount / visualDotsPerRow);
-    return rows * unit.numberOfAttacks;
+    return rows * weaponAttacks;
   }
-  const effectiveCapacity = Math.min(unit.currentTroopCount, ignoreMultiplier ? rowCapacity : rowCapacity * attackCapacityMultiplier);
-  return effectiveCapacity * unit.numberOfAttacks;
+  const effectiveCapacity = Math.min(unit.currentTroopCount, rowCapacity * attackCapacityMultiplier);
+  return effectiveCapacity * weaponAttacks;
 }
 
 function executeAttacks(
@@ -112,11 +149,15 @@ function executeAttacks(
   targetTroopHp: number,
   rng: () => number,
   isCharging: boolean,
+  disadvantage = false,
 ): { attacks: SingleAttackResult[]; totalDamage: number } {
   const attacks: SingleAttackResult[] = [];
   let totalDamage = 0;
   for (let i = 0; i < count; i++) {
-    const roll = rollD20(rng);
+    // Disadvantage (e.g. long-range shots): roll two d20, take the lower.
+    // A crit needs the taken roll to be a 20 (both rolls 20); a natural 1 on the
+    // taken roll is an automatic miss.
+    const roll = disadvantage ? Math.min(rollD20(rng), rollD20(rng)) : rollD20(rng);
     const isCrit = roll === 20;
     const attackValue = roll + attackBonus;
     const isHit = roll === 1 ? false : isCrit ? true : attackValue >= targetAc;
@@ -143,12 +184,13 @@ function executeSplitAttacks(
   heroTroopHp: number,
   rng: () => number,
   isCharging: boolean,
+  disadvantage = false,
 ): { attacks: SingleAttackResult[]; unitDamage: number; heroDamage: number } {
   const heroCount = Math.ceil(totalCount * 0.25);
   const unitCount = totalCount - heroCount;
 
-  const unitResult = executeAttacks(unitCount, attackBonus, damageDice, unitAc, unitTroopHp, rng, isCharging);
-  const heroResult = executeAttacks(heroCount, attackBonus, damageDice, heroAc, heroTroopHp, rng, isCharging);
+  const unitResult = executeAttacks(unitCount, attackBonus, damageDice, unitAc, unitTroopHp, rng, isCharging, disadvantage);
+  const heroResult = executeAttacks(heroCount, attackBonus, damageDice, heroAc, heroTroopHp, rng, isCharging, disadvantage);
 
   return {
     attacks: [...unitResult.attacks, ...heroResult.attacks],
@@ -160,8 +202,8 @@ function executeSplitAttacks(
 export function resolveCombatSequence(
   attacker: Unit,
   defender: Unit,
-  attackerWeapon: { attackBonus: number; damageDice: string; is_reach: boolean; noRetaliation?: boolean; freeAction?: boolean; ignoreAttackMultiplier?: boolean },
-  defenderWeapon: { attackBonus: number; damageDice: string; is_reach: boolean } | null,
+  attackerWeapon: { attackBonus: number; damageDice: string; is_reach: boolean; noRetaliation?: boolean; freeAction?: boolean; numberOfAttacks?: number; range?: number; maxRange?: number },
+  defenderWeapon: { attackBonus: number; damageDice: string; is_reach: boolean; numberOfAttacks?: number } | null,
   formationAttackModifier: number,
   attackCapacityMultiplier: number,
   defenderAttackCapacityMultiplier: number,
@@ -174,6 +216,8 @@ export function resolveCombatSequence(
   attachedAttackerHero: { currentAc: number; troopHp: number } | null,
   rng: () => number,
   isCharging = false,
+  attackerForm: Formation | null = null,
+  defenderForm: Formation | null = null,
 ): CombatOutcome {
   // AGR check: skip if hero, ranged, target routed, rear attack, or a free/no-retaliation weapon
   let aggrPassed = true;
@@ -200,6 +244,19 @@ export function resolveCombatSequence(
     };
   }
 
+  // Long-range disadvantage: attacks beyond the weapon's normal range are made at
+  // disadvantage (roll two d20, take the lower). maxRange is always >= range;
+  // distances beyond maxRange are out of range (blocked by the caller).
+  const attackDist = hexDistance(attacker.hex, defender.hex);
+  const attackRange = attackerWeapon.range ?? 1;
+  const attackMaxRange = attackerWeapon.maxRange ?? attackRange;
+  const disadvantage = attackDist > attackRange && attackDist <= attackMaxRange;
+
+  // Routed units drop their shield (no formation to protect them) — effectively
+  // -2 AC. Applies to both sides' AC when routing.
+  const defenderEffAc = defender.isRouting && defender.isShielded ? defender.currentAc - 2 : defender.currentAc;
+  const attackerEffAc = attacker.isRouting && attacker.isShielded ? attacker.currentAc - 2 : attacker.currentAc;
+
   // Who strikes first? A defender attacked from the rear, a routed defender, noRetaliation
   // weapons, and ranged attacks all let the attacker strike first (the defender can't react).
   let strikerFirst: 'attacker' | 'defender';
@@ -221,40 +278,49 @@ export function resolveCombatSequence(
   let firstStrikeDamage = 0;
   let firstStrikeHeroDamage = 0;
   let firstStrikeCount = 0;
+  let firstStrikeCountNote: string | undefined;
   let retaliationAttacks: SingleAttackResult[] = [];
   let retaliationDamage = 0;
   let retaliationHeroDamage = 0;
   let retaliationCount = 0;
+  let retaliationCountNote: string | undefined;
 
   // --- First strike ---
   if (strikerFirst === 'attacker') {
-    const attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false, attackerWeapon.ignoreAttackMultiplier ?? false);
+    let attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false, attackerWeapon.numberOfAttacks ?? 1);
+    const atkCountMod = beAttackedModifier(defenderForm, isRanged);
+    attackerCount = Math.round(attackerCount * atkCountMod);
+    firstStrikeCountNote = beAttackedModifierNote(defenderForm, isRanged);
     const effBonus = attackerWeapon.attackBonus + formationAttackModifier;
 
     if (attachedDefenderHero) {
-      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defender.currentAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging);
+      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, disadvantage);
       firstStrikeAttacks = split.attacks;
       firstStrikeDamage = split.unitDamage;
       firstStrikeHeroDamage = split.heroDamage;
     } else {
-      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defender.currentAc, defender.troopHp, rng, isCharging);
+      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, disadvantage);
       firstStrikeAttacks = result.attacks;
       firstStrikeDamage = result.totalDamage;
     }
     firstStrikeCount = attackerCount;
   } else {
     const rawPosition = determineCombatPosition(attacker.hex, defender.hex, defender.facing);
-    const retPos = determineRetaliationPosition(defender.currentFormation, rawPosition);
-    const defenderCount = computeAttackCount(defender, defenderRowCapacity, defenderAttackCapacityMultiplier, defenderVisualDotsPerRow, retPos === 'flank');
+    const retPos = resolveRetaliationPosition(defender, defenderForm, rawPosition);
+        let defenderCount = computeAttackCount(defender, defenderRowCapacity, defenderAttackCapacityMultiplier, defenderVisualDotsPerRow, retPos === 'flank', defenderWeapon?.numberOfAttacks ?? 1);
+    // Attacker's formation vulnerability boosts the defender's counterattacks against it.
+    const defCountMod = beAttackedModifier(attackerForm, false);
+    defenderCount = Math.round(defenderCount * defCountMod);
+    firstStrikeCountNote = beAttackedModifierNote(attackerForm, false);
     const defEffBonus = (defenderWeapon?.attackBonus ?? 0) + formationAttackModifier;
 
     if (attachedAttackerHero) {
-      const split = executeSplitAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attacker.currentAc, attacker.troopHp, attachedAttackerHero.currentAc, attachedAttackerHero.troopHp, rng, false);
+      const split = executeSplitAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, attachedAttackerHero.currentAc, attachedAttackerHero.troopHp, rng, false);
       firstStrikeAttacks = split.attacks;
       firstStrikeDamage = split.unitDamage;
       firstStrikeHeroDamage = split.heroDamage;
     } else {
-      const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attacker.currentAc, attacker.troopHp, rng, false);
+      const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, rng, false);
       firstStrikeAttacks = result.attacks;
       firstStrikeDamage = result.totalDamage;
     }
@@ -263,20 +329,24 @@ export function resolveCombatSequence(
 
   // --- Retaliation ---
   if (strikerFirst === 'attacker') {
-    if (!defender.isRouting && !attackerWeapon.noRetaliation && !isRanged && !isRearAttack) {
+    if (!defender.isRouting && !attackerWeapon.noRetaliation && !(isRanged && !defenderForm?.retaliate_vs_ranged) && !isRearAttack) {
       const rawPosition = determineCombatPosition(attacker.hex, defender.hex, defender.facing);
-      const retPos = determineRetaliationPosition(defender.currentFormation, rawPosition);
+      const retPos = resolveRetaliationPosition(defender, defenderForm, rawPosition);
       if (retPos !== 'rear') {
-        const defenderCount = computeAttackCount(defender, defenderRowCapacity, defenderAttackCapacityMultiplier, defenderVisualDotsPerRow, retPos === 'flank');
+    let defenderCount = computeAttackCount(defender, defenderRowCapacity, defenderAttackCapacityMultiplier, defenderVisualDotsPerRow, retPos === 'flank', defenderWeapon?.numberOfAttacks ?? 1);
+        // Attacker's formation vulnerability boosts the defender's retaliation.
+        const retMod = beAttackedModifier(attackerForm, false);
+        defenderCount = Math.round(defenderCount * retMod);
+        retaliationCountNote = beAttackedModifierNote(attackerForm, false);
         const defEffBonus = (defenderWeapon?.attackBonus ?? 0) + formationAttackModifier;
 
         if (attachedAttackerHero) {
-          const split = executeSplitAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attacker.currentAc, attacker.troopHp, attachedAttackerHero.currentAc, attachedAttackerHero.troopHp, rng, false);
+          const split = executeSplitAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, attachedAttackerHero.currentAc, attachedAttackerHero.troopHp, rng, false);
           retaliationAttacks = split.attacks;
           retaliationDamage = split.unitDamage;
           retaliationHeroDamage = split.heroDamage;
         } else {
-          const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attacker.currentAc, attacker.troopHp, rng, false);
+          const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, rng, false);
           retaliationAttacks = result.attacks;
           retaliationDamage = result.totalDamage;
         }
@@ -285,16 +355,20 @@ export function resolveCombatSequence(
     }
   } else {
     if (!attacker.isRouting) {
-    const attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false);
+    let attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false, attackerWeapon.numberOfAttacks ?? 1);
+    // Defender's formation vulnerability boosts the attacker's retaliation.
+    const retMod = beAttackedModifier(defenderForm, isRanged);
+    attackerCount = Math.round(attackerCount * retMod);
+    retaliationCountNote = beAttackedModifierNote(defenderForm, isRanged);
       const effBonus = attackerWeapon.attackBonus + formationAttackModifier;
 
     if (attachedDefenderHero) {
-      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defender.currentAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging);
+      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, disadvantage);
       retaliationAttacks = split.attacks;
       retaliationDamage = split.unitDamage;
       retaliationHeroDamage = split.heroDamage;
     } else {
-      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defender.currentAc, defender.troopHp, rng, isCharging);
+      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, disadvantage);
       retaliationAttacks = result.attacks;
       retaliationDamage = result.totalDamage;
     }
@@ -310,10 +384,12 @@ export function resolveCombatSequence(
     firstStrikeDamage,
     firstStrikeHeroDamage,
     firstStrikeCount,
+    firstStrikeCountNote,
     retaliationAttacks,
     retaliationDamage,
     retaliationHeroDamage,
     retaliationCount,
+    retaliationCountNote,
   };
 }
 

@@ -174,7 +174,7 @@ export function useGameEngine({
       if (error) console.error('[CommandLog] Soft-delete failed:', error);
     }
 
-    addMessage(`Undid: ${chain[0].description}${chain.length > 1 ? ` (+${chain.length - 1} more)` : ''}`);
+    addMessage(chain.length > 1 ? `Undid: ${chain[0].description} — ${chain.length} items` : `Undid: ${chain[0].description}`);
     return chain;
   }, [playerId, isGM, updateUnit, updateAlliance, updateScenarioField, scenarioId, addMessage]);
 
@@ -216,7 +216,7 @@ export function useGameEngine({
       if (error) console.error('[CommandLog] Undelete failed:', error);
     }
 
-    addMessage(`Redid: ${chain[0].description}${chain.length > 1 ? ` (+${chain.length - 1} more)` : ''}`);
+    addMessage(chain.length > 1 ? `Redid: ${chain[0].description} — ${chain.length} items` : `Redid: ${chain[0].description}`);
     return chain;
   }, [playerId, isGM, updateUnit, updateAlliance, updateScenarioField, scenarioId, addMessage]);
 

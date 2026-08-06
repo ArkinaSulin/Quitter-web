@@ -97,7 +97,7 @@ export default function UnitEditor() {
 
   const [races, setRaces] = useState<Race[]>([]);
   const [weaponsLookup, setWeaponsLookup] = useState<
-    { id: string; name: string; damage_dice: string; notes: string | null; cost_gp: number; attack_bonus?: number; magic_radius?: number; range?: number; target_type?: string; reach?: boolean; is_two_handed?: boolean }[]
+    { id: string; name: string; damage_dice: string; notes: string | null; cost_gp: number; attack_bonus?: number; magic_radius?: number; range?: number; max_range?: number; reach?: boolean; is_two_handed?: boolean; number_of_attacks?: number }[]
   >([]);
   const [armors, setArmors] = useState<Armor[]>([]);
   const [formations, setFormations] = useState<Formation[]>([]);
@@ -128,15 +128,15 @@ export default function UnitEditor() {
   const [editingWeaponIndex, setEditingWeaponIndex] = useState<number | null>(null);
   const [weaponName, setWeaponName] = useState('');
   const [weaponAttackBonus, setWeaponAttackBonus] = useState<number>(0);
-  const [weaponTargetType, setWeaponTargetType] = useState<'single' | 'area'>('single');
   const [weaponDamageDice, setWeaponDamageDice] = useState('1d6');
   const [weaponRange, setWeaponRange] = useState(1);
+  const [weaponMaxRange, setWeaponMaxRange] = useState<number>(0);
   const [weaponMagicRadius, setWeaponMagicRadius] = useState<number>(0);
   const [weaponReach, setWeaponReach] = useState<boolean>(false);
   const [weaponFreeAction, setWeaponFreeAction] = useState<boolean>(false);
   const [weaponNoRetaliation, setWeaponNoRetaliation] = useState<boolean>(false);
-  const [weaponIgnoreAttackMultiplier, setWeaponIgnoreAttackMultiplier] = useState<boolean>(false);
   const [weaponIsTwoHanded, setWeaponIsTwoHanded] = useState<boolean>(false);
+  const [weaponNumberOfAttacks, setWeaponNumberOfAttacks] = useState<number>(1);
 
   const [weaponError, setWeaponError] = useState('');
   const [weaponSearchTerm, setWeaponSearchTerm] = useState('');
@@ -506,16 +506,16 @@ export default function UnitEditor() {
     setEditingWeaponIndex(null);
     setWeaponName('');
     setWeaponSearchTerm('');
-    setWeaponTargetType('single');
     setWeaponDamageDice('1d6');
     setWeaponRange(1);
+    setWeaponMaxRange(0);
     setWeaponAttackBonus(0);
     setWeaponMagicRadius(0);
     setWeaponReach(false);
     setWeaponFreeAction(false);
     setWeaponNoRetaliation(false);
-    setWeaponIgnoreAttackMultiplier(false);
     setWeaponIsTwoHanded(false);
+    setWeaponNumberOfAttacks(1);
     setWeaponError('');
     setShowWeaponModal(true);
   };
@@ -526,17 +526,16 @@ export default function UnitEditor() {
     if (!w) return;
     setEditingWeaponIndex(index);
     setWeaponName(w.name);
-    setWeaponSearchTerm(w.name);
-    setWeaponTargetType(w.targetType);
     setWeaponDamageDice(w.damageDice);
     setWeaponRange(w.range);
+    setWeaponMaxRange(w.maxRange ?? 0);
     setWeaponAttackBonus(w.attackBonus);
     setWeaponMagicRadius(w.magicRadius);
     setWeaponReach(w.reach || false);
     setWeaponFreeAction(w.freeAction || false);
     setWeaponNoRetaliation(w.noRetaliation || false);
-    setWeaponIgnoreAttackMultiplier(w.ignoreAttackMultiplier || false);
     setWeaponIsTwoHanded(w.isTwoHanded || false);
+    setWeaponNumberOfAttacks(w.numberOfAttacks || 1);
     setWeaponError('');
     setShowWeaponModal(true);
   };
@@ -545,6 +544,7 @@ export default function UnitEditor() {
     const next = Math.max(1, value);
     setWeaponRange(next);
     setWeaponNoRetaliation(next > 1);
+    setWeaponMaxRange(prev => Math.max(prev, next));
   };
 
   const selectWeaponFromLookup = (weapon: {
@@ -555,20 +555,22 @@ export default function UnitEditor() {
     attack_bonus?: number;
     magic_radius?: number;
     range?: number;
-    target_type?: string;
+    max_range?: number;
     is_reach?: boolean;
     is_two_handed?: boolean;
+    number_of_attacks?: number;
   }) => {
     setWeaponName(weapon.name);
     setWeaponDamageDice(weapon.damage_dice);
     setWeaponAttackBonus(weapon.attack_bonus || 0);
     const nextRange = weapon.range || 1;
     setWeaponRange(nextRange);
+    setWeaponMaxRange(weapon.max_range ?? 0);
     setWeaponNoRetaliation(nextRange > 1);
-    setWeaponTargetType((weapon.target_type === 'area' ? 'area' : 'single') as 'single' | 'area');
     setWeaponMagicRadius(weapon.magic_radius || 0);
     setWeaponReach(weapon.is_reach || false);
     setWeaponIsTwoHanded(weapon.is_two_handed || false);
+    setWeaponNumberOfAttacks(weapon.number_of_attacks || 1);
   };
   const getWeaponSuggestions = () => {
     if (!weaponSearchTerm.trim()) return [];
@@ -592,23 +594,19 @@ export default function UnitEditor() {
       setWeaponError('Range must be at least 1 (adjacent)');
       return;
     }
-    if (weaponTargetType === 'area' && weaponMagicRadius < 0) {
-      setWeaponError('Magic Radius must be 0 or positive');
-      return;
-    }
 
     const newWeapon: WeaponType = {
       name: weaponName.trim(),
       attackBonus: weaponAttackBonus || 0,
-      targetType: weaponTargetType,
       damageDice: weaponDamageDice.trim(),
       range: weaponRange,
-      magicRadius: weaponTargetType === 'area' ? weaponMagicRadius : 0,
+      maxRange: Math.max(weaponMaxRange || weaponRange, weaponRange),
+      magicRadius: weaponMagicRadius,
       reach: weaponReach,
       freeAction: weaponFreeAction,
       noRetaliation: weaponNoRetaliation,
-      ignoreAttackMultiplier: weaponIgnoreAttackMultiplier,
       isTwoHanded: weaponIsTwoHanded,
+      numberOfAttacks: Math.max(1, weaponNumberOfAttacks || 1),
     };
 
     const currentWeapons = getWeapons();
@@ -654,7 +652,6 @@ export default function UnitEditor() {
       level: 1,
       troopHp: firstRace?.base_hd || 10,
       maxUnitHp: (firstRace?.base_hd || 10) * getMaxTroopForSize(firstRace?.size_category || 100, false),
-      numberOfAttacks: 1,
       armorId: '',
       armorName: '',
       isShielded: false,
@@ -798,8 +795,6 @@ export default function UnitEditor() {
         baselineAc: ac,
         movementPoints: finalMovement,
         equipCostGp: cost || 0,
-        // numberOfAttacks: getAttackFromLevel(formData.level || 1), // remove that line
-        numberOfAttacks: formData.numberOfAttacks,
         weeklyCostGp: 4 * (formData.level * formData.level),
         updatedAt: new Date().toISOString(),
       };
@@ -904,7 +899,7 @@ export default function UnitEditor() {
   const baseMoraleVal = formData?.baseMorale || 3;
   const effectiveMorale = formData ? Math.max(-baseMoraleVal, Math.min(10 - baseMoraleVal, testMoraleModifier)) : 0;
   const maxUnitHpValue = (formData?.troopHp || 10) * (formData?.troopCount || 1);
-  const effectiveUnitHp = formData && formData.isHero ? Math.round(maxUnitHpValue * (1 - testCasualtyPercent / 100)) : 0;
+  const effectiveUnitHp = formData ? Math.round(maxUnitHpValue * (1 - testCasualtyPercent / 100)) : 0;
 
   const getSizeLabel = (size: number) => SIZE_LABELS[size] || 'Medium';
   const isGargantuan = formData?.sizeCategory === 400;
@@ -1141,17 +1136,6 @@ export default function UnitEditor() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Number of Attacks</label>
-                  <input
-                    type="number"
-                    value={formData.numberOfAttacks || 1}
-                    onChange={(e) => updateFormData('numberOfAttacks', parseInt(e.target.value) || 1)}
-                    min={1}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  />
-                </div>
-
-                <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1">Movement Points</label>
                   <input
                     type="number"
@@ -1301,30 +1285,21 @@ export default function UnitEditor() {
                   </datalist>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Visual Scale (read-only)</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Visual Scale (%)</label>
                   <input
-                    type="text"
-                    value={`${formData.visualScale || 100}%`}
-                    disabled
-                    className="w-full bg-gray-700 text-yellow-400 px-3 py-2 rounded border border-gray-600 cursor-not-allowed"
+                    type="number"
+                    value={formData.visualScale || 100}
+                    onChange={(e) => updateFormData('visualScale', Math.max(50, Math.min(149, parseInt(e.target.value) || 100)))}
+                    min={50}
+                    max={149}
+                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Set by race; minor visual adjustment.</p>
+                  <p className="text-xs text-gray-500 mt-1">Minor visual adjustment (50-149%).</p>
                 </div>
               </div>
 
-              {/* Aggressiveness & Morale */}
+              {/* Base Morale & Aggressiveness */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Aggressiveness (1-10)</label>
-                  <input
-                    type="number"
-                    value={formData.aggressiveness || 3}
-                    onChange={(e) => updateFormData('aggressiveness', Math.max(1, Math.min(10, parseInt(e.target.value) || 3)))}
-                    min={1}
-                    max={10}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  />
-                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1">Base Morale (1-10)</label>
                   <input
@@ -1335,6 +1310,21 @@ export default function UnitEditor() {
                     max={10}
                     className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Aggressiveness (1-10)</label>
+                  <input
+                    type="number"
+                    value={formData.aggressiveness || 3}
+                    onChange={(e) => updateFormData('aggressiveness', Math.max(1, Math.min(10, parseInt(e.target.value) || 3)))}
+                    min={1}
+                    max={10}
+                    disabled={formData.isHero}
+                    className={`w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400 ${formData.isHero ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  />
+                  {formData.isHero && (
+                    <p className="text-xs text-yellow-400/80 mt-1">Heroes ignore aggressiveness (no AGR check).</p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 self-end pb-2">
                   <input
@@ -1377,7 +1367,6 @@ export default function UnitEditor() {
                         >
                           <div className="flex items-center gap-4 flex-wrap">
                             <span className="font-medium">{w.name}</span>
-                            <span className="text-xs text-gray-400">{w.targetType}</span>
                             <span className="text-xs text-yellow-400">{w.damageDice}</span>
                             <span className="text-xs text-gray-400">{rangeDisplay}</span>
                             <span className="text-xs text-yellow-400">{attackDisplay}</span>
@@ -1816,15 +1805,14 @@ export default function UnitEditor() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-300 mb-1">Target Type</label>
-                  <select
-                    value={weaponTargetType}
-                    onChange={(e) => setWeaponTargetType(e.target.value as 'single' | 'area')}
+                  <label className="block text-sm text-gray-300 mb-1">Number of Attacks / round</label>
+                  <input
+                    type="number"
+                    value={weaponNumberOfAttacks}
+                    onChange={(e) => setWeaponNumberOfAttacks(Math.max(1, parseInt(e.target.value) || 1))}
+                    min={1}
                     className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  >
-                    <option value="single">Single Target</option>
-                    <option value="area">Area Effect</option>
-                  </select>
+                  />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-300 mb-1">Attack Bonus</label>
@@ -1858,6 +1846,17 @@ export default function UnitEditor() {
                   <p className="text-xs text-gray-400 mt-1">{weaponRange === 1 ? 'Adjacent (melee)' : `${weaponRange} hexes (ranged)`}</p>
                 </div>
                 <div>
+                  <label className="block text-sm text-gray-300 mb-1">Max Range (hexes)</label>
+                  <input
+                    type="number"
+                    value={weaponMaxRange}
+                    onChange={(e) => setWeaponMaxRange(Math.max(weaponRange, parseInt(e.target.value) || weaponRange))}
+                    min={weaponRange}
+                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Must be ≥ range; 0 = same as range. Attacks between range and max range are at disadvantage.</p>
+                </div>
+                <div>
                   <label className="block text-sm text-gray-300 mb-1">Magic Radius (ft)</label>
                   <input
                     type="number"
@@ -1867,7 +1866,7 @@ export default function UnitEditor() {
                     className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
                     placeholder="0 for single target"
                   />
-                  <p className="text-xs text-gray-400 mt-1">Only used for area spells.</p>
+                  <p className="text-xs text-gray-400 mt-1">{'> 0'} makes this an area-effect weapon (opens the spell-cast window).</p>
                 </div>
                 <div>
                   <label className="flex items-center gap-2 text-sm text-gray-300">
@@ -1911,17 +1910,6 @@ export default function UnitEditor() {
                       className="w-4 h-4 accent-blue-400"
                     />
                     No Retaliation (defender can't strike back)
-                  </label>
-                </div>
-                <div>
-                  <label className="flex items-center gap-2 text-sm text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={weaponIgnoreAttackMultiplier}
-                      onChange={(e) => setWeaponIgnoreAttackMultiplier(e.target.checked)}
-                      className="w-4 h-4 accent-teal-400"
-                    />
-                    Ignore Attack Multiplier (unscaled attack count)
                   </label>
                 </div>
                 {weaponError && <p className="text-red-400 text-sm">{weaponError}</p>}

@@ -6,6 +6,8 @@ import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
 import { resolveCombatSequence, computeRowCapacity, determineCombatPosition, isInFrontArc, suppressRetaliation } from '@/lib/unitCombat';
+import { canMeleeTarget, canRangedTarget, getEffectivePosition, canStopEnemyMovement } from '@/lib/formationRules';
+import { getFormations } from '@/lib/formationCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios } from '@/hooks/useScenarios';
 import { computeReachableMap, computeMoveBudget, computeMovePool, isMoveAffordable, applyMpSpend, computeChargeReachable } from '@/lib/moveCost';
@@ -14,10 +16,17 @@ import { useTeamAlliances } from '@/hooks/useTeamAlliances';
 import { useMessageSync } from '@/hooks/useMessageSync';
 import { useProfile } from '@/hooks/useProfile';
 import { useReplay } from '@/hooks/useReplay';
+import { useParticipants } from '@/hooks/useParticipants';
+import { useScenarioCapabilities } from '@/hooks/useScenarioCapabilities';
+import { usePing } from '@/hooks/usePing';
+import { canMoveUnit, canAdjustUnit, allTrueCapabilities } from '@/lib/scenarioPermissions';
+import { isUnitInteractable } from '@/lib/unitInteractions';
 import { LeftPanel } from './LeftPanel';
 import { ContextMenu } from './ContextMenu';
 import { UnitTooltip } from './UnitTooltip';
 import { ReplayOverlay } from './ReplayOverlay';
+import { UnitEditorModal } from './UnitEditorModal';
+import { PingLayer } from './PingLayer';
 import { drawToken, loadImage, SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier, computeThreatRating, areHexesAdjacent } from '@/lib/unitMorale';
 import { supabase } from '@/lib/supabaseClient';
@@ -71,15 +80,30 @@ const HEX_DIRS = [
   { q: 1, r: -1, s: 0 },
 ];
 
+/** All hexes exactly at `radius` hexes from `center` (a hexagonal ring). */
+function hexRing(center: Hex, radius: number): Hex[] {
+  const results: Hex[] = [];
+  if (radius <= 0) return results;
+  const add = (a: Hex, b: { q: number; r: number; s: number }): Hex => ({ q: a.q + b.q, r: a.r + b.r, s: a.s + b.s });
+  let hex = add(center, { q: HEX_DIRS[4].q * radius, r: HEX_DIRS[4].r * radius, s: HEX_DIRS[4].s * radius });
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j < radius; j++) {
+      results.push(hex);
+      hex = add(hex, HEX_DIRS[i]);
+    }
+  }
+  return results;
+}
+
 function computeOccupiedHexes(allUnits: Unit[], excludeUnitId?: string): Set<string> {
   return new Set(
     allUnits
-      .filter(u => !u.isDeleted && !u.attachedToUnitId && u.currentUnitHp > 0 && u.id !== excludeUnitId)
+      .filter(u => isUnitInteractable(u) && u.id !== excludeUnitId)
       .map(u => `${u.hex.q},${u.hex.r}`),
   );
 }
 
-function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alliances: Record<string, AllianceGroup>): Set<string> {
+function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alliances: Record<string, AllianceGroup>, formationsMap: Record<string, Formation>): Set<string> {
   const draggedUnit = allUnits.find(u => u.id === draggedUnitId);
   const draggedGroup = alliances[draggedUnit?.team ?? ''] || 'friendly';
   const occupied = computeOccupiedHexes(allUnits);
@@ -94,7 +118,8 @@ function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alliances: 
       const key = `${nq},${nr}`;
       if (occupied.has(key)) continue;
       const pos = determineCombatPosition({ q: nq, r: nr, s: -nq - nr }, unit.hex, unit.facing);
-      if (pos === 'front') threats.add(key);
+      // Only formations with a zone of control in this arc stop enemy movement.
+      if (canStopEnemyMovement(formationsMap[unit.currentFormation], pos)) threats.add(key);
     }
   }
   return threats;
@@ -120,6 +145,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const unitMaxMP = (unit: Unit) =>
     computeEffectiveMovement(unit, getFormationMultiplier(formationsMap, unit.currentFormation, 'movement_multiplier'));
   const [overlayMap, setOverlayMap] = useState<Record<string, string>>({});
+
+  // Red flash on the target hex when an attack drop is out of range.
+  const [rangeViolationHex, setRangeViolationHex] = useState<Hex | null>(null);
+  const flashRangeViolation = useCallback((hex: Hex) => {
+    setRangeViolationHex(hex);
+    window.setTimeout(() => {
+      setRangeViolationHex(prev => (prev && prev.q === hex.q && prev.r === hex.r && prev.s === hex.s ? null : prev));
+    }, 1200);
+  }, []);
 
   // Drag from panel
   const [isDraggingFromPanel, setIsDraggingFromPanel] = useState(false);
@@ -180,6 +214,36 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const controlsLocked = inReplay || dmGone;
 
   const { alliances, setAlliance } = useTeamAlliances(scenarioId, isGM);
+
+  // Player management + role capabilities (feature: teams, roles, room, kick).
+  const participantsSync = useParticipants(scenarioId, currentUser?.id);
+  const { getRoleCapabilities } = useScenarioCapabilities();
+  const myRole = participantsSync.myParticipant?.role ?? null;
+  const myTeam = participantsSync.myParticipant?.team ?? null;
+  const roleLabel =
+    myRole === 'GM' ? 'DM'
+    : myRole === 'AssistGM' ? 'Assist GM'
+    : myRole === 'SuperPlayer' ? 'Super Player'
+    : 'Player';
+
+  // Permission gates read from a ref so their identity stays stable across renders
+  // (caps/team/alliances update live when the GM reassigns a player).
+  const permRef = useRef({ caps: allTrueCapabilities(), team: myTeam, alliances });
+  permRef.current = { caps: getRoleCapabilities(myRole), team: myTeam, alliances };
+  const canControlUnit = useCallback((unit: Unit): boolean => {
+    const { caps, team, alliances: al } = permRef.current;
+    return canMoveUnit(caps, team, unit.team, al);
+  }, []);
+  const canEditUnit = useCallback((unit: Unit): boolean => {
+    const { caps, team, alliances: al } = permRef.current;
+    return canAdjustUnit(caps, team, unit.team, al);
+  }, []);
+
+  // Attention ping (feature #4).
+  const { pings, pingAtHex } = usePing(scenarioId);
+
+  // Double-click unit editor.
+  const [editUnit, setEditUnit] = useState<Unit | null>(null);
 
   // Display state: live units/alliances in play mode, replay cursor state in replay mode.
   const displayUnits = inReplay ? replay.replayUnits : units;
@@ -342,7 +406,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const movementMult = getFormationMultiplier(formationsMap, unit.currentFormation, 'movement_multiplier');
     const effectiveMax = computeEffectiveMovement(unit, movementMult);
     const occupied = computeOccupiedHexes(units, unitId);
-    const threatHexes = computeThreatHexes(units, unitId, alliances);
+    const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
     const reachableMap = computeReachableMap(unit, computeMoveBudget(unit, effectiveMax), occupied, threatHexes);
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
@@ -541,8 +605,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const weapon = parseWeapons(attacker.weaponString || '')[attacker.activeWeaponIndex ?? 0];
     if (!weapon) return;
     const defWeapon = parseWeapons(target.weaponString || '')[target.activeWeaponIndex ?? 0] || null;
-    const isRanged = weapon.range > 1;
-    const isRear = determineCombatPosition(attacker.hex, target.hex, target.facing) === 'rear';
+    // A ranged-capable weapon (range > 1) is always a ranged attack; a melee-range
+    // weapon (range 1) switches to a ranged throw when the target is beyond its
+    // melee reach (up to maxRange).
+    const isRanged = weapon.range > 1 || hexDistance(attacker.hex, target.hex) > weapon.range;
+    // Effective rear attack: hero has no behind (all sides front), scattered is all
+    // side, routed is all rear. So a "caught from behind" only applies when the
+    // effective position is rear.
+    const rawPos = determineCombatPosition(attacker.hex, target.hex, target.facing);
+    const effectivePos = getEffectivePosition(formationsMap[target.currentFormation], rawPos);
+    const isRear = effectivePos === 'rear';
     const attachedDefenderHero = (() => {
       const hero = units.find(u => u.attachedToUnitId === target.id && !u.isDeleted);
       if (!hero) return null;
@@ -557,8 +629,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const outcome = resolveCombatSequence(
       attacker,
       target,
-      { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, ignoreAttackMultiplier: weapon.ignoreAttackMultiplier },
-      defWeapon ? { attackBonus: defWeapon.attackBonus, damageDice: defWeapon.damageDice, is_reach: defWeapon.reach } : null,
+      { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, numberOfAttacks: weapon.numberOfAttacks, range: weapon.range, maxRange: weapon.maxRange },
+      defWeapon ? { attackBonus: defWeapon.attackBonus, damageDice: defWeapon.damageDice, is_reach: defWeapon.reach, numberOfAttacks: defWeapon.numberOfAttacks } : null,
       formationAtkMod,
       attackCapMult,
       defAttackCapMult,
@@ -571,6 +643,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       attachedAttackerHero,
       Math.random,
       isChargingAttack,
+      formationsMap[attacker.currentFormation],
+      formationsMap[target.currentFormation],
     );
 
     const subSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
@@ -588,8 +662,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
     if (!outcome.aggrPassed) {
       const threatPenalty = Math.max(0, Math.round(computeThreatRating(target) / computeThreatRating(attacker)) - 1);
-      addMessage(`${attacker.unitName} AGR check (AGR ${attacker.aggressiveness}${threatPenalty > 0 ? ` - ${threatPenalty} threat` : ''} → need ≤${attacker.aggressiveness - threatPenalty}, rolled ${outcome.aggrRoll}) — failed, no attack`);
-      await execute('ATTACK', subSteps, `${attacker.unitName} attempted to attack ${target.unitName} but failed AGR — action spent`);
+      const aggrFailDesc = `${attacker.unitName} AGR check (AGR ${attacker.aggressiveness}${threatPenalty > 0 ? ` - ${threatPenalty} threat` : ''} → need ≤${attacker.aggressiveness - threatPenalty}, rolled ${outcome.aggrRoll}) — failed, no attack`;
+      await execute('ATTACK', subSteps, aggrFailDesc);
       return;
     }
 
@@ -672,8 +746,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (weapon.freeAction) weaponTags.push('FREE');
     if (weapon.noRetaliation) weaponTags.push('NO RETALIATION');
     if (isChargingAttack) weaponTags.push('CHARGE');
+    if (hexDistance(attacker.hex, target.hex) > weapon.range) weaponTags.push('LONG RANGE - DISADVANTAGE');
     let desc = `${attacker.unitName} attacks ${target.unitName} with ${weapon.name}${weaponTags.length > 0 ? ` (${weaponTags.join(', ')})` : ''}`;
-    desc += ` — ${firstStriker.unitName} strikes first — ${outcome.firstStrikeAttacks.length} attacks, ${firstStrikerHits} hits${firstStrikeCrits > 0 ? `, ${firstStrikeCrits} critical` : ''}, ${outcome.firstStrikeDamage} damage (${outcome.strikerFirst === 'attacker' ? defenderTroopsKilled : attackerTroopsKilled} troops)`;
+    desc += ` — ${firstStriker.unitName} strikes first — ${outcome.firstStrikeAttacks.length} attacks${outcome.firstStrikeCountNote ? ` [${outcome.firstStrikeCountNote}]` : ''}, ${firstStrikerHits} hits${firstStrikeCrits > 0 ? `, ${firstStrikeCrits} critical` : ''}, ${outcome.firstStrikeDamage} damage (${outcome.strikerFirst === 'attacker' ? defenderTroopsKilled : attackerTroopsKilled} troops)`;
 
     // Hero damage from first strike (hero on whoever received the first strike)
     if (outcome.firstStrikeHeroDamage > 0) {
@@ -702,7 +777,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (effectiveOutcome.retaliationAttacks.length > 0) {
       const retaliatorHits = effectiveOutcome.retaliationAttacks.filter(a => a.isHit).length;
       const retaliationCrits = effectiveOutcome.retaliationAttacks.filter(a => a.isCrit).length;
-      desc += `. ${retaliator.unitName} retaliates — ${effectiveOutcome.retaliationAttacks.length} attacks, ${retaliatorHits} hits${retaliationCrits > 0 ? `, ${retaliationCrits} critical` : ''}, ${effectiveOutcome.retaliationDamage} damage (${effectiveOutcome.strikerFirst === 'attacker' ? attackerTroopsKilled : defenderTroopsKilled} troops)`;
+      desc += `. ${retaliator.unitName} retaliates — ${effectiveOutcome.retaliationAttacks.length} attacks${effectiveOutcome.retaliationCountNote ? ` [${effectiveOutcome.retaliationCountNote}]` : ''}, ${retaliatorHits} hits${retaliationCrits > 0 ? `, ${retaliationCrits} critical` : ''}, ${effectiveOutcome.retaliationDamage} damage (${effectiveOutcome.strikerFirst === 'attacker' ? attackerTroopsKilled : defenderTroopsKilled} troops)`;
 
       // Hero damage from retaliation (hero on whoever received the retaliation)
       if (effectiveOutcome.retaliationHeroDamage > 0) {
@@ -815,6 +890,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return;
     if ((target.currentUnitHp ?? 0) <= 0) return;
+    // A downed hero may be dragged for recovery, but cannot initiate attacks.
+    if ((attacker.currentUnitHp ?? 0) <= 0) return;
+    if (!canControlUnit(attacker)) return;
 
     const targetHasHero = units.some(u => u.attachedToUnitId === targetId && !u.isDeleted);
     const canAttach = attacker.isHero && (attacker.sizeCategory || 100) <= 200 && !target.isHero && !target.attachedToUnitId && !target.isDeleted && !targetHasHero && attacker.team === target.team;
@@ -838,13 +916,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
 
     const dist = hexDistance(attacker.hex, target.hex);
-    if (weapon.range <= 1 && dist > 1) {
-      addMessage(`WARNING: ${weapon.name} is melee (range ${weapon.range}), but target is ${dist} hexes away`);
+    // Hard range cap: beyond maxRange is out of range (maxRange >= range).
+    if (dist > weapon.maxRange) {
+      flashRangeViolation(target.hex);
+      addMessage(`${attacker.unitName} cannot reach ${target.unitName} — out of range (max ${weapon.maxRange} hexes)`);
       return;
     }
+    // A melee-range weapon switches to a (disadvantaged) ranged attack when the
+    // target is beyond its melee reach; a weapon with range > 1 is always ranged.
+    const isRangedThisAttack = weapon.range > 1 || dist > weapon.range;
 
-    // Area-effect weapons open the shared magic targeting window instead of melee.
-    if (weapon.targetType === 'area') {
+    // Area-effect weapons (magic radius > 0) open the shared magic targeting window.
+    if (weapon.magicRadius > 0) {
       if (attacker.isRouting) {
         addMessage(`${attacker.unitName} (Routed) cannot cast spells`);
         return;
@@ -870,20 +953,29 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return;
     }
 
-    // Front-arc validation for melee attackers
-    if (weapon.range <= 1) {
+    // Arc / formation validation for attackers. The formations matrix drives which
+    // arcs each formation may melee / ranged-attack into. The matrix arcs are
+    // relative to the ATTACKER's own body (like threat_arcs / stop_enemy_movement_arcs),
+    // so the arc here is where the TARGET sits relative to the attacker's facing —
+    // not the target's facing.
+    const attackerForm = formationsMap[attacker.currentFormation];
+    const targetPos = determineCombatPosition(target.hex, attacker.hex, attacker.facing);
+    if (!isRangedThisAttack) {
       if (attacker.isRouting) {
         addMessage(`${attacker.unitName} (Routed) cannot initiate attacks`);
         return;
       }
-      if (attacker.currentFormation === 'Scattered') {
-        addMessage(`${attacker.unitName} (Scattered) cannot initiate melee`);
+      if (!canMeleeTarget(attackerForm, targetPos)) {
+        addMessage(`${attacker.unitName} (${attacker.currentFormation}) cannot melee target in that direction`);
         return;
       }
       if (!attacker.isHero && !isInFrontArc(attacker.hex, attacker.facing, target.hex)) {
         addMessage(`${attacker.unitName} cannot attack ${target.unitName}: target not in front arc`);
         return;
       }
+    } else if (!canRangedTarget(attackerForm, targetPos)) {
+      addMessage(`${attacker.unitName} (${attacker.currentFormation}) cannot ranged-attack target in that direction`);
+      return;
     }
 
     // Charging attacker: a full charge (2 hexes moved) grants a free double-damage
@@ -1041,11 +1133,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     size: HEX_SIZE,
     gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
     units: displayUnits,
-    onUnitMove: controlsLocked ? () => {} : handleUnitMove,
+    onUnitMove: controlsLocked
+      ? () => {}
+      : (unitId, targetHex) => {
+          const u = units.find(x => x.id === unitId);
+          if (u && canControlUnit(u)) handleUnitMove(unitId, targetHex);
+        },
     onHexClick: (hex) => setSelectedHex(hex),
     onHexRightClick: (hex, unit, clientX, clientY) => {
       if (controlsLocked) return;
-      if (unit && !unit.isDeleted && (isGM || !unit.hidden)) {
+      if (unit && !unit.isDeleted && (isGM || (!unit.hidden && canControlUnit(unit)))) {
         setContextMenuUnit(unit);
         setContextMenuPos({ x: clientX, y: clientY });
       }
@@ -1060,6 +1157,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setTooltipPos(null);
     },
     onAttack: controlsLocked ? undefined : handleAttackRequest,
+    canGrabUnit: canControlUnit,
+    onPing: (hex) => pingAtHex(hex, playerName),
     customDraw,
     autoCenter: isInitialLoad,
     backgroundImage: backgroundConfig ? { url: backgroundConfig.imageUrl, offsetX: backgroundConfig.offsetX, offsetY: backgroundConfig.offsetY, scale: backgroundConfig.scale } : null,
@@ -1068,6 +1167,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   });
 
   useEffect(() => {
+    // Transient red flash on an out-of-range target (blocked drop).
+    if (rangeViolationHex) {
+      setOverlayMap({ [`${rangeViolationHex.q},${rangeViolationHex.r}`]: 'rgba(255, 80, 80, 0.9)' });
+      return;
+    }
     if (draggingUnitId) {
       const draggedUnit = units.find(u => u.id === draggingUnitId);
       if (!draggedUnit) { setOverlayMap({}); return; }
@@ -1102,7 +1206,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         return;
       }
 
-      const threatHexes = computeThreatHexes(units, draggingUnitId, alliances);
+      const threatHexes = computeThreatHexes(units, draggingUnitId, alliances, formationsMap);
 
       // White reachable hexes for the dragged unit — one full pool (an action
       // converts to MP on move), or leftover MP only when 0 actions
@@ -1115,13 +1219,42 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       for (const key of Array.from(reachableMap.keys())) combined[key] = 'rgba(255, 255, 255, 0.5)';
       for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
 
+      // Attack-range rings radiating from the dragged unit (ranged-capable weapons
+      // only, maxRange > 1): white ring at normal range, amber ring at max range.
+      const activeWeapon = parseWeapons(draggedUnit.weaponString || '')[draggedUnit.activeWeaponIndex ?? 0];
+      if (activeWeapon && activeWeapon.maxRange > 1) {
+        for (const h of hexRing(draggedUnit.hex, activeWeapon.range)) {
+          combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.9)';
+        }
+        if (activeWeapon.maxRange > activeWeapon.range) {
+          for (const h of hexRing(draggedUnit.hex, activeWeapon.maxRange)) {
+            combined[`${h.q},${h.r}`] = 'rgba(255, 180, 60, 0.9)';
+          }
+        }
+      }
+
+      // Hovered enemy target hex fill: green in range, amber disadvantage, red out of range.
+      if (hoveredUnit && hoveredUnit.id !== draggedUnit.id && !hoveredUnit.isDeleted) {
+        const targetGroup = alliances[hoveredUnit.team] || 'friendly';
+        const dragGroup = alliances[draggedUnit.team] || 'friendly';
+        if (targetGroup !== dragGroup) {
+          const d = hexDistance(draggedUnit.hex, hoveredUnit.hex);
+          let color = 'rgba(80, 220, 120, 0.8)';
+          if (activeWeapon) {
+            if (d > activeWeapon.maxRange) color = 'rgba(255, 80, 80, 0.85)';
+            else if (d > activeWeapon.range) color = 'rgba(255, 180, 60, 0.85)';
+          }
+          combined[`${hoveredUnit.hex.q},${hoveredUnit.hex.r}`] = color;
+        }
+      }
+
       setOverlayMap(combined);
     } else if (hoveredUnit) {
       setOverlayMap(getOverlayForUnit(hoveredUnit));
     } else {
       setOverlayMap({});
     }
-  }, [draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig]);
+  }, [draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex]);
 
   // Center map on initial load
   useEffect(() => {
@@ -1437,6 +1570,37 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     window.location.reload();
   };
 
+  // Double-click a unit you can edit opens the floating editor.
+  const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (controlsLocked) return;
+    const hex = getHexFromScreen(e.clientX, e.clientY);
+    if (!hex) return;
+    const unit = getUnitAt(hex);
+    if (!unit) return;
+    if (isGM || canEditUnit(unit)) setEditUnit(unit);
+  }, [controlsLocked, getHexFromScreen, getUnitAt, isGM, canEditUnit]);
+
+  // Editor Save → one chained command entry, one sub-step per changed field.
+  const handleEditorSave = useCallback(async (changes: { field: string; from: any; to: any }[], description: string) => {
+    if (!editUnit) return;
+    const subSteps = changes.map(c => ({
+      type: 'EDIT_UNIT' as const,
+      description,
+      unitId: editUnit.id,
+      changes: [c],
+    }));
+    await execute('EDIT_UNIT', subSteps, description, { chained: true });
+  }, [editUnit, execute]);
+
+  // A kicked player is booted back to the Lobby.
+  const kicked = participantsSync.kicked;
+  useEffect(() => {
+    if (!kicked) return;
+    const t = setTimeout(() => { goToLobby(); }, 2500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kicked]);
+
   // ---- Role detection + presence ----
   useEffect(() => {
     let subscribed: any = null;
@@ -1453,15 +1617,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     };
   }, [scenarioId, getMyRole, subscribeToPresence, unsubscribeFromPresence]);
 
-  // ---- Load formations lookup ----
+  // ---- Load formations lookup (session-cached) ----
   useEffect(() => {
-    supabase.from('formations').select('*').then(({ data }) => {
-      if (data) {
-        const map: Record<string, Formation> = {};
-        for (const f of data) map[f.name] = f;
-        setFormationsMap(map);
-      }
+    let cancelled = false;
+    getFormations().then(map => {
+      if (!cancelled) setFormationsMap(map);
     });
+    return () => { cancelled = true; };
   }, []);
 
   // ---- Load map background config ----
@@ -1527,15 +1689,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       } else if (e.ctrlKey && e.key === 'y') {
         e.preventDefault();
         redo();
-      } else if ((e.key === 'q' || e.key === 'Q') && contextMenuUnit && !contextMenuUnit.isHero && !contextMenuUnit.isCharging) {
+      } else if ((e.key === 'q' || e.key === 'Q') && contextMenuUnit && !contextMenuUnit.isHero && !contextMenuUnit.isCharging && canControlUnit(contextMenuUnit)) {
         rotateUnit(contextMenuUnit, 'left', unitMaxMP(contextMenuUnit));
-      } else if ((e.key === 'e' || e.key === 'E') && contextMenuUnit && !contextMenuUnit.isHero && !contextMenuUnit.isCharging) {
+      } else if ((e.key === 'e' || e.key === 'E') && contextMenuUnit && !contextMenuUnit.isHero && !contextMenuUnit.isCharging && canControlUnit(contextMenuUnit)) {
         rotateUnit(contextMenuUnit, 'right', unitMaxMP(contextMenuUnit));
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [controlsLocked, undo, redo, contextMenuUnit, rotateUnit]);
+  }, [controlsLocked, undo, redo, contextMenuUnit, rotateUnit, canControlUnit]);
 
   if (loading) return <div className="w-full h-screen bg-[#0d0d1a] text-white flex items-center justify-center">Loading scenario...</div>;
   if (error) return <div className="w-full h-screen bg-[#0d0d1a] text-red-500 flex items-center justify-center">Error: {error}</div>;
@@ -1546,7 +1708,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-2 bg-black/40 backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <span className="text-white text-lg font-semibold">
-            Scenario Map - {isGM ? 'DM' : 'Player'}
+            Scenario Map - {roleLabel}{myTeam ? ` · ${myTeam}` : ''}
           </span>
           {!controlsLocked && (
             <button
@@ -1627,10 +1789,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         <div className={`absolute top-14 z-10 ${panelSide === 'left' ? 'left-2' : 'right-2'}`}>
           <LeftPanel
             scenarioId={scenarioId}
+            playerId={playerId}
             onUnitDragStart={handleUnitDragStart}
             isGM={isGM}
             alliances={alliances}
             onMoveTeam={handleMoveTeam}
+            participants={participantsSync.participants}
+            roomOpen={participantsSync.roomOpen}
+            onSetRoomOpen={participantsSync.setRoomOpen}
+            onSetParticipantTeam={participantsSync.setParticipantTeam}
+            onSetParticipantRole={participantsSync.setParticipantRole}
+            onKickParticipant={participantsSync.kickParticipant}
             backgroundConfig={backgroundConfig}
             onSaveBackground={handleSaveBackground}
             onPreviewMapConfig={handlePreviewMapConfig}
@@ -1647,8 +1816,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         onMouseMove={handleMouseMove}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
+        onDoubleClick={handleDoubleClick}
         onContextMenu={handleRightClick}
       />
+
+      {/* Attention pings (feature #4) */}
+      <PingLayer pings={pings} zoom={zoom} offsetX={offsetX} offsetY={offsetY} hexSize={HEX_SIZE} />
 
       {/* Ghost previews */}
       {isDraggingFromPanel && ghostHex && (
@@ -1685,6 +1858,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           y={contextMenuPos.y}
           isGM={isGM}
           selectedWeapon={contextMenuUnit.activeWeaponIndex ?? 0}
+          formationsMap={formationsMap}
           onClose={() => { setContextMenuUnit(null); setContextMenuPos(null); }}
           onRotate={(dir) => rotateUnit(contextMenuUnit, dir, unitMaxMP(contextMenuUnit))}
           onChangeFormation={(formation) => changeFormation(contextMenuUnit, formation, formationsMap)}
@@ -1913,6 +2087,30 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onSetSave={magicCast.setSave}
           onRequestResolve={requestResolveCast}
         />
+      )}
+
+      {/* Double-click unit editor */}
+      {editUnit && (
+        <UnitEditorModal
+          unit={editUnit}
+          formationsMap={formationsMap}
+          onClose={() => setEditUnit(null)}
+          onSave={handleEditorSave}
+        />
+      )}
+
+      {/* Kicked — boot to Lobby */}
+      {kicked && (
+        <div className="absolute inset-0 z-[60] flex flex-col items-center justify-center bg-black/80">
+          <div className="text-white text-xl font-semibold mb-2">You were removed from this scenario</div>
+          <div className="text-gray-400 text-sm mb-4">Returning to the Lobby…</div>
+          <button
+            onClick={goToLobby}
+            className="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 text-white text-sm"
+          >
+            Back to Lobby
+          </button>
+        </div>
       )}
 
       {/* Debug Panel */}

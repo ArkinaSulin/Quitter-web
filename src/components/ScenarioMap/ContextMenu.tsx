@@ -2,9 +2,10 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Unit, getOrganizationLevel } from '@/types/gameProtocol';
+import { Unit, getOrganizationLevel, Formation } from '@/types/gameProtocol';
 import { areHexesAdjacent } from '@/lib/unitMorale';
 import { parseWeapons } from '@/lib/weaponParser';
+import { canFormationCharge } from '@/lib/formationRules';
 import { TEAM_COLORS } from '@/components/TokenRenderer/tokenUtils';
 
 interface ContextMenuProps {
@@ -13,6 +14,7 @@ interface ContextMenuProps {
   y: number;
   isGM: boolean;
   selectedWeapon?: number;
+  formationsMap?: Record<string, Formation>;
   onClose: () => void;
   onRotate: (direction: 'left' | 'right') => void;
   onChangeFormation: (formation: string) => void;
@@ -32,6 +34,7 @@ export function ContextMenu({
   y,
   isGM,
   selectedWeapon = 0,
+  formationsMap,
   onClose,
   onRotate,
   onChangeFormation,
@@ -131,7 +134,7 @@ export function ContextMenu({
           >
             Rotate Right
           </div>
-          {unit.canCharge && !unit.isRouting && unit.currentFormation !== 'Scattered' && !unit.isCharging && unit.actionsAvailable >= 1 && onCharge && (
+          {unit.canCharge && !unit.isRouting && canFormationCharge(formationsMap?.[unit.currentFormation]) && !unit.isCharging && unit.actionsAvailable >= 1 && onCharge && (
             <div
               className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
               onClick={() => { onCharge(); onClose(); }}
@@ -211,10 +214,10 @@ export function ContextMenu({
         <div key={idx} className="px-3 py-1 hover:bg-gray-700 cursor-pointer flex items-center gap-2" onClick={() => { onSelectWeapon(idx); onClose(); }}>
           <span className="w-3 text-emerald-400">{idx === selectedWeapon ? '✓' : ''}</span>
           <span className="flex-1">{w.name}</span>
+          {w.numberOfAttacks > 1 && <span className="text-xs px-1 rounded bg-gray-800 text-gray-300" title="Attacks per round">{w.numberOfAttacks}×</span>}
           {w.isTwoHanded && <span className="text-xs px-1 rounded bg-red-900 text-red-300" title="Two-handed (no shield, no Shield Wall)">2H</span>}
           {w.freeAction && <span className="text-xs px-1 rounded bg-purple-900 text-purple-300" title="Free action">F</span>}
           {w.noRetaliation && <span className="text-xs px-1 rounded bg-blue-900 text-blue-300" title="No retaliation">NR</span>}
-          {w.ignoreAttackMultiplier && <span className="text-xs px-1 rounded bg-teal-900 text-teal-300" title="Ignores attack multiplier">IM</span>}
         </div>
       ))}
       {weapons.length === 0 && (

@@ -25,7 +25,20 @@ export async function signOut() {
   return { error };
 }
 
-// Helper: Get current user
+// Helper: Get current user (network-validated token check)
 export function getCurrentUser() {
   return supabase.auth.getUser();
+}
+
+// Helper: Get the stored session (reads localStorage, near-instant — no network).
+// Use for initial UI hydration; DB queries still validate the JWT server-side.
+export function getSessionUser() {
+  return supabase.auth.getSession();
+}
+
+// Helper: subscribe to auth changes. In supabase-js v2, the first event fired on
+// subscribe is a synchronous INITIAL_SESSION built from the stored session, so
+// consumers can render the right state on the very first paint (no login flash).
+export function onAuthStateChange(cb: (event: string, session: any) => void) {
+  return supabase.auth.onAuthStateChange(cb);
 }

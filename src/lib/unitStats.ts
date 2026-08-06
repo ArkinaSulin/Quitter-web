@@ -42,12 +42,16 @@ export function getVisualDotsPerRow(formationsMap: Record<string, Formation>, ro
 }
 
 /**
- * Shield penalty while wielding a two-handed weapon. A shielded unit loses its
- * shield bonus (2 AC) whenever the active weapon is two-handed. Units without a
- * shield are unaffected.
+ * Shield penalty for a unit: 2 when the shield is unusable (two-handed weapon
+ * active, or the unit is routing and drops its shield). Units without a shield are
+ * unaffected. Returns `{ penalty, reason }` so the UI can explain why.
  */
-export function getShieldPenalty(unit: Pick<Unit, 'isShielded' | 'weaponString' | 'activeWeaponIndex'>): number {
-  if (!unit.isShielded) return 0;
+export function getShieldPenalty(
+  unit: Pick<Unit, 'isShielded' | 'weaponString' | 'activeWeaponIndex' | 'isRouting'>,
+): { penalty: number; reason?: 'two-handed' | 'routing' } {
+  if (!unit.isShielded) return { penalty: 0 };
+  if (unit.isRouting) return { penalty: 2, reason: 'routing' };
   const activeWeapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
-  return activeWeapon?.isTwoHanded ? 2 : 0;
+  if (activeWeapon?.isTwoHanded) return { penalty: 2, reason: 'two-handed' };
+  return { penalty: 0 };
 }

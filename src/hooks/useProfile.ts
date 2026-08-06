@@ -31,6 +31,8 @@ export interface Access {
   canViewReplay: boolean;
 }
 
+const EMPTY_ACCESS: Access = { canUseUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false };
+
 let accessCache: Record<string, AccessRow> | null = null;
 
 async function loadAccessMatrix(): Promise<Record<string, AccessRow>> {
@@ -81,26 +83,29 @@ export function useProfile(userId: string | null | undefined) {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [role, setRole] = useState<ProfileRole>(null);
   const [requestNote, setRequestNote] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [access, setAccess] = useState<Access>({
-    canUseUnitEditor: false,
-    canCreateScenario: false,
-    canJoinGame: false,
-    canViewReplay: false,
-  });
+  // Which userId the role/name currently reflect. loading is DERIVED from this so it
+  // becomes true on the exact render where userId appears (not one commit later via
+  // an effect) — fixing a stale-commit race that redirected admins out of the editor.
+  const [resolvedUserId, setResolvedUserId] = useState<string | null | undefined>(undefined);
+  const loading = userId !== null && resolvedUserId !== userId;
+  // True only while the access_roles matrix is still loading (first call per session).
+  // Once loaded, access is derived synchronously from the cached matrix + role, so it
+  // can never lag behind a role change (which caused a stale "pending" redirect).
+  const [accessLoading, setAccessLoading] = useState(true);
+  const access = accessLoading ? EMPTY_ACCESS : accessForRole(role);
 
   useEffect(() => {
     let cancelled = false;
     loadAccessMatrix().then(() => {
-      if (!cancelled) setAccess(accessForRole(role));
+      if (!cancelled) setAccessLoading(false);
     });
     return () => { cancelled = true; };
-  }, [role]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     if (!userId) {
-      setLoading(false);
+      setResolvedUserId(null);
       return;
     }
 
@@ -109,15 +114,21 @@ export function useProfile(userId: string | null | undefined) {
       setDisplayName(cached.displayName);
       setRole(cached.role);
       setRequestNote(cached.requestNote);
-      setLoading(false);
+      setResolvedUserId(userId);
       return;
     }
 
     (async () => {
       try {
-        const { data: userData } = await supabase.auth.getUser();
-        const user = userData?.user;
-        if (cancelled || !user) return;
+        // Best-effort: fetch user metadata for the display-name fallback. Isolated so
+        // a throw/race can NEVER skip the profile upsert below.
+        let user: any = null;
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          user = userData?.user ?? null;
+        } catch (err) {
+          console.error('[useProfile] getUser failed (continuing to ensure profile):', err);
+        }
 
         const { data: rows } = await supabase
           .from('profiles')
@@ -135,6 +146,7 @@ export function useProfile(userId: string | null | undefined) {
             setDisplayName(cached.displayName);
             setRole(cached.role);
             setRequestNote(cached.requestNote);
+            setResolvedUserId(userId);
           }
           return;
         }
@@ -159,11 +171,12 @@ export function useProfile(userId: string | null | undefined) {
           setDisplayName(cached.displayName);
           setRole(cached.role);
           setRequestNote(cached.requestNote);
+          setResolvedUserId(userId);
         }
       } catch (err) {
         console.error('[useProfile] Error loading profile:', err);
-      } finally {
-        if (!cancelled) setLoading(false);
+        // Settle so the UI never hangs in "loading"; role stays null (pending).
+        if (!cancelled) setResolvedUserId(userId);
       }
     })();
 
@@ -254,6 +267,7 @@ export function useProfile(userId: string | null | undefined) {
     role,
     requestNote,
     loading,
+    accessLoading,
     access,
     updateDisplayName,
     updateRequestNote,

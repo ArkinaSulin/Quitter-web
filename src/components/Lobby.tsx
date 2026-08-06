@@ -414,14 +414,14 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
             {scenarios.length === 0 ? 'No scenarios yet. Create one!' : 'No scenarios match your search.'}
           </p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
             {filtered.map((scenario) => {
               const isSelected = scenario.id === selectedScenarioId;
               return (
                 <div
                   key={scenario.id}
                   onClick={() => setSelectedScenarioId(scenario.id)}
-                  className={`bg-gray-800 rounded-lg overflow-hidden shadow-lg border-2 transition-all cursor-pointer w-full max-w-sm mx-auto ${
+                  className={`bg-gray-800 rounded-lg overflow-hidden shadow-lg border-2 transition-all cursor-pointer w-full ${
                     isSelected
                       ? 'border-yellow-400 shadow-yellow-500/30 shadow-lg'
                       : 'border-gray-700 hover:border-gray-500'
@@ -446,6 +446,22 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                     <div className="flex justify-between items-start mt-1">
                       <div className="text-sm text-gray-300 truncate">By {creatorAliases[scenario.creatorId] || scenario.creatorName || 'Unknown'}</div>
                       <div className="text-xs text-gray-400 whitespace-nowrap ml-2">Modified: {formatDate(scenario.updatedAt)}</div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                          scenario.roomOpen
+                            ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700/50'
+                            : 'bg-red-900/60 text-red-300 border-red-700/50'
+                        }`}
+                      >
+                        {scenario.roomOpen ? 'Room Open' : 'Room Closed'}
+                      </span>
+                      {scenario.passwordHash && (
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">
+                          Password
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

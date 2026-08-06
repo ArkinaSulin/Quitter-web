@@ -28,7 +28,6 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     troopHp: 10,
     maxUnitHp: 200,
     currentUnitHp: 200,
-    numberOfAttacks: 1,
     isShielded: false,
     baselineAc: 14,
     currentAc: 14,
@@ -107,52 +106,52 @@ describe('calcEnemyThreats', () => {
   it('returns zero when no enemies are adjacent', () => {
     const me = makeUnit({ ...threat1 });
     const far = enemyAt({ q: 2, r: 0, s: -2 }, { ...threat1 });
-    expect(calcEnemyThreats(me, [far], alliances)).toEqual({ frontSide: 0, rear: 0 });
+    expect(calcEnemyThreats(me, [far], alliances)).toMatchObject({ frontSide: 0, rear: 0 });
   });
 
   it('ignores friendly and deleted units', () => {
     const me = makeUnit({ ...threat1 });
     const friendly = makeUnit({ id: 'f1', team: 'blue', hex: DIR_HEXES[0], ...threat1 });
     const deleted = enemyAt(DIR_HEXES[1], { ...threat1, isDeleted: true });
-    expect(calcEnemyThreats(me, [friendly, deleted], alliances)).toEqual({ frontSide: 0, rear: 0 });
+    expect(calcEnemyThreats(me, [friendly, deleted], alliances)).toMatchObject({ frontSide: 0, rear: 0 });
   });
 
   it('ignores routing enemies — a routing unit exerts no threat', () => {
     const me = makeUnit({ ...threat1 });
     const routed = enemyAt(DIR_HEXES[5], { ...threat9, isRouting: true });
-    expect(calcEnemyThreats(me, [routed], alliances)).toEqual({ frontSide: 0, rear: 0 });
+    expect(calcEnemyThreats(me, [routed], alliances)).toMatchObject({ frontSide: 0, rear: 0 });
   });
 
   it('stops counting threat from an enemy once it routs', () => {
     const me = makeUnit({ ...threat1 });
     const flanker = enemyAt(DIR_HEXES[5], { ...threat1 });
     const routedRear = enemyAt(DIR_HEXES[1], { ...threat1, isRouting: true });
-    expect(calcEnemyThreats(me, [flanker, routedRear], alliances)).toEqual({ frontSide: 1, rear: 0 });
+    expect(calcEnemyThreats(me, [flanker, routedRear], alliances)).toMatchObject({ frontSide: 1, rear: 0 });
   });
 
   it('counts an equal-strength enemy in the front/side arc', () => {
     const me = makeUnit({ ...threat1 });
     const enemy = enemyAt(DIR_HEXES[5], { ...threat1 });
-    expect(calcEnemyThreats(me, [enemy], alliances)).toEqual({ frontSide: 1, rear: 0 });
+    expect(calcEnemyThreats(me, [enemy], alliances)).toMatchObject({ frontSide: 1, rear: 0 });
   });
 
   it('doubles the threat level of an enemy in the rear arc', () => {
     const me = makeUnit({ ...threat1 });
     const enemy = enemyAt(DIR_HEXES[1], { ...threat1 });
-    expect(calcEnemyThreats(me, [enemy], alliances)).toEqual({ frontSide: 0, rear: 2 });
+    expect(calcEnemyThreats(me, [enemy], alliances)).toMatchObject({ frontSide: 0, rear: 2 });
   });
 
   it('rear scaling compounds with enemy strength', () => {
     const me = makeUnit({ ...threat3 });
     const enemy = enemyAt(DIR_HEXES[1], { ...threat9 });
-    expect(calcEnemyThreats(me, [enemy], alliances)).toEqual({ frontSide: 0, rear: 6 });
+    expect(calcEnemyThreats(me, [enemy], alliances)).toMatchObject({ frontSide: 0, rear: 6 });
   });
 
   it('counts a swarm of weak enemies that individually rounded to zero before', () => {
     const me = makeUnit({ ...threat3 });
     const swarm = [0, 3, 4, 5].map(i => enemyAt(DIR_HEXES[i], { ...threat1 }));
     const rear = [1, 2].map(i => enemyAt(DIR_HEXES[i], { ...threat1 }));
-    expect(calcEnemyThreats(me, [...swarm, ...rear], alliances)).toEqual({ frontSide: 1, rear: 1 });
+    expect(calcEnemyThreats(me, [...swarm, ...rear], alliances)).toMatchObject({ frontSide: 1, rear: 1 });
   });
 
   it('lets one strong enemy outweigh two weak ones', () => {
@@ -169,16 +168,16 @@ describe('calcEnemyThreats', () => {
   it('full equal surround: 4 front/side + 2 doubled rear', () => {
     const me = makeUnit({ ...threat1 });
     const ring = DIR_HEXES.map(h => enemyAt(h, { ...threat1 }));
-    expect(calcEnemyThreats(me, ring, alliances)).toEqual({ frontSide: 4, rear: 4 });
+    expect(calcEnemyThreats(me, ring, alliances)).toMatchObject({ frontSide: 4, rear: 4 });
   });
 
   it('facing moves an enemy between front/side and rear arcs', () => {
     const meFacing0 = makeUnit({ ...threat1, facing: 0 });
     const enemy = enemyAt(DIR_HEXES[0], { ...threat1 });
-    expect(calcEnemyThreats(meFacing0, [enemy], alliances)).toEqual({ frontSide: 1, rear: 0 });
+    expect(calcEnemyThreats(meFacing0, [enemy], alliances)).toMatchObject({ frontSide: 1, rear: 0 });
 
     const meFacing5 = makeUnit({ ...threat1, facing: 5 });
-    expect(calcEnemyThreats(meFacing5, [enemy], alliances)).toEqual({ frontSide: 0, rear: 2 });
+    expect(calcEnemyThreats(meFacing5, [enemy], alliances)).toMatchObject({ frontSide: 0, rear: 2 });
   });
 });
 

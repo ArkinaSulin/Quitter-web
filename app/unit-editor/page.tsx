@@ -1,31 +1,37 @@
 // app/unit-editor/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import UnitEditor from '@/components/UnitEditor';
+import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
-import { getCurrentUser } from '@/lib/supabaseClient';
 
 export default function UnitEditorPage() {
   const router = useRouter();
-  const [userId, setUserId] = useState<string | null>(null);
-  const { access, loading } = useProfile(userId);
+  const { user, authLoading } = useAuth();
+  const userId = user?.id ?? null;
+  const { access, accessLoading, loading } = useProfile(userId);
 
-  useEffect(() => {
-    getCurrentUser().then(({ data }) => {
-      setUserId(data?.user?.id || null);
-    });
-  }, []);
+  const ready = !authLoading && !loading && !accessLoading && !!userId;
 
   // Only roles granted can_use_unit_editor may edit units; everyone else is
-  // redirected back to the lobby. Privileges come from the access_roles table.
+  // redirected back to the lobby. `ready` waits for BOTH the auth session and the
+  // access matrix to resolve, so an admin is never briefly misread as pending.
   useEffect(() => {
-    if (loading || !userId) return;
+    if (!ready) return;
     if (!access?.canUseUnitEditor) {
       router.replace('/');
     }
-  }, [loading, userId, access, router]);
+  }, [ready, access, router]);
+
+  if (!ready) {
+    return (
+      <div className="w-full h-screen bg-[#0d0d1a] text-white flex items-center justify-center">
+        Loading...
+      </div>
+    );
+  }
 
   return <UnitEditor />;
 }

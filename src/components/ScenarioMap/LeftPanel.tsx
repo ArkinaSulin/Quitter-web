@@ -7,14 +7,22 @@ import { UnitSelector } from './UnitSelector';
 import { MessagesPanel } from './MessagesPanel';
 import { AlliancePanel } from './AlliancePanel';
 import { MapEditorPanel } from './MapEditorPanel';
-import { UnitTemplate, AllianceGroup } from '@/types/gameProtocol';
+import { PlayerPanel } from './PlayerPanel';
+import { UnitTemplate, AllianceGroup, Participant, ScenarioRole } from '@/types/gameProtocol';
 
 interface LeftPanelProps {
   scenarioId: string;
+  playerId: string;
   onUnitDragStart: (template: UnitTemplate) => void;
   isGM: boolean;
   alliances: Record<string, AllianceGroup>;
   onMoveTeam: (team: string, targetGroup: AllianceGroup) => void;
+  participants: Participant[];
+  roomOpen: boolean;
+  onSetRoomOpen: (open: boolean) => void;
+  onSetParticipantTeam: (participantId: string, team: string | null) => void;
+  onSetParticipantRole: (participantId: string, role: ScenarioRole) => void;
+  onKickParticipant: (participantId: string) => void;
   backgroundConfig: { imageUrl: string; offsetX: number; offsetY: number; scale: number; gridRadius: number } | null;
   onSaveBackground: (config: { imageUrl: string; offsetX: number; offsetY: number; scale: number; gridRadius: number }) => void;
   onPreviewMapConfig: (config: Partial<{ imageUrl: string; offsetX: number; offsetY: number; scale: number; gridRadius: number }>) => void;
@@ -22,14 +30,41 @@ interface LeftPanelProps {
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, onUnitDragStart, isGM, alliances, onMoveTeam, backgroundConfig, onSaveBackground, onPreviewMapConfig, side, onToggleSide }: LeftPanelProps) {
-  const [openPanels, setOpenPanels] = useState<Record<string, boolean>>({});
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, side, onToggleSide }: LeftPanelProps) {
+  // Persist which tabs are open per scenario + user, so a rejoined session
+  // restores the same panel layout.
+  const storageKey = `leftPanelOpen:${scenarioId}:${playerId}`;
+
+  // Read the saved layout synchronously (once) — guards the restore below and the
+  // default-open behavior without clobbering it during the brief isGM=false load.
+  const savedRef = useRef<Record<string, boolean> | null>(null);
+  if (savedRef.current === null) {
+    let saved: Record<string, boolean> = {};
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(storageKey) : null;
+      if (raw) saved = JSON.parse(raw);
+    } catch {
+      // ignore malformed storage
+    }
+    savedRef.current = saved;
+  }
+
+  const [openPanels, setOpenPanels] = useState<Record<string, boolean>>(savedRef.current);
   const userTouched = useRef(false);
 
   const togglePanel = (id: string) => {
     userTouched.current = true;
     setOpenPanels(prev => ({ ...prev, [id]: !prev[id] }));
   };
+
+  // Persist the layout whenever it changes (mount writes back the same value).
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(openPanels));
+    } catch {
+      // ignore storage failures
+    }
+  }, [storageKey, openPanels]);
 
   const iconClasses = 'text-gray-400';
 
@@ -54,6 +89,27 @@ export function LeftPanel({ scenarioId, onUnitDragStart, isGM, alliances, onMove
       ),
       requiresGM: true,
       content: <MapEditorPanel currentConfig={backgroundConfig} onSave={onSaveBackground} onPreviewChange={onPreviewMapConfig} />,
+    },
+    {
+      id: 'players',
+      label: 'Players',
+      icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={iconClasses}>
+          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+      ),
+      requiresGM: true,
+      content: (
+        <PlayerPanel
+          participants={participants}
+          roomOpen={roomOpen}
+          onSetRoomOpen={onSetRoomOpen}
+          onSetParticipantTeam={onSetParticipantTeam}
+          onSetParticipantRole={onSetParticipantRole}
+          onKickParticipant={onKickParticipant}
+        />
+      ),
     },
     {
       id: 'alliances',
@@ -99,13 +155,31 @@ export function LeftPanel({ scenarioId, onUnitDragStart, isGM, alliances, onMove
 
   const visiblePanels = panels.filter(p => !p.requiresGM || isGM);
 
-  // Default: first available tab open, all others closed (DM use order).
+  // Restore the saved layout once the role resolves (isGM true unlocks the GM
+  // tabs), otherwise default to the first visible tab. The saved state is only
+  // ADDED to the current open set — it never closes a tab the user opened.
   useEffect(() => {
     if (userTouched.current) return;
-    const first = visiblePanels[0]?.id;
-    if (!first) return;
-    setOpenPanels({ [first]: true });
-  }, [isGM]); // eslint-disable-line react-hooks/exhaustive-deps
+    const saved = savedRef.current ?? {};
+    if (Object.keys(saved).length > 0) {
+      setOpenPanels(prev => {
+        let changed = false;
+        const next = { ...prev };
+        for (const p of visiblePanels) {
+          if (saved[p.id] && !next[p.id]) {
+            next[p.id] = true;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    } else {
+      const first = visiblePanels[0]?.id;
+      if (first) {
+        setOpenPanels(prev => (prev[first] ? prev : { ...prev, [first]: true }));
+      }
+    }
+  }, [isGM, visiblePanels]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <PanelsContainer

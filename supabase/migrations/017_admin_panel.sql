@@ -60,8 +60,13 @@ BEGIN
   END IF;
 
   SELECT role INTO old_role FROM profiles WHERE id = target_user_id;
-  IF old_role IS NULL THEN
-    RAISE EXCEPTION 'Target user has no profile or is pending';
+
+  -- The profile row must exist, but a NULL role (pending) is allowed — that is
+  -- exactly who an admin approves. This was the bug: the guard rejected pending
+  -- users ("Target user has no profile or is pending") so they could never be
+  -- approved.
+  IF NOT EXISTS (SELECT 1 FROM profiles WHERE id = target_user_id) THEN
+    RAISE EXCEPTION 'Target user has no profile';
   END IF;
 
   SELECT (role = 'admin') INTO target_is_admin FROM profiles WHERE id = target_user_id;

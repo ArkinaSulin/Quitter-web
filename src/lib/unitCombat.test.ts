@@ -4,13 +4,15 @@ import {
   computeTotalAttacks,
   determineCombatPosition,
   determineRetaliationPosition,
+  getEffectiveCombatPosition,
   isInFrontArc,
   rollD20,
   rollDamage,
   resolveCombatSequence,
   suppressRetaliation,
 } from './unitCombat';
-import { Unit, Hex } from '@/types/gameProtocol';
+import { canMeleeTarget } from './formationRules';
+import { Unit, Hex, Formation } from '@/types/gameProtocol';
 import type { CombatOutcome } from './unitCombat';
 
 function makeUnit(overrides: Partial<Unit> = {}): Unit {
@@ -33,7 +35,6 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     troopHp: 10,
     maxUnitHp: 200,
     currentUnitHp: 200,
-    numberOfAttacks: 1,
     isShielded: false,
     baselineAc: 14,
     currentAc: 14,
@@ -161,6 +162,50 @@ describe('determineCombatPosition', () => {
   });
 });
 
+describe('melee arc-validation frame of reference', () => {
+  // Matches migration 027's Close Order row: melee into front only.
+  const closeOrder: Formation = {
+    id: 'co',
+    name: 'Close Order',
+    ac_modifier: 0,
+    movement_multiplier: 1,
+    attack_modifier: 0,
+    morale_modifier: 0,
+    row_capacity_multiplier: 1,
+    attack_capacity_multiplier: 1,
+    melee_target_arcs: ['front'],
+    ranged_target_arcs: ['front', 'flank', 'rear'],
+    threat_arcs: ['front', 'flank'],
+    double_threat_arcs: ['rear'],
+    retaliate_arcs: { front: 'full', flank: 'rows', rear: 'none' },
+    retaliate_vs_ranged: false,
+    can_charge: true,
+    stop_enemy_movement_arcs: ['front'],
+    charge_through_arcs: ['flank'],
+    be_attacked_melee_modifier: 1,
+    be_attacked_range_modifier: 1,
+  };
+
+  it('a target in the attacker front arc is meleeable (arcs are attacker-relative)', () => {
+    const scoutHex: Hex = { q: 0, r: 0, s: 0 };
+    const heroHex: Hex = { q: 0, r: -1, s: 1 }; // in the scout's front arc at facing 0
+    const arc = determineCombatPosition(heroHex, scoutHex, 0);
+    expect(arc).toBe('front');
+    expect(canMeleeTarget(closeOrder, arc)).toBe(true);
+  });
+
+  it('uses the attacker facing, not the target facing, for the arc', () => {
+    const scoutHex: Hex = { q: 0, r: 0, s: 0 };
+    const heroHex: Hex = { q: 1, r: -1, s: 0 }; // right-front of the scout (facing 0)
+    // Correct frame: target relative to the ATTACKER (scout) — front, meleeable.
+    expect(determineCombatPosition(heroHex, scoutHex, 0)).toBe('front');
+    expect(canMeleeTarget(closeOrder, determineCombatPosition(heroHex, scoutHex, 0))).toBe(true);
+    // The old code passed the target's facing, making the hero's orientation decide
+    // the result — a hero facing away could show 'flank' and wrongly block the attack.
+    expect(determineCombatPosition(heroHex, scoutHex, 2)).toBe('flank');
+  });
+});
+
 describe('determineRetaliationPosition', () => {
   it('passes through front, flank, rear for normal formations', () => {
     expect(determineRetaliationPosition('Open Order', 'front')).toBe('front');
@@ -176,6 +221,46 @@ describe('determineRetaliationPosition', () => {
     expect(determineRetaliationPosition('Routed', 'front')).toBe('rear');
     expect(determineRetaliationPosition('Routed', 'flank')).toBe('rear');
     expect(determineRetaliationPosition('Routed', 'rear')).toBe('rear');
+  });
+  it('returns front for Hero regardless of raw position', () => {
+    expect(determineRetaliationPosition('Hero', 'front')).toBe('front');
+    expect(determineRetaliationPosition('Hero', 'flank')).toBe('front');
+    expect(determineRetaliationPosition('Hero', 'rear')).toBe('front');
+  });
+});
+
+describe('getEffectiveCombatPosition', () => {
+  const hero = { isHero: true, currentFormation: 'Hero', isRouting: false };
+  const scattered = { isHero: false, currentFormation: 'Scattered', isRouting: false };
+  const routed = { isHero: false, currentFormation: 'Routed', isRouting: true };
+  const formed = { isHero: false, currentFormation: 'Open Order', isRouting: false };
+
+  it('hero: all sides are front (no behind)', () => {
+    expect(getEffectiveCombatPosition(hero, 'front')).toBe('front');
+    expect(getEffectiveCombatPosition(hero, 'flank')).toBe('front');
+    expect(getEffectiveCombatPosition(hero, 'rear')).toBe('front');
+  });
+
+  it('scattered: all sides are flank', () => {
+    expect(getEffectiveCombatPosition(scattered, 'front')).toBe('flank');
+    expect(getEffectiveCombatPosition(scattered, 'flank')).toBe('flank');
+    expect(getEffectiveCombatPosition(scattered, 'rear')).toBe('flank');
+  });
+
+  it('routed: all sides are rear', () => {
+    expect(getEffectiveCombatPosition(routed, 'front')).toBe('rear');
+    expect(getEffectiveCombatPosition(routed, 'flank')).toBe('rear');
+    expect(getEffectiveCombatPosition(routed, 'rear')).toBe('rear');
+  });
+
+  it('passes through raw position for formed units', () => {
+    expect(getEffectiveCombatPosition(formed, 'front')).toBe('front');
+    expect(getEffectiveCombatPosition(formed, 'flank')).toBe('flank');
+    expect(getEffectiveCombatPosition(formed, 'rear')).toBe('rear');
+  });
+
+  it('treats isRouting flag alone as routed', () => {
+    expect(getEffectiveCombatPosition({ ...formed, isRouting: true }, 'front')).toBe('rear');
   });
 });
 
@@ -235,7 +320,6 @@ describe('resolveCombatSequence', () => {
     unitName: 'Attacker',
     aggressiveness: 7,
     sizeCategory: 100,
-    numberOfAttacks: 1,
     currentAc: 14,
     troopHp: 10,
     currentTroopCount: 80,
@@ -247,7 +331,6 @@ describe('resolveCombatSequence', () => {
     id: 'def',
     unitName: 'Defender',
     sizeCategory: 100,
-    numberOfAttacks: 1,
     currentAc: 14,
     troopHp: 10,
     currentTroopCount: 80,
@@ -256,13 +339,13 @@ describe('resolveCombatSequence', () => {
     facing: 0,
   });
 
-  const aw = { attackBonus: 3, damageDice: '1d8', is_reach: false };
-  const dw = { attackBonus: 2, damageDice: '1d6', is_reach: false };
+  const aw = { attackBonus: 3, damageDice: '1d8', is_reach: false, numberOfAttacks: 1 };
+  const dw = { attackBonus: 2, damageDice: '1d6', is_reach: false, numberOfAttacks: 1 };
   const rowCap = 10;
   const visualDotsPerRow = 20;
 
   // Helper to call with default extra params
-  type WeaponArg = { attackBonus: number; damageDice: string; is_reach: boolean; noRetaliation?: boolean; freeAction?: boolean; ignoreAttackMultiplier?: boolean };
+  type WeaponArg = { attackBonus: number; damageDice: string; is_reach: boolean; noRetaliation?: boolean; freeAction?: boolean; numberOfAttacks?: number; range?: number; maxRange?: number };
   function callCombat(
     att: Unit,
     def: Unit,
@@ -321,16 +404,22 @@ describe('resolveCombatSequence', () => {
     expect(result.aggrPassed).toBe(true);
   });
 
-  it('hero attacker uses numberOfAttacks directly, not scaled', () => {
-    const heroAttacker = { ...attacker, isHero: true, numberOfAttacks: 1 };
-    const result = callCombat(heroAttacker, defender);
+  it('hero attacker uses weapon numberOfAttacks directly, not scaled', () => {
+    const heroAttacker = { ...attacker, isHero: true };
+    const result = callCombat(heroAttacker, defender, { ...aw, numberOfAttacks: 1 });
     expect(result.firstStrikeCount).toBe(1);
   });
 
-  it('hero attacker with numberOfAttacks 3 makes 3 attacks', () => {
-    const heroAttacker = { ...attacker, isHero: true, numberOfAttacks: 3 };
-    const result = callCombat(heroAttacker, defender);
+  it('hero attacker with a weapon of numberOfAttacks 3 makes 3 attacks', () => {
+    const heroAttacker = { ...attacker, isHero: true };
+    const result = callCombat(heroAttacker, defender, { ...aw, numberOfAttacks: 3 });
     expect(result.firstStrikeCount).toBe(3);
+  });
+
+  it('non-hero attack count scales with weapon numberOfAttacks', () => {
+    const result = callCombat(attacker, defender, { ...aw, numberOfAttacks: 2 });
+    // min(80, 10 * 1) * 2 = 20
+    expect(result.firstStrikeCount).toBe(20);
   });
 
   it('attack count caps at currentTroopCount', () => {
@@ -344,12 +433,6 @@ describe('resolveCombatSequence', () => {
     const result = callCombat(attacker, defender, aw, dw, 0, 2);
     // min(80, 10*2) * 1 = 20
     expect(result.firstStrikeCount).toBe(20);
-  });
-
-  it('ignoreAttackMultiplier weapon skips the attack capacity multiplier', () => {
-    const result = callCombat(attacker, defender, { ...aw, ignoreAttackMultiplier: true }, dw, 0, 2);
-    // min(80, 10*1) * 1 = 10
-    expect(result.firstStrikeCount).toBe(10);
   });
 
   it('ranged attack strikes first and provokes no retaliation', () => {
@@ -368,6 +451,45 @@ describe('resolveCombatSequence', () => {
     expect(result.strikerFirst).toBe('attacker');
     expect(result.retaliationCount).toBe(0);
     expect(result.retaliationDamage).toBe(0);
+  });
+
+  it('long-range shots beyond the weapon range are made at disadvantage (roll two, take lower)', () => {
+    // Hero attacker at distance 4, weapon range 2 / maxRange 6 → disadvantage.
+    const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 } };
+    const farDefender = { ...defender, hex: { q: 0, r: -4, s: 4 }, currentAc: 10, isRouting: false };
+    const rangedWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1, range: 2, maxRange: 6 };
+    const seq = [0.7, 0.3]; // roll1 = 15, roll2 = 7 → taken 7
+    const rng = () => seq.shift() ?? 0.5;
+    const result = resolveCombatSequence(heroAttacker, farDefender, rangedWeapon, null, 0, 1, 1, 10, 10, 20, true, false, null, null, rng);
+    expect(result.firstStrikeAttacks).toHaveLength(1);
+    expect(result.firstStrikeAttacks[0].roll).toBe(7); // min(15, 7)
+    expect(result.firstStrikeAttacks[0].isHit).toBe(false); // 7 + 0 < AC 10
+  });
+
+  it('shots within range are not disadvantaged', () => {
+    // Distance 1 ≤ range 2 → a single roll, normal hit.
+    const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 } };
+    const nearDefender = { ...defender, hex: { q: 0, r: -1, s: 1 }, currentAc: 10, isRouting: false };
+    const rangedWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1, range: 2, maxRange: 6 };
+    const seq = [0.7, 0.5]; // single roll = 15 → hit; 0.5 feeds the damage roll
+    const rng = () => seq.shift() ?? 0.5;
+    const result = resolveCombatSequence(heroAttacker, nearDefender, rangedWeapon, null, 0, 1, 1, 10, 10, 20, true, false, null, null, rng);
+    expect(result.firstStrikeAttacks).toHaveLength(1);
+    expect(result.firstStrikeAttacks[0].roll).toBe(15);
+    expect(result.firstStrikeAttacks[0].isHit).toBe(true); // 15 + 0 >= AC 10
+  });
+
+  it('a melee-range weapon thrown beyond reach (range 1, maxRange 3) is disadvantaged', () => {
+    // Distance 2 > range 1, ≤ maxRange 3 → disadvantage (two rolls, take lower).
+    const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 } };
+    const midDefender = { ...defender, hex: { q: 0, r: -2, s: 2 }, currentAc: 10, isRouting: false };
+    const thrownWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1, range: 1, maxRange: 3 };
+    const seq = [0.7, 0.3]; // roll1 = 15, roll2 = 7 → taken 7
+    const rng = () => seq.shift() ?? 0.5;
+    const result = resolveCombatSequence(heroAttacker, midDefender, thrownWeapon, null, 0, 1, 1, 10, 10, 20, true, false, null, null, rng);
+    expect(result.firstStrikeAttacks).toHaveLength(1);
+    expect(result.firstStrikeAttacks[0].roll).toBe(7); // min(15, 7)
+    expect(result.firstStrikeAttacks[0].isHit).toBe(false); // 7 + 0 < AC 10
   });
 
   it('rear attack skips AGR and retaliation', () => {
@@ -539,8 +661,8 @@ describe('resolveCombatSequence', () => {
 
 describe('suppressRetaliation', () => {
   function makeOutcome(): CombatOutcome {
-    const att = makeUnit({ id: 'a', unitName: 'A', aggressiveness: 7, sizeCategory: 100, numberOfAttacks: 1, currentAc: 14, troopHp: 10, currentTroopCount: 80, maxTroopCount: 80, hex: { q: 0, r: -1, s: 1 } });
-    const def = makeUnit({ id: 'd', unitName: 'D', sizeCategory: 100, numberOfAttacks: 1, currentAc: 14, troopHp: 10, currentTroopCount: 80, maxTroopCount: 80, hex: { q: 0, r: 0, s: 0 }, facing: 0 });
+    const att = makeUnit({ id: 'a', unitName: 'A', aggressiveness: 7, sizeCategory: 100, currentAc: 14, troopHp: 10, currentTroopCount: 80, maxTroopCount: 80, hex: { q: 0, r: -1, s: 1 } });
+    const def = makeUnit({ id: 'd', unitName: 'D', sizeCategory: 100, currentAc: 14, troopHp: 10, currentTroopCount: 80, maxTroopCount: 80, hex: { q: 0, r: 0, s: 0 }, facing: 0 });
     const result = resolveCombatSequence(
       att, def,
       { attackBonus: 3, damageDice: '1d8', is_reach: false },

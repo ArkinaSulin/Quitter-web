@@ -38,7 +38,6 @@ export function hexDistance(a: Hex, b: Hex): number {
 export interface Weapon {
   name: string;
   attackBonus: number;
-  targetType: 'single' | 'area';
   damageDice: string;
   range: number;        // hexes
   magicRadius: number;  // feet
@@ -62,7 +61,6 @@ export interface UnitTemplate {
   level: number;
   troopHp: number;                    // was: hp
   maxUnitHp: number;                  // was: unitHp (calculated: troopHp * troopCount)
-  numberOfAttacks: number;            // was: attack
   armorId: string;
   armorName?: string;
   isShielded: boolean;
@@ -108,7 +106,6 @@ export interface Unit {
   troopHp: number;                     // was: maxHp (now renamed)
   maxUnitHp: number;                  // was: maxHp (renamed)
   currentUnitHp: number;              // was: hp (renamed)
-  numberOfAttacks: number;            // was: attack
   isShielded: boolean;
   baselineAc: number;                 // new: AC after equipment (copied from template)
   currentAc: number;                  // dynamic battlefield AC
@@ -154,15 +151,42 @@ export interface Scenario {
   screenshotUrl: string | null;
   currentTurnAlliance: AllianceGroup | null;
   turnNumber: number;
+  /** When false, no new players may join the room (existing players unaffected). */
+  roomOpen: boolean;
 }
 
 // --- Participant ---
+export type ScenarioRole = 'GM' | 'AssistGM' | 'SuperPlayer' | 'Player';
+
 export interface Participant {
   id: string;
   scenarioId: string;
   userId: string;
-  role: 'GM' | 'AssistGM' | 'SuperPlayer' | 'Player';
+  role: ScenarioRole;
+  /** Team this player controls (null = unassigned → read-only). */
+  team: string | null;
   joinedAt: string;
+}
+
+/** Row of the scenario_role_capabilities matrix (migration 030). */
+export interface ScenarioRoleCapabilities {
+  role: ScenarioRole;
+  move_own_team: boolean;
+  move_own_alliance: boolean;
+  move_any_team: boolean;
+  adjust_team_stats: boolean;
+  adjust_alliance_stats: boolean;
+  adjust_all_stats: boolean;
+  view_own_team: boolean;
+  view_own_alliance: boolean;
+  view_any_team: boolean;
+  assign_unit_team: boolean;
+  change_unit_visibility: boolean;
+  add_unit: boolean;
+  choose_map: boolean;
+  change_user_role: boolean;
+  kick_player: boolean;
+  close_room: boolean;
 }
 
 // --- Lookup Tables ---
@@ -186,9 +210,10 @@ export interface WeaponLookup {
   attack_bonus?: number;
   magic_radius?: number;
   range?: number;
-  target_type?: string;
+  max_range?: number;
   is_reach?: boolean;
   is_two_handed?: boolean;
+  number_of_attacks?: number;
 }
 
 export interface Armor {
@@ -216,6 +241,17 @@ export interface Formation {
   morale_modifier: number;
   row_capacity_multiplier: number;
   attack_capacity_multiplier: number;
+  melee_target_arcs: string[];
+  ranged_target_arcs: string[];
+  threat_arcs: string[];
+  double_threat_arcs: string[];
+  retaliate_arcs: { front: 'full' | 'rows' | 'none'; flank: 'full' | 'rows' | 'none'; rear: 'full' | 'rows' | 'none' };
+  retaliate_vs_ranged: boolean;
+  can_charge: boolean;
+  stop_enemy_movement_arcs: string[];
+  charge_through_arcs: string[];
+  be_attacked_melee_modifier: number;
+  be_attacked_range_modifier: number;
 }
 
 export interface UnitType {

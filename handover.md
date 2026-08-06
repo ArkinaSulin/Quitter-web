@@ -1,5 +1,48 @@
 # Handover — 2026-08-03
 
+## Threat Formula in Tooltip + Map Image Upload
+**Files:** `src/lib/unitMorale.ts`, `src/components/ScenarioMap/UnitTooltip.tsx`, `src/components/ScenarioMap/MapEditorPanel.tsx`, `app/api/map-images/route.ts`, `supabase/migrations/028_map_images_bucket.sql` (new)
+
+- **Tooltip threat row** now shows the formula with raw sums: `-N = (f+fl <sum> + r <sum>) ÷ <myThreat>` — the rear sum already includes its ×2 doubling. `calcEnemyThreats` returns `frontSideSum`/`rearSum`/`myThreat` alongside the rounded values (unitMorale tests updated to `toMatchObject`).
+- **Map tab upload** now uses **Supabase storage** (consistent with `unit_images`/`scenario_screenshots`), not the server filesystem:
+  - Migration **028** creates the `map_images` bucket (public read, authenticated upload/update/delete).
+  - `MapEditorPanel` Upload Image button uploads to `map_images` via `supabase.storage`, sets it as current, and refreshes the list.
+  - The image list is read **directly from storage client-side** (paginated past storage's 100-item default) — same pattern as `unit_images`, so there's no Next.js route to cache. The `/api/map-images` route was removed.
+- **Apply migration 028 to the DB** before the upload works.
+
+## Synchronous Auth Hydration (fixes login flash + unit-editor redirect)
+**Files:** `src/lib/supabaseClient.ts`, `src/hooks/useAuth.ts` (new), `src/hooks/useScenarios.ts`, `src/hooks/useProfile.ts`, `app/unit-editor/page.tsx`
+
+Two symptoms shared one root cause: auth was hydrated via `supabase.auth.getUser()` — a **network round-trip**. During that gap `currentUser` was null (Lobby flashed the sign-in button) and `useProfile`'s `loading` lagged a render behind (the unit-editor guard redirected admins before their role resolved).
+
+- **`useAuth`** (new): subscribes to `onAuthStateChange`, which in supabase-js v2 fires a **synchronous `INITIAL_SESSION`** event from the stored session (localStorage — effectively a cookie). `user`/`authLoading` settle on the first paint; `getSession()` fallback settles no-session users too.
+- **`useScenarios`**: `currentUser` now comes from `useAuth` (no network `getCurrentUser()` effect).
+- **`useProfile`**: `loading` is now **derived** from a `resolvedUserId` state (`loading = userId !== null && resolvedUserId !== userId`), so it's `true` on the exact render where `userId` appears — not one commit later via an effect. This was the stale-commit race that kicked admins out of the editor. Settles on error too (role stays null/pending, no infinite spinner).
+- **`app/unit-editor/page.tsx`**: userId from `useAuth`; shows a Loading screen until `ready = !authLoading && !loading && !accessLoading && !!userId`, then renders the editor or redirects. No flash-redirect.
+- Security: hydration only — DB RLS still validates the JWT on every query.
+
+## Formation Combat-Rule Matrix (data-driven)
+**Files:** `supabase/migrations/027_formation_combat_rules.sql` (new), `src/types/gameProtocol.ts`, `src/lib/formationCache.ts` (new), `src/lib/formationRules.ts` (new) + test, `src/lib/unitCombat.ts`, `src/lib/unitMorale.ts`, `src/lib/moveCost.ts` (unchanged logic), `src/components/ScenarioMap/ScenarioMap.tsx`, `src/components/ScenarioMap/ContextMenu.tsx`, `src/components/ScenarioMap/UnitTooltip.tsx`
+
+Formation combat rules moved out of hard-coded branches into the `formations` table (11 new columns). Editing a row changes combat with no code change.
+
+- **Migration 027**: `melee_target_arcs`, `ranged_target_arcs`, `threat_arcs`, `double_threat_arcs`, `retaliate_arcs` (jsonb front/flank/rear → full/rows/none), `retaliate_vs_ranged`, `can_charge`, `stop_enemy_movement_arcs`, `charge_through_arcs` (reserved), `be_attacked_melee_modifier`, `be_attacked_range_modifier`; `Routed.attack_capacity_multiplier` set to 0. Seeded per the rule matrix (Scattered melee all-arcs @ mult 1 + beAttackedMelee 1.5; Routed melee/ranged none + beAttackedMelee 2.0; ranged vs Open/Scattered/Routed = 0.5; Hero all-arcs front).
+- **`formationRules.ts`**: pure helpers (`canMeleeTarget`, `canRangedTarget`, `getThreatMode`, `getRetaliationMode`, `canFormationCharge`, `canStopEnemyMovement`, `canChargeThrough`, `beAttackedModifier`, `getEffectivePosition`). `unitCombat.resolveCombatSequence` now takes optional `attackerForm`/`defenderForm`; applies `beAttackedModifier` to attack counts both directions (defender's modifier on attacker's count; attacker's on defender's retaliation), uses table-driven retaliation, and drops shield (−2 AC) on routed units.
+- **`formationCache.ts`**: session-cached `getFormations()`; ScenarioMap loads through it.
+- **`ScenarioMap.tsx`**: melee/ranged gates via `canMeleeTarget`/`canRangedTarget` (Scattered can now melee all directions; Routed cannot attack at all); `isRear` via `getEffectivePosition`; `computeThreatHexes` uses `canStopEnemyMovement` (Scattered/Routed no longer block movement); formations load via cache.
+- **`unitMorale.ts`**: `calcEnemyThreats` takes the formation row and uses `threat_arcs`/`double_threat_arcs`.
+- **`ContextMenu.tsx`**: Charge button uses `canFormationCharge` from the matrix (via `formationsMap` prop).
+- **`UnitTooltip.tsx`**: passes formation to `calcEnemyThreats`.
+- Tests: new `formationRules.test.ts` (9) + full suite 229 passing, tsc clean.
+
+### Future passes (noted)
+- **DM stat editor on ScenarioMap** — edit any unit stat, undoable (log only changed fields in the chain).
+- **Map tab reads a map image** in the left panel.
+- **Undo message** `(+2 more)` → `[n] items undid`.
+- **Downed heroes interactable** (recovery mechanics).
+- **Hero + host context menus side-by-side** when stacked.
+- **`charge_through_arcs`** wiring (reserved; needs "target other side empty + 2 MP" check).
+
 ## Role → Capability Access Matrix
 **Files:** `supabase/migrations/025_access_matrix.sql` (new), `src/hooks/useProfile.ts`, `src/components/Lobby.tsx`, `app/unit-editor/page.tsx`
 
@@ -17,6 +60,7 @@ Privileges are now **data, not code** — editing a row in the `access_roles` ta
 **Bug fixed — new signups never appeared as pending.** Profile rows were created lazily by the client (`useProfile` upsert on first load); if `getUser()` raced or the upsert failed, the user had NO profile row — they saw the awaiting-approval screen and could submit a request (an UPDATE matching 0 rows), but nothing persisted and the admin panel listed nothing. Live DB had only 2 profiles, both approved, 0 pending.
 
 - **Migration 023**: `handle_new_user()` SECURITY DEFINER trigger on `auth.users` AFTER INSERT auto-creates the pending profile (`display_name` from `raw_user_meta_data.full_name → name → email`; `role` NULL = pending). Runs as owner → bypasses the client/RLS fragility. Client upsert stays as idempotent fallback.
+- **Client profile creation no longer races (`useProfile.ts`)**: the old effect bailed early (`if (cancelled || !user) return`) when `supabase.auth.getUser()` returned null on first paint after an OAuth redirect — so an `auth.users` row existed but the `profiles` upsert never ran (and never retried, deps = `[userId]`). Now `getUser()` is best-effort only (name fallback); the profile is always upserted from `userId` alone. This is the real fix for "signup has no profile row" independent of migration 023.
 - **Pending users now get a read-only lobby**: banner ("Your account is awaiting approval — you can browse scenarios and watch replays while your access is reviewed") + request-note form **and** the normal lobby (scenario cards + left panel). Replay button uses new `canReplay = !!currentUser` (was `canJoin`), so pending users can replay; Join stays `canJoin` (pending can't play). Create/UnitEditor/Admin still role-gated; Delete requires `isCreator`.
 - **Migration 024**: `command_log` SELECT policy `select_log_pending` — any authenticated user with a `profiles` row (pending included) can read logs for replay (read-only).
 - **Search bar** (all users): filters scenario cards by name **and** the creator's live `profiles.display_name` (fetched once per scenario list; falls back to `scenarios.creator_name`), so renames are honored.
@@ -169,13 +213,22 @@ Reach now decides both strike order and retaliation suppression:
 | `src/components/Lobby.tsx` | pending banner + read-only lobby, `canReplay`, scenario search bar (name + live creator alias) |
 | `src/hooks/useProfile.ts` | loads `access_roles` matrix; exposes `access { canUseUnitEditor, canCreateScenario, canJoinGame, canViewReplay }` |
 | `app/unit-editor/page.tsx` | role guard — redirect to Lobby unless `access.canUseUnitEditor` |
+| `src/lib/formationRules.ts` + test | **new** — data-driven combat-rule helpers (melee/ranged arcs, threat, retaliation, charge, stop-movement, beAttacked modifiers) |
+| `src/lib/formationCache.ts` | **new** — session-cached `getFormations()` |
+| `src/lib/unitCombat.ts` | `resolveCombatSequence` takes optional forms; beAttacked modifiers both directions; table retaliation; shield-drop on rout |
+| `src/lib/unitMorale.ts` | `calcEnemyThreats` uses formation threat arcs |
+| `src/components/ScenarioMap/ScenarioMap.tsx` | melee/ranged arc gates, `isRear` via matrix, threat-hex ZOC via matrix, formations via cache |
+| `src/components/ScenarioMap/ContextMenu.tsx` | Charge button via `canFormationCharge` |
+| `src/components/ScenarioMap/UnitTooltip.tsx` | passes formation to `calcEnemyThreats` |
+| `src/types/gameProtocol.ts` | `Formation` + 11 rule fields |
+| `supabase/migrations/027_formation_combat_rules.sql` | **new** — matrix columns + seed; Routed attack mult 0 |
 
 ## Migrations
-- **019** (`replay_watch`), **020** (`charge`), **022** (`is_two_handed`), **023** (`profile_trigger`), **024** (`replay_pending`), **025** (`access_matrix`) — **written, apply to DB**.
+- **019** (`replay_watch`), **020** (`charge`), **022** (`is_two_handed`), **023** (`profile_trigger`), **024** (`replay_pending`), **025** (`access_matrix`), **027** (`formation_combat_rules`), **028** (`map_images_bucket`) — **written, apply to DB**.
 - 018 (`baseline_snapshot`) — **created then dropped** (replay starts from log head). If previously applied, run `ALTER TABLE scenarios DROP COLUMN IF EXISTS baseline_snapshot;`.
 
 ## Pending
-- Migrations 019 (`replay_watch`), 020 (`charge`), 022 (`is_two_handed`), 023 (`profile_trigger`), 024 (`replay_pending`), and 025 (`access_matrix`) — apply to the DB.
+- Migrations 019, 020, 022, 023, 024, 025, 027, and **028** (`map_images_bucket`) — apply to the DB.
 - Set `weapons.is_two_handed = true` on real two-handed weapon rows in the DB (user-managed).
 - Reopen + re-save templates created before the race-field fix so they pick up corrected HD/speed/canCharge defaults.
 - `UnitEditor.tsx`: `isHero` toggle should force `'Hero'` formation / disable other formation checkboxes — **postponed** until the consolidated interface update.
