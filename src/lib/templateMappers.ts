@@ -1,5 +1,6 @@
 // src/lib/templateMappers.ts
 import { UnitTemplate, getOrganizationLevel } from '@/types/gameProtocol';
+import { normalizeLocalAssetUrl } from '@/lib/imageUrls';
 
 /**
  * Map a database row from unit_templates to a UnitTemplate object (camelCase).
@@ -12,12 +13,12 @@ export function mapTemplate(row: any): UnitTemplate {
     raceId: row.race_id || '',
     raceName: row.races?.name || '',
     raceBaseHd: row.races?.base_hd || null,
-    raceIconUrl: row.races?.icon_url || '',
+    raceIconUrl: normalizeLocalAssetUrl(row.races?.icon_url),
     raceCanCharge: row.races?.can_charge || false,
     modelTypeId: row.model_type_id || '',
     modelTypeName: row.unit_types?.name || '',
-    modelTypeIconUrl: row.unit_types?.icon_url || null,
-    unitTypeIconUrl: row.unit_types?.icon_url || row.unit_type_icon_url || null,
+    modelTypeIconUrl: normalizeLocalAssetUrl(row.unit_types?.icon_url),
+    unitTypeIconUrl: normalizeLocalAssetUrl(row.unit_types?.icon_url) || normalizeLocalAssetUrl(row.unit_type_icon_url) || null,
     isHero: row.is_hero || false,
     troopCount: row.troop_count || 1,
     level: row.level || 1,
@@ -41,7 +42,7 @@ export function mapTemplate(row: any): UnitTemplate {
     weeklyCostGp: row.weekly_cost_gp || 0,
     canCharge: row.can_charge || false,
     ignoreMoraleChecks: row.ignore_morale_checks || false,
-    customImageUrl: row.custom_image_url || null,
+    customImageUrl: normalizeLocalAssetUrl(row.custom_image_url),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
