@@ -140,22 +140,36 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [freeMove, setFreeMove] = useState(false);
   const [isEndingTurn, setIsEndingTurn] = useState(false);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
-  // Persist the docked side per scenario + user, like the open-tab state.
-  const panelSideKey = `leftPanelSide:${scenarioId}:${currentUser?.id ?? ''}`;
-  const [panelSide, setPanelSide] = useState<'left' | 'right'>(() => {
-    try {
-      return window.localStorage.getItem(panelSideKey) === 'right' ? 'right' : 'left';
-    } catch {
-      return 'left';
-    }
-  });
+  // Persist the docked side per scenario + user, like the open-tab state. Restore
+  // only once the user id is known (auth settles after the first render), and only
+  // persist on an explicit toggle — otherwise the default 'left' would overwrite a
+  // saved 'right' during the pre-auth render.
+  const [panelSide, setPanelSide] = useState<'left' | 'right'>('left');
+  const appliedSideKeyRef = useRef<string | null>(null);
   useEffect(() => {
+    if (!currentUser?.id) return;
+    const key = `leftPanelSide:${scenarioId}:${currentUser.id}`;
+    if (appliedSideKeyRef.current === key) return;
+    appliedSideKeyRef.current = key;
     try {
-      window.localStorage.setItem(panelSideKey, panelSide);
+      setPanelSide(window.localStorage.getItem(key) === 'right' ? 'right' : 'left');
     } catch {
-      // ignore storage failures
+      setPanelSide('left');
     }
-  }, [panelSideKey, panelSide]);
+  }, [scenarioId, currentUser?.id]);
+  const togglePanelSide = () => {
+    setPanelSide(s => {
+      const next = s === 'left' ? 'right' : 'left';
+      if (currentUser?.id) {
+        try {
+          window.localStorage.setItem(`leftPanelSide:${scenarioId}:${currentUser.id}`, next);
+        } catch {
+          // ignore storage failures
+        }
+      }
+      return next;
+    });
+  };
   const [formationsMap, setFormationsMap] = useState<Record<string, Formation>>({});
 
   const unitMaxMP = (unit: Unit) =>
@@ -1818,7 +1832,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             onSaveBackground={handleSaveBackground}
             onPreviewMapConfig={handlePreviewMapConfig}
             side={panelSide}
-            onToggleSide={() => setPanelSide(s => (s === 'left' ? 'right' : 'left'))}
+            onToggleSide={togglePanelSide}
           />
         </div>
       )}
