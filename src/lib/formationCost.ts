@@ -1,17 +1,62 @@
 // Pure formation-change MP math. MP is tracked as an integer.
-// Each organization-level step costs 1 MP; the remainder then rescales
-// proportionally to the new formation's effective max, floored and clamped.
-import { getOrganizationLevel } from '@/types/gameProtocol';
+// Each organization-level step costs FORMATION_CHANGE_COST (2) MP; the remainder
+// then rescales proportionally to the new formation's effective max, floored and
+// clamped. The cost is paid from already-materialized MP first, then by converting
+// one action into a full pool per the "1 action = 1 full MP pool" economy (same
+// refill rule as applyMpSpend). Actions may go negative — soft enforcement.
+import { getOrganizationLevel, Unit } from '@/types/gameProtocol';
+
+export const FORMATION_CHANGE_COST = 2;
+
+type MpBudget = Pick<Unit, 'movementPointsAvailable' | 'actionsAvailable'>;
+
+export interface FormationChangeResult {
+  movementPointsAvailable: number;
+  actionsAvailable: number;
+}
 
 export function applyFormationChange(
-  currentMP: number,
+  unit: MpBudget,
   steps: number,
   oldMax: number,
   newMax: number,
-): number {
-  if (oldMax <= 0) return newMax;
-  const rescaled = (currentMP - steps) * (newMax / oldMax);
-  return Math.min(newMax, Math.max(0, Math.floor(rescaled)));
+): FormationChangeResult {
+  if (oldMax <= 0) {
+    return { movementPointsAvailable: newMax, actionsAvailable: unit.actionsAvailable };
+  }
+  const pool = Math.max(1, oldMax);
+  const mp = Math.max(0, Math.floor(unit.movementPointsAvailable));
+  const actions = unit.actionsAvailable;
+  const cost = steps * FORMATION_CHANGE_COST;
+
+  const rescale = (leftoverMp: number): number =>
+    Math.min(newMax, Math.max(0, Math.floor(leftoverMp * (newMax / pool))));
+
+  const total = mp + Math.max(0, actions) * pool;
+  if (cost <= total) {
+    const leftover = total - cost;
+    return {
+      movementPointsAvailable: rescale(leftover % pool),
+      actionsAvailable: Math.floor(leftover / pool),
+    };
+  }
+
+  // Over-budget soft enforcement: spend all materialized MP, then each full pool
+  // costs one action (may go negative).
+  const needed = cost - mp;
+  const actionsSpent = Math.ceil(needed / pool);
+  const remainder = needed % pool;
+  return {
+    movementPointsAvailable: rescale(remainder === 0 ? 0 : pool - remainder),
+    actionsAvailable: actions - actionsSpent,
+  };
+}
+
+/** A formation change is affordable when the refill accounting does not go negative on actions. */
+export function isFormationChangeAffordable(unit: MpBudget, steps: number, oldMax: number): boolean {
+  const pool = Math.max(1, oldMax);
+  const mp = Math.max(0, Math.floor(unit.movementPointsAvailable));
+  return mp + Math.max(0, unit.actionsAvailable) * pool >= steps * FORMATION_CHANGE_COST;
 }
 
 // Preferred target when dropping exactly one organization level. Level 3 has two

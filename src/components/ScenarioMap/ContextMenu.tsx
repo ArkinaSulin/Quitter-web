@@ -174,15 +174,18 @@ export function ContextMenu({
           {unit.isCharging && (
             <div className="px-3 py-1 text-gray-500 italic text-xs">Formation locked while charging</div>
           )}
-          {formationOptions.map(opt => (
-            <div
-              key={opt.value}
-              className={`px-3 py-1 ${opt.disabled || unit.isCharging ? 'text-gray-600 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}`}
-              onClick={() => { if (opt.disabled || unit.isCharging) return; onChangeFormation(opt.value); onClose(); }}
-            >
-              {opt.value}
-            </div>
-          ))}
+          {formationOptions.map(opt => {
+            const isCurrent = opt.value === unit.currentFormation;
+            return (
+              <div
+                key={opt.value}
+                className={`px-3 py-1 ${opt.disabled || unit.isCharging ? 'text-gray-600 cursor-not-allowed' : isCurrent ? 'text-amber-300 font-semibold cursor-default' : 'hover:bg-gray-700 cursor-pointer'}`}
+                onClick={() => { if (opt.disabled || unit.isCharging) return; onChangeFormation(opt.value); onClose(); }}
+              >
+                {isCurrent ? `>${opt.value}<` : opt.value}
+              </div>
+            );
+          })}
           {formationOptions.length === 0 && (
             <div className="px-3 py-1 text-gray-400 italic">No formations available</div>
           )}

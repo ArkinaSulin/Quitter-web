@@ -3,7 +3,7 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
-import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation } from '@/types/gameProtocol';
+import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
 import { resolveCombatSequence, computeRowCapacity, determineCombatPosition, isInFrontArc, suppressRetaliation } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition, canStopEnemyMovement } from '@/lib/formationRules';
@@ -11,6 +11,7 @@ import { getFormations } from '@/lib/formationCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios } from '@/hooks/useScenarios';
 import { computeReachableMap, computeMoveBudget, computeMovePool, isMoveAffordable, computeChargeReachable } from '@/lib/moveCost';
+import { isFormationChangeAffordable, FORMATION_CHANGE_COST } from '@/lib/formationCost';
 import { useGameEngine } from '@/hooks/useGameEngine';
 import { useTeamAlliances } from '@/hooks/useTeamAlliances';
 import { useMessageSync } from '@/hooks/useMessageSync';
@@ -217,6 +218,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [pendingAttack, setPendingAttack] = useState<{
     attacker: Unit;
     target: Unit;
+  } | null>(null);
+
+  // Over-budget formation change (soft enforcement): the change costs 2 MP per
+  // org-level step and would overdraw actions.
+  const [pendingFormation, setPendingFormation] = useState<{
+    unit: Unit;
+    formation: string;
+    steps: number;
   } | null>(null);
 
   // Premature charge attack: attacker attacked before moving the full 2 hexes.
@@ -476,6 +485,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     await performMove(unit, targetHex, entry.cost, false, effectiveMax);
     await finishHeroMove(unit);
   }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, unitMaxMP]);
+
+  const handleChangeFormation = useCallback(async (unit: Unit, formation: string) => {
+    if (unit.isHero || freeMove) {
+      await changeFormation(unit, formation, formationsMap);
+      return;
+    }
+    const oldForm = formationsMap[unit.currentFormation];
+    const oldMult = oldForm?.movement_multiplier ?? 1;
+    const oldEffectiveMax = computeEffectiveMovement(unit, oldMult);
+    const steps = Math.abs(getOrganizationLevel(unit.currentFormation) - getOrganizationLevel(formation));
+    if (isFormationChangeAffordable(unit, steps, oldEffectiveMax)) {
+      await changeFormation(unit, formation, formationsMap);
+      return;
+    }
+    setPendingFormation({ unit, formation, steps });
+  }, [changeFormation, formationsMap, freeMove, isFormationChangeAffordable]);
 
   const handleMoveTeam = useCallback(async (team: string, targetGroup: AllianceGroup) => {
     const currentGroup = alliances[team] || 'friendly';
@@ -1893,7 +1918,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onSwitchToUnit={(host) => { setContextMenuUnit(host); setActiveHeroId(null); }}
           onClose={() => { setContextMenuUnit(null); setContextMenuPos(null); }}
           onRotate={(dir) => rotateUnit(contextMenuUnit, dir, unitMaxMP(contextMenuUnit))}
-          onChangeFormation={(formation) => changeFormation(contextMenuUnit, formation, formationsMap)}
+          onChangeFormation={(formation) => handleChangeFormation(contextMenuUnit, formation)}
           onCharge={() => charge(contextMenuUnit)}
           onSelectWeapon={(idx) => selectWeapon(contextMenuUnit, idx)}
           onAssignTeam={(team) => assignTeam(contextMenuUnit, team)}
@@ -1990,6 +2015,32 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         </div>
       )}
 
+      {/* Over-budget formation change (soft enforcement) */}
+      {pendingFormation && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-red-800 rounded-xl shadow-2xl p-6 min-w-[320px]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Change formation over budget?</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              {pendingFormation.unit.unitName} needs {pendingFormation.steps * FORMATION_CHANGE_COST} MP ({Math.ceil(pendingFormation.steps * FORMATION_CHANGE_COST / Math.max(1, unitMaxMP(pendingFormation.unit)))} action(s)) to form {pendingFormation.formation}, but has {pendingFormation.unit.actionsAvailable} action(s) left.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={async () => { const pf = pendingFormation; setPendingFormation(null); if (!controlsLocked) { addError(`${pf.unit.unitName} changed formation over budget — ${pf.steps * FORMATION_CHANGE_COST} MP needed, ${pf.unit.actionsAvailable} action(s) left`); await changeFormation(pf.unit, pf.formation, formationsMap); } }}
+              >
+                Yes, change anyway
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => setPendingFormation(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Over-budget spell resolve confirm */}
       {pendingCastOverBudget && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -2017,7 +2068,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       )}
 
       {/* Premature charge attack confirm */}
-      {pendingChargeAttack && (        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+      {pendingChargeAttack && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
             <p className="text-white text-sm mb-1 text-center font-semibold">Charge incomplete?</p>
             <p className="text-gray-400 text-xs mb-4 text-center">

@@ -321,8 +321,8 @@ export function useGameEngine({
       const oldEffectiveMax = computeEffectiveMovement(unit, oldMult);
       const newEffectiveMax = computeEffectiveMovement(unit, newMult);
       const steps = Math.abs(getOrganizationLevel(unit.currentFormation) - getOrganizationLevel(formation));
-      const newAvailable = applyFormationChange(
-        unit.movementPointsAvailable,
+      const { movementPointsAvailable: newAvailable, actionsAvailable: newActions } = applyFormationChange(
+        unit,
         steps,
         oldEffectiveMax,
         newEffectiveMax,
@@ -334,6 +334,9 @@ export function useGameEngine({
 
       if (!unit.isHero && !freeMove) {
         changes.push({ field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: newAvailable });
+        if (newActions !== unit.actionsAvailable) {
+          changes.push({ field: 'actionsAvailable', from: unit.actionsAvailable, to: newActions });
+        }
       }
 
       if (unit.isRouting && formation !== 'Routed') {
