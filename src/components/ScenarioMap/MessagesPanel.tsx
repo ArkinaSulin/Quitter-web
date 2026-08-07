@@ -8,7 +8,10 @@ export function MessagesPanel() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // block:'nearest' scrolls only the messages' own overflow container — a plain
+    // scrollIntoView() would also scroll the window/document, dragging the whole
+    // map view up by an amount proportional to the message's position.
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [messages]);
 
   return (

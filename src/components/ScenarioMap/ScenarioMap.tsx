@@ -140,7 +140,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [freeMove, setFreeMove] = useState(false);
   const [isEndingTurn, setIsEndingTurn] = useState(false);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
-  const [panelSide, setPanelSide] = useState<'left' | 'right'>('left');
+  // Persist the docked side per scenario + user, like the open-tab state.
+  const panelSideKey = `leftPanelSide:${scenarioId}:${currentUser?.id ?? ''}`;
+  const [panelSide, setPanelSide] = useState<'left' | 'right'>(() => {
+    try {
+      return window.localStorage.getItem(panelSideKey) === 'right' ? 'right' : 'left';
+    } catch {
+      return 'left';
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(panelSideKey, panelSide);
+    } catch {
+      // ignore storage failures
+    }
+  }, [panelSideKey, panelSide]);
   const [formationsMap, setFormationsMap] = useState<Record<string, Formation>>({});
 
   const unitMaxMP = (unit: Unit) =>
