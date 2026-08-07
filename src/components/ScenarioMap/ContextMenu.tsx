@@ -24,7 +24,12 @@ interface ContextMenuProps {
   onDeleteUnit: () => void;
   onCharge?: () => void;
   onAttachHero?: (heroId: string, targetUnitId: string) => void;
-  onDetachHero?: (heroId: string) => void;
+  /** Hero attached to `unit` (when the menu is showing the host) → "Switch to Hero". */
+  attachedHero?: Unit;
+  /** Host `unit` is attached to (when the menu is showing the hero) → "Switch to Unit". */
+  hostUnit?: Unit;
+  onSwitchToHero?: (hero: Unit) => void;
+  onSwitchToUnit?: (host: Unit) => void;
   units: Unit[];
 }
 
@@ -44,7 +49,10 @@ export function ContextMenu({
   onDeleteUnit,
   onCharge,
   onAttachHero,
-  onDetachHero,
+  attachedHero,
+  hostUnit,
+  onSwitchToHero,
+  onSwitchToUnit,
   units,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -93,11 +101,6 @@ export function ContextMenu({
     }));
 
   const canAttach = unit.isHero && (unit.sizeCategory || 100) <= 200 && !unit.attachedToUnitId && !!onAttachHero;
-  const isAttachedHero = unit.isHero && !!unit.attachedToUnitId;
-  const attachedHeroName = isAttachedHero ? units.find(u => u.id === unit.attachedToUnitId)?.unitName || 'unit' : '';
-  const parentUnit = isAttachedHero ? units.find(u => u.id === unit.attachedToUnitId) : null;
-
-  const attachedHeroOnThisUnit = !unit.isHero ? units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted) : null;
 
   const attachableTargets = units.filter(u =>
     u.id !== unit.id && !u.isDeleted && !u.isHero &&
@@ -120,6 +123,26 @@ export function ContextMenu({
       className="absolute z-50 bg-gray-900 border border-gray-700 rounded shadow-xl py-1 min-w-[180px] text-sm text-white"
       style={{ left: x, top: y }}
     >
+      {/* Switch between a host unit and its attached hero (attached heroes act as
+          independent combatants; drag them away to separate). */}
+      {attachedHero && onSwitchToHero && (
+        <div
+          className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
+          onClick={() => onSwitchToHero(attachedHero)}
+        >
+          Switch to Hero: {attachedHero.unitName}
+        </div>
+      )}
+      {hostUnit && onSwitchToUnit && (
+        <div
+          className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
+          onClick={() => onSwitchToUnit(hostUnit)}
+        >
+          Switch to Unit: {hostUnit.unitName}
+        </div>
+      )}
+      {(attachedHero || hostUnit) && <div className="border-t border-gray-700 my-1" />}
+
       {!unit.isHero && !unit.attachedToUnitId && (
         <>
           <div
@@ -182,26 +205,6 @@ export function ContextMenu({
               {target.unitName}
             </div>
           ))}
-          <div className="border-t border-gray-700 my-1" />
-        </>
-      )}
-
-      {isAttachedHero && onDetachHero && (
-        <>
-          <div className="px-3 py-1 text-gray-400 text-xs">Attached to {attachedHeroName}</div>
-          <div className="px-3 py-1 hover:bg-gray-700 cursor-pointer text-yellow-400" onClick={() => { onDetachHero(unit.id); onClose(); }}>
-            Detach from {attachedHeroName}
-          </div>
-          <div className="border-t border-gray-700 my-1" />
-        </>
-      )}
-
-      {attachedHeroOnThisUnit && onDetachHero && (
-        <>
-          <div className="px-3 py-1 text-gray-400 text-xs">Has attached hero</div>
-          <div className="px-3 py-1 hover:bg-gray-700 cursor-pointer text-yellow-400" onClick={() => { onDetachHero(attachedHeroOnThisUnit.id); onClose(); }}>
-            Detach {attachedHeroOnThisUnit.unitName}
-          </div>
           <div className="border-t border-gray-700 my-1" />
         </>
       )}

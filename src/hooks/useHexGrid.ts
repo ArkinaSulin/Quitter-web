@@ -51,6 +51,9 @@ export interface UseHexGridProps {
   canGrabUnit?: (unit: Unit) => boolean;
   /** Ctrl/meta + left-click handler (attention ping). */
   onPing?: (hex: Hex) => void;
+  /** When set (via the context-menu "Switch to Hero"), the attached hero with this
+   *  id is the grabbable entity at its host's hex instead of the host. */
+  activeHeroId?: string | null;
   customDraw?: (ctx: CanvasRenderingContext2D, width: number, height: number, zoom: number, offsetX: number, offsetY: number) => void;
   autoCenter?: boolean;
   backgroundImage?: { url: string; offsetX: number; offsetY: number; scale: number } | null;
@@ -73,6 +76,7 @@ export function useHexGrid({
   onAttack,
   canGrabUnit,
   onPing,
+  activeHeroId,
   customDraw,
   autoCenter = true,
   backgroundImage,
@@ -277,8 +281,14 @@ export function useHexGrid({
   }, [canvasRef, offsetX, offsetY, zoom, size]);
 
   const getUnitAt = useCallback((hex: Hex): Unit | undefined => {
+    // An "active" attached hero (switched via the context menu) becomes the
+    // grabbable entity at its host's hex instead of the host.
+    if (activeHeroId) {
+      const hero = units.find(u => u.id === activeHeroId && !u.isDeleted && u.hex.q === hex.q && u.hex.r === hex.r && u.hex.s === hex.s);
+      if (hero) return hero;
+    }
     return units.find(u => isUnitInteractable(u) && u.hex.q === hex.q && u.hex.r === hex.r && u.hex.s === hex.s);
-  }, [units]);
+  }, [units, activeHeroId]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const hex = getHexFromScreen(e.clientX, e.clientY);

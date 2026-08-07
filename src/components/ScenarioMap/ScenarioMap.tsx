@@ -10,7 +10,7 @@ import { canMeleeTarget, canRangedTarget, getEffectivePosition, canStopEnemyMove
 import { getFormations } from '@/lib/formationCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios } from '@/hooks/useScenarios';
-import { computeReachableMap, computeMoveBudget, computeMovePool, isMoveAffordable, applyMpSpend, computeChargeReachable } from '@/lib/moveCost';
+import { computeReachableMap, computeMoveBudget, computeMovePool, isMoveAffordable, computeChargeReachable } from '@/lib/moveCost';
 import { useGameEngine } from '@/hooks/useGameEngine';
 import { useTeamAlliances } from '@/hooks/useTeamAlliances';
 import { useMessageSync } from '@/hooks/useMessageSync';
@@ -168,6 +168,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Context menu
   const [contextMenuUnit, setContextMenuUnit] = useState<Unit | null>(null);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+
+  // The attached hero currently "in focus" (via the context-menu Switch to Hero).
+  // While set, that hero is the grabbable entity at its host's hex.
+  const [activeHeroId, setActiveHeroId] = useState<string | null>(null);
 
   // Attach position modal
   const [attachModal, setAttachModal] = useState<{
@@ -370,6 +374,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const unit = units.find(u => u.id === unitId);
     if (!unit) return;
 
+    // An attached hero dragged away separates from its host (drag-away = the only
+    // way to detach) — the move's undo chain also undoes the separation.
+    const finishHeroMove = async (moved: Unit): Promise<void> => {
+      if (!moved.attachedToUnitId) return;
+      await execute('DETACH_HERO', [{
+        type: 'DETACH_HERO',
+        description: `${moved.unitName} moved away from its host`,
+        unitId: moved.id,
+        changes: [
+          { field: 'attachedToUnitId', from: moved.attachedToUnitId, to: null },
+          { field: 'attachedPosition', from: moved.attachedPosition, to: null },
+        ],
+      }], `${moved.unitName} moved away from its host`, { chained: true });
+      setActiveHeroId(null);
+    };
+
     // Charging units may only move forward through the front-arc charge wedge.
     if (unit.isCharging) {
       const occupied = computeOccupiedHexes(units, unitId);
@@ -393,6 +413,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         unitId: unit.id,
         changes: [{ field: 'chargeDistance', from: unit.chargeDistance, to: unit.chargeDistance + cost }],
       }], `${unit.unitName} advanced ${cost} hex(es) in its charge`, { chained: true });
+      await finishHeroMove(unit);
       return;
     }
 
@@ -403,6 +424,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         return;
       }
       await moveUnitFree(unit, targetHex);
+      await finishHeroMove(unit);
       return;
     }
 
@@ -423,6 +445,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return;
     }
     await performMove(unit, targetHex, entry.cost, false, effectiveMax);
+    await finishHeroMove(unit);
   }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, unitMaxMP]);
 
   const handleMoveTeam = useCallback(async (team: string, targetGroup: AllianceGroup) => {
@@ -455,47 +478,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     await attachHero(hero, target, position, unitMaxMP(hero));
     addMessage(`${hero.unitName} attached to ${target.unitName} (${position})`);
   }, [units, attachHero, addMessage]);
-
-  const handleDetachHero = useCallback(async (heroId: string) => {
-    const hero = units.find(u => u.id === heroId);
-    if (!hero || !hero.attachedToUnitId) return;
-
-    const parentUnit = units.find(u => u.id === hero.attachedToUnitId);
-    const { movementPointsAvailable, actionsAvailable } = applyMpSpend(hero, 1, unitMaxMP(hero));
-    const changes: { field: string; from: any; to: any }[] = [
-      { field: 'attachedToUnitId', from: hero.attachedToUnitId, to: null },
-      { field: 'movementPointsAvailable', from: hero.movementPointsAvailable, to: movementPointsAvailable },
-    ];
-    if (actionsAvailable !== hero.actionsAvailable) {
-      changes.push({ field: 'actionsAvailable', from: hero.actionsAvailable, to: actionsAvailable });
-    }
-
-    if (parentUnit) {
-      const directions = [
-        { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
-        { q: -1, r: 0 }, { q: 0, r: -1 }, { q: 1, r: -1 },
-      ];
-      const adjacentHexes = directions.map(dir => ({
-        q: parentUnit.hex.q + dir.q, r: parentUnit.hex.r + dir.r,
-        s: -parentUnit.hex.q - parentUnit.hex.r - dir.q - dir.r,
-      }));
-      const occupiedHexes = new Set(
-        units.filter(u => !u.isDeleted && u.id !== heroId).map(u => `${u.hex.q},${u.hex.r}`)
-      );
-      const freeHex = adjacentHexes.find(h => !occupiedHexes.has(`${h.q},${h.r}`));
-      if (freeHex) {
-        changes.push({ field: 'hex', from: { ...hero.hex }, to: { ...freeHex } });
-      }
-    }
-
-    await execute('DETACH_HERO', [{
-      type: 'DETACH_HERO',
-      description: `${hero.unitName} detached`,
-      unitId: hero.id,
-      changes,
-    }], `${hero.unitName} detached`);
-    addMessage(`${hero.unitName} detached`);
-  }, [units, execute, addMessage]);
 
   // Custom draw function that uses drawToken
   const customDraw = useCallback(async (ctx: CanvasRenderingContext2D, width: number, height: number, currentZoom: number, offsetX: number, offsetY: number) => {
@@ -574,9 +556,19 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         } catch (err) {
           console.error('drawToken error (attached hero):', err);
         }
+        // Highlight the "active" hero (Switch to Hero) so it's clear it's the
+        // grabbable entity — drag it away to separate, or drag onto a target to
+        // attack with the hero.
+        if (attachedHero.id === activeHeroId) {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(255, 210, 63, 0.95)';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(heroCx - tokenWidth / 2 - 2, heroCy - tokenHeight / 2 - 2, tokenWidth + 4, tokenHeight + 4);
+          ctx.restore();
+        }
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, formationsMap, sizeCategories]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, formationsMap, sizeCategories, activeHeroId]);
 
   function getOverlayForUnit(unit: Unit): Record<string, string> {
     const result: Record<string, string> = {};
@@ -618,14 +610,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const rawPos = determineCombatPosition(attacker.hex, target.hex, target.facing);
     const effectivePos = getEffectivePosition(formationsMap[target.currentFormation], rawPos);
     const isRear = effectivePos === 'rear';
+    // Attached heroes only share damage when attached in FRONT (Leader mode); a
+    // back-attached (protected) hero is untouched. The hero never contributes to
+    // the host's attack and never retaliates — it's purely a damage-sharing pool.
     const attachedDefenderHero = (() => {
       const hero = units.find(u => u.attachedToUnitId === target.id && !u.isDeleted);
-      if (!hero) return null;
+      if (!hero || hero.attachedPosition !== 'front') return null;
       return { currentAc: hero.currentAc, troopHp: hero.troopHp };
     })();
     const attachedAttackerHero = (() => {
       const hero = units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted);
-      if (!hero) return null;
+      if (!hero || hero.attachedPosition !== 'front') return null;
       return { currentAc: hero.currentAc, troopHp: hero.troopHp };
     })();
 
@@ -1162,6 +1157,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     onAttack: controlsLocked ? undefined : handleAttackRequest,
     canGrabUnit: canControlUnit,
     onPing: (hex) => pingAtHex(hex, playerName, pingColor),
+    activeHeroId,
     customDraw,
     autoCenter: isInitialLoad,
     backgroundImage: backgroundConfig ? { url: backgroundConfig.imageUrl, offsetX: backgroundConfig.offsetX, offsetY: backgroundConfig.offsetY, scale: backgroundConfig.scale } : null,
@@ -1862,6 +1858,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           isGM={isGM}
           selectedWeapon={contextMenuUnit.activeWeaponIndex ?? 0}
           formationsMap={formationsMap}
+          attachedHero={contextMenuUnit.attachedToUnitId ? undefined : units.find(u => u.attachedToUnitId === contextMenuUnit.id && !u.isDeleted)}
+          hostUnit={contextMenuUnit.attachedToUnitId ? units.find(u => u.id === contextMenuUnit.attachedToUnitId) : undefined}
+          onSwitchToHero={(hero) => { setContextMenuUnit(hero); setActiveHeroId(hero.id); }}
+          onSwitchToUnit={(host) => { setContextMenuUnit(host); setActiveHeroId(null); }}
           onClose={() => { setContextMenuUnit(null); setContextMenuPos(null); }}
           onRotate={(dir) => rotateUnit(contextMenuUnit, dir, unitMaxMP(contextMenuUnit))}
           onChangeFormation={(formation) => changeFormation(contextMenuUnit, formation, formationsMap)}
@@ -1882,7 +1882,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             const target = units.find(u => u.id === targetUnitId);
             if (hero && target) setAttachModal({ hero, target });
           }}
-          onDetachHero={(heroId) => handleDetachHero(heroId)}
           units={units}
         />
       )}
