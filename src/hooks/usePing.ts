@@ -13,6 +13,7 @@ export interface Ping {
   id: string;
   hex: Hex;
   name: string;
+  color: string;
   createdAt: number;
 }
 
@@ -110,8 +111,8 @@ export function usePing(scenarioId: string) {
     };
   }, [scenarioId]);
 
-  const pingAtHex = useCallback((hex: Hex, name: string) => {
-    const ping: Ping = { id: crypto.randomUUID(), hex, name, createdAt: Date.now() };
+  const pingAtHex = useCallback((hex: Hex, name: string, color = '#ffffff') => {
+    const ping: Ping = { id: crypto.randomUUID(), hex, name, color, createdAt: Date.now() };
     const sync = syncRef.current!;
     setPings(prev => [...prev.slice(-(MAX_PINGS - 1)), ping]);
     if (sync.channel && sync.subscribed) {

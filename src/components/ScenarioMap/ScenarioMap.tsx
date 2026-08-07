@@ -28,6 +28,7 @@ import { ReplayOverlay } from './ReplayOverlay';
 import { UnitEditorModal } from './UnitEditorModal';
 import { PingLayer } from './PingLayer';
 import { drawToken, loadImage, SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
+import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { computeEffectiveMoraleModifier, computeThreatRating, areHexesAdjacent } from '@/lib/unitMorale';
 import { supabase } from '@/lib/supabaseClient';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement } from '@/lib/unitStats';
@@ -220,6 +221,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const { getRoleCapabilities } = useScenarioCapabilities();
   const myRole = participantsSync.myParticipant?.role ?? null;
   const myTeam = participantsSync.myParticipant?.team ?? null;
+  // Pings render in the pinger's team color; the DM (no team) pings white.
+  const pingColor = myTeam ? TEAM_COLORS[myTeam as Team] : '#ffffff';
   const roleLabel =
     myRole === 'GM' ? 'DM'
     : myRole === 'AssistGM' ? 'Assist GM'
@@ -1158,7 +1161,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     },
     onAttack: controlsLocked ? undefined : handleAttackRequest,
     canGrabUnit: canControlUnit,
-    onPing: (hex) => pingAtHex(hex, playerName),
+    onPing: (hex) => pingAtHex(hex, playerName, pingColor),
     customDraw,
     autoCenter: isInitialLoad,
     backgroundImage: backgroundConfig ? { url: backgroundConfig.imageUrl, offsetX: backgroundConfig.offsetX, offsetY: backgroundConfig.offsetY, scale: backgroundConfig.scale } : null,
