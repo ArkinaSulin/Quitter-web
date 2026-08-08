@@ -1,5 +1,10 @@
 # Handover — 2026-08-03
 
+## Replay for Pending Users — suppress "GM has left" banner (2026-08-08)
+- Pending users (role NULL, `can_view_replay` per migration 025 access matrix) open replays via Lobby → `onReplayScenario` → `ScenarioMap replayMode`. Replay playback (`ReplayOverlay`, `useReplay`) was never gated by `dmGone`/`controlsLocked` — but the **"GM has left — controls disabled"** banner (`ScenarioMap.tsx`) showed for them because presence sees no GM, implying replay was locked.
+- Fix: banner condition now also excludes `inReplay` (`dmGone && !isGM && !inReplay`). Live controls are locked by replay mode anyway; the overlay's play/seek/step controls are self-contained. Pending viewers already had command_log SELECT via migration 024, so the timeline loads.
+- `tsc --noEmit` clean, 273 tests pass.
+
 ## Attached Hero: Front/Back Swap + Combined-Move MP Sharing (2026-08-08)
 **Files:** `src/game/GameEngine.ts`, `src/lib/moveCost.ts` + `moveCost.test.ts`, `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ContextMenu.tsx`, `src/components/ScenarioMap/ScenarioMap.tsx`
 

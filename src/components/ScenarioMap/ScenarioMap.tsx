@@ -1979,8 +1979,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         />
       )}
 
-      {/* DM gone banner — controls disabled, map stays viewable */}
-      {dmGone && !isGM && (
+      {/* DM gone banner — controls disabled, map stays viewable. Suppressed during
+          replay: live controls are locked by replay mode anyway, and replay
+          playback is self-contained (pending viewers don't need the GM). */}
+      {dmGone && !isGM && !inReplay && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 bg-red-900/90 border border-red-500 rounded shadow-lg">
           <span className="text-red-200 font-semibold text-sm">GM has left — controls disabled</span>
         </div>
