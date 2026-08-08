@@ -24,6 +24,8 @@ interface ContextMenuProps {
   onDeleteUnit: () => void;
   onCharge?: () => void;
   onAttachHero?: (heroId: string, targetUnitId: string) => void;
+  /** Swap an attached hero between front/back position (costs 1 hero MP). */
+  onSwapHeroPosition?: (hero: Unit) => void;
   /** Hero attached to `unit` (when the menu is showing the host) → "Switch to Hero". */
   attachedHero?: Unit;
   /** Host `unit` is attached to (when the menu is showing the hero) → "Switch to Unit". */
@@ -49,6 +51,7 @@ export function ContextMenu({
   onDeleteUnit,
   onCharge,
   onAttachHero,
+  onSwapHeroPosition,
   attachedHero,
   hostUnit,
   onSwitchToHero,
@@ -141,6 +144,16 @@ export function ContextMenu({
           Switch to Unit: {hostUnit.unitName}
         </div>
       )}
+      {/* Attached hero swaps front/back position (costs 1 hero MP). Shown on the
+          hero's own menu when attached. */}
+      {unit.isHero && unit.attachedToUnitId && onSwapHeroPosition && (
+        <div
+          className="px-3 py-1 hover:bg-gray-700 cursor-pointer"
+          onClick={() => { onSwapHeroPosition(unit); onClose(); }}
+        >
+          Move to {unit.attachedPosition === 'back' ? 'Front' : 'Back'} (1 MP)
+        </div>
+      )}
       {(attachedHero || hostUnit) && <div className="border-t border-gray-700 my-1" />}
 
       {!unit.isHero && !unit.attachedToUnitId && (
@@ -157,6 +170,16 @@ export function ContextMenu({
           >
             Rotate Right
           </div>
+          {/* Attached hero swaps front/back position (costs 1 hero MP). Shown on
+              the host's menu, right under rotate, above charge. */}
+          {attachedHero && onSwapHeroPosition && (
+            <div
+              className="px-3 py-1 hover:bg-gray-700 cursor-pointer"
+              onClick={() => { onSwapHeroPosition(attachedHero); onClose(); }}
+            >
+              Move Hero to {attachedHero.attachedPosition === 'back' ? 'Front' : 'Back'} (1 MP)
+            </div>
+          )}
           {unit.canCharge && !unit.isRouting && canFormationCharge(formationsMap?.[unit.currentFormation]) && !unit.isCharging && unit.actionsAvailable >= 1 && onCharge && (
             <div
               className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"

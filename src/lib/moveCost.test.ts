@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeReachableMap, computeChargeReachable, computeMoveBudget, computeMovePool, applyMoveCost, applyMpSpend, isMoveAffordable } from './moveCost';
+import { computeReachableMap, computeChargeReachable, computeMoveBudget, computeMovePool, computeMoveCapacity, applyMoveCost, applyMpSpend, isMoveAffordable } from './moveCost';
 import { Hex } from '@/types/gameProtocol';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
@@ -127,6 +127,22 @@ describe('computeMovePool — pool available for the current move', () => {
 
   it('clamps to maxMP', () => {
     expect(computeMovePool({ movementPointsAvailable: 9, actionsAvailable: 0 }, 5)).toBe(5);
+  });
+});
+
+describe('computeMoveCapacity — true remaining capacity (no soft-enforcement fudge)', () => {
+  it('sums leftover MP plus every remaining action as a full pool', () => {
+    expect(computeMoveCapacity({ movementPointsAvailable: 0, actionsAvailable: 2 }, 5)).toBe(10);
+    expect(computeMoveCapacity({ movementPointsAvailable: 3, actionsAvailable: 1 }, 5)).toBe(8);
+    expect(computeMoveCapacity({ movementPointsAvailable: 2, actionsAvailable: 0 }, 5)).toBe(2);
+  });
+
+  it('is 0 when a unit has no MP and no actions', () => {
+    expect(computeMoveCapacity({ movementPointsAvailable: 0, actionsAvailable: 0 }, 5)).toBe(0);
+  });
+
+  it('never goes negative', () => {
+    expect(computeMoveCapacity({ movementPointsAvailable: -3, actionsAvailable: -1 }, 5)).toBe(0);
   });
 });
 

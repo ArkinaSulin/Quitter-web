@@ -101,6 +101,17 @@ export function computeMovePool(unit: MpBudget, maxMP: number): number {
   return Math.min(pool, Math.max(0, Math.floor(unit.movementPointsAvailable)));
 }
 
+/**
+ * True remaining move capacity: materialized MP plus every unconverted action
+ * as a full pool. Unlike `computeMoveBudget`, this does NOT fudge a spare pool
+ * when actions are 0 — a unit with 0 MP and 0 actions has zero capacity. Used
+ * to bound a combined host+attached-hero move by the lower of the two.
+ */
+export function computeMoveCapacity(unit: MpBudget, maxMP: number): number {
+  const pool = Math.max(1, maxMP);
+  return Math.max(0, Math.floor(unit.movementPointsAvailable)) + Math.max(0, unit.actionsAvailable) * pool;
+}
+
 const HEX_DIRS = [
   { q: 1, r: 0 },
   { q: 0, r: 1 },

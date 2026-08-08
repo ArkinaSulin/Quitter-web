@@ -214,6 +214,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     unit: Unit;
     targetHex: Hex;
     cost: number;
+    attachedHero?: Unit | null;
   } | null>(null);
   const [pendingAttack, setPendingAttack] = useState<{
     attacker: Unit;
@@ -297,7 +298,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
 
   const {
-    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, placeUnit, attachHero, detachHero, endTurn, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, hydrateFromLog, subscribeToCommandLog,
+    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, placeUnit, attachHero, detachHero, swapHeroPosition, endTurn, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, hydrateFromLog, subscribeToCommandLog,
   } = useGameEngine({
     scenarioId,
     playerId,
@@ -367,11 +368,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }));
   }, []);
 
-  const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number) => {
+  const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number) => {
     if (overBudget) {
-      addError(`${unit.unitName} moved over budget — path costs ${cost} MP (${Math.ceil(cost / Math.max(1, maxMP))} action(s)), but ${unit.unitName} has ${unit.actionsAvailable} action(s) left`);
+      const heroNote = attachedHero
+        ? `, ${attachedHero.unitName} has ${attachedHero.actionsAvailable} action(s) left`
+        : '';
+      addError(`${unit.unitName} moved over budget — path costs ${cost} MP (${Math.ceil(cost / Math.max(1, maxMP))} action(s)), but ${unit.unitName} has ${unit.actionsAvailable} action(s) left${heroNote}`);
     }
-    await moveUnitRecorded(unit, targetHex, cost, maxMP);
+    await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP);
 
     const updatedUnits = units.map(u =>
       u.id === unit.id ? { ...u, hex: { ...targetHex } } : u
@@ -428,6 +432,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setActiveHeroId(null);
     };
 
+    // A host dragging with an attached hero moves the combined unit: the hero
+    // shares the move cost (its own MP/actions) and its hex follows the host.
+    // The hero itself (attached) is a drag-away detach, not a combined move.
+    const attachedHero = unit.attachedToUnitId ? undefined : units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted);
+    const heroMax = attachedHero ? unitMaxMP(attachedHero) : undefined;
+
     // Charging units may only move forward through the front-arc charge wedge.
     if (unit.isCharging) {
       const occupied = computeOccupiedHexes(units, unitId);
@@ -438,12 +448,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         addMessage(`${unit.unitName} cannot move there — outside the charge route`);
         return;
       }
-      const overBudget = !isMoveAffordable(unit, cost, maxMP);
+      const overBudget = !isMoveAffordable(unit, cost, maxMP) || (attachedHero && heroMax ? !isMoveAffordable(attachedHero, cost, heroMax) : false);
       if (overBudget) {
-        setPendingMove({ unit, targetHex, cost });
+        setPendingMove({ unit, targetHex, cost, attachedHero });
         return;
       }
-      await performMove(unit, targetHex, cost, false, maxMP);
+      await performMove(unit, targetHex, cost, false, maxMP, attachedHero, heroMax);
       // Track distance moved during this charge (2 hexes = full charge).
       await execute('CHARGE', [{
         type: 'CHARGE',
@@ -461,7 +471,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — hex occupied`);
         return;
       }
-      await moveUnitFree(unit, targetHex);
+      await moveUnitFree(unit, targetHex, attachedHero);
       await finishHeroMove(unit);
       return;
     }
@@ -470,21 +480,25 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const effectiveMax = computeEffectiveMovement(unit, movementMult);
     const occupied = computeOccupiedHexes(units, unitId);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
-    const reachableMap = computeReachableMap(unit, computeMoveBudget(unit, effectiveMax), occupied, threatHexes);
+    const combinedBudget = Math.min(
+      computeMoveBudget(unit, effectiveMax),
+      attachedHero && heroMax ? computeMoveBudget(attachedHero, heroMax) : Infinity,
+    );
+    const reachableMap = computeReachableMap(unit, combinedBudget, occupied, threatHexes);
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
       addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — out of reach`);
       return;
     }
 
-    const overBudget = !isMoveAffordable(unit, entry.cost, effectiveMax);
+    const overBudget = !isMoveAffordable(unit, entry.cost, effectiveMax) || (attachedHero && heroMax ? !isMoveAffordable(attachedHero, entry.cost, heroMax) : false);
     if (overBudget) {
-      setPendingMove({ unit, targetHex, cost: entry.cost });
+      setPendingMove({ unit, targetHex, cost: entry.cost, attachedHero });
       return;
     }
-    await performMove(unit, targetHex, entry.cost, false, effectiveMax);
+    await performMove(unit, targetHex, entry.cost, false, effectiveMax, attachedHero, heroMax);
     await finishHeroMove(unit);
-  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, unitMaxMP]);
+  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, unitMaxMP, computeMoveBudget]);
 
   const handleChangeFormation = useCallback(async (unit: Unit, formation: string) => {
     if (unit.isHero || freeMove) {
@@ -1262,10 +1276,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const threatHexes = computeThreatHexes(units, draggingUnitId, alliances, formationsMap);
 
       // White reachable hexes for the dragged unit — one full pool (an action
-      // converts to MP on move), or leftover MP only when 0 actions
+      // converts to MP on move), or leftover MP only when 0 actions. A host with
+      // an attached hero is capped by the hero's pool too (combined unit).
       const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
       const effectiveMax = computeEffectiveMovement(draggedUnit, movementMult);
-      const pool = computeMovePool(draggedUnit, effectiveMax);
+      let pool = computeMovePool(draggedUnit, effectiveMax);
+      const attachedHero = draggedUnit.attachedToUnitId ? undefined : units.find(u => u.attachedToUnitId === draggedUnit.id && !u.isDeleted);
+      if (attachedHero) {
+        const heroMult = getFormationMultiplier(formationsMap, attachedHero.currentFormation, 'movement_multiplier');
+        const heroMax = computeEffectiveMovement(attachedHero, heroMult);
+        pool = Math.min(pool, computeMovePool(attachedHero, heroMax));
+      }
       const reachableMap = computeReachableMap(draggedUnit, pool, occupied, threatHexes);
 
       const combined: Record<string, string> = {};
@@ -1920,6 +1941,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onRotate={(dir) => rotateUnit(contextMenuUnit, dir, unitMaxMP(contextMenuUnit))}
           onChangeFormation={(formation) => handleChangeFormation(contextMenuUnit, formation)}
           onCharge={() => charge(contextMenuUnit)}
+          onSwapHeroPosition={(hero) => swapHeroPosition(hero, unitMaxMP(hero))}
           onSelectWeapon={(idx) => selectWeapon(contextMenuUnit, idx)}
           onAssignTeam={(team) => assignTeam(contextMenuUnit, team)}
           onToggleHide={() => toggleHide(contextMenuUnit)}
@@ -1970,12 +1992,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           <div className="bg-gray-900 border border-red-800 rounded-xl shadow-2xl p-6 min-w-[320px]">
             <p className="text-white text-sm mb-1 text-center font-semibold">Move over budget?</p>
             <p className="text-gray-400 text-xs mb-4 text-center">
-              {pendingMove.unit.unitName} needs {pendingMove.cost} MP ({Math.ceil(pendingMove.cost / Math.max(1, unitMaxMP(pendingMove.unit)))} action(s)) to reach ({pendingMove.targetHex.q}, {pendingMove.targetHex.r}), but has {pendingMove.unit.actionsAvailable} action(s) left.
+              {pendingMove.attachedHero
+                ? `${pendingMove.unit.unitName} + ${pendingMove.attachedHero.unitName} need ${pendingMove.cost} MP to reach (${pendingMove.targetHex.q}, ${pendingMove.targetHex.r}), but ${pendingMove.unit.unitName} has ${pendingMove.unit.actionsAvailable} and ${pendingMove.attachedHero.unitName} has ${pendingMove.attachedHero.actionsAvailable} action(s) left.`
+                : `${pendingMove.unit.unitName} needs ${pendingMove.cost} MP (${Math.ceil(pendingMove.cost / Math.max(1, unitMaxMP(pendingMove.unit)))} action(s)) to reach (${pendingMove.targetHex.q}, ${pendingMove.targetHex.r}), but has ${pendingMove.unit.actionsAvailable} action(s) left.`}
             </p>
             <div className="flex flex-col gap-2">
               <button
                 className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => { const pm = pendingMove; setPendingMove(null); if (!controlsLocked) await performMove(pm.unit, pm.targetHex, pm.cost, true, unitMaxMP(pm.unit)); }}
+                onClick={async () => { const pm = pendingMove; setPendingMove(null); if (!controlsLocked) await performMove(pm.unit, pm.targetHex, pm.cost, true, unitMaxMP(pm.unit), pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined); }}
               >
                 Yes, move anyway
               </button>

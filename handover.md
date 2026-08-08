@@ -1,5 +1,27 @@
 # Handover — 2026-08-03
 
+## Attached Hero: Front/Back Swap + Combined-Move MP Sharing (2026-08-08)
+**Files:** `src/game/GameEngine.ts`, `src/lib/moveCost.ts` + `moveCost.test.ts`, `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ContextMenu.tsx`, `src/components/ScenarioMap/ScenarioMap.tsx`
+
+- **Front/Back swap** (`SWAP_HERO_POSITION` action): a context-menu item flips an attached hero between front (Leader) and back (Protected), costing **1 hero MP** via `applyMpSpend` (refills from a hero action when MP is 0; free under Free Move). Shown on **both** menus: the host's menu (between Rotate Right and Charge → `Move Hero to {Front|Back}`) and the hero's own menu (after Switch to Unit → `Move to {Front|Back}`). Undoable + realtime via the command log. A back-attached hero is untouched by the host's damage sharing; front shares (existing `attachedPosition` semantics).
+- **Combined move drains BOTH MPs**: dragging a host with an attached hero deducts the path cost from host *and* hero (`applyMoveCost` each), and the hero's hex follows the host. `moveUnitRecorded`/`moveUnitFree` take an optional `attachedHero` and emit a second MOVE sub-step (one command → one undo). Over-budget uses the existing **confirm modal** (soft enforcement) with combined names/actions shown; confirming moves anyway and can push either side negative (red notification). The hero being dragged away is still a detach + solo move.
+- **Charge** with an attached hero also drains the hero's MP (affordability checked on both).
+- **`computeMoveCapacity(unit, maxMP)`** added (true capacity = leftover MP + actions×pool, no `Math.max(1, actions)` fudge) — documents the "either side at 0 ⇒ no further move" rule; drag overlay caps the host's reach at `min(host pool, hero pool)`.
+- 273 tests; `tsc --noEmit` clean.
+
+## Formation Change 2 MP/Step + Current-Formation Marker (2026-08-07)
+**Files:** `src/lib/formationCost.ts` + `formationCost.test.ts`, `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ContextMenu.tsx`, `src/components/ScenarioMap/ScenarioMap.tsx`
+
+- **Formation change now costs 2 MP per org-level step** (`FORMATION_CHANGE_COST = 2`). `applyFormationChange` now uses the "1 action = 1 full MP pool" refill accounting (same rule as `applyMpSpend`): materialized MP is spent first, then an action converts to a full pool and only the shortfall is deducted. Returns `{ movementPointsAvailable, actionsAvailable }`; the engine pushes the `actionsAvailable` change to the command log so undo restores it.
+  - Accounting example: with 1 MP left + 1 action, a 2 MP change spends 1 from leftover + 1 from the freshly converted pool → 3 MP, 0 actions.
+- **Soft enforcement**: an over-budget change opens a confirm modal (`pendingFormation` in ScenarioMap) + red error notification when forced — same pattern as moves/attacks. `isFormationChangeAffordable(unit, steps, oldMax)`.
+- **Context menu**: current formation renders as `>Open Order<` in amber + semibold (`ContextMenu.tsx`).
+- 15 tests; `tsc --noEmit` clean, full suite 270 passing.
+
+## Org Levels — System Note
+- `ORGANIZATION_LEVEL` in `src/types/gameProtocol.ts` is **hard-coded** (Routed 0, Scattered 0, **Hero 0**, Open Order 1, Close Order 2, Phalanx/Shield Wall 3). NOT a `formations` table column.
+- The DB's `units.organization_level` column is **denormalized** and **recomputed client-side on load** via `getOrganizationLevel(row.current_formation)` (`useSupabaseSync.ts`), and written back on formation change. So editing the levels map needs **no migration** — existing units reflect new levels immediately. A renumbering experiment (Routed 0 / Scattered 1 / Open 2 / Close 3 / Phalanx+Shield Wall 4) was tried and reverted.
+
 ## Threat Formula in Tooltip + Map Image Upload
 **Files:** `src/lib/unitMorale.ts`, `src/components/ScenarioMap/UnitTooltip.tsx`, `src/components/ScenarioMap/MapEditorPanel.tsx`, `app/api/map-images/route.ts`, `supabase/migrations/028_map_images_bucket.sql` (new)
 

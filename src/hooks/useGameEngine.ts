@@ -241,7 +241,7 @@ export function useGameEngine({
   }, [playerId, isGM]);
 
   const moveUnitRecorded = useCallback(
-    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number): Promise<void> => {
+    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number): Promise<void> => {
       const { movementPointsAvailable, actionsAvailable } = applyMoveCost(unit, cost, maxMP);
       const subSteps: SubStep[] = [
         {
@@ -255,13 +255,30 @@ export function useGameEngine({
           ],
         },
       ];
+
+      // A host with an attached hero moves the combined unit: the hero shares the
+      // move cost (its own MP/actions) and its hex follows the host.
+      if (attachedHero && heroMaxMP) {
+        const heroCost = applyMoveCost(attachedHero, cost, heroMaxMP);
+        subSteps.push({
+          type: 'MOVE',
+          description: `${attachedHero.unitName} moved with ${unit.unitName}`,
+          unitId: attachedHero.id,
+          changes: [
+            { field: 'hex', from: { ...attachedHero.hex }, to: { ...targetHex } },
+            { field: 'movementPointsAvailable', from: attachedHero.movementPointsAvailable, to: heroCost.movementPointsAvailable },
+            { field: 'actionsAvailable', from: attachedHero.actionsAvailable, to: heroCost.actionsAvailable },
+          ],
+        });
+      }
+
       await execute('MOVE', subSteps, subSteps[0].description);
     },
     [execute],
   );
 
   const moveUnitFree = useCallback(
-    async (unit: Unit, targetHex: Hex): Promise<void> => {
+    async (unit: Unit, targetHex: Hex, attachedHero?: Unit | null): Promise<void> => {
       const subSteps: SubStep[] = [
         {
           type: 'MOVE',
@@ -272,6 +289,16 @@ export function useGameEngine({
           ],
         },
       ];
+      if (attachedHero) {
+        subSteps.push({
+          type: 'MOVE',
+          description: `${attachedHero.unitName} moved with ${unit.unitName}`,
+          unitId: attachedHero.id,
+          changes: [
+            { field: 'hex', from: { ...attachedHero.hex }, to: { ...targetHex } },
+          ],
+        });
+      }
       await execute('MOVE', subSteps, subSteps[0].description);
     },
     [execute],
@@ -491,6 +518,33 @@ export function useGameEngine({
     [execute],
   );
 
+  const swapHeroPosition = useCallback(
+    async (hero: Unit, heroMaxMP: number): Promise<void> => {
+      if (!hero.attachedToUnitId) return;
+      const newPosition = hero.attachedPosition === 'back' ? 'front' : 'back';
+      const changes: { field: string; from: any; to: any }[] = [
+        { field: 'attachedPosition', from: hero.attachedPosition, to: newPosition },
+      ];
+      if (!freeMove) {
+        const { movementPointsAvailable, actionsAvailable } = applyMpSpend(hero, 1, heroMaxMP);
+        changes.push({ field: 'movementPointsAvailable', from: hero.movementPointsAvailable, to: movementPointsAvailable });
+        if (actionsAvailable !== hero.actionsAvailable) {
+          changes.push({ field: 'actionsAvailable', from: hero.actionsAvailable, to: actionsAvailable });
+        }
+      }
+      const subSteps: SubStep[] = [
+        {
+          type: 'SWAP_HERO_POSITION',
+          description: `${hero.unitName} moved to ${newPosition}`,
+          unitId: hero.id,
+          changes,
+        },
+      ];
+      await execute('SWAP_HERO_POSITION', subSteps, subSteps[0].description);
+    },
+    [execute, freeMove],
+  );
+
   const charge = useCallback(
     async (unit: Unit): Promise<void> => {
       // Charge! only locks the unit into charging state. No MP/action is deducted
@@ -603,6 +657,7 @@ export function useGameEngine({
     placeUnit,
     attachHero,
     detachHero,
+    swapHeroPosition,
     endTurn,
     charge,
     hydrateFromLog,
