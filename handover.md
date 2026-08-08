@@ -1,5 +1,19 @@
 # Handover — 2026-08-03
 
+## Charge-Over (Overrun) After a Full Charge Attack (2026-08-08)
+**Files:** `src/lib/chargeOver.ts` + `chargeOver.test.ts` (new), `src/lib/formationRules.ts` (used `canChargeThrough`), `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`
+
+- After a **full charge attack** (`chargeDistance >= 2`), if all hold the attacker is prompted to ride over the target and land on its far side:
+  1. attacker did not rout / was killed in that combat
+  2. target is charge-through-able from the charger's approach arc (post-combat formation — **Routed** if the attack broke/killed it, else `charge_through_arcs` from migration 027; dense fronts only over-run-able from the flank)
+  3. target is in the charger's front arc
+  4. charger can afford **2 MP** (capacity incl. action pools) — this IS the cost of the 2-hex overrun, no extra charge
+  5. the landing hex behind the target (cube `t*2 − c`) is empty
+- **`chargeOver.ts`**: pure `computeChargeOverLandingHex` + `isChargeOverEligible` (8 tests). `performAttack` now returns `{ attackerRouted, attackerKilled, defenderRouted, defenderKilled }`.
+- **Prompt** (`pendingChargeThrough` modal): Yes → `performChargeEnd(attacker, true)` **then** a standalone `MOVE` (2 MP via `applyMoveCost`) so the overrun is a **separate undo entry** (CHARGE_END stays chained to ATTACK). Attached hero mirrors the combined charge: −2 hero MP, hero hex follows. No → normal `performChargeEnd`.
+- `moveUnitRecorded` gained an optional `description` override (charge-over logs "charged over X and landed at ...").
+- 281 tests; `tsc --noEmit` clean.
+
 ## Replay for Pending Users — suppress "GM has left" banner (2026-08-08)
 - Pending users (role NULL, `can_view_replay` per migration 025 access matrix) open replays via Lobby → `onReplayScenario` → `ScenarioMap replayMode`. Replay playback (`ReplayOverlay`, `useReplay`) was never gated by `dmGone`/`controlsLocked` — but the **"GM has left — controls disabled"** banner (`ScenarioMap.tsx`) showed for them because presence sees no GM, implying replay was locked.
 - Fix: banner condition now also excludes `inReplay` (`dmGone && !isGM && !inReplay`). Live controls are locked by replay mode anyway; the overlay's play/seek/step controls are self-contained. Pending viewers already had command_log SELECT via migration 024, so the timeline loads.

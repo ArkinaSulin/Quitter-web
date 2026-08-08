@@ -241,12 +241,12 @@ export function useGameEngine({
   }, [playerId, isGM]);
 
   const moveUnitRecorded = useCallback(
-    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number): Promise<void> => {
+    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string): Promise<void> => {
       const { movementPointsAvailable, actionsAvailable } = applyMoveCost(unit, cost, maxMP);
       const subSteps: SubStep[] = [
         {
           type: 'MOVE',
-          description: `${unit.unitName} moved to (${targetHex.q}, ${targetHex.r})`,
+          description: description ?? `${unit.unitName} moved to (${targetHex.q}, ${targetHex.r})`,
           unitId: unit.id,
           changes: [
             { field: 'hex', from: { ...unit.hex }, to: { ...targetHex } },

@@ -6,7 +6,8 @@ import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
 import { resolveCombatSequence, computeRowCapacity, determineCombatPosition, isInFrontArc, suppressRetaliation } from '@/lib/unitCombat';
-import { canMeleeTarget, canRangedTarget, getEffectivePosition, canStopEnemyMovement } from '@/lib/formationRules';
+import { canMeleeTarget, canRangedTarget, getEffectivePosition, canStopEnemyMovement, canChargeThrough } from '@/lib/formationRules';
+import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
 import { getFormations } from '@/lib/formationCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios } from '@/hooks/useScenarios';
@@ -233,6 +234,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [pendingChargeAttack, setPendingChargeAttack] = useState<{
     attacker: Unit;
     target: Unit;
+  } | null>(null);
+
+  // Post-charge overrun: after a full charge attack, the charger may ride over
+  // the target and land on its far side (separate 2 MP movement, own undo entry).
+  const [pendingChargeThrough, setPendingChargeThrough] = useState<{
+    attacker: Unit;
+    target: Unit;
+    landHex: Hex;
+    attachedHero?: Unit;
   } | null>(null);
 
   // Over-budget spell resolve (soft enforcement): caster has no actions left.
@@ -928,6 +938,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         }
       }
     }
+
+    // Post-combat outcome so callers (charge-over eligibility) can react to the
+    // attacker surviving and/or the target breaking.
+    return { attackerRouted, attackerKilled, defenderRouted, defenderKilled };
   }, [units, alliances, formationsMap, sizeCategories, execute, addMessage, addError]);
 
   const performChargeEnd = useCallback(async (attacker: Unit, dropOrg: boolean) => {
@@ -1051,7 +1065,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setPendingChargeAttack({ attacker, target });
         return;
       }
-      await performAttack(attacker, target, false, { isCharging: true });
+      const result = await performAttack(attacker, target, false, { isCharging: true });
+      // Charge-over: if the combat left the attacker standing and the target
+      // over-run-able, offer to ride over and land on the far side (2 MP, own
+      // undo). Otherwise end the charge as usual.
+      if (result && isChargeOverEligible(attacker, target, result, computeOccupiedHexes(units), formationsMap, unitMaxMP(attacker))) {
+        const attachedHero = units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted);
+        setPendingChargeThrough({
+          attacker,
+          target,
+          landHex: computeChargeOverLandingHex(attacker.hex, target.hex),
+          attachedHero,
+        });
+        return;
+      }
       await performChargeEnd(attacker, true);
       return;
     }
@@ -1061,7 +1088,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return;
     }
     await performAttack(attacker, target, false);
-  }, [units, alliances, performAttack, performChargeEnd, addMessage, magicCast, playerId, playerName]);
+  }, [units, alliances, performAttack, performChargeEnd, addMessage, magicCast, playerId, playerName, formationsMap, unitMaxMP]);
 
   // Resolve an area spell: roll weapon damage + per-troop saving throws, apply the
   // damage through the command engine (undoable), then run morale/rout like combat.
@@ -2119,6 +2146,54 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 onClick={() => setPendingChargeAttack(null)}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Charge-over confirm: after a full charge attack, ride over the target and
+          land on its far side (2 MP, a separate movement with its own undo). */}
+      {pendingChargeThrough && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Charge over?</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              {pendingChargeThrough.attacker.unitName} can charge over {pendingChargeThrough.target.unitName} and land at ({pendingChargeThrough.landHex.q}, {pendingChargeThrough.landHex.r}) for 2 MP.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={async () => {
+                  const pct = pendingChargeThrough;
+                  setPendingChargeThrough(null);
+                  if (controlsLocked) return;
+                  // Charge ends first so the overrun is a standalone MOVE command
+                  // (the CHARGE_END chains onto the ATTACK, keeping the movement
+                  // undoable on its own).
+                  await performChargeEnd(pct.attacker, true);
+                  await moveUnitRecorded(
+                    pct.attacker,
+                    pct.landHex,
+                    2,
+                    unitMaxMP(pct.attacker),
+                    pct.attachedHero,
+                    pct.attachedHero ? unitMaxMP(pct.attachedHero) : undefined,
+                    `${pct.attacker.unitName} charged over ${pct.target.unitName} and landed at (${pct.landHex.q}, ${pct.landHex.r})`,
+                  );
+                }}
+              >
+                Yes, charge over
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={async () => {
+                  const pct = pendingChargeThrough;
+                  setPendingChargeThrough(null);
+                  if (!controlsLocked) await performChargeEnd(pct.attacker, true);
+                }}
+              >
+                No, stop here
               </button>
             </div>
           </div>
