@@ -61,6 +61,12 @@ function mapRowToUnit(row: any): Unit {
     chargeDistance: row.charge_distance || 0,
     actionsAvailable: row.actions_available || 0,
     activeWeaponIndex: row.active_weapon_index || 0,
+    str: row.str ?? 0,
+    dex: row.dex ?? 0,
+    con: row.con ?? 0,
+    int: row.int ?? 0,
+    wis: row.wis ?? 0,
+    cha: row.cha ?? 0,
   };
 }
 
@@ -116,6 +122,12 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     charge_distance: unit.chargeDistance || 0,
     actions_available: unit.actionsAvailable || 0,
     active_weapon_index: unit.activeWeaponIndex || 0,
+    str: unit.str ?? 0,
+    dex: unit.dex ?? 0,
+    con: unit.con ?? 0,
+    int: unit.int ?? 0,
+    wis: unit.wis ?? 0,
+    cha: unit.cha ?? 0,
   };
 }
 
@@ -391,6 +403,12 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       chargeDistance: 0,
       actionsAvailable: getSetting('actions_per_turn', 2),
       activeWeaponIndex,
+      str: template.str ?? 0,
+      dex: template.dex ?? 0,
+      con: template.con ?? 0,
+      int: template.int ?? 0,
+      wis: template.wis ?? 0,
+      cha: template.cha ?? 0,
     };
 
     const row = mapUnitToRow(newUnit, scenarioId);
@@ -453,6 +471,12 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     if (updates.maxTroopCount !== undefined) dbUpdates.max_troop_count = updates.maxTroopCount;
     if (updates.movementPointsAvailable !== undefined) dbUpdates.movement_points_available = updates.movementPointsAvailable;
     if (updates.actionsAvailable !== undefined) dbUpdates.actions_available = updates.actionsAvailable;
+    if (updates.str !== undefined) dbUpdates.str = updates.str;
+    if (updates.dex !== undefined) dbUpdates.dex = updates.dex;
+    if (updates.con !== undefined) dbUpdates.con = updates.con;
+    if (updates.int !== undefined) dbUpdates.int = updates.int;
+    if (updates.wis !== undefined) dbUpdates.wis = updates.wis;
+    if (updates.cha !== undefined) dbUpdates.cha = updates.cha;
     if (updates.unitName !== undefined) dbUpdates.unit_name = updates.unitName;
     if (updates.raceName !== undefined) dbUpdates.race_name = updates.raceName;
     if (updates.armorName !== undefined) dbUpdates.armor_name = updates.armorName;

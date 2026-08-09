@@ -6,16 +6,12 @@ import { useRouter } from 'next/navigation';
 import NextImage from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 import { UnitTemplate, Race, Armor, Formation, UnitType, Mount, SizeCategory } from '@/types/gameProtocol';
-import { parseWeapons, stringifyWeapons, Weapon as WeaponType } from '@/lib/weaponParser';
+import { parseWeapons, stringifyWeapons, Weapon as WeaponType, formatWeaponDisplay, SaveStat } from '@/lib/weaponParser';
+import { WeaponEditorModal } from '@/components/WeaponEditorModal';
 import { TokenPreview } from '@/components/TokenRenderer/TokenPreview';
 import { Team } from '@/components/TokenRenderer/tokenUtils';
 import { mapTemplate, mapTemplateToRow } from '@/lib/templateMappers';
 import { raceIconFromName } from '@/lib/imageUrls';
-
-function isValidDamageDice(dice: string): boolean {
-  const pattern = /^(\d+d\d+)([+-]\d+)?(\+\d+d\d+)*([+-]\d+)?$/;
-  return pattern.test(dice.trim());
-}
 
 const SIZE_LABELS: Record<number, string> = {
   75: 'Small',
@@ -98,7 +94,7 @@ export default function UnitEditor() {
 
   const [races, setRaces] = useState<Race[]>([]);
   const [weaponsLookup, setWeaponsLookup] = useState<
-    { id: string; name: string; damage_dice: string; notes: string | null; cost_gp: number; attack_bonus?: number; magic_radius?: number; range?: number; max_range?: number; reach?: boolean; is_two_handed?: boolean; number_of_attacks?: number; no_retaliation?: boolean; free_action?: boolean }[]
+    { id: string; name: string; damage_dice: string; notes: string | null; cost_gp: number; attack_bonus?: number; magic_radius?: number; range?: number; max_range?: number; reach?: boolean; is_two_handed?: boolean; number_of_attacks?: number; no_retaliation?: boolean; free_action?: boolean; on_save_half_or_neg?: boolean; saving_throw?: SaveStat }[]
   >([]);
   const [armors, setArmors] = useState<Armor[]>([]);
   const [formations, setFormations] = useState<Formation[]>([]);
@@ -127,20 +123,6 @@ export default function UnitEditor() {
 
   const [showWeaponModal, setShowWeaponModal] = useState(false);
   const [editingWeaponIndex, setEditingWeaponIndex] = useState<number | null>(null);
-  const [weaponName, setWeaponName] = useState('');
-  const [weaponAttackBonus, setWeaponAttackBonus] = useState<number>(0);
-  const [weaponDamageDice, setWeaponDamageDice] = useState('1d6');
-  const [weaponRange, setWeaponRange] = useState(1);
-  const [weaponMaxRange, setWeaponMaxRange] = useState<number>(0);
-  const [weaponMagicRadius, setWeaponMagicRadius] = useState<number>(0);
-  const [weaponReach, setWeaponReach] = useState<boolean>(false);
-  const [weaponFreeAction, setWeaponFreeAction] = useState<boolean>(false);
-  const [weaponNoRetaliation, setWeaponNoRetaliation] = useState<boolean>(false);
-  const [weaponIsTwoHanded, setWeaponIsTwoHanded] = useState<boolean>(false);
-  const [weaponNumberOfAttacks, setWeaponNumberOfAttacks] = useState<number>(1);
-
-  const [weaponError, setWeaponError] = useState('');
-  const [weaponSearchTerm, setWeaponSearchTerm] = useState('');
 
   const [showCloneModal, setShowCloneModal] = useState(false);
   const [cloneName, setCloneName] = useState('');
@@ -165,18 +147,27 @@ export default function UnitEditor() {
   const loadUserImages = async () => {
     setLoadingImages(true);
     try {
-      const { data, error } = await supabase.storage
-        .from('unit_images')
-        .list();
-      if (error) throw error;
-      const urls = data
-        .filter(file => file.name !== '.emptyFolderPlaceholder')
-        .map(file => {
+      // Paginate past storage's 100-item per-request default so the full library
+      // is listed (loop advances offset by the actual page length).
+      const urls: string[] = [];
+      let offset = 0;
+      const pageSize = 100;
+      while (true) {
+        const { data, error } = await supabase.storage
+          .from('unit_images')
+          .list('', { limit: pageSize, offset });
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        for (const file of data) {
+          if (file.name === '.emptyFolderPlaceholder') continue;
           const { data: urlData } = supabase.storage
             .from('unit_images')
             .getPublicUrl(file.name);
-          return urlData.publicUrl;
-        });
+          urls.push(urlData.publicUrl);
+        }
+        if (data.length < pageSize) break;
+        offset += data.length;
+      }
       setUserImages(urls);
     } catch (err) {
       console.error('Failed to load user images:', err);
@@ -505,127 +496,27 @@ export default function UnitEditor() {
 
   const openAddWeapon = () => {
     setEditingWeaponIndex(null);
-    setWeaponName('');
-    setWeaponSearchTerm('');
-    setWeaponDamageDice('1d6');
-    setWeaponRange(1);
-    setWeaponMaxRange(0);
-    setWeaponAttackBonus(0);
-    setWeaponMagicRadius(0);
-    setWeaponReach(false);
-    setWeaponFreeAction(false);
-    setWeaponNoRetaliation(false);
-    setWeaponIsTwoHanded(false);
-    setWeaponNumberOfAttacks(1);
-    setWeaponError('');
     setShowWeaponModal(true);
   };
 
   const openEditWeapon = (index: number) => {
-    const weapons = getWeapons();
-    const w = weapons[index];
-    if (!w) return;
     setEditingWeaponIndex(index);
-    setWeaponName(w.name);
-    setWeaponDamageDice(w.damageDice);
-    setWeaponRange(w.range);
-    setWeaponMaxRange(w.maxRange ?? 0);
-    setWeaponAttackBonus(w.attackBonus);
-    setWeaponMagicRadius(w.magicRadius);
-    setWeaponReach(w.reach || false);
-    setWeaponFreeAction(w.freeAction || false);
-    setWeaponNoRetaliation(w.noRetaliation || false);
-    setWeaponIsTwoHanded(w.isTwoHanded || false);
-    setWeaponNumberOfAttacks(w.numberOfAttacks || 1);
-    setWeaponError('');
     setShowWeaponModal(true);
   };
 
-  const handleWeaponRangeChange = (value: number) => {
-    const next = Math.max(1, value);
-    setWeaponRange(next);
-    setWeaponNoRetaliation(next > 1);
-    setWeaponMaxRange(prev => Math.max(prev, next));
-  };
-
-  const selectWeaponFromLookup = (weapon: {
-    id: string;
-    name: string;
-    damage_dice: string;
-    cost_gp: number;
-    attack_bonus?: number;
-    magic_radius?: number;
-    range?: number;
-    max_range?: number;
-    is_reach?: boolean;
-    is_two_handed?: boolean;
-    number_of_attacks?: number;
-    no_retaliation?: boolean;
-    free_action?: boolean;
-  }) => {
-    setWeaponName(weapon.name);
-    setWeaponDamageDice(weapon.damage_dice);
-    setWeaponAttackBonus(weapon.attack_bonus || 0);
-    const nextRange = weapon.range || 1;
-    setWeaponRange(nextRange);
-    setWeaponMaxRange(weapon.max_range ?? 0);
-    setWeaponNoRetaliation(weapon.no_retaliation ?? (nextRange > 1));
-    setWeaponFreeAction(weapon.free_action || false);
-    setWeaponMagicRadius(weapon.magic_radius || 0);
-    setWeaponReach(weapon.is_reach || false);
-    setWeaponIsTwoHanded(weapon.is_two_handed || false);
-    setWeaponNumberOfAttacks(weapon.number_of_attacks || 1);
-  };
-  const getWeaponSuggestions = () => {
-    if (!weaponSearchTerm.trim()) return [];
-    const term = weaponSearchTerm.toLowerCase();
-    return weaponsLookup
-      .filter(w => w.name.toLowerCase().includes(term))
-      .slice(0, 5);
-  };
-
-  const saveWeapon = () => {
+  const handleWeaponSave = (weapon: WeaponType) => {
     if (!formData) return;
-    if (!weaponName.trim()) {
-      setWeaponError('Weapon name is required');
-      return;
-    }
-    if (!isValidDamageDice(weaponDamageDice)) {
-      setWeaponError('Damage dice must be in format like "1d6", "2d6+2", or "1d4+2d6"');
-      return;
-    }
-    if (weaponRange < 1) {
-      setWeaponError('Range must be at least 1 (adjacent)');
-      return;
-    }
-
-    const newWeapon: WeaponType = {
-      name: weaponName.trim(),
-      attackBonus: weaponAttackBonus || 0,
-      damageDice: weaponDamageDice.trim(),
-      range: weaponRange,
-      maxRange: Math.max(weaponMaxRange || weaponRange, weaponRange),
-      magicRadius: weaponMagicRadius,
-      reach: weaponReach,
-      freeAction: weaponFreeAction,
-      noRetaliation: weaponNoRetaliation,
-      isTwoHanded: weaponIsTwoHanded,
-      numberOfAttacks: Math.max(1, weaponNumberOfAttacks || 1),
-    };
-
     const currentWeapons = getWeapons();
     let updatedWeapons: WeaponType[];
     if (editingWeaponIndex !== null) {
       updatedWeapons = [...currentWeapons];
-      updatedWeapons[editingWeaponIndex] = newWeapon;
+      updatedWeapons[editingWeaponIndex] = weapon;
     } else {
-      updatedWeapons = [...currentWeapons, newWeapon];
+      updatedWeapons = [...currentWeapons, weapon];
     }
-
     const weaponString = stringifyWeapons(updatedWeapons);
     updateFormData('weaponString', weaponString);
     setShowWeaponModal(false);
-    setWeaponError('');
   };
 
   const removeWeapon = (index: number) => {
@@ -674,6 +565,12 @@ export default function UnitEditor() {
       weeklyCostGp: 4,
       canCharge: firstRace?.can_charge || false,
       ignoreMoraleChecks: false,
+      str: 0,
+      dex: 0,
+      con: 0,
+      int: 0,
+      wis: 0,
+      cha: 0,
       customImageUrl: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1342,6 +1239,28 @@ export default function UnitEditor() {
                 </div>
               </div>
 
+              {/* Ability save bonuses (used by area-effect spells) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Save bonuses (Str/Dex/Con/Int/Wis/Cha) — used by area-effect spells
+                </label>
+                <div className="grid grid-cols-6 gap-2">
+                  {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(stat => (
+                    <div key={stat}>
+                      <label className="block text-xs uppercase text-gray-500 mb-1">{stat}</label>
+                      <input
+                        type="number"
+                        value={formData[stat] ?? 0}
+                        onChange={(e) => updateFormData(stat, parseInt(e.target.value) || 0)}
+                        min={-10}
+                        max={20}
+                        className="w-full bg-gray-700 text-white px-2 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* Weapons */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -1360,21 +1279,14 @@ export default function UnitEditor() {
                 ) : (
                   <div className="space-y-1 bg-gray-800/30 rounded border border-gray-700 p-2">
                     {getWeapons().map((w, index) => {
-                      const rangeDisplay = w.range === 1 ? 'Adjacent' : `${w.range} hexes`;
                       const cost = getWeaponCost(w.name);
-                      const attackDisplay = w.attackBonus !== undefined ? `+${w.attackBonus}` : '';
-                      const radiusDisplay = w.magicRadius > 0 ? `, r${w.magicRadius}ft` : '';
                       return (
                         <div
                           key={index}
                           className="flex items-center justify-between bg-gray-800 px-3 py-2 rounded hover:bg-gray-700 transition"
                         >
                           <div className="flex items-center gap-4 flex-wrap">
-                            <span className="font-medium">{w.name}</span>
-                            <span className="text-xs text-yellow-400">{w.damageDice}</span>
-                            <span className="text-xs text-gray-400">{rangeDisplay}</span>
-                            <span className="text-xs text-yellow-400">{attackDisplay}</span>
-                            <span className="text-xs text-gray-400">{radiusDisplay}</span>
+                            <span className="font-medium text-yellow-400">{formatWeaponDisplay(w)}</span>
                             <span className="text-xs text-green-400">{cost > 0 ? `${cost}gp` : 'Free'}</span>
                           </div>
                           <div className="flex gap-1">
@@ -1792,180 +1704,14 @@ export default function UnitEditor() {
         </div>
       )}
 
-      {/* Weapon Modal */}
+      {/* Weapon Modal (shared editor) */}
       {showWeaponModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-gray-800 p-6 rounded-lg w-[800px] max-h-[90vh] overflow-hidden border border-gray-700 flex flex-col">
-            <h2 className="text-xl font-bold mb-4 text-white">
-              {editingWeaponIndex !== null ? 'Edit Weapon' : 'Add Weapon'}
-            </h2>
-            <div className="flex flex-1 overflow-hidden gap-6">
-              <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-                <div>
-                  <label className="block text-sm text-gray-300 mb-1">Weapon Name</label>
-                  <input
-                    type="text"
-                    value={weaponName}
-                    onChange={(e) => setWeaponName(e.target.value)}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                    placeholder="e.g., Longsword"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-300 mb-1">Number of Attacks / round</label>
-                  <input
-                    type="number"
-                    value={weaponNumberOfAttacks}
-                    onChange={(e) => setWeaponNumberOfAttacks(Math.max(1, parseInt(e.target.value) || 1))}
-                    min={1}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-300 mb-1">Attack Bonus</label>
-                  <input
-                    type="number"
-                    value={weaponAttackBonus}
-                    onChange={(e) => setWeaponAttackBonus(parseInt(e.target.value) || 0)}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-300 mb-1">Damage Dice</label>
-                  <input
-                    type="text"
-                    value={weaponDamageDice}
-                    onChange={(e) => setWeaponDamageDice(e.target.value)}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                    placeholder="e.g., 1d8, 2d6+2"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Examples: 1d6, 2d10, 2d6+2, 1d8-1, 1d4+2d6</p>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-300 mb-1">Range (hexes)</label>
-                  <input
-                    type="number"
-                    value={weaponRange}
-                    onChange={(e) => handleWeaponRangeChange(parseInt(e.target.value) || 1)}
-                    min={1}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">{weaponRange === 1 ? 'Adjacent (melee)' : `${weaponRange} hexes (ranged)`}</p>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-300 mb-1">Max Range (hexes)</label>
-                  <input
-                    type="number"
-                    value={weaponMaxRange}
-                    onChange={(e) => setWeaponMaxRange(Math.max(weaponRange, parseInt(e.target.value) || weaponRange))}
-                    min={weaponRange}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Must be ≥ range; 0 = same as range. Attacks between range and max range are at disadvantage.</p>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-300 mb-1">Magic Radius (ft)</label>
-                  <input
-                    type="number"
-                    value={weaponMagicRadius}
-                    onChange={(e) => setWeaponMagicRadius(Math.max(0, parseInt(e.target.value) || 0))}
-                    min={0}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                    placeholder="0 for single target"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">{'> 0'} makes this an area-effect weapon (opens the spell-cast window).</p>
-                </div>
-                <div>
-                  <label className="flex items-center gap-2 text-sm text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={weaponReach}
-                      onChange={(e) => setWeaponReach(e.target.checked)}
-                      className="w-4 h-4 accent-yellow-400"
-                    />
-                    Reach (e.g., pike, lance)
-                  </label>
-                </div>
-                <div>
-                  <label className="flex items-center gap-2 text-sm text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={weaponIsTwoHanded}
-                      onChange={(e) => setWeaponIsTwoHanded(e.target.checked)}
-                      className="w-4 h-4 accent-red-400"
-                    />
-                    Two-Handed (occupies both hands — no shield, no Shield Wall)
-                  </label>
-                </div>
-                <div>
-                  <label className="flex items-center gap-2 text-sm text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={weaponFreeAction}
-                      onChange={(e) => setWeaponFreeAction(e.target.checked)}
-                      className="w-4 h-4 accent-purple-400"
-                    />
-                    Free Action (costs no action to attack)
-                  </label>
-                </div>
-                <div>
-                  <label className="flex items-center gap-2 text-sm text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={weaponNoRetaliation}
-                      onChange={(e) => setWeaponNoRetaliation(e.target.checked)}
-                      className="w-4 h-4 accent-blue-400"
-                    />
-                    No Retaliation (defender can't strike back)
-                  </label>
-                </div>
-                {weaponError && <p className="text-red-400 text-sm">{weaponError}</p>}
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
-                    onClick={() => { setShowWeaponModal(false); setWeaponError(''); }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
-                    onClick={saveWeapon}
-                  >
-                    {editingWeaponIndex !== null ? 'Update' : 'Add'}
-                  </button>
-                </div>
-              </div>
-              <div className="w-1/2 border-l border-gray-700 pl-4 flex flex-col">
-                <label className="block text-sm text-gray-300 mb-2">Weapon Library</label>
-                <input
-                  type="text"
-                  placeholder="Search weapons..."
-                  value={weaponSearchTerm}
-                  onChange={(e) => setWeaponSearchTerm(e.target.value)}
-                  className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400 mb-2"
-                />
-                <div className="flex-1 overflow-y-auto space-y-1 pr-1">
-                  {weaponsLookup
-                    .filter(w => w.name.toLowerCase().includes(weaponSearchTerm.toLowerCase()))
-                    .map((weapon) => (
-                      <button
-                        key={weapon.id}
-                        onClick={() => selectWeaponFromLookup(weapon)}
-                        className="w-full text-left px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 transition text-sm flex items-center justify-between"
-                      >
-                        <span className="truncate">{weapon.name}</span>
-                        <span className="text-xs text-gray-400 ml-2">{weapon.damage_dice}</span>
-                      </button>
-                    ))}
-                  {weaponsLookup.length === 0 && (
-                    <div className="text-sm text-gray-500 text-center py-4">No weapons in library.</div>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500 mt-2">Click a weapon to populate the form, then modify as needed.</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <WeaponEditorModal
+          initial={editingWeaponIndex !== null ? (getWeapons()[editingWeaponIndex] ?? null) : null}
+          title={editingWeaponIndex !== null ? 'Edit Weapon' : 'Add Weapon'}
+          onSave={handleWeaponSave}
+          onClose={() => setShowWeaponModal(false)}
+        />
       )}
 
       {/* Clone Modal */}

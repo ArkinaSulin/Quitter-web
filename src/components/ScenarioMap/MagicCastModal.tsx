@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SizeCategory, Formation } from '@/types/gameProtocol';
 import { drawSpellCastToken, computeSpellCastLayout } from '@/components/TokenRenderer/drawToken';
 import { MagicCastState, MagicCircle } from '@/hooks/useMagicCast';
+import { SaveStat, SAVE_STATS } from '@/lib/weaponParser';
 
 export const MAGIC_CANVAS_WIDTH = 400;
 export const MAGIC_CANVAS_HEIGHT = 300;
@@ -26,7 +27,7 @@ interface MagicCastModalProps {
   onCancel: () => void;
   onPlaceCircle: (circle: MagicCircle, affectedCount: number) => void;
   onOverrideCount: (n: number) => void;
-  onSetSave: (patch: { saveBonus?: number; saveDC?: number; halfOnSave?: boolean }) => void;
+  onSetSave: (patch: { saveStat?: SaveStat; saveDC?: number; halfOnSave?: boolean }) => void;
   onRequestResolve: () => void;
 }
 
@@ -313,17 +314,37 @@ export function MagicCastModal({
           />
         </div>
 
-        {/* Save inputs */}
+        {/* Save inputs (hidden for healing — healing isn't resisted) */}
+        {cast.weapon.isHealing ? (
+          <div className="px-4 pb-4 border-t border-gray-700 pt-3">
+            <div className="text-xs text-emerald-300">Healing spell — restores HP to each affected troop, no save.</div>
+          </div>
+        ) : (
         <div className="px-4 pb-4 space-y-2 border-t border-gray-700 pt-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-400">Save Bonus</span>
-            <Stepper
-              value={cast.saveBonus}
-              onChange={(v) => onSetSave({ saveBonus: v })}
-              disabled={!canEdit || cast.resolved}
-              min={-50}
-              max={50}
-            />
+            <span className="text-xs text-gray-400">Saving throw stat</span>
+            <div className="flex gap-1">
+              {SAVE_STATS.map(stat => {
+                const active = cast.saveStat === stat;
+                return (
+                  <button
+                    key={stat}
+                    disabled={!canEdit || cast.resolved}
+                    onClick={() => onSetSave({ saveStat: stat })}
+                    title={`${stat} +${cast.targetStats[stat.toLowerCase() as keyof typeof cast.targetStats]}`}
+                    className={`px-2 py-1 rounded text-xs font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed ${
+                      active ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    {stat}
+                    <span className="ml-1 text-[10px] font-normal opacity-80">
+                      {cast.targetStats[stat.toLowerCase() as keyof typeof cast.targetStats] >= 0 ? '+' : ''}
+                      {cast.targetStats[stat.toLowerCase() as keyof typeof cast.targetStats]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs text-gray-400">Save DC</span>
@@ -348,6 +369,7 @@ export function MagicCastModal({
             </span>
           </label>
         </div>
+        )}
 
         {/* Resolve result */}
         {cast.resolved && cast.result && (

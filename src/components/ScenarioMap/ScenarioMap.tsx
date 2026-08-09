@@ -4,8 +4,8 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
-import { parseWeapons } from '@/lib/weaponParser';
-import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation } from '@/lib/unitCombat';
+import { parseWeapons, Weapon } from '@/lib/weaponParser';
+import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamage } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition, canStopEnemyMovement, canChargeThrough } from '@/lib/formationRules';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
 import { getFormations } from '@/lib/formationCache';
@@ -964,6 +964,37 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     return { attackerRouted, attackerKilled, defenderRouted, defenderKilled };
   }, [units, alliances, formationsMap, sizeCategories, execute, addMessage, addError]);
 
+  // A healing weapon (isHealing) recovers the target's HP instead of damaging it —
+  // same dice mechanic as damage, capped at maxUnitHp. No combat sequence, AGR,
+  // retaliation, morale, or arc/alliance restrictions.
+  const performHeal = useCallback(async (healer: Unit, target: Unit, weapon: Weapon) => {
+    const heal = rollDamage(weapon.damageDice, Math.random);
+    const newHp = Math.min(target.maxUnitHp, target.currentUnitHp + heal);
+    const newTroops = Math.min(target.maxTroopCount, Math.ceil(newHp / target.troopHp));
+    const subSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
+    if (!weapon.freeAction) {
+      subSteps.push({
+        type: 'ATTACK',
+        description: `${healer.unitName} spent an action healing ${target.unitName}`,
+        unitId: healer.id,
+        changes: [{ field: 'actionsAvailable', from: healer.actionsAvailable, to: healer.actionsAvailable - 1 }],
+      });
+    }
+    if (heal > 0) {
+      subSteps.push({
+        type: 'HEAL',
+        description: `${healer.unitName} heals ${target.unitName} for ${heal} HP`,
+        unitId: target.id,
+        changes: [
+          { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+          { field: 'currentTroopCount', from: target.currentTroopCount, to: newTroops },
+        ],
+      });
+    }
+    const desc = `${healer.unitName} heals ${target.unitName} for ${heal} HP with ${weapon.name}`;
+    await execute('HEAL', subSteps, desc);
+  }, [execute]);
+
   const performChargeEnd = useCallback(async (attacker: Unit, dropOrg: boolean) => {
     const changes: { field: string; from: any; to: any }[] = [
       { field: 'isCharging', from: true, to: false },
@@ -1022,6 +1053,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       addMessage(`${attacker.unitName} cannot reach ${target.unitName} — out of range (max ${weapon.maxRange} hexes)`);
       return;
     }
+    // Healing weapons recover HP instead of dealing damage — no combat, no AGR /
+    // retaliation / morale, and no arc or alliance restrictions. Area heal spells
+    // (magicRadius > 0) flow through the magic cast window instead.
+    if (weapon.isHealing && weapon.magicRadius <= 0) {
+      await performHeal(attacker, target, weapon);
+      return;
+    }
     // A melee-range weapon switches to a (disadvantaged) ranged attack when the
     // target is beyond its melee reach; a weapon with range > 1 is always ranged.
     const isRangedThisAttack = weapon.range > 1 || dist > weapon.range;
@@ -1049,6 +1087,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         targetUnitName: target.unitName,
         weapon,
         snapshot,
+        targetStats: {
+          str: target.str ?? 0,
+          dex: target.dex ?? 0,
+          con: target.con ?? 0,
+          int: target.int ?? 0,
+          wis: target.wis ?? 0,
+          cha: target.cha ?? 0,
+        },
       });
       return;
     }
@@ -1108,7 +1154,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return;
     }
     await performAttack(attacker, target, false);
-  }, [units, alliances, performAttack, performChargeEnd, addMessage, magicCast, playerId, playerName, formationsMap, unitMaxMP]);
+  }, [units, alliances, performAttack, performHeal, performChargeEnd, addMessage, magicCast, playerId, playerName, formationsMap, unitMaxMP]);
 
   // Resolve an area spell: roll weapon damage + per-troop saving throws, apply the
   // damage through the command engine (undoable), then run morale/rout like combat.
@@ -1129,9 +1175,52 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       addError(`${caster.unitName} cast with no actions left — over budget`);
     }
 
+    // Area healing: each affected troop recovers HP (capped at troopHp), applied
+    // to the unit up to maxUnitHp. No save, no morale/rout cascade.
+    if (cast.weapon.isHealing) {
+      const healResult = resolveSpellDamage({
+        damageDice: cast.weapon.damageDice,
+        saveBonus: 0,
+        saveDC: 0,
+        halfOnSave: true,
+        isHealing: true,
+        affectedCount: cast.affectedCount,
+        troopHp: target.troopHp,
+        rng: Math.random,
+      });
+      const newHp = Math.min(target.maxUnitHp, target.currentUnitHp + healResult.totalDamage);
+      const newTroops = Math.min(target.maxTroopCount, Math.ceil(newHp / target.troopHp));
+      const troopsRecovered = newTroops - target.currentTroopCount;
+
+      const healSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
+      if (!cast.weapon.freeAction) {
+        healSteps.push({
+          type: 'CAST',
+          description: `${caster.unitName} spent an action casting ${cast.weapon.name}`,
+          unitId: caster.id,
+          changes: [{ field: 'actionsAvailable', from: caster.actionsAvailable, to: caster.actionsAvailable - 1 }],
+        });
+      }
+      if (healResult.totalDamage > 0) {
+        healSteps.push({
+          type: 'HEAL',
+          description: `${target.unitName} healed ${healResult.totalDamage} HP by ${cast.weapon.name}`,
+          unitId: target.id,
+          changes: [
+            { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+            { field: 'currentTroopCount', from: target.currentTroopCount, to: newTroops },
+          ],
+        });
+      }
+      const healDesc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${healResult.baseDamage}, ${cast.affectedCount} troop(s) affected — ${healResult.totalDamage} total healing${troopsRecovered > 0 ? ` (${troopsRecovered} troop(s) recovered)` : ''}`;
+      await execute('HEAL', healSteps, healDesc);
+      magicCast.sendResolve({ baseDamage: healResult.baseDamage, totalDamage: healResult.totalDamage, troopsKilled: 0, newHp, savedCount: 0, failedCount: 0, description: healDesc });
+      return;
+    }
+
     const result = resolveSpellDamage({
       damageDice: cast.weapon.damageDice,
-      saveBonus: cast.saveBonus,
+      saveBonus: cast.targetStats[cast.saveStat.toLowerCase() as keyof typeof cast.targetStats] ?? 0,
       saveDC: cast.saveDC,
       halfOnSave: cast.halfOnSave,
       affectedCount: cast.affectedCount,

@@ -20,6 +20,9 @@ export interface ResolveSpellDamageInput {
   saveDC: number;
   /** true = half damage on a successful save; false = negate (0) on success. */
   halfOnSave: boolean;
+  /** When true the weapon is healing: each affected troop recovers HP instead of
+   *  taking damage (no save — healing isn't resisted). */
+  isHealing?: boolean;
   affectedCount: number;
   troopHp: number;
   rng?: () => number;
@@ -33,12 +36,16 @@ export interface ResolveSpellDamageInput {
  * half (floored) or 0 damage, otherwise it takes the full base damage. Damage per
  * troop is capped at the troop's HP (troopHp) so no single troop absorbs more than
  * one troop's worth.
+ *
+ * When isHealing is true, each troop instead RECOVERS the base roll (capped at
+ * troopHp); `totalDamage` then holds the total healing.
  */
 export function resolveSpellDamage({
   damageDice,
   saveBonus,
   saveDC,
   halfOnSave,
+  isHealing = false,
   affectedCount,
   troopHp,
   rng = Math.random,
@@ -47,6 +54,12 @@ export function resolveSpellDamage({
   const perTroop: PerTroopSave[] = [];
   let totalDamage = 0;
   for (let i = 0; i < affectedCount; i++) {
+    if (isHealing) {
+      const heal = Math.min(baseDamage, troopHp);
+      totalDamage += heal;
+      perTroop.push({ roll: 0, saveResult: 0, success: true, damage: heal });
+      continue;
+    }
     const roll = rollD20(rng);
     const saveResult = roll + saveBonus;
     const success = saveResult >= saveDC;

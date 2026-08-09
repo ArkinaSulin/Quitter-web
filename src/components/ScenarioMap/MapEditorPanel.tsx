@@ -39,7 +39,7 @@ export function MapEditorPanel({ currentConfig, onSave, onPreviewChange }: MapEd
     try {
       const all: MapImage[] = [];
       let offset = 0;
-      const pageSize = 1000;
+      const pageSize = 100;
       while (true) {
         const { data, error } = await supabase.storage
           .from('map_images')
@@ -54,7 +54,7 @@ export function MapEditorPanel({ currentConfig, onSave, onPreviewChange }: MapEd
           all.push({ name: f.name, url: urlData.publicUrl });
         }
         if (data.length < pageSize) break;
-        offset += pageSize;
+        offset += data.length;
       }
       setImages(all);
     } catch (err) {

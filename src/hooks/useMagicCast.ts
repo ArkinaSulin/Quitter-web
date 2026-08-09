@@ -3,10 +3,20 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Weapon } from '@/lib/weaponParser';
+import { Weapon, SaveStat } from '@/lib/weaponParser';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 
 const MAGIC_EVENT = 'magic-cast';
+
+/** The target unit's six ability save bonuses (captured at cast open). */
+export interface UnitSaveStats {
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+}
 
 export interface MagicCircle {
   /** Center X as a fraction of the canvas width (0..1). */
@@ -42,7 +52,10 @@ export interface MagicCastState {
   /** Number of dots/triangles covered by the circle (auto-computed, overridable). */
   affectedCount: number;
   countManual: boolean;
-  saveBonus: number;
+  /** Which of the 6 ability save bonuses the target rolls. */
+  saveStat: SaveStat;
+  /** The target unit's six ability save bonuses (for display + resolve). */
+  targetStats: UnitSaveStats;
   saveDC: number;
   /** true = half damage on a successful save; false = negate (0) on success. */
   halfOnSave: boolean;
@@ -51,11 +64,11 @@ export interface MagicCastState {
 }
 
 type MagicCastEvent =
-  | { type: 'open'; id: string; casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot }
+  | { type: 'open'; id: string; casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats }
   | { type: 'cancel'; id: string }
   | { type: 'place'; id: string; circle: MagicCircle; affectedCount: number }
   | { type: 'count'; id: string; affectedCount: number; countManual: boolean }
-  | { type: 'save'; id: string; saveBonus: number; saveDC: number; halfOnSave: boolean }
+  | { type: 'save'; id: string; saveStat: SaveStat; saveDC: number; halfOnSave: boolean }
   | { type: 'resolve'; id: string; result: MagicCastResult };
 
 interface MagicCastSync {
@@ -136,12 +149,13 @@ export function useMagicCast(scenarioId: string) {
               targetUnitName: event.targetUnitName,
               weapon: event.weapon,
               snapshot: event.snapshot,
+              targetStats: event.targetStats,
               circle: null,
               affectedCount: 0,
               countManual: false,
-              saveBonus: 0,
+              saveStat: (event.weapon.savingThrow ?? 'Dex') as SaveStat,
               saveDC: 10,
-              halfOnSave: true,
+              halfOnSave: event.weapon.onSaveHalfOrNeg ?? true,
               resolved: false,
               result: null,
             };
@@ -156,7 +170,7 @@ export function useMagicCast(scenarioId: string) {
           case 'count':
             return { ...prev, affectedCount: event.affectedCount, countManual: event.countManual };
           case 'save':
-            return { ...prev, saveBonus: event.saveBonus, saveDC: event.saveDC, halfOnSave: event.halfOnSave };
+            return { ...prev, saveStat: event.saveStat, saveDC: event.saveDC, halfOnSave: event.halfOnSave };
           case 'resolve':
             return { ...prev, resolved: true, result: event.result };
           default:
@@ -195,7 +209,7 @@ export function useMagicCast(scenarioId: string) {
     }
   }, []);
 
-  const openCast = useCallback((opts: { casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot }) => {
+  const openCast = useCallback((opts: { casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats }) => {
     const id = crypto.randomUUID();
     const event: MagicCastEvent = {
       type: 'open',
@@ -207,6 +221,7 @@ export function useMagicCast(scenarioId: string) {
       targetUnitName: opts.targetUnitName,
       weapon: opts.weapon,
       snapshot: opts.snapshot,
+      targetStats: opts.targetStats,
     };
     setCast({
       id,
@@ -218,12 +233,13 @@ export function useMagicCast(scenarioId: string) {
       targetUnitName: opts.targetUnitName,
       weapon: opts.weapon,
       snapshot: opts.snapshot,
+      targetStats: opts.targetStats,
       circle: null,
       affectedCount: 0,
       countManual: false,
-      saveBonus: 0,
+      saveStat: (opts.weapon.savingThrow ?? 'Dex') as SaveStat,
       saveDC: 10,
-      halfOnSave: true,
+      halfOnSave: opts.weapon.onSaveHalfOrNeg ?? true,
       resolved: false,
       result: null,
     });
@@ -252,11 +268,11 @@ export function useMagicCast(scenarioId: string) {
     send({ type: 'count', id: current.id, affectedCount: clamped, countManual: true });
   }, [send]);
 
-  const setSave = useCallback((patch: { saveBonus?: number; saveDC?: number; halfOnSave?: boolean }) => {
+  const setSave = useCallback((patch: { saveStat?: SaveStat; saveDC?: number; halfOnSave?: boolean }) => {
     const current = castRef.current;
     if (!current) return;
     const next = {
-      saveBonus: patch.saveBonus ?? current.saveBonus,
+      saveStat: patch.saveStat ?? current.saveStat,
       saveDC: patch.saveDC ?? current.saveDC,
       halfOnSave: patch.halfOnSave ?? current.halfOnSave,
     };

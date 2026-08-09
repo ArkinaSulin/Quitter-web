@@ -129,4 +129,42 @@ describe('resolveSpellDamage', () => {
     expect(result.perTroop).toHaveLength(0);
     expect(result.totalDamage).toBe(0);
   });
+
+  it('heals each affected troop up to troopHp (isHealing, no save)', () => {
+    // 1d4 with seeded rng: base damage is fixed; each troop heals min(base, troopHp).
+    const result = resolveSpellDamage({
+      damageDice: '1d4',
+      saveBonus: 0,
+      saveDC: 20,
+      halfOnSave: true,
+      isHealing: true,
+      affectedCount: 6,
+      troopHp: 100,
+      rng: seededRng(42),
+    });
+    expect(result.baseDamage).toBeGreaterThan(0);
+    expect(result.perTroop).toHaveLength(6);
+    for (const t of result.perTroop) {
+      expect(t.success).toBe(true); // no save — always "succeeds"
+      expect(t.damage).toBe(result.baseDamage);
+    }
+    expect(result.totalDamage).toBe(result.baseDamage * 6);
+  });
+
+  it('caps healing per troop at troopHp', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1d100',
+      saveBonus: 0,
+      saveDC: 20,
+      halfOnSave: true,
+      isHealing: true,
+      affectedCount: 2,
+      troopHp: 10,
+      rng: seededRng(7),
+    });
+    for (const t of result.perTroop) {
+      expect(t.damage).toBeLessThanOrEqual(10);
+    }
+    expect(result.totalDamage).toBeLessThanOrEqual(20);
+  });
 });

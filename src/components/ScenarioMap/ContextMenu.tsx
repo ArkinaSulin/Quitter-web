@@ -4,7 +4,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Unit, getOrganizationLevel, Formation } from '@/types/gameProtocol';
 import { areHexesAdjacent } from '@/lib/unitMorale';
-import { parseWeapons } from '@/lib/weaponParser';
+import { parseWeapons, formatWeaponDisplay } from '@/lib/weaponParser';
 import { canFormationCharge } from '@/lib/formationRules';
 import { getSetting } from '@/lib/settingsCache';
 import { TEAM_COLORS } from '@/components/TokenRenderer/tokenUtils';
@@ -243,8 +243,7 @@ export function ContextMenu({
       {weapons.map((w, idx) => (
         <div key={idx} className="px-3 py-1 hover:bg-gray-700 cursor-pointer flex items-center gap-2" onClick={() => { onSelectWeapon(idx); onClose(); }}>
           <span className="w-3 text-emerald-400">{idx === selectedWeapon ? '✓' : ''}</span>
-          <span className="flex-1">{w.name}</span>
-          {w.numberOfAttacks > 1 && <span className="text-xs px-1 rounded bg-gray-800 text-gray-300" title="Attacks per round">{w.numberOfAttacks}×</span>}
+          <span className="flex-1 text-yellow-300">{formatWeaponDisplay(w)}</span>
           {w.isTwoHanded && <span className="text-xs px-1 rounded bg-red-900 text-red-300" title="Two-handed (no shield, no Shield Wall)">2H</span>}
           {w.freeAction && <span className="text-xs px-1 rounded bg-purple-900 text-purple-300" title="Free action">F</span>}
           {w.noRetaliation && <span className="text-xs px-1 rounded bg-blue-900 text-blue-300" title="No retaliation">NR</span>}

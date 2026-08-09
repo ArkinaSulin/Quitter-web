@@ -1,5 +1,32 @@
 # Handover — 2026-08-03
 
+## isHealing weapon flag + heal resolution + reusable weapon editor (2026-08-08)
+**Files:** `supabase/migrations/045_weapon_is_healing.sql` (new), `src/lib/weaponParser.ts` + test, `src/lib/spellDamage.ts` + test, `src/lib/unitStats.test.ts`, `src/components/WeaponEditorModal.tsx` (new), `src/components/UnitEditor.tsx`, `src/components/ScenarioMap/{UnitEditorModal,ScenarioMap,ContextMenu,UnitTooltip,MagicCastModal}.tsx`
+
+- **Migration 045**: `weapons.is_healing` (BOOLEAN default false) + **weapon-string shift** — `false` inserted right after the damage-dice field in every entry (units + unit_templates), idempotent. New 14-field format: `name,attackBonus,damageDice,isHealing,range,maxRange,magicRadius,reach,noRetaliation,freeAction,isTwoHanded,numberOfAttacks,onSaveHalfOrNeg,savingThrow`.
+- **`weaponParser`**: `Weapon.isHealing` (index 3, missing → false); `formatWeaponDisplay` → `{name} {N}x +{B} {dice}(h) {range}hex {magicRadius}ft`. Applied in UnitEditor list, DM editor list, ContextMenu rows, UnitTooltip (`(h)` hint).
+- **Reusable `WeaponEditorModal`** (extracted from UnitEditor's inline modal; self-fetches the `weapons` library; all fields incl. **isHealing checkbox next to Damage dice** + half/save + freeAction/noRetaliation). UnitEditor refactored onto it (dropped ~15 inline state vars). **UnitEditorModal (DM editor)** replaced the raw `weaponString` text field with a full weapon editor (list + add/edit/remove), saving a `weaponString` change through EDIT_UNIT.
+- **Healing resolution** (same mechanic as damage, capped at maxUnitHp):
+  - **Single-target** (`isHealing && magicRadius <= 0`): `performHeal` rolls the dice, heals the attacked unit (`min(maxUnitHp, current+heal)`, troops derived), `HEAL` substep, action cost unless `freeAction`, no AGR/retaliation/morale/arc/alliance checks.
+  - **Area** (`magicRadius > 0`): flows through the magic cast window; `resolveSpellDamage` gained `isHealing` (each troop heals base capped at troopHp, **no save**); `handleResolveCast` applies heal up to maxUnitHp, no rout cascade; MagicCastModal hides the save stat/DC/half controls for healing ("Healing spell — restores HP…").
+- 292 tests (weapon parser 14-field + heal mode in spellDamage); `tsc --noEmit` clean. **Apply migration 045 to the DB** (shifts all existing weapon strings).
+
+## Spell Save Stats — weapons fields + unit 6 stat bonuses (2026-08-08)
+**Files:** `supabase/migrations/044_spell_save_stats.sql` (new), `src/lib/weaponParser.ts` + test, `src/types/gameProtocol.ts`, `src/lib/templateMappers.ts`, `src/hooks/useSupabaseSync.ts`, `src/components/UnitEditor.tsx`, `src/components/ScenarioMap/UnitEditorModal.tsx`, `src/hooks/useMagicCast.ts`, `src/components/ScenarioMap/MagicCastModal.tsx`, `src/components/ScenarioMap/ScenarioMap.tsx`
+
+- **Migration 044**: `weapons` gains `on_save_half_or_neg` (BOOLEAN default true) + `saving_throw` (TEXT default 'Dex'); `unit_templates` and `units` each gain `str/dex/con/"int"/wis/cha` (INT default **0**). These columns store the **save bonus directly** (not scores) — default 0. **No weapon_string rewrite** (dev stage; existing content fixed manually — older 11-field strings parse with defaults `true`/`Dex`).
+- **`weaponParser`**: `SaveStat` + `SAVE_STATS`; `Weapon` gains required `onSaveHalfOrNeg` + `savingThrow`; string format is now 13 fields (indices 11–12); missing → `true`/`Dex`.
+- **Add Weapon modal** (UnitEditor): Half/Negate checkbox + Saving Throw select, pre-filled from the picked library row, saved into the weapon string. Template editor gains a 6-stat "save bonuses" row; DM stat editor (`UnitEditorModal`) gains the 6 stat fields.
+- **Stats plumbing**: `UnitTemplate`/`Unit` types, `templateMappers`, `useSupabaseSync` (row↔unit, `updateUnit`, spawn copies template→unit) all carry the 6.
+- **Magic cast**: `MagicCastState.saveBonus` → `saveStat: SaveStat` + `targetStats` (the target's 6 bonuses captured at `openCast`). Modal replaces the Save Bonus stepper with **6 stat buttons** (active highlighted, showing the target's bonus); Save DC stepper stays; Half/Negate checkbox stays (defaults from `weapon.onSaveHalfOrNeg`). `handleResolveCast` uses `targetStats[saveStat]` as the save bonus.
+- 287 tests (weapon parser 13-field round-trip + old-string defaults); `tsc --noEmit` clean. **Apply migration 044 to the DB.**
+
+## Storage listing — paginate past the 100-item page limit (2026-08-08)
+- Supabase Storage `list()` returns at most **100 objects per request** by default. It is NOT a hard total cap — you loop `limit` + `offset` to get everything.
+- **`UnitEditor.tsx` `loadUserImages`** (unit_images) used bare `.list()` → silently capped at 100. Now paginates (pageSize 100, `offset += data.length`, break on short page).
+- **`MapEditorPanel.tsx` `loadImages`** (map_images) paginated with `pageSize 1000` and advanced `offset += pageSize` — brittle if the server clamps the limit (could break early or skip pages). Now uses `pageSize 100` and `offset += data.length` (robust regardless of server cap).
+- `tsc --noEmit` clean, 286 tests pass.
+
 ## Weapons Library: free_action + no_retaliation (2026-08-08)
 - **Migration 043**: `weapons` table gains `no_retaliation` / `free_action` (BOOLEAN, default false). Existing ranged rows backfilled `no_retaliation = true` (preserves the prior modal heuristic `range > 1`). Spells are weapons (`magicRadius > 0`) and need these flags.
 - **UnitEditor** "Add Weapon" modal now pre-fills both toggles from the picked library row: `setWeaponNoRetaliation(weapon.no_retaliation ?? (nextRange > 1))` and `setWeaponFreeAction(weapon.free_action || false)` (`applyWeaponFromLibrary`; `weaponsLookup` type extended).

@@ -81,6 +81,13 @@ export interface UnitTemplate {
   unitTypeIconUrl?: string | null;
   canCharge: boolean;                 // new: override for race/mount can_charge
   ignoreMoraleChecks: boolean;        // unit never routs
+  // Ability save bonuses (used by area-effect spells). Store the bonus directly.
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
 //  acSpecialModifier?: string;
   createdAt: string;
   updatedAt: string;
@@ -136,6 +143,13 @@ export interface Unit {
   organizationLevel: number;           // computed from currentFormation via ORGANIZATION_LEVEL map
   actionsAvailable: number;           // new: remaining actions for current turn
   activeWeaponIndex: number;           // index into weaponString of the active weapon (0 = first)
+  // Ability save bonuses (used by area-effect spells). Store the bonus directly.
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
 }
 
 // --- Scenario ---

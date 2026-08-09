@@ -6,6 +6,8 @@ import { Unit, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { TEAM_COLORS, TEAM_SHAPES, Team } from '@/components/TokenRenderer/tokenUtils';
 import { TeamShape } from '@/components/TokenRenderer/TeamChip';
 import { getFormationModifier, getFormationMultiplier, computeEffectiveMovement } from '@/lib/unitStats';
+import { parseWeapons, stringifyWeapons, Weapon, formatWeaponDisplay } from '@/lib/weaponParser';
+import { WeaponEditorModal } from '@/components/WeaponEditorModal';
 
 const SIZE_LABELS: Record<number, string> = {
   75: 'Small',
@@ -34,7 +36,12 @@ const FIELDS: FieldDef[] = [
   { key: 'movementPoints', label: 'Movement (max MP)', type: 'number', min: 0 },
   { key: 'aggressiveness', label: 'Aggressiveness', type: 'number' },
   { key: 'baseMorale', label: 'Base Morale', type: 'number' },
-  { key: 'weaponString', label: 'Weapons (string)', type: 'text' },
+  { key: 'str', label: 'Str save', type: 'number' },
+  { key: 'dex', label: 'Dex save', type: 'number' },
+  { key: 'con', label: 'Con save', type: 'number' },
+  { key: 'int', label: 'Int save', type: 'number' },
+  { key: 'wis', label: 'Wis save', type: 'number' },
+  { key: 'cha', label: 'Cha save', type: 'number' },
   { key: 'movementPointsAvailable', label: 'MP left this turn', type: 'number', min: 0 },
   { key: 'actionsAvailable', label: 'Actions left', type: 'number', min: 0 },
   {
@@ -68,6 +75,9 @@ export function UnitEditorModal({ unit, formationsMap, onClose, onSave }: UnitEd
     }
     return init;
   });
+  const [weaponsDraft, setWeaponsDraft] = useState<Weapon[]>(() => parseWeapons(unit.weaponString || ''));
+  const [weaponEditorOpen, setWeaponEditorOpen] = useState(false);
+  const [weaponEditingIndex, setWeaponEditingIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [pos, setPos] = useState(() => ({
     x: typeof window !== 'undefined' ? Math.max(20, (window.innerWidth - 420) / 2) : 60,
@@ -145,6 +155,11 @@ export function UnitEditorModal({ unit, formationsMap, onClose, onSave }: UnitEd
     const newTroops = Math.max(0, Math.ceil(Math.max(0, newCurrentHp) / Math.max(1, newTroopHp)));
     if (newTroops !== unit.currentTroopCount) {
       changes.push({ field: 'currentTroopCount', from: unit.currentTroopCount, to: newTroops });
+    }
+    // Weapons: edited via the shared weapon editor (whole-string change).
+    const newWeaponString = stringifyWeapons(weaponsDraft);
+    if (newWeaponString !== unit.weaponString) {
+      changes.push({ field: 'weaponString', from: unit.weaponString, to: newWeaponString });
     }
     if (changes.length === 0) {
       onClose();
@@ -275,6 +290,42 @@ export function UnitEditorModal({ unit, formationsMap, onClose, onSave }: UnitEd
             </div>
           ))}
 
+          {/* Weapons — edited via the shared weapon editor */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-gray-300">Weapons</label>
+              <button
+                onClick={() => { setWeaponEditingIndex(null); setWeaponEditorOpen(true); }}
+                className="text-xs bg-green-700 hover:bg-green-600 text-white rounded px-2 py-1"
+              >
+                + Add
+              </button>
+            </div>
+            {weaponsDraft.length === 0 ? (
+              <p className="text-[11px] text-gray-500">No weapons.</p>
+            ) : (
+              weaponsDraft.map((w, i) => (
+                <div key={i} className="flex items-center justify-between gap-2 bg-gray-800 rounded px-2 py-1">
+                  <span className="text-[11px] text-yellow-300">{formatWeaponDisplay(w)}</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => { setWeaponEditingIndex(i); setWeaponEditorOpen(true); }}
+                      className="text-[10px] bg-blue-700 hover:bg-blue-600 text-white rounded px-1.5 py-0.5"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setWeaponsDraft(list => list.filter((_, j) => j !== i))}
+                      className="text-[10px] bg-red-700 hover:bg-red-600 text-white rounded px-1.5 py-0.5"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
           <p className="text-[10px] text-gray-500 leading-snug">
             Team, visibility and troop capacity are managed elsewhere. All changes are
             logged and undo as one step.
@@ -294,6 +345,24 @@ export function UnitEditorModal({ unit, formationsMap, onClose, onSave }: UnitEd
           </button>
         </div>
       </div>
+
+      {/* Shared weapon editor overlay */}
+      {weaponEditorOpen && (
+        <WeaponEditorModal
+          initial={weaponEditingIndex !== null ? (weaponsDraft[weaponEditingIndex] ?? null) : null}
+          title={weaponEditingIndex !== null ? 'Edit Weapon' : 'Add Weapon'}
+          onSave={(w) => {
+            setWeaponsDraft(list => {
+              const next = [...list];
+              if (weaponEditingIndex !== null) next[weaponEditingIndex] = w;
+              else next.push(w);
+              return next;
+            });
+            setWeaponEditorOpen(false);
+          }}
+          onClose={() => setWeaponEditorOpen(false)}
+        />
+      )}
     </div>
   );
 }

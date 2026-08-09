@@ -55,7 +55,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
                 const effectiveAtk = computeEffectiveAttackBonus(w.attackBonus, formationAtkMod);
                 return (
                   <div key={i}>
-                    {w.name}{w.isTwoHanded && <span className="text-red-400 ml-1" title="Two-handed (no shield, no Shield Wall)">[2H]</span>} (+{showTroops && formationAtkMod !== 0 ? `${effectiveAtk} atk [base +${w.attackBonus}, formation +${formationAtkMod}]` : `${effectiveAtk} atk`}, {w.damageDice}{w.numberOfAttacks > 1 ? `, ${w.numberOfAttacks} att` : ''})
+                    {w.name}{w.isTwoHanded && <span className="text-red-400 ml-1" title="Two-handed (no shield, no Shield Wall)">[2H]</span>} (+{showTroops && formationAtkMod !== 0 ? `${effectiveAtk} atk [base +${w.attackBonus}, formation +${formationAtkMod}]` : `${effectiveAtk} atk`}, {w.damageDice}{w.isHealing ? '(h)' : ''}{w.numberOfAttacks > 1 ? `, ${w.numberOfAttacks} att` : ''})
                   </div>
                 );
               })}
