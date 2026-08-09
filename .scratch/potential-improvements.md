@@ -1,5 +1,9 @@
 # Potential Improvements
 
+## Magic / Spells
+- **Effect list**: a system for tracking active effects on units (buffs/debuffs with durations, stack behavior, and cleanup on turn end / expiry).
+- **Saving throws in unitTemplate**: add a saving-throw bonus list to unit templates so spells (weapons with `magicRadius > 0`) resolve saves against the target's own modifiers instead of a global constant.
+
 ## Weapon System
 - **Auto-suggest weapon** when default weapon range doesn't match target distance: after warning, offer to switch to a suitable weapon automatically
 - **Weapon selection persistence**: remember which weapon the player selected last for each unit during the session

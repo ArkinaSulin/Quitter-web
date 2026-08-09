@@ -98,7 +98,7 @@ export default function UnitEditor() {
 
   const [races, setRaces] = useState<Race[]>([]);
   const [weaponsLookup, setWeaponsLookup] = useState<
-    { id: string; name: string; damage_dice: string; notes: string | null; cost_gp: number; attack_bonus?: number; magic_radius?: number; range?: number; max_range?: number; reach?: boolean; is_two_handed?: boolean; number_of_attacks?: number }[]
+    { id: string; name: string; damage_dice: string; notes: string | null; cost_gp: number; attack_bonus?: number; magic_radius?: number; range?: number; max_range?: number; reach?: boolean; is_two_handed?: boolean; number_of_attacks?: number; no_retaliation?: boolean; free_action?: boolean }[]
   >([]);
   const [armors, setArmors] = useState<Armor[]>([]);
   const [formations, setFormations] = useState<Formation[]>([]);
@@ -560,6 +560,8 @@ export default function UnitEditor() {
     is_reach?: boolean;
     is_two_handed?: boolean;
     number_of_attacks?: number;
+    no_retaliation?: boolean;
+    free_action?: boolean;
   }) => {
     setWeaponName(weapon.name);
     setWeaponDamageDice(weapon.damage_dice);
@@ -567,7 +569,8 @@ export default function UnitEditor() {
     const nextRange = weapon.range || 1;
     setWeaponRange(nextRange);
     setWeaponMaxRange(weapon.max_range ?? 0);
-    setWeaponNoRetaliation(nextRange > 1);
+    setWeaponNoRetaliation(weapon.no_retaliation ?? (nextRange > 1));
+    setWeaponFreeAction(weapon.free_action || false);
     setWeaponMagicRadius(weapon.magic_radius || 0);
     setWeaponReach(weapon.is_reach || false);
     setWeaponIsTwoHanded(weapon.is_two_handed || false);

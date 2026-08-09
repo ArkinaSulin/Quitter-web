@@ -1,5 +1,11 @@
 # Handover — 2026-08-03
 
+## Weapons Library: free_action + no_retaliation (2026-08-08)
+- **Migration 043**: `weapons` table gains `no_retaliation` / `free_action` (BOOLEAN, default false). Existing ranged rows backfilled `no_retaliation = true` (preserves the prior modal heuristic `range > 1`). Spells are weapons (`magicRadius > 0`) and need these flags.
+- **UnitEditor** "Add Weapon" modal now pre-fills both toggles from the picked library row: `setWeaponNoRetaliation(weapon.no_retaliation ?? (nextRange > 1))` and `setWeaponFreeAction(weapon.free_action || false)` (`applyWeaponFromLibrary`; `weaponsLookup` type extended).
+- `tsc --noEmit` clean, 286 tests pass. **Apply migration 043 to the DB.**
+- Todo added (`.scratch/potential-improvements.md` → "Magic / Spells"): **effect list** (buffs/debuffs with durations) and **saving-throw list in unitTemplate**.
+
 ## Settings 2nd Pass — more constants moved to `settings` (2026-08-08)
 **Files:** `supabase/migrations/042_settings_more.sql` (new), `src/lib/settingsCache.ts` (+`getBandSetting`), `src/lib/unitMorale.ts`, `src/lib/unitStats.ts`, `src/lib/unitCombat.ts`, `src/lib/formationCost.ts`, `src/hooks/useGameEngine.ts`, `src/hooks/useSupabaseSync.ts`, `src/components/ScenarioMap/{ScenarioMap,ContextMenu}.tsx`
 
