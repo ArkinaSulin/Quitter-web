@@ -58,6 +58,7 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [library, setLibrary] = useState<LibraryWeapon[]>([]);
+  const [libraryError, setLibraryError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -66,7 +67,11 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
       .select('*')
       .order('name')
       .then(({ data, error }) => {
-        if (cancelled || error) return;
+        if (cancelled) return;
+        if (error) {
+          setLibraryError(`Failed to load weapon library: ${error.message}`);
+          return;
+        }
         setLibrary((data ?? []) as LibraryWeapon[]);
       });
     return () => { cancelled = true; };
@@ -128,9 +133,7 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
     });
   };
 
-  const suggestions = searchTerm.trim()
-    ? library.filter(w => w.name.toLowerCase().includes(searchTerm.toLowerCase())).slice(0, 5)
-    : [];
+  const suggestions = library.filter(w => w.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
@@ -314,8 +317,12 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
               className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400 mb-2"
             />
             <div className="flex-1 overflow-y-auto space-y-1 pr-1">
-              {suggestions
-                .map((weapon) => (
+              {libraryError ? (
+                <div className="text-sm text-red-400 text-center py-4">{libraryError}</div>
+              ) : suggestions.length === 0 ? (
+                <div className="text-sm text-gray-500 text-center py-4">No weapons in library.</div>
+              ) : (
+                suggestions.map((weapon) => (
                   <button
                     key={weapon.id}
                     onClick={() => selectFromLibrary(weapon)}
@@ -324,9 +331,7 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
                     <span className="truncate">{weapon.name}</span>
                     <span className="text-xs text-gray-400 ml-2">{weapon.damage_dice}</span>
                   </button>
-                ))}
-              {library.length === 0 && (
-                <div className="text-sm text-gray-500 text-center py-4">No weapons in library.</div>
+                ))
               )}
             </div>
             <p className="text-xs text-gray-500 mt-2">Click a weapon to populate the form, then modify as needed.</p>
