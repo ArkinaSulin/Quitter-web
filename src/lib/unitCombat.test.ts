@@ -610,12 +610,13 @@ describe('resolveCombatSequence', () => {
     expect(result.retaliationDamage).toBe(0);
   });
 
-  it('attached hero takes 25% of first strike attacks', () => {
+  it('attached hero takes 30% of first strike attacks', () => {
     const heroDef: Unit & { heroAc: number; heroHp: number } = { ...defender } as any;
     const attachedHero = { currentAc: 12, troopHp: 8 };
     const result = callCombat(attacker, defender, aw, dw, 0, 1, false, false, attachedHero);
-    // min(80, 10*1) * 1 = 10 attacks → ceil(10 * 0.25) = 3 to hero, 7 to unit
+    // min(80, 10*1) * 1 = 10 attacks → ceil(10 * 0.30) = 3 to hero, 7 to unit
     expect(result.firstStrikeAttacks.length).toBe(10);
+    expect(result.firstStrikeHeroAttacks.length).toBe(3);
     expect(result.firstStrikeHeroDamage).toBeGreaterThanOrEqual(0);
   });
 
@@ -650,7 +651,7 @@ describe('resolveCombatSequence', () => {
     expect(result.retaliationDamage).toBe(0);
   });
 
-  it('flagged noRetaliation attack still splits 25% to an attached hero', () => {
+  it('flagged noRetaliation attack still splits 30% to an attached hero', () => {
     const safeW = { ...aw, noRetaliation: true };
     const attachedHero = { currentAc: 12, troopHp: 8 };
     const result = callCombat(attacker, defender, safeW, dw, 0, 1, false, false, attachedHero);

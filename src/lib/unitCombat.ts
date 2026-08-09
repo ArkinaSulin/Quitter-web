@@ -1,6 +1,7 @@
 import { Unit, Hex, Formation, hexDistance } from '@/types/gameProtocol';
 import { computeThreatRating } from './unitMorale';
 import { getRetaliationMode, getEffectivePosition, beAttackedModifier, beAttackedModifierNote, Arc } from './formationRules';
+import { getSetting } from './settingsCache';
 
 const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
@@ -120,10 +121,14 @@ export interface CombatOutcome {
   firstStrikeAttacks: SingleAttackResult[];
   firstStrikeDamage: number;
   firstStrikeHeroDamage: number;
+  /** The subset of first-strike rolls directed at a front-attached hero. */
+  firstStrikeHeroAttacks: SingleAttackResult[];
   firstStrikeCount: number;
   retaliationAttacks: SingleAttackResult[];
   retaliationDamage: number;
   retaliationHeroDamage: number;
+  /** The subset of retaliation rolls directed at a front-attached hero. */
+  retaliationHeroAttacks: SingleAttackResult[];
   retaliationCount: number;
   /** Human-readable explanation of count modifiers on the first strike (e.g. "-50% ranged vs Open Order"). */
   firstStrikeCountNote?: string;
@@ -185,8 +190,8 @@ function executeSplitAttacks(
   rng: () => number,
   isCharging: boolean,
   disadvantage = false,
-): { attacks: SingleAttackResult[]; unitDamage: number; heroDamage: number } {
-  const heroCount = Math.ceil(totalCount * 0.25);
+): { attacks: SingleAttackResult[]; unitDamage: number; heroDamage: number; heroAttacks: SingleAttackResult[] } {
+  const heroCount = Math.ceil(totalCount * getSetting('hero_attack_split', 0.3));
   const unitCount = totalCount - heroCount;
 
   const unitResult = executeAttacks(unitCount, attackBonus, damageDice, unitAc, unitTroopHp, rng, isCharging, disadvantage);
@@ -196,6 +201,7 @@ function executeSplitAttacks(
     attacks: [...unitResult.attacks, ...heroResult.attacks],
     unitDamage: unitResult.totalDamage,
     heroDamage: heroResult.totalDamage,
+    heroAttacks: heroResult.attacks,
   };
 }
 
@@ -236,10 +242,12 @@ export function resolveCombatSequence(
       firstStrikeAttacks: [],
       firstStrikeDamage: 0,
       firstStrikeHeroDamage: 0,
+      firstStrikeHeroAttacks: [],
       firstStrikeCount: 0,
       retaliationAttacks: [],
       retaliationDamage: 0,
       retaliationHeroDamage: 0,
+      retaliationHeroAttacks: [],
       retaliationCount: 0,
     };
   }
@@ -277,11 +285,13 @@ export function resolveCombatSequence(
   let firstStrikeAttacks: SingleAttackResult[] = [];
   let firstStrikeDamage = 0;
   let firstStrikeHeroDamage = 0;
+  let firstStrikeHeroAttacks: SingleAttackResult[] = [];
   let firstStrikeCount = 0;
   let firstStrikeCountNote: string | undefined;
   let retaliationAttacks: SingleAttackResult[] = [];
   let retaliationDamage = 0;
   let retaliationHeroDamage = 0;
+  let retaliationHeroAttacks: SingleAttackResult[] = [];
   let retaliationCount = 0;
   let retaliationCountNote: string | undefined;
 
@@ -298,6 +308,7 @@ export function resolveCombatSequence(
       firstStrikeAttacks = split.attacks;
       firstStrikeDamage = split.unitDamage;
       firstStrikeHeroDamage = split.heroDamage;
+      firstStrikeHeroAttacks = split.heroAttacks;
     } else {
       const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, disadvantage);
       firstStrikeAttacks = result.attacks;
@@ -319,6 +330,7 @@ export function resolveCombatSequence(
       firstStrikeAttacks = split.attacks;
       firstStrikeDamage = split.unitDamage;
       firstStrikeHeroDamage = split.heroDamage;
+      firstStrikeHeroAttacks = split.heroAttacks;
     } else {
       const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, rng, false);
       firstStrikeAttacks = result.attacks;
@@ -345,6 +357,7 @@ export function resolveCombatSequence(
           retaliationAttacks = split.attacks;
           retaliationDamage = split.unitDamage;
           retaliationHeroDamage = split.heroDamage;
+          retaliationHeroAttacks = split.heroAttacks;
         } else {
           const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, rng, false);
           retaliationAttacks = result.attacks;
@@ -367,6 +380,7 @@ export function resolveCombatSequence(
       retaliationAttacks = split.attacks;
       retaliationDamage = split.unitDamage;
       retaliationHeroDamage = split.heroDamage;
+      retaliationHeroAttacks = split.heroAttacks;
     } else {
       const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, disadvantage);
       retaliationAttacks = result.attacks;
@@ -383,11 +397,13 @@ export function resolveCombatSequence(
     firstStrikeAttacks,
     firstStrikeDamage,
     firstStrikeHeroDamage,
+    firstStrikeHeroAttacks,
     firstStrikeCount,
     firstStrikeCountNote,
     retaliationAttacks,
     retaliationDamage,
     retaliationHeroDamage,
+    retaliationHeroAttacks,
     retaliationCount,
     retaliationCountNote,
   };
@@ -416,6 +432,7 @@ export function suppressRetaliation(
     retaliationAttacks: [],
     retaliationDamage: 0,
     retaliationHeroDamage: 0,
+    retaliationHeroAttacks: [],
     retaliationCount: 0,
   };
 }

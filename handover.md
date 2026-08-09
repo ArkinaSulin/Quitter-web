@@ -1,5 +1,23 @@
 # Handover — 2026-08-03
 
+## Settings Table + Hero Attack Split 30% (2026-08-08)
+**Files:** `supabase/migrations/041_settings.sql` (new), `src/lib/settingsCache.ts` + `settingsCache.test.ts` (new), `src/lib/unitCombat.ts`, `src/lib/unitCombat.test.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`
+
+- **Migration 041**: `settings(key TEXT PK, value JSONB, description, updated_at)`. RLS: SELECT for `authenticated`; INSERT/UPDATE/DELETE only for `profiles.role = 'admin'` (ready for a future admin Settings UI — no schema change needed). Seed: `hero_attack_split = 0.3`.
+- **`settingsCache.ts`**: in-memory module cache mirroring `formationCache` — `loadSettings()` (fetch once), `getSetting<T>(key, fallback)` sync read, `invalidateSettingsCache()`. The supabase client is **dynamically imported** inside `loadSettings()` so lib files that only *read* settings stay importable in test envs (no Supabase env vars).
+- **`unitCombat.ts:189`**: hero split now `Math.ceil(totalCount * getSetting('hero_attack_split', 0.3))` — **30%** (was hard-coded 25%). Code fallback matches the seed, so behavior is correct even before the cache populates.
+- **Combat messages now report the split**: `CombatOutcome` gained `firstStrikeHeroAttacks` / `retaliationHeroAttacks` (the hero's own roll subset). The log line breaks the volley into the unit's share (`— X strikes first — N attacks, H hits, C critical, A damage (T troops)`) followed by the hero's own share (`. {Hero} took N attacks, H hits, C critical, A damage (T troops)`) — resolved against the hero's AC/troop HP, not a flat damage %.
+- `ScenarioMap` mount calls `loadSettings()` (combat only runs there).
+- 284 tests (3 new settingsCache tests mock the supabase client); `tsc --noEmit` clean. **Apply migration 041 to the DB.**
+- Note: editing settings straight in the table is a stopgap — a **GM/admin Settings UI is a planned follow-up** (RLS + `invalidateSettingsCache()` already support it).
+
+### Future: settings 2nd-pass candidates (parked, not yet moved)
+All currently hard-coded; move to `settings` rows later — each becomes `getSetting('key', <current value>)`:
+- **Combat/turn**: `actions_per_turn` (2, `useGameEngine.ts:630` + `useSupabaseSync.ts:391`), `turn_start_mp` (0), `agr_die_sides` (10, `unitCombat.ts:228`), `attack_die_sides` (20, `unitCombat.ts:93`), `crit_roll` (20) / `crit_multiplier` (2, `unitCombat.ts:161,167`), `morale_break_threshold` (<= 0).
+- **Movement/charge**: `formation_change_cost_per_step` (2, `formationCost.ts`), `charge_full_distance` (2, `ScenarioMap.tsx:1064`), `charge_over_cost` (2), `hero_attach_max_size` (200, `ContextMenu.tsx:106` + `ScenarioMap.tsx:978`).
+- **Morale**: `wounds_morale_factor` (10, `unitMorale.ts:33`), `isolation_penalty` (1, `unitMorale.ts:99`), `charging_threat_multiplier` (2, `unitMorale.ts:28`), `threat_rating_bands` (level/troop thresholds, `unitMorale.ts:13-28`, JSONB).
+- **Infra**: `undo_stack_size` (50, `GameEngine.ts:34`); `row_capacity_by_size` (10/5/2/1 — **duplicate** in `unitCombat.ts:25-31` and `unitStats.ts:30-35`, moving it also fixes the dup).
+
 ## Charge-Over (Overrun) After a Full Charge Attack (2026-08-08)
 **Files:** `src/lib/chargeOver.ts` + `chargeOver.test.ts` (new), `src/lib/formationRules.ts` (used `canChargeThrough`), `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`
 

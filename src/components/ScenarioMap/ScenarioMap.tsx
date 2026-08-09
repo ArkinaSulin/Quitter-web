@@ -9,6 +9,7 @@ import { resolveCombatSequence, computeRowCapacity, determineCombatPosition, isI
 import { canMeleeTarget, canRangedTarget, getEffectivePosition, canStopEnemyMovement, canChargeThrough } from '@/lib/formationRules';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
 import { getFormations } from '@/lib/formationCache';
+import { loadSettings } from '@/lib/settingsCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios } from '@/hooks/useScenarios';
 import { computeReachableMap, computeMoveBudget, computeMovePool, isMoveAffordable, computeChargeReachable } from '@/lib/moveCost';
@@ -814,66 +815,85 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const defEffectiveMod = defModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(defModUnit, units, alliances, defenderFormationMorMod);
     const defenderRouted = !defenderKilled && !defModUnit.ignoreMoraleChecks && !defModUnit.isRouting && (defModUnit.baseMorale + defEffectiveMod <= 0);
 
-    // Build description
+    // Build description — unit volley and (when attached front) the hero's own
+    // share are reported separately so the hero's AC/HP tanking is visible.
     const firstStriker = outcome.strikerFirst === 'attacker' ? attacker : target;
+    const firstStrikeHeroHostId = outcome.strikerFirst === 'attacker' ? target.id : attacker.id;
+    const firstStrikeHeroUnit = units.find(u => u.attachedToUnitId === firstStrikeHeroHostId && !u.isDeleted);
+    const firstStrikeHeroAttacks = outcome.firstStrikeHeroAttacks;
+    const firstStrikeHeroHits = firstStrikeHeroAttacks.filter(a => a.isHit).length;
+    const firstStrikeHeroCrits = firstStrikeHeroAttacks.filter(a => a.isCrit).length;
     const firstStrikerHits = outcome.firstStrikeAttacks.filter(a => a.isHit).length;
     const firstStrikeCrits = outcome.firstStrikeAttacks.filter(a => a.isCrit).length;
+    const firstStrikeUnitCount = outcome.firstStrikeAttacks.length - firstStrikeHeroAttacks.length;
+    const firstStrikeUnitHits = firstStrikerHits - firstStrikeHeroHits;
+    const firstStrikeUnitCrits = firstStrikeCrits - firstStrikeHeroCrits;
     const weaponTags: string[] = [];
     if (weapon.freeAction) weaponTags.push('FREE');
     if (weapon.noRetaliation) weaponTags.push('NO RETALIATION');
     if (isChargingAttack) weaponTags.push('CHARGE');
     if (hexDistance(attacker.hex, target.hex) > weapon.range) weaponTags.push('LONG RANGE - DISADVANTAGE');
     let desc = `${attacker.unitName} attacks ${target.unitName} with ${weapon.name}${weaponTags.length > 0 ? ` (${weaponTags.join(', ')})` : ''}`;
-    desc += ` — ${firstStriker.unitName} strikes first — ${outcome.firstStrikeAttacks.length} attacks${outcome.firstStrikeCountNote ? ` [${outcome.firstStrikeCountNote}]` : ''}, ${firstStrikerHits} hits${firstStrikeCrits > 0 ? `, ${firstStrikeCrits} critical` : ''}, ${outcome.firstStrikeDamage} damage (${outcome.strikerFirst === 'attacker' ? defenderTroopsKilled : attackerTroopsKilled} troops)`;
+    desc += ` — ${firstStriker.unitName} strikes first — ${firstStrikeUnitCount} attacks${outcome.firstStrikeCountNote ? ` [${outcome.firstStrikeCountNote}]` : ''}, ${firstStrikeUnitHits} hits${firstStrikeUnitCrits > 0 ? `, ${firstStrikeUnitCrits} critical` : ''}, ${outcome.firstStrikeDamage} damage (${outcome.strikerFirst === 'attacker' ? defenderTroopsKilled : attackerTroopsKilled} troops)`;
 
-    // Hero damage from first strike (hero on whoever received the first strike)
-    if (outcome.firstStrikeHeroDamage > 0) {
-      const heroHostId = outcome.strikerFirst === 'attacker' ? target.id : attacker.id;
-      const heroUnit = units.find(u => u.attachedToUnitId === heroHostId && !u.isDeleted);
-      if (heroUnit) {
-        const newHeroHp = Math.max(0, heroUnit.currentUnitHp - outcome.firstStrikeHeroDamage);
-        const newHeroTroops = Math.ceil(newHeroHp / heroUnit.troopHp);
-        const heroTroopsKilled = heroUnit.currentTroopCount - newHeroTroops;
+    // Hero's own share of the first strike (front-attached hero absorbs its volley)
+    if (firstStrikeHeroUnit && firstStrikeHeroAttacks.length > 0) {
+      const heroDamage = outcome.firstStrikeHeroDamage;
+      let heroClause = `. ${firstStrikeHeroUnit.unitName} took ${firstStrikeHeroAttacks.length} attacks, ${firstStrikeHeroHits} hits${firstStrikeHeroCrits > 0 ? `, ${firstStrikeHeroCrits} critical` : ''}, ${heroDamage} damage`;
+      if (heroDamage > 0) {
+        const newHeroHp = Math.max(0, firstStrikeHeroUnit.currentUnitHp - heroDamage);
+        const newHeroTroops = Math.ceil(newHeroHp / firstStrikeHeroUnit.troopHp);
+        const heroTroopsKilled = firstStrikeHeroUnit.currentTroopCount - newHeroTroops;
         subSteps.push({
           type: 'DAMAGE',
-          description: `${heroUnit.unitName} took ${outcome.firstStrikeHeroDamage} damage (attached hero)`,
-          unitId: heroUnit.id,
+          description: `${firstStrikeHeroUnit.unitName} took ${heroDamage} damage (attached hero)`,
+          unitId: firstStrikeHeroUnit.id,
           changes: [
-            { field: 'currentUnitHp', from: heroUnit.currentUnitHp, to: newHeroHp },
-            { field: 'currentTroopCount', from: heroUnit.currentTroopCount, to: newHeroTroops },
+            { field: 'currentUnitHp', from: firstStrikeHeroUnit.currentUnitHp, to: newHeroHp },
+            { field: 'currentTroopCount', from: firstStrikeHeroUnit.currentTroopCount, to: newHeroTroops },
           ],
         });
-        desc += `. ${heroUnit.unitName} (hero) took ${outcome.firstStrikeHeroDamage} damage (${heroTroopsKilled} troops)`;
+        heroClause += ` (${heroTroopsKilled} troops)`;
       }
+      desc += heroClause;
     }
 
     // Retaliation — reported whenever the actual retaliator attacked, even if every
     // swing missed (0 damage), so an all-miss counterattack isn't invisible.
     const retaliator = effectiveOutcome.strikerFirst === 'attacker' ? target : attacker;
     if (effectiveOutcome.retaliationAttacks.length > 0) {
+      const retaliationHeroAttacks = effectiveOutcome.retaliationHeroAttacks;
+      const retaliationHeroHits = retaliationHeroAttacks.filter(a => a.isHit).length;
+      const retaliationHeroCrits = retaliationHeroAttacks.filter(a => a.isCrit).length;
       const retaliatorHits = effectiveOutcome.retaliationAttacks.filter(a => a.isHit).length;
       const retaliationCrits = effectiveOutcome.retaliationAttacks.filter(a => a.isCrit).length;
-      desc += `. ${retaliator.unitName} retaliates — ${effectiveOutcome.retaliationAttacks.length} attacks${effectiveOutcome.retaliationCountNote ? ` [${effectiveOutcome.retaliationCountNote}]` : ''}, ${retaliatorHits} hits${retaliationCrits > 0 ? `, ${retaliationCrits} critical` : ''}, ${effectiveOutcome.retaliationDamage} damage (${effectiveOutcome.strikerFirst === 'attacker' ? attackerTroopsKilled : defenderTroopsKilled} troops)`;
+      const retaliationUnitCount = effectiveOutcome.retaliationAttacks.length - retaliationHeroAttacks.length;
+      const retaliationUnitHits = retaliatorHits - retaliationHeroHits;
+      const retaliationUnitCrits = retaliationCrits - retaliationHeroCrits;
+      desc += `. ${retaliator.unitName} retaliates — ${retaliationUnitCount} attacks${effectiveOutcome.retaliationCountNote ? ` [${effectiveOutcome.retaliationCountNote}]` : ''}, ${retaliationUnitHits} hits${retaliationUnitCrits > 0 ? `, ${retaliationUnitCrits} critical` : ''}, ${effectiveOutcome.retaliationDamage} damage (${effectiveOutcome.strikerFirst === 'attacker' ? attackerTroopsKilled : defenderTroopsKilled} troops)`;
 
-      // Hero damage from retaliation (hero on whoever received the retaliation)
-      if (effectiveOutcome.retaliationHeroDamage > 0) {
-        const heroHostId = effectiveOutcome.strikerFirst === 'attacker' ? attacker.id : target.id;
-        const heroUnit = units.find(u => u.attachedToUnitId === heroHostId && !u.isDeleted);
-        if (heroUnit) {
-          const newHeroHp = Math.max(0, heroUnit.currentUnitHp - effectiveOutcome.retaliationHeroDamage);
-          const newHeroTroops = Math.ceil(newHeroHp / heroUnit.troopHp);
-          const heroTroopsKilled = heroUnit.currentTroopCount - newHeroTroops;
+      // Hero's own share of the retaliation (hero on whoever received it)
+      const retaliationHeroHostId = effectiveOutcome.strikerFirst === 'attacker' ? attacker.id : target.id;
+      const retaliationHeroUnit = units.find(u => u.attachedToUnitId === retaliationHeroHostId && !u.isDeleted);
+      if (retaliationHeroUnit && retaliationHeroAttacks.length > 0) {
+        const heroDamage = effectiveOutcome.retaliationHeroDamage;
+        let heroClause = `. ${retaliationHeroUnit.unitName} took ${retaliationHeroAttacks.length} attacks, ${retaliationHeroHits} hits${retaliationHeroCrits > 0 ? `, ${retaliationHeroCrits} critical` : ''}, ${heroDamage} damage`;
+        if (heroDamage > 0) {
+          const newHeroHp = Math.max(0, retaliationHeroUnit.currentUnitHp - heroDamage);
+          const newHeroTroops = Math.ceil(newHeroHp / retaliationHeroUnit.troopHp);
+          const heroTroopsKilled = retaliationHeroUnit.currentTroopCount - newHeroTroops;
           subSteps.push({
             type: 'DAMAGE',
-            description: `${heroUnit.unitName} took ${effectiveOutcome.retaliationHeroDamage} retaliation damage (attached hero)`,
-            unitId: heroUnit.id,
+            description: `${retaliationHeroUnit.unitName} took ${heroDamage} retaliation damage (attached hero)`,
+            unitId: retaliationHeroUnit.id,
             changes: [
-              { field: 'currentUnitHp', from: heroUnit.currentUnitHp, to: newHeroHp },
-              { field: 'currentTroopCount', from: heroUnit.currentTroopCount, to: newHeroTroops },
+              { field: 'currentUnitHp', from: retaliationHeroUnit.currentUnitHp, to: newHeroHp },
+              { field: 'currentTroopCount', from: retaliationHeroUnit.currentTroopCount, to: newHeroTroops },
             ],
           });
-          desc += `. ${heroUnit.unitName} (hero) took ${effectiveOutcome.retaliationHeroDamage} retaliation damage (${heroTroopsKilled} troops)`;
+          heroClause += ` (${heroTroopsKilled} troops)`;
         }
+        desc += heroClause;
       }
     } else if (isRear) {
       desc += `. ${target.unitName} caught from behind — no retaliation`;
@@ -1725,6 +1745,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (!cancelled) setFormationsMap(map);
     });
     return () => { cancelled = true; };
+  }, []);
+
+  // ---- Load tunable settings into the module cache (combat reads these) ----
+  useEffect(() => {
+    loadSettings();
   }, []);
 
   // ---- Load map background config ----
