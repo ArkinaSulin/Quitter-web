@@ -48,3 +48,23 @@ export function getSetting<T>(key: string, fallback: T): T {
   if (cache && key in cache) return cache[key] as T;
   return fallback;
 }
+
+/** A descending-min band (e.g. [{min:19,value:6},{min:0,value:0}]). */
+export interface SettingBand {
+  min: number;
+  value: number;
+}
+
+/**
+ * Look up a banded setting: bands are ordered highest-min first; the first band
+ * whose `min` the input meets wins. Falls back to `fallback` when the cache isn't
+ * loaded, the key is absent, or the stored value isn't a non-empty band list.
+ */
+export function getBandSetting(key: string, fallback: SettingBand[], input: number): number {
+  const stored = getSetting<SettingBand[] | null>(key, null);
+  const bands = Array.isArray(stored) && stored.length > 0 ? stored : fallback;
+  for (const b of bands) {
+    if (input >= b.min) return b.value;
+  }
+  return fallback[fallback.length - 1]?.value ?? 0;
+}

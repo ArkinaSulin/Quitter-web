@@ -1,12 +1,19 @@
 // Pure formation-change MP math. MP is tracked as an integer.
-// Each organization-level step costs FORMATION_CHANGE_COST (2) MP; the remainder
-// then rescales proportionally to the new formation's effective max, floored and
-// clamped. The cost is paid from already-materialized MP first, then by converting
-// one action into a full pool per the "1 action = 1 full MP pool" economy (same
-// refill rule as applyMpSpend). Actions may go negative — soft enforcement.
+// Each organization-level step costs getFormationChangeCost() (default 2) MP; the
+// remainder then rescales proportionally to the new formation's effective max,
+// floored and clamped. The cost is paid from already-materialized MP first, then
+// by converting one action into a full pool per the "1 action = 1 full MP pool"
+// economy (same refill rule as applyMpSpend). Actions may go negative — soft
+// enforcement.
 import { getOrganizationLevel, Unit } from '@/types/gameProtocol';
+import { getSetting } from './settingsCache';
 
+/** Code fallback for the formation-change cost — matches migration 042 seed. */
 export const FORMATION_CHANGE_COST = 2;
+
+export function getFormationChangeCost(): number {
+  return getSetting('formation_change_cost_per_step', FORMATION_CHANGE_COST);
+}
 
 type MpBudget = Pick<Unit, 'movementPointsAvailable' | 'actionsAvailable'>;
 
@@ -27,7 +34,7 @@ export function applyFormationChange(
   const pool = Math.max(1, oldMax);
   const mp = Math.max(0, Math.floor(unit.movementPointsAvailable));
   const actions = unit.actionsAvailable;
-  const cost = steps * FORMATION_CHANGE_COST;
+  const cost = steps * getFormationChangeCost();
 
   const rescale = (leftoverMp: number): number =>
     Math.min(newMax, Math.max(0, Math.floor(leftoverMp * (newMax / pool))));
@@ -56,7 +63,7 @@ export function applyFormationChange(
 export function isFormationChangeAffordable(unit: MpBudget, steps: number, oldMax: number): boolean {
   const pool = Math.max(1, oldMax);
   const mp = Math.max(0, Math.floor(unit.movementPointsAvailable));
-  return mp + Math.max(0, unit.actionsAvailable) * pool >= steps * FORMATION_CHANGE_COST;
+  return mp + Math.max(0, unit.actionsAvailable) * pool >= steps * getFormationChangeCost();
 }
 
 // Preferred target when dropping exactly one organization level. Level 3 has two

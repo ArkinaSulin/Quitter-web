@@ -7,6 +7,7 @@ import { Unit, Hex, UnitTemplate, SizeCategory, getOrganizationLevel } from '@/t
 import { parseWeapons } from '@/lib/weaponParser';
 import { alphaLabel } from '@/lib/unitNaming';
 import { normalizeLocalAssetUrl, raceIconFromName } from '@/lib/imageUrls';
+import { getSetting } from '@/lib/settingsCache';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // --- Converters ---
@@ -365,7 +366,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       currentAc: shieldDroppedAtSpawn ? (template.baselineAc || 10) - 2 : (template.baselineAc || 10),
       weaponString: template.weaponString || '',
       movementPoints: template.movementPoints || 3,
-      movementPointsAvailable: 0,
+      movementPointsAvailable: getSetting('turn_start_mp', 0),
       aggressiveness: template.aggressiveness || 3,
       baseMorale: template.baseMorale || 3,
       currentMoraleModifier: 0,
@@ -388,7 +389,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       ignoreMoraleChecks: template.ignoreMoraleChecks || false,
       isCharging: false,
       chargeDistance: 0,
-      actionsAvailable: 2,
+      actionsAvailable: getSetting('actions_per_turn', 2),
       activeWeaponIndex,
     };
 

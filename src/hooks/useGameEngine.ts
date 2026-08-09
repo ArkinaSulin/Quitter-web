@@ -7,6 +7,7 @@ import { computeEffectiveMovement } from '@/lib/unitStats';
 import { applyFormationChange } from '@/lib/formationCost';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { applyMoveCost, applyMpSpend } from '@/lib/moveCost';
+import { getSetting } from '@/lib/settingsCache';
 import { parseWeapons } from '@/lib/weaponParser';
 import { useMessageSync } from '@/hooks/useMessageSync';
 import { GameEngine, ActionType, SubStep, CommandEntry } from '@/game/GameEngine';
@@ -619,15 +620,17 @@ export function useGameEngine({
         if (group === next) activeTeams.add(team);
       }
 
+      const turnStartMp = getSetting('turn_start_mp', 0);
+      const actionsPerTurn = getSetting('actions_per_turn', 2);
       for (const unit of args.units) {
         if (unit.isDeleted || !activeTeams.has(unit.team)) continue;
         subSteps.push({
           type: 'END_TURN',
-          description: `${unit.unitName} refreshed (0 MP, 2 actions)`,
+          description: `${unit.unitName} refreshed (${turnStartMp} MP, ${actionsPerTurn} actions)`,
           unitId: unit.id,
           changes: [
-            { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: 0 },
-            { field: 'actionsAvailable', from: unit.actionsAvailable, to: 2 },
+            { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: turnStartMp },
+            { field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsPerTurn },
           ],
         });
       }

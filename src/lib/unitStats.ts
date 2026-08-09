@@ -1,5 +1,20 @@
 import { Unit, Formation, SizeCategory } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
+import { getBandSetting, SettingBand } from '@/lib/settingsCache';
+
+// Code fallback matches migration 042 seed — the size_categories table row wins
+// in getRowCapacity; this is the fallback base for unknown categories.
+const DEFAULT_ROW_CAPACITY_BANDS: SettingBand[] = [
+  { min: 400, value: 1 },
+  { min: 300, value: 2 },
+  { min: 200, value: 5 },
+  { min: 0, value: 10 },
+];
+
+/** Base row capacity by size_category (band setting; single source of truth). */
+export function getRowCapacityBase(sizeCategory: number): number {
+  return getBandSetting('row_capacity_by_size', DEFAULT_ROW_CAPACITY_BANDS, sizeCategory);
+}
 
 export function computeEffectiveAc(unit: Unit, formationModifier: number): number {
   return unit.baselineAc + formationModifier;
@@ -30,10 +45,7 @@ export function getFormationMultiplier(formations: Record<string, Formation>, fo
 export function getRowCapacity(sizeCategories: SizeCategory[], sizeCategory: number): number {
   const sc = sizeCategories.find(s => s.size_category === sizeCategory);
   if (sc) return sc.row_capacity;
-  if (sizeCategory >= 400) return 1;
-  if (sizeCategory >= 300) return 2;
-  if (sizeCategory >= 200) return 5;
-  return 10;
+  return getRowCapacityBase(sizeCategory);
 }
 
 export function getVisualDotsPerRow(formationsMap: Record<string, Formation>, rowCapacity: number, formationName: string): number {

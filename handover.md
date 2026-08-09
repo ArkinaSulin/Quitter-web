@@ -1,5 +1,15 @@
 # Handover — 2026-08-03
 
+## Settings 2nd Pass — more constants moved to `settings` (2026-08-08)
+**Files:** `supabase/migrations/042_settings_more.sql` (new), `src/lib/settingsCache.ts` (+`getBandSetting`), `src/lib/unitMorale.ts`, `src/lib/unitStats.ts`, `src/lib/unitCombat.ts`, `src/lib/formationCost.ts`, `src/hooks/useGameEngine.ts`, `src/hooks/useSupabaseSync.ts`, `src/components/ScenarioMap/{ScenarioMap,ContextMenu}.tsx`
+
+- **Migration 042 seeds** (all `getSetting`/`getBandSetting` with matching code fallbacks): `actions_per_turn` (2), `turn_start_mp` (0), `formation_change_cost_per_step` (2 → `getFormationChangeCost()`), `charge_full_distance` (2), `hero_attach_max_size` (200), `wounds_morale_factor` (10), `isolation_penalty` (1), `charging_threat_multiplier` (2), `threat_increment_level` + `threat_increment_troop_count` (band JSONB), `row_capacity_by_size` (band JSONB).
+- **Threat rating** now reads level + troop bands via the new `getBandSetting(key, fallbackBands, input)` helper; **size** component stays hard-coded `(sizeCategory/100)²` by design.
+- **Row-capacity duplicate fixed**: `unitStats.getRowCapacityBase()` is the single base-by-size source (`row_capacity_by_size` setting); `getRowCapacity` (size_categories table, fallback → base) and `unitCombat.computeRowCapacity` (base × mult) both delegate to it. Removed the unused `computeRowCapacity` import from ScenarioMap.
+- **Turn/spawn**: END_TURN resets to `turn_start_mp` / `actions_per_turn` (`useGameEngine`); unit spawn uses the same (`useSupabaseSync`).
+- **Charge/attach**: `chargeDistance < charge_full_distance` (full-charge free attack + overlay) and `hero_attach_max_size` (attach eligibility) read settings.
+- 286 tests (2 new settingsCache band tests); `tsc --noEmit` clean. **Apply migration 042 to the DB.**
+
 ## Settings Table + Hero Attack Split 30% (2026-08-08)
 **Files:** `supabase/migrations/041_settings.sql` (new), `src/lib/settingsCache.ts` + `settingsCache.test.ts` (new), `src/lib/unitCombat.ts`, `src/lib/unitCombat.test.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`
 
@@ -11,12 +21,11 @@
 - 284 tests (3 new settingsCache tests mock the supabase client); `tsc --noEmit` clean. **Apply migration 041 to the DB.**
 - Note: editing settings straight in the table is a stopgap — a **GM/admin Settings UI is a planned follow-up** (RLS + `invalidateSettingsCache()` already support it).
 
-### Future: settings 2nd-pass candidates (parked, not yet moved)
-All currently hard-coded; move to `settings` rows later — each becomes `getSetting('key', <current value>)`:
-- **Combat/turn**: `actions_per_turn` (2, `useGameEngine.ts:630` + `useSupabaseSync.ts:391`), `turn_start_mp` (0), `agr_die_sides` (10, `unitCombat.ts:228`), `attack_die_sides` (20, `unitCombat.ts:93`), `crit_roll` (20) / `crit_multiplier` (2, `unitCombat.ts:161,167`), `morale_break_threshold` (<= 0).
-- **Movement/charge**: `formation_change_cost_per_step` (2, `formationCost.ts`), `charge_full_distance` (2, `ScenarioMap.tsx:1064`), `charge_over_cost` (2), `hero_attach_max_size` (200, `ContextMenu.tsx:106` + `ScenarioMap.tsx:978`).
-- **Morale**: `wounds_morale_factor` (10, `unitMorale.ts:33`), `isolation_penalty` (1, `unitMorale.ts:99`), `charging_threat_multiplier` (2, `unitMorale.ts:28`), `threat_rating_bands` (level/troop thresholds, `unitMorale.ts:13-28`, JSONB).
-- **Infra**: `undo_stack_size` (50, `GameEngine.ts:34`); `row_capacity_by_size` (10/5/2/1 — **duplicate** in `unitCombat.ts:25-31` and `unitStats.ts:30-35`, moving it also fixes the dup).
+### Future: settings 2nd-pass candidates (still parked)
+- **Combat/turn**: `agr_die_sides` (10, `unitCombat.ts:228`), `attack_die_sides` (20, `unitCombat.ts:93`), `crit_roll` (20) / `crit_multiplier` (2, `unitCombat.ts:161,167`), `morale_break_threshold` (<= 0).
+- **Movement/charge**: `charge_over_cost` (2, charge-over modal).
+- **Infra**: `undo_stack_size` (50, `GameEngine.ts:34`).
+(Moved already: actions_per_turn, turn_start_mp, formation_change_cost_per_step, charge_full_distance, hero_attach_max_size, wounds_morale_factor, isolation_penalty, charging_threat_multiplier, threat_increment_level, threat_increment_troop_count, row_capacity_by_size.)
 
 ## Charge-Over (Overrun) After a Full Charge Attack (2026-08-08)
 **Files:** `src/lib/chargeOver.ts` + `chargeOver.test.ts` (new), `src/lib/formationRules.ts` (used `canChargeThrough`), `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`

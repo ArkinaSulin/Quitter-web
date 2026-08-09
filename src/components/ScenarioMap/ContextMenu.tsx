@@ -6,6 +6,7 @@ import { Unit, getOrganizationLevel, Formation } from '@/types/gameProtocol';
 import { areHexesAdjacent } from '@/lib/unitMorale';
 import { parseWeapons } from '@/lib/weaponParser';
 import { canFormationCharge } from '@/lib/formationRules';
+import { getSetting } from '@/lib/settingsCache';
 import { TEAM_COLORS } from '@/components/TokenRenderer/tokenUtils';
 
 interface ContextMenuProps {
@@ -103,7 +104,7 @@ export function ContextMenu({
       disabled: getOrganizationLevel(opt.value) > currentOrgLevel + 1 || (opt.value === 'Shield Wall' && activeWeaponIsTwoHanded),
     }));
 
-  const canAttach = unit.isHero && (unit.sizeCategory || 100) <= 200 && !unit.attachedToUnitId && !!onAttachHero;
+  const canAttach = unit.isHero && (unit.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !unit.attachedToUnitId && !!onAttachHero;
 
   const attachableTargets = units.filter(u =>
     u.id !== unit.id && !u.isDeleted && !u.isHero &&

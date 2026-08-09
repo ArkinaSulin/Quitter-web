@@ -5,11 +5,11 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
-import { resolveCombatSequence, computeRowCapacity, determineCombatPosition, isInFrontArc, suppressRetaliation } from '@/lib/unitCombat';
+import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition, canStopEnemyMovement, canChargeThrough } from '@/lib/formationRules';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
 import { getFormations } from '@/lib/formationCache';
-import { loadSettings } from '@/lib/settingsCache';
+import { loadSettings, getSetting } from '@/lib/settingsCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios } from '@/hooks/useScenarios';
 import { computeReachableMap, computeMoveBudget, computeMovePool, isMoveAffordable, computeChargeReachable } from '@/lib/moveCost';
@@ -995,7 +995,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (!canControlUnit(attacker)) return;
 
     const targetHasHero = units.some(u => u.attachedToUnitId === targetId && !u.isDeleted);
-    const canAttach = attacker.isHero && (attacker.sizeCategory || 100) <= 200 && !target.isHero && !target.attachedToUnitId && !target.isDeleted && !targetHasHero && attacker.team === target.team;
+    const canAttach = attacker.isHero && (attacker.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !target.isHero && !target.attachedToUnitId && !target.isDeleted && !targetHasHero && attacker.team === target.team;
     if (canAttach) {
       setAttachModal({ hero: attacker, target });
       return;
@@ -1081,7 +1081,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     // Charging attacker: a full charge (2 hexes moved) grants a free double-damage
     // attack; an early attack is premature and requires confirmation.
     if (attacker.isCharging) {
-      if (attacker.chargeDistance < 2) {
+      if (attacker.chargeDistance < getSetting('charge_full_distance', 2)) {
         setPendingChargeAttack({ attacker, target });
         return;
       }
@@ -1314,7 +1314,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         const effectiveMax = computeEffectiveMovement(draggedUnit, movementMult);
         const chargeReach = computeChargeReachable(draggedUnit, occupied, effectiveMax);
         for (const [key, cost] of Array.from(chargeReach.entries())) {
-          combined[key] = cost >= 2 ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';
+          combined[key] = cost >= getSetting('charge_full_distance', 2) ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';
         }
         setOverlayMap(combined);
         return;

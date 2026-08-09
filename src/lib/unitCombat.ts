@@ -2,6 +2,7 @@ import { Unit, Hex, Formation, hexDistance } from '@/types/gameProtocol';
 import { computeThreatRating } from './unitMorale';
 import { getRetaliationMode, getEffectivePosition, beAttackedModifier, beAttackedModifierNote, Arc } from './formationRules';
 import { getSetting } from './settingsCache';
+import { getRowCapacityBase } from './unitStats';
 
 const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
@@ -24,11 +25,9 @@ export function isInFrontArc(unitHex: Hex, unitFacing: number, targetHex: Hex): 
 }
 
 export function computeRowCapacity(sizeCategory: number, rowCapMultiplier: number): number {
-  let base = 10;
-  if (sizeCategory >= 400) base = 1;
-  else if (sizeCategory >= 300) base = 2;
-  else if (sizeCategory >= 200) base = 5;
-  return Math.max(1, base * rowCapMultiplier);
+  // Base comes from the shared row_capacity_by_size setting (unitStats) — no
+  // duplicate table here.
+  return Math.max(1, getRowCapacityBase(sizeCategory) * rowCapMultiplier);
 }
 
 export function computeTotalAttacks(rowCapacity: number, numberOfAttacks: number): number {
