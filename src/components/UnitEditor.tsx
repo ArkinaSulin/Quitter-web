@@ -4,6 +4,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import NextImage from 'next/image';
+import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { supabase } from '@/lib/supabaseClient';
 import { UnitTemplate, Race, Armor, Formation, UnitType, Mount, SizeCategory } from '@/types/gameProtocol';
 import { parseWeapons, stringifyWeapons, Weapon as WeaponType, formatWeaponDisplay, SaveStat } from '@/lib/weaponParser';
@@ -28,59 +29,6 @@ function snapSizeCategory(value: number): number {
     Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev
   );
   return closest;
-}
-
-async function resizeImage(file: File, maxWidth: number, maxHeight: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-        if (width > maxWidth || height > maxHeight) {
-          const ratio = Math.min(maxWidth / width, maxHeight / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        canvas.toBlob((blob) => {
-          if (blob) resolve(blob);
-          else reject(new Error('Failed to resize image'));
-        }, 'image/png');
-      };
-      img.onerror = reject;
-      img.src = e.target?.result as string;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-async function uploadCustomImage(file: File, unitId: string): Promise<string | null> {
-  try {
-    const resizedBlob = await resizeImage(file, 256, 256);
-    const fileExt = file.name.split('.').pop() || 'png';
-    const fileName = `${unitId}_${Date.now()}.${fileExt}`;
-    const { data, error } = await supabase.storage
-      .from('unit_images')
-      .upload(fileName, resizedBlob, {
-        cacheControl: '3600',
-        upsert: true,
-      });
-    if (error) throw error;
-    const { data: urlData } = supabase.storage
-      .from('unit_images')
-      .getPublicUrl(fileName);
-    return urlData.publicUrl;
-  } catch (err) {
-    console.error('Upload error:', err);
-    return null;
-  }
 }
 
 export default function UnitEditor() {
@@ -135,81 +83,15 @@ export default function UnitEditor() {
   const [wasAt400, setWasAt400] = useState<boolean>(false);
 
   const [showImagePicker, setShowImagePicker] = useState(false);
-  const [userImages, setUserImages] = useState<string[]>([]);
-  const [loadingImages, setLoadingImages] = useState(false);
-  const [uploading, setUploading] = useState(false);
 
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const [previewWidth, setPreviewWidth] = useState<number>(400);
   const previewWidthRef = useRef(previewWidth);
   const observerRef = useRef<ResizeObserver | null>(null);
 
-  const loadUserImages = async () => {
-    setLoadingImages(true);
-    try {
-      // Paginate past storage's 100-item per-request default so the full library
-      // is listed (loop advances offset by the actual page length).
-      const urls: string[] = [];
-      let offset = 0;
-      const pageSize = 100;
-      while (true) {
-        const { data, error } = await supabase.storage
-          .from('unit_images')
-          .list('', { limit: pageSize, offset });
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        for (const file of data) {
-          if (file.name === '.emptyFolderPlaceholder') continue;
-          const { data: urlData } = supabase.storage
-            .from('unit_images')
-            .getPublicUrl(file.name);
-          urls.push(urlData.publicUrl);
-        }
-        if (data.length < pageSize) break;
-        offset += data.length;
-      }
-      setUserImages(urls);
-    } catch (err) {
-      console.error('Failed to load user images:', err);
-    } finally {
-      setLoadingImages(false);
-    }
-  };
-
   const openImagePicker = () => {
     if (!formData) return;
     setShowImagePicker(true);
-    loadUserImages();
-  };
-
-  const selectImage = (url: string) => {
-    updateFormData('customImageUrl', url);
-    setShowImagePicker(false);
-  };
-
-  const removeCustomImage = () => {
-    updateFormData('customImageUrl', null);
-    setShowImagePicker(false);
-  };
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const unitId = formData?.id || 'temp';
-      const url = await uploadCustomImage(file, unitId);
-      if (url) {
-        updateFormData('customImageUrl', url);
-        await loadUserImages();
-        setShowImagePicker(false);
-      }
-    } catch (err) {
-      console.error('Upload failed:', err);
-    } finally {
-      setUploading(false);
-      e.target.value = '';
-    }
   };
 
   const updatePreviewWidth = () => {
@@ -1622,86 +1504,14 @@ export default function UnitEditor() {
         </div>
       </div>
 
-      {/* Image Picker Modal */}
+      {/* Image Picker Modal (shared) */}
       {showImagePicker && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-gray-800 p-6 rounded-lg w-[600px] max-h-[80vh] flex flex-col border border-gray-700">
-            <h2 className="text-xl font-bold mb-4 text-white">Select Unit Image</h2>
-            <div className="flex-1 overflow-y-auto">
-              <div className="grid grid-cols-4 gap-2 mb-4">
-                {races.map(race => {
-                  const icon = raceIconFromName(race.name, race.icon_url);
-                  return icon && (
-                    <div
-                      key={`race-${race.id}`}
-                      onClick={() => selectImage(icon)}
-                      className="border-2 border-gray-600 rounded p-1 cursor-pointer hover:border-yellow-400 transition"
-                    >
-                      <NextImage
-                        src={icon}
-                        alt={race.name}
-                        width={64}
-                        height={64}
-                        className="object-contain w-full h-auto"
-                        unoptimized
-                      />
-                      <span className="text-xs text-gray-400 text-center block truncate">{race.name}</span>
-                    </div>
-                  );
-                })}
-                {loadingImages ? (
-                  <div className="col-span-4 text-center text-gray-400">Loading...</div>
-                ) : (
-                  userImages.map((url, idx) => (
-                    <div
-                      key={`user-${idx}`}
-                      onClick={() => selectImage(url)}
-                      className="border-2 border-gray-600 rounded p-1 cursor-pointer hover:border-yellow-400 transition"
-                    >
-                      <NextImage
-                        src={url}
-                        alt="User image"
-                        width={64}
-                        height={64}
-                        className="object-contain w-full h-auto"
-                        unoptimized
-                      />
-                    </div>
-                  ))
-                )}
-                {userImages.length === 0 && !loadingImages && (
-                  <div className="col-span-4 text-center text-gray-500">No user images yet.</div>
-                )}
-              </div>
-            </div>
-            <div className="mt-4 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <label className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition cursor-pointer">
-                  {uploading ? 'Uploading...' : 'Upload Image'}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleUpload}
-                    disabled={uploading}
-                    className="hidden"
-                  />
-                </label>
-                <button
-                  onClick={removeCustomImage}
-                  className="px-4 py-2 bg-red-800 border-2 border-red-400 text-white rounded hover:bg-red-700 transition"
-                >
-                  Remove Custom
-                </button>
-              </div>
-              <button
-                onClick={() => setShowImagePicker(false)}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        <ImagePickerModal
+          current={formData?.customImageUrl}
+          uploadKey={formData?.id || 'temp'}
+          onSelect={(url) => { updateFormData('customImageUrl', url); setShowImagePicker(false); }}
+          onClose={() => setShowImagePicker(false)}
+        />
       )}
 
       {/* Weapon Modal (shared editor) */}

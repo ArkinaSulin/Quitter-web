@@ -2390,6 +2390,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         <UnitEditorModal
           unit={editUnit}
           formationsMap={formationsMap}
+          units={units}
+          alliances={alliances}
           onClose={() => setEditUnit(null)}
           onSave={handleEditorSave}
         />

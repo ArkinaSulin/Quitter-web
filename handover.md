@@ -1,5 +1,13 @@
 # Handover — 2026-08-03
 
+## Compact DM stat editor + Undo debug panel refresh (2026-08-09)
+- **`UnitEditorModal`** (scenario DM editor) regrouped into a one-screen grid: Identity (name + team chip + **Image**), HP (Current/Troop/{Max}/{Troops}), Armor ({Eff AC}/Base + Shield), Movement (MP left/Max MP/{Eff move}), Combat (Actions/Aggressiveness), Morale ({Current morale full-effective}/Base + Fearless), Formation + **Mount** + Can charge, Availability checkboxes, saving throws Str…Cha (labels above), Rank & Token (Level/Size/Visual scale), Weapons. **Save/Cancel pinned** in the footer (no scrolling to save); scroll area is `overflow-y-auto`. Derived `{...}` values recompute live from the draft.
+- **Shared `ImagePickerModal`** extracted from UnitEditor (race icons + `unit_images` + upload + remove custom) — used by both editors.
+- Modal gains `units` + `alliances` props (for full-effective morale); ScenarioMap passes them.
+- **`useSupabaseSync.updateUnit`** now maps `mountId` → `mount_id` and `customImageUrl` → `custom_image_url` (were missing, same bug class as the Max-MP fix).
+- **`UndoDebugPanel`**: now displayed oldest→newest (most recent **last**, inline with the message window), highlights the **last active (non-undone)** step, refreshes via realtime + a **5s interval + window focus**, and auto-scrolls to the bottom.
+- `tsc --noEmit` clean, 302 tests pass.
+
 ## Unit edits broadcast a red message to everyone (2026-08-09)
 - `useGameEngine.execute` now sends **EDIT_UNIT** descriptions via `addError` (red) instead of `addMessage` — so when anyone (incl. a player editing their own unit) edits a unit in the scenario DM editor, every client sees a red message. `tsc --noEmit` clean, 302 tests pass.
 

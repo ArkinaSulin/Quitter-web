@@ -3,9 +3,10 @@
 
 // Debug view of the scenario's command log (the undo queue). Shows every command
 // with its description, the actor (player_name), undo status (deleted_at) and
-// chained flag; the most recent step is highlighted. Visible to everyone.
+// chained flag, oldest first (most recent LAST — inline with the messages window).
+// The most recent active (not-undone) step is highlighted. Visible to everyone.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { CommandLogRow } from '@/lib/commandHistory';
 
@@ -15,6 +16,7 @@ interface UndoDebugPanelProps {
 
 export function UndoDebugPanel({ scenarioId }: UndoDebugPanelProps) {
   const [rows, setRows] = useState<CommandLogRow[]>([]);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     const { data, error } = await supabase
@@ -27,9 +29,11 @@ export function UndoDebugPanel({ scenarioId }: UndoDebugPanelProps) {
       console.error('[UndoDebug] Load error:', error);
       return;
     }
-    setRows((data ?? []) as CommandLogRow[]);
+    // Newest 200, displayed oldest → newest (most recent last).
+    setRows(((data ?? []) as CommandLogRow[]).reverse());
   }, [scenarioId]);
 
+  // Realtime (fast when it works) + interval + focus refresh (guaranteed).
   useEffect(() => {
     refresh();
     const channel = supabase
@@ -45,14 +49,37 @@ export function UndoDebugPanel({ scenarioId }: UndoDebugPanelProps) {
         refresh,
       )
       .subscribe();
+
+    const t = setInterval(refresh, 5000);
+    const onFocus = () => { refresh(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(t);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
     };
   }, [scenarioId, refresh]);
 
+  // Keep the most recent row visible next to the newest message.
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [rows]);
+
+  // Highlight index = the last active (non-deleted) command.
+  let activeHighlight = -1;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (!rows[i].deleted_at) {
+      activeHighlight = i;
+      break;
+    }
+  }
+
   return (
     <div className="space-y-2">
-      <div className="text-[11px] text-gray-500">command_log — most recent first (highlighted = latest step)</div>
+      <div className="text-[11px] text-gray-500">command_log — oldest first, highlighted = last active step</div>
       {rows.length === 0 ? (
         <div className="text-sm text-gray-500 text-center py-4">No commands yet.</div>
       ) : (
@@ -69,7 +96,7 @@ export function UndoDebugPanel({ scenarioId }: UndoDebugPanelProps) {
               <div
                 key={r.id}
                 className={`grid grid-cols-[1fr_auto_auto_auto] gap-2 px-2 py-1.5 items-baseline ${
-                  i === 0 ? 'bg-amber-900/40 text-amber-100 font-semibold' : 'text-gray-300'
+                  i === activeHighlight ? 'bg-amber-900/40 text-amber-100 font-semibold' : 'text-gray-300'
                 }`}
               >
                 <span className="truncate" title={r.description}>{r.description || '—'}</span>
@@ -78,6 +105,7 @@ export function UndoDebugPanel({ scenarioId }: UndoDebugPanelProps) {
                 <span className="text-gray-400">{r.chained ? 'Y' : 'N'}</span>
               </div>
             ))}
+            <div ref={bottomRef} />
           </div>
         </div>
       )}

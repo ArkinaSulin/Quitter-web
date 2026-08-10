@@ -487,7 +487,9 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     if (updates.unitName !== undefined) dbUpdates.unit_name = updates.unitName;
     if (updates.raceName !== undefined) dbUpdates.race_name = updates.raceName;
     if (updates.armorName !== undefined) dbUpdates.armor_name = updates.armorName;
+    if (updates.mountId !== undefined) dbUpdates.mount_id = updates.mountId;
     if (updates.mountName !== undefined) dbUpdates.mount_name = updates.mountName;
+    if (updates.customImageUrl !== undefined) dbUpdates.custom_image_url = updates.customImageUrl;
     if (updates.canCharge !== undefined) dbUpdates.can_charge = updates.canCharge;
     if (updates.isCharging !== undefined) dbUpdates.is_charging = updates.isCharging;
     if (updates.chargeDistance !== undefined) dbUpdates.charge_distance = updates.chargeDistance;

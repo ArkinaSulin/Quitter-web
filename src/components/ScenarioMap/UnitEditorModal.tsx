@@ -1,13 +1,20 @@
 // src/components/ScenarioMap/UnitEditorModal.tsx
 'use client';
 
-import { useRef, useState } from 'react';
-import { Unit, Formation, getOrganizationLevel } from '@/types/gameProtocol';
+// Compact DM stat editor: grouped rows that fit one screen, with the Save/Cancel
+// footer pinned (no scrolling to save). Derived read-only values ({...}) recompute
+// live from the draft.
+
+import { useEffect, useRef, useState } from 'react';
+import { Unit, Formation, AllianceGroup, getOrganizationLevel } from '@/types/gameProtocol';
 import { TEAM_COLORS, TEAM_SHAPES, Team } from '@/components/TokenRenderer/tokenUtils';
 import { TeamShape } from '@/components/TokenRenderer/TeamChip';
-import { getFormationModifier, getFormationMultiplier, computeEffectiveMovement } from '@/lib/unitStats';
+import { computeEffectiveMovement } from '@/lib/unitStats';
+import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
 import { parseWeapons, stringifyWeapons, Weapon, formatWeaponDisplay } from '@/lib/weaponParser';
 import { WeaponEditorModal } from '@/components/WeaponEditorModal';
+import { ImagePickerModal } from '@/components/ImagePickerModal';
+import { supabase } from '@/lib/supabaseClient';
 
 const SIZE_LABELS: Record<number, string> = {
   75: 'Small',
@@ -61,11 +68,59 @@ const FIELDS: FieldDef[] = [
 interface UnitEditorModalProps {
   unit: Unit;
   formationsMap: Record<string, Formation>;
+  units: Unit[];
+  alliances: Record<string, AllianceGroup>;
   onClose: () => void;
   onSave: (changes: { field: string; from: any; to: any }[], description: string) => Promise<void>;
 }
 
-export function UnitEditorModal({ unit, formationsMap, onClose, onSave }: UnitEditorModalProps) {
+function Cell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-0.5 text-[10px] text-gray-400 min-w-0 flex-1">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function NumInput({ value, onChange, min, max, readOnly }: {
+  value: any; onChange: (v: string) => void; min?: number; max?: number; readOnly?: boolean;
+}) {
+  return (
+    <input
+      type="number"
+      value={value}
+      readOnly={readOnly}
+      min={min}
+      max={max}
+      onChange={e => onChange(e.target.value)}
+      className={`w-full bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700 focus:border-amber-400 ${readOnly ? 'opacity-70 cursor-default' : ''}`}
+    />
+  );
+}
+
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <label className="flex items-center gap-1.5 text-[11px] text-gray-300">
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="h-3.5 w-3.5 accent-amber-400" />
+      {label}
+    </label>
+  );
+}
+
+function SelectInput({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      className="w-full bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700 focus:border-amber-400"
+    >
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
+
+export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose, onSave }: UnitEditorModalProps) {
   const [draft, setDraft] = useState<Record<string, any>>(() => {
     const init: Record<string, any> = {};
     for (const f of FIELDS) {
@@ -73,32 +128,49 @@ export function UnitEditorModal({ unit, formationsMap, onClose, onSave }: UnitEd
       else if (f.type === 'multi') init[f.key] = [...((unit[f.key as keyof Unit] as string[]) ?? [])];
       else init[f.key] = String(unit[f.key as keyof Unit] ?? '');
     }
+    init.mountId = unit.mountId ?? '';
+    init.mountName = unit.mountName ?? '';
+    init.customImageUrl = unit.customImageUrl ?? '';
     return init;
   });
   const [weaponsDraft, setWeaponsDraft] = useState<Weapon[]>(() => parseWeapons(unit.weaponString || ''));
   const [weaponEditorOpen, setWeaponEditorOpen] = useState(false);
   const [weaponEditingIndex, setWeaponEditingIndex] = useState<number | null>(null);
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [mounts, setMounts] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [pos, setPos] = useState(() => ({
-    x: typeof window !== 'undefined' ? Math.max(20, (window.innerWidth - 420) / 2) : 60,
-    y: typeof window !== 'undefined' ? Math.max(20, (window.innerHeight - 620) / 2) : 40,
+    x: typeof window !== 'undefined' ? Math.max(20, (window.innerWidth - 520) / 2) : 60,
+    y: typeof window !== 'undefined' ? Math.max(20, (window.innerHeight - 640) / 2) : 40,
   }));
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  useEffect(() => {
+    supabase.from('mounts').select('id, name').order('name').then(({ data }) => {
+      if (data) setMounts((data as { id: string; name: string }[]));
+    });
+  }, []);
 
   const num = (v: any): number => {
     const n = parseFloat(v);
     return Number.isFinite(n) ? n : 0;
   };
 
-  const parsedTroopHp = num(draft.troopHp);
+  const draftFormation = String(draft.currentFormation || unit.currentFormation);
+  const parsedTroopHp = Math.max(1, num(draft.troopHp));
   const parsedMaxTroop = unit.maxTroopCount;
   const parsedCurrentHp = num(draft.currentUnitHp);
   const parsedBaselineAc = num(draft.baselineAc);
-  const formation = formationsMap[unit.currentFormation];
-  const acMod = getFormationModifier(formationsMap, unit.currentFormation, 'ac_modifier');
-  const movementMult = getFormationMultiplier(formationsMap, unit.currentFormation, 'movement_multiplier');
-  // Formations sorted by organization level (highest first), then name — shared by
-  // the formation select and the availability checkboxes.
+  const maxHp = parsedTroopHp * parsedMaxTroop;
+  const troops = Math.min(parsedMaxTroop, Math.max(0, Math.ceil(parsedCurrentHp / parsedTroopHp)));
+  const formation = formationsMap[draftFormation] ?? null;
+  const acMod = formation?.ac_modifier ?? 0;
+  const movementMult = formation?.movement_multiplier ?? 1;
+  const effMove = computeEffectiveMovement({ ...unit, movementPoints: num(draft.movementPoints) }, movementMult);
+  const moraleSnap = { ...unit, currentUnitHp: parsedCurrentHp, currentFormation: draftFormation };
+  const effMorale = num(draft.baseMorale) + unit.currentMoraleModifier + computeEffectiveMoraleModifier(moraleSnap, units, alliances, formation);
+
+  // Formations sorted by organization level (highest first), then name.
   const formationOptions = Object.values(formationsMap)
     .map(f => f.name)
     .sort((a, b) => getOrganizationLevel(b) - getOrganizationLevel(a) || a.localeCompare(b));
@@ -121,6 +193,16 @@ export function UnitEditorModal({ unit, formationsMap, onClose, onSave }: UnitEd
     window.addEventListener('mouseup', onUp);
   };
 
+  const set = (key: string, value: any) => setDraft(d => ({ ...d, [key]: value }));
+
+  const handleMountChange = (mountId: string) => {
+    setDraft(d => ({
+      ...d,
+      mountId,
+      mountName: mountId ? (mounts.find(m => m.id === mountId)?.name ?? d.mountName) : '',
+    }));
+  };
+
   const handleSave = async () => {
     const changes: { field: string; from: any; to: any }[] = [];
     for (const f of FIELDS) {
@@ -137,6 +219,13 @@ export function UnitEditorModal({ unit, formationsMap, onClose, onSave }: UnitEd
         changes.push({ field: f.key, from: current, to: value });
       }
     }
+    // Mount.
+    const mountIdValue = draft.mountId ? String(draft.mountId) : null;
+    if ((unit.mountId ?? null) !== mountIdValue) changes.push({ field: 'mountId', from: unit.mountId, to: mountIdValue });
+    if ((unit.mountName ?? '') !== String(draft.mountName ?? '')) changes.push({ field: 'mountName', from: unit.mountName, to: String(draft.mountName ?? '') });
+    // Custom image.
+    const imgValue = draft.customImageUrl ? String(draft.customImageUrl) : null;
+    if ((unit.customImageUrl ?? null) !== imgValue) changes.push({ field: 'customImageUrl', from: unit.customImageUrl ?? null, to: imgValue });
     // Derived: organizationLevel tracks the formation.
     const formationChange = changes.find(c => c.field === 'currentFormation');
     if (formationChange) {
@@ -144,15 +233,12 @@ export function UnitEditorModal({ unit, formationsMap, onClose, onSave }: UnitEd
     }
     // Derived: maxUnitHp recomputes from troopHp × maxTroopCount whenever troopHp changes.
     if (changes.some(c => c.field === 'troopHp')) {
-      const newMax = Math.max(1, parsedTroopHp) * parsedMaxTroop;
-      changes.push({ field: 'maxUnitHp', from: unit.maxUnitHp, to: newMax });
+      changes.push({ field: 'maxUnitHp', from: unit.maxUnitHp, to: parsedTroopHp * parsedMaxTroop });
     }
-    // Derived: currentTroopCount = ceil(currentUnitHp / troopHp) — it is a calculated
-    // value, so it's derived from the (possibly edited) HP fields rather than edited
-    // directly.
+    // Derived: currentTroopCount = ceil(currentUnitHp / troopHp).
     const newTroopHp = changes.find(c => c.field === 'troopHp')?.to ?? unit.troopHp;
     const newCurrentHp = changes.find(c => c.field === 'currentUnitHp')?.to ?? unit.currentUnitHp;
-    const newTroops = Math.max(0, Math.ceil(Math.max(0, newCurrentHp) / Math.max(1, newTroopHp)));
+    const newTroops = Math.min(unit.maxTroopCount, Math.max(0, Math.ceil(Math.max(0, newCurrentHp) / Math.max(1, newTroopHp))));
     if (newTroops !== unit.currentTroopCount) {
       changes.push({ field: 'currentTroopCount', from: unit.currentTroopCount, to: newTroops });
     }
@@ -176,11 +262,12 @@ export function UnitEditorModal({ unit, formationsMap, onClose, onSave }: UnitEd
   };
 
   const team = unit.team as Team;
+  const mountOptions = [{ value: '', label: 'None' }, ...mounts.map(m => ({ value: m.id, label: m.name }))];
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 pointer-events-auto">
       <div
-        className="bg-gray-900 border border-gray-600 rounded-xl shadow-2xl w-[420px] max-h-[90vh] flex flex-col"
+        className="bg-gray-900 border border-gray-600 rounded-xl shadow-2xl w-[540px] max-h-[92vh] flex flex-col"
         style={{ left: pos.x, top: pos.y, position: 'absolute' }}
       >
         {/* Title bar — drag to move */}
@@ -193,102 +280,118 @@ export function UnitEditorModal({ unit, formationsMap, onClose, onSave }: UnitEd
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
-          {/* Read-only identity row */}
-          <div className="flex items-center gap-2 text-xs text-gray-400">
+          {/* R1 Identity */}
+          <div className="flex items-center gap-2">
             <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium shrink-0"
               style={{ backgroundColor: TEAM_COLORS[team], color: '#000' }}
             >
               <TeamShape shape={TEAM_SHAPES[team]} color="#000" />
               {unit.team}
             </span>
-            <span>Formation: {unit.currentFormation}</span>
-            {unit.hidden && <span className="text-amber-400">HIDDEN</span>}
+            <input
+              type="text"
+              value={draft.unitName}
+              onChange={e => set('unitName', e.target.value)}
+              className="flex-1 bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700 focus:border-amber-400"
+            />
+            {unit.hidden && <span className="text-amber-400 text-[11px] shrink-0">HIDDEN</span>}
+            <button
+              onClick={() => setShowImagePicker(true)}
+              className="shrink-0 text-[11px] bg-blue-700 hover:bg-blue-600 text-white rounded px-2 py-1"
+            >
+              Image
+            </button>
           </div>
 
-          {/* Derived read-only fields */}
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="bg-gray-800 rounded px-2 py-1.5">
-              <div className="text-gray-500">Unit HP</div>
-              <div className="text-white">{parsedCurrentHp} / {parsedTroopHp * parsedMaxTroop}</div>
-            </div>
-            <div className="bg-gray-800 rounded px-2 py-1.5">
-              <div className="text-gray-500">Effective AC</div>
-              <div className="text-white">{parsedBaselineAc} + {acMod} = {parsedBaselineAc + acMod}</div>
-            </div>
-            <div className="bg-gray-800 rounded px-2 py-1.5">
-              <div className="text-gray-500">Effective Move</div>
-              <div className="text-white">{computeEffectiveMovement({ ...unit, movementPoints: num(draft.movementPoints) }, movementMult)} MP</div>
-            </div>
+          {/* R2 HP */}
+          <div className="flex items-end gap-2">
+            <Cell label="Current HP"><NumInput value={draft.currentUnitHp} min={0} onChange={v => set('currentUnitHp', v)} /></Cell>
+            <Cell label="Troop HP"><NumInput value={draft.troopHp} min={1} onChange={v => set('troopHp', v)} /></Cell>
+            <Cell label="Max HP">{maxHp}</Cell>
+            <Cell label="Troops">{troops}</Cell>
           </div>
 
-          {FIELDS.map(f => (
-            <div key={f.key} className="flex items-center justify-between gap-3">
-              <label className="text-xs text-gray-300 w-40 shrink-0">{f.label}</label>
-              {f.type === 'boolean' ? (
-                <input
-                  type="checkbox"
-                  checked={!!draft[f.key]}
-                  onChange={e => setDraft(d => ({ ...d, [f.key]: e.target.checked }))}
-                  className="h-4 w-4 accent-amber-400"
-                />
-              ) : f.type === 'select' ? (
-                <select
-                  value={draft[f.key]}
-                  onChange={e => setDraft(d => ({ ...d, [f.key]: e.target.value }))}
-                  className="flex-1 bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700"
+          {/* R3 Armor */}
+          <div className="flex items-end gap-2">
+            <Cell label="Effective AC">{parsedBaselineAc + acMod}</Cell>
+            <Cell label="Base AC"><NumInput value={draft.baselineAc} onChange={v => set('baselineAc', v)} /></Cell>
+            <div className="flex-1" />
+            <div className="pb-1"><Toggle checked={!!draft.isShielded} onChange={v => set('isShielded', v)} label="Shield" /></div>
+          </div>
+
+          {/* R4 Movement */}
+          <div className="flex items-end gap-2">
+            <Cell label="MP left"><NumInput value={draft.movementPointsAvailable} min={0} onChange={v => set('movementPointsAvailable', v)} /></Cell>
+            <Cell label="Max MP"><NumInput value={draft.movementPoints} min={0} onChange={v => set('movementPoints', v)} /></Cell>
+            <Cell label="Effective move">{effMove}</Cell>
+          </div>
+
+          {/* R5 Combat */}
+          <div className="flex items-end gap-2">
+            <Cell label="Actions left"><NumInput value={draft.actionsAvailable} min={0} onChange={v => set('actionsAvailable', v)} /></Cell>
+            <Cell label="Aggressiveness"><NumInput value={draft.aggressiveness} onChange={v => set('aggressiveness', v)} /></Cell>
+            <div className="flex-1" />
+          </div>
+
+          {/* R6 Morale */}
+          <div className="flex items-end gap-2">
+            <Cell label="Current morale">{effMorale}</Cell>
+            <Cell label="Base morale"><NumInput value={draft.baseMorale} onChange={v => set('baseMorale', v)} /></Cell>
+            <div className="flex-1" />
+            <div className="pb-1"><Toggle checked={!!draft.ignoreMoraleChecks} onChange={v => set('ignoreMoraleChecks', v)} label="Fearless" /></div>
+          </div>
+
+          {/* R7 Formation + Mount + Can charge */}
+          <div className="flex items-end gap-2">
+            <Cell label="Formation"><SelectInput value={String(draft.currentFormation)} onChange={v => set('currentFormation', v)} options={formationOptions.map(n => ({ value: n, label: n }))} /></Cell>
+            <Cell label="Mount"><SelectInput value={String(draft.mountId || '')} onChange={handleMountChange} options={mountOptions} /></Cell>
+            <div className="flex-1" />
+            <div className="pb-1"><Toggle checked={!!draft.canCharge} onChange={v => set('canCharge', v)} label="Can charge" /></div>
+          </div>
+
+          {/* R8 Availability */}
+          <div className="flex flex-wrap gap-1">
+            <span className="text-[10px] text-gray-400 self-center mr-1">Available:</span>
+            {formationOptions.map(name => {
+              const selected = (draft.formationAvailability as string[]).includes(name);
+              return (
+                <label
+                  key={name}
+                  className={`inline-flex items-center gap-1 text-[11px] rounded px-1.5 py-0.5 cursor-pointer border ${
+                    selected ? 'bg-amber-900/40 text-amber-200 border-amber-700/60' : 'bg-gray-800 text-gray-300 border-gray-700'
+                  }`}
                 >
-                  {f.options!.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              ) : f.type === 'formation' ? (
-                <select
-                  value={draft[f.key]}
-                  onChange={e => setDraft(d => ({ ...d, [f.key]: e.target.value }))}
-                  className="flex-1 bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700"
-                >
-                  {formationOptions.map(name => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              ) : f.type === 'multi' ? (
-                <div className="flex-1 flex flex-wrap gap-1 justify-end">
-                  {formationOptions.map(name => {
-                    const selected = (draft[f.key] as string[]).includes(name);
-                    return (
-                      <label
-                        key={name}
-                        className={`inline-flex items-center gap-1 text-[11px] rounded px-1.5 py-0.5 cursor-pointer border ${
-                          selected ? 'bg-amber-900/40 text-amber-200 border-amber-700/60' : 'bg-gray-800 text-gray-300 border-gray-700'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={e => {
-                            const arr = draft[f.key] as string[];
-                            setDraft(d => ({ ...d, [f.key]: e.target.checked ? [...arr, name] : arr.filter(x => x !== name) }));
-                          }}
-                          className="h-3 w-3 accent-amber-400"
-                        />
-                        {name}
-                      </label>
-                    );
-                  })}
-                </div>
-              ) : (
-                <input
-                  type={f.type === 'number' ? 'number' : 'text'}
-                  value={draft[f.key]}
-                  min={f.min}
-                  max={f.max}
-                  onChange={e => setDraft(d => ({ ...d, [f.key]: e.target.value }))}
-                  className="flex-1 bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700 focus:border-amber-400"
-                />
-              )}
-            </div>
-          ))}
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={e => {
+                      const arr = draft.formationAvailability as string[];
+                      set('formationAvailability', e.target.checked ? [...arr, name] : arr.filter(x => x !== name));
+                    }}
+                    className="h-3 w-3 accent-amber-400"
+                  />
+                  {name}
+                </label>
+              );
+            })}
+          </div>
+
+          {/* R9 Saving throws */}
+          <div className="flex gap-2">
+            {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(s => (
+              <Cell key={s} label={s.toUpperCase()}>
+                <NumInput value={draft[s]} onChange={v => set(s, v)} />
+              </Cell>
+            ))}
+          </div>
+
+          {/* R10 Rank & Token */}
+          <div className="flex items-end gap-2">
+            <Cell label="Level"><NumInput value={draft.level} min={1} onChange={v => set('level', v)} /></Cell>
+            <Cell label="Size"><SelectInput value={String(draft.sizeCategory)} onChange={v => set('sizeCategory', v)} options={SIZE_VALUES.map(v => ({ value: String(v), label: `${SIZE_LABELS[v]} (${v})` }))} /></Cell>
+            <Cell label="Visual scale"><NumInput value={draft.visualScale} min={50} max={149} onChange={v => set('visualScale', v)} /></Cell>
+          </div>
 
           {/* Weapons — edited via the shared weapon editor */}
           <div className="space-y-1.5">
@@ -327,12 +430,12 @@ export function UnitEditorModal({ unit, formationsMap, onClose, onSave }: UnitEd
           </div>
 
           <p className="text-[10px] text-gray-500 leading-snug">
-            Team, visibility and troop capacity are managed elsewhere. All changes are
-            logged and undo as one step.
+            {`{...}`} values are derived and recompute live. All changes are logged and undo as one step.
           </p>
         </div>
 
-        <div className="flex justify-end gap-2 px-4 py-3 border-t border-gray-700">
+        {/* Pinned footer — always visible, no scroll needed to save */}
+        <div className="flex justify-end gap-2 px-4 py-3 border-t border-gray-700 bg-gray-900">
           <button onClick={onClose} className="px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-sm">
             Cancel
           </button>
@@ -363,7 +466,16 @@ export function UnitEditorModal({ unit, formationsMap, onClose, onSave }: UnitEd
           onClose={() => setWeaponEditorOpen(false)}
         />
       )}
+
+      {/* Shared image picker overlay */}
+      {showImagePicker && (
+        <ImagePickerModal
+          current={draft.customImageUrl || undefined}
+          uploadKey={unit.id}
+          onSelect={(url) => { set('customImageUrl', url ?? ''); setShowImagePicker(false); }}
+          onClose={() => setShowImagePicker(false)}
+        />
+      )}
     </div>
   );
 }
-
