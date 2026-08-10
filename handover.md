@@ -1,5 +1,22 @@
 # Handover — 2026-08-03
 
+## Team/Alliance self-heal refresh for players (2026-08-09)
+- **Bug**: a player already on the map kept seeing all tokens as **blue/friendly** (alliance ring + assignment) until they quit and rejoined, even after the DM assigned them a team and set alliances. Team control worked; the alliance coloring/data didn't refresh live.
+- Root cause path: `scenario_participants.team` and `team_alliances` load on mount + realtime `postgres_changes` (`event:'*'`), but events weren't reaching players' clients → stale "all friendly" until a fresh fetch (rejoin).
+- **Fix**: `useParticipants` and `useTeamAlliances` now also **re-fetch every 10s and on window focus/visibilitychange** (`refreshRoster` / `refreshAlliances`), so DM team/role/alliance changes catch up within seconds regardless of realtime delivery. No code elsewhere needed — `myTeam`/`alliances` already drive control + rendering.
+- Optional live-DB check if realtime still matters: `SELECT tablename FROM pg_publication_tables WHERE pubname='supabase_realtime' AND schemaname='public';` — ensure `scenario_participants` and `team_alliances` are published (migrations 029/031).
+- `tsc --noEmit` clean, 298 tests pass.
+
+## Server-Authoritative Undo (2026-08-09)
+**Files:** `supabase/migrations/046_undo_rpc.sql` (new), `src/game/GameEngine.ts` + `GameEngine.test.ts` (new), `src/hooks/useGameEngine.ts`
+
+- **Bug**: undo was client-side per-player; stacks only synced via command_log INSERTs, so remote undos (soft-deletes = UPDATEs) were invisible to other clients. A stale stack let a player undo their own move even after another player moved (out of order).
+- **Migration 046**: `undo_commands(p_scenario_id, p_target_ids)` SECURITY DEFINER RPC — recomputes the **live top chain** from the log (walk back from last `deleted_at IS NULL` row through consecutive `chained`), rejects unless `p_target_ids` is exactly that chain, rejects unless caller is the scenario GM or owns the chain, then soft-deletes (idempotent, `deleted_at IS NULL` guard). **Apply to the DB.**
+- **`useGameEngine.undo`**: pops locally, calls the RPC; on success applies the inverse (existing code). On rejection → `hydrateFromLog()` to reconcile + message "Cannot undo — another player has moved since…".
+- **`subscribeToCommandLog`**: added an UPDATE listener — `deleted_at` set → `GameEngine.removeEntry(id)` (stack + redo); cleared → `undeleteEntry` (re-add, idempotent). Keeps all clients' stacks in sync with remote undo/redo.
+- **`GameEngine`**: `peekTopChain()` (non-destructive), `removeEntry`, `undeleteEntry`; `pushExternal` now clears the local redo stack (a remote action invalidates redo).
+- 298 tests (6 new GameEngine tests); `tsc --noEmit` clean.
+
 ## isHealing weapon flag + heal resolution + reusable weapon editor (2026-08-08)
 **Files:** `supabase/migrations/045_weapon_is_healing.sql` (new), `src/lib/weaponParser.ts` + test, `src/lib/spellDamage.ts` + test, `src/lib/unitStats.test.ts`, `src/components/WeaponEditorModal.tsx` (new), `src/components/UnitEditor.tsx`, `src/components/ScenarioMap/{UnitEditorModal,ScenarioMap,ContextMenu,UnitTooltip,MagicCastModal}.tsx`
 

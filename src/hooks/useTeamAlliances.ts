@@ -67,6 +67,31 @@ export function useTeamAlliances(scenarioId: string, isGM: boolean) {
     };
   }, [scenarioId]);
 
+  // Re-fetch the alliance map periodically and on window focus, so GM alliance
+  // changes reach this client even if a realtime event was missed — no need to
+  // quit and rejoin the scenario.
+  const refreshAlliances = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('team_alliances')
+      .select('team, alliance_group')
+      .eq('scenario_id', scenarioId);
+    if (error) return;
+    rowsRef.current = data ?? [];
+    setAlliances(buildMap(rowsRef.current));
+  }, [scenarioId]);
+
+  useEffect(() => {
+    const t = setInterval(refreshAlliances, 10000);
+    const onFocus = () => { refreshAlliances(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [refreshAlliances]);
+
   const setAlliance = useCallback(async (team: string, group: AllianceGroup) => {
     setAlliances(prev => ({ ...prev, [team]: group }));
     const { error } = await supabase

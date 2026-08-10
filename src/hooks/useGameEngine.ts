@@ -130,6 +130,25 @@ export function useGameEngine({
           engineRef.current.pushExternal(rowToEntry(payload.new as CommandLogRow));
         },
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'command_log',
+          filter: `scenario_id=eq.${scenarioId}`,
+        },
+        payload => {
+          const row = payload.new as CommandLogRow;
+          if (row.deleted_at) {
+            // A remote undo soft-deleted this command — drop it from our stack.
+            engineRef.current.removeEntry(row.id);
+          } else {
+            // A remote redo undeleted it — re-add.
+            engineRef.current.undeleteEntry(rowToEntry(row));
+          }
+        },
+      )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
@@ -137,8 +156,23 @@ export function useGameEngine({
   }, [scenarioId]);
 
   const undo = useCallback(async (): Promise<CommandEntry[] | null> => {
+    // Pop locally first (permission checked against the local top chain).
     const chain = engineRef.current.undo(playerId, isGM);
     if (!chain || chain.length === 0) return null;
+
+    // Server-authoritative: only the live global top chain (owned by the caller
+    // or a GM) may be undone. The DB recomputes the top from the log, so a stale
+    // client stack cannot undo a move another player made after it.
+    const { data, error } = await supabase.rpc('undo_commands', {
+      p_scenario_id: scenarioId,
+      p_target_ids: chain.map(e => e.id),
+    });
+    if (error || !data || (data as any[]).length === 0) {
+      // Rejected — reconcile the local stack with the true history.
+      await hydrateFromLog();
+      addMessage('Cannot undo — another player has moved since, or the action was already undone');
+      return null;
+    }
 
     for (const entry of chain) {
       for (const step of entry.subSteps) {
@@ -166,18 +200,9 @@ export function useGameEngine({
       }
     }
 
-    const now = new Date().toISOString();
-    for (const entry of chain) {
-      const { error } = await supabase
-        .from('command_log')
-        .update({ deleted_at: now })
-        .eq('id', entry.id);
-      if (error) console.error('[CommandLog] Soft-delete failed:', error);
-    }
-
     addMessage(chain.length > 1 ? `Undid: ${chain[0].description} — ${chain.length} items` : `Undid: ${chain[0].description}`);
     return chain;
-  }, [playerId, isGM, updateUnit, updateAlliance, updateScenarioField, scenarioId, addMessage]);
+  }, [playerId, isGM, updateUnit, updateAlliance, updateScenarioField, scenarioId, addMessage, hydrateFromLog]);
 
   const redo = useCallback(async (): Promise<CommandEntry[] | null> => {
     const chain = engineRef.current.redo(playerId, isGM);

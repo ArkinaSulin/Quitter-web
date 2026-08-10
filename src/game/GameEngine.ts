@@ -147,6 +147,14 @@ export class GameEngine {
     return chain.length;
   }
 
+  /**
+   * Non-destructive view of the top chain (the last command plus its chained
+   * predecessors). Used to validate an undo against the server before popping.
+   */
+  peekTopChain(): CommandEntry[] {
+    return this.peekChain(this.stack);
+  }
+
   getStackSize(): number {
     return this.stack.length;
   }
@@ -166,6 +174,23 @@ export class GameEngine {
 
   /** Append an entry received from another client's realtime command_log insert. */
   pushExternal(entry: CommandEntry): void {
+    if (this.stack.some(e => e.id === entry.id)) return;
+    this.stack.push(entry);
+    if (this.stack.length > this.maxSize) {
+      this.stack.shift();
+    }
+    // A new external action invalidates any local redo.
+    this.redoStack = [];
+  }
+
+  /** Drop an entry that was soft-deleted by a remote undo (stack + redo). */
+  removeEntry(id: string): void {
+    this.stack = this.stack.filter(e => e.id !== id);
+    this.redoStack = this.redoStack.filter(e => e.id !== id);
+  }
+
+  /** Re-add an entry that a remote redo undeleted (idempotent). */
+  undeleteEntry(entry: CommandEntry): void {
     if (this.stack.some(e => e.id === entry.id)) return;
     this.stack.push(entry);
     if (this.stack.length > this.maxSize) {

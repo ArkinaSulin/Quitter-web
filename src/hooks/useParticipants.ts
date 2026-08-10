@@ -89,6 +89,30 @@ export function useParticipants(scenarioId: string, currentUserId?: string | nul
     };
   }, [scenarioId, currentUserId]);
 
+  // Re-fetch the roster periodically and on window focus, so team/role changes
+  // made by the DM reach this client even if a realtime event was missed — no
+  // need to quit and rejoin the scenario.
+  const refreshRoster = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('scenario_participants')
+      .select('*')
+      .eq('scenario_id', scenarioId);
+    if (error) return;
+    if (data) setParticipants((data as any[]).map(mapParticipant).sort(byRole));
+  }, [scenarioId]);
+
+  useEffect(() => {
+    const t = setInterval(refreshRoster, 10000);
+    const onFocus = () => { refreshRoster(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [refreshRoster]);
+
   const myParticipant = participants.find(p => p.userId === currentUserId) || null;
 
   const setParticipantTeam = useCallback(async (participantId: string, team: string | null) => {
