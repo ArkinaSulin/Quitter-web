@@ -8,6 +8,7 @@ import { MessagesPanel } from './MessagesPanel';
 import { AlliancePanel } from './AlliancePanel';
 import { MapEditorPanel } from './MapEditorPanel';
 import { PlayerPanel } from './PlayerPanel';
+import { UndoDebugPanel } from './UndoDebugPanel';
 import { UnitTemplate, AllianceGroup, Participant, ScenarioRole } from '@/types/gameProtocol';
 
 interface LeftPanelProps {
@@ -140,6 +141,18 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
       ),
       requiresGM: false,
       content: <MessagesPanel />,
+    },
+    {
+      id: 'undo-debug',
+      label: 'Undo debug',
+      icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={iconClasses}>
+          <path d="M9 14 4 9l5-5" />
+          <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+        </svg>
+      ),
+      requiresGM: false,
+      content: <UndoDebugPanel scenarioId={scenarioId} />,
     },
   ];
 

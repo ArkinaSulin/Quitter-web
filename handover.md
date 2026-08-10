@@ -1,5 +1,10 @@
 # Handover — 2026-08-03
 
+## Undo debug panel tab (2026-08-09)
+- New left-panel tab **"Undo debug"** (curved-arrow-left icon, visible to everyone — `requiresGM: false`), via `src/components/ScenarioMap/UndoDebugPanel.tsx`.
+- Lists the scenario's `command_log` (the undo queue), most recent first (limit 200): **Description | Actor (player_name) | Status (`---` / `undid` from `deleted_at`) | Chained (Y/N)**. Latest step highlighted amber.
+- Live via realtime INSERT/UPDATE on `command_log` (scenario filter). `tsc --noEmit` clean, 302 tests pass.
+
 ## DM stat editor: missing updateUnit mappings (Max MP etc. never persisted) (2026-08-09)
 - **Bug**: editing "Movement (max MP)" in the scenario DM editor did nothing — `useSupabaseSync.updateUnit` never mapped `movementPoints` → `movement_points`, so the DB kept the old max; the row's realtime UPDATE then reverted the local value. Moving with MP-left 6 vs stale max 5 made `applyMoveCost` turn the leftover into actions (0 MP / 3 actions).
 - **Fix**: `updateUnit` now maps the 7 missing DM-editable fields: `movementPoints`, `troopHp`, `level`, `sizeCategory`, `visualScale`, `formationAvailability`, `isShielded` (all to their `mapUnitToRow` column names).
