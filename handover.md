@@ -1,5 +1,10 @@
 # Handover — 2026-08-03
 
+## DM stat editor: missing updateUnit mappings (Max MP etc. never persisted) (2026-08-09)
+- **Bug**: editing "Movement (max MP)" in the scenario DM editor did nothing — `useSupabaseSync.updateUnit` never mapped `movementPoints` → `movement_points`, so the DB kept the old max; the row's realtime UPDATE then reverted the local value. Moving with MP-left 6 vs stale max 5 made `applyMoveCost` turn the leftover into actions (0 MP / 3 actions).
+- **Fix**: `updateUnit` now maps the 7 missing DM-editable fields: `movementPoints`, `troopHp`, `level`, `sizeCategory`, `visualScale`, `formationAvailability`, `isShielded` (all to their `mapUnitToRow` column names).
+- `tsc --noEmit` clean, 302 tests pass.
+
 ## Movement now triggers routing (morale ≤ 0) + formation-aware morale (2026-08-09)
 - **Bug**: a unit that moved into a position that dropped its morale to ≤ 0 did not rout — it only routed once combat happened (even with no casualties). Two causes:
   1. The **Free Move path** (`moveUnitFree`) never ran the post-move morale check — only `performMove` (normal/charge) did.

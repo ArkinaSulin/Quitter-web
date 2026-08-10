@@ -452,10 +452,17 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     if (updates.team !== undefined) dbUpdates.team = updates.team;
     if (updates.currentUnitHp !== undefined) dbUpdates.current_unit_hp = updates.currentUnitHp;
     if (updates.maxUnitHp !== undefined) dbUpdates.max_unit_hp = updates.maxUnitHp;
+    if (updates.troopHp !== undefined) dbUpdates.troop_hp = updates.troopHp;
+    if (updates.level !== undefined) dbUpdates.level = updates.level;
+    if (updates.movementPoints !== undefined) dbUpdates.movement_points = updates.movementPoints;
     if (updates.isHero !== undefined) dbUpdates.is_hero = updates.isHero;
     if (updates.attachedToUnitId !== undefined) dbUpdates.attached_to_unit_id = updates.attachedToUnitId;
     if (updates.attachedPosition !== undefined) dbUpdates.attached_position = updates.attachedPosition;
     if (updates.currentFormation !== undefined) { dbUpdates.current_formation = updates.currentFormation; dbUpdates.organization_level = getOrganizationLevel(updates.currentFormation); }
+    if (updates.formationAvailability !== undefined) dbUpdates.formation_availability = updates.formationAvailability;
+    if (updates.sizeCategory !== undefined) dbUpdates.size_category = updates.sizeCategory;
+    if (updates.visualScale !== undefined) dbUpdates.visual_scale = updates.visualScale;
+    if (updates.isShielded !== undefined) dbUpdates.is_shielded = updates.isShielded;
     if (updates.aggressiveness !== undefined) dbUpdates.aggressiveness = updates.aggressiveness;
     if (updates.baseMorale !== undefined) dbUpdates.base_morale = updates.baseMorale;
     if (updates.currentMoraleModifier !== undefined) dbUpdates.current_morale_modifier = updates.currentMoraleModifier;
