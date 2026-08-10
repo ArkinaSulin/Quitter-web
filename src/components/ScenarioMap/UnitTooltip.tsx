@@ -24,7 +24,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const formationAtkMod = formationMod?.attack_modifier ?? 0;
   const formationMorMod = formationMod?.morale_modifier ?? 0;
 
-  const effectiveMoraleModifier = unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, units, alliances, formationMorMod);
+  const effectiveMoraleModifier = unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, units, alliances, formationMod);
   const wounds = calcWounds(unit);
   const isolated = calcIsolation(unit, units, alliances);
   const enemyThreats = calcEnemyThreats(unit, units, alliances, formationMod);

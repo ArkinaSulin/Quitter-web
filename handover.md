@@ -1,5 +1,15 @@
 # Handover — 2026-08-03
 
+## Movement now triggers routing (morale ≤ 0) + formation-aware morale (2026-08-09)
+- **Bug**: a unit that moved into a position that dropped its morale to ≤ 0 did not rout — it only routed once combat happened (even with no casualties). Two causes:
+  1. The **Free Move path** (`moveUnitFree`) never ran the post-move morale check — only `performMove` (normal/charge) did.
+  2. The routing checks computed threat with the **default heuristic** (rear = ×2), while the **tooltip** used the formation's `threat_arcs`/`double_threat_arcs` — so the displayed morale could disagree with what the checks subtracted.
+- **Fix**:
+  - New pure `shouldRout(unit, units, alliances, formation)` in `unitMorale.ts` (morale ≤ 0, respects fearless/already-routing).
+  - `computeEffectiveMoraleModifier(unit, units, alliances, formation)` now takes the **formation object** (was just a number) and uses its `morale_modifier` **and** threat arcs via `calcEnemyThreats` — matching the tooltip. All 10 combat/cast/cascade/customDraw callers updated to pass `formationsMap[X] ?? null`.
+  - New `maybeRoutAfterMove(unit, targetHex)` in ScenarioMap runs the post-move check (moved unit + units adjacent to landing) and is now called from **both** `performMove` and the **Free Move** path, so movement always routs a broken unit.
+- 302 tests (4 new: 3 `shouldRout` + formation-threat-arc consistency); `tsc --noEmit` clean.
+
 ## Team/Alliance self-heal refresh for players (2026-08-09)
 - **Bug**: a player already on the map kept seeing all tokens as **blue/friendly** (alliance ring + assignment) until they quit and rejoined, even after the DM assigned them a team and set alliances. Team control worked; the alliance coloring/data didn't refresh live.
 - Root cause path: `scenario_participants.team` and `team_alliances` load on mount + realtime `postgres_changes` (`event:'*'`), but events weren't reaching players' clients → stale "all friendly" until a fresh fetch (rejoin).

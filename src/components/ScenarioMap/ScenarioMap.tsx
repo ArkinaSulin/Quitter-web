@@ -32,7 +32,7 @@ import { UnitEditorModal } from './UnitEditorModal';
 import { PingLayer } from './PingLayer';
 import { drawToken, loadImage, SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
-import { computeEffectiveMoraleModifier, computeThreatRating, areHexesAdjacent } from '@/lib/unitMorale';
+import { computeEffectiveMoraleModifier, shouldRout, computeThreatRating, areHexesAdjacent } from '@/lib/unitMorale';
 import { supabase } from '@/lib/supabaseClient';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement } from '@/lib/unitStats';
 import { nextLowerFormation } from '@/lib/formationCost';
@@ -379,19 +379,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }));
   }, []);
 
-  const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number) => {
-    if (overBudget) {
-      const heroNote = attachedHero
-        ? `, ${attachedHero.unitName} has ${attachedHero.actionsAvailable} action(s) left`
-        : '';
-      addError(`${unit.unitName} moved over budget — path costs ${cost} MP (${Math.ceil(cost / Math.max(1, maxMP))} action(s)), but ${unit.unitName} has ${unit.actionsAvailable} action(s) left${heroNote}`);
-    }
-    await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP);
-
+  // Post-move morale check: the moved unit and any unit adjacent to its landing
+  // hex that breaks morale (threat / isolation / wounds) routs immediately. Shared
+  // by normal moves, charges, and Free Move so movement always triggers routing.
+  const maybeRoutAfterMove = useCallback(async (unit: Unit, targetHex: Hex) => {
     const updatedUnits = units.map(u =>
       u.id === unit.id ? { ...u, hex: { ...targetHex } } : u
     );
-
     const candidates = new Set<string>();
     if (!unit.ignoreMoraleChecks && !unit.isRouting) candidates.add(unit.id);
     for (const u of units) {
@@ -400,18 +394,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         candidates.add(u.id);
       }
     }
-
     for (const id of Array.from(candidates)) {
-      const c = updatedUnits.find(u => u.id === id);
+      const c = updatedUnits.find(x => x.id === id);
       if (!c) continue;
-      const formationMorMod = getFormationModifier(formationsMap, c.currentFormation, 'morale_modifier');
-      const effectiveMod = c.currentMoraleModifier + computeEffectiveMoraleModifier(c, updatedUnits, alliances, formationMorMod);
-      if (c.baseMorale + effectiveMod <= 0) {
+      const formation = formationsMap[c.currentFormation] ?? null;
+      if (shouldRout(c, updatedUnits, alliances, formation)) {
         const name = id === unit.id ? unit.unitName : c.unitName;
+        const morale = c.baseMorale + c.currentMoraleModifier + computeEffectiveMoraleModifier(c, updatedUnits, alliances, formation);
         await execute('ROUT', [
           {
             type: 'ROUT',
-            description: `${name} routed (morale ${c.baseMorale + effectiveMod})`,
+            description: `${name} routed (morale ${morale})`,
             unitId: c.id,
             changes: [
               { field: 'isRouting', from: false, to: true },
@@ -421,7 +414,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         ], `${name} routed`, { chained: true });
       }
     }
-  }, [units, moveUnitRecorded, alliances, formationsMap, execute, addError]);
+  }, [units, alliances, formationsMap, execute]);
+
+  const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number) => {
+    if (overBudget) {
+      const heroNote = attachedHero
+        ? `, ${attachedHero.unitName} has ${attachedHero.actionsAvailable} action(s) left`
+        : '';
+      addError(`${unit.unitName} moved over budget — path costs ${cost} MP (${Math.ceil(cost / Math.max(1, maxMP))} action(s)), but ${unit.unitName} has ${unit.actionsAvailable} action(s) left${heroNote}`);
+    }
+    await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP);
+    await maybeRoutAfterMove(unit, targetHex);
+  }, [units, moveUnitRecorded, alliances, formationsMap, execute, addError, maybeRoutAfterMove]);
 
   const handleUnitMove = useCallback(async (unitId: string, targetHex: Hex) => {
     const unit = units.find(u => u.id === unitId);
@@ -483,6 +487,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         return;
       }
       await moveUnitFree(unit, targetHex, attachedHero);
+      await maybeRoutAfterMove(unit, targetHex);
       await finishHeroMove(unit);
       return;
     }
@@ -509,7 +514,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
     await performMove(unit, targetHex, entry.cost, false, effectiveMax, attachedHero, heroMax);
     await finishHeroMove(unit);
-  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, unitMaxMP, computeMoveBudget]);
+  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, unitMaxMP, computeMoveBudget, maybeRoutAfterMove]);
 
   const handleChangeFormation = useCallback(async (unit: Unit, formation: string) => {
     if (unit.isHero || freeMove) {
@@ -584,7 +589,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         ctx.save();
         ctx.globalAlpha = 0.3;
       }
-      const formationMoraleMod = getFormationModifier(formationsMap, unit.currentFormation, 'morale_modifier');
+      const formationMoraleMod = formationsMap[unit.currentFormation] ?? null;
       const pos = hexToPixel(unit.hex, HEX_SIZE);
       const cx = pos.x * currentZoom + offsetX;
       const cy = pos.y * currentZoom + offsetY;
@@ -614,7 +619,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         const heroPos = getAttachedHeroPos(unit.hex, unit.facing, attachedHero.attachedPosition);
         const heroCx = heroPos.x * currentZoom + offsetX;
         const heroCy = heroPos.y * currentZoom + offsetY;
-        const heroFormationMoraleMod = getFormationModifier(formationsMap, attachedHero.currentFormation, 'morale_modifier');
+        const heroFormationMoraleMod = formationsMap[attachedHero.currentFormation] ?? null;
         const heroMoraleMod = attachedHero.currentMoraleModifier + computeEffectiveMoraleModifier(attachedHero, displayUnits, displayAlliances, heroFormationMoraleMod);
         try {
           await drawToken({
@@ -755,13 +760,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const retaliatorPreMoraleUnit = retaliatorIsAttacker
       ? { ...attacker, currentUnitHp: retaliatorFirstStrikeHp }
       : { ...target, currentUnitHp: retaliatorFirstStrikeHp };
-    const retaliatorFormationMorMod = getFormationModifier(formationsMap, retaliatorPreMoraleUnit.currentFormation, 'morale_modifier');
     const retaliatorRouted = !retaliatorKilled
       && !retaliatorPreMoraleUnit.ignoreMoraleChecks
       && !retaliatorPreMoraleUnit.isRouting
       && (retaliatorPreMoraleUnit.baseMorale
         + retaliatorPreMoraleUnit.currentMoraleModifier
-        + computeEffectiveMoraleModifier(retaliatorPreMoraleUnit, units, alliances, retaliatorFormationMorMod) <= 0);
+        + computeEffectiveMoraleModifier(retaliatorPreMoraleUnit, units, alliances, formationsMap[retaliatorPreMoraleUnit.currentFormation] ?? null) <= 0);
 
     // Combat is simultaneous when both sides have equal reach. In that case both
     // sides exchange blows regardless of killed/routed. When one side holds the
@@ -810,9 +814,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
     // Morale check for the defender after taking damage (from the attacker's first
     // strike or the attacker's retaliation) — a unit that breaks must rout.
-    const defenderFormationMorMod = getFormationModifier(formationsMap, target.currentFormation, 'morale_modifier');
     const defModUnit = { ...target, currentUnitHp: newDefenderHp };
-    const defEffectiveMod = defModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(defModUnit, units, alliances, defenderFormationMorMod);
+    const defEffectiveMod = defModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(defModUnit, units, alliances, formationsMap[target.currentFormation] ?? null);
     const defenderRouted = !defenderKilled && !defModUnit.ignoreMoraleChecks && !defModUnit.isRouting && (defModUnit.baseMorale + defEffectiveMod <= 0);
 
     // Build description — unit volley and (when attached front) the hero's own
@@ -907,9 +910,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let attackerRouted = false;
     let attMoraleBreak = 0;
     if (damageToAttacker > 0) {
-      const attackerFormationMorMod = getFormationModifier(formationsMap, attacker.currentFormation, 'morale_modifier');
       const attModUnit = { ...attacker, currentUnitHp: newAttackerHp };
-      attMoraleBreak = attModUnit.baseMorale + attModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(attModUnit, units, alliances, attackerFormationMorMod);
+      attMoraleBreak = attModUnit.baseMorale + attModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(attModUnit, units, alliances, formationsMap[attacker.currentFormation] ?? null);
       attackerRouted = !attackerKilled && !attModUnit.ignoreMoraleChecks && !attModUnit.isRouting && (attMoraleBreak <= 0);
     }
 
@@ -935,8 +937,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       for (const u of units) {
         if (u.id === attacker.id || u.id === target.id || u.isDeleted || u.ignoreMoraleChecks || u.isRouting) continue;
         if (hexDistance(u.hex, target.hex) === 1) {
-          const formationMorMod = getFormationModifier(formationsMap, u.currentFormation, 'morale_modifier');
-          const effectiveMod = u.currentMoraleModifier + computeEffectiveMoraleModifier(u, units, alliances, formationMorMod);
+          const effectiveMod = u.currentMoraleModifier + computeEffectiveMoraleModifier(u, units, alliances, formationsMap[u.currentFormation] ?? null);
           if (u.baseMorale + effectiveMod <= 0) {
             await routeUnit(u, `morale ${u.baseMorale + effectiveMod} near fleeing ${target.unitName}`, false);
           }
@@ -950,8 +951,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       for (const u of units) {
         if (u.id === attacker.id || u.id === target.id || u.isDeleted || u.ignoreMoraleChecks || u.isRouting) continue;
         if (hexDistance(u.hex, attacker.hex) === 1) {
-          const formationMorMod = getFormationModifier(formationsMap, u.currentFormation, 'morale_modifier');
-          const effectiveMod = u.currentMoraleModifier + computeEffectiveMoraleModifier(u, units, alliances, formationMorMod);
+          const effectiveMod = u.currentMoraleModifier + computeEffectiveMoraleModifier(u, units, alliances, formationsMap[u.currentFormation] ?? null);
           if (u.baseMorale + effectiveMod <= 0) {
             await routeUnit(u, `morale ${u.baseMorale + effectiveMod} near fleeing ${attacker.unitName}`, false);
           }
@@ -1261,9 +1261,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
     // Morale check + rout cascade for the target (same rules as normal combat).
     const targetKilled = newHp <= 0;
-    const targetFormationMorMod = getFormationModifier(formationsMap, target.currentFormation, 'morale_modifier');
     const modUnit = { ...target, currentUnitHp: newHp };
-    const effMod = modUnit.currentMoraleModifier + computeEffectiveMoraleModifier(modUnit, units, alliances, targetFormationMorMod);
+    const effMod = modUnit.currentMoraleModifier + computeEffectiveMoraleModifier(modUnit, units, alliances, formationsMap[target.currentFormation] ?? null);
     const targetRouted = !targetKilled && !modUnit.ignoreMoraleChecks && !modUnit.isRouting && (modUnit.baseMorale + effMod <= 0);
 
     async function routeUnit(unit: Unit, reason: string, killed: boolean): Promise<void> {
@@ -1285,8 +1284,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       for (const u of units) {
         if (u.id === caster.id || u.id === target.id || u.isDeleted || u.ignoreMoraleChecks || u.isRouting) continue;
         if (hexDistance(u.hex, target.hex) === 1) {
-          const fMorMod = getFormationModifier(formationsMap, u.currentFormation, 'morale_modifier');
-          const eMod = u.currentMoraleModifier + computeEffectiveMoraleModifier(u, units, alliances, fMorMod);
+          const eMod = u.currentMoraleModifier + computeEffectiveMoraleModifier(u, units, alliances, formationsMap[u.currentFormation] ?? null);
           if (u.baseMorale + eMod <= 0) {
             await routeUnit(u, `morale ${u.baseMorale + eMod} near fleeing ${target.unitName}`, false);
           }

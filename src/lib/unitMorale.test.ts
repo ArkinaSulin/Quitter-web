@@ -5,8 +5,9 @@ import {
   calcIsolation,
   computeEffectiveMoraleModifier,
   computeThreatRating,
+  shouldRout,
 } from './unitMorale';
-import { Unit, AllianceGroup } from '@/types/gameProtocol';
+import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
 
 function makeUnit(overrides: Partial<Unit> = {}): Unit {
   return {
@@ -223,7 +224,38 @@ describe('computeEffectiveMoraleModifier', () => {
 
   it('applies the formation morale modifier', () => {
     const me = makeUnit({ ...threat1, currentUnitHp: 100, maxUnitHp: 200 });
-    expect(computeEffectiveMoraleModifier(me, [], alliances, 3)).toBe(-5 - 1 + 3);
+    expect(computeEffectiveMoraleModifier(me, [], alliances, { morale_modifier: 3 } as Formation)).toBe(-5 - 1 + 3);
+  });
+
+  it('uses the formation threat arcs (Scattered rear is normal, not doubled)', () => {
+    const me = makeUnit({ ...threat1, facing: 0 });
+    const enemy = enemyAt(DIR_HEXES[1], { ...threat1 }); // DIR_HEXES[1] = (0,1) is rear at facing 0
+    // No formation: rear doubles -> penalty 2.
+    expect(computeEffectiveMoraleModifier(me, [enemy], alliances)).toBe(-1 - 2);
+    // Scattered formation: all arcs normal -> penalty 1.
+    const scattered = { morale_modifier: 0, threat_arcs: ['front', 'flank', 'rear'] as string[], double_threat_arcs: [] as string[] } as unknown as Formation;
+    expect(computeEffectiveMoraleModifier(me, [enemy], alliances, scattered)).toBe(-1 - 1);
+  });
+});
+
+describe('shouldRout', () => {
+  it('true when surrounded by enough enemies to break morale', () => {
+    const me = makeUnit({ ...threat1, baseMorale: 3 });
+    const ring = DIR_HEXES.map(h => enemyAt(h, { ...threat1 }));
+    expect(shouldRout(me, ring, alliances)).toBe(true);
+  });
+
+  it('false when morale stays positive', () => {
+    const me = makeUnit({ ...threat1, baseMorale: 10 });
+    const few = DIR_HEXES.slice(0, 2).map(h => enemyAt(h, { ...threat1 }));
+    expect(shouldRout(me, few, alliances)).toBe(false);
+  });
+
+  it('false for fearless or already-routing units', () => {
+    const fearless = makeUnit({ ...threat1, baseMorale: 1, ignoreMoraleChecks: true });
+    expect(shouldRout(fearless, DIR_HEXES.map(h => enemyAt(h, { ...threat1 })), alliances)).toBe(false);
+    const routed = makeUnit({ ...threat1, baseMorale: 1, isRouting: true });
+    expect(shouldRout(routed, DIR_HEXES.map(h => enemyAt(h, { ...threat1 })), alliances)).toBe(false);
   });
 });
 

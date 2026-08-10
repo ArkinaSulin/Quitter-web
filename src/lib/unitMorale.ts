@@ -97,14 +97,36 @@ export function calcEnemyThreats(unit: Unit, units: Unit[], alliances: Record<st
   };
 }
 
+/**
+ * Total morale modifier for a unit: wounds + isolation + position threats
+ * (using the formation's threat arcs when one is given, matching the tooltip) +
+ * the formation's morale bonus. `formation` is the unit's formation row or null.
+ */
 export function computeEffectiveMoraleModifier(
   unit: Unit,
   units: Unit[],
   alliances: Record<string, AllianceGroup>,
-  formationMoraleModifier: number = 0
+  formation: Formation | null = null
 ): number {
   const wounds = calcWounds(unit);
   const isolated = calcIsolation(unit, units, alliances);
-  const threats = calcEnemyThreats(unit, units, alliances);
-  return wounds + (isolated ? -getSetting('isolation_penalty', 1) : 0) - (threats.frontSide + threats.rear) + formationMoraleModifier;
+  const threats = calcEnemyThreats(unit, units, alliances, formation);
+  const formationMorMod = formation?.morale_modifier ?? 0;
+  return wounds + (isolated ? -getSetting('isolation_penalty', 1) : 0) - (threats.frontSide + threats.rear) + formationMorMod;
+}
+
+/**
+ * Should this unit rout right now? true when its effective morale is <= 0 and it
+ * is subject to morale (not fearless / already routing). Used by the post-move
+ * check (normal + free moves) and combat — all paths agree.
+ */
+export function shouldRout(
+  unit: Unit,
+  units: Unit[],
+  alliances: Record<string, AllianceGroup>,
+  formation: Formation | null = null
+): boolean {
+  if (unit.ignoreMoraleChecks || unit.isRouting) return false;
+  const effectiveMod = unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, units, alliances, formation);
+  return unit.baseMorale + effectiveMod <= 0;
 }
