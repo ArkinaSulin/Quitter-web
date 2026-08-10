@@ -38,6 +38,7 @@ const FIELDS: FieldDef[] = [
   { key: 'unitName', label: 'Name', type: 'text' },
   { key: 'currentUnitHp', label: 'Unit HP (current)', type: 'number', min: 0 },
   { key: 'troopHp', label: 'Troop HP', type: 'number', min: 1 },
+  { key: 'maxTroopCount', label: 'Max troops', type: 'number', min: 1 },
   { key: 'level', label: 'Level', type: 'number', min: 1 },
   { key: 'baselineAc', label: 'Baseline AC', type: 'number' },
   { key: 'movementPoints', label: 'Movement (max MP)', type: 'number', min: 0 },
@@ -74,10 +75,10 @@ interface UnitEditorModalProps {
   onSave: (changes: { field: string; from: any; to: any }[], description: string) => Promise<void>;
 }
 
-function Cell({ label, children }: { label: string; children: React.ReactNode }) {
+function Cell({ label, children, widthClass = 'w-16' }: { label: string; children: React.ReactNode; widthClass?: string }) {
   return (
-    <label className="flex flex-col gap-0.5 text-[10px] text-gray-400 min-w-0 flex-1">
-      <span>{label}</span>
+    <label className={`flex flex-col gap-0.5 text-[10px] text-gray-400 min-w-0 ${widthClass}`}>
+      <span className="truncate">{label}</span>
       {children}
     </label>
   );
@@ -96,6 +97,15 @@ function NumInput({ value, onChange, min, max, readOnly }: {
       onChange={e => onChange(e.target.value)}
       className={`w-full bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700 focus:border-amber-400 ${readOnly ? 'opacity-70 cursor-default' : ''}`}
     />
+  );
+}
+
+/** Read-only derived value, boxed like an input so columns line up. */
+function ReadBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="w-full bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700 opacity-70">
+      {children}
+    </div>
   );
 }
 
@@ -140,7 +150,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
   const [mounts, setMounts] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [pos, setPos] = useState(() => ({
-    x: typeof window !== 'undefined' ? Math.max(20, (window.innerWidth - 520) / 2) : 60,
+    x: typeof window !== 'undefined' ? Math.max(20, (window.innerWidth - 460) / 2) : 60,
     y: typeof window !== 'undefined' ? Math.max(20, (window.innerHeight - 640) / 2) : 40,
   }));
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
@@ -158,7 +168,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
 
   const draftFormation = String(draft.currentFormation || unit.currentFormation);
   const parsedTroopHp = Math.max(1, num(draft.troopHp));
-  const parsedMaxTroop = unit.maxTroopCount;
+  const parsedMaxTroop = Math.max(1, num(draft.maxTroopCount) || unit.maxTroopCount);
   const parsedCurrentHp = num(draft.currentUnitHp);
   const parsedBaselineAc = num(draft.baselineAc);
   const maxHp = parsedTroopHp * parsedMaxTroop;
@@ -231,14 +241,21 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
     if (formationChange) {
       changes.push({ field: 'organizationLevel', from: unit.organizationLevel, to: getOrganizationLevel(formationChange.to) });
     }
-    // Derived: maxUnitHp recomputes from troopHp × maxTroopCount whenever troopHp changes.
-    if (changes.some(c => c.field === 'troopHp')) {
-      changes.push({ field: 'maxUnitHp', from: unit.maxUnitHp, to: parsedTroopHp * parsedMaxTroop });
+    // Derived: maxUnitHp recomputes from troopHp × maxTroopCount whenever either changes.
+    const maxTroopChange = changes.find(c => c.field === 'maxTroopCount')?.to ?? unit.maxTroopCount;
+    if (changes.some(c => c.field === 'troopHp') || changes.some(c => c.field === 'maxTroopCount')) {
+      changes.push({ field: 'maxUnitHp', from: unit.maxUnitHp, to: parsedTroopHp * Math.max(1, maxTroopChange) });
     }
-    // Derived: currentTroopCount = ceil(currentUnitHp / troopHp).
+    // Derived: currentTroopCount = ceil(currentUnitHp / troopHp), clamped to the
+    // (possibly reduced) max troops. If capacity shrank, clamp current HP too.
+    const newMaxUnitHp = parsedTroopHp * Math.max(1, maxTroopChange);
     const newTroopHp = changes.find(c => c.field === 'troopHp')?.to ?? unit.troopHp;
-    const newCurrentHp = changes.find(c => c.field === 'currentUnitHp')?.to ?? unit.currentUnitHp;
-    const newTroops = Math.min(unit.maxTroopCount, Math.max(0, Math.ceil(Math.max(0, newCurrentHp) / Math.max(1, newTroopHp))));
+    let newCurrentHp = changes.find(c => c.field === 'currentUnitHp')?.to ?? unit.currentUnitHp;
+    if (newCurrentHp > newMaxUnitHp) {
+      changes.push({ field: 'currentUnitHp', from: unit.currentUnitHp, to: newMaxUnitHp });
+      newCurrentHp = newMaxUnitHp;
+    }
+    const newTroops = Math.min(Math.max(1, maxTroopChange), Math.max(0, Math.ceil(Math.max(0, newCurrentHp) / Math.max(1, newTroopHp))));
     if (newTroops !== unit.currentTroopCount) {
       changes.push({ field: 'currentTroopCount', from: unit.currentTroopCount, to: newTroops });
     }
@@ -267,7 +284,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 pointer-events-auto">
       <div
-        className="bg-gray-900 border border-gray-600 rounded-xl shadow-2xl w-[540px] max-h-[92vh] flex flex-col"
+        className="bg-gray-900 border border-gray-600 rounded-xl shadow-2xl w-[460px] max-h-[92vh] flex flex-col"
         style={{ left: pos.x, top: pos.y, position: 'absolute' }}
       >
         {/* Title bar — drag to move */}
@@ -308,15 +325,15 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
           <div className="flex items-end gap-2">
             <Cell label="Current HP"><NumInput value={draft.currentUnitHp} min={0} onChange={v => set('currentUnitHp', v)} /></Cell>
             <Cell label="Troop HP"><NumInput value={draft.troopHp} min={1} onChange={v => set('troopHp', v)} /></Cell>
-            <Cell label="Max HP">{maxHp}</Cell>
-            <Cell label="Troops">{troops}</Cell>
+            <Cell label="Max troops"><NumInput value={draft.maxTroopCount} min={1} onChange={v => set('maxTroopCount', v)} /></Cell>
+            <Cell label="Max HP"><ReadBox>{maxHp}</ReadBox></Cell>
+            <Cell label="Troops"><ReadBox>{troops}</ReadBox></Cell>
           </div>
 
           {/* R3 Armor */}
           <div className="flex items-end gap-2">
-            <Cell label="Effective AC">{parsedBaselineAc + acMod}</Cell>
+            <Cell label="Effective AC"><ReadBox>{parsedBaselineAc + acMod}</ReadBox></Cell>
             <Cell label="Base AC"><NumInput value={draft.baselineAc} onChange={v => set('baselineAc', v)} /></Cell>
-            <div className="flex-1" />
             <div className="pb-1"><Toggle checked={!!draft.isShielded} onChange={v => set('isShielded', v)} label="Shield" /></div>
           </div>
 
@@ -324,30 +341,27 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
           <div className="flex items-end gap-2">
             <Cell label="MP left"><NumInput value={draft.movementPointsAvailable} min={0} onChange={v => set('movementPointsAvailable', v)} /></Cell>
             <Cell label="Max MP"><NumInput value={draft.movementPoints} min={0} onChange={v => set('movementPoints', v)} /></Cell>
-            <Cell label="Effective move">{effMove}</Cell>
+            <Cell label="Eff. move"><ReadBox>{effMove}</ReadBox></Cell>
           </div>
 
           {/* R5 Combat */}
           <div className="flex items-end gap-2">
             <Cell label="Actions left"><NumInput value={draft.actionsAvailable} min={0} onChange={v => set('actionsAvailable', v)} /></Cell>
-            <Cell label="Aggressiveness"><NumInput value={draft.aggressiveness} onChange={v => set('aggressiveness', v)} /></Cell>
-            <div className="flex-1" />
+            <Cell label="Aggress."><NumInput value={draft.aggressiveness} onChange={v => set('aggressiveness', v)} /></Cell>
           </div>
 
           {/* R6 Morale */}
           <div className="flex items-end gap-2">
-            <Cell label="Current morale">{effMorale}</Cell>
+            <Cell label="Current morale"><ReadBox>{effMorale}</ReadBox></Cell>
             <Cell label="Base morale"><NumInput value={draft.baseMorale} onChange={v => set('baseMorale', v)} /></Cell>
-            <div className="flex-1" />
             <div className="pb-1"><Toggle checked={!!draft.ignoreMoraleChecks} onChange={v => set('ignoreMoraleChecks', v)} label="Fearless" /></div>
           </div>
 
           {/* R7 Formation + Mount + Can charge */}
           <div className="flex items-end gap-2">
-            <Cell label="Formation"><SelectInput value={String(draft.currentFormation)} onChange={v => set('currentFormation', v)} options={formationOptions.map(n => ({ value: n, label: n }))} /></Cell>
-            <Cell label="Mount"><SelectInput value={String(draft.mountId || '')} onChange={handleMountChange} options={mountOptions} /></Cell>
-            <div className="flex-1" />
-            <div className="pb-1"><Toggle checked={!!draft.canCharge} onChange={v => set('canCharge', v)} label="Can charge" /></div>
+            <Cell label="Formation" widthClass="w-32"><SelectInput value={String(draft.currentFormation)} onChange={v => set('currentFormation', v)} options={formationOptions.map(n => ({ value: n, label: n }))} /></Cell>
+            <Cell label="Mount" widthClass="w-28"><SelectInput value={String(draft.mountId || '')} onChange={handleMountChange} options={mountOptions} /></Cell>
+            <div className="pb-1"><Toggle checked={!!draft.canCharge} onChange={v => set('canCharge', v)} label="Charge" /></div>
           </div>
 
           {/* R8 Availability */}
@@ -378,9 +392,9 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
           </div>
 
           {/* R9 Saving throws */}
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
             {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(s => (
-              <Cell key={s} label={s.toUpperCase()}>
+              <Cell key={s} label={s.toUpperCase()} widthClass="w-10">
                 <NumInput value={draft[s]} onChange={v => set(s, v)} />
               </Cell>
             ))}
@@ -389,7 +403,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
           {/* R10 Rank & Token */}
           <div className="flex items-end gap-2">
             <Cell label="Level"><NumInput value={draft.level} min={1} onChange={v => set('level', v)} /></Cell>
-            <Cell label="Size"><SelectInput value={String(draft.sizeCategory)} onChange={v => set('sizeCategory', v)} options={SIZE_VALUES.map(v => ({ value: String(v), label: `${SIZE_LABELS[v]} (${v})` }))} /></Cell>
+            <Cell label="Size" widthClass="w-24"><SelectInput value={String(draft.sizeCategory)} onChange={v => set('sizeCategory', v)} options={SIZE_VALUES.map(v => ({ value: String(v), label: `${SIZE_LABELS[v]} (${v})` }))} /></Cell>
             <Cell label="Visual scale"><NumInput value={draft.visualScale} min={50} max={149} onChange={v => set('visualScale', v)} /></Cell>
           </div>
 

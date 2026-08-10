@@ -1,5 +1,10 @@
 # Handover — 2026-08-03
 
+## DM editor: editable maxTroopCount + tightened layout (2026-08-09)
+- **`maxTroopCount`** is now editable in the DM stat editor (R2 HP row: Current HP | Troop HP | **Max troops** | {Max HP} | {Troops}). `{Max HP}` and `{Troops}` recompute live from the draft; on save, changing `troopHp`/`maxTroopCount` pushes a new `maxUnitHp`, and if capacity shrank, `currentUnitHp` clamps to the new max and `currentTroopCount` clamps to the new max.
+- **Layout**: window narrowed `540 → 460px`; number + derived cells use uniform `w-16` boxes (read-only values now styled like inputs via `ReadBox` so columns line up); saving-throw boxes narrowed to `w-10`; selects sized (Formation `w-32`, Mount `w-28`, Size `w-24`); rows left-aligned (removed `flex-1` spacers); toggles sit after fields.
+- `tsc --noEmit` clean, 303 tests pass.
+
 ## Game-wide undo_stack_size setting + Lobby admin Settings editor (2026-08-09)
 - **Bug**: undo only reached ~50 commands (session start) and redo never worked. Causes: (1) client stack `maxSize` was a hard-coded 50, evicting pre-session history in busy play; (2) `GameEngine.removeEntry` filtered the **redo stack**, so the undoer's own realtime UPDATE (from the `undo_commands` RPC soft-delete) wiped its just-created redo entry.
 - **Migration 047**: seeds `undo_stack_size = 2000` into the game-wide `settings` table. **Apply to the DB.**
