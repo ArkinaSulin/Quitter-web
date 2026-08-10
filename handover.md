@@ -1,5 +1,8 @@
 # Handover — 2026-08-03
 
+## Unit edits broadcast a red message to everyone (2026-08-09)
+- `useGameEngine.execute` now sends **EDIT_UNIT** descriptions via `addError` (red) instead of `addMessage` — so when anyone (incl. a player editing their own unit) edits a unit in the scenario DM editor, every client sees a red message. `tsc --noEmit` clean, 302 tests pass.
+
 ## Undo debug panel tab (2026-08-09)
 - New left-panel tab **"Undo debug"** (curved-arrow-left icon, visible to everyone — `requiresGM: false`), via `src/components/ScenarioMap/UndoDebugPanel.tsx`.
 - Lists the scenario's `command_log` (the undo queue), most recent first (limit 200): **Description | Actor (player_name) | Status (`---` / `undid` from `deleted_at`) | Chained (Y/N)**. Latest step highlighted amber.

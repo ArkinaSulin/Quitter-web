@@ -38,7 +38,7 @@ export function useGameEngine({
   updateScenarioField,
 }: UseGameEngineProps) {
   const engineRef = useRef(new GameEngine());
-  const { addMessage } = useMessageSync(scenarioId);
+  const { addMessage, addError } = useMessageSync(scenarioId);
 
   const execute = useCallback(
     async (
@@ -95,10 +95,12 @@ export function useGameEngine({
       });
       if (error) console.error('[CommandLog] Insert failed:', error);
 
-      addMessage(description);
+      // Unit edits (incl. by players editing their own unit) are flagged to everyone.
+      if (actionType === 'EDIT_UNIT') addError(description);
+      else addMessage(description);
       return entry;
     },
-    [scenarioId, playerId, playerName, updateUnit, updateAlliance, updateScenarioField, addMessage],
+    [scenarioId, playerId, playerName, updateUnit, updateAlliance, updateScenarioField, addMessage, addError],
   );
 
   const hydrateFromLog = useCallback(async (): Promise<void> => {
