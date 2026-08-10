@@ -29,10 +29,19 @@ describe('GameEngine', () => {
 
   it('pushExternal clears the local redo stack', () => {
     const engine = new GameEngine();
-    const a = engine.execute('MOVE', [], 'a', 'p1', 'A', 's1');
+    engine.execute('MOVE', [], 'a', 'p1', 'A', 's1');
     engine.undo('p1', false);
     expect(engine.canRedo('p1', false)).toBe(true);
     engine.pushExternal(entry('remote'));
+    expect(engine.canRedo('p1', false)).toBe(false);
+  });
+
+  it('execute clears the local redo stack (new action invalidates redo)', () => {
+    const engine = new GameEngine();
+    engine.execute('MOVE', [], 'a', 'p1', 'A', 's1');
+    engine.undo('p1', false);
+    expect(engine.canRedo('p1', false)).toBe(true);
+    engine.execute('MOVE', [], 'z', 'p1', 'A', 's1');
     expect(engine.canRedo('p1', false)).toBe(false);
   });
 
@@ -44,20 +53,20 @@ describe('GameEngine', () => {
     expect(engine.getStackSize()).toBe(1);
   });
 
-  it('pushExternal trims the stack to max size', () => {
+  it('pushExternal trims the stack to the settings max size (2000 default)', () => {
     const engine = new GameEngine();
-    for (let i = 0; i < 60; i++) engine.pushExternal(entry(`e${i}`));
-    expect(engine.getStackSize()).toBe(50);
-    expect(engine.peekTopChain()[engine.peekTopChain().length - 1].id).toBe('e59');
+    for (let i = 0; i < 2100; i++) engine.pushExternal(entry(`e${i}`));
+    expect(engine.getStackSize()).toBe(2000);
+    expect(engine.peekTopChain()[engine.peekTopChain().length - 1].id).toBe('e2099');
   });
 
-  it('removeEntry drops an entry from both stack and redo', () => {
+  it('removeEntry drops an entry from the stack but keeps the redo entry', () => {
     const engine = new GameEngine();
     const a = engine.execute('MOVE', [], 'a', 'p1', 'A', 's1');
     const b = engine.execute('MOVE', [], 'b', 'p1', 'A', 's1');
     engine.undo('p1', false); // pops b into redo
-    engine.removeEntry(b.id);
-    expect(engine.canRedo('p1', false)).toBe(false);
+    engine.removeEntry(b.id); // own realtime UPDATE for the undone entry
+    expect(engine.canRedo('p1', false)).toBe(true); // redo must survive
     expect(engine.getStackSize()).toBe(1);
     expect(engine.peekTopChain()[0].id).toBe(a.id);
   });

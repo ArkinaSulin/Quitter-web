@@ -1,5 +1,6 @@
 import { CommandEntry, ActionType, SubStep } from '@/game/GameEngine';
 import { Unit, AllianceGroup } from '@/types/gameProtocol';
+import { getSetting, DEFAULT_UNDO_STACK_SIZE } from '@/lib/settingsCache';
 
 /**
  * Row shape as stored in the `command_log` table. `sub_steps` is a JSONB column
@@ -46,7 +47,7 @@ export function rowToEntry(row: CommandLogRow): CommandEntry {
  * Preserves `chained` grouping so `collectChainFromTop` unwinds correctly, and
  * enforces the engine's max size (oldest entries evicted).
  */
-export function buildStackFromLog(rows: CommandLogRow[], maxSize = 50): CommandEntry[] {
+export function buildStackFromLog(rows: CommandLogRow[], maxSize = getSetting('undo_stack_size', DEFAULT_UNDO_STACK_SIZE)): CommandEntry[] {
   return [...rows]
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
     .map(rowToEntry)

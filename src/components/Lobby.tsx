@@ -7,6 +7,7 @@ import { useScenarios } from '@/hooks/useScenarios';
 import { useProfile } from '@/hooks/useProfile';
 import { supabase, signInWithGoogle, signOut } from '@/lib/supabaseClient';
 import Toast from '@/components/Toast';
+import { SettingsModal } from '@/components/SettingsModal';
 
 interface LobbyProps {
   onJoinScenario: (scenarioId: string) => void;
@@ -45,6 +46,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const [accessError, setAccessError] = useState<string | null>(null);
   const [accessSubmitted, setAccessSubmitted] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [pendingProfiles, setPendingProfiles] = useState<{ id: string; display_name: string; request_note: string }[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<{
     id: string;
@@ -324,6 +326,14 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
               className="w-full py-2 bg-gray-700 border-2 border-yellow-400 text-white rounded hover:bg-gray-600 transition"
             >
               Admin Panel
+            </button>
+          )}
+          {role === 'admin' && (
+            <button
+              onClick={() => setShowSettings(true)}
+              className="w-full py-2 bg-gray-700 border-2 border-yellow-400 text-white rounded hover:bg-gray-600 transition"
+            >
+              Settings
             </button>
           )}
           {canUseUnitEditor && (
@@ -744,6 +754,10 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
             </div>
           </div>
         </div>
+      )}
+
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)} />
       )}
     </div>
   );

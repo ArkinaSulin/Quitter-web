@@ -1,4 +1,5 @@
 import { Unit, Hex } from '@/types/gameProtocol';
+import { getSetting, DEFAULT_UNDO_STACK_SIZE } from '@/lib/settingsCache';
 
 export type ActionType = 'MOVE' | 'ROTATE' | 'FORMATION' | 'TEAM' | 'HIDE' | 'TOGGLE_HIDE' | 'PLACE' | 'ATTACK' | 'DAMAGE' | 'HEAL' | 'ROUT' | 'DELETE' | 'ALLIANCE' | 'ATTACH_HERO' | 'DETACH_HERO' | 'SWAP_HERO_POSITION' | 'END_TURN' | 'SCENARIO' | 'CHARGE' | 'CHARGE_END' | 'WEAPON_SELECT' | 'CAST' | 'EDIT_UNIT';
 
@@ -31,8 +32,12 @@ export interface CommandEntry {
 
 export class GameEngine {
   private stack: CommandEntry[] = [];
-  private readonly maxSize = 50;
   private redoStack: CommandEntry[] = [];
+
+  /** Undo/redo history depth — game-wide setting, read live (fallback 2000). */
+  private get maxSize(): number {
+    return getSetting('undo_stack_size', DEFAULT_UNDO_STACK_SIZE);
+  }
 
   execute(
     actionType: ActionType,
@@ -58,6 +63,8 @@ export class GameEngine {
     if (this.stack.length > this.maxSize) {
       this.stack.shift();
     }
+    // A new local action invalidates any redo.
+    this.redoStack = [];
     return entry;
   }
 
@@ -183,10 +190,13 @@ export class GameEngine {
     this.redoStack = [];
   }
 
-  /** Drop an entry that was soft-deleted by a remote undo (stack + redo). */
+  /**
+   * Drop an entry that was soft-deleted by a remote undo. Only the main stack is
+   * touched — the redo stack is per-client, and the undoing client's own realtime
+   * event must NOT wipe its just-created redo entry.
+   */
   removeEntry(id: string): void {
     this.stack = this.stack.filter(e => e.id !== id);
-    this.redoStack = this.redoStack.filter(e => e.id !== id);
   }
 
   /** Re-add an entry that a remote redo undeleted (idempotent). */

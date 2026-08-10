@@ -37,12 +37,12 @@ describe('buildStackFromLog', () => {
     expect(stack[0].subSteps).toEqual([{ type: 'MOVE', description: 'moved', unitId: 'u1', changes: [] }]);
   });
 
-  it('caps the stack at the engine max (50)', () => {
-    const rows = Array.from({ length: 60 }, (_, i) => makeRow({ id: `id-${i}`, created_at: `2026-08-02T00:${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}.000Z` }));
+  it('caps the stack at the settings max (2000 default)', () => {
+    const rows = Array.from({ length: 2050 }, (_, i) => makeRow({ id: `id-${i}`, created_at: `2026-08-02T00:${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}.000Z` }));
     const stack = buildStackFromLog(rows);
-    expect(stack).toHaveLength(50);
-    expect(stack[0].id).toBe('id-10');
-    expect(stack[49].id).toBe('id-59');
+    expect(stack).toHaveLength(2000);
+    expect(stack[0].id).toBe('id-50');
+    expect(stack[1999].id).toBe('id-2049');
   });
 
   it('preserves chained grouping for the newest chain', () => {

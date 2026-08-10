@@ -7,6 +7,9 @@
 let cache: Record<string, unknown> | null = null;
 let inflight: Promise<Record<string, unknown>> | null = null;
 
+/** Code fallback for undo/redo history depth — matches the migration 047 seed. */
+export const DEFAULT_UNDO_STACK_SIZE = 2000;
+
 export function invalidateSettingsCache(): void {
   cache = null;
   inflight = null;

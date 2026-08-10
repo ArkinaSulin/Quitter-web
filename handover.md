@@ -1,5 +1,14 @@
 # Handover — 2026-08-03
 
+## Game-wide undo_stack_size setting + Lobby admin Settings editor (2026-08-09)
+- **Bug**: undo only reached ~50 commands (session start) and redo never worked. Causes: (1) client stack `maxSize` was a hard-coded 50, evicting pre-session history in busy play; (2) `GameEngine.removeEntry` filtered the **redo stack**, so the undoer's own realtime UPDATE (from the `undo_commands` RPC soft-delete) wiped its just-created redo entry.
+- **Migration 047**: seeds `undo_stack_size = 2000` into the game-wide `settings` table. **Apply to the DB.**
+- **`GameEngine`**: `maxSize` is now a lazy getter reading `getSetting('undo_stack_size', DEFAULT_UNDO_STACK_SIZE)` (fallback 2000); `removeEntry(id)` removes from `stack` only (redo survives); `execute(...)` clears `redoStack` (a new action invalidates redo, matching `pushExternal`).
+- **`commandHistory.buildStackFromLog`** slices to the setting (2000 default).
+- **`SettingsModal.tsx`** (new): admin-only Lobby editor for game-wide settings — each row is key + description + a generic **JSON-text** value input; Save upserts then `invalidateSettingsCache()` + `loadSettings()` so running clients apply changes immediately.
+- **`Lobby.tsx`**: separate **"Settings"** button beside "Admin Panel" (`role === 'admin'`).
+- 303 tests (updated trim/removeEntry/cap tests + `execute`-clears-redo); `tsc --noEmit` clean.
+
 ## Compact DM stat editor + Undo debug panel refresh (2026-08-09)
 - **`UnitEditorModal`** (scenario DM editor) regrouped into a one-screen grid: Identity (name + team chip + **Image**), HP (Current/Troop/{Max}/{Troops}), Armor ({Eff AC}/Base + Shield), Movement (MP left/Max MP/{Eff move}), Combat (Actions/Aggressiveness), Morale ({Current morale full-effective}/Base + Fearless), Formation + **Mount** + Can charge, Availability checkboxes, saving throws Str…Cha (labels above), Rank & Token (Level/Size/Visual scale), Weapons. **Save/Cancel pinned** in the footer (no scrolling to save); scroll area is `overflow-y-auto`. Derived `{...}` values recompute live from the draft.
 - **Shared `ImagePickerModal`** extracted from UnitEditor (race icons + `unit_images` + upload + remove custom) — used by both editors.
