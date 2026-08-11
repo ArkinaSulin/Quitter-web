@@ -49,7 +49,9 @@ export interface MagicCastState {
   /** Snapshot of the target's troop layout so every client draws the same token. */
   snapshot: SpellCastTokenSnapshot;
   circle: MagicCircle | null;
-  /** Number of dots/triangles covered by the circle (auto-computed, overridable). */
+  /** Rotation (degrees) of the area shape (cube/cone; circle is symmetric). */
+  rotation: number;
+  /** Number of dots/triangles covered by the area (auto-computed, overridable). */
   affectedCount: number;
   countManual: boolean;
   /** Which of the 6 ability save bonuses the target rolls. */
@@ -67,6 +69,7 @@ type MagicCastEvent =
   | { type: 'open'; id: string; casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats }
   | { type: 'cancel'; id: string }
   | { type: 'place'; id: string; circle: MagicCircle; affectedCount: number }
+  | { type: 'rotate'; id: string; rotation: number }
   | { type: 'count'; id: string; affectedCount: number; countManual: boolean }
   | { type: 'save'; id: string; saveStat: SaveStat; saveDC: number; halfOnSave: boolean }
   | { type: 'resolve'; id: string; result: MagicCastResult };
@@ -151,6 +154,7 @@ export function useMagicCast(scenarioId: string) {
               snapshot: event.snapshot,
               targetStats: event.targetStats,
               circle: null,
+              rotation: 0,
               affectedCount: 0,
               countManual: false,
               saveStat: (event.weapon.savingThrow ?? 'Dex') as SaveStat,
@@ -167,6 +171,8 @@ export function useMagicCast(scenarioId: string) {
             return null;
           case 'place':
             return { ...prev, circle: event.circle, affectedCount: event.affectedCount, countManual: false };
+          case 'rotate':
+            return { ...prev, rotation: event.rotation };
           case 'count':
             return { ...prev, affectedCount: event.affectedCount, countManual: event.countManual };
           case 'save':
@@ -235,6 +241,7 @@ export function useMagicCast(scenarioId: string) {
       snapshot: opts.snapshot,
       targetStats: opts.targetStats,
       circle: null,
+      rotation: 0,
       affectedCount: 0,
       countManual: false,
       saveStat: (opts.weapon.savingThrow ?? 'Dex') as SaveStat,
@@ -258,6 +265,14 @@ export function useMagicCast(scenarioId: string) {
     if (!current) return;
     setCast({ ...current, circle, affectedCount, countManual: false });
     send({ type: 'place', id: current.id, circle, affectedCount });
+  }, [send]);
+
+  const rotateArea = useCallback((rotation: number) => {
+    const current = castRef.current;
+    if (!current) return;
+    const norm = ((rotation % 360) + 360) % 360;
+    setCast({ ...current, rotation: norm });
+    send({ type: 'rotate', id: current.id, rotation: norm });
   }, [send]);
 
   const overrideCount = useCallback((affectedCount: number) => {
@@ -287,5 +302,5 @@ export function useMagicCast(scenarioId: string) {
     send({ type: 'resolve', id: current.id, result });
   }, [send]);
 
-  return { cast, openCast, cancelCast, placeCircle, overrideCount, setSave, sendResolve };
+  return { cast, openCast, cancelCast, placeCircle, rotateArea, overrideCount, setSave, sendResolve };
 }

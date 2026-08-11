@@ -5,18 +5,62 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SizeCategory, Formation } from '@/types/gameProtocol';
 import { drawSpellCastToken, computeSpellCastLayout } from '@/components/TokenRenderer/drawToken';
 import { MagicCastState, MagicCircle } from '@/hooks/useMagicCast';
-import { SaveStat, SAVE_STATS } from '@/lib/weaponParser';
+import { SaveStat, SAVE_STATS, AreaShape } from '@/lib/weaponParser';
 
 export const MAGIC_CANVAS_WIDTH = 400;
 export const MAGIC_CANVAS_HEIGHT = 300;
 /** Fraction of canvas width that equals one hex radius (tokenWidth/1.6). */
 export const HEX_RADIUS_FRACTION = 1 / 1.6;
 /**
- * Visual scale-down for the on-screen spell radius. Troops inside a token are
+ * Visual scale-down for the on-screen spell area. Troops inside a token are
  * packed tighter than a real 50ft frontage, so a full-radius circle over-covers.
- * 0.75 = draw (and count) at 75% of the nominal feet-based radius.
+ * 0.75 = draw (and count) at 75% of the nominal feet-based dimension.
  */
 export const SPELL_RADIUS_SCALE = 0.70;
+
+/** Is a dot (px,py) inside the placed area centered at (cx,cy) with size rPx? */
+function pointInArea(shape: AreaShape, rotationDeg: number, cx: number, cy: number, rPx: number, px: number, py: number): boolean {
+  const rad = (-rotationDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = px - cx;
+  const dy = py - cy;
+  const rx = dx * cos - dy * sin;
+  const ry = dx * sin + dy * cos;
+  if (shape === 'circle') return rx * rx + ry * ry <= rPx * rPx;
+  if (shape === 'cube') return Math.abs(rx) <= rPx / 2 && Math.abs(ry) <= rPx / 2;
+  // cone: 60° wedge; apex at north of the triangle's centroid, radius = side.
+  const apexY = -rPx / Math.sqrt(3);
+  const ax = rx;
+  const ay = ry - apexY;
+  if (ax * ax + ay * ay > rPx * rPx) return false;
+  const angle = Math.atan2(ay, ax);
+  return angle >= Math.PI / 3 && angle <= (2 * Math.PI) / 3;
+}
+
+/** Draw the placed area (shape + rotation) centered at (px,py). */
+function drawAreaShape(ctx: CanvasRenderingContext2D, shape: AreaShape, rotationDeg: number, px: number, py: number, rPx: number): void {
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate((rotationDeg * Math.PI) / 180);
+  ctx.beginPath();
+  if (shape === 'circle') {
+    ctx.arc(0, 0, rPx, 0, 2 * Math.PI);
+  } else if (shape === 'cube') {
+    ctx.rect(-rPx / 2, -rPx / 2, rPx, rPx);
+  } else {
+    const apexY = -rPx / Math.sqrt(3);
+    ctx.moveTo(0, apexY);
+    ctx.arc(0, apexY, rPx, Math.PI / 3, (2 * Math.PI) / 3);
+    ctx.closePath();
+  }
+  ctx.fillStyle = 'rgba(255, 215, 0, 0.15)';
+  ctx.fill();
+  ctx.strokeStyle = '#FFD700';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
 
 interface MagicCastModalProps {
   cast: MagicCastState;
@@ -26,6 +70,7 @@ interface MagicCastModalProps {
   formationsMap?: Record<string, Formation>;
   onCancel: () => void;
   onPlaceCircle: (circle: MagicCircle, affectedCount: number) => void;
+  onRotate: (rotation: number) => void;
   onOverrideCount: (n: number) => void;
   onSetSave: (patch: { saveStat?: SaveStat; saveDC?: number; halfOnSave?: boolean }) => void;
   onRequestResolve: () => void;
@@ -143,6 +188,7 @@ export function MagicCastModal({
   formationsMap,
   onCancel,
   onPlaceCircle,
+  onRotate,
   onOverrideCount,
   onSetSave,
   onRequestResolve,
@@ -159,7 +205,8 @@ export function MagicCastModal({
   const isCaster = playerId === cast.casterId;
   const canEdit = isCaster || isGM;
   const canPlace = isCaster && !cast.resolved;
-  const radiusFraction = (cast.weapon.magicRadius || 0) / 25 * HEX_RADIUS_FRACTION * SPELL_RADIUS_SCALE;
+  const areaShape: AreaShape = cast.weapon.shape ?? 'circle';
+  const dimensionFraction = (cast.weapon.magicDimension || 0) / 25 * HEX_RADIUS_FRACTION * SPELL_RADIUS_SCALE;
 
   const seed = hashString(cast.id);
 
@@ -183,36 +230,26 @@ export function MagicCastModal({
       formationsMap,
     });
 
-    // Spell radius circle — locked placement or the caster's live cursor preview.
+    // Spell area — locked placement or the caster's live cursor preview.
     const circle = cast.circle || (canPlace ? hover : null);
     if (circle) {
       const px = circle.cx * MAGIC_CANVAS_WIDTH;
       const py = circle.cy * MAGIC_CANVAS_HEIGHT;
       const pr = circle.r * MAGIC_CANVAS_WIDTH;
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(px, py, pr, 0, 2 * Math.PI);
-      ctx.fillStyle = 'rgba(255, 215, 0, 0.15)';
-      ctx.fill();
-      ctx.strokeStyle = '#FFD700';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.restore();
+      drawAreaShape(ctx, areaShape, cast.rotation, px, py, pr);
     }
-  }, [cast, hover, canPlace, seed, sizeCategories, formationsMap]);
+  }, [cast, hover, canPlace, seed, sizeCategories, formationsMap, areaShape]);
 
   const countCovered = useCallback((cxPx: number, cyPx: number): number => {
     const { positions, dotRadius } = computeSpellCastLayout(cast.snapshot, MAGIC_CANVAS_WIDTH, MAGIC_CANVAS_HEIGHT, seed, sizeCategories, formationsMap);
-    const rPx = radiusFraction * MAGIC_CANVAS_WIDTH;
+    const rPx = dimensionFraction * MAGIC_CANVAS_WIDTH;
     let count = 0;
     for (const p of positions) {
       if (p.isDead) continue;
-      const dx = p.x - cxPx;
-      const dy = p.y - cyPx;
-      if (dx * dx + dy * dy <= rPx * rPx) count += 1;
+      if (pointInArea(areaShape, cast.rotation, cxPx, cyPx, rPx, p.x, p.y)) count += 1;
     }
     return count;
-  }, [cast.snapshot, seed, radiusFraction, sizeCategories, formationsMap]);
+  }, [cast.snapshot, seed, dimensionFraction, sizeCategories, formationsMap, areaShape, cast.rotation]);
 
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canPlace || cast.resolved) return;
@@ -224,9 +261,9 @@ export function MagicCastModal({
     setHover({
       cx: cxPx / MAGIC_CANVAS_WIDTH,
       cy: cyPx / MAGIC_CANVAS_HEIGHT,
-      r: radiusFraction,
+      r: dimensionFraction,
     });
-  }, [canPlace, cast.resolved, radiusFraction]);
+  }, [canPlace, cast.resolved, dimensionFraction]);
 
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canPlace || cast.resolved) return;
@@ -238,10 +275,16 @@ export function MagicCastModal({
     const circle: MagicCircle = {
       cx: cxPx / MAGIC_CANVAS_WIDTH,
       cy: cyPx / MAGIC_CANVAS_HEIGHT,
-      r: radiusFraction,
+      r: dimensionFraction,
     };
     onPlaceCircle(circle, countCovered(cxPx, cyPx));
-  }, [canPlace, cast.resolved, radiusFraction, countCovered, onPlaceCircle]);
+  }, [canPlace, cast.resolved, dimensionFraction, countCovered, onPlaceCircle]);
+
+  const handleCanvasWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
+    if (areaShape === 'circle') return;
+    const next = cast.rotation + (e.deltaY < 0 ? 15 : -15);
+    onRotate(next);
+  }, [areaShape, cast.rotation, onRotate]);
 
   const handleCanvasLeave = useCallback(() => {
     setHover(null);
@@ -285,11 +328,11 @@ export function MagicCastModal({
             {cast.weapon.name} on {cast.targetUnitName || 'target'}
           </div>
           <div className="text-xs text-yellow-400 whitespace-nowrap ml-3">
-            radius {cast.weapon.magicRadius}ft
+            radius {cast.weapon.magicDimension}ft
           </div>
         </div>
 
-        {/* Token + circle canvas */}
+        {/* Token + area canvas */}
         <div className="p-4">
           <canvas
             ref={canvasRef}
@@ -298,8 +341,14 @@ export function MagicCastModal({
             className="w-full h-auto rounded bg-black/40 cursor-crosshair"
             onMouseMove={handleCanvasMouseMove}
             onClick={handleCanvasClick}
+            onWheel={handleCanvasWheel}
             onMouseLeave={handleCanvasLeave}
           />
+          {areaShape !== 'circle' && (
+            <div className="text-[11px] text-gray-400 mt-1 text-center">
+              Mouse wheel rotates the {areaShape} · {cast.rotation}°
+            </div>
+          )}
         </div>
 
         {/* Affected count stepper */}

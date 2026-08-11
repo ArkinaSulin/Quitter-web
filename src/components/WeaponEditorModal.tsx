@@ -7,11 +7,52 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Weapon, SaveStat, SAVE_STATS } from '@/lib/weaponParser';
+import { Weapon, SaveStat, SAVE_STATS, AreaShape, AREA_SHAPES } from '@/lib/weaponParser';
 
 function isValidDamageDice(dice: string): boolean {
   const pattern = /^(\d+d\d+)([+-]\d+)?(\+\d+d\d+)*([+-]\d+)?$/;
   return pattern.test(dice.trim());
+}
+
+function Cell({ label, children, widthClass = 'w-16' }: { label: string; children: React.ReactNode; widthClass?: string }) {
+  return (
+    <label className={`flex flex-col gap-0.5 text-[10px] text-gray-400 min-w-0 ${widthClass}`}>
+      <span className="truncate">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function NumInput({ value, onChange, min, max }: {
+  value: any; onChange: (v: number) => void; min?: number; max?: number;
+}) {
+  return (
+    <input
+      type="number"
+      value={value}
+      min={min}
+      max={max}
+      onChange={e => onChange(parseInt(e.target.value) || 0)}
+      className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+    />
+  );
+}
+
+function SelectInput({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)} className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400">
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
+
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <label className="flex items-center gap-1.5 text-[11px] text-gray-300">
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="h-3.5 w-3.5 accent-yellow-400" />
+      {label}
+    </label>
+  );
 }
 
 interface LibraryWeapon {
@@ -19,7 +60,8 @@ interface LibraryWeapon {
   name: string;
   damage_dice: string;
   attack_bonus?: number;
-  magic_radius?: number;
+  magic_dimension?: number;
+  shape?: AreaShape;
   range?: number;
   max_range?: number;
   is_reach?: boolean;
@@ -47,7 +89,8 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
   const [isHealing, setIsHealing] = useState(initial?.isHealing ?? false);
   const [range, setRange] = useState(initial?.range ?? 1);
   const [maxRange, setMaxRange] = useState(initial?.maxRange ?? 0);
-  const [magicRadius, setMagicRadius] = useState(initial?.magicRadius ?? 0);
+  const [magicDimension, setMagicDimension] = useState(initial?.magicDimension ?? 0);
+  const [shape, setShape] = useState<AreaShape>(initial?.shape ?? 'circle');
   const [reach, setReach] = useState(initial?.reach ?? false);
   const [freeAction, setFreeAction] = useState(initial?.freeAction ?? false);
   const [noRetaliation, setNoRetaliation] = useState(initial?.noRetaliation ?? false);
@@ -93,7 +136,8 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
     setMaxRange(weapon.max_range ?? 0);
     setNoRetaliation(weapon.no_retaliation ?? (nextRange > 1));
     setFreeAction(weapon.free_action || false);
-    setMagicRadius(weapon.magic_radius || 0);
+    setMagicDimension(weapon.magic_dimension || 0);
+    setShape(AREA_SHAPES.includes(weapon.shape as AreaShape) ? (weapon.shape as AreaShape) : 'circle');
     setReach(weapon.is_reach || false);
     setIsTwoHanded(weapon.is_two_handed || false);
     setNumberOfAttacks(weapon.number_of_attacks || 1);
@@ -122,7 +166,8 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
       isHealing,
       range,
       maxRange: Math.max(maxRange || range, range),
-      magicRadius,
+      magicDimension,
+      shape,
       reach,
       freeAction,
       noRetaliation,
@@ -140,158 +185,54 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
       <div className="bg-gray-800 p-6 rounded-lg w-[800px] max-h-[90vh] overflow-hidden border border-gray-700 flex flex-col">
         <h2 className="text-xl font-bold mb-4 text-white">{title}</h2>
         <div className="flex flex-1 overflow-hidden gap-6">
-          <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">Weapon Name</label>
+          <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+            <Cell label="Weapon Name" widthClass="w-full">
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
+                className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
                 placeholder="e.g., Longsword"
               />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">Number of Attacks / round</label>
-              <input
-                type="number"
-                value={numberOfAttacks}
-                onChange={(e) => setNumberOfAttacks(Math.max(1, parseInt(e.target.value) || 1))}
-                min={1}
-                className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">Attack Bonus</label>
-              <input
-                type="number"
-                value={attackBonus}
-                onChange={(e) => setAttackBonus(parseInt(e.target.value) || 0)}
-                className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">
-                Damage Dice
-                <span className="ml-2 inline-flex items-center gap-1.5 text-xs text-gray-400">
-                  <input
-                    type="checkbox"
-                    checked={isHealing}
-                    onChange={(e) => setIsHealing(e.target.checked)}
-                    className="w-3.5 h-3.5 accent-emerald-400"
-                  />
-                  Healing (recovers HP instead of damaging)
-                </span>
-              </label>
-              <input
-                type="text"
-                value={damageDice}
-                onChange={(e) => setDamageDice(e.target.value)}
-                className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                placeholder="e.g., 1d8, 2d6+2"
-              />
-              <p className="text-xs text-gray-400 mt-1">Examples: 1d6, 2d10, 2d6+2, 1d8-1, 1d4+2d6</p>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">Range (hexes)</label>
-              <input
-                type="number"
-                value={range}
-                onChange={(e) => handleRangeChange(parseInt(e.target.value) || 1)}
-                min={1}
-                className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-              />
-              <p className="text-xs text-gray-400 mt-1">{range === 1 ? 'Adjacent (melee)' : `${range} hexes (ranged)`}</p>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">Max Range (hexes)</label>
-              <input
-                type="number"
-                value={maxRange}
-                onChange={(e) => setMaxRange(Math.max(range, parseInt(e.target.value) || range))}
-                min={range}
-                className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-              />
-              <p className="text-xs text-gray-400 mt-1">Must be ≥ range; 0 = same as range. Attacks between range and max range are at disadvantage.</p>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">Magic Radius (ft)</label>
-              <input
-                type="number"
-                value={magicRadius}
-                onChange={(e) => setMagicRadius(Math.max(0, parseInt(e.target.value) || 0))}
-                min={0}
-                className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                placeholder="0 for single target"
-              />
-              <p className="text-xs text-gray-400 mt-1">{'> 0'} makes this an area-effect weapon (opens the spell-cast window).</p>
-            </div>
-            <div>
-              <label className="flex items-center gap-2 text-sm text-gray-300">
+            </Cell>
+
+            <div className="flex items-end gap-2">
+              <Cell label="Damage Dice" widthClass="flex-1">
                 <input
-                  type="checkbox"
-                  checked={reach}
-                  onChange={(e) => setReach(e.target.checked)}
-                  className="w-4 h-4 accent-yellow-400"
+                  type="text"
+                  value={damageDice}
+                  onChange={(e) => setDamageDice(e.target.value)}
+                  className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+                  placeholder="e.g., 1d8, 2d6+2"
                 />
-                Reach (e.g., pike, lance)
-              </label>
+              </Cell>
+              <div className="pb-1"><Toggle checked={isHealing} onChange={setIsHealing} label="Healing" /></div>
             </div>
-            <div>
-              <label className="flex items-center gap-2 text-sm text-gray-300">
-                <input
-                  type="checkbox"
-                  checked={isTwoHanded}
-                  onChange={(e) => setIsTwoHanded(e.target.checked)}
-                  className="w-4 h-4 accent-red-400"
-                />
-                Two-Handed (occupies both hands — no shield, no Shield Wall)
-              </label>
+
+            <div className="flex items-end gap-2">
+              <Cell label="# Attacks"><NumInput value={numberOfAttacks} min={1} onChange={(v) => setNumberOfAttacks(Math.max(1, v || 1))} /></Cell>
+              <Cell label="Atk bonus"><NumInput value={attackBonus} onChange={(v) => setAttackBonus(v)} /></Cell>
+              <Cell label="Range"><NumInput value={range} min={1} onChange={(v) => handleRangeChange(v || 1)} /></Cell>
+              <Cell label="Max range"><NumInput value={maxRange} min={range} onChange={(v) => setMaxRange(Math.max(range, v || range))} /></Cell>
             </div>
-            <div>
-              <label className="flex items-center gap-2 text-sm text-gray-300">
-                <input
-                  type="checkbox"
-                  checked={freeAction}
-                  onChange={(e) => setFreeAction(e.target.checked)}
-                  className="w-4 h-4 accent-purple-400"
-                />
-                Free Action (costs no action to attack)
-              </label>
+
+            <div className="flex items-end gap-2">
+              <Cell label="Shape" widthClass="w-20"><SelectInput value={shape} onChange={(v) => setShape(v as AreaShape)} options={AREA_SHAPES.map(s => ({ value: s, label: s }))} /></Cell>
+              <Cell label="Magic Dimension (ft)"><NumInput value={magicDimension} min={0} onChange={(v) => setMagicDimension(Math.max(0, v))} /></Cell>
+              <div className="pb-1"><Toggle checked={halfOnSave} onChange={setHalfOnSave} label={halfOnSave ? '1/2 dmg' : 'Negate'} /></div>
+              <Cell label="Saving throw" widthClass="w-20"><SelectInput value={savingThrow} onChange={(v) => setSavingThrow(v as SaveStat)} options={SAVE_STATS.map(s => ({ value: s, label: s }))} /></Cell>
             </div>
-            <div>
-              <label className="flex items-center gap-2 text-sm text-gray-300">
-                <input
-                  type="checkbox"
-                  checked={noRetaliation}
-                  onChange={(e) => setNoRetaliation(e.target.checked)}
-                  className="w-4 h-4 accent-blue-400"
-                />
-                No Retaliation (defender can't strike back)
-              </label>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Toggle checked={reach} onChange={setReach} label="Reach" />
+              <Toggle checked={isTwoHanded} onChange={setIsTwoHanded} label="Two-Handed" />
+              <Toggle checked={freeAction} onChange={setFreeAction} label="Free Action" />
+              <Toggle checked={noRetaliation} onChange={setNoRetaliation} label="No Retaliation" />
             </div>
-            <div className="flex items-center gap-3 text-sm text-gray-300">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={halfOnSave}
-                  onChange={(e) => setHalfOnSave(e.target.checked)}
-                  className="w-4 h-4 accent-yellow-400"
-                />
-                {halfOnSave ? '1/2 damage' : 'Negate'} on successful save
-              </label>
-              <label className="flex items-center gap-2">
-                Saving throw:
-                <select
-                  value={savingThrow}
-                  onChange={(e) => setSavingThrow(e.target.value as SaveStat)}
-                  className="px-2 py-1 bg-gray-700 text-white text-sm rounded border border-gray-600"
-                >
-                  {SAVE_STATS.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </label>
-            </div>
-            {error && <p className="text-red-400 text-sm">{error}</p>}
+
+            <p className="text-[10px] text-gray-500">Shape: circle = dimension is radius · cube = side · cone = 60° wedge. Dimension &gt; 0 makes this an area-effect weapon.</p>
+
+            {error && <p className="text-red-400 text-[11px]">{error}</p>}
             <div className="flex justify-end gap-2 pt-2">
               <button
                 className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"

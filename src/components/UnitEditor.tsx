@@ -92,7 +92,7 @@ export default function UnitEditor() {
 
   const [races, setRaces] = useState<Race[]>([]);
   const [weaponsLookup, setWeaponsLookup] = useState<
-    { id: string; name: string; damage_dice: string; notes: string | null; cost_gp: number; attack_bonus?: number; magic_radius?: number; range?: number; max_range?: number; reach?: boolean; is_two_handed?: boolean; number_of_attacks?: number; no_retaliation?: boolean; free_action?: boolean; on_save_half_or_neg?: boolean; saving_throw?: SaveStat }[]
+    { id: string; name: string; damage_dice: string; notes: string | null; cost_gp: number; attack_bonus?: number; magic_dimension?: number; range?: number; max_range?: number; reach?: boolean; is_two_handed?: boolean; number_of_attacks?: number; no_retaliation?: boolean; free_action?: boolean; on_save_half_or_neg?: boolean; saving_throw?: SaveStat }[]
   >([]);
   const [armors, setArmors] = useState<Armor[]>([]);
   const [formations, setFormations] = useState<Formation[]>([]);

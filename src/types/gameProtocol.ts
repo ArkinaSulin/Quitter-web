@@ -40,7 +40,7 @@ export interface Weapon {
   attackBonus: number;
   damageDice: string;
   range: number;        // hexes
-  magicRadius: number;  // feet
+  magicDimension: number;  // feet
   is_reach: boolean;    // weapon has reach (e.g., pike, lance)
 }
 
@@ -222,7 +222,7 @@ export interface WeaponLookup {
   damage_dice: string;
   cost_gp: number;
   attack_bonus?: number;
-  magic_radius?: number;
+  magic_dimension?: number;
   range?: number;
   max_range?: number;
   is_reach?: boolean;

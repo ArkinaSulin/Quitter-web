@@ -1,5 +1,15 @@
 # Handover — 2026-08-03
 
+## Area-effect shapes (circle/cube/cone) + magicDimension rename + compact Add-Weapon modal (2026-08-10)
+**Files:** `src/lib/weaponParser.ts` + test, `src/types/gameProtocol.ts`, `src/components/WeaponEditorModal.tsx`, `src/components/ScenarioMap/MagicCastModal.tsx`, `src/hooks/useMagicCast.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`, `supabase/migrations/048_weapon_shape.sql` (new)
+
+- **Migration 048**: `weapons.magic_radius` → `magic_dimension` (idempotent DO block) + `shape TEXT NOT NULL DEFAULT 'circle'`. **Apply to the DB.**
+- **Weapon string is now 15 fields**: `...,onSaveHalfOrNeg,savingThrow,shape` — `shape` appended at the **end** (no shift), missing → `'circle'`. `AreaShape = 'circle' | 'cube' | 'cone'`; `isAreaWeapon`/`formatWeaponDisplay`/`getWeaponDisplayText` use `magicDimension`.
+- **Shape semantics**: `circle` = dimension is the **radius**; `cube` = **side length** (square centered on click); `cone` = **equilateral-triangle side length** — 60° sector drawn with apex at the **north** point of the triangle's centroid (click point), south edge replaced by an arc centered on the apex (opens south).
+- **`magicRadius`/`magic_radius` → `magicDimension`/`magic_dimension`** renamed across: `weaponParser`, `gameProtocol`, `WeaponEditorModal` (compact left form: Name / Damage Dice+Healing / #Attacks·Atk·Range·MaxRange / **Shape·Magic Dimension (ft)·Half-Neg·Saving throw** / 4 toggles), `UnitEditor`, `MagicCastModal`, `ScenarioMap`, `useMagicCast` (open casts carry `rotation: 0`).
+- **`MagicCastModal`**: draws the placed shape via `drawAreaShape` (canvas `translate`+`rotate`, then `arc`/`rect`/sector-arc), and `countCovered` uses `pointInArea` (rotates each dot into shape-local coords). **Mouse wheel rotates cube/cone** 15° per notch (`onWheel` → `rotateArea(rotation)`; circle ignored) with a "Mouse wheel rotates the cube · 270°" hint; `MagicCastState.rotation` + `rotate` event ride the same broadcast channel as placement so all clients see the same orientation.
+- 304 tests (weaponParser 15-field shape round-trip + old-string default); `tsc --noEmit` clean.
+
 ## UnitEditor: unsaved-changes modal, full-width name/saves, formation order, weapon fonts (2026-08-10)
 - **Unsaved-changes guard**: a dirty tracker (JSON snapshot vs `formData`) triggers a styled in-app modal (**Save / Don't Save / Cancel**) when you select a different template, click New/Clone, or Main Menu while edited-but-unsaved; a `beforeunload` guard covers tab close. `handleSave` now returns a boolean and marks the snapshot on success.
 - **Layout**: Unit Name + Hero is now a **full-width row** above the 2-column grid; **Saving throws** is a full-width row below it. Grid rebalanced: LEFT = Race & Level, Token, Hit Points; RIGHT = Defense, Mount & Charge, Combat & Morale.

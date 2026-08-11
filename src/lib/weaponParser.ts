@@ -4,6 +4,11 @@ export type SaveStat = 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha';
 
 export const SAVE_STATS: SaveStat[] = ['Str', 'Dex', 'Con', 'Int', 'Wis', 'Cha'];
 
+/** Area-effect footprint: circle (radius), cube (side), cone (60° wedge). */
+export type AreaShape = 'circle' | 'cube' | 'cone';
+
+export const AREA_SHAPES: AreaShape[] = ['circle', 'cube', 'cone'];
+
 export interface Weapon {
   name: string;
   attackBonus: number;
@@ -11,7 +16,8 @@ export interface Weapon {
   isHealing: boolean; // the dice RECOVER hit points instead of dealing damage
   range: number; // normal range in hexes (1 = adjacent). Attacks within this distance are at no penalty.
   maxRange: number; // always >= range. Attacks between range and maxRange are at disadvantage; beyond maxRange is out of range.
-  magicRadius: number; // area radius in feet (0 = single-target; > 0 makes this an area-effect weapon)
+  magicDimension: number; // area dimension in feet (0 = single-target; > 0 makes this an area-effect weapon)
+  shape: AreaShape; // circle = dimension is radius; cube = side; cone = 60° wedge length
   reach: boolean;
   noRetaliation: boolean; // this attack provokes no retaliation and beats reach (fully safe)
   freeAction: boolean; // this attack does not cost an action
@@ -21,16 +27,16 @@ export interface Weapon {
   savingThrow: SaveStat; // area weapon: which of the 6 ability save bonuses resists it
 }
 
-/** An area-effect weapon is any weapon with a magic radius (feet). */
-export function isAreaWeapon(weapon: Pick<Weapon, 'magicRadius'>): boolean {
-  return weapon.magicRadius > 0;
+/** An area-effect weapon is any weapon with a magic dimension (feet). */
+export function isAreaWeapon(weapon: Pick<Weapon, 'magicDimension'>): boolean {
+  return weapon.magicDimension > 0;
 }
 
 /**
  * Parse a weapon string into an array of Weapon objects.
- * Format: "Name,AttackBonus,DamageDice,IsHealing,Range,MaxRange,MagicRadius,Reach,NoRetaliation,FreeAction,IsTwoHanded,NumberOfAttacks,OnSaveHalfOrNeg,SavingThrow"
+ * Format: "Name,AttackBonus,DamageDice,IsHealing,Range,MaxRange,MagicDimension,Reach,NoRetaliation,FreeAction,IsTwoHanded,NumberOfAttacks,OnSaveHalfOrNeg,SavingThrow,Shape"
  * Older strings missing the trailing fields parse with defaults (isHealing false,
- * half-on-save true, saving throw Dex).
+ * half-on-save true, saving throw Dex, shape circle).
  */
 export function parseWeapons(weaponString: string): Weapon[] {
   if (!weaponString || weaponString.trim() === '') {
@@ -44,6 +50,7 @@ export function parseWeapons(weaponString: string): Weapon[] {
       const parts = item.split(',').map(p => p.trim());
       const range = parseInt(parts[4]) || 1;
       const savingThrow = (parts[13] as SaveStat) || 'Dex';
+      const shape = (parts[14] as AreaShape) || 'circle';
       return {
         name: parts[0] || 'Unknown',
         attackBonus: parseInt(parts[1]) || 0,
@@ -53,7 +60,8 @@ export function parseWeapons(weaponString: string): Weapon[] {
         // maxRange is always >= range: 0 or absent means "same as range" (no
         // disadvantage band, and range is the hard cap).
         maxRange: parseInt(parts[5]) || range,
-        magicRadius: parseInt(parts[6]) || 0,
+        magicDimension: parseInt(parts[6]) || 0,
+        shape: AREA_SHAPES.includes(shape) ? shape : 'circle',
         reach: parts[7] === 'true',
         noRetaliation: parts[8] === 'true',
         freeAction: parts[9] === 'true',
@@ -74,7 +82,7 @@ export function stringifyWeapons(weapons: Weapon[]): string {
   }
   return weapons
     .map(w =>
-      `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicRadius},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'}`
+      `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicDimension},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'},${w.shape ?? 'circle'}`
     )
     .join(';');
 }
@@ -89,7 +97,7 @@ export function formatWeaponDisplay(weapon: Weapon): string {
   const attack = ` +${weapon.attackBonus}`;
   const dice = `${weapon.damageDice}${weapon.isHealing ? '(h)' : ''}`;
   const range = ` ${weapon.range}hex`;
-  const radius = weapon.magicRadius > 0 ? ` ${weapon.magicRadius}ft` : '';
+  const radius = weapon.magicDimension > 0 ? ` ${weapon.magicDimension}ft` : '';
   return `${weapon.name}${attacks}${attack} ${dice}${range}${radius}`;
 }
 
@@ -98,7 +106,7 @@ export function formatWeaponDisplay(weapon: Weapon): string {
  */
 export function getWeaponDisplayText(weapon: Weapon): string {
   const rangeDisplay = weapon.range === 1 ? 'Adj' : `${weapon.range}h`;
-  const radiusDisplay = weapon.magicRadius > 0 ? `, r${weapon.magicRadius}` : '';
+  const radiusDisplay = weapon.magicDimension > 0 ? `, r${weapon.magicDimension}` : '';
   const attacksDisplay = weapon.numberOfAttacks && weapon.numberOfAttacks > 1 ? `, ${weapon.numberOfAttacks}atk` : '';
   return `${weapon.name} | +${weapon.attackBonus} | ${weapon.damageDice}${weapon.isHealing ? '(h)' : ''} | ${rangeDisplay}${radiusDisplay}${attacksDisplay}`;
 }

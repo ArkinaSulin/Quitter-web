@@ -1055,8 +1055,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
     // Healing weapons recover HP instead of dealing damage — no combat, no AGR /
     // retaliation / morale, and no arc or alliance restrictions. Area heal spells
-    // (magicRadius > 0) flow through the magic cast window instead.
-    if (weapon.isHealing && weapon.magicRadius <= 0) {
+    // (magicDimension > 0) flow through the magic cast window instead.
+    if (weapon.isHealing && weapon.magicDimension <= 0) {
       await performHeal(attacker, target, weapon);
       return;
     }
@@ -1065,7 +1065,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const isRangedThisAttack = weapon.range > 1 || dist > weapon.range;
 
     // Area-effect weapons (magic radius > 0) open the shared magic targeting window.
-    if (weapon.magicRadius > 0) {
+    if (weapon.magicDimension > 0) {
       if (attacker.isRouting) {
         addMessage(`${attacker.unitName} (Routed) cannot cast spells`);
         return;
@@ -2379,6 +2379,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           formationsMap={formationsMap}
           onCancel={magicCast.cancelCast}
           onPlaceCircle={magicCast.placeCircle}
+          onRotate={magicCast.rotateArea}
           onOverrideCount={magicCast.overrideCount}
           onSetSave={magicCast.setSave}
           onRequestResolve={requestResolveCast}
