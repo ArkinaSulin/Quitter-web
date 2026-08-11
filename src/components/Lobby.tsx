@@ -22,11 +22,14 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     loading,
     error,
     currentUser,
+    dmOnlineByScenario,
     createScenario,
     deleteScenario,
     joinScenario,
     subscribeToPresence,
     unsubscribeFromPresence,
+    subscribeToLobbyPresence,
+    unsubscribeFromLobbyPresence,
   } = useScenarios();
 
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
@@ -84,6 +87,15 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
       setAccessRequest(requestNote);
     }
   }, [requestNote, accessRequest]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const ids = scenarios.map(s => s.id);
+    ids.forEach(id => subscribeToLobbyPresence(id));
+    return () => {
+      ids.forEach(id => unsubscribeFromLobbyPresence(id));
+    };
+  }, [scenarios, currentUser, subscribeToLobbyPresence, unsubscribeFromLobbyPresence]);
 
   // Resolve each scenario creator's live display name so the search bar can filter
   // by alias and renames are honored. RLS allows any signed-in user to read names.
@@ -461,12 +473,12 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                     <div className="flex items-center gap-2 mt-1.5">
                       <span
                         className={`text-[11px] px-2 py-0.5 rounded-full border ${
-                          scenario.roomOpen
+                          dmOnlineByScenario[scenario.id]
                             ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700/50'
                             : 'bg-red-900/60 text-red-300 border-red-700/50'
                         }`}
                       >
-                        {scenario.roomOpen ? 'Room Open' : 'Room Closed'}
+                        {dmOnlineByScenario[scenario.id] ? 'Room Open' : 'Room Closed'}
                       </span>
                       {scenario.passwordHash && (
                         <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">

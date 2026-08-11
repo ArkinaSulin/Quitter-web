@@ -28,6 +28,10 @@ export function useScenarios() {
   const { user: currentUser } = useAuth();
   const presenceChannels = useRef<Map<string, any>>(new Map());
   const presenceCallbacks = useRef<Map<string, () => void>>(new Map());
+  // Lobby watchers: one read-only presence channel per scenario, so the lobby can
+  // show "(Room Open)" when that scenario's GM is actually present.
+  const lobbyPresenceChannels = useRef<Map<string, any>>(new Map());
+  const [dmOnlineByScenario, setDmOnlineByScenario] = useState<Record<string, boolean>>({});
 
   const fetchScenarios = useCallback(async () => {
     setLoading(true);
@@ -89,6 +93,51 @@ export function useScenarios() {
       presenceChannels.current.delete(scenarioId);
       presenceCallbacks.current.delete(scenarioId);
     }
+  }, []);
+
+  // Lobby "Room Open" indicator: watch each scenario's presence channel read-only
+  // and flip dmOnlineByScenario[scenarioId] when a GM enters/leaves.
+  const subscribeToLobbyPresence = useCallback((scenarioId: string) => {
+    if (lobbyPresenceChannels.current.has(scenarioId)) return;
+
+    const channel = supabase.channel(`presence:${scenarioId}`, {
+      config: { presence: { key: `lobby:${scenarioId}` } },
+    });
+
+    const refresh = () => {
+      const state = channel.presenceState();
+      let dmFound = false;
+      for (const key in state) {
+        const users = state[key] as any[];
+        if (users.some((u: any) => u.role === 'GM')) {
+          dmFound = true;
+          break;
+        }
+      }
+      setDmOnlineByScenario(prev =>
+        prev[scenarioId] === dmFound ? prev : { ...prev, [scenarioId]: dmFound },
+      );
+    };
+
+    channel.on('presence', { event: 'sync' }, refresh);
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') refresh();
+    });
+
+    lobbyPresenceChannels.current.set(scenarioId, channel);
+  }, []);
+
+  const unsubscribeFromLobbyPresence = useCallback((scenarioId: string) => {
+    const channel = lobbyPresenceChannels.current.get(scenarioId);
+    if (channel) {
+      channel.unsubscribe();
+      lobbyPresenceChannels.current.delete(scenarioId);
+    }
+    setDmOnlineByScenario(prev => {
+      const next = { ...prev };
+      delete next[scenarioId];
+      return next;
+    });
   }, []);
 
   const deleteScenario = useCallback(async (scenarioId: string) => {
@@ -414,6 +463,7 @@ export function useScenarios() {
     loading,
     error,
     currentUser,
+    dmOnlineByScenario,
     fetchScenarios,
     createScenario,
     deleteScenario,
@@ -421,6 +471,8 @@ export function useScenarios() {
     getMyRole,
     subscribeToPresence,
     unsubscribeFromPresence,
+    subscribeToLobbyPresence,
+    unsubscribeFromLobbyPresence,
     updateScreenshot,
     fetchScenarioMapData,
     updateScenarioMapData,

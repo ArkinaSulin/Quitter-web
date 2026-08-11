@@ -1,5 +1,12 @@
 # Handover — 2026-08-03
 
+## Lobby "Room Open" badge now tracks live DM presence (2026-08-11)
+**Files:** `src/hooks/useScenarios.ts`, `src/components/Lobby.tsx`
+
+- The scenario card's Room Open/Closed badge was driven by the DB `room_open` toggle. It now reflects **live presence**: the lobby subscribes a read-only presence channel per scenario (`subscribeToLobbyPresence`) and flips `dmOnlineByScenario[scenarioId]` when a GM enters/leaves. Badge shows **Room Open** while the DM is in the scenario, else Room Closed.
+- Cleanup on scenario-list change/unmount via `unsubscribeFromLobbyPresence`. `joinScenario`'s DM-online gate (`checkDMOnline`) is unchanged.
+- 309 tests; `tsc --noEmit` clean.
+
 ## Unit Library: read-only access for players via can_view_unit_editor (2026-08-11)
 **Files:** `supabase/migrations/050_access_view_unit_editor.sql` (new), `src/hooks/useProfile.ts`, `app/unit-editor/page.tsx`, `src/components/UnitEditor.tsx`, `src/components/Lobby.tsx`
 
