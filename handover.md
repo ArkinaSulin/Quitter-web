@@ -1,5 +1,12 @@
 # Handover — 2026-08-03
 
+## Scenario rename via card pencil icon (2026-08-11)
+**Files:** `src/components/Lobby.tsx`
+
+- Scenario cards owned by the current user show a **✏️ pencil** next to the name. Clicking opens a **Rename Scenario** modal (prefilled, Enter saves, Cancel/Save, inline error).
+- `handleRename` reuses `updateScenarioField(scenarioId, { name })` (already live for GM free_move/room_open toggles — no RLS change) then `fetchScenarios()` so cards/search/aliases refresh.
+- 309 tests; `tsc --noEmit` clean.
+
 ## Lobby: split DM tag / room badge + My Scenarios / Available filters (2026-08-11)
 **Files:** `src/hooks/useScenarios.ts`, `src/components/Lobby.tsx`
 

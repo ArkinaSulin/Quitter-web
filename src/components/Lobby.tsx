@@ -31,6 +31,8 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     unsubscribeFromPresence,
     subscribeToLobbyPresence,
     unsubscribeFromLobbyPresence,
+    updateScenarioField,
+    fetchScenarios,
   } = useScenarios();
 
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
@@ -65,6 +67,9 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const [scenarioSearch, setScenarioSearch] = useState('');
   const [showMine, setShowMine] = useState(true);
   const [showAvailable, setShowAvailable] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameInput, setRenameInput] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
   // creator id -> live profiles.display_name (resolved once, so renames are honored)
   const [creatorAliases, setCreatorAliases] = useState<Record<string, string>>({});
 
@@ -253,6 +258,33 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
       setSelectedScenarioId(null);
     } catch (err: any) {
       alert('Delete failed: ' + err.message);
+    }
+  };
+
+  const openRenameModal = (scenarioId: string) => {
+    const scenario = scenarios.find(s => s.id === scenarioId);
+    if (!scenario) return;
+    setSelectedScenarioId(scenarioId);
+    setRenameInput(scenario.name);
+    setRenameError(null);
+    setShowRenameModal(true);
+  };
+
+  const handleRename = async () => {
+    if (!selectedScenarioId) return;
+    const name = renameInput.trim();
+    if (!name) {
+      setRenameError('Scenario name is required');
+      return;
+    }
+    try {
+      const ok = await updateScenarioField(selectedScenarioId, { name });
+      if (!ok) throw new Error('Failed to update scenario');
+      setShowRenameModal(false);
+      setRenameInput('');
+      await fetchScenarios();
+    } catch (err: any) {
+      setRenameError(err.message || 'Failed to rename scenario');
     }
   };
 
@@ -505,9 +537,20 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                     )}
                   </div>
                   <div className="p-3 text-white">
-                    <div className="flex justify-between items-start">
+                    <div className="flex justify-between items-start gap-2">
                       <div className="font-bold text-lg truncate">{scenario.name}</div>
-                      <div className="text-xs text-gray-400 whitespace-nowrap ml-2">Created: {formatDate(scenario.createdAt)}</div>
+                      <div className="flex items-center gap-2 flex-none">
+                        {currentUser && scenario.creatorId === currentUser.id && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openRenameModal(scenario.id); }}
+                            className="text-xs text-gray-300 hover:text-yellow-300 transition"
+                            title="Rename scenario"
+                          >
+                            ✏️
+                          </button>
+                        )}
+                        <div className="text-xs text-gray-400 whitespace-nowrap">Created: {formatDate(scenario.createdAt)}</div>
+                      </div>
                     </div>
                     <div className="flex justify-between items-start mt-1">
                       <div className="text-sm text-gray-300 truncate">By {creatorAliases[scenario.creatorId] || scenario.creatorName || 'Unknown'}</div>
@@ -646,6 +689,40 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                 onClick={handleCreate}
               >
                 Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRenameModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-6 rounded-lg w-96 border border-gray-700">
+            <h2 className="text-xl font-bold mb-4 text-white">Rename Scenario</h2>
+            <div>
+              <label className="block text-sm text-gray-300">Scenario Name</label>
+              <input
+                type="text"
+                className="w-full bg-gray-700 text-white p-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
+                value={renameInput}
+                onChange={(e) => { setRenameInput(e.target.value); setRenameError(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); }}
+                autoFocus
+              />
+              {renameError && <p className="text-red-400 text-sm mt-1">{renameError}</p>}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
+                onClick={() => setShowRenameModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+                onClick={handleRename}
+              >
+                Save
               </button>
             </div>
           </div>
