@@ -63,7 +63,8 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const [adminError, setAdminError] = useState<string | null>(null);
 
   const [scenarioSearch, setScenarioSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'mine' | 'available'>('mine');
+  const [showMine, setShowMine] = useState(true);
+  const [showAvailable, setShowAvailable] = useState(false);
   // creator id -> live profiles.display_name (resolved once, so renames are honored)
   const [creatorAliases, setCreatorAliases] = useState<Record<string, string>>({});
 
@@ -414,9 +415,11 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     if (loading) return <p className="text-white">Loading scenarios...</p>;
     if (error) return <p className="text-red-500">Error: {error}</p>;
 
+    // Independent toggles (union): Mine + Available shows both; neither shows all.
     // A user with no participation falls back to the available-rooms view so the
-    // lobby is never empty for them.
-    const effectiveMode = viewMode === 'mine' && myScenarioIds.length === 0 ? 'available' : viewMode;
+    // lobby is never empty for them while "My Scenarios" is on.
+    const mineActive = showMine && myScenarioIds.length > 0;
+    const availableActive = showAvailable || (showMine && myScenarioIds.length === 0 && !showAvailable);
 
     const term = scenarioSearch.trim().toLowerCase();
     let filtered = scenarios;
@@ -427,10 +430,10 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
         return s.name.toLowerCase().includes(term) || creatorName.toLowerCase().includes(term);
       });
     }
-    if (effectiveMode === 'mine') {
-      filtered = filtered.filter(s => myScenarioIds.includes(s.id));
-    } else {
-      filtered = filtered.filter(s => s.roomOpen);
+    if (mineActive || availableActive) {
+      filtered = filtered.filter(s =>
+        (mineActive && myScenarioIds.includes(s.id)) || (availableActive && s.roomOpen)
+      );
     }
 
     return (
@@ -438,9 +441,9 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
         <div className="mb-4 max-w-xl flex items-center gap-2">
           <div className="flex-none flex rounded border border-gray-600 overflow-hidden">
             <button
-              onClick={() => setViewMode('mine')}
+              onClick={() => setShowMine(v => !v)}
               className={`px-3 py-2 text-sm transition ${
-                viewMode === 'mine'
+                showMine
                   ? 'bg-emerald-800 text-white'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
@@ -448,9 +451,9 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
               My Scenarios
             </button>
             <button
-              onClick={() => setViewMode('available')}
+              onClick={() => setShowAvailable(v => !v)}
               className={`px-3 py-2 text-sm transition ${
-                viewMode === 'available'
+                showAvailable
                   ? 'bg-emerald-800 text-white'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
@@ -470,9 +473,11 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
           <p className="text-gray-400">
             {scenarios.length === 0
               ? 'No scenarios yet. Create one!'
-              : effectiveMode === 'available'
+              : availableActive && !mineActive
                 ? 'No open rooms right now.'
-                : 'No scenarios match your search.'}
+                : mineActive && !availableActive
+                  ? 'No scenarios match your search.'
+                  : 'No scenarios match your filters.'}
           </p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
