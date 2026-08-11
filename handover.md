@@ -1,5 +1,12 @@
 # Handover — 2026-08-03
 
+## UnitEditor: unsaved-changes modal, full-width name/saves, formation order, weapon fonts (2026-08-10)
+- **Unsaved-changes guard**: a dirty tracker (JSON snapshot vs `formData`) triggers a styled in-app modal (**Save / Don't Save / Cancel**) when you select a different template, click New/Clone, or Main Menu while edited-but-unsaved; a `beforeunload` guard covers tab close. `handleSave` now returns a boolean and marks the snapshot on success.
+- **Layout**: Unit Name + Hero is now a **full-width row** above the 2-column grid; **Saving throws** is a full-width row below it. Grid rebalanced: LEFT = Race & Level, Token, Hit Points; RIGHT = Defense, Mount & Charge, Combat & Morale.
+- **Formation availability** sorted `Hero, Scattered, Open Order, Close Order, Shield Wall, Phalanx` (Routed stays as the separate always-checked label; Hero is a normal checkbox).
+- **Weapons group** fonts/padding shrunk to match the compact fields.
+- `tsc --noEmit` clean, 303 tests pass.
+
 ## UnitEditor: compact 2-column layout + sticky Save bar (2026-08-10)
 - **UnitEditor** mid panel re-laid out into a compact 2-column grid (same UnitTemplate fields): LEFT = Identity (Name/Hero), Race & Level, Token (Size 5-step equal-distance slider + Visual scale), Hit Points; RIGHT = Defense (Base AC/Movement/Armor/Shield), Mount & Charge, Combat & Morale (Aggressiveness/Base morale/Fearless), Saving throws (narrow boxes). Full-width below: Formation availability chips, Unit-Type icon grid (**6→7 cols**), Weapons, calculated summary (compact).
 - **Behavior**: toggling **Hero** ON also checks **Fearless**; when **Fearless** is checked the **Base morale** input is disabled.

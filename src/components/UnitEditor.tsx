@@ -33,6 +33,9 @@ function snapSizeCategory(value: number): number {
 
 const SIZE_SLIDER_VALUES = [75, 100, 200, 300, 400];
 
+/** Display order for formation-availability chips (Hero first, no Routed). */
+const FORMATION_ORDER = ['Hero', 'Scattered', 'Open Order', 'Close Order', 'Shield Wall', 'Phalanx'];
+
 function Cell({ label, children, widthClass = 'w-16' }: { label: string; children: React.ReactNode; widthClass?: string }) {
   return (
     <label className={`flex flex-col gap-0.5 text-[10px] text-gray-400 min-w-0 ${widthClass}`}>
@@ -83,6 +86,9 @@ export default function UnitEditor() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+  const savedSnapshotRef = useRef<string>('');
+  const pendingActionRef = useRef<(() => void) | null>(null);
 
   const [races, setRaces] = useState<Race[]>([]);
   const [weaponsLookup, setWeaponsLookup] = useState<
@@ -242,6 +248,36 @@ export default function UnitEditor() {
     setFormData(updated);
   };
 
+  const isDirty = !!formData && JSON.stringify(formData) !== savedSnapshotRef.current;
+
+  // If there are unsaved edits, route the action through the confirm modal.
+  const requestAction = (action: () => void) => {
+    if (isDirty) {
+      pendingActionRef.current = action;
+      setShowUnsavedModal(true);
+    } else {
+      action();
+    }
+  };
+
+  const handleUnsavedSave = async () => {
+    const action = pendingActionRef.current;
+    pendingActionRef.current = null;
+    setShowUnsavedModal(false);
+    const ok = await handleSave();
+    if (ok && action) action();
+  };
+  const handleUnsavedDiscard = () => {
+    const action = pendingActionRef.current;
+    pendingActionRef.current = null;
+    setShowUnsavedModal(false);
+    if (action) action();
+  };
+  const handleUnsavedCancel = () => {
+    pendingActionRef.current = null;
+    setShowUnsavedModal(false);
+  };
+
   const toggleFormation = (formationName: string) => {
     if (!formData) return;
     const isMounted = formData.mountId !== '';
@@ -399,6 +435,7 @@ export default function UnitEditor() {
       const found = templates.find(t => t.id === selectedId);
       if (found) {
         setFormData({ ...found });
+        savedSnapshotRef.current = JSON.stringify(found);
         setError(null);
         setSuccess(null);
         setWasAt400(found.sizeCategory === 400);
@@ -419,6 +456,18 @@ export default function UnitEditor() {
       setFormData(null);
     }
   }, [selectedId, templates]);
+
+  // Warn when leaving the page with unsaved edits (browser-native prompt).
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
 
   const openAddWeapon = () => {
     setEditingWeaponIndex(null);
@@ -504,24 +553,29 @@ export default function UnitEditor() {
   };
 
   const handleNew = () => {
-    const blank = createBlankTemplate();
-    setFormData(blank);
-    setSelectedId('new');
-    setError(null);
-    setSuccess(null);
-    setWasAt400(blank.sizeCategory === 400);
-    if (blank.sizeCategory === 400) {
-      setPreviousHeroState(blank.isHero);
-      setPreviousBodyCount(blank.troopCount);
-    }
-    setWasHeroChecked(false);
+    requestAction(() => {
+      const blank = createBlankTemplate();
+      setFormData(blank);
+      savedSnapshotRef.current = JSON.stringify(blank);
+      setSelectedId('new');
+      setError(null);
+      setSuccess(null);
+      setWasAt400(blank.sizeCategory === 400);
+      if (blank.sizeCategory === 400) {
+        setPreviousHeroState(blank.isHero);
+        setPreviousBodyCount(blank.troopCount);
+      }
+      setWasHeroChecked(false);
+    });
   };
 
   const handleClone = () => {
-    if (!formData) return;
-    setCloneName(`${formData.unitName} (Clone)`);
-    setCloneError('');
-    setShowCloneModal(true);
+    requestAction(() => {
+      if (!formData) return;
+      setCloneName(`${formData.unitName} (Clone)`);
+      setCloneError('');
+      setShowCloneModal(true);
+    });
   };
 
   const confirmClone = async () => {
@@ -557,6 +611,7 @@ export default function UnitEditor() {
       setTemplates(prev => [...prev, mapped]);
       setSelectedId(mapped.id);
       setFormData(mapped);
+      savedSnapshotRef.current = JSON.stringify(mapped);
       setShowCloneModal(false);
       setCloneName('');
       setSuccess(`Unit "${mapped.unitName}" cloned successfully!`);
@@ -566,27 +621,27 @@ export default function UnitEditor() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     if (!formData) {
       setError('No unit selected to save');
-      return;
+      return false;
     }
 
     if (!formData.unitName.trim()) {
       setError('Unit name is required');
-      return;
+      return false;
     }
 
     const duplicate = templates.find(t => t.unitName === formData.unitName.trim() && t.id !== formData.id);
     if (duplicate) {
       setError('A unit with this name already exists');
-      return;
+      return false;
     }
 
     const weapons = getWeapons();
     if (weapons.length === 0) {
       if (!confirm('This unit has no weapons! Are you sure you want to save it?')) {
-        return;
+        return false;
       }
     }
 
@@ -680,9 +735,12 @@ export default function UnitEditor() {
       setError(null);
       setSuccess(`Unit "${mapped.unitName}" saved successfully!`);
       setTimeout(() => setSuccess(null), 3000);
+      savedSnapshotRef.current = JSON.stringify(mapped);
+      return true;
     } catch (err: any) {
       console.error('Save error:', err);
       setError(err.message || 'Failed to save unit');
+      return false;
     }
   };
 
@@ -705,6 +763,7 @@ export default function UnitEditor() {
       setTemplates(prev => prev.filter(t => t.id !== formData.id));
       setSelectedId(null);
       setFormData(null);
+      savedSnapshotRef.current = '';
       setSuccess(`Unit deleted successfully!`);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
@@ -743,7 +802,7 @@ export default function UnitEditor() {
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-700 bg-[#0d0d1a]">
         <h1 className="text-2xl font-bold text-white">Unit Editor</h1>
         <button
-          onClick={() => router.push('/')}
+          onClick={() => requestAction(() => router.push('/'))}
           className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
         >
           Main Menu
@@ -796,7 +855,7 @@ export default function UnitEditor() {
               return (
                 <div
                   key={template.id}
-                  onClick={() => setSelectedId(template.id)}
+                  onClick={() => requestAction(() => setSelectedId(template.id))}
                   className={`px-3 py-2 rounded cursor-pointer transition border ${
                     isSelected
                       ? 'bg-yellow-500/20 border-yellow-400'
@@ -818,30 +877,30 @@ export default function UnitEditor() {
             <>
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="max-w-3xl space-y-4">
+                  {/* Identity — full width */}
+                  <div className="flex items-end gap-2">
+                    <Cell label="Unit Name" widthClass="flex-1">
+                      <input
+                        type="text"
+                        value={formData.unitName || ''}
+                        onChange={(e) => updateFormData('unitName', e.target.value)}
+                        className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+                      />
+                    </Cell>
+                    <div className="pb-1">
+                      <Toggle
+                        checked={formData.isHero || false}
+                        disabled={isGargantuan}
+                        onChange={(v) => { updateFormData('isHero', v); if (v) updateFormData('ignoreMoraleChecks', true); }}
+                        label="Hero"
+                      />
+                    </div>
+                  </div>
+
                   {/* Two-column compact field block */}
                   <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                     {/* LEFT column */}
                     <div className="space-y-3">
-                      {/* Identity */}
-                      <div className="flex items-end gap-2">
-                        <Cell label="Unit Name" widthClass="flex-1">
-                          <input
-                            type="text"
-                            value={formData.unitName || ''}
-                            onChange={(e) => updateFormData('unitName', e.target.value)}
-                            className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
-                          />
-                        </Cell>
-                        <div className="pb-1">
-                          <Toggle
-                            checked={formData.isHero || false}
-                            disabled={isGargantuan}
-                            onChange={(v) => { updateFormData('isHero', v); if (v) updateFormData('ignoreMoraleChecks', true); }}
-                            label="Hero"
-                          />
-                        </div>
-                      </div>
-
                       {/* Race & Level */}
                       <div className="flex items-end gap-2">
                         <Cell label="Race" widthClass="flex-1">
@@ -1015,29 +1074,29 @@ export default function UnitEditor() {
                         <div className="pb-1"><Toggle checked={formData.ignoreMoraleChecks || false} onChange={(v) => updateFormData('ignoreMoraleChecks', v)} label="Fearless" /></div>
                       </div>
                       {formData.isHero && <p className="text-[10px] text-yellow-400/80">Heroes ignore aggressiveness.</p>}
-
-                      {/* Saving throws */}
-                      <div className="flex gap-1.5">
-                        {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(s => (
-                          <Cell key={s} label={s.toUpperCase()} widthClass="w-10"><NumInput value={formData[s] ?? 0} min={-10} max={20} onChange={(v) => updateFormData(s, v)} /></Cell>
-                        ))}
-                      </div>
                     </div>
+                  </div>
+
+                  {/* Saving throws — full width */}
+                  <div className="flex gap-1.5">
+                    {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(s => (
+                      <Cell key={s} label={s.toUpperCase()} widthClass="w-10"><NumInput value={formData[s] ?? 0} min={-10} max={20} onChange={(v) => updateFormData(s, v)} /></Cell>
+                    ))}
                   </div>
 
               {/* Weapons */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-300">Weapons</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] text-gray-400">Weapons</label>
                   <button
                     onClick={openAddWeapon}
-                    className="px-3 py-1 text-sm bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition"
+                    className="px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition"
                   >
                     + Add Weapon
                   </button>
                 </div>
                 {getWeapons().length === 0 ? (
-                  <div className="text-sm text-gray-400 bg-gray-800/50 border border-gray-700 rounded p-3 text-center">
+                  <div className="text-[11px] text-gray-400 bg-gray-800/50 border border-gray-700 rounded p-2 text-center">
                     No weapons added yet. Click "Add Weapon" to add one.
                   </div>
                 ) : (
@@ -1047,22 +1106,22 @@ export default function UnitEditor() {
                       return (
                         <div
                           key={index}
-                          className="flex items-center justify-between bg-gray-800 px-3 py-2 rounded hover:bg-gray-700 transition"
+                          className="flex items-center justify-between bg-gray-800 px-2 py-1 rounded hover:bg-gray-700 transition"
                         >
-                          <div className="flex items-center gap-4 flex-wrap">
-                            <span className="font-medium text-yellow-400">{formatWeaponDisplay(w)}</span>
-                            <span className="text-xs text-green-400">{cost > 0 ? `${cost}gp` : 'Free'}</span>
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="text-[11px] font-medium text-yellow-400">{formatWeaponDisplay(w)}</span>
+                            <span className="text-[10px] text-green-400">{cost > 0 ? `${cost}gp` : 'Free'}</span>
                           </div>
                           <div className="flex gap-1">
                             <button
                               onClick={() => openEditWeapon(index)}
-                              className="text-xs bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded text-white"
+                              className="text-[10px] bg-blue-700 hover:bg-blue-600 px-1.5 py-0.5 rounded text-white"
                             >
                               Edit
                             </button>
                             <button
                               onClick={() => removeWeapon(index)}
-                              className="text-xs bg-red-700 hover:bg-red-600 px-2 py-1 rounded text-white"
+                              className="text-[10px] bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded text-white"
                             >
                               ×
                             </button>
@@ -1129,7 +1188,14 @@ export default function UnitEditor() {
               <div>
                 <label className="block text-[10px] text-gray-400 mb-1">Formation Availability</label>
                 <div className="flex flex-wrap gap-1">
-                  {formations.map(formation => {
+                  {[...formations]
+                    .filter(f => f.name !== 'Routed')
+                    .sort((a, b) => {
+                      const ai = FORMATION_ORDER.indexOf(a.name);
+                      const bi = FORMATION_ORDER.indexOf(b.name);
+                      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi) || a.name.localeCompare(b.name);
+                    })
+                    .map(formation => {
                     const isMounted = formData.mountId !== '';
                     const isPhalanxShieldWall = formation.name === 'Phalanx' || formation.name === 'Shield Wall';
                     const disabled = (isMounted && isPhalanxShieldWall) || formation.name === 'Scattered' || isGargantuan;
@@ -1392,6 +1458,38 @@ export default function UnitEditor() {
                 onClick={confirmClone}
               >
                 {formData && formData.id ? 'Clone' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved changes modal */}
+      {showUnsavedModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-6 rounded-lg w-[420px] border border-gray-700">
+            <h2 className="text-xl font-bold mb-3 text-white">Unsaved Changes</h2>
+            <p className="text-sm text-gray-300 mb-4">
+              Save changes to "{formData?.unitName || 'this unit'}" before leaving?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={handleUnsavedDiscard}
+                className="px-4 py-2 bg-red-800 border-2 border-red-400 text-white rounded hover:bg-red-700 transition"
+              >
+                Don't Save
+              </button>
+              <button
+                onClick={handleUnsavedCancel}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUnsavedSave}
+                className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+              >
+                Save
               </button>
             </div>
           </div>
