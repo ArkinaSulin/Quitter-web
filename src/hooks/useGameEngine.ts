@@ -2,7 +2,7 @@
 
 import { useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Unit, Hex, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { computeEffectiveMovement } from '@/lib/unitStats';
 import { applyFormationChange } from '@/lib/formationCost';
 import { nextLowerFormation } from '@/lib/formationCost';
@@ -375,10 +375,8 @@ export function useGameEngine({
       const newMult = newForm?.movement_multiplier ?? 1;
       const oldEffectiveMax = computeEffectiveMovement(unit, oldMult);
       const newEffectiveMax = computeEffectiveMovement(unit, newMult);
-      const steps = Math.abs(getOrganizationLevel(unit.currentFormation) - getOrganizationLevel(formation));
       const { movementPointsAvailable: newAvailable, actionsAvailable: newActions } = applyFormationChange(
         unit,
-        steps,
         oldEffectiveMax,
         newEffectiveMax,
       );

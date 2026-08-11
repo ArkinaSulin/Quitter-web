@@ -1,5 +1,15 @@
 # Handover — 2026-08-03
 
+## Formation change cost: flat % of effective movement, not MP per step (2026-08-10)
+**Files:** `src/lib/formationCost.ts` + test, `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`, `supabase/migrations/049_formation_cost_percent.sql` (new)
+
+- **Old**: formation change cost `steps × 2` MP (`formation_change_cost_per_step = 2`). Fast units hopped formations cheaply in one turn; a Phalanx (effective max ~1–2) paid ~2 actions for a single change.
+- **New**: a change costs a **flat fraction of the unit's current effective movement** (the full MP pool one action converts to): `getFormationChangeMpCost(oldMax) = Max(1, ceil(oldMax × getFormationChangeCost()))`. Default **50%**.
+- **`formation_change_cost_per_step`** setting is now a fraction (0.5 = 50%); migration 049 updates it (key kept, semantic changed). **Apply to the DB.**
+- Since the fraction ≤ 1, a change never costs more than one action and never less than 1 MP. Example (base move 3): Scattered eff 4 → Open = 2 MP; Open eff 3 → Close = 2 MP; Close eff 2 → Phalanx = 1 MP; Phalanx eff 1 → Scattered (any steps down) = 1 MP. Leftover rescales: `floor(leftover × newMax / oldMax)`.
+- **`steps` parameter removed** from `applyFormationChange` / `isFormationChangeAffordable` and from `pendingFormation` state (cost no longer depends on org-level step count); `useGameEngine.changeFormation` and `ScenarioMap.handleChangeFormation` updated. Confirm modal + red notification now use `getFormationChangeMpCost(unitMaxMP(unit))` and read "1 action".
+- 309 tests (formationCost rewritten for flat-% model + example-sequence cases); `tsc --noEmit` clean.
+
 ## Area-effect shapes (circle/cube/cone) + magicDimension rename + compact Add-Weapon modal (2026-08-10)
 **Files:** `src/lib/weaponParser.ts` + test, `src/types/gameProtocol.ts`, `src/components/WeaponEditorModal.tsx`, `src/components/ScenarioMap/MagicCastModal.tsx`, `src/hooks/useMagicCast.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`, `supabase/migrations/048_weapon_shape.sql` (new)
 

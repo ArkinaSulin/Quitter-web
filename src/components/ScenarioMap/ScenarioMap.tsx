@@ -3,7 +3,7 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
-import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
+import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { parseWeapons, Weapon } from '@/lib/weaponParser';
 import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamage } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition, canStopEnemyMovement, canChargeThrough } from '@/lib/formationRules';
@@ -13,7 +13,7 @@ import { loadSettings, getSetting } from '@/lib/settingsCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios } from '@/hooks/useScenarios';
 import { computeReachableMap, computeMoveBudget, computeMovePool, isMoveAffordable, computeChargeReachable } from '@/lib/moveCost';
-import { isFormationChangeAffordable, FORMATION_CHANGE_COST } from '@/lib/formationCost';
+import { isFormationChangeAffordable, getFormationChangeMpCost } from '@/lib/formationCost';
 import { useGameEngine } from '@/hooks/useGameEngine';
 import { useTeamAlliances } from '@/hooks/useTeamAlliances';
 import { useMessageSync } from '@/hooks/useMessageSync';
@@ -223,12 +223,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     target: Unit;
   } | null>(null);
 
-  // Over-budget formation change (soft enforcement): the change costs 2 MP per
-  // org-level step and would overdraw actions.
+  // Over-budget formation change (soft enforcement): the change costs a flat
+  // fraction (default 50%) of the unit's current effective movement and would
+  // overdraw actions.
   const [pendingFormation, setPendingFormation] = useState<{
     unit: Unit;
     formation: string;
-    steps: number;
   } | null>(null);
 
   // Premature charge attack: attacker attacked before moving the full 2 hexes.
@@ -524,12 +524,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const oldForm = formationsMap[unit.currentFormation];
     const oldMult = oldForm?.movement_multiplier ?? 1;
     const oldEffectiveMax = computeEffectiveMovement(unit, oldMult);
-    const steps = Math.abs(getOrganizationLevel(unit.currentFormation) - getOrganizationLevel(formation));
-    if (isFormationChangeAffordable(unit, steps, oldEffectiveMax)) {
+    if (isFormationChangeAffordable(unit, oldEffectiveMax)) {
       await changeFormation(unit, formation, formationsMap);
       return;
     }
-    setPendingFormation({ unit, formation, steps });
+    setPendingFormation({ unit, formation });
   }, [changeFormation, formationsMap, freeMove, isFormationChangeAffordable]);
 
   const handleMoveTeam = useCallback(async (team: string, targetGroup: AllianceGroup) => {
@@ -2186,12 +2185,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           <div className="bg-gray-900 border border-red-800 rounded-xl shadow-2xl p-6 min-w-[320px]">
             <p className="text-white text-sm mb-1 text-center font-semibold">Change formation over budget?</p>
             <p className="text-gray-400 text-xs mb-4 text-center">
-              {pendingFormation.unit.unitName} needs {pendingFormation.steps * FORMATION_CHANGE_COST} MP ({Math.ceil(pendingFormation.steps * FORMATION_CHANGE_COST / Math.max(1, unitMaxMP(pendingFormation.unit)))} action(s)) to form {pendingFormation.formation}, but has {pendingFormation.unit.actionsAvailable} action(s) left.
+              {pendingFormation.unit.unitName} needs {getFormationChangeMpCost(unitMaxMP(pendingFormation.unit))} MP (1 action) to form {pendingFormation.formation}, but has {pendingFormation.unit.actionsAvailable} action(s) left.
             </p>
             <div className="flex flex-col gap-2">
               <button
                 className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => { const pf = pendingFormation; setPendingFormation(null); if (!controlsLocked) { addError(`${pf.unit.unitName} changed formation over budget — ${pf.steps * FORMATION_CHANGE_COST} MP needed, ${pf.unit.actionsAvailable} action(s) left`); await changeFormation(pf.unit, pf.formation, formationsMap); } }}
+                onClick={async () => { const pf = pendingFormation; setPendingFormation(null); if (!controlsLocked) { addError(`${pf.unit.unitName} changed formation over budget — ${getFormationChangeMpCost(unitMaxMP(pf.unit))} MP needed, ${pf.unit.actionsAvailable} action(s) left`); await changeFormation(pf.unit, pf.formation, formationsMap); } }}
               >
                 Yes, change anyway
               </button>

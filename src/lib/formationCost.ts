@@ -1,18 +1,31 @@
 // Pure formation-change MP math. MP is tracked as an integer.
-// Each organization-level step costs getFormationChangeCost() (default 2) MP; the
-// remainder then rescales proportionally to the new formation's effective max,
-// floored and clamped. The cost is paid from already-materialized MP first, then
-// by converting one action into a full pool per the "1 action = 1 full MP pool"
-// economy (same refill rule as applyMpSpend). Actions may go negative — soft
-// enforcement.
+// A formation change costs a flat fraction of the unit's CURRENT effective
+// movement (the full MP pool one action converts to): Max(1, ceil(oldMax *
+// getFormationChangeCost())). The remainder then rescales proportionally to the
+// new formation's effective max, floored and clamped. Because the cost is a
+// fraction of the current pool it can never exceed one action and never drops
+// below 1 MP — slow formations (Phalanx effective 1-2) change for 1 MP, fast
+// ones pay a proportional share, so no one shifts through formations cheaply.
+// The cost is paid from already-materialized MP first, then by converting one
+// action into a full pool per the "1 action = 1 full MP pool" economy (same
+// refill rule as applyMpSpend). Actions may go negative — soft enforcement.
 import { getOrganizationLevel, Unit } from '@/types/gameProtocol';
 import { getSetting } from './settingsCache';
 
-/** Code fallback for the formation-change cost — matches migration 042 seed. */
-export const FORMATION_CHANGE_COST = 2;
+/** Code fallback for the formation-change fraction — matches migration 049 seed. */
+export const FORMATION_CHANGE_COST = 0.5;
 
 export function getFormationChangeCost(): number {
   return getSetting('formation_change_cost_per_step', FORMATION_CHANGE_COST);
+}
+
+/**
+ * MP cost of a formation change from a formation with the given effective max:
+ * a flat fraction of the pool, rounded up, floored at 1. Never exceeds one full
+ * pool (one action) because the fraction is ≤ 1.
+ */
+export function getFormationChangeMpCost(oldMax: number): number {
+  return Math.max(1, Math.ceil(oldMax * getFormationChangeCost()));
 }
 
 type MpBudget = Pick<Unit, 'movementPointsAvailable' | 'actionsAvailable'>;
@@ -24,7 +37,6 @@ export interface FormationChangeResult {
 
 export function applyFormationChange(
   unit: MpBudget,
-  steps: number,
   oldMax: number,
   newMax: number,
 ): FormationChangeResult {
@@ -34,7 +46,7 @@ export function applyFormationChange(
   const pool = Math.max(1, oldMax);
   const mp = Math.max(0, Math.floor(unit.movementPointsAvailable));
   const actions = unit.actionsAvailable;
-  const cost = steps * getFormationChangeCost();
+  const cost = getFormationChangeMpCost(oldMax);
 
   const rescale = (leftoverMp: number): number =>
     Math.min(newMax, Math.max(0, Math.floor(leftoverMp * (newMax / pool))));
@@ -60,10 +72,10 @@ export function applyFormationChange(
 }
 
 /** A formation change is affordable when the refill accounting does not go negative on actions. */
-export function isFormationChangeAffordable(unit: MpBudget, steps: number, oldMax: number): boolean {
+export function isFormationChangeAffordable(unit: MpBudget, oldMax: number): boolean {
   const pool = Math.max(1, oldMax);
   const mp = Math.max(0, Math.floor(unit.movementPointsAvailable));
-  return mp + Math.max(0, unit.actionsAvailable) * pool >= steps * getFormationChangeCost();
+  return mp + Math.max(0, unit.actionsAvailable) * pool >= getFormationChangeMpCost(oldMax);
 }
 
 // Preferred target when dropping exactly one organization level. Level 3 has two
