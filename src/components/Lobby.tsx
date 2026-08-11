@@ -242,9 +242,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
       setActiveScenarioId(scenarioId);
     } catch (err: any) {
       setJoinError(err.message);
-      if (err.message.includes('Game Master')) {
-        setToast(err.message);
-      }
+      setToast(err.message);
     }
   };
 

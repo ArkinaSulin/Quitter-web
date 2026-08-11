@@ -248,6 +248,37 @@ export function useScenarios() {
   }, [currentUser, scenarios]);
 
   const checkDMOnline = useCallback(async (scenarioId: string): Promise<boolean> => {
+    // The lobby already subscribes a read-only presence channel per scenario (for
+    // the Room Open badge) on the SAME topic. Reuse it: RealtimeClient.channel()
+    // returns the existing (already-subscribed) channel, and registering a presence
+    // listener after subscribe() throws — so we must not open a second one here.
+    const existing = lobbyPresenceChannels.current.get(scenarioId);
+    if (existing) {
+      const hasGM = (): boolean => {
+        const state = existing.presenceState();
+        for (const key in state) {
+          const users = state[key] as any[];
+          if (users.some((u: any) => u.role === 'GM')) return true;
+        }
+        return false;
+      };
+      if (hasGM()) return true;
+      // Presence may not have synced yet — poll briefly before declaring the DM offline.
+      return new Promise((resolve) => {
+        let tries = 0;
+        const poll = () => {
+          tries += 1;
+          if (hasGM() || tries >= 15) {
+            resolve(hasGM());
+            return;
+          }
+          setTimeout(poll, 100);
+        };
+        setTimeout(poll, 100);
+      });
+    }
+
+    // Fallback: no lobby channel (join flow outside the lobby). Fresh one-shot probe.
     return new Promise((resolve) => {
       const channel = supabase.channel(`presence:${scenarioId}`, {
         config: { presence: { key: `${scenarioId}` } },

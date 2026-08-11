@@ -1,5 +1,13 @@
 # Handover — 2026-08-03
 
+## Fix: joining an open room silently failed when the DM was online (2026-08-11)
+**Files:** `src/hooks/useScenarios.ts`, `src/components/Lobby.tsx`
+
+- **Root cause**: the lobby's Room Open badge subscribes a read-only presence channel `presence:${scenarioId}` per scenario. `checkDMOnline` (used by `joinScenario`) tried to open a **second** channel on the same topic; `RealtimeClient.channel()` reused the already-subscribed channel, and `RealtimeChannel.on('presence', …)` on a joined channel **throws** ("cannot add 'presence' callbacks … after 'subscribe()'"). The throw rejected the join even though the DM was online and the room was open.
+- **`checkDMOnline`** now reuses the existing lobby presence channel (reads `presenceState()`, short 1.5s poll for the GM) instead of opening a new one; the old one-shot probe remains as a fallback for non-lobby contexts.
+- **`Lobby.performJoin`** now toasts **every** join error (was: only messages containing "Game Master"); passwordless-room failures (DM offline, room closed, RLS) are now visible.
+- 309 tests; `tsc --noEmit` clean.
+
 ## Turn 0 free play: free_move auto-ends at Turn 1 + alliance-gated movement (2026-08-11)
 **Files:** `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`
 
