@@ -62,6 +62,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const [adminError, setAdminError] = useState<string | null>(null);
 
   const [scenarioSearch, setScenarioSearch] = useState('');
+  const [showOpenOnly, setShowOpenOnly] = useState(false);
   // creator id -> live profiles.display_name (resolved once, so renames are honored)
   const [creatorAliases, setCreatorAliases] = useState<Record<string, string>>({});
 
@@ -413,28 +414,47 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     if (error) return <p className="text-red-500">Error: {error}</p>;
 
     const term = scenarioSearch.trim().toLowerCase();
-    const filtered = term
-      ? scenarios.filter(s => {
-          const alias = creatorAliases[s.creatorId];
-          const creatorName = alias || s.creatorName || '';
-          return s.name.toLowerCase().includes(term) || creatorName.toLowerCase().includes(term);
-        })
-      : scenarios;
+    let filtered = scenarios;
+    if (term) {
+      filtered = filtered.filter(s => {
+        const alias = creatorAliases[s.creatorId];
+        const creatorName = alias || s.creatorName || '';
+        return s.name.toLowerCase().includes(term) || creatorName.toLowerCase().includes(term);
+      });
+    }
+    if (showOpenOnly) {
+      filtered = filtered.filter(s => dmOnlineByScenario[s.id]);
+    }
 
     return (
       <>
-        <div className="mb-4 max-w-xl">
+        <div className="mb-4 max-w-xl flex items-center gap-2">
+          <button
+            onClick={() => setShowOpenOnly(v => !v)}
+            className={`flex-none px-3 py-2 text-sm rounded border transition ${
+              showOpenOnly
+                ? 'bg-emerald-800 border-emerald-500 text-white'
+                : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+            }`}
+            title="Show only rooms whose GM is currently present"
+          >
+            Open rooms only
+          </button>
           <input
             type="text"
             placeholder="Search scenarios by name or creator..."
             value={scenarioSearch}
             onChange={(e) => setScenarioSearch(e.target.value)}
-            className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
+            className="flex-1 bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
           />
         </div>
         {filtered.length === 0 ? (
           <p className="text-gray-400">
-            {scenarios.length === 0 ? 'No scenarios yet. Create one!' : 'No scenarios match your search.'}
+            {scenarios.length === 0
+              ? 'No scenarios yet. Create one!'
+              : showOpenOnly
+                ? 'No open rooms right now.'
+                : 'No scenarios match your search.'}
           </p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
