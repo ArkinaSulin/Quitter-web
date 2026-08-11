@@ -1,5 +1,11 @@
 # Handover — 2026-08-03
 
+## Unit template tooltip in Unit Selector (2026-08-11)
+**Files:** `src/components/ScenarioMap/UnitTemplateTooltip.tsx` (new), `src/components/ScenarioMap/UnitSelector.tsx`
+
+- Hovering a template row in the left-panel **Unit Selector** shows a blueprint tooltip (`fixed`, follows cursor, `pointer-events-none` so drag-to-place is unaffected): name/race/⭐Hero header; grid of Level · Size · Movement · **AC (DB `baselineAc`, not recalculated)** · Troops · Troop HP · Max unit HP · AGR · MOR (Fearless in yellow) · Can Charge · Mount · Equip/Weekly gp; weapon list (name, `[2H]`, atk, dice, healing, attacks, magic dimension+shape); formations; and **all 6 save bonuses shown with signs (zeros/negatives included)**.
+- 309 tests; `tsc --noEmit` clean.
+
 ## Scenario rename via card pencil icon (2026-08-11)
 **Files:** `src/components/Lobby.tsx`
 

@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { UnitTemplate, UnitType, Race } from '@/types/gameProtocol';
 import { Team } from '@/components/TokenRenderer/tokenUtils';
 import { mapTemplate } from '@/lib/templateMappers';
+import { UnitTemplateTooltip } from './UnitTemplateTooltip';
 
 interface UnitSelectorProps {
   scenarioId: string;
@@ -17,6 +18,8 @@ export function UnitSelector({ scenarioId, onUnitDragStart }: UnitSelectorProps)
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [hoveredTemplate, setHoveredTemplate] = useState<UnitTemplate | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
@@ -95,6 +98,19 @@ export function UnitSelector({ scenarioId, onUnitDragStart }: UnitSelectorProps)
             <div
               key={template.id}
               onMouseDown={(e) => { if (e.button === 0) onUnitDragStart(template); }}
+              onMouseEnter={(e) => {
+                setHoveredTemplate(template);
+                setTooltipPos({ x: e.clientX, y: e.clientY });
+              }}
+              onMouseMove={(e) => {
+                if (hoveredTemplate?.id === template.id) {
+                  setTooltipPos({ x: e.clientX, y: e.clientY });
+                }
+              }}
+              onMouseLeave={() => {
+                setHoveredTemplate(null);
+                setTooltipPos(null);
+              }}
               className="bg-gray-700 hover:bg-gray-600 rounded p-2 cursor-grab active:cursor-grabbing transition select-none border border-gray-600"
             >
               <div className="flex items-center gap-2">
@@ -133,6 +149,10 @@ export function UnitSelector({ scenarioId, onUnitDragStart }: UnitSelectorProps)
           ))
         )}
       </div>
+
+      {hoveredTemplate && tooltipPos && (
+        <UnitTemplateTooltip template={hoveredTemplate} x={tooltipPos.x} y={tooltipPos.y} />
+      )}
     </div>
   );
 }
