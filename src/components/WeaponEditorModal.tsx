@@ -14,9 +14,9 @@ function isValidDamageDice(dice: string): boolean {
   return pattern.test(dice.trim());
 }
 
-function Cell({ label, children, widthClass = 'w-16' }: { label: string; children: React.ReactNode; widthClass?: string }) {
+function Cell({ label, children, widthClass = 'flex-1' }: { label: string; children: React.ReactNode; widthClass?: string }) {
   return (
-    <label className={`flex flex-col gap-0.5 text-[10px] text-gray-400 min-w-0 ${widthClass}`}>
+    <label className={`flex flex-col gap-1 text-xs text-gray-400 min-w-0 ${widthClass}`}>
       <span className="truncate">{label}</span>
       {children}
     </label>
@@ -33,14 +33,14 @@ function NumInput({ value, onChange, min, max }: {
       min={min}
       max={max}
       onChange={e => onChange(parseInt(e.target.value) || 0)}
-      className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+      className="w-full bg-gray-700 text-white text-sm rounded px-3 py-1.5 border border-gray-600 focus:border-yellow-400"
     />
   );
 }
 
 function SelectInput({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
   return (
-    <select value={value} onChange={e => onChange(e.target.value)} className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400">
+    <select value={value} onChange={e => onChange(e.target.value)} className="w-full bg-gray-700 text-white text-sm rounded px-3 py-1.5 border border-gray-600 focus:border-yellow-400">
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   );
@@ -48,9 +48,21 @@ function SelectInput({ value, onChange, options }: { value: string; onChange: (v
 
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <label className="flex items-center gap-1.5 text-[11px] text-gray-300">
-      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="h-3.5 w-3.5 accent-yellow-400" />
+    <label className="flex items-center gap-2 text-sm text-gray-300">
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="h-4 w-4 accent-yellow-400" />
       {label}
+    </label>
+  );
+}
+
+function ToggleRow({ checked, onChange, label, description }: { checked: boolean; onChange: (v: boolean) => void; label: string; description: string }) {
+  return (
+    <label className="flex items-start gap-2 text-sm text-gray-200 cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="h-4 w-4 mt-0.5 accent-yellow-400" />
+      <span>
+        <span className="block">{label}</span>
+        <span className="block text-xs text-gray-500">{description}</span>
+      </span>
     </label>
   );
 }
@@ -185,54 +197,60 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
       <div className="bg-gray-800 p-6 rounded-lg w-[800px] max-h-[90vh] overflow-hidden border border-gray-700 flex flex-col">
         <h2 className="text-xl font-bold mb-4 text-white">{title}</h2>
         <div className="flex flex-1 overflow-hidden gap-6">
-          <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+          <div className="flex-1 overflow-y-auto space-y-4 pr-2">
             <Cell label="Weapon Name" widthClass="w-full">
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+                className="w-full bg-gray-700 text-white text-sm rounded px-3 py-1.5 border border-gray-600 focus:border-yellow-400"
                 placeholder="e.g., Longsword"
               />
             </Cell>
 
-            <div className="flex items-end gap-2">
-              <Cell label="Damage Dice" widthClass="flex-1">
+            <div className="flex items-end gap-3">
+              <Cell label="Damage Dice">
                 <input
                   type="text"
                   value={damageDice}
                   onChange={(e) => setDamageDice(e.target.value)}
-                  className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+                  className="w-full bg-gray-700 text-white text-sm rounded px-3 py-1.5 border border-gray-600 focus:border-yellow-400"
                   placeholder="e.g., 1d8, 2d6+2"
                 />
               </Cell>
-              <div className="pb-1"><Toggle checked={isHealing} onChange={setIsHealing} label="Healing" /></div>
+              <div className="pb-1.5"><Toggle checked={isHealing} onChange={setIsHealing} label="Healing" /></div>
             </div>
 
-            <div className="flex items-end gap-2">
+            <div className="flex items-end gap-3">
               <Cell label="# Attacks"><NumInput value={numberOfAttacks} min={1} onChange={(v) => setNumberOfAttacks(Math.max(1, v || 1))} /></Cell>
               <Cell label="Atk bonus"><NumInput value={attackBonus} onChange={(v) => setAttackBonus(v)} /></Cell>
+            </div>
+
+            <div className="flex items-end gap-3">
               <Cell label="Range"><NumInput value={range} min={1} onChange={(v) => handleRangeChange(v || 1)} /></Cell>
               <Cell label="Max range"><NumInput value={maxRange} min={range} onChange={(v) => setMaxRange(Math.max(range, v || range))} /></Cell>
             </div>
 
-            <div className="flex items-end gap-2">
-              <Cell label="Shape" widthClass="w-20"><SelectInput value={shape} onChange={(v) => setShape(v as AreaShape)} options={AREA_SHAPES.map(s => ({ value: s, label: s }))} /></Cell>
+            <div className="flex items-end gap-3">
               <Cell label="Magic Dimension (ft)"><NumInput value={magicDimension} min={0} onChange={(v) => setMagicDimension(Math.max(0, v))} /></Cell>
-              <div className="pb-1"><Toggle checked={halfOnSave} onChange={setHalfOnSave} label={halfOnSave ? '1/2 dmg' : 'Negate'} /></div>
-              <Cell label="Saving throw" widthClass="w-20"><SelectInput value={savingThrow} onChange={(v) => setSavingThrow(v as SaveStat)} options={SAVE_STATS.map(s => ({ value: s, label: s }))} /></Cell>
+              <Cell label="Shape"><SelectInput value={shape} onChange={(v) => setShape(v as AreaShape)} options={AREA_SHAPES.map(s => ({ value: s, label: s }))} /></Cell>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <Toggle checked={reach} onChange={setReach} label="Reach" />
-              <Toggle checked={isTwoHanded} onChange={setIsTwoHanded} label="Two-Handed" />
-              <Toggle checked={freeAction} onChange={setFreeAction} label="Free Action" />
-              <Toggle checked={noRetaliation} onChange={setNoRetaliation} label="No Retaliation" />
+            <p className="text-xs text-gray-500 -mt-2">Shape: circle = dimension is radius · cube = side · cone = 60° wedge. Dimension &gt; 0 makes this an area-effect weapon.</p>
+
+            <div className="flex items-end gap-3">
+              <div className="pb-1.5"><Toggle checked={halfOnSave} onChange={setHalfOnSave} label={halfOnSave ? '1/2 damage' : 'Negate'} /></div>
+              <Cell label="Saving throw"><SelectInput value={savingThrow} onChange={(v) => setSavingThrow(v as SaveStat)} options={SAVE_STATS.map(s => ({ value: s, label: s }))} /></Cell>
             </div>
 
-            <p className="text-[10px] text-gray-500">Shape: circle = dimension is radius · cube = side · cone = 60° wedge. Dimension &gt; 0 makes this an area-effect weapon.</p>
+            <div className="space-y-3 border-t border-gray-700 pt-3">
+              <ToggleRow checked={reach} onChange={setReach} label="Reach" description="Strikes first against shorter weapons and cancels the opponent's retaliation." />
+              <ToggleRow checked={isTwoHanded} onChange={setIsTwoHanded} label="Two-Handed" description="Requires both hands — shield defense is dropped while this is the active weapon." />
+              <ToggleRow checked={freeAction} onChange={setFreeAction} label="Free Action" description="Does not cost an action to use." />
+              <ToggleRow checked={noRetaliation} onChange={setNoRetaliation} label="No Retaliation" description="Provokes no retaliation and beats reach — fully safe attack." />
+            </div>
 
-            {error && <p className="text-red-400 text-[11px]">{error}</p>}
+            {error && <p className="text-red-400 text-xs">{error}</p>}
             <div className="flex justify-end gap-2 pt-2">
               <button
                 className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
