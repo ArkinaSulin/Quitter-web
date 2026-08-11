@@ -268,6 +268,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
 
   const isPending = !!currentUser && role === null;
   const canCreateScenario = !!currentUser && !!access?.canCreateScenario;
+  const canUseUnitEditor = !!currentUser && !!access?.canUseUnitEditor;
   const canViewUnitEditor = !!currentUser && (!!access?.canViewUnitEditor || !!access?.canUseUnitEditor);
   const canJoin = !!currentUser && !!access?.canJoinGame;
   const canReplay = !!currentUser && !!access?.canViewReplay; // pending users can watch replays but not play
@@ -341,7 +342,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
               onClick={() => router.push('/unit-editor')}
               className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
             >
-              Unit Library
+              {canUseUnitEditor ? 'Unit Editor' : 'Unit Library'}
             </button>
           )}
           {canCreateScenario && (
