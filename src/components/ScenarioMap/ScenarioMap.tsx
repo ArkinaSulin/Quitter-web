@@ -284,12 +284,35 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     : 'Player';
 
   // Permission gates read from a ref so their identity stays stable across renders
-  // (caps/team/alliances update live when the GM reassigns a player).
-  const permRef = useRef({ caps: allTrueCapabilities(), team: myTeam, alliances });
-  permRef.current = { caps: getRoleCapabilities(myRole), team: myTeam, alliances };
+  // (caps/team/alliances update live when the GM reassigns a player). Turn state is
+  // folded in too: from turn 1 on, non-GM players may only act on the current
+  // alliance group's units.
+  const permRef = useRef({
+    caps: allTrueCapabilities(),
+    team: myTeam,
+    alliances,
+    currentTurnAlliance,
+    freeMove,
+    isGM,
+  });
+  permRef.current = {
+    caps: getRoleCapabilities(myRole),
+    team: myTeam,
+    alliances,
+    currentTurnAlliance,
+    freeMove,
+    isGM,
+  };
   const canControlUnit = useCallback((unit: Unit): boolean => {
-    const { caps, team, alliances: al } = permRef.current;
-    return canMoveUnit(caps, team, unit.team, al);
+    const { caps, team, alliances: al, currentTurnAlliance: turn, freeMove: fm, isGM: gm } = permRef.current;
+    // The GM (scenario creator) can always override any gate.
+    if (gm) return true;
+    // Role-scope gate first (own team / own alliance / any team).
+    if (!canMoveUnit(caps, team, unit.team, al)) return false;
+    // Turn 0 / free play (or free-move override): role scope is the only gate.
+    if (fm || turn === null) return true;
+    // Turn 1+: only units in the current turn's alliance group may act.
+    return (al[unit.team] || 'friendly') === turn;
   }, []);
   const canEditUnit = useCallback((unit: Unit): boolean => {
     const { caps, team, alliances: al } = permRef.current;
@@ -326,19 +349,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (isEndingTurn) return;
     setIsEndingTurn(true);
     try {
-      const { next, wrapped, turnNumber: newTurnNumber } = await endTurn({
+      const { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded } = await endTurn({
         currentAlliance: currentTurnAlliance,
         alliances,
         units,
         formationsMap,
         turnNumber,
+        freeMove,
       });
       setCurrentTurnAlliance(next);
-      if (wrapped) setTurnNumber(newTurnNumber);
+      if (wrapped || freeMoveEnded) setTurnNumber(newTurnNumber);
+      // Turn 0 free play ends when the first real turn begins.
+      if (freeMoveEnded) setFreeMove(false);
     } finally {
       setIsEndingTurn(false);
     }
-  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, isEndingTurn]);
+  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, freeMove, isEndingTurn]);
 
   const handleEndTurn = useCallback(async () => {
     if (isEndingTurn) return;
@@ -1942,14 +1968,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               disabled={!isGM || isEndingTurn}
               title={isGM ? 'Advance to the next group' : 'Only the DM can end the turn'}
               className={`px-3 py-1 rounded shadow-lg text-sm ${
-                currentTurnAlliance === 'enemy'
-                  ? 'bg-[#D55E00] hover:bg-[#c74f00] text-white'
-                  : currentTurnAlliance === 'neutral'
-                    ? 'bg-[#E0E0E0] hover:bg-[#d0d0d0] text-black'
-                    : 'bg-[#0072B2] hover:bg-[#00619c] text-white'
+                currentTurnAlliance === null
+                  ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                  : currentTurnAlliance === 'enemy'
+                    ? 'bg-[#D55E00] hover:bg-[#c74f00] text-white'
+                    : currentTurnAlliance === 'neutral'
+                      ? 'bg-[#E0E0E0] hover:bg-[#d0d0d0] text-black'
+                      : 'bg-[#0072B2] hover:bg-[#00619c] text-white'
               } ${!isGM || isEndingTurn ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              {`End Turn${isEndingTurn ? '…' : ''} (${currentTurnAlliance ?? 'friendly'})`}
+              {`End Turn${isEndingTurn ? '…' : ''}${currentTurnAlliance === null ? ' (Free Play)' : ` (${currentTurnAlliance})`}`}
             </button>
           )}
           {!controlsLocked && (
@@ -2317,7 +2345,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           <div className="bg-gray-900 border border-yellow-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
             <p className="text-white text-sm mb-1 text-center font-semibold">Free Move is still ON</p>
             <p className="text-gray-400 text-xs mb-4 text-center">
-              You are ending the turn while Free Move is enabled. Movements still cost no MP/actions. Do you want to continue?
+              Ending the turn from free play (Turn 0) starts Turn 1, which turns Free Move OFF automatically. Do you want to continue?
             </p>
             <div className="flex flex-col gap-2">
               <button

@@ -598,20 +598,31 @@ export function useGameEngine({
       units: Unit[];
       formationsMap: Record<string, Formation>;
       turnNumber: number;
-    }): Promise<{ next: AllianceGroup; wrapped: boolean; turnNumber: number }> => {
+      freeMove: boolean;
+    }): Promise<{ next: AllianceGroup; wrapped: boolean; turnNumber: number; freeMoveEnded: boolean }> => {
       const activeGroups = getActiveGroups(args.alliances);
       const { next, wrapped } = advanceTurn(args.currentAlliance, activeGroups);
-      const newTurnNumber = wrapped ? args.turnNumber + 1 : args.turnNumber;
+      // Turn 0 = free play (null alliance). The first End Turn leaves free play and
+      // begins Turn 1, which also counts as a turn boundary (turn_number + 1).
+      const leavingFreePlay = args.currentAlliance === null;
+      const newTurnNumber = (leavingFreePlay || wrapped) ? args.turnNumber + 1 : args.turnNumber;
+
+      const changes: { field: string; from: any; to: any }[] = [
+        { field: 'current_turn_alliance', from: args.currentAlliance ?? null, to: next },
+        { field: 'turn_number', from: args.turnNumber, to: newTurnNumber },
+      ];
+      // Free move is a turn-0 convenience: it ends automatically once the first
+      // real turn begins. The DM can still toggle it back on manually.
+      if (leavingFreePlay) {
+        changes.push({ field: 'free_move', from: args.freeMove, to: false });
+      }
 
       const subSteps: SubStep[] = [
         {
           type: 'SCENARIO',
           description: `Turn advances — ${next} turn begins`,
           unitId: scenarioId,
-          changes: [
-            { field: 'current_turn_alliance', from: args.currentAlliance ?? null, to: next },
-            { field: 'turn_number', from: args.turnNumber, to: newTurnNumber },
-          ],
+          changes,
         },
       ];
 
@@ -661,7 +672,7 @@ export function useGameEngine({
       }
 
       await execute('END_TURN', subSteps, `End Turn — ${next} turn begins`);
-      return { next, wrapped, turnNumber: newTurnNumber };
+      return { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded: leavingFreePlay };
     },
     [execute, scenarioId],
   );

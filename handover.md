@@ -1,5 +1,14 @@
 # Handover — 2026-08-03
 
+## Turn 0 free play: free_move auto-ends at Turn 1 + alliance-gated movement (2026-08-11)
+**Files:** `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`
+
+- **Turn 0 = free play** (`current_turn_alliance` null, `free_move` ON by default). The End Turn button shows **"End Turn (Free Play)"** in gray instead of a misleading friendly-blue label.
+- **`endTurn`**: `leavingFreePlay = currentAlliance === null` → first End Turn sets `turn_number + 1` (Turn 1 begins) AND pushes a `free_move → false` SCENARIO change (rides the command log, undo restores it). Returns `freeMoveEnded`. The DM can still re-enable free move manually later.
+- **Movement gating** (`canControlUnit`): GM always overrides; otherwise role-scope gate first; then during free play / free move (`freeMove || turn === null`) role scope is the only gate; from **Turn 1 on**, only units whose alliance group equals `current_turn_alliance` may move/attack/rotate (drag, context menu, keyboard all flow through this). `permRef` now also carries `currentTurnAlliance`, `freeMove`, `isGM`.
+- `performEndTurn` passes `freeMove`, applies `setTurnNumber` on `wrapped || freeMoveEnded`, and clears local free move when it ended. Free-move confirm modal copy updated.
+- 309 tests; `tsc --noEmit` clean.
+
 ## Unit template tooltip in Unit Selector (2026-08-11)
 **Files:** `src/components/ScenarioMap/UnitTemplateTooltip.tsx` (new), `src/components/ScenarioMap/UnitSelector.tsx`
 
