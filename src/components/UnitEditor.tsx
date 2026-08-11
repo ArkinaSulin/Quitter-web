@@ -913,10 +913,12 @@ export default function UnitEditor() {
                               const newHp = (race?.base_hd && (currentHp === 10 || currentHp === 0)) ? race.base_hd : currentHp;
 
                               let newSize = race?.size_category || 100;
+                              let newMovement = race?.base_speed || 3;
                               if (formData?.mountId) {
                                 const mount = mounts.find(m => m.id === formData.mountId);
                                 if (mount) {
                                   newSize = Math.max(race?.size_category || 100, mount.size_category);
+                                  newMovement = mount.speed;
                                 }
                               }
 
@@ -928,7 +930,7 @@ export default function UnitEditor() {
                                 raceCanCharge: race?.can_charge || false,
                                 troopHp: newHp,
                                 level: race?.base_hd || 1,
-                                movementPoints: race?.base_speed || 3,
+                                movementPoints: newMovement,
                                 canCharge: race?.can_charge || false,
                                 sizeCategory: newSize,
                                 visualScale: race?.visual_scale || 100,
@@ -1028,6 +1030,7 @@ export default function UnitEditor() {
                                   mountId: selectedValue,
                                   mountName: mount.name,
                                   sizeCategory: mount.size_category,
+                                  movementPoints: mount.speed,
                                 } : null);
                                 const mountedUnitType = unitTypes.find(m => m.isMounted === true);
                                 if (mountedUnitType) {
@@ -1045,6 +1048,7 @@ export default function UnitEditor() {
                                   mountId: '',
                                   mountName: '',
                                   sizeCategory: race?.size_category || 100,
+                                  movementPoints: race?.base_speed || 3,
                                 } : null);
                               }
                             }}
