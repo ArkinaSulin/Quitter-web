@@ -78,7 +78,7 @@ function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onCh
   );
 }
 
-export default function UnitEditor() {
+export default function UnitEditor({ readOnly = false }: { readOnly?: boolean }) {
   const router = useRouter();
   const [templates, setTemplates] = useState<UnitTemplate[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -140,6 +140,7 @@ export default function UnitEditor() {
   const observerRef = useRef<ResizeObserver | null>(null);
 
   const openImagePicker = () => {
+    if (readOnly) return;
     if (!formData) return;
     setShowImagePicker(true);
   };
@@ -235,6 +236,7 @@ export default function UnitEditor() {
   };
 
   const updateFormData = (field: keyof UnitTemplate, value: any) => {
+    if (readOnly) return;
     if (!formData) return;
 
     // copy current formData to updated
@@ -470,16 +472,19 @@ export default function UnitEditor() {
   }, [isDirty]);
 
   const openAddWeapon = () => {
+    if (readOnly) return;
     setEditingWeaponIndex(null);
     setShowWeaponModal(true);
   };
 
   const openEditWeapon = (index: number) => {
+    if (readOnly) return;
     setEditingWeaponIndex(index);
     setShowWeaponModal(true);
   };
 
   const handleWeaponSave = (weapon: WeaponType) => {
+    if (readOnly) return;
     if (!formData) return;
     const currentWeapons = getWeapons();
     let updatedWeapons: WeaponType[];
@@ -495,6 +500,7 @@ export default function UnitEditor() {
   };
 
   const removeWeapon = (index: number) => {
+    if (readOnly) return;
     if (!formData) return;
     const currentWeapons = getWeapons();
     const updatedWeapons = currentWeapons.filter((_, i) => i !== index);
@@ -553,6 +559,7 @@ export default function UnitEditor() {
   };
 
   const handleNew = () => {
+    if (readOnly) return;
     requestAction(() => {
       const blank = createBlankTemplate();
       setFormData(blank);
@@ -570,6 +577,7 @@ export default function UnitEditor() {
   };
 
   const handleClone = () => {
+    if (readOnly) return;
     requestAction(() => {
       if (!formData) return;
       setCloneName(`${formData.unitName} (Clone)`);
@@ -622,6 +630,7 @@ export default function UnitEditor() {
   };
 
   const handleSave = async (): Promise<boolean> => {
+    if (readOnly) return false;
     if (!formData) {
       setError('No unit selected to save');
       return false;
@@ -748,6 +757,7 @@ export default function UnitEditor() {
   };
 
   const handleSaveAs = () => {
+    if (readOnly) return;
     if (!formData) return;
     setCloneName(`${formData.unitName} (Copy)`);
     setCloneError('');
@@ -755,6 +765,7 @@ export default function UnitEditor() {
   };
 
   const handleDelete = async () => {
+    if (readOnly) return;
     if (!formData) return;
     if (!confirm(`Delete unit "${formData.unitName}"?`)) return;
     try {
@@ -808,12 +819,19 @@ export default function UnitEditor() {
     <div className="flex flex-col h-screen bg-[#0d0d1a] text-white">
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-700 bg-[#0d0d1a]">
         <h1 className="text-2xl font-bold text-white">Unit Editor</h1>
-        <button
-          onClick={() => requestAction(() => router.push('/'))}
-          className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
-        >
-          Main Menu
-        </button>
+        <div className="flex items-center gap-3">
+          {readOnly && (
+            <span className="px-3 py-1 rounded bg-gray-700 border border-gray-600 text-xs text-gray-300">
+              Read-only view — editing requires a DM or admin
+            </span>
+          )}
+          <button
+            onClick={() => requestAction(() => router.push('/'))}
+            className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+          >
+            Main Menu
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -831,19 +849,23 @@ export default function UnitEditor() {
       <div className="flex flex-1 overflow-hidden">
         <div className="w-1/4 max-w-[256px] flex-shrink-0 p-4 border-r border-gray-700 flex flex-col bg-[#0d0d1a]">
           <div className="flex gap-2 mb-4">
-            <button
-              onClick={handleNew}
-              className="flex-1 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
-            >
-              New
-            </button>
-            <button
-              onClick={handleClone}
-              disabled={!formData}
-              className="flex-1 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Clone
-            </button>
+            {!readOnly && (
+              <>
+                <button
+                  onClick={handleNew}
+                  className="flex-1 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+                >
+                  New
+                </button>
+                <button
+                  onClick={handleClone}
+                  disabled={!formData}
+                  className="flex-1 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Clone
+                </button>
+              </>
+            )}
           </div>
           <div className="mb-4">
             <input
@@ -883,7 +905,7 @@ export default function UnitEditor() {
           {formData ? (
             <>
               <div className="flex-1 overflow-y-auto p-6">
-                <div className="max-w-3xl space-y-4">
+                <fieldset disabled={readOnly} className="max-w-3xl space-y-4">
                   {/* Identity — full width */}
                   <div className="flex items-end gap-2">
                     <Cell label="Unit Name" widthClass="flex-1">
@@ -1262,10 +1284,11 @@ export default function UnitEditor() {
                   <label className="block text-[10px] text-gray-400">Weekly Cost (gp)</label>
                   <div className="text-lg font-bold text-yellow-400">{formData.weeklyCostGp || 0}</div>
                 </div>
-              </div>
                 </div>
+                </fieldset>
               </div>
               {/* Sticky Save bar — always visible without scrolling */}
+              {!readOnly && (
               <div className="flex-none px-6 py-3 border-t border-gray-700 bg-[#0d0d1a] flex gap-3">
                 <button
                   onClick={handleSave}
@@ -1286,6 +1309,7 @@ export default function UnitEditor() {
                   Delete
                 </button>
               </div>
+              )}
             </>
           ) : (
             <div className="flex items-center justify-center flex-1 text-gray-500">
@@ -1333,12 +1357,14 @@ export default function UnitEditor() {
                     onImageClick={openImagePicker}
                   />
                 </div>
+                {!readOnly && (
                 <button
                   onClick={openImagePicker}
                   className="mt-2 ml-2 px-3 py-1 bg-blue-600 text-white rounded text-xs"
                 >
                   Change Image
                 </button>
+                )}
               </div>
 
               {/* Team preview */}

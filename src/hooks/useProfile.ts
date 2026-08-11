@@ -19,6 +19,7 @@ const profileCache = new Map<string, CachedProfile>();
 // so privileges can change without code edits.
 interface AccessRow {
   can_use_unit_editor: boolean;
+  can_view_unit_editor: boolean;
   can_create_scenario: boolean;
   can_join_game: boolean;
   can_view_replay: boolean;
@@ -26,12 +27,13 @@ interface AccessRow {
 
 export interface Access {
   canUseUnitEditor: boolean;
+  canViewUnitEditor: boolean;
   canCreateScenario: boolean;
   canJoinGame: boolean;
   canViewReplay: boolean;
 }
 
-const EMPTY_ACCESS: Access = { canUseUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false };
+const EMPTY_ACCESS: Access = { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false };
 
 let accessCache: Record<string, AccessRow> | null = null;
 
@@ -39,10 +41,11 @@ async function loadAccessMatrix(): Promise<Record<string, AccessRow>> {
   if (accessCache) return accessCache;
   const { data } = await supabase
     .from('access_roles')
-    .select('role, can_use_unit_editor, can_create_scenario, can_join_game, can_view_replay');
+    .select('role, can_use_unit_editor, can_view_unit_editor, can_create_scenario, can_join_game, can_view_replay');
   accessCache = (data || []).reduce((acc: Record<string, AccessRow>, row: any) => {
     acc[row.role] = {
       can_use_unit_editor: !!row.can_use_unit_editor,
+      can_view_unit_editor: !!row.can_view_unit_editor,
       can_create_scenario: !!row.can_create_scenario,
       can_join_game: !!row.can_join_game,
       can_view_replay: !!row.can_view_replay,
@@ -54,9 +57,10 @@ async function loadAccessMatrix(): Promise<Record<string, AccessRow>> {
 
 function accessForRole(role: ProfileRole): Access {
   const row = (accessCache || {})[role || 'pending'];
-  if (!row) return { canUseUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false };
+  if (!row) return { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false };
   return {
     canUseUnitEditor: row.can_use_unit_editor,
+    canViewUnitEditor: row.can_view_unit_editor,
     canCreateScenario: row.can_create_scenario,
     canJoinGame: row.can_join_game,
     canViewReplay: row.can_view_replay,

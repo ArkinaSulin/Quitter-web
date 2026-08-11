@@ -15,15 +15,18 @@ export default function UnitEditorPage() {
 
   const ready = !authLoading && !loading && !accessLoading && !!userId;
 
-  // Only roles granted can_use_unit_editor may edit units; everyone else is
-  // redirected back to the lobby. `ready` waits for BOTH the auth session and the
-  // access matrix to resolve, so an admin is never briefly misread as pending.
+  // Full editing requires can_use_unit_editor (admin/dm); anyone with
+  // can_view_unit_editor (incl. players) may browse the unit library read-only.
+  // `ready` waits for BOTH the auth session and the access matrix to resolve, so
+  // an admin is never briefly misread as pending.
+  const canAccess = !!access?.canViewUnitEditor || !!access?.canUseUnitEditor;
+  const readOnly = !access?.canUseUnitEditor;
   useEffect(() => {
     if (!ready) return;
-    if (!access?.canUseUnitEditor) {
+    if (!canAccess) {
       router.replace('/');
     }
-  }, [ready, access, router]);
+  }, [ready, canAccess, router]);
 
   if (!ready) {
     return (
@@ -33,5 +36,5 @@ export default function UnitEditorPage() {
     );
   }
 
-  return <UnitEditor />;
+  return <UnitEditor readOnly={readOnly} />;
 }

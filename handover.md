@@ -1,5 +1,15 @@
 # Handover — 2026-08-03
 
+## Unit Library: read-only access for players via can_view_unit_editor (2026-08-11)
+**Files:** `supabase/migrations/050_access_view_unit_editor.sql` (new), `src/hooks/useProfile.ts`, `app/unit-editor/page.tsx`, `src/components/UnitEditor.tsx`, `src/components/Lobby.tsx`
+
+- **Migration 050**: `access_roles.can_view_unit_editor` BOOLEAN (default false), seeded **true for admin/dm/player, false for pending**; `user_has_access` gains the `view_unit_editor` case. **Server-side enforcement**: `unit_templates` RLS enabled — SELECT requires `view_unit_editor`, INSERT/UPDATE/DELETE require `unit_editor` (so players can't write via the API despite the read-only UI). **Apply to the DB.**
+- **`useProfile`**: `Access.canViewUnitEditor` added to the matrix (select/fallback/EMPTY_ACCESS).
+- **`app/unit-editor/page.tsx`**: entry allowed when `canViewUnitEditor || canUseUnitEditor`; passes `readOnly={!canUseUnitEditor}`.
+- **`UnitEditor`**: new `readOnly` prop — editable form wrapped in `<fieldset disabled>`; New/Clone and the sticky Save/Save As/Delete bar hidden; Change Image hidden; all write handlers (`updateFormData`, weapon add/edit/remove, new/clone/save/saveAs/delete, image picker) early-return in readOnly; header shows a "Read-only view — editing requires a DM or admin" badge. Browsing/searching/selecting templates stays active; preview test controls stay live.
+- **`Lobby`**: button now reads **"Unit Library"** and shows for `canViewUnitEditor || canUseUnitEditor` (was edit-only).
+- 309 tests; `tsc --noEmit` clean.
+
 ## Formation change cost: flat % of effective movement, not MP per step (2026-08-10)
 **Files:** `src/lib/formationCost.ts` + test, `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`, `supabase/migrations/049_formation_cost_percent.sql` (new)
 
