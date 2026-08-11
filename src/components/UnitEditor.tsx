@@ -31,6 +31,50 @@ function snapSizeCategory(value: number): number {
   return closest;
 }
 
+const SIZE_SLIDER_VALUES = [75, 100, 200, 300, 400];
+
+function Cell({ label, children, widthClass = 'w-16' }: { label: string; children: React.ReactNode; widthClass?: string }) {
+  return (
+    <label className={`flex flex-col gap-0.5 text-[10px] text-gray-400 min-w-0 ${widthClass}`}>
+      <span className="truncate">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function NumInput({ value, onChange, min, max, disabled }: {
+  value: any; onChange: (v: number) => void; min?: number; max?: number; disabled?: boolean;
+}) {
+  return (
+    <input
+      type="number"
+      value={value}
+      min={min}
+      max={max}
+      disabled={disabled}
+      onChange={e => onChange(parseInt(e.target.value) || 0)}
+      className={`w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+    />
+  );
+}
+
+function ReadBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="w-full bg-gray-700 text-yellow-400 text-xs rounded px-2 py-1 border border-gray-600 opacity-80">
+      {children}
+    </div>
+  );
+}
+
+function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <label className={`flex items-center gap-1.5 text-[11px] text-gray-300 ${disabled ? 'opacity-50' : ''}`}>
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)} className="h-3.5 w-3.5 accent-yellow-400" />
+      {label}
+    </label>
+  );
+}
+
 export default function UnitEditor() {
   const router = useRouter();
   const [templates, setTemplates] = useState<UnitTemplate[]>([]);
@@ -769,379 +813,217 @@ export default function UnitEditor() {
           </div>
         </div>
 
-        <div className="flex-1 min-w-0 p-6 overflow-y-auto bg-[#0d0d1a]">
+        <div className="flex-1 min-w-0 flex flex-col bg-[#0d0d1a]">
           {formData ? (
-            <div className="max-w-3xl space-y-4">
-              {/* Unit Name + Hero */}
-              <div className="flex items-end gap-4">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Unit Name</label>
-                  <input
-                    type="text"
-                    value={formData.unitName || ''}
-                    onChange={(e) => updateFormData('unitName', e.target.value)}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  />
-                </div>
-                <div className="flex items-center gap-2 pb-1">
-                  <label className="flex items-center gap-2 text-sm font-medium text-gray-300 whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      checked={formData.isHero || false}
-                      onChange={(e) => updateFormData('isHero', e.target.checked)}
-                      disabled={isGargantuan}
-                      className={`w-4 h-4 accent-yellow-400 ${
-                        isGargantuan ? 'opacity-50 cursor-not-allowed' : ''
-                      }`}
-                    />
-                    Hero Unit
-                    {isGargantuan && <span className="text-xs text-gray-500">(forced)</span>}
-                  </label>
-                </div>
-              </div>
+            <>
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="max-w-3xl space-y-4">
+                  {/* Two-column compact field block */}
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                    {/* LEFT column */}
+                    <div className="space-y-3">
+                      {/* Identity */}
+                      <div className="flex items-end gap-2">
+                        <Cell label="Unit Name" widthClass="flex-1">
+                          <input
+                            type="text"
+                            value={formData.unitName || ''}
+                            onChange={(e) => updateFormData('unitName', e.target.value)}
+                            className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+                          />
+                        </Cell>
+                        <div className="pb-1">
+                          <Toggle
+                            checked={formData.isHero || false}
+                            disabled={isGargantuan}
+                            onChange={(v) => { updateFormData('isHero', v); if (v) updateFormData('ignoreMoraleChecks', true); }}
+                            label="Hero"
+                          />
+                        </div>
+                      </div>
 
-              {/* Race & Level */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Race</label>
-                  <select
-                    key={`race-${formData.raceId || 'none'}`}
-                    value={formData.raceId || ''}
-                    onChange={(e) => {
-                      const race = races.find(r => r.id === e.target.value);
-                      const currentHp = formData?.troopHp || 0;
-                      const newHp = (race?.base_hd && (currentHp === 10 || currentHp === 0)) ? race.base_hd : currentHp;
+                      {/* Race & Level */}
+                      <div className="flex items-end gap-2">
+                        <Cell label="Race" widthClass="flex-1">
+                          <select
+                            key={`race-${formData.raceId || 'none'}`}
+                            value={formData.raceId || ''}
+                            onChange={(e) => {
+                              const race = races.find(r => r.id === e.target.value);
+                              const currentHp = formData?.troopHp || 0;
+                              const newHp = (race?.base_hd && (currentHp === 10 || currentHp === 0)) ? race.base_hd : currentHp;
 
-                      let newSize = race?.size_category || 100;
-                      if (formData?.mountId) {
-                        const mount = mounts.find(m => m.id === formData.mountId);
-                        if (mount) {
-                          newSize = Math.max(race?.size_category || 100, mount.size_category);
-                        }
-                      }
+                              let newSize = race?.size_category || 100;
+                              if (formData?.mountId) {
+                                const mount = mounts.find(m => m.id === formData.mountId);
+                                if (mount) {
+                                  newSize = Math.max(race?.size_category || 100, mount.size_category);
+                                }
+                              }
 
-                      setFormData(prev => prev ? {
-                        ...prev,
-                        raceId: e.target.value,
-                        raceName: race?.name || '',
-                        raceIconUrl: raceIconFromName(race?.name, race?.icon_url),
-                        raceCanCharge: race?.can_charge || false,
-                        troopHp: newHp,
-                        level: race?.base_hd || 1,
-                        movementPoints: race?.base_speed || 3,
-                        canCharge: race?.can_charge || false,
-                        sizeCategory: newSize,
-                        visualScale: race?.visual_scale || 100,
-                      } : null);
-                    }}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  >
-                    <option value="">Select a race...</option>
-                    {races.map(race => (
-                      <option key={race.id} value={race.id}>{race.name}</option>
-                    ))}
-                  </select>
-                </div>
+                              setFormData(prev => prev ? {
+                                ...prev,
+                                raceId: e.target.value,
+                                raceName: race?.name || '',
+                                raceIconUrl: raceIconFromName(race?.name, race?.icon_url),
+                                raceCanCharge: race?.can_charge || false,
+                                troopHp: newHp,
+                                level: race?.base_hd || 1,
+                                movementPoints: race?.base_speed || 3,
+                                canCharge: race?.can_charge || false,
+                                sizeCategory: newSize,
+                                visualScale: race?.visual_scale || 100,
+                              } : null);
+                            }}
+                            className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+                          >
+                            <option value="">Select a race...</option>
+                            {races.map(race => (
+                              <option key={race.id} value={race.id}>{race.name}</option>
+                            ))}
+                          </select>
+                        </Cell>
+                        <Cell label="Level"><NumInput value={formData.level || 1} min={1} onChange={(v) => updateFormData('level', v || 1)} /></Cell>
+                      </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Level / HD</label>
-                  <input
-                    type="number"
-                    value={formData.level || 1}
-                    onChange={(e) => updateFormData('level', parseInt(e.target.value) || 1)}
-                    min={1}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  />
-                </div>
-              </div>
+                      {/* Token */}
+                      <div>
+                        <label className="block text-[10px] text-gray-400 mb-0.5">Size: <span className="text-yellow-400">{getSizeLabel(formData.sizeCategory || 100)}</span></label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="4"
+                          step="1"
+                          value={Math.max(0, SIZE_SLIDER_VALUES.indexOf(formData.sizeCategory || 100))}
+                          onChange={(e) => updateFormData('sizeCategory', SIZE_SLIDER_VALUES[parseInt(e.target.value)] || 100)}
+                          className="w-full accent-yellow-400"
+                        />
+                        <div className="flex justify-between text-[9px] text-gray-500 px-0.5 mt-0.5">
+                          <span>Small</span><span>Med</span><span>Large</span><span>Huge</span><span>Garg</span>
+                        </div>
+                        <div className="flex items-end gap-2 mt-1">
+                          <Cell label="Visual scale" widthClass="flex-1"><NumInput value={formData.visualScale || 100} min={50} max={149} onChange={(v) => updateFormData('visualScale', Math.max(50, Math.min(149, v || 100)))} /></Cell>
+                        </div>
+                      </div>
 
-              {/* HP, Troop Count, Unit HP */}
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">HP per Troop</label>
-                  <input
-                    type="number"
-                    value={formData.troopHp || 10}
-                    onChange={(e) => updateFormData('troopHp', parseInt(e.target.value) || 10)}
-                    min={1}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Troop Count</label>
-                  <input
-                    type="number"
-                    value={formData.troopCount || 1}
-                    onChange={(e) => {
-                      const raw = parseInt(e.target.value) || 1;
-                      updateFormData('troopCount', Math.min(raw, troopCap));
-                    }}
-                    min={1}
-                    max={troopCap}
-                    disabled={isGargantuan || formData.isHero}
-                    className={`w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400 ${
-                      (isGargantuan || formData.isHero) ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  />
-                  {(isGargantuan || formData.isHero) && (
-                    <p className="text-xs text-gray-500 mt-1">Fixed at 1 for Hero or Gargantuan</p>
-                  )}
-                  {!isGargantuan && !formData.isHero && (formData.troopCount || 1) > troopCap && (
-                    <p className="text-xs text-yellow-400 mt-1">Capped at {troopCap} for this size</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Unit HP (Auto)</label>
-                  <input
-                    type="text"
-                    value={(formData.troopHp || 0) * (formData.troopCount || 1)}
-                    disabled
-                    className="w-full bg-gray-700 text-yellow-400 px-3 py-2 rounded border border-gray-600 cursor-not-allowed"
-                  />
-                </div>
-              </div>
-
-              {/* Base AC, Attack, Movement */}
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Racial AC</label>
-                  <input
-                    type="number"
-                    value={formData.baseAc || 10}
-                    onChange={(e) => updateFormData('baseAc', parseInt(e.target.value) || 10)}
-                    min={1}
-                    max={30}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Base AC + Armor + Shield = Baseline AC</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Movement Points</label>
-                  <input
-                    type="number"
-                    value={formData.movementPoints || 3}
-                    onChange={(e) => updateFormData('movementPoints', Math.max(1, parseInt(e.target.value) || 3))}
-                    min={1}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  />
-                </div>
-              </div>
-
-              {/* Armor + Shield */}
-              <div className="grid grid-cols-2 gap-4 items-end">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Armor</label>
-                  <select
-                    key={`armor-${formData.armorId || 'none'}`}
-                    value={formData.armorId || ''}
-                    onChange={(e) => {
-                      const selectedValue = e.target.value;
-                      const armor = armors.find(a => a.id === selectedValue);
-                      setFormData(prev => prev ? {
-                        ...prev,
-                        armorId: selectedValue,
-                        armorName: armor?.name || ''
-                      } : null);
-                    }}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  >
-                    <option value="">No Armor</option>
-                    {sortedArmors.map(armor => (
-                      <option key={armor.id} value={armor.id}>
-                        {armor.name} (+{armor.ac_bonus || 0} AC) - {armor.cost_gp || 0}gp
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="flex items-center h-full">
-                  <label className="flex items-center gap-2 text-sm font-medium text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={formData.isShielded || false}
-                      onChange={(e) => {
-                        setFormData(prev => prev ? { ...prev, isShielded: e.target.checked } : null);
-                      }}
-                      className="w-4 h-4 accent-yellow-400"
-                    />
-                    Shield (+2 AC)
-                  </label>
-                </div>
-              </div>
-
-              {/* Mount + Can Charge */}
-              <div className="grid grid-cols-2 gap-4 items-end">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Mount</label>
-                  <select
-                    key={`mount-${formData.mountId || 'none'}`}
-                    value={formData.mountId || ''}
-                    onChange={(e) => {
-                      const selectedValue = e.target.value;
-                      const mount = mounts.find(m => m.id === selectedValue);
-
-                      if (mount) {
-                        setFormData(prev => prev ? {
-                          ...prev,
-                          mountId: selectedValue,
-                          mountName: mount.name,
-                          sizeCategory: mount.size_category,
-                        } : null);
-                        const mountedUnitType = unitTypes.find(m => m.isMounted === true);
-                        if (mountedUnitType) {
-                          setFormData(prev => prev ? {
-                            ...prev,
-                            modelTypeId: mountedUnitType.id,
-                            modelTypeName: mountedUnitType.name,
-                            unitTypeIconUrl: mountedUnitType.icon_url || null,
-                          } : null);
-                        }
-                      } else {
-                        const race = races.find(r => r.id === formData?.raceId);
-                        setFormData(prev => prev ? {
-                          ...prev,
-                          mountId: '',
-                          mountName: '',
-                          sizeCategory: race?.size_category || 100,
-                        } : null);
-                      }
-                    }}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  >
-                    <option value="">No Mount</option>
-                    {filteredMounts.map(mount => (
-                      <option key={mount.id} value={mount.id}>
-                        {mount.name} (Speed: {mount.speed}) - {mount.cost_gp || 0}gp
-                      </option>
-                    ))}
-                  </select>
-                  {filteredMounts.length === 0 && formData.mountId === '' && (
-                    <p className="text-xs text-gray-500 mt-1">No suitable mounts for this size.</p>
-                  )}
-                </div>
-
-                <div className="flex items-center h-full">
-                  <label className="flex items-center gap-2 text-sm font-medium text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={formData.canCharge || false}
-                      onChange={(e) => updateFormData('canCharge', e.target.checked)}
-                      className="w-4 h-4 accent-yellow-400"
-                    />
-                    Can Charge
-                  </label>
-                  <span className="text-xs text-gray-500 ml-2">
-                    Race: {selectedRace?.can_charge ? 'Yes' : 'No'} · Mount: {formData.mountId ? mounts.find(m => m.id === formData.mountId)?.can_charge ? 'Yes' : 'No' : 'N/A'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Size Category + Visual Scale */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
-                    Size Category: <span className="text-yellow-400">{getSizeLabel(formData.sizeCategory || 100)}</span>
-                  </label>
-                  <input
-                    type="range"
-                    min="75"
-                    max="400"
-                    step="25"
-                    value={formData.sizeCategory || 100}
-                    onChange={(e) => {
-                      const raw = parseInt(e.target.value);
-                      const snapped = snapSizeCategory(raw);
-                      updateFormData('sizeCategory', snapped);
-                    }}
-                    className="w-full accent-yellow-400"
-                    list="size-ticks"
-                  />
-                  <datalist id="size-ticks">
-                    <option value="75" label="Small" />
-                    <option value="100" label="Medium" />
-                    <option value="200" label="Large" />
-                    <option value="300" label="Huge" />
-                    <option value="400" label="Gargantuan" />
-                  </datalist>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Visual Scale (%)</label>
-                  <input
-                    type="number"
-                    value={formData.visualScale || 100}
-                    onChange={(e) => updateFormData('visualScale', Math.max(50, Math.min(149, parseInt(e.target.value) || 100)))}
-                    min={50}
-                    max={149}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Minor visual adjustment (50-149%).</p>
-                </div>
-              </div>
-
-              {/* Base Morale & Aggressiveness */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Base Morale (1-10)</label>
-                  <input
-                    type="number"
-                    value={formData.baseMorale || 3}
-                    onChange={(e) => updateFormData('baseMorale', Math.max(1, Math.min(10, parseInt(e.target.value) || 3)))}
-                    min={1}
-                    max={10}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Aggressiveness (1-10)</label>
-                  <input
-                    type="number"
-                    value={formData.aggressiveness || 3}
-                    onChange={(e) => updateFormData('aggressiveness', Math.max(1, Math.min(10, parseInt(e.target.value) || 3)))}
-                    min={1}
-                    max={10}
-                    disabled={formData.isHero}
-                    className={`w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400 ${formData.isHero ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  />
-                  {formData.isHero && (
-                    <p className="text-xs text-yellow-400/80 mt-1">Heroes ignore aggressiveness (no AGR check).</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 self-end pb-2">
-                  <input
-                    type="checkbox"
-                    id="ignoreMoraleChecks"
-                    checked={formData.ignoreMoraleChecks || false}
-                    onChange={(e) => updateFormData('ignoreMoraleChecks', e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-yellow-400 focus:ring-yellow-400"
-                  />
-                  <label htmlFor="ignoreMoraleChecks" className="text-sm text-gray-300">Ignore morale checks (fearless)</label>
-                </div>
-              </div>
-
-              {/* Ability save bonuses (used by area-effect spells) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Save bonuses (Str/Dex/Con/Int/Wis/Cha) — used by area-effect spells
-                </label>
-                <div className="grid grid-cols-6 gap-2">
-                  {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(stat => (
-                    <div key={stat}>
-                      <label className="block text-xs uppercase text-gray-500 mb-1">{stat}</label>
-                      <input
-                        type="number"
-                        value={formData[stat] ?? 0}
-                        onChange={(e) => updateFormData(stat, parseInt(e.target.value) || 0)}
-                        min={-10}
-                        max={20}
-                        className="w-full bg-gray-700 text-white px-2 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-                      />
+                      {/* Hit Points */}
+                      <div className="flex items-end gap-2">
+                        <Cell label="HP/troop"><NumInput value={formData.troopHp || 10} min={1} onChange={(v) => updateFormData('troopHp', v || 10)} /></Cell>
+                        <Cell label="Troop count"><NumInput value={formData.troopCount || 1} min={1} max={troopCap} disabled={isGargantuan || formData.isHero} onChange={(v) => updateFormData('troopCount', Math.min(v || 1, troopCap))} /></Cell>
+                        <Cell label="Unit HP"><ReadBox>{(formData.troopHp || 0) * (formData.troopCount || 1)}</ReadBox></Cell>
+                      </div>
+                      {(isGargantuan || formData.isHero) && (
+                        <p className="text-[10px] text-gray-500">Troop count fixed at 1 for Hero/Gargantuan</p>
+                      )}
                     </div>
-                  ))}
-                </div>
-              </div>
+                    {/* RIGHT column */}
+                    <div className="space-y-3">
+
+                      {/* Defense */}
+                      <div className="space-y-1">
+                        <div className="flex items-end gap-2">
+                          <Cell label="Base AC"><NumInput value={formData.baseAc || 10} min={1} max={30} onChange={(v) => updateFormData('baseAc', v || 10)} /></Cell>
+                          <Cell label="Movement"><NumInput value={formData.movementPoints || 3} min={1} onChange={(v) => updateFormData('movementPoints', Math.max(1, v || 3))} /></Cell>
+                        </div>
+                        <div className="flex items-end gap-2">
+                          <Cell label="Armor" widthClass="flex-1">
+                            <select
+                              key={`armor-${formData.armorId || 'none'}`}
+                              value={formData.armorId || ''}
+                              onChange={(e) => {
+                                const selectedValue = e.target.value;
+                                const armor = armors.find(a => a.id === selectedValue);
+                                setFormData(prev => prev ? {
+                                  ...prev,
+                                  armorId: selectedValue,
+                                  armorName: armor?.name || ''
+                                } : null);
+                              }}
+                              className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+                            >
+                              <option value="">No Armor</option>
+                              {sortedArmors.map(armor => (
+                                <option key={armor.id} value={armor.id}>
+                                  {armor.name} (+{armor.ac_bonus || 0} AC) - {armor.cost_gp || 0}gp
+                                </option>
+                              ))}
+                            </select>
+                          </Cell>
+                          <div className="pb-1"><Toggle checked={formData.isShielded || false} onChange={(v) => setFormData(prev => prev ? { ...prev, isShielded: v } : null)} label="Shield" /></div>
+                        </div>
+                      </div>
+
+                      {/* Mount & Charge */}
+                      <div className="flex items-end gap-2">
+                        <Cell label="Mount" widthClass="flex-1">
+                          <select
+                            key={`mount-${formData.mountId || 'none'}`}
+                            value={formData.mountId || ''}
+                            onChange={(e) => {
+                              const selectedValue = e.target.value;
+                              const mount = mounts.find(m => m.id === selectedValue);
+
+                              if (mount) {
+                                setFormData(prev => prev ? {
+                                  ...prev,
+                                  mountId: selectedValue,
+                                  mountName: mount.name,
+                                  sizeCategory: mount.size_category,
+                                } : null);
+                                const mountedUnitType = unitTypes.find(m => m.isMounted === true);
+                                if (mountedUnitType) {
+                                  setFormData(prev => prev ? {
+                                    ...prev,
+                                    modelTypeId: mountedUnitType.id,
+                                    modelTypeName: mountedUnitType.name,
+                                    unitTypeIconUrl: mountedUnitType.icon_url || null,
+                                  } : null);
+                                }
+                              } else {
+                                const race = races.find(r => r.id === formData?.raceId);
+                                setFormData(prev => prev ? {
+                                  ...prev,
+                                  mountId: '',
+                                  mountName: '',
+                                  sizeCategory: race?.size_category || 100,
+                                } : null);
+                              }
+                            }}
+                            className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+                          >
+                            <option value="">No Mount</option>
+                            {filteredMounts.map(mount => (
+                              <option key={mount.id} value={mount.id}>
+                                {mount.name} (Speed: {mount.speed}) - {mount.cost_gp || 0}gp
+                              </option>
+                            ))}
+                          </select>
+                        </Cell>
+                        <div className="pb-1"><Toggle checked={formData.canCharge || false} onChange={(v) => updateFormData('canCharge', v)} label="Charge" /></div>
+                      </div>
+                      {filteredMounts.length === 0 && formData.mountId === '' && (
+                        <p className="text-[10px] text-gray-500">No suitable mounts for this size.</p>
+                      )}
+                      <p className="text-[10px] text-gray-500">
+                        Charge: Race {selectedRace?.can_charge ? 'Yes' : 'No'} · Mount {formData.mountId ? mounts.find(m => m.id === formData.mountId)?.can_charge ? 'Yes' : 'No' : 'N/A'}
+                      </p>
+
+                      {/* Combat & Morale */}
+                      <div className="flex items-end gap-2">
+                        <Cell label="Aggress."><NumInput value={formData.aggressiveness || 3} min={1} max={10} disabled={formData.isHero} onChange={(v) => updateFormData('aggressiveness', Math.max(1, Math.min(10, v || 3)))} /></Cell>
+                        <Cell label="Base morale"><NumInput value={formData.baseMorale || 3} min={1} max={10} disabled={!!formData.ignoreMoraleChecks} onChange={(v) => updateFormData('baseMorale', Math.max(1, Math.min(10, v || 3)))} /></Cell>
+                        <div className="pb-1"><Toggle checked={formData.ignoreMoraleChecks || false} onChange={(v) => updateFormData('ignoreMoraleChecks', v)} label="Fearless" /></div>
+                      </div>
+                      {formData.isHero && <p className="text-[10px] text-yellow-400/80">Heroes ignore aggressiveness.</p>}
+
+                      {/* Saving throws */}
+                      <div className="flex gap-1.5">
+                        {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(s => (
+                          <Cell key={s} label={s.toUpperCase()} widthClass="w-10"><NumInput value={formData[s] ?? 0} min={-10} max={20} onChange={(v) => updateFormData(s, v)} /></Cell>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
 
               {/* Weapons */}
               <div>
@@ -1194,8 +1076,8 @@ export default function UnitEditor() {
 
               {/* Unit Type Icons */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Unit Type Icon</label>
-                <div className="grid grid-cols-6 gap-2 max-h-48 overflow-y-auto p-1 border border-gray-700 rounded bg-gray-800/30">
+                <label className="block text-[10px] text-gray-400 mb-1">Unit Type Icon</label>
+                <div className="grid grid-cols-7 gap-2 max-h-32 overflow-y-auto p-1 border border-gray-700 rounded bg-gray-800/30">
                   {unitTypes.map((ut) => {
                     const isSelected = formData.modelTypeId === ut.id;
                     return (
@@ -1245,109 +1127,65 @@ export default function UnitEditor() {
 
               {/* Formations */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Formation Availability</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-2">
-                    {formations
-                      .filter(f => ['Close Order', 'Open Order', 'Scattered'].includes(f.name))
-                      .sort((a, b) => {
-                        const order = ['Close Order', 'Open Order', 'Scattered'];
-                        return order.indexOf(a.name) - order.indexOf(b.name);
-                      })
-                      .map(formation => {
-                        const isMounted = formData.mountId !== '';
-                        const isPhalanxShieldWall = (formation.name === 'Phalanx' || formation.name === 'Shield Wall');
-                        const disabled = isMounted && isPhalanxShieldWall;
-                        const isGargantuanDisabled = isGargantuan;
-                        return (
-                          <label key={formation.id} className="flex items-center gap-2 text-sm text-gray-300">
-                            <input
-                              type="checkbox"
-                              checked={formData.formationAvailability?.includes(formation.name) || false}
-                              onChange={() => toggleFormation(formation.name)}
-                              disabled={disabled || formation.name === 'Scattered' || isGargantuanDisabled}
-                              className={`w-4 h-4 accent-yellow-400 ${
-                                (disabled || formation.name === 'Scattered' || isGargantuanDisabled) ? 'opacity-50 cursor-not-allowed' : ''
-                              }`}
-                            />
-                            {formation.name}
-                            {formation.name === 'Scattered' && (
-                              <span className="text-xs text-gray-500">(Always available)</span>
-                            )}
-                            {disabled && (
-                              <span className="text-xs text-gray-500">(Not for mounted)</span>
-                            )}
-                            {isGargantuanDisabled && (
-                              <span className="text-xs text-gray-500">(Disabled for Gargantuan)</span>
-                            )}
-                          </label>
-                        );
-                      })}
-                  </div>
-                  <div className="space-y-2">
-                    {formations
-                      .filter(f => ['Phalanx', 'Shield Wall'].includes(f.name))
-                      .map(formation => {
-                        const isMounted = formData.mountId !== '';
-                        const disabled = isMounted;
-                        const isGargantuanDisabled = isGargantuan;
-                        return (
-                          <label key={formation.id} className="flex items-center gap-2 text-sm text-gray-300">
-                            <input
-                              type="checkbox"
-                              checked={formData.formationAvailability?.includes(formation.name) || false}
-                              onChange={() => toggleFormation(formation.name)}
-                              disabled={disabled || isGargantuanDisabled}
-                              className={`w-4 h-4 accent-yellow-400 ${
-                                (disabled || isGargantuanDisabled) ? 'opacity-50 cursor-not-allowed' : ''
-                              }`}
-                            />
-                            {formation.name}
-                            {disabled && (
-                              <span className="text-xs text-gray-500">(Not for mounted)</span>
-                            )}
-                            {isGargantuanDisabled && (
-                              <span className="text-xs text-gray-500">(Disabled for Gargantuan)</span>
-                            )}
-                          </label>
-                        );
-                      })}
-                    <label className="flex items-center gap-2 text-sm text-gray-400">
-                      <input
-                        type="checkbox"
-                        checked={true}
-                        disabled
-                        className="w-4 h-4 accent-yellow-400 opacity-50 cursor-not-allowed"
-                      />
-                      Routed
-                      <span className="text-xs text-gray-500">(Always available)</span>
-                    </label>
-                  </div>
+                <label className="block text-[10px] text-gray-400 mb-1">Formation Availability</label>
+                <div className="flex flex-wrap gap-1">
+                  {formations.map(formation => {
+                    const isMounted = formData.mountId !== '';
+                    const isPhalanxShieldWall = formation.name === 'Phalanx' || formation.name === 'Shield Wall';
+                    const disabled = (isMounted && isPhalanxShieldWall) || formation.name === 'Scattered' || isGargantuan;
+                    const selected = formData.formationAvailability?.includes(formation.name) || false;
+                    return (
+                      <label
+                        key={formation.id}
+                        className={`inline-flex items-center gap-1 text-[11px] rounded px-1.5 py-0.5 cursor-pointer border ${
+                          selected ? 'bg-amber-900/40 text-amber-200 border-amber-700/60' : 'bg-gray-800 text-gray-300 border-gray-700'
+                        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          disabled={disabled}
+                          onChange={() => toggleFormation(formation.name)}
+                          className="h-3 w-3 accent-amber-400"
+                        />
+                        {formation.name}
+                        {formation.name === 'Scattered' && <span className="text-gray-500">(always)</span>}
+                        {disabled && isMounted && isPhalanxShieldWall && <span className="text-gray-500">(no mount)</span>}
+                        {disabled && isGargantuan && formation.name !== 'Scattered' && <span className="text-gray-500">(garg)</span>}
+                      </label>
+                    );
+                  })}
+                  <label className="inline-flex items-center gap-1 text-[11px] rounded px-1.5 py-0.5 border bg-gray-800 text-gray-500 opacity-60">
+                    <input type="checkbox" checked disabled className="h-3 w-3 accent-amber-400" />
+                    Routed
+                    <span className="text-gray-600">(always)</span>
+                  </label>
                 </div>
               </div>
 
               {/* Calculated fields summary */}
-              <div className="grid grid-cols-4 gap-4 p-4 bg-gray-800 rounded border border-gray-700">
+              <div className="grid grid-cols-4 gap-2 p-2.5 bg-gray-800 rounded border border-gray-700">
                 <div>
-                  <label className="block text-xs text-gray-400">AC</label>
-                  <div className="text-xl font-bold text-yellow-400">{calculateAC()}</div>
+                  <label className="block text-[10px] text-gray-400">AC</label>
+                  <div className="text-lg font-bold text-yellow-400">{calculateAC()}</div>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400">Movement</label>
-                  <div className="text-xl font-bold text-yellow-400">{calculateMovement()}</div>
+                  <label className="block text-[10px] text-gray-400">Movement</label>
+                  <div className="text-lg font-bold text-yellow-400">{calculateMovement()}</div>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400">Equip Cost (gp)</label>
-                  <div className="text-xl font-bold text-yellow-400">{calculateCost()}</div>
+                  <label className="block text-[10px] text-gray-400">Equip Cost (gp)</label>
+                  <div className="text-lg font-bold text-yellow-400">{calculateCost()}</div>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400">Weekly Cost (gp)</label>
-                  <div className="text-xl font-bold text-yellow-400">{formData.weeklyCostGp || 0}</div>
+                  <label className="block text-[10px] text-gray-400">Weekly Cost (gp)</label>
+                  <div className="text-lg font-bold text-yellow-400">{formData.weeklyCostGp || 0}</div>
                 </div>
               </div>
-
-              {/* Save buttons */}
-              <div className="flex gap-3 pt-4 border-t border-gray-700">
+                </div>
+              </div>
+              {/* Sticky Save bar — always visible without scrolling */}
+              <div className="flex-none px-6 py-3 border-t border-gray-700 bg-[#0d0d1a] flex gap-3">
                 <button
                   onClick={handleSave}
                   className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
@@ -1367,9 +1205,9 @@ export default function UnitEditor() {
                   Delete
                 </button>
               </div>
-            </div>
+            </>
           ) : (
-            <div className="flex items-center justify-center h-full text-gray-500">
+            <div className="flex items-center justify-center flex-1 text-gray-500">
               Select a unit from the list or create a new one
             </div>
           )}

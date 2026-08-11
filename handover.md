@@ -1,5 +1,12 @@
 # Handover — 2026-08-03
 
+## UnitEditor: compact 2-column layout + sticky Save bar (2026-08-10)
+- **UnitEditor** mid panel re-laid out into a compact 2-column grid (same UnitTemplate fields): LEFT = Identity (Name/Hero), Race & Level, Token (Size 5-step equal-distance slider + Visual scale), Hit Points; RIGHT = Defense (Base AC/Movement/Armor/Shield), Mount & Charge, Combat & Morale (Aggressiveness/Base morale/Fearless), Saving throws (narrow boxes). Full-width below: Formation availability chips, Unit-Type icon grid (**6→7 cols**), Weapons, calculated summary (compact).
+- **Behavior**: toggling **Hero** ON also checks **Fearless**; when **Fearless** is checked the **Base morale** input is disabled.
+- **Sticky Save bar** (Save / Save As / Delete) pinned below the form — always visible without scrolling.
+- Inline form primitives (`Cell`/`NumInput`/`ReadBox`/`Toggle`) added locally to UnitEditor (UnitEditorModal untouched).
+- `tsc --noEmit` clean, 303 tests pass.
+
 ## DM editor: editable maxTroopCount + tightened layout (2026-08-09)
 - **`maxTroopCount`** is now editable in the DM stat editor (R2 HP row: Current HP | Troop HP | **Max troops** | {Max HP} | {Troops}). `{Max HP}` and `{Troops}` recompute live from the draft; on save, changing `troopHp`/`maxTroopCount` pushes a new `maxUnitHp`, and if capacity shrank, `currentUnitHp` clamps to the new max and `currentTroopCount` clamps to the new max.
 - **Layout**: window narrowed `540 → 460px`; number + derived cells use uniform `w-16` boxes (read-only values now styled like inputs via `ReadBox` so columns line up); saving-throw boxes narrowed to `w-10`; selects sized (Formation `w-32`, Mount `w-28`, Size `w-24`); rows left-aligned (removed `flex-1` spacers); toggles sit after fields.
