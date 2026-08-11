@@ -1,5 +1,13 @@
 # Handover — 2026-08-03
 
+## Lobby: split DM tag / room badge + My Scenarios / Available filters (2026-08-11)
+**Files:** `src/hooks/useScenarios.ts`, `src/components/Lobby.tsx`
+
+- **Bug fixed**: the card's "Room Open/Closed" badge was driven by DM presence, conflating two states. Cards now show **two** tags: **DM Online/Offline** (live presence via `dmOnlineByScenario`) and **Room Open/Closed** (DB `room_open` — whether the DM closed the room to new players).
+- **`useScenarios`**: new `myScenarioIds` (scenario IDs where the current user has a `scenario_participants` row, GM or player) — refetched when `currentUser`/`scenarios` change.
+- **Lobby filters**: replaced the "Open rooms only" toggle with a segmented **My Scenarios / Available scenarios** control (default **My Scenarios**). My Scenarios keeps `myScenarioIds`; Available keeps `room_open = true` (DM presence not required — it's a find-a-room listing). A user with zero participation auto-falls back to the Available view so the lobby is never empty. Empty-state copy updates per view.
+- 309 tests; `tsc --noEmit` clean.
+
 ## Lobby "Room Open" badge now tracks live DM presence (2026-08-11)
 **Files:** `src/hooks/useScenarios.ts`, `src/components/Lobby.tsx`
 

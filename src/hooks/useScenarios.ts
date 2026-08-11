@@ -32,6 +32,9 @@ export function useScenarios() {
   // show "(Room Open)" when that scenario's GM is actually present.
   const lobbyPresenceChannels = useRef<Map<string, any>>(new Map());
   const [dmOnlineByScenario, setDmOnlineByScenario] = useState<Record<string, boolean>>({});
+  // Scenario IDs the current user participates in (GM or player) — drives the
+  // lobby's "My Scenarios" filter.
+  const [myScenarioIds, setMyScenarioIds] = useState<string[]>([]);
 
   const fetchScenarios = useCallback(async () => {
     setLoading(true);
@@ -421,6 +424,30 @@ export function useScenarios() {
     fetchScenarios();
   }, [fetchScenarios]);
 
+  // My Scenarios = scenario IDs where the current user has a participant row
+  // (GM or player). Refreshes when the scenario list changes (create/join/delete).
+  useEffect(() => {
+    if (!currentUser) {
+      setMyScenarioIds([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('scenario_participants')
+          .select('scenario_id')
+          .eq('user_id', currentUser.id);
+        if (cancelled) return;
+        setMyScenarioIds(Array.from(new Set((data || []).map((r: any) => r.scenario_id))));
+      } catch (err) {
+        console.error('[useScenarios] Failed to load my scenario ids:', err);
+        if (!cancelled) setMyScenarioIds([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser, scenarios]);
+
   const fetchScenarioMapData = useCallback(async (scenarioId: string): Promise<any | null> => {
     const { data, error } = await supabase
       .from('scenarios')
@@ -464,6 +491,7 @@ export function useScenarios() {
     error,
     currentUser,
     dmOnlineByScenario,
+    myScenarioIds,
     fetchScenarios,
     createScenario,
     deleteScenario,

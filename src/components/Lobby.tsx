@@ -23,6 +23,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     error,
     currentUser,
     dmOnlineByScenario,
+    myScenarioIds,
     createScenario,
     deleteScenario,
     joinScenario,
@@ -62,7 +63,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const [adminError, setAdminError] = useState<string | null>(null);
 
   const [scenarioSearch, setScenarioSearch] = useState('');
-  const [showOpenOnly, setShowOpenOnly] = useState(false);
+  const [viewMode, setViewMode] = useState<'mine' | 'available'>('mine');
   // creator id -> live profiles.display_name (resolved once, so renames are honored)
   const [creatorAliases, setCreatorAliases] = useState<Record<string, string>>({});
 
@@ -413,6 +414,10 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     if (loading) return <p className="text-white">Loading scenarios...</p>;
     if (error) return <p className="text-red-500">Error: {error}</p>;
 
+    // A user with no participation falls back to the available-rooms view so the
+    // lobby is never empty for them.
+    const effectiveMode = viewMode === 'mine' && myScenarioIds.length === 0 ? 'available' : viewMode;
+
     const term = scenarioSearch.trim().toLowerCase();
     let filtered = scenarios;
     if (term) {
@@ -422,24 +427,37 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
         return s.name.toLowerCase().includes(term) || creatorName.toLowerCase().includes(term);
       });
     }
-    if (showOpenOnly) {
-      filtered = filtered.filter(s => dmOnlineByScenario[s.id]);
+    if (effectiveMode === 'mine') {
+      filtered = filtered.filter(s => myScenarioIds.includes(s.id));
+    } else {
+      filtered = filtered.filter(s => s.roomOpen);
     }
 
     return (
       <>
         <div className="mb-4 max-w-xl flex items-center gap-2">
-          <button
-            onClick={() => setShowOpenOnly(v => !v)}
-            className={`flex-none px-3 py-2 text-sm rounded border transition ${
-              showOpenOnly
-                ? 'bg-emerald-800 border-emerald-500 text-white'
-                : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-            }`}
-            title="Show only rooms whose GM is currently present"
-          >
-            Open rooms only
-          </button>
+          <div className="flex-none flex rounded border border-gray-600 overflow-hidden">
+            <button
+              onClick={() => setViewMode('mine')}
+              className={`px-3 py-2 text-sm transition ${
+                viewMode === 'mine'
+                  ? 'bg-emerald-800 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              My Scenarios
+            </button>
+            <button
+              onClick={() => setViewMode('available')}
+              className={`px-3 py-2 text-sm transition ${
+                viewMode === 'available'
+                  ? 'bg-emerald-800 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              Available scenarios
+            </button>
+          </div>
           <input
             type="text"
             placeholder="Search scenarios by name or creator..."
@@ -452,7 +470,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
           <p className="text-gray-400">
             {scenarios.length === 0
               ? 'No scenarios yet. Create one!'
-              : showOpenOnly
+              : effectiveMode === 'available'
                 ? 'No open rooms right now.'
                 : 'No scenarios match your search.'}
           </p>
@@ -495,10 +513,21 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                         className={`text-[11px] px-2 py-0.5 rounded-full border ${
                           dmOnlineByScenario[scenario.id]
                             ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700/50'
+                            : 'bg-gray-800 text-gray-400 border-gray-700'
+                        }`}
+                        title="Whether the Game Master is currently logged into the scenario"
+                      >
+                        {dmOnlineByScenario[scenario.id] ? 'DM Online' : 'DM Offline'}
+                      </span>
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                          scenario.roomOpen
+                            ? 'bg-emerald-900/60 text-emerald-300 border-emerald-700/50'
                             : 'bg-red-900/60 text-red-300 border-red-700/50'
                         }`}
+                        title="Whether the room accepts new players"
                       >
-                        {dmOnlineByScenario[scenario.id] ? 'Room Open' : 'Room Closed'}
+                        {scenario.roomOpen ? 'Room Open' : 'Room Closed'}
                       </span>
                       {scenario.passwordHash && (
                         <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">
