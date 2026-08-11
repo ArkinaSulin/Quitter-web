@@ -374,7 +374,7 @@ export default function UnitEditor() {
             races(name, icon_url, base_hd, size_category, visual_scale, can_charge),
             unit_types(name, icon_url),
             armors(name),
-            mounts(name)
+            mounts(name, can_charge)
           `)
           .order('unit_name');
 
@@ -663,6 +663,8 @@ export default function UnitEditor() {
       movement -= (selectedArmor?.movement_penalty || 0);
       const finalMovement = Math.max(1, movement);
 
+      const savedCanCharge = (formData.canCharge || selectedRace?.can_charge || selectedMount?.can_charge) || false;
+
       let cost = 0;
       const parsedWeapons = getWeapons();
       for (const w of parsedWeapons) {
@@ -676,6 +678,7 @@ export default function UnitEditor() {
         ...formData,
         baselineAc: ac,
         movementPoints: finalMovement,
+        canCharge: savedCanCharge,
         equipCostGp: cost || 0,
         weeklyCostGp: 4 * (formData.level * formData.level),
         updatedAt: new Date().toISOString(),
@@ -779,7 +782,11 @@ export default function UnitEditor() {
 
   const sortedArmors = [...armors].sort((a, b) => (a.ac_bonus || 0) - (b.ac_bonus || 0));
   const selectedRace = races.find(r => r.id === formData?.raceId);
+  const selectedMount = formData?.mountId ? mounts.find(m => m.id === formData.mountId) : null;
   const selectedUnitType = unitTypes.find(ut => ut.id === formData?.modelTypeId);
+
+  // A unit can charge when either its race or mount (or a stored override) can.
+  const effectiveCanCharge = (formData?.canCharge || selectedRace?.can_charge || selectedMount?.can_charge) || false;
 
   const effectiveTroopCount = formData ? Math.round((formData.troopCount || 1) * (1 - testCasualtyPercent / 100)) : 0;
   const baseMoraleVal = formData?.baseMorale || 3;
@@ -914,11 +921,13 @@ export default function UnitEditor() {
 
                               let newSize = race?.size_category || 100;
                               let newMovement = race?.base_speed || 3;
+                              let newCanCharge = race?.can_charge || false;
                               if (formData?.mountId) {
                                 const mount = mounts.find(m => m.id === formData.mountId);
                                 if (mount) {
                                   newSize = Math.max(race?.size_category || 100, mount.size_category);
                                   newMovement = mount.speed;
+                                  newCanCharge = (mount.can_charge || race?.can_charge) || false;
                                 }
                               }
 
@@ -931,7 +940,7 @@ export default function UnitEditor() {
                                 troopHp: newHp,
                                 level: race?.base_hd || 1,
                                 movementPoints: newMovement,
-                                canCharge: race?.can_charge || false,
+                                canCharge: newCanCharge,
                                 sizeCategory: newSize,
                                 visualScale: race?.visual_scale || 100,
                               } : null);
@@ -1031,6 +1040,7 @@ export default function UnitEditor() {
                                   mountName: mount.name,
                                   sizeCategory: mount.size_category,
                                   movementPoints: mount.speed,
+                                  canCharge: (mount.can_charge || prev.canCharge || false),
                                 } : null);
                                 const mountedUnitType = unitTypes.find(m => m.isMounted === true);
                                 if (mountedUnitType) {
@@ -1049,6 +1059,7 @@ export default function UnitEditor() {
                                   mountName: '',
                                   sizeCategory: race?.size_category || 100,
                                   movementPoints: race?.base_speed || 3,
+                                  canCharge: race?.can_charge || false,
                                 } : null);
                               }
                             }}
@@ -1062,13 +1073,13 @@ export default function UnitEditor() {
                             ))}
                           </select>
                         </Cell>
-                        <div className="pb-1"><Toggle checked={formData.canCharge || false} onChange={(v) => updateFormData('canCharge', v)} label="Charge" /></div>
+                        <div className="pb-1"><Toggle checked={effectiveCanCharge} onChange={(v) => updateFormData('canCharge', v)} label="Charge" /></div>
                       </div>
                       {filteredMounts.length === 0 && formData.mountId === '' && (
                         <p className="text-[10px] text-gray-500">No suitable mounts for this size.</p>
                       )}
                       <p className="text-[10px] text-gray-500">
-                        Charge: Race {selectedRace?.can_charge ? 'Yes' : 'No'} · Mount {formData.mountId ? mounts.find(m => m.id === formData.mountId)?.can_charge ? 'Yes' : 'No' : 'N/A'}
+                        Charge: Race {selectedRace?.can_charge ? 'Yes' : 'No'} · Mount {selectedMount?.can_charge ? 'Yes' : 'No'}
                       </p>
 
                       {/* Combat & Morale */}

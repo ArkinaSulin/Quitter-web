@@ -15,6 +15,7 @@ export function mapTemplate(row: any): UnitTemplate {
     raceBaseHd: row.races?.base_hd || null,
     raceIconUrl: raceIconFromName(row.races?.name, row.races?.icon_url),
     raceCanCharge: row.races?.can_charge || false,
+    mountCanCharge: row.mounts?.can_charge || false,
     modelTypeId: row.model_type_id || '',
     modelTypeName: row.unit_types?.name || '',
     modelTypeIconUrl: normalizeLocalAssetUrl(row.unit_types?.icon_url),

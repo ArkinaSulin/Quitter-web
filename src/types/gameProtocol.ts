@@ -53,6 +53,7 @@ export interface UnitTemplate {
   raceBaseHd?: number | null;         // from join
   raceIconUrl?: string;               // from join
   raceCanCharge?: boolean;            // from join (race.can_charge)
+  mountCanCharge?: boolean;           // from join (mount.can_charge)
   modelTypeId: string;
   modelTypeName?: string;
   modelTypeIconUrl?: string | null;

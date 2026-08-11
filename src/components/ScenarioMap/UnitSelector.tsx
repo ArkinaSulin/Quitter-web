@@ -29,7 +29,7 @@ export function UnitSelector({ scenarioId, onUnitDragStart }: UnitSelectorProps)
           races(name, icon_url, base_hd, size_category, visual_scale, can_charge),
           unit_types(name, icon_url),
           armors(name),
-          mounts(name)
+          mounts(name, can_charge)
         `)
         .order('unit_name');
 

@@ -338,8 +338,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     // Calculate canCharge from race or mount
     let canCharge = template.canCharge || false;
     if (template.raceCanCharge) canCharge = true;
-    // Note: mount canCharge is not available in template object here
-    // It would need to be joined from mounts table if needed
+    if (template.mountCanCharge) canCharge = true;
 
     // Placement check: a shield cannot be used while wielding a two-handed weapon.
     // The active weapon at placement is the first in the string (index 0), so a
