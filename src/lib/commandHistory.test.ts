@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildStackFromLog, buildReplayTimeline, replayStateToUnits, CommandLogRow, ReplayState } from './commandHistory';
+import { buildReplayTimeline, replayStateToUnits, ReplayState } from './commandHistory';
+import { CommandLogRow } from './commandLog';
 
 function makeRow(overrides: Partial<CommandLogRow> = {}): CommandLogRow {
   return {
@@ -16,47 +17,6 @@ function makeRow(overrides: Partial<CommandLogRow> = {}): CommandLogRow {
     ...overrides,
   };
 }
-
-describe('buildStackFromLog', () => {
-  it('orders entries by created_at ascending', () => {
-    const rows = [
-      makeRow({ id: 'a', created_at: '2026-08-02T01:00:00.000Z' }),
-      makeRow({ id: 'b', created_at: '2026-08-02T00:00:00.000Z' }),
-    ];
-    const stack = buildStackFromLog(rows);
-    expect(stack.map(e => e.id)).toEqual(['b', 'a']);
-  });
-
-  it('parses JSON sub_steps strings', () => {
-    const rows = [
-      makeRow({
-        sub_steps: JSON.stringify([{ type: 'MOVE', description: 'moved', unitId: 'u1', changes: [] }]),
-      }),
-    ];
-    const stack = buildStackFromLog(rows);
-    expect(stack[0].subSteps).toEqual([{ type: 'MOVE', description: 'moved', unitId: 'u1', changes: [] }]);
-  });
-
-  it('caps the stack at the settings max (2000 default)', () => {
-    const rows = Array.from({ length: 2050 }, (_, i) => makeRow({ id: `id-${i}`, created_at: `2026-08-02T00:${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}.000Z` }));
-    const stack = buildStackFromLog(rows);
-    expect(stack).toHaveLength(2000);
-    expect(stack[0].id).toBe('id-50');
-    expect(stack[1999].id).toBe('id-2049');
-  });
-
-  it('preserves chained grouping for the newest chain', () => {
-    const rows = [
-      makeRow({ id: 'root', chained: false, created_at: '2026-08-02T00:00:00.000Z' }),
-      makeRow({ id: 'chain', chained: true, created_at: '2026-08-02T00:00:01.000Z' }),
-    ];
-    const stack = buildStackFromLog(rows);
-    expect(stack.map(e => [e.id, e.chained])).toEqual([
-      ['root', false],
-      ['chain', true],
-    ]);
-  });
-});
 
 describe('buildReplayTimeline', () => {
   const placeRow = makeRow({

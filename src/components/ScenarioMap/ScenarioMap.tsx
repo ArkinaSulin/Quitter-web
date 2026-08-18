@@ -332,7 +332,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
 
   const {
-    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, placeUnit, attachHero, detachHero, swapHeroPosition, endTurn, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, hydrateFromLog, subscribeToCommandLog,
+    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, placeUnit, attachHero, detachHero, swapHeroPosition, endTurn, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog,
   } = useGameEngine({
     scenarioId,
     playerId,
@@ -1500,14 +1500,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
   }, [isInitialLoad, loading, canvasRef, centerMap]);
 
-  // Rebuild the undo stack from the persisted command log after units load, and
-  // keep it in sync with other clients' actions in real time.
+  // Fetch what's undoable/redoable from the server (derived from the command
+  // log alone — no client-side stack), and refresh it when the log changes.
   useEffect(() => {
     if (loading) return;
-    hydrateFromLog();
+    refreshUndoState();
     const unsubscribe = subscribeToCommandLog();
     return unsubscribe;
-  }, [loading, scenarioId, hydrateFromLog, subscribeToCommandLog]);
+  }, [loading, scenarioId, refreshUndoState, subscribeToCommandLog]);
 
   // ---- Drag from panel ----
   const handleUnitDragStart = useCallback((template: UnitTemplate) => {

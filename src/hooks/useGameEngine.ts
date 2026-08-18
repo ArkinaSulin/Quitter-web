@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { computeEffectiveMovement } from '@/lib/unitStats';
@@ -10,9 +10,8 @@ import { applyMoveCost, applyMpSpend } from '@/lib/moveCost';
 import { getSetting } from '@/lib/settingsCache';
 import { parseWeapons } from '@/lib/weaponParser';
 import { useMessageSync } from '@/hooks/useMessageSync';
-import { GameEngine, ActionType, SubStep, CommandEntry } from '@/game/GameEngine';
+import { ActionType, SubStep, CommandLogRow, UndoState, parseSubSteps } from '@/lib/commandLog';
 import { getActiveGroups, advanceTurn } from '@/lib/turnState';
-import { buildStackFromLog, rowToEntry, CommandLogRow } from '@/lib/commandHistory';
 
 interface UseGameEngineProps {
   scenarioId: string;
@@ -30,15 +29,65 @@ export function useGameEngine({
   scenarioId,
   playerId,
   playerName,
-  isGM,
   freeMove,
   updateUnit,
   moveUnit,
   updateAlliance,
   updateScenarioField,
 }: UseGameEngineProps) {
-  const engineRef = useRef(new GameEngine());
   const { addMessage, addError } = useMessageSync(scenarioId);
+
+  // Server-derived undo/redo state (what the RPCs consider undoable right now).
+  // Rebuilt on mount, on every command_log change, and after each action.
+  const [undoState, setUndoState] = useState<UndoState | null>(null);
+  const undoStateRef = useRef<UndoState | null>(null);
+  undoStateRef.current = undoState;
+
+  const refreshUndoState = useCallback(async (): Promise<UndoState | null> => {
+    const { data, error } = await supabase.rpc('undo_state', { p_scenario_id: scenarioId });
+    if (error) {
+      console.error('[UndoState] Refresh failed:', error);
+      return null;
+    }
+    const state = (data as unknown) as UndoState;
+    setUndoState(state);
+    return state;
+  }, [scenarioId]);
+
+  /**
+   * Apply sub-step deltas to local state (optimistic UI; realtime confirms the
+   * server's authoritative apply). `field` picks `from` (undo) or `to`
+   * (execute/redo); `reverse` replays newest-first like the server's undo.
+   */
+  const applyDeltas = useCallback(
+    async (steps: SubStep[], field: 'from' | 'to', reverse: boolean): Promise<void> => {
+      const list = reverse ? [...steps].reverse() : steps;
+      for (const step of list) {
+        if (step.type === 'ALLIANCE' && updateAlliance) {
+          for (const change of step.changes) {
+            await updateAlliance(step.unitId, change[field]);
+          }
+        } else if (step.type === 'SCENARIO' && updateScenarioField) {
+          const update: any = {};
+          for (const change of step.changes) {
+            update[change.field] = change[field];
+          }
+          if (Object.keys(update).length > 0) {
+            await updateScenarioField(scenarioId, update);
+          }
+        } else {
+          const update: any = {};
+          for (const change of step.changes) {
+            update[change.field] = change[field];
+          }
+          if (Object.keys(update).length > 0) {
+            await updateUnit(step.unitId, update);
+          }
+        }
+      }
+    },
+    [scenarioId, updateUnit, updateAlliance, updateScenarioField],
+  );
 
   const execute = useCallback(
     async (
@@ -46,227 +95,121 @@ export function useGameEngine({
       subSteps: SubStep[],
       description: string,
       options?: { chained?: boolean },
-    ): Promise<CommandEntry | null> => {
+    ): Promise<CommandLogRow | null> => {
       const isChained = options?.chained ?? false;
-      const entry = engineRef.current.execute(
-        actionType,
-        subSteps,
-        description,
-        playerId,
-        playerName,
-        scenarioId,
-        { chained: isChained },
-      );
 
-      for (const step of subSteps) {
-        if (step.type === 'ALLIANCE' && updateAlliance) {
-          for (const change of step.changes) {
-            await updateAlliance(step.unitId, change.to);
-          }
-        } else if (step.type === 'SCENARIO' && updateScenarioField) {
-          const update: any = {};
-          for (const change of step.changes) {
-            update[change.field] = change.to;
-          }
-          if (Object.keys(update).length > 0) {
-            await updateScenarioField(scenarioId, update);
-          }
-        } else {
-          const update: any = {};
-          for (const change of step.changes) {
-            update[change.field] = change.to;
-          }
-          if (Object.keys(update).length > 0) {
-            await updateUnit(step.unitId, update);
-          }
-        }
+      // Server-authoritative: apply the deltas and insert the log row in ONE
+      // transaction, so the units table and the command log can never diverge.
+      const { data, error } = await supabase.rpc('execute_command', {
+        p_scenario_id: scenarioId,
+        p_player_id: playerId,
+        p_player_name: playerName,
+        p_action_type: actionType,
+        p_description: description,
+        p_sub_steps: subSteps,
+        p_chained: isChained,
+      });
+      if (error || !data || (data as any[]).length === 0) {
+        console.error('[CommandLog] Execute failed:', error);
+        addError(`Action failed — ${description}`);
+        return null;
       }
 
-      const { error } = await supabase.from('command_log').insert({
-        id: entry.id,
-        scenario_id: scenarioId,
-        player_id: playerId,
-        player_name: playerName,
-        action_type: actionType,
-        description,
-        sub_steps: JSON.stringify(subSteps),
-        chained: isChained,
-        created_at: new Date(entry.timestamp).toISOString(),
-      });
-      if (error) console.error('[CommandLog] Insert failed:', error);
+      // Optimistic local apply for snappiness; realtime confirms.
+      await applyDeltas(subSteps, 'to', false);
 
       // Unit edits (incl. by players editing their own unit) are flagged to everyone.
       if (actionType === 'EDIT_UNIT') addError(description);
       else addMessage(description);
-      return entry;
+      refreshUndoState();
+      return (data as any[])[0] as CommandLogRow;
     },
-    [scenarioId, playerId, playerName, updateUnit, updateAlliance, updateScenarioField, addMessage, addError],
+    [scenarioId, playerId, playerName, applyDeltas, addMessage, addError, refreshUndoState],
   );
-
-  const hydrateFromLog = useCallback(async (): Promise<void> => {
-    const { data, error } = await supabase
-      .from('command_log')
-      .select('id, scenario_id, player_id, player_name, action_type, description, sub_steps, chained, created_at')
-      .eq('scenario_id', scenarioId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: true });
-    if (error) {
-      console.error('[CommandLog] Hydrate failed:', error);
-      return;
-    }
-    engineRef.current.loadStack(buildStackFromLog((data ?? []) as CommandLogRow[]));
-  }, [scenarioId]);
 
   const subscribeToCommandLog = useCallback((): (() => void) => {
     const channel = supabase
       .channel(`command-log-${scenarioId}`)
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'command_log',
-          filter: `scenario_id=eq.${scenarioId}`,
-        },
-        payload => {
-          engineRef.current.pushExternal(rowToEntry(payload.new as CommandLogRow));
-        },
+        { event: 'INSERT', schema: 'public', table: 'command_log', filter: `scenario_id=eq.${scenarioId}` },
+        () => { refreshUndoState(); },
       )
       .on(
         'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'command_log',
-          filter: `scenario_id=eq.${scenarioId}`,
-        },
-        payload => {
-          const row = payload.new as CommandLogRow;
-          if (row.deleted_at) {
-            // A remote undo soft-deleted this command — drop it from our stack.
-            engineRef.current.removeEntry(row.id);
-          } else {
-            // A remote redo undeleted it — re-add.
-            engineRef.current.undeleteEntry(rowToEntry(row));
-          }
-        },
+        { event: 'UPDATE', schema: 'public', table: 'command_log', filter: `scenario_id=eq.${scenarioId}` },
+        () => { refreshUndoState(); },
       )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [scenarioId]);
+  }, [scenarioId, refreshUndoState]);
 
-  const undo = useCallback(async (): Promise<CommandEntry[] | null> => {
-    // Pop locally first (permission checked against the local top chain).
-    const chain = engineRef.current.undo(playerId, isGM);
-    if (!chain || chain.length === 0) return null;
-
+  const undo = useCallback(async (): Promise<CommandLogRow[] | null> => {
     // Server-authoritative: only the live global top chain (owned by the caller
     // or a GM) may be undone. The DB recomputes the top from the log, so a stale
-    // client stack cannot undo a move another player made after it.
+    // client cannot undo a move another player made after it.
+    const ids = undoStateRef.current?.undo?.ids;
+    if (!ids || ids.length === 0) return null;
+
     const { data, error } = await supabase.rpc('undo_commands', {
       p_scenario_id: scenarioId,
-      p_target_ids: chain.map(e => e.id),
+      p_target_ids: ids,
     });
     if (error || !data || (data as any[]).length === 0) {
-      // Rejected — reconcile the local stack with the true history.
-      await hydrateFromLog();
       addMessage('Cannot undo — another player has moved since, or the action was already undone');
+      await refreshUndoState();
       return null;
     }
+    const rows = data as CommandLogRow[];
 
-    for (const entry of chain) {
-      for (const step of entry.subSteps) {
-        if (step.type === 'ALLIANCE' && updateAlliance) {
-          for (const change of step.changes) {
-            await updateAlliance(step.unitId, change.from);
-          }
-        } else if (step.type === 'SCENARIO' && updateScenarioField) {
-          const update: any = {};
-          for (const change of step.changes) {
-            update[change.field] = change.from;
-          }
-          if (Object.keys(update).length > 0) {
-            await updateScenarioField(scenarioId, update);
-          }
-        } else {
-          const update: any = {};
-          for (const change of step.changes) {
-            update[change.field] = change.from;
-          }
-          if (Object.keys(update).length > 0) {
-            await updateUnit(step.unitId, update);
-          }
-        }
-      }
+    // Optimistic revert (newest-first, mirroring the server); realtime confirms.
+    for (const entry of [...rows].reverse()) {
+      await applyDeltas(parseSubSteps(entry.sub_steps), 'from', true);
     }
 
-    addMessage(chain.length > 1 ? `Undid: ${chain[0].description} — ${chain.length} items` : `Undid: ${chain[0].description}`);
-    return chain;
-  }, [playerId, isGM, updateUnit, updateAlliance, updateScenarioField, scenarioId, addMessage, hydrateFromLog]);
+    addMessage(rows.length > 1 ? `Undid: ${rows[0].description} — ${rows.length} items` : `Undid: ${rows[0].description}`);
+    refreshUndoState();
+    return rows;
+  }, [scenarioId, addMessage, refreshUndoState, applyDeltas]);
 
-  const redo = useCallback(async (): Promise<CommandEntry[] | null> => {
-    const chain = engineRef.current.redo(playerId, isGM);
-    if (!chain || chain.length === 0) return null;
+  const redo = useCallback(async (): Promise<CommandLogRow[] | null> => {
+    const ids = undoStateRef.current?.redo?.ids;
+    if (!ids || ids.length === 0) return null;
 
-    for (const entry of chain) {
-      for (const step of entry.subSteps) {
-        if (step.type === 'ALLIANCE' && updateAlliance) {
-          for (const change of step.changes) {
-            await updateAlliance(step.unitId, change.to);
-          }
-        } else if (step.type === 'SCENARIO' && updateScenarioField) {
-          const update: any = {};
-          for (const change of step.changes) {
-            update[change.field] = change.to;
-          }
-          if (Object.keys(update).length > 0) {
-            await updateScenarioField(scenarioId, update);
-          }
-        } else {
-          const update: any = {};
-          for (const change of step.changes) {
-            update[change.field] = change.to;
-          }
-          if (Object.keys(update).length > 0) {
-            await updateUnit(step.unitId, update);
-          }
-        }
-      }
+    const { data, error } = await supabase.rpc('redo_commands', {
+      p_scenario_id: scenarioId,
+      p_target_ids: ids,
+    });
+    if (error || !data || (data as any[]).length === 0) {
+      addMessage('Cannot redo — a new action has been made since, or the redo target is gone');
+      await refreshUndoState();
+      return null;
+    }
+    const rows = data as CommandLogRow[];
+
+    // Optimistic re-apply (chronological); realtime confirms.
+    for (const entry of rows) {
+      await applyDeltas(parseSubSteps(entry.sub_steps), 'to', false);
     }
 
-    for (const entry of chain) {
-      const { error } = await supabase
-        .from('command_log')
-        .update({ deleted_at: null })
-        .eq('id', entry.id);
-      if (error) console.error('[CommandLog] Undelete failed:', error);
-    }
-
-    addMessage(chain.length > 1 ? `Redid: ${chain[0].description} — ${chain.length} items` : `Redid: ${chain[0].description}`);
-    return chain;
-  }, [playerId, isGM, updateUnit, updateAlliance, updateScenarioField, scenarioId, addMessage]);
+    addMessage(rows.length > 1 ? `Redid: ${rows[0].description} — ${rows.length} items` : `Redid: ${rows[0].description}`);
+    refreshUndoState();
+    return rows;
+  }, [scenarioId, addMessage, refreshUndoState, applyDeltas]);
 
   const canUndo = useCallback((): boolean => {
-    return engineRef.current.canUndo(playerId, isGM);
-  }, [playerId, isGM]);
+    return !!undoStateRef.current?.undo?.canUndo;
+  }, []);
 
   const canRedo = useCallback((): boolean => {
-    return engineRef.current.canRedo(playerId, isGM);
-  }, [playerId, isGM]);
-
-  const peekUndo = useCallback((): CommandEntry | null => {
-    return engineRef.current.peekUndo(playerId, isGM);
-  }, [playerId, isGM]);
-
-  const peekRedo = useCallback((): CommandEntry | null => {
-    return engineRef.current.peekRedo(playerId, isGM);
-  }, [playerId, isGM]);
+    return !!undoStateRef.current?.redo?.canRedo;
+  }, []);
 
   const peekUndoChainLength = useCallback((): number => {
-    return engineRef.current.peekUndoChainLength(playerId, isGM);
-  }, [playerId, isGM]);
+    return undoStateRef.current?.undo?.count ?? 0;
+  }, []);
 
   const moveUnitRecorded = useCallback(
     async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string): Promise<void> => {
@@ -683,8 +626,6 @@ export function useGameEngine({
     redo,
     canUndo,
     canRedo,
-    peekUndo,
-    peekRedo,
     moveUnitRecorded,
     moveUnitFree,
     peekUndoChainLength,
@@ -699,7 +640,7 @@ export function useGameEngine({
     swapHeroPosition,
     endTurn,
     charge,
-    hydrateFromLog,
+    refreshUndoState,
     subscribeToCommandLog,
   };
 }

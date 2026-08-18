@@ -1,58 +1,8 @@
-import { CommandEntry, ActionType, SubStep } from '@/game/GameEngine';
 import { Unit, AllianceGroup } from '@/types/gameProtocol';
-import { getSetting, DEFAULT_UNDO_STACK_SIZE } from '@/lib/settingsCache';
+import { CommandEntry, CommandLogRow, parseSubSteps, rowToEntry } from '@/lib/commandLog';
 
-/**
- * Row shape as stored in the `command_log` table. `sub_steps` is a JSONB column
- * (JSON string over the wire; parsed array when read via the Supabase JS client).
- */
-export interface CommandLogRow {
-  id: string;
-  scenario_id: string;
-  player_id: string;
-  player_name: string;
-  action_type: ActionType;
-  description: string;
-  sub_steps: SubStep[] | string;
-  chained: boolean;
-  created_at: string;
-  deleted_at: string | null;
-}
-
-export function parseSubSteps(raw: SubStep[] | string): SubStep[] {
-  if (Array.isArray(raw)) return raw;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
-
-export function rowToEntry(row: CommandLogRow): CommandEntry {
-  return {
-    id: row.id,
-    timestamp: new Date(row.created_at).getTime(),
-    playerId: row.player_id,
-    playerName: row.player_name,
-    scenarioId: row.scenario_id,
-    actionType: row.action_type,
-    description: row.description,
-    subSteps: parseSubSteps(row.sub_steps),
-    chained: row.chained,
-  };
-}
-
-/**
- * Rebuild the undo stack from persisted command_log rows, ordered by created_at.
- * Preserves `chained` grouping so `collectChainFromTop` unwinds correctly, and
- * enforces the engine's max size (oldest entries evicted).
- */
-export function buildStackFromLog(rows: CommandLogRow[], maxSize = getSetting('undo_stack_size', DEFAULT_UNDO_STACK_SIZE)): CommandEntry[] {
-  return [...rows]
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    .map(rowToEntry)
-    .slice(-maxSize);
-}
+export type { CommandLogRow };
+export { parseSubSteps, rowToEntry };
 
 export interface ReplayState {
   /** Accumulated per-unit field values keyed by unit id. A PLACE seeds the full unit. */
