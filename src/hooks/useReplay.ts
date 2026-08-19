@@ -1,7 +1,7 @@
 // src/hooks/useReplay.ts
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import {
   buildReplayTimeline,
@@ -95,18 +95,29 @@ export function useReplay(scenarioId: string, { initialMode = 'play', playerId =
   const [mode, setModeState] = useState<ReplayMode>(initialMode);
   const [controllerId, setControllerId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // Re-fetch the timeline whenever we (re)enter replay mode, so a mid-session
+  // recap includes commands executed since mount.
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // True while a state change came from a broadcast/realtime payload (not a local
+  // action), so the persist effect below does NOT echo it straight back to the DB.
+  const applyingRemoteRef = useRef(false);
+  // Cursor to apply once the timeline finishes loading (late-joiner catch-up).
+  const pendingCursorRef = useRef<number | null>(null);
+  // Set once the initial replay_state read resolves, so the persist effect never
+  // clobbers the driver's state with a pre-read default ('play').
+  const hydratedRef = useRef(false);
 
   const stepsRef = useRef<ReplayStep[]>([]);
   stepsRef.current = steps;
   const cursorRef = useRef(0);
   cursorRef.current = cursor;
-  const modeRef = useRef<ReplayMode>(initialMode);
-  modeRef.current = mode;
 
   // Re-bind when scenarioId changes so a different scenario gets its own channel.
   const syncRef = useRef<ReplaySync | null>(null);
   if (!syncRef.current || syncRef.current.scenarioId !== scenarioId) {
     syncRef.current = getReplaySync(scenarioId, (event) => {
+      applyingRemoteRef.current = true;
       switch (event.type) {
         case 'seek':
           setCursor(Math.max(0, Math.min(event.step, stepsRef.current.length)));
@@ -119,6 +130,14 @@ export function useReplay(scenarioId: string, { initialMode = 'play', playerId =
           break;
         case 'mode':
           setModeState(event.mode);
+          if (event.mode === 'replay') {
+            // Entering replay via another player must load the same timeline and
+            // reset playback, mirroring local setMode — otherwise a player present
+            // at the toggle lands on an empty 0/0 timeline.
+            setPlaying(false);
+            setCursor(0);
+            setReloadKey(k => k + 1);
+          }
           break;
       }
       if (event.controllerId) setControllerId(event.controllerId);
@@ -154,10 +173,6 @@ export function useReplay(scenarioId: string, { initialMode = 'play', playerId =
     }
   }, []);
 
-  // Re-fetch the timeline whenever we (re)enter replay mode, so a mid-session
-  // recap includes commands executed since mount.
-  const [reloadKey, setReloadKey] = useState(0);
-
   // Load the timeline per scenario (and again on each replay entry).
   useEffect(() => {
     let cancelled = false;
@@ -178,11 +193,60 @@ export function useReplay(scenarioId: string, { initialMode = 'play', playerId =
         const timeline = buildReplayTimeline((data ?? []) as CommandLogRow[]);
         setSteps(timeline);
         setLoaded(true);
+        // Late-joiner catch-up: apply the persisted cursor once the timeline lands.
+        if (pendingCursorRef.current !== null) {
+          setCursor(Math.max(0, Math.min(pendingCursorRef.current, timeline.length)));
+          pendingCursorRef.current = null;
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [scenarioId, reloadKey]);
+
+  // ---- replay_state: DB-persisted co-watch state so late joiners catch up. ----
+  // Read once on mount: auto-enter replay with the driver's cursor if replaying.
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from('replay_state')
+      .select('mode, cursor, playing')
+      .eq('scenario_id', scenarioId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        hydratedRef.current = true;
+        if (cancelled || error || !data) return;
+        if (data.mode === 'replay') {
+          applyingRemoteRef.current = true;
+          setModeState('replay');
+          setPlaying(!!data.playing);
+          pendingCursorRef.current = data.cursor ?? 0;
+          setReloadKey(k => k + 1);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [scenarioId]);
+
+  // Persist local mode/cursor/playing (debounced) so a late joiner can catch up
+  // to the current replay state. Skipped for state that arrived via broadcast
+  // (the driver's own changes are what reaches the DB, not echoed follower state)
+  // and until the initial read resolves (so we never clobber the driver's state
+  // with a pre-read default).
+  useEffect(() => {
+    if (!hydratedRef.current || applyingRemoteRef.current) {
+      applyingRemoteRef.current = false;
+      return;
+    }
+    const t = setTimeout(() => {
+      supabase
+        .from('replay_state')
+        .upsert({ scenario_id: scenarioId, mode, cursor, playing, updated_at: new Date().toISOString() })
+        .then(({ error }) => {
+          if (error) console.error('[Replay] Persist failed:', error);
+        });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [scenarioId, mode, cursor, playing]);
 
   // Playback clock: advance one step per 1000/speed ms while playing.
   useEffect(() => {
@@ -240,6 +304,17 @@ export function useReplay(scenarioId: string, { initialMode = 'play', playerId =
   const replayAlliances: Record<string, AllianceGroup> = currentStep?.state.alliances ?? {};
   const replayTurnNumber = (currentStep?.state.scenario?.turn_number as number) ?? 0;
 
+  // Slider marker: the cursor value (1-based step count) of the first frame where
+  // turn 1 begins — i.e. the first step whose state has turn_number >= 1. Returns
+  // -1 when the timeline never leaves turn 0 (no marker to draw).
+  const turnOneIndex = useMemo(() => {
+    for (let i = 0; i < steps.length; i++) {
+      const tn = steps[i].state.scenario?.turn_number as number | undefined;
+      if (typeof tn === 'number' && tn >= 1) return i + 1;
+    }
+    return -1;
+  }, [steps]);
+
   return {
     loaded,
     steps,
@@ -251,6 +326,7 @@ export function useReplay(scenarioId: string, { initialMode = 'play', playerId =
     replayUnits,
     replayAlliances,
     replayTurnNumber,
+    turnOneIndex,
     seek,
     play,
     pause,

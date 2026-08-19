@@ -249,10 +249,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Over-budget spell resolve (soft enforcement): caster has no actions left.
   const [pendingCastOverBudget, setPendingCastOverBudget] = useState(false);
 
-  // End Turn reminder: shown when the DM ends a turn while Free Move is still on
-  // (soft reminder only — the turn still advances if confirmed).
-  const [freeMoveEndTurnConfirm, setFreeMoveEndTurnConfirm] = useState(false);
-
   const playerId = currentUser?.id || '';
   const { displayName } = useProfile(playerId || null);
   const playerName =
@@ -364,12 +360,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   const handleEndTurn = useCallback(async () => {
     if (isEndingTurn) return;
-    if (freeMove) {
-      setFreeMoveEndTurnConfirm(true);
-      return;
-    }
     await performEndTurn();
-  }, [freeMove, isEndingTurn, performEndTurn]);
+  }, [isEndingTurn, performEndTurn]);
 
   const handleToggleFreeMove = useCallback(async () => {
     if (!isGM) return;
@@ -1393,17 +1385,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const reachableMap = computeReachableMap(draggedUnit, pool, occupied, threatHexes);
 
       const combined: Record<string, string> = {};
-      reachableMap.forEach((entry, key) => {
-        // White = reachable straight ahead (droppable); light grey = needs a turn
-        // first (hint only — the unit must rotate before moving there).
-        combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.5)';
-      });
-      for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
 
-      // Attack-range rings radiating from the dragged unit (ranged-capable weapons
-      // only, maxRange > 1): white ring at normal range, amber ring at max range.
       const activeWeapon = parseWeapons(draggedUnit.weaponString || '')[draggedUnit.activeWeaponIndex ?? 0];
-      if (activeWeapon && activeWeapon.maxRange > 1) {
+      const isRanged = !!activeWeapon && activeWeapon.maxRange > 1;
+      // A valid target: a hovered unit from a different alliance than the drag.
+      const isValidTarget =
+        !!hoveredUnit && hoveredUnit.id !== draggedUnit.id && !hoveredUnit.isDeleted &&
+        (alliances[hoveredUnit.team] || 'friendly') !== (alliances[draggedUnit.team] || 'friendly');
+
+      if (isRanged && isValidTarget) {
+        // Dragging a ranged unit over an enemy target: show range rings instead of
+        // the movement highlight (movement and range never compete visually).
         for (const h of hexRing(draggedUnit.hex, activeWeapon.range)) {
           combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.9)';
         }
@@ -1412,21 +1404,19 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             combined[`${h.q},${h.r}`] = 'rgba(255, 180, 60, 0.9)';
           }
         }
-      }
-
-      // Hovered enemy target hex fill: green in range, amber disadvantage, red out of range.
-      if (hoveredUnit && hoveredUnit.id !== draggedUnit.id && !hoveredUnit.isDeleted) {
-        const targetGroup = alliances[hoveredUnit.team] || 'friendly';
-        const dragGroup = alliances[draggedUnit.team] || 'friendly';
-        if (targetGroup !== dragGroup) {
-          const d = hexDistance(draggedUnit.hex, hoveredUnit.hex);
-          let color = 'rgba(80, 220, 120, 0.8)';
-          if (activeWeapon) {
-            if (d > activeWeapon.maxRange) color = 'rgba(255, 80, 80, 0.85)';
-            else if (d > activeWeapon.range) color = 'rgba(255, 180, 60, 0.85)';
-          }
-          combined[`${hoveredUnit.hex.q},${hoveredUnit.hex.r}`] = color;
-        }
+        const d = hexDistance(draggedUnit.hex, hoveredUnit!.hex);
+        let color = 'rgba(80, 220, 120, 0.8)';
+        if (d > activeWeapon.maxRange) color = 'rgba(255, 80, 80, 0.85)';
+        else if (d > activeWeapon.range) color = 'rgba(255, 180, 60, 0.85)';
+        combined[`${hoveredUnit!.hex.q},${hoveredUnit!.hex.r}`] = color;
+      } else {
+        // Movement highlight only (no range rings unless a valid target is hovered).
+        reachableMap.forEach((entry, key) => {
+          // White = reachable straight ahead (droppable); light grey = needs a turn
+          // first (hint only — the unit must rotate before moving there).
+          combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.5)';
+        });
+        for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
       }
 
       setOverlayMap(combined);
@@ -1910,24 +1900,30 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             </button>
           )}
           <span className="text-white text-sm font-mono">Turn {displayTurnNumber}</span>
-          {!controlsLocked && (
-            <button
-              onClick={isGM ? handleEndTurn : undefined}
-              disabled={!isGM || isEndingTurn}
-              title={isGM ? 'Advance to the next group' : 'Only the DM can end the turn'}
-              className={`px-3 py-1 rounded shadow-lg text-sm ${
-                currentTurnAlliance === null
-                  ? 'bg-gray-700 hover:bg-gray-600 text-white'
-                  : currentTurnAlliance === 'enemy'
-                    ? 'bg-[#D55E00] hover:bg-[#c74f00] text-white'
-                    : currentTurnAlliance === 'neutral'
-                      ? 'bg-[#E0E0E0] hover:bg-[#d0d0d0] text-black'
-                      : 'bg-[#0072B2] hover:bg-[#00619c] text-white'
-              } ${!isGM || isEndingTurn ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              {`End Turn${isEndingTurn ? '…' : ''}${currentTurnAlliance === null ? ' (Free Play)' : ` (${currentTurnAlliance})`}`}
-            </button>
-          )}
+          {!controlsLocked && (() => {
+            // Alliance-wide End Turn: from turn 1 on, any player whose alliance holds
+            // the turn may advance it; free play (null alliance) stays GM-only.
+            const myAlliance = alliances[myTeam ?? ''] || 'friendly';
+            const canEndTurn = isGM || (currentTurnAlliance !== null && myAlliance === currentTurnAlliance);
+            return (
+              <button
+                onClick={canEndTurn ? handleEndTurn : undefined}
+                disabled={!canEndTurn || isEndingTurn}
+                title={canEndTurn ? 'Advance to the next group' : currentTurnAlliance === null ? 'Only the DM can end free play' : 'Only the current alliance can end the turn'}
+                className={`px-3 py-1 rounded shadow-lg text-sm ${
+                  currentTurnAlliance === null
+                    ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                    : currentTurnAlliance === 'enemy'
+                      ? 'bg-[#D55E00] hover:bg-[#c74f00] text-white'
+                      : currentTurnAlliance === 'neutral'
+                        ? 'bg-[#E0E0E0] hover:bg-[#d0d0d0] text-black'
+                        : 'bg-[#0072B2] hover:bg-[#00619c] text-white'
+                } ${!canEndTurn || isEndingTurn ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {`End Turn${isEndingTurn ? '…' : ''}${currentTurnAlliance === null ? ' (Free Play)' : ` (${currentTurnAlliance})`}`}
+              </button>
+            );
+          })()}
           {!controlsLocked && (
             <button
               onClick={isGM ? handleToggleFreeMove : undefined}
@@ -2086,6 +2082,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           playing={replay.playing}
           speed={replay.speed}
           controllerName={replay.controllerId === playerId ? 'You' : replay.controllerId ? 'Another player' : null}
+          turnOneIndex={replay.turnOneIndex}
           onSeek={replay.seek}
           onPlay={replay.play}
           onPause={replay.pause}
@@ -2283,32 +2280,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 }}
               >
                 No, stop here
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Free Move end-turn reminder (soft — turn still advances if confirmed) */}
-      {freeMoveEndTurnConfirm && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-yellow-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
-            <p className="text-white text-sm mb-1 text-center font-semibold">Free Move is still ON</p>
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              Ending the turn from free play (Turn 0) starts Turn 1, which turns Free Move OFF automatically. Do you want to continue?
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => { setFreeMoveEndTurnConfirm(false); await performEndTurn(); }}
-              >
-                End Turn anyway
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => setFreeMoveEndTurnConfirm(false)}
-              >
-                Cancel
               </button>
             </div>
           </div>

@@ -9,6 +9,8 @@ interface ReplayOverlayProps {
   playing: boolean;
   speed: number;
   controllerName: string | null;
+  /** Cursor value (1-based) of the first frame of turn 1, or -1 when never reached. */
+  turnOneIndex?: number;
   onSeek: (step: number) => void;
   onPlay: () => void;
   onPause: () => void;
@@ -23,6 +25,7 @@ export function ReplayOverlay({
   playing,
   speed,
   controllerName,
+  turnOneIndex = -1,
   onSeek,
   onPlay,
   onPause,
@@ -77,14 +80,25 @@ export function ReplayOverlay({
           ▶▶
         </button>
 
-        <input
-          type="range"
-          min={0}
-          max={totalSteps}
-          value={step}
-          onChange={(e) => onSeek(Number(e.target.value))}
-          className="w-64 mx-2 accent-amber-500"
-        />
+        <div className="relative flex-1 min-w-[16rem]">
+          <input
+            type="range"
+            min={0}
+            max={totalSteps}
+            value={step}
+            onChange={(e) => onSeek(Number(e.target.value))}
+            className="w-full accent-amber-500"
+          />
+          {turnOneIndex >= 0 && totalSteps > 0 && (
+            <div
+              className="pointer-events-none absolute -bottom-2 text-amber-400 text-[9px] leading-none"
+              style={{ left: `calc(${(turnOneIndex / totalSteps) * 100}% - 3px)` }}
+              title="Turn 1 begins"
+            >
+              ▲
+            </div>
+          )}
+        </div>
 
         <select
           value={speed}

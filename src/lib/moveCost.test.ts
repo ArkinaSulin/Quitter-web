@@ -21,13 +21,14 @@ describe('computeReachableMap — formed units', () => {
     expect(map.get('0,-2')?.cost).toBe(2);
   });
 
-  it('marks off-axis hexes as needsTurn (turn-first hint) at distance cost', () => {
-    // (1,0) is not in the front arc of facing 0 — reachable only by turning.
+  it('marks off-axis hexes as needsTurn, costing steps + turns (cone)', () => {
+    // (1,0) is not in the front arc of facing 0 — reachable only by one 60° turn
+    // (1 MP) then one step (1 MP) = cost 2. Hint only; never droppable.
     const map = computeReachableMap(formedUnit, 3, new Set(), new Set());
     const entry = map.get('1,0');
     expect(entry).toBeDefined();
     expect(entry!.needsTurn).toBe(true);
-    expect(entry!.cost).toBe(1); // distance only — turning is paid separately
+    expect(entry!.cost).toBe(2);
   });
 
   it('keeps straight-ahead hexes white even when they are also in the hint area', () => {
@@ -38,10 +39,15 @@ describe('computeReachableMap — formed units', () => {
   });
 
   it('honors maxMP for both white and grey hexes', () => {
-    const map = computeReachableMap(formedUnit, 1, new Set(), new Set());
-    expect(map.get('0,-1')?.needsTurn).toBe(false);
-    expect(map.get('1,0')?.needsTurn).toBe(true); // adjacent but off-axis
-    expect(map.has('0,-2')).toBe(false); // beyond the pool
+    // At 1 MP only the straight-ahead hex is reachable; an off-axis hex needs a
+    // turn + a step (2 MP), so it appears only once the pool allows it.
+    const map1 = computeReachableMap(formedUnit, 1, new Set(), new Set());
+    expect(map1.get('0,-1')?.needsTurn).toBe(false);
+    expect(map1.has('1,0')).toBe(false); // turn + step > 1 MP
+    expect(map1.has('0,-2')).toBe(false); // beyond the pool
+
+    const map2 = computeReachableMap(formedUnit, 2, new Set(), new Set());
+    expect(map2.get('1,0')?.needsTurn).toBe(true);
   });
 
   it('excludes occupied hexes', () => {

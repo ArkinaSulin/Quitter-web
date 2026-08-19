@@ -245,10 +245,14 @@ export function computeReachableMap(
     }
   }
 
-  // GREY set (hint): every hex within the distance pool, reachable if turns were
-  // free. 0-1 BFS over (hex, facing) — steps cost 1, turns cost 0.
+  // GREY set (hint): hexes reachable only by turning, shown as a front cone.
+  // Turning costs the same as a step (1 MP per 60°), so the reachable-with-turns
+  // area is a cone: straight ahead reaches the full pool, 60° off reaches pool−1,
+  // 120° off pool−2, 180° (about-turn) pool−3. Simple BFS over (hex, facing) —
+  // steps and turns both cost 1. Entries are never droppable (a unit must rotate
+  // first); they exist only as a lighter-shade hint.
   const INF = Number.MAX_SAFE_INTEGER;
-  const distMap = new Map<string, number>(); // "q,r,facing" -> min steps
+  const distMap = new Map<string, number>(); // "q,r,facing" -> min cost (steps + turns)
   distMap.set(`${unit.hex.q},${unit.hex.r},${unit.facing}`, 0);
   const deque: { q: number; r: number; facing: number; d: number }[] = [
     { q: unit.hex.q, r: unit.hex.r, facing: unit.facing, d: 0 },
@@ -273,9 +277,9 @@ export function computeReachableMap(
     }
     for (const newFacing of [(cur.facing + 5) % 6, (cur.facing + 1) % 6]) {
       const nk = `${cur.q},${cur.r},${newFacing}`;
-      if (cur.d < (distMap.get(nk) ?? INF)) {
-        distMap.set(nk, cur.d);
-        deque.unshift({ q: cur.q, r: cur.r, facing: newFacing, d: cur.d });
+      if (cur.d + 1 < (distMap.get(nk) ?? INF)) {
+        distMap.set(nk, cur.d + 1);
+        deque.push({ q: cur.q, r: cur.r, facing: newFacing, d: cur.d + 1 });
       }
     }
   }
