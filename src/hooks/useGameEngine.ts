@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { computeEffectiveMovement } from '@/lib/unitStats';
@@ -53,6 +53,22 @@ export function useGameEngine({
     setUndoState(state);
     return state;
   }, [scenarioId]);
+
+  // Realtime command_log events can be missed, so also re-fetch the undo cache
+  // on an interval and on window focus (same belt-and-braces as UndoDebugPanel /
+  // useTeamAlliances). Keeps the Undo/Redo buttons from going stale mid-session.
+  useEffect(() => {
+    refreshUndoState();
+    const t = setInterval(() => { refreshUndoState(); }, 5000);
+    const onFocus = () => { refreshUndoState(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [refreshUndoState]);
 
   /**
    * Apply sub-step deltas to local state (optimistic UI; realtime confirms the
@@ -147,11 +163,15 @@ export function useGameEngine({
   }, [scenarioId, refreshUndoState]);
 
   const undo = useCallback(async (): Promise<CommandLogRow[] | null> => {
-    // Server-authoritative: only the live global top chain (owned by the caller
-    // or a GM) may be undone. The DB recomputes the top from the log, so a stale
-    // client cannot undo a move another player made after it.
-    const ids = undoStateRef.current?.undo?.ids;
-    if (!ids || ids.length === 0) return null;
+    // Always fetch a fresh undo_state first — the cached state can lag realtime
+    // events, and a stale/null cache is what made undo/redo intermittently do
+    // nothing. The RPC still re-validates, so this stays race-safe.
+    const fresh = await refreshUndoState();
+    const ids = fresh?.undo?.ids;
+    if (!ids || ids.length === 0) {
+      addMessage('Nothing to undo right now');
+      return null;
+    }
 
     const { data, error } = await supabase.rpc('undo_commands', {
       p_scenario_id: scenarioId,
@@ -175,8 +195,12 @@ export function useGameEngine({
   }, [scenarioId, addMessage, refreshUndoState, applyDeltas]);
 
   const redo = useCallback(async (): Promise<CommandLogRow[] | null> => {
-    const ids = undoStateRef.current?.redo?.ids;
-    if (!ids || ids.length === 0) return null;
+    const fresh = await refreshUndoState();
+    const ids = fresh?.redo?.ids;
+    if (!ids || ids.length === 0) {
+      addMessage('Nothing to redo right now');
+      return null;
+    }
 
     const { data, error } = await supabase.rpc('redo_commands', {
       p_scenario_id: scenarioId,
@@ -276,28 +300,42 @@ export function useGameEngine({
   );
 
   const rotateUnit = useCallback(
-    async (unit: Unit, direction: 'left' | 'right', maxMP: number): Promise<void> => {
-      const step = direction === 'left' ? -1 : 1;
-      const newFacing = ((unit.facing + step) % 6 + 6) % 6;
+    async (unit: Unit, direction: 'left' | 'right', maxMP: number, steps = 1): Promise<void> => {
+      const delta = direction === 'left' ? -steps : steps;
+      const newFacing = ((unit.facing + delta) % 6 + 6) % 6;
       const changes: { field: string; from: any; to: any }[] = [
         { field: 'facing', from: unit.facing, to: newFacing },
       ];
-      if (!unit.isHero && !freeMove) {
+      // Movement only pays distance; turning pays its own directional cost —
+      // 1 MP per 60° rotate, free for Heroes, Scattered (item 7), and free-move.
+      const freeRotate = unit.isHero || freeMove || unit.currentFormation === 'Scattered';
+      if (!freeRotate) {
         const { movementPointsAvailable, actionsAvailable } = applyMpSpend(unit, 1, maxMP);
         changes.push({ field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: movementPointsAvailable });
         if (actionsAvailable !== unit.actionsAvailable) {
           changes.push({ field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsAvailable });
         }
       }
+      let desc = `${unit.unitName} rotated ${direction}${steps > 1 ? ` ${steps * 60}°` : ''}`;
+      // A 180° about-face also costs one organization level (special maneuver).
+      if (steps === 3) {
+        const lower = nextLowerFormation(unit.currentFormation);
+        if (lower) {
+          changes.push({ field: 'currentFormation', from: unit.currentFormation, to: lower });
+          desc = `${unit.unitName} about-faced (1 MP, −1 org)`;
+        } else {
+          desc = `${unit.unitName} about-faced`;
+        }
+      }
       const subSteps: SubStep[] = [
         {
           type: 'ROTATE',
-          description: `${unit.unitName} rotated ${direction}`,
+          description: desc,
           unitId: unit.id,
           changes,
         },
       ];
-      await execute('ROTATE', subSteps, subSteps[0].description);
+      await execute('ROTATE', subSteps, desc);
     },
     [execute, freeMove],
   );

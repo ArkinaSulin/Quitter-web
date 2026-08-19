@@ -14,32 +14,34 @@ const formedUnit = {
 // Facing 0 front dirs are HEX_DIRS[4]=(0,-1) and HEX_DIRS[5]=(1,-1).
 
 describe('computeReachableMap — formed units', () => {
-  it('costs 1 MP per front-arc step', () => {
+  it('costs 1 MP per front-arc step, straight ahead (no turn)', () => {
     const map = computeReachableMap(formedUnit, 3, new Set(), new Set());
-    expect(map.get('0,-1')?.cost).toBe(1);
-    expect(map.get('1,-1')?.cost).toBe(1);
+    expect(map.get('0,-1')).toMatchObject({ cost: 1, needsTurn: false });
+    expect(map.get('1,-1')).toMatchObject({ cost: 1, needsTurn: false });
+    expect(map.get('0,-2')?.cost).toBe(2);
   });
 
-  it('costs 1 MP per 60° turn', () => {
-    // (1,0) is not in the front arc of facing 0 — needs one turn then a step.
-    const map = computeReachableMap(formedUnit, 4, new Set(), new Set());
+  it('marks off-axis hexes as needsTurn (turn-first hint) at distance cost', () => {
+    // (1,0) is not in the front arc of facing 0 — reachable only by turning.
+    const map = computeReachableMap(formedUnit, 3, new Set(), new Set());
     const entry = map.get('1,0');
     expect(entry).toBeDefined();
-    expect(entry!.cost).toBe(2);
-    expect(entry!.path).toEqual([h(1, 0)]);
-    expect(entry!.finalFacing).toBe(1);
+    expect(entry!.needsTurn).toBe(true);
+    expect(entry!.cost).toBe(1); // distance only — turning is paid separately
   });
 
-  it('picks the min-cost path to a hex', () => {
-    // (1,-1) is directly in the front arc → cost 1, never higher.
-    const map = computeReachableMap(formedUnit, 4, new Set(), new Set());
-    expect(map.get('1,-1')?.cost).toBe(1);
+  it('keeps straight-ahead hexes white even when they are also in the hint area', () => {
+    const map = computeReachableMap(formedUnit, 3, new Set(), new Set());
+    expect(map.get('1,-1')?.needsTurn).toBe(false);
+    expect(map.get('2,-2')?.needsTurn).toBe(false);
+    expect(map.get('3,-3')?.needsTurn).toBe(false);
   });
 
-  it('honors maxMP', () => {
+  it('honors maxMP for both white and grey hexes', () => {
     const map = computeReachableMap(formedUnit, 1, new Set(), new Set());
-    expect(map.has('0,-1')).toBe(true);
-    expect(map.has('1,0')).toBe(false); // needs 2 MP
+    expect(map.get('0,-1')?.needsTurn).toBe(false);
+    expect(map.get('1,0')?.needsTurn).toBe(true); // adjacent but off-axis
+    expect(map.has('0,-2')).toBe(false); // beyond the pool
   });
 
   it('excludes occupied hexes', () => {
@@ -49,15 +51,12 @@ describe('computeReachableMap — formed units', () => {
   });
 
   it('allows stopping on a threat hex but never passing through', () => {
-    const threats = new Set(['0,-1']);
-    const map = computeReachableMap(formedUnit, 4, new Set(), threats);
+    const threats = new Set(['0,-1', '1,-1']); // both front-arc hexes block the rays
+    const map = computeReachableMap(formedUnit, 2, new Set(), threats);
     expect(map.get('0,-1')?.cost).toBe(1); // reachable as a destination
-    map.forEach((entry) => {
-      const intermediate = entry.path.slice(0, -1);
-      for (const hex of intermediate) {
-        expect(threats.has(`${hex.q},${hex.r}`)).toBe(false);
-      }
-    });
+    expect(map.get('1,-1')?.cost).toBe(1);
+    expect(map.has('0,-2')).toBe(false); // beyond the blocked front
+    expect(map.has('1,-2')).toBe(false);
   });
 
   it('returns an empty map at 0 MP', () => {
@@ -71,9 +70,9 @@ describe('computeReachableMap — routed / scattered', () => {
 
   it('moves in any direction at 1 MP per hex (no facing)', () => {
     const map = computeReachableMap(looseUnit, 4, new Set(), new Set());
-    expect(map.get('1,0')?.cost).toBe(1);
-    expect(map.get('0,1')?.cost).toBe(1);
-    expect(map.get('0,-1')?.cost).toBe(1);
+    expect(map.get('1,0')).toMatchObject({ cost: 1, needsTurn: false });
+    expect(map.get('0,1')).toMatchObject({ cost: 1, needsTurn: false });
+    expect(map.get('0,-1')).toMatchObject({ cost: 1, needsTurn: false });
     expect(map.get('0,-2')?.cost).toBe(2);
   });
 
@@ -89,9 +88,9 @@ describe('computeReachableMap — heroes move like Scattered (omnidirectional)',
 
   it('moves in any direction at 1 MP per hex, no turning cost', () => {
     const map = computeReachableMap(heroUnit, 3, new Set(), new Set());
-    expect(map.get('1,0')?.cost).toBe(1); // behind the facing — no turn needed
-    expect(map.get('0,1')?.cost).toBe(1);
-    expect(map.get('0,-1')?.cost).toBe(1); // front arc
+    expect(map.get('1,0')).toMatchObject({ cost: 1, needsTurn: false }); // behind the facing — no turn needed
+    expect(map.get('0,1')).toMatchObject({ cost: 1, needsTurn: false });
+    expect(map.get('0,-1')).toMatchObject({ cost: 1, needsTurn: false }); // front arc
     expect(map.get('0,-2')?.cost).toBe(2);
   });
 

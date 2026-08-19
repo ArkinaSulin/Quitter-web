@@ -5,6 +5,7 @@ import {
   scopeContainsTeam,
   canMoveUnit,
   canAdjustUnit,
+  canActOnUnit,
   emptyCapabilities,
   allTrueCapabilities,
 } from './scenarioPermissions';
@@ -112,5 +113,54 @@ describe('canMoveUnit / canAdjustUnit', () => {
     const all = allTrueCapabilities();
     expect(canMoveUnit(all, null, 'red', alliances)).toBe(true);
     expect(canAdjustUnit(all, null, 'blue', alliances)).toBe(true);
+  });
+});
+
+describe('canActOnUnit — turn gate', () => {
+  const moveOwn = caps({ move_own_team: true });
+  const moveAny = caps({ move_any_team: true });
+
+  it('GM overrides every gate, any turn', () => {
+    expect(canActOnUnit(emptyCapabilities(), null, 'red', alliances, 'friendly', false, true)).toBe(true);
+    expect(canActOnUnit(emptyCapabilities(), null, 'red', alliances, 'enemy', false, true)).toBe(true);
+  });
+
+  it('free play (turn null) uses role scope only', () => {
+    expect(canActOnUnit(moveOwn, 'blue', 'blue', alliances, null, false, false)).toBe(true);
+    expect(canActOnUnit(moveOwn, 'blue', 'red', alliances, null, false, false)).toBe(false);
+  });
+
+  it('free-move override bypasses the turn gate but not role scope', () => {
+    expect(canActOnUnit(moveOwn, 'blue', 'blue', alliances, 'enemy', true, false)).toBe(true);
+    expect(canActOnUnit(moveOwn, 'blue', 'red', alliances, 'enemy', true, false)).toBe(false);
+  });
+
+  it('a player can only act during their own alliance\'s turn', () => {
+    // Friendly player, friendly unit, but it is the enemy turn → blocked.
+    expect(canActOnUnit(moveOwn, 'blue', 'blue', alliances, 'enemy', false, false)).toBe(false);
+    // Friendly player, friendly unit, friendly turn → allowed.
+    expect(canActOnUnit(moveOwn, 'blue', 'blue', alliances, 'friendly', false, false)).toBe(true);
+  });
+
+  it('move_any_team roles are still bound to their own turn (AssistGM)', () => {
+    // AssistGM (any_team) on a friendly team cannot act on the enemy turn.
+    expect(canActOnUnit(moveAny, 'blue', 'red', alliances, 'enemy', false, false)).toBe(false);
+    // During their own (friendly) turn they act on friendly units, but the unit
+    // gate still blocks acting on enemy units.
+    expect(canActOnUnit(moveAny, 'blue', 'blue', alliances, 'friendly', false, false)).toBe(true);
+    expect(canActOnUnit(moveAny, 'blue', 'red', alliances, 'friendly', false, false)).toBe(false);
+  });
+
+  it('enemy-side players act during the enemy turn on enemy units', () => {
+    expect(canActOnUnit(moveOwn, 'red', 'red', alliances, 'enemy', false, false)).toBe(true);
+    expect(canActOnUnit(moveOwn, 'red', 'blue', alliances, 'enemy', false, false)).toBe(false);
+  });
+
+  it('an unassigned player (no team) cannot act once turns begin', () => {
+    // any_team scope passes, but an unassigned player has no alliance → defaults
+    // to friendly, so the friendly turn would allow it. The unit gate then
+    // requires the unit to be friendly too.
+    expect(canActOnUnit(moveAny, null, 'blue', alliances, 'friendly', false, false)).toBe(true);
+    expect(canActOnUnit(moveAny, null, 'red', alliances, 'friendly', false, false)).toBe(false);
   });
 });

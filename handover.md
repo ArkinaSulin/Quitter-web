@@ -1,5 +1,19 @@
 # Handover — 2026-08-03
 
+## Server-authoritative commands: atomic execute/undo/redo + no client undo stack (2026-08-18)
+**Files:** `supabase/migrations/051_server_authoritative_commands.sql` (new), `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`, `src/lib/commandLog.ts` (new), `src/lib/commandHistory.ts` + test, `src/game/GameEngine.ts` + `GameEngine.test.ts` (deleted)
+
+- **Migration 051 — apply to the DB.** `command_log.seq` BIGSERIAL (backfilled by `created_at, id`; unique + `(scenario_id, seq)` index). The live top chain is now totally ordered by `seq` — `(created_at, id)` could tie same-timestamp commands in arbitrary uuid order, which made undo reject valid targets and redo reorder chains.
+- **`execute_command` / `undo_commands` / `redo_commands` / `undo_state` RPCs** (SECURITY DEFINER, `SET search_path = public`). All state mutations now flow through a shared **`apply_substeps`** that writes sub-step deltas to `units` / `team_alliances` / `scenarios` **in the same transaction as the log mutation** — the units table and the command log can no longer diverge. The old flow (client `updateUnit` write, then a separate `command_log` insert) was the root cause of undo reverting the wrong state and of un-undoable drift when one write failed.
+- **`apply_substeps`** uses a camelCase→snake_case allowlist mirroring `updateUnit()` (unknown field → `RAISE`, never silently skipped), expands `hex` → `hex_q/r/s`, derives `organization_level` from `current_formation`, and applies `from`-deltas in reverse when undoing. Internal only — no client EXECUTE grant.
+- **`execute_command`** requires the caller to be a **participant** (`scenario_participants`); **ALLIANCE/SCENARIO sub-steps are GM-only** (they write `team_alliances` / `scenarios`). Server-enforced, not just client-gated. `created_at` default + `updated_at = now()` on all target tables (keeps Lobby recency ordering).
+- **`redo_commands`**: redo target = the newest `deleted_at` batch; owner-or-GM permission; **invalidated when any live command has `seq` above the batch's max** (a new action clears redo; LIFO-correct across undo-then-undo chains).
+- **`undo_state`**: returns `{ undo: { ids, count, description, playerName, canUndo }, redo: {...} }` from the log alone — drives the Undo/Redo buttons with no client stack.
+- **`useGameEngine`**: client-side `GameEngine` stack deleted. `execute`/`undo`/`redo` call the RPCs with optimistic local apply (realtime confirms). New `undoState` cache (from `undo_state`) feeds `canUndo`/`canRedo`/`peekUndoChainLength`, refreshed on mount, on every `command_log` realtime INSERT/UPDATE, and after each action. **A rejected undo no longer corrupts state** — it just shows "Cannot undo…" and refreshes (the old pre-pop + `hydrateFromLog` churn was the "undo does nothing" bug).
+- **Cleanup**: types moved to `src/lib/commandLog.ts` (`ActionType/SubStep/UnitChange/CommandEntry/CommandLogRow/parseSubSteps/rowToEntry` + `UndoState`); `src/game/GameEngine.ts` + test deleted; `buildStackFromLog` removed from `commandHistory.ts` (replay + row helpers kept, re-exported so `useReplay`/`UndoDebugPanel` are untouched); `ScenarioMap.tsx` swaps `hydrateFromLog` for `refreshUndoState`.
+- **Historical note**: `undo_stack_size` setting (047) is now unused (no client stack) — left in place, harmless. Old pre-051 rows keep their backfilled seqs at the bottom of the chain; they can't be reached by normal undo and are safe to keep or clear.
+- 298 tests (GameEngine 7 + buildStackFromLog 4 removed); `tsc --noEmit` clean.
+
 ## Fix: joining an open room silently failed when the DM was online (2026-08-11)
 **Files:** `src/hooks/useScenarios.ts`, `src/components/Lobby.tsx`
 

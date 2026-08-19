@@ -104,6 +104,32 @@ export function canMoveUnit(
   );
 }
 
+/**
+ * Full "may this player act on this unit right now?" gate.
+ * - The GM (scenario creator) always overrides.
+ * - Role scope first (own team / own alliance / any team).
+ * - Free play (turn null) / free-move override: role scope is the only gate.
+ * - Turn 1+: the player may only act during their OWN alliance's turn, and only
+ *   on units of that same alliance. Applies universally, including move_any_team
+ *   roles like AssistGM.
+ */
+export function canActOnUnit(
+  caps: ScenarioRoleCapabilities,
+  playerTeam: string | null,
+  unitTeam: string,
+  alliances: Record<string, AllianceGroup>,
+  turn: AllianceGroup | null,
+  freeMove: boolean,
+  isGM: boolean,
+): boolean {
+  if (isGM) return true;
+  if (!canMoveUnit(caps, playerTeam, unitTeam, alliances)) return false;
+  if (freeMove || turn === null) return true;
+  const myAlliance = alliances[playerTeam ?? ''] || 'friendly';
+  if (myAlliance !== turn) return false;
+  return (alliances[unitTeam] || 'friendly') === turn;
+}
+
 export function canAdjustUnit(
   caps: ScenarioRoleCapabilities,
   playerTeam: string | null,

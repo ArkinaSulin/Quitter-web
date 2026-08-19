@@ -5,6 +5,7 @@ import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { computeEffectiveMoraleModifier, computeThreatRating, calcWounds, calcIsolation, calcEnemyThreats } from '@/lib/unitMorale';
 import { computeEffectiveAc, computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty } from '@/lib/unitStats';
 import { parseWeapons } from '@/lib/weaponParser';
+import { useTooltipClamp } from './useTooltipClamp';
 
 interface UnitTooltipProps {
   unit: Unit;
@@ -27,7 +28,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const effectiveMoraleModifier = unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, units, alliances, formationMod);
   const wounds = calcWounds(unit);
   const isolated = calcIsolation(unit, units, alliances);
-  const enemyThreats = calcEnemyThreats(unit, units, alliances, formationMod);
+  const enemyThreats = calcEnemyThreats(unit, units, alliances);
   const threatRating = computeThreatRating(unit);
   const morTotal = unit.baseMorale + effectiveMoraleModifier;
   const effectiveAc = computeEffectiveAc(unit, formationAcMod);
@@ -73,7 +74,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
             ? <><span className="text-gray-400">MOR:</span><span className="text-yellow-400">fearless</span></>
             : <><span className="text-gray-400">MOR:</span><span className="text-yellow-400">{morTotal} = {unit.baseMorale} {effectiveMoraleModifier >= 0 ? '+ ' : '- '}{Math.abs(effectiveMoraleModifier)}{formationMorMod !== 0 ? ` (incl. formation ${formationMorMod >= 0 ? '+' : ''}${formationMorMod})` : ''}</span></>
         )}
-        <span className="text-gray-400">Threat:</span><span>{unit.isRouting ? `0 routed, was ${threatRating.toFixed(2)}` : `${threatRating.toFixed(2)}${unit.isCharging ? ' (2× charging)' : ''}`}</span>
+        <span className="text-gray-400">Threat:</span><span>{unit.isRouting ? `0 routed, was ${threatRating.toFixed(2)}` : threatRating.toFixed(2)}</span>
       </div>
 
       <div className="border-t border-gray-600 my-1.5" />
@@ -116,9 +117,9 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
             <span className="text-gray-400">isolation</span>
             <span className={isolated ? 'text-red-400' : 'text-green-400'}>{isolated ? '-1' : '0'}</span>
             <span className="text-gray-400">threat</span>
-            <span className={enemyThreats.frontSide + enemyThreats.rear > 0 ? 'text-red-400' : 'text-green-400'}>
-              {enemyThreats.frontSide + enemyThreats.rear > 0
-                ? `-${enemyThreats.frontSide + enemyThreats.rear} = (f+fl ${enemyThreats.frontSideSum} + r ${enemyThreats.rearSum}) ÷ ${enemyThreats.myThreat}`
+            <span className={enemyThreats.total > 0 ? 'text-red-400' : 'text-green-400'}>
+              {enemyThreats.total > 0
+                ? `-${enemyThreats.total} = (${enemyThreats.totalSum} kill-zone) ÷ ${enemyThreats.myThreat}`
                 : '0'}
             </span>
             {formationMorMod !== 0 && (
@@ -141,10 +142,12 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
 }
 
 export function UnitTooltip({ unit, x, y, attachedHero, units, alliances, formation, attachedHeroFormation }: UnitTooltipProps) {
+  const { ref, style } = useTooltipClamp(x, y);
   return (
     <div
-      className="absolute z-50 pointer-events-none bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white whitespace-nowrap"
-      style={{ left: x + 12, top: y + 12 }}
+      ref={ref}
+      className="absolute z-50 pointer-events-none bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white max-w-[min(420px,calc(100vw-16px))]"
+      style={style}
     >
       {attachedHero && (
         <>

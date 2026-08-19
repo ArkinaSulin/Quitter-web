@@ -4,6 +4,12 @@ export interface MovePathEntry {
   cost: number;
   path: Hex[];
   finalFacing: number;
+  /**
+   * True when every path to this hex requires a facing change. Movement only
+   * pays distance; turning is a separate paid ROTATE, so a turn-required hex is
+   * not droppable — it's a hint that the unit must rotate first.
+   */
+  needsTurn?: boolean;
 }
 
 type MpBudget = Pick<Unit, 'movementPointsAvailable' | 'actionsAvailable'>;
@@ -167,15 +173,18 @@ export function computeChargeReachable(
 }
 
 /**
- * Single-source BFS over (hex, facing) for formed units:
- *   - entering a hex from the front arc costs 1 MP
- *   - each 60° turn costs 1 MP
+ * Reachable map for one move.
+ *
+ * Movement only costs distance (1 MP per hex); turning is paid separately when
+ * the unit actually rotates (a ROTATE command). So:
+ *   - WHITE entries (needsTurn false): reachable straight ahead from the current
+ *     facing, cost = distance. These are droppable.
+ *   - GREY entries (needsTurn true): reachable only if the unit could turn for
+ *     free — a hint that it must rotate first, then move. Not droppable.
+ *
  * Threat hexes are reachable but cannot be passed through. Occupied hexes are
- * never reachable.
- *
- * Routed / Scattered / Hero units move in any direction at 1 MP per hex (no facing).
- *
- * Returns the minimum-cost path to every reachable hex keyed by "q,r".
+ * never reachable. Routed / Scattered / Hero units move in any direction at 1 MP
+ * per hex (no facing) — always white.
  */
 export function computeReachableMap(
   unit: { hex: Hex; facing: number; isRouting: boolean; currentFormation: string; isHero?: boolean },
@@ -205,6 +214,7 @@ export function computeReachableMap(
           cost: cur.dist + 1,
           path: [...cur.path, { q: nq, r: nr, s: -nq - nr }],
           finalFacing: unit.facing,
+          needsTurn: false,
         };
         result.set(k, entry);
         if (!threatHexes.has(k)) {
@@ -215,43 +225,75 @@ export function computeReachableMap(
     return result;
   }
 
-  const visited = new Set<string>();
-  const queue: { q: number; r: number; facing: number; mpUsed: number; path: Hex[] }[] = [];
-  queue.push({ q: unit.hex.q, r: unit.hex.r, facing: unit.facing, mpUsed: 0, path: [] });
-  visited.add(`${unit.hex.q},${unit.hex.r},${unit.facing}`);
-
-  while (queue.length > 0) {
-    const cur = queue.shift()!;
-    if (cur.mpUsed >= maxMP) continue;
-
-    const frontDirs = [(cur.facing + 4) % 6, (cur.facing + 5) % 6];
-    for (const dirIdx of frontDirs) {
-      const dir = HEX_DIRS[dirIdx];
-      const nq = cur.q + dir.q;
-      const nr = cur.r + dir.r;
-      const k = key(nq, nr);
-      if (occupied.has(k)) continue;
-      const stateKey = `${nq},${nr},${cur.facing}`;
-      if (visited.has(stateKey)) continue;
-      visited.add(stateKey);
-      const entry: MovePathEntry = {
-        cost: cur.mpUsed + 1,
-        path: [...cur.path, { q: nq, r: nr, s: -nq - nr }],
-        finalFacing: cur.facing,
-      };
-      if (!result.has(k)) result.set(k, entry);
-      if (!threatHexes.has(k)) {
-        queue.push({ q: nq, r: nr, facing: cur.facing, mpUsed: cur.mpUsed + 1, path: entry.path });
-      }
-    }
-
-    for (const newFacing of [(cur.facing + 5) % 6, (cur.facing + 1) % 6]) {
-      const stateKey = `${cur.q},${cur.r},${newFacing}`;
-      if (visited.has(stateKey)) continue;
-      visited.add(stateKey);
-      queue.push({ q: cur.q, r: cur.r, facing: newFacing, mpUsed: cur.mpUsed + 1, path: cur.path });
+  // WHITE set: the two straight front-arc rays from the current facing. A unit
+  // steps forward keeping its facing; cost is pure distance.
+  const white = new Map<string, MovePathEntry>();
+  const frontDirs = [(unit.facing + 4) % 6, (unit.facing + 5) % 6];
+  for (const dirIdx of frontDirs) {
+    const dir = HEX_DIRS[dirIdx];
+    let q = unit.hex.q;
+    let r = unit.hex.r;
+    const path: Hex[] = [];
+    for (let d = 1; d <= maxMP; d++) {
+      q += dir.q;
+      r += dir.r;
+      const k = key(q, r);
+      if (occupied.has(k)) break;
+      path.push({ q, r, s: -q - r });
+      white.set(k, { cost: d, path: [...path], finalFacing: unit.facing, needsTurn: false });
+      if (threatHexes.has(k)) break; // may stop here, cannot pass through
     }
   }
 
+  // GREY set (hint): every hex within the distance pool, reachable if turns were
+  // free. 0-1 BFS over (hex, facing) — steps cost 1, turns cost 0.
+  const INF = Number.MAX_SAFE_INTEGER;
+  const distMap = new Map<string, number>(); // "q,r,facing" -> min steps
+  distMap.set(`${unit.hex.q},${unit.hex.r},${unit.facing}`, 0);
+  const deque: { q: number; r: number; facing: number; d: number }[] = [
+    { q: unit.hex.q, r: unit.hex.r, facing: unit.facing, d: 0 },
+  ];
+  while (deque.length > 0) {
+    const cur = deque.shift()!;
+    const curKey = `${cur.q},${cur.r},${cur.facing}`;
+    if (cur.d !== distMap.get(curKey)) continue; // stale entry
+    if (cur.d >= maxMP) continue;
+    if (threatHexes.has(key(cur.q, cur.r))) continue; // can stop here, not pass through
+    const cf = [(cur.facing + 4) % 6, (cur.facing + 5) % 6];
+    for (const dirIdx of cf) {
+      const dir = HEX_DIRS[dirIdx];
+      const nq = cur.q + dir.q;
+      const nr = cur.r + dir.r;
+      const nk = `${nq},${nr},${cur.facing}`;
+      if (occupied.has(key(nq, nr))) continue;
+      if (cur.d + 1 < (distMap.get(nk) ?? INF)) {
+        distMap.set(nk, cur.d + 1);
+        deque.push({ q: nq, r: nr, facing: cur.facing, d: cur.d + 1 });
+      }
+    }
+    for (const newFacing of [(cur.facing + 5) % 6, (cur.facing + 1) % 6]) {
+      const nk = `${cur.q},${cur.r},${newFacing}`;
+      if (cur.d < (distMap.get(nk) ?? INF)) {
+        distMap.set(nk, cur.d);
+        deque.unshift({ q: cur.q, r: cur.r, facing: newFacing, d: cur.d });
+      }
+    }
+  }
+
+  const ownKey = key(unit.hex.q, unit.hex.r);
+  const grey = new Map<string, number>();
+  distMap.forEach((d, sk) => {
+    const hk = sk.split(',').slice(0, 2).join(',');
+    if (hk === ownKey) return;
+    if (d < (grey.get(hk) ?? INF)) grey.set(hk, d);
+  });
+
+  grey.forEach((d, k) => {
+    if (white.has(k)) return;
+    result.set(k, { cost: d, path: [], finalFacing: unit.facing, needsTurn: true });
+  });
+  white.forEach((entry, k) => {
+    result.set(k, entry);
+  });
   return result;
 }

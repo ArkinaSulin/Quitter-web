@@ -16,8 +16,12 @@ interface ContextMenuProps {
   isGM: boolean;
   selectedWeapon?: number;
   formationsMap?: Record<string, Formation>;
+  /** Free-move override (any rotate is free while it's on). */
+  freeMove?: boolean;
   onClose: () => void;
   onRotate: (direction: 'left' | 'right') => void;
+  /** 180° about-face: 1 MP + one organization level (free for Scattered/free-move). */
+  onRotate180?: () => void;
   onChangeFormation: (formation: string) => void;
   onSelectWeapon: (weaponIndex: number) => void;
   onAssignTeam: (team: string) => void;
@@ -43,8 +47,10 @@ export function ContextMenu({
   isGM,
   selectedWeapon = 0,
   formationsMap,
+  freeMove = false,
   onClose,
   onRotate,
+  onRotate180,
   onChangeFormation,
   onSelectWeapon,
   onAssignTeam,
@@ -171,6 +177,14 @@ export function ContextMenu({
           >
             Rotate Right
           </div>
+          {onRotate180 && (
+            <div
+              className={`px-3 py-1 ${unit.isCharging ? 'text-gray-600 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}`}
+              onClick={() => { if (unit.isCharging) return; onRotate180(); onClose(); }}
+            >
+              Rotate 180°{freeMove || unit.currentFormation === 'Scattered' ? ' (free)' : ' (1 MP, −1 org)'}
+            </div>
+          )}
           {/* Attached hero swaps front/back position (costs 1 hero MP). Shown on
               the host's menu, right under rotate, above charge. */}
           {attachedHero && onSwapHeroPosition && (

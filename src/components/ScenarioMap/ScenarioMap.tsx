@@ -22,7 +22,7 @@ import { useReplay } from '@/hooks/useReplay';
 import { useParticipants } from '@/hooks/useParticipants';
 import { useScenarioCapabilities } from '@/hooks/useScenarioCapabilities';
 import { usePing } from '@/hooks/usePing';
-import { canMoveUnit, canAdjustUnit, allTrueCapabilities } from '@/lib/scenarioPermissions';
+import { canActOnUnit, canAdjustUnit, allTrueCapabilities } from '@/lib/scenarioPermissions';
 import { isUnitInteractable } from '@/lib/unitInteractions';
 import { LeftPanel } from './LeftPanel';
 import { ContextMenu } from './ContextMenu';
@@ -32,7 +32,7 @@ import { UnitEditorModal } from './UnitEditorModal';
 import { PingLayer } from './PingLayer';
 import { drawToken, loadImage, SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
-import { computeEffectiveMoraleModifier, shouldRout, computeThreatRating, areHexesAdjacent } from '@/lib/unitMorale';
+import { computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, areHexesAdjacent } from '@/lib/unitMorale';
 import { supabase } from '@/lib/supabaseClient';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement } from '@/lib/unitStats';
 import { nextLowerFormation } from '@/lib/formationCost';
@@ -305,14 +305,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   };
   const canControlUnit = useCallback((unit: Unit): boolean => {
     const { caps, team, alliances: al, currentTurnAlliance: turn, freeMove: fm, isGM: gm } = permRef.current;
-    // The GM (scenario creator) can always override any gate.
-    if (gm) return true;
-    // Role-scope gate first (own team / own alliance / any team).
-    if (!canMoveUnit(caps, team, unit.team, al)) return false;
-    // Turn 0 / free play (or free-move override): role scope is the only gate.
-    if (fm || turn === null) return true;
-    // Turn 1+: only units in the current turn's alliance group may act.
-    return (al[unit.team] || 'friendly') === turn;
+    // The GM (scenario creator) can always override any gate. From turn 1 on,
+    // non-GM players may only act during their own alliance's turn, and only on
+    // that alliance's units (see canActOnUnit).
+    return canActOnUnit(caps, team, unit.team, al, turn, fm, gm);
   }, []);
   const canEditUnit = useCallback((unit: Unit): boolean => {
     const { caps, team, alliances: al } = permRef.current;
@@ -405,43 +401,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }));
   }, []);
 
-  // Post-move morale check: the moved unit and any unit adjacent to its landing
-  // hex that breaks morale (threat / isolation / wounds) routs immediately. Shared
-  // by normal moves, charges, and Free Move so movement always triggers routing.
-  const maybeRoutAfterMove = useCallback(async (unit: Unit, targetHex: Hex) => {
-    const updatedUnits = units.map(u =>
-      u.id === unit.id ? { ...u, hex: { ...targetHex } } : u
-    );
-    const candidates = new Set<string>();
-    if (!unit.ignoreMoraleChecks && !unit.isRouting) candidates.add(unit.id);
-    for (const u of units) {
-      if (u.isDeleted || u.ignoreMoraleChecks || u.isRouting) continue;
-      if (u.id !== unit.id && hexDistance(u.hex, targetHex) === 1) {
-        candidates.add(u.id);
-      }
-    }
-    for (const id of Array.from(candidates)) {
-      const c = updatedUnits.find(x => x.id === id);
-      if (!c) continue;
-      const formation = formationsMap[c.currentFormation] ?? null;
-      if (shouldRout(c, updatedUnits, alliances, formation)) {
-        const name = id === unit.id ? unit.unitName : c.unitName;
-        const morale = c.baseMorale + c.currentMoraleModifier + computeEffectiveMoraleModifier(c, updatedUnits, alliances, formation);
-        await execute('ROUT', [
-          {
-            type: 'ROUT',
-            description: `${name} routed (morale ${morale})`,
-            unitId: c.id,
-            changes: [
-              { field: 'isRouting', from: false, to: true },
-              { field: 'currentFormation', from: c.currentFormation, to: 'Routed' },
-            ],
-          },
-        ], `${name} routed`, { chained: true });
-      }
-    }
-  }, [units, alliances, formationsMap, execute]);
-
   const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number) => {
     if (overBudget) {
       const heroNote = attachedHero
@@ -449,9 +408,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         : '';
       addError(`${unit.unitName} moved over budget — path costs ${cost} MP (${Math.ceil(cost / Math.max(1, maxMP))} action(s)), but ${unit.unitName} has ${unit.actionsAvailable} action(s) left${heroNote}`);
     }
+    // Movement alone never routs — only an attack (combat or a spell) can break
+    // a unit's morale into a rout, even when threat drops morale to zero.
     await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP);
-    await maybeRoutAfterMove(unit, targetHex);
-  }, [units, moveUnitRecorded, alliances, formationsMap, execute, addError, maybeRoutAfterMove]);
+  }, [units, moveUnitRecorded, alliances, formationsMap, execute, addError]);
 
   const handleUnitMove = useCallback(async (unitId: string, targetHex: Hex) => {
     const unit = units.find(u => u.id === unitId);
@@ -513,7 +473,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         return;
       }
       await moveUnitFree(unit, targetHex, attachedHero);
-      await maybeRoutAfterMove(unit, targetHex);
       await finishHeroMove(unit);
       return;
     }
@@ -532,6 +491,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — out of reach`);
       return;
     }
+    // Movement only pays distance; turning is a separate paid ROTATE. A grey
+    // (turn-required) hex is not droppable — the unit must turn first.
+    if (entry.needsTurn) {
+      addMessage(`${unit.unitName} must turn first (1 MP) to move to (${targetHex.q}, ${targetHex.r})`);
+      return;
+    }
 
     const overBudget = !isMoveAffordable(unit, entry.cost, effectiveMax) || (attachedHero && heroMax ? !isMoveAffordable(attachedHero, entry.cost, heroMax) : false);
     if (overBudget) {
@@ -540,7 +505,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
     await performMove(unit, targetHex, entry.cost, false, effectiveMax, attachedHero, heroMax);
     await finishHeroMove(unit);
-  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, unitMaxMP, computeMoveBudget, maybeRoutAfterMove]);
+  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, unitMaxMP, computeMoveBudget]);
 
   const handleChangeFormation = useCallback(async (unit: Unit, formation: string) => {
     if (unit.isHero || freeMove) {
@@ -768,7 +733,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
 
     if (!outcome.aggrPassed) {
-      const threatPenalty = Math.max(0, Math.round(computeThreatRating(target) / computeThreatRating(attacker)) - 1);
+      // Threat penalty only applies while the attacker stands in the target's
+      // kill zone (front two hexes) — otherwise the target's rating doesn't
+      // pressure the attacker's nerve.
+      const threatPenalty = isInKillZone(target, attacker.hex)
+        ? Math.max(0, Math.round(computeThreatRating(target) / computeThreatRating(attacker)) - 1)
+        : 0;
       const aggrFailDesc = `${attacker.unitName} AGR check (AGR ${attacker.aggressiveness}${threatPenalty > 0 ? ` - ${threatPenalty} threat` : ''} → need ≤${attacker.aggressiveness - threatPenalty}, rolled ${outcome.aggrRoll}) — failed, no attack`;
       await execute('ATTACK', subSteps, aggrFailDesc);
       return;
@@ -838,10 +808,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
 
     // Morale check for the defender after taking damage (from the attacker's first
-    // strike or the attacker's retaliation) — a unit that breaks must rout.
+    // strike or the attacker's retaliation) — an attack that breaks morale routs.
     const defModUnit = { ...target, currentUnitHp: newDefenderHp };
-    const defEffectiveMod = defModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(defModUnit, units, alliances, formationsMap[target.currentFormation] ?? null);
-    const defenderRouted = !defenderKilled && !defModUnit.ignoreMoraleChecks && !defModUnit.isRouting && (defModUnit.baseMorale + defEffectiveMod <= 0);
+    const defFormation = formationsMap[target.currentFormation] ?? null;
+    const defEffectiveMod = defModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(defModUnit, units, alliances, defFormation);
+    const defenderRouted = !defenderKilled && shouldRout(defModUnit, units, alliances, defFormation);
 
     // Build description — unit volley and (when attached front) the hero's own
     // share are reported separately so the hero's AC/HP tanking is visible.
@@ -930,14 +901,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
 
     // Morale check for the attacker after taking damage (from the defender's first strike
-    // or from retaliation) — a unit that breaks must rout regardless of who dealt the blow.
+    // or from retaliation) — an attack that breaks morale routs regardless of who dealt the blow.
     const attackerKilled = newAttackerHp <= 0;
     let attackerRouted = false;
     let attMoraleBreak = 0;
     if (damageToAttacker > 0) {
       const attModUnit = { ...attacker, currentUnitHp: newAttackerHp };
       attMoraleBreak = attModUnit.baseMorale + attModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(attModUnit, units, alliances, formationsMap[attacker.currentFormation] ?? null);
-      attackerRouted = !attackerKilled && !attModUnit.ignoreMoraleChecks && !attModUnit.isRouting && (attMoraleBreak <= 0);
+      attackerRouted = !attackerKilled && shouldRout(attModUnit, units, alliances, formationsMap[attacker.currentFormation] ?? null);
     }
 
     await execute('ATTACK', subSteps, desc);
@@ -956,32 +927,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }], `${name} ${verb}!`, { chained: true });
     }
 
+    // Only the attacked unit can rout — no morale cascade to nearby units.
     if (defenderRouted || defenderKilled) {
       await routeUnit(target, defenderKilled ? 'slain in combat' : `morale ${defModUnit.baseMorale + defEffectiveMod} after combat`, defenderKilled);
-
-      for (const u of units) {
-        if (u.id === attacker.id || u.id === target.id || u.isDeleted || u.ignoreMoraleChecks || u.isRouting) continue;
-        if (hexDistance(u.hex, target.hex) === 1) {
-          const effectiveMod = u.currentMoraleModifier + computeEffectiveMoraleModifier(u, units, alliances, formationsMap[u.currentFormation] ?? null);
-          if (u.baseMorale + effectiveMod <= 0) {
-            await routeUnit(u, `morale ${u.baseMorale + effectiveMod} near fleeing ${target.unitName}`, false);
-          }
-        }
-      }
     }
 
     if (attackerRouted || attackerKilled) {
       await routeUnit(attacker, attackerKilled ? 'slain in combat' : `morale ${attMoraleBreak} after combat`, attackerKilled);
-
-      for (const u of units) {
-        if (u.id === attacker.id || u.id === target.id || u.isDeleted || u.ignoreMoraleChecks || u.isRouting) continue;
-        if (hexDistance(u.hex, attacker.hex) === 1) {
-          const effectiveMod = u.currentMoraleModifier + computeEffectiveMoraleModifier(u, units, alliances, formationsMap[u.currentFormation] ?? null);
-          if (u.baseMorale + effectiveMod <= 0) {
-            await routeUnit(u, `morale ${u.baseMorale + effectiveMod} near fleeing ${attacker.unitName}`, false);
-          }
-        }
-      }
     }
 
     // Post-combat outcome so callers (charge-over eligibility) can react to the
@@ -1284,11 +1236,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
     await execute('CAST', subSteps, desc);
 
-    // Morale check + rout cascade for the target (same rules as normal combat).
+    // Morale check for the target — a spell that breaks morale routs (only an
+    // attack can rout; no cascade to nearby units).
     const targetKilled = newHp <= 0;
     const modUnit = { ...target, currentUnitHp: newHp };
     const effMod = modUnit.currentMoraleModifier + computeEffectiveMoraleModifier(modUnit, units, alliances, formationsMap[target.currentFormation] ?? null);
-    const targetRouted = !targetKilled && !modUnit.ignoreMoraleChecks && !modUnit.isRouting && (modUnit.baseMorale + effMod <= 0);
+    const targetRouted = !targetKilled && shouldRout(modUnit, units, alliances, formationsMap[target.currentFormation] ?? null);
 
     async function routeUnit(unit: Unit, reason: string, killed: boolean): Promise<void> {
       const name = unit.unitName;
@@ -1306,15 +1259,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
     if (targetRouted || targetKilled) {
       await routeUnit(target, targetKilled ? 'destroyed by magic' : `morale ${modUnit.baseMorale + effMod} after magic`, targetKilled);
-      for (const u of units) {
-        if (u.id === caster.id || u.id === target.id || u.isDeleted || u.ignoreMoraleChecks || u.isRouting) continue;
-        if (hexDistance(u.hex, target.hex) === 1) {
-          const eMod = u.currentMoraleModifier + computeEffectiveMoraleModifier(u, units, alliances, formationsMap[u.currentFormation] ?? null);
-          if (u.baseMorale + eMod <= 0) {
-            await routeUnit(u, `morale ${u.baseMorale + eMod} near fleeing ${target.unitName}`, false);
-          }
-        }
-      }
     }
 
     magicCast.sendResolve({
@@ -1449,7 +1393,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const reachableMap = computeReachableMap(draggedUnit, pool, occupied, threatHexes);
 
       const combined: Record<string, string> = {};
-      for (const key of Array.from(reachableMap.keys())) combined[key] = 'rgba(255, 255, 255, 0.5)';
+      reachableMap.forEach((entry, key) => {
+        // White = reachable straight ahead (droppable); light grey = needs a turn
+        // first (hint only — the unit must rotate before moving there).
+        combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.5)';
+      });
       for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
 
       // Attack-range rings radiating from the dragged unit (ranged-capable weapons
@@ -2105,6 +2053,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onSwitchToUnit={(host) => { setContextMenuUnit(host); setActiveHeroId(null); }}
           onClose={() => { setContextMenuUnit(null); setContextMenuPos(null); }}
           onRotate={(dir) => rotateUnit(contextMenuUnit, dir, unitMaxMP(contextMenuUnit))}
+          onRotate180={() => rotateUnit(contextMenuUnit, 'left', unitMaxMP(contextMenuUnit), 3)}
+          freeMove={freeMove}
           onChangeFormation={(formation) => handleChangeFormation(contextMenuUnit, formation)}
           onCharge={() => charge(contextMenuUnit)}
           onSwapHeroPosition={(hero) => swapHeroPosition(hero, unitMaxMP(hero))}
