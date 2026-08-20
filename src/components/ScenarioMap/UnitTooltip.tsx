@@ -153,6 +153,9 @@ export function UnitTooltip({ unit, x, y, attachedHero, units, alliances, format
         <>
           <div className="font-bold text-yellow-400 mb-1">{attachedHero.unitName} (Hero)</div>
           {unitInfo(attachedHero, units, alliances, false, attachedHeroFormation)}
+          {attachedHero.attachedPosition === 'front' && (
+            <div className="text-yellow-400 text-xs mt-0.5">Front hero — host attacks ignore AGR</div>
+          )}
           <div className="border-t border-gray-600 my-1.5" />
         </>
       )}

@@ -324,7 +324,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
 
   const {
-    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, placeUnit, attachHero, detachHero, swapHeroPosition, endTurn, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog,
+    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, detachHero, swapHeroPosition, endTurn, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog,
   } = useGameEngine({
     scenarioId,
     playerId,
@@ -2057,6 +2057,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onSelectWeapon={(idx) => selectWeapon(contextMenuUnit, idx)}
           onAssignTeam={(team) => assignTeam(contextMenuUnit, team)}
           onToggleHide={() => toggleHide(contextMenuUnit)}
+          onSetRouting={() => setRouting(contextMenuUnit)}
           onDeleteUnit={async () => {
             await execute('DELETE', [{
               type: 'DELETE',

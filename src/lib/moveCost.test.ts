@@ -38,6 +38,41 @@ describe('computeReachableMap — formed units', () => {
     expect(map.get('3,-3')?.needsTurn).toBe(false);
   });
 
+  it('fills the interior of the front wedge white (zig-zag straight movement)', () => {
+    // (1,-2) is reached by stepping (0,-1) then (1,-1) — both front-arc moves, no
+    // turn — so it must be white (droppable), not grey.
+    const map = computeReachableMap(formedUnit, 3, new Set(), new Set());
+    expect(map.get('1,-2')).toMatchObject({ cost: 2, needsTurn: false });
+    expect(map.get('1,-3')).toMatchObject({ cost: 3, needsTurn: false });
+  });
+
+  it('charges the about-turn as a single maneuver (foot: 1 MP, default)', () => {
+    // Reaching a rear hex needs a 180° about-turn; the foot cost is 1 MP by
+    // default, so (0,1) shows a grey hint at cost 2 (about-turn + 1 step).
+    const map = computeReachableMap(formedUnit, 4, new Set(), new Set());
+    const entry = map.get('0,1');
+    expect(entry).toBeDefined();
+    expect(entry!.needsTurn).toBe(true);
+    expect(entry!.cost).toBe(2);
+  });
+
+  it('mounted Close Order cannot about-turn: rear hex costs 3 (no about-turn discount)', () => {
+    // A foot unit reaches the rear hex in 2 (about-turn 1 MP + 1 step). A mounted
+    // Close Order unit is "unable to turn around" — no about-turn edge — so the
+    // rear hex costs 3 (two 60° turns + 1 step), and the unit can never end a
+    // move facing directly rearward.
+    const mountedClose = { ...formedUnit, mountId: 'mount-1', mountName: 'Horse' };
+    const map = computeReachableMap(mountedClose, 4, new Set(), new Set());
+    expect(map.get('0,1')?.needsTurn).toBe(true);
+    expect(map.get('0,1')?.cost).toBe(3);
+  });
+
+  it('allows about-turn for mounted units outside Close Order', () => {
+    const mountedOpen = { ...formedUnit, currentFormation: 'Open Order', mountId: 'mount-1', mountName: 'Horse' };
+    const map = computeReachableMap(mountedOpen, 4, new Set(), new Set());
+    expect(map.get('0,1')?.needsTurn).toBe(true);
+  });
+
   it('honors maxMP for both white and grey hexes', () => {
     // At 1 MP only the straight-ahead hex is reachable; an off-axis hex needs a
     // turn + a step (2 MP), so it appears only once the pool allows it.

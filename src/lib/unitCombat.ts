@@ -145,6 +145,20 @@ function computeAttackCount(unit: Unit, rowCapacity: number, attackCapacityMulti
   return effectiveCapacity * weaponAttacks;
 }
 
+/**
+ * Hero-engagement troop cap: only a fraction of a unit's troops can strike a hero
+ * (lone hero as the target, or retaliation against a hero attacker). Returns the
+ * capped count and a human-readable note when a cap applied.
+ */
+export function applyHeroCombatCap(count: number, heroInvolved: boolean): { count: number; note?: string } {
+  if (!heroInvolved) return { count };
+  const cap = getSetting('hero_combat_capacity', 0.5);
+  const capped = Math.max(1, Math.round(count * cap));
+  if (capped >= count) return { count };
+  const pct = Math.round(cap * 100);
+  return { count: capped, note: `only ${pct}% of troop can reach hero` };
+}
+
 function executeAttacks(
   count: number,
   attackBonus: number,
@@ -224,10 +238,12 @@ export function resolveCombatSequence(
   attackerForm: Formation | null = null,
   defenderForm: Formation | null = null,
 ): CombatOutcome {
-  // AGR check: skip if hero, ranged, target routed, rear attack, or a free/no-retaliation weapon
+  // AGR check: skip if hero, ranged, target routed, rear attack, a free/no-retaliation
+  // weapon, or when the attacker has a front-attached hero (the hero's presence
+  // steadies the troops — no aggressiveness roll).
   let aggrPassed = true;
   let aggrRoll = 1;
-  if (!attacker.isHero && !isRanged && !defender.isRouting && !isRearAttack && !attackerWeapon.noRetaliation && !attackerWeapon.freeAction) {
+  if (!attacker.isHero && !isRanged && !defender.isRouting && !isRearAttack && !attackerWeapon.noRetaliation && !attackerWeapon.freeAction && !attachedAttackerHero) {
     const threat = Math.round(computeThreatRating(defender) / computeThreatRating(attacker));
     const penalty = Math.max(0, threat - 1);
     aggrRoll = Math.floor(rng() * 10) + 1;
@@ -296,10 +312,18 @@ export function resolveCombatSequence(
 
   // --- First strike ---
   if (strikerFirst === 'attacker') {
+    // The attacker is a unit striking a lone hero: only a fraction of troops can
+    // reach the hero, so the unit's own attacks are capped.
+    const attackerVsHero = !attacker.isHero && defender.isHero;
     let attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false, attackerWeapon.numberOfAttacks ?? 1);
     const atkCountMod = beAttackedModifier(defenderForm, isRanged);
     attackerCount = Math.round(attackerCount * atkCountMod);
     firstStrikeCountNote = beAttackedModifierNote(defenderForm, isRanged);
+    if (attackerVsHero) {
+      const cap = applyHeroCombatCap(attackerCount, true);
+      attackerCount = cap.count;
+      firstStrikeCountNote = firstStrikeCountNote ? `${firstStrikeCountNote}; ${cap.note}` : cap.note;
+    }
     const effBonus = attackerWeapon.attackBonus + formationAttackModifier;
 
     if (attachedDefenderHero) {
@@ -322,6 +346,14 @@ export function resolveCombatSequence(
     const defCountMod = beAttackedModifier(attackerForm, false);
     defenderCount = Math.round(defenderCount * defCountMod);
     firstStrikeCountNote = beAttackedModifierNote(attackerForm, false);
+    // A hero attacking (lone or front-attached) means only a fraction of the
+    // defender unit's troops can reach it — cap the defender's own attacks.
+    const defenderVsHero = !defender.isHero && (attacker.isHero || !!attachedAttackerHero);
+    if (defenderVsHero) {
+      const cap = applyHeroCombatCap(defenderCount, true);
+      defenderCount = cap.count;
+      firstStrikeCountNote = firstStrikeCountNote ? `${firstStrikeCountNote}; ${cap.note}` : cap.note;
+    }
     const defEffBonus = (defenderWeapon?.attackBonus ?? 0) + formationAttackModifier;
 
     if (attachedAttackerHero) {
@@ -349,6 +381,14 @@ export function resolveCombatSequence(
         const retMod = beAttackedModifier(attackerForm, false);
         defenderCount = Math.round(defenderCount * retMod);
         retaliationCountNote = beAttackedModifierNote(attackerForm, false);
+        // A hero attacking (lone or front-attached) limits how many defender
+        // troops can reach it — cap the defender's retaliation.
+        const defenderVsHeroRet = !defender.isHero && (attacker.isHero || !!attachedAttackerHero);
+        if (defenderVsHeroRet) {
+          const cap = applyHeroCombatCap(defenderCount, true);
+          defenderCount = cap.count;
+          retaliationCountNote = retaliationCountNote ? `${retaliationCountNote}; ${cap.note}` : cap.note;
+        }
         const defEffBonus = (defenderWeapon?.attackBonus ?? 0) + formationAttackModifier;
 
         if (attachedAttackerHero) {
@@ -372,6 +412,14 @@ export function resolveCombatSequence(
     const retMod = beAttackedModifier(defenderForm, isRanged);
     attackerCount = Math.round(attackerCount * retMod);
     retaliationCountNote = beAttackedModifierNote(defenderForm, isRanged);
+    // The attacker is a unit retaliating against a lone hero: only a fraction of
+    // troops can reach the hero — cap the attacker's retaliation.
+    const attackerVsHeroRet = !attacker.isHero && defender.isHero;
+    if (attackerVsHeroRet) {
+      const cap = applyHeroCombatCap(attackerCount, true);
+      attackerCount = cap.count;
+      retaliationCountNote = retaliationCountNote ? `${retaliationCountNote}; ${cap.note}` : cap.note;
+    }
       const effBonus = attackerWeapon.attackBonus + formationAttackModifier;
 
     if (attachedDefenderHero) {

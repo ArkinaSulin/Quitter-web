@@ -309,20 +309,41 @@ export function useGameEngine({
       // Movement only pays distance; turning pays its own directional cost —
       // 1 MP per 60° rotate, free for Heroes, Scattered (item 7), and free-move.
       const freeRotate = unit.isHero || freeMove || unit.currentFormation === 'Scattered';
+      const isAboutTurn = steps === 3;
+
+      // Mounted units in Close Order are unable to turn around (180° about-turn).
+      if (isAboutTurn && (unit.mountId || unit.mountName) && unit.currentFormation === 'Close Order') {
+        addMessage(`${unit.unitName} (mounted, Close Order) cannot about-turn — unable to turn around in close formation`);
+        return;
+      }
+
       if (!freeRotate) {
-        const { movementPointsAvailable, actionsAvailable } = applyMpSpend(unit, 1, maxMP);
+        // A 180° about-turn is a single maneuver with its own setting cost
+        // (mounted units pay more); ordinary rotations cost 1 MP per 60°.
+        const cost = isAboutTurn
+          ? (unit.mountId || unit.mountName
+              ? getSetting('about_turn_cost_mounted', 2)
+              : getSetting('about_turn_cost_foot', 1))
+          : 1;
+        const { movementPointsAvailable, actionsAvailable } = applyMpSpend(unit, cost, maxMP);
         changes.push({ field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: movementPointsAvailable });
         if (actionsAvailable !== unit.actionsAvailable) {
           changes.push({ field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsAvailable });
         }
       }
       let desc = `${unit.unitName} rotated ${direction}${steps > 1 ? ` ${steps * 60}°` : ''}`;
-      // A 180° about-face also costs one organization level (special maneuver).
-      if (steps === 3) {
-        const lower = nextLowerFormation(unit.currentFormation);
-        if (lower) {
-          changes.push({ field: 'currentFormation', from: unit.currentFormation, to: lower });
-          desc = `${unit.unitName} about-faced (1 MP, −1 org)`;
+      // A 180° about-face also costs organization levels (special maneuver).
+      if (isAboutTurn && !freeRotate) {
+        const penalty = Math.max(0, getSetting('about_turn_org_penalty', 1));
+        let current = unit.currentFormation;
+        for (let i = 0; i < penalty; i++) {
+          const lower = nextLowerFormation(current);
+          if (!lower) break;
+          current = lower;
+        }
+        if (current !== unit.currentFormation) {
+          changes.push({ field: 'currentFormation', from: unit.currentFormation, to: current });
+          desc = `${unit.unitName} about-faced (${unit.mountId || unit.mountName ? getSetting('about_turn_cost_mounted', 2) : getSetting('about_turn_cost_foot', 1)} MP, −${penalty} org)`;
         } else {
           desc = `${unit.unitName} about-faced`;
         }
@@ -337,7 +358,7 @@ export function useGameEngine({
       ];
       await execute('ROTATE', subSteps, desc);
     },
-    [execute, freeMove],
+    [execute, freeMove, addMessage],
   );
 
   const changeFormation = useCallback(
@@ -455,6 +476,26 @@ export function useGameEngine({
         },
       ];
       await execute('TOGGLE_HIDE', subSteps, subSteps[0].description);
+    },
+    [execute],
+  );
+
+  /** GM-only: manually set a unit to rout (no un-rout). Undoable via the log. */
+  const setRouting = useCallback(
+    async (unit: Unit): Promise<void> => {
+      if (unit.isRouting) return;
+      const subSteps: SubStep[] = [
+        {
+          type: 'ROUT',
+          description: `${unit.unitName} routed (GM)`,
+          unitId: unit.id,
+          changes: [
+            { field: 'isRouting', from: false, to: true },
+            { field: 'currentFormation', from: unit.currentFormation, to: 'Routed' },
+          ],
+        },
+      ];
+      await execute('ROUT', subSteps, `${unit.unitName} routed!`);
     },
     [execute],
   );
@@ -672,6 +713,7 @@ export function useGameEngine({
     selectWeapon,
     assignTeam,
     toggleHide,
+    setRouting,
     placeUnit,
     attachHero,
     detachHero,

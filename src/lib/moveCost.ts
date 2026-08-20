@@ -1,4 +1,5 @@
 import { Hex, Unit } from '@/types/gameProtocol';
+import { getSetting } from '@/lib/settingsCache';
 
 export interface MovePathEntry {
   cost: number;
@@ -187,7 +188,7 @@ export function computeChargeReachable(
  * per hex (no facing) — always white.
  */
 export function computeReachableMap(
-  unit: { hex: Hex; facing: number; isRouting: boolean; currentFormation: string; isHero?: boolean },
+  unit: { hex: Hex; facing: number; isRouting: boolean; currentFormation: string; isHero?: boolean; mountId?: string | null; mountName?: string },
   maxMP: number,
   occupied: Set<string>,
   threatHexes: Set<string>,
@@ -225,40 +226,72 @@ export function computeReachableMap(
     return result;
   }
 
-  // WHITE set: the two straight front-arc rays from the current facing. A unit
-  // steps forward keeping its facing; cost is pure distance.
+  // WHITE set: the full front wedge reachable WITHOUT turning — at each step the
+  // unit moves into either front-arc hex and keeps its facing. The wedge (not
+  // just the two edge rays) is straight-ahead reachable, so every interior hex
+  // is droppable. Cost = distance.
   const white = new Map<string, MovePathEntry>();
   const frontDirs = [(unit.facing + 4) % 6, (unit.facing + 5) % 6];
-  for (const dirIdx of frontDirs) {
-    const dir = HEX_DIRS[dirIdx];
-    let q = unit.hex.q;
-    let r = unit.hex.r;
-    const path: Hex[] = [];
-    for (let d = 1; d <= maxMP; d++) {
-      q += dir.q;
-      r += dir.r;
-      const k = key(q, r);
-      if (occupied.has(k)) break;
-      path.push({ q, r, s: -q - r });
-      white.set(k, { cost: d, path: [...path], finalFacing: unit.facing, needsTurn: false });
-      if (threatHexes.has(k)) break; // may stop here, cannot pass through
+  const whiteVisited = new Set<string>([key(unit.hex.q, unit.hex.r)]);
+  const wq: { q: number; r: number; d: number; path: Hex[] }[] = [
+    { q: unit.hex.q, r: unit.hex.r, d: 0, path: [] },
+  ];
+  while (wq.length > 0) {
+    const cur = wq.shift()!;
+    if (cur.d >= maxMP) continue;
+    for (const dirIdx of frontDirs) {
+      const dir = HEX_DIRS[dirIdx];
+      const nq = cur.q + dir.q;
+      const nr = cur.r + dir.r;
+      const k = key(nq, nr);
+      if (whiteVisited.has(k) || occupied.has(k)) continue;
+      whiteVisited.add(k);
+      const path = [...cur.path, { q: nq, r: nr, s: -nq - nr }];
+      white.set(k, { cost: cur.d + 1, path, finalFacing: unit.facing, needsTurn: false });
+      if (!threatHexes.has(k)) {
+        wq.push({ q: nq, r: nr, d: cur.d + 1, path });
+      }
     }
   }
 
-  // GREY set (hint): hexes reachable only by turning, shown as a front cone.
-  // Turning costs the same as a step (1 MP per 60°), so the reachable-with-turns
-  // area is a cone: straight ahead reaches the full pool, 60° off reaches pool−1,
-  // 120° off pool−2, 180° (about-turn) pool−3. Simple BFS over (hex, facing) —
-  // steps and turns both cost 1. Entries are never droppable (a unit must rotate
-  // first); they exist only as a lighter-shade hint.
+  // GREY set (hint): hexes reachable only by turning, shown as a lighter-shade
+  // cone. Steps and 60° turns each cost 1 MP; a 180° about-turn is a single
+  // maneuver charged per settings (mounted units pay more) and is BLOCKED for
+  // mounted units in Close Order. Entries are never droppable (the unit must
+  // rotate first); they exist only as a hint.
+  const isMounted = !!unit.mountId || !!unit.mountName;
+  const aboutTurnCost = isMounted
+    ? getSetting('about_turn_cost_mounted', 2)
+    : getSetting('about_turn_cost_foot', 1);
+  // Mounted units in Close Order are "unable to turn around" — they can never
+  // face directly rearward (180° from the start facing), by any turn path.
+  const aboutTurnBlocked = isMounted && unit.currentFormation === 'Close Order';
+  const blockedFacing = aboutTurnBlocked ? (unit.facing + 3) % 6 : -1;
+
   const INF = Number.MAX_SAFE_INTEGER;
   const distMap = new Map<string, number>(); // "q,r,facing" -> min cost (steps + turns)
   distMap.set(`${unit.hex.q},${unit.hex.r},${unit.facing}`, 0);
-  const deque: { q: number; r: number; facing: number; d: number }[] = [
+  // Small state space (hexes within maxMP × 6 facings) — plain Dijkstra.
+  const pq: { q: number; r: number; facing: number; d: number }[] = [
     { q: unit.hex.q, r: unit.hex.r, facing: unit.facing, d: 0 },
   ];
-  while (deque.length > 0) {
-    const cur = deque.shift()!;
+  const popMin = () => {
+    let best = 0;
+    for (let i = 1; i < pq.length; i++) {
+      if (pq[i].d < pq[best].d) best = i;
+    }
+    return pq.splice(best, 1)[0];
+  };
+  const relax = (q: number, r: number, facing: number, nd: number) => {
+    if (facing === blockedFacing) return;
+    const nk = `${q},${r},${facing}`;
+    if (nd < (distMap.get(nk) ?? INF)) {
+      distMap.set(nk, nd);
+      pq.push({ q, r, facing, d: nd });
+    }
+  };
+  while (pq.length > 0) {
+    const cur = popMin();
     const curKey = `${cur.q},${cur.r},${cur.facing}`;
     if (cur.d !== distMap.get(curKey)) continue; // stale entry
     if (cur.d >= maxMP) continue;
@@ -268,19 +301,17 @@ export function computeReachableMap(
       const dir = HEX_DIRS[dirIdx];
       const nq = cur.q + dir.q;
       const nr = cur.r + dir.r;
-      const nk = `${nq},${nr},${cur.facing}`;
       if (occupied.has(key(nq, nr))) continue;
-      if (cur.d + 1 < (distMap.get(nk) ?? INF)) {
-        distMap.set(nk, cur.d + 1);
-        deque.push({ q: nq, r: nr, facing: cur.facing, d: cur.d + 1 });
-      }
+      relax(nq, nr, cur.facing, cur.d + 1);
     }
+    // 60° turns: ±1 facing, 1 MP each.
     for (const newFacing of [(cur.facing + 5) % 6, (cur.facing + 1) % 6]) {
-      const nk = `${cur.q},${cur.r},${newFacing}`;
-      if (cur.d + 1 < (distMap.get(nk) ?? INF)) {
-        distMap.set(nk, cur.d + 1);
-        deque.push({ q: cur.q, r: cur.r, facing: newFacing, d: cur.d + 1 });
-      }
+      relax(cur.q, cur.r, newFacing, cur.d + 1);
+    }
+    // 180° about-turn: single maneuver at its setting cost (blocked when mounted
+    // in Close Order). Covers both directions (±3 ≡ +3 mod 6).
+    if (!aboutTurnBlocked) {
+      relax(cur.q, cur.r, (cur.facing + 3) % 6, cur.d + aboutTurnCost);
     }
   }
 

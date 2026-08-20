@@ -410,6 +410,33 @@ describe('resolveCombatSequence', () => {
     expect(result.aggrPassed).toBe(true);
   });
 
+  it('AGR skips when the attacker has a front-attached hero', () => {
+    const lowAggrAttacker = { ...attacker, aggressiveness: 1 };
+    const result = callCombat(lowAggrAttacker, defender, aw, dw, 0, 1, false, false, null, { currentAc: 16, troopHp: 12 });
+    expect(result.aggrPassed).toBe(true);
+  });
+
+  it('caps a unit\'s attacks when it strikes a lone hero', () => {
+    const loneHero = { ...defender, isHero: true };
+    const result = callCombat(attacker, loneHero);
+    // Base 10 attacks × 0.5 cap = 5.
+    expect(result.firstStrikeCount).toBe(5);
+    expect(result.firstStrikeCountNote).toContain('50% of troop can reach hero');
+  });
+
+  it('caps a defender\'s retaliation when a hero attacks it', () => {
+    const heroAttacker = { ...attacker, isHero: true };
+    const result = callCombat(heroAttacker, defender);
+    // Defender strikes back; base 10 attacks × 0.5 cap = 5.
+    expect(result.retaliationCount).toBe(5);
+    expect(result.retaliationCountNote).toContain('50% of troop can reach hero');
+  });
+
+  it('does not cap attacks when attacking a unit with a front-attached hero (hero_attack_split handles it)', () => {
+    const result = callCombat(attacker, defender, aw, dw, 0, 1, false, false, { currentAc: 16, troopHp: 12 }, null);
+    expect(result.firstStrikeCount).toBe(10);
+  });
+
   it('hero attacker uses weapon numberOfAttacks directly, not scaled', () => {
     const heroAttacker = { ...attacker, isHero: true };
     const result = callCombat(heroAttacker, defender, { ...aw, numberOfAttacks: 1 });

@@ -26,6 +26,8 @@ interface ContextMenuProps {
   onSelectWeapon: (weaponIndex: number) => void;
   onAssignTeam: (team: string) => void;
   onToggleHide: () => void;
+  /** GM-only: set the unit to rout (no un-rout). */
+  onSetRouting?: () => void;
   onDeleteUnit: () => void;
   onCharge?: () => void;
   onAttachHero?: (heroId: string, targetUnitId: string) => void;
@@ -55,6 +57,7 @@ export function ContextMenu({
   onSelectWeapon,
   onAssignTeam,
   onToggleHide,
+  onSetRouting,
   onDeleteUnit,
   onCharge,
   onAttachHero,
@@ -177,14 +180,28 @@ export function ContextMenu({
           >
             Rotate Right
           </div>
-          {onRotate180 && (
-            <div
-              className={`px-3 py-1 ${unit.isCharging ? 'text-gray-600 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}`}
-              onClick={() => { if (unit.isCharging) return; onRotate180(); onClose(); }}
-            >
-              Rotate 180°{freeMove || unit.currentFormation === 'Scattered' ? ' (free)' : ' (1 MP, −1 org)'}
-            </div>
-          )}
+          {onRotate180 && (() => {
+            const isMounted = !!unit.mountId || !!unit.mountName;
+            const aboutTurnBlocked = isMounted && unit.currentFormation === 'Close Order';
+            const aboutTurnFree = freeMove || unit.currentFormation === 'Scattered';
+            const aboutTurnCost = isMounted
+              ? getSetting('about_turn_cost_mounted', 2)
+              : getSetting('about_turn_cost_foot', 1);
+            const aboutTurnOrg = getSetting('about_turn_org_penalty', 1);
+            const label = aboutTurnBlocked
+              ? 'Cannot about-turn (mounted, close formation)'
+              : aboutTurnFree
+                ? 'Rotate 180° (free)'
+                : `Rotate 180° (${aboutTurnCost} MP, −${aboutTurnOrg} org)`;
+            return (
+              <div
+                className={`px-3 py-1 ${unit.isCharging || aboutTurnBlocked ? 'text-gray-600 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}`}
+                onClick={() => { if (unit.isCharging || aboutTurnBlocked) return; onRotate180(); onClose(); }}
+              >
+                {label}
+              </div>
+            );
+          })()}
           {/* Attached hero swaps front/back position (costs 1 hero MP). Shown on
               the host's menu, right under rotate, above charge. */}
           {attachedHero && onSwapHeroPosition && (
@@ -281,6 +298,14 @@ export function ContextMenu({
           <div className="px-3 py-1 hover:bg-gray-700 cursor-pointer" onClick={() => { onToggleHide(); onClose(); }}>
             {unit.hidden ? 'Unhide' : 'Hide'}
           </div>
+          {onSetRouting && !unit.isRouting && (
+            <div
+              className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300"
+              onClick={() => { onSetRouting(); onClose(); }}
+            >
+              Rout Unit
+            </div>
+          )}
           <div
             className="px-3 py-1 hover:bg-red-700 cursor-pointer text-red-400"
             onClick={() => {
