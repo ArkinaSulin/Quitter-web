@@ -1,6 +1,46 @@
 # Handover — 2026-08-03
 
-## Server-authoritative commands: atomic execute/undo/redo + no client undo stack (2026-08-18)
+## Move highlight reflects leftover MP: full pool only when MP is exhausted (2026-08-18)
+**Files:** `src/lib/moveCost.ts` + test, `src/components/ScenarioMap/ScenarioMap.tsx`
+
+- **Bug**: `computeMovePool` returned a full MP pool whenever `actionsAvailable >= 1`, so the reachable highlight never shrank as MP was spent.
+- **`computeMovePool`** now returns the full pool **only when `movementPointsAvailable <= 0`** (an action materializes a fresh pool); once MP is on hand it returns exactly the leftover MP (an action only refills a pool after the current MP is exhausted).
+- **`handleUnitMove`** now builds the droppable reachable map from `computeMovePool` (was `computeMoveBudget` = leftover + all action pools), so the shown highlight and the accepted drop area stay in sync. `computeMoveBudget` import removed from ScenarioMap.
+- 314 tests; `tsc --noEmit` clean.
+
+## Movement cone wedge + about-turn settings + hero AGR/cap rules + DM rout (2026-08-18)
+**Files:** `supabase/migrations/053_settings_about_turn_hero.sql` (new), `src/lib/moveCost.ts` + test, `src/lib/unitCombat.ts` + test, `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/{ContextMenu,ScenarioMap,UnitTooltip}.tsx`
+
+- **Migration 053 — apply to the DB.** Seeds: `about_turn_cost_foot` (1), `about_turn_cost_mounted` (2), `about_turn_org_penalty` (1), `hero_combat_capacity` (0.5 decimal). **Apply to the DB.**
+- **Movement cone (item 1)**: white reachable set is now the **full front wedge** (BFS over the two front-arc dirs, keeping facing) — interior zig-zag hexes like `(1,-2)` are droppable, not just the two edge rays. Grey (turn-required) set = turn-cost Dijkstra minus white; never droppable.
+- **About-turn (item 2)**: a 180° about-turn is a **single maneuver** charged from settings — foot 1 MP / mounted 2 MP — plus `about_turn_org_penalty` (1) org levels, free for Hero/Scattered/free-move. **Mounted units in Close Order cannot about-turn** (blocked in `rotateUnit` + the cone Dijkstra never faces them rearward, so rear hexes cost 3 MP via 60° turns instead of 2). ContextMenu Rotate 180° shows the dynamic cost/org and is disabled when blocked.
+- **Front hero ignores AGR (item 3)**: `resolveCombatSequence` skips the AGR roll when the attacker has a **front-attached hero** (`attachedAttackerHero`). UnitTooltip shows "Front hero — host attacks ignore AGR".
+- **Hero combat troop cap (item 4)**: `applyHeroCombatCap` multiplies a side's attack count by `hero_combat_capacity` (0.5 default) when a unit strikes a **lone hero** or retaliates against a **hero attacker** (lone or front-attached). Note: `only X% of troop can reach hero`. Unit-vs-unit-with-front-hero is unchanged (`hero_attack_split` handles it).
+- **DM Rout (item 6)**: GM-only **"Rout Unit"** context-menu action (`useGameEngine.setRouting`, no un-rout), routed through the command log so it's undoable.
+- 313 tests; `tsc --noEmit` clean.
+
+## Alliance-wide End Turn, replay co-watch + turn-1 marker, live command_log (2026-08-18)
+**Files:** `supabase/migrations/052_alliance_end_turn_replay.sql` (new), `src/hooks/useReplay.ts`, `src/components/ScenarioMap/{ScenarioMap,ReplayOverlay}.tsx`
+
+- **Migration 052 — apply to the DB.** (1) `command_log` published to `supabase_realtime` — the UndoDebugPanel and cross-client `refreshUndoState` update live (they subscribe to `postgres_changes`, which never fired before). (2) `execute_command` relaxed: a **non-GM player may run `END_TURN`'s `SCENARIO` step** while their own alliance holds the turn (free play / null turn stays GM-only; `ALLIANCE` steps stay GM-only). (3) new **`replay_state`** table `(scenario_id PK, mode, cursor, playing, updated_at)` with participant RLS + realtime publish. **Apply to the DB.**
+- **Alliance-wide End Turn**: the End Turn button is enabled when `isGM || (currentTurnAlliance !== null && myAlliance === currentTurnAlliance)`; free play (null) is GM-only. The **free-move end-turn warning modal was removed** — ending the turn from free play just starts Turn 1 (free_move auto-off, turn-0-prep behavior from earlier work is unchanged).
+- **Replay fixes (items 1–4 of the earlier batch)**:
+  - The broadcast `mode:'replay'` handler now mirrors local `setMode` (reset cursor/playing + bump `reloadKey`) — fixing players landing on an empty **0/0** timeline when the DM enters replay.
+  - Late joiners **auto-enter replay**: `useReplay` reads `replay_state` on mount (mode + cursor + playing) and applies the persisted cursor once the timeline loads; local mode/cursor/playing are **debounced-upserted** (skipped for broadcast-derived state to avoid echoing). The live realtime-subscribe on `replay_state` was dropped (self-echo would fight an actively-playing local clock — the broadcast channel handles live sync).
+  - `turnOneIndex` exposed from `useReplay` (first step whose state has `turn_number >= 1`); `ReplayOverlay` draws a small amber **▲** under the slider at that position.
+- **Ranged-drag rings (item 5B)**: while dragging, the movement highlight shows **only** (no unconditional range rings). Range rings + target tint appear **only when hovering a different-alliance valid target**, and the movement highlight is suppressed then.
+- 305 tests; `tsc --noEmit` clean.
+
+## Turn/rotate/threat/morale ruleset: free+180° rotates, own-turn gate, kill-zone threat, only-attacks-rout, distance-only moves (2026-08-18)
+**Files:** `src/components/ScenarioMap/{ContextMenu,ScenarioMap,UnitTemplateTooltip,UnitTooltip}.tsx`, `src/hooks/useGameEngine.ts`, `src/lib/{moveCost,scenarioPermissions,unitMorale}.ts` + tests, `.scratch/command-log/spec.md`
+
+- **Rotates**: free + 180° rotate options; own-turn gate (non-GM can only act during their alliance's turn — GM overrides via `permRef`/`canActOnUnit`).
+- **Kill-zone threat**: threat rating only pressures an attacker standing in the target's front kill zone (front two hexes).
+- **Only attacks rout**: movement alone never routs — only an attack (combat or spell) can break morale into a rout.
+- **Distance-only moves**: movement costs distance only (turning is a separate paid ROTATE); threat hexes reachable but not passable.
+- **Tooltip clamps** (`useTooltipClamp.ts` new): tooltip stays on-screen near the cursor.
+- 309 tests; `tsc --noEmit` clean.
+
 **Files:** `supabase/migrations/051_server_authoritative_commands.sql` (new), `src/hooks/useGameEngine.ts`, `src/components/ScenarioMap/ScenarioMap.tsx`, `src/lib/commandLog.ts` (new), `src/lib/commandHistory.ts` + test, `src/game/GameEngine.ts` + `GameEngine.test.ts` (deleted)
 
 - **Migration 051 — apply to the DB.** `command_log.seq` BIGSERIAL (backfilled by `created_at, id`; unique + `(scenario_id, seq)` index). The live top chain is now totally ordered by `seq` — `(created_at, id)` could tie same-timestamp commands in arbitrary uuid order, which made undo reject valid targets and redo reorder chains.

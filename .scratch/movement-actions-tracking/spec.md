@@ -74,10 +74,12 @@ Replaces `getReachableHexes` (deleted from `ScenarioMap.tsx`):
 computeReachableMap(unit, maxMP, occupied, threatHexes): Map<"q,r", { cost, path, finalFacing }>
 ```
 
-- State space `(hex, facing)`; 1 MP per front-arc step, 1 MP per 60° turn (unchanged).
+- State space `(hex, facing)`; 1 MP per front-arc step, 1 MP per 60° turn (unchanged). A 180° about-turn is a **single maneuver** charged per settings (`about_turn_cost_foot` 1 / `about_turn_cost_mounted` 2) plus `about_turn_org_penalty` org levels; free for Hero/Scattered/free-move; **blocked for mounted units in Close Order** (they can never face rearward, so rear hexes cost 3 MP via 60° turns).
 - Threat hexes are reachable as destinations but never passed through; occupied hexes are never reachable.
 - Routed / Scattered units move in any direction at 1 MP per hex (no facing).
-- The drag overlay and the executed move cost both derive from this map, so they can never disagree. `maxMP` for the overlay is `effectiveMaxMovement × max(1, actionsAvailable)` (`computeMoveBudget`).
+- The drag overlay and the executed move cost both derive from this map, so they can never disagree.
+- **White vs grey**: the white (droppable) set is the **full front wedge** — a BFS over the two front-arc dirs keeping facing, so interior zig-zag hexes (e.g. `(1,-2)`) are straight-ahead reachable. Grey (turn-required) hexes are a Dijkstra over `(hex, facing)` with turn costs (incl. the about-turn edge), minus white; never droppable — the unit must rotate first.
+- **`maxMP` for the overlay** is `computeMovePool(unit, effectiveMax)`: a full pool **only when `movementPointsAvailable <= 0`** and an action remains (an action converts to a fresh pool); otherwise exactly the leftover MP. `handleUnitMove` uses the same pool for its droppable map so highlight and accepted drop agree.
 - **Action accounting** (`applyMoveCost`): the cost is spent from `movementPointsAvailable` first; each full pool beyond that converts one action. Final MP = remainder of the last pool (0 on exact pool); final actions = unconverted pools left. `applyMpSpend` handles single-MP spends with an action→full-pool conversion when MP is insufficient.
 
 ### Formation rescale (`src/lib/formationCost.ts` — new, pure)
@@ -115,10 +117,10 @@ Each command's sub-steps gain `movementPointsAvailable` / `actionsAvailable` del
 
 ### UI (`ScenarioMap.tsx`, `UnitTooltip.tsx`)
 
-- Drag overlay: `maxMP = computeMovePool(unit, effectiveMax)` — a full pool when actions ≥ 1 (an action converts to MP at move start), else leftover MP only.
+- Drag overlay: `maxMP = computeMovePool(unit, effectiveMax)` — a full pool only when MP is exhausted (0) and an action remains; otherwise leftover MP on hand.
 - Tooltip: `Actions: {unit.actionsAvailable}/2` (red when ≤ 0) with a `(1 = full move)` hint; `Move: {floor(unit.movementPointsAvailable)}/{max}` (actual materialized MP, drains per pool).
 - **Soft enforcement (never hard-blocks):**
-  - `handleUnitMove` computes the executed cost from `computeReachableMap` over the budget `movementPointsAvailable + maxMP × max(1, actions)`. Hex unreachable within that budget → rejected with a message. A move **not affordable** (`isMoveAffordable` — cost exceeds leftover MP + action pools, so actions would go negative) → confirm modal; on confirm, the full cost is deducted (may go negative) and a **red error notification** (`addError`) is pushed to the message log.
+  - `handleUnitMove` computes the executed cost from `computeReachableMap` over the **pool** `computeMovePool` (leftover MP, or one full pool at 0 MP with an action). Hex unreachable within that pool → rejected with a message. A move **not affordable** (`isMoveAffordable` — cost exceeds leftover MP + action pools, so actions would go negative) → confirm modal; on confirm, the full cost is deducted (may go negative) and a **red error notification** (`addError`) is pushed to the message log.
   - `onAttack`: attacker with `actionsAvailable < 1` → confirm modal; on confirm, the action is deducted (may go to −1) and a red notification is pushed.
   - Rationale examples: hero detach + reposition may exceed the engine-chosen budget; haste can grant a double attack.
 - Spawn (`useSupabaseSync.ts`): **2 actions / 0 MP** — freshly placed units can move (an action converts to a full pool) or act immediately.
@@ -128,12 +130,15 @@ Each command's sub-steps gain `movementPointsAvailable` / `actionsAvailable` del
 Pure-function tests only; no async/DB/React integration.
 
 1. **`turnState.test.ts`** (done): active-group derivation (friendly-only default, canonical order, all three groups), advance/skip/wrap, null start, single-group wrap.
-2. **`moveCost.test.ts`** (done, 21 cases):
+2. **`moveCost.test.ts`** (done, 38 cases):
    - Front-arc step costs 1 MP; 60° turn costs 1 MP; min-cost path chosen
    - `maxMP` honored; occupied hexes excluded
    - Threat hex reachable as a destination, never appears in an intermediate path hex
    - Routed / Scattered move in any direction at 1 MP/hex; 0 MP → empty map
+   - **White front wedge**: interior zig-zag hexes (`(1,-2)`, `(1,-3)`) are white (droppable); off-axis `(1,0)` stays grey needing a turn
+   - **About-turn**: rear hex costs 2 (foot, 1-MP about-turn + step); mounted Close Order can't about-turn (rear hex costs 3, never faces rearward); mounted outside Close Order can
    - `computeMoveBudget`: `maxMP × actions` (1 pool min at 0 actions for soft-confirm)
+   - `computeMovePool`: full pool only at 0 MP with an action; leftover MP otherwise (with or without actions); clamps to maxMP
    - `applyMoveCost`: spends materialized MP first, action converts a pool only when MP exhausted, exact-pool ends at 0 MP, leftover MP stays usable, negative actions when over budget
    - `applyMpSpend`: sufficient-MP spend, action→full-pool refill at 0 MP, negative without actions
    - `isMoveAffordable`: true within action budget, false at 0 actions
