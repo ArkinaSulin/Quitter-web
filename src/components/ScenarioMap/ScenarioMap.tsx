@@ -12,7 +12,7 @@ import { getFormations } from '@/lib/formationCache';
 import { loadSettings, getSetting } from '@/lib/settingsCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios } from '@/hooks/useScenarios';
-import { computeReachableMap, computeMoveBudget, computeMovePool, isMoveAffordable, computeChargeReachable } from '@/lib/moveCost';
+import { computeReachableMap, computeMovePool, isMoveAffordable, computeChargeReachable } from '@/lib/moveCost';
 import { isFormationChangeAffordable, getFormationChangeMpCost } from '@/lib/formationCost';
 import { useGameEngine } from '@/hooks/useGameEngine';
 import { useTeamAlliances } from '@/hooks/useTeamAlliances';
@@ -473,11 +473,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const effectiveMax = computeEffectiveMovement(unit, movementMult);
     const occupied = computeOccupiedHexes(units, unitId);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
-    const combinedBudget = Math.min(
-      computeMoveBudget(unit, effectiveMax),
-      attachedHero && heroMax ? computeMoveBudget(attachedHero, heroMax) : Infinity,
+    // The droppable area matches the shown highlight: leftover MP (or one full
+    // pool when MP is exhausted and an action remains). A move beyond this pool
+    // still soft-enforces below.
+    const combinedPool = Math.min(
+      computeMovePool(unit, effectiveMax),
+      attachedHero && heroMax ? computeMovePool(attachedHero, heroMax) : Infinity,
     );
-    const reachableMap = computeReachableMap(unit, combinedBudget, occupied, threatHexes);
+    const reachableMap = computeReachableMap(unit, combinedPool, occupied, threatHexes);
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
       addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — out of reach`);
@@ -497,7 +500,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
     await performMove(unit, targetHex, entry.cost, false, effectiveMax, attachedHero, heroMax);
     await finishHeroMove(unit);
-  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, unitMaxMP, computeMoveBudget]);
+  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, unitMaxMP]);
 
   const handleChangeFormation = useCallback(async (unit: Unit, formation: string) => {
     if (unit.isHero || freeMove) {

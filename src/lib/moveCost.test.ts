@@ -155,18 +155,24 @@ describe('computeMoveBudget — 1 action = 1 full MP pool', () => {
 });
 
 describe('computeMovePool — pool available for the current move', () => {
-  it('is a full pool whenever an action remains (MP materializes on move)', () => {
+  it('is a full pool only when MP is exhausted and an action remains', () => {
     expect(computeMovePool({ movementPointsAvailable: 0, actionsAvailable: 2 }, 5)).toBe(5);
-    expect(computeMovePool({ movementPointsAvailable: 2, actionsAvailable: 1 }, 5)).toBe(5);
+    expect(computeMovePool({ movementPointsAvailable: 0, actionsAvailable: 1 }, 5)).toBe(5);
   });
 
-  it('falls back to leftover MP only when no actions remain', () => {
+  it('reflects leftover MP once MP is on hand, even with actions remaining', () => {
+    expect(computeMovePool({ movementPointsAvailable: 2, actionsAvailable: 1 }, 5)).toBe(2);
+    expect(computeMovePool({ movementPointsAvailable: 3, actionsAvailable: 2 }, 5)).toBe(3);
+  });
+
+  it('falls back to leftover MP when no actions remain', () => {
     expect(computeMovePool({ movementPointsAvailable: 2, actionsAvailable: 0 }, 5)).toBe(2);
     expect(computeMovePool({ movementPointsAvailable: 0, actionsAvailable: 0 }, 5)).toBe(0);
   });
 
   it('clamps to maxMP', () => {
     expect(computeMovePool({ movementPointsAvailable: 9, actionsAvailable: 0 }, 5)).toBe(5);
+    expect(computeMovePool({ movementPointsAvailable: 9, actionsAvailable: 2 }, 5)).toBe(5);
   });
 });
 

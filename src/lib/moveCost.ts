@@ -99,12 +99,14 @@ export function isMoveAffordable(unit: MpBudget, cost: number, maxMP: number): b
 
 /**
  * Pool available for the current move. MP is only materialized when a move
- * converts an action, so a unit with actions ≥ 1 can move a full pool; with 0
- * actions it can only use leftover MP (no conversion).
+ * converts an action: a unit with NO MP on hand and an action remaining can
+ * move a full pool; once MP is on hand the highlight reflects exactly that
+ * leftover MP (an action only refills a fresh pool after the current MP is
+ * exhausted). With 0 actions it can only use leftover MP (no conversion).
  */
 export function computeMovePool(unit: MpBudget, maxMP: number): number {
   const pool = Math.max(1, maxMP);
-  if (unit.actionsAvailable >= 1) return pool;
+  if (unit.movementPointsAvailable <= 0 && unit.actionsAvailable >= 1) return pool;
   return Math.min(pool, Math.max(0, Math.floor(unit.movementPointsAvailable)));
 }
 
