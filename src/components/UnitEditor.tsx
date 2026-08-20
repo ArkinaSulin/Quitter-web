@@ -920,7 +920,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                       <Toggle
                         checked={formData.isHero || false}
                         disabled={isGargantuan}
-                        onChange={(v) => { updateFormData('isHero', v); if (v) updateFormData('ignoreMoraleChecks', true); }}
+                        onChange={(v) => { updateFormData('isHero', v); if (v) setFormData(prev => prev ? { ...prev, ignoreMoraleChecks: true } : null); }}
                         label="Hero"
                       />
                     </div>
@@ -1117,7 +1117,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                   {/* Saving throws — full width */}
                   <div className="flex gap-1.5">
                     {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(s => (
-                      <Cell key={s} label={s.toUpperCase()} widthClass="w-10"><NumInput value={formData[s] ?? 0} min={-10} max={20} onChange={(v) => updateFormData(s, v)} /></Cell>
+                      <Cell key={s} label={s.toUpperCase()} widthClass="w-14"><NumInput value={formData[s] ?? 0} min={-10} max={20} onChange={(v) => updateFormData(s, v)} /></Cell>
                     ))}
                   </div>
 
