@@ -128,6 +128,8 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
 
   const [previousHeroBodyCount, setPreviousHeroBodyCount] = useState<number>(10);
   const [wasHeroChecked, setWasHeroChecked] = useState<boolean>(false);
+  const [previousHeroFormations, setPreviousHeroFormations] = useState<string[] | null>(null);
+  const [previousHeroFearless, setPreviousHeroFearless] = useState<boolean | null>(null);
   const [previousHeroState, setPreviousHeroState] = useState<boolean>(false);
   const [previousBodyCount, setPreviousBodyCount] = useState<number>(10);
   const [wasAt400, setWasAt400] = useState<boolean>(false);
@@ -282,6 +284,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
 
   const toggleFormation = (formationName: string) => {
     if (!formData) return;
+    if (formData.isHero && formationName === 'Hero') return;
     const isMounted = formData.mountId !== '';
     if (isMounted && (formationName === 'Phalanx' || formationName === 'Shield Wall')) return;
     if (formationName === 'Scattered' || formationName === 'Routed') return;
@@ -313,8 +316,10 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
       }
     }
 
-    const cap = getMaxTroopForSize(formData.sizeCategory || 100, isMounted);
-    updateFormData('troopCount', cap);
+    if (!formData.isHero) {
+      const cap = getMaxTroopForSize(formData.sizeCategory || 100, isMounted);
+      updateFormData('troopCount', cap);
+    }
   }, [formData?.mountId, getMaxTroopForSize]);
 
   useEffect(() => {
@@ -323,19 +328,30 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
     if (hero) {
       if (!wasHeroChecked) {
         setPreviousHeroBodyCount(formData.troopCount);
+        setPreviousHeroFormations(formData.formationAvailability || ['Scattered', 'Routed']);
+        setPreviousHeroFearless(formData.ignoreMoraleChecks || false);
         setWasHeroChecked(true);
       }
       if (formData.troopCount !== 1) {
         updateFormData('troopCount', 1);
       }
+      const formations = formData.formationAvailability || [];
+      if (formations.length !== 1 || formations[0] !== 'Hero') {
+        updateFormData('formationAvailability', ['Hero']);
+      }
+      if (!formData.ignoreMoraleChecks) {
+        updateFormData('ignoreMoraleChecks', true);
+      }
     } else {
       if (wasHeroChecked) {
         const restoreCount = previousHeroBodyCount > 0 ? previousHeroBodyCount : 1;
         updateFormData('troopCount', restoreCount);
+        updateFormData('formationAvailability', previousHeroFormations && previousHeroFormations.length > 0 ? previousHeroFormations : ['Scattered', 'Routed']);
+        updateFormData('ignoreMoraleChecks', previousHeroFearless ?? false);
         setWasHeroChecked(false);
       }
     }
-  }, [formData?.isHero, formData?.troopCount]);
+  }, [formData?.isHero, formData?.troopCount, formData?.formationAvailability, formData?.ignoreMoraleChecks]);
 
   useEffect(() => {
     if (!formData) return;
@@ -361,9 +377,11 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
       }
     }
 
-    // Auto-set troop count to max for this size
-    const cap = getMaxTroopForSize(formData.sizeCategory || 100, !!formData.mountId);
-    updateFormData('troopCount', cap);
+    // Auto-set troop count to max for this size (heroes stay at 1)
+    if (!formData.isHero) {
+      const cap = getMaxTroopForSize(formData.sizeCategory || 100, !!formData.mountId);
+      updateFormData('troopCount', cap);
+    }
   }, [formData?.sizeCategory, getMaxTroopForSize]);
 
   useEffect(() => {
@@ -448,8 +466,12 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
         if (found.isHero) {
           setWasHeroChecked(true);
           setPreviousHeroBodyCount(found.troopCount > 0 ? found.troopCount : 1);
+          setPreviousHeroFormations(found.formationAvailability && found.formationAvailability.length > 0 ? found.formationAvailability : ['Scattered', 'Routed']);
+          setPreviousHeroFearless(found.ignoreMoraleChecks || false);
         } else {
           setWasHeroChecked(false);
+          setPreviousHeroFormations(null);
+          setPreviousHeroFearless(null);
         }
       } else {
         setFormData(null);
@@ -573,6 +595,8 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
         setPreviousBodyCount(blank.troopCount);
       }
       setWasHeroChecked(false);
+      setPreviousHeroFormations(null);
+      setPreviousHeroFearless(null);
     });
   };
 
@@ -920,7 +944,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                       <Toggle
                         checked={formData.isHero || false}
                         disabled={isGargantuan}
-                        onChange={(v) => { updateFormData('isHero', v); if (v) setFormData(prev => prev ? { ...prev, ignoreMoraleChecks: true } : null); }}
+                        onChange={(v) => { updateFormData('isHero', v); }}
                         label="Hero"
                       />
                     </div>
@@ -1235,8 +1259,9 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                     .map(formation => {
                     const isMounted = formData.mountId !== '';
                     const isPhalanxShieldWall = formation.name === 'Phalanx' || formation.name === 'Shield Wall';
-                    const disabled = (isMounted && isPhalanxShieldWall) || formation.name === 'Scattered' || isGargantuan;
-                    const selected = formData.formationAvailability?.includes(formation.name) || false;
+                    const isHero = formData.isHero;
+                    const disabled = (isHero && formation.name !== 'Hero') || (isMounted && isPhalanxShieldWall) || formation.name === 'Scattered' || isGargantuan;
+                    const selected = isHero ? formation.name === 'Hero' : (formData.formationAvailability?.includes(formation.name) || false);
                     return (
                       <label
                         key={formation.id}
