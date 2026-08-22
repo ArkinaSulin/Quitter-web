@@ -653,7 +653,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                 >
                   {scenario.deleteRequestedBy && flagDays !== null && (
                     <div
-                      className={`absolute -right-10 top-4 z-10 w-48 rotate-45 text-center text-xs font-bold py-1 pointer-events-none select-none shadow ${
+                      className={`absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rotate-45 w-[140%] whitespace-nowrap text-center text-xs font-bold py-1 pointer-events-none select-none shadow ${
                         flagDays <= 7 ? 'bg-red-700 text-white' : 'bg-amber-600 text-black'
                       }`}
                     >
