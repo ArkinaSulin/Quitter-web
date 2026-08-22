@@ -141,6 +141,8 @@ export interface Unit {
   ignoreMoraleChecks: boolean;         // unit never routs (undead, heroes, etc.)
   isCharging: boolean;                 // mid-charge: rotate/formation locked, corridor move
   chargeDistance: number;              // hexes moved during the current charge (0 = not charged)
+  /** Monotonic command_log seq of the last command that wrote this unit (realtime ordering). */
+  commandSeq: number;
   organizationLevel: number;           // computed from currentFormation via ORGANIZATION_LEVEL map
   actionsAvailable: number;           // new: remaining actions for current turn
   activeWeaponIndex: number;           // index into weaponString of the active weapon (0 = first)

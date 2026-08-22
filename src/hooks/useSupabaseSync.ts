@@ -59,6 +59,7 @@ function mapRowToUnit(row: any): Unit {
     ignoreMoraleChecks: row.ignore_morale_checks || false,
     isCharging: row.is_charging || false,
     chargeDistance: row.charge_distance || 0,
+    commandSeq: row.command_seq || 0,
     actionsAvailable: row.actions_available || 0,
     activeWeaponIndex: row.active_weapon_index || 0,
     str: row.str ?? 0,
@@ -241,6 +242,13 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
           const updatedUnit = mapRowToUnit(newRow);
           return prevUnits.map(u => {
             if (u.id !== updatedUnit.id) return u;
+            // Drop stale events: every command write stamps command_seq (the
+            // monotonic command_log seq). A realtime event whose stamp is not
+            // strictly newer than the local one reflects an older write — e.g. the
+            // ATTACK row from a charge reaching the client after the CHARGE_END —
+            // so applying it would regress state (the formation flicker bug).
+            const incoming = newRow.command_seq ?? 0;
+            if (incoming <= u.commandSeq) return u;
             // Preserve attachedPosition from local state if DB has null (migration may not be applied yet)
             if (u.attachedPosition && !updatedUnit.attachedPosition) {
               return { ...updatedUnit, attachedPosition: u.attachedPosition };
@@ -400,6 +408,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       ignoreMoraleChecks: template.ignoreMoraleChecks || false,
       isCharging: false,
       chargeDistance: 0,
+      commandSeq: 0,
       actionsAvailable: getSetting('actions_per_turn', 2),
       activeWeaponIndex,
       str: template.str ?? 0,

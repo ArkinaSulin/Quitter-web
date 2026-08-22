@@ -57,6 +57,7 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     isDeleted: false,
     isCharging: false,
     chargeDistance: 0,
+    commandSeq: 0,
     organizationLevel: 1,
     actionsAvailable: 1,
     activeWeaponIndex: 0,
