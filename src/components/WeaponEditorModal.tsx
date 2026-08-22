@@ -231,6 +231,8 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
               <Cell label="Max range"><NumInput value={maxRange} min={range} onChange={(v) => setMaxRange(Math.max(range, v || range))} /></Cell>
             </div>
 
+            <div className="border-t border-gray-700" />
+
             <div className="flex items-end gap-3">
               <Cell label="Magic Dimension (ft)"><NumInput value={magicDimension} min={0} onChange={(v) => setMagicDimension(Math.max(0, v))} /></Cell>
               <Cell label="Shape"><SelectInput value={shape} onChange={(v) => setShape(v as AreaShape)} options={AREA_SHAPES.map(s => ({ value: s, label: s }))} /></Cell>
