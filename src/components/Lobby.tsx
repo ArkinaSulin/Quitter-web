@@ -501,26 +501,28 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
         <div className="space-y-3">
           {selectedScenario && selectedScenario.deleteRequestedBy && (() => {
             const dl = daysLeft(selectedScenario);
+            const flagDate = selectedScenario.deleteRequestedAt
+              ? formatDate(selectedScenario.deleteRequestedAt)
+              : '';
             return (
-              <div className={`p-2.5 rounded border text-xs space-y-2 ${(dl ?? 0) <= 7 ? 'border-red-700/60 bg-red-900/30 text-red-200' : 'border-amber-700/60 bg-amber-900/30 text-amber-200'}`}>
+              <div className={`p-3 rounded border space-y-2 ${(dl ?? 0) <= 7 ? 'border-red-700/60 bg-red-900/30 text-red-200' : 'border-amber-700/60 bg-amber-900/30 text-amber-200'}`}>
                 <div>
-                  <div className="font-semibold">Deletion requested</div>
-                  <div className="opacity-90">
-                    by {selectedScenario.deleteRequestedByName || 'an admin'}
-                    {dl !== null && ` — ${dl} ${dl === 1 ? 'day' : 'days'} left`}
+                  <div className="font-bold text-sm">⚠ Scenario marked for deletion</div>
+                  <div className="text-sm opacity-90 mt-1">
+                    {selectedScenario.deleteRequestedByName || 'An admin'} requested deletion of this scenario{flagDate ? ` on ${flagDate}` : ''}. It will be automatically deleted {dl !== null ? `in ${dl} ${dl === 1 ? 'day' : 'days'}` : 'after the 90-day grace period'} unless you confirm the deletion or keep it.
                   </div>
                 </div>
                 {isCreator && (
                   <div className="flex gap-2">
                     <button
                       onClick={handleDelete}
-                      className="flex-1 py-1.5 bg-red-800 border-2 border-red-400 text-white rounded hover:bg-red-700 transition"
+                      className="flex-1 py-2 bg-red-800 border-2 border-red-400 text-white rounded hover:bg-red-700 transition"
                     >
                       Confirm Delete
                     </button>
                     <button
                       onClick={handleKeepScenario}
-                      className="flex-1 py-1.5 bg-gray-600 border-2 border-gray-400 text-white rounded hover:bg-gray-500 transition"
+                      className="flex-1 py-2 bg-gray-600 border-2 border-gray-400 text-white rounded hover:bg-gray-500 transition"
                     >
                       Keep
                     </button>
@@ -651,13 +653,19 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                 >
                   {scenario.deleteRequestedBy && flagDays !== null && (
                     <div
-                      className={`absolute -right-9 top-3 w-40 rotate-45 text-center text-[11px] font-bold py-0.5 z-10 pointer-events-none select-none ${
-                        flagDays <= 7
-                          ? 'bg-red-700 text-white'
-                          : 'bg-amber-600 text-black'
+                      className={`absolute inset-x-0 top-0 z-10 flex justify-center pointer-events-none select-none ${
+                        flagDays <= 7 ? 'text-red-200' : 'text-amber-200'
                       }`}
                     >
-                      {flagDays} {flagDays === 1 ? 'day' : 'days'} left
+                      <span
+                        className={`mt-1 px-3 py-1 rounded-full text-xs font-bold border shadow ${
+                          flagDays <= 7
+                            ? 'bg-red-800/90 border-red-400'
+                            : 'bg-amber-700/90 border-amber-400'
+                        }`}
+                      >
+                        ⚠ Marked for Deletion — {flagDays} {flagDays === 1 ? 'day' : 'days'} left
+                      </span>
                     </div>
                   )}
                   {scenario.deletionLocked && (
