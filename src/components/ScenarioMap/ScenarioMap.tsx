@@ -1905,9 +1905,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           <span className="text-white text-sm font-mono">Turn {displayTurnNumber}</span>
           {!controlsLocked && (() => {
             // Alliance-wide End Turn: from turn 1 on, any player whose alliance holds
-            // the turn may advance it; free play (null alliance) stays GM-only.
-            const myAlliance = alliances[myTeam ?? ''] || 'friendly';
-            const canEndTurn = isGM || (currentTurnAlliance !== null && myAlliance === currentTurnAlliance);
+            // the turn may advance it; free play (null alliance) stays GM-only. A
+            // player needs an assigned team — the server's END_TURN gate requires
+            // sp.team IS NOT NULL, so don't show the button to teamless players.
+            const canEndTurn = isGM || (!!myTeam && currentTurnAlliance !== null && (alliances[myTeam] || 'friendly') === currentTurnAlliance);
             return (
               <button
                 onClick={canEndTurn ? handleEndTurn : undefined}
