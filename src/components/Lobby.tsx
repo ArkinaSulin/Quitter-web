@@ -37,6 +37,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     requestScenarioDeletion,
     clearScenarioDeletionRequest,
     deleteExpiredScenarios,
+    setScenarioDeletionLock,
   } = useScenarios();
 
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
@@ -309,6 +310,20 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     }
   };
 
+  const handleToggleLock = async () => {
+    if (!selectedScenarioId) return;
+    const scenario = scenarios.find(s => s.id === selectedScenarioId);
+    if (!scenario) return;
+    const locked = !scenario.deletionLocked;
+    if (locked && !confirm(`Lock "${scenario.name}"? Admins will no longer be able to mark it for deletion.`)) return;
+    try {
+      const res = await setScenarioDeletionLock(selectedScenarioId, locked);
+      if (!res.ok) alert('Failed to update lock: ' + (res.error || 'unknown error'));
+    } catch (err: any) {
+      alert('Failed to update lock: ' + err.message);
+    }
+  };
+
   const openRenameModal = (scenarioId: string) => {
     const scenario = scenarios.find(s => s.id === scenarioId);
     if (!scenario) return;
@@ -412,6 +427,10 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const renderLeftPanel = () => {
     const isJoinEnabled = !!selectedScenarioId;
     const isDeleteEnabled = isJoinEnabled && isCreator;
+    // A scenario flagged for deletion is closed to everyone except its creator —
+    // grey out Join (the joinScenario gate also enforces this server-side).
+    const selectedFlagged = !!selectedScenario && !!selectedScenario.deleteRequestedBy;
+    const isJoinLockedOut = selectedFlagged && !isCreator;
 
     return (
       <div className="w-64 p-4 border-r border-gray-700 flex flex-col justify-between h-full bg-[#0d0d1a]">
@@ -459,7 +478,8 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                   }
                 }
               }}
-              disabled={!isJoinEnabled}
+              disabled={!isJoinEnabled || isJoinLockedOut}
+              title={isJoinLockedOut ? 'This scenario is closed for deletion' : undefined}
               className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Join Scenario
@@ -509,12 +529,21 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
               </div>
             );
           })()}
-          {role === 'admin' && selectedScenario && !isCreator && !selectedScenario.deleteRequestedBy && (
+          {role === 'admin' && selectedScenario && !isCreator && !selectedScenario.deleteRequestedBy && !selectedScenario.deletionLocked && (
             <button
               onClick={handleRequestDeletion}
               className="w-full py-2 bg-amber-700 border-2 border-amber-400 text-white rounded hover:bg-amber-600 transition"
             >
               Request Deletion
+            </button>
+          )}
+          {isCreator && selectedScenario && (
+            <button
+              onClick={handleToggleLock}
+              className="w-full py-2 bg-gray-700 border-2 border-yellow-400 text-white rounded hover:bg-gray-600 transition"
+              title={selectedScenario.deletionLocked ? 'Admins cannot flag this scenario for deletion' : 'Prevent admins from flagging this scenario for deletion'}
+            >
+              {selectedScenario.deletionLocked ? '🔒 Unlock Scenario' : '🔓 Lock Scenario'}
             </button>
           )}
           <button
@@ -629,6 +658,11 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                       }`}
                     >
                       {flagDays} {flagDays === 1 ? 'day' : 'days'} left
+                    </div>
+                  )}
+                  {scenario.deletionLocked && (
+                    <div className="absolute left-2 top-2 z-10 text-[11px] font-bold text-white pointer-events-none select-none">
+                      <span className="inline-block bg-gray-800/90 border border-gray-500 rounded px-1.5 py-0.5">🔒 Locked</span>
                     </div>
                   )}
                   <div className="relative w-full aspect-video bg-gray-700 flex items-center justify-center">

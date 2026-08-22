@@ -1,20 +1,65 @@
--- 055: Admin-marked scenario deletion with DM confirmation + 90-day auto-delete.
+-- 055: Admin-marked scenario deletion with DM confirmation + 90-day auto-delete,
+-- plus a creator "lock" that shields a scenario from deletion requests entirely.
 --
 -- Flow:
---   1. An admin flags a scenario for deletion (request_scenario_deletion) —
---      recorded as delete_requested_by (+ name snapshot, + timestamp).
---   2. The scenario's creator (DM) sees it flagged in the lobby and either
+--   1. The creator may lock a scenario (set_scenario_deletion_lock true) — locking
+--      also clears any pending deletion request, so lock = fully protected.
+--   2. An admin flags a scenario for deletion (request_scenario_deletion) —
+--      recorded as delete_requested_by (+ name snapshot, + timestamp). Refused
+--      when the scenario is locked.
+--   3. The scenario's creator (DM) sees it flagged in the lobby and either
 --      confirms the delete (existing creator-only deleteScenario) or keeps it
 --      (clear_scenario_deletion_request).
---   3. Unconfirmed flags auto-delete after 90 days (delete_expired_scenarios,
---      called lazily by the lobby). command_log / team_alliances / replay_state
---      cascade with the scenario (migrations 005/003/052); units and
---      scenario_participants are deleted explicitly, matching the client flow.
+--   4. Unconfirmed flags auto-delete after 90 days (delete_expired_scenarios,
+--      called lazily by the lobby). Locked scenarios are never auto-deleted.
+--      command_log / team_alliances / replay_state cascade with the scenario
+--      (migrations 005/003/052); units and scenario_participants are deleted
+--      explicitly, matching the client flow.
 
 ALTER TABLE scenarios
   ADD COLUMN IF NOT EXISTS delete_requested_by uuid,
   ADD COLUMN IF NOT EXISTS delete_requested_by_name text,
-  ADD COLUMN IF NOT EXISTS delete_requested_at timestamptz;
+  ADD COLUMN IF NOT EXISTS delete_requested_at timestamptz,
+  ADD COLUMN IF NOT EXISTS deletion_locked boolean NOT NULL DEFAULT false;
+
+-- Creator locks / unlocks a scenario against deletion requests. Locking clears
+-- any pending request (lock = fully protected, no countdown to worry about).
+CREATE OR REPLACE FUNCTION set_scenario_deletion_lock(p_scenario_id uuid, p_locked boolean)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM scenarios WHERE id = p_scenario_id AND creator_id = auth.uid()
+  ) THEN
+    RETURN false;
+  END IF;
+
+  IF p_locked THEN
+    UPDATE scenarios
+    SET deletion_locked = true,
+        delete_requested_by = NULL,
+        delete_requested_by_name = NULL,
+        delete_requested_at = NULL
+    WHERE id = p_scenario_id;
+  ELSE
+    UPDATE scenarios
+    SET deletion_locked = false
+    WHERE id = p_scenario_id;
+  END IF;
+
+  RETURN FOUND;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION set_scenario_deletion_lock(uuid, boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION set_scenario_deletion_lock(uuid, boolean) TO authenticated;
 
 -- Admin flags a scenario for deletion. SECURITY DEFINER so the check runs as the
 -- owner and bypasses RLS (the scenarios table is dashboard-managed).
@@ -36,6 +81,13 @@ BEGIN
   FROM profiles WHERE id = auth.uid();
 
   IF caller_role IS DISTINCT FROM 'admin' THEN
+    RETURN false;
+  END IF;
+
+  -- A scenario the creator locked cannot be flagged for deletion.
+  IF EXISTS (
+    SELECT 1 FROM scenarios WHERE id = p_scenario_id AND deletion_locked
+  ) THEN
     RETURN false;
   END IF;
 
@@ -109,6 +161,7 @@ BEGIN
   SELECT array_agg(id) INTO expired_ids
   FROM scenarios
   WHERE delete_requested_at IS NOT NULL
+    AND NOT deletion_locked
     AND delete_requested_at < now() - interval '90 days';
 
   IF expired_ids IS NULL THEN

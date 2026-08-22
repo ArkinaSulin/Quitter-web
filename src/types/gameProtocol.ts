@@ -174,6 +174,8 @@ export interface Scenario {
   deleteRequestedByName: string | null;
   /** When the deletion request was made (90-day auto-delete grace starts here). */
   deleteRequestedAt: string | null;
+  /** Creator locked this scenario — admins cannot flag it for deletion. */
+  deletionLocked: boolean;
 }
 
 // --- Participant ---

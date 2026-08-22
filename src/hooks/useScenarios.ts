@@ -21,6 +21,7 @@ function mapScenario(row: any): Scenario {
     deleteRequestedBy: row.delete_requested_by || null,
     deleteRequestedByName: row.delete_requested_by_name || null,
     deleteRequestedAt: row.delete_requested_at || null,
+    deletionLocked: !!row.deletion_locked,
   };
 }
 
@@ -210,6 +211,14 @@ export function useScenarios() {
     if (!scenario) throw new Error('Scenario not found');
     if (scenario.passwordHash && scenario.passwordHash !== password) {
       throw new Error('Invalid password');
+    }
+
+    // A scenario marked for deletion is closed to everyone except its creator
+    // (who must review it and decide delete vs keep). This blocks new players
+    // AND existing participants re-entering; the flag is separate from room_open,
+    // so un-flagging needs no rollback.
+    if (scenario.deleteRequestedBy && scenario.creatorId !== currentUser.id) {
+      throw new Error('This scenario is closed for deletion and no longer accepts players.');
     }
 
     if (scenario.creatorId !== currentUser.id) {
@@ -550,6 +559,17 @@ export function useScenarios() {
     return data || 0;
   }, []);
 
+  const setScenarioDeletionLock = useCallback(async (scenarioId: string, locked: boolean): Promise<{ ok: boolean; error?: string }> => {
+    const { data, error } = await supabase.rpc('set_scenario_deletion_lock', { p_scenario_id: scenarioId, p_locked: locked });
+    if (error) {
+      console.error('[setScenarioDeletionLock] Failed:', error);
+      return { ok: false, error: error.message };
+    }
+    const ok = !!data;
+    if (ok) await fetchScenarios();
+    return { ok };
+  }, [fetchScenarios]);
+
   return {
     scenarios,
     loading,
@@ -573,5 +593,6 @@ export function useScenarios() {
     requestScenarioDeletion,
     clearScenarioDeletionRequest,
     deleteExpiredScenarios,
+    setScenarioDeletionLock,
   };
 }
