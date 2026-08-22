@@ -4,6 +4,14 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
 import { Scenario } from '@/types/gameProtocol';
 
+// DM liveness: the GM writes dm_heartbeat_at every DM_HEARTBEAT_INTERVAL_MS.
+// A beat older than DM_HEARTBEAT_STALE_MS means the GM's heartbeat has stopped —
+// lock immediately (do not wait for a reconnect grace). Reader polls run faster
+// than the stale threshold so a stopped heartbeat is caught within ~2 polls.
+export const DM_HEARTBEAT_INTERVAL_MS = 5000;
+export const DM_HEARTBEAT_STALE_MS = 7000;
+export const DM_HEARTBEAT_POLL_MS = 2000;
+
 function mapScenario(row: any): Scenario {
   return {
     id: row.id,
@@ -37,8 +45,9 @@ export function useScenarios() {
   const [myScenarioIds, setMyScenarioIds] = useState<string[]>([]);
 
   // Heartbeat-based "DM online" badge: poll dm_heartbeat_at for every scenario
-  // (the GM writes it every ~5s). A beat fresher than 20s = online. Replaces the
-  // unreliable presence-channel watchers.
+  // (the GM writes it every DM_HEARTBEAT_INTERVAL_MS). A beat fresher than
+  // DM_HEARTBEAT_STALE_MS = online. Replaces the unreliable presence-channel
+  // watchers.
   const refreshDmOnline = useCallback(async () => {
     const { data } = await supabase
       .from('scenarios')
@@ -48,7 +57,7 @@ export function useScenarios() {
     const next: Record<string, boolean> = {};
     for (const row of data) {
       const beat = row.dm_heartbeat_at ? new Date(row.dm_heartbeat_at).getTime() : null;
-      next[row.id] = beat !== null && now - beat <= 20000;
+      next[row.id] = beat !== null && now - beat <= DM_HEARTBEAT_STALE_MS;
     }
     setDmOnlineByScenario(prev =>
       Object.keys(next).length !== Object.keys(prev).length || Object.keys(next).some(k => prev[k] !== next[k])
@@ -60,7 +69,7 @@ export function useScenarios() {
   useEffect(() => {
     if (!currentUser) return;
     refreshDmOnline();
-    const t = setInterval(refreshDmOnline, 5000);
+    const t = setInterval(refreshDmOnline, DM_HEARTBEAT_POLL_MS);
     return () => clearInterval(t);
   }, [currentUser, refreshDmOnline]);
 
@@ -227,15 +236,16 @@ export function useScenarios() {
 
   const checkDMOnline = useCallback(async (scenarioId: string): Promise<boolean> => {
     // Heartbeat is ground truth (presence leases were unreliable): the GM writes
-    // dm_heartbeat_at every ~5s; a beat fresher than 20s means the DM is online.
-    // Null = no beat yet — treat as online (the GM writes on entering the map).
+    // dm_heartbeat_at every DM_HEARTBEAT_INTERVAL_MS; a beat fresher than
+    // DM_HEARTBEAT_STALE_MS means the DM is online. Null = no beat yet — treat as
+    // online (the GM writes on entering the map).
     const { data } = await supabase
       .from('scenarios')
       .select('dm_heartbeat_at')
       .eq('id', scenarioId)
       .single();
     const beat = data?.dm_heartbeat_at ? new Date(data.dm_heartbeat_at).getTime() : null;
-    return beat === null || Date.now() - beat <= 20000;
+    return beat === null || Date.now() - beat <= DM_HEARTBEAT_STALE_MS;
   }, []);
 
   /**

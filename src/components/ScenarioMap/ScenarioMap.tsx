@@ -11,7 +11,7 @@ import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeO
 import { getFormations } from '@/lib/formationCache';
 import { loadSettings, getSetting } from '@/lib/settingsCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
-import { useScenarios } from '@/hooks/useScenarios';
+import { useScenarios, DM_HEARTBEAT_INTERVAL_MS, DM_HEARTBEAT_STALE_MS, DM_HEARTBEAT_POLL_MS } from '@/hooks/useScenarios';
 import { computeReachableMap, computeMovePool, isMoveAffordable, computeChargeReachable } from '@/lib/moveCost';
 import { isFormationChangeAffordable, getFormationChangeMpCost } from '@/lib/formationCost';
 import { useGameEngine } from '@/hooks/useGameEngine';
@@ -1789,7 +1789,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         .single();
       if (cancelled) return;
       const beat = data?.dm_heartbeat_at ? new Date(data.dm_heartbeat_at).getTime() : null;
-      const stale = beat !== null && Date.now() - beat > 20000;
+      // Lock immediately when the heartbeat stops: one missed 5s beat (~7s) is
+      // enough — no 20s reconnect grace for things to happen in.
+      const stale = beat !== null && Date.now() - beat > DM_HEARTBEAT_STALE_MS;
       setDmGone(stale);
     };
 
@@ -1803,7 +1805,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // the scenario and wait for the DM; no refresh needed. Null = no beat yet
       // (treat as online; the join gate already required the DM online).
       check();
-      pollRef.current = setInterval(check, 5000);
+      pollRef.current = setInterval(check, DM_HEARTBEAT_POLL_MS);
 
       // Writer (GM only, NOT gated by controlsLocked — otherwise a disconnected
       // GM could never recover): keep dm_heartbeat_at fresh while in the map.
@@ -1813,7 +1815,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             .then(({ error }) => { if (error) console.error('[heartbeat_dm] Failed:', error.message); });
         };
         beat();
-        beatTimer = setInterval(beat, 5000);
+        beatTimer = setInterval(beat, DM_HEARTBEAT_INTERVAL_MS);
       }
     });
 
