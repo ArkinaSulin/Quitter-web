@@ -178,6 +178,8 @@ export interface Scenario {
   deleteRequestedAt: string | null;
   /** Creator locked this scenario — admins cannot flag it for deletion. */
   deletionLocked: boolean;
+  /** GM's last heartbeat (lobby "DM online" badge + join gate). Null = never beat. */
+  dmHeartbeatAt: string | null;
 }
 
 // --- Participant ---

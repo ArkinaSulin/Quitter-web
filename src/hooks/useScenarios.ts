@@ -22,6 +22,7 @@ function mapScenario(row: any): Scenario {
     deleteRequestedByName: row.delete_requested_by_name || null,
     deleteRequestedAt: row.delete_requested_at || null,
     deletionLocked: !!row.deletion_locked,
+    dmHeartbeatAt: row.dm_heartbeat_at || null,
   };
 }
 
@@ -30,15 +31,38 @@ export function useScenarios() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user: currentUser } = useAuth();
-  const presenceChannels = useRef<Map<string, any>>(new Map());
-  const presenceCallbacks = useRef<Map<string, () => void>>(new Map());
-  // Lobby watchers: one read-only presence channel per scenario, so the lobby can
-  // show "(Room Open)" when that scenario's GM is actually present.
-  const lobbyPresenceChannels = useRef<Map<string, any>>(new Map());
   const [dmOnlineByScenario, setDmOnlineByScenario] = useState<Record<string, boolean>>({});
   // Scenario IDs the current user participates in (GM or player) — drives the
   // lobby's "My Scenarios" filter.
   const [myScenarioIds, setMyScenarioIds] = useState<string[]>([]);
+
+  // Heartbeat-based "DM online" badge: poll dm_heartbeat_at for every scenario
+  // (the GM writes it every ~5s). A beat fresher than 20s = online. Replaces the
+  // unreliable presence-channel watchers.
+  const refreshDmOnline = useCallback(async () => {
+    const { data } = await supabase
+      .from('scenarios')
+      .select('id, dm_heartbeat_at');
+    if (!data) return;
+    const now = Date.now();
+    const next: Record<string, boolean> = {};
+    for (const row of data) {
+      const beat = row.dm_heartbeat_at ? new Date(row.dm_heartbeat_at).getTime() : null;
+      next[row.id] = beat !== null && now - beat <= 20000;
+    }
+    setDmOnlineByScenario(prev =>
+      Object.keys(next).length !== Object.keys(prev).length || Object.keys(next).some(k => prev[k] !== next[k])
+        ? next
+        : prev,
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    refreshDmOnline();
+    const t = setInterval(refreshDmOnline, 5000);
+    return () => clearInterval(t);
+  }, [currentUser, refreshDmOnline]);
 
   const fetchScenarios = useCallback(async () => {
     setLoading(true);
@@ -92,61 +116,6 @@ export function useScenarios() {
     return data ? mapScenario(data) : null;
   }, [currentUser, fetchScenarios]);
 
-  const unsubscribeFromPresence = useCallback((scenarioId: string) => {
-    const channel = presenceChannels.current.get(scenarioId);
-    if (channel) {
-      console.log('[Presence] Unsubscribing from', scenarioId);
-      channel.unsubscribe();
-      presenceChannels.current.delete(scenarioId);
-      presenceCallbacks.current.delete(scenarioId);
-    }
-  }, []);
-
-  // Lobby "Room Open" indicator: watch each scenario's presence channel read-only
-  // and flip dmOnlineByScenario[scenarioId] when a GM enters/leaves.
-  const subscribeToLobbyPresence = useCallback((scenarioId: string) => {
-    if (lobbyPresenceChannels.current.has(scenarioId)) return;
-
-    const channel = supabase.channel(`presence:${scenarioId}`, {
-      config: { presence: { key: `lobby:${scenarioId}` } },
-    });
-
-    const refresh = () => {
-      const state = channel.presenceState();
-      let dmFound = false;
-      for (const key in state) {
-        const users = state[key] as any[];
-        if (users.some((u: any) => u.role === 'GM')) {
-          dmFound = true;
-          break;
-        }
-      }
-      setDmOnlineByScenario(prev =>
-        prev[scenarioId] === dmFound ? prev : { ...prev, [scenarioId]: dmFound },
-      );
-    };
-
-    channel.on('presence', { event: 'sync' }, refresh);
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') refresh();
-    });
-
-    lobbyPresenceChannels.current.set(scenarioId, channel);
-  }, []);
-
-  const unsubscribeFromLobbyPresence = useCallback((scenarioId: string) => {
-    const channel = lobbyPresenceChannels.current.get(scenarioId);
-    if (channel) {
-      channel.unsubscribe();
-      lobbyPresenceChannels.current.delete(scenarioId);
-    }
-    setDmOnlineByScenario(prev => {
-      const next = { ...prev };
-      delete next[scenarioId];
-      return next;
-    });
-  }, []);
-
   const deleteScenario = useCallback(async (scenarioId: string) => {
     if (!currentUser) throw new Error('Not logged in');
 
@@ -198,12 +167,9 @@ export function useScenarios() {
       .eq('id', scenarioId);
     if (error) throw error;
 
-    // 5. Clean up presence channel
-    unsubscribeFromPresence(scenarioId);
-
-    // 6. Refresh the list
+    // 5. Refresh the list
     await fetchScenarios();
-  }, [currentUser, fetchScenarios, unsubscribeFromPresence]);
+  }, [currentUser, fetchScenarios]);
 
   const joinScenario = useCallback(async (scenarioId: string, password?: string) => {
     if (!currentUser) throw new Error('Not logged in');
@@ -260,142 +226,17 @@ export function useScenarios() {
   }, [currentUser, scenarios]);
 
   const checkDMOnline = useCallback(async (scenarioId: string): Promise<boolean> => {
-    // The lobby already subscribes a read-only presence channel per scenario (for
-    // the Room Open badge) on the SAME topic. Reuse it: RealtimeClient.channel()
-    // returns the existing (already-subscribed) channel, and registering a presence
-    // listener after subscribe() throws — so we must not open a second one here.
-    const existing = lobbyPresenceChannels.current.get(scenarioId);
-    if (existing) {
-      const hasGM = (): boolean => {
-        const state = existing.presenceState();
-        for (const key in state) {
-          const users = state[key] as any[];
-          if (users.some((u: any) => u.role === 'GM')) return true;
-        }
-        return false;
-      };
-      if (hasGM()) return true;
-      // Presence may not have synced yet — poll briefly before declaring the DM offline.
-      return new Promise((resolve) => {
-        let tries = 0;
-        const poll = () => {
-          tries += 1;
-          if (hasGM() || tries >= 15) {
-            resolve(hasGM());
-            return;
-          }
-          setTimeout(poll, 100);
-        };
-        setTimeout(poll, 100);
-      });
-    }
-
-    // Fallback: no lobby channel (join flow outside the lobby). Fresh one-shot probe.
-    return new Promise((resolve) => {
-      const channel = supabase.channel(`presence:${scenarioId}`, {
-        config: { presence: { key: `${scenarioId}` } },
-      });
-      let resolved = false;
-
-      channel.on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        let dmFound = false;
-        for (const key in state) {
-          const users = state[key] as any[];
-          if (users.some((u: any) => u.role === 'GM')) {
-            dmFound = true;
-            break;
-          }
-        }
-        if (!resolved) {
-          resolved = true;
-          channel.unsubscribe();
-          resolve(dmFound);
-        }
-      });
-
-      channel.subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          setTimeout(() => {
-            if (!resolved) {
-              const state = channel.presenceState();
-              let dmFound = false;
-              for (const key in state) {
-                const users = state[key] as any[];
-                if (users.some((u: any) => u.role === 'GM')) {
-                  dmFound = true;
-                  break;
-                }
-              }
-              resolved = true;
-              channel.unsubscribe();
-              resolve(dmFound);
-            }
-          }, 1000);
-        } else if (status === 'CHANNEL_ERROR') {
-          if (!resolved) {
-            resolved = true;
-            channel.unsubscribe();
-            resolve(false);
-          }
-        }
-      });
-    });
+    // Heartbeat is ground truth (presence leases were unreliable): the GM writes
+    // dm_heartbeat_at every ~5s; a beat fresher than 20s means the DM is online.
+    // Null = no beat yet — treat as online (the GM writes on entering the map).
+    const { data } = await supabase
+      .from('scenarios')
+      .select('dm_heartbeat_at')
+      .eq('id', scenarioId)
+      .single();
+    const beat = data?.dm_heartbeat_at ? new Date(data.dm_heartbeat_at).getTime() : null;
+    return beat === null || Date.now() - beat <= 20000;
   }, []);
-
-  const subscribeToPresence = useCallback((scenarioId: string, onDMLeave: () => void) => {
-    if (!currentUser) {
-      console.log('[Presence] No current user, skipping');
-      return null;
-    }
-
-    const existingChannel = presenceChannels.current.get(scenarioId);
-    if (existingChannel) {
-      console.log('[Presence] Channel already exists for', scenarioId, '- reusing');
-      presenceCallbacks.current.set(scenarioId, onDMLeave);
-      return existingChannel;
-    }
-
-    console.log('[Presence] Creating new channel for', scenarioId);
-    const channel = supabase.channel(`presence:${scenarioId}`, {
-      config: { presence: { key: `${scenarioId}` } },
-    });
-
-    presenceCallbacks.current.set(scenarioId, onDMLeave);
-
-    channel.on('presence', { event: 'sync' }, () => {
-      const state = channel.presenceState();
-      let dmPresent = false;
-      for (const key in state) {
-        const users = state[key] as any[];
-        if (users.some((u: any) => u.role === 'GM')) {
-          dmPresent = true;
-          break;
-        }
-      }
-      if (!dmPresent) {
-        console.log('[Presence] DM left scenario:', scenarioId);
-        const callback = presenceCallbacks.current.get(scenarioId);
-        if (callback) {
-          callback();
-        }
-      }
-    });
-
-    channel.subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        const userRole = await getMyRole(scenarioId);
-        const role = userRole || 'Player';
-        console.log('[Presence] Tracking user as:', role);
-        channel.track({ user_id: currentUser.id, role });
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error('[Presence] Channel error for', scenarioId);
-      }
-    });
-
-    presenceChannels.current.set(scenarioId, channel);
-    return channel;
-  }, [currentUser]);
 
   /**
    * Update screenshot for a scenario using deterministic filename.
@@ -582,10 +423,6 @@ export function useScenarios() {
     deleteScenario,
     joinScenario,
     getMyRole,
-    subscribeToPresence,
-    unsubscribeFromPresence,
-    subscribeToLobbyPresence,
-    unsubscribeFromLobbyPresence,
     updateScreenshot,
     fetchScenarioMapData,
     updateScenarioMapData,

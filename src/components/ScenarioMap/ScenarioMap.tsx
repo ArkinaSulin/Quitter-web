@@ -133,7 +133,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedHex, setSelectedHex] = useState<Hex | null>(null);
   const { units, moveUnit, loading, error, addUnitFromTemplate, deleteUnit, updateUnit, sizeCategories } = useSupabaseSync(scenarioId);
-  const { getMyRole, updateScreenshot, unsubscribeFromPresence, subscribeToPresence, fetchScenarios, currentUser, fetchScenarioMapData, updateScenarioField, updateScenarioMapData } = useScenarios();
+  const { getMyRole, updateScreenshot, fetchScenarios, currentUser, fetchScenarioMapData, updateScenarioField, updateScenarioMapData } = useScenarios();
   const { addMessage, addError } = useMessageSync(scenarioId);
   const [isGM, setIsGM] = useState(false);
   const [dmGone, setDmGone] = useState(false);
@@ -1739,7 +1739,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       await captureAndUploadScreenshot();
       await fetchScenarios();
     }
-    unsubscribeFromPresence(scenarioId);
     localStorage.removeItem('currentScenarioId');
     window.location.reload();
   };
@@ -1775,21 +1774,55 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kicked]);
 
-  // ---- Role detection + presence ----
+  // ---- Role detection + DM heartbeat (reliable disconnect lock/recovery) ----
   useEffect(() => {
-    let subscribed: any = null;
+    let cancelled = false;
+    const pollRef = { current: 0 as any };
+    let beatTimer: any = null;
+
+    const check = async () => {
+      if (cancelled) return;
+      const { data } = await supabase
+        .from('scenarios')
+        .select('dm_heartbeat_at')
+        .eq('id', scenarioId)
+        .single();
+      if (cancelled) return;
+      const beat = data?.dm_heartbeat_at ? new Date(data.dm_heartbeat_at).getTime() : null;
+      const stale = beat !== null && Date.now() - beat > 20000;
+      setDmGone(stale);
+    };
+
     getMyRole(scenarioId).then(role => {
+      if (cancelled) return;
       const gm = role === 'GM';
       setIsGM(gm);
-      // Every client subscribes to presence so a DM exit locks the map.
-      subscribed = subscribeToPresence(scenarioId, () => {
-        if (!gm) setDmGone(true);
-      });
+
+      // Reader (everyone, incl. the GM): poll dm_heartbeat_at and lock when the
+      // beat is stale. A fresh beat automatically unlocks — players can sit in
+      // the scenario and wait for the DM; no refresh needed. Null = no beat yet
+      // (treat as online; the join gate already required the DM online).
+      check();
+      pollRef.current = setInterval(check, 5000);
+
+      // Writer (GM only, NOT gated by controlsLocked — otherwise a disconnected
+      // GM could never recover): keep dm_heartbeat_at fresh while in the map.
+      if (gm && !replayMode) {
+        const beat = () => {
+          supabase.rpc('heartbeat_dm', { p_scenario_id: scenarioId })
+            .then(({ error }) => { if (error) console.error('[heartbeat_dm] Failed:', error.message); });
+        };
+        beat();
+        beatTimer = setInterval(beat, 5000);
+      }
     });
+
     return () => {
-      if (subscribed) unsubscribeFromPresence(scenarioId);
+      cancelled = true;
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (beatTimer) clearInterval(beatTimer);
     };
-  }, [scenarioId, getMyRole, subscribeToPresence, unsubscribeFromPresence]);
+  }, [scenarioId, getMyRole, replayMode]);
 
   // ---- Load formations lookup (session-cached) ----
   useEffect(() => {
@@ -2097,12 +2130,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         />
       )}
 
-      {/* DM gone banner — controls disabled, map stays viewable. Suppressed during
-          replay: live controls are locked by replay mode anyway, and replay
-          playback is self-contained (pending viewers don't need the GM). */}
-      {dmGone && !isGM && !inReplay && (
+      {/* DM gone banner — controls disabled, map stays viewable. Shows for the GM
+          too (a disconnected GM may not realize they dropped; the lock keeps them
+          from mutating local state). Suppressed during replay: live controls are
+          locked by replay mode anyway. */}
+      {dmGone && !inReplay && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 bg-red-900/90 border border-red-500 rounded shadow-lg">
-          <span className="text-red-200 font-semibold text-sm">GM has left — controls disabled</span>
+          <span className="text-red-200 font-semibold text-sm">
+            {isGM ? 'Connection lost — reconnecting…' : 'GM is offline — controls disabled until they return'}
+          </span>
         </div>
       )}
 

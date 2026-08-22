@@ -28,10 +28,6 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     createScenario,
     deleteScenario,
     joinScenario,
-    subscribeToPresence,
-    unsubscribeFromPresence,
-    subscribeToLobbyPresence,
-    unsubscribeFromLobbyPresence,
     updateScenarioField,
     fetchScenarios,
     requestScenarioDeletion,
@@ -49,7 +45,6 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const [joinError, setJoinError] = useState<string | null>(null);
   const [signInError, setSignInError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [showDisplayNameModal, setShowDisplayNameModal] = useState(false);
   const [displayNameInput, setDisplayNameInput] = useState('');
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
@@ -81,21 +76,6 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const { displayName, role, requestNote, access, updateDisplayName, updateRequestNote, approvePlayer } = useProfile(currentUser?.id);
 
   useEffect(() => {
-    if (!activeScenarioId) return;
-    const channel = subscribeToPresence(activeScenarioId, () => {
-      setToast('The Game Master has left the session. Returning to Lobby...');
-      setTimeout(() => {
-        setActiveScenarioId(null);
-        localStorage.removeItem('currentScenarioId');
-        window.location.reload();
-      }, 3000);
-    });
-    return () => {
-      if (channel) unsubscribeFromPresence(activeScenarioId);
-    };
-  }, [activeScenarioId, subscribeToPresence, unsubscribeFromPresence]);
-
-  useEffect(() => {
     if (requestNote && accessRequest === '') {
       setAccessRequest(requestNote);
     }
@@ -118,12 +98,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
 
   useEffect(() => {
     if (!currentUser) return;
-    const ids = scenarios.map(s => s.id);
-    ids.forEach(id => subscribeToLobbyPresence(id));
-    return () => {
-      ids.forEach(id => unsubscribeFromLobbyPresence(id));
-    };
-  }, [scenarios, currentUser, subscribeToLobbyPresence, unsubscribeFromLobbyPresence]);
+  }, [currentUser]);
 
   // Resolve each scenario creator's live display name so the search bar can filter
   // by alias and renames are honored. RLS allows any signed-in user to read names.
@@ -233,7 +208,6 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
       setNewPassword('');
       if (created) {
         onNewScenario(created.id);
-        setActiveScenarioId(created.id);
       }
     } catch (err: any) {
       alert('Failed to create: ' + err.message);
@@ -259,7 +233,6 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
       setShowJoinModal(null);
       setJoinPassword('');
       onJoinScenario(scenarioId);
-      setActiveScenarioId(scenarioId);
     } catch (err: any) {
       setJoinError(err.message);
       setToast(err.message);
