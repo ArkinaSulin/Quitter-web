@@ -18,6 +18,9 @@ function mapScenario(row: any): Scenario {
     currentTurnAlliance: row.current_turn_alliance || null,
     turnNumber: row.turn_number || 0,
     roomOpen: row.room_open ?? true,
+    deleteRequestedBy: row.delete_requested_by || null,
+    deleteRequestedByName: row.delete_requested_by_name || null,
+    deleteRequestedAt: row.delete_requested_at || null,
   };
 }
 
@@ -516,6 +519,37 @@ export function useScenarios() {
     return true;
   }, []);
 
+  const requestScenarioDeletion = useCallback(async (scenarioId: string): Promise<{ ok: boolean; error?: string }> => {
+    const { data, error } = await supabase.rpc('request_scenario_deletion', { p_scenario_id: scenarioId });
+    if (error) {
+      console.error('[requestScenarioDeletion] Failed:', error);
+      return { ok: false, error: error.message };
+    }
+    const ok = !!data;
+    if (ok) await fetchScenarios();
+    return { ok };
+  }, [fetchScenarios]);
+
+  const clearScenarioDeletionRequest = useCallback(async (scenarioId: string): Promise<{ ok: boolean; error?: string }> => {
+    const { data, error } = await supabase.rpc('clear_scenario_deletion_request', { p_scenario_id: scenarioId });
+    if (error) {
+      console.error('[clearScenarioDeletionRequest] Failed:', error);
+      return { ok: false, error: error.message };
+    }
+    const ok = !!data;
+    if (ok) await fetchScenarios();
+    return { ok };
+  }, [fetchScenarios]);
+
+  const deleteExpiredScenarios = useCallback(async (): Promise<number> => {
+    const { data, error } = await supabase.rpc('delete_expired_scenarios');
+    if (error) {
+      console.error('[deleteExpiredScenarios] Failed:', error);
+      return 0;
+    }
+    return data || 0;
+  }, []);
+
   return {
     scenarios,
     loading,
@@ -536,5 +570,8 @@ export function useScenarios() {
     fetchScenarioMapData,
     updateScenarioMapData,
     updateScenarioField,
+    requestScenarioDeletion,
+    clearScenarioDeletionRequest,
+    deleteExpiredScenarios,
   };
 }

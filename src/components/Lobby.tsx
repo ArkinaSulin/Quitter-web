@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useScenarios } from '@/hooks/useScenarios';
 import { useProfile } from '@/hooks/useProfile';
+import { Scenario } from '@/types/gameProtocol';
 import { supabase, signInWithGoogle, signOut } from '@/lib/supabaseClient';
 import Toast from '@/components/Toast';
 import { SettingsModal } from '@/components/SettingsModal';
@@ -33,6 +34,9 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     unsubscribeFromLobbyPresence,
     updateScenarioField,
     fetchScenarios,
+    requestScenarioDeletion,
+    clearScenarioDeletionRequest,
+    deleteExpiredScenarios,
   } = useScenarios();
 
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
@@ -95,6 +99,21 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
       setAccessRequest(requestNote);
     }
   }, [requestNote, accessRequest]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    // Lazy cleanup: any flagged scenario past its 90-day grace period is deleted
+    // server-side whenever the lobby is opened or refocused.
+    deleteExpiredScenarios().then(deleted => {
+      if (deleted > 0) fetchScenarios();
+    });
+    const t = setInterval(() => {
+      deleteExpiredScenarios().then(deleted => {
+        if (deleted > 0) fetchScenarios();
+      });
+    }, 60 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [currentUser, deleteExpiredScenarios, fetchScenarios]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -256,6 +275,37 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
       setSelectedScenarioId(null);
     } catch (err: any) {
       alert('Delete failed: ' + err.message);
+    }
+  };
+
+  // Days left in the 90-day grace period before an unconfirmed deletion request
+  // auto-deletes. Returns null when not flagged.
+  const daysLeft = (scenario: Scenario): number | null => {
+    if (!scenario.deleteRequestedAt) return null;
+    const deadline = new Date(scenario.deleteRequestedAt).getTime() + 90 * 86400000;
+    return Math.max(0, Math.ceil((deadline - Date.now()) / 86400000));
+  };
+
+  const handleRequestDeletion = async () => {
+    if (!selectedScenarioId) return;
+    const scenario = scenarios.find(s => s.id === selectedScenarioId);
+    if (!scenario) return;
+    if (!confirm(`Request deletion of "${scenario.name}"? The creator will be asked to confirm before it's removed.`)) return;
+    try {
+      const res = await requestScenarioDeletion(selectedScenarioId);
+      if (!res.ok) alert('Failed to request deletion: ' + (res.error || 'unknown error'));
+    } catch (err: any) {
+      alert('Failed to request deletion: ' + err.message);
+    }
+  };
+
+  const handleKeepScenario = async () => {
+    if (!selectedScenarioId) return;
+    try {
+      const res = await clearScenarioDeletionRequest(selectedScenarioId);
+      if (!res.ok) alert('Failed to keep scenario: ' + (res.error || 'unknown error'));
+    } catch (err: any) {
+      alert('Failed to keep scenario: ' + err.message);
     }
   };
 
@@ -429,6 +479,44 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
           {/* Upload Screenshot button removed */}
         </div>
         <div className="space-y-3">
+          {selectedScenario && selectedScenario.deleteRequestedBy && (() => {
+            const dl = daysLeft(selectedScenario);
+            return (
+              <div className={`p-2.5 rounded border text-xs space-y-2 ${(dl ?? 0) <= 7 ? 'border-red-700/60 bg-red-900/30 text-red-200' : 'border-amber-700/60 bg-amber-900/30 text-amber-200'}`}>
+                <div>
+                  <div className="font-semibold">Deletion requested</div>
+                  <div className="opacity-90">
+                    by {selectedScenario.deleteRequestedByName || 'an admin'}
+                    {dl !== null && ` — ${dl} ${dl === 1 ? 'day' : 'days'} left`}
+                  </div>
+                </div>
+                {isCreator && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleDelete}
+                      className="flex-1 py-1.5 bg-red-800 border-2 border-red-400 text-white rounded hover:bg-red-700 transition"
+                    >
+                      Confirm Delete
+                    </button>
+                    <button
+                      onClick={handleKeepScenario}
+                      className="flex-1 py-1.5 bg-gray-600 border-2 border-gray-400 text-white rounded hover:bg-gray-500 transition"
+                    >
+                      Keep
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          {role === 'admin' && selectedScenario && !isCreator && !selectedScenario.deleteRequestedBy && (
+            <button
+              onClick={handleRequestDeletion}
+              className="w-full py-2 bg-amber-700 border-2 border-amber-400 text-white rounded hover:bg-amber-600 transition"
+            >
+              Request Deletion
+            </button>
+          )}
           <button
             onClick={handleDelete}
             disabled={!isDeleteEnabled}
@@ -465,6 +553,14 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
         (mineActive && myScenarioIds.includes(s.id)) || (availableActive && s.roomOpen)
       );
     }
+
+    // Flagged-for-deletion scenarios float to the top; within each group the
+    // original (updated_at desc) order is preserved.
+    filtered = [...filtered].sort((a, b) => {
+      const af = a.deleteRequestedBy ? 1 : 0;
+      const bf = b.deleteRequestedBy ? 1 : 0;
+      return bf - af;
+    });
 
     return (
       <>
@@ -513,16 +609,28 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
             {filtered.map((scenario) => {
               const isSelected = scenario.id === selectedScenarioId;
+              const flagDays = daysLeft(scenario);
               return (
                 <div
                   key={scenario.id}
                   onClick={() => setSelectedScenarioId(scenario.id)}
-                  className={`bg-gray-800 rounded-lg overflow-hidden shadow-lg border-2 transition-all cursor-pointer w-full ${
+                  className={`bg-gray-800 rounded-lg overflow-hidden shadow-lg border-2 transition-all cursor-pointer w-full relative ${
                     isSelected
                       ? 'border-yellow-400 shadow-yellow-500/30 shadow-lg'
                       : 'border-gray-700 hover:border-gray-500'
                   }`}
                 >
+                  {scenario.deleteRequestedBy && flagDays !== null && (
+                    <div
+                      className={`absolute -right-9 top-3 w-40 rotate-45 text-center text-[11px] font-bold py-0.5 z-10 pointer-events-none select-none ${
+                        flagDays <= 7
+                          ? 'bg-red-700 text-white'
+                          : 'bg-amber-600 text-black'
+                      }`}
+                    >
+                      {flagDays} {flagDays === 1 ? 'day' : 'days'} left
+                    </div>
+                  )}
                   <div className="relative w-full aspect-video bg-gray-700 flex items-center justify-center">
                     {scenario.screenshotUrl ? (
                       <img

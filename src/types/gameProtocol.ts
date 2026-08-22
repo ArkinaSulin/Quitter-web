@@ -168,6 +168,12 @@ export interface Scenario {
   turnNumber: number;
   /** When false, no new players may join the room (existing players unaffected). */
   roomOpen: boolean;
+  /** Admin who flagged this scenario for deletion (null = not flagged). */
+  deleteRequestedBy: string | null;
+  /** Display name snapshot of the requesting admin. */
+  deleteRequestedByName: string | null;
+  /** When the deletion request was made (90-day auto-delete grace starts here). */
+  deleteRequestedAt: string | null;
 }
 
 // --- Participant ---
