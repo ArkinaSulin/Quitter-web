@@ -653,19 +653,11 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                 >
                   {scenario.deleteRequestedBy && flagDays !== null && (
                     <div
-                      className={`absolute inset-x-0 top-0 z-10 flex justify-center pointer-events-none select-none ${
-                        flagDays <= 7 ? 'text-red-200' : 'text-amber-200'
+                      className={`absolute -right-10 top-4 z-10 w-48 rotate-45 text-center text-xs font-bold py-1 pointer-events-none select-none shadow ${
+                        flagDays <= 7 ? 'bg-red-700 text-white' : 'bg-amber-600 text-black'
                       }`}
                     >
-                      <span
-                        className={`mt-1 px-3 py-1 rounded-full text-xs font-bold border shadow ${
-                          flagDays <= 7
-                            ? 'bg-red-800/90 border-red-400'
-                            : 'bg-amber-700/90 border-amber-400'
-                        }`}
-                      >
-                        ⚠ Marked for Deletion — {flagDays} {flagDays === 1 ? 'day' : 'days'} left
-                      </span>
+                      ⚠ Marked for Deletion — {flagDays} {flagDays === 1 ? 'day' : 'days'} left
                     </div>
                   )}
                   {scenario.deletionLocked && (
