@@ -236,7 +236,7 @@ export function useGameEngine({
   }, []);
 
   const moveUnitRecorded = useCallback(
-    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string): Promise<void> => {
+    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean }): Promise<void> => {
       const { movementPointsAvailable, actionsAvailable } = applyMoveCost(unit, cost, maxMP);
       const subSteps: SubStep[] = [
         {
@@ -267,7 +267,7 @@ export function useGameEngine({
         });
       }
 
-      await execute('MOVE', subSteps, subSteps[0].description);
+      await execute('MOVE', subSteps, subSteps[0].description, options);
     },
     [execute],
   );

@@ -146,17 +146,18 @@ function computeAttackCount(unit: Unit, rowCapacity: number, attackCapacityMulti
 }
 
 /**
- * Hero-engagement troop cap: only a fraction of a unit's troops can strike a hero
- * (lone hero as the target, or retaliation against a hero attacker). Returns the
- * capped count and a human-readable note when a cap applied.
+ * Melee-only troop cap vs a hero: only a fraction of a unit's troops can reach a
+ * hero in melee (lone hero as the target, or retaliation against a hero attacker).
+ * Ranged attacks against a hero are NOT capped — every trooper can shoot. Returns
+ * the capped count and a human-readable note when a cap applied.
  */
 export function applyHeroCombatCap(count: number, heroInvolved: boolean): { count: number; note?: string } {
   if (!heroInvolved) return { count };
-  const cap = getSetting('hero_combat_capacity', 0.5);
+  const cap = getSetting('unit_melee_hero_cap', 0.5);
   const capped = Math.max(1, Math.round(count * cap));
   if (capped >= count) return { count };
   const pct = Math.round(cap * 100);
-  return { count: capped, note: `only ${pct}% of troop can reach hero` };
+  return { count: capped, note: `only ${pct}% of troop can reach hero in melee` };
 }
 
 function executeAttacks(
@@ -313,13 +314,14 @@ export function resolveCombatSequence(
   // --- First strike ---
   if (strikerFirst === 'attacker') {
     // The attacker is a unit striking a lone hero: only a fraction of troops can
-    // reach the hero, so the unit's own attacks are capped.
+    // reach the hero in MELEE, so the unit's own attacks are capped. A ranged
+    // attack is uncapped — every trooper can shoot the hero.
     const attackerVsHero = !attacker.isHero && defender.isHero;
     let attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false, attackerWeapon.numberOfAttacks ?? 1);
     const atkCountMod = beAttackedModifier(defenderForm, isRanged);
     attackerCount = Math.round(attackerCount * atkCountMod);
     firstStrikeCountNote = beAttackedModifierNote(defenderForm, isRanged);
-    if (attackerVsHero) {
+    if (attackerVsHero && !isRanged) {
       const cap = applyHeroCombatCap(attackerCount, true);
       attackerCount = cap.count;
       firstStrikeCountNote = firstStrikeCountNote ? `${firstStrikeCountNote}; ${cap.note}` : cap.note;
@@ -382,9 +384,10 @@ export function resolveCombatSequence(
         defenderCount = Math.round(defenderCount * retMod);
         retaliationCountNote = beAttackedModifierNote(attackerForm, false);
         // A hero attacking (lone or front-attached) limits how many defender
-        // troops can reach it — cap the defender's retaliation.
+        // troops can reach it — cap the defender's MELEE retaliation. Ranged
+        // retaliation is uncapped.
         const defenderVsHeroRet = !defender.isHero && (attacker.isHero || !!attachedAttackerHero);
-        if (defenderVsHeroRet) {
+        if (defenderVsHeroRet && !isRanged) {
           const cap = applyHeroCombatCap(defenderCount, true);
           defenderCount = cap.count;
           retaliationCountNote = retaliationCountNote ? `${retaliationCountNote}; ${cap.note}` : cap.note;

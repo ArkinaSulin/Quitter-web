@@ -211,6 +211,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     target: Unit;
   } | null>(null);
 
+  // Soft-enforcement: attach/swap attempted with no MP/actions left.
+  const [pendingAttachOverBudget, setPendingAttachOverBudget] = useState<{
+    hero: Unit;
+    target: Unit;
+    position: 'front' | 'back';
+  } | null>(null);
+  const [pendingSwapOverBudget, setPendingSwapOverBudget] = useState<Unit | null>(null);
+
   // Over-budget confirmations (soft enforcement)
   const [pendingMove, setPendingMove] = useState<{
     unit: Unit;
@@ -544,9 +552,27 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       addMessage(`${target.unitName} already has a hero attached`);
       return;
     }
-    await attachHero(hero, target, position, unitMaxMP(hero));
+    // Attaching costs 1 hero MP — soft-enforce: if the hero can't afford it
+    // (no MP and no action to refill a pool), ask first (mirrors move/attack).
+    const maxMP = unitMaxMP(hero);
+    if (!isMoveAffordable(hero, 1, maxMP)) {
+      setPendingAttachOverBudget({ hero, target, position });
+      return;
+    }
+    await attachHero(hero, target, position, maxMP);
     addMessage(`${hero.unitName} attached to ${target.unitName} (${position})`);
-  }, [units, attachHero, addMessage]);
+  }, [units, attachHero, addMessage, isMoveAffordable, unitMaxMP]);
+
+  const handleSwapHeroPosition = useCallback(async (hero: Unit) => {
+    // Swapping front/back costs 1 hero MP (free during free-move) — soft-enforce
+    // like move/attack: confirm when the hero can't afford it.
+    const maxMP = unitMaxMP(hero);
+    if (!freeMove && !isMoveAffordable(hero, 1, maxMP)) {
+      setPendingSwapOverBudget(hero);
+      return;
+    }
+    await swapHeroPosition(hero, maxMP);
+  }, [swapHeroPosition, freeMove, isMoveAffordable, unitMaxMP]);
 
   // Custom draw function that uses drawToken
   const customDraw = useCallback(async (ctx: CanvasRenderingContext2D, width: number, height: number, currentZoom: number, offsetX: number, offsetY: number) => {
@@ -2092,7 +2118,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           freeMove={freeMove}
           onChangeFormation={(formation) => handleChangeFormation(contextMenuUnit, formation)}
           onCharge={() => charge(contextMenuUnit)}
-          onSwapHeroPosition={(hero) => swapHeroPosition(hero, unitMaxMP(hero))}
+          onSwapHeroPosition={(hero) => handleSwapHeroPosition(hero)}
           onSelectWeapon={(idx) => selectWeapon(contextMenuUnit, idx)}
           onAssignTeam={(team) => assignTeam(contextMenuUnit, team)}
           onToggleHide={() => toggleHide(contextMenuUnit)}
@@ -2189,6 +2215,68 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               <button
                 className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
                 onClick={() => setPendingAttack(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingAttachOverBudget && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Attach with no MP?</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              {pendingAttachOverBudget.hero.unitName} has no MP or actions left, but can still attach to {pendingAttachOverBudget.target.unitName} ({pendingAttachOverBudget.position}).
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={async () => {
+                  const pa = pendingAttachOverBudget;
+                  setPendingAttachOverBudget(null);
+                  if (controlsLocked) return;
+                  addError(`${pa.hero.unitName} attached over budget — no MP/actions left`);
+                  await attachHero(pa.hero, pa.target, pa.position, unitMaxMP(pa.hero));
+                }}
+              >
+                Yes, attach anyway
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => setPendingAttachOverBudget(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingSwapOverBudget && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Swap position with no MP?</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              {pendingSwapOverBudget.unitName} has no MP or actions left, but can still move to the {pendingSwapOverBudget.attachedPosition === 'back' ? 'front' : 'back'}.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={async () => {
+                  const hero = pendingSwapOverBudget;
+                  setPendingSwapOverBudget(null);
+                  if (controlsLocked) return;
+                  addError(`${hero.unitName} swapped position over budget — no MP/actions left`);
+                  await swapHeroPosition(hero, unitMaxMP(hero));
+                }}
+              >
+                Yes, swap anyway
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => setPendingSwapOverBudget(null)}
               >
                 Cancel
               </button>
@@ -2297,9 +2385,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                   const pct = pendingChargeThrough;
                   setPendingChargeThrough(null);
                   if (controlsLocked) return;
-                  // Charge ends first so the overrun is a standalone MOVE command
-                  // (the CHARGE_END chains onto the ATTACK, keeping the movement
-                  // undoable on its own).
+                  // The charge-over MOVE chains onto the CHARGE_END (which chains
+                  // onto the ATTACK), so undo reverts charge attack + overrun as
+                  // one atomic action.
                   await performChargeEnd(pct.attacker, true);
                   await moveUnitRecorded(
                     pct.attacker,
@@ -2309,6 +2397,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                     pct.attachedHero,
                     pct.attachedHero ? unitMaxMP(pct.attachedHero) : undefined,
                     `${pct.attacker.unitName} charged over ${pct.target.unitName} and landed at (${pct.landHex.q}, ${pct.landHex.r})`,
+                    { chained: true },
                   );
                 }}
               >

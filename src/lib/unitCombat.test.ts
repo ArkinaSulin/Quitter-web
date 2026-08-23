@@ -322,6 +322,29 @@ describe('rollDamage', () => {
 });
 
 describe('resolveCombatSequence', () => {
+  // Minimal formation that CAN retaliate vs ranged (allows testing the hero-cap
+  // ranged-retaliation path in isolation).
+  const retaliateRangedForm: Formation = {
+    id: 'rr',
+    name: 'Retaliate Ranged',
+    ac_modifier: 0,
+    movement_multiplier: 1,
+    attack_modifier: 0,
+    morale_modifier: 0,
+    row_capacity_multiplier: 1,
+    attack_capacity_multiplier: 1,
+    melee_target_arcs: ['front', 'flank', 'rear'],
+    ranged_target_arcs: ['front', 'flank', 'rear'],
+    threat_arcs: ['front', 'flank'],
+    double_threat_arcs: [],
+    retaliate_arcs: { front: 'full', flank: 'full', rear: 'full' },
+    retaliate_vs_ranged: true,
+    can_charge: false,
+    stop_enemy_movement_arcs: [],
+    charge_through_arcs: [],
+    be_attacked_melee_modifier: 1,
+    be_attacked_range_modifier: 1,
+  };
   const attacker = makeUnit({
     id: 'att',
     unitName: 'Attacker',
@@ -364,12 +387,15 @@ describe('resolveCombatSequence', () => {
     isRear = false,
     attachedDefHero: { currentAc: number; troopHp: number } | null = null,
     attachedAtkHero: { currentAc: number; troopHp: number } | null = null,
+    attackerForm: Formation | null = null,
+    defenderForm: Formation | null = null,
   ) {
     return resolveCombatSequence(
       att, def, atkW, defW,
       formationAtkMod, attackCapMult, attackCapMult,
       rowCap, rowCap, visualDotsPerRow,
-      isRanged, isRear, attachedDefHero, attachedAtkHero, seededRng(42),
+      isRanged, isRear, attachedDefHero, attachedAtkHero, seededRng(42), false,
+      attackerForm, defenderForm,
     );
   }
 
@@ -422,7 +448,15 @@ describe('resolveCombatSequence', () => {
     const result = callCombat(attacker, loneHero);
     // Base 10 attacks × 0.5 cap = 5.
     expect(result.firstStrikeCount).toBe(5);
-    expect(result.firstStrikeCountNote).toContain('50% of troop can reach hero');
+    expect(result.firstStrikeCountNote).toContain('50% of troop can reach hero in melee');
+  });
+
+  it('does NOT cap a unit\'s ranged attacks when it strikes a lone hero', () => {
+    const loneHero = { ...defender, isHero: true };
+    const result = callCombat(attacker, loneHero, { ...aw, range: 4, maxRange: 8 }, dw, 0, 1, true);
+    // Ranged: every trooper can shoot the hero — no 50% cap.
+    expect(result.firstStrikeCount).toBe(10);
+    expect(result.firstStrikeCountNote).toBeUndefined();
   });
 
   it('caps a defender\'s retaliation when a hero attacks it', () => {
@@ -430,7 +464,27 @@ describe('resolveCombatSequence', () => {
     const result = callCombat(heroAttacker, defender);
     // Defender strikes back; base 10 attacks × 0.5 cap = 5.
     expect(result.retaliationCount).toBe(5);
-    expect(result.retaliationCountNote).toContain('50% of troop can reach hero');
+    expect(result.retaliationCountNote).toContain('50% of troop can reach hero in melee');
+  });
+
+  it('does NOT cap a defender\'s retaliation when a ranged hero attacks it', () => {
+    const heroAttacker = { ...attacker, isHero: true };
+    // A null defenderForm suppresses ranged retaliation entirely (retaliate_vs_ranged
+    // defaults false), so pass a form that CAN retaliate vs ranged to isolate the cap.
+    // Hero shoots from range; the defender unit's retaliation is uncapped (ranged).
+    const result = callCombat(heroAttacker, defender, { ...aw, range: 4, maxRange: 8 }, dw, 0, 1, true, false, null, null, null, retaliateRangedForm);
+    expect(result.retaliationCount).toBe(10);
+    expect(result.retaliationCountNote).toBeUndefined();
+  });
+
+  it('hero vs hero always attacks at full power (no troop cap on either side)', () => {
+    const loneHero = { ...defender, isHero: true };
+    const heroAttacker = { ...attacker, isHero: true };
+    const result = callCombat(heroAttacker, loneHero);
+    // Heroes use weapon numberOfAttacks directly (1 here), never troop-scaled — and
+    // never capped by the unit-melee-hero cap.
+    expect(result.firstStrikeCount).toBe(1);
+    expect(result.firstStrikeCountNote).toBeUndefined();
   });
 
   it('does not cap attacks when attacking a unit with a front-attached hero (hero_attack_split handles it)', () => {
