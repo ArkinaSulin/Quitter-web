@@ -275,47 +275,14 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     };
   }, [scenarioId]);
 
-  // 3. Move unit
-  const moveUnit = useCallback(async (unitId: string, targetHex: Hex) => {
-    console.log(`[moveUnit] Moving ${unitId} to (${targetHex.q}, ${targetHex.r})`);
-
+  // 3. Apply unit updates to LOCAL state only (no DB write).
+  //    The command engine (execute/undo/redo) writes the DB via server RPCs; this
+  //    just paints the optimistic result on screen. Realtime confirms.
+  const applyLocalUnit = useCallback((unitId: string, updates: Partial<Unit>) => {
     setUnits(prev =>
-      prev.map(u =>
-        u.id === unitId ? { ...u, hex: targetHex } : u
-      )
+      prev.map(u => (u.id === unitId ? { ...u, ...updates } : u))
     );
-
-    const { error: updateError } = await supabase
-      .from('units')
-      .update({
-        hex_q: targetHex.q,
-        hex_r: targetHex.r,
-        hex_s: targetHex.s,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', unitId)
-      .eq('scenario_id', scenarioId);
-
-    if (updateError) {
-      console.error('[Supabase] Move failed, rolling back:', updateError);
-      const { data } = await supabase
-        .from('units')
-        .select('*')
-        .eq('id', unitId)
-        .single();
-      if (data) {
-        const rolledBack = mapRowToUnit(data);
-        setUnits(prev =>
-          prev.map(u =>
-            u.id === unitId ? rolledBack : u
-          )
-        );
-      }
-      setError(updateError.message);
-      return false;
-    }
-    return true;
-  }, [scenarioId]);
+  }, []);
 
   // 4. Clear units
   const clearUnits = useCallback(async () => {
@@ -448,104 +415,15 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     return true;
   }, [scenarioId]);
 
-  // 7. Update unit stats
-  const updateUnit = useCallback(async (unitId: string, updates: Partial<Unit>) => {
-    const dbUpdates: any = {};
-    if (updates.hex) {
-      dbUpdates.hex_q = updates.hex.q;
-      dbUpdates.hex_r = updates.hex.r;
-      dbUpdates.hex_s = updates.hex.s;
-    }
-    if (updates.facing !== undefined) dbUpdates.facing = updates.facing;
-    if (updates.team !== undefined) dbUpdates.team = updates.team;
-    if (updates.currentUnitHp !== undefined) dbUpdates.current_unit_hp = updates.currentUnitHp;
-    if (updates.maxUnitHp !== undefined) dbUpdates.max_unit_hp = updates.maxUnitHp;
-    if (updates.troopHp !== undefined) dbUpdates.troop_hp = updates.troopHp;
-    if (updates.level !== undefined) dbUpdates.level = updates.level;
-    if (updates.movementPoints !== undefined) dbUpdates.movement_points = updates.movementPoints;
-    if (updates.isHero !== undefined) dbUpdates.is_hero = updates.isHero;
-    if (updates.attachedToUnitId !== undefined) dbUpdates.attached_to_unit_id = updates.attachedToUnitId;
-    if (updates.attachedPosition !== undefined) dbUpdates.attached_position = updates.attachedPosition;
-    if (updates.currentFormation !== undefined) { dbUpdates.current_formation = updates.currentFormation; dbUpdates.organization_level = getOrganizationLevel(updates.currentFormation); }
-    if (updates.formationAvailability !== undefined) dbUpdates.formation_availability = updates.formationAvailability;
-    if (updates.sizeCategory !== undefined) dbUpdates.size_category = updates.sizeCategory;
-    if (updates.visualScale !== undefined) dbUpdates.visual_scale = updates.visualScale;
-    if (updates.isShielded !== undefined) dbUpdates.is_shielded = updates.isShielded;
-    if (updates.aggressiveness !== undefined) dbUpdates.aggressiveness = updates.aggressiveness;
-    if (updates.baseMorale !== undefined) dbUpdates.base_morale = updates.baseMorale;
-    if (updates.currentMoraleModifier !== undefined) dbUpdates.current_morale_modifier = updates.currentMoraleModifier;
-    if (updates.currentAc !== undefined) dbUpdates.current_ac = updates.currentAc;
-    if (updates.baselineAc !== undefined) dbUpdates.baseline_ac = updates.baselineAc;
-    if (updates.isRouting !== undefined) dbUpdates.is_routing = updates.isRouting;
-    if (updates.ignoreMoraleChecks !== undefined) dbUpdates.ignore_morale_checks = updates.ignoreMoraleChecks;
-    if (updates.weaponString !== undefined) dbUpdates.weapon_string = updates.weaponString;
-    if (updates.hidden !== undefined) dbUpdates.hidden = updates.hidden;
-    if (updates.isDeleted !== undefined) dbUpdates.is_deleted = updates.isDeleted;
-    if (updates.unitTypeIconUrl !== undefined) dbUpdates.unit_type_icon_url = updates.unitTypeIconUrl;
-    if (updates.currentTroopCount !== undefined) dbUpdates.current_troop_count = updates.currentTroopCount;
-    if (updates.maxTroopCount !== undefined) dbUpdates.max_troop_count = updates.maxTroopCount;
-    if (updates.movementPointsAvailable !== undefined) dbUpdates.movement_points_available = updates.movementPointsAvailable;
-    if (updates.actionsAvailable !== undefined) dbUpdates.actions_available = updates.actionsAvailable;
-    if (updates.str !== undefined) dbUpdates.str = updates.str;
-    if (updates.dex !== undefined) dbUpdates.dex = updates.dex;
-    if (updates.con !== undefined) dbUpdates.con = updates.con;
-    if (updates.int !== undefined) dbUpdates.int = updates.int;
-    if (updates.wis !== undefined) dbUpdates.wis = updates.wis;
-    if (updates.cha !== undefined) dbUpdates.cha = updates.cha;
-    if (updates.unitName !== undefined) dbUpdates.unit_name = updates.unitName;
-    if (updates.raceName !== undefined) dbUpdates.race_name = updates.raceName;
-    if (updates.armorName !== undefined) dbUpdates.armor_name = updates.armorName;
-    if (updates.mountId !== undefined) dbUpdates.mount_id = updates.mountId;
-    if (updates.mountName !== undefined) dbUpdates.mount_name = updates.mountName;
-    if (updates.customImageUrl !== undefined) dbUpdates.custom_image_url = updates.customImageUrl;
-    if (updates.canCharge !== undefined) dbUpdates.can_charge = updates.canCharge;
-    if (updates.isCharging !== undefined) dbUpdates.is_charging = updates.isCharging;
-    if (updates.chargeDistance !== undefined) dbUpdates.charge_distance = updates.chargeDistance;
-    if (updates.activeWeaponIndex !== undefined) dbUpdates.active_weapon_index = updates.activeWeaponIndex;
-
-    setUnits(prev =>
-      prev.map(u => u.id === unitId ? { ...u, ...updates } : u)
-    );
-
-    const { error } = await supabase
-      .from('units')
-      .update(dbUpdates)
-      .eq('id', unitId)
-      .eq('scenario_id', scenarioId);
-
-    if (error) {
-      console.error('[updateUnit] Failed:', error);
-      const { data } = await supabase
-        .from('units')
-        .select('*')
-        .eq('id', unitId)
-        .single();
-      if (data) {
-        const rolledBack = mapRowToUnit(data);
-        setUnits(prev => prev.map(u => {
-          if (u.id !== unitId) return u;
-          // Preserve attachedPosition if DB doesn't have it yet (migration not applied)
-          if (u.attachedPosition && !rolledBack.attachedPosition) {
-            return { ...rolledBack, attachedPosition: u.attachedPosition };
-          }
-          return rolledBack;
-        }));
-      }
-      return false;
-    }
-    return true;
-  }, [scenarioId]);
-
   return {
     units,
     setUnits,
-    moveUnit,
+    applyLocalUnit,
     loading,
     error,
     clearUnits,
     addUnitFromTemplate,
     deleteUnit,
-    updateUnit,
     sizeCategories,
   };
 }

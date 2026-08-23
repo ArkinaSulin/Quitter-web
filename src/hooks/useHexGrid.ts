@@ -49,6 +49,9 @@ export interface UseHexGridProps {
   onAttack?: (attackerId: string, targetId: string) => void;
   /** Permission gate for grabbing a token (drag-move/attack). Return false to silently not grab. */
   canGrabUnit?: (unit: Unit) => boolean;
+  /** Fired when a token starts being grabbed — lets callers auto-activate an
+   *  attached hero so its token (not the host) is the one dragged. */
+  onGrabUnit?: (unit: Unit) => void;
   /** Ctrl/meta + left-click handler (attention ping). */
   onPing?: (hex: Hex) => void;
   /** When set (via the context-menu "Switch to Hero"), the attached hero with this
@@ -75,6 +78,7 @@ export function useHexGrid({
   onUnitLeave,
   onAttack,
   canGrabUnit,
+  onGrabUnit,
   onPing,
   activeHeroId,
   customDraw,
@@ -343,13 +347,14 @@ export function useHexGrid({
 
     const unit = getUnitAt(hex);
     if (unit && (canGrabUnit ? canGrabUnit(unit) : true)) {
+      if (onGrabUnit) onGrabUnit(unit);
       setDraggingUnitId(unit.id);
       setDragStartPos({ x: e.clientX, y: e.clientY });
       setMouseDownTarget('unit');
       return;
     }
     setMouseDownTarget('hex');
-  }, [getHexFromScreen, getUnitAt, readOnly, canGrabUnit, onPing]);
+  }, [getHexFromScreen, getUnitAt, readOnly, canGrabUnit, onGrabUnit, onPing]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (draggingUnitId && dragStartPos) {

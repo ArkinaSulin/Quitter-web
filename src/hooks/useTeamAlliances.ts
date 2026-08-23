@@ -104,6 +104,13 @@ export function useTeamAlliances(scenarioId: string, isGM: boolean) {
     if (error) console.error('[TeamAlliances] Upsert error:', error);
   }, [scenarioId]);
 
+  // Local-only alliance update — paints the optimistic result on screen without
+  // writing. The command engine's ALLIANCE sub-steps write via the server RPC
+  // (execute_command); realtime confirms.
+  const setAllianceLocal = useCallback((team: string, group: AllianceGroup) => {
+    setAlliances(prev => ({ ...prev, [team]: group }));
+  }, []);
+
   const cycleAlliance = useCallback((team: string) => {
     const current = alliances[team] || 'friendly';
     const next: Record<AllianceGroup, AllianceGroup> = {
@@ -114,5 +121,5 @@ export function useTeamAlliances(scenarioId: string, isGM: boolean) {
     setAlliance(team, next[current]);
   }, [alliances, setAlliance]);
 
-  return { alliances, setAlliance, cycleAlliance };
+  return { alliances, setAlliance, setAllianceLocal, cycleAlliance };
 }

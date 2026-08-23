@@ -19,10 +19,9 @@ interface UseGameEngineProps {
   playerName: string;
   isGM: boolean;
   freeMove: boolean;
-  updateUnit: (unitId: string, updates: Partial<Unit>) => Promise<boolean>;
-  moveUnit: (unitId: string, targetHex: Hex) => Promise<boolean>;
-  updateAlliance?: (team: string, group: AllianceGroup) => Promise<void>;
-  updateScenarioField?: (scenarioId: string, fields: Record<string, any>) => Promise<boolean>;
+  applyLocalUnit: (unitId: string, updates: Partial<Unit>) => void;
+  setAllianceLocal?: (team: string, group: AllianceGroup) => void;
+  setScenarioLocal?: (fields: Record<string, any>) => void;
 }
 
 export function useGameEngine({
@@ -30,10 +29,9 @@ export function useGameEngine({
   playerId,
   playerName,
   freeMove,
-  updateUnit,
-  moveUnit,
-  updateAlliance,
-  updateScenarioField,
+  applyLocalUnit,
+  setAllianceLocal,
+  setScenarioLocal,
 }: UseGameEngineProps) {
   const { addMessage, addError } = useMessageSync(scenarioId);
 
@@ -77,19 +75,24 @@ export function useGameEngine({
    */
   const applyDeltas = useCallback(
     async (steps: SubStep[], field: 'from' | 'to', reverse: boolean): Promise<void> => {
+      // Optimistic LOCAL apply only — the server RPCs (execute_command /
+      // undo_commands / redo_commands) are the ONLY writers to the DB. Painting
+      // local state here keeps the UI snappy; realtime confirms the authoritative
+      // apply. (Writing directly to the DB from the client raced realtime and
+      // broke undo — each command was written twice with conflicting command_seq.)
       const list = reverse ? [...steps].reverse() : steps;
       for (const step of list) {
-        if (step.type === 'ALLIANCE' && updateAlliance) {
+        if (step.type === 'ALLIANCE' && setAllianceLocal) {
           for (const change of step.changes) {
-            await updateAlliance(step.unitId, change[field]);
+            setAllianceLocal(step.unitId, change[field] as AllianceGroup);
           }
-        } else if (step.type === 'SCENARIO' && updateScenarioField) {
+        } else if (step.type === 'SCENARIO' && setScenarioLocal) {
           const update: any = {};
           for (const change of step.changes) {
             update[change.field] = change[field];
           }
           if (Object.keys(update).length > 0) {
-            await updateScenarioField(scenarioId, update);
+            setScenarioLocal(update);
           }
         } else {
           const update: any = {};
@@ -97,12 +100,12 @@ export function useGameEngine({
             update[change.field] = change[field];
           }
           if (Object.keys(update).length > 0) {
-            await updateUnit(step.unitId, update);
+            applyLocalUnit(step.unitId, update);
           }
         }
       }
     },
-    [scenarioId, updateUnit, updateAlliance, updateScenarioField],
+    [applyLocalUnit, setAllianceLocal, setScenarioLocal],
   );
 
   const execute = useCallback(

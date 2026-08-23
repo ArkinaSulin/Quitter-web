@@ -132,7 +132,7 @@ function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alliances: 
 export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedHex, setSelectedHex] = useState<Hex | null>(null);
-  const { units, moveUnit, loading, error, addUnitFromTemplate, deleteUnit, updateUnit, sizeCategories } = useSupabaseSync(scenarioId);
+  const { units, loading, error, addUnitFromTemplate, deleteUnit, applyLocalUnit, sizeCategories } = useSupabaseSync(scenarioId);
   const { getMyRole, updateScreenshot, fetchScenarios, currentUser, fetchScenarioMapData, updateScenarioField, updateScenarioMapData } = useScenarios();
   const { addMessage, addError } = useMessageSync(scenarioId);
   const [isGM, setIsGM] = useState(false);
@@ -272,7 +272,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const inReplay = replay.mode === 'replay';
   const controlsLocked = inReplay || dmGone;
 
-  const { alliances, setAlliance } = useTeamAlliances(scenarioId, isGM);
+  const { alliances, setAlliance, setAllianceLocal } = useTeamAlliances(scenarioId, isGM);
 
   // Player management + role capabilities (feature: teams, roles, room, kick).
   const participantsSync = useParticipants(scenarioId, currentUser?.id);
@@ -330,6 +330,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const displayAlliances = inReplay ? replay.replayAlliances : alliances;
   const displayTurnNumber = inReplay ? replay.replayTurnNumber : turnNumber;
 
+  // Optimistic local update for SCENARIO sub-steps (turn tracking). Paints the
+  // result on screen; the END_TURN RPC is the DB writer, realtime confirms.
+  const setScenarioLocal = useCallback((fields: Record<string, any>) => {
+    if ('current_turn_alliance' in fields) setCurrentTurnAlliance(fields.current_turn_alliance || null);
+    if ('turn_number' in fields) setTurnNumber(fields.turn_number);
+    if ('free_move' in fields) setFreeMove(fields.free_move);
+  }, []);
+
 
   const {
     execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, detachHero, swapHeroPosition, endTurn, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog,
@@ -339,10 +347,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     playerName,
     isGM,
     freeMove,
-    updateUnit,
-    moveUnit,
-    updateAlliance: setAlliance,
-    updateScenarioField,
+    applyLocalUnit,
+    setAllianceLocal,
+    setScenarioLocal,
   });
 
   const performEndTurn = useCallback(async () => {
@@ -1348,6 +1355,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     },
     onAttack: controlsLocked ? undefined : handleAttackRequest,
     canGrabUnit: canControlUnit,
+    onGrabUnit: (unit) => { if (unit.attachedToUnitId) setActiveHeroId(unit.id); },
     onPing: (hex) => pingAtHex(hex, playerName, pingColor),
     activeHeroId,
     customDraw,
