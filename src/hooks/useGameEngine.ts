@@ -74,12 +74,16 @@ export function useGameEngine({
    * (execute/redo); `reverse` replays newest-first like the server's undo.
    */
   const applyDeltas = useCallback(
-    async (steps: SubStep[], field: 'from' | 'to', reverse: boolean): Promise<void> => {
+    async (steps: SubStep[], field: 'from' | 'to', reverse: boolean, commandSeq?: number): Promise<void> => {
       // Optimistic LOCAL apply only — the server RPCs (execute_command /
       // undo_commands / redo_commands) are the ONLY writers to the DB. Painting
       // local state here keeps the UI snappy; realtime confirms the authoritative
       // apply. (Writing directly to the DB from the client raced realtime and
       // broke undo — each command was written twice with conflicting command_seq.)
+      //
+      // `commandSeq` is the executing/undone command's authoritative stamp. We set
+      // it on the local unit so the realtime handler's stale-event guard can drop
+      // any PRE-command realtime event that lands late (the undo "snaps back" bug).
       const list = reverse ? [...steps].reverse() : steps;
       for (const step of list) {
         if (step.type === 'ALLIANCE' && setAllianceLocal) {
@@ -99,6 +103,7 @@ export function useGameEngine({
           for (const change of step.changes) {
             update[change.field] = change[field];
           }
+          if (commandSeq !== undefined) update.commandSeq = commandSeq;
           if (Object.keys(update).length > 0) {
             applyLocalUnit(step.unitId, update);
           }
@@ -134,14 +139,18 @@ export function useGameEngine({
         return null;
       }
 
+      const row = (data as any[])[0] as CommandLogRow;
+
       // Optimistic local apply for snappiness; realtime confirms.
-      await applyDeltas(subSteps, 'to', false);
+      // Stamp the local unit with this command's authoritative seq so a late
+      // pre-command realtime event can't regress the optimistic paint.
+      await applyDeltas(subSteps, 'to', false, row?.seq);
 
       // Unit edits (incl. by players editing their own unit) are flagged to everyone.
       if (actionType === 'EDIT_UNIT') addError(description);
       else addMessage(description);
       refreshUndoState();
-      return (data as any[])[0] as CommandLogRow;
+      return row;
     },
     [scenarioId, playerId, playerName, applyDeltas, addMessage, addError, refreshUndoState],
   );
@@ -188,8 +197,10 @@ export function useGameEngine({
     const rows = data as CommandLogRow[];
 
     // Optimistic revert (newest-first, mirroring the server); realtime confirms.
+    // Stamp each reverted unit with its command's authoritative seq so the realtime
+    // handler drops the stale pre-undo events (the undo "snaps back" bug).
     for (const entry of [...rows].reverse()) {
-      await applyDeltas(parseSubSteps(entry.sub_steps), 'from', true);
+      await applyDeltas(parseSubSteps(entry.sub_steps), 'from', true, entry.seq);
     }
 
     addMessage(rows.length > 1 ? `Undid: ${rows[0].description} — ${rows.length} items` : `Undid: ${rows[0].description}`);
@@ -218,7 +229,7 @@ export function useGameEngine({
 
     // Optimistic re-apply (chronological); realtime confirms.
     for (const entry of rows) {
-      await applyDeltas(parseSubSteps(entry.sub_steps), 'to', false);
+      await applyDeltas(parseSubSteps(entry.sub_steps), 'to', false, entry.seq);
     }
 
     addMessage(rows.length > 1 ? `Redid: ${rows[0].description} — ${rows.length} items` : `Redid: ${rows[0].description}`);

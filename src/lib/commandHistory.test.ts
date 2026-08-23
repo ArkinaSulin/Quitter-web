@@ -14,6 +14,7 @@ function makeRow(overrides: Partial<CommandLogRow> = {}): CommandLogRow {
     chained: false,
     created_at: '2026-08-02T00:00:00.000Z',
     deleted_at: null,
+    seq: 0,
     ...overrides,
   };
 }

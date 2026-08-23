@@ -70,6 +70,8 @@ export interface CommandLogRow {
   chained: boolean;
   created_at: string;
   deleted_at: string | null;
+  /** Monotonic command_log.seq — the authoritative ordering stamp for the units writes. */
+  seq: number;
 }
 
 export function parseSubSteps(raw: SubStep[] | string): SubStep[] {
