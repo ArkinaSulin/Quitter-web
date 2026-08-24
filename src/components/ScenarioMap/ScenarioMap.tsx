@@ -2092,21 +2092,25 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       )}
 
       {/* Tooltip */}
-      {hoveredUnit && tooltipPos && (
-        <UnitTooltip
-          unit={hoveredUnit}
-          x={tooltipPos.x}
-          y={tooltipPos.y}
-          attachedHero={displayUnits.find(u => u.attachedToUnitId === hoveredUnit.id && !u.isDeleted) || undefined}
-          units={displayUnits}
-          alliances={displayAlliances}
-          formation={formationsMap[hoveredUnit.currentFormation] ?? null}
-          attachedHeroFormation={(() => {
-            const hero = displayUnits.find(u => u.attachedToUnitId === hoveredUnit.id && !u.isDeleted);
-            return hero ? (formationsMap[hero.currentFormation] ?? null) : undefined;
-          })()}
-        />
-      )}
+      {hoveredUnit && tooltipPos && (() => {
+        const companion =
+          displayUnits.find(u => u.attachedToUnitId === hoveredUnit.id && !u.isDeleted) ??
+          (hoveredUnit.attachedToUnitId
+            ? displayUnits.find(u => u.id === hoveredUnit.attachedToUnitId && !u.isDeleted)
+            : undefined);
+        return (
+          <UnitTooltip
+            unit={hoveredUnit}
+            x={tooltipPos.x}
+            y={tooltipPos.y}
+            companion={companion}
+            units={displayUnits}
+            alliances={displayAlliances}
+            formation={formationsMap[hoveredUnit.currentFormation] ?? null}
+            companionFormation={companion ? (formationsMap[companion.currentFormation] ?? null) : undefined}
+          />
+        );
+      })()}
 
       {/* Context Menu */}
       {contextMenuUnit && contextMenuPos && (

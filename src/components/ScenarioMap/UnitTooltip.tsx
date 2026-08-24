@@ -11,11 +11,23 @@ interface UnitTooltipProps {
   unit: Unit;
   x: number;
   y: number;
-  attachedHero?: Unit;
+  companion?: Unit;
   units: Unit[];
   alliances: Record<string, AllianceGroup>;
   formation?: Formation | null;
-  attachedHeroFormation?: Formation | null | undefined;
+  companionFormation?: Formation | null | undefined;
+}
+
+function heroColumn(hero: Unit, units: Unit[], alliances: Record<string, AllianceGroup>, formation: Formation | null | undefined) {
+  return (
+    <>
+      <div className="font-bold text-yellow-400 mb-1">{hero.unitName} (Hero)</div>
+      {unitInfo(hero, units, alliances, false, formation)}
+      {hero.attachedPosition === 'front' && (
+        <div className="text-yellow-400 text-xs mt-0.5">Front hero — host attacks ignore AGR</div>
+      )}
+    </>
+  );
 }
 
 function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>, showTroops: boolean, formation: Formation | null | undefined) {
@@ -141,25 +153,28 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   );
 }
 
-export function UnitTooltip({ unit, x, y, attachedHero, units, alliances, formation, attachedHeroFormation }: UnitTooltipProps) {
+export function UnitTooltip({ unit, x, y, companion, units, alliances, formation, companionFormation }: UnitTooltipProps) {
   const { ref, style } = useTooltipClamp(x, y);
   return (
     <div
       ref={ref}
-      className="absolute z-50 pointer-events-none bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white max-w-[min(420px,calc(100vw-16px))]"
+      className={`absolute z-50 pointer-events-none bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white ${companion ? 'max-w-[min(820px,calc(100vw-16px))]' : 'max-w-[min(420px,calc(100vw-16px))]'}`}
       style={style}
     >
-      {attachedHero && (
-        <>
-          <div className="font-bold text-yellow-400 mb-1">{attachedHero.unitName} (Hero)</div>
-          {unitInfo(attachedHero, units, alliances, false, attachedHeroFormation)}
-          {attachedHero.attachedPosition === 'front' && (
-            <div className="text-yellow-400 text-xs mt-0.5">Front hero — host attacks ignore AGR</div>
-          )}
-          <div className="border-t border-gray-600 my-1.5" />
-        </>
+      {companion ? (
+        <div className="flex gap-4">
+          <div className="flex-1 min-w-0">
+            {unit.isHero && heroColumn(unit, units, alliances, formation)}
+            {!unit.isHero && unitInfo(unit, units, alliances, true, formation)}
+          </div>
+          <div className="w-px bg-gray-600 flex-none" />
+          <div className="flex-1 min-w-0">
+            {companion.isHero ? heroColumn(companion, units, alliances, companionFormation) : unitInfo(companion, units, alliances, true, companionFormation)}
+          </div>
+        </div>
+      ) : (
+        unitInfo(unit, units, alliances, !unit.isHero, formation)
       )}
-      {unitInfo(unit, units, alliances, !unit.isHero, formation)}
     </div>
   );
 }
