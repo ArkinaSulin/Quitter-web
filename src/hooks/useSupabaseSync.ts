@@ -284,6 +284,25 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     );
   }, []);
 
+  // Authoritative refetch: replace the given units with their DB rows. Used after
+  // undo/redo so local state can never diverge from the server — a stale local
+  // snapshot (e.g. a hero still marked attached after an undo's optimistic paint)
+  // would otherwise corrupt the NEXT command computed from it.
+  const refreshUnitsByIds = useCallback(async (ids: string[]): Promise<void> => {
+    const unique = Array.from(new Set(ids.filter(Boolean)));
+    if (unique.length === 0) return;
+    const { data, error } = await supabase
+      .from('units')
+      .select('*')
+      .in('id', unique);
+    if (error) {
+      console.error('[refreshUnitsByIds] Failed:', error);
+      return;
+    }
+    const rows = new Map((data ?? []).map((r: any) => [r.id, mapRowToUnit(r)]));
+    setUnits(prev => prev.map(u => (rows.has(u.id) ? rows.get(u.id)! : u)));
+  }, [scenarioId]);
+
   // 4. Clear units
   const clearUnits = useCallback(async () => {
     const { error } = await supabase
@@ -419,6 +438,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     units,
     setUnits,
     applyLocalUnit,
+    refreshUnitsByIds,
     loading,
     error,
     clearUnits,

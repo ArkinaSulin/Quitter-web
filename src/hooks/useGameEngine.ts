@@ -20,6 +20,7 @@ interface UseGameEngineProps {
   isGM: boolean;
   freeMove: boolean;
   applyLocalUnit: (unitId: string, updates: Partial<Unit>) => void;
+  refreshUnitsByIds?: (ids: string[]) => Promise<void>;
   setAllianceLocal?: (team: string, group: AllianceGroup) => void;
   setScenarioLocal?: (fields: Record<string, any>) => void;
 }
@@ -30,6 +31,7 @@ export function useGameEngine({
   playerName,
   freeMove,
   applyLocalUnit,
+  refreshUnitsByIds,
   setAllianceLocal,
   setScenarioLocal,
 }: UseGameEngineProps) {
@@ -111,6 +113,22 @@ export function useGameEngine({
       }
     },
     [applyLocalUnit, setAllianceLocal, setScenarioLocal],
+  );
+
+  // All unit ids touched by a batch of sub-steps (units written by the command).
+  const touchedUnitIds = useCallback(
+    (rows: CommandLogRow[]): string[] => {
+      const ids: string[] = [];
+      for (const row of rows) {
+        for (const step of parseSubSteps(row.sub_steps)) {
+          if (step.unitId && step.type !== 'ALLIANCE' && step.type !== 'SCENARIO') {
+            ids.push(step.unitId);
+          }
+        }
+      }
+      return ids;
+    },
+    [],
   );
 
   const execute = useCallback(
@@ -203,10 +221,18 @@ export function useGameEngine({
       await applyDeltas(parseSubSteps(entry.sub_steps), 'from', true, entry.seq);
     }
 
+    // Authoritative: refetch every touched unit from the DB. Realtime can miss or
+    // reorder events, leaving local state divergent (e.g. a hero still marked
+    // attached after an undo) — and the NEXT command computed from that stale
+    // local state would corrupt the DB. The DB is the only truth after an undo.
+    if (refreshUnitsByIds) {
+      await refreshUnitsByIds(touchedUnitIds(rows));
+    }
+
     addMessage(rows.length > 1 ? `Undid: ${rows[0].description} — ${rows.length} items` : `Undid: ${rows[0].description}`);
     refreshUndoState();
     return rows;
-  }, [scenarioId, addMessage, refreshUndoState, applyDeltas]);
+  }, [scenarioId, addMessage, refreshUndoState, applyDeltas, touchedUnitIds, refreshUnitsByIds]);
 
   const redo = useCallback(async (): Promise<CommandLogRow[] | null> => {
     const fresh = await refreshUndoState();
@@ -232,10 +258,16 @@ export function useGameEngine({
       await applyDeltas(parseSubSteps(entry.sub_steps), 'to', false, entry.seq);
     }
 
+    // Authoritative refetch — same rationale as undo (local/DB divergence would
+    // corrupt the next command computed from stale local state).
+    if (refreshUnitsByIds) {
+      await refreshUnitsByIds(touchedUnitIds(rows));
+    }
+
     addMessage(rows.length > 1 ? `Redid: ${rows[0].description} — ${rows.length} items` : `Redid: ${rows[0].description}`);
     refreshUndoState();
     return rows;
-  }, [scenarioId, addMessage, refreshUndoState, applyDeltas]);
+  }, [scenarioId, addMessage, refreshUndoState, applyDeltas, touchedUnitIds, refreshUnitsByIds]);
 
   const canUndo = useCallback((): boolean => {
     return !!undoStateRef.current?.undo?.canUndo;

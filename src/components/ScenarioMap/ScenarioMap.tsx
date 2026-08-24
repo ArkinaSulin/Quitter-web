@@ -132,7 +132,7 @@ function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alliances: 
 export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedHex, setSelectedHex] = useState<Hex | null>(null);
-  const { units, loading, error, addUnitFromTemplate, deleteUnit, applyLocalUnit, sizeCategories } = useSupabaseSync(scenarioId);
+  const { units, loading, error, addUnitFromTemplate, deleteUnit, applyLocalUnit, refreshUnitsByIds, sizeCategories } = useSupabaseSync(scenarioId);
   const { getMyRole, updateScreenshot, fetchScenarios, currentUser, fetchScenarioMapData, updateScenarioField, updateScenarioMapData } = useScenarios();
   const { addMessage, addError } = useMessageSync(scenarioId);
   const [isGM, setIsGM] = useState(false);
@@ -348,6 +348,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     isGM,
     freeMove,
     applyLocalUnit,
+    refreshUnitsByIds,
     setAllianceLocal,
     setScenarioLocal,
   });
