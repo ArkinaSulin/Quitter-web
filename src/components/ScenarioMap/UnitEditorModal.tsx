@@ -61,6 +61,7 @@ const FIELDS: FieldDef[] = [
   { key: 'visualScale', label: 'Visual scale', type: 'number', min: 50, max: 149 },
   { key: 'currentFormation', label: 'Formation', type: 'formation' },
   { key: 'formationAvailability', label: 'Formation availability', type: 'multi' },
+  { key: 'isRouting', label: 'Routed', type: 'boolean' },
   { key: 'isShielded', label: 'Shield', type: 'boolean' },
   { key: 'canCharge', label: 'Can charge', type: 'boolean' },
   { key: 'ignoreMoraleChecks', label: 'Immune to morale (never routs)', type: 'boolean' },
@@ -360,6 +361,22 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
           {/* R7 Formation + Mount + Can charge */}
           <div className="flex items-end gap-2">
             <Cell label="Formation" widthClass="w-32"><SelectInput value={String(draft.currentFormation)} onChange={v => set('currentFormation', v)} options={formationOptions.map(n => ({ value: n, label: n }))} /></Cell>
+            <div className="pb-1">
+              <Toggle
+                checked={!!draft.isRouting}
+                onChange={v => {
+                  set('isRouting', v);
+                  // Keep formation and the routed flag consistent: routing sets
+                  // Routed, un-routing falls back to the first available formation.
+                  if (v && String(draft.currentFormation) !== 'Routed') set('currentFormation', 'Routed');
+                  if (!v && String(draft.currentFormation) === 'Routed') {
+                    const fallback = formationOptions.find(n => n !== 'Routed');
+                    if (fallback) set('currentFormation', fallback);
+                  }
+                }}
+                label="Routed"
+              />
+            </div>
             <Cell label="Mount" widthClass="w-28"><SelectInput value={String(draft.mountId || '')} onChange={handleMountChange} options={mountOptions} /></Cell>
             <div className="pb-1"><Toggle checked={!!draft.canCharge} onChange={v => set('canCharge', v)} label="Charge" /></div>
           </div>
