@@ -185,6 +185,14 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
   if (unit.isHero) {
     if (unit.currentUnitHp <= 0) ctx.filter = 'grayscale(100%)';
     drawHeroSquareToken(ctx, x, y, width, height, unit, heroImage, team, shape, allianceColor, options.isAttached || false);
+    // Routed heroes carry the same white flag as units — the hero square itself
+    // never changes, so the flag is the only "this unit actually routed" marker.
+    if (unit.isRouting && unit.currentUnitHp > 0) {
+      const heroSize = getHeroSquareSize(height, unit.sizeCategory || 100);
+      const displaySize = options.isAttached ? heroSize / 2 : heroSize;
+      const flagSize = displaySize * 0.5;
+      await drawRoutedFlag(ctx, x - flagSize / 2, y - displaySize / 2 - flagSize * 0.25, flagSize);
+    }
     return;
   }
 
@@ -321,33 +329,7 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     const flagSize = Math.min(width, height) * 0.35;
     const flagX = x - flagSize / 2;
     const flagY = y - height * 0.667 / 2 + (height * 0.667 - flagSize) / 2;
-    try {
-      const img = await loadImage('/images/whiteflag.png');
-      ctx.drawImage(img, flagX, flagY, flagSize, flagSize);
-    } catch {
-      ctx.save();
-      ctx.fillStyle = '#888888';
-      ctx.fillRect(flagX + flagSize * 0.1, flagY, 2, flagSize * 0.8);
-      ctx.shadowColor = 'rgba(0,0,0,0.3)';
-      ctx.shadowBlur = 4;
-      ctx.fillStyle = '#FFFFFF';
-      ctx.beginPath();
-      ctx.moveTo(flagX + flagSize * 0.15, flagY);
-      ctx.lineTo(flagX + flagSize * 0.9, flagY + flagSize * 0.35);
-      ctx.lineTo(flagX + flagSize * 0.15, flagY + flagSize * 0.7);
-      ctx.closePath();
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = '#333333';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(flagX + flagSize * 0.15, flagY);
-      ctx.lineTo(flagX + flagSize * 0.9, flagY + flagSize * 0.35);
-      ctx.lineTo(flagX + flagSize * 0.15, flagY + flagSize * 0.7);
-      ctx.closePath();
-      ctx.stroke();
-      ctx.restore();
-    }
+    await drawRoutedFlag(ctx, flagX, flagY, flagSize);
   }
 
   // ---- Bottom info (hidden on corpses) ----
@@ -611,6 +593,45 @@ function drawHeroSquareHpBar(ctx: CanvasRenderingContext2D, cx: number, cy: numb
   ctx.strokeStyle = '#000';
   ctx.lineWidth = 1;
   ctx.strokeRect(barX, barY, barWidth, barHeight);
+}
+
+/**
+ * Routed white flag drawn at the given rect. Shared by unit tokens and the hero
+ * square path (which previously never rendered a rout indicator).
+ */
+async function drawRoutedFlag(
+  ctx: CanvasRenderingContext2D,
+  flagX: number,
+  flagY: number,
+  flagSize: number,
+): Promise<void> {
+  try {
+    const img = await loadImage('/images/whiteflag.png');
+    ctx.drawImage(img, flagX, flagY, flagSize, flagSize);
+  } catch {
+    ctx.save();
+    ctx.fillStyle = '#888888';
+    ctx.fillRect(flagX + flagSize * 0.1, flagY, 2, flagSize * 0.8);
+    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    ctx.shadowBlur = 4;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.moveTo(flagX + flagSize * 0.15, flagY);
+    ctx.lineTo(flagX + flagSize * 0.9, flagY + flagSize * 0.35);
+    ctx.lineTo(flagX + flagSize * 0.15, flagY + flagSize * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#333333';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(flagX + flagSize * 0.15, flagY);
+    ctx.lineTo(flagX + flagSize * 0.9, flagY + flagSize * 0.35);
+    ctx.lineTo(flagX + flagSize * 0.15, flagY + flagSize * 0.7);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 function drawHeroSquareToken(
