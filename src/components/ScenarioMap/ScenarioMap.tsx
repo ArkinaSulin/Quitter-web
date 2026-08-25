@@ -5,14 +5,15 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { parseWeapons, Weapon } from '@/lib/weaponParser';
-import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamage } from '@/lib/unitCombat';
+import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamage, type CombatOutcome } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition, canStopEnemyMovement, canChargeThrough } from '@/lib/formationRules';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
 import { getFormations } from '@/lib/formationCache';
 import { loadSettings, getSetting } from '@/lib/settingsCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios, DM_HEARTBEAT_INTERVAL_MS, DM_HEARTBEAT_STALE_MS, DM_HEARTBEAT_POLL_MS } from '@/hooks/useScenarios';
-import { computeReachableMap, computeMovePool, isMoveAffordable, computeChargeReachable } from '@/lib/moveCost';
+import { computeReachableMap, computeMovePool, computeHeroMovePool, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable } from '@/lib/moveCost';
+import { unitAttackCap } from '@/lib/attackCap';
 import { isFormationChangeAffordable, getFormationChangeMpCost } from '@/lib/formationCost';
 import { useGameEngine } from '@/hooks/useGameEngine';
 import { useTeamAlliances } from '@/hooks/useTeamAlliances';
@@ -231,6 +232,42 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     target: Unit;
   } | null>(null);
 
+  // Soft-enforcement: attacker at the 5-attack cap (pause + ask; over-cap counts).
+  const [pendingAttackCap, setPendingAttackCap] = useState<{
+    attacker: Unit;
+    target: Unit;
+    isCharging?: boolean;
+  } | null>(null);
+
+  // Soft-enforcement: the defender's retaliation would exceed its 5-attack cap.
+  // The player decides whether the counterattack happens (declined = suppressed).
+  const [pendingRetaliationCap, setPendingRetaliationCap] = useState<null | {
+    attacker: Unit;
+    target: Unit;
+    overBudget: boolean;
+    options: { isCharging?: boolean };
+    outcome: CombatOutcome;
+    retaliatorKilled: boolean;
+    retaliatorRouted: boolean;
+    reachSymmetric: boolean;
+    retaliatorName: string;
+    attacksUsed: number;
+    cap: number;
+  }>(null);
+
+  // Hero attach/swap with insufficient MP: ask whether to convert [#] actions
+  // (at maxMP/5 each) to make up the 1 MP.
+  const [pendingHeroAttachConversion, setPendingHeroAttachConversion] = useState<null | {
+    hero: Unit;
+    target: Unit;
+    position: 'front' | 'back';
+    actionsNeeded: number;
+  }>(null);
+  const [pendingHeroSwapConversion, setPendingHeroSwapConversion] = useState<null | {
+    hero: Unit;
+    actionsNeeded: number;
+  }>(null);
+
   // Over-budget formation change (soft enforcement): the change costs a flat
   // fraction (default 50%) of the unit's current effective movement and would
   // overdraw actions.
@@ -411,10 +448,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number) => {
     if (overBudget) {
+      const actionNote = unit.isHero
+        ? `${Math.ceil(cost / heroMovePerAction(maxMP))} action(s) at ${heroMovePerAction(maxMP)} MP/action`
+        : `${Math.ceil(cost / Math.max(1, maxMP))} action(s)`;
       const heroNote = attachedHero
         ? `, ${attachedHero.unitName} has ${attachedHero.actionsAvailable} action(s) left`
         : '';
-      addError(`${unit.unitName} moved over budget — path costs ${cost} MP (${Math.ceil(cost / Math.max(1, maxMP))} action(s)), but ${unit.unitName} has ${unit.actionsAvailable} action(s) left${heroNote}`);
+      addError(`${unit.unitName} moved over budget — path costs ${cost} MP (${actionNote}), but ${unit.unitName} has ${unit.actionsAvailable} action(s) left${heroNote}`);
     }
     // Movement alone never routs — only an attack (combat or a spell) can break
     // a unit's morale into a rout, even when threat drops morale to zero.
@@ -457,7 +497,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         addMessage(`${unit.unitName} cannot move there — outside the charge route`);
         return;
       }
-      const overBudget = !isMoveAffordable(unit, cost, maxMP) || (attachedHero && heroMax ? !isMoveAffordable(attachedHero, cost, heroMax) : false);
+      const overBudget = !isMoveAffordable(unit, cost, maxMP) || (attachedHero && heroMax ? (attachedHero.isHero ? !isHeroMoveAffordable(attachedHero, cost, heroMax) : !isMoveAffordable(attachedHero, cost, heroMax)) : false);
       if (overBudget) {
         setPendingMove({ unit, targetHex, cost, attachedHero });
         return;
@@ -490,11 +530,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const occupied = computeOccupiedHexes(units, unitId);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
     // The droppable area matches the shown highlight: leftover MP (or one full
-    // pool when MP is exhausted and an action remains). A move beyond this pool
+    // pool when MP is exhausted and an action remains). Heroes show their full
+    // conversion potential (MP + actions × maxMP/5). A move beyond this budget
     // still soft-enforces below.
     const combinedPool = Math.min(
-      computeMovePool(unit, effectiveMax),
-      attachedHero && heroMax ? computeMovePool(attachedHero, heroMax) : Infinity,
+      unit.isHero ? computeHeroMovePool(unit, effectiveMax) : computeMovePool(unit, effectiveMax),
+      attachedHero && heroMax ? (attachedHero.isHero ? computeHeroMovePool(attachedHero, heroMax) : computeMovePool(attachedHero, heroMax)) : Infinity,
     );
     const reachableMap = computeReachableMap(unit, combinedPool, occupied, threatHexes);
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
@@ -509,14 +550,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return;
     }
 
-    const overBudget = !isMoveAffordable(unit, entry.cost, effectiveMax) || (attachedHero && heroMax ? !isMoveAffordable(attachedHero, entry.cost, heroMax) : false);
+    const unitAffordable = unit.isHero ? isHeroMoveAffordable(unit, entry.cost, effectiveMax) : isMoveAffordable(unit, entry.cost, effectiveMax);
+    const heroAffordable = attachedHero && heroMax ? (attachedHero.isHero ? isHeroMoveAffordable(attachedHero, entry.cost, heroMax) : isMoveAffordable(attachedHero, entry.cost, heroMax)) : true;
+    const overBudget = !unitAffordable || !heroAffordable;
     if (overBudget) {
       setPendingMove({ unit, targetHex, cost: entry.cost, attachedHero });
       return;
     }
     await performMove(unit, targetHex, entry.cost, false, effectiveMax, attachedHero, heroMax);
     await finishHeroMove(unit);
-  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, unitMaxMP]);
+  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, isHeroMoveAffordable, unitMaxMP]);
 
   const handleChangeFormation = useCallback(async (unit: Unit, formation: string) => {
     if (unit.isHero || freeMove) {
@@ -560,27 +603,41 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       addMessage(`${target.unitName} already has a hero attached`);
       return;
     }
-    // Attaching costs 1 hero MP — soft-enforce: if the hero can't afford it
-    // (no MP and no action to refill a pool), ask first (mirrors move/attack).
+    // Attaching costs 1 hero MP — heroes convert actions at the prorated rate
+    // (maxMP/5 each). When MP is insufficient, ask whether to convert the
+    // [#] actions that make up 1 MP; only if even conversions can't cover it
+    // (no actions left) fall back to the over-budget confirm.
     const maxMP = unitMaxMP(hero);
-    if (!isMoveAffordable(hero, 1, maxMP)) {
+    if (hero.movementPointsAvailable < 1) {
+      const per = heroMovePerAction(maxMP);
+      const actionsNeeded = Math.ceil((1 - Math.max(0, hero.movementPointsAvailable)) / per);
+      if (hero.actionsAvailable >= actionsNeeded) {
+        setPendingHeroAttachConversion({ hero, target, position, actionsNeeded });
+        return;
+      }
       setPendingAttachOverBudget({ hero, target, position });
       return;
     }
     await attachHero(hero, target, position, maxMP);
     addMessage(`${hero.unitName} attached to ${target.unitName} (${position})`);
-  }, [units, attachHero, addMessage, isMoveAffordable, unitMaxMP]);
+  }, [units, attachHero, addMessage, isMoveAffordable, unitMaxMP, heroMovePerAction]);
 
   const handleSwapHeroPosition = useCallback(async (hero: Unit) => {
-    // Swapping front/back costs 1 hero MP (free during free-move) — soft-enforce
-    // like move/attack: confirm when the hero can't afford it.
+    // Swapping front/back costs 1 hero MP (free during free-move) — ask before
+    // converting actions when MP is insufficient, over-budget confirm otherwise.
     const maxMP = unitMaxMP(hero);
-    if (!freeMove && !isMoveAffordable(hero, 1, maxMP)) {
+    if (!freeMove && hero.movementPointsAvailable < 1) {
+      const per = heroMovePerAction(maxMP);
+      const actionsNeeded = Math.ceil((1 - Math.max(0, hero.movementPointsAvailable)) / per);
+      if (hero.actionsAvailable >= actionsNeeded) {
+        setPendingHeroSwapConversion({ hero, actionsNeeded });
+        return;
+      }
       setPendingSwapOverBudget(hero);
       return;
     }
     await swapHeroPosition(hero, maxMP);
-  }, [swapHeroPosition, freeMove, isMoveAffordable, unitMaxMP]);
+  }, [swapHeroPosition, freeMove, isMoveAffordable, unitMaxMP, heroMovePerAction]);
 
   // Custom draw function that uses drawToken
   const customDraw = useCallback(async (ctx: CanvasRenderingContext2D, width: number, height: number, currentZoom: number, offsetX: number, offsetY: number) => {
@@ -688,11 +745,27 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     return result;
   }
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean }) => {
+  // A stashed attack resumes a previously-computed outcome (the retaliation-cap
+  // prompt): the dice stay the same, only the retaliation allowance changes.
+  interface AttackStash {
+    outcome: CombatOutcome;
+    retaliatorKilled: boolean;
+    retaliatorRouted: boolean;
+    reachSymmetric: boolean;
+    allowRetaliation: boolean;
+  }
+
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; stashed?: AttackStash }) => {
     if (overBudget) {
-      addError(`${attacker.unitName} attacked with no actions left — over budget`);
+      const cap = unitAttackCap();
+      if (!attacker.isHero && (attacker.attacksUsed ?? 0) >= cap) {
+        addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
+      } else {
+        addError(`${attacker.unitName} attacked with no actions left — over budget`);
+      }
     }
     const isChargingAttack = options?.isCharging ?? false;
+    const stashed = options?.stashed;
 
     const formationAtkMod = getFormationModifier(formationsMap, attacker.currentFormation, 'attack_modifier');
     const attackCapMult = getFormationMultiplier(formationsMap, attacker.currentFormation, 'attack_capacity_multiplier');
@@ -727,26 +800,28 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return { currentAc: hero.currentAc, troopHp: hero.troopHp };
     })();
 
-    const outcome = resolveCombatSequence(
-      attacker,
-      target,
-      { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, numberOfAttacks: weapon.numberOfAttacks, range: weapon.range, maxRange: weapon.maxRange },
-      defWeapon ? { attackBonus: defWeapon.attackBonus, damageDice: defWeapon.damageDice, is_reach: defWeapon.reach, numberOfAttacks: defWeapon.numberOfAttacks } : null,
-      formationAtkMod,
-      attackCapMult,
-      defAttackCapMult,
-      attackerRowCap,
-      defenderRowCap,
-      defenderVisualDpr,
-      isRanged,
-      isRear,
-      attachedDefenderHero,
-      attachedAttackerHero,
-      Math.random,
-      isChargingAttack,
-      formationsMap[attacker.currentFormation],
-      formationsMap[target.currentFormation],
-    );
+    const outcome = stashed
+      ? stashed.outcome
+      : resolveCombatSequence(
+          attacker,
+          target,
+          { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, numberOfAttacks: weapon.numberOfAttacks, range: weapon.range, maxRange: weapon.maxRange },
+          defWeapon ? { attackBonus: defWeapon.attackBonus, damageDice: defWeapon.damageDice, is_reach: defWeapon.reach, numberOfAttacks: defWeapon.numberOfAttacks } : null,
+          formationAtkMod,
+          attackCapMult,
+          defAttackCapMult,
+          attackerRowCap,
+          defenderRowCap,
+          defenderVisualDpr,
+          isRanged,
+          isRear,
+          attachedDefenderHero,
+          attachedAttackerHero,
+          Math.random,
+          isChargingAttack,
+          formationsMap[attacker.currentFormation],
+          formationsMap[target.currentFormation],
+        );
 
     const subSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
 
@@ -757,6 +832,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         unitId: attacker.id,
         changes: [
           { field: 'actionsAvailable', from: attacker.actionsAvailable, to: attacker.actionsAvailable - 1 },
+          // Every ATTACK command counts toward the 5-attack cap (units only).
+          ...(!attacker.isHero
+            ? [{ field: 'attacksUsed', from: attacker.attacksUsed ?? 0, to: (attacker.attacksUsed ?? 0) + 1 }]
+            : []),
+        ],
+      });
+    } else if (!attacker.isHero) {
+      // Free-action / charge attacks carry no action cost but still count toward
+      // the cap (spent even on AGR failure).
+      subSteps.push({
+        type: 'ATTACK',
+        description: `${attacker.unitName} attacked with ${weapon.name} — cap count`,
+        unitId: attacker.id,
+        changes: [
+          { field: 'attacksUsed', from: attacker.attacksUsed ?? 0, to: (attacker.attacksUsed ?? 0) + 1 },
         ],
       });
     }
@@ -773,30 +863,60 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return;
     }
 
-    // Damage direction depends on who struck first. The retaliator never takes the
-    // retaliation damage itself, so its killed/routed state — which decides whether
-    // the counterattack is suppressed — depends only on the first strike.
-    const retaliatorIsAttacker = outcome.strikerFirst === 'defender';
-
-    // First-strike effect on the retaliator
-    const retaliatorFirstStrikeHp = Math.max(0, (retaliatorIsAttacker ? attacker.currentUnitHp : target.currentUnitHp) - outcome.firstStrikeDamage);
-    const retaliatorKilled = retaliatorFirstStrikeHp <= 0;
-    const retaliatorPreMoraleUnit = retaliatorIsAttacker
-      ? { ...attacker, currentUnitHp: retaliatorFirstStrikeHp }
-      : { ...target, currentUnitHp: retaliatorFirstStrikeHp };
-    const retaliatorRouted = !retaliatorKilled
-      && !retaliatorPreMoraleUnit.ignoreMoraleChecks
-      && !retaliatorPreMoraleUnit.isRouting
-      && (retaliatorPreMoraleUnit.baseMorale
-        + retaliatorPreMoraleUnit.currentMoraleModifier
-        + computeEffectiveMoraleModifier(retaliatorPreMoraleUnit, units, alliances, formationsMap[retaliatorPreMoraleUnit.currentFormation] ?? null) <= 0);
-
     // Combat is simultaneous when both sides have equal reach. In that case both
     // sides exchange blows regardless of killed/routed. When one side holds the
     // reach advantage, the non-reach side is denied its counterattack if the first
     // strike killed or routed it.
     const reachSymmetric = weapon.reach === (defWeapon?.reach ?? false);
-    const effectiveOutcome = suppressRetaliation(outcome, retaliatorKilled, retaliatorRouted, reachSymmetric);
+
+    let retaliatorKilled = false;
+    let retaliatorRouted = false;
+    let effectiveOutcome: CombatOutcome;
+    if (stashed) {
+      effectiveOutcome = stashed.allowRetaliation
+        ? suppressRetaliation(stashed.outcome, stashed.retaliatorKilled, stashed.retaliatorRouted, stashed.reachSymmetric)
+        : suppressRetaliation(stashed.outcome, stashed.retaliatorKilled, stashed.retaliatorRouted, stashed.reachSymmetric, true);
+    } else {
+      // First-strike effect on the retaliator
+      const retaliatorIsAttacker = outcome.strikerFirst === 'defender';
+      const retaliatorFirstStrikeHp = Math.max(0, (retaliatorIsAttacker ? attacker.currentUnitHp : target.currentUnitHp) - outcome.firstStrikeDamage);
+      retaliatorKilled = retaliatorFirstStrikeHp <= 0;
+      const retaliatorPreMoraleUnit = retaliatorIsAttacker
+        ? { ...attacker, currentUnitHp: retaliatorFirstStrikeHp }
+        : { ...target, currentUnitHp: retaliatorFirstStrikeHp };
+      retaliatorRouted = !retaliatorKilled
+        && !retaliatorPreMoraleUnit.ignoreMoraleChecks
+        && !retaliatorPreMoraleUnit.isRouting
+        && (retaliatorPreMoraleUnit.baseMorale
+          + retaliatorPreMoraleUnit.currentMoraleModifier
+          + computeEffectiveMoraleModifier(retaliatorPreMoraleUnit, units, alliances, formationsMap[retaliatorPreMoraleUnit.currentFormation] ?? null) <= 0);
+
+      effectiveOutcome = suppressRetaliation(outcome, retaliatorKilled, retaliatorRouted, reachSymmetric);
+
+      // Soft 5-cap: a non-hero retaliator that already made 5 attacks+retaliations
+      // this turn pauses for the player's decision — allow the counter (counts
+      // over cap, red message) or decline (suppressed like a kill/rout).
+      if (effectiveOutcome.retaliationAttacks.length > 0) {
+        const retaliator = outcome.strikerFirst === 'attacker' ? target : attacker;
+        const cap = unitAttackCap();
+        if (!retaliator.isHero && (retaliator.attacksUsed ?? 0) >= cap) {
+          setPendingRetaliationCap({
+            attacker,
+            target,
+            overBudget,
+            options: options ?? {},
+            outcome,
+            retaliatorKilled,
+            retaliatorRouted,
+            reachSymmetric,
+            retaliatorName: retaliator.unitName,
+            attacksUsed: retaliator.attacksUsed ?? 0,
+            cap,
+          });
+          return undefined;
+        }
+      }
+    }
 
     // Final damage both ways
     const damageToDefender = effectiveOutcome.strikerFirst === 'attacker' ? effectiveOutcome.firstStrikeDamage : effectiveOutcome.retaliationDamage;
@@ -890,6 +1010,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     // swing missed (0 damage), so an all-miss counterattack isn't invisible.
     const retaliator = effectiveOutcome.strikerFirst === 'attacker' ? target : attacker;
     if (effectiveOutcome.retaliationAttacks.length > 0) {
+      // A retaliation over the 5-attack cap was allowed by the player — flag it red.
+      if (stashed?.allowRetaliation) {
+        addError(`${retaliator.unitName} retaliated past the ${unitAttackCap()}-attack cap (${(retaliator.attacksUsed ?? 0) + 1}/${unitAttackCap()})`);
+      }
+      // Retaliation counts toward the retaliator's own 5-attack cap (units only).
+      if (!retaliator.isHero) {
+        subSteps.push({
+          type: 'ATTACK',
+          description: `${retaliator.unitName} retaliated — cap count`,
+          unitId: retaliator.id,
+          changes: [
+            { field: 'attacksUsed', from: retaliator.attacksUsed ?? 0, to: (retaliator.attacksUsed ?? 0) + 1 },
+          ],
+        });
+      }
       const retaliationHeroAttacks = effectiveOutcome.retaliationHeroAttacks;
       const retaliationHeroHits = retaliationHeroAttacks.filter(a => a.isHit).length;
       const retaliationHeroCrits = retaliationHeroAttacks.filter(a => a.isCrit).length;
@@ -1137,11 +1272,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setPendingChargeAttack({ attacker, target });
         return;
       }
+      // Soft 5-cap: pause and ask before a charge attack past the cap.
+      const cap = unitAttackCap();
+      if (!attacker.isHero && (attacker.attacksUsed ?? 0) >= cap) {
+        setPendingAttackCap({ attacker, target, isCharging: true });
+        return;
+      }
       const result = await performAttack(attacker, target, false, { isCharging: true });
+      // undefined = the retaliation-cap prompt is open — its handlers resume the
+      // attack and finish the charge; don't end the charge here.
+      if (!result) return;
       // Charge-over: if the combat left the attacker standing and the target
       // over-run-able, offer to ride over and land on the far side (2 MP, own
       // undo). Otherwise end the charge as usual.
-      if (result && isChargeOverEligible(attacker, target, result, computeOccupiedHexes(units), formationsMap, unitMaxMP(attacker))) {
+      if (isChargeOverEligible(attacker, target, result, computeOccupiedHexes(units), formationsMap, unitMaxMP(attacker))) {
         const attachedHero = units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted);
         setPendingChargeThrough({
           attacker,
@@ -1152,6 +1296,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         return;
       }
       await performChargeEnd(attacker, true);
+      return;
+    }
+
+    // Soft 5-cap: pause and ask before an attack past the cap (units only).
+    const attackCap = unitAttackCap();
+    if (!attacker.isHero && (attacker.attacksUsed ?? 0) >= attackCap) {
+      setPendingAttackCap({ attacker, target });
       return;
     }
 
@@ -2191,7 +2342,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             <p className="text-gray-400 text-xs mb-4 text-center">
               {pendingMove.attachedHero
                 ? `${pendingMove.unit.unitName} + ${pendingMove.attachedHero.unitName} need ${pendingMove.cost} MP to reach (${pendingMove.targetHex.q}, ${pendingMove.targetHex.r}), but ${pendingMove.unit.unitName} has ${pendingMove.unit.actionsAvailable} and ${pendingMove.attachedHero.unitName} has ${pendingMove.attachedHero.actionsAvailable} action(s) left.`
-                : `${pendingMove.unit.unitName} needs ${pendingMove.cost} MP (${Math.ceil(pendingMove.cost / Math.max(1, unitMaxMP(pendingMove.unit)))} action(s)) to reach (${pendingMove.targetHex.q}, ${pendingMove.targetHex.r}), but has ${pendingMove.unit.actionsAvailable} action(s) left.`}
+                : `${pendingMove.unit.unitName} needs ${pendingMove.cost} MP (${pendingMove.unit.isHero
+                    ? `${Math.ceil(pendingMove.cost / heroMovePerAction(unitMaxMP(pendingMove.unit)))} action(s) at ${heroMovePerAction(unitMaxMP(pendingMove.unit))} MP/action`
+                    : `${Math.ceil(pendingMove.cost / Math.max(1, unitMaxMP(pendingMove.unit)))} action(s)`}) to reach (${pendingMove.targetHex.q}, ${pendingMove.targetHex.r}), but has ${pendingMove.unit.actionsAvailable} action(s) left.`}
             </p>
             <div className="flex flex-col gap-2">
               <button
@@ -2228,6 +2381,204 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               <button
                 className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
                 onClick={() => setPendingAttack(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingAttackCap && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Attack past the {unitAttackCap()}-attack cap?</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              {pendingAttackCap.attacker.unitName} has already attacked {pendingAttackCap.attacker.attacksUsed}/{unitAttackCap()} times this turn
+              {pendingAttackCap.attacker.isCharging ? ' (charge attack)' : ''}. Attack {pendingAttackCap.target.unitName} anyway?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={async () => {
+                  const pa = pendingAttackCap;
+                  setPendingAttackCap(null);
+                  if (controlsLocked) return;
+                  if (pa.isCharging) {
+                    const result = await performAttack(pa.attacker, pa.target, true, { isCharging: true });
+                    if (!result) return; // retaliation-cap prompt reopened
+                    if (isChargeOverEligible(pa.attacker, pa.target, result, computeOccupiedHexes(units), formationsMap, unitMaxMP(pa.attacker))) {
+                      const attachedHero = units.find(u => u.attachedToUnitId === pa.attacker.id && !u.isDeleted);
+                      setPendingChargeThrough({
+                        attacker: pa.attacker,
+                        target: pa.target,
+                        landHex: computeChargeOverLandingHex(pa.attacker.hex, pa.target.hex),
+                        attachedHero,
+                      });
+                      return;
+                    }
+                    await performChargeEnd(pa.attacker, true);
+                  } else {
+                    await performAttack(pa.attacker, pa.target, true);
+                  }
+                }}
+              >
+                Yes, attack anyway
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => setPendingAttackCap(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingRetaliationCap && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Retaliation past the {pendingRetaliationCap.cap}-attack cap?</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              {pendingRetaliationCap.retaliatorName} has already attacked {pendingRetaliationCap.attacksUsed}/{pendingRetaliationCap.cap} times this turn.
+              Allow it to retaliate against {pendingRetaliationCap.target.unitName} anyway?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={async () => {
+                  const prc = pendingRetaliationCap;
+                  setPendingRetaliationCap(null);
+                  if (controlsLocked) return;
+                  const result = await performAttack(prc.attacker, prc.target, prc.overBudget, {
+                    ...prc.options,
+                    stashed: {
+                      outcome: prc.outcome,
+                      retaliatorKilled: prc.retaliatorKilled,
+                      retaliatorRouted: prc.retaliatorRouted,
+                      reachSymmetric: prc.reachSymmetric,
+                      allowRetaliation: true,
+                    },
+                  });
+                  if (prc.options.isCharging) {
+                    if (result && isChargeOverEligible(prc.attacker, prc.target, result, computeOccupiedHexes(units), formationsMap, unitMaxMP(prc.attacker))) {
+                      const attachedHero = units.find(u => u.attachedToUnitId === prc.attacker.id && !u.isDeleted);
+                      setPendingChargeThrough({
+                        attacker: prc.attacker,
+                        target: prc.target,
+                        landHex: computeChargeOverLandingHex(prc.attacker.hex, prc.target.hex),
+                        attachedHero,
+                      });
+                      return;
+                    }
+                    await performChargeEnd(prc.attacker, true);
+                  }
+                }}
+              >
+                Yes, allow retaliation
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={async () => {
+                  const prc = pendingRetaliationCap;
+                  setPendingRetaliationCap(null);
+                  if (controlsLocked) return;
+                  const result = await performAttack(prc.attacker, prc.target, prc.overBudget, {
+                    ...prc.options,
+                    stashed: {
+                      outcome: prc.outcome,
+                      retaliatorKilled: prc.retaliatorKilled,
+                      retaliatorRouted: prc.retaliatorRouted,
+                      reachSymmetric: prc.reachSymmetric,
+                      allowRetaliation: false,
+                    },
+                  });
+                  if (prc.options.isCharging) {
+                    if (result && isChargeOverEligible(prc.attacker, prc.target, result, computeOccupiedHexes(units), formationsMap, unitMaxMP(prc.attacker))) {
+                      const attachedHero = units.find(u => u.attachedToUnitId === prc.attacker.id && !u.isDeleted);
+                      setPendingChargeThrough({
+                        attacker: prc.attacker,
+                        target: prc.target,
+                        landHex: computeChargeOverLandingHex(prc.attacker.hex, prc.target.hex),
+                        attachedHero,
+                      });
+                      return;
+                    }
+                    await performChargeEnd(prc.attacker, true);
+                  }
+                }}
+              >
+                No, suppress retaliation
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => setPendingRetaliationCap(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingHeroAttachConversion && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Convert actions to 1 MP?</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              {pendingHeroAttachConversion.hero.unitName} has {Math.floor(Math.max(0, pendingHeroAttachConversion.hero.movementPointsAvailable))} MP but attaching costs 1 MP.
+              Convert {pendingHeroAttachConversion.actionsNeeded} action{pendingHeroAttachConversion.actionsNeeded > 1 ? 's' : ''}
+              {pendingHeroAttachConversion.actionsNeeded > 1 ? ` (+${Math.round(heroMovePerAction(unitMaxMP(pendingHeroAttachConversion.hero)) * pendingHeroAttachConversion.actionsNeeded * 10) / 10} MP)` : ''}
+              to attach to {pendingHeroAttachConversion.target.unitName} ({pendingHeroAttachConversion.position})?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-green-800 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={async () => {
+                  const phc = pendingHeroAttachConversion;
+                  setPendingHeroAttachConversion(null);
+                  if (controlsLocked) return;
+                  await attachHero(phc.hero, phc.target, phc.position, unitMaxMP(phc.hero));
+                  addMessage(`${phc.hero.unitName} attached to ${phc.target.unitName} (${phc.position})`);
+                }}
+              >
+                Convert and attach
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => setPendingHeroAttachConversion(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingHeroSwapConversion && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Convert actions to 1 MP?</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              {pendingHeroSwapConversion.hero.unitName} has {Math.floor(Math.max(0, pendingHeroSwapConversion.hero.movementPointsAvailable))} MP but swapping position costs 1 MP.
+              Convert {pendingHeroSwapConversion.actionsNeeded} action{pendingHeroSwapConversion.actionsNeeded > 1 ? 's' : ''} to swap to the {pendingHeroSwapConversion.hero.attachedPosition === 'back' ? 'front' : 'back'}?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-green-800 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={async () => {
+                  const phs = pendingHeroSwapConversion;
+                  setPendingHeroSwapConversion(null);
+                  if (controlsLocked) return;
+                  await swapHeroPosition(phs.hero, unitMaxMP(phs.hero));
+                }}
+              >
+                Convert and swap
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => setPendingHeroSwapConversion(null)}
               >
                 Cancel
               </button>

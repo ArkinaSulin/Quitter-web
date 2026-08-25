@@ -145,6 +145,8 @@ export interface Unit {
   commandSeq: number;
   organizationLevel: number;           // computed from currentFormation via ORGANIZATION_LEVEL map
   actionsAvailable: number;           // new: remaining actions for current turn
+  /** Attacks + retaliations performed this turn (non-hero units, soft 5-cap). */
+  attacksUsed: number;
   activeWeaponIndex: number;           // index into weaponString of the active weapon (0 = first)
   // Ability save bonuses (used by area-effect spells). Store the bonus directly.
   str: number;

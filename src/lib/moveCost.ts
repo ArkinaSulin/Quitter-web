@@ -97,6 +97,90 @@ export function isMoveAffordable(unit: MpBudget, cost: number, maxMP: number): b
   return applyMoveCost(unit, cost, maxMP).actionsAvailable >= 0;
 }
 
+// ---------------------------------------------------------------------------
+// Hero movement: 5 actions = 1 full movement, prorated.
+// Each converted action grants maxMP/5 MP (1 decimal). Fractions carry across
+// conversions (e.g. maxMP 3 → 0.6 → 1.2 → 1.8 → 2.4 → 3.0) and the display
+// floors them. All hero movement MP comes from conversion — heroes never get
+// the unit rule's "1 action = 1 full pool".
+// ---------------------------------------------------------------------------
+
+/** Round MP to 1 decimal place (integer costs stay exact; no FP drift). */
+function roundMp(v: number): number {
+  return Math.round(v * 10) / 10;
+}
+
+/** MP granted per converted hero action: maxMP / 5, rounded to 1 decimal. */
+export function heroMovePerAction(maxMP: number): number {
+  return roundMp(Math.max(1, maxMP) / 5);
+}
+
+/** Hero move budget: materialized (fractional) MP + every unconverted action at the prorated rate. */
+export function computeHeroMoveBudget(unit: MpBudget, maxMP: number): number {
+  const per = heroMovePerAction(maxMP);
+  return roundMp(Math.max(0, unit.movementPointsAvailable) + Math.max(0, unit.actionsAvailable) * per);
+}
+
+/** Hero pool for the drag overlay = the hero's full conversion potential. */
+export function computeHeroMovePool(unit: MpBudget, maxMP: number): number {
+  return computeHeroMoveBudget(unit, maxMP);
+}
+
+/**
+ * Executed MP/action accounting for a hero move of the given path cost.
+ * Spends materialized MP first; each shortfall converts ceil((cost − MP)/per)
+ * actions at the prorated rate (may go negative — soft enforcement). The
+ * unconverted fraction carries over (rounded to 1 decimal).
+ */
+export function applyHeroMoveCost(
+  unit: MpBudget,
+  cost: number,
+  maxMP: number,
+): { movementPointsAvailable: number; actionsAvailable: number } {
+  const per = heroMovePerAction(maxMP);
+  const mp = Math.max(0, unit.movementPointsAvailable);
+  if (cost <= mp) {
+    return { movementPointsAvailable: roundMp(mp - cost), actionsAvailable: unit.actionsAvailable };
+  }
+  const need = cost - mp;
+  const actionsSpent = Math.ceil(need / per);
+  const newMp = roundMp(mp + actionsSpent * per - cost);
+  return { movementPointsAvailable: newMp, actionsAvailable: unit.actionsAvailable - actionsSpent };
+}
+
+/** A hero move is affordable when the conversion does not go negative on actions. */
+export function isHeroMoveAffordable(unit: MpBudget, cost: number, maxMP: number): boolean {
+  return applyHeroMoveCost(unit, cost, maxMP).actionsAvailable >= 0;
+}
+
+/** True hero move capacity: materialized MP + every unconverted action at the prorated rate. */
+export function computeHeroMoveCapacity(unit: MpBudget, maxMP: number): number {
+  return computeHeroMoveBudget(unit, maxMP);
+}
+
+/**
+ * Single-MP spend for a hero (attach/detach/swap). Spends materialized MP;
+ * when insufficient, converts ceil((spend − MP)/per) actions at the prorated
+ * rate to cover it (may go negative — the UI asks first).
+ */
+export function applyHeroMpSpend(
+  unit: MpBudget,
+  spend: number,
+  maxMP: number,
+): { movementPointsAvailable: number; actionsAvailable: number } {
+  const per = heroMovePerAction(maxMP);
+  const mp = Math.max(0, unit.movementPointsAvailable);
+  if (mp >= spend) {
+    return { movementPointsAvailable: roundMp(mp - spend), actionsAvailable: unit.actionsAvailable };
+  }
+  const need = spend - mp;
+  const actionsSpent = Math.ceil(need / per);
+  return {
+    movementPointsAvailable: roundMp(mp + actionsSpent * per - spend),
+    actionsAvailable: unit.actionsAvailable - actionsSpent,
+  };
+}
+
 /**
  * Pool available for the current move. MP is only materialized when a move
  * converts an action: a unit with NO MP on hand and an action remaining can

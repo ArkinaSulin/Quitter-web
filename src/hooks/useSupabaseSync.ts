@@ -61,6 +61,7 @@ function mapRowToUnit(row: any): Unit {
     chargeDistance: row.charge_distance || 0,
     commandSeq: row.command_seq || 0,
     actionsAvailable: row.actions_available || 0,
+    attacksUsed: row.attacks_used || 0,
     activeWeaponIndex: row.active_weapon_index || 0,
     str: row.str ?? 0,
     dex: row.dex ?? 0,
@@ -122,6 +123,7 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     is_charging: unit.isCharging || false,
     charge_distance: unit.chargeDistance || 0,
     actions_available: unit.actionsAvailable || 0,
+    attacks_used: unit.attacksUsed || 0,
     active_weapon_index: unit.activeWeaponIndex || 0,
     str: unit.str ?? 0,
     dex: unit.dex ?? 0,
@@ -395,7 +397,10 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       isCharging: false,
       chargeDistance: 0,
       commandSeq: 0,
-      actionsAvailable: getSetting('actions_per_turn', 2),
+      actionsAvailable: template.isHero
+        ? getSetting('hero_actions_per_turn', 5)
+        : getSetting('actions_per_turn', 2),
+      attacksUsed: 0,
       activeWeaponIndex,
       str: template.str ?? 0,
       dex: template.dex ?? 0,

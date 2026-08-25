@@ -1,5 +1,15 @@
 # Handover — 2026-08-03
 
+## Unit 5-attack cap (soft) + hero 5-action prorated movement (2026-08-24)
+**Files:** `supabase/migrations/060_attack_cap_hero_actions.sql` (new), `src/lib/{moveCost,unitCombat,attackCap}.ts` + tests, `src/types/gameProtocol.ts`, `src/hooks/{useGameEngine,useSupabaseSync}.ts`, `src/components/ScenarioMap/{ScenarioMap,UnitTooltip}.tsx`, `HANDBOOK.md` (§7.10/§4.9/§14), `.scratch/spelljammer-mod/spec.md`, `AGENTS.md`
+
+- **Migration 060 — apply to the DB.** `units.attacks_used INTEGER NOT NULL DEFAULT 0`; `units.movement_points_available` → **NUMERIC** (heroes carry 1-decimal fractions, units stay whole); settings seeds `unit_attack_cap = 5`, `hero_actions_per_turn = 5`; `unit_field_to_column` allowlist gains `attacksUsed → attacks_used` (sub-steps may write it).
+- **Hero economy** (`moveCost.ts` hero variants): heroes start **5 actions / 0 MP**; each converted action grants `maxMP/5` MP (`heroMovePerAction`, 1 decimal — maxMP 3 → 0.6; mounted 6 → 1.2). **Fraction carries** (0.6 → 1.2 → 1.8 …; display floors, storage keeps the decimal). `applyHeroMoveCost` spends materialized MP first then converts `ceil((cost − MP)/per)` actions (may go negative — soft); `applyHeroMpSpend` for attach/detach/swap; `computeHeroMoveBudget/Pool` = MP + actions×per; `isHeroMoveAffordable`. `useGameEngine` branches `moveUnitRecorded`/attach/detach/swap on `isHero`; `endTurn` resets heroes to 5 actions, units to 2, `attacks_used → 0`; spawn mirrors it.
+- **Attach/detach/swap**: −1 hero MP; when MP < 1 the UI asks **"convert [#] actions to 1 MP?"** (`pendingHeroAttachConversion`/`pendingHeroSwapConversion` modals, [#] = `ceil((1−MP)/per)`); over-budget fallback keeps the old confirm.
+- **Unit attack cap** (`attackCap.ts`, soft): every `ATTACK` command counts +1 for non-hero attackers (free-action/charge/AGR-failed included); a defender's actual retaliation counts +1. **Attacker at cap → pause + modal ("attack past the 5-cap?")** → confirm executes + red message (6/5), cancel aborts. **Retaliator at cap → pause + modal** → allow records over-cap + red message; **decline suppresses the counter** (`suppressRetaliation(..., atCap=true)`, works even in simultaneous combat). Stashed-resume pattern: `performAttack` accepts `stashed` (same outcome, no re-roll) so the modal decision resumes without new dice; charging continuation (charge-over/charge-end) handled in both modal handlers.
+- Tooltip: `Actions: n/5` heroes / `n/2` units; `Attacks: n/5` (red at cap); `Move` shows `(0.6 MP/action)` for heroes.
+- 334 tests (moveCost hero suite + suppressRetaliation cap cases + attackCap); `tsc --noEmit` clean.
+
 ## Spelljammer module design docs + Archfar's Shipyard admin entry point (2026-08-24)
 **Files:** `.scratch/spelljammer-mod/spec.md` (new), `HANDBOOK.md` (§17 + §14.2/§14.3), `supabase/migrations/059_ship_editor_access.sql` (new), `src/hooks/useProfile.ts`, `src/components/Lobby.tsx`, `AGENTS.md`
 

@@ -65,6 +65,7 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     commandSeq: 0,
     organizationLevel: 1,
     actionsAvailable: 1,
+    attacksUsed: 0,
     activeWeaponIndex: 0,
     str: 0,
     dex: 0,
@@ -792,5 +793,18 @@ describe('suppressRetaliation', () => {
     const result = suppressRetaliation(makeOutcome(), false, true, true);
     expect(result.retaliationDamage).toBe(5);
     expect(result.retaliationCount).toBe(2);
+  });
+
+  it('suppresses retaliation when the retaliator is at the attack cap, even in simultaneous combat', () => {
+    const result = suppressRetaliation(makeOutcome(), false, false, true, true);
+    expect(result.retaliationDamage).toBe(0);
+    expect(result.retaliationCount).toBe(0);
+    expect(result.retaliationAttacks).toHaveLength(0);
+    expect(result.firstStrikeDamage).toBeGreaterThan(0);
+  });
+
+  it('keeps retaliation when at the cap flag is false', () => {
+    const result = suppressRetaliation(makeOutcome(), false, false, true, false);
+    expect(result.retaliationDamage).toBe(5);
   });
 });

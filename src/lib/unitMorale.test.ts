@@ -60,6 +60,7 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     commandSeq: 0,
     organizationLevel: 1,
     actionsAvailable: 1,
+    attacksUsed: 0,
     activeWeaponIndex: 0,
     str: 0,
     dex: 0,

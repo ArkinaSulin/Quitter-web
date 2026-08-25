@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeReachableMap, computeChargeReachable, computeMoveBudget, computeMovePool, computeMoveCapacity, applyMoveCost, applyMpSpend, isMoveAffordable } from './moveCost';
+import { computeReachableMap, computeChargeReachable, computeMoveBudget, computeMovePool, computeMoveCapacity, applyMoveCost, applyMpSpend, isMoveAffordable, heroMovePerAction, computeHeroMoveBudget, computeHeroMovePool, applyHeroMoveCost, isHeroMoveAffordable, applyHeroMpSpend } from './moveCost';
 import { Hex } from '@/types/gameProtocol';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
@@ -257,6 +257,98 @@ describe('isMoveAffordable', () => {
   it('false when cost exceeds leftover MP + actions (confirm modal)', () => {
     expect(isMoveAffordable({ movementPointsAvailable: 0, actionsAvailable: 0 }, 1, 5)).toBe(false);
     expect(isMoveAffordable({ movementPointsAvailable: 2, actionsAvailable: 0 }, 3, 5)).toBe(false);
+  });
+});
+
+describe('hero movement — 5 actions = 1 full movement, prorated with fraction carry', () => {
+  it('heroMovePerAction: maxMP/5 rounded to 1 decimal', () => {
+    expect(heroMovePerAction(3)).toBe(0.6);   // user example: 1 action = 0.6 MP
+    expect(heroMovePerAction(6)).toBe(1.2);   // horse example: 1 action = 1.2 MP
+    expect(heroMovePerAction(5)).toBe(1);
+    expect(heroMovePerAction(4)).toBe(0.8);
+    expect(heroMovePerAction(0)).toBe(0.2);   // clamp: never 0
+  });
+
+  it('computeHeroMoveBudget: materialized MP + actions at the prorated rate', () => {
+    expect(computeHeroMoveBudget({ movementPointsAvailable: 0, actionsAvailable: 5 }, 3)).toBe(3);   // 5 actions = full move
+    expect(computeHeroMoveBudget({ movementPointsAvailable: 0.6, actionsAvailable: 4 }, 3)).toBe(3);  // 0.6 + 4×0.6 = 3
+    expect(computeHeroMoveBudget({ movementPointsAvailable: 0, actionsAvailable: 0 }, 3)).toBe(0);
+    expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 5 }, 3)).toBe(3);
+  });
+
+  it('applyHeroMoveCost: spends materialized MP first, no conversion', () => {
+    expect(applyHeroMoveCost({ movementPointsAvailable: 1.2, actionsAvailable: 5 }, 1, 3))
+      .toEqual({ movementPointsAvailable: 0.2, actionsAvailable: 5 });
+  });
+
+  it('applyHeroMoveCost: converts ceil(need/per) actions, fraction carries (user example)', () => {
+    // maxMP 3: converting 1 action grants 0.6 MP (display +0), a 2nd grants 1.2 (display +1).
+    const one = applyHeroMoveCost({ movementPointsAvailable: 0, actionsAvailable: 5 }, 1, 3);
+    expect(one.movementPointsAvailable).toBe(0.2); // 2 actions → 1.2 − 1
+    expect(one.actionsAvailable).toBe(3);
+  });
+
+  it('applyHeroMoveCost: converts enough actions to cover the cost', () => {
+    // cost 1, maxMP 3: ceil(1 / 0.6) = 2 actions → 1.2 MP − 1 = 0.2 left
+    expect(applyHeroMoveCost({ movementPointsAvailable: 0, actionsAvailable: 5 }, 1, 3))
+      .toEqual({ movementPointsAvailable: 0.2, actionsAvailable: 3 });
+    // cost 2, maxMP 3: ceil(2 / 0.6) = 4 actions → 2.4 − 2 = 0.4 left
+    expect(applyHeroMoveCost({ movementPointsAvailable: 0, actionsAvailable: 5 }, 2, 3))
+      .toEqual({ movementPointsAvailable: 0.4, actionsAvailable: 1 });
+    // cost 3, maxMP 3: 5 actions → exactly 3.0 MP, 0 left
+    expect(applyHeroMoveCost({ movementPointsAvailable: 0, actionsAvailable: 5 }, 3, 3))
+      .toEqual({ movementPointsAvailable: 0, actionsAvailable: 0 });
+  });
+
+  it('applyHeroMoveCost: combines leftover MP with conversions', () => {
+    // 0.6 on hand, cost 2, maxMP 3: ceil(1.4 / 0.6) = 3 actions → 0.6+1.8−2 = 0.4
+    expect(applyHeroMoveCost({ movementPointsAvailable: 0.6, actionsAvailable: 5 }, 2, 3))
+      .toEqual({ movementPointsAvailable: 0.4, actionsAvailable: 2 });
+  });
+
+  it('applyHeroMoveCost: may go negative on actions (soft enforcement)', () => {
+    // cost 3 needs ceil(3/0.6) = 5 actions; only 1 on hand → −4, MP exact 0
+    expect(applyHeroMoveCost({ movementPointsAvailable: 0, actionsAvailable: 1 }, 3, 3))
+      .toEqual({ movementPointsAvailable: 0, actionsAvailable: -4 });
+  });
+
+  it('isHeroMoveAffordable: false when conversions would go negative', () => {
+    // 2 actions × 0.6 = 1.2 < 2 → cannot afford
+    expect(isHeroMoveAffordable({ movementPointsAvailable: 0, actionsAvailable: 2 }, 2, 3)).toBe(false);
+    // 4 actions × 0.6 = 2.4 ≥ 2 → affordable
+    expect(isHeroMoveAffordable({ movementPointsAvailable: 0, actionsAvailable: 4 }, 2, 3)).toBe(true);
+    // 3 actions × 0.6 = 1.8 < 2 → cannot afford
+    expect(isHeroMoveAffordable({ movementPointsAvailable: 0, actionsAvailable: 3 }, 2, 3)).toBe(false);
+    // materialized MP counts first: 1.2 on hand covers a 1-MP move
+    expect(isHeroMoveAffordable({ movementPointsAvailable: 1.2, actionsAvailable: 0 }, 1, 3)).toBe(true);
+  });
+
+  it('applyHeroMpSpend: spends MP when sufficient', () => {
+    expect(applyHeroMpSpend({ movementPointsAvailable: 1.2, actionsAvailable: 5 }, 1, 3))
+      .toEqual({ movementPointsAvailable: 0.2, actionsAvailable: 5 });
+  });
+
+  it('applyHeroMpSpend: converts ceil(need/per) actions to make up the spend', () => {
+    // 0.6 on hand, spend 1: ceil(0.4/0.6) = 1 action → 0.6+0.6−1 = 0.2
+    expect(applyHeroMpSpend({ movementPointsAvailable: 0.6, actionsAvailable: 5 }, 1, 3))
+      .toEqual({ movementPointsAvailable: 0.2, actionsAvailable: 4 });
+    // 0 on hand, spend 1: ceil(1/0.6) = 2 actions → 1.2−1 = 0.2
+    expect(applyHeroMpSpend({ movementPointsAvailable: 0, actionsAvailable: 5 }, 1, 3))
+      .toEqual({ movementPointsAvailable: 0.2, actionsAvailable: 3 });
+  });
+
+  it('applyHeroMpSpend: converts even past 0 actions (soft — the UI asked first)', () => {
+    // 0 MP, 0 actions, spend 1: converts ceil(1/0.6) = 2 actions → 1.2 − 1 = 0.2, actions −2
+    expect(applyHeroMpSpend({ movementPointsAvailable: 0, actionsAvailable: 0 }, 1, 3))
+      .toEqual({ movementPointsAvailable: 0.2, actionsAvailable: -2 });
+  });
+
+  it('horse example: 4 actions → 4.8 (display +4), 5th → 6.0 (display +6)', () => {
+    // maxMP 6 (mounted): converting 4 actions then moving 4 MP
+    const four = applyHeroMoveCost({ movementPointsAvailable: 0, actionsAvailable: 5 }, 4, 6);
+    expect(four.movementPointsAvailable).toBe(0.8); // 4×1.2 − 4
+    const fifth = applyHeroMoveCost({ movementPointsAvailable: 0.8, actionsAvailable: 1 }, 2, 6);
+    expect(fifth).toEqual({ movementPointsAvailable: 0, actionsAvailable: 0 }); // 0.8 + 1.2 − 2 = 0
   });
 });
 

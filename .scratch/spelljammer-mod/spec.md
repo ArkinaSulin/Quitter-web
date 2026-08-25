@@ -147,6 +147,7 @@ Not tested (manual QA / integration-only): the sub-turn toggle propagation, stat
 ## Further Notes
 
 - Ships are hero-like: no retaliation, no morale, no rout, no formation economy — they never enter the ground-game 5-attack+retaliation cap; rate of fire is weapons × loading × crew.
+- Hero ground economy applies aboard ships: heroes convert actions to movement at `maxMP/5` per action (5 actions = one full move, fraction carries, 1 decimal) — in a space segment, 1 action = 0.6 MP for a 3-MP hero. The ground 5-attack cap does not apply to ships or heroes.
 - 50ft hexes are shared with the ground game; a 30ft ground unit moves ~0.6 hex/turn while a ship at Speed 10 crosses the board — the scale mismatch is accepted by design (ships are the fast layer).
 - The `hexes before turn = speed / 3` min-straight rule interacts with the existing 1 MP per 60° turn model: ship turning is governed by the speed commitment instead of an MP charge.
 - Migration 059 (`ship_editor_access`) is written and must be applied to the DB.

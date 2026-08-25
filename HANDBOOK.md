@@ -201,7 +201,7 @@ Stores actual on‑map units (copied from templates with per‑instance stats).
 | current_ac | INTEGER | Current AC (modified by brace, formation) |
 | weapon_string | TEXT | Weapon data (JSON) |
 | movement_points | INTEGER | Max movement (copied from template) |
-| movement_points_available | INTEGER | Remaining movement for current turn |
+| movement_points_available | NUMERIC | Remaining movement for current turn — **decimal since migration 060**: heroes carry 1-decimal fractions (0.6 MP/action conversion), units stay whole |
 | aggressiveness | INTEGER | 1–10 (copied from template) |
 | base_morale | INTEGER | 1–10 (copied from template) |
 | current_morale_modifier | INTEGER | Modifier to base morale (dynamic, additive) |
@@ -219,7 +219,8 @@ Stores actual on‑map units (copied from templates with per‑instance stats).
 | team | TEXT | 'blue', 'yellow', 'violet', 'black', 'orange', 'green' |
 | is_routing | BOOLEAN | Routing flag |
 | hidden | BOOLEAN | Hidden from non-GM players |
-| actions_available | INTEGER | Remaining actions for current turn |
+| actions_available | INTEGER | Remaining actions for current turn (2 units / 5 heroes) |
+| attacks_used | INTEGER | Attacks + retaliations this turn (non-hero units, soft-capped at 5 — migration 060) |
 | active_weapon_index | INTEGER | Index of the active weapon in weapon_string (0 = first) |
 | updated_at | TIMESTAMPTZ | Timestamp |
 
@@ -685,31 +686,35 @@ The `formations` lookup table has four modifier columns. All are applied on-the-
 
 ### 7.10 Turn Economy — Movement Cost, Actions & Soft Enforcement
 
-**Turn reset (End Turn):** when a group's turn starts, every non-deleted unit on a team in that group resets `movementPointsAvailable = 0` and `actionsAvailable = 2`. MP is **not granted up front** — it is materialized only when a move converts an action into a full pool (see below). Turn order cycles friendly → enemy → neutral, skipping empty groups; `turn_number` increments on a full cycle. See §6.10 `endTurn` / `src/lib/turnState.ts`.
+**Turn reset (End Turn):** when a group's turn starts, every non-deleted unit on a team in that group resets `movementPointsAvailable = 0`, `attacksUsed = 0` and `actionsAvailable = 2` (**units**) or `5` (**heroes**, `hero_actions_per_turn`). MP is **not granted up front** — it is materialized when a move converts an action (units: a full pool; heroes: prorated, see below). Turn order cycles friendly → enemy → neutral, skipping empty groups; `turn_number` increments on a full cycle. See §6.10 `endTurn` / `src/lib/turnState.ts`.
 
 **Action cost table** (`useGameEngine.ts` / `ScenarioMap.tsx`) — MP comes from the **acting unit** (the hero for attach/detach):
 
 | Player action | Command | Action | MP |
 |---|---|---|---|
-| Move (drag to hex) | `MOVE` | −1 per full MP pool (`ceil(pathCost / maxMP)`) | −path cost |
+| Move (drag to hex) | `MOVE` | −1 per full MP pool (units: `ceil(pathCost / maxMP)`) / hero conversion (see below) | −path cost |
 | Attack (drag onto enemy) | `ATTACK` | −1 (even on AGR failure) | 0 |
 | Rotate (context menu / Q/E) | `ROTATE` | 0 (1 only if MP < 1 triggers a refill) | −1 — **units only, heroes ignore** |
 | Formation change | `FORMATION` | 0 | org-level steps + proportional floor rescale — **heroes skip MP** |
-| Attach / Detach hero | `ATTACH_HERO` / `DETACH_HERO` | 0 (1 only if hero MP < 1) | −1 — **from the hero, not the host unit** |
+| Attach / Detach hero | `ATTACH_HERO` / `DETACH_HERO` | converts actions to cover the 1 MP when asked | −1 — **from the hero, not the host unit** |
 | Hide / Team / Delete / Place | `TOGGLE_HIDE` / `TEAM` / `DELETE` / `PLACE` | 0 | 0 |
 | Rout (morale-induced) | `ROUT` | 0 | 0 |
 
-**Movement — "1 action = 1 full MP pool"** (`src/lib/moveCost.ts`): `computeReachableMap(unit, maxMP, occupied, threatHexes)` over state space `(hex, facing)` — 1 MP per hex entered from the front arc, 1 MP per 60° turn. Threat hexes are reachable as destinations but never passed through; occupied hexes are never reachable; Routed/Scattered/**Hero** units move any direction at 1 MP/hex (no facing cost). Units start at **2 actions / 0 MP**; MP is **materialized when a move converts an action** into a full pool. A move's cost is spent from **already-materialized MP first**, and an action converts to a fresh full pool only when MP is exhausted. **Movement budget** = `movementPointsAvailable + maxMP × max(1, actionsAvailable)` (`computeMoveBudget`): leftover MP + every remaining action as a full pool, so a unit with 2 actions and maxMP 5 can cover up to 10 hexes. `applyMoveCost` computes the executed accounting (final MP = remainder of the last pool — 0 on an exact pool — final actions = unconverted pools left); `applyMpSpend` does the same for single-MP spends, converting an action into a full pool when MP is insufficient. The executed move accepts any hex within that budget; the **drag overlay shades one move's reach** (`computeMovePool`, i.e. a full pool when actions ≥ 1) so players see where the current move can go — dropping beyond it just spends leftover MP / refills the next pool.
+**Unit movement — "1 action = 1 full MP pool"** (`src/lib/moveCost.ts`): `computeReachableMap(unit, maxMP, occupied, threatHexes)` over state space `(hex, facing)` — 1 MP per hex entered from the front arc, 1 MP per 60° turn. Threat hexes are reachable as destinations but never passed through; occupied hexes are never reachable; Routed/Scattered/**Hero** units move any direction at 1 MP/hex (no facing cost). Units start at **2 actions / 0 MP**; MP is **materialized when a move converts an action** into a full pool. A move's cost is spent from **already-materialized MP first**, and an action converts to a fresh full pool only when MP is exhausted. **Movement budget** = `movementPointsAvailable + maxMP × max(1, actionsAvailable)` (`computeMoveBudget`): leftover MP + every remaining action as a full pool, so a unit with 2 actions and maxMP 5 can cover up to 10 hexes. `applyMoveCost` computes the executed accounting (final MP = remainder of the last pool — 0 on an exact pool — final actions = unconverted pools left); `applyMpSpend` does the same for single-MP spends, converting an action into a full pool when MP is insufficient. The executed move accepts any hex within that budget; the **drag overlay shades one move's reach** (`computeMovePool`, i.e. a full pool when actions ≥ 1) so players see where the current move can go — dropping beyond it just spends leftover MP / refills the next pool.
 
-**Formation rescale** (`src/lib/formationCost.ts`): `applyFormationChange(currentMP, steps, oldMax, newMax)` — 1 MP per organizational-level step, then `(currentMP − steps) × newMax/oldMax`, floored and clamped to `[0, newMax]`. MP is tracked as an integer throughout.
+**Hero movement — 5 actions = 1 full movement, prorated** (`src/lib/moveCost.ts` hero variants): heroes start at **5 actions / 0 MP** and convert actions to MP at **`maxMP/5` per action** (`heroMovePerAction`), rounded to 1 decimal — maxMP 3 → 0.6 MP/action (5 actions = one 3-MP full move); a mounted 6-MP hero gets 1.2/action. **Fractions carry across conversions**: converting 1 action at maxMP 3 yields 0.6 MP (display +0), a 2nd yields 1.2 (display +1); the displayed value floors, the stored value (`movement_points_available`, now NUMERIC) keeps the fraction. `applyHeroMoveCost` spends materialized MP first then converts `ceil((cost − MP) / per)` actions (may go negative — soft); `applyHeroMpSpend` does the same for single-MP spends (attach/detach/swap — the UI asks "convert [#] actions to 1 MP?" first). `computeHeroMoveBudget`/`computeHeroMovePool` = `MP + max(0, actions) × per`, used for reachability and the drag overlay. `isHeroMoveAffordable` mirrors `isMoveAffordable`.
+
+**Unit attack cap — 5 attacks + retaliations per turn** (`src/lib/attackCap.ts`, `unit_attack_cap` setting, **non-hero units only**): every `ATTACK` command counts +1 (free-action attacks, charge attacks and AGR failures included); a defender's retaliation counts +1 when it actually counterattacks. **Soft enforcement** (never hard-blocks): an attacker at `attacksUsed ≥ 5` pauses with a confirm modal ("attack past the cap?") — confirming executes, records 6/5 and pushes a red notification; declining cancels. A retaliator at the cap pauses with a "allow retaliation?" modal — allowing records over cap + red notification, **declining suppresses the counterattack** (`suppressRetaliation(..., atCap)`, same path as kill/rout). The count resets to 0 on the unit's turn start. Heroes don't track the cap — their 5-action budget bounds them.
+
+**Formation rescale** (`src/lib/formationCost.ts`): `applyFormationChange(currentMP, steps, oldMax, newMax)` — 1 MP per organizational-level step, then `(currentMP − steps) × newMax/oldMax`, floored and clamped to `[0, newMax]`. Unit MP is tracked as an integer; hero MP carries a 1-decimal fraction.
 
 **Soft enforcement (never hard-blocks):**
 - A move to a hex outside its action-budget reach is rejected with a message.
 - A move with **0 actions left** (MP already depleted) triggers a **confirm modal**; confirming deducts the full cost (MP/actions may go negative) and pushes a **red notification** (`addError`) to the message log.
-- An attack with `actionsAvailable < 1` triggers the same confirm modal + red notification (covers haste double-attack and detach-reposition edge cases).
+- An attack with `actionsAvailable < 1` **or** at the 5-attack cap triggers a confirm modal + red notification (covers haste double-attack and detach-reposition edge cases).
 - Points going negative is a visible over-budget flag; `END_TURN` resets everything.
 
-**Tooltip:** shows `Move: {floor(movementPointsAvailable)}/{max}` (actual materialized MP — drains 3→2→1→0 per action pool) and `Actions: {n}/2` with a `(1 = full move)` hint (red when ≤ 0). Tokens show an action badge (white ≥2 / yellow 1 / red ≤0) — see §6.3.
+**Tooltip:** shows `Move: {floor(movementPointsAvailable)}/{max}` (heroes additionally show `(0.6 MP/action)` — actual materialized MP drains per conversion), `Actions: {n}/2` for units / `{n}/5` for heroes (`(1 = full move)` vs `(convert to MP)` hints), and `Attacks: {n}/5` for non-hero units (red at the cap). Tokens show an action badge (white ≥2 / yellow 1 / red ≤0) — see §6.3.
 
 ## 8. Role Permissions (RBAC)
 | Role | Abilities |
@@ -806,6 +811,7 @@ The `formations` lookup table has four modifier columns. All are applied on-the-
 - Chained undo: `chained` boolean on `command_log` links causally related entries. `GameEngine` chain-aware undo/redo returns `CommandEntry[]`. UI shows "Undo (N)" for chain length. ROUT entries chain to their triggering MOVE.
 - Database migration `006_add_chained_to_command_log.sql` — adds `chained BOOLEAN NOT NULL DEFAULT false` column.
 - Combat system (`unitCombat.ts`): pure functions for row capacity, combat position, AGR check, reach-based first strike, attack rolls (D20 vs AC), damage capped at troopHp, retaliation (front full/flank half/rear none), morale routing cascade after each combat phase. All wired into `ScenarioMap.onAttack` as async execute with chained ROUT.
+- Unit 5-attack+retaliation cap (`attackCap.ts` + `units.attacks_used`, soft: pause + confirm + red message, declined retaliation suppressed) and hero 5-action economy with prorated fractional movement (`moveCost.ts` hero variants, `movement_points_available` → NUMERIC, `hero_actions_per_turn`) — migration 060.
 
 ### 14.2 What's Next
 - Weapon selection (attacker picks which weapon to use in combat)
@@ -825,6 +831,7 @@ The `formations` lookup table has four modifier columns. All are applied on-the-
 - TokenRenderer flickering: Can be optimized with debounce.
 - Spelljammer: design + docs + admin access caps are in place; no ship entities, ship combat, or sub-turn engine yet.
 - Boarding combat is explicitly out of scope — hand off to a dedicated D&D VTT.
+- Migration 060 (attack cap + numeric MP + hero actions) needs applying to the DB.
 
 ## 15. Code Examples & Patterns
 

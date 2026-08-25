@@ -474,7 +474,20 @@ export function suppressRetaliation(
   retaliatorKilled: boolean,
   retaliatorRouted: boolean,
   simultaneous: boolean,
+  atCap = false,
 ): CombatOutcome {
+  // Hard-capped retaliator (5-attack limit, declined to exceed): the counter is
+  // denied regardless of reach symmetry — the unit is out of budget.
+  if (atCap) {
+    return {
+      ...outcome,
+      retaliationAttacks: [],
+      retaliationDamage: 0,
+      retaliationHeroDamage: 0,
+      retaliationHeroAttacks: [],
+      retaliationCount: 0,
+    };
+  }
   if (simultaneous) return outcome;
   if (!retaliatorKilled && !retaliatorRouted) return outcome;
   return {
