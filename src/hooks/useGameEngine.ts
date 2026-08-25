@@ -3,7 +3,7 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
-import { computeEffectiveMovement } from '@/lib/unitStats';
+import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { applyFormationChange } from '@/lib/formationCost';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { applyMoveCost, applyMpSpend, applyHeroMoveCost, applyHeroMpSpend } from '@/lib/moveCost';
@@ -735,17 +735,23 @@ export function useGameEngine({
       const heroActionsPerTurn = getSetting('hero_actions_per_turn', 5);
       for (const unit of args.units) {
         if (unit.isDeleted || !activeTeams.has(unit.team)) continue;
-        const actionsTo = unit.isHero ? heroActionsPerTurn : actionsPerTurn;
+        // Heroes refresh to FULL MP + 5 actions; units refresh to 0 MP + 2 actions
+        // (units materialize MP from actions when they move).
+        const hero = unit.isHero;
+        const mpTo = hero
+          ? computeEffectiveMovement(unit, getFormationMultiplier(args.formationsMap, unit.currentFormation, 'movement_multiplier'))
+          : turnStartMp;
+        const actionsTo = hero ? heroActionsPerTurn : actionsPerTurn;
         const changes: { field: string; from: any; to: any }[] = [
-          { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: turnStartMp },
+          { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: mpTo },
           { field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsTo },
         ];
-        if (!unit.isHero) {
+        if (!hero) {
           changes.push({ field: 'attacksUsed', from: unit.attacksUsed ?? 0, to: 0 });
         }
         subSteps.push({
           type: 'END_TURN',
-          description: `${unit.unitName} refreshed (${turnStartMp} MP, ${actionsTo} actions)`,
+          description: `${unit.unitName} refreshed (${mpTo} MP, ${actionsTo} actions)`,
           unitId: unit.id,
           changes,
         });

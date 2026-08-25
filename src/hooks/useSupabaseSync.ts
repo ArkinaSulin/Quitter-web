@@ -373,7 +373,11 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       currentAc: shieldDroppedAtSpawn ? (template.baselineAc || 10) - 2 : (template.baselineAc || 10),
       weaponString: template.weaponString || '',
       movementPoints: template.movementPoints || 3,
-      movementPointsAvailable: getSetting('turn_start_mp', 0),
+      // Units spawn at 0 MP (actions materialize pools); heroes spawn with FULL MP
+      // (their whole movement up front) + their full action count.
+      movementPointsAvailable: template.isHero
+        ? (template.movementPoints || 3)
+        : getSetting('turn_start_mp', 0),
       aggressiveness: template.aggressiveness || 3,
       baseMorale: template.baseMorale || 3,
       currentMoraleModifier: 0,
