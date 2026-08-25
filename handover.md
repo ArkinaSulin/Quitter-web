@@ -1,5 +1,14 @@
 # Handover — 2026-08-03
 
+## Spelljammer module design docs + Archfar's Shipyard admin entry point (2026-08-24)
+**Files:** `.scratch/spelljammer-mod/spec.md` (new), `HANDBOOK.md` (§17 + §14.2/§14.3), `supabase/migrations/059_ship_editor_access.sql` (new), `src/hooks/useProfile.ts`, `src/components/Lobby.tsx`, `AGENTS.md`
+
+- **Spelljammer design locked** (see `.scratch/spelljammer-mod/spec.md` + HANDBOOK §17): ships are hero-like (full actions, full movement, no retaliation/morale/rout, no 5-attack cap — rate of fire = weapons × loading × crew). **Sub-turn toggle**: OFF = ships as ground combatants on normal scenarios; ON = space scenario — turn splits into 5 segments, 1 action/hero/segment, per-action undo, reloads tick at segment end. Movement decided on the fly (no plotting): Helm action moves up to current speed, Propulsion Surplus (thrust − mass) gates speed-step changes, universal cap Speed 10 (12 Overthrust), min-straight `speed/3`. Stations (Sails/Rudder/Weapons/Helm/Bridge/Engineering) + crew reserve automation with ready-reminders. **Damage**: subsystem units each with own HP, hit = uniform random pick from the **alive** component list, double-wound (unit HP **and** Ship HP), ship-wide damage threshold (hit above it spills to the manning hero), Ship HP 0 = destroyed regardless of stations, heroes never auto-die → fight hands off to the D&D VTT. Crits: targeted subsystem (Helm/Bridge protected) or 2× random. Captain's Int commands (redo/tactical boost; negative = soft "order lost"). Boarding explicitly out of scope.
+- **Migration 059 — apply to the DB.** `access_roles.can_view_ship_editor` + `can_use_ship_editor` (BOOLEAN default false), seeded **true only for admin**; `user_has_access` extended with `view_ship_editor` / `ship_editor` cases (mirrors 050).
+- **`useProfile`**: `Access.canViewShipEditor` / `canUseShipEditor` added to the matrix (select/fallback/EMPTY_ACCESS).
+- **`Lobby`**: admin-only **"Archfar's Shipyard"** button (left panel, `canViewShipEditor`) opens a placeholder "under construction" modal; `canUseShipEditor` will gate the future ship builder.
+- Design-docs only + entry point: no ship entities/combat/sub-turn engine yet. 314 tests; `tsc --noEmit` clean.
+
 ## Move highlight reflects leftover MP: full pool only when MP is exhausted (2026-08-18)
 **Files:** `src/lib/moveCost.ts` + test, `src/components/ScenarioMap/ScenarioMap.tsx`
 

@@ -23,6 +23,8 @@ interface AccessRow {
   can_create_scenario: boolean;
   can_join_game: boolean;
   can_view_replay: boolean;
+  can_view_ship_editor: boolean;
+  can_use_ship_editor: boolean;
 }
 
 export interface Access {
@@ -31,9 +33,11 @@ export interface Access {
   canCreateScenario: boolean;
   canJoinGame: boolean;
   canViewReplay: boolean;
+  canViewShipEditor: boolean;
+  canUseShipEditor: boolean;
 }
 
-const EMPTY_ACCESS: Access = { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false };
+const EMPTY_ACCESS: Access = { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false, canViewShipEditor: false, canUseShipEditor: false };
 
 let accessCache: Record<string, AccessRow> | null = null;
 
@@ -41,7 +45,7 @@ async function loadAccessMatrix(): Promise<Record<string, AccessRow>> {
   if (accessCache) return accessCache;
   const { data } = await supabase
     .from('access_roles')
-    .select('role, can_use_unit_editor, can_view_unit_editor, can_create_scenario, can_join_game, can_view_replay');
+    .select('role, can_use_unit_editor, can_view_unit_editor, can_create_scenario, can_join_game, can_view_replay, can_view_ship_editor, can_use_ship_editor');
   accessCache = (data || []).reduce((acc: Record<string, AccessRow>, row: any) => {
     acc[row.role] = {
       can_use_unit_editor: !!row.can_use_unit_editor,
@@ -49,6 +53,8 @@ async function loadAccessMatrix(): Promise<Record<string, AccessRow>> {
       can_create_scenario: !!row.can_create_scenario,
       can_join_game: !!row.can_join_game,
       can_view_replay: !!row.can_view_replay,
+      can_view_ship_editor: !!row.can_view_ship_editor,
+      can_use_ship_editor: !!row.can_use_ship_editor,
     };
     return acc;
   }, {});
@@ -57,13 +63,15 @@ async function loadAccessMatrix(): Promise<Record<string, AccessRow>> {
 
 function accessForRole(role: ProfileRole): Access {
   const row = (accessCache || {})[role || 'pending'];
-  if (!row) return { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false };
+  if (!row) return { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false, canViewShipEditor: false, canUseShipEditor: false };
   return {
     canUseUnitEditor: row.can_use_unit_editor,
     canViewUnitEditor: row.can_view_unit_editor,
     canCreateScenario: row.can_create_scenario,
     canJoinGame: row.can_join_game,
     canViewReplay: row.can_view_replay,
+    canViewShipEditor: row.can_view_ship_editor,
+    canUseShipEditor: row.can_use_ship_editor,
   };
 }
 

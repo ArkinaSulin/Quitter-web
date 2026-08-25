@@ -816,11 +816,15 @@ The `formations` lookup table has four modifier columns. All are applied on-the-
 - Web Worker (skeleton only, not integrated)
 - Mobile Responsiveness (not a priority)
 - Troop count soft caps per size category (Medium 80, Large 20, Huge 6 – enforcement style pending)
+- Spelljammer module implementation (spec: `.scratch/spelljammer-mod/spec.md`): ship entity + subsystem tables, `shipMoveCost`/`shipCombat`/`shipStats` libs, `useShipEngine`, ShipPanel UI, sub-turn toggle engine setting
+- Archfar's Shipyard ship builder (button + placeholder modal shipped; builder gated by `canUseShipEditor`)
 
 ### 14.3 Known Gaps
 - Web Worker: Skeleton only; not integrated.
 - Mobile Responsiveness: Not a priority.
 - TokenRenderer flickering: Can be optimized with debounce.
+- Spelljammer: design + docs + admin access caps are in place; no ship entities, ship combat, or sub-turn engine yet.
+- Boarding combat is explicitly out of scope — hand off to a dedicated D&D VTT.
 
 ## 15. Code Examples & Patterns
 
@@ -1102,3 +1106,67 @@ Casualties are represented as hollow triangles.
   - Drawn via `drawHeart(ctx, x, y, size, fillColor?)` — accepts optional `fillColor` string.
 - Shield Wall formation: shields drawn behind front-row dots using `ctx.ellipse` with separate X/Y radii for a wider, flatter shape.
 - Unit Name (`unitName`): Along the lower edge of the token, flush with the bottom (1px padding), in white with dark shadow.
+
+## 17. Spelljammer Module (Design Document)
+
+All spelljammer rules live in this chapter and in the spec at `.scratch/spelljammer-mod/spec.md`. Ships are **hero-like** entities: full actions, full movement, **no retaliation, no morale, no rout, no formation economy**. They never enter the ground-game 5-attack+retaliation cap — rate of fire is bounded by weapons × loading × crew.
+
+### 17.1 Mode Toggle
+
+- **Sub-turn toggle OFF** (default): normal QuiTTER. Spelljammers on a planetary map are **ground combatants** — big units on the shared map alongside troops, fought under normal rules with their own movement rules (§17.3) and no retaliation.
+- **Sub-turn toggle ON**: a **space scenario**. All heroes are aboard ships (one or multiple per ship). The turn splits into **5 segments**; each hero gets **1 action per segment** (5 × 1 = their 5 full actions). Ship movement is decided **on the fly** each segment — no pre-plotted vectors.
+- Land and space battles are played as **separate scenarios**; the game never simulates parallel fronts. The war is wherever the heroes are.
+
+### 17.2 Segment Economy
+
+- One game turn = 5 segments (each = one D&D round of the merged turn).
+- Each hero takes **1 action per segment**: *personal* (fight, cast, move on deck) or *station duty* (Helm, Weapons, Repairs, Engineering, Sails, Rudder, Bridge).
+- **Undo/redo are per-action within a segment**; segment boundaries only pace ship movement and reload counters.
+- Reload/repair counters tick at **segment end** (space) / **turn end** (planet map).
+- Some duties are **full-turn long** (repair, engineering speed boost): the hero commits for all 5 segments.
+
+### 17.3 Ship Movement
+
+- A ship occupies a **single core hex** for movement/distance/collision; bow/stern art may overhang but tactics use the core hex.
+- **Speed state**: current speed (hexes per segment-action). A **Helm action** moves the ship up to its current speed in hexes along its facing.
+- **Propulsion Surplus = Thrust Points − Mass** governs speed-step changes per Helm action: light vessels multi-step jumps (+3/action), heavy vessels +0.5–1 step/action.
+- **Universal speed cap**: Speed 10 (Speed 12 via Overthrust), independent of class.
+- **Mandatory straight movement**: between consecutive 60° turns the ship must move `current speed / 3` straight hexes. Turning reuses the existing vertex-facing rules (no MP charge — the speed commitment replaces it).
+
+### 17.4 Stations & Crew
+
+- **Stations** (each a subsystem with units): **Sails** (speed boost), **Rudder** (turning boost), **Weapons** (firing), **Helm** (helmsman), **Bridge** (Captain's commands), **Engineering** (repair / speed-boost duty).
+- A hero mans a station by spending their segment action. **Crew reserve**: players assign NPC crew from a shared per-ship pool to automate loading (e.g. crew loads a ballista over 3 segments → "ballista ready" reminder message).
+- **Firing a loaded weapon requires an active command action** (PC or NPC officer). Ready weapons show a **firing-arc fan overlay**.
+
+### 17.5 Damage & Destruction
+
+- **Ship HP** = ship integrity pool, class-determined, **independent** of station HP. At 0 the ship is destroyed **regardless of remaining station HP**.
+- **Subsystem units**: every subsystem (Sails, Rudder, Weapons, Hull Core, …) is built from *units*, each with **its own HP**. At 0 a unit is **removed from the component list** and ship performance is **recalculated** (lost Sail = −1 propulsion, lost Rudder = −1 turning, lost weapon unit = weapon gone, lost Hull Core unit = −Ship HP max).
+- **Hit selection**: a hit picks a component **uniformly at random from the alive component list** (6 Sails units → 60% of hits). Not spread — the same component can be hit repeatedly; destroyed components are never hit.
+- **Double-wound**: every hit damages the struck subsystem unit's HP **and** Ship HP by the same amount → ships die well before their stations.
+- **Ship-wide damage threshold** (one per ship, not per station): a hit **exceeding** it spills the same damage to the **hero manning the struck station** (hero HP). Under-threshold hits are absorbed. Unstationed heroes take no spill.
+- **Crits**: attacker chooses a **targeted subsystem strike** (explicit subsystem; Helm and Bridge are protected) or **random double damage** (proportional table ×2).
+- **Ship destroyed**: ship removed from the sim regardless of stations; heroes do **not** auto-die — if their HP survives, play continues in the D&D VTT (optional: a Helm eject action lifeboats heroes to an adjacent hex).
+
+### 17.6 Captain's Command
+
+- Captain (Bridge) manages crew efficiency via **Intelligence modifier** (baseline Int 16 / +3).
+- **Positive** (+1/point above baseline): 1 extra **Command Action** per turn per point — **Reroll/Redo** (a PC redoes their last action, via the undo/redo system) or **Tactical Boost** (acceleration, tight turning, or an immediate extra weapon fire).
+- **Negative** (−1/point below baseline): 1 random PC action **fails softly** per point — cancelled with a **red notification** ("order lost"); never a hard block or rolled failure.
+
+### 17.7 Equipment Modifiers
+
+- **Seasoned Crew**: station crew requirement ±20% (can reduce a weapon's crew by 1).
+- **Well-Tuned Gears**: weapon reload −1 sub-turn.
+- **Scheduled Maintenance**: rudder responsiveness +1 (min-straight hexes −1).
+- **Pulley System / Enhanced Rigging**: Propulsion Surplus +1.
+
+### 17.8 Access Capabilities (Archfar's Shipyard)
+
+- `access_roles.can_view_ship_editor` / `can_use_ship_editor` (both **admin-only**, migration 059). `user_has_access('view_ship_editor' | 'use_ship_editor')` extended accordingly.
+- **Archfar's Shipyard** button in the Lobby (visible with `canViewShipEditor`) — placeholder modal in v1; the builder itself is future work gated by `canUseShipEditor`.
+
+### 17.9 Future Implementation Map
+
+All spelljammer rules live in dedicated modules (see spec): `src/lib/shipMoveCost.ts`, `src/lib/shipCombat.ts`, `src/lib/shipStats.ts`, `src/types/ship.ts` + `shipMappers.ts`, `src/hooks/useShipEngine.ts`, `src/components/ScenarioMap/ShipPanel.tsx`, `src/components/Shipyard/`; planned tables `ships`, `ship_subsystems`, `ship_weapons`, `ship_crew`, `ship_stations`. The random component pick rides the command log so undo restores the identical outcome.
