@@ -1,5 +1,5 @@
 import { Unit, Hex, Formation, hexDistance } from '@/types/gameProtocol';
-import { computeThreatRating } from './unitMorale';
+import { computeThreatRating, isUnitRouted } from './unitMorale';
 import { getRetaliationMode, getEffectivePosition, beAttackedModifier, beAttackedModifierNote, Arc } from './formationRules';
 import { getSetting } from './settingsCache';
 import { getRowCapacityBase } from './unitStats';
@@ -59,11 +59,11 @@ export function determineCombatPosition(
  *   - otherwise the raw geometric position is used.
  */
 export function getEffectiveCombatPosition(
-  unit: Pick<Unit, 'isHero' | 'currentFormation' | 'isRouting'>,
+  unit: Pick<Unit, 'isHero' | 'currentFormation'>,
   rawPosition: 'front' | 'flank' | 'rear',
 ): 'front' | 'flank' | 'rear' {
   if (unit.isHero || unit.currentFormation === 'Hero') return 'front';
-  if (unit.isRouting || unit.currentFormation === 'Routed') return 'rear';
+  if (unit.currentFormation === 'Routed') return 'rear';
   if (unit.currentFormation === 'Scattered') return 'flank';
   return rawPosition;
 }
@@ -81,7 +81,7 @@ export function determineRetaliationPosition(defenderFormation: string, rawPosit
  * (e.g. callers that don't load the formations table).
  */
 export function resolveRetaliationPosition(
-  unit: Pick<Unit, 'isHero' | 'currentFormation' | 'isRouting'>,
+  unit: Pick<Unit, 'isHero' | 'currentFormation'>,
   form: Formation | null | undefined,
   rawPosition: 'front' | 'flank' | 'rear',
 ): 'front' | 'flank' | 'rear' {
@@ -244,7 +244,7 @@ export function resolveCombatSequence(
   // steadies the troops — no aggressiveness roll).
   let aggrPassed = true;
   let aggrRoll = 1;
-  if (!attacker.isHero && !isRanged && !defender.isRouting && !isRearAttack && !attackerWeapon.noRetaliation && !attackerWeapon.freeAction && !attachedAttackerHero) {
+  if (!attacker.isHero && !isRanged && !isUnitRouted(defender) && !isRearAttack && !attackerWeapon.noRetaliation && !attackerWeapon.freeAction && !attachedAttackerHero) {
     const threat = Math.round(computeThreatRating(defender) / computeThreatRating(attacker));
     const penalty = Math.max(0, threat - 1);
     aggrRoll = Math.floor(rng() * 10) + 1;
@@ -278,15 +278,15 @@ export function resolveCombatSequence(
 
   // Routed units drop their shield (no formation to protect them) — effectively
   // -2 AC. Applies to both sides' AC when routing.
-  const defenderEffAc = defender.isRouting && defender.isShielded ? defender.currentAc - 2 : defender.currentAc;
-  const attackerEffAc = attacker.isRouting && attacker.isShielded ? attacker.currentAc - 2 : attacker.currentAc;
+  const defenderEffAc = isUnitRouted(defender) && defender.isShielded ? defender.currentAc - 2 : defender.currentAc;
+  const attackerEffAc = isUnitRouted(attacker) && attacker.isShielded ? attacker.currentAc - 2 : attacker.currentAc;
 
   // Who strikes first? A defender attacked from the rear, a routed defender, noRetaliation
   // weapons, and ranged attacks all let the attacker strike first (the defender can't react).
   let strikerFirst: 'attacker' | 'defender';
   if (attackerWeapon.noRetaliation || isRanged || isRearAttack) {
     strikerFirst = 'attacker';
-  } else if (defender.isRouting) {
+  } else if (isUnitRouted(defender)) {
     strikerFirst = 'attacker';
   } else {
     const attackerReach = attackerWeapon.is_reach;
@@ -374,7 +374,7 @@ export function resolveCombatSequence(
 
   // --- Retaliation ---
   if (strikerFirst === 'attacker') {
-    if (!defender.isRouting && !attackerWeapon.noRetaliation && !(isRanged && !defenderForm?.retaliate_vs_ranged) && !isRearAttack) {
+    if (!isUnitRouted(defender) && !attackerWeapon.noRetaliation && !(isRanged && !defenderForm?.retaliate_vs_ranged) && !isRearAttack) {
       const rawPosition = determineCombatPosition(attacker.hex, defender.hex, defender.facing);
       const retPos = resolveRetaliationPosition(defender, defenderForm, rawPosition);
       if (retPos !== 'rear') {
@@ -409,7 +409,7 @@ export function resolveCombatSequence(
       }
     }
   } else {
-    if (!attacker.isRouting) {
+    if (!isUnitRouted(attacker)) {
     let attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false, attackerWeapon.numberOfAttacks ?? 1);
     // Defender's formation vulnerability boosts the attacker's retaliation.
     const retMod = beAttackedModifier(defenderForm, isRanged);

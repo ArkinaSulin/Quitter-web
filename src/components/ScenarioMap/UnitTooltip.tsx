@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
-import { computeEffectiveMoraleModifier, computeThreatRating, calcWounds, calcIsolation, calcEnemyThreats } from '@/lib/unitMorale';
+import { computeEffectiveMoraleModifier, computeThreatRating, calcWounds, calcIsolation, calcEnemyThreats, isUnitRouted } from '@/lib/unitMorale';
 import { computeEffectiveAc, computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty } from '@/lib/unitStats';
 import { parseWeapons } from '@/lib/weaponParser';
 import { heroMovePerAction } from '@/lib/moveCost';
@@ -89,7 +89,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
             ? <><span className="text-gray-400">MOR:</span><span className="text-yellow-400">fearless</span></>
             : <><span className="text-gray-400">MOR:</span><span className="text-yellow-400">{morTotal} = {unit.baseMorale} {effectiveMoraleModifier >= 0 ? '+ ' : '- '}{Math.abs(effectiveMoraleModifier)}{formationMorMod !== 0 ? ` (incl. formation ${formationMorMod >= 0 ? '+' : ''}${formationMorMod})` : ''}</span></>
         )}
-        <span className="text-gray-400">Threat:</span><span>{unit.isRouting ? `0 routed, was ${threatRating.toFixed(2)}` : threatRating.toFixed(2)}</span>
+        <span className="text-gray-400">Threat:</span><span>{isUnitRouted(unit) ? `0 routed, was ${threatRating.toFixed(2)}` : threatRating.toFixed(2)}</span>
       </div>
 
       <div className="border-t border-gray-600 my-1.5" />

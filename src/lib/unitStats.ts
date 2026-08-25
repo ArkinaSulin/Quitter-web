@@ -1,6 +1,7 @@
 import { Unit, Formation, SizeCategory } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
 import { getBandSetting, SettingBand } from '@/lib/settingsCache';
+import { isUnitRouted } from '@/lib/unitMorale';
 
 // Code fallback matches migration 042 seed — the size_categories table row wins
 // in getRowCapacity; this is the fallback base for unknown categories.
@@ -59,10 +60,10 @@ export function getVisualDotsPerRow(formationsMap: Record<string, Formation>, ro
  * unaffected. Returns `{ penalty, reason }` so the UI can explain why.
  */
 export function getShieldPenalty(
-  unit: Pick<Unit, 'isShielded' | 'weaponString' | 'activeWeaponIndex' | 'isRouting'>,
+  unit: Pick<Unit, 'isShielded' | 'weaponString' | 'activeWeaponIndex' | 'currentFormation'>,
 ): { penalty: number; reason?: 'two-handed' | 'routing' } {
   if (!unit.isShielded) return { penalty: 0 };
-  if (unit.isRouting) return { penalty: 2, reason: 'routing' };
+  if (isUnitRouted(unit)) return { penalty: 2, reason: 'routing' };
   const activeWeapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
   if (activeWeapon?.isTwoHanded) return { penalty: 2, reason: 'two-handed' };
   return { penalty: 0 };

@@ -9,6 +9,7 @@ import { nextLowerFormation } from '@/lib/formationCost';
 import { applyMoveCost, applyMpSpend, applyHeroMoveCost, applyHeroMpSpend } from '@/lib/moveCost';
 import { getSetting } from '@/lib/settingsCache';
 import { parseWeapons } from '@/lib/weaponParser';
+import { isUnitRouted } from '@/lib/unitMorale';
 import { useMessageSync } from '@/hooks/useMessageSync';
 import { ActionType, SubStep, CommandLogRow, UndoState, parseSubSteps } from '@/lib/commandLog';
 import { getActiveGroups, advanceTurn } from '@/lib/turnState';
@@ -446,7 +447,7 @@ export function useGameEngine({
         }
       }
 
-      if (unit.isRouting && formation !== 'Routed') {
+      if (isUnitRouted(unit) && formation !== 'Routed') {
         const effectiveMorale = unit.baseMorale + unit.currentMoraleModifier + (newForm?.morale_modifier ?? 0);
         if (effectiveMorale <= 0) {
           addMessage(`${unit.unitName} cannot rally — effective morale ${effectiveMorale}`);
@@ -535,14 +536,13 @@ export function useGameEngine({
   /** GM-only: manually set a unit to rout (no un-rout). Undoable via the log. */
   const setRouting = useCallback(
     async (unit: Unit): Promise<void> => {
-      if (unit.isRouting) return;
+      if (isUnitRouted(unit)) return;
       const subSteps: SubStep[] = [
         {
           type: 'ROUT',
           description: `${unit.unitName} routed (GM)`,
           unitId: unit.id,
           changes: [
-            { field: 'isRouting', from: false, to: true },
             { field: 'currentFormation', from: unit.currentFormation, to: 'Routed' },
           ],
         },

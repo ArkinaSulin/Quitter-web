@@ -143,7 +143,6 @@ export function TokenRenderer(props: TokenRendererProps) {
       currentMoraleModifier: currentMorale,
       baseAc: 10,
       currentAc: 10,
-      isRouting: isRouted,
       weaponString: '',
       templateId: null,
       currentTroopCount: troopCount,

@@ -33,7 +33,7 @@ import { UnitEditorModal } from './UnitEditorModal';
 import { PingLayer } from './PingLayer';
 import { drawToken, loadImage, SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
-import { computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, areHexesAdjacent } from '@/lib/unitMorale';
+import { computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, areHexesAdjacent, isUnitRouted } from '@/lib/unitMorale';
 import { supabase } from '@/lib/supabaseClient';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement } from '@/lib/unitStats';
 import { nextLowerFormation } from '@/lib/formationCost';
@@ -114,7 +114,7 @@ function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alliances: 
   const occupied = computeOccupiedHexes(allUnits);
   const threats = new Set<string>();
   for (const unit of allUnits) {
-    if (unit.isDeleted || unit.id === draggedUnitId || unit.attachedToUnitId || unit.isHero || unit.isRouting) continue;
+    if (unit.isDeleted || unit.id === draggedUnitId || unit.attachedToUnitId || unit.isHero || isUnitRouted(unit)) continue;
     const unitGroup = alliances[unit.team] || 'friendly';
     if (unitGroup === draggedGroup) continue;
     for (const dir of HEX_DIRS) {
@@ -732,7 +732,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   function getOverlayForUnit(unit: Unit): Record<string, string> {
     const result: Record<string, string> = {};
-    if (unit.isHero || unit.isRouting || unit.currentFormation === 'Scattered') return result;
+    if (unit.isHero || isUnitRouted(unit) || unit.currentFormation === 'Scattered') return result;
     for (const dir of HEX_DIRS) {
       const nq = unit.hex.q + dir.q;
       const nr = unit.hex.r + dir.r;
@@ -886,7 +886,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         : { ...target, currentUnitHp: retaliatorFirstStrikeHp };
       retaliatorRouted = !retaliatorKilled
         && !retaliatorPreMoraleUnit.ignoreMoraleChecks
-        && !retaliatorPreMoraleUnit.isRouting
+        && !isUnitRouted(retaliatorPreMoraleUnit)
         && (retaliatorPreMoraleUnit.baseMorale
           + retaliatorPreMoraleUnit.currentMoraleModifier
           + computeEffectiveMoraleModifier(retaliatorPreMoraleUnit, units, alliances, formationsMap[retaliatorPreMoraleUnit.currentFormation] ?? null) <= 0);
@@ -1085,7 +1085,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         description: `${name} ${verb} (${reason})`,
         unitId: unit.id,
         changes: [
-          { field: 'isRouting', from: false, to: true },
           { field: 'currentFormation', from: unit.currentFormation, to: 'Routed' },
         ],
       }], `${name} ${verb}!`, { chained: true });
@@ -1207,7 +1206,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
     // Area-effect weapons (magic radius > 0) open the shared magic targeting window.
     if (weapon.magicDimension > 0) {
-      if (attacker.isRouting) {
+      if (isUnitRouted(attacker)) {
         addMessage(`${attacker.unitName} (Routed) cannot cast spells`);
         return;
       }
@@ -1248,7 +1247,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const attackerForm = formationsMap[attacker.currentFormation];
     const targetPos = determineCombatPosition(target.hex, attacker.hex, attacker.facing);
     if (!isRangedThisAttack) {
-      if (attacker.isRouting) {
+      if (isUnitRouted(attacker)) {
         addMessage(`${attacker.unitName} (Routed) cannot initiate attacks`);
         return;
       }
@@ -1431,7 +1430,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         description: `${name} ${verb} (${reason})`,
         unitId: unit.id,
         changes: [
-          { field: 'isRouting', from: false, to: true },
           { field: 'currentFormation', from: unit.currentFormation, to: 'Routed' },
         ],
       }], `${name} ${verb}!`, { chained: true });

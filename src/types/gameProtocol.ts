@@ -135,7 +135,6 @@ export interface Unit {
   hex: Hex;
   facing: number;
   team: string;
-  isRouting: boolean;
   hidden: boolean;
   isDeleted: boolean;                  // soft delete — reversed by undo
   ignoreMoraleChecks: boolean;         // unit never routs (undead, heroes, etc.)

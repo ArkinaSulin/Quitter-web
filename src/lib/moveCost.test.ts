@@ -7,7 +7,6 @@ const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
 const formedUnit = {
   hex: h(0, 0),
   facing: 0,
-  isRouting: false,
   currentFormation: 'Close Order',
 };
 
@@ -107,7 +106,7 @@ describe('computeReachableMap — formed units', () => {
 });
 
 describe('computeReachableMap — routed / scattered', () => {
-  const looseUnit = { ...formedUnit, isRouting: true };
+  const looseUnit = { ...formedUnit, currentFormation: 'Routed' };
 
   it('moves in any direction at 1 MP per hex (no facing)', () => {
     const map = computeReachableMap(looseUnit, 4, new Set(), new Set());

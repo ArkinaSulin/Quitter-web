@@ -57,7 +57,6 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     hex: { q: 0, r: 0, s: 0 },
     facing: 0,
     team: 'blue',
-    isRouting: false,
     hidden: false,
     isDeleted: false,
     isCharging: false,
@@ -238,10 +237,10 @@ describe('determineRetaliationPosition', () => {
 });
 
 describe('getEffectiveCombatPosition', () => {
-  const hero = { isHero: true, currentFormation: 'Hero', isRouting: false };
-  const scattered = { isHero: false, currentFormation: 'Scattered', isRouting: false };
-  const routed = { isHero: false, currentFormation: 'Routed', isRouting: true };
-  const formed = { isHero: false, currentFormation: 'Open Order', isRouting: false };
+  const hero = { isHero: true, currentFormation: 'Hero' };
+  const scattered = { isHero: false, currentFormation: 'Scattered' };
+  const routed = { isHero: false, currentFormation: 'Routed' };
+  const formed = { isHero: false, currentFormation: 'Open Order' };
 
   it('hero: all sides are front (no behind)', () => {
     expect(getEffectiveCombatPosition(hero, 'front')).toBe('front');
@@ -267,8 +266,8 @@ describe('getEffectiveCombatPosition', () => {
     expect(getEffectiveCombatPosition(formed, 'rear')).toBe('rear');
   });
 
-  it('treats isRouting flag alone as routed', () => {
-    expect(getEffectiveCombatPosition({ ...formed, isRouting: true }, 'front')).toBe('rear');
+  it('treats the Routed formation as routed', () => {
+    expect(getEffectiveCombatPosition({ ...formed, currentFormation: 'Routed' }, 'front')).toBe('rear');
   });
 });
 
@@ -428,7 +427,7 @@ describe('resolveCombatSequence', () => {
 
   it('AGR skips when target is routed', () => {
     const lowAggrAttacker = { ...attacker, aggressiveness: 1 };
-    const result = callCombat(lowAggrAttacker, { ...defender, isRouting: true });
+    const result = callCombat(lowAggrAttacker, { ...defender, currentFormation: 'Routed' });
     expect(result.aggrPassed).toBe(true);
   });
 
@@ -545,7 +544,7 @@ describe('resolveCombatSequence', () => {
   it('long-range shots beyond the weapon range are made at disadvantage (roll two, take lower)', () => {
     // Hero attacker at distance 4, weapon range 2 / maxRange 6 → disadvantage.
     const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 } };
-    const farDefender = { ...defender, hex: { q: 0, r: -4, s: 4 }, currentAc: 10, isRouting: false };
+    const farDefender = { ...defender, hex: { q: 0, r: -4, s: 4 }, currentAc: 10 };
     const rangedWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1, range: 2, maxRange: 6 };
     const seq = [0.7, 0.3]; // roll1 = 15, roll2 = 7 → taken 7
     const rng = () => seq.shift() ?? 0.5;
@@ -558,7 +557,7 @@ describe('resolveCombatSequence', () => {
   it('shots within range are not disadvantaged', () => {
     // Distance 1 ≤ range 2 → a single roll, normal hit.
     const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 } };
-    const nearDefender = { ...defender, hex: { q: 0, r: -1, s: 1 }, currentAc: 10, isRouting: false };
+    const nearDefender = { ...defender, hex: { q: 0, r: -1, s: 1 }, currentAc: 10 };
     const rangedWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1, range: 2, maxRange: 6 };
     const seq = [0.7, 0.5]; // single roll = 15 → hit; 0.5 feeds the damage roll
     const rng = () => seq.shift() ?? 0.5;
@@ -571,7 +570,7 @@ describe('resolveCombatSequence', () => {
   it('a melee-range weapon thrown beyond reach (range 1, maxRange 3) is disadvantaged', () => {
     // Distance 2 > range 1, ≤ maxRange 3 → disadvantage (two rolls, take lower).
     const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 } };
-    const midDefender = { ...defender, hex: { q: 0, r: -2, s: 2 }, currentAc: 10, isRouting: false };
+    const midDefender = { ...defender, hex: { q: 0, r: -2, s: 2 }, currentAc: 10 };
     const thrownWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1, range: 1, maxRange: 3 };
     const seq = [0.7, 0.3]; // roll1 = 15, roll2 = 7 → taken 7
     const rng = () => seq.shift() ?? 0.5;
@@ -625,13 +624,13 @@ describe('resolveCombatSequence', () => {
   });
 
   it('routed defender never strikes first', () => {
-    const routedDef = { ...defender, isRouting: true };
+    const routedDef = { ...defender, currentFormation: 'Routed' };
     const result = callCombat(attacker, routedDef, { ...aw, is_reach: false }, { ...dw, is_reach: true });
     expect(result.strikerFirst).toBe('attacker');
   });
 
   it('routed defender cannot retaliate', () => {
-    const routedDefender = { ...defender, isRouting: true };
+    const routedDefender = { ...defender, currentFormation: 'Routed' };
     const result = callCombat(attacker, routedDefender);
     expect(result.aggrPassed).toBe(true);
     expect(result.firstStrikeCount).toBeGreaterThan(0);
@@ -639,7 +638,7 @@ describe('resolveCombatSequence', () => {
   });
 
   it('routed attacker cannot retaliate when defender strikes first', () => {
-    const routedAttacker = { ...attacker, isRouting: true };
+    const routedAttacker = { ...attacker, currentFormation: 'Routed' };
     const result = callCombat(routedAttacker, defender, { ...aw, is_reach: false }, { ...dw, is_reach: true });
     expect(result.strikerFirst).toBe('defender');
     expect(result.firstStrikeCount).toBeGreaterThan(0);
@@ -662,7 +661,7 @@ describe('resolveCombatSequence', () => {
   });
 
   it('Routed defender gives no retaliation from any position', () => {
-    const routedDef = { ...defender, isRouting: true, currentFormation: 'Routed' };
+    const routedDef = { ...defender, currentFormation: 'Routed' };
     const result = callCombat(attacker, routedDef);
     expect(result.retaliationDamage).toBe(0);
   });

@@ -28,6 +28,15 @@ const DEFAULT_TROOP_BANDS: SettingBand[] = [
   { min: 0, value: 0 },
 ];
 
+/**
+ * A unit is routing when it sits in the 'Routed' formation — the single source
+ * of truth. There is no separate routing flag: every rout writes the formation
+ * (and only the formation), so the flag was removed as redundant.
+ */
+export function isUnitRouted(unit: { currentFormation?: string }): boolean {
+  return unit?.currentFormation === 'Routed';
+}
+
 export function computeThreatRating(unit: Unit): number {
   const levelComp = getBandSetting('threat_increment_level', DEFAULT_LEVEL_BANDS, unit.level);
   // Threat increment by size is intentionally NOT a setting — fixed formula.
@@ -43,7 +52,7 @@ export function computeThreatRating(unit: Unit): number {
  * never impose threat, but they can still be subject to it.
  */
 export function isInKillZone(unit: Unit, hex: Hex): boolean {
-  if (unit.isDeleted || unit.isRouting) return false;
+  if (unit.isDeleted || isUnitRouted(unit)) return false;
   if (unit.currentFormation === 'Scattered' || unit.currentFormation === 'Routed') return false;
   const dq = hex.q - unit.hex.q;
   const dr = hex.r - unit.hex.r;
@@ -89,7 +98,7 @@ export function calcEnemyThreats(
   let totalSum = 0;
 
   for (const other of units) {
-    if (other.isDeleted || other.id === unit.id || other.isRouting) continue;
+    if (other.isDeleted || other.id === unit.id || isUnitRouted(other)) continue;
     const otherAlliance = alliances[other.team] || 'friendly';
     if (otherAlliance === unitAlliance) continue;
     if (isInKillZone(other, unit.hex)) {
@@ -136,7 +145,7 @@ export function shouldRout(
   alliances: Record<string, AllianceGroup>,
   formation: Formation | null = null
 ): boolean {
-  if (unit.ignoreMoraleChecks || unit.isRouting) return false;
+  if (unit.ignoreMoraleChecks || isUnitRouted(unit)) return false;
   const effectiveMod = unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, units, alliances, formation);
   return unit.baseMorale + effectiveMod <= 0;
 }

@@ -1,5 +1,6 @@
 import { Hex, Unit } from '@/types/gameProtocol';
 import { getSetting } from '@/lib/settingsCache';
+import { isUnitRouted } from '@/lib/unitMorale';
 
 export interface MovePathEntry {
   cost: number;
@@ -274,13 +275,13 @@ export function computeChargeReachable(
  * per hex (no facing) — always white.
  */
 export function computeReachableMap(
-  unit: { hex: Hex; facing: number; isRouting: boolean; currentFormation: string; isHero?: boolean; mountId?: string | null; mountName?: string },
+  unit: { hex: Hex; facing: number; currentFormation: string; isHero?: boolean; mountId?: string | null; mountName?: string },
   maxMP: number,
   occupied: Set<string>,
   threatHexes: Set<string>,
 ): Map<string, MovePathEntry> {
   const result = new Map<string, MovePathEntry>();
-  const loose = unit.isRouting || unit.currentFormation === 'Scattered' || unit.currentFormation === 'Hero' || unit.isHero === true;
+  const loose = isUnitRouted(unit) || unit.currentFormation === 'Scattered' || unit.currentFormation === 'Hero' || unit.isHero === true;
 
   if (loose) {
     const visited = new Set<string>();

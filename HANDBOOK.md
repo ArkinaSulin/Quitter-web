@@ -337,7 +337,7 @@ User → UnitEditor → Supabase (unit_templates, lookups)
   - Phalanx: pikes drawn behind dots.
   - Shield Wall: shields drawn behind front row dots.
   - Mounted Units: Rendered as triangles when mount_id is not null.
-  - Routed Flag: White flag icon when isRouting = true.
+  - Routed Flag: White flag icon when the unit is in the `Routed` formation (`currentFormation === 'Routed'` — the single source of truth; there is no separate routing flag).
 - Morale Hearts: 2 rows of 5, side-touching, filled based on morale (non-hero only). Positioned in bottom 1/3 area, centered.
 - Action Badge: A small square at the token's right edge, sitting directly above the bottom info band (non-hero) or above the HP bar (hero, bottom-right). Shows remaining `actionsAvailable` as a bold number color-coded by remaining count: white = full (≥2), yellow = 1, red = 0. Skips attached heroes and units with no `actionsAvailable`.
 - Hero Rendering: Custom image centered in top 2/3, HP bar (`currentUnitHp / maxUnitHp`, left 75%) + HP numbers (right 25%), name at bottom edge.
@@ -618,7 +618,7 @@ situationalModifier = wounds + isolatedPenalty - enemyThreats + formationMoraleM
 **Routing Trigger — Cascade:**
 - After a MOVE action, a synthetic post-move state is built (mover placed at target hex, all other units unchanged). The mover PLUS every non-hero, non-routing unit **adjacent** to the target hex is evaluated for routing.
 - For each candidate whose `effectiveMorale ≤ 0`, a separate `ROUT` entry is recorded with `chained: true`, linking each ROUT to the preceding MOVE. All ROUT entries spawned by one MOVE are `chained=true`, so Ctrl+Z unwinds the entire cascade (MOVE → ROUT(A) → ROUT(B)) as one batch.
-- Each ROUT sets `isRouting=true` and `currentFormation='Routed'`.
+- Each ROUT sets `currentFormation='Routed'` — the routing state is derived from the formation (no separate `isRouting` flag).
 - Heroes and already-routing units skip evaluation entirely.
 
 ### 7.5 Routing & Pursuit

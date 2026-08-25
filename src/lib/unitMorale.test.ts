@@ -52,7 +52,6 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     hex: { q: 0, r: 0, s: 0 },
     facing: 0,
     team: 'blue',
-    isRouting: false,
     hidden: false,
     isDeleted: false,
     isCharging: false,
@@ -131,7 +130,7 @@ describe('isInKillZone', () => {
 
   it('Scattered and Routed formations have no kill zone', () => {
     const scattered = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, currentFormation: 'Scattered' });
-    const routed = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, currentFormation: 'Routed', isRouting: true });
+    const routed = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, currentFormation: 'Routed' });
     expect(isInKillZone(scattered, DIR_HEXES[4])).toBe(false);
     expect(isInKillZone(routed, DIR_HEXES[4])).toBe(false);
   });
@@ -158,7 +157,7 @@ describe('calcEnemyThreats', () => {
 
   it('ignores routing enemies — a routing unit exerts no threat', () => {
     const me = makeUnit({ ...threat1 });
-    const routed = enemyAt(DIR_HEXES[2], { ...threat9, isRouting: true });
+    const routed = enemyAt(DIR_HEXES[2], { ...threat9, currentFormation: 'Routed' });
     expect(calcEnemyThreats(me, [routed], alliances)).toMatchObject({ total: 0 });
   });
 
@@ -183,7 +182,7 @@ describe('calcEnemyThreats', () => {
   it('Scattered / Routed enemies never impose threat', () => {
     const me = makeUnit({ ...threat1 });
     const scattered = enemyAt(DIR_HEXES[1], { ...threat1, currentFormation: 'Scattered' });
-    const routed = enemyAt(DIR_HEXES[2], { ...threat1, currentFormation: 'Routed', isRouting: true });
+    const routed = enemyAt(DIR_HEXES[2], { ...threat1, currentFormation: 'Routed' });
     expect(calcEnemyThreats(me, [scattered, routed], alliances)).toMatchObject({ total: 0 });
   });
 
@@ -240,7 +239,7 @@ describe('computeEffectiveMoraleModifier', () => {
   it('Scattered / Routed enemies impose no threat (receiver threat arcs removed)', () => {
     const me = makeUnit({ ...threat1, currentUnitHp: 100, maxUnitHp: 200 });
     const scattered = enemyAt(DIR_HEXES[1], { ...threat1, currentFormation: 'Scattered' });
-    const routed = enemyAt(DIR_HEXES[2], { ...threat1, currentFormation: 'Routed', isRouting: true });
+    const routed = enemyAt(DIR_HEXES[2], { ...threat1, currentFormation: 'Routed' });
     expect(computeEffectiveMoraleModifier(me, [scattered, routed], alliances)).toBe(-5 - 1);
   });
 });
@@ -261,7 +260,7 @@ describe('shouldRout', () => {
   it('false for fearless or already-routing units', () => {
     const fearless = makeUnit({ ...threat1, baseMorale: 1, ignoreMoraleChecks: true });
     expect(shouldRout(fearless, DIR_HEXES.map(h => enemyAt(h, { ...threat1 })), alliances)).toBe(false);
-    const routed = makeUnit({ ...threat1, baseMorale: 1, isRouting: true });
+    const routed = makeUnit({ ...threat1, baseMorale: 1, currentFormation: 'Routed' });
     expect(shouldRout(routed, DIR_HEXES.map(h => enemyAt(h, { ...threat1 })), alliances)).toBe(false);
   });
 });

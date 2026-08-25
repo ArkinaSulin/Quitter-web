@@ -53,7 +53,6 @@ function mapRowToUnit(row: any): Unit {
     facing: row.facing || 0,
     team: row.team || 'black',
     attachedPosition: row.attached_position || null,
-    isRouting: row.is_routing || false,
     hidden: row.hidden || false,
     isDeleted: row.is_deleted || false,
     ignoreMoraleChecks: row.ignore_morale_checks || false,
@@ -116,7 +115,9 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     hex_s: unit.hex.s,
     facing: unit.facing,
     team: unit.team,
-    is_routing: unit.isRouting,
+    // Derived mirror of currentFormation='Routed' — kept so existing rows stay
+    // consistent and inserts never hit a NOT NULL column unset. Nothing reads it.
+    is_routing: unit.currentFormation === 'Routed',
     hidden: unit.hidden,
     is_deleted: unit.isDeleted,
     ignore_morale_checks: unit.ignoreMoraleChecks,
@@ -394,7 +395,6 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       hex: hex,
       facing: 0,
       team: team,
-      isRouting: false,
       hidden: false,
       isDeleted: false,
       ignoreMoraleChecks: template.ignoreMoraleChecks || false,

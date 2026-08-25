@@ -79,14 +79,14 @@ describe('buildReplayTimeline', () => {
           type: 'ROUT',
           description: 'routed',
           unitId: 'u1',
-          changes: [{ field: 'isRouting', from: false, to: true }],
+          changes: [{ field: 'currentFormation', from: 'Open Order', to: 'Routed' }],
         },
       ],
     });
     const steps = buildReplayTimeline([placeRow, moveRow, routChain]);
     expect(steps).toHaveLength(2);
     expect(steps[1].entries.map(e => e.id)).toEqual(['move', 'rout']);
-    expect(steps[1].state.units.u1?.isRouting).toBe(true);
+    expect(steps[1].state.units.u1?.currentFormation).toBe('Routed');
   });
 });
 

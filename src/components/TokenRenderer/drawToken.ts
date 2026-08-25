@@ -2,6 +2,7 @@
 import { Unit, Formation, SizeCategory } from '@/types/gameProtocol';
 import { Team, TEAM_COLORS, TEAM_SHAPES, getDotColor, generateDotPositions, getFormationConfig, FormationConfig } from './tokenUtils';
 import { ALLIANCE_COLORS, AllianceGroup } from '@/types/gameProtocol';
+import { isUnitRouted } from '@/lib/unitMorale';
 
 const imageCache = new Map<string, HTMLImageElement>();
 
@@ -187,7 +188,7 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     drawHeroSquareToken(ctx, x, y, width, height, unit, heroImage, team, shape, allianceColor, options.isAttached || false);
     // Routed heroes carry the same white flag as units — the hero square itself
     // never changes, so the flag is the only "this unit actually routed" marker.
-    if (unit.isRouting && unit.currentUnitHp > 0) {
+    if (isUnitRouted(unit) && unit.currentUnitHp > 0) {
       const heroSize = getHeroSquareSize(height, unit.sizeCategory || 100);
       const displaySize = options.isAttached ? heroSize / 2 : heroSize;
       const flagSize = displaySize * 0.5;
@@ -230,7 +231,7 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
   const visualScale = unit.visualScale || 100;
   const sizeCategory = unit.sizeCategory || 100;
   const formation = unit.currentFormation || 'Close Order';
-  const isRouted = unit.isRouting || false;
+  const isRouted = isUnitRouted(unit);
   const isCorpse = (unit.currentUnitHp ?? 0) <= 0;
   const isMounted = !!unit.mountId;
 

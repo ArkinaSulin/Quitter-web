@@ -3,7 +3,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Unit, getOrganizationLevel, Formation } from '@/types/gameProtocol';
-import { areHexesAdjacent } from '@/lib/unitMorale';
+import { areHexesAdjacent, isUnitRouted } from '@/lib/unitMorale';
 import { parseWeapons, formatWeaponDisplay } from '@/lib/weaponParser';
 import { canFormationCharge } from '@/lib/formationRules';
 import { getSetting } from '@/lib/settingsCache';
@@ -212,7 +212,7 @@ export function ContextMenu({
               Move Hero to {attachedHero.attachedPosition === 'back' ? 'Front' : 'Back'} (1 MP)
             </div>
           )}
-          {unit.canCharge && !unit.isRouting && canFormationCharge(formationsMap?.[unit.currentFormation]) && !unit.isCharging && unit.actionsAvailable >= 1 && onCharge && (
+          {unit.canCharge && !isUnitRouted(unit) && canFormationCharge(formationsMap?.[unit.currentFormation]) && !unit.isCharging && unit.actionsAvailable >= 1 && onCharge && (
             <div
               className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
               onClick={() => { onCharge(); onClose(); }}
@@ -298,7 +298,7 @@ export function ContextMenu({
           <div className="px-3 py-1 hover:bg-gray-700 cursor-pointer" onClick={() => { onToggleHide(); onClose(); }}>
             {unit.hidden ? 'Unhide' : 'Hide'}
           </div>
-          {onSetRouting && !unit.isRouting && (
+          {onSetRouting && !isUnitRouted(unit) && (
             <div
               className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300"
               onClick={() => { onSetRouting(); onClose(); }}
