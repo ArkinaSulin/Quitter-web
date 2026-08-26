@@ -102,6 +102,7 @@ export function useHexGrid({
   const [lastHoveredUnit, setLastHoveredUnit] = useState<Unit | null>(null);
 
   const rafIdRef = useRef<number | null>(null);
+  const pointerDownRef = useRef<{ unitId: string; x: number; y: number } | null>(null);
 
   const bgImageRef = useRef<HTMLImageElement | null>(null);
   const [bgLoaded, setBgLoaded] = useState(false);
@@ -349,6 +350,10 @@ export function useHexGrid({
     }
 
     const unit = getUnitAt(hex);
+    // Record which unit (if any) the press started on, regardless of whether it
+    // can be grabbed — lets clicks on tokens (e.g. the archer-reaction button)
+    // be detected even for units the turn gate won't let you drag.
+    pointerDownRef.current = unit ? { unitId: unit.id, x: e.clientX, y: e.clientY } : null;
     if (unit && (canGrabUnit ? canGrabUnit(unit) : true)) {
       if (onGrabUnit) onGrabUnit(unit);
       setDraggingUnitId(unit.id);
@@ -360,24 +365,29 @@ export function useHexGrid({
   }, [getHexFromScreen, getUnitAt, readOnly, canGrabUnit, onGrabUnit, onPing]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (draggingUnitId && dragStartPos) {
-      const targetHex = getHexFromScreen(e.clientX, e.clientY);
-      if (targetHex) {
-        const unit = units.find(u => u.id === draggingUnitId);
-        if (unit) {
-          const targetUnit = getUnitAt(targetHex);
-          // A click (mouse up over the same token with negligible movement) is
-          // distinct from a drag — route it to onUnitClick so token overlays
-          // (e.g. the archer-reaction button) are clickable.
-          const moved = Math.abs(e.clientX - dragStartPos.x) > 4 || Math.abs(e.clientY - dragStartPos.y) > 4;
-          if (targetUnit && targetUnit.id === draggingUnitId && !moved) {
-            if (onUnitClick) onUnitClick(targetUnit, e.clientX, e.clientY);
-          } else if (targetUnit && targetUnit.id !== draggingUnitId) {
-            if (onAttack) onAttack(draggingUnitId, targetUnit.id);
-          } else if (!targetUnit) {
-            if (unit.hex.q !== targetHex.q || unit.hex.r !== targetHex.r) {
-              onUnitMove(draggingUnitId, targetHex);
-            }
+    const targetHex = getHexFromScreen(e.clientX, e.clientY);
+    // A click (release within ~4px of the press, on the same unit) is distinct
+    // from a drag. Route it to onUnitClick — but keep the rest of the flow so a
+    // click on a non-grabbable unit still selects its hex exactly as before.
+    const pd = pointerDownRef.current;
+    const upUnit = targetHex ? getUnitAt(targetHex) : undefined;
+    const clickedToken =
+      !!pd && !!upUnit && upUnit.id === pd.unitId &&
+      Math.abs(e.clientX - pd.x) <= 4 && Math.abs(e.clientY - pd.y) <= 4;
+    if (clickedToken && onUnitClick && upUnit) {
+      onUnitClick(upUnit, e.clientX, e.clientY);
+    }
+    pointerDownRef.current = null;
+
+    if (draggingUnitId && dragStartPos && targetHex) {
+      const unit = units.find(u => u.id === draggingUnitId);
+      if (unit) {
+        const targetUnit = getUnitAt(targetHex);
+        if (targetUnit && targetUnit.id !== draggingUnitId) {
+          if (onAttack) onAttack(draggingUnitId, targetUnit.id);
+        } else if (!targetUnit) {
+          if (unit.hex.q !== targetHex.q || unit.hex.r !== targetHex.r) {
+            onUnitMove(draggingUnitId, targetHex);
           }
         }
       }
@@ -386,8 +396,7 @@ export function useHexGrid({
     }
 
     if (mouseDownTarget === 'hex' && !draggingUnitId) {
-      const hex = getHexFromScreen(e.clientX, e.clientY);
-      if (hex && onHexClick) onHexClick(hex, getUnitAt(hex));
+      if (targetHex && onHexClick) onHexClick(targetHex, getUnitAt(targetHex));
     }
 
     setIsPanning(false);
