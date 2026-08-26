@@ -123,8 +123,6 @@ export interface DrawTokenOptions {
   isAttached?: boolean;
   formationsMap?: Record<string, Formation>;
   sizeCategories?: SizeCategory[];
-  /** Draw the amber bow badge for a unit with an available archer reaction. */
-  showArcherReaction?: boolean;
 }
 
 export async function drawToken(options: DrawTokenOptions): Promise<void> {
@@ -196,7 +194,6 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
       const flagSize = displaySize * 0.5;
       await drawRoutedFlag(ctx, x - flagSize / 2, y - displaySize / 2 - flagSize * 0.25, flagSize);
     }
-    if (options.showArcherReaction) drawArcherReactionBadge(ctx, x, y, width, height);
     return;
   }
 
@@ -370,9 +367,6 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
   if (!isCorpse) {
     drawName(ctx, unit.unitName, x, y, width, height, team, false);
   }
-
-  // ---- Archer-reaction marker (opportunity-fire badge) ----
-  if (options.showArcherReaction) drawArcherReactionBadge(ctx, x, y, width, height);
 
   } finally {
     ctx.restore();
@@ -602,53 +596,65 @@ function drawHeroSquareHpBar(ctx: CanvasRenderingContext2D, cx: number, cy: numb
   ctx.strokeRect(barX, barY, barWidth, barHeight);
 }
 
-/** Amber bow badge shown on a unit with an available archer reaction (top-right). */
-function drawArcherReactionBadge(
+/**
+ * Archer-reaction overlay button: the bow-and-arrow PNG centered on a hex.
+ * Drawn by the map (customDraw) as a map overlay — not part of the token art —
+ * so it scales with the hex, not the token. `alpha` carries the blink phase.
+ */
+export async function drawArcherReactionButton(
   ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-): void {
-  const bx = x + width / 2 - Math.min(width, height) * 0.18;
-  const by = y - height / 2 + Math.min(width, height) * 0.18;
-  const r = Math.max(6, Math.min(width, height) * 0.1);
+  cx: number,
+  cy: number,
+  size: number,
+  alpha = 1,
+): Promise<void> {
   ctx.save();
-  ctx.beginPath();
-  ctx.arc(bx, by, r, 0, 2 * Math.PI);
-  ctx.fillStyle = 'rgba(245, 158, 11, 0.92)';
-  ctx.fill();
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 1.2;
-  ctx.stroke();
-  // Bow: arc + string.
-  ctx.beginPath();
-  ctx.arc(bx, by, r * 0.55, -Math.PI / 2, Math.PI / 2);
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 1.3;
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(bx, by - r * 0.55);
-  ctx.lineTo(bx, by + r * 0.55);
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  // Arrow (pointing right).
-  ctx.beginPath();
-  ctx.moveTo(bx, by);
-  ctx.lineTo(bx + r * 0.4, by);
-  ctx.moveTo(bx + r * 0.4, by);
-  ctx.lineTo(bx + r * 0.55, by - r * 0.18);
-  ctx.moveTo(bx + r * 0.4, by);
-  ctx.lineTo(bx + r * 0.55, by + r * 0.18);
-  ctx.lineWidth = 1.1;
-  ctx.stroke();
-  ctx.restore();
+  ctx.globalAlpha = alpha;
+  try {
+    const img = await loadImage('/images/bow_n_arrow.png');
+    const ratio = img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1;
+    const w = size;
+    const h = size / ratio;
+    ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+  } catch {
+    // Fallback glyph if the image can't load.
+    const r = size * 0.45;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+    ctx.fillStyle = 'rgba(245, 158, 11, 0.92)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.55, -Math.PI / 2, Math.PI / 2);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r * 0.55);
+    ctx.lineTo(cx, cy + r * 0.55);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + r * 0.4, cy);
+    ctx.moveTo(cx + r * 0.4, cy);
+    ctx.lineTo(cx + r * 0.55, cy - r * 0.18);
+    ctx.moveTo(cx + r * 0.4, cy);
+    ctx.lineTo(cx + r * 0.55, cy + r * 0.18);
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+  } finally {
+    ctx.restore();
+  }
 }
 
 /**
  * Routed white flag drawn at the given rect. Shared by unit tokens and the hero
  * square path (which previously never rendered a rout indicator).
- */async function drawRoutedFlag(
+ */
+async function drawRoutedFlag(
   ctx: CanvasRenderingContext2D,
   flagX: number,
   flagY: number,

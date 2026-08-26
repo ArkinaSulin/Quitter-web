@@ -31,7 +31,7 @@ import { UnitTooltip } from './UnitTooltip';
 import { ReplayOverlay } from './ReplayOverlay';
 import { UnitEditorModal } from './UnitEditorModal';
 import { PingLayer } from './PingLayer';
-import { drawToken, loadImage, SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
+import { drawToken, loadImage, SpellCastTokenSnapshot, drawArcherReactionButton } from '@/components/TokenRenderer/drawToken';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, areHexesAdjacent, isUnitRouted } from '@/lib/unitMorale';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, isInAnyHostileKillZone, computeWeaponSwitchAc } from '@/lib/meleeFallback';
@@ -152,10 +152,23 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Defensive-archer reactions (opportunity fire), per-scenario GM toggle.
   const [archerReactionEnabled, setArcherReactionEnabled] = useState(false);
   const [reactionOffers, setReactionOffers] = useState<Map<string, string>>(new Map()); // archerId -> moverId
-  const [reactionModal, setReactionModal] = useState<{ archer: Unit; mover: Unit } | null>(null);
-  const [reactionMove, setReactionMove] = useState<{ archer: Unit; reachable: Map<string, MovePathEntry> } | null>(null);
+  // Locked reaction mode: only the reacting archer can act (drag-shoot / drag-move /
+  // right-click formation). Ends on completion or Escape.
+  const [reactionMode, setReactionMode] = useState<{ archer: Unit } | null>(null);
   const [reactionFormationPicker, setReactionFormationPicker] = useState<Unit | null>(null);
   const [showScenarioSettings, setShowScenarioSettings] = useState(false);
+  // Slow pulse for the reaction buttons while any marker is visible.
+  const [bowBlinkOn, setBowBlinkOn] = useState(false);
+
+  // Blink the reaction buttons ~every 0.5s while any marker is on the map.
+  useEffect(() => {
+    if (reactionOffers.size === 0) {
+      setBowBlinkOn(false);
+      return;
+    }
+    const t = setInterval(() => setBowBlinkOn(v => !v), 500);
+    return () => { clearInterval(t); setBowBlinkOn(false); };
+  }, [reactionOffers.size]);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
   // Persist the docked side per scenario + user, like the open-tab state. Restore
   // only once the user id is known (auth settles after the first render), and only
@@ -422,8 +435,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (freeMoveEnded) setFreeMove(false);
       // Reactions are once-per-turn — clear all markers at the turn boundary.
       setReactionOffers(new Map());
-      setReactionModal(null);
-      setReactionMove(null);
+      setReactionMode(null);
+      setReactionFormationPicker(null);
     } finally {
       setIsEndingTurn(false);
     }
@@ -529,13 +542,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const weapon = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0];
     if (!weapon || !isRangedCapableWeapon(weapon)) {
       addMessage(`${archer.unitName} no longer holds a ranged weapon — reaction shot unavailable`);
-      setReactionModal(null);
+      setReactionMode(null);
       return;
     }
     const dist = hexDistance(archer.hex, mover.hex);
     if (dist > weapon.range) {
       addMessage(`${mover.unitName} is out of range now — reaction shot lost`);
-      setReactionModal(null);
+      setReactionMode(null);
       return;
     }
     const formationAtkMod = getFormationModifier(formationsMap, archer.currentFormation, 'attack_modifier');
@@ -596,7 +609,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       await routeReactionUnit(mover, moverKilled ? 'slain by reaction fire' : `morale ${modUnit.baseMorale + effMod} after reaction shot`, moverKilled);
     }
     clearReactionFor(archer.id);
-    setReactionModal(null);
+    setReactionMode(null);
   }, [execute, displayUnits, displayAlliances, formationsMap, sizeCategories, addMessage, clearReactionFor, routeReactionUnit]);
 
   const performReactionMove = useCallback(async (archer: Unit, targetHex: Hex, cost: number) => {
@@ -624,8 +637,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       },
     ], `${archer.unitName} repositioned up to 50% (reaction)`);
     clearReactionFor(archer.id);
-    setReactionModal(null);
-    setReactionMove(null);
+    setReactionMode(null);
   }, [execute, clearReactionFor]);
 
   const performReactionFormation = useCallback(async (archer: Unit, formation: string) => {
@@ -659,19 +671,58 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       },
     ], `${archer.unitName} changed formation to ${formation} (reaction)`);
     clearReactionFor(archer.id);
-    setReactionModal(null);
+    setReactionMode(null);
   }, [execute, formationsMap, clearReactionFor]);
 
-  /** Enter the 50%-reposition picker for a reaction move. */
-  const startReactionMove = useCallback((archer: Unit) => {
+  /**
+   * Locked reaction mode drag helpers: only the reacting archer can act.
+   * Dragging onto a hostile unit within weapon `range` shoots it; dragging to a
+   * reachable (<= 50% max MP) empty hex repositions; right-click changes formation.
+   */
+  const getReactionReachable = useCallback((archer: Unit): Map<string, MovePathEntry> => {
     const maxMP = unitMaxMP(archer);
     const budget = getReactionMoveBudget(maxMP);
     const occupied = computeOccupiedHexes(displayUnits, archer.id);
-    const reachable = computeReachableMap(archer, budget, occupied, new Set());
-    setReactionMove({ archer, reachable });
-    setReactionModal(null);
-    setReactionFormationPicker(null);
+    return computeReachableMap(archer, budget, occupied, new Set());
   }, [displayUnits, unitMaxMP]);
+
+  const handleReactionAttack = useCallback(async (attackerId: string, targetId: string) => {
+    if (!reactionMode || attackerId !== reactionMode.archer.id) return;
+    const archer = units.find(u => u.id === attackerId) ?? reactionMode.archer;
+    const target = units.find(u => u.id === targetId);
+    if (!target || target.isDeleted || target.currentUnitHp <= 0) {
+      addMessage('That target is no longer available');
+      return;
+    }
+    if ((alliances[target.team] || 'friendly') === (alliances[archer.team] || 'friendly')) {
+      addMessage(`${target.unitName} is not hostile — cannot reaction-shoot`);
+      return;
+    }
+    const weapon = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0];
+    const dist = hexDistance(archer.hex, target.hex);
+    if (!weapon || !isRangedCapableWeapon(weapon) || dist > weapon.range) {
+      flashRangeViolation(target.hex);
+      addMessage(`${target.unitName} is out of range (max ${weapon?.range ?? 0} hexes)`);
+      return;
+    }
+    await performReactionShot(archer, target);
+  }, [reactionMode, units, alliances, addMessage, performReactionShot]);
+
+  const handleReactionMove = useCallback(async (unitId: string, targetHex: Hex) => {
+    if (!reactionMode || unitId !== reactionMode.archer.id) return;
+    const archer = units.find(u => u.id === unitId) ?? reactionMode.archer;
+    const reachable = getReactionReachable(archer);
+    const entry = reachable.get(`${targetHex.q},${targetHex.r}`);
+    if (!entry) {
+      addMessage(`${archer.unitName} cannot reposition there — outside the 50% reaction move`);
+      return;
+    }
+    if (entry.needsTurn) {
+      addMessage(`${archer.unitName} must turn first (1 MP) to move there`);
+      return;
+    }
+    await performReactionMove(archer, targetHex, entry.cost);
+  }, [reactionMode, units, addMessage, getReactionReachable, performReactionMove]);
 
   const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number) => {
     if (overBudget) {
@@ -919,12 +970,31 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           teamAlliances: displayAlliances,
           formationsMap,
           sizeCategories,
-          showArcherReaction: reactionOffers.has(unit.id) && (isGM || canControlUnit(unit)),
         });
       } catch (err) {
         console.error('drawToken error:', err);
       }
       if (unit.hidden) ctx.restore();
+
+      // Reaction overlay: the acting archer gets a highlight ring; every unit with
+      // an available reaction (owned by the viewer) shows the blinking bow button,
+      // centered on the hex at ~50% hex size regardless of token size.
+      if (reactionMode && unit.id === reactionMode.archer.id) {
+        ctx.save();
+        const ringR = Math.min(tokenWidth, tokenHeight) * 0.55;
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = Math.max(2, 3 * currentZoom);
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringR, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.globalAlpha = 0.22;
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = ringR * 0.4;
+        ctx.stroke();
+        ctx.restore();
+      } else if (reactionOffers.has(unit.id) && (isGM || canControlUnit(unit))) {
+        await drawArcherReactionButton(ctx, cx, cy, HEX_SIZE * currentZoom * 0.5, bowBlinkOn ? 0.4 : 1);
+      }
 
       const attachedHero = displayUnits.find(u => u.attachedToUnitId === unit.id && !u.isDeleted);
       if (attachedHero) {
@@ -964,7 +1034,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         }
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, formationsMap, sizeCategories, activeHeroId, reactionOffers, canControlUnit]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canControlUnit]);
 
   function getOverlayForUnit(unit: Unit): Record<string, string> {
     const result: Record<string, string> = {};
@@ -1789,33 +1859,31 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     units: displayUnits,
     onUnitMove: controlsLocked
       ? () => {}
-      : (unitId, targetHex) => {
-          const u = units.find(x => x.id === unitId);
-          if (u && canControlUnit(u)) handleUnitMove(unitId, targetHex);
-        },
+      : reactionMode
+        ? (unitId, targetHex) => { if (unitId === reactionMode.archer.id) handleReactionMove(unitId, targetHex); }
+        : (unitId, targetHex) => {
+            const u = units.find(x => x.id === unitId);
+            if (u && canControlUnit(u)) handleUnitMove(unitId, targetHex);
+          },
     onHexClick: (hex, clickedUnit) => {
-      // 50%-reposition reaction: the next click picks the target hex.
-      if (reactionMove) {
-        const entry = reactionMove.reachable.get(`${hex.q},${hex.r}`);
-        if (entry) {
-          performReactionMove(reactionMove.archer, hex, entry.cost);
-        } else {
-          setReactionMove(null);
-        }
-        return;
-      }
-      // Clicking an archer's reaction marker opens its reaction modal.
+      // Locked reaction mode: only Esc ends it; clicks are inert.
+      if (reactionMode) return;
+      // Clicking an archer's reaction button arms that archer's reaction mode.
       if (clickedUnit && !clickedUnit.isDeleted && reactionOffers.has(clickedUnit.id) && (isGM || canControlUnit(clickedUnit))) {
-        const mover = units.find(u => u.id === reactionOffers.get(clickedUnit.id));
-        if (mover) {
-          setReactionModal({ archer: clickedUnit, mover });
-          return;
-        }
+        setReactionMode({ archer: clickedUnit });
+        return;
       }
       setSelectedHex(hex);
     },
     onHexRightClick: (hex, unit, clientX, clientY) => {
       if (controlsLocked) return;
+      if (reactionMode) {
+        // Locked: only the reacting archer's right-click changes formation.
+        if (unit && unit.id === reactionMode.archer.id) {
+          setReactionFormationPicker(unit);
+        }
+        return;
+      }
       if (unit && !unit.isDeleted && (isGM || (!unit.hidden && canControlUnit(unit)))) {
         setContextMenuUnit(unit);
         setContextMenuPos({ x: clientX, y: clientY });
@@ -1830,8 +1898,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setHoveredUnit(null);
       setTooltipPos(null);
     },
-    onAttack: controlsLocked ? undefined : handleAttackRequest,
-    canGrabUnit: canControlUnit,
+    onAttack: controlsLocked ? undefined : (reactionMode ? handleReactionAttack : handleAttackRequest),
+    canGrabUnit: (unit) => (reactionMode ? unit.id === reactionMode.archer.id : canControlUnit(unit)),
     onGrabUnit: (unit) => { if (unit.attachedToUnitId) setActiveHeroId(unit.id); },
     onPing: (hex) => pingAtHex(hex, playerName, pingColor),
     activeHeroId,
@@ -1843,12 +1911,30 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   });
 
   useEffect(() => {
-    // 50%-reposition reaction: highlight the reachable hexes to click.
-    if (reactionMove) {
+    // Reaction mode drag: hovering a hostile in weapon range shows range rings;
+    // otherwise the 50% reaction-move hexes.
+    if (reactionMode && draggingUnitId === reactionMode.archer.id) {
+      const archer = units.find(u => u.id === reactionMode.archer.id) ?? reactionMode.archer;
+      const weapon = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0];
       const combined: Record<string, string> = {};
-      reactionMove.reachable.forEach((entry, key) => {
-        combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
-      });
+      const hostileHover =
+        !!hoveredUnit && hoveredUnit.id !== archer.id && !hoveredUnit.isDeleted &&
+        (alliances[hoveredUnit.team] || 'friendly') !== (alliances[archer.team] || 'friendly');
+      if (hostileHover && weapon && isRangedCapableWeapon(weapon)) {
+        for (const h of hexRing(archer.hex, weapon.range)) {
+          combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.85)';
+        }
+        const d = hexDistance(archer.hex, hoveredUnit!.hex);
+        combined[`${hoveredUnit!.hex.q},${hoveredUnit!.hex.r}`] = d <= weapon.range ? 'rgba(80, 220, 120, 0.8)' : 'rgba(255, 80, 80, 0.85)';
+      } else {
+        const maxMP = computeEffectiveMovement(archer, getFormationMultiplier(formationsMap, archer.currentFormation, 'movement_multiplier'));
+        const budget = getReactionMoveBudget(maxMP);
+        const occupied = computeOccupiedHexes(units, archer.id);
+        const reachable = computeReachableMap(archer, budget, occupied, new Set());
+        reachable.forEach((entry, key) => {
+          combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
+        });
+      }
       setOverlayMap(combined);
       return;
     }
@@ -1948,7 +2034,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     } else {
       setOverlayMap({});
     }
-  }, [reactionMove, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex]);
+  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex]);
 
   // Center map on initial load
   useEffect(() => {
@@ -2421,6 +2507,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (controlsLocked) return;
+      // Esc ends the locked reaction mode (or closes the formation picker) — as
+      // if nothing happened; the reaction marker stays.
+      if (e.key === 'Escape') {
+        if (reactionMode || reactionFormationPicker) {
+          setReactionMode(null);
+          setReactionFormationPicker(null);
+          return;
+        }
+      }
       if (e.ctrlKey && e.key === 'z') {
         e.preventDefault();
         undo();
@@ -2435,7 +2530,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [controlsLocked, undo, redo, contextMenuUnit, rotateUnit, canControlUnit]);
+  }, [controlsLocked, undo, redo, contextMenuUnit, rotateUnit, canControlUnit, reactionMode, reactionFormationPicker]);
 
   if (loading) return <div className="w-full h-screen bg-[#0d0d1a] text-white flex items-center justify-center">Loading scenario...</div>;
   if (error) return <div className="w-full h-screen bg-[#0d0d1a] text-red-500 flex items-center justify-center">Error: {error}</div>;
@@ -2783,52 +2878,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         </div>
       )}
 
-      {/* Defensive-archer reaction: pick Shoot / Move 50% / Change formation */}
-      {reactionModal && (() => {
-        const rm = reactionModal;
-        const weapon = parseWeapons(rm.archer.weaponString || '')[rm.archer.activeWeaponIndex ?? 0];
-        const shotRange = weapon && isRangedCapableWeapon(weapon) ? weapon.range : 0;
-        const inRange = shotRange > 0 && hexDistance(rm.archer.hex, rm.mover.hex) <= shotRange;
-        return (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[360px]">
-              <p className="text-white text-sm mb-1 text-center font-semibold">Reaction — {rm.archer.unitName}</p>
-              <p className="text-gray-400 text-xs mb-4 text-center">
-                {rm.mover.unitName} ended a move within your ranged weapon's reach. Choose one reaction (once per turn).
-              </p>
-              <div className="flex flex-col gap-2">
-                <button
-                  className={`px-4 py-2 rounded-lg text-sm ${inRange ? 'bg-red-700 hover:bg-red-600 text-white' : 'bg-gray-800 text-gray-500 cursor-not-allowed'}`}
-                  disabled={!inRange}
-                  onClick={() => performReactionShot(rm.archer, rm.mover)}
-                >
-                  {inRange ? 'Shoot' : `Shoot (out of range — mover is ${hexDistance(rm.archer.hex, rm.mover.hex)} hexes away)`}
-                </button>
-                <button
-                  className="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"
-                  onClick={() => startReactionMove(rm.archer)}
-                >
-                  Move 50% (up to {getReactionMoveBudget(unitMaxMP(rm.archer))} MP)
-                </button>
-                <button
-                  className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
-                  onClick={() => { setReactionFormationPicker(rm.archer); setReactionModal(null); }}
-                >
-                  Change formation
-                </button>
-                <button
-                  className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                  onClick={() => setReactionModal(null)}
-                >
-                  Close (marker stays)
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Reaction: formation picker */}
+      {/* Reaction: formation picker (reached by right-clicking the acting archer
+          in locked reaction mode) */}
       {reactionFormationPicker && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[260px]">
