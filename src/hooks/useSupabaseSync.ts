@@ -115,9 +115,6 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     hex_s: unit.hex.s,
     facing: unit.facing,
     team: unit.team,
-    // Derived mirror of currentFormation='Routed' — kept so existing rows stay
-    // consistent and inserts never hit a NOT NULL column unset. Nothing reads it.
-    is_routing: unit.currentFormation === 'Routed',
     hidden: unit.hidden,
     is_deleted: unit.isDeleted,
     ignore_morale_checks: unit.ignoreMoraleChecks,
