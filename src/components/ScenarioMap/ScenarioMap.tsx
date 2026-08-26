@@ -3,6 +3,7 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
+import { parseSubSteps, CommandLogRow } from '@/lib/commandLog';
 import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { parseWeapons, Weapon } from '@/lib/weaponParser';
 import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamage, type CombatOutcome } from '@/lib/unitCombat';
@@ -382,6 +383,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     return canAdjustUnit(caps, team, unit.team, al);
   }, []);
 
+  // Reactions are opportunity fire — the archer's OWNER reacts even during the
+  // opponent's turn, so ownership (same team) is enough; the turn gate does not
+  // apply (canControlUnit would block the owner outside their own turn).
+  const canReactToUnit = useCallback((unit: Unit): boolean => {
+    return isGM || unit.team === myTeam;
+  }, [isGM, myTeam]);
+
   // Attention ping (feature #4).
   const { pings, pingAtHex } = usePing(scenarioId);
 
@@ -515,17 +523,81 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     });
   }, []);
 
-  /** After a move commits, offer a reaction to every eligible hostile archer. */
-  const offerReactionsFor = useCallback(async (mover: Unit) => {
+  /** After a move commits, offer a reaction to every eligible hostile archer.
+   *  `mover` is expected to carry its NEW hex (the move's end). */
+  const offerReactionsFor = useCallback((mover: Unit) => {
     if (!archerReactionEnabled) return;
-    const eligible = findEligibleReactionArchers(mover, displayUnits, displayAlliances);
+    const eligible = findEligibleReactionArchers(mover, units, alliances);
     if (eligible.length === 0) return;
     setReactionOffers(prev => {
       const next = new Map(prev);
       for (const a of eligible) if (!next.has(a.id)) next.set(a.id, mover.id);
       return next;
     });
-  }, [archerReactionEnabled, displayUnits, displayAlliances]);
+  }, [archerReactionEnabled, units, alliances]);
+
+  /** Drop markers whose mover is no longer within the archer's weapon range. */
+  const pruneReactionOffers = useCallback(() => {
+    setReactionOffers(prev => {
+      if (prev.size === 0) return prev;
+      const next = new Map(prev);
+      let changed = false;
+      prev.forEach((moverId, archerId) => {
+        const archer = units.find(u => u.id === archerId);
+        const mover = units.find(u => u.id === moverId);
+        const weapon = archer ? parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0] : null;
+        if (!archer || !mover || !weapon || !isRangedCapableWeapon(weapon) || hexDistance(archer.hex, mover.hex) > weapon.range) {
+          next.delete(archerId);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [units]);
+
+  // Shared reaction-offer source: every client derives offers from the command
+  // log (the move is a logged MOVE command), so the archer's OWNER sees the bow
+  // even though the mover is on another client. Also prunes markers when the
+  // mover walks out of range, and clears everything on END_TURN.
+  const offerRef = useRef(offerReactionsFor);
+  offerRef.current = offerReactionsFor;
+  const pruneRef = useRef(pruneReactionOffers);
+  pruneRef.current = pruneReactionOffers;
+  const unitsRef = useRef(units);
+  unitsRef.current = units;
+  const handleCommandInsertRef = useRef((row: CommandLogRow) => {});
+  handleCommandInsertRef.current = (row) => {
+    if (row.action_type === 'END_TURN') {
+      setReactionOffers(new Map());
+      setReactionMode(null);
+      setReactionFormationPicker(null);
+      return;
+    }
+    const steps = parseSubSteps(row.sub_steps);
+    for (const step of steps) {
+      if (step.type !== 'MOVE') continue;
+      const hexChange = step.changes.find(c => c.field === 'hex');
+      if (!hexChange || typeof hexChange.to !== 'object' || hexChange.to === null) continue;
+      const mover = unitsRef.current.find(u => u.id === step.unitId);
+      if (!mover) continue;
+      // Use the logged end hex as the mover's position (authoritative, and not
+      // racy with the units realtime stream).
+      offerRef.current({ ...mover, hex: hexChange.to as Hex });
+    }
+    pruneRef.current();
+  };
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`command-reactions:${scenarioId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'command_log', filter: `scenario_id=eq.${scenarioId}` },
+        (payload: any) => handleCommandInsertRef.current(payload.new as CommandLogRow),
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [scenarioId]);
 
   const routeReactionUnit = useCallback(async (unit: Unit, reason: string, killed: boolean): Promise<void> => {
     const name = unit.unitName;
@@ -741,9 +813,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     // ranged weapon (only reverts a melee weapon, and never a manual pick).
     await maybeAutoReturnToRanged(unit);
     // Opportunity fire: offer a reaction to any hostile archer whose weapon range
-    // covers the move's end hex.
-    await offerReactionsFor(unit);
-  }, [units, moveUnitRecorded, alliances, formationsMap, execute, addError, maybeAutoReturnToRanged, offerReactionsFor]);
+    // covers the move's end hex (the shared command-log listener does the same on
+    // every client; this optimistic add is just for the mover's own snappiness).
+    offerReactionsFor({ ...unit, hex: targetHex });
+    pruneReactionOffers();
+  }, [units, moveUnitRecorded, alliances, formationsMap, execute, addError, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers]);
 
   const handleUnitMove = useCallback(async (unitId: string, targetHex: Hex) => {
     const unit = units.find(u => u.id === unitId);
@@ -806,7 +880,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }
       await moveUnitFree(unit, targetHex, attachedHero);
       await maybeAutoReturnToRanged(unit);
-      await offerReactionsFor(unit);
+      offerReactionsFor({ ...unit, hex: targetHex });
+      pruneReactionOffers();
       await finishHeroMove(unit);
       return;
     }
@@ -992,7 +1067,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         ctx.lineWidth = ringR * 0.4;
         ctx.stroke();
         ctx.restore();
-      } else if (reactionOffers.has(unit.id) && (isGM || canControlUnit(unit))) {
+      } else if (!reactionMode && reactionOffers.has(unit.id) && canReactToUnit(unit)) {
         await drawArcherReactionButton(ctx, cx, cy, HEX_SIZE * currentZoom * 0.5, bowBlinkOn ? 0.4 : 1);
       }
 
@@ -1034,7 +1109,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         }
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canControlUnit]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit]);
 
   function getOverlayForUnit(unit: Unit): Record<string, string> {
     const result: Record<string, string> = {};
@@ -1865,15 +1940,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             const u = units.find(x => x.id === unitId);
             if (u && canControlUnit(u)) handleUnitMove(unitId, targetHex);
           },
-    onHexClick: (hex, clickedUnit) => {
+    onHexClick: (hex) => {
       // Locked reaction mode: only Esc ends it; clicks are inert.
       if (reactionMode) return;
-      // Clicking an archer's reaction button arms that archer's reaction mode.
-      if (clickedUnit && !clickedUnit.isDeleted && reactionOffers.has(clickedUnit.id) && (isGM || canControlUnit(clickedUnit))) {
-        setReactionMode({ archer: clickedUnit });
-        return;
-      }
       setSelectedHex(hex);
+    },
+    onUnitClick: (unit, _clientX, _clientY) => {
+      if (controlsLocked || reactionMode) return;
+      // Clicking an archer's reaction button arms that archer's reaction mode.
+      if (!unit.isDeleted && reactionOffers.has(unit.id) && canReactToUnit(unit)) {
+        setReactionMode({ archer: unit });
+      }
     },
     onHexRightClick: (hex, unit, clientX, clientY) => {
       if (controlsLocked) return;
@@ -2351,13 +2428,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   // Double-click a unit you can edit opens the floating editor.
   const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (controlsLocked) return;
+    if (controlsLocked || reactionMode) return;
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (!hex) return;
     const unit = getUnitAt(hex);
     if (!unit) return;
     if (isGM || canEditUnit(unit)) setEditUnit(unit);
-  }, [controlsLocked, getHexFromScreen, getUnitAt, isGM, canEditUnit]);
+  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAt, isGM, canEditUnit]);
 
   // Editor Save → one chained command entry, one sub-step per changed field.
   const handleEditorSave = useCallback(async (changes: { field: string; from: any; to: any }[], description: string) => {

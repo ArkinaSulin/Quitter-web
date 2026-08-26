@@ -43,6 +43,8 @@ export interface UseHexGridProps {
   units: Unit[];
   onUnitMove: (unitId: string, targetHex: Hex) => void;
   onHexClick?: (hex: Hex, unit?: Unit) => void;
+  /** A click (mouse down + up with negligible movement) on a unit token. */
+  onUnitClick?: (unit: Unit, clientX: number, clientY: number) => void;
   onHexRightClick?: (hex: Hex, unit: Unit | undefined, clientX: number, clientY: number) => void;
   onUnitHover?: (unit: Unit, screenX: number, screenY: number) => void;
   onUnitLeave?: () => void;
@@ -73,6 +75,7 @@ export function useHexGrid({
   units,
   onUnitMove,
   onHexClick,
+  onUnitClick,
   onHexRightClick,
   onUnitHover,
   onUnitLeave,
@@ -363,7 +366,13 @@ export function useHexGrid({
         const unit = units.find(u => u.id === draggingUnitId);
         if (unit) {
           const targetUnit = getUnitAt(targetHex);
-          if (targetUnit && targetUnit.id !== draggingUnitId) {
+          // A click (mouse up over the same token with negligible movement) is
+          // distinct from a drag — route it to onUnitClick so token overlays
+          // (e.g. the archer-reaction button) are clickable.
+          const moved = Math.abs(e.clientX - dragStartPos.x) > 4 || Math.abs(e.clientY - dragStartPos.y) > 4;
+          if (targetUnit && targetUnit.id === draggingUnitId && !moved) {
+            if (onUnitClick) onUnitClick(targetUnit, e.clientX, e.clientY);
+          } else if (targetUnit && targetUnit.id !== draggingUnitId) {
             if (onAttack) onAttack(draggingUnitId, targetUnit.id);
           } else if (!targetUnit) {
             if (unit.hex.q !== targetHex.q || unit.hex.r !== targetHex.r) {
@@ -384,7 +393,7 @@ export function useHexGrid({
     setIsPanning(false);
     setPanStart(null);
     setMouseDownTarget('none');
-  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAt, onAttack, onUnitMove, mouseDownTarget, onHexClick]);
+  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAt, onAttack, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
 
   const handleRightClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
