@@ -749,6 +749,7 @@ export function useGameEngine({
         if (!hero) {
           changes.push({ field: 'attacksUsed', from: unit.attacksUsed ?? 0, to: 0 });
         }
+        changes.push({ field: 'archerReactionUsed', from: unit.archerReactionUsed ?? false, to: false });
         subSteps.push({
           type: 'END_TURN',
           description: `${unit.unitName} refreshed (${mpTo} MP, ${actionsTo} actions)`,

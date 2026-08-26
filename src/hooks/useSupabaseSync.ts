@@ -61,6 +61,7 @@ function mapRowToUnit(row: any): Unit {
     commandSeq: row.command_seq || 0,
     actionsAvailable: row.actions_available || 0,
     attacksUsed: row.attacks_used || 0,
+    archerReactionUsed: row.archer_reaction_used || false,
     activeWeaponIndex: row.active_weapon_index || 0,
     str: row.str ?? 0,
     dex: row.dex ?? 0,
@@ -122,6 +123,7 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     charge_distance: unit.chargeDistance || 0,
     actions_available: unit.actionsAvailable || 0,
     attacks_used: unit.attacksUsed || 0,
+    archer_reaction_used: unit.archerReactionUsed || false,
     active_weapon_index: unit.activeWeaponIndex || 0,
     str: unit.str ?? 0,
     dex: unit.dex ?? 0,
@@ -402,6 +404,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
         ? getSetting('hero_actions_per_turn', 5)
         : getSetting('actions_per_turn', 2),
       attacksUsed: 0,
+      archerReactionUsed: false,
       activeWeaponIndex,
       str: template.str ?? 0,
       dex: template.dex ?? 0,

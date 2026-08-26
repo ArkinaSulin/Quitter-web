@@ -52,6 +52,7 @@ const makeUnit = (overrides: Partial<Unit> = {}): Unit => ({
   commandSeq: 0,
   actionsAvailable: 2,
   attacksUsed: 0,
+  archerReactionUsed: false,
   activeWeaponIndex: 0,
   str: 0,
   dex: 0,

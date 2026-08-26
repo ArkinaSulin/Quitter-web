@@ -29,7 +29,8 @@ export type ActionType =
   | 'CHARGE_END'
   | 'WEAPON_SELECT'
   | 'CAST'
-  | 'EDIT_UNIT';
+  | 'EDIT_UNIT'
+  | 'ARCHER_REACTION';
 
 export interface UnitChange {
   field: string;
