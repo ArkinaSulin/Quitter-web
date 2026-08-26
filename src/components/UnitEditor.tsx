@@ -530,6 +530,19 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
     updateFormData('weaponString', weaponString);
   };
 
+  /** Swap a weapon with its neighbor. Weapon order matters: index 0 is the
+   *  primary (auto-return target) and the first melee weapon is the auto-draw. */
+  const moveWeapon = (index: number, dir: -1 | 1) => {
+    if (readOnly) return;
+    if (!formData) return;
+    const currentWeapons = getWeapons();
+    const target = index + dir;
+    if (target < 0 || target >= currentWeapons.length) return;
+    const updatedWeapons = [...currentWeapons];
+    [updatedWeapons[index], updatedWeapons[target]] = [updatedWeapons[target], updatedWeapons[index]];
+    updateFormData('weaponString', stringifyWeapons(updatedWeapons));
+  };
+
   const createBlankTemplate = (): UnitTemplate => {
     const firstRace = races[0];
     const firstUnitType = unitTypes[0];
@@ -1174,6 +1187,22 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                             <span className="text-[10px] text-green-400">{cost > 0 ? `${cost}gp` : 'Free'}</span>
                           </div>
                           <div className="flex gap-1">
+                            <button
+                              onClick={() => moveWeapon(index, -1)}
+                              disabled={index === 0}
+                              className="text-[10px] bg-gray-700 hover:bg-gray-600 px-1.5 py-0.5 rounded text-white disabled:opacity-40"
+                              title="Move up (index 0 is the primary / auto-return weapon)"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              onClick={() => moveWeapon(index, 1)}
+                              disabled={index === getWeapons().length - 1}
+                              className="text-[10px] bg-gray-700 hover:bg-gray-600 px-1.5 py-0.5 rounded text-white disabled:opacity-40"
+                              title="Move down"
+                            >
+                              ↓
+                            </button>
                             <button
                               onClick={() => openEditWeapon(index)}
                               className="text-[10px] bg-blue-700 hover:bg-blue-600 px-1.5 py-0.5 rounded text-white"

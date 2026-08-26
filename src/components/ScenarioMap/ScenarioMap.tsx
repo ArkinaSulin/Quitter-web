@@ -34,6 +34,7 @@ import { PingLayer } from './PingLayer';
 import { drawToken, loadImage, SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, areHexesAdjacent, isUnitRouted } from '@/lib/unitMorale';
+import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, isInAnyHostileKillZone, computeWeaponSwitchAc } from '@/lib/meleeFallback';
 import { supabase } from '@/lib/supabaseClient';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement } from '@/lib/unitStats';
 import { nextLowerFormation } from '@/lib/formationCost';
@@ -141,6 +142,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [currentTurnAlliance, setCurrentTurnAlliance] = useState<AllianceGroup | null>(null);
   const [turnNumber, setTurnNumber] = useState(0);
+  // Tracks which units had a weapon manually selected this turn (turn number per
+  // unit id) — auto-return to the primary ranged weapon skips those for the rest
+  // of the turn so it never overrides a deliberate choice.
+  const weaponSelectedTurnRef = useRef<Record<string, number>>({});
   const [freeMove, setFreeMove] = useState(false);
   const [isEndingTurn, setIsEndingTurn] = useState(false);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
@@ -446,6 +451,35 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }));
   }, []);
 
+  /**
+   * After a melee exchange (or a move that left all hostile kill zones), a unit
+   * holding a melee weapon it auto-selected returns to its primary weapon (index
+   * 0). Skips units the player manually switched this turn, and units still in a
+   * hostile kill zone.
+   */
+  const maybeAutoReturnToRanged = useCallback(async (unit: Unit) => {
+    if (isUnitRouted(unit)) return;
+    const weapons = parseWeapons(unit.weaponString || '');
+    const active = weapons[unit.activeWeaponIndex ?? 0];
+    // Nothing to return: not holding a melee weapon, or already on the primary.
+    if (!active || !isMeleeWeapon(active) || unit.activeWeaponIndex === 0) return;
+    if (weaponSelectedTurnRef.current[unit.id] === turnNumber) return;
+    if (isInAnyHostileKillZone(unit, displayUnits, displayAlliances)) return;
+    const primary = weapons[0];
+    if (!primary) return;
+    const ac = computeWeaponSwitchAc(unit, primary);
+    const acChanges = ac !== unit.currentAc ? [{ field: 'currentAc', from: unit.currentAc, to: ac }] : [];
+    await execute('WEAPON_SELECT', [{
+      type: 'WEAPON_SELECT',
+      description: `${unit.unitName} returned to ${primary.name}`,
+      unitId: unit.id,
+      changes: [
+        { field: 'activeWeaponIndex', from: unit.activeWeaponIndex ?? 0, to: 0 },
+        ...acChanges,
+      ],
+    }], `${unit.unitName} returned to ${primary.name}`);
+  }, [displayUnits, displayAlliances, turnNumber, execute]);
+
   const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number) => {
     if (overBudget) {
       const actionNote = unit.isHero
@@ -459,7 +493,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     // Movement alone never routs — only an attack (combat or a spell) can break
     // a unit's morale into a rout, even when threat drops morale to zero.
     await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP);
-  }, [units, moveUnitRecorded, alliances, formationsMap, execute, addError]);
+    // The unit may have left every hostile kill zone — return to its primary
+    // ranged weapon (only reverts a melee weapon, and never a manual pick).
+    await maybeAutoReturnToRanged(unit);
+  }, [units, moveUnitRecorded, alliances, formationsMap, execute, addError, maybeAutoReturnToRanged]);
 
   const handleUnitMove = useCallback(async (unitId: string, targetHex: Hex) => {
     const unit = units.find(u => u.id === unitId);
@@ -521,6 +558,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         return;
       }
       await moveUnitFree(unit, targetHex, attachedHero);
+      await maybeAutoReturnToRanged(unit);
       await finishHeroMove(unit);
       return;
     }
@@ -773,13 +811,50 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const attackerRowCap = getRowCapacity(sizeCategories, attacker.sizeCategory);
     const defenderRowCap = getRowCapacity(sizeCategories, target.sizeCategory);
     const defenderVisualDpr = getVisualDotsPerRow(formationsMap, defenderRowCap, target.currentFormation);
-    const weapon = parseWeapons(attacker.weaponString || '')[attacker.activeWeaponIndex ?? 0];
+    let weapon = parseWeapons(attacker.weaponString || '')[attacker.activeWeaponIndex ?? 0];
     if (!weapon) return;
-    const defWeapon = parseWeapons(target.weaponString || '')[target.activeWeaponIndex ?? 0] || null;
-    // A ranged-capable weapon (range > 1) is always a ranged attack; a melee-range
-    // weapon (range 1) switches to a ranged throw when the target is beyond its
-    // melee reach (up to maxRange).
-    const isRanged = weapon.range > 1 || hexDistance(attacker.hex, target.hex) > weapon.range;
+    let defWeapon = parseWeapons(target.weaponString || '')[target.activeWeaponIndex ?? 0] || null;
+    // Melee resolution at adjacency: a ranged/thrown primary auto-draws the first
+    // melee weapon (persistent, undoable WEAPON_SELECT) or fights with Fists when
+    // it owns none. Magic weapons always act at range; everything beyond adjacency
+    // is a ranged attack (thrown/shot).
+    const dist = hexDistance(attacker.hex, target.hex);
+    const isAdjacent = isAdjacentDistance(dist);
+    let attackerSwitchIdx: number | null = null;
+    let defenderSwitchIdx: number | null = null;
+    let usedFists = false;
+    if (isAdjacent && weapon.magicDimension <= 0) {
+      if (!isMeleeWeapon(weapon)) {
+        const attackerWeapons = parseWeapons(attacker.weaponString || '');
+        const meleeIdx = findFirstMeleeWeaponIndex(attackerWeapons);
+        if (meleeIdx !== -1) {
+          weapon = attackerWeapons[meleeIdx];
+          attackerSwitchIdx = meleeIdx;
+        } else {
+          weapon = FISTS_WEAPON;
+          usedFists = true;
+        }
+      }
+      if (defWeapon && defWeapon.magicDimension <= 0 && !isMeleeWeapon(defWeapon)) {
+        const defenderWeapons = parseWeapons(target.weaponString || '');
+        const dMeleeIdx = findFirstMeleeWeaponIndex(defenderWeapons);
+        if (dMeleeIdx !== -1) {
+          defWeapon = defenderWeapons[dMeleeIdx];
+          defenderSwitchIdx = dMeleeIdx;
+        } else {
+          defWeapon = FISTS_WEAPON;
+        }
+      }
+    }
+    const isRanged = weapon.magicDimension > 0 || !isAdjacent;
+    // Combat uses the post-switch state: a two-handed melee draw drops the shield
+    // (-2 AC) before AGR / first-strike / retaliation resolve.
+    const effAttacker = attackerSwitchIdx !== null
+      ? { ...attacker, activeWeaponIndex: attackerSwitchIdx, currentAc: computeWeaponSwitchAc(attacker, weapon) }
+      : attacker;
+    const effTarget = defenderSwitchIdx !== null
+      ? { ...target, activeWeaponIndex: defenderSwitchIdx, currentAc: computeWeaponSwitchAc(target, defWeapon!) }
+      : target;
     // Effective rear attack: hero has no behind (all sides front), scattered is all
     // side, routed is all rear. So a "caught from behind" only applies when the
     // effective position is rear.
@@ -803,8 +878,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const outcome = stashed
       ? stashed.outcome
       : resolveCombatSequence(
-          attacker,
-          target,
+          effAttacker,
+          effTarget,
           { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, numberOfAttacks: weapon.numberOfAttacks, range: weapon.range, maxRange: weapon.maxRange },
           defWeapon ? { attackBonus: defWeapon.attackBonus, damageDice: defWeapon.damageDice, is_reach: defWeapon.reach, numberOfAttacks: defWeapon.numberOfAttacks } : null,
           formationAtkMod,
@@ -824,6 +899,33 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         );
 
     const subSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
+
+    // Auto-draw: ranged/thrown primaries switch to a melee weapon at adjacency,
+    // before the exchange resolves. Undoable with the attack (same command).
+    if (attackerSwitchIdx !== null) {
+      const ac = computeWeaponSwitchAc(attacker, weapon);
+      subSteps.push({
+        type: 'WEAPON_SELECT',
+        description: `${attacker.unitName} drew ${weapon.name}`,
+        unitId: attacker.id,
+        changes: [
+          { field: 'activeWeaponIndex', from: attacker.activeWeaponIndex ?? 0, to: attackerSwitchIdx },
+          ...(ac !== attacker.currentAc ? [{ field: 'currentAc', from: attacker.currentAc, to: ac }] : []),
+        ],
+      });
+    }
+    if (defenderSwitchIdx !== null && defWeapon) {
+      const ac = computeWeaponSwitchAc(target, defWeapon);
+      subSteps.push({
+        type: 'WEAPON_SELECT',
+        description: `${target.unitName} drew ${defWeapon.name}`,
+        unitId: target.id,
+        changes: [
+          { field: 'activeWeaponIndex', from: target.activeWeaponIndex ?? 0, to: defenderSwitchIdx },
+          ...(ac !== target.currentAc ? [{ field: 'currentAc', from: target.currentAc, to: ac }] : []),
+        ],
+      });
+    }
 
     if (!weapon.freeAction && !isChargingAttack) {
       subSteps.push({
@@ -980,6 +1082,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (weapon.freeAction) weaponTags.push('FREE');
     if (weapon.noRetaliation) weaponTags.push('NO RETALIATION');
     if (isChargingAttack) weaponTags.push('CHARGE');
+    if (usedFists) weaponTags.push('FISTS — NO MELEE WEAPON');
     if (hexDistance(attacker.hex, target.hex) > weapon.range) weaponTags.push('LONG RANGE - DISADVANTAGE');
     let desc = `${attacker.unitName} attacks ${target.unitName} with ${weapon.name}${weaponTags.length > 0 ? ` (${weaponTags.join(', ')})` : ''}`;
     desc += ` — ${firstStriker.unitName} strikes first — ${firstStrikeUnitCount} attacks${outcome.firstStrikeCountNote ? ` [${outcome.firstStrikeCountNote}]` : ''}, ${firstStrikeUnitHits} hits${firstStrikeUnitCrits > 0 ? `, ${firstStrikeUnitCrits} critical` : ''}, ${outcome.firstStrikeDamage} damage (${outcome.strikerFirst === 'attacker' ? defenderTroopsKilled : attackerTroopsKilled} troops)`;
@@ -1099,10 +1202,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       await routeUnit(attacker, attackerKilled ? 'slain in combat' : `morale ${attMoraleBreak} after combat`, attackerKilled);
     }
 
+    // After the exchange, units that drew a melee weapon and are no longer in a
+    // hostile kill zone return to their primary ranged weapon.
+    await maybeAutoReturnToRanged(attacker);
+    await maybeAutoReturnToRanged(target);
+
     // Post-combat outcome so callers (charge-over eligibility) can react to the
     // attacker surviving and/or the target breaking.
     return { attackerRouted, attackerKilled, defenderRouted, defenderKilled };
-  }, [units, alliances, formationsMap, sizeCategories, execute, addMessage, addError]);
+  }, [units, alliances, formationsMap, sizeCategories, execute, addMessage, addError, maybeAutoReturnToRanged]);
 
   // A healing weapon (isHealing) recovers the target's HP instead of damaging it —
   // same dice mechanic as damage, capped at maxUnitHp. No combat sequence, AGR,
@@ -1200,9 +1308,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       await performHeal(attacker, target, weapon);
       return;
     }
-    // A melee-range weapon switches to a (disadvantaged) ranged attack when the
-    // target is beyond its melee reach; a weapon with range > 1 is always ranged.
-    const isRangedThisAttack = weapon.range > 1 || dist > weapon.range;
+    // Magic (area) weapons always act at range. Every other attack at adjacency
+    // is a melee attempt (a ranged primary auto-switches to a melee weapon or
+    // fights with Fists); beyond adjacency is a ranged attack (thrown/shot).
+    const isRangedThisAttack = weapon.magicDimension > 0 || !isAdjacentDistance(dist);
 
     // Area-effect weapons (magic radius > 0) open the shared magic targeting window.
     if (weapon.magicDimension > 0) {
@@ -2281,7 +2390,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onChangeFormation={(formation) => handleChangeFormation(contextMenuUnit, formation)}
           onCharge={() => charge(contextMenuUnit)}
           onSwapHeroPosition={(hero) => handleSwapHeroPosition(hero)}
-          onSelectWeapon={(idx) => selectWeapon(contextMenuUnit, idx)}
+          onSelectWeapon={(idx) => { weaponSelectedTurnRef.current[contextMenuUnit.id] = turnNumber; selectWeapon(contextMenuUnit, idx); }}
           onAssignTeam={(team) => assignTeam(contextMenuUnit, team)}
           onToggleHide={() => toggleHide(contextMenuUnit)}
           onSetRouting={() => setRouting(contextMenuUnit)}

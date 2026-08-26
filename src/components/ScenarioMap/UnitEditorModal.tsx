@@ -426,6 +426,22 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
                   <span className="text-[11px] text-yellow-300">{formatWeaponDisplay(w)}</span>
                   <div className="flex gap-1">
                     <button
+                      onClick={() => setWeaponsDraft(list => i > 0 ? list.map((x, j) => j === i ? list[i - 1] : j === i - 1 ? list[i] : x) : list)}
+                      disabled={i === 0}
+                      className="text-[10px] bg-gray-700 hover:bg-gray-600 text-white rounded px-1.5 py-0.5 disabled:opacity-40"
+                      title="Move up (weapon order = priority: index 0 is the primary)"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => setWeaponsDraft(list => i < list.length - 1 ? list.map((x, j) => j === i ? list[i + 1] : j === i + 1 ? list[i] : x) : list)}
+                      disabled={i >= weaponsDraft.length - 1}
+                      className="text-[10px] bg-gray-700 hover:bg-gray-600 text-white rounded px-1.5 py-0.5 disabled:opacity-40"
+                      title="Move down"
+                    >
+                      ↓
+                    </button>
+                    <button
                       onClick={() => { setWeaponEditingIndex(i); setWeaponEditorOpen(true); }}
                       className="text-[10px] bg-blue-700 hover:bg-blue-600 text-white rounded px-1.5 py-0.5"
                     >
