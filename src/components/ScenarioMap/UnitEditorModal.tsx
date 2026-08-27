@@ -365,7 +365,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
             <Cell label="Formation" widthClass="w-32"><SelectInput value={String(draft.currentFormation)} onChange={v => set('currentFormation', v)} options={formationOptions.map(n => ({ value: n, label: n }))} /></Cell>
             <div className="pb-1"><Toggle checked={!!draft.isCharging} onChange={v => set('isCharging', v)} label="Charging" /></div>
             <Cell label="Mount" widthClass="w-28"><SelectInput value={String(draft.mountId || '')} onChange={handleMountChange} options={mountOptions} /></Cell>
-            <div className="pb-1"><Toggle checked={!!draft.canCharge} onChange={v => set('canCharge', v)} label="Charge" /></div>
+            <div className="pb-1"><Toggle checked={!!draft.canCharge} onChange={v => set('canCharge', v)} label="Can Charge" /></div>
           </div>
 
           {/* R8 Availability */}
