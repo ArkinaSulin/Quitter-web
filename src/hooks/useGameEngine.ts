@@ -155,6 +155,11 @@ export function useGameEngine({
       if (error || !data || (data as any[]).length === 0) {
         console.error('[CommandLog] Execute failed:', error);
         addError(`Action failed — ${description}`);
+        // Unmissable for the current debugging session: surface the exact server
+        // rejection (e.g. a Postgres exception from apply_substeps).
+        const msg = (error as any)?.message || 'unknown error';
+        console.error('[CommandLog] Execute error message:', msg);
+        if (typeof window !== 'undefined') window.alert(`Command failed (${actionType}): ${msg}`);
         return null;
       }
 
