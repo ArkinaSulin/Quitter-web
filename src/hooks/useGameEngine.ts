@@ -733,6 +733,7 @@ export function useGameEngine({
       const turnStartMp = getSetting('turn_start_mp', 0);
       const actionsPerTurn = getSetting('actions_per_turn', 2);
       const heroActionsPerTurn = getSetting('hero_actions_per_turn', 5);
+      const refreshedUnits: string[] = [];
       for (const unit of args.units) {
         if (unit.isDeleted || !activeTeams.has(unit.team)) continue;
         // Heroes refresh to FULL MP + 5 actions; units refresh to 0 MP + 2 actions
@@ -742,6 +743,7 @@ export function useGameEngine({
           ? computeEffectiveMovement(unit, getFormationMultiplier(args.formationsMap, unit.currentFormation, 'movement_multiplier'))
           : turnStartMp;
         const actionsTo = hero ? heroActionsPerTurn : actionsPerTurn;
+        refreshedUnits.push(`${unit.unitName} (${unit.team}) -> ${mpTo} MP / ${actionsTo} act`);
         const changes: { field: string; from: any; to: any }[] = [
           { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: mpTo },
           { field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsTo },
@@ -757,6 +759,20 @@ export function useGameEngine({
           changes,
         });
       }
+      // Diagnostic for the per-alliance refresh targeting (see turn-cycle reports).
+      console.debug('[EndTurn]', {
+        currentAlliance: args.currentAlliance,
+        alliances: args.alliances,
+        activeGroups,
+        next,
+        activeTeams: Array.from(activeTeams),
+        actionsPerTurn,
+        turnStartMp,
+        heroActionsPerTurn,
+        unitCount: args.units.length,
+        refreshedCount: refreshedUnits.length,
+        refreshedUnits,
+      });
 
       await execute('END_TURN', subSteps, `End Turn — ${next} turn begins`);
       return { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded: leavingFreePlay };
