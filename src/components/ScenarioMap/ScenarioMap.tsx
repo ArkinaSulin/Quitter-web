@@ -515,13 +515,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, [displayUnits, displayAlliances, turnNumber, execute]);
 
   // ---- Defensive-archer reactions (opportunity fire) ----
-  const clearReactionFor = useCallback((archerId: string) => {
-    setReactionOffers(prev => {
-      const next = new Map(prev);
-      next.delete(archerId);
-      return next;
-    });
-  }, []);
 
   /** After a move commits, offer a reaction to every eligible hostile archer.
    *  `mover` is expected to carry its NEW hex (the move's end). */
@@ -536,8 +529,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     });
   }, [archerReactionEnabled, units, alliances]);
 
-  /** Drop markers whose mover is no longer within the archer's weapon range, or
-   *  whose archer already used its once-per-turn reaction. */
+  /** Drop markers whose mover is no longer within the archer's weapon range or
+   *  whose archer became invalid. An archer that used its once-per-turn reaction
+   *  KEEPS its marker — visibility is gated on `archerReactionUsed` instead, so a
+   *  GM resetting the flag revives the bow on every client. */
   const pruneReactionOffers = useCallback(() => {
     setReactionOffers(prev => {
       if (prev.size === 0) return prev;
@@ -547,7 +542,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         const archer = units.find(u => u.id === archerId);
         const mover = units.find(u => u.id === moverId);
         const weapon = archer ? parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0] : null;
-        if (!archer || archer.archerReactionUsed || !mover || !weapon || !isRangedCapableWeapon(weapon) || hexDistance(archer.hex, mover.hex) > weapon.range) {
+        if (!archer || !mover || !weapon || !isRangedCapableWeapon(weapon) || hexDistance(archer.hex, mover.hex) > weapon.range) {
           next.delete(archerId);
           changed = true;
         }
@@ -575,17 +570,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
     const steps = parseSubSteps(row.sub_steps);
     for (const step of steps) {
-      // A consumed reaction clears that archer's marker on every client.
-      if (step.type === 'ARCHER_REACTION') {
-        const archerId = step.unitId;
-        setReactionOffers(prev => {
-          if (!prev.has(archerId)) return prev;
-          const next = new Map(prev);
-          next.delete(archerId);
-          return next;
-        });
-        continue;
-      }
       if (step.type !== 'MOVE') continue;
       // Only live rows re-offer (INSERT and redo; an undone move is skipped).
       if (row.deleted_at != null) continue;
@@ -639,7 +623,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, [execute]);
 
   const performReactionShot = useCallback(async (archer: Unit, mover: Unit) => {
-    if (archer.archerReactionUsed) {
+    const liveArcher = units.find(u => u.id === archer.id) ?? archer;
+    if (liveArcher.archerReactionUsed) {
       addMessage(`${archer.unitName} already reacted this turn`);
       setReactionMode(null);
       return;
@@ -713,12 +698,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const effMod = modUnit.currentMoraleModifier + computeEffectiveMoraleModifier(modUnit, displayUnits, displayAlliances, formationsMap[mover.currentFormation] ?? null);
       await routeReactionUnit(mover, moverKilled ? 'slain by reaction fire' : `morale ${modUnit.baseMorale + effMod} after reaction shot`, moverKilled);
     }
-    clearReactionFor(archer.id);
     setReactionMode(null);
-  }, [execute, displayUnits, displayAlliances, formationsMap, sizeCategories, addMessage, clearReactionFor, routeReactionUnit]);
+  }, [execute, displayUnits, displayAlliances, formationsMap, sizeCategories, addMessage, routeReactionUnit, units]);
 
   const performReactionMove = useCallback(async (archer: Unit, targetHex: Hex, cost: number) => {
-    if (archer.archerReactionUsed) {
+    const liveArcher = units.find(u => u.id === archer.id) ?? archer;
+    if (liveArcher.archerReactionUsed) {
       addMessage(`${archer.unitName} already reacted this turn`);
       setReactionMode(null);
       return;
@@ -746,12 +731,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         changes,
       },
     ], `${archer.unitName} repositioned up to 50% (reaction)`);
-    clearReactionFor(archer.id);
     setReactionMode(null);
-  }, [execute, addMessage, clearReactionFor]);
+  }, [execute, addMessage, units]);
 
   const performReactionFormation = useCallback(async (archer: Unit, formation: string) => {
-    if (archer.archerReactionUsed) {
+    const liveArcher = units.find(u => u.id === archer.id) ?? archer;
+    if (liveArcher.archerReactionUsed) {
       addMessage(`${archer.unitName} already reacted this turn`);
       setReactionMode(null);
       return;
@@ -799,9 +784,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         changes,
       },
     ], `${archer.unitName} changed formation to ${formation} (reaction)`);
-    clearReactionFor(archer.id);
     setReactionMode(null);
-  }, [execute, formationsMap, addMessage, clearReactionFor]);
+  }, [execute, formationsMap, addMessage, units]);
 
   /**
    * Locked reaction mode drag helpers: only the reacting archer can act.
@@ -2502,8 +2486,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       unitId: editUnit.id,
       changes: [c],
     }));
-    await execute('EDIT_UNIT', subSteps, description, { chained: true });
-  }, [editUnit, execute]);
+    // Surface a failed write instead of silently leaving the editor thinking it saved.
+    const row = await execute('EDIT_UNIT', subSteps, description, { chained: true });
+    if (!row) {
+      addError(`Unit edit failed — ${description}. Nothing was saved.`);
+      return;
+    }
+  }, [editUnit, execute, addError]);
 
   // A kicked player is booted back to the Lobby.
   const kicked = participantsSync.kicked;
