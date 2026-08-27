@@ -652,7 +652,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
     const dist = hexDistance(archer.hex, mover.hex);
     if (dist > weapon.range) {
-      addMessage(`${mover.unitName} is out of range now — reaction shot lost`);
+      addMessage(`${mover.unitName} is out of reaction range now — reaction shot lost`);
       setReactionMode(null);
       return;
     }
@@ -830,7 +830,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const dist = hexDistance(archer.hex, target.hex);
     if (!weapon || !isRangedCapableWeapon(weapon) || dist > weapon.range) {
       flashRangeViolation(target.hex);
-      addMessage(`${target.unitName} is out of range (max ${weapon?.range ?? 0} hexes)`);
+      addMessage(`${target.unitName} is out of reaction range (max ${weapon?.range ?? 0} hexes)`);
       return;
     }
     await performReactionShot(archer, target);
