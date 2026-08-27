@@ -563,8 +563,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // a consumed archer's marker everywhere, and resets everything on END_TURN.
   const offerRef = useRef(offerReactionsFor);
   offerRef.current = offerReactionsFor;
-  const pruneRef = useRef(pruneReactionOffers);
-  pruneRef.current = pruneReactionOffers;
   const unitsRef = useRef(units);
   unitsRef.current = units;
   const handleCommandLogEventRef = useRef((row: CommandLogRow) => {});
@@ -596,12 +594,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const mover = unitsRef.current.find(u => u.id === step.unitId);
       if (!mover) continue;
       // Use the logged end hex as the mover's position (authoritative, and not
-      // racy with the units realtime stream).
+      // racy with the units realtime stream). NO immediate prune here: the local
+      // `units` may not have the mover's new hex yet, and a stale-position prune
+      // would delete a just-created valid offer (the 4-hex-vs-range boundary bug).
+      // Re-validation happens via the useEffect below once `units` lands.
       offerRef.current({ ...mover, hex: hexChange.to as Hex });
     }
-    // Re-validate every marker after any log change (undo can move the mover back
-    // out of range; the prune only removes markers that are now invalid).
-    pruneRef.current();
   };
 
   useEffect(() => {
@@ -623,11 +621,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, [scenarioId]);
 
   // Ordering-immune catch-all: after undo/redo or any realtime position change
-  // lands in local `units`, re-validate the markers. Returns the same map
-  // reference when nothing changed, so this cannot cause a render loop.
+  // lands in local `units`, re-validate the markers with authoritative positions.
+  // Returns the same map reference when nothing changed, so this cannot loop.
   useEffect(() => {
     pruneReactionOffers();
-  }, [units]);
+  }, [pruneReactionOffers]);
 
   const routeReactionUnit = useCallback(async (unit: Unit, reason: string, killed: boolean): Promise<void> => {
     const name = unit.unitName;
