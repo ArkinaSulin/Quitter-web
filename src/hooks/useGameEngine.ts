@@ -673,7 +673,7 @@ export function useGameEngine({
       formationsMap: Record<string, Formation>;
       turnNumber: number;
       freeMove: boolean;
-    }): Promise<{ next: AllianceGroup; wrapped: boolean; turnNumber: number; freeMoveEnded: boolean }> => {
+    }): Promise<{ next: AllianceGroup; wrapped: boolean; turnNumber: number; freeMoveEnded: boolean; ok: boolean }> => {
       const activeGroups = getActiveGroups(args.alliances);
       const { next, wrapped } = advanceTurn(args.currentAlliance, activeGroups);
       // Turn 0 = free play (null alliance). The first End Turn leaves free play and
@@ -774,8 +774,9 @@ export function useGameEngine({
         refreshedUnits,
       });
 
-      await execute('END_TURN', subSteps, `End Turn — ${next} turn begins`);
-      return { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded: leavingFreePlay };
+      const row = await execute('END_TURN', subSteps, `End Turn — ${next} turn begins`);
+      if (!row) console.error('[EndTurn] execute FAILED — no command row (server rejected/rolled back); turn did NOT advance in the DB');
+      return { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded: leavingFreePlay, ok: !!row };
     },
     [execute, scenarioId],
   );

@@ -429,7 +429,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (isEndingTurn) return;
     setIsEndingTurn(true);
     try {
-      const { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded } = await endTurn({
+      const { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded, ok } = await endTurn({
         currentAlliance: currentTurnAlliance,
         alliances,
         units,
@@ -437,6 +437,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         turnNumber,
         freeMove,
       });
+      // Only advance the client's turn state when the server actually committed —
+      // otherwise the UI shows a turn that never happened (and units never reset).
+      if (!ok) return;
       setCurrentTurnAlliance(next);
       if (wrapped || freeMoveEnded) setTurnNumber(newTurnNumber);
       // Turn 0 free play ends when the first real turn begins.
