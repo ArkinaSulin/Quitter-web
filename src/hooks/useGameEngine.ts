@@ -743,7 +743,7 @@ export function useGameEngine({
           ? computeEffectiveMovement(unit, getFormationMultiplier(args.formationsMap, unit.currentFormation, 'movement_multiplier'))
           : turnStartMp;
         const actionsTo = hero ? heroActionsPerTurn : actionsPerTurn;
-        refreshedUnits.push(`${unit.unitName} (${unit.team}) -> ${mpTo} MP / ${actionsTo} act`);
+        refreshedUnits.push(`${unit.unitName} (${unit.team}) id=${unit.id} -> ${mpTo} MP / ${actionsTo} act`);
         const changes: { field: string; from: any; to: any }[] = [
           { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: mpTo },
           { field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsTo },
@@ -770,6 +770,7 @@ export function useGameEngine({
         turnStartMp,
         heroActionsPerTurn,
         unitCount: args.units.length,
+        allUnitIds: args.units.map(u => `${u.unitName}=${u.id}`),
         refreshedCount: refreshedUnits.length,
         refreshedUnits,
       });
