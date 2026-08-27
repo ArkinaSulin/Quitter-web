@@ -165,13 +165,24 @@ export function useGameEngine({
       // pre-command realtime event can't regress the optimistic paint.
       await applyDeltas(subSteps, 'to', false, row?.seq);
 
+      // Authoritative convergence: refetch the touched units from the DB. The
+      // per-change server writes emit multiple realtime events per unit with the
+      // SAME command_seq, and the stale-guard applies the first and drops the
+      // rest — leaving non-optimistic clients (e.g. the DM) on an intermediate
+      // state. Refetching the DB's final row makes every client match the truth,
+      // immune to event ordering (same pattern undo/redo already use).
+      if (refreshUnitsByIds) {
+        const touched = touchedUnitIds([row]);
+        if (touched.length > 0) await refreshUnitsByIds(touched);
+      }
+
       // Unit edits (incl. by players editing their own unit) are flagged to everyone.
       if (actionType === 'EDIT_UNIT') addError(description);
       else addMessage(description);
       refreshUndoState();
       return row;
     },
-    [scenarioId, playerId, playerName, applyDeltas, addMessage, addError, refreshUndoState],
+    [scenarioId, playerId, playerName, applyDeltas, refreshUnitsByIds, touchedUnitIds, addMessage, addError, refreshUndoState],
   );
 
   const subscribeToCommandLog = useCallback((): (() => void) => {
