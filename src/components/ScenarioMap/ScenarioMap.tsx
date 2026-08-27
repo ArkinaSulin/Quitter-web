@@ -565,28 +565,40 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   unitsRef.current = units;
   const handleCommandLogEventRef = useRef((row: CommandLogRow) => {});
   handleCommandLogEventRef.current = (row) => {
+    const steps = parseSubSteps(row.sub_steps);
     if (row.action_type === 'END_TURN') {
       setReactionOffers(new Map());
       setReactionMode(null);
       setReactionFormationPicker(null);
-      return;
+    } else {
+      for (const step of steps) {
+        if (step.type !== 'MOVE') continue;
+        // Only live rows re-offer (INSERT and redo; an undone move is skipped).
+        if (row.deleted_at != null) continue;
+        const hexChange = step.changes.find(c => c.field === 'hex');
+        if (!hexChange || typeof hexChange.to !== 'object' || hexChange.to === null) continue;
+        const mover = unitsRef.current.find(u => u.id === step.unitId);
+        if (!mover) continue;
+        // Use the logged end hex as the mover's position (authoritative, and not
+        // racy with the units realtime stream). NO immediate prune here: the local
+        // `units` may not have the mover's new hex yet, and a stale-position prune
+        // would delete a just-created valid offer (the 4-hex-vs-range boundary bug).
+        // Re-validation happens via the useEffect below once `units` lands.
+        offerRef.current({ ...mover, hex: hexChange.to as Hex });
+      }
     }
-    const steps = parseSubSteps(row.sub_steps);
+
+    // Authoritative convergence on EVERY client: refetch the units this command
+    // wrote so the DB's final state always wins. The per-change server writes emit
+    // multiple realtime events per unit with the SAME command_seq, and the client's
+    // stale-guard drops all but the first — leaving non-actors (e.g. the DM) on an
+    // intermediate state (stale formation / archerReactionUsed → bow still shown).
+    // This is the same refetch the executing client does in execute() and undo/redo.
+    const touched: string[] = [];
     for (const step of steps) {
-      if (step.type !== 'MOVE') continue;
-      // Only live rows re-offer (INSERT and redo; an undone move is skipped).
-      if (row.deleted_at != null) continue;
-      const hexChange = step.changes.find(c => c.field === 'hex');
-      if (!hexChange || typeof hexChange.to !== 'object' || hexChange.to === null) continue;
-      const mover = unitsRef.current.find(u => u.id === step.unitId);
-      if (!mover) continue;
-      // Use the logged end hex as the mover's position (authoritative, and not
-      // racy with the units realtime stream). NO immediate prune here: the local
-      // `units` may not have the mover's new hex yet, and a stale-position prune
-      // would delete a just-created valid offer (the 4-hex-vs-range boundary bug).
-      // Re-validation happens via the useEffect below once `units` lands.
-      offerRef.current({ ...mover, hex: hexChange.to as Hex });
+      if (step.unitId && step.type !== 'ALLIANCE' && step.type !== 'SCENARIO') touched.push(step.unitId);
     }
+    if (touched.length > 0) refreshUnitsByIds(Array.from(new Set(touched)));
   };
 
   useEffect(() => {
