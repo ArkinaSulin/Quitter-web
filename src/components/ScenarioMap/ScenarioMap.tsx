@@ -756,6 +756,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setReactionMode(null);
       return;
     }
+    // Same limits as the normal formation change: no two-handed Shield Wall, and
+    // at most one organization level above the current formation.
+    if (formation === 'Shield Wall') {
+      const activeWeapon = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0];
+      if (activeWeapon?.isTwoHanded) {
+        addMessage(`${archer.unitName} cannot form Shield Wall while wielding ${activeWeapon.name} (two-handed)`);
+        setReactionFormationPicker(null);
+        return;
+      }
+    }
+    if (getOrganizationLevel(formation) > getOrganizationLevel(archer.currentFormation) + 1) {
+      addMessage(`${archer.unitName} cannot switch to ${formation} — more than one organization level above the current formation`);
+      return;
+    }
     const oldMult = formationsMap[archer.currentFormation]?.movement_multiplier ?? 1;
     const newMult = formationsMap[formation]?.movement_multiplier ?? 1;
     const oldEffectiveMax = computeEffectiveMovement(archer, oldMult);
@@ -2999,35 +3013,54 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       )}
 
       {/* Reaction: formation picker (reached by right-clicking the acting archer
-          in locked reaction mode) */}
-      {reactionFormationPicker && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[260px]">
-            <p className="text-white text-sm mb-3 text-center font-semibold">Change formation — {reactionFormationPicker.unitName}</p>
-            <div className="flex flex-col gap-1.5">
-              {Object.values(formationsMap)
-                .map(f => f.name)
-                .filter(name => name !== 'Routed')
-                .sort((a, b) => getOrganizationLevel(b) - getOrganizationLevel(a) || a.localeCompare(b))
-                .map(name => (
+          in locked reaction mode). Follows the same formation-change limits as
+          the context menu: only formations in the unit's availability, at most
+          one org level above the current one, and no Shield Wall with a
+          two-handed weapon. Clicking a formation applies AND closes the modal. */}
+      {reactionFormationPicker && (() => {
+        const archer = reactionFormationPicker;
+        const currentOrgLevel = getOrganizationLevel(archer.currentFormation);
+        const activeWeaponIsTwoHanded = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0]?.isTwoHanded || false;
+        const available = archer.formationAvailability && archer.formationAvailability.length > 0
+          ? archer.formationAvailability
+          : ['Open Order', 'Close Order', 'Phalanx', 'Shield Wall', 'Scattered'];
+        const options = Object.values(formationsMap)
+          .map(f => f.name)
+          .filter(name => name !== 'Routed' && available.includes(name))
+          .sort((a, b) => getOrganizationLevel(b) - getOrganizationLevel(a) || a.localeCompare(b))
+          .map(name => ({
+            name,
+            disabled: getOrganizationLevel(name) > currentOrgLevel + 1 || (name === 'Shield Wall' && activeWeaponIsTwoHanded),
+          }));
+        return (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[260px]">
+              <p className="text-white text-sm mb-3 text-center font-semibold">Change formation — {archer.unitName}</p>
+              <div className="flex flex-col gap-1.5">
+                {options.map(({ name, disabled }) => (
                   <button
                     key={name}
-                    className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded text-sm"
-                    onClick={() => performReactionFormation(reactionFormationPicker, name)}
+                    disabled={disabled}
+                    className={`px-3 py-1.5 rounded text-sm ${disabled ? 'bg-gray-800 text-gray-600 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700 text-white'}`}
+                    onClick={() => { performReactionFormation(archer, name); setReactionFormationPicker(null); }}
                   >
                     {name}
                   </button>
                 ))}
+                {options.length === 0 && (
+                  <p className="text-[11px] text-gray-500 text-center">No formations available</p>
+                )}
+              </div>
+              <button
+                className="mt-3 w-full bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => setReactionFormationPicker(null)}
+              >
+                Cancel
+              </button>
             </div>
-            <button
-              className="mt-3 w-full bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-              onClick={() => setReactionFormationPicker(null)}
-            >
-              Cancel
-            </button>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Scenario Settings (GM): per-scenario rule toggles */}
       {showScenarioSettings && (
