@@ -155,11 +155,6 @@ export function useGameEngine({
       if (error || !data || (data as any[]).length === 0) {
         console.error('[CommandLog] Execute failed:', error);
         addError(`Action failed — ${description}`);
-        // Unmissable for the current debugging session: surface the exact server
-        // rejection (e.g. a Postgres exception from apply_substeps).
-        const msg = (error as any)?.message || 'unknown error';
-        console.error('[CommandLog] Execute error message:', msg);
-        if (typeof window !== 'undefined') window.alert(`Command failed (${actionType}): ${msg}`);
         return null;
       }
 
@@ -738,7 +733,6 @@ export function useGameEngine({
       const turnStartMp = getSetting('turn_start_mp', 0);
       const actionsPerTurn = getSetting('actions_per_turn', 2);
       const heroActionsPerTurn = getSetting('hero_actions_per_turn', 5);
-      const refreshedUnits: string[] = [];
       for (const unit of args.units) {
         if (unit.isDeleted || !activeTeams.has(unit.team)) continue;
         // Heroes refresh to FULL MP + 5 actions; units refresh to 0 MP + 2 actions
@@ -748,7 +742,6 @@ export function useGameEngine({
           ? computeEffectiveMovement(unit, getFormationMultiplier(args.formationsMap, unit.currentFormation, 'movement_multiplier'))
           : turnStartMp;
         const actionsTo = hero ? heroActionsPerTurn : actionsPerTurn;
-        refreshedUnits.push(`${unit.unitName} (${unit.team}) id=${unit.id} -> ${mpTo} MP / ${actionsTo} act`);
         const changes: { field: string; from: any; to: any }[] = [
           { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: mpTo },
           { field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsTo },
@@ -764,24 +757,8 @@ export function useGameEngine({
           changes,
         });
       }
-      // Diagnostic for the per-alliance refresh targeting (see turn-cycle reports).
-      console.debug('[EndTurn]', {
-        currentAlliance: args.currentAlliance,
-        alliances: args.alliances,
-        activeGroups,
-        next,
-        activeTeams: Array.from(activeTeams),
-        actionsPerTurn,
-        turnStartMp,
-        heroActionsPerTurn,
-        unitCount: args.units.length,
-        allUnitIds: args.units.map(u => `${u.unitName}=${u.id}`),
-        refreshedCount: refreshedUnits.length,
-        refreshedUnits,
-      });
 
       const row = await execute('END_TURN', subSteps, `End Turn — ${next} turn begins`);
-      if (!row) console.error('[EndTurn] execute FAILED — no command row (server rejected/rolled back); turn did NOT advance in the DB');
       return { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded: leavingFreePlay, ok: !!row };
     },
     [execute, scenarioId],
