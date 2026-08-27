@@ -52,6 +52,7 @@ const FIELDS: FieldDef[] = [
   { key: 'cha', label: 'Cha save', type: 'number' },
   { key: 'movementPointsAvailable', label: 'MP left this turn', type: 'number', min: 0 },
   { key: 'actionsAvailable', label: 'Actions left', type: 'number', min: 0 },
+  { key: 'archerReactionUsed', label: 'Reaction used', type: 'boolean' },
   {
     key: 'sizeCategory',
     label: 'Size',
@@ -62,6 +63,7 @@ const FIELDS: FieldDef[] = [
   { key: 'currentFormation', label: 'Formation', type: 'formation' },
   { key: 'formationAvailability', label: 'Formation availability', type: 'multi' },
   { key: 'isShielded', label: 'Shield', type: 'boolean' },
+  { key: 'isCharging', label: 'Charging', type: 'boolean' },
   { key: 'canCharge', label: 'Can charge', type: 'boolean' },
   { key: 'ignoreMoraleChecks', label: 'Immune to morale (never routs)', type: 'boolean' },
 ];
@@ -347,19 +349,21 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
           {/* R5 Combat */}
           <div className="flex items-end gap-2">
             <Cell label="Actions left"><NumInput value={draft.actionsAvailable} min={0} onChange={v => set('actionsAvailable', v)} /></Cell>
-            <Cell label="Aggress."><NumInput value={draft.aggressiveness} onChange={v => set('aggressiveness', v)} /></Cell>
+            <div className="pb-1"><Toggle checked={!!draft.archerReactionUsed} onChange={v => set('archerReactionUsed', v)} label="Reaction used" /></div>
           </div>
 
           {/* R6 Morale */}
           <div className="flex items-end gap-2">
+            <Cell label="Aggress."><NumInput value={draft.aggressiveness} onChange={v => set('aggressiveness', v)} /></Cell>
             <Cell label="Current morale"><ReadBox>{effMorale}</ReadBox></Cell>
             <Cell label="Base morale"><NumInput value={draft.baseMorale} onChange={v => set('baseMorale', v)} /></Cell>
             <div className="pb-1"><Toggle checked={!!draft.ignoreMoraleChecks} onChange={v => set('ignoreMoraleChecks', v)} label="Fearless" /></div>
           </div>
 
-          {/* R7 Formation + Mount + Can charge */}
+          {/* R7 Formation + Charging + Mount + Can charge */}
           <div className="flex items-end gap-2">
             <Cell label="Formation" widthClass="w-32"><SelectInput value={String(draft.currentFormation)} onChange={v => set('currentFormation', v)} options={formationOptions.map(n => ({ value: n, label: n }))} /></Cell>
+            <div className="pb-1"><Toggle checked={!!draft.isCharging} onChange={v => set('isCharging', v)} label="Charging" /></div>
             <Cell label="Mount" widthClass="w-28"><SelectInput value={String(draft.mountId || '')} onChange={handleMountChange} options={mountOptions} /></Cell>
             <div className="pb-1"><Toggle checked={!!draft.canCharge} onChange={v => set('canCharge', v)} label="Charge" /></div>
           </div>

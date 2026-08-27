@@ -536,7 +536,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     });
   }, [archerReactionEnabled, units, alliances]);
 
-  /** Drop markers whose mover is no longer within the archer's weapon range. */
+  /** Drop markers whose mover is no longer within the archer's weapon range, or
+   *  whose archer already used its once-per-turn reaction. */
   const pruneReactionOffers = useCallback(() => {
     setReactionOffers(prev => {
       if (prev.size === 0) return prev;
@@ -546,7 +547,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         const archer = units.find(u => u.id === archerId);
         const mover = units.find(u => u.id === moverId);
         const weapon = archer ? parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0] : null;
-        if (!archer || !mover || !weapon || !isRangedCapableWeapon(weapon) || hexDistance(archer.hex, mover.hex) > weapon.range) {
+        if (!archer || archer.archerReactionUsed || !mover || !weapon || !isRangedCapableWeapon(weapon) || hexDistance(archer.hex, mover.hex) > weapon.range) {
           next.delete(archerId);
           changed = true;
         }
@@ -557,16 +558,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   // Shared reaction-offer source: every client derives offers from the command
   // log (the move is a logged MOVE command), so the archer's OWNER sees the bow
-  // even though the mover is on another client. Also prunes markers when the
-  // mover walks out of range, and clears everything on END_TURN.
+  // even though the mover is on another client. Runs on INSERT and UPDATE (undo
+  // sets deleted_at / redo clears it), prunes markers that became invalid, clears
+  // a consumed archer's marker everywhere, and resets everything on END_TURN.
   const offerRef = useRef(offerReactionsFor);
   offerRef.current = offerReactionsFor;
   const pruneRef = useRef(pruneReactionOffers);
   pruneRef.current = pruneReactionOffers;
   const unitsRef = useRef(units);
   unitsRef.current = units;
-  const handleCommandInsertRef = useRef((row: CommandLogRow) => {});
-  handleCommandInsertRef.current = (row) => {
+  const handleCommandLogEventRef = useRef((row: CommandLogRow) => {});
+  handleCommandLogEventRef.current = (row) => {
     if (row.action_type === 'END_TURN') {
       setReactionOffers(new Map());
       setReactionMode(null);
@@ -575,7 +577,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
     const steps = parseSubSteps(row.sub_steps);
     for (const step of steps) {
+      // A consumed reaction clears that archer's marker on every client.
+      if (step.type === 'ARCHER_REACTION') {
+        const archerId = step.unitId;
+        setReactionOffers(prev => {
+          if (!prev.has(archerId)) return prev;
+          const next = new Map(prev);
+          next.delete(archerId);
+          return next;
+        });
+        continue;
+      }
       if (step.type !== 'MOVE') continue;
+      // Only live rows re-offer (INSERT and redo; an undone move is skipped).
+      if (row.deleted_at != null) continue;
       const hexChange = step.changes.find(c => c.field === 'hex');
       if (!hexChange || typeof hexChange.to !== 'object' || hexChange.to === null) continue;
       const mover = unitsRef.current.find(u => u.id === step.unitId);
@@ -584,20 +599,35 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // racy with the units realtime stream).
       offerRef.current({ ...mover, hex: hexChange.to as Hex });
     }
+    // Re-validate every marker after any log change (undo can move the mover back
+    // out of range; the prune only removes markers that are now invalid).
     pruneRef.current();
   };
 
   useEffect(() => {
+    const handler = (payload: any) => handleCommandLogEventRef.current(payload.new as CommandLogRow);
     const channel = supabase
       .channel(`command-reactions:${scenarioId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'command_log', filter: `scenario_id=eq.${scenarioId}` },
-        (payload: any) => handleCommandInsertRef.current(payload.new as CommandLogRow),
+        handler,
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'command_log', filter: `scenario_id=eq.${scenarioId}` },
+        handler,
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [scenarioId]);
+
+  // Ordering-immune catch-all: after undo/redo or any realtime position change
+  // lands in local `units`, re-validate the markers. Returns the same map
+  // reference when nothing changed, so this cannot cause a render loop.
+  useEffect(() => {
+    pruneReactionOffers();
+  }, [units]);
 
   const routeReactionUnit = useCallback(async (unit: Unit, reason: string, killed: boolean): Promise<void> => {
     const name = unit.unitName;
@@ -611,6 +641,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, [execute]);
 
   const performReactionShot = useCallback(async (archer: Unit, mover: Unit) => {
+    if (archer.archerReactionUsed) {
+      addMessage(`${archer.unitName} already reacted this turn`);
+      setReactionMode(null);
+      return;
+    }
     const weapon = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0];
     if (!weapon || !isRangedCapableWeapon(weapon)) {
       addMessage(`${archer.unitName} no longer holds a ranged weapon — reaction shot unavailable`);
@@ -685,6 +720,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, [execute, displayUnits, displayAlliances, formationsMap, sizeCategories, addMessage, clearReactionFor, routeReactionUnit]);
 
   const performReactionMove = useCallback(async (archer: Unit, targetHex: Hex, cost: number) => {
+    if (archer.archerReactionUsed) {
+      addMessage(`${archer.unitName} already reacted this turn`);
+      setReactionMode(null);
+      return;
+    }
     const maxMP = unitMaxMP(archer);
     const { movementPointsAvailable, actionsAvailable } = archer.isHero
       ? applyHeroMoveCost(archer, cost, maxMP)
@@ -710,9 +750,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     ], `${archer.unitName} repositioned up to 50% (reaction)`);
     clearReactionFor(archer.id);
     setReactionMode(null);
-  }, [execute, clearReactionFor]);
+  }, [execute, addMessage, clearReactionFor]);
 
   const performReactionFormation = useCallback(async (archer: Unit, formation: string) => {
+    if (archer.archerReactionUsed) {
+      addMessage(`${archer.unitName} already reacted this turn`);
+      setReactionMode(null);
+      return;
+    }
     const oldMult = formationsMap[archer.currentFormation]?.movement_multiplier ?? 1;
     const newMult = formationsMap[formation]?.movement_multiplier ?? 1;
     const oldEffectiveMax = computeEffectiveMovement(archer, oldMult);
@@ -744,7 +789,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     ], `${archer.unitName} changed formation to ${formation} (reaction)`);
     clearReactionFor(archer.id);
     setReactionMode(null);
-  }, [execute, formationsMap, clearReactionFor]);
+  }, [execute, formationsMap, addMessage, clearReactionFor]);
 
   /**
    * Locked reaction mode drag helpers: only the reacting archer can act.
@@ -1067,7 +1112,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         ctx.lineWidth = ringR * 0.4;
         ctx.stroke();
         ctx.restore();
-      } else if (!reactionMode && reactionOffers.has(unit.id) && canReactToUnit(unit)) {
+      } else if (!reactionMode && reactionOffers.has(unit.id) && !unit.archerReactionUsed && canReactToUnit(unit)) {
         await drawArcherReactionButton(ctx, cx, cy, HEX_SIZE * currentZoom * 0.5, bowBlinkOn ? 0.4 : 1);
       }
 
@@ -1948,7 +1993,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     onUnitClick: (unit, _clientX, _clientY) => {
       if (controlsLocked || reactionMode) return;
       // Clicking an archer's reaction button arms that archer's reaction mode.
-      if (!unit.isDeleted && reactionOffers.has(unit.id) && canReactToUnit(unit)) {
+      if (!unit.isDeleted && !unit.archerReactionUsed && reactionOffers.has(unit.id) && canReactToUnit(unit)) {
         setReactionMode({ archer: unit });
       }
     },
