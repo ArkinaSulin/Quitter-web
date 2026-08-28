@@ -8,6 +8,7 @@ import {
   isInFrontArc,
   rollD20,
   rollDamage,
+  rollDamageDetailed,
   resolveCombatSequence,
   suppressRetaliation,
 } from './unitCombat';
@@ -319,6 +320,55 @@ describe('rollDamage', () => {
     const a = rollDamage('2d6', seededRng(42));
     const b = rollDamage('2d6', seededRng(42));
     expect(a).toBe(b);
+  });
+});
+
+describe('rollDamageDetailed', () => {
+  it('returns faces, bonus and total separately', () => {
+    const rng = seededRng(42);
+    const { total, faces, bonus } = rollDamageDetailed('2d6+2', rng);
+    expect(faces).toHaveLength(2);
+    expect(faces.every(f => f >= 1 && f <= 6)).toBe(true);
+    expect(bonus).toBe(2);
+    expect(total).toBe(faces.reduce((a, b) => a + b, 0) + 2);
+  });
+
+  it('returns empty faces and zero total for invalid format', () => {
+    const rng = seededRng(42);
+    expect(rollDamageDetailed('invalid', rng)).toEqual({ total: 0, faces: [], bonus: 0 });
+  });
+});
+
+describe('dice-only doubling', () => {
+  // Force the damage dice to roll a known face: 1d6 with rng() => 0.5 rolls a 4.
+  // Defender AC 20: only a natural-20 crit hits, so the volley is a single hit.
+  const d6 = { attackBonus: 0, damageDice: '1d6+2', is_reach: false, noRetaliation: true, numberOfAttacks: 1 };
+  const def = makeUnit({ id: 'd', unitName: 'Defender', sizeCategory: 100, currentAc: 20, troopHp: 100, currentTroopCount: 80, maxTroopCount: 80, hex: { q: 0, r: 0, s: 0 }, facing: 0 });
+
+  function rollOneCrit(isCharging: boolean) {
+    // First rng() call is the D20: make it a 20 (crit). Then the damage dice.
+    let call = 0;
+    const rng = () => (call++ === 0 ? 0.95 : 0.5); // 0.95 → floor(0.95*20)+1 = 20
+    const att = makeUnit({ id: 'a', unitName: 'Attacker', aggressiveness: 7, sizeCategory: 100, currentAc: 10, troopHp: 100, currentTroopCount: 80, maxTroopCount: 80, hex: { q: 0, r: -1, s: 1 } });
+    return resolveCombatSequence(att, def, d6, null, 0, 1, 1, 10, 10, 20, true, false, null, null, rng, isCharging);
+  }
+
+  it('crit doubles only the dice, not the bonus (1d6+2, face 4 → 4×2+2 = 10)', () => {
+    const result = rollOneCrit(false);
+    expect(result.firstStrikeDamage).toBe(10);
+    expect(result.firstStrikeAttacks[0].damageFaces).toEqual([4]);
+    expect(result.firstStrikeAttacks[0].rawDamage).toBe(10);
+  });
+
+  it('crit + charge quadruples only the dice (1d6+2, face 4 → 4×4+2 = 18)', () => {
+    const result = rollOneCrit(true);
+    expect(result.firstStrikeDamage).toBe(18);
+    expect(result.firstStrikeAttacks[0].rawDamage).toBe(18);
+  });
+
+  it('records base damage faces before doubling', () => {
+    const result = rollOneCrit(false);
+    expect(result.firstStrikeAttacks[0].damageFaces).toEqual([4]);
   });
 });
 

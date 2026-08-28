@@ -93,15 +93,38 @@ export function rollD20(rng: () => number): number {
   return Math.floor(rng() * 20) + 1;
 }
 
-export function rollDamage(diceStr: string, rng: () => number): number {
+export interface DamageRoll {
+  /** Sum of the dice faces plus the flat bonus. */
+  total: number;
+  /** Individual die faces (before any doubling). */
+  faces: number[];
+  /** Flat bonus from the dice notation (e.g. "+2" in "1d8+2"). */
+  bonus: number;
+}
+
+/**
+ * Roll a dice string ("1d8", "2d6+2") and return the individual faces plus the
+ * total. Doubling is intentionally NOT applied here — callers multiply only the
+ * dice faces (never the bonus) when crits/charges double damage.
+ */
+export function rollDamageDetailed(diceStr: string, rng: () => number): DamageRoll {
   const match = diceStr.match(/^(\d*)d(\d+)(?:\+(\d+))?$/i);
-  if (!match) return 0;
+  if (!match) return { total: 0, faces: [], bonus: 0 };
   const count = parseInt(match[1] || '1');
   const sides = parseInt(match[2]);
   const bonus = parseInt(match[3] || '0');
-  let total = bonus;
-  for (let i = 0; i < count; i++) total += Math.floor(rng() * sides) + 1;
-  return total;
+  const faces: number[] = [];
+  let diceTotal = 0;
+  for (let i = 0; i < count; i++) {
+    const face = Math.floor(rng() * sides) + 1;
+    faces.push(face);
+    diceTotal += face;
+  }
+  return { total: diceTotal + bonus, faces, bonus };
+}
+
+export function rollDamage(diceStr: string, rng: () => number): number {
+  return rollDamageDetailed(diceStr, rng).total;
 }
 
 export interface SingleAttackResult {
@@ -111,6 +134,8 @@ export interface SingleAttackResult {
   isHit: boolean;
   rawDamage: number;
   actualDamage: number;
+  /** Base damage dice faces (before any crit/charge doubling). */
+  damageFaces?: number[];
 }
 
 export interface CombatOutcome {
@@ -181,14 +206,20 @@ function executeAttacks(
     const attackValue = roll + attackBonus;
     const isHit = roll === 1 ? false : isCrit ? true : attackValue >= targetAc;
     let rawDamage = 0;
+    let damageFaces: number[] = [];
     if (isHit) {
-      rawDamage = rollDamage(damageDice, rng);
-      if (isCrit) rawDamage *= 2;
-      if (isCharging) rawDamage *= 2;
+      const dmg = rollDamageDetailed(damageDice, rng);
+      damageFaces = dmg.faces;
+      // Doubling applies to the DICE ONLY, never the bonus: crit ×2, charge ×2,
+      // both ×4. rawDamage = diceFacesSum × multiplier + bonus.
+      let multiplier = 1;
+      if (isCrit) multiplier *= 2;
+      if (isCharging) multiplier *= 2;
+      rawDamage = dmg.faces.reduce((a, b) => a + b, 0) * multiplier + dmg.bonus;
     }
     const actualDamage = Math.min(rawDamage, targetTroopHp);
     totalDamage += actualDamage;
-    attacks.push({ roll, isCrit, attackValue, isHit, rawDamage, actualDamage });
+    attacks.push({ roll, isCrit, attackValue, isHit, rawDamage, actualDamage, damageFaces });
   }
   return { attacks, totalDamage };
 }

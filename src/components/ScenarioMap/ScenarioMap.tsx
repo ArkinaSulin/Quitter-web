@@ -6,7 +6,7 @@ import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { parseSubSteps, CommandLogRow } from '@/lib/commandLog';
 import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { parseWeapons, Weapon } from '@/lib/weaponParser';
-import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamage, type CombatOutcome } from '@/lib/unitCombat';
+import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamage, rollDamageDetailed, type CombatOutcome } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition, canStopEnemyMovement, canChargeThrough } from '@/lib/formationRules';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
 import { getFormations } from '@/lib/formationCache';
@@ -42,6 +42,7 @@ import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisual
 import { nextLowerFormation, applyFormationChange } from '@/lib/formationCost';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { resolveSpellDamage } from '@/lib/spellDamage';
+import { formatStrikeDetail, formatSaveRolls, formatSpellBaseFaces } from '@/lib/verboseCombat';
 import { MagicCastModal } from './MagicCastModal';
 
 interface ScenarioMapProps {
@@ -153,6 +154,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Defensive-archer reactions (opportunity fire), per-scenario GM toggle.
   const [archerReactionEnabled, setArcherReactionEnabled] = useState(false);
   const [mountedChargeEnabled, setMountedChargeEnabled] = useState(true);
+  const [verboseCombat, setVerboseCombat] = useState(false);
   const [reactionOffers, setReactionOffers] = useState<Map<string, string>>(new Map()); // archerId -> moverId
   // Locked reaction mode: only the reacting archer can act (drag-shoot / drag-move /
   // right-click formation). Ends on completion or Escape.
@@ -410,6 +412,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if ('free_move' in fields) setFreeMove(fields.free_move);
     if ('archer_reaction_enabled' in fields) setArcherReactionEnabled(fields.archer_reaction_enabled);
     if ('mounted_charge_enabled' in fields) setMountedChargeEnabled(fields.mounted_charge_enabled ?? true);
+    if ('verbose_combat' in fields) setVerboseCombat(fields.verbose_combat ?? false);
   }, []);
 
 
@@ -701,7 +704,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         ],
       });
     }
-    const desc = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks, ${hits} hits, ${outcome.firstStrikeDamage} damage (${troopsKilled} troops)`;
+    const desc = verboseCombat
+      ? `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${formatStrikeDetail(outcome.firstStrikeAttacks, weapon.attackBonus + formationAtkMod, isUnitRouted(mover) && mover.isShielded ? mover.currentAc - 2 : mover.currentAc, weapon.damageDice, false, outcome.firstStrikeDamage)} (${troopsKilled} troops)`
+      : `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks, ${hits} hits, ${outcome.firstStrikeDamage} damage (${troopsKilled} troops)`;
     await execute('ARCHER_REACTION', subSteps, desc);
     // A reaction hit is an attack — it can break the mover's morale into a rout.
     const moverKilled = newHp <= 0;
@@ -716,7 +721,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       await routeReactionUnit(mover, moverKilled ? 'slain by reaction fire' : `morale ${modUnit.baseMorale + effMod} after reaction shot`, moverKilled);
     }
     setReactionMode(null);
-  }, [execute, displayUnits, displayAlliances, formationsMap, sizeCategories, addMessage, routeReactionUnit, units]);
+  }, [execute, displayUnits, displayAlliances, formationsMap, sizeCategories, addMessage, routeReactionUnit, units, verboseCombat]);
 
   const performReactionMove = useCallback(async (archer: Unit, targetHex: Hex, cost: number) => {
     const liveArcher = units.find(u => u.id === archer.id) ?? archer;
@@ -1490,12 +1495,40 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (usedFists) weaponTags.push('FISTS — NO MELEE WEAPON');
     if (hexDistance(attacker.hex, target.hex) > weapon.range) weaponTags.push('LONG RANGE - DISADVANTAGE');
     let desc = `${attacker.unitName} attacks ${target.unitName} with ${weapon.name}${weaponTags.length > 0 ? ` (${weaponTags.join(', ')})` : ''}`;
-    desc += ` — ${firstStriker.unitName} strikes first — ${firstStrikeUnitCount} attacks${outcome.firstStrikeCountNote ? ` [${outcome.firstStrikeCountNote}]` : ''}, ${firstStrikeUnitHits} hits${firstStrikeUnitCrits > 0 ? `, ${firstStrikeUnitCrits} critical` : ''}, ${outcome.firstStrikeDamage} damage (${outcome.strikerFirst === 'attacker' ? defenderTroopsKilled : attackerTroopsKilled} troops)`;
+    // Verbose: mirror the engine's effective AC (routed units drop their shield,
+    // -2 AC) and the exact strike-side bonus/dice, then append the dice detail.
+    const effTargetAc = isUnitRouted(effTarget) && effTarget.isShielded ? effTarget.currentAc - 2 : effTarget.currentAc;
+    const effAttackerAc = isUnitRouted(effAttacker) && effAttacker.isShielded ? effAttacker.currentAc - 2 : effAttacker.currentAc;
+    const unitFirstStrikeAttacks = outcome.firstStrikeAttacks.slice(0, firstStrikeUnitCount);
+    const firstStrikeVerbose = verboseCombat
+      ? formatStrikeDetail(
+          unitFirstStrikeAttacks,
+          outcome.strikerFirst === 'attacker'
+            ? weapon.attackBonus + formationAtkMod
+            : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
+          outcome.strikerFirst === 'attacker' ? effTargetAc : effAttackerAc,
+          outcome.strikerFirst === 'attacker' ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
+          outcome.strikerFirst === 'attacker' && isChargingAttack,
+          outcome.firstStrikeDamage,
+        )
+      : '';
+    desc += ` — ${firstStriker.unitName} strikes first — ${firstStrikeUnitCount} attacks${outcome.firstStrikeCountNote ? ` [${outcome.firstStrikeCountNote}]` : ''}${firstStrikeVerbose || `, ${firstStrikeUnitHits} hits${firstStrikeUnitCrits > 0 ? `, ${firstStrikeUnitCrits} critical` : ''}, ${outcome.firstStrikeDamage} damage`} (${outcome.strikerFirst === 'attacker' ? defenderTroopsKilled : attackerTroopsKilled} troops)`;
 
     // Hero's own share of the first strike (front-attached hero absorbs its volley)
     if (firstStrikeHeroUnit && firstStrikeHeroAttacks.length > 0) {
       const heroDamage = outcome.firstStrikeHeroDamage;
-      let heroClause = `. ${firstStrikeHeroUnit.unitName} took ${firstStrikeHeroAttacks.length} attacks, ${firstStrikeHeroHits} hits${firstStrikeHeroCrits > 0 ? `, ${firstStrikeHeroCrits} critical` : ''}, ${heroDamage} damage`;
+      let heroClause = verboseCombat
+        ? `. ${firstStrikeHeroUnit.unitName} took ${firstStrikeHeroAttacks.length} attacks${formatStrikeDetail(
+            firstStrikeHeroAttacks,
+            outcome.strikerFirst === 'attacker'
+              ? weapon.attackBonus + formationAtkMod
+              : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
+            firstStrikeHeroUnit.currentAc,
+            outcome.strikerFirst === 'attacker' ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
+            outcome.strikerFirst === 'attacker' && isChargingAttack,
+            heroDamage,
+          )}`
+        : `. ${firstStrikeHeroUnit.unitName} took ${firstStrikeHeroAttacks.length} attacks, ${firstStrikeHeroHits} hits${firstStrikeHeroCrits > 0 ? `, ${firstStrikeHeroCrits} critical` : ''}, ${heroDamage} damage`;
       if (heroDamage > 0) {
         const newHeroHp = Math.max(0, firstStrikeHeroUnit.currentUnitHp - heroDamage);
         const newHeroTroops = Math.ceil(newHeroHp / firstStrikeHeroUnit.troopHp);
@@ -1541,14 +1574,40 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const retaliationUnitCount = effectiveOutcome.retaliationAttacks.length - retaliationHeroAttacks.length;
       const retaliationUnitHits = retaliatorHits - retaliationHeroHits;
       const retaliationUnitCrits = retaliationCrits - retaliationHeroCrits;
-      desc += `. ${retaliator.unitName} retaliates — ${retaliationUnitCount} attacks${effectiveOutcome.retaliationCountNote ? ` [${effectiveOutcome.retaliationCountNote}]` : ''}, ${retaliationUnitHits} hits${retaliationUnitCrits > 0 ? `, ${retaliationUnitCrits} critical` : ''}, ${effectiveOutcome.retaliationDamage} damage (${effectiveOutcome.strikerFirst === 'attacker' ? attackerTroopsKilled : defenderTroopsKilled} troops)`;
+      // The retaliator is the defender when the attacker struck first (defWeapon),
+      // or the attacker when the defender struck first (weapon, charge applies).
+      const retIsAttacker = effectiveOutcome.strikerFirst === 'defender';
+      const retaliationVerbose = verboseCombat
+        ? formatStrikeDetail(
+            effectiveOutcome.retaliationAttacks.slice(0, retaliationUnitCount),
+            retIsAttacker
+              ? weapon.attackBonus + formationAtkMod
+              : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
+            retIsAttacker ? effTargetAc : effAttackerAc,
+            retIsAttacker ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
+            retIsAttacker && isChargingAttack,
+            effectiveOutcome.retaliationDamage,
+          )
+        : '';
+      desc += `. ${retaliator.unitName} retaliates — ${retaliationUnitCount} attacks${effectiveOutcome.retaliationCountNote ? ` [${effectiveOutcome.retaliationCountNote}]` : ''}${retaliationVerbose || `, ${retaliationUnitHits} hits${retaliationUnitCrits > 0 ? `, ${retaliationUnitCrits} critical` : ''}, ${effectiveOutcome.retaliationDamage} damage`} (${effectiveOutcome.strikerFirst === 'attacker' ? attackerTroopsKilled : defenderTroopsKilled} troops)`;
 
       // Hero's own share of the retaliation (hero on whoever received it)
       const retaliationHeroHostId = effectiveOutcome.strikerFirst === 'attacker' ? attacker.id : target.id;
       const retaliationHeroUnit = units.find(u => u.attachedToUnitId === retaliationHeroHostId && !u.isDeleted);
       if (retaliationHeroUnit && retaliationHeroAttacks.length > 0) {
         const heroDamage = effectiveOutcome.retaliationHeroDamage;
-        let heroClause = `. ${retaliationHeroUnit.unitName} took ${retaliationHeroAttacks.length} attacks, ${retaliationHeroHits} hits${retaliationHeroCrits > 0 ? `, ${retaliationHeroCrits} critical` : ''}, ${heroDamage} damage`;
+        let heroClause = verboseCombat
+          ? `. ${retaliationHeroUnit.unitName} took ${retaliationHeroAttacks.length} attacks${formatStrikeDetail(
+              retaliationHeroAttacks,
+              retIsAttacker
+                ? weapon.attackBonus + formationAtkMod
+                : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
+              retaliationHeroUnit.currentAc,
+              retIsAttacker ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
+              retIsAttacker && isChargingAttack,
+              heroDamage,
+            )}`
+          : `. ${retaliationHeroUnit.unitName} took ${retaliationHeroAttacks.length} attacks, ${retaliationHeroHits} hits${retaliationHeroCrits > 0 ? `, ${retaliationHeroCrits} critical` : ''}, ${heroDamage} damage`;
         if (heroDamage > 0) {
           const newHeroHp = Math.max(0, retaliationHeroUnit.currentUnitHp - heroDamage);
           const newHeroTroops = Math.ceil(newHeroHp / retaliationHeroUnit.troopHp);
@@ -1615,13 +1674,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     // Post-combat outcome so callers (charge-over eligibility) can react to the
     // attacker surviving and/or the target breaking.
     return { attackerRouted, attackerKilled, defenderRouted, defenderKilled };
-  }, [units, alliances, formationsMap, sizeCategories, execute, addMessage, addError, maybeAutoReturnToRanged]);
+  }, [units, alliances, formationsMap, sizeCategories, execute, addMessage, addError, maybeAutoReturnToRanged, verboseCombat]);
 
   // A healing weapon (isHealing) recovers the target's HP instead of damaging it —
   // same dice mechanic as damage, capped at maxUnitHp. No combat sequence, AGR,
   // retaliation, morale, or arc/alliance restrictions.
   const performHeal = useCallback(async (healer: Unit, target: Unit, weapon: Weapon) => {
-    const heal = rollDamage(weapon.damageDice, Math.random);
+    const dmg = rollDamageDetailed(weapon.damageDice, Math.random);
+    const heal = dmg.total;
     const newHp = Math.min(target.maxUnitHp, target.currentUnitHp + heal);
     const newTroops = Math.min(target.maxTroopCount, Math.ceil(newHp / target.troopHp));
     const subSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
@@ -1644,9 +1704,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         ],
       });
     }
-    const desc = `${healer.unitName} heals ${target.unitName} for ${heal} HP with ${weapon.name}`;
+    const faces = verboseCombat && dmg.faces.length > 0 ? ` {${weapon.damageDice}: ${[...dmg.faces].sort((a, b) => a - b).join(',')}}` : '';
+    const desc = `${healer.unitName} heals ${target.unitName} for ${heal} HP with ${weapon.name}${faces}`;
     await execute('HEAL', subSteps, desc);
-  }, [execute]);
+  }, [execute, verboseCombat]);
 
   const performChargeEnd = useCallback(async (attacker: Unit, dropOrg: boolean) => {
     const changes: { field: string; from: any; to: any }[] = [
@@ -1882,7 +1943,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           ],
         });
       }
-      const healDesc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${healResult.baseDamage}, ${cast.affectedCount} troop(s) affected — ${healResult.totalDamage} total healing${troopsRecovered > 0 ? ` (${troopsRecovered} troop(s) recovered)` : ''}`;
+      const healFaces = verboseCombat && healResult.baseFaces.length > 0 ? ` {${cast.weapon.damageDice}: ${[...healResult.baseFaces].sort((a, b) => a - b).join(',')}}` : '';
+      const healDesc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${healResult.baseDamage}${healFaces}, ${cast.affectedCount} troop(s) affected — ${healResult.totalDamage} total healing${troopsRecovered > 0 ? ` (${troopsRecovered} troop(s) recovered)` : ''}`;
       await execute('HEAL', healSteps, healDesc);
       magicCast.sendResolve({ baseDamage: healResult.baseDamage, totalDamage: healResult.totalDamage, troopsKilled: 0, newHp, savedCount: 0, failedCount: 0, description: healDesc });
       return;
@@ -1925,7 +1987,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
     const savedCount = result.perTroop.filter(t => t.success).length;
     const failedCount = result.perTroop.length - savedCount;
-    const desc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${result.baseDamage}, ${cast.affectedCount} troop(s) affected, ${savedCount} saved, ${failedCount} failed — ${result.totalDamage} total damage (${troopsKilled} troop(s))`;
+    const castVerbose = verboseCombat
+      ? ` ${formatSpellBaseFaces(result, cast.weapon.damageDice)} ${formatSaveRolls(result, cast.targetStats[cast.saveStat.toLowerCase() as keyof typeof cast.targetStats] ?? 0, cast.saveDC)}`
+      : '';
+    const desc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${result.baseDamage}, ${cast.affectedCount} troop(s) affected, ${savedCount} saved, ${failedCount} failed${castVerbose} — ${result.totalDamage} total damage (${troopsKilled} troop(s))`;
 
     await execute('CAST', subSteps, desc);
 
@@ -1962,7 +2027,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       failedCount,
       description: desc,
     });
-  }, [magicCast, units, alliances, formationsMap, isGM, playerId, execute, addError]);
+  }, [magicCast, units, alliances, formationsMap, isGM, playerId, execute, addError, verboseCombat]);
 
   const requestResolveCast = useCallback(() => {
     const cast = magicCast.cast;
@@ -2610,7 +2675,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let cancelled = false;
     supabase
       .from('scenarios')
-      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled')
+      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat')
       .eq('id', scenarioId)
       .single()
       .then(({ data, error }) => {
@@ -2620,6 +2685,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setFreeMove(data.free_move ?? false);
         setArcherReactionEnabled(data.archer_reaction_enabled ?? false);
         setMountedChargeEnabled(data.mounted_charge_enabled ?? true);
+        setVerboseCombat(data.verbose_combat ?? false);
       });
     return () => { cancelled = true; };
   }, [scenarioId]);
@@ -2646,6 +2712,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }
           if (row.mounted_charge_enabled !== undefined) {
             setMountedChargeEnabled(row.mounted_charge_enabled ?? true);
+          }
+          if (row.verbose_combat !== undefined) {
+            setVerboseCombat(row.verbose_combat ?? false);
           }
         }
       )
@@ -3115,6 +3184,23 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 <span className="font-medium text-amber-300">Mounted charge</span>
                 <span className="block text-gray-400 text-[11px]">
                   When on, charge-capable units may use the Charge! action.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={verboseCombat}
+                onChange={async (e) => {
+                  await updateScenarioField(scenarioId, { verbose_combat: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">Verbose combat</span>
+                <span className="block text-gray-400 text-[11px]">
+                  When on, combat descriptions print every dice roll (sorted) so the damage
+                  formulas can be verified from the raw faces.
                 </span>
               </span>
             </label>

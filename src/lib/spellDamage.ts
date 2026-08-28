@@ -1,5 +1,5 @@
 // src/lib/spellDamage.ts
-import { rollD20, rollDamage } from './unitCombat';
+import { rollD20, rollDamageDetailed } from './unitCombat';
 
 export interface PerTroopSave {
   roll: number;
@@ -10,6 +10,8 @@ export interface PerTroopSave {
 
 export interface SpellDamageResult {
   baseDamage: number;
+  /** Individual base damage dice faces (before any per-troop save adjustment). */
+  baseFaces: number[];
   perTroop: PerTroopSave[];
   totalDamage: number;
 }
@@ -50,7 +52,9 @@ export function resolveSpellDamage({
   troopHp,
   rng = Math.random,
 }: ResolveSpellDamageInput): SpellDamageResult {
-  const baseDamage = rollDamage(damageDice, rng);
+  const dmg = rollDamageDetailed(damageDice, rng);
+  const baseDamage = dmg.total;
+  const baseFaces = dmg.faces;
   const perTroop: PerTroopSave[] = [];
   let totalDamage = 0;
   for (let i = 0; i < affectedCount; i++) {
@@ -68,5 +72,5 @@ export function resolveSpellDamage({
     totalDamage += damage;
     perTroop.push({ roll, saveResult, success, damage });
   }
-  return { baseDamage, perTroop, totalDamage };
+  return { baseDamage, baseFaces, perTroop, totalDamage };
 }
