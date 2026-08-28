@@ -152,6 +152,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [isEndingTurn, setIsEndingTurn] = useState(false);
   // Defensive-archer reactions (opportunity fire), per-scenario GM toggle.
   const [archerReactionEnabled, setArcherReactionEnabled] = useState(false);
+  const [mountedChargeEnabled, setMountedChargeEnabled] = useState(true);
   const [reactionOffers, setReactionOffers] = useState<Map<string, string>>(new Map()); // archerId -> moverId
   // Locked reaction mode: only the reacting archer can act (drag-shoot / drag-move /
   // right-click formation). Ends on completion or Escape.
@@ -408,6 +409,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if ('turn_number' in fields) setTurnNumber(fields.turn_number);
     if ('free_move' in fields) setFreeMove(fields.free_move);
     if ('archer_reaction_enabled' in fields) setArcherReactionEnabled(fields.archer_reaction_enabled);
+    if ('mounted_charge_enabled' in fields) setMountedChargeEnabled(fields.mounted_charge_enabled ?? true);
   }, []);
 
 
@@ -2608,7 +2610,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let cancelled = false;
     supabase
       .from('scenarios')
-      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled')
+      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled')
       .eq('id', scenarioId)
       .single()
       .then(({ data, error }) => {
@@ -2617,6 +2619,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setTurnNumber(data.turn_number || 0);
         setFreeMove(data.free_move ?? false);
         setArcherReactionEnabled(data.archer_reaction_enabled ?? false);
+        setMountedChargeEnabled(data.mounted_charge_enabled ?? true);
       });
     return () => { cancelled = true; };
   }, [scenarioId]);
@@ -2640,6 +2643,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }
           if (row.archer_reaction_enabled !== undefined) {
             setArcherReactionEnabled(row.archer_reaction_enabled);
+          }
+          if (row.mounted_charge_enabled !== undefined) {
+            setMountedChargeEnabled(row.mounted_charge_enabled ?? true);
           }
         }
       )
@@ -2868,6 +2874,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           freeMove={freeMove}
           onChangeFormation={(formation) => handleChangeFormation(contextMenuUnit, formation)}
           onCharge={() => charge(contextMenuUnit)}
+          chargeEnabled={mountedChargeEnabled}
           onSwapHeroPosition={(hero) => handleSwapHeroPosition(hero)}
           onSelectWeapon={(idx) => { weaponSelectedTurnRef.current[contextMenuUnit.id] = turnNumber; selectWeapon(contextMenuUnit, idx); }}
           onAssignTeam={(team) => assignTeam(contextMenuUnit, team)}
@@ -3092,6 +3099,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 <span className="block text-gray-400 text-[11px]">
                   When a unit ends a move within an eligible hostile archer's weapon range, that archer's owner may
                   shoot, move up to 50%, or change formation (once per turn each).
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={mountedChargeEnabled}
+                onChange={async (e) => {
+                  await updateScenarioField(scenarioId, { mounted_charge_enabled: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">Mounted charge</span>
+                <span className="block text-gray-400 text-[11px]">
+                  When on, charge-capable units may use the Charge! action.
                 </span>
               </span>
             </label>

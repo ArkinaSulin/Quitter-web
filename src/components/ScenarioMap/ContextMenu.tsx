@@ -30,6 +30,8 @@ interface ContextMenuProps {
   onSetRouting?: () => void;
   onDeleteUnit: () => void;
   onCharge?: () => void;
+  /** Scenario toggle: when false, the Charge! action is hidden. */
+  chargeEnabled?: boolean;
   onAttachHero?: (heroId: string, targetUnitId: string) => void;
   /** Swap an attached hero between front/back position (costs 1 hero MP). */
   onSwapHeroPosition?: (hero: Unit) => void;
@@ -60,6 +62,7 @@ export function ContextMenu({
   onSetRouting,
   onDeleteUnit,
   onCharge,
+  chargeEnabled = true,
   onAttachHero,
   onSwapHeroPosition,
   attachedHero,
@@ -212,7 +215,7 @@ export function ContextMenu({
               Move Hero to {attachedHero.attachedPosition === 'back' ? 'Front' : 'Back'} (1 MP)
             </div>
           )}
-          {unit.canCharge && !isUnitRouted(unit) && canFormationCharge(formationsMap?.[unit.currentFormation]) && !unit.isCharging && unit.actionsAvailable >= 1 && onCharge && (
+          {unit.canCharge && !isUnitRouted(unit) && canFormationCharge(formationsMap?.[unit.currentFormation]) && !unit.isCharging && unit.actionsAvailable >= 1 && chargeEnabled && onCharge && (
             <div
               className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
               onClick={() => { onCharge(); onClose(); }}
