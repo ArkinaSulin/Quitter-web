@@ -957,7 +957,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const reachableMap = computeReachableMap(unit, combinedPool, occupied, threatHexes);
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
-      addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — out of reach`);
+      // Soft gate (matches the rest of the economy family): a unit with no MP/actions
+      // is still allowed to move, prompting first. Path cost isn't defined beyond the
+      // reach map, so use the straight-line distance as the (over-budget) cost.
+      const cost = Math.max(1, hexDistance(unit.hex, targetHex));
+      setPendingMove({ unit, targetHex, cost, attachedHero });
       return;
     }
     // Movement only pays distance; turning is a separate paid ROTATE. A grey
@@ -2117,12 +2121,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // an attached hero is capped by the hero's pool too (combined unit).
       const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
       const effectiveMax = computeEffectiveMovement(draggedUnit, movementMult);
-      let pool = computeMovePool(draggedUnit, effectiveMax);
+      // Heroes show their full conversion potential (MP + actions × maxMP/5);
+      // units show one pool (or leftover MP when no actions) — matching handleUnitMove.
+      let pool = draggedUnit.isHero ? computeHeroMovePool(draggedUnit, effectiveMax) : computeMovePool(draggedUnit, effectiveMax);
       const attachedHero = draggedUnit.attachedToUnitId ? undefined : units.find(u => u.attachedToUnitId === draggedUnit.id && !u.isDeleted);
       if (attachedHero) {
         const heroMult = getFormationMultiplier(formationsMap, attachedHero.currentFormation, 'movement_multiplier');
         const heroMax = computeEffectiveMovement(attachedHero, heroMult);
-        pool = Math.min(pool, computeMovePool(attachedHero, heroMax));
+        pool = Math.min(pool, attachedHero.isHero ? computeHeroMovePool(attachedHero, heroMax) : computeMovePool(attachedHero, heroMax));
       }
       const reachableMap = computeReachableMap(draggedUnit, pool, occupied, threatHexes);
 

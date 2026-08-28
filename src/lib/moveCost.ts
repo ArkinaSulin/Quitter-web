@@ -122,9 +122,15 @@ export function computeHeroMoveBudget(unit: MpBudget, maxMP: number): number {
   return roundMp(Math.max(0, unit.movementPointsAvailable) + Math.max(0, unit.actionsAvailable) * per);
 }
 
-/** Hero pool for the drag overlay = the hero's full conversion potential. */
+/**
+ * Hero pool for the drag overlay = the hero's full conversion potential, rounded
+ * UP to a whole hex. The reachable-map budget is an integer (1 MP per hex), so
+ * ceil guarantees it never under-counts a fractional pool (5.95 → 6; FP drift
+ * like 5.9499 also → 6). The ceiling hex is the over-budget "up to conversion"
+ * ring, soft-prompted on drop.
+ */
 export function computeHeroMovePool(unit: MpBudget, maxMP: number): number {
-  return computeHeroMoveBudget(unit, maxMP);
+  return Math.ceil(computeHeroMoveBudget(unit, maxMP));
 }
 
 /**

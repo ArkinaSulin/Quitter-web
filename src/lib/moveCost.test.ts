@@ -275,6 +275,17 @@ describe('hero movement — 5 actions = 1 full movement, prorated with fraction 
     expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 5 }, 3)).toBe(3);
   });
 
+  it('computeHeroMovePool: ceils the fractional budget to a whole hex (never under-counts)', () => {
+    // 0.6 + 5×0.6 = 3.6 → 4 (the 4th hex is the over-budget 'up to conversion' ring).
+    expect(computeHeroMovePool({ movementPointsAvailable: 0.6, actionsAvailable: 5 }, 3)).toBe(4);
+    // 1.2 + 4×1.0 = 5.2 → 6.
+    expect(computeHeroMovePool({ movementPointsAvailable: 1.2, actionsAvailable: 4 }, 5)).toBe(6);
+    // Full pool stays exact.
+    expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 5 }, 5)).toBe(5);
+    // No MP/actions → 0.
+    expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 0 }, 3)).toBe(0);
+  });
+
   it('applyHeroMoveCost: spends materialized MP first, no conversion', () => {
     expect(applyHeroMoveCost({ movementPointsAvailable: 1.2, actionsAvailable: 5 }, 1, 3))
       .toEqual({ movementPointsAvailable: 0.2, actionsAvailable: 5 });
