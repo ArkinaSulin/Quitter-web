@@ -137,7 +137,7 @@ export function useGameEngine({
       actionType: ActionType,
       subSteps: SubStep[],
       description: string,
-      options?: { chained?: boolean },
+      options?: { chained?: boolean; message?: string },
     ): Promise<CommandLogRow | null> => {
       const isChained = options?.chained ?? false;
 
@@ -177,8 +177,10 @@ export function useGameEngine({
       }
 
       // Unit edits (incl. by players editing their own unit) are flagged to everyone.
+      // options.message overrides the chat text (e.g. verbose dice detail) without
+      // changing the description stored in the command log.
       if (actionType === 'EDIT_UNIT') addError(description);
-      else addMessage(description);
+      else addMessage(options?.message ?? description);
       refreshUndoState();
       return row;
     },

@@ -173,10 +173,11 @@ export function useReactionActions(deps: ReactionActionsDeps) {
         ],
       });
     }
-    const desc = verboseCombat
+    const desc = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks, ${hits} hits, ${outcome.firstStrikeDamage} damage (${troopsKilled} troops)`;
+    const msg = verboseCombat
       ? `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${formatStrikeDetail(outcome.firstStrikeAttacks, weapon.attackBonus + formationAtkMod, isUnitRouted(mover) && mover.isShielded ? mover.currentAc - 2 : mover.currentAc, weapon.damageDice, false, outcome.firstStrikeDamage)} (${troopsKilled} troops)`
-      : `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks, ${hits} hits, ${outcome.firstStrikeDamage} damage (${troopsKilled} troops)`;
-    await execute('ARCHER_REACTION', subSteps, desc);
+      : desc;
+    await execute('ARCHER_REACTION', subSteps, desc, verboseCombat ? { message: msg } : undefined);
     // A reaction hit is an attack — it can break the mover's morale into a rout.
     const moverKilled = newHp <= 0;
     const moverRouted = !moverKilled && shouldRout(

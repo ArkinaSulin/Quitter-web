@@ -22,12 +22,32 @@ function atk(partial: Partial<SingleAttackResult>): SingleAttackResult {
     ...partial,
   };
 }
-
 describe('verboseCombat', () => {
   describe('formatAttackRolls', () => {
     it('prints bonus, AC and sorted rolls', () => {
       const attacks = [atk({ roll: 15 }), atk({ roll: 3 }), atk({ roll: 11 }), atk({ roll: 20 })];
       expect(formatAttackRolls(attacks, 3, 12)).toBe('{D20+3 vs 12: 3,11,15,20}');
+    });
+
+    it('prints disadvantage pairs (taken,discarded) sorted by taken, no spaces', () => {
+      const attacks = [
+        atk({ roll: 4, dicePair: [4, 7] }),
+        atk({ roll: 4, dicePair: [4, 20] }),
+      ];
+      expect(formatAttackRolls(attacks, 3, 12)).toBe('{D20+3 vs 12: (4,7),(4,20)}');
+    });
+
+    it('prints advantage-style pairs taken-first, sorted by taken', () => {
+      const attacks = [
+        atk({ roll: 7, dicePair: [7, 4] }),
+        atk({ roll: 20, dicePair: [20, 4] }),
+      ];
+      expect(formatAttackRolls(attacks, 3, 12)).toBe('{D20+3 vs 12: (7,4),(20,4)}');
+    });
+
+    it('falls back to single rolls when only some attacks have pairs', () => {
+      const attacks = [atk({ roll: 4, dicePair: [4, 7] }), atk({ roll: 15 })];
+      expect(formatAttackRolls(attacks, 3, 12)).toBe('{D20+3 vs 12: 4,15}');
     });
   });
 

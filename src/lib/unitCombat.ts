@@ -136,6 +136,8 @@ export interface SingleAttackResult {
   actualDamage: number;
   /** Base damage dice faces (before any crit/charge doubling). */
   damageFaces?: number[];
+  /** [taken, discarded] d20 pair when the attack was at disadvantage. */
+  dicePair?: [number, number];
 }
 
 export interface CombatOutcome {
@@ -201,7 +203,9 @@ function executeAttacks(
     // Disadvantage (e.g. long-range shots): roll two d20, take the lower.
     // A crit needs the taken roll to be a 20 (both rolls 20); a natural 1 on the
     // taken roll is an automatic miss.
-    const roll = disadvantage ? Math.min(rollD20(rng), rollD20(rng)) : rollD20(rng);
+    const r1 = rollD20(rng);
+    const r2 = disadvantage ? rollD20(rng) : null;
+    const roll = disadvantage ? Math.min(r1, r2!) : r1;
     const isCrit = roll === 20;
     const attackValue = roll + attackBonus;
     const isHit = roll === 1 ? false : isCrit ? true : attackValue >= targetAc;
@@ -219,7 +223,16 @@ function executeAttacks(
     }
     const actualDamage = Math.min(rawDamage, targetTroopHp);
     totalDamage += actualDamage;
-    attacks.push({ roll, isCrit, attackValue, isHit, rawDamage, actualDamage, damageFaces });
+    attacks.push({
+      roll,
+      isCrit,
+      attackValue,
+      isHit,
+      rawDamage,
+      actualDamage,
+      damageFaces,
+      ...(disadvantage ? { dicePair: [Math.min(r1, r2!), Math.max(r1, r2!)] as [number, number] } : {}),
+    });
   }
   return { attacks, totalDamage };
 }

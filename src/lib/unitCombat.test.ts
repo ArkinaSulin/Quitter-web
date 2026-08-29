@@ -603,6 +603,7 @@ describe('resolveCombatSequence', () => {
     expect(result.firstStrikeAttacks).toHaveLength(1);
     expect(result.firstStrikeAttacks[0].roll).toBe(7); // min(15, 7)
     expect(result.firstStrikeAttacks[0].isHit).toBe(false); // 7 + 0 < AC 10
+    expect(result.firstStrikeAttacks[0].dicePair).toEqual([7, 15]); // [taken, discarded]
   });
 
   it('shots within range are not disadvantaged', () => {
@@ -616,6 +617,7 @@ describe('resolveCombatSequence', () => {
     expect(result.firstStrikeAttacks).toHaveLength(1);
     expect(result.firstStrikeAttacks[0].roll).toBe(15);
     expect(result.firstStrikeAttacks[0].isHit).toBe(true); // 15 + 0 >= AC 10
+    expect(result.firstStrikeAttacks[0].dicePair).toBeUndefined(); // no disadvantage pair
   });
 
   it('a melee-range weapon thrown beyond reach (range 1, maxRange 3) is disadvantaged', () => {

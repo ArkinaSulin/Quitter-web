@@ -7,7 +7,7 @@ export type ExecuteFn = (
   actionType: ActionType,
   subSteps: SubStep[],
   description: string,
-  options?: { chained?: boolean },
+  options?: { chained?: boolean; message?: string },
 ) => Promise<CommandLogRow | null>;
 
 /** Chained ROUT command for a killed/routed unit. */

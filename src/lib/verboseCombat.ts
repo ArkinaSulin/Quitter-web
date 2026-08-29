@@ -9,8 +9,17 @@ function sorted(nums: number[]): number[] {
   return [...nums].sort((a, b) => a - b);
 }
 
-/** `{D20+{bonus} vs {AC}: {sorted rolls}}` */
+/**
+ * `{D20+{bonus} vs {AC}: {sorted rolls}}` — when every attack rolled a
+ * disadvantage pair, the pair is shown as `(taken,discarded)` (no spaces),
+ * sorted ascending by the taken roll; ties keep engine order.
+ */
 export function formatAttackRolls(attacks: SingleAttackResult[], attackBonus: number, targetAc: number): string {
+  const hasPairs = attacks.length > 0 && attacks.every(a => !!a.dicePair);
+  if (hasPairs) {
+    const pairs = [...attacks].map(a => a.dicePair!).sort((a, b) => a[0] - b[0]);
+    return `{D20+${attackBonus} vs ${targetAc}: ${pairs.map(p => `(${p[0]},${p[1]})`).join(',')}}`;
+  }
   const rolls = sorted(attacks.map(a => a.roll));
   return `{D20+${attackBonus} vs ${targetAc}: ${rolls.join(',')}}`;
 }
