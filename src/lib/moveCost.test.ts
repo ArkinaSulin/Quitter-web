@@ -272,18 +272,24 @@ describe('hero movement — 5 actions = 1 full movement, prorated with fraction 
     expect(computeHeroMoveBudget({ movementPointsAvailable: 0, actionsAvailable: 5 }, 3)).toBe(3);   // 5 actions = full move
     expect(computeHeroMoveBudget({ movementPointsAvailable: 0.6, actionsAvailable: 4 }, 3)).toBe(3);  // 0.6 + 4×0.6 = 3
     expect(computeHeroMoveBudget({ movementPointsAvailable: 0, actionsAvailable: 0 }, 3)).toBe(0);
-    expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 5 }, 3)).toBe(3);
   });
 
-  it('computeHeroMovePool: ceils the fractional budget to a whole hex (never under-counts)', () => {
-    // 0.6 + 5×0.6 = 3.6 → 4 (the 4th hex is the over-budget 'up to conversion' ring).
-    expect(computeHeroMovePool({ movementPointsAvailable: 0.6, actionsAvailable: 5 }, 3)).toBe(4);
-    // 1.2 + 4×1.0 = 5.2 → 6.
-    expect(computeHeroMovePool({ movementPointsAvailable: 1.2, actionsAvailable: 4 }, 5)).toBe(6);
+  it('computeHeroMovePool: current move budget only — leftover MP (or conversion when MP is 0), never a second move', () => {
+    // Fresh hero with FULL MP + 5 actions: the shading is ONE full move, not MP + all
+    // conversions (that was the double-reach bug: 6 MP + 5×1.2 = 12).
+    expect(computeHeroMovePool({ movementPointsAvailable: 6, actionsAvailable: 5 }, 6)).toBe(6);
     // Full pool stays exact.
     expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 5 }, 5)).toBe(5);
+    expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 5 }, 3)).toBe(3);
     // No MP/actions → 0.
     expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 0 }, 3)).toBe(0);
+    // Leftover MP only — actions are NOT shown once MP is on hand (units rule).
+    expect(computeHeroMovePool({ movementPointsAvailable: 0.6, actionsAvailable: 5 }, 3)).toBe(1);   // ceil(0.6)
+    expect(computeHeroMovePool({ movementPointsAvailable: 1.2, actionsAvailable: 4 }, 5)).toBe(2);   // ceil(1.2)
+    expect(computeHeroMovePool({ movementPointsAvailable: 3, actionsAvailable: 5 }, 3)).toBe(3);     // capped at pool
+    // 0 MP + partial actions: conversion potential at the prorated rate, capped at one move.
+    expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 2 }, 5)).toBe(2);     // 2×1.0
+    expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 1 }, 3)).toBe(1);     // ceil(0.6)
   });
 
   it('applyHeroMoveCost: spends materialized MP first, no conversion', () => {

@@ -123,14 +123,20 @@ export function computeHeroMoveBudget(unit: MpBudget, maxMP: number): number {
 }
 
 /**
- * Hero pool for the drag overlay = the hero's full conversion potential, rounded
- * UP to a whole hex. The reachable-map budget is an integer (1 MP per hex), so
- * ceil guarantees it never under-counts a fractional pool (5.95 → 6; FP drift
- * like 5.9499 also → 6). The ceiling hex is the over-budget "up to conversion"
- * ring, soft-prompted on drop.
+ * Hero pool for the drag overlay = the CURRENT move's budget, mirroring the
+ * unit rule (`computeMovePool`): leftover materialized MP only (capped at one
+ * full move), or the conversion potential when no MP is on hand (0 MP +
+ * actions → up to one full move at maxMP/5 per action). Ceiled to a whole hex
+ * so it never under-counts a fractional pool (0.6 → 1; the ceiling hex is the
+ * over-budget ring, soft-prompted on drop). Never shows a second move's worth:
+ * like units, converting actions beyond the current move flows through the
+ * soft-enforcement confirm, not the highlight.
  */
 export function computeHeroMovePool(unit: MpBudget, maxMP: number): number {
-  return Math.ceil(computeHeroMoveBudget(unit, maxMP));
+  const pool = Math.max(1, maxMP);
+  const mp = Math.max(0, unit.movementPointsAvailable);
+  if (mp > 0) return Math.min(pool, Math.ceil(mp));
+  return Math.min(pool, Math.ceil(Math.max(0, unit.actionsAvailable) * heroMovePerAction(maxMP)));
 }
 
 /**
