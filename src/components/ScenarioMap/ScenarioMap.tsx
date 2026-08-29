@@ -46,6 +46,7 @@ import { formatStrikeDetail, formatSaveRolls, formatSpellBaseFaces } from '@/lib
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, getAttachedHeroPos, corpseLast } from './mapGeometry';
 import { useCanvasDraw } from './useCanvasDraw';
+import { SoftEnforcementModals, PendingMove, PendingAttack, PendingAttackCap, PendingRetaliationCap, PendingHeroAttachConversion, PendingHeroSwapConversion, PendingAttachOverBudget, PendingFormation, PendingChargeAttack, PendingChargeThrough } from './SoftEnforcementModals';
 
 interface ScenarioMapProps {
   scenarioId: string;
@@ -123,53 +124,7 @@ function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alliances: 
   return threats;
 }
 
-// ---- Shared small pieces (ConfirmModal, rout helper, token geometry) ----
-
-type ModalButtonVariant = 'red' | 'amber' | 'green' | 'gray';
-interface ModalButton {
-  label: string;
-  onClick: () => void;
-  variant?: ModalButtonVariant;
-}
-
-interface ConfirmModalProps {
-  title: string;
-  children: React.ReactNode;
-  buttons: ModalButton[];
-  tone?: 'red' | 'amber' | 'gray';
-  onCancel?: () => void;
-}
-
-const MODAL_BUTTON_STYLES: Record<ModalButtonVariant, string> = {
-  red: 'bg-red-700 hover:bg-red-600 text-white',
-  amber: 'bg-amber-700 hover:bg-amber-600 text-white',
-  green: 'bg-green-800 hover:bg-green-700 text-white',
-  gray: 'bg-gray-700 hover:bg-gray-600 text-white',
-};
-
-/** Overlay confirm dialog shared by all soft-enforcement prompts. */
-function ConfirmModal({ title, children, buttons, tone = 'gray', onCancel }: ConfirmModalProps) {
-  return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className={`bg-gray-900 border ${tone === 'red' ? 'border-red-800' : tone === 'amber' ? 'border-amber-700' : 'border-gray-700'} rounded-xl shadow-2xl p-6 min-w-[320px]`}>
-        <p className="text-white text-sm mb-1 text-center font-semibold">{title}</p>
-        <div className="text-gray-400 text-xs mb-4 text-center">{children}</div>
-        <div className="flex flex-col gap-2">
-          {buttons.map((b, i) => (
-            <button key={i} className={`${MODAL_BUTTON_STYLES[b.variant ?? 'gray']} px-4 py-2 rounded-lg text-sm`} onClick={b.onClick}>
-              {b.label}
-            </button>
-          ))}
-          {onCancel && (
-            <button className={`${MODAL_BUTTON_STYLES.gray} px-4 py-2 rounded-lg text-sm`} onClick={onCancel}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+// ---- Shared small pieces (rout helper) ----
 
 /** Chained ROUT command for a killed/routed unit (shared by combat, magic, reactions). */
 async function routeUnit(
@@ -297,83 +252,36 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   } | null>(null);
 
   // Soft-enforcement: attach/swap attempted with no MP/actions left.
-  const [pendingAttachOverBudget, setPendingAttachOverBudget] = useState<{
-    hero: Unit;
-    target: Unit;
-    position: 'front' | 'back';
-  } | null>(null);
+  const [pendingAttachOverBudget, setPendingAttachOverBudget] = useState<PendingAttachOverBudget | null>(null);
   const [pendingSwapOverBudget, setPendingSwapOverBudget] = useState<Unit | null>(null);
 
   // Over-budget confirmations (soft enforcement)
-  const [pendingMove, setPendingMove] = useState<{
-    unit: Unit;
-    targetHex: Hex;
-    cost: number;
-    attachedHero?: Unit | null;
-  } | null>(null);
-  const [pendingAttack, setPendingAttack] = useState<{
-    attacker: Unit;
-    target: Unit;
-  } | null>(null);
+  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  const [pendingAttack, setPendingAttack] = useState<PendingAttack | null>(null);
 
   // Soft-enforcement: attacker at the 5-attack cap (pause + ask; over-cap counts).
-  const [pendingAttackCap, setPendingAttackCap] = useState<{
-    attacker: Unit;
-    target: Unit;
-    isCharging?: boolean;
-  } | null>(null);
+  const [pendingAttackCap, setPendingAttackCap] = useState<PendingAttackCap | null>(null);
 
   // Soft-enforcement: the defender's retaliation would exceed its 5-attack cap.
   // The player decides whether the counterattack happens (declined = suppressed).
-  const [pendingRetaliationCap, setPendingRetaliationCap] = useState<null | {
-    attacker: Unit;
-    target: Unit;
-    overBudget: boolean;
-    options: { isCharging?: boolean };
-    outcome: CombatOutcome;
-    retaliatorKilled: boolean;
-    retaliatorRouted: boolean;
-    reachSymmetric: boolean;
-    retaliatorName: string;
-    attacksUsed: number;
-    cap: number;
-  }>(null);
+  const [pendingRetaliationCap, setPendingRetaliationCap] = useState<PendingRetaliationCap | null>(null);
 
   // Hero attach/swap with insufficient MP: ask whether to convert [#] actions
   // (at maxMP/5 each) to make up the 1 MP.
-  const [pendingHeroAttachConversion, setPendingHeroAttachConversion] = useState<null | {
-    hero: Unit;
-    target: Unit;
-    position: 'front' | 'back';
-    actionsNeeded: number;
-  }>(null);
-  const [pendingHeroSwapConversion, setPendingHeroSwapConversion] = useState<null | {
-    hero: Unit;
-    actionsNeeded: number;
-  }>(null);
+  const [pendingHeroAttachConversion, setPendingHeroAttachConversion] = useState<PendingHeroAttachConversion | null>(null);
+  const [pendingHeroSwapConversion, setPendingHeroSwapConversion] = useState<PendingHeroSwapConversion | null>(null);
 
   // Over-budget formation change (soft enforcement): the change costs a flat
   // fraction (default 50%) of the unit's current effective movement and would
   // overdraw actions.
-  const [pendingFormation, setPendingFormation] = useState<{
-    unit: Unit;
-    formation: string;
-  } | null>(null);
+  const [pendingFormation, setPendingFormation] = useState<PendingFormation | null>(null);
 
   // Premature charge attack: attacker attacked before moving the full 2 hexes.
-  const [pendingChargeAttack, setPendingChargeAttack] = useState<{
-    attacker: Unit;
-    target: Unit;
-  } | null>(null);
+  const [pendingChargeAttack, setPendingChargeAttack] = useState<PendingChargeAttack | null>(null);
 
   // Post-charge overrun: after a full charge attack, the charger may ride over
   // the target and land on its far side (separate 2 MP movement, own undo entry).
-  const [pendingChargeThrough, setPendingChargeThrough] = useState<{
-    attacker: Unit;
-    target: Unit;
-    landHex: Hex;
-    attachedHero?: Unit;
-  } | null>(null);
+  const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
 
   // Over-budget spell resolve (soft enforcement): caster has no actions left.
   const [pendingCastOverBudget, setPendingCastOverBudget] = useState(false);
@@ -2469,6 +2377,140 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [controlsLocked, undo, redo, contextMenuUnit, rotateUnit, canControlUnit, reactionMode, reactionFormationPicker]);
 
+  // Soft-enforcement prompts: fully-bound confirm handlers (clear state +
+  // controlsLocked guard + act). The modals render from the pending states.
+  const softActions = {
+    confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (!controlsLocked) performMove(pm.unit, pm.targetHex, pm.cost, true, unitMaxMP(pm.unit), pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined); },
+    confirmAttack: () => { const pa = pendingAttack!; setPendingAttack(null); if (!controlsLocked) performAttack(pa.attacker, pa.target, true); },
+    confirmAttackCap: async () => {
+      const pa = pendingAttackCap!;
+      setPendingAttackCap(null);
+      if (controlsLocked) return;
+      if (pa.isCharging) {
+        const result = await performAttack(pa.attacker, pa.target, true, { isCharging: true });
+        if (!result) return; // retaliation-cap prompt reopened
+        await finishChargeAfterAttack(pa.attacker, pa.target, result);
+      } else {
+        await performAttack(pa.attacker, pa.target, true);
+      }
+    },
+    confirmRetaliationAllow: async () => {
+      const prc = pendingRetaliationCap!;
+      setPendingRetaliationCap(null);
+      if (controlsLocked) return;
+      const result = await performAttack(prc.attacker, prc.target, prc.overBudget, {
+        ...prc.options,
+        stashed: {
+          outcome: prc.outcome,
+          retaliatorKilled: prc.retaliatorKilled,
+          retaliatorRouted: prc.retaliatorRouted,
+          reachSymmetric: prc.reachSymmetric,
+          allowRetaliation: true,
+        },
+      });
+      if (prc.options.isCharging) {
+        await finishChargeAfterAttack(prc.attacker, prc.target, result);
+      }
+    },
+    confirmRetaliationSuppress: async () => {
+      const prc = pendingRetaliationCap!;
+      setPendingRetaliationCap(null);
+      if (controlsLocked) return;
+      const result = await performAttack(prc.attacker, prc.target, prc.overBudget, {
+        ...prc.options,
+        stashed: {
+          outcome: prc.outcome,
+          retaliatorKilled: prc.retaliatorKilled,
+          retaliatorRouted: prc.retaliatorRouted,
+          reachSymmetric: prc.reachSymmetric,
+          allowRetaliation: false,
+        },
+      });
+      if (prc.options.isCharging) {
+        await finishChargeAfterAttack(prc.attacker, prc.target, result);
+      }
+    },
+    confirmHeroAttachConversion: async () => {
+      const phc = pendingHeroAttachConversion!;
+      setPendingHeroAttachConversion(null);
+      if (controlsLocked) return;
+      await attachHero(phc.hero, phc.target, phc.position, unitMaxMP(phc.hero));
+      addMessage(`${phc.hero.unitName} attached to ${phc.target.unitName} (${phc.position})`);
+    },
+    confirmHeroSwapConversion: async () => {
+      const phs = pendingHeroSwapConversion!;
+      setPendingHeroSwapConversion(null);
+      if (controlsLocked) return;
+      await swapHeroPosition(phs.hero, unitMaxMP(phs.hero));
+    },
+    confirmAttachOverBudget: async () => {
+      const pa = pendingAttachOverBudget!;
+      setPendingAttachOverBudget(null);
+      if (controlsLocked) return;
+      addError(`${pa.hero.unitName} attached over budget — no MP/actions left`);
+      await attachHero(pa.hero, pa.target, pa.position, unitMaxMP(pa.hero));
+    },
+    confirmSwapOverBudget: async () => {
+      const hero = pendingSwapOverBudget!;
+      setPendingSwapOverBudget(null);
+      if (controlsLocked) return;
+      addError(`${hero.unitName} swapped position over budget — no MP/actions left`);
+      await swapHeroPosition(hero, unitMaxMP(hero));
+    },
+    confirmFormation: async () => {
+      const pf = pendingFormation!;
+      setPendingFormation(null);
+      if (!controlsLocked) {
+        addError(`${pf.unit.unitName} changed formation over budget — ${getFormationChangeMpCost(unitMaxMP(pf.unit))} MP needed, ${pf.unit.actionsAvailable} action(s) left`);
+        await changeFormation(pf.unit, pf.formation, formationsMap);
+      }
+    },
+    confirmCast: () => { setPendingCastOverBudget(false); if (!controlsLocked) handleResolveCast(true); },
+    confirmChargeAttack: async () => {
+      const pca = pendingChargeAttack!;
+      setPendingChargeAttack(null);
+      if (controlsLocked) return;
+      await performAttack(pca.attacker, pca.target, false);
+      await performChargeEnd(pca.attacker, true);
+    },
+    confirmChargeThrough: async () => {
+      const pct = pendingChargeThrough!;
+      setPendingChargeThrough(null);
+      if (controlsLocked) return;
+      // The charge-over MOVE chains onto the CHARGE_END (which chains onto the
+      // ATTACK), so undo reverts charge attack + overrun as one atomic action.
+      await performChargeEnd(pct.attacker, true);
+      await moveUnitRecorded(
+        pct.attacker,
+        pct.landHex,
+        2,
+        unitMaxMP(pct.attacker),
+        pct.attachedHero,
+        pct.attachedHero ? unitMaxMP(pct.attachedHero) : undefined,
+        `${pct.attacker.unitName} charged over ${pct.target.unitName} and landed at (${pct.landHex.q}, ${pct.landHex.r})`,
+        { chained: true },
+      );
+    },
+    declineChargeThrough: async () => {
+      const pct = pendingChargeThrough!;
+      setPendingChargeThrough(null);
+      if (!controlsLocked) await performChargeEnd(pct.attacker, true);
+    },
+  };
+  const softCancels = {
+    move: () => setPendingMove(null),
+    attack: () => setPendingAttack(null),
+    attackCap: () => setPendingAttackCap(null),
+    retaliationCap: () => setPendingRetaliationCap(null),
+    heroAttachConversion: () => setPendingHeroAttachConversion(null),
+    heroSwapConversion: () => setPendingHeroSwapConversion(null),
+    attachOverBudget: () => setPendingAttachOverBudget(null),
+    swapOverBudget: () => setPendingSwapOverBudget(null),
+    formation: () => setPendingFormation(null),
+    castOverBudget: () => setPendingCastOverBudget(false),
+    chargeAttack: () => setPendingChargeAttack(null),
+  };
+
   if (loading) return <div className="w-full h-screen bg-[#0d0d1a] text-white flex items-center justify-center">Loading scenario...</div>;
   if (error) return <div className="w-full h-screen bg-[#0d0d1a] text-red-500 flex items-center justify-center">Error: {error}</div>;
 
@@ -2714,67 +2756,26 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         </div>
       )}
 
-      {/* Over-budget confirmations (soft enforcement) */}
-      {pendingMove && (
-        <ConfirmModal
-          tone="red"
-          title="Move over budget?"
-          buttons={[{
-            label: 'Yes, move anyway',
-            variant: 'red',
-            onClick: async () => { const pm = pendingMove; setPendingMove(null); if (!controlsLocked) await performMove(pm.unit, pm.targetHex, pm.cost, true, unitMaxMP(pm.unit), pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined); },
-          }]}
-          onCancel={() => setPendingMove(null)}
-        >
-          {pendingMove.attachedHero
-            ? `${pendingMove.unit.unitName} + ${pendingMove.attachedHero.unitName} need ${pendingMove.cost} MP to reach (${pendingMove.targetHex.q}, ${pendingMove.targetHex.r}), but ${pendingMove.unit.unitName} has ${pendingMove.unit.actionsAvailable} and ${pendingMove.attachedHero.unitName} has ${pendingMove.attachedHero.actionsAvailable} action(s) left.`
-            : `${pendingMove.unit.unitName} needs ${pendingMove.cost} MP (${pendingMove.unit.isHero
-                ? `${Math.ceil(pendingMove.cost / heroMovePerAction(unitMaxMP(pendingMove.unit)))} action(s) at ${heroMovePerAction(unitMaxMP(pendingMove.unit))} MP/action`
-                : `${Math.ceil(pendingMove.cost / Math.max(1, unitMaxMP(pendingMove.unit)))} action(s)`}) to reach (${pendingMove.targetHex.q}, ${pendingMove.targetHex.r}), but has ${pendingMove.unit.actionsAvailable} action(s) left.`}
-        </ConfirmModal>
-      )}
-
-      {pendingAttack && (
-        <ConfirmModal
-          tone="red"
-          title="Attack with no actions?"
-          buttons={[{
-            label: 'Yes, attack anyway',
-            variant: 'red',
-            onClick: async () => { const pa = pendingAttack; setPendingAttack(null); if (!controlsLocked) await performAttack(pa.attacker, pa.target, true); },
-          }]}
-          onCancel={() => setPendingAttack(null)}
-        >
-          {pendingAttack.attacker.unitName} has no actions left, but can still attack {pendingAttack.target.unitName}.
-        </ConfirmModal>
-      )}
-
-      {pendingAttackCap && (
-        <ConfirmModal
-          tone="amber"
-          title={`Attack past the ${unitAttackCap()}-attack cap?`}
-          buttons={[{
-            label: 'Yes, attack anyway',
-            variant: 'red',
-            onClick: async () => {
-              const pa = pendingAttackCap;
-              setPendingAttackCap(null);
-              if (controlsLocked) return;
-              if (pa.isCharging) {
-                const result = await performAttack(pa.attacker, pa.target, true, { isCharging: true });
-                if (!result) return; // retaliation-cap prompt reopened
-                await finishChargeAfterAttack(pa.attacker, pa.target, result);
-              } else {
-                await performAttack(pa.attacker, pa.target, true);
-              }
-            },
-          }]}
-          onCancel={() => setPendingAttackCap(null)}
-        >
-          {pendingAttackCap.attacker.unitName} has already attacked {pendingAttackCap.attacker.attacksUsed}/{unitAttackCap()} times this turn
-          {pendingAttackCap.attacker.isCharging ? ' (charge attack)' : ''}. Attack {pendingAttackCap.target.unitName} anyway?
-        </ConfirmModal>
-      )}
+      {/* Soft-enforcement prompts (over-budget / cap / conversion confirms) */}
+      <SoftEnforcementModals
+        pending={{
+          move: pendingMove,
+          attack: pendingAttack,
+          attackCap: pendingAttackCap,
+          retaliationCap: pendingRetaliationCap,
+          heroAttachConversion: pendingHeroAttachConversion,
+          heroSwapConversion: pendingHeroSwapConversion,
+          attachOverBudget: pendingAttachOverBudget,
+          swapOverBudget: pendingSwapOverBudget,
+          formation: pendingFormation,
+          castOverBudget: pendingCastOverBudget,
+          chargeAttack: pendingChargeAttack,
+          chargeThrough: pendingChargeThrough,
+        }}
+        actions={softActions}
+        cancels={softCancels}
+        unitMaxMP={unitMaxMP}
+      />
 
       {/* Reaction: formation picker (reached by right-clicking the acting archer
           in locked reaction mode). Follows the same formation-change limits as
@@ -2892,247 +2893,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             </div>
           </div>
         </div>
-      )}
-
-      {pendingRetaliationCap && (
-        <ConfirmModal
-          tone="amber"
-          title={`Retaliation past the ${pendingRetaliationCap.cap}-attack cap?`}
-          buttons={[
-            {
-              label: 'Yes, allow retaliation',
-              variant: 'red',
-              onClick: async () => {
-                const prc = pendingRetaliationCap;
-                setPendingRetaliationCap(null);
-                if (controlsLocked) return;
-                const result = await performAttack(prc.attacker, prc.target, prc.overBudget, {
-                  ...prc.options,
-                  stashed: {
-                    outcome: prc.outcome,
-                    retaliatorKilled: prc.retaliatorKilled,
-                    retaliatorRouted: prc.retaliatorRouted,
-                    reachSymmetric: prc.reachSymmetric,
-                    allowRetaliation: true,
-                  },
-                });
-                if (prc.options.isCharging) {
-                  await finishChargeAfterAttack(prc.attacker, prc.target, result);
-                }
-              },
-            },
-            {
-              label: 'No, suppress retaliation',
-              onClick: async () => {
-                const prc = pendingRetaliationCap;
-                setPendingRetaliationCap(null);
-                if (controlsLocked) return;
-                const result = await performAttack(prc.attacker, prc.target, prc.overBudget, {
-                  ...prc.options,
-                  stashed: {
-                    outcome: prc.outcome,
-                    retaliatorKilled: prc.retaliatorKilled,
-                    retaliatorRouted: prc.retaliatorRouted,
-                    reachSymmetric: prc.reachSymmetric,
-                    allowRetaliation: false,
-                  },
-                });
-                if (prc.options.isCharging) {
-                  await finishChargeAfterAttack(prc.attacker, prc.target, result);
-                }
-              },
-            },
-          ]}
-          onCancel={() => setPendingRetaliationCap(null)}
-        >
-          {pendingRetaliationCap.retaliatorName} has already attacked {pendingRetaliationCap.attacksUsed}/{pendingRetaliationCap.cap} times this turn.
-          Allow it to retaliate against {pendingRetaliationCap.target.unitName} anyway?
-        </ConfirmModal>
-      )}
-
-      {pendingHeroAttachConversion && (
-        <ConfirmModal
-          tone="amber"
-          title="Convert actions to 1 MP?"
-          buttons={[{
-            label: 'Convert and attach',
-            variant: 'green',
-            onClick: async () => {
-              const phc = pendingHeroAttachConversion;
-              setPendingHeroAttachConversion(null);
-              if (controlsLocked) return;
-              await attachHero(phc.hero, phc.target, phc.position, unitMaxMP(phc.hero));
-              addMessage(`${phc.hero.unitName} attached to ${phc.target.unitName} (${phc.position})`);
-            },
-          }]}
-          onCancel={() => setPendingHeroAttachConversion(null)}
-        >
-          {pendingHeroAttachConversion.hero.unitName} has {Math.floor(Math.max(0, pendingHeroAttachConversion.hero.movementPointsAvailable))} MP but attaching costs 1 MP.
-          Convert {pendingHeroAttachConversion.actionsNeeded} action{pendingHeroAttachConversion.actionsNeeded > 1 ? 's' : ''}
-          {pendingHeroAttachConversion.actionsNeeded > 1 ? ` (+${Math.round(heroMovePerAction(unitMaxMP(pendingHeroAttachConversion.hero)) * pendingHeroAttachConversion.actionsNeeded * 10) / 10} MP)` : ''}
-          to attach to {pendingHeroAttachConversion.target.unitName} ({pendingHeroAttachConversion.position})?
-        </ConfirmModal>
-      )}
-
-      {pendingHeroSwapConversion && (
-        <ConfirmModal
-          tone="amber"
-          title="Convert actions to 1 MP?"
-          buttons={[{
-            label: 'Convert and swap',
-            variant: 'green',
-            onClick: async () => {
-              const phs = pendingHeroSwapConversion;
-              setPendingHeroSwapConversion(null);
-              if (controlsLocked) return;
-              await swapHeroPosition(phs.hero, unitMaxMP(phs.hero));
-            },
-          }]}
-          onCancel={() => setPendingHeroSwapConversion(null)}
-        >
-          {pendingHeroSwapConversion.hero.unitName} has {Math.floor(Math.max(0, pendingHeroSwapConversion.hero.movementPointsAvailable))} MP but swapping position costs 1 MP.
-          Convert {pendingHeroSwapConversion.actionsNeeded} action{pendingHeroSwapConversion.actionsNeeded > 1 ? 's' : ''} to swap to the {pendingHeroSwapConversion.hero.attachedPosition === 'back' ? 'front' : 'back'}?
-        </ConfirmModal>
-      )}
-
-      {pendingAttachOverBudget && (
-        <ConfirmModal
-          tone="red"
-          title="Attach with no MP?"
-          buttons={[{
-            label: 'Yes, attach anyway',
-            variant: 'red',
-            onClick: async () => {
-              const pa = pendingAttachOverBudget;
-              setPendingAttachOverBudget(null);
-              if (controlsLocked) return;
-              addError(`${pa.hero.unitName} attached over budget — no MP/actions left`);
-              await attachHero(pa.hero, pa.target, pa.position, unitMaxMP(pa.hero));
-            },
-          }]}
-          onCancel={() => setPendingAttachOverBudget(null)}
-        >
-          {pendingAttachOverBudget.hero.unitName} has no MP or actions left, but can still attach to {pendingAttachOverBudget.target.unitName} ({pendingAttachOverBudget.position}).
-        </ConfirmModal>
-      )}
-
-      {pendingSwapOverBudget && (
-        <ConfirmModal
-          tone="red"
-          title="Swap position with no MP?"
-          buttons={[{
-            label: 'Yes, swap anyway',
-            variant: 'red',
-            onClick: async () => {
-              const hero = pendingSwapOverBudget;
-              setPendingSwapOverBudget(null);
-              if (controlsLocked) return;
-              addError(`${hero.unitName} swapped position over budget — no MP/actions left`);
-              await swapHeroPosition(hero, unitMaxMP(hero));
-            },
-          }]}
-          onCancel={() => setPendingSwapOverBudget(null)}
-        >
-          {pendingSwapOverBudget.unitName} has no MP or actions left, but can still move to the {pendingSwapOverBudget.attachedPosition === 'back' ? 'front' : 'back'}.
-        </ConfirmModal>
-      )}
-
-      {/* Over-budget formation change (soft enforcement) */}
-      {pendingFormation && (
-        <ConfirmModal
-          tone="red"
-          title="Change formation over budget?"
-          buttons={[{
-            label: 'Yes, change anyway',
-            variant: 'red',
-            onClick: async () => { const pf = pendingFormation; setPendingFormation(null); if (!controlsLocked) { addError(`${pf.unit.unitName} changed formation over budget — ${getFormationChangeMpCost(unitMaxMP(pf.unit))} MP needed, ${pf.unit.actionsAvailable} action(s) left`); await changeFormation(pf.unit, pf.formation, formationsMap); } },
-          }]}
-          onCancel={() => setPendingFormation(null)}
-        >
-          {pendingFormation.unit.unitName} needs {getFormationChangeMpCost(unitMaxMP(pendingFormation.unit))} MP (1 action) to form {pendingFormation.formation}, but has {pendingFormation.unit.actionsAvailable} action(s) left.
-        </ConfirmModal>
-      )}
-
-      {/* Over-budget spell resolve confirm */}
-      {pendingCastOverBudget && (
-        <ConfirmModal
-          tone="red"
-          title="Cast with no actions?"
-          buttons={[{
-            label: 'Yes, cast anyway',
-            variant: 'red',
-            onClick: () => { setPendingCastOverBudget(false); if (!controlsLocked) handleResolveCast(true); },
-          }]}
-          onCancel={() => setPendingCastOverBudget(false)}
-        >
-          The caster has no actions left, but can still cast the spell.
-        </ConfirmModal>
-      )}
-
-      {/* Premature charge attack confirm */}
-      {pendingChargeAttack && (
-        <ConfirmModal
-          tone="amber"
-          title="Charge incomplete?"
-          buttons={[{
-            label: 'Yes, attack normally',
-            variant: 'amber',
-            onClick: async () => {
-              const pca = pendingChargeAttack;
-              setPendingChargeAttack(null);
-              if (controlsLocked) return;
-              await performAttack(pca.attacker, pca.target, false);
-              await performChargeEnd(pca.attacker, true);
-            },
-          }]}
-          onCancel={() => setPendingChargeAttack(null)}
-        >
-          {pendingChargeAttack.attacker.unitName} attacks before completing its 2-hex charge — this loses the free charge attack. Attack as normal instead (costs 1 action)?
-        </ConfirmModal>
-      )}
-
-      {/* Charge-over confirm: after a full charge attack, ride over the target and
-          land on its far side (2 MP, a separate movement with its own undo). */}
-      {pendingChargeThrough && (
-        <ConfirmModal
-          tone="amber"
-          title="Charge over?"
-          buttons={[
-            {
-              label: 'Yes, charge over',
-              variant: 'amber',
-              onClick: async () => {
-                const pct = pendingChargeThrough;
-                setPendingChargeThrough(null);
-                if (controlsLocked) return;
-                // The charge-over MOVE chains onto the CHARGE_END (which chains
-                // onto the ATTACK), so undo reverts charge attack + overrun as
-                // one atomic action.
-                await performChargeEnd(pct.attacker, true);
-                await moveUnitRecorded(
-                  pct.attacker,
-                  pct.landHex,
-                  2,
-                  unitMaxMP(pct.attacker),
-                  pct.attachedHero,
-                  pct.attachedHero ? unitMaxMP(pct.attachedHero) : undefined,
-                  `${pct.attacker.unitName} charged over ${pct.target.unitName} and landed at (${pct.landHex.q}, ${pct.landHex.r})`,
-                  { chained: true },
-                );
-              },
-            },
-            {
-              label: 'No, stop here',
-              onClick: async () => {
-                const pct = pendingChargeThrough;
-                setPendingChargeThrough(null);
-                if (!controlsLocked) await performChargeEnd(pct.attacker, true);
-              },
-            },
-          ]}
-        >
-          {pendingChargeThrough.attacker.unitName} can charge over {pendingChargeThrough.target.unitName} and land at ({pendingChargeThrough.landHex.q}, {pendingChargeThrough.landHex.r}) for 2 MP.
-        </ConfirmModal>
       )}
 
       {/* Attach Position Modal */}
