@@ -160,7 +160,7 @@ export interface CombatOutcome {
   retaliationCountNote?: string;
 }
 
-function computeAttackCount(unit: Unit, rowCapacity: number, attackCapacityMultiplier: number, visualDotsPerRow: number, isDefenderSide: boolean, weaponAttacks: number): number {
+export function computeAttackCount(unit: Unit, rowCapacity: number, attackCapacityMultiplier: number, visualDotsPerRow: number, isDefenderSide: boolean, weaponAttacks: number): number {
   if (unit.isHero) return weaponAttacks;
   if (isDefenderSide) {
     const rows = Math.ceil(unit.currentTroopCount / visualDotsPerRow);

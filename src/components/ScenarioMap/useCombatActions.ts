@@ -6,7 +6,7 @@
 // end/overrun helpers. Owns the attack-related soft-enforcement states.
 import { useCallback, useState } from 'react';
 import { Unit, AllianceGroup, Formation, SizeCategory, hexDistance } from '@/types/gameProtocol';
-import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamageDetailed, CombatOutcome } from '@/lib/unitCombat';
+import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/lib/formationRules';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
 import { getSetting } from '@/lib/settingsCache';
@@ -537,10 +537,21 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
   // A healing weapon (isHealing) recovers the target's HP instead of damaging it —
   // same dice mechanic as damage, capped at maxUnitHp. No combat sequence, AGR,
-  // retaliation, morale, or arc/alliance restrictions.
+  // retaliation, morale, or arc/alliance restrictions. Heals with the unit's FULL
+  // rank volley (same attack count as combat: rank capacity × weapon attacks), so
+  // a full-rank healer heals like a full-rank attacker strikes.
   const performHeal = useCallback(async (healer: Unit, target: Unit, weapon: Weapon) => {
-    const dmg = rollDamageDetailed(weapon.damageDice, Math.random);
-    const heal = dmg.total;
+    const rowCap = getRowCapacity(sizeCategories, healer.sizeCategory);
+    const capMult = getFormationMultiplier(formationsMap, healer.currentFormation, 'attack_capacity_multiplier');
+    const visualDpr = getVisualDotsPerRow(formationsMap, rowCap, healer.currentFormation);
+    const count = computeAttackCount(healer, rowCap, capMult, visualDpr, false, weapon.numberOfAttacks);
+    let heal = 0;
+    const faces: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const d = rollDamageDetailed(weapon.damageDice, Math.random);
+      heal += d.total;
+      faces.push(...d.faces);
+    }
     const newHp = Math.min(target.maxUnitHp, target.currentUnitHp + heal);
     const newTroops = Math.min(target.maxTroopCount, Math.ceil(newHp / target.troopHp));
     const subSteps: SubStep[] = [];
@@ -563,10 +574,10 @@ export function useCombatActions(deps: CombatActionsDeps) {
         ],
       });
     }
-    const faces = verboseCombat && dmg.faces.length > 0 ? ` {${weapon.damageDice}: ${[...dmg.faces].sort((a, b) => a - b).join(',')}}` : '';
-    const desc = `${healer.unitName} heals ${target.unitName} for ${heal} HP with ${weapon.name}${faces}`;
+    const faceStr = verboseCombat && faces.length > 0 ? ` {${weapon.damageDice}: ${[...faces].sort((a, b) => a - b).join(',')}}` : '';
+    const desc = `${healer.unitName} heals ${target.unitName} for ${heal} HP with ${weapon.name}${count > 1 ? ` (${count} attacks)` : ''}${faceStr}`;
     await execute('HEAL', subSteps, desc);
-  }, [execute, verboseCombat]);
+  }, [execute, verboseCombat, sizeCategories, formationsMap]);
 
   const performChargeEnd = useCallback(async (attacker: Unit, dropOrg: boolean) => {
     const changes: UnitChange[] = [
