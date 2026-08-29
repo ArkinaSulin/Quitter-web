@@ -1,8 +1,11 @@
 import { getSetting } from '@/lib/settingsCache';
 
 /**
- * Universal cap on attacks + retaliations per turn for non-hero units
- * (default 5). Heroes are bounded by their 5-action budget instead.
+ * Universal cap on attacks + retaliations per turn for units AND heroes
+ * (default 5, setting `unit_attack_cap`). Every ATTACK command counts (+1),
+ * incl. free-action, charge, AGR-failed, reaction shots, and retaliations.
+ * Soft gate: pausing confirm modals in ScenarioMap; the cap is never a hard
+ * block — confirming counts over cap with a red message.
  */
 export function unitAttackCap(): number {
   return getSetting('unit_attack_cap', 5);

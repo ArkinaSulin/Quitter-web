@@ -417,7 +417,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
 
   const {
-    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, detachHero, swapHeroPosition, endTurn, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog,
+    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, endTurn, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog,
   } = useGameEngine({
     scenarioId,
     playerId,
@@ -689,8 +689,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       changes: [
         { field: 'actionsAvailable', from: archer.actionsAvailable, to: archer.actionsAvailable - 1 },
         { field: 'archerReactionUsed', from: archer.archerReactionUsed ?? false, to: true },
-        // Every reaction shot counts toward the 5-attack cap (units only).
-        ...(!archer.isHero ? [{ field: 'attacksUsed', from: archer.attacksUsed ?? 0, to: (archer.attacksUsed ?? 0) + 1 }] : []),
+        // Every reaction shot counts toward the 5-attack cap.
+        { field: 'attacksUsed', from: archer.attacksUsed ?? 0, to: (archer.attacksUsed ?? 0) + 1 },
       ],
     });
     if (outcome.firstStrikeDamage > 0) {
@@ -827,6 +827,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const target = units.find(u => u.id === targetId);
     if (!target || target.isDeleted || target.currentUnitHp <= 0) {
       addMessage('That target is no longer available');
+      return;
+    }
+    if (target.hidden) {
+      addMessage('That target is hidden — cannot reaction-shoot');
       return;
     }
     if ((alliances[target.team] || 'friendly') === (alliances[archer.team] || 'friendly')) {
@@ -1019,6 +1023,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const hero = units.find(u => u.id === heroId);
     const target = units.find(u => u.id === targetUnitId);
     if (!hero || !target) return;
+    if (target.hidden) {
+      addMessage(`${target.unitName} is hidden — cannot attach`);
+      return;
+    }
     if (hero.team !== target.team) {
       addMessage(`Can't attach: ${hero.unitName} and ${target.unitName} are on different teams`);
       return;
@@ -1206,7 +1214,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; stashed?: AttackStash }) => {
     if (overBudget) {
       const cap = unitAttackCap();
-      if (!attacker.isHero && (attacker.attacksUsed ?? 0) >= cap) {
+      if ((attacker.attacksUsed ?? 0) >= cap) {
         addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
       } else {
         addError(`${attacker.unitName} attacked with no actions left — over budget`);
@@ -1344,13 +1352,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         unitId: attacker.id,
         changes: [
           { field: 'actionsAvailable', from: attacker.actionsAvailable, to: attacker.actionsAvailable - 1 },
-          // Every ATTACK command counts toward the 5-attack cap (units only).
-          ...(!attacker.isHero
-            ? [{ field: 'attacksUsed', from: attacker.attacksUsed ?? 0, to: (attacker.attacksUsed ?? 0) + 1 }]
-            : []),
+          // Every ATTACK command counts toward the 5-attack cap (spent even on AGR failure).
+          { field: 'attacksUsed', from: attacker.attacksUsed ?? 0, to: (attacker.attacksUsed ?? 0) + 1 },
         ],
       });
-    } else if (!attacker.isHero) {
+    } else {
       // Free-action / charge attacks carry no action cost but still count toward
       // the cap (spent even on AGR failure).
       subSteps.push({
@@ -1411,7 +1417,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (effectiveOutcome.retaliationAttacks.length > 0) {
         const retaliator = outcome.strikerFirst === 'attacker' ? target : attacker;
         const cap = unitAttackCap();
-        if (!retaliator.isHero && (retaliator.attacksUsed ?? 0) >= cap) {
+        if ((retaliator.attacksUsed ?? 0) >= cap) {
           setPendingRetaliationCap({
             attacker,
             target,
@@ -1555,17 +1561,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (stashed?.allowRetaliation) {
         addError(`${retaliator.unitName} retaliated past the ${unitAttackCap()}-attack cap (${(retaliator.attacksUsed ?? 0) + 1}/${unitAttackCap()})`);
       }
-      // Retaliation counts toward the retaliator's own 5-attack cap (units only).
-      if (!retaliator.isHero) {
-        subSteps.push({
-          type: 'ATTACK',
-          description: `${retaliator.unitName} retaliated — cap count`,
-          unitId: retaliator.id,
-          changes: [
-            { field: 'attacksUsed', from: retaliator.attacksUsed ?? 0, to: (retaliator.attacksUsed ?? 0) + 1 },
-          ],
-        });
-      }
+      // Retaliation counts toward the retaliator's own 5-attack cap.
+      subSteps.push({
+        type: 'ATTACK',
+        description: `${retaliator.unitName} retaliated — cap count`,
+        unitId: retaliator.id,
+        changes: [
+          { field: 'attacksUsed', from: retaliator.attacksUsed ?? 0, to: (retaliator.attacksUsed ?? 0) + 1 },
+        ],
+      });
       const retaliationHeroAttacks = effectiveOutcome.retaliationHeroAttacks;
       const retaliationHeroHits = retaliationHeroAttacks.filter(a => a.isHit).length;
       const retaliationHeroCrits = retaliationHeroAttacks.filter(a => a.isCrit).length;
@@ -1737,10 +1741,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if ((target.currentUnitHp ?? 0) <= 0) return;
     // A downed hero may be dragged for recovery, but cannot initiate attacks.
     if ((attacker.currentUnitHp ?? 0) <= 0) return;
+    // Hidden units are concealed — they cannot be targeted until unhidden.
+    if (target.hidden) {
+      addMessage(`${target.unitName} is hidden — cannot attack`);
+      return;
+    }
     if (!canControlUnit(attacker)) return;
 
     const targetHasHero = units.some(u => u.attachedToUnitId === targetId && !u.isDeleted);
-    const canAttach = attacker.isHero && (attacker.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !target.isHero && !target.attachedToUnitId && !target.isDeleted && !targetHasHero && attacker.team === target.team;
+    const canAttach = attacker.isHero && (attacker.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !target.isHero && !target.attachedToUnitId && !target.isDeleted && !target.hidden && !targetHasHero && attacker.team === target.team;
     if (canAttach) {
       setAttachModal({ hero: attacker, target });
       return;
@@ -1848,7 +1857,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }
       // Soft 5-cap: pause and ask before a charge attack past the cap.
       const cap = unitAttackCap();
-      if (!attacker.isHero && (attacker.attacksUsed ?? 0) >= cap) {
+      if ((attacker.attacksUsed ?? 0) >= cap) {
         setPendingAttackCap({ attacker, target, isCharging: true });
         return;
       }
@@ -1873,9 +1882,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return;
     }
 
-    // Soft 5-cap: pause and ask before an attack past the cap (units only).
+    // Soft 5-cap: pause and ask before an attack past the cap.
     const attackCap = unitAttackCap();
-    if (!attacker.isHero && (attacker.attacksUsed ?? 0) >= attackCap) {
+    if ((attacker.attacksUsed ?? 0) >= attackCap) {
       setPendingAttackCap({ attacker, target });
       return;
     }
@@ -2562,6 +2571,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (!hex) return;
     const unit = getUnitAt(hex);
     if (!unit) return;
+    if (unit.hidden && !isGM) return;
     if (isGM || canEditUnit(unit)) setEditUnit(unit);
   }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAt, isGM, canEditUnit]);
 

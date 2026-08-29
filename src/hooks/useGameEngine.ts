@@ -371,8 +371,8 @@ export function useGameEngine({
         { field: 'facing', from: unit.facing, to: newFacing },
       ];
       // Movement only pays distance; turning pays its own directional cost —
-      // 1 MP per 60° rotate, free for Heroes, Scattered (item 7), and free-move.
-      const freeRotate = unit.isHero || freeMove || unit.currentFormation === 'Scattered';
+      // 1 MP per 60° rotate, free for Heroes, Scattered, Routed, and free-move.
+      const freeRotate = unit.isHero || freeMove || unit.currentFormation === 'Scattered' || isUnitRouted(unit);
       const isAboutTurn = steps === 3;
 
       // Mounted units in Close Order are unable to turn around (180° about-turn).
@@ -606,29 +606,6 @@ export function useGameEngine({
     [execute],
   );
 
-  const detachHero = useCallback(
-    async (hero: Unit, heroMaxMP: number): Promise<void> => {
-      const { movementPointsAvailable, actionsAvailable } = applyHeroMpSpend(hero, 1, heroMaxMP);
-      const changes: { field: string; from: any; to: any }[] = [
-        { field: 'attachedToUnitId', from: hero.attachedToUnitId, to: null },
-        { field: 'movementPointsAvailable', from: hero.movementPointsAvailable, to: movementPointsAvailable },
-      ];
-      if (actionsAvailable !== hero.actionsAvailable) {
-        changes.push({ field: 'actionsAvailable', from: hero.actionsAvailable, to: actionsAvailable });
-      }
-      const subSteps: SubStep[] = [
-        {
-          type: 'DETACH_HERO',
-          description: `${hero.unitName} detached from unit`,
-          unitId: hero.id,
-          changes,
-        },
-      ];
-      await execute('DETACH_HERO', subSteps, subSteps[0].description);
-    },
-    [execute],
-  );
-
   const swapHeroPosition = useCallback(
     async (hero: Unit, heroMaxMP: number): Promise<void> => {
       if (!hero.attachedToUnitId) return;
@@ -756,10 +733,8 @@ export function useGameEngine({
         const changes: { field: string; from: any; to: any }[] = [
           { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: mpTo },
           { field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsTo },
+          { field: 'attacksUsed', from: unit.attacksUsed ?? 0, to: 0 },
         ];
-        if (!hero) {
-          changes.push({ field: 'attacksUsed', from: unit.attacksUsed ?? 0, to: 0 });
-        }
         changes.push({ field: 'archerReactionUsed', from: unit.archerReactionUsed ?? false, to: false });
         subSteps.push({
           type: 'END_TURN',
@@ -792,7 +767,6 @@ export function useGameEngine({
     setRouting,
     placeUnit,
     attachHero,
-    detachHero,
     swapHeroPosition,
     endTurn,
     charge,
