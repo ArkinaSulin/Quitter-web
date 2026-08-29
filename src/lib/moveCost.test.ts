@@ -283,13 +283,20 @@ describe('hero movement — 5 actions = 1 full movement, prorated with fraction 
     expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 5 }, 3)).toBe(3);
     // No MP/actions → 0.
     expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 0 }, 3)).toBe(0);
-    // Leftover MP only — actions are NOT shown once MP is on hand (units rule).
-    expect(computeHeroMovePool({ movementPointsAvailable: 0.6, actionsAvailable: 5 }, 3)).toBe(1);   // ceil(0.6)
+    // Leftover MP ≥ 1 hex drives the shade — actions are NOT shown (units rule).
     expect(computeHeroMovePool({ movementPointsAvailable: 1.2, actionsAvailable: 4 }, 5)).toBe(2);   // ceil(1.2)
     expect(computeHeroMovePool({ movementPointsAvailable: 3, actionsAvailable: 5 }, 3)).toBe(3);     // capped at pool
-    // 0 MP + partial actions: conversion potential at the prorated rate, capped at one move.
+    expect(computeHeroMovePool({ movementPointsAvailable: 1, actionsAvailable: 5 }, 3)).toBe(1);     // 1.0 is a full hex → MP branch
+    // Fractional MP below one hex (0.2/0.4/0.6/0.8 after a partial move) is IGNORED —
+    // the shade is the remaining actions' conversion potential (the Davi rule; the old
+    // ceil(mp) branch collapsed the ring to a single hex, the Opie bug).
+    expect(computeHeroMovePool({ movementPointsAvailable: 0.6, actionsAvailable: 5 }, 3)).toBe(3);   // ceil(5×0.6) = 3 → full move again
+    expect(computeHeroMovePool({ movementPointsAvailable: 0.2, actionsAvailable: 4 }, 3)).toBe(3);   // ceil(4×0.6) = 2.4 → 3
+    expect(computeHeroMovePool({ movementPointsAvailable: 0.8, actionsAvailable: 1 }, 6)).toBe(2);   // ceil(1×1.2)
     expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 2 }, 5)).toBe(2);     // 2×1.0
     expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 1 }, 3)).toBe(1);     // ceil(0.6)
+    // Tiny MP with no actions left → nothing to convert, no shade.
+    expect(computeHeroMovePool({ movementPointsAvailable: 0.8, actionsAvailable: 0 }, 3)).toBe(0);
   });
 
   it('applyHeroMoveCost: spends materialized MP first, no conversion', () => {
