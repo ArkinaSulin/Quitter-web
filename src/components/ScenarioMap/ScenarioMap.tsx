@@ -4,14 +4,13 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { parseSubSteps, CommandLogRow } from '@/lib/commandLog';
-import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
+import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
-import { determineCombatPosition } from '@/lib/unitCombat';
 import { getFormations } from '@/lib/formationCache';
-import { loadSettings, getSetting } from '@/lib/settingsCache';
+import { loadSettings } from '@/lib/settingsCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios, DM_HEARTBEAT_INTERVAL_MS, DM_HEARTBEAT_STALE_MS, DM_HEARTBEAT_POLL_MS } from '@/hooks/useScenarios';
-import { computeReachableMap, computeMovePool, computeHeroMovePool, computeChargeReachable, MovePathEntry } from '@/lib/moveCost';
+import { computeReachableMap } from '@/lib/moveCost';
 import { getFormationChangeMpCost } from '@/lib/formationCost';
 import { useGameEngine } from '@/hooks/useGameEngine';
 import { useTeamAlliances } from '@/hooks/useTeamAlliances';
@@ -36,13 +35,15 @@ import { supabase } from '@/lib/supabaseClient';
 import { getFormationMultiplier, computeEffectiveMovement } from '@/lib/unitStats';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
-import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, getAttachedHeroPos, corpseLast, hexRing, HEX_DIRS, computeOccupiedHexes, computeThreatHexes } from './mapGeometry';
+import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig } from './mapGeometry';
 import { routeUnit } from './routeUnit';
 import { useCanvasDraw } from './useCanvasDraw';
 import { useReactionActions } from './useReactionActions';
 import { useMoveActions } from './useMoveActions';
 import { useCastActions } from './useCastActions';
 import { useCombatActions } from './useCombatActions';
+import { computeOverlayMap } from './useOverlay';
+import { TopBar } from './TopBar';
 import { SoftEnforcementModals } from './SoftEnforcementModals';
 
 interface ScenarioMapProps {
@@ -484,21 +485,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, [scenarioId]);
 
 
-  function getOverlayForUnit(unit: Unit): Record<string, string> {
-    const result: Record<string, string> = {};
-    if (unit.isHero || isUnitRouted(unit) || unit.currentFormation === 'Scattered') return result;
-    for (const dir of HEX_DIRS) {
-      const nq = unit.hex.q + dir.q;
-      const nr = unit.hex.r + dir.r;
-      const key = `${nq},${nr}`;
-      const pos = determineCombatPosition({ q: nq, r: nr, s: -nq - nr }, unit.hex, unit.facing);
-      if (pos === 'front') {
-        result[key] = 'rgba(255, 100, 100, 0.5)';
-      }
-    }
-    return result;
-  }
-
   const {
     pendingAttack,
     setPendingAttack,
@@ -623,132 +609,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     readOnly: controlsLocked,
   });
 
+  // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings).
   useEffect(() => {
-    // Reaction mode drag: hovering a hostile in weapon range shows range rings;
-    // otherwise the 50% reaction-move hexes.
-    if (reactionMode && draggingUnitId === reactionMode.archer.id) {
-      const archer = units.find(u => u.id === reactionMode.archer.id) ?? reactionMode.archer;
-      const weapon = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0];
-      const combined: Record<string, string> = {};
-      const hostileHover =
-        !!hoveredUnit && hoveredUnit.id !== archer.id && !hoveredUnit.isDeleted &&
-        (alliances[hoveredUnit.team] || 'friendly') !== (alliances[archer.team] || 'friendly');
-      if (hostileHover && weapon && isRangedCapableWeapon(weapon)) {
-        for (const h of hexRing(archer.hex, weapon.range)) {
-          combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.85)';
-        }
-        const d = hexDistance(archer.hex, hoveredUnit!.hex);
-        combined[`${hoveredUnit!.hex.q},${hoveredUnit!.hex.r}`] = d <= weapon.range ? 'rgba(80, 220, 120, 0.8)' : 'rgba(255, 80, 80, 0.85)';
-      } else {
-        const maxMP = computeEffectiveMovement(archer, getFormationMultiplier(formationsMap, archer.currentFormation, 'movement_multiplier'));
-        const budget = getReactionMoveBudget(maxMP);
-        const occupied = computeOccupiedHexes(units, archer.id);
-        const reachable = computeReachableMap(archer, budget, occupied, new Set());
-        reachable.forEach((entry, key) => {
-          combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
-        });
-      }
-      setOverlayMap(combined);
-      return;
-    }
-    // Transient red flash on an out-of-range target (blocked drop).
-    if (rangeViolationHex) {
-      setOverlayMap({ [`${rangeViolationHex.q},${rangeViolationHex.r}`]: 'rgba(255, 80, 80, 0.9)' });
-      return;
-    }
-    if (draggingUnitId) {
-      const draggedUnit = units.find(u => u.id === draggingUnitId);
-      if (!draggedUnit) { setOverlayMap({}); return; }
-      const occupied = computeOccupiedHexes(units);
-
-      if (freeMove) {
-        const combined: Record<string, string> = {};
-        const r = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
-        for (let q = -r; q <= r; q++) {
-          for (let rr = -r; rr <= r; rr++) {
-            const s = -q - rr;
-            if (Math.abs(s) > r) continue;
-            const key = `${q},${rr}`;
-            if (!occupied.has(key)) combined[key] = 'rgba(255, 255, 255, 0.5)';
-          }
-        }
-        setOverlayMap(combined);
-        return;
-      }
-
-      // Charging units show the front-arc charge wedge: cost-1 hexes amber (charge
-      // route — premature if you stop), cost 2+ white (full charge, free attack).
-      if (draggedUnit.isCharging) {
-        const combined: Record<string, string> = {};
-        const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
-        const effectiveMax = computeEffectiveMovement(draggedUnit, movementMult);
-        const chargeReach = computeChargeReachable(draggedUnit, occupied, effectiveMax);
-        for (const [key, cost] of Array.from(chargeReach.entries())) {
-          combined[key] = cost >= getSetting('charge_full_distance', 2) ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';
-        }
-        setOverlayMap(combined);
-        return;
-      }
-
-      const threatHexes = computeThreatHexes(units, draggingUnitId, alliances, formationsMap);
-
-      // White reachable hexes for the dragged unit — one full pool (an action
-      // converts to MP on move), or leftover MP only when 0 actions. A host with
-      // an attached hero is capped by the hero's pool too (combined unit).
-      const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
-      const effectiveMax = computeEffectiveMovement(draggedUnit, movementMult);
-      // Heroes show their full conversion potential (MP + actions × maxMP/5);
-      // units show one pool (or leftover MP when no actions) — matching handleUnitMove.
-      let pool = draggedUnit.isHero ? computeHeroMovePool(draggedUnit, effectiveMax) : computeMovePool(draggedUnit, effectiveMax);
-      const attachedHero = draggedUnit.attachedToUnitId ? undefined : units.find(u => u.attachedToUnitId === draggedUnit.id && !u.isDeleted);
-      if (attachedHero) {
-        const heroMult = getFormationMultiplier(formationsMap, attachedHero.currentFormation, 'movement_multiplier');
-        const heroMax = computeEffectiveMovement(attachedHero, heroMult);
-        pool = Math.min(pool, attachedHero.isHero ? computeHeroMovePool(attachedHero, heroMax) : computeMovePool(attachedHero, heroMax));
-      }
-      const reachableMap = computeReachableMap(draggedUnit, pool, occupied, threatHexes);
-
-      const combined: Record<string, string> = {};
-
-      const activeWeapon = parseWeapons(draggedUnit.weaponString || '')[draggedUnit.activeWeaponIndex ?? 0];
-      const isRanged = !!activeWeapon && activeWeapon.maxRange > 1;
-      // A valid target: a hovered unit from a different alliance than the drag.
-      const isValidTarget =
-        !!hoveredUnit && hoveredUnit.id !== draggedUnit.id && !hoveredUnit.isDeleted &&
-        (alliances[hoveredUnit.team] || 'friendly') !== (alliances[draggedUnit.team] || 'friendly');
-
-      if (isRanged && isValidTarget) {
-        // Dragging a ranged unit over an enemy target: show range rings instead of
-        // the movement highlight (movement and range never compete visually).
-        for (const h of hexRing(draggedUnit.hex, activeWeapon.range)) {
-          combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.9)';
-        }
-        if (activeWeapon.maxRange > activeWeapon.range) {
-          for (const h of hexRing(draggedUnit.hex, activeWeapon.maxRange)) {
-            combined[`${h.q},${h.r}`] = 'rgba(255, 180, 60, 0.9)';
-          }
-        }
-        const d = hexDistance(draggedUnit.hex, hoveredUnit!.hex);
-        let color = 'rgba(80, 220, 120, 0.8)';
-        if (d > activeWeapon.maxRange) color = 'rgba(255, 80, 80, 0.85)';
-        else if (d > activeWeapon.range) color = 'rgba(255, 180, 60, 0.85)';
-        combined[`${hoveredUnit!.hex.q},${hoveredUnit!.hex.r}`] = color;
-      } else {
-        // Movement highlight only (no range rings unless a valid target is hovered).
-        reachableMap.forEach((entry, key) => {
-          // White = reachable straight ahead (droppable); light grey = needs a turn
-          // first (hint only — the unit must rotate before moving there).
-          combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.5)';
-        });
-        for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
-      }
-
-      setOverlayMap(combined);
-    } else if (hoveredUnit) {
-      setOverlayMap(getOverlayForUnit(hoveredUnit));
-    } else {
-      setOverlayMap({});
-    }
+    setOverlayMap(computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex }));
   }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex]);
 
   // Center map on initial load
@@ -1175,102 +1038,28 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   return (
     <div className="relative w-full h-screen bg-[#0d0d1a] overflow-hidden select-none">
       {/* Top Bar */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-2 bg-black/40 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <span className="text-white text-lg font-semibold">
-            Scenario Map - {roleLabel}{myTeam ? ` · ${myTeam}` : ''}
-          </span>
-          {!controlsLocked && (
-            <button
-              onClick={undo}
-              disabled={!canUndo()}
-              className={`px-3 py-1 rounded shadow-lg text-sm ${
-                canUndo()
-                  ? 'bg-amber-700 hover:bg-amber-600 text-white'
-                  : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              {`Undo${peekUndoChainLength() > 1 ? ` (${peekUndoChainLength()})` : ''}`}
-            </button>
-          )}
-          <span className="text-white text-sm font-mono">Turn {displayTurnNumber}</span>
-          {!controlsLocked && (() => {
-            // Alliance-wide End Turn: from turn 1 on, any player whose alliance holds
-            // the turn may advance it; free play (null alliance) stays GM-only. A
-            // player needs an assigned team — the server's END_TURN gate requires
-            // sp.team IS NOT NULL, so don't show the button to teamless players.
-            const canEndTurn = isGM || (!!myTeam && currentTurnAlliance !== null && (alliances[myTeam] || 'friendly') === currentTurnAlliance);
-            return (
-              <button
-                onClick={canEndTurn ? handleEndTurn : undefined}
-                disabled={!canEndTurn || isEndingTurn}
-                title={canEndTurn ? 'Advance to the next group' : currentTurnAlliance === null ? 'Only the DM can end free play' : 'Only the current alliance can end the turn'}
-                className={`px-3 py-1 rounded shadow-lg text-sm ${
-                  currentTurnAlliance === null
-                    ? 'bg-gray-700 hover:bg-gray-600 text-white'
-                    : currentTurnAlliance === 'enemy'
-                      ? 'bg-[#D55E00] hover:bg-[#c74f00] text-white'
-                      : currentTurnAlliance === 'neutral'
-                        ? 'bg-[#E0E0E0] hover:bg-[#d0d0d0] text-black'
-                        : 'bg-[#0072B2] hover:bg-[#00619c] text-white'
-                } ${!canEndTurn || isEndingTurn ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {`End Turn${isEndingTurn ? '…' : ''}${currentTurnAlliance === null ? ' (Free Play)' : ` (${currentTurnAlliance})`}`}
-              </button>
-            );
-          })()}
-          {!controlsLocked && (
-            <button
-              onClick={isGM ? handleToggleFreeMove : undefined}
-              disabled={!isGM}
-              title={isGM ? 'Toggle free movement (no MP/action cost for any player)' : 'Only the DM can toggle free movement'}
-              className={`px-3 py-1 rounded shadow-lg text-sm ${
-                freeMove
-                  ? isGM
-                    ? 'bg-emerald-700 hover:bg-emerald-600 text-white'
-                    : 'bg-emerald-900 text-emerald-300 cursor-not-allowed'
-                  : isGM
-                    ? 'bg-gray-800 hover:bg-gray-700 text-white'
-                    : 'bg-gray-800 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              {`Free Move: ${freeMove ? 'ON' : 'OFF'}`}
-            </button>
-          )}
-          {isGM && !controlsLocked && (
-            <button
-              onClick={() => setShowScenarioSettings(true)}
-              className="px-3 py-1 rounded shadow-lg text-sm bg-gray-800 hover:bg-gray-700 text-white"
-              title="Scenario settings"
-            >
-              ⚙ Settings
-            </button>
-          )}
-          {/* Mode 2 (join scenario): GM enters/leaves replay of the live session */}
-          {!replayMode && isGM && !controlsLocked && (
-            <button
-              onClick={() => replay.setMode('replay')}
-              className="px-3 py-1 rounded shadow-lg text-sm bg-amber-700 hover:bg-amber-600 text-white"
-            >
-              Replay scenario
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Mode 2 in-session replay: Back to Play returns to live play */}
-          {!replayMode && isGM && inReplay && (
-            <button
-              onClick={() => replay.setMode('play')}
-              className="px-3 py-1 rounded shadow-lg text-sm bg-emerald-700 hover:bg-emerald-600 text-white"
-            >
-              Back to Play
-            </button>
-          )}
-          <button onClick={goToLobby} className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1 rounded shadow-lg text-sm">
-            Exit to Lobby
-          </button>
-        </div>
-      </div>
+      <TopBar
+        roleLabel={roleLabel}
+        myTeam={myTeam}
+        controlsLocked={controlsLocked}
+        undo={undo}
+        canUndo={canUndo}
+        peekUndoChainLength={peekUndoChainLength}
+        displayTurnNumber={displayTurnNumber}
+        isGM={isGM}
+        currentTurnAlliance={currentTurnAlliance}
+        alliances={alliances}
+        handleEndTurn={handleEndTurn}
+        isEndingTurn={isEndingTurn}
+        handleToggleFreeMove={handleToggleFreeMove}
+        freeMove={freeMove}
+        onOpenSettings={() => setShowScenarioSettings(true)}
+        replayMode={replayMode}
+        inReplay={inReplay}
+        onEnterReplay={() => replay.setMode('replay')}
+        onBackToPlay={() => replay.setMode('play')}
+        goToLobby={goToLobby}
+      />
 
       {/* Floating Left Panel — hidden in replay or when the DM is gone */}
       {!controlsLocked && (
