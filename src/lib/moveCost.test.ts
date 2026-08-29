@@ -274,7 +274,7 @@ describe('hero movement — 5 actions = 1 full movement, prorated with fraction 
     expect(computeHeroMoveBudget({ movementPointsAvailable: 0, actionsAvailable: 0 }, 3)).toBe(0);
   });
 
-  it('computeHeroMovePool: current move budget only — leftover MP (or conversion when MP is 0), never a second move', () => {
+  it('computeHeroMovePool: floor of payable MP — a token moves only when it can pay the full 1 MP per hex', () => {
     // Fresh hero with FULL MP + 5 actions: the shading is ONE full move, not MP + all
     // conversions (that was the double-reach bug: 6 MP + 5×1.2 = 12).
     expect(computeHeroMovePool({ movementPointsAvailable: 6, actionsAvailable: 5 }, 6)).toBe(6);
@@ -283,23 +283,25 @@ describe('hero movement — 5 actions = 1 full movement, prorated with fraction 
     expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 5 }, 3)).toBe(3);
     // No MP/actions → 0.
     expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 0 }, 3)).toBe(0);
-    // Leftover MP ≥ 1 hex drives the shade — actions are NOT shown (units rule).
-    expect(computeHeroMovePool({ movementPointsAvailable: 1.2, actionsAvailable: 4 }, 5)).toBe(2);   // ceil(1.2)
+    // Leftover MP ≥ 1 hex drives the shade — floored, actions are NOT shown (units rule).
+    expect(computeHeroMovePool({ movementPointsAvailable: 1.2, actionsAvailable: 4 }, 5)).toBe(1);   // 1.2 pays 1 hex
     expect(computeHeroMovePool({ movementPointsAvailable: 3, actionsAvailable: 5 }, 3)).toBe(3);     // capped at pool
     expect(computeHeroMovePool({ movementPointsAvailable: 1, actionsAvailable: 5 }, 3)).toBe(1);     // 1.0 is a full hex → MP branch
-    // Fractional MP below one hex (0.2/0.4/0.6/0.8 after a partial move) does NOT
-    // dominate the shade — but it CARRIES into the total: shade = ceil(mp + actions
-    // × per) = the full remaining capacity (the Davi rule; the old ceil(mp) branch
-    // collapsed the ring to a single hex, the Opie bug).
-    expect(computeHeroMovePool({ movementPointsAvailable: 0.6, actionsAvailable: 5 }, 3)).toBe(3);   // 0.6 + 5×0.6 = 3.6 → 4, capped 3
-    expect(computeHeroMovePool({ movementPointsAvailable: 0.2, actionsAvailable: 4 }, 3)).toBe(3);   // 0.2 + 2.4 = 2.6 → 3
-    expect(computeHeroMovePool({ movementPointsAvailable: 0.8, actionsAvailable: 1 }, 6)).toBe(2);   // 0.8 + 1.2 = 2.0 → 2
+    // The bug case: 0 MP + 1 action converts to 1.2 MP — the shade is floor(1.2) = 1 hex,
+    // NOT ceil = 2 (a hex costs a full 1 MP).
+    expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 1 }, 6)).toBe(1);
+    // 0.6 MP can't pay a hex → nothing movable.
+    expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 1 }, 3)).toBe(0);
+    expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 2 }, 6)).toBe(2);     // floor(2.4)
+    // Fractional MP below one hex does NOT dominate — it CARRIES into the conversion total,
+    // floored at the end (the Davi rule; the old ceil(mp) branch collapsed the ring to 1 hex).
+    expect(computeHeroMovePool({ movementPointsAvailable: 0.6, actionsAvailable: 5 }, 3)).toBe(3);   // floor(3.6) → 3
+    expect(computeHeroMovePool({ movementPointsAvailable: 0.2, actionsAvailable: 4 }, 3)).toBe(2);   // floor(2.6) → 2, 0.6 can't pay
+    expect(computeHeroMovePool({ movementPointsAvailable: 0.8, actionsAvailable: 1 }, 6)).toBe(2);   // floor(2.0)
     expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 2 }, 5)).toBe(2);     // 2×1.0
-    expect(computeHeroMovePool({ movementPointsAvailable: 0, actionsAvailable: 1 }, 3)).toBe(1);     // ceil(0.6)
-    // The fraction carries past the action-only count (the user's rule):
-    expect(computeHeroMovePool({ movementPointsAvailable: 0.5, actionsAvailable: 4 }, 6)).toBe(6);   // 0.5 + 4×1.2 = 5.3 → 6 (was 5 without the carry)
-    expect(computeHeroMovePool({ movementPointsAvailable: 0.4, actionsAvailable: 3 }, 5)).toBe(4);   // 0.4 + 3×1.0 = 3.4 → 4 (was 3)
-    expect(computeHeroMovePool({ movementPointsAvailable: 0.5, actionsAvailable: 5 }, 6)).toBe(6);   // 0.5 + 6 = 6.5 → 7, capped at one move
+    expect(computeHeroMovePool({ movementPointsAvailable: 0.5, actionsAvailable: 4 }, 6)).toBe(5);   // floor(5.3), 0.3 can't pay
+    expect(computeHeroMovePool({ movementPointsAvailable: 0.4, actionsAvailable: 3 }, 5)).toBe(3);   // floor(3.4)
+    expect(computeHeroMovePool({ movementPointsAvailable: 0.5, actionsAvailable: 5 }, 6)).toBe(6);   // floor(6.5) → 6, capped at one move
     // Tiny MP with no actions left → nothing to convert, no shade.
     expect(computeHeroMovePool({ movementPointsAvailable: 0.8, actionsAvailable: 0 }, 3)).toBe(0);
   });

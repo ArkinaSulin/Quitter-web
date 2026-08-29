@@ -124,23 +124,23 @@ export function computeHeroMoveBudget(unit: MpBudget, maxMP: number): number {
 
 /**
  * Hero pool for the drag overlay = the CURRENT move's budget, mirroring the
- * unit rule (`computeMovePool`): leftover MP that can pay for a whole hex
- * drives the shade (capped at one full move). A leftover fraction too small
- * for one hex (0.2/0.4/… after a partial move) is not allowed to dominate the
- * shade — but it still CARRIES into the total: the shade is ceil(mp + actions ×
- * maxMP/5), the full remaining capacity, so a fractional pool never collapses
- * the ring to a single hex. With no actions left a fraction can't pay a hex →
- * 0. Always capped at one full move (never a second move's worth); converting
- * actions beyond the current move flows through the soft-enforcement confirm,
- * not the highlight.
+ * unit rule (`computeMovePool`): a token can only enter a hex it can pay the
+ * full 1 MP for — same rule for units, heroes, and ships. So the shade is
+ * FLOORED payable MP: leftover MP that can pay whole hexes drives it (capped
+ * at one full move); a leftover fraction below one hex doesn't dominate, but
+ * still CARRIES into the conversion total (mp + actions × maxMP/5), floored
+ * at the end. With no actions left a fraction can't pay a hex → 0. Always
+ * capped at one full move (never a second move's worth); converting actions
+ * beyond the current move flows through the soft-enforcement confirm, not the
+ * highlight.
  */
 export function computeHeroMovePool(unit: MpBudget, maxMP: number): number {
   const pool = Math.max(1, maxMP);
   const mp = Math.max(0, unit.movementPointsAvailable);
-  if (mp >= 1) return Math.min(pool, Math.ceil(mp));
+  if (mp >= 1) return Math.min(pool, Math.floor(mp));
   const actions = Math.max(0, unit.actionsAvailable);
   if (actions === 0) return 0;
-  return Math.min(pool, Math.ceil(mp + actions * heroMovePerAction(maxMP)));
+  return Math.min(pool, Math.floor(mp + actions * heroMovePerAction(maxMP)));
 }
 
 /**
