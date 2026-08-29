@@ -1,7 +1,11 @@
 // src/components/ScenarioMap/mapGeometry.ts
-// Map constants + token geometry shared by the canvas draw hook and the map.
-import { Unit } from '@/types/gameProtocol';
+// Map constants + hex/token geometry shared by the canvas draw hook and the map.
+import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { hexToPixel } from '@/hooks/useHexGrid';
+import { determineCombatPosition } from '@/lib/unitCombat';
+import { canStopEnemyMovement } from '@/lib/formationRules';
+import { isUnitInteractable } from '@/lib/unitInteractions';
+import { isUnitRouted } from '@/lib/unitMorale';
 
 export const HEX_SIZE = 100;
 export const TOKEN_WIDTH = HEX_SIZE * 1.6;
@@ -30,3 +34,57 @@ export function getAttachedHeroPos(unitHex: { q: number; r: number; s: number },
 /** Corpses (HP <= 0) sort first so live tokens stacked on their hex render on top. */
 export const corpseLast = (a: Unit, b: Unit) =>
   ((a.currentUnitHp ?? 0) <= 0 ? 0 : 1) - ((b.currentUnitHp ?? 0) <= 0 ? 0 : 1);
+
+export const HEX_DIRS = [
+  { q: 1, r: 0, s: -1 },
+  { q: 0, r: 1, s: -1 },
+  { q: -1, r: 1, s: 0 },
+  { q: -1, r: 0, s: 1 },
+  { q: 0, r: -1, s: 1 },
+  { q: 1, r: -1, s: 0 },
+];
+
+/** All hexes exactly at `radius` hexes from `center` (a hexagonal ring). */
+export function hexRing(center: Hex, radius: number): Hex[] {
+  const results: Hex[] = [];
+  if (radius <= 0) return results;
+  const add = (a: Hex, b: { q: number; r: number; s: number }): Hex => ({ q: a.q + b.q, r: a.r + b.r, s: a.s + b.s });
+  let hex = add(center, { q: HEX_DIRS[4].q * radius, r: HEX_DIRS[4].r * radius, s: HEX_DIRS[4].s * radius });
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j < radius; j++) {
+      results.push(hex);
+      hex = add(hex, HEX_DIRS[i]);
+    }
+  }
+  return results;
+}
+
+export function computeOccupiedHexes(allUnits: Unit[], excludeUnitId?: string): Set<string> {
+  return new Set(
+    allUnits
+      .filter(u => isUnitInteractable(u) && u.id !== excludeUnitId)
+      .map(u => `${u.hex.q},${u.hex.r}`),
+  );
+}
+
+export function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alliances: Record<string, AllianceGroup>, formationsMap: Record<string, Formation>): Set<string> {
+  const draggedUnit = allUnits.find(u => u.id === draggedUnitId);
+  const draggedGroup = alliances[draggedUnit?.team ?? ''] || 'friendly';
+  const occupied = computeOccupiedHexes(allUnits);
+  const threats = new Set<string>();
+  for (const unit of allUnits) {
+    if (unit.isDeleted || unit.id === draggedUnitId || unit.attachedToUnitId || unit.isHero || isUnitRouted(unit)) continue;
+    const unitGroup = alliances[unit.team] || 'friendly';
+    if (unitGroup === draggedGroup) continue;
+    for (const dir of HEX_DIRS) {
+      const nq = unit.hex.q + dir.q;
+      const nr = unit.hex.r + dir.r;
+      const key = `${nq},${nr}`;
+      if (occupied.has(key)) continue;
+      const pos = determineCombatPosition({ q: nq, r: nr, s: -nq - nr }, unit.hex, unit.facing);
+      // Only formations with a zone of control in this arc stop enemy movement.
+      if (canStopEnemyMovement(formationsMap[unit.currentFormation], pos)) threats.add(key);
+    }
+  }
+  return threats;
+}
