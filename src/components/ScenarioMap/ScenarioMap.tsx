@@ -3,7 +3,7 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
-import { parseSubSteps, CommandLogRow } from '@/lib/commandLog';
+import { parseSubSteps, CommandLogRow, SubStep, UnitChange, ActionType } from '@/lib/commandLog';
 import { Hex, Unit, UnitTemplate, hexDistance, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { parseWeapons, Weapon } from '@/lib/weaponParser';
 import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamage, rollDamageDetailed, type CombatOutcome } from '@/lib/unitCombat';
@@ -133,6 +133,86 @@ function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alliances: 
   }
   return threats;
 }
+
+// ---- Shared small pieces (ConfirmModal, rout helper, token geometry) ----
+
+type ModalButtonVariant = 'red' | 'amber' | 'green' | 'gray';
+interface ModalButton {
+  label: string;
+  onClick: () => void;
+  variant?: ModalButtonVariant;
+}
+
+interface ConfirmModalProps {
+  title: string;
+  children: React.ReactNode;
+  buttons: ModalButton[];
+  tone?: 'red' | 'amber' | 'gray';
+  onCancel?: () => void;
+}
+
+const MODAL_BUTTON_STYLES: Record<ModalButtonVariant, string> = {
+  red: 'bg-red-700 hover:bg-red-600 text-white',
+  amber: 'bg-amber-700 hover:bg-amber-600 text-white',
+  green: 'bg-green-800 hover:bg-green-700 text-white',
+  gray: 'bg-gray-700 hover:bg-gray-600 text-white',
+};
+
+/** Overlay confirm dialog shared by all soft-enforcement prompts. */
+function ConfirmModal({ title, children, buttons, tone = 'gray', onCancel }: ConfirmModalProps) {
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className={`bg-gray-900 border ${tone === 'red' ? 'border-red-800' : tone === 'amber' ? 'border-amber-700' : 'border-gray-700'} rounded-xl shadow-2xl p-6 min-w-[320px]`}>
+        <p className="text-white text-sm mb-1 text-center font-semibold">{title}</p>
+        <div className="text-gray-400 text-xs mb-4 text-center">{children}</div>
+        <div className="flex flex-col gap-2">
+          {buttons.map((b, i) => (
+            <button key={i} className={`${MODAL_BUTTON_STYLES[b.variant ?? 'gray']} px-4 py-2 rounded-lg text-sm`} onClick={b.onClick}>
+              {b.label}
+            </button>
+          ))}
+          {onCancel && (
+            <button className={`${MODAL_BUTTON_STYLES.gray} px-4 py-2 rounded-lg text-sm`} onClick={onCancel}>
+              Cancel
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Chained ROUT command for a killed/routed unit (shared by combat, magic, reactions). */
+async function routeUnit(
+  execute: (actionType: ActionType, subSteps: SubStep[], description: string, options?: { chained?: boolean }) => Promise<CommandLogRow | null>,
+  unit: Unit,
+  reason: string,
+  killed: boolean,
+): Promise<void> {
+  const name = unit.unitName;
+  const verb = !killed ? 'routed' : unit.isHero ? 'down' : 'annihilated';
+  await execute('ROUT', [{
+    type: 'ROUT',
+    description: `${name} ${verb} (${reason})`,
+    unitId: unit.id,
+    changes: [{ field: 'currentFormation', from: unit.currentFormation, to: 'Routed' }],
+  }], `${name} ${verb}!`, { chained: true });
+}
+
+/** Pixel offset of an attached hero token around its host's hex. */
+function getAttachedHeroPos(unitHex: { q: number; r: number; s: number }, facing: number, attachedPosition: 'front' | 'back' | null = 'front') {
+  const pos = hexToPixel(unitHex, HEX_SIZE);
+  const vertexIndex = attachedPosition === 'back' ? (facing + 2) % 6 : (facing + 5) % 6;
+  const angle = (60 * vertexIndex - 30) * Math.PI / 180;
+  return {
+    x: pos.x + HEX_SIZE * 0.75 * Math.cos(angle),
+    y: pos.y + HEX_SIZE * 0.75 * Math.sin(angle),
+  };
+}
+
+/** Corpses (HP <= 0) sort first so live tokens stacked on their hex render on top. */
+const corpseLast = (a: Unit, b: Unit) =>
+  ((a.currentUnitHp ?? 0) <= 0 ? 0 : 1) - ((b.currentUnitHp ?? 0) <= 0 ? 0 : 1);
 
 export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -631,16 +711,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pruneReactionOffers();
   }, [pruneReactionOffers]);
 
-  const routeReactionUnit = useCallback(async (unit: Unit, reason: string, killed: boolean): Promise<void> => {
-    const name = unit.unitName;
-    const verb = !killed ? 'routed' : unit.isHero ? 'down' : 'annihilated';
-    await execute('ROUT', [{
-      type: 'ROUT',
-      description: `${name} ${verb} (${reason})`,
-      unitId: unit.id,
-      changes: [{ field: 'currentFormation', from: unit.currentFormation, to: 'Routed' }],
-    }], `${name} ${verb}!`, { chained: true });
-  }, [execute]);
+  const routeReactionUnit = useCallback((unit: Unit, reason: string, killed: boolean) => routeUnit(execute, unit, reason, killed), [execute]);
 
   const performReactionShot = useCallback(async (archer: Unit, mover: Unit) => {
     const liveArcher = units.find(u => u.id === archer.id) ?? archer;
@@ -681,7 +752,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const newHp = Math.max(0, mover.currentUnitHp - outcome.firstStrikeDamage);
     const newTroops = Math.ceil(newHp / mover.troopHp);
     const troopsKilled = mover.currentTroopCount - newTroops;
-    const subSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
+    const subSteps: SubStep[] = [];
     subSteps.push({
       type: 'ARCHER_REACTION',
       description: `${archer.unitName} reaction shot at ${mover.unitName}`,
@@ -734,7 +805,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const { movementPointsAvailable, actionsAvailable } = archer.isHero
       ? applyHeroMoveCost(archer, cost, maxMP)
       : applyMoveCost(archer, cost, maxMP);
-    const changes: { field: string; from: any; to: any }[] = [
+    const changes: UnitChange[] = [
       { field: 'hex', from: { ...archer.hex }, to: { ...targetHex } },
       { field: 'movementPointsAvailable', from: archer.movementPointsAvailable, to: movementPointsAvailable },
       ...(actionsAvailable !== archer.actionsAvailable ? [{ field: 'actionsAvailable', from: archer.actionsAvailable, to: actionsAvailable }] : []),
@@ -781,7 +852,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const newMult = formationsMap[formation]?.movement_multiplier ?? 1;
     const oldEffectiveMax = computeEffectiveMovement(archer, oldMult);
     const newEffectiveMax = computeEffectiveMovement(archer, newMult);
-    const changes: { field: string; from: any; to: any }[] = [
+    const changes: UnitChange[] = [
       { field: 'currentFormation', from: archer.currentFormation, to: formation },
       { field: 'organizationLevel', from: archer.organizationLevel, to: getOrganizationLevel(formation) },
     ];
@@ -1080,19 +1151,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const tokenWidth = TOKEN_WIDTH * currentZoom;
     const tokenHeight = TOKEN_HEIGHT * currentZoom;
 
-    function getAttachedHeroPos(unitHex: { q: number; r: number; s: number }, facing: number, attachedPosition: 'front' | 'back' | null) {
-      const pos = hexToPixel(unitHex, HEX_SIZE);
-      const vertexIndex = attachedPosition === 'back' ? (facing + 2) % 6 : (facing + 5) % 6;
-      const angle = (60 * vertexIndex - 30) * Math.PI / 180;
-      return {
-        x: pos.x + HEX_SIZE * 0.75 * Math.cos(angle),
-        y: pos.y + HEX_SIZE * 0.75 * Math.sin(angle),
-      };
+    // One pass over the units: hostId -> attached hero (avoids a find per token).
+    const attachedByHost = new Map<string, Unit>();
+    for (const u of displayUnits) {
+      if (u.attachedToUnitId && !u.isDeleted) attachedByHost.set(u.attachedToUnitId, u);
     }
 
     // Corpses (HP <= 0) draw first so live tokens stacked on their hex render on top.
-    const drawOrder = [...displayUnits].sort((a, b) =>
-      ((a.currentUnitHp ?? 0) <= 0 ? 0 : 1) - ((b.currentUnitHp ?? 0) <= 0 ? 0 : 1));
+    const drawOrder = [...displayUnits].sort(corpseLast);
 
     for (const unit of drawOrder) {
       if (unit.isDeleted || unit.attachedToUnitId) continue;
@@ -1146,7 +1212,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         await drawArcherReactionButton(ctx, cx, cy, HEX_SIZE * currentZoom * 0.5, bowBlinkOn ? 0.4 : 1);
       }
 
-      const attachedHero = displayUnits.find(u => u.attachedToUnitId === unit.id && !u.isDeleted);
+      const attachedHero = attachedByHost.get(unit.id);
       if (attachedHero) {
         const heroPos = getAttachedHeroPos(unit.hex, unit.facing, attachedHero.attachedPosition);
         const heroCx = heroPos.x * currentZoom + offsetX;
@@ -1316,7 +1382,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           formationsMap[target.currentFormation],
         );
 
-    const subSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
+    const subSteps: SubStep[] = [];
 
     // Auto-draw: ranged/thrown primaries switch to a melee weapon at adjacency,
     // before the exchange resolves. Undoable with the attack (same command).
@@ -1648,26 +1714,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
     await execute('ATTACK', subSteps, desc);
 
-    async function routeUnit(unit: Unit, reason: string, killed: boolean): Promise<void> {
-      const name = unit.unitName;
-      const verb = !killed ? 'routed' : unit.isHero ? 'down' : 'annihilated';
-      await execute('ROUT', [{
-        type: 'ROUT',
-        description: `${name} ${verb} (${reason})`,
-        unitId: unit.id,
-        changes: [
-          { field: 'currentFormation', from: unit.currentFormation, to: 'Routed' },
-        ],
-      }], `${name} ${verb}!`, { chained: true });
-    }
-
     // Only the attacked unit can rout — no morale cascade to nearby units.
     if (defenderRouted || defenderKilled) {
-      await routeUnit(target, defenderKilled ? 'slain in combat' : `morale ${defModUnit.baseMorale + defEffectiveMod} after combat`, defenderKilled);
+      await routeUnit(execute, target, defenderKilled ? 'slain in combat' : `morale ${defModUnit.baseMorale + defEffectiveMod} after combat`, defenderKilled);
     }
 
     if (attackerRouted || attackerKilled) {
-      await routeUnit(attacker, attackerKilled ? 'slain in combat' : `morale ${attMoraleBreak} after combat`, attackerKilled);
+      await routeUnit(execute, attacker, attackerKilled ? 'slain in combat' : `morale ${attMoraleBreak} after combat`, attackerKilled);
     }
 
     // After the exchange, units that drew a melee weapon and are no longer in a
@@ -1688,7 +1741,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const heal = dmg.total;
     const newHp = Math.min(target.maxUnitHp, target.currentUnitHp + heal);
     const newTroops = Math.min(target.maxTroopCount, Math.ceil(newHp / target.troopHp));
-    const subSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
+    const subSteps: SubStep[] = [];
     if (!weapon.freeAction) {
       subSteps.push({
         type: 'ATTACK',
@@ -1714,7 +1767,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, [execute, verboseCombat]);
 
   const performChargeEnd = useCallback(async (attacker: Unit, dropOrg: boolean) => {
-    const changes: { field: string; from: any; to: any }[] = [
+    const changes: UnitChange[] = [
       { field: 'isCharging', from: true, to: false },
       { field: 'chargeDistance', from: attacker.chargeDistance, to: 0 },
     ];
@@ -1733,6 +1786,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       changes,
     }], `${attacker.unitName} ended its charge${dropText}`, { chained: true });
   }, [execute]);
+
+  /** After a charge attack: offer the ride-over (2 MP, own undo), else end the charge. */
+  const finishChargeAfterAttack = useCallback(async (attacker: Unit, target: Unit, result?: { attackerRouted: boolean; attackerKilled: boolean; defenderRouted: boolean; defenderKilled: boolean }) => {
+    if (!result) return;
+    if (isChargeOverEligible(attacker, target, result, computeOccupiedHexes(units), formationsMap, unitMaxMP(attacker))) {
+      const attachedHero = units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted);
+      setPendingChargeThrough({
+        attacker,
+        target,
+        landHex: computeChargeOverLandingHex(attacker.hex, target.hex),
+        attachedHero,
+      });
+      return;
+    }
+    await performChargeEnd(attacker, true);
+  }, [units, formationsMap, performChargeEnd]);
 
   const handleAttackRequest = useCallback(async (attackerId: string, targetId: string) => {
     const attacker = units.find(u => u.id === attackerId);
@@ -1868,17 +1937,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // Charge-over: if the combat left the attacker standing and the target
       // over-run-able, offer to ride over and land on the far side (2 MP, own
       // undo). Otherwise end the charge as usual.
-      if (isChargeOverEligible(attacker, target, result, computeOccupiedHexes(units), formationsMap, unitMaxMP(attacker))) {
-        const attachedHero = units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted);
-        setPendingChargeThrough({
-          attacker,
-          target,
-          landHex: computeChargeOverLandingHex(attacker.hex, target.hex),
-          attachedHero,
-        });
-        return;
-      }
-      await performChargeEnd(attacker, true);
+      await finishChargeAfterAttack(attacker, target, result);
       return;
     }
 
@@ -1932,7 +1991,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const newTroops = Math.min(target.maxTroopCount, Math.ceil(newHp / target.troopHp));
       const troopsRecovered = newTroops - target.currentTroopCount;
 
-      const healSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
+      const healSteps: SubStep[] = [];
       if (!cast.weapon.freeAction) {
         healSteps.push({
           type: 'CAST',
@@ -1973,7 +2032,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const newTroops = Math.ceil(newHp / target.troopHp);
     const troopsKilled = target.currentTroopCount - newTroops;
 
-    const subSteps: { type: any; description: string; unitId: string; changes: { field: string; from: any; to: any }[] }[] = [];
+    const subSteps: SubStep[] = [];
     if (!cast.weapon.freeAction) {
       subSteps.push({
         type: 'CAST',
@@ -2010,21 +2069,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const effMod = modUnit.currentMoraleModifier + computeEffectiveMoraleModifier(modUnit, units, alliances, formationsMap[target.currentFormation] ?? null);
     const targetRouted = !targetKilled && shouldRout(modUnit, units, alliances, formationsMap[target.currentFormation] ?? null);
 
-    async function routeUnit(unit: Unit, reason: string, killed: boolean): Promise<void> {
-      const name = unit.unitName;
-      const verb = !killed ? 'routed' : unit.isHero ? 'down' : 'annihilated';
-      await execute('ROUT', [{
-        type: 'ROUT',
-        description: `${name} ${verb} (${reason})`,
-        unitId: unit.id,
-        changes: [
-          { field: 'currentFormation', from: unit.currentFormation, to: 'Routed' },
-        ],
-      }], `${name} ${verb}!`, { chained: true });
-    }
-
     if (targetRouted || targetKilled) {
-      await routeUnit(target, targetKilled ? 'destroyed by magic' : `morale ${modUnit.baseMorale + effMod} after magic`, targetKilled);
+      await routeUnit(execute, target, targetKilled ? 'destroyed by magic' : `morale ${modUnit.baseMorale + effMod} after magic`, targetKilled);
     }
 
     magicCast.sendResolve({
@@ -2469,18 +2515,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const tokenWidth = TOKEN_WIDTH * fitZoom;
       const tokenHeight = TOKEN_HEIGHT * fitZoom;
 
-      const getScreenshotHeroPos = (unitHex: { q: number; r: number; s: number }, facing: number) => {
-        const pos = hexToPixel(unitHex, HEX_SIZE);
-        const frontVertexIndex = (facing + 5) % 6;
-        const angle = (60 * frontVertexIndex - 30) * Math.PI / 180;
-        return {
-          x: pos.x + HEX_SIZE * 0.75 * Math.cos(angle),
-          y: pos.y + HEX_SIZE * 0.75 * Math.sin(angle),
-        };
-      };
-
-      const screenshotDrawOrder = [...units].sort((a, b) =>
-        ((a.currentUnitHp ?? 0) <= 0 ? 0 : 1) - ((b.currentUnitHp ?? 0) <= 0 ? 0 : 1));
+      const screenshotDrawOrder = [...units].sort(corpseLast);
 
       for (const unit of screenshotDrawOrder) {
         if (unit.isDeleted || unit.attachedToUnitId) continue;
@@ -2511,7 +2546,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
         const attachedHero = units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted);
         if (attachedHero) {
-          const heroPos = getScreenshotHeroPos(unit.hex, unit.facing);
+          const heroPos = getAttachedHeroPos(unit.hex, unit.facing);
           const heroCx = heroPos.x * fitZoom + fitOffsetX;
           const heroCy = heroPos.y * fitZoom + fitOffsetY;
           try {
@@ -3008,104 +3043,64 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
       {/* Over-budget confirmations (soft enforcement) */}
       {pendingMove && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-red-800 rounded-xl shadow-2xl p-6 min-w-[320px]">
-            <p className="text-white text-sm mb-1 text-center font-semibold">Move over budget?</p>
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              {pendingMove.attachedHero
-                ? `${pendingMove.unit.unitName} + ${pendingMove.attachedHero.unitName} need ${pendingMove.cost} MP to reach (${pendingMove.targetHex.q}, ${pendingMove.targetHex.r}), but ${pendingMove.unit.unitName} has ${pendingMove.unit.actionsAvailable} and ${pendingMove.attachedHero.unitName} has ${pendingMove.attachedHero.actionsAvailable} action(s) left.`
-                : `${pendingMove.unit.unitName} needs ${pendingMove.cost} MP (${pendingMove.unit.isHero
-                    ? `${Math.ceil(pendingMove.cost / heroMovePerAction(unitMaxMP(pendingMove.unit)))} action(s) at ${heroMovePerAction(unitMaxMP(pendingMove.unit))} MP/action`
-                    : `${Math.ceil(pendingMove.cost / Math.max(1, unitMaxMP(pendingMove.unit)))} action(s)`}) to reach (${pendingMove.targetHex.q}, ${pendingMove.targetHex.r}), but has ${pendingMove.unit.actionsAvailable} action(s) left.`}
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => { const pm = pendingMove; setPendingMove(null); if (!controlsLocked) await performMove(pm.unit, pm.targetHex, pm.cost, true, unitMaxMP(pm.unit), pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined); }}
-              >
-                Yes, move anyway
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => setPendingMove(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          tone="red"
+          title="Move over budget?"
+          buttons={[{
+            label: 'Yes, move anyway',
+            variant: 'red',
+            onClick: async () => { const pm = pendingMove; setPendingMove(null); if (!controlsLocked) await performMove(pm.unit, pm.targetHex, pm.cost, true, unitMaxMP(pm.unit), pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined); },
+          }]}
+          onCancel={() => setPendingMove(null)}
+        >
+          {pendingMove.attachedHero
+            ? `${pendingMove.unit.unitName} + ${pendingMove.attachedHero.unitName} need ${pendingMove.cost} MP to reach (${pendingMove.targetHex.q}, ${pendingMove.targetHex.r}), but ${pendingMove.unit.unitName} has ${pendingMove.unit.actionsAvailable} and ${pendingMove.attachedHero.unitName} has ${pendingMove.attachedHero.actionsAvailable} action(s) left.`
+            : `${pendingMove.unit.unitName} needs ${pendingMove.cost} MP (${pendingMove.unit.isHero
+                ? `${Math.ceil(pendingMove.cost / heroMovePerAction(unitMaxMP(pendingMove.unit)))} action(s) at ${heroMovePerAction(unitMaxMP(pendingMove.unit))} MP/action`
+                : `${Math.ceil(pendingMove.cost / Math.max(1, unitMaxMP(pendingMove.unit)))} action(s)`}) to reach (${pendingMove.targetHex.q}, ${pendingMove.targetHex.r}), but has ${pendingMove.unit.actionsAvailable} action(s) left.`}
+        </ConfirmModal>
       )}
 
       {pendingAttack && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-red-800 rounded-xl shadow-2xl p-6 min-w-[320px]">
-            <p className="text-white text-sm mb-1 text-center font-semibold">Attack with no actions?</p>
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              {pendingAttack.attacker.unitName} has no actions left, but can still attack {pendingAttack.target.unitName}.
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => { const pa = pendingAttack; setPendingAttack(null); if (!controlsLocked) await performAttack(pa.attacker, pa.target, true); }}
-              >
-                Yes, attack anyway
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => setPendingAttack(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          tone="red"
+          title="Attack with no actions?"
+          buttons={[{
+            label: 'Yes, attack anyway',
+            variant: 'red',
+            onClick: async () => { const pa = pendingAttack; setPendingAttack(null); if (!controlsLocked) await performAttack(pa.attacker, pa.target, true); },
+          }]}
+          onCancel={() => setPendingAttack(null)}
+        >
+          {pendingAttack.attacker.unitName} has no actions left, but can still attack {pendingAttack.target.unitName}.
+        </ConfirmModal>
       )}
 
       {pendingAttackCap && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
-            <p className="text-white text-sm mb-1 text-center font-semibold">Attack past the {unitAttackCap()}-attack cap?</p>
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              {pendingAttackCap.attacker.unitName} has already attacked {pendingAttackCap.attacker.attacksUsed}/{unitAttackCap()} times this turn
-              {pendingAttackCap.attacker.isCharging ? ' (charge attack)' : ''}. Attack {pendingAttackCap.target.unitName} anyway?
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => {
-                  const pa = pendingAttackCap;
-                  setPendingAttackCap(null);
-                  if (controlsLocked) return;
-                  if (pa.isCharging) {
-                    const result = await performAttack(pa.attacker, pa.target, true, { isCharging: true });
-                    if (!result) return; // retaliation-cap prompt reopened
-                    if (isChargeOverEligible(pa.attacker, pa.target, result, computeOccupiedHexes(units), formationsMap, unitMaxMP(pa.attacker))) {
-                      const attachedHero = units.find(u => u.attachedToUnitId === pa.attacker.id && !u.isDeleted);
-                      setPendingChargeThrough({
-                        attacker: pa.attacker,
-                        target: pa.target,
-                        landHex: computeChargeOverLandingHex(pa.attacker.hex, pa.target.hex),
-                        attachedHero,
-                      });
-                      return;
-                    }
-                    await performChargeEnd(pa.attacker, true);
-                  } else {
-                    await performAttack(pa.attacker, pa.target, true);
-                  }
-                }}
-              >
-                Yes, attack anyway
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => setPendingAttackCap(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          tone="amber"
+          title={`Attack past the ${unitAttackCap()}-attack cap?`}
+          buttons={[{
+            label: 'Yes, attack anyway',
+            variant: 'red',
+            onClick: async () => {
+              const pa = pendingAttackCap;
+              setPendingAttackCap(null);
+              if (controlsLocked) return;
+              if (pa.isCharging) {
+                const result = await performAttack(pa.attacker, pa.target, true, { isCharging: true });
+                if (!result) return; // retaliation-cap prompt reopened
+                await finishChargeAfterAttack(pa.attacker, pa.target, result);
+              } else {
+                await performAttack(pa.attacker, pa.target, true);
+              }
+            },
+          }]}
+          onCancel={() => setPendingAttackCap(null)}
+        >
+          {pendingAttackCap.attacker.unitName} has already attacked {pendingAttackCap.attacker.attacksUsed}/{unitAttackCap()} times this turn
+          {pendingAttackCap.attacker.isCharging ? ' (charge attack)' : ''}. Attack {pendingAttackCap.target.unitName} anyway?
+        </ConfirmModal>
       )}
 
       {/* Reaction: formation picker (reached by right-clicking the acting archer
@@ -3227,349 +3222,244 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       )}
 
       {pendingRetaliationCap && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
-            <p className="text-white text-sm mb-1 text-center font-semibold">Retaliation past the {pendingRetaliationCap.cap}-attack cap?</p>
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              {pendingRetaliationCap.retaliatorName} has already attacked {pendingRetaliationCap.attacksUsed}/{pendingRetaliationCap.cap} times this turn.
-              Allow it to retaliate against {pendingRetaliationCap.target.unitName} anyway?
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => {
-                  const prc = pendingRetaliationCap;
-                  setPendingRetaliationCap(null);
-                  if (controlsLocked) return;
-                  const result = await performAttack(prc.attacker, prc.target, prc.overBudget, {
-                    ...prc.options,
-                    stashed: {
-                      outcome: prc.outcome,
-                      retaliatorKilled: prc.retaliatorKilled,
-                      retaliatorRouted: prc.retaliatorRouted,
-                      reachSymmetric: prc.reachSymmetric,
-                      allowRetaliation: true,
-                    },
-                  });
-                  if (prc.options.isCharging) {
-                    if (result && isChargeOverEligible(prc.attacker, prc.target, result, computeOccupiedHexes(units), formationsMap, unitMaxMP(prc.attacker))) {
-                      const attachedHero = units.find(u => u.attachedToUnitId === prc.attacker.id && !u.isDeleted);
-                      setPendingChargeThrough({
-                        attacker: prc.attacker,
-                        target: prc.target,
-                        landHex: computeChargeOverLandingHex(prc.attacker.hex, prc.target.hex),
-                        attachedHero,
-                      });
-                      return;
-                    }
-                    await performChargeEnd(prc.attacker, true);
-                  }
-                }}
-              >
-                Yes, allow retaliation
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => {
-                  const prc = pendingRetaliationCap;
-                  setPendingRetaliationCap(null);
-                  if (controlsLocked) return;
-                  const result = await performAttack(prc.attacker, prc.target, prc.overBudget, {
-                    ...prc.options,
-                    stashed: {
-                      outcome: prc.outcome,
-                      retaliatorKilled: prc.retaliatorKilled,
-                      retaliatorRouted: prc.retaliatorRouted,
-                      reachSymmetric: prc.reachSymmetric,
-                      allowRetaliation: false,
-                    },
-                  });
-                  if (prc.options.isCharging) {
-                    if (result && isChargeOverEligible(prc.attacker, prc.target, result, computeOccupiedHexes(units), formationsMap, unitMaxMP(prc.attacker))) {
-                      const attachedHero = units.find(u => u.attachedToUnitId === prc.attacker.id && !u.isDeleted);
-                      setPendingChargeThrough({
-                        attacker: prc.attacker,
-                        target: prc.target,
-                        landHex: computeChargeOverLandingHex(prc.attacker.hex, prc.target.hex),
-                        attachedHero,
-                      });
-                      return;
-                    }
-                    await performChargeEnd(prc.attacker, true);
-                  }
-                }}
-              >
-                No, suppress retaliation
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => setPendingRetaliationCap(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          tone="amber"
+          title={`Retaliation past the ${pendingRetaliationCap.cap}-attack cap?`}
+          buttons={[
+            {
+              label: 'Yes, allow retaliation',
+              variant: 'red',
+              onClick: async () => {
+                const prc = pendingRetaliationCap;
+                setPendingRetaliationCap(null);
+                if (controlsLocked) return;
+                const result = await performAttack(prc.attacker, prc.target, prc.overBudget, {
+                  ...prc.options,
+                  stashed: {
+                    outcome: prc.outcome,
+                    retaliatorKilled: prc.retaliatorKilled,
+                    retaliatorRouted: prc.retaliatorRouted,
+                    reachSymmetric: prc.reachSymmetric,
+                    allowRetaliation: true,
+                  },
+                });
+                if (prc.options.isCharging) {
+                  await finishChargeAfterAttack(prc.attacker, prc.target, result);
+                }
+              },
+            },
+            {
+              label: 'No, suppress retaliation',
+              onClick: async () => {
+                const prc = pendingRetaliationCap;
+                setPendingRetaliationCap(null);
+                if (controlsLocked) return;
+                const result = await performAttack(prc.attacker, prc.target, prc.overBudget, {
+                  ...prc.options,
+                  stashed: {
+                    outcome: prc.outcome,
+                    retaliatorKilled: prc.retaliatorKilled,
+                    retaliatorRouted: prc.retaliatorRouted,
+                    reachSymmetric: prc.reachSymmetric,
+                    allowRetaliation: false,
+                  },
+                });
+                if (prc.options.isCharging) {
+                  await finishChargeAfterAttack(prc.attacker, prc.target, result);
+                }
+              },
+            },
+          ]}
+          onCancel={() => setPendingRetaliationCap(null)}
+        >
+          {pendingRetaliationCap.retaliatorName} has already attacked {pendingRetaliationCap.attacksUsed}/{pendingRetaliationCap.cap} times this turn.
+          Allow it to retaliate against {pendingRetaliationCap.target.unitName} anyway?
+        </ConfirmModal>
       )}
 
       {pendingHeroAttachConversion && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
-            <p className="text-white text-sm mb-1 text-center font-semibold">Convert actions to 1 MP?</p>
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              {pendingHeroAttachConversion.hero.unitName} has {Math.floor(Math.max(0, pendingHeroAttachConversion.hero.movementPointsAvailable))} MP but attaching costs 1 MP.
-              Convert {pendingHeroAttachConversion.actionsNeeded} action{pendingHeroAttachConversion.actionsNeeded > 1 ? 's' : ''}
-              {pendingHeroAttachConversion.actionsNeeded > 1 ? ` (+${Math.round(heroMovePerAction(unitMaxMP(pendingHeroAttachConversion.hero)) * pendingHeroAttachConversion.actionsNeeded * 10) / 10} MP)` : ''}
-              to attach to {pendingHeroAttachConversion.target.unitName} ({pendingHeroAttachConversion.position})?
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                className="bg-green-800 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => {
-                  const phc = pendingHeroAttachConversion;
-                  setPendingHeroAttachConversion(null);
-                  if (controlsLocked) return;
-                  await attachHero(phc.hero, phc.target, phc.position, unitMaxMP(phc.hero));
-                  addMessage(`${phc.hero.unitName} attached to ${phc.target.unitName} (${phc.position})`);
-                }}
-              >
-                Convert and attach
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => setPendingHeroAttachConversion(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          tone="amber"
+          title="Convert actions to 1 MP?"
+          buttons={[{
+            label: 'Convert and attach',
+            variant: 'green',
+            onClick: async () => {
+              const phc = pendingHeroAttachConversion;
+              setPendingHeroAttachConversion(null);
+              if (controlsLocked) return;
+              await attachHero(phc.hero, phc.target, phc.position, unitMaxMP(phc.hero));
+              addMessage(`${phc.hero.unitName} attached to ${phc.target.unitName} (${phc.position})`);
+            },
+          }]}
+          onCancel={() => setPendingHeroAttachConversion(null)}
+        >
+          {pendingHeroAttachConversion.hero.unitName} has {Math.floor(Math.max(0, pendingHeroAttachConversion.hero.movementPointsAvailable))} MP but attaching costs 1 MP.
+          Convert {pendingHeroAttachConversion.actionsNeeded} action{pendingHeroAttachConversion.actionsNeeded > 1 ? 's' : ''}
+          {pendingHeroAttachConversion.actionsNeeded > 1 ? ` (+${Math.round(heroMovePerAction(unitMaxMP(pendingHeroAttachConversion.hero)) * pendingHeroAttachConversion.actionsNeeded * 10) / 10} MP)` : ''}
+          to attach to {pendingHeroAttachConversion.target.unitName} ({pendingHeroAttachConversion.position})?
+        </ConfirmModal>
       )}
 
       {pendingHeroSwapConversion && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
-            <p className="text-white text-sm mb-1 text-center font-semibold">Convert actions to 1 MP?</p>
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              {pendingHeroSwapConversion.hero.unitName} has {Math.floor(Math.max(0, pendingHeroSwapConversion.hero.movementPointsAvailable))} MP but swapping position costs 1 MP.
-              Convert {pendingHeroSwapConversion.actionsNeeded} action{pendingHeroSwapConversion.actionsNeeded > 1 ? 's' : ''} to swap to the {pendingHeroSwapConversion.hero.attachedPosition === 'back' ? 'front' : 'back'}?
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                className="bg-green-800 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => {
-                  const phs = pendingHeroSwapConversion;
-                  setPendingHeroSwapConversion(null);
-                  if (controlsLocked) return;
-                  await swapHeroPosition(phs.hero, unitMaxMP(phs.hero));
-                }}
-              >
-                Convert and swap
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => setPendingHeroSwapConversion(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          tone="amber"
+          title="Convert actions to 1 MP?"
+          buttons={[{
+            label: 'Convert and swap',
+            variant: 'green',
+            onClick: async () => {
+              const phs = pendingHeroSwapConversion;
+              setPendingHeroSwapConversion(null);
+              if (controlsLocked) return;
+              await swapHeroPosition(phs.hero, unitMaxMP(phs.hero));
+            },
+          }]}
+          onCancel={() => setPendingHeroSwapConversion(null)}
+        >
+          {pendingHeroSwapConversion.hero.unitName} has {Math.floor(Math.max(0, pendingHeroSwapConversion.hero.movementPointsAvailable))} MP but swapping position costs 1 MP.
+          Convert {pendingHeroSwapConversion.actionsNeeded} action{pendingHeroSwapConversion.actionsNeeded > 1 ? 's' : ''} to swap to the {pendingHeroSwapConversion.hero.attachedPosition === 'back' ? 'front' : 'back'}?
+        </ConfirmModal>
       )}
 
       {pendingAttachOverBudget && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
-            <p className="text-white text-sm mb-1 text-center font-semibold">Attach with no MP?</p>
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              {pendingAttachOverBudget.hero.unitName} has no MP or actions left, but can still attach to {pendingAttachOverBudget.target.unitName} ({pendingAttachOverBudget.position}).
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => {
-                  const pa = pendingAttachOverBudget;
-                  setPendingAttachOverBudget(null);
-                  if (controlsLocked) return;
-                  addError(`${pa.hero.unitName} attached over budget — no MP/actions left`);
-                  await attachHero(pa.hero, pa.target, pa.position, unitMaxMP(pa.hero));
-                }}
-              >
-                Yes, attach anyway
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => setPendingAttachOverBudget(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          tone="red"
+          title="Attach with no MP?"
+          buttons={[{
+            label: 'Yes, attach anyway',
+            variant: 'red',
+            onClick: async () => {
+              const pa = pendingAttachOverBudget;
+              setPendingAttachOverBudget(null);
+              if (controlsLocked) return;
+              addError(`${pa.hero.unitName} attached over budget — no MP/actions left`);
+              await attachHero(pa.hero, pa.target, pa.position, unitMaxMP(pa.hero));
+            },
+          }]}
+          onCancel={() => setPendingAttachOverBudget(null)}
+        >
+          {pendingAttachOverBudget.hero.unitName} has no MP or actions left, but can still attach to {pendingAttachOverBudget.target.unitName} ({pendingAttachOverBudget.position}).
+        </ConfirmModal>
       )}
 
       {pendingSwapOverBudget && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
-            <p className="text-white text-sm mb-1 text-center font-semibold">Swap position with no MP?</p>
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              {pendingSwapOverBudget.unitName} has no MP or actions left, but can still move to the {pendingSwapOverBudget.attachedPosition === 'back' ? 'front' : 'back'}.
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => {
-                  const hero = pendingSwapOverBudget;
-                  setPendingSwapOverBudget(null);
-                  if (controlsLocked) return;
-                  addError(`${hero.unitName} swapped position over budget — no MP/actions left`);
-                  await swapHeroPosition(hero, unitMaxMP(hero));
-                }}
-              >
-                Yes, swap anyway
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => setPendingSwapOverBudget(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          tone="red"
+          title="Swap position with no MP?"
+          buttons={[{
+            label: 'Yes, swap anyway',
+            variant: 'red',
+            onClick: async () => {
+              const hero = pendingSwapOverBudget;
+              setPendingSwapOverBudget(null);
+              if (controlsLocked) return;
+              addError(`${hero.unitName} swapped position over budget — no MP/actions left`);
+              await swapHeroPosition(hero, unitMaxMP(hero));
+            },
+          }]}
+          onCancel={() => setPendingSwapOverBudget(null)}
+        >
+          {pendingSwapOverBudget.unitName} has no MP or actions left, but can still move to the {pendingSwapOverBudget.attachedPosition === 'back' ? 'front' : 'back'}.
+        </ConfirmModal>
       )}
 
       {/* Over-budget formation change (soft enforcement) */}
       {pendingFormation && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-red-800 rounded-xl shadow-2xl p-6 min-w-[320px]">
-            <p className="text-white text-sm mb-1 text-center font-semibold">Change formation over budget?</p>
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              {pendingFormation.unit.unitName} needs {getFormationChangeMpCost(unitMaxMP(pendingFormation.unit))} MP (1 action) to form {pendingFormation.formation}, but has {pendingFormation.unit.actionsAvailable} action(s) left.
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => { const pf = pendingFormation; setPendingFormation(null); if (!controlsLocked) { addError(`${pf.unit.unitName} changed formation over budget — ${getFormationChangeMpCost(unitMaxMP(pf.unit))} MP needed, ${pf.unit.actionsAvailable} action(s) left`); await changeFormation(pf.unit, pf.formation, formationsMap); } }}
-              >
-                Yes, change anyway
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => setPendingFormation(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          tone="red"
+          title="Change formation over budget?"
+          buttons={[{
+            label: 'Yes, change anyway',
+            variant: 'red',
+            onClick: async () => { const pf = pendingFormation; setPendingFormation(null); if (!controlsLocked) { addError(`${pf.unit.unitName} changed formation over budget — ${getFormationChangeMpCost(unitMaxMP(pf.unit))} MP needed, ${pf.unit.actionsAvailable} action(s) left`); await changeFormation(pf.unit, pf.formation, formationsMap); } },
+          }]}
+          onCancel={() => setPendingFormation(null)}
+        >
+          {pendingFormation.unit.unitName} needs {getFormationChangeMpCost(unitMaxMP(pendingFormation.unit))} MP (1 action) to form {pendingFormation.formation}, but has {pendingFormation.unit.actionsAvailable} action(s) left.
+        </ConfirmModal>
       )}
 
       {/* Over-budget spell resolve confirm */}
       {pendingCastOverBudget && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-red-800 rounded-xl shadow-2xl p-6 min-w-[320px]">
-            <p className="text-white text-sm mb-1 text-center font-semibold">Cast with no actions?</p>
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              The caster has no actions left, but can still cast the spell.
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => { setPendingCastOverBudget(false); if (!controlsLocked) handleResolveCast(true); }}
-              >
-                Yes, cast anyway
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => setPendingCastOverBudget(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          tone="red"
+          title="Cast with no actions?"
+          buttons={[{
+            label: 'Yes, cast anyway',
+            variant: 'red',
+            onClick: () => { setPendingCastOverBudget(false); if (!controlsLocked) handleResolveCast(true); },
+          }]}
+          onCancel={() => setPendingCastOverBudget(false)}
+        >
+          The caster has no actions left, but can still cast the spell.
+        </ConfirmModal>
       )}
 
       {/* Premature charge attack confirm */}
       {pendingChargeAttack && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
-            <p className="text-white text-sm mb-1 text-center font-semibold">Charge incomplete?</p>
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              {pendingChargeAttack.attacker.unitName} attacks before completing its 2-hex charge — this loses the free charge attack. Attack as normal instead (costs 1 action)?
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => {
-                  const pca = pendingChargeAttack;
-                  setPendingChargeAttack(null);
-                  if (controlsLocked) return;
-                  await performAttack(pca.attacker, pca.target, false);
-                  await performChargeEnd(pca.attacker, true);
-                }}
-              >
-                Yes, attack normally
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => setPendingChargeAttack(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          tone="amber"
+          title="Charge incomplete?"
+          buttons={[{
+            label: 'Yes, attack normally',
+            variant: 'amber',
+            onClick: async () => {
+              const pca = pendingChargeAttack;
+              setPendingChargeAttack(null);
+              if (controlsLocked) return;
+              await performAttack(pca.attacker, pca.target, false);
+              await performChargeEnd(pca.attacker, true);
+            },
+          }]}
+          onCancel={() => setPendingChargeAttack(null)}
+        >
+          {pendingChargeAttack.attacker.unitName} attacks before completing its 2-hex charge — this loses the free charge attack. Attack as normal instead (costs 1 action)?
+        </ConfirmModal>
       )}
 
       {/* Charge-over confirm: after a full charge attack, ride over the target and
           land on its far side (2 MP, a separate movement with its own undo). */}
       {pendingChargeThrough && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
-            <p className="text-white text-sm mb-1 text-center font-semibold">Charge over?</p>
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              {pendingChargeThrough.attacker.unitName} can charge over {pendingChargeThrough.target.unitName} and land at ({pendingChargeThrough.landHex.q}, {pendingChargeThrough.landHex.r}) for 2 MP.
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => {
-                  const pct = pendingChargeThrough;
-                  setPendingChargeThrough(null);
-                  if (controlsLocked) return;
-                  // The charge-over MOVE chains onto the CHARGE_END (which chains
-                  // onto the ATTACK), so undo reverts charge attack + overrun as
-                  // one atomic action.
-                  await performChargeEnd(pct.attacker, true);
-                  await moveUnitRecorded(
-                    pct.attacker,
-                    pct.landHex,
-                    2,
-                    unitMaxMP(pct.attacker),
-                    pct.attachedHero,
-                    pct.attachedHero ? unitMaxMP(pct.attachedHero) : undefined,
-                    `${pct.attacker.unitName} charged over ${pct.target.unitName} and landed at (${pct.landHex.q}, ${pct.landHex.r})`,
-                    { chained: true },
-                  );
-                }}
-              >
-                Yes, charge over
-              </button>
-              <button
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={async () => {
-                  const pct = pendingChargeThrough;
-                  setPendingChargeThrough(null);
-                  if (!controlsLocked) await performChargeEnd(pct.attacker, true);
-                }}
-              >
-                No, stop here
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          tone="amber"
+          title="Charge over?"
+          buttons={[
+            {
+              label: 'Yes, charge over',
+              variant: 'amber',
+              onClick: async () => {
+                const pct = pendingChargeThrough;
+                setPendingChargeThrough(null);
+                if (controlsLocked) return;
+                // The charge-over MOVE chains onto the CHARGE_END (which chains
+                // onto the ATTACK), so undo reverts charge attack + overrun as
+                // one atomic action.
+                await performChargeEnd(pct.attacker, true);
+                await moveUnitRecorded(
+                  pct.attacker,
+                  pct.landHex,
+                  2,
+                  unitMaxMP(pct.attacker),
+                  pct.attachedHero,
+                  pct.attachedHero ? unitMaxMP(pct.attachedHero) : undefined,
+                  `${pct.attacker.unitName} charged over ${pct.target.unitName} and landed at (${pct.landHex.q}, ${pct.landHex.r})`,
+                  { chained: true },
+                );
+              },
+            },
+            {
+              label: 'No, stop here',
+              onClick: async () => {
+                const pct = pendingChargeThrough;
+                setPendingChargeThrough(null);
+                if (!controlsLocked) await performChargeEnd(pct.attacker, true);
+              },
+            },
+          ]}
+        >
+          {pendingChargeThrough.attacker.unitName} can charge over {pendingChargeThrough.target.unitName} and land at ({pendingChargeThrough.landHex.q}, {pendingChargeThrough.landHex.r}) for 2 MP.
+        </ConfirmModal>
       )}
 
       {/* Attach Position Modal */}
