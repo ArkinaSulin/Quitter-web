@@ -19,8 +19,13 @@ import {
 } from '@/lib/shipStats';
 import {
   mapAccessoryRows,
+  mapShipAccessoryRow,
+  mapShipArmorRow,
+  mapShipComponentRow,
+  mapShipFrameRow,
   mapShipTemplateRow,
   mapShipTemplateToRow,
+  mapShipWeaponRow,
   mapWeaponRows,
 } from '@/lib/shipMappers';
 import { ShipPreview } from '@/components/ShipRenderer/ShipPreview';
@@ -242,13 +247,18 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [templatesRes, framesRes, armorsRes, componentsRes, accessoriesRes, weaponsRes] = await Promise.all([
-          supabase.from('ship_templates').select('*, ship_template_accessories(*), ship_template_weapons(*)').order('name'),
+        // Flat queries + client-side join merge: avoids depending on PostgREST resolving
+        // the ship_template_* relationships (a schema-cache hiccup would otherwise blank
+        // the whole list).
+        const [templatesRes, framesRes, armorsRes, componentsRes, accessoriesRes, weaponsRes, templateAccessoriesRes, templateWeaponsRes] = await Promise.all([
+          supabase.from('ship_templates').select('*').order('name'),
           supabase.from('ship_frames').select('*').order('mass_cap'),
           supabase.from('ship_armors').select('*').order('id'),
           supabase.from('ship_components').select('*').order('id'),
           supabase.from('ship_accessories').select('*').order('id'),
           supabase.from('ship_weapons').select('*').order('id'),
+          supabase.from('ship_template_accessories').select('*'),
+          supabase.from('ship_template_weapons').select('*'),
         ]);
         if (templatesRes.error) throw templatesRes.error;
         if (framesRes.error) throw framesRes.error;
@@ -256,13 +266,32 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         if (componentsRes.error) throw componentsRes.error;
         if (accessoriesRes.error) throw accessoriesRes.error;
         if (weaponsRes.error) throw weaponsRes.error;
+        if (templateAccessoriesRes.error) throw templateAccessoriesRes.error;
+        if (templateWeaponsRes.error) throw templateWeaponsRes.error;
 
-        setTemplates((templatesRes.data || []).map(mapShipTemplateRow));
-        setFrames(framesRes.data || []);
-        setArmors(armorsRes.data || []);
-        setComponents(componentsRes.data || []);
-        setAccessories(accessoriesRes.data || []);
-        setWeaponsCatalog(weaponsRes.data || []);
+        const accessoriesByTemplate = new Map<string, any[]>();
+        for (const row of templateAccessoriesRes.data || []) {
+          const list = accessoriesByTemplate.get(row.template_id) || [];
+          list.push(row);
+          accessoriesByTemplate.set(row.template_id, list);
+        }
+        const weaponsByTemplate = new Map<string, any[]>();
+        for (const row of templateWeaponsRes.data || []) {
+          const list = weaponsByTemplate.get(row.template_id) || [];
+          list.push(row);
+          weaponsByTemplate.set(row.template_id, list);
+        }
+
+        setTemplates((templatesRes.data || []).map(row => mapShipTemplateRow({
+          ...row,
+          ship_template_accessories: accessoriesByTemplate.get(row.id) || [],
+          ship_template_weapons: weaponsByTemplate.get(row.id) || [],
+        })));
+        setFrames((framesRes.data || []).map(mapShipFrameRow));
+        setArmors((armorsRes.data || []).map(mapShipArmorRow));
+        setComponents((componentsRes.data || []).map(mapShipComponentRow));
+        setAccessories((accessoriesRes.data || []).map(mapShipAccessoryRow));
+        setWeaponsCatalog((weaponsRes.data || []).map(mapShipWeaponRow));
         setLoading(false);
       } catch (err: any) {
         console.error('Ship editor fetch error:', err);
@@ -623,6 +652,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
             {templates.length === 0 && (
               <div className="text-sm text-gray-500 text-center py-4">
                 No ships found. Create one with "New".
+                <div className="text-[10px] text-gray-600 mt-2">
+                  Empty database? Ensure the ship seed (migration 067) is applied — the
+                  tables exist but ship_templates has no rows.
+                </div>
               </div>
             )}
           </div>

@@ -36,18 +36,27 @@ CREATE POLICY ship_catalog_select ON ship_weapons FOR SELECT TO authenticated US
 
 DROP POLICY IF EXISTS ship_templates_select ON ship_templates;
 CREATE POLICY ship_templates_select ON ship_templates FOR SELECT TO authenticated USING (shipyard_read());
-DROP POLICY IF EXISTS ship_templates_insert ON ship_templates FOR INSERT TO authenticated WITH CHECK (shipyard_write());
-DROP POLICY IF EXISTS ship_templates_update ON ship_templates FOR UPDATE TO authenticated USING (shipyard_write());
-DROP POLICY IF EXISTS ship_templates_delete ON ship_templates FOR DELETE TO authenticated USING (shipyard_write());
+DROP POLICY IF EXISTS ship_templates_insert ON ship_templates;
+CREATE POLICY ship_templates_insert ON ship_templates FOR INSERT TO authenticated WITH CHECK (shipyard_write());
+DROP POLICY IF EXISTS ship_templates_update ON ship_templates;
+CREATE POLICY ship_templates_update ON ship_templates FOR UPDATE TO authenticated USING (shipyard_write());
+DROP POLICY IF EXISTS ship_templates_delete ON ship_templates;
+CREATE POLICY ship_templates_delete ON ship_templates FOR DELETE TO authenticated USING (shipyard_write());
 
 DROP POLICY IF EXISTS ship_template_accessories_select ON ship_template_accessories;
 CREATE POLICY ship_template_accessories_select ON ship_template_accessories FOR SELECT TO authenticated USING (shipyard_read());
-DROP POLICY IF EXISTS ship_template_accessories_insert ON ship_template_accessories FOR INSERT TO authenticated WITH CHECK (shipyard_write());
-DROP POLICY IF EXISTS ship_template_accessories_update ON ship_template_accessories FOR UPDATE TO authenticated USING (shipyard_write());
-DROP POLICY IF EXISTS ship_template_accessories_delete ON ship_template_accessories FOR DELETE TO authenticated USING (shipyard_write());
+DROP POLICY IF EXISTS ship_template_accessories_insert ON ship_template_accessories;
+CREATE POLICY ship_template_accessories_insert ON ship_template_accessories FOR INSERT TO authenticated WITH CHECK (shipyard_write());
+DROP POLICY IF EXISTS ship_template_accessories_update ON ship_template_accessories;
+CREATE POLICY ship_template_accessories_update ON ship_template_accessories FOR UPDATE TO authenticated USING (shipyard_write());
+DROP POLICY IF EXISTS ship_template_accessories_delete ON ship_template_accessories;
+CREATE POLICY ship_template_accessories_delete ON ship_template_accessories FOR DELETE TO authenticated USING (shipyard_write());
 
 DROP POLICY IF EXISTS ship_template_weapons_select ON ship_template_weapons;
 CREATE POLICY ship_template_weapons_select ON ship_template_weapons FOR SELECT TO authenticated USING (shipyard_read());
-DROP POLICY IF EXISTS ship_template_weapons_insert ON ship_template_weapons FOR INSERT TO authenticated WITH CHECK (shipyard_write());
-DROP POLICY IF EXISTS ship_template_weapons_update ON ship_template_weapons FOR UPDATE TO authenticated USING (shipyard_write());
-DROP POLICY IF EXISTS ship_template_weapons_delete ON ship_template_weapons FOR DELETE TO authenticated USING (shipyard_write());
+DROP POLICY IF EXISTS ship_template_weapons_insert ON ship_template_weapons;
+CREATE POLICY ship_template_weapons_insert ON ship_template_weapons FOR INSERT TO authenticated WITH CHECK (shipyard_write());
+DROP POLICY IF EXISTS ship_template_weapons_update ON ship_template_weapons;
+CREATE POLICY ship_template_weapons_update ON ship_template_weapons FOR UPDATE TO authenticated USING (shipyard_write());
+DROP POLICY IF EXISTS ship_template_weapons_delete ON ship_template_weapons;
+CREATE POLICY ship_template_weapons_delete ON ship_template_weapons FOR DELETE TO authenticated USING (shipyard_write());
