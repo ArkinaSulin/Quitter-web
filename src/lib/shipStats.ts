@@ -202,14 +202,32 @@ export function computeBoxHp(armor: ShipArmor): number {
   return Math.ceil(SAFE_BOX_HP_CEIL * (1 + armor.massFactor));
 }
 
-// --- MC band (turn capacity per GAME TURN) ----------------------------------
+// --- MC band (maneuver class) ------------------------------------------------
+//
+// Corrected terminology (designer-authoritative): **MC** = how many hexes the ship
+// must travel before one 60° turn — an integer, LOWER = tighter turn = better.
+// **60°/turn** = `speed ÷ MC(at that speed)` — non-integer, HIGHER = better.
+// The tier/center/W/peak band below produces MC at each per-turn speed s.
 
-export function computeMCAtSpeed(build: ShipBuild, speed: number, mass?: number): number {
+export interface MCParams {
+  mass: number;
+  tier: number;
+  center: number;
+  W: number;
+  peak: number;
+}
+
+export function computeMCParams(build: ShipBuild, mass?: number): MCParams {
   const m = mass ?? computeLadenMass(build, build.cargoArea);
   const tier = Math.floor(m / 25);
   const center = clamp(Math.round(build.frame.topSpeed * 0.65) - tier, 2, 8);
   const W = Math.max(0, build.rudders - tier);
   const peak = clamp(build.rudders - Math.floor(m / 45), 1, 3);
+  return { mass: m, tier, center, W, peak };
+}
+
+export function computeMCAtSpeed(build: ShipBuild, speed: number, mass?: number): number {
+  const { mass: m, tier, center, W, peak } = computeMCParams(build, mass);
   if (m < 25 && build.rudders >= 2 && Math.abs(speed - center) <= 0.5) return 4;
   if (peak >= 3 && Math.abs(speed - center) <= W) return 3;
   if (Math.abs(speed - center) <= W + 2) return 2;
@@ -227,6 +245,12 @@ export function computeMCBand(build: ShipBuild, mass?: number): MCResult[] {
     out.push({ speed: s, mc: computeMCAtSpeed(build, s, mass) });
   }
   return out;
+}
+
+/** 60° turns per game turn at a speed: `speed ÷ MC`, rounded to 1 decimal. */
+export function turnsPerGameTurn(speed: number, mc: number): number {
+  if (mc <= 0) return 0;
+  return Math.round((speed / mc) * 10) / 10;
 }
 
 // --- Hit-box pools ----------------------------------------------------------

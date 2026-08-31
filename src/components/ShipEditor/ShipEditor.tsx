@@ -14,8 +14,10 @@ import {
   ShipWeapon,
 } from '@/types/ship';
 import {
+  computeMCParams,
   computeShipBuild,
   ShipBuild,
+  turnsPerGameTurn,
 } from '@/lib/shipStats';
 import {
   mapAccessoryRows,
@@ -106,12 +108,24 @@ function Stepper({ value, onChange, min = 0, max = 9, label }: {
   );
 }
 
+// MC = hexes to travel per 60° turn — LOWER is better (tight turn), so the scale
+// runs green (1) -> yellow (2) -> orange (3) -> red (4).
 function mcColor(mc: number) {
-  if (mc >= 4) return 'bg-amber-500 text-black font-bold';
-  if (mc === 3) return 'bg-green-700 text-white';
-  if (mc === 2) return 'bg-yellow-800 text-white';
-  return 'bg-gray-700 text-gray-300';
+  if (mc <= 1) return 'bg-green-700 text-white';
+  if (mc === 2) return 'bg-yellow-700 text-white';
+  if (mc === 3) return 'bg-orange-700 text-white';
+  return 'bg-red-700 text-white';
 }
+
+// 60°/turn = speed ÷ MC — HIGHER is better.
+function turnsColor(v: number) {
+  if (v >= 4) return 'bg-green-700 text-white';
+  if (v >= 2) return 'bg-yellow-700 text-white';
+  return 'bg-red-700 text-white';
+}
+
+// Unreachable speed (beyond the active cap) — grey/black out, no number.
+const OFF_CELL = 'bg-gray-900 border border-gray-800 text-gray-700';
 
 function buildFromTemplate(
   t: ShipTemplate,
@@ -812,12 +826,12 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                     </>
                   )}
 
-                  {/* Environment preview + MC bands */}
-                  {stats && (
+                  {/* MC band (maneuver class) + cargo load */}
+                  {stats && build && (
                     <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-1">
                         <label className="block text-[10px] text-gray-400">
-                          MC — turn capacity per game turn (spent across 5 segments)
+                          MC — hexes to travel per 60° turn (lower = better)
                         </label>
                         <div className="flex items-center gap-1">
                           <span className="text-[10px] text-gray-500 mr-1">Env:</span>
@@ -837,27 +851,114 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           ))}
                         </div>
                       </div>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-gray-400 w-12">Unladen</span>
-                          {stats.mcBandEmpty.map(({ speed, mc }) => (
-                            <div key={speed} title={`Speed ${speed}: ${mc} turn${mc > 1 ? 's' : ''}`} className={`w-5 h-5 rounded text-[9px] flex items-center justify-center ${mcColor(mc)}`}>
-                              {mc}
+
+                      {/* Formula with live parameters */}
+                      {(() => {
+                        const p = computeMCParams(build, stats.ladenMass);
+                        return (
+                          <div className="text-[9px] font-mono text-gray-500 mb-2 leading-relaxed">
+                            <div>MC(s) — hexes per 60° turn · mass {p.mass}t (empty {Math.round(stats.emptyMass)} + cargo {cargoClamped})</div>
+                            <div>tier=⌊mass/25⌋={p.tier} · center=clamp(round({stats.topSpeed}×0.65)−{p.tier},2,8)={p.center} · W=max(0,rudders−tier)={p.W} · peak=clamp(rudders−⌊mass/45⌋,1,3)={p.peak}</div>
+                            <div>MC=4 (mass&lt;25 ∧ rudders≥2 ∧ |s−center|≤0.5) · 3 (peak≥3 ∧ |s−center|≤W) · 2 (|s−center|≤W+2) · else 1</div>
+                            <div>60°/turn = speed ÷ MC (1 decimal)</div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Chart: always-14 speed axis, active cap greys out the rest */}
+                      {(() => {
+                        const axisMax = Math.max(14, ...frames.map(f => f.topSpeed));
+                        const speeds = Array.from({ length: axisMax }, (_, i) => i + 1);
+                        const reachable = (s: number) => s <= activeCap && s <= stats.topSpeed;
+                        const bandCell = (band: typeof stats.mcBandEmpty, s: number) =>
+                          s <= stats.topSpeed ? band[s - 1]?.mc : undefined;
+                        const row = (
+                          label: string,
+                          cells: { value: number | undefined; off: boolean }[],
+                          colorFn: (v: number) => string,
+                          titleFn: (s: number, v: number) => string,
+                        ) => (
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-gray-400 w-12">{label}</span>
+                            {speeds.map(s => {
+                              const cell = cells[s - 1];
+                              if (cell.off) {
+                                return (
+                                  <div key={s} title={`Speed ${s}: unreachable in ${environment}`} className={`w-6 h-5 rounded ${OFF_CELL}`} />
+                                );
+                              }
+                              return (
+                                <div key={s} title={titleFn(s, cell.value!)} className={`w-6 h-5 rounded text-[9px] flex items-center justify-center ${colorFn(cell.value!)}`}>
+                                  {cell.value}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                        const unladen = speeds.map(s => {
+                          const mc = bandCell(stats.mcBandEmpty, s);
+                          return { value: mc, off: !reachable(s) || mc === undefined };
+                        });
+                        const laden = speeds.map(s => {
+                          const mc = bandCell(stats.mcBandLaden, s);
+                          return { value: mc, off: !reachable(s) || mc === undefined };
+                        });
+                        const turns = speeds.map(s => {
+                          const mc = bandCell(stats.mcBandLaden, s);
+                          return { value: mc !== undefined ? turnsPerGameTurn(s, mc) : undefined, off: !reachable(s) || mc === undefined };
+                        });
+                        return (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-gray-400 w-12">Speed</span>
+                              {speeds.map(s => (
+                                <div key={s} className={`w-6 text-center text-[9px] ${s <= activeCap ? 'text-gray-300' : 'text-gray-600'}`}>{s}</div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-gray-400 w-12">Laden</span>
-                          {stats.mcBandLaden.map(({ speed, mc }) => (
-                            <div key={speed} title={`Speed ${speed}: ${mc} turn${mc > 1 ? 's' : ''}`} className={`w-5 h-5 rounded text-[9px] flex items-center justify-center ${mcColor(mc)}`}>
-                              {mc}
-                            </div>
-                          ))}
-                        </div>
+                            {row('Unladen', unladen, mcColor, (s, v) => `Speed ${s}: MC ${v} (${v} hex${v > 1 ? 'es' : ''} per 60° turn)`)}
+                            {row('Laden', laden, mcColor, (s, v) => `Speed ${s}: MC ${v} (${v} hex${v > 1 ? 'es' : ''} per 60° turn)`)}
+                            {row('60°/turn', turns, turnsColor, (s, v) => `Speed ${s}: ${v} turns per game turn`)}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Legend */}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[9px] text-gray-500">
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-700" />tight</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-yellow-700" />mid</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-orange-700" />wide</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-700" />widest</span>
+                        <span>MC lower = better</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-700" />≥4</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-yellow-700" />2–4</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-700" />&lt;2</span>
+                        <span>60°/turn higher = better</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-gray-900 border border-gray-800" />unreachable (beyond active cap)</span>
                       </div>
-                      <div className="flex justify-between text-[9px] text-gray-500 mt-1 px-0.5">
-                        <span>Speed 1</span>
-                        <span>Speed {stats.topSpeed}</span>
+
+                      {/* Cargo load — drives Laden MC + 60°/turn live */}
+                      <div className="mt-2 pt-2 border-t border-gray-700">
+                        <label className="block text-[10px] text-gray-400 mb-1">
+                          Cargo load (designated): {cargoClamped}t of {capacity}t — drives Laden MC + 60°/turn
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max={Math.max(1, capacity)}
+                          step="1"
+                          value={cargoClamped}
+                          disabled={capacity === 0}
+                          onChange={(e) => updateFormData('cargoArea', parseInt(e.target.value))}
+                          className="w-full accent-yellow-400"
+                        />
+                        {massOverload && (
+                          <p className="text-[10px] text-red-400 mt-1">
+                            Over mass cap by {Math.round(-stats.availableSpace)}t — soft penalty (Accel/MC suffer).
+                          </p>
+                        )}
+                        {!massOverload && capacity === 0 && (
+                          <p className="text-[10px] text-gray-500 mt-1">No spare capacity for cargo.</p>
+                        )}
                       </div>
                     </div>
                   )}
@@ -893,33 +994,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         ))}
                       </div>
                       <p className="text-[10px] text-gray-500 mt-2">Watertight, Low Visibility and Air Envelope are safe (no hit boxes). Claws/Eyestalk use the small weapon anchor.</p>
-                    </div>
-                  )}
-
-                  {/* Cargo slider */}
-                  {stats && (
-                    <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
-                      <label className="block text-[10px] text-gray-400 mb-1">
-                        Cargo load (designated): {cargoClamped}t of {capacity}t capacity — drives the laden readout
-                      </label>
-                      <input
-                        type="range"
-                        min="0"
-                        max={Math.max(1, capacity)}
-                        step="1"
-                        value={cargoClamped}
-                        disabled={capacity === 0}
-                        onChange={(e) => updateFormData('cargoArea', parseInt(e.target.value))}
-                        className="w-full accent-yellow-400"
-                      />
-                      {massOverload && (
-                        <p className="text-[10px] text-red-400 mt-1">
-                          Over mass cap by {Math.round(-stats.availableSpace)}t — soft penalty (Accel/MC suffer).
-                        </p>
-                      )}
-                      {!massOverload && capacity === 0 && (
-                        <p className="text-[10px] text-gray-500 mt-1">No spare capacity for cargo.</p>
-                      )}
                     </div>
                   )}
 

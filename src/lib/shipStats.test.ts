@@ -25,6 +25,7 @@ import {
   computeGearMass,
   computeMCAtSpeed,
   computeMCBand,
+  computeMCParams,
   computePools,
   computeShipBuild,
   computeShipHp,
@@ -32,6 +33,7 @@ import {
   SAIL_THRUST,
   SHIP_DT,
   ShipBuild,
+  turnsPerGameTurn,
 } from '@/lib/shipStats';
 
 // --- 067 seed fixtures ------------------------------------------------------
@@ -279,6 +281,34 @@ describe('MC band', () => {
     const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
     // same mass/band regardless of which cap the environment picks
     expect(computeMCAtSpeed(b, 8, 22)).toBe(computeMCAtSpeed(b, 8, 22));
+  });
+});
+
+describe('MC params', () => {
+  it('Wasp unladen (mass 22): tier 0, center 8, W 2, peak 2', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
+    const p = computeMCParams(b, computeEmptyMass(b));
+    expect(p).toMatchObject({ mass: 22, tier: 0, center: 8, W: 2, peak: 2 });
+  });
+
+  it('Wasp laden (mass 30): load shifts center down to 7 and narrows W to 1', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, cargoArea: 8 });
+    const p = computeMCParams(b, computeEmptyMass(b) + 8);
+    expect(p).toMatchObject({ mass: 30, tier: 1, center: 7, W: 1, peak: 2 });
+  });
+});
+
+describe('60°/turn', () => {
+  it('speed ÷ MC rounded to 1 decimal', () => {
+    expect(turnsPerGameTurn(8, 4)).toBe(2.0);
+    expect(turnsPerGameTurn(12, 2)).toBe(6.0);
+    expect(turnsPerGameTurn(3, 1)).toBe(3.0);
+    expect(turnsPerGameTurn(5, 3)).toBe(1.7); // 1.6667 -> 1.7
+    expect(turnsPerGameTurn(4, 3)).toBe(1.3); // 1.333 -> 1.3
+  });
+
+  it('guards mc <= 0', () => {
+    expect(turnsPerGameTurn(6, 0)).toBe(0);
   });
 });
 

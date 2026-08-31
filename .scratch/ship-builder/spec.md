@@ -13,8 +13,8 @@ Source of truth for stats/formulas: `.scratch/shipyard-formula/shipyard.csv` (v8
 
 - **Left**: template picker — list of `ship_templates` (the 18 presets + any saved builds). Selecting loads it into the middle panel.
 - **Middle**: ship stats entry/modification. **Even split with the right panel, or collapsible** (v1: build left + middle; right panel is a placeholder).
-  - **Top**: ship stat readout — frame/armor, mass / available space / unclaimed space, accel, top speed, **MC and turn/round bars** (the 1,2,3,2 curve by speed).
-  - **Bottom**: the modification area — component count inputs (rudders, sails, L.Weap, S.Weap, hullR, bridge, aux helm, extra crew), accessory toggles, and a **cargo-load slider** so the MC / turn-per-round effect of load is visible live (laden mass → accel + MC recompute).
+  - **Top**: ship stat readout — frame/armor, mass / available space / unclaimed space, accel, top speed, **MC + 60°/turn bars** (always-14 speed axis; MC = hexes per 60° turn, lower = better; 60°/turn = speed ÷ MC, 1 decimal, higher = better; speeds beyond the active cap grey out).
+  - **Bottom**: the modification area — component count inputs (rudders, sails, L.Weap, S.Weap, hullR, bridge, aux helm, extra crew), accessory toggles, and a **cargo-load slider** (moved into the MC box, right under the 60°/turn bar) so the MC / 60°-per-turn effect of load is visible live (laden mass → MC + 60°/turn recompute).
 - **Right**: preview (placeholder in v1). Full design below.
 
 ## Right panel (future) — ship preview
