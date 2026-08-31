@@ -1126,7 +1126,7 @@ All spelljammer rules live in this chapter and in the spec at `.scratch/spelljam
 ### 17.2 Segment Economy
 
 - One game turn = 5 segments (each = one D&D round of the merged turn).
-- Each hero takes **1 action per segment**: *personal* (fight, cast, move on deck) or *station duty* (Helm, Weapons, Repairs, Engineering, Sails, Rudder, Bridge).
+- Each hero takes **1 action per segment**: *personal* (fight, cast, move on deck) or *station duty* (Helm Bridge, Weapons, Repairs, Engineering, Sails, Rudder, Command Bridge).
 - **Undo/redo are per-action within a segment**; segment boundaries only pace ship movement and reload counters.
 - Reload/repair counters tick at **segment end** (space) / **turn end** (planet map).
 - Some duties are **full-turn long** (repair, engineering speed boost): the hero commits for all 5 segments.
@@ -1134,45 +1134,57 @@ All spelljammer rules live in this chapter and in the spec at `.scratch/spelljam
 ### 17.3 Ship Movement
 
 - A ship occupies a **single core hex** for movement/distance/collision; bow/stern art may overhang but tactics use the core hex.
-- **Speed state**: current speed (hexes per segment-action). A **Helm action** moves the ship up to its current speed in hexes along its facing.
-- **Propulsion Surplus = Thrust Points − Mass** governs speed-step changes per Helm action: light vessels multi-step jumps (+3/action), heavy vessels +0.5–1 step/action.
-- **Universal speed cap**: Speed 10 (Speed 12 via Overthrust), independent of class.
-- **Mandatory straight movement**: between consecutive 60° turns the ship must move `current speed / 3` straight hexes. Turning reuses the existing vertex-facing rules (no MP charge — the speed commitment replaces it).
+- **Speed is per TURN** (1 turn = 5 segments). A **Helm action** each segment moves the ship **`speed ÷ 5` hexes (round up)** along its facing and adjusts speed by **Accel** toward the active speed cap.
+- **Top Speed per frame**: Tiny 12 · Small 11 · Medium 10 · Large 9. **Atmosphere Spd** is authored per ship. The scenario **Environment** setting (Space | Atmosphere, **default Atmosphere**) picks the active cap; **MC is unchanged**. **Overthrust** = active + 2 via a Helm skill check — failure risks propulsion subsystem damage; at overthrust speed turning collapses to 1.
+- **Accel = 18 × sails ÷ mass** (mass = armor + components + loaded cargo; see §17.4). **Differential caps make interception a persistent grind**: a faster frame closes `Vp − Vt` hexes per segment once at its cap — the "bit by bit" chase. Big ships escape by guns and Overthrust, small ships by positioning.
+- **MC = turn capacity per GAME TURN** — the number of 60° facing changes allowed per game turn, spent across the 5 segments (band formula in §17.4). This **replaces the `speed/3` min-straight rule**. Firing arcs are a per-scenario toggle (ON = book arcs, OFF = all 360°). The **Jettison device** (Large) ejects 1 t of cargo over time (creates difficult-terrain hexes, deploys 1-t space mines).
 
 ### 17.4 Stations & Crew
 
-- **Stations** (each a subsystem with units): **Sails** (speed boost), **Rudder** (turning boost), **Weapons** (firing), **Helm** (helmsman), **Bridge** (Captain's commands), **Engineering** (repair / speed-boost duty).
+- **Stations** (each a subsystem with units): **Sails** (speed boost), **Rudder** (turning boost), **Weapons** (firing), **Helm Bridge** (helmsman — integral to every frame), **Command Bridge** (Captain's panel, §17.6), **Engineering** (repair / speed-boost duty), plus the optional **Auxiliary Helm** component (emergency backup helm).
+- **Visibility**: on **Tiny** ships everyone sees all station stats (small ship). On **Small+** ships a player sees **only their own station** — its HP, load progress, crew fill. No HP numbers exist outside a station or the Captain's panel.
 - A hero mans a station by spending their segment action. **Crew reserve**: players assign NPC crew from a shared per-ship pool to automate loading (e.g. crew loads a ballista over 3 segments → "ballista ready" reminder message).
 - **Firing a loaded weapon requires an active command action** (PC or NPC officer). Ready weapons show a **firing-arc fan overlay**.
 
-### 17.5 Damage & Destruction
+#### Shipyard model (Archfar's Shipyard)
 
-- **Ship HP** = ship integrity pool, class-determined, **independent** of station HP. At 0 the ship is destroyed **regardless of remaining station HP**.
-- **Subsystem units**: every subsystem (Sails, Rudder, Weapons, Hull Core, …) is built from *units*, each with **its own HP**. At 0 a unit is **removed from the component list** and ship performance is **recalculated** (lost Sail = −1 propulsion, lost Rudder = −1 turning, lost weapon unit = weapon gone, lost Hull Core unit = −Ship HP max).
-- **Hit selection**: a hit picks a component **uniformly at random from the alive component list** (6 Sails units → 60% of hits). Not spread — the same component can be hit repeatedly; destroyed components are never hit.
-- **Double-wound**: every hit damages the struck subsystem unit's HP **and** Ship HP by the same amount → ships die well before their stations.
-- **Ship-wide damage threshold** (one per ship, not per station): a hit **exceeding** it spills the same damage to the **hero manning the struck station** (hero HP). Under-threshold hits are absorbed. Unstationed heroes take no spill.
-- **Crits**: attacker chooses a **targeted subsystem strike** (explicit subsystem; Helm and Bridge are protected) or **random double damage** (proportional table ×2).
-- **Ship destroyed**: ship removed from the sim regardless of stations; heroes do **not** auto-die — if their HP survives, play continues in the D&D VTT (optional: a Helm eject action lifeboats heroes to an adjacent hex).
+- **Armor eats mass capacity**: `armorMass = MassCap × armorFactor` (Wood 0, Plated 0.2, Metal 0.4, Ceramic 0.1, Stone 0.5). **Ship mass = armor + Σ components + loaded cargo**, budget = MassCap; **deck** (weapons + specials + crew quarters ×1 per 5; rigging is above-deck) is the co-equal budget. Overload on either = soft penalty. **Cargo = leftover Available Space** (1 t capacity = 1 t cargo; **Cargo Area** = designated load, **Unclaimed Space** = Available − Cargo Area). Component masses: helm/aux 2, sail 2, rudder 2, L.Weap 4, S.Weap 2, **hullR 1** (1,000 gp, safe, +25 Ship HP and reinforces next-in-order), **crew quarters = ceil(totalCrew/5) whole tons** (all crew housed), bridge 2.
+- **Accel = 18 × sails ÷ mass** toward the active speed cap; laden uses mass + cargo.
+- **MC (turn capacity per GAME TURN)** at per-turn speed s uses **current mass incl. cargo** (load taxes maneuver): `tier = floor(mass/25)`; `center = clamp(round(activeTopSpeed × 0.65) − tier, 2, 8)`; `W = max(0, rudders − tier)`; `peak = clamp(rudders − floor(mass/45), 1, 3)`. **MC(s)** = 4 if mass<25 ∧ rudders≥2 ∧ |s−center|≤0.5 (rare premium, Wasp unladen); 3 if peak≥3 ∧ |s−center|≤W; 2 if |s−center|≤W+2; else 1. Frame's only MC influence: **Top Speed** and **MaxRudders** (2/3/4/5). Rudders widen the peak; mass shifts it down and narrows it — a laden freighter is clumsy, running light restores agility. **Reinforcement order** (each hullR doubles the next): Helm→Bridge→extra Helm/Bridge→L.Weap→Rudder→S.Weap, skipping missing; sails/cargo/unclaimed never reinforced.
+- **Weapons**: mounts Small (anchor pool **10 / 20 reinforced**) and Large (**20 / 40 reinforced**); **Fire Cycle (Rd)** = fires once per N rounds (load N−1, fire on N). Pools are per-instance (one hit kills one weapon, no chain). Specials = mass × boxHP.
+
+### 17.5 Damage & Destruction (hit boxes)
+
+- **Hit boxes**: **1 ton of MassCap = 1 box** (Tiny 35 · Small 55 · Medium 80 · Large 100). The grid groups boxes by subsystem — the ship's hit silhouette. **Only armor and Hull R are safe (never hit)**; Helm Bridge is hittable.
+- **Box HP = `5 × (1 + armorFactor)`, round up** (Wood 5 · Plated 6 · Metal 7 · Ceramic 6 · Stone 8). **Weapon anchors**: Small 10 (20 reinforced), Large 20 (40 reinforced). **Per-instance pools** — one hit destroys one weapon, never a chain. Specials = mass × boxHP (Claws/Eyestalk = small anchor).
+- **Ship HP = frame base + hullR×25** — the death pool, separate from box pools. Ship HP 0 = destroyed regardless of remaining boxes.
+- **DT is a damage gate (flat 15)**: **damage < DT does nothing**. **Damage ≥ DT passes full** to Ship HP **and** the struck box pool. Regular boxes (5–10 HP) die to any passing hit; hardened pools (reinforced 20–80, big specials) survive 1–3.
+- **Hit selection**: a passing hit picks a random box (mass-proportional automatically); damage applies to that subsystem's pool (overkill wasted); pool ≤ 0 → the subsystem is wrecked and its boxes leave the grid (the silhouette shrinks → survivors get hit more). **Crew spill**: a passing hit spills the same damage to the crew at that post; below-DT hits are fully gated.
+- **Crew quarters** are a hittable box; destroyed quarters = berths lost. **Repair kits** (Engineering duty) restore box-pool HP.
+- **Crits**: a targeted subsystem strike (Helm Bridge/Command Bridge excluded from targeting but still hittable randomly) or **random double damage**. **Command Bridge destroyed** → the Captain's panel goes dark; visit a station to read it.
+- **Sail loss recalculates accel live** (`18 × remaining sails ÷ mass`); rudder loss recalculates MC live.
+- **Loaded cargo throttles acceleration and maneuver**: on the map, actual cargo (not capacity) adds to mass; Accel and MC re-derive live. The builder shows empty and laden readouts (cargo-load slider).
+- **Ship destroyed**: ship removed from the sim regardless of boxes; heroes do **not** auto-die — if their HP survives, play continues in the D&D VTT (optional: a Helm eject action lifeboats heroes to an adjacent hex).
 
 ### 17.6 Captain's Command
 
-- Captain (Bridge) manages crew efficiency via **Intelligence modifier** (baseline Int 16 / +3).
-- **Positive** (+1/point above baseline): 1 extra **Command Action** per turn per point — **Reroll/Redo** (a PC redoes their last action, via the undo/redo system) or **Tactical Boost** (acceleration, tight turning, or an immediate extra weapon fire).
-- **Negative** (−1/point below baseline): 1 random PC action **fails softly** per point — cancelled with a **red notification** ("order lost"); never a hard block or rolled failure.
+- **Officer Action pool** per turn = **1 base + Command Bridges + Captain's Int bonus** (+1 per point above Int 16). Low Int just **shrinks the pool** — no fail checks, no lost orders, no demoralizing probability.
+- **Captain kit = panel + enable actions, never replacement**: the **Command Bridge** (optional component, 8 deck, 2 crew, 6,000 gp) grants the **Captain's tactical panel** — all components' HP, loading progress, crew reserve + allocation (the Captain may allocate crew to any station, e.g. pre-loading a weapon). No enemy speed/trajectory projection (manual game); intel beyond the panel is roleplay. The Helm gets no extra capability.
+- An **Officer Action** enables a teammate — **Redo** (their last action, via undo/redo) or **+1 result** on their next. The captain chooses *who and when*; the teammate still performs their own action and keeps the glory. No captain move executes another player's action or authorizes Overthrust (Engineering's job) — **gameplay is cooperative by construction**.
+- Ships without a Command Bridge still get the **1 base Officer Action** (the captain enables from wherever they are); bridges add capacity — "the bridge adds more officers who can act."
 
 ### 17.7 Equipment Modifiers
 
 - **Seasoned Crew**: station crew requirement ±20% (can reduce a weapon's crew by 1).
-- **Well-Tuned Gears**: weapon reload −1 sub-turn.
-- **Scheduled Maintenance**: rudder responsiveness +1 (min-straight hexes −1).
-- **Pulley System / Enhanced Rigging**: Propulsion Surplus +1.
+- **Well-Tuned Gears**: weapon Fire Cycle −1 (fires a round sooner).
+- **Scheduled Maintenance**: rudder responsiveness +1 (MC band peak widened by 1).
+- **Pulley System / Enhanced Rigging**: +1 Accel.
 
 ### 17.8 Access Capabilities (Archfar's Shipyard)
 
 - `access_roles.can_view_ship_editor` / `can_use_ship_editor` (both **admin-only**, migration 059). `user_has_access('view_ship_editor' | 'use_ship_editor')` extended accordingly.
-- **Archfar's Shipyard** button in the Lobby (visible with `canViewShipEditor`) — placeholder modal in v1; the builder itself is future work gated by `canUseShipEditor`.
+- **Archfar's Shipyard** button in the Lobby (visible with `canViewShipEditor`) — builder gated by `canUseShipEditor`. Builder UI contract: `.scratch/ship-builder/spec.md` (3-panel layout mirroring Unit Editor; right preview panel planned).
 
 ### 17.9 Future Implementation Map
 
-All spelljammer rules live in dedicated modules (see spec): `src/lib/shipMoveCost.ts`, `src/lib/shipCombat.ts`, `src/lib/shipStats.ts`, `src/types/ship.ts` + `shipMappers.ts`, `src/hooks/useShipEngine.ts`, `src/components/ScenarioMap/ShipPanel.tsx`, `src/components/Shipyard/`; planned tables `ships`, `ship_subsystems`, `ship_weapons`, `ship_crew`, `ship_stations`. The random component pick rides the command log so undo restores the identical outcome.
+All spelljammer rules live in dedicated modules (see spec): `src/lib/shipMoveCost.ts`, `src/lib/shipCombat.ts`, `src/lib/shipStats.ts`, `src/types/ship.ts` + `shipMappers.ts`, `src/hooks/useShipEngine.ts`, `src/components/ScenarioMap/ShipPanel.tsx`, `src/components/ShipEditor/` (builder), `src/components/ShipRenderer/` (shared ship visuals — hit grid + functional-area board used by both the builder and the map). Tables (all `ship_`-prefixed): `ship_frames`, `ship_armors`, `ship_components`, `ship_accessories`, `ship_weapons`, `ship_templates` (+ accessory/weapon joins), `spelljammer_ships`. Scenario settings: `sub_turn_toggle`, `environment` (default Atmosphere), `firing_arcs`. The random box pick rides the command log so undo restores the identical outcome.

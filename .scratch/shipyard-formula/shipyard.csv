@@ -1,0 +1,88 @@
+"Shipyard v8.1 FINAL - hit boxes (1t=1box, boxHP=5x(1+armorFactor) round up, only armor+hullR safe), weapon anchors S=10/20 L=20/40 reinforced, per-instance pools, Fire Cycle (Rd) = once per N rounds. Atmosphere Spd authored (Environment setting picks it). Crew quarters = ceil(totalCrew/5) whole tons, all crew housed. DT flat 15. Edit inputs (D-P) - formulas recompute."
+Ship,Frame,Armor,Rudders,Sails,L.Weap,S.Weap,HullR,Special,Sp.Mass,ExtraCrew,Cargo Area,Bridge,AuxHelm,Atmosphere Spd,Crew Quarters,BoxHP,ArmorMass,GearMass,ShipMass,MassCap,Available Space,Unclaimed Space,Util%,Accel,Laden,Top,Reinforced,PoolHP,ShipHPcalc,BookHP,Delta
+Wasp Ship,Tiny,Wood,2,6,0,1,0,,0,0,8,0,0,5,2,"=CEILING(5*(1+VLOOKUP($C3,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C3,$A$30:$E$34,2,FALSE)*VLOOKUP($B3,$A$24:$G$27,2,FALSE)","=2+2*$N3+2*$D3+2*$E3+4*$F3+2*$G3+1*$H3+2*$M3+$P3+$J3","=$R3+$S3","=VLOOKUP($B3,$A$24:$G$27,2,FALSE)","=$U3-$T3","=$V3-$L3","=ROUND(($T3+$L3)/$U3*100,1)","=ROUND(18*$E3/$T3,0)","=ROUND(18*$E3/($T3+$L3),0)","=VLOOKUP($B3,$A$24:$G$27,5,FALSE)",none,"=2*$Q3*IF($H3>=1,2,1)+2*$Q3*$N3*IF($H3>=3,2,1)+2*$Q3*$E3+2*$Q3*$D3*IF($H3>=5,2,1)+20*$F3*IF($H3>=4,2,1)+10*$G3*IF($H3>=6,2,1)+2*$Q3*$M3*IF($H3>=2,2,1)+$Q3*$J3+$Q3*$L3+$Q3*$W3+$Q3*$P3","=VLOOKUP($B3,$A$24:$G$27,3,FALSE)+$H3*25",150,"=AD3-AE3"
+Damselfly,Small,Plated,3,8,1,1,0,,0,2,5,1,0,7,3,"=CEILING(5*(1+VLOOKUP($C4,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C4,$A$30:$E$34,2,FALSE)*VLOOKUP($B4,$A$24:$G$27,2,FALSE)","=2+2*$N4+2*$D4+2*$E4+4*$F4+2*$G4+1*$H4+2*$M4+$P4+$J4","=$R4+$S4","=VLOOKUP($B4,$A$24:$G$27,2,FALSE)","=$U4-$T4","=$V4-$L4","=ROUND(($T4+$L4)/$U4*100,1)","=ROUND(18*$E4/$T4,0)","=ROUND(18*$E4/($T4+$L4),0)","=VLOOKUP($B4,$A$24:$G$27,5,FALSE)",none,"=2*$Q4*IF($H4>=1,2,1)+2*$Q4*$N4*IF($H4>=3,2,1)+2*$Q4*$E4+2*$Q4*$D4*IF($H4>=5,2,1)+20*$F4*IF($H4>=4,2,1)+10*$G4*IF($H4>=6,2,1)+2*$Q4*$M4*IF($H4>=2,2,1)+$Q4*$J4+$Q4*$L4+$Q4*$W4+$Q4*$P4","=VLOOKUP($B4,$A$24:$G$27,3,FALSE)+$H4*25",200,"=AD4-AE4"
+Scorpion Ship,Small,Metal,3,2,1,1,0,Claws,2,5,10,0,0,3,3,"=CEILING(5*(1+VLOOKUP($C5,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C5,$A$30:$E$34,2,FALSE)*VLOOKUP($B5,$A$24:$G$27,2,FALSE)","=2+2*$N5+2*$D5+2*$E5+4*$F5+2*$G5+1*$H5+2*$M5+$P5+$J5","=$R5+$S5","=VLOOKUP($B5,$A$24:$G$27,2,FALSE)","=$U5-$T5","=$V5-$L5","=ROUND(($T5+$L5)/$U5*100,1)","=ROUND(18*$E5/$T5,0)","=ROUND(18*$E5/($T5+$L5),0)","=VLOOKUP($B5,$A$24:$G$27,5,FALSE)",none,"=2*$Q5*IF($H5>=1,2,1)+2*$Q5*$N5*IF($H5>=3,2,1)+2*$Q5*$E5+2*$Q5*$D5*IF($H5>=5,2,1)+20*$F5*IF($H5>=4,2,1)+10*$G5*IF($H5>=6,2,1)+2*$Q5*$M5*IF($H5>=2,2,1)+$Q5*$J5+$Q5*$L5+$Q5*$W5+$Q5*$P5","=VLOOKUP($B5,$A$24:$G$27,3,FALSE)+$H5*25",250,"=AD5-AE5"
+Flying Fish,Medium,Wood,2,9,1,1,0,,0,-1,40,0,0,4,2,"=CEILING(5*(1+VLOOKUP($C6,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C6,$A$30:$E$34,2,FALSE)*VLOOKUP($B6,$A$24:$G$27,2,FALSE)","=2+2*$N6+2*$D6+2*$E6+4*$F6+2*$G6+1*$H6+2*$M6+$P6+$J6","=$R6+$S6","=VLOOKUP($B6,$A$24:$G$27,2,FALSE)","=$U6-$T6","=$V6-$L6","=ROUND(($T6+$L6)/$U6*100,1)","=ROUND(18*$E6/$T6,0)","=ROUND(18*$E6/($T6+$L6),0)","=VLOOKUP($B6,$A$24:$G$27,5,FALSE)",none,"=2*$Q6*IF($H6>=1,2,1)+2*$Q6*$N6*IF($H6>=3,2,1)+2*$Q6*$E6+2*$Q6*$D6*IF($H6>=5,2,1)+20*$F6*IF($H6>=4,2,1)+10*$G6*IF($H6>=6,2,1)+2*$Q6*$M6*IF($H6>=2,2,1)+$Q6*$J6+$Q6*$L6+$Q6*$W6+$Q6*$P6","=VLOOKUP($B6,$A$24:$G$27,3,FALSE)+$H6*25",250,"=AD6-AE6"
+Shrike Ship,Medium,Wood,3,11,0,3,0,Ram,5,-1,20,0,0,7,3,"=CEILING(5*(1+VLOOKUP($C7,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C7,$A$30:$E$34,2,FALSE)*VLOOKUP($B7,$A$24:$G$27,2,FALSE)","=2+2*$N7+2*$D7+2*$E7+4*$F7+2*$G7+1*$H7+2*$M7+$P7+$J7","=$R7+$S7","=VLOOKUP($B7,$A$24:$G$27,2,FALSE)","=$U7-$T7","=$V7-$L7","=ROUND(($T7+$L7)/$U7*100,1)","=ROUND(18*$E7/$T7,0)","=ROUND(18*$E7/($T7+$L7),0)","=VLOOKUP($B7,$A$24:$G$27,5,FALSE)",none,"=2*$Q7*IF($H7>=1,2,1)+2*$Q7*$N7*IF($H7>=3,2,1)+2*$Q7*$E7+2*$Q7*$D7*IF($H7>=5,2,1)+20*$F7*IF($H7>=4,2,1)+10*$G7*IF($H7>=6,2,1)+2*$Q7*$M7*IF($H7>=2,2,1)+$Q7*$J7+$Q7*$L7+$Q7*$W7+$Q7*$P7","=VLOOKUP($B7,$A$24:$G$27,3,FALSE)+$H7*25",200,"=AD7-AE7"
+Lamprey,Medium,Wood,3,9,0,4,10,Jaws,2,5,6,0,0,4,4,"=CEILING(5*(1+VLOOKUP($C8,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C8,$A$30:$E$34,2,FALSE)*VLOOKUP($B8,$A$24:$G$27,2,FALSE)","=2+2*$N8+2*$D8+2*$E8+4*$F8+2*$G8+1*$H8+2*$M8+$P8+$J8","=$R8+$S8","=VLOOKUP($B8,$A$24:$G$27,2,FALSE)","=$U8-$T8","=$V8-$L8","=ROUND(($T8+$L8)/$U8*100,1)","=ROUND(18*$E8/$T8,0)","=ROUND(18*$E8/($T8+$L8),0)","=VLOOKUP($B8,$A$24:$G$27,5,FALSE)",Helm+Rudder,"=2*$Q8*IF($H8>=1,2,1)+2*$Q8*$N8*IF($H8>=3,2,1)+2*$Q8*$E8+2*$Q8*$D8*IF($H8>=5,2,1)+20*$F8*IF($H8>=4,2,1)+10*$G8*IF($H8>=6,2,1)+2*$Q8*$M8*IF($H8>=2,2,1)+$Q8*$J8+$Q8*$L8+$Q8*$W8+$Q8*$P8","=VLOOKUP($B8,$A$24:$G$27,3,FALSE)+$H8*25",300,"=AD8-AE8"
+Squid Ship,Medium,Wood,2,2,0,2,0,Ram+Smoke,6,2,47,0,0,3,2,"=CEILING(5*(1+VLOOKUP($C9,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C9,$A$30:$E$34,2,FALSE)*VLOOKUP($B9,$A$24:$G$27,2,FALSE)","=2+2*$N9+2*$D9+2*$E9+4*$F9+2*$G9+1*$H9+2*$M9+$P9+$J9","=$R9+$S9","=VLOOKUP($B9,$A$24:$G$27,2,FALSE)","=$U9-$T9","=$V9-$L9","=ROUND(($T9+$L9)/$U9*100,1)","=ROUND(18*$E9/$T9,0)","=ROUND(18*$E9/($T9+$L9),0)","=VLOOKUP($B9,$A$24:$G$27,5,FALSE)",none,"=2*$Q9*IF($H9>=1,2,1)+2*$Q9*$N9*IF($H9>=3,2,1)+2*$Q9*$E9+2*$Q9*$D9*IF($H9>=5,2,1)+20*$F9*IF($H9>=4,2,1)+10*$G9*IF($H9>=6,2,1)+2*$Q9*$M9*IF($H9>=2,2,1)+$Q9*$J9+$Q9*$L9+$Q9*$W9+$Q9*$P9","=VLOOKUP($B9,$A$24:$G$27,3,FALSE)+$H9*25",300,"=AD9-AE9"
+Star Moth,Medium,Ceramic,3,7,1,2,2,,0,2,30,1,0,5,3,"=CEILING(5*(1+VLOOKUP($C10,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C10,$A$30:$E$34,2,FALSE)*VLOOKUP($B10,$A$24:$G$27,2,FALSE)","=2+2*$N10+2*$D10+2*$E10+4*$F10+2*$G10+1*$H10+2*$M10+$P10+$J10","=$R10+$S10","=VLOOKUP($B10,$A$24:$G$27,2,FALSE)","=$U10-$T10","=$V10-$L10","=ROUND(($T10+$L10)/$U10*100,1)","=ROUND(18*$E10/$T10,0)","=ROUND(18*$E10/($T10+$L10),0)","=VLOOKUP($B10,$A$24:$G$27,5,FALSE)",Helm+Bridge,"=2*$Q10*IF($H10>=1,2,1)+2*$Q10*$N10*IF($H10>=3,2,1)+2*$Q10*$E10+2*$Q10*$D10*IF($H10>=5,2,1)+20*$F10*IF($H10>=4,2,1)+10*$G10*IF($H10>=6,2,1)+2*$Q10*$M10*IF($H10>=2,2,1)+$Q10*$J10+$Q10*$L10+$Q10*$W10+$Q10*$P10","=VLOOKUP($B10,$A$24:$G$27,3,FALSE)+$H10*25",400,"=AD10-AE10"
+Tyrant Ship,Medium,Stone,0,3,0,3,0,Device+Eyestalk,4,4,15,0,0,4,3,"=CEILING(5*(1+VLOOKUP($C11,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C11,$A$30:$E$34,2,FALSE)*VLOOKUP($B11,$A$24:$G$27,2,FALSE)","=2+2*$N11+2*$D11+2*$E11+4*$F11+2*$G11+1*$H11+2*$M11+$P11+$J11","=$R11+$S11","=VLOOKUP($B11,$A$24:$G$27,2,FALSE)","=$U11-$T11","=$V11-$L11","=ROUND(($T11+$L11)/$U11*100,1)","=ROUND(18*$E11/$T11,0)","=ROUND(18*$E11/($T11+$L11),0)","=VLOOKUP($B11,$A$24:$G$27,5,FALSE)",none,"=2*$Q11*IF($H11>=1,2,1)+2*$Q11*$N11*IF($H11>=3,2,1)+2*$Q11*$E11+2*$Q11*$D11*IF($H11>=5,2,1)+20*$F11*IF($H11>=4,2,1)+10*$G11*IF($H11>=6,2,1)+2*$Q11*$M11*IF($H11>=2,2,1)+$Q11*$J11+$Q11*$L11+$Q11*$W11+$Q11*$P11","=VLOOKUP($B11,$A$24:$G$27,3,FALSE)+$H11*25",300,"=AD11-AE11"
+Fast Lamprey,Medium,Wood,3,12,1,4,10,Jaws,2,5,6,0,0,5,4,"=CEILING(5*(1+VLOOKUP($C12,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C12,$A$30:$E$34,2,FALSE)*VLOOKUP($B12,$A$24:$G$27,2,FALSE)","=2+2*$N12+2*$D12+2*$E12+4*$F12+2*$G12+1*$H12+2*$M12+$P12+$J12","=$R12+$S12","=VLOOKUP($B12,$A$24:$G$27,2,FALSE)","=$U12-$T12","=$V12-$L12","=ROUND(($T12+$L12)/$U12*100,1)","=ROUND(18*$E12/$T12,0)","=ROUND(18*$E12/($T12+$L12),0)","=VLOOKUP($B12,$A$24:$G$27,5,FALSE)",Helm+L.Weap+Rudder,"=2*$Q12*IF($H12>=1,2,1)+2*$Q12*$N12*IF($H12>=3,2,1)+2*$Q12*$E12+2*$Q12*$D12*IF($H12>=5,2,1)+20*$F12*IF($H12>=4,2,1)+10*$G12*IF($H12>=6,2,1)+2*$Q12*$M12*IF($H12>=2,2,1)+$Q12*$J12+$Q12*$L12+$Q12*$W12+$Q12*$P12","=VLOOKUP($B12,$A$24:$G$27,3,FALSE)+$H12*25",300,"=AD12-AE12"
+Nightspider,Large,Plated,3,6,1,4,0,Legs,2,10,30,0,0,4,5,"=CEILING(5*(1+VLOOKUP($C13,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C13,$A$30:$E$34,2,FALSE)*VLOOKUP($B13,$A$24:$G$27,2,FALSE)","=2+2*$N13+2*$D13+2*$E13+4*$F13+2*$G13+1*$H13+2*$M13+$P13+$J13","=$R13+$S13","=VLOOKUP($B13,$A$24:$G$27,2,FALSE)","=$U13-$T13","=$V13-$L13","=ROUND(($T13+$L13)/$U13*100,1)","=ROUND(18*$E13/$T13,0)","=ROUND(18*$E13/($T13+$L13),0)","=VLOOKUP($B13,$A$24:$G$27,5,FALSE)",none,"=2*$Q13*IF($H13>=1,2,1)+2*$Q13*$N13*IF($H13>=3,2,1)+2*$Q13*$E13+2*$Q13*$D13*IF($H13>=5,2,1)+20*$F13*IF($H13>=4,2,1)+10*$G13*IF($H13>=6,2,1)+2*$Q13*$M13*IF($H13>=2,2,1)+$Q13*$J13+$Q13*$L13+$Q13*$W13+$Q13*$P13","=VLOOKUP($B13,$A$24:$G$27,3,FALSE)+$H13*25",300,"=AD13-AE13"
+Space Galleon,Large,Wood,2,3,1,2,0,,0,4,70,0,0,4,3,"=CEILING(5*(1+VLOOKUP($C14,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C14,$A$30:$E$34,2,FALSE)*VLOOKUP($B14,$A$24:$G$27,2,FALSE)","=2+2*$N14+2*$D14+2*$E14+4*$F14+2*$G14+1*$H14+2*$M14+$P14+$J14","=$R14+$S14","=VLOOKUP($B14,$A$24:$G$27,2,FALSE)","=$U14-$T14","=$V14-$L14","=ROUND(($T14+$L14)/$U14*100,1)","=ROUND(18*$E14/$T14,0)","=ROUND(18*$E14/($T14+$L14),0)","=VLOOKUP($B14,$A$24:$G$27,5,FALSE)",none,"=2*$Q14*IF($H14>=1,2,1)+2*$Q14*$N14*IF($H14>=3,2,1)+2*$Q14*$E14+2*$Q14*$D14*IF($H14>=5,2,1)+20*$F14*IF($H14>=4,2,1)+10*$G14*IF($H14>=6,2,1)+2*$Q14*$M14*IF($H14>=2,2,1)+$Q14*$J14+$Q14*$L14+$Q14*$W14+$Q14*$P14","=VLOOKUP($B14,$A$24:$G$27,3,FALSE)+$H14*25",400,"=AD14-AE14"
+Hammerhead,Large,Wood,2,11,2,1,0,Ram,5,2,50,0,0,4,3,"=CEILING(5*(1+VLOOKUP($C15,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C15,$A$30:$E$34,2,FALSE)*VLOOKUP($B15,$A$24:$G$27,2,FALSE)","=2+2*$N15+2*$D15+2*$E15+4*$F15+2*$G15+1*$H15+2*$M15+$P15+$J15","=$R15+$S15","=VLOOKUP($B15,$A$24:$G$27,2,FALSE)","=$U15-$T15","=$V15-$L15","=ROUND(($T15+$L15)/$U15*100,1)","=ROUND(18*$E15/$T15,0)","=ROUND(18*$E15/($T15+$L15),0)","=VLOOKUP($B15,$A$24:$G$27,5,FALSE)",none,"=2*$Q15*IF($H15>=1,2,1)+2*$Q15*$N15*IF($H15>=3,2,1)+2*$Q15*$E15+2*$Q15*$D15*IF($H15>=5,2,1)+20*$F15*IF($H15>=4,2,1)+10*$G15*IF($H15>=6,2,1)+2*$Q15*$M15*IF($H15>=2,2,1)+$Q15*$J15+$Q15*$L15+$Q15*$W15+$Q15*$P15","=VLOOKUP($B15,$A$24:$G$27,3,FALSE)+$H15*25",400,"=AD15-AE15"
+Turtle Ship,Large,Metal,3,4,1,3,0,Watertight,5,5,20,1,0,3,4,"=CEILING(5*(1+VLOOKUP($C16,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C16,$A$30:$E$34,2,FALSE)*VLOOKUP($B16,$A$24:$G$27,2,FALSE)","=2+2*$N16+2*$D16+2*$E16+4*$F16+2*$G16+1*$H16+2*$M16+$P16+$J16","=$R16+$S16","=VLOOKUP($B16,$A$24:$G$27,2,FALSE)","=$U16-$T16","=$V16-$L16","=ROUND(($T16+$L16)/$U16*100,1)","=ROUND(18*$E16/$T16,0)","=ROUND(18*$E16/($T16+$L16),0)","=VLOOKUP($B16,$A$24:$G$27,5,FALSE)",none,"=2*$Q16*IF($H16>=1,2,1)+2*$Q16*$N16*IF($H16>=3,2,1)+2*$Q16*$E16+2*$Q16*$D16*IF($H16>=5,2,1)+20*$F16*IF($H16>=4,2,1)+10*$G16*IF($H16>=6,2,1)+2*$Q16*$M16*IF($H16>=2,2,1)+$Q16*$J16+$Q16*$L16+$Q16*$W16+$Q16*$P16","=VLOOKUP($B16,$A$24:$G$27,3,FALSE)+$H16*25",300,"=AD16-AE16"
+Living Ship,Small,Wood,2,10,0,1,10,Treant,2,0,10,0,0,4,0,"=CEILING(5*(1+VLOOKUP($C17,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C17,$A$30:$E$34,2,FALSE)*VLOOKUP($B17,$A$24:$G$27,2,FALSE)","=2+2*$N17+2*$D17+2*$E17+4*$F17+2*$G17+1*$H17+2*$M17+$P17+$J17","=$R17+$S17","=VLOOKUP($B17,$A$24:$G$27,2,FALSE)","=$U17-$T17","=$V17-$L17","=ROUND(($T17+$L17)/$U17*100,1)","=ROUND(18*$E17/$T17,0)","=ROUND(18*$E17/($T17+$L17),0)","=VLOOKUP($B17,$A$24:$G$27,5,FALSE)",Helm+Rudder+S.Weap,"=2*$Q17*IF($H17>=1,2,1)+2*$Q17*$N17*IF($H17>=3,2,1)+2*$Q17*$E17+2*$Q17*$D17*IF($H17>=5,2,1)+20*$F17*IF($H17>=4,2,1)+10*$G17*IF($H17>=6,2,1)+2*$Q17*$M17*IF($H17>=2,2,1)+$Q17*$J17+$Q17*$L17+$Q17*$W17+$Q17*$P17","=VLOOKUP($B17,$A$24:$G$27,3,FALSE)+$H17*25",500,"=AD17-AE17"
+Nautiloid,Large,Wood,3,10,1,4,0,Tentacles,3,7,17,1,0,4,5,"=CEILING(5*(1+VLOOKUP($C18,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C18,$A$30:$E$34,2,FALSE)*VLOOKUP($B18,$A$24:$G$27,2,FALSE)","=2+2*$N18+2*$D18+2*$E18+4*$F18+2*$G18+1*$H18+2*$M18+$P18+$J18","=$R18+$S18","=VLOOKUP($B18,$A$24:$G$27,2,FALSE)","=$U18-$T18","=$V18-$L18","=ROUND(($T18+$L18)/$U18*100,1)","=ROUND(18*$E18/$T18,0)","=ROUND(18*$E18/($T18+$L18),0)","=VLOOKUP($B18,$A$24:$G$27,5,FALSE)",none,"=2*$Q18*IF($H18>=1,2,1)+2*$Q18*$N18*IF($H18>=3,2,1)+2*$Q18*$E18+2*$Q18*$D18*IF($H18>=5,2,1)+20*$F18*IF($H18>=4,2,1)+10*$G18*IF($H18>=6,2,1)+2*$Q18*$M18*IF($H18>=2,2,1)+$Q18*$J18+$Q18*$L18+$Q18*$W18+$Q18*$P18","=VLOOKUP($B18,$A$24:$G$27,3,FALSE)+$H18*25",400,"=AD18-AE18"
+Bombard,Large,Wood,3,8,0,2,0,Bombard+2xMag,44,4,15,1,0,4,4,"=CEILING(5*(1+VLOOKUP($C19,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C19,$A$30:$E$34,2,FALSE)*VLOOKUP($B19,$A$24:$G$27,2,FALSE)","=2+2*$N19+2*$D19+2*$E19+4*$F19+2*$G19+1*$H19+2*$M19+$P19+$J19","=$R19+$S19","=VLOOKUP($B19,$A$24:$G$27,2,FALSE)","=$U19-$T19","=$V19-$L19","=ROUND(($T19+$L19)/$U19*100,1)","=ROUND(18*$E19/$T19,0)","=ROUND(18*$E19/($T19+$L19),0)","=VLOOKUP($B19,$A$24:$G$27,5,FALSE)",none,"=2*$Q19*IF($H19>=1,2,1)+2*$Q19*$N19*IF($H19>=3,2,1)+2*$Q19*$E19+2*$Q19*$D19*IF($H19>=5,2,1)+20*$F19*IF($H19>=4,2,1)+10*$G19*IF($H19>=6,2,1)+2*$Q19*$M19*IF($H19>=2,2,1)+$Q19*$J19+$Q19*$L19+$Q19*$W19+$Q19*$P19","=VLOOKUP($B19,$A$24:$G$27,3,FALSE)+$H19*25",300,"=AD19-AE19"
+Space Galleon (Gun Boat),Large,Plated,3,8,2,4,20,,0,4,13,1,0,3,4,"=CEILING(5*(1+VLOOKUP($C20,$A$30:$E$34,2,FALSE)),1)","=VLOOKUP($C20,$A$30:$E$34,2,FALSE)*VLOOKUP($B20,$A$24:$G$27,2,FALSE)","=2+2*$N20+2*$D20+2*$E20+4*$F20+2*$G20+1*$H20+2*$M20+$P20+$J20","=$R20+$S20","=VLOOKUP($B20,$A$24:$G$27,2,FALSE)","=$U20-$T20","=$V20-$L20","=ROUND(($T20+$L20)/$U20*100,1)","=ROUND(18*$E20/$T20,0)","=ROUND(18*$E20/($T20+$L20),0)","=VLOOKUP($B20,$A$24:$G$27,5,FALSE)",Helm+Bridge+L.Weap+Rudder+S.Weap,"=2*$Q20*IF($H20>=1,2,1)+2*$Q20*$N20*IF($H20>=3,2,1)+2*$Q20*$E20+2*$Q20*$D20*IF($H20>=5,2,1)+20*$F20*IF($H20>=4,2,1)+10*$G20*IF($H20>=6,2,1)+2*$Q20*$M20*IF($H20>=2,2,1)+$Q20*$J20+$Q20*$L20+$Q20*$W20+$Q20*$P20","=VLOOKUP($B20,$A$24:$G$27,3,FALSE)+$H20*25",400,"=AD20-AE20"
+,
+Frame,MassCap,BaseHP,DeckSpace,TopSpeed,MaxRudders,BaseCost
+Tiny,35,200,10,12,2,5000
+Small,55,250,30,11,3,15000
+Medium,80,350,50,10,4,35000
+Large,100,500,90,9,5,60000
+,
+Armor,MassFactor,AC,BoxHP,CostMult
+Wood,0,15,5,1
+Plated,0.2,17,6,2
+Metal,0.4,19,7,4
+Ceramic,0.1,13,6,3
+Stone,0.5,17,8,1
+,
+Component,Mass,Deck,Crew,Cost,Reinforce#,Hittable
+Helm Bridge,2,6,1,0,1,YES
+Auxiliary Helm,2,6,1,3000,3,YES
+Sail,2,0,0.5,2000,never,YES
+Rudder,2,0,1,3000,5,YES
+L.Weap,4,6,1,4000,4,YES
+S.Weap,2,4,1,2000,6,YES
+Hull R,1,0,0,1000,-,NO (safe) - +25 Ship HP AND reinforces next-in-order
+Crew quarters,1,1,5,0,-,YES (per 5 crew; all crew housed; ceil to whole tons)
+Command Bridge,2,8,2,6000,2,YES
+,
+Special,Mass,Deck,Crew,Cost,Pool,Hittable
+Watertight Hull,5,5,0,0,mass x boxHP,NO (safe)
+Ram,5,2,0,5000,mass x boxHP,YES
+Grappling Jaws,2,2,0,-,mass x boxHP,YES
+Nautiloid Tentacles,3,4,0,4000,mass x boxHP,YES
+Bombard Mount,40,4,0,80000,mass x boxHP,YES
+Magazine,2,0,0,6000,mass x boxHP,YES
+Smoke Sac,1,1,0,2000,mass x boxHP,YES
+Living Treant,2,0,0,50000,mass x boxHP,YES (regenerate 2d8/rd on water; replaces 9 crew)
+Hover Device,2,4,0,60000,mass x boxHP,YES (rotate in place, MC 3 always)
+Scorpion Claws,2,2,0,-,small anchor (10/20),YES
+Eyestalk Cannons,2,4,0,-,small anchor (10/20),YES
+Low Visibility,0,0,0,2000,0,NO (magic)
+Air Envelope,0,0,0,0,0,NO (air)
+Planar Device,4,4,0,60000,mass x boxHP,YES
+,
+Weapon,Mount,Dmg,Range std/dis,Fire Cycle (Rd),Crew,Cost,Special
+Ballista Light,Small,2d10,3/10,2,2,500,ammo 1gp
+Ballista Medium,Small,3d10,3/10,3,2,600,ammo 1gp
+Ballista Heavy,Small,4d8,3/10,3,2,800,ammo 1gp
+Gnomish Sweeper,Small,2d8,4/12,1,3,800,chain breaks on nat 1-2 (10%), weapon 0 HP
+Gnomish Boilerdrak,Small,5d10,2/-,3,2,2500,fire; misfire nat 1 (5%) explodes 5d10
+Swivel Solid,Small,2d10,1/3,2,1,3000,
+Swivel Grape,Small,4d6,1/2,2,1,3000,
+Giff Gun,Small,4d10,4/12,600,1,500,disposable - one time use
+Cannon,Small,6d10,5/15,10,4,7500,10x10 area; crit 19-20; misfire nat1 5% explodes 6d10; ammo 150
+Accelerator,Small,2d10,4/12,1,1,45000,
+Scorpion Claws,Small,3d10,1/1,1,1,-,2 claws (special)
+Eyestalk Cannons,Small,10d6,5/8,2,1 Beholder,-,Beholder concentration; Destructive Ray
+Mangonel (Cat Light),Small,5d6,4/12,5,5,600,min range 2; boulder 1/20t
+Psicannon Low,Small,3d10,2/6,3,2,25000,force
+Catapult Medium,Large,5d10,4/16,5,4,800,min range 2; 1/15t
+Catapult Heavy,Large,6d10,4/16,5,4,1000,min range 2; 1/10t
+Cannon Heavy,Large,8d10,12/48,20,4,15000,crit 19-20; misfire 10d10
+Gnomish Lightning Cannon,Large,4d10/10,5/24,3,1,3500,misfire nat1 5% 4d10; overheat on 1 -> 1hr cool
+Psicannon Med,Large,5d10,4/12,5,4,25000,force
+Psicannon High,Large,10d10,6/18,5,6,25000,force
+Space mine,Large,16d10,1 (behind),5,5,100+1000 ammo,munition via jettison device, 1t each
+Jettison Heavy,Large,5d4,2/6,3,4,800,ejects 1t cargo (device, not weapon); DC 11 (DC 15 same round); deploys mines
+Cannon Bombard,Special,16d10,16/100,600,4+crane,60000,siege; misfire 16d10; ammo 500
+Grappling Jaws,Special,4d10,1/1,5,-,-,Lamprey
+Nautiloid Tentacles,Special,4d10/teleport,3 fwd,5,-,-,reach 3 forward hexes
+Ram,Special,16d10,1 (front),5,-,5000,attacker takes 1/2 dmg

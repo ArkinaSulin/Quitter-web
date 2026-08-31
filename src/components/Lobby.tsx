@@ -53,7 +53,6 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const [accessSubmitted, setAccessSubmitted] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showShipyardModal, setShowShipyardModal] = useState(false);
   const [pendingProfiles, setPendingProfiles] = useState<{ id: string; display_name: string; request_note: string }[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<{
     id: string;
@@ -429,7 +428,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
           )}
           {canViewShipEditor && (
             <button
-              onClick={() => setShowShipyardModal(true)}
+              onClick={() => router.push('/ship-editor')}
               className="w-full py-2 bg-gray-700 border-2 border-yellow-400 text-white rounded hover:bg-gray-600 transition"
             >
               Archfar's Shipyard
@@ -847,30 +846,6 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                 onClick={handleRename}
               >
                 Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showShipyardModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-gray-800 p-6 rounded-lg w-96 border border-gray-700">
-            <h2 className="text-xl font-bold mb-4 text-white">Archfar's Shipyard</h2>
-            <p className="text-sm text-gray-300">
-              The shipyard is under construction. Ship building and the Spelljammer
-              module (5-sub-turn space combat, subsystem damage, crew stations) are
-              coming soon.
-            </p>
-            <p className="text-xs text-gray-500 mt-3">
-              Design: HANDBOOK §17 · Spec: `.scratch/spelljammer-mod/spec.md`
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
-                onClick={() => setShowShipyardModal(false)}
-              >
-                Close
               </button>
             </div>
           </div>
