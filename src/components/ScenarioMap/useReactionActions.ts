@@ -306,9 +306,12 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       addMessage('That target is hidden — cannot reaction-shoot');
       return;
     }
-    if (isProtectedHero(target)) {
-      const host = target.attachedToUnitId ? units.find(u => u.id === target.attachedToUnitId && !u.isDeleted) : null;
-      addError(`${target.unitName} is protected behind ${host?.unitName ?? 'its unit'} — cannot reaction-shoot the hero`);
+    // A protected hero (attached behind a unit) has no line of sight, so it can't
+    // reaction-shoot. findEligibleReactionArchers already excludes them — this is a
+    // defensive guard in case a stale reaction mode was opened.
+    if (isProtectedHero(archer)) {
+      const host = archer.attachedToUnitId ? units.find(u => u.id === archer.attachedToUnitId && !u.isDeleted) : null;
+      addError(`${archer.unitName} is protected behind ${host?.unitName ?? 'its unit'} (no line of sight) — cannot reaction-shoot`);
       return;
     }
     if ((alliances[target.team] || 'friendly') === (alliances[archer.team] || 'friendly')) {

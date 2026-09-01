@@ -561,7 +561,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
   // A healing weapon (isHealing) recovers the target's HP instead of damaging it —
   // same dice mechanic as damage, capped at maxUnitHp. No combat sequence, AGR,
-  // retaliation, morale, or arc/alliance restrictions. Heals with the unit's FULL
+  // retaliation, morale, or LoS requirement. The caller (handleAttackRequest)
+  // enforces the own-alliance rule before reaching here. Heals with the unit's FULL
   // rank volley (same attack count as combat: rank capacity × weapon attacks), so
   // a full-rank healer heals like a full-rank attacker strikes.
   const performHeal = useCallback(async (healer: Unit, target: Unit, weapon: Weapon) => {
@@ -644,13 +645,6 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return;
-    // A hero attached BEHIND a unit is protected — it cannot be attacked in any
-    // way; the host unit must be engaged first.
-    if (isProtectedHero(target)) {
-      const host = target.attachedToUnitId ? units.find(u => u.id === target.attachedToUnitId && !u.isDeleted) : null;
-      addError(`${target.unitName} is protected behind ${host?.unitName ?? 'its unit'} — attack the unit first`);
-      return;
-    }
     if ((target.currentUnitHp ?? 0) <= 0) return;
     // A downed hero may be dragged for recovery, but cannot initiate attacks.
     if ((attacker.currentUnitHp ?? 0) <= 0) return;
@@ -668,19 +662,16 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
 
-    const attackerGroup = alliances[attacker.team] || 'friendly';
-    const targetGroup = alliances[target.team] || 'friendly';
-    if (attackerGroup === targetGroup && attackerGroup === 'friendly') {
-      addMessage(`${attacker.unitName} cannot attack ${target.unitName}: same alliance`);
-      return;
-    }
-
     const attackerWeapons = parseWeapons(attacker.weaponString || '');
     const weapon = attackerWeapons[attacker.activeWeaponIndex ?? 0];
     if (!weapon) {
       addMessage(`${attacker.unitName} has no weapon to attack with`);
       return;
     }
+
+    const attackerGroup = alliances[attacker.team] || 'friendly';
+    const targetGroup = alliances[target.team] || 'friendly';
+    const sameAlliance = attackerGroup === targetGroup;
 
     const dist = hexDistance(attacker.hex, target.hex);
     // Hard range cap: beyond maxRange is out of range (maxRange >= range).
@@ -690,10 +681,20 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
     // Healing weapons recover HP instead of dealing damage — no combat, no AGR /
-    // retaliation / morale, and no arc or alliance restrictions. Area heal spells
+    // retaliation / morale, and no LoS requirement, but they may only target units
+    // of the healer's OWN alliance (any team within it). Area heal spells
     // (magicDimension > 0) flow through the magic cast window instead.
     if (weapon.isHealing && weapon.magicDimension <= 0) {
+      if (!sameAlliance) {
+        addError(`${attacker.unitName} can only heal units of their own alliance`);
+        return;
+      }
       await performHeal(attacker, target, weapon);
+      return;
+    }
+    // Non-healing attacks cannot be aimed at your own alliance.
+    if (sameAlliance && attackerGroup === 'friendly') {
+      addMessage(`${attacker.unitName} cannot attack ${target.unitName}: same alliance`);
       return;
     }
     // Magic (area) weapons always act at range. Every other attack at adjacency
@@ -705,6 +706,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
     if (weapon.magicDimension > 0) {
       if (isUnitRouted(attacker)) {
         addMessage(`${attacker.unitName} (Routed) cannot cast spells`);
+        return;
+      }
+      // Area healing may only target your own alliance.
+      if (weapon.isHealing && !sameAlliance) {
+        addError(`${attacker.unitName} can only heal units of their own alliance`);
         return;
       }
       const snapshot: SpellCastTokenSnapshot = {
@@ -733,6 +739,14 @@ export function useCombatActions(deps: CombatActionsDeps) {
           cha: target.cha ?? 0,
         },
       });
+      return;
+    }
+
+    // A hero attached BEHIND a unit has no line of sight — it cannot make melee or
+    // ranged attacks. Magic and healing are not LoS-gated, so they stay available.
+    if (isProtectedHero(attacker)) {
+      const host = attacker.attachedToUnitId ? units.find(u => u.id === attacker.attachedToUnitId && !u.isDeleted) : null;
+      addError(`${attacker.unitName} is protected behind ${host?.unitName ?? 'its unit'} (no line of sight) — cannot attack`);
       return;
     }
 
@@ -797,7 +811,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
     await performAttack(attacker, target, false);
-  }, [units, alliances, performAttack, performHeal, addMessage, magicCast, playerId, playerName, formationsMap, unitMaxMP]);
+  }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP]);
 
   return {
     pendingAttack,

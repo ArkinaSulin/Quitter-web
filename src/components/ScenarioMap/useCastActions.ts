@@ -60,8 +60,16 @@ export function useCastActions(deps: CastActionsDeps) {
     }
 
     // Area healing: each affected troop recovers HP (capped at troopHp), applied
-    // to the unit up to maxUnitHp. No save, no morale/rout cascade.
+    // to the unit up to maxUnitHp. No save, no morale/rout cascade. Healing may
+    // only target units of the caster's OWN alliance (any team within it).
     if (cast.weapon.isHealing) {
+      const casterAlliance = alliances[caster.team] || 'friendly';
+      const targetAlliance = alliances[target.team] || 'friendly';
+      if (casterAlliance !== targetAlliance) {
+        addError(`${caster.unitName} can only heal units of their own alliance`);
+        magicCast.cancelCast();
+        return;
+      }
       const healResult = resolveSpellDamage({
         damageDice: cast.weapon.damageDice,
         saveBonus: 0,

@@ -117,4 +117,20 @@ describe('findEligibleReactionArchers', () => {
     const hero = makeUnit({ id: 'h1', team: 'red', hex: h(0, 0), weaponString: bow, isHero: true, actionsAvailable: 5 });
     expect(findEligibleReactionArchers(mover, [hero], alliances as any).map(u => u.id)).toEqual(['h1']);
   });
+
+  it('excludes a back-attached hero (protected — no line of sight)', () => {
+    const protectedHero = makeUnit({
+      id: 'h1', team: 'red', hex: h(0, 0), weaponString: bow, isHero: true,
+      actionsAvailable: 5, attachedToUnitId: 'host', attachedPosition: 'back',
+    });
+    expect(findEligibleReactionArchers(mover, [protectedHero], alliances as any)).toHaveLength(0);
+  });
+
+  it('still includes a front-attached hero (fights openly)', () => {
+    const frontHero = makeUnit({
+      id: 'h1', team: 'red', hex: h(0, 0), weaponString: bow, isHero: true,
+      actionsAvailable: 5, attachedToUnitId: 'host', attachedPosition: 'front',
+    });
+    expect(findEligibleReactionArchers(mover, [frontHero], alliances as any).map(u => u.id)).toEqual(['h1']);
+  });
 });
