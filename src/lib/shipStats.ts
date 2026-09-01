@@ -202,55 +202,127 @@ export function computeBoxHp(armor: ShipArmor): number {
   return Math.ceil(SAFE_BOX_HP_CEIL * (1 + armor.massFactor));
 }
 
-// --- MC band (maneuver class) ------------------------------------------------
+// --- MC / Turning Efficiency (maneuver class) --------------------------------
 //
-// Corrected terminology (designer-authoritative): **MC** = how many hexes the ship
-// must travel before one 60° turn — an integer, LOWER = tighter turn = better.
-// **60°/turn** = `speed ÷ MC(at that speed)` — non-integer, HIGHER = better.
-// The tier/center/W/peak band below produces MC at each per-turn speed s.
+// Designer-authoritative model:
+//   **MC** = how many hexes the ship must travel before one 60° turn — an integer,
+//           LOWER = tighter turn = better.
+//   **TE** (Turning Efficiency) = 60° turns per game turn = `speed ÷ MC` — HIGHER = better.
+//
+// Curve: a parabola peaking at the sweet-spot speed `u*` (height `TE_max`, width `w`).
+//   - `u*` moves with RUDDER FILL (R / frame mass-capacity in tons, so tiny/small get
+//     an edge) and shifts by MASS (light ships peak forward, heavy backward).
+//   - `TE_max` (peak height) shrinks with MASS.
+//   - `w` (peak width) grows with RUDDERS.
 
-export interface MCParams {
-  mass: number;
-  tier: number;
-  center: number;
-  W: number;
-  peak: number;
+// u* knobs
+export const U_STAR_BASE = 0.33;
+export const U_STAR_FILL_COEFF = 5.4; // × fill (R / massCap); 5.4 ≈ 20× the original 0.27
+export const U_STAR_MASS_COEFF = 0.2; // × (25/M − 0.5)
+export const U_STAR_MASS_REF = 25;
+export const U_STAR_MASS_MID = 0.5;
+export const U_STAR_MIN = 0.33;
+export const U_STAR_MAX = 0.6;
+// width knobs
+export const WIDTH_BASE = 0.4;
+export const WIDTH_COEFF = 0.05;
+export const WIDTH_MIN = 0.45;
+export const WIDTH_MAX = 0.7;
+// TE_max knobs
+export const TE_MAX_SCALE = 3;
+export const TE_MAX_MASS_REF = 25;
+export const TE_MAX_POWER = 0.7;
+export const TE_MAX_MIN = 0.8;
+export const TE_MAX_MAX = 3;
+// MC floor: below this TE the ship "can't complete a turn" — keeps MC bounded
+export const TE_FLOOR = 0.5;
+
+/** Rudder fill: rudder count ÷ frame mass capacity (tons). Tiny 2/35, Small 3/55, Medium 3/80, Large 2/100. */
+export function computeFill(rudders: number, frameMassCap: number): number {
+  if (frameMassCap <= 0) return 0;
+  return rudders / frameMassCap;
 }
 
-export function computeMCParams(build: ShipBuild, mass?: number): MCParams {
+/** Sweet-spot speed fraction `u*` — where the ship turns best. */
+export function computeUStar(build: ShipBuild, mass?: number): number {
   const m = mass ?? computeLadenMass(build, build.cargoArea);
-  const tier = Math.floor(m / 25);
-  const center = clamp(Math.round(build.frame.topSpeed * 0.65) - tier, 2, 8);
-  const W = Math.max(0, build.rudders - tier);
-  const peak = clamp(build.rudders - Math.floor(m / 45), 1, 3);
-  return { mass: m, tier, center, W, peak };
+  const fill = computeFill(build.rudders, build.frame.massCap);
+  const massShift = U_STAR_MASS_COEFF * (U_STAR_MASS_REF / m - U_STAR_MASS_MID);
+  return clamp(U_STAR_BASE + U_STAR_FILL_COEFF * fill + massShift, U_STAR_MIN, U_STAR_MAX);
 }
 
-export function computeMCAtSpeed(build: ShipBuild, speed: number, mass?: number): number {
-  const { mass: m, tier, center, W, peak } = computeMCParams(build, mass);
-  if (m < 25 && build.rudders >= 2 && Math.abs(speed - center) <= 0.5) return 4;
-  if (peak >= 3 && Math.abs(speed - center) <= W) return 3;
-  if (Math.abs(speed - center) <= W + 2) return 2;
-  return 1;
+/** Peak width `w` — more rudders = wider turning band. */
+export function computeWidth(rudders: number): number {
+  return clamp(WIDTH_BASE + WIDTH_COEFF * rudders, WIDTH_MIN, WIDTH_MAX);
+}
+
+/** Peak TE — lighter ships turn better at their sweet spot. */
+export function computeTEMax(mass: number): number {
+  if (mass <= 0) return TE_MAX_MIN;
+  return clamp(TE_MAX_SCALE * Math.pow(TE_MAX_MASS_REF / mass, TE_MAX_POWER), TE_MAX_MIN, TE_MAX_MAX);
+}
+
+export interface MCParts {
+  mass: number;
+  fill: number;
+  uStar: number;
+  width: number;
+  teMax: number;
+}
+
+export function computeMCParts(build: ShipBuild, mass?: number): MCParts {
+  const m = mass ?? computeLadenMass(build, build.cargoArea);
+  return {
+    mass: m,
+    fill: computeFill(build.rudders, build.frame.massCap),
+    uStar: computeUStar(build, m),
+    width: computeWidth(build.rudders),
+    teMax: computeTEMax(m),
+  };
+}
+
+/** Ideal TE at a speed (the smooth parabola). */
+export function computeTE(build: ShipBuild, speed: number, mass?: number): number {
+  const m = mass ?? computeLadenMass(build, build.cargoArea);
+  const { uStar, width, teMax } = computeMCParts(build, m);
+  const u = speed / build.frame.topSpeed;
+  return teMax * Math.max(0, 1 - Math.pow((u - uStar) / width, 2));
+}
+
+/** MC (hexes per 60° turn) at a speed — integer, floored at 1. */
+export function computeMC(build: ShipBuild, speed: number, mass?: number): number {
+  const te = Math.max(TE_FLOOR, computeTE(build, speed, mass));
+  return Math.max(1, Math.round(speed / te));
 }
 
 export interface MCResult {
   speed: number;
   mc: number;
+  te: number;
 }
 
+/** Full MC/TE band for speeds 1..topSpeed at a given load. */
 export function computeMCBand(build: ShipBuild, mass?: number): MCResult[] {
   const out: MCResult[] = [];
   for (let s = 1; s <= build.frame.topSpeed; s++) {
-    out.push({ speed: s, mc: computeMCAtSpeed(build, s, mass) });
+    const mc = computeMC(build, s, mass);
+    out.push({ speed: s, mc, te: computeTurningEfficiency(s, mc) });
   }
   return out;
 }
 
-/** 60° turns per game turn at a speed: `speed ÷ MC`, rounded to 1 decimal. */
-export function turnsPerGameTurn(speed: number, mc: number): number {
+/** Turning Efficiency = 60° turns per game turn at a speed: `speed ÷ MC`, 1 decimal. */
+export function computeTurningEfficiency(speed: number, mc: number): number {
   if (mc <= 0) return 0;
   return Math.round((speed / mc) * 10) / 10;
+}
+
+/** Officer actions per game turn. Int modifiers come from crew dropped into the
+ *  functional area (helm/captain stations) on the scenario map — not implemented yet,
+ *  so callers pass 0 for now. */
+export function computeOfficerActions(bridge: number, helmsmanIntMod = 0, captainIntMod = 0): number {
+  if (bridge >= 1) return Math.max(4, 4 + captainIntMod);
+  return Math.max(1, helmsmanIntMod);
 }
 
 // --- Hit-box pools ----------------------------------------------------------
@@ -411,8 +483,7 @@ export interface ShipDerivedStats {
   deckUsed: number;
   deckSpace: number;
   buildCost: number;
-  mcBandEmpty: MCResult[];
-  mcBandLaden: MCResult[];
+  officerActions: number;
 }
 
 export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
@@ -438,7 +509,6 @@ export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
     deckUsed: computeDeckUsed(build),
     deckSpace: build.frame.deckSpace,
     buildCost: computeBuildCost(build),
-    mcBandEmpty: computeMCBand(build, emptyMass),
-    mcBandLaden: computeMCBand(build, ladenMass),
+    officerActions: computeOfficerActions(build.bridge),
   };
 }

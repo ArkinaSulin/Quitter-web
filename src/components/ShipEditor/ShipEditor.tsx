@@ -8,19 +8,22 @@ import {
   ShipAccessory,
   ShipArmor,
   ShipComponent,
+  ShipCrew,
   ShipEnvironment,
   ShipFrame,
+  ShipMount,
   ShipTemplate,
   ShipWeapon,
 } from '@/types/ship';
 import {
-  computeMCParams,
+  computeMCBand,
+  computeMCParts,
   computeShipBuild,
   ShipBuild,
-  turnsPerGameTurn,
 } from '@/lib/shipStats';
 import {
   mapAccessoryRows,
+  mapCrewRows,
   mapShipAccessoryRow,
   mapShipArmorRow,
   mapShipComponentRow,
@@ -83,6 +86,20 @@ function ReadBox({ children, tone = 'default' }: { children: React.ReactNode; to
   );
 }
 
+/** A Stat-grid cell: small label over a bold value. */
+function StatCell({ label, children, tone = 'default' }: { label: string; children: React.ReactNode; tone?: 'default' | 'warn' | 'red' }) {
+  const color =
+    tone === 'red' ? 'text-red-400' :
+    tone === 'warn' ? 'text-amber-400' :
+    'text-yellow-400';
+  return (
+    <div className="min-w-0">
+      <label className="block text-[9px] text-gray-500 truncate">{label}</label>
+      <div className={`text-sm font-bold ${color}`}>{children}</div>
+    </div>
+  );
+}
+
 function Stepper({ value, onChange, min = 0, max = 9, label }: {
   value: number; onChange: (v: number) => void; min?: number; max?: number; label?: string;
 }) {
@@ -109,23 +126,25 @@ function Stepper({ value, onChange, min = 0, max = 9, label }: {
 }
 
 // MC = hexes to travel per 60° turn — LOWER is better (tight turn), so the scale
-// runs green (1) -> yellow (2) -> orange (3) -> red (4).
+// runs green (1-2) -> yellow (3-4) -> orange (5-7) -> red (8+).
 function mcColor(mc: number) {
-  if (mc <= 1) return 'bg-green-700 text-white';
-  if (mc === 2) return 'bg-yellow-700 text-white';
-  if (mc === 3) return 'bg-orange-700 text-white';
-  return 'bg-red-700 text-white';
-}
-
-// 60°/turn = speed ÷ MC — HIGHER is better.
-function turnsColor(v: number) {
-  if (v >= 4) return 'bg-green-700 text-white';
-  if (v >= 2) return 'bg-yellow-700 text-white';
+  if (mc <= 2) return 'bg-green-700 text-white';
+  if (mc <= 4) return 'bg-yellow-700 text-white';
+  if (mc <= 7) return 'bg-orange-700 text-white';
   return 'bg-red-700 text-white';
 }
 
 // Unreachable speed (beyond the active cap) — grey/black out, no number.
 const OFF_CELL = 'bg-gray-900 border border-gray-800 text-gray-700';
+
+// Accessory -> special weapon the accessory mounts (drives the special weapon slots).
+const SPECIAL_WEAPON_BY_ACCESSORY: Record<string, string> = {
+  scorpion_claws: 'scorpion_claws_wpn',
+  eyestalk_cannons: 'eyestalk_wpn',
+  ram: 'ram_wpn',
+  grappling_jaws: 'grappling_jaws_wpn',
+  tentacles: 'tentacles_wpn',
+};
 
 function buildFromTemplate(
   t: ShipTemplate,
@@ -183,6 +202,17 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const [showCloneModal, setShowCloneModal] = useState(false);
   const [cloneName, setCloneName] = useState('');
   const [cloneError, setCloneError] = useState('');
+
+  // Performance box: formula text is hidden behind the [formulas] button.
+  const [showFormula, setShowFormula] = useState(false);
+  // Accessory catalog picker modal.
+  const [showAccessoriesModal, setShowAccessoriesModal] = useState(false);
+  // Crew roster modal.
+  const [showCrewModal, setShowCrewModal] = useState(false);
+  const [editingCrewIndex, setEditingCrewIndex] = useState<number | null>(null);
+  const [crewDraft, setCrewDraft] = useState<{ count: number; name: string; level: number; str: number; dex: number; con: number; int: number; wis: number; cha: number; cost: number | null }>({
+    count: 1, name: '', level: 1, str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, cost: null,
+  });
 
   const build = formData
     ? buildFromTemplate(formData, frames, armors, components, accessories, weaponsCatalog)
@@ -243,12 +273,12 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     updateFormData('weapons', weapons);
   };
 
-  const addWeaponRow = () => {
+  const addWeaponToSlot = (mount: ShipMount, defaultWeaponId?: string) => {
     if (!formData) return;
-    const first = weaponsCatalog.find(w => w.mount === 'small');
+    const id = defaultWeaponId || weaponsCatalog.find(w => w.mount === mount)?.id || weaponsCatalog[0]?.id || '';
     updateFormData('weapons', [...formData.weapons, {
-      weaponId: first?.id || weaponsCatalog[0]?.id || '',
-      mountSlot: 'Fore',
+      weaponId: id,
+      mountSlot: mount === 'special' ? '360' : 'Fore',
       count: 1,
     }]);
   };
@@ -258,13 +288,53 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     updateFormData('weapons', formData.weapons.filter((_, i) => i !== index));
   };
 
+  const openAddCrew = () => {
+    if (readOnly) return;
+    setEditingCrewIndex(null);
+    setCrewDraft({ count: 1, name: '', level: 1, str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, cost: null });
+    setShowCrewModal(true);
+  };
+
+  const openEditCrew = (index: number) => {
+    if (readOnly) return;
+    const c = formData?.crews[index];
+    if (!c) return;
+    setEditingCrewIndex(index);
+    setCrewDraft({ count: 1, name: c.name || '', level: c.level, str: c.str, dex: c.dex, con: c.con, int: c.int, wis: c.wis, cha: c.cha, cost: c.cost });
+    setShowCrewModal(true);
+  };
+
+  const confirmCrew = () => {
+    if (!formData) return;
+    const { count, name, level, str, dex, con, int, wis, cha, cost } = crewDraft;
+    const rows: ShipCrew[] = Array.from({ length: Math.max(1, Math.floor(count) || 1) }, () => ({
+      id: crypto.randomUUID(),
+      name: name.trim() ? name.trim() : null,
+      level, str, dex, con, int, wis, cha, cost,
+    }));
+    if (editingCrewIndex !== null) {
+      const crews = [...formData.crews];
+      crews[editingCrewIndex] = rows[0];
+      updateFormData('crews', crews);
+    } else {
+      updateFormData('crews', [...formData.crews, ...rows]);
+    }
+    setShowCrewModal(false);
+    setEditingCrewIndex(null);
+  };
+
+  const removeCrew = (index: number) => {
+    if (!formData) return;
+    updateFormData('crews', formData.crews.filter((_, i) => i !== index));
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
         // Flat queries + client-side join merge: avoids depending on PostgREST resolving
         // the ship_template_* relationships (a schema-cache hiccup would otherwise blank
         // the whole list).
-        const [templatesRes, framesRes, armorsRes, componentsRes, accessoriesRes, weaponsRes, templateAccessoriesRes, templateWeaponsRes] = await Promise.all([
+        const [templatesRes, framesRes, armorsRes, componentsRes, accessoriesRes, weaponsRes, templateAccessoriesRes, templateWeaponsRes, crewsRes] = await Promise.all([
           supabase.from('ship_templates').select('*').order('name'),
           supabase.from('ship_frames').select('*').order('mass_cap'),
           supabase.from('ship_armors').select('*').order('id'),
@@ -273,6 +343,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
           supabase.from('ship_weapons').select('*').order('id'),
           supabase.from('ship_template_accessories').select('*'),
           supabase.from('ship_template_weapons').select('*'),
+          supabase.from('ship_crews').select('*'),
         ]);
         if (templatesRes.error) throw templatesRes.error;
         if (framesRes.error) throw framesRes.error;
@@ -282,6 +353,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         if (weaponsRes.error) throw weaponsRes.error;
         if (templateAccessoriesRes.error) throw templateAccessoriesRes.error;
         if (templateWeaponsRes.error) throw templateWeaponsRes.error;
+        if (crewsRes.error) throw crewsRes.error;
 
         const accessoriesByTemplate = new Map<string, any[]>();
         for (const row of templateAccessoriesRes.data || []) {
@@ -295,11 +367,18 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
           list.push(row);
           weaponsByTemplate.set(row.template_id, list);
         }
+        const crewsByTemplate = new Map<string, any[]>();
+        for (const row of crewsRes.data || []) {
+          const list = crewsByTemplate.get(row.template_id) || [];
+          list.push(row);
+          crewsByTemplate.set(row.template_id, list);
+        }
 
         setTemplates((templatesRes.data || []).map(row => mapShipTemplateRow({
           ...row,
           ship_template_accessories: accessoriesByTemplate.get(row.id) || [],
           ship_template_weapons: weaponsByTemplate.get(row.id) || [],
+          ship_crews: crewsByTemplate.get(row.id) || [],
         })));
         setFrames((framesRes.data || []).map(mapShipFrameRow));
         setArmors((armorsRes.data || []).map(mapShipArmorRow));
@@ -366,6 +445,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       cargoArea: 0,
       accessories: [],
       weapons: [],
+      crews: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -410,6 +490,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         name: cloneName.trim(),
         accessories: formData.accessories.map(a => ({ ...a })),
         weapons: formData.weapons.map(w => ({ ...w })),
+        crews: formData.crews.map(c => ({ ...c, id: crypto.randomUUID() })),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -428,6 +509,11 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       if (wpnRows.length) {
         const { error: wpnErr } = await supabase.from('ship_template_weapons').insert(wpnRows);
         if (wpnErr) throw wpnErr;
+      }
+      const crewRows = mapCrewRows(newShip);
+      if (crewRows.length) {
+        const { error: crewErr } = await supabase.from('ship_crews').insert(crewRows);
+        if (crewErr) throw crewErr;
       }
       const { data: fresh } = await supabase
         .from('ship_templates')
@@ -497,6 +583,12 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       const wpnRows = mapWeaponRows(withId);
       if (wpnRows.length) {
         const { error } = await supabase.from('ship_template_weapons').insert(wpnRows);
+        if (error) throw error;
+      }
+      await supabase.from('ship_crews').delete().eq('template_id', id);
+      const crewRows = mapCrewRows(withId);
+      if (crewRows.length) {
+        const { error } = await supabase.from('ship_crews').insert(crewRows);
         if (error) throw error;
       }
 
@@ -575,8 +667,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const massOverload = stats ? stats.availableSpace < 0 : false;
   const deckOverload = stats ? stats.deckUsed > stats.deckSpace : false;
   const activeCap = build ? Math.min(stats!.topSpeed, environment === 'space' ? stats!.topSpeed : (stats!.atmosphereSpeed || stats!.topSpeed)) : 0;
-  const smallAssigned = formData?.weapons.filter(w => weaponsCatalog.find(x => x.id === w.weaponId)?.mount === 'small').reduce((s, w) => s + w.count, 0) || 0;
-  const largeAssigned = formData?.weapons.filter(w => weaponsCatalog.find(x => x.id === w.weaponId)?.mount === 'large').reduce((s, w) => s + w.count, 0) || 0;
+  const peakTE = build && stats ? computeMCBand(build, stats.ladenMass).reduce((m, x) => Math.max(m, x.te), 0) : 0;
 
   return (
     <div className="flex flex-col h-screen bg-[#0d0d1a] text-white">
@@ -746,90 +837,56 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                     </Cell>
                   </div>
 
-                  {/* Stat readout */}
-                  {stats && build && (
-                    <>
-                      <div className="grid grid-cols-4 gap-2 p-2.5 bg-gray-800 rounded border border-gray-700">
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Ship HP</label>
-                          <div className="text-lg font-bold text-yellow-400">{stats.shipHp}</div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-400">DT</label>
-                          <div className="text-lg font-bold text-yellow-400">{stats.dt}</div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Box HP</label>
-                          <div className="text-lg font-bold text-yellow-400">{stats.boxHp}</div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Pool HP</label>
-                          <div className="text-lg font-bold text-yellow-400">{stats.pools.total}</div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-4 gap-2 p-2.5 bg-gray-800 rounded border border-gray-700">
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Mass (empty)</label>
-                          <div className={`text-lg font-bold ${massOverload ? 'text-red-400' : 'text-yellow-400'}`}>{Math.round(stats.emptyMass)}t / {build.frame.massCap}</div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Available</label>
-                          <div className="text-lg font-bold text-yellow-400">{Math.max(0, Math.round(stats.availableSpace))}t</div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Unclaimed</label>
-                          <div className="text-lg font-bold text-yellow-400">{Math.max(0, Math.round(stats.unclaimedSpace))}t</div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Deck</label>
-                          <div className={`text-lg font-bold ${deckOverload ? 'text-red-400' : 'text-yellow-400'}`}>{Math.round(stats.deckUsed)} / {stats.deckSpace}</div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-4 gap-2 p-2.5 bg-gray-800 rounded border border-gray-700">
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Accel (empty)</label>
-                          <div className="text-lg font-bold text-yellow-400">{stats.accelEmpty}</div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Accel (laden)</label>
-                          <div className="text-lg font-bold text-yellow-400">{stats.accelLaden}</div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Top speed</label>
-                          <div className="text-lg font-bold text-yellow-400">{stats.topSpeed}</div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Active cap</label>
-                          <div className="text-lg font-bold text-yellow-400">
-                            {activeCap}
-                            <span className="text-[10px] text-gray-500 ml-1">({environment})</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 p-2.5 bg-gray-800 rounded border border-gray-700">
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Crew</label>
-                          <div className="text-lg font-bold text-yellow-400">{stats.crew}</div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Crew quarters</label>
-                          <div className="text-lg font-bold text-yellow-400">{stats.crewQuarters}t</div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-gray-400">Build cost</label>
-                          <div className="text-lg font-bold text-yellow-400">{stats.buildCost.toLocaleString()}gp</div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {/* MC band (maneuver class) + cargo load */}
+                  {/* Stat */}
                   {stats && build && (
                     <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
-                      <div className="flex items-center justify-between mb-1">
+                      <div className="grid grid-cols-4 gap-2">
+                        <StatCell label="Armor Class">{selectedArmor?.ac ?? '—'}</StatCell>
+                        <StatCell label="Hull HP">{stats.shipHp}</StatCell>
+                        <StatCell label="Damage Threshold">{stats.dt}</StatCell>
+                        <StatCell label="Officer actions / game turn">{stats.officerActions}</StatCell>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 mt-2">
+                        <StatCell label="Mass">{Math.round(stats.ladenMass)}t</StatCell>
+                        <StatCell label="Cargo">{cargoClamped}t</StatCell>
+                        <StatCell label="Reserve mass">{Math.max(0, Math.round(stats.unclaimedSpace))}t</StatCell>
+                        <StatCell label="Deck used / max" tone={deckOverload ? 'red' : 'default'}>{Math.round(stats.deckUsed)} / {stats.deckSpace}</StatCell>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 mt-2">
+                        <StatCell label="Current crew / Minimum crew">{formData.crews.length} / {stats.crew}</StatCell>
+                        <StatCell label="Crew quarters">{stats.crewQuarters}</StatCell>
+                        <StatCell label="Build cost">{stats.buildCost.toLocaleString()}gp</StatCell>
+                        <StatCell label="Upkeep">—</StatCell>
+                      </div>
+                      <p className="text-[9px] text-gray-600 mt-2 border-t border-gray-700 pt-1">
+                        Officer actions: no bridge → max(1, helmsman Int modifier) · with bridge → max(4, 4 + captain Int modifier).
+                        Int bonus comes from crew dropped onto stations on the map — default 0 here.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Ship performance */}
+                  {stats && build && (
+                    <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
+                      <div className="flex items-end gap-2 mb-1">
+                        <div className="flex-1">
+                          <label className="block text-[9px] text-gray-500">Acceleration (empty)</label>
+                          <div className="text-sm font-bold text-yellow-400">{stats.accelEmpty}</div>
+                        </div>
+                        <div className="flex-1">
+                          <label className="block text-[9px] text-gray-500">Acceleration (laden)</label>
+                          <div className="text-sm font-bold text-yellow-400">{stats.accelLaden}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowFormula(v => !v)}
+                          className="px-2 py-1 text-[10px] bg-gray-700 border border-gray-600 text-gray-300 rounded hover:bg-gray-600"
+                        >
+                          {showFormula ? 'hide formulas' : 'formulas'}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between mb-0.5">
                         <label className="block text-[10px] text-gray-400">
                           MC — hexes to travel per 60° turn (lower = better)
                         </label>
@@ -851,16 +908,21 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           ))}
                         </div>
                       </div>
+                      <label className="block text-[10px] text-gray-400 mb-1">
+                        TE — maximum 60° turns per game turn (higher = better):{' '}
+                        <span className="text-yellow-400">{peakTE}</span>
+                      </label>
 
-                      {/* Formula with live parameters */}
-                      {(() => {
-                        const p = computeMCParams(build, stats.ladenMass);
+                      {showFormula && (() => {
+                        const p = computeMCParts(build, stats.ladenMass);
                         return (
                           <div className="text-[9px] font-mono text-gray-500 mb-2 leading-relaxed">
                             <div>MC(s) — hexes per 60° turn · mass {p.mass}t (empty {Math.round(stats.emptyMass)} + cargo {cargoClamped})</div>
-                            <div>tier=⌊mass/25⌋={p.tier} · center=clamp(round({stats.topSpeed}×0.65)−{p.tier},2,8)={p.center} · W=max(0,rudders−tier)={p.W} · peak=clamp(rudders−⌊mass/45⌋,1,3)={p.peak}</div>
-                            <div>MC=4 (mass&lt;25 ∧ rudders≥2 ∧ |s−center|≤0.5) · 3 (peak≥3 ∧ |s−center|≤W) · 2 (|s−center|≤W+2) · else 1</div>
-                            <div>60°/turn = speed ÷ MC (1 decimal)</div>
+                            <div>fill = rudders / frameMassCap = {p.fill.toFixed(4)}</div>
+                            <div>u* = clamp(0.33 + 5.4·fill + 0.2·(25/mass − 0.5), 0.33, 0.6) = {p.uStar.toFixed(2)}</div>
+                            <div>w = clamp(0.4 + 0.05·rudders, 0.45, 0.7) = {p.width.toFixed(2)} · TE_max = clamp(3·(25/mass)^0.7, 0.8, 3) = {p.teMax.toFixed(2)}</div>
+                            <div>TE(s) = TE_max·max(0, 1 − ((s/T − u*)/w)²) · MC(s) = max(1, round(s / max(0.5, TE(s)))) · TE = s ÷ MC</div>
+                            <div>Acceleration = round(18 × sails ÷ mass) · Officer actions = no bridge: max(1, helmsman Int) · bridge: max(4, 4 + captain Int)</div>
                           </div>
                         );
                       })()}
@@ -870,76 +932,46 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         const axisMax = Math.max(14, ...frames.map(f => f.topSpeed));
                         const speeds = Array.from({ length: axisMax }, (_, i) => i + 1);
                         const reachable = (s: number) => s <= activeCap && s <= stats.topSpeed;
-                        const bandCell = (band: typeof stats.mcBandEmpty, s: number) =>
-                          s <= stats.topSpeed ? band[s - 1]?.mc : undefined;
-                        const row = (
-                          label: string,
-                          cells: { value: number | undefined; off: boolean }[],
-                          colorFn: (v: number) => string,
-                          titleFn: (s: number, v: number) => string,
-                        ) => (
+                        const loadBand = (mass: number) => {
+                          const band = computeMCBand(build, mass);
+                          return speeds.map(s => (s <= stats.topSpeed ? band[s - 1] : undefined));
+                        };
+                        const row = (label: string, cells: ({ mc: number; te: number } | undefined)[], colorFn: (v: number) => string) => (
                           <div className="flex items-center gap-1">
-                            <span className="text-[10px] text-gray-400 w-12">{label}</span>
+                            <span className="text-[10px] text-gray-400 w-14 truncate">{label}</span>
                             {speeds.map(s => {
                               const cell = cells[s - 1];
-                              if (cell.off) {
-                                return (
-                                  <div key={s} title={`Speed ${s}: unreachable in ${environment}`} className={`w-6 h-5 rounded ${OFF_CELL}`} />
-                                );
+                              if (!reachable(s) || !cell) {
+                                return <div key={s} title={`Speed ${s}: unreachable in ${environment}`} className={`w-6 h-5 rounded ${OFF_CELL}`} />;
                               }
                               return (
-                                <div key={s} title={titleFn(s, cell.value!)} className={`w-6 h-5 rounded text-[9px] flex items-center justify-center ${colorFn(cell.value!)}`}>
-                                  {cell.value}
+                                <div key={s} title={`Speed ${s}: MC ${cell.mc} (${cell.mc} hex${cell.mc > 1 ? 'es' : ''} per 60° turn) · TE ${cell.te}`} className={`w-6 h-5 rounded text-[9px] flex items-center justify-center ${colorFn(cell.mc)}`}>
+                                  {cell.mc}
                                 </div>
                               );
                             })}
                           </div>
                         );
-                        const unladen = speeds.map(s => {
-                          const mc = bandCell(stats.mcBandEmpty, s);
-                          return { value: mc, off: !reachable(s) || mc === undefined };
-                        });
-                        const laden = speeds.map(s => {
-                          const mc = bandCell(stats.mcBandLaden, s);
-                          return { value: mc, off: !reachable(s) || mc === undefined };
-                        });
-                        const turns = speeds.map(s => {
-                          const mc = bandCell(stats.mcBandLaden, s);
-                          return { value: mc !== undefined ? turnsPerGameTurn(s, mc) : undefined, off: !reachable(s) || mc === undefined };
-                        });
+                        const bandHalf = loadBand(stats.emptyMass + Math.round(0.5 * capacity));
+                        const bandLaden = loadBand(stats.ladenMass);
                         return (
                           <div className="space-y-1">
                             <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-gray-400 w-12">Speed</span>
+                              <span className="text-[10px] text-gray-400 w-14 truncate">Speed</span>
                               {speeds.map(s => (
                                 <div key={s} className={`w-6 text-center text-[9px] ${s <= activeCap ? 'text-gray-300' : 'text-gray-600'}`}>{s}</div>
                               ))}
                             </div>
-                            {row('Unladen', unladen, mcColor, (s, v) => `Speed ${s}: MC ${v} (${v} hex${v > 1 ? 'es' : ''} per 60° turn)`)}
-                            {row('Laden', laden, mcColor, (s, v) => `Speed ${s}: MC ${v} (${v} hex${v > 1 ? 'es' : ''} per 60° turn)`)}
-                            {row('60°/turn', turns, turnsColor, (s, v) => `Speed ${s}: ${v} turns per game turn`)}
+                            {row('50% loaded', bandHalf, mcColor)}
+                            {row('Laden', bandLaden, mcColor)}
                           </div>
                         );
                       })()}
 
-                      {/* Legend */}
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[9px] text-gray-500">
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-700" />tight</span>
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-yellow-700" />mid</span>
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-orange-700" />wide</span>
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-700" />widest</span>
-                        <span>MC lower = better</span>
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-700" />≥4</span>
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-yellow-700" />2–4</span>
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-700" />&lt;2</span>
-                        <span>60°/turn higher = better</span>
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-gray-900 border border-gray-800" />unreachable (beyond active cap)</span>
-                      </div>
-
-                      {/* Cargo load — drives Laden MC + 60°/turn live */}
+                      {/* Cargo bay */}
                       <div className="mt-2 pt-2 border-t border-gray-700">
                         <label className="block text-[10px] text-gray-400 mb-1">
-                          Cargo load (designated): {cargoClamped}t of {capacity}t — drives Laden MC + 60°/turn
+                          Cargo bay: {cargoClamped}t / {capacity}t — the Laden row tracks this
                         </label>
                         <input
                           type="range"
@@ -953,7 +985,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         />
                         {massOverload && (
                           <p className="text-[10px] text-red-400 mt-1">
-                            Over mass cap by {Math.round(-stats.availableSpace)}t — soft penalty (Accel/MC suffer).
+                            Over mass cap by {Math.round(-stats.availableSpace)}t — soft penalty (Acceleration/MC suffer).
                           </p>
                         )}
                         {!massOverload && capacity === 0 && (
@@ -963,107 +995,187 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                     </div>
                   )}
 
-                  {/* Component counts */}
-                  <div className="p-2.5 bg-gray-800 rounded border border-gray-700 space-y-2">
-                    <label className="block text-[10px] text-gray-400">Components (counts drive mass / deck / crew / pools)</label>
-                    <div className="flex items-end gap-2 flex-wrap">
-                      <Cell label="Rudders"><NumInput value={formData.rudders} min={0} max={selectedFrame?.maxRudders || 5} onChange={(v) => updateFormData('rudders', Math.max(0, Math.min(selectedFrame?.maxRudders || 5, Math.floor(v))))} /></Cell>
-                      <Cell label="Sails"><NumInput value={formData.sails} min={0} max={99} onChange={(v) => updateFormData('sails', Math.max(0, Math.floor(v)))} /></Cell>
-                      <Cell label="L.Weap"><NumInput value={formData.lWeap} min={0} max={99} onChange={(v) => updateFormData('lWeap', Math.max(0, Math.floor(v)))} /></Cell>
-                      <Cell label="S.Weap"><NumInput value={formData.sWeap} min={0} max={99} onChange={(v) => updateFormData('sWeap', Math.max(0, Math.floor(v)))} /></Cell>
-                      <Cell label="Hull R"><NumInput value={formData.hullR} min={0} max={99} onChange={(v) => updateFormData('hullR', Math.max(0, Math.floor(v)))} /></Cell>
-                      <Cell label="Bridge"><NumInput value={formData.bridge} min={0} max={2} onChange={(v) => updateFormData('bridge', Math.max(0, Math.min(2, Math.floor(v))))} /></Cell>
-                      <Cell label="Aux helm"><NumInput value={formData.auxHelm} min={0} max={2} onChange={(v) => updateFormData('auxHelm', Math.max(0, Math.min(2, Math.floor(v))))} /></Cell>
-                      <Cell label="Extra crew"><NumInput value={formData.extraCrew} step={1} min={0} max={99} onChange={(v) => updateFormData('extraCrew', Math.max(0, Math.floor(v)))} /></Cell>
+                  {/* Components */}
+                  <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
+                    <label className="block text-[10px] text-gray-400 mb-2">Components (counts drive mass, deck, crew, pools)</label>
+                    <div className="grid grid-cols-4 gap-x-4 gap-y-2">
+                      <Cell label="Auxiliary helm"><NumInput value={formData.auxHelm} min={0} max={2} onChange={(v) => updateFormData('auxHelm', Math.max(0, Math.min(2, Math.floor(v))))} /></Cell>
+                      <Cell label="Command bridge"><NumInput value={formData.bridge} min={0} max={2} onChange={(v) => updateFormData('bridge', Math.max(0, Math.min(2, Math.floor(v))))} /></Cell>
+                      <Cell label="Sail"><NumInput value={formData.sails} min={0} max={99} onChange={(v) => updateFormData('sails', Math.max(0, Math.floor(v)))} /></Cell>
+                      <Cell label="Rudder"><NumInput value={formData.rudders} min={0} max={selectedFrame?.maxRudders || 5} onChange={(v) => updateFormData('rudders', Math.max(0, Math.min(selectedFrame?.maxRudders || 5, Math.floor(v))))} /></Cell>
+                      <Cell label="Large weapon anchor"><NumInput value={formData.lWeap} min={0} max={99} onChange={(v) => updateFormData('lWeap', Math.max(0, Math.floor(v)))} /></Cell>
+                      <Cell label="Small weapon anchor"><NumInput value={formData.sWeap} min={0} max={99} onChange={(v) => updateFormData('sWeap', Math.max(0, Math.floor(v)))} /></Cell>
+                      <Cell label="Hull reinforcement"><NumInput value={formData.hullR} min={0} max={99} onChange={(v) => updateFormData('hullR', Math.max(0, Math.floor(v)))} /></Cell>
+                      <Cell label="Extra crew"><NumInput value={formData.extraCrew} min={0} max={99} onChange={(v) => updateFormData('extraCrew', Math.max(0, Math.floor(v)))} /></Cell>
                     </div>
                   </div>
 
-                  {/* Accessories */}
-                  {accessories.length > 0 && (
-                    <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
-                      <label className="block text-[10px] text-gray-400 mb-2">Specials / Accessories</label>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                        {accessories.map(acc => (
-                          <div key={acc.id} className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] text-gray-300 truncate" title={acc.effect || undefined}>
-                              {humanize(acc.id)}
-                              {acc.hittable ? '' : <span className="text-gray-500"> (safe)</span>}
-                            </span>
-                            <Stepper value={accessoryCount(acc.id)} onChange={(v) => setAccessoryCount(acc.id, v)} max={3} />
-                          </div>
-                        ))}
-                      </div>
-                      <p className="text-[10px] text-gray-500 mt-2">Watertight, Low Visibility and Air Envelope are safe (no hit boxes). Claws/Eyestalk use the small weapon anchor.</p>
-                    </div>
-                  )}
-
-                  {/* Weapons */}
+                  {/* Specials / accessories */}
                   <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
                     <div className="flex items-center justify-between mb-2">
-                      <label className="block text-[10px] text-gray-400">Weapon assignments (fills the L/S.Weap slots)</label>
+                      <label className="block text-[10px] text-gray-400">Specials / Accessories</label>
                       <button
                         type="button"
-                        onClick={addWeaponRow}
+                        onClick={() => setShowAccessoriesModal(true)}
                         className="px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition"
                       >
-                        + Add Weapon
+                        + Add Accessories
                       </button>
                     </div>
-                    {(formData.lWeap > 0 || formData.sWeap > 0) && (
-                      <div className="flex gap-3 text-[10px] text-gray-400 mb-1">
-                        <span className={smallAssigned === formData.sWeap ? 'text-gray-500' : 'text-amber-400'}>
-                          S.Weap slots {formData.sWeap} · assigned {smallAssigned}
-                        </span>
-                        <span className={largeAssigned === formData.lWeap ? 'text-gray-500' : 'text-amber-400'}>
-                          L.Weap slots {formData.lWeap} · assigned {largeAssigned}
-                        </span>
-                      </div>
-                    )}
-                    {formData.weapons.length === 0 ? (
+                    {formData.accessories.length === 0 ? (
                       <div className="text-[11px] text-gray-400 bg-gray-800/50 border border-gray-700 rounded p-2 text-center">
-                        No weapons assigned. Add a weapon from the catalog and pick a mount slot.
+                        No specials added.
                       </div>
                     ) : (
-                      <div className="space-y-1.5">
-                        {formData.weapons.map((w, index) => {
-                          const weapon = weaponsCatalog.find(x => x.id === w.weaponId);
+                      <div className="space-y-1">
+                        {formData.accessories.map(a => {
+                          const acc = accessories.find(x => x.id === a.accessoryId);
+                          if (!acc) return null;
                           return (
-                            <div key={index} className="flex items-center gap-2">
-                              <select
-                                value={w.weaponId}
-                                onChange={(e) => setWeaponRow(index, 'weaponId', e.target.value)}
-                                className="flex-1 bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
-                              >
-                                {weaponsCatalog.map(weap => (
-                                  <option key={weap.id} value={weap.id}>
-                                    {humanize(weap.id)} — {weap.damage} ({weap.mount}, cycle {weap.fireCycleRd})
-                                  </option>
-                                ))}
-                              </select>
-                              <select
-                                value={w.mountSlot}
-                                onChange={(e) => setWeaponRow(index, 'mountSlot', e.target.value)}
-                                className="bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
-                              >
-                                {MOUNT_SLOTS.map(slot => (
-                                  <option key={slot} value={slot}>{slot}</option>
-                                ))}
-                              </select>
-                              <Stepper value={w.count} onChange={(v) => setWeaponRow(index, 'count', v)} min={1} max={8} />
-                              <button
-                                type="button"
-                                onClick={() => removeWeaponRow(index)}
-                                className="text-[10px] bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded text-white"
-                              >
-                                ×
-                              </button>
+                            <div key={a.accessoryId} className="flex items-center justify-between gap-2 bg-gray-800 rounded px-2 py-1">
+                              <div className="min-w-0">
+                                <div className="text-[11px] text-gray-200">
+                                  {humanize(acc.id)}{' '}
+                                  <span className="text-gray-500">
+                                    ({acc.mass}t · {acc.crew} crew · {acc.cost ? `${acc.cost}gp` : '0gp'} · {acc.hittable ? 'hittable' : 'safe'})
+                                  </span>
+                                </div>
+                                {acc.effect && <div className="text-[10px] text-gray-400">{acc.effect}</div>}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Stepper value={a.count} onChange={(v) => setAccessoryCount(acc.id, v)} max={3} />
+                                <button
+                                  type="button"
+                                  onClick={() => setAccessoryCount(acc.id, 0)}
+                                  className="text-[10px] bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded text-white"
+                                >
+                                  ×
+                                </button>
+                              </div>
                             </div>
                           );
                         })}
                       </div>
                     )}
-                    {weaponsCatalog.length === 0 && (
-                      <p className="text-[10px] text-gray-500 mt-1">Weapon catalog is empty.</p>
+                  </div>
+
+                  {/* Weapons — one slot per weapon anchor */}
+                  <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
+                    <label className="block text-[10px] text-gray-400 mb-2">Weapons — one slot per weapon anchor (set in Components)</label>
+                    {(() => {
+                      const byMount: Record<string, number[]> = { large: [], small: [], special: [] };
+                      formData.weapons.forEach((w, idx) => {
+                        const m = weaponsCatalog.find(x => x.id === w.weaponId)?.mount;
+                        if (m && byMount[m]) byMount[m].push(idx);
+                      });
+                      const slotRow = (label: string, idx: number | undefined, mount: ShipMount, defaultWeaponId?: string) => {
+                        if (idx === undefined) {
+                          return (
+                            <div key={label} className="flex items-center gap-2">
+                              <span className="text-[11px] text-gray-400 w-48 truncate">{label}</span>
+                              <button
+                                type="button"
+                                onClick={() => addWeaponToSlot(mount, defaultWeaponId)}
+                                className="px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition"
+                              >
+                                + Add Weapon
+                              </button>
+                            </div>
+                          );
+                        }
+                        const w = formData.weapons[idx];
+                        return (
+                          <div key={label} className="flex items-center gap-2">
+                            <span className="text-[11px] text-gray-400 w-48 truncate">{label}</span>
+                            <select
+                              value={w.weaponId}
+                              onChange={(e) => setWeaponRow(idx, 'weaponId', e.target.value)}
+                              className="flex-1 bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+                            >
+                              {weaponsCatalog.filter(x => x.mount === mount).map(weap => (
+                                <option key={weap.id} value={weap.id}>{humanize(weap.id)} — {weap.damage} (cycle {weap.fireCycleRd})</option>
+                              ))}
+                            </select>
+                            <select
+                              value={w.mountSlot}
+                              onChange={(e) => setWeaponRow(idx, 'mountSlot', e.target.value)}
+                              className="bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+                            >
+                              {MOUNT_SLOTS.map(slot => (
+                                <option key={slot} value={slot}>{slot}</option>
+                              ))}
+                            </select>
+                            <Stepper value={w.count} onChange={(v) => setWeaponRow(idx, 'count', v)} min={1} max={8} />
+                            <button
+                              type="button"
+                              onClick={() => removeWeaponRow(idx)}
+                              className="text-[10px] bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded text-white"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        );
+                      };
+                      const specialAccessories = formData.accessories.filter(a => SPECIAL_WEAPON_BY_ACCESSORY[a.accessoryId]);
+                      const rows: React.ReactNode[] = [];
+                      for (let i = 0; i < formData.lWeap; i++) rows.push(slotRow(`Large weapon anchor ${i + 1}`, byMount.large[i], 'large'));
+                      for (let i = 0; i < formData.sWeap; i++) rows.push(slotRow(`Small weapon anchor ${i + 1}`, byMount.small[i], 'small'));
+                      specialAccessories.forEach((a, i) => rows.push(slotRow(`Special (${humanize(a.accessoryId)})`, byMount.special[i], 'special', SPECIAL_WEAPON_BY_ACCESSORY[a.accessoryId])));
+                      if (rows.length === 0) {
+                        return (
+                          <div className="text-[11px] text-gray-400 bg-gray-800/50 border border-gray-700 rounded p-2 text-center">
+                            Add weapon anchors in Components to assign weapons.
+                          </div>
+                        );
+                      }
+                      return <div className="space-y-1.5">{rows}</div>;
+                    })()}
+                  </div>
+
+                  {/* Crews */}
+                  <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-[10px] text-gray-400">Crews — ship roster ({formData.crews.length} crew)</label>
+                      <button
+                        type="button"
+                        onClick={openAddCrew}
+                        className="px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition"
+                      >
+                        + Add Crew
+                      </button>
+                    </div>
+                    {formData.crews.length === 0 ? (
+                      <div className="text-[11px] text-gray-400 bg-gray-800/50 border border-gray-700 rounded p-2 text-center">
+                        No crew assigned. Add named or unnamed crew.
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {formData.crews.map((c, index) => (
+                          <div key={c.id} className="flex items-center justify-between gap-2 bg-gray-800 rounded px-2 py-1">
+                            <div className="min-w-0 text-[11px] text-gray-200">
+                              {c.name || <span className="text-gray-500">Unnamed crew</span>}
+                              <span className="text-gray-500"> · Lv {c.level} · S{c.str} D{c.dex} C{c.con} I{c.int} W{c.wis} C{c.cha}</span>
+                              <span className="text-green-400"> · {c.cost != null ? `${c.cost}gp` : 'cost —'}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openEditCrew(index)}
+                                className="text-[10px] bg-blue-700 hover:bg-blue-600 px-1.5 py-0.5 rounded text-white"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeCrew(index)}
+                                className="text-[10px] bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded text-white"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </fieldset>
@@ -1174,6 +1286,126 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                 className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
               >
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Accessories modal */}
+      {showAccessoriesModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-5 rounded-lg w-[560px] max-h-[80vh] border border-gray-700 flex flex-col">
+            <h2 className="text-lg font-bold mb-3 text-white">Add Accessories</h2>
+            <div className="flex-1 overflow-y-auto space-y-1">
+              {accessories.map(acc => (
+                <div key={acc.id} className="flex items-center justify-between gap-2 bg-gray-700/50 rounded px-2 py-1.5">
+                  <div className="min-w-0">
+                    <div className="text-[12px] text-gray-200">
+                      {humanize(acc.id)}{' '}
+                      <span className="text-gray-500">
+                        ({acc.mass}t · {acc.crew} crew · {acc.cost ? `${acc.cost}gp` : '0gp'} · {acc.hittable ? 'hittable' : 'safe'})
+                      </span>
+                    </div>
+                    {acc.effect && <div className="text-[10px] text-gray-400">{acc.effect}</div>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAccessoryCount(acc.id, accessoryCount(acc.id) + 1)}
+                    className="flex-none px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition"
+                  >
+                    Add{accessoryCount(acc.id) > 0 ? ` (${accessoryCount(acc.id)})` : ''}
+                  </button>
+                </div>
+              ))}
+              {accessories.length === 0 && (
+                <div className="text-sm text-gray-500 text-center py-4">No accessories in the catalog.</div>
+              )}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
+                onClick={() => setShowAccessoriesModal(false)}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit Crew modal */}
+      {showCrewModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-5 rounded-lg w-[420px] border border-gray-700">
+            <h2 className="text-lg font-bold mb-3 text-white">{editingCrewIndex !== null ? 'Edit Crew' : 'Add Crew'}</h2>
+            <div className="space-y-2">
+              <div className="flex items-end gap-2">
+                <Cell label="Number of crew" widthClass="w-24">
+                  <NumInput value={crewDraft.count} min={1} max={99} onChange={(v) => setCrewDraft(d => ({ ...d, count: Math.max(1, Math.floor(v) || 1) }))} />
+                </Cell>
+                <Cell label="Name (optional — blank = unnamed)" widthClass="flex-1">
+                  <input
+                    type="text"
+                    value={crewDraft.name}
+                    onChange={(e) => setCrewDraft(d => ({ ...d, name: e.target.value }))}
+                    className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+                  />
+                </Cell>
+              </div>
+              <div className="flex items-end gap-2">
+                <Cell label="Level" widthClass="w-16"><NumInput value={crewDraft.level} min={1} max={99} onChange={(v) => setCrewDraft(d => ({ ...d, level: Math.max(1, Math.floor(v) || 1) }))} /></Cell>
+                <Cell label="Str"><NumInput value={crewDraft.str} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, str: Math.max(1, Math.min(30, Math.floor(v) || 10)) }))} /></Cell>
+                <Cell label="Dex"><NumInput value={crewDraft.dex} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, dex: Math.max(1, Math.min(30, Math.floor(v) || 10)) }))} /></Cell>
+                <Cell label="Con"><NumInput value={crewDraft.con} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, con: Math.max(1, Math.min(30, Math.floor(v) || 10)) }))} /></Cell>
+                <Cell label="Int"><NumInput value={crewDraft.int} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, int: Math.max(1, Math.min(30, Math.floor(v) || 10)) }))} /></Cell>
+                <Cell label="Wis"><NumInput value={crewDraft.wis} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, wis: Math.max(1, Math.min(30, Math.floor(v) || 10)) }))} /></Cell>
+                <Cell label="Cha"><NumInput value={crewDraft.cha} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, cha: Math.max(1, Math.min(30, Math.floor(v) || 10)) }))} /></Cell>
+              </div>
+              <div className="flex items-end gap-2">
+                <Cell label="Cost (gp, can be null)" widthClass="flex-1">
+                  {crewDraft.cost === null ? (
+                    <button
+                      type="button"
+                      onClick={() => setCrewDraft(d => ({ ...d, cost: 0 }))}
+                      className="w-full bg-gray-700 text-gray-400 text-xs rounded px-2 py-1 border border-gray-600 hover:bg-gray-600"
+                    >
+                      — (null) — set cost
+                    </button>
+                  ) : (
+                    <div className="flex gap-1">
+                      <input
+                        type="number"
+                        value={crewDraft.cost}
+                        min={0}
+                        onChange={(e) => setCrewDraft(d => ({ ...d, cost: parseInt(e.target.value) || 0 }))}
+                        className="flex-1 bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCrewDraft(d => ({ ...d, cost: null }))}
+                        title="Set cost = null (unknown / no listed cost)"
+                        className="flex-none px-2 py-1 text-[10px] bg-gray-700 hover:bg-gray-600 text-gray-300 rounded border border-gray-600"
+                      >
+                        null
+                      </button>
+                    </div>
+                  )}
+                </Cell>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
+                onClick={() => { setShowCrewModal(false); setEditingCrewIndex(null); }}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+                onClick={confirmCrew}
+              >
+                {editingCrewIndex !== null ? 'Save' : `Add ${Math.max(1, crewDraft.count)}`}
               </button>
             </div>
           </div>

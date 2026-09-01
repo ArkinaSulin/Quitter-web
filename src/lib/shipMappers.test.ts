@@ -111,7 +111,7 @@ describe('mapShipTemplateToRow', () => {
     const row = mapShipTemplateToRow({
       id: 'wasp', name: 'Wasp Ship', role: null, frameId: 'tiny', armorId: 'wood',
       atmosphereSpeed: 5, rudders: 2, sails: 6, lWeap: 0, sWeap: 1, hullR: 0,
-      bridge: 0, auxHelm: 0, extraCrew: 0, cargoArea: 8, accessories: [], weapons: [],
+      bridge: 0, auxHelm: 0, extraCrew: 0, cargoArea: 8, accessories: [], weapons: [], crews: [],
       createdAt: '', updatedAt: '',
     });
     expect(row.l_weap).toBe(0);

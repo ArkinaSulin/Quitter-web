@@ -11,6 +11,7 @@
 import {
   ShipAccessory,
   ShipArmor,
+  ShipCrew,
   ShipComponent,
   ShipFrame,
   ShipMount,
@@ -87,6 +88,22 @@ export function mapShipWeaponRow(row: any): ShipWeapon {
   };
 }
 
+/** Map a ship_crews row. */
+export function mapShipCrewRow(row: any): ShipCrew {
+  return {
+    id: row.id,
+    name: row.name || null,
+    level: Number(row.level) || 1,
+    str: Number(row.str) || 10,
+    dex: Number(row.dex) || 10,
+    con: Number(row.con) || 10,
+    int: Number(row.int) || 10,
+    wis: Number(row.wis) || 10,
+    cha: Number(row.cha) || 10,
+    cost: row.cost != null ? Number(row.cost) : null,
+  };
+}
+
 /** Map a ship_templates row (with its join tables embedded) to a ShipTemplate. */
 export function mapShipTemplateRow(row: any): ShipTemplate {
   return {
@@ -114,6 +131,7 @@ export function mapShipTemplateRow(row: any): ShipTemplate {
       mountSlot: w.mount_slot || '',
       count: Number(w.count) || 1,
     })),
+    crews: (row.ship_crews || []).map(mapShipCrewRow),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -153,4 +171,21 @@ export function mapWeaponRows(t: ShipTemplate) {
   return t.weapons
     .filter(w => w.count > 0)
     .map(w => ({ template_id: t.id, weapon_id: w.weaponId, mount_slot: w.mountSlot || null, count: w.count }));
+}
+
+/** ship_crews rows for a template (used to rewrite the roster). */
+export function mapCrewRows(t: ShipTemplate) {
+  return t.crews.map(c => ({
+    id: c.id,
+    template_id: t.id,
+    name: c.name || null,
+    level: c.level,
+    str: c.str,
+    dex: c.dex,
+    con: c.con,
+    int: c.int,
+    wis: c.wis,
+    cha: c.cha,
+    cost: c.cost != null ? c.cost : null,
+  }));
 }

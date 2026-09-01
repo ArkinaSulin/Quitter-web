@@ -80,6 +80,20 @@ export interface ShipTemplateWeapon {
   count: number;
 }
 
+/** A single crew member on a template (`ship_crews`). `name`/`cost` are optional (null). */
+export interface ShipCrew {
+  id: string;
+  name: string | null;
+  level: number;
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+  cost: number | null;
+}
+
 /** A built ship template (`ship_templates` + its two join tables). */
 export interface ShipTemplate {
   id: string;
@@ -101,6 +115,7 @@ export interface ShipTemplate {
   cargoArea: number;
   accessories: ShipTemplateAccessory[];
   weapons: ShipTemplateWeapon[];
+  crews: ShipCrew[];
   createdAt: string;
   updatedAt: string;
 }

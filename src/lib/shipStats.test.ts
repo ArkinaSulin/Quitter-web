@@ -22,18 +22,23 @@ import {
   computeCrewQuartersTons,
   computeDeckUsed,
   computeEmptyMass,
+  computeFill,
   computeGearMass,
-  computeMCAtSpeed,
+  computeMC,
   computeMCBand,
-  computeMCParams,
+  computeMCParts,
+  computeOfficerActions,
   computePools,
   computeShipBuild,
   computeShipHp,
+  computeTEMax,
+  computeTurningEfficiency,
   computeUnclaimedSpace,
+  computeUStar,
+  computeWidth,
   SAIL_THRUST,
   SHIP_DT,
   ShipBuild,
-  turnsPerGameTurn,
 } from '@/lib/shipStats';
 
 // --- 067 seed fixtures ------------------------------------------------------
@@ -251,64 +256,90 @@ describe('box HP & pools', () => {
   });
 });
 
-describe('MC band', () => {
-  it('Wasp unladen has the 4-premium at speed 8 and a 2-band 4..12', () => {
-    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
-    const band = computeMCBand(b, computeEmptyMass(b)); // unladen 22
-    expect(band.map(x => x.mc)).toEqual([1, 1, 1, 2, 2, 2, 2, 4, 2, 2, 2, 2]);
+describe('MC / TE (parabola)', () => {
+  it('fill = rudder count ÷ frame mass capacity (tons)', () => {
+    expect(computeFill(2, 35)).toBeCloseTo(0.0571, 3);  // Wasp / Tiny
+    expect(computeFill(3, 55)).toBeCloseTo(0.0545, 3);  // Damselfly / Small
+    expect(computeFill(2, 100)).toBeCloseTo(0.02, 3);   // Galleon / Large
   });
 
-  it('Wasp laden loses the 4-premium and the band narrows (load taxes maneuver)', () => {
+  it('u* favors tiny/small (fill 1.0-equivalent) and heavy laden ships sit back', () => {
+    const wasp = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
+    expect(computeUStar(wasp, computeEmptyMass(wasp))).toBe(0.6); // clamped: tiny edge
+
+    const fast = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 4, sails: 12, lWeap: 1, sWeap: 4, extraCrew: 5 });
+    expect(computeUStar(fast, 62)).toBeCloseTo(0.581, 3);
+
+    const galleon = buildBase({ frameId: 'large', armorId: 'wood', rudders: 2, sails: 3, lWeap: 1, sWeap: 2, extraCrew: 4, cargoArea: 70 });
+    expect(computeUStar(galleon, 93)).toBeCloseTo(0.392, 3);
+  });
+
+  it('width grows with rudders; TE_max shrinks with mass', () => {
+    expect(computeWidth(2)).toBeCloseTo(0.5, 10);
+    expect(computeWidth(4)).toBeCloseTo(0.6, 10);
+    expect(computeTEMax(22)).toBe(3.0);
+    expect(computeTEMax(93)).toBeCloseTo(1.196, 3);
+  });
+
+  it('Wasp empty: MC band + TE band', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
+    const band = computeMCBand(b, computeEmptyMass(b)); // 22
+    expect(band.map(x => x.mc)).toEqual([2, 3, 2, 2, 2, 2, 2, 3, 3, 4, 6, 11]);
+    expect(band.map(x => x.te)).toEqual([0.5, 0.7, 1.5, 2, 2.5, 3, 3.5, 2.7, 3, 2.5, 1.8, 1.1]);
+  });
+
+  it('Wasp laden: load taxes maneuver (MC up, TE down)', () => {
     const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, cargoArea: 8 });
-    const band = computeMCBand(b, computeEmptyMass(b) + 8); // laden 30
-    expect(band.map(x => x.mc)).toEqual([1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 1, 1]);
+    const band = computeMCBand(b, computeEmptyMass(b) + 8); // 30
+    expect(band.map(x => x.mc)).toEqual([2, 3, 2, 2, 2, 2, 3, 3, 4, 5, 7, 13]);
+    expect(band.map(x => x.te)).toEqual([0.5, 0.7, 1.5, 2, 2.5, 3, 2.3, 2.7, 2.3, 2, 1.6, 0.9]);
   });
 
-  it('Scorpion (heavy armor, 3 rudders, laden 55) peaks at 2 — no 3-band', () => {
-    const b = buildBase({ frameId: 'small', armorId: 'metal', rudders: 3, sails: 2, lWeap: 1, sWeap: 1, extraCrew: 5, cargoArea: 10, accessories: [acc('scorpion_claws')] });
-    const band = computeMCBand(b, computeEmptyMass(b) + 10);
-    expect(band.map(x => x.mc)).toEqual([1, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1]);
-    expect(band.every(x => x.mc <= 2)).toBe(true);
+  it('Fast Lamprey (4 rudders) keeps a wide mid–top band', () => {
+    const b = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 4, sails: 12, lWeap: 1, sWeap: 4, extraCrew: 5 });
+    const band = computeMCBand(b, 62);
+    expect(band.map(x => x.mc)).toEqual([2, 2, 2, 3, 3, 4, 5, 6, 8, 12]);
   });
 
-  it('Shrike (3 rudders, light) reaches a 3-band', () => {
-    const b = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 3, sails: 11, lWeap: 0, sWeap: 3, extraCrew: -1, cargoArea: 20 });
-    const band = computeMCBand(b, computeEmptyMass(b)); // 39
-    expect(band.some(x => x.mc === 3)).toBe(true);
+  it('Heavy laden Galleon can barely turn at top (TE floor 0.5)', () => {
+    const b = buildBase({ frameId: 'large', armorId: 'wood', rudders: 2, sails: 3, lWeap: 1, sWeap: 2, extraCrew: 4, cargoArea: 70 });
+    const band = computeMCBand(b, 93);
+    expect(band.map(x => x.mc)).toEqual([1, 2, 3, 3, 5, 7, 14, 16, 18]);
+    expect(band[8].te).toBe(0.5);
   });
 
-  it('MC at a speed is environment-independent (uses frame TopSpeed)', () => {
+  it('computeMC at a single speed', () => {
     const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
-    // same mass/band regardless of which cap the environment picks
-    expect(computeMCAtSpeed(b, 8, 22)).toBe(computeMCAtSpeed(b, 8, 22));
+    expect(computeMC(b, 7, 22)).toBe(2);
+    expect(computeMC(b, 12, 22)).toBe(11);
   });
 });
 
-describe('MC params', () => {
-  it('Wasp unladen (mass 22): tier 0, center 8, W 2, peak 2', () => {
-    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
-    const p = computeMCParams(b, computeEmptyMass(b));
-    expect(p).toMatchObject({ mass: 22, tier: 0, center: 8, W: 2, peak: 2 });
-  });
-
-  it('Wasp laden (mass 30): load shifts center down to 7 and narrows W to 1', () => {
-    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, cargoArea: 8 });
-    const p = computeMCParams(b, computeEmptyMass(b) + 8);
-    expect(p).toMatchObject({ mass: 30, tier: 1, center: 7, W: 1, peak: 2 });
-  });
-});
-
-describe('60°/turn', () => {
+describe('Turning Efficiency', () => {
   it('speed ÷ MC rounded to 1 decimal', () => {
-    expect(turnsPerGameTurn(8, 4)).toBe(2.0);
-    expect(turnsPerGameTurn(12, 2)).toBe(6.0);
-    expect(turnsPerGameTurn(3, 1)).toBe(3.0);
-    expect(turnsPerGameTurn(5, 3)).toBe(1.7); // 1.6667 -> 1.7
-    expect(turnsPerGameTurn(4, 3)).toBe(1.3); // 1.333 -> 1.3
+    expect(computeTurningEfficiency(8, 4)).toBe(2.0);
+    expect(computeTurningEfficiency(12, 2)).toBe(6.0);
+    expect(computeTurningEfficiency(3, 1)).toBe(3.0);
+    expect(computeTurningEfficiency(5, 3)).toBe(1.7); // 1.6667 -> 1.7
+    expect(computeTurningEfficiency(4, 3)).toBe(1.3); // 1.333 -> 1.3
   });
 
   it('guards mc <= 0', () => {
-    expect(turnsPerGameTurn(6, 0)).toBe(0);
+    expect(computeTurningEfficiency(6, 0)).toBe(0);
+  });
+});
+
+describe('Officer actions', () => {
+  it('no bridge: max(1, helmsman Int mod)', () => {
+    expect(computeOfficerActions(0, 0)).toBe(1);
+    expect(computeOfficerActions(0, 4)).toBe(4);
+    expect(computeOfficerActions(0, -2)).toBe(1);
+  });
+
+  it('with bridge: max(4, 4 + captain Int mod)', () => {
+    expect(computeOfficerActions(1, 0, 0)).toBe(4);
+    expect(computeOfficerActions(1, 0, 5)).toBe(9);
+    expect(computeOfficerActions(2, 0, -3)).toBe(4);
   });
 });
 
@@ -369,5 +400,6 @@ describe('computeShipBuild aggregate', () => {
     expect(s.deckUsed).toBe(12);
     expect(s.deckSpace).toBe(10);
     expect(s.buildCost).toBe(25000);
+    expect(s.officerActions).toBe(1); // no bridge -> max(1, 0)
   });
 });
