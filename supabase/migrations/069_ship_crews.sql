@@ -29,3 +29,5 @@ DROP POLICY IF EXISTS ship_crews_update ON ship_crews;
 CREATE POLICY ship_crews_update ON ship_crews FOR UPDATE TO authenticated USING (shipyard_write());
 DROP POLICY IF EXISTS ship_crews_delete ON ship_crews;
 CREATE POLICY ship_crews_delete ON ship_crews FOR DELETE TO authenticated USING (shipyard_write());
+
+NOTIFY pgrst, 'reload schema';

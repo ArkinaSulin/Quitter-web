@@ -120,7 +120,7 @@ export function mapShipTemplateRow(row: any): ShipTemplate {
     hullR: Number(row.hull_r) || 0,
     bridge: Number(row.bridge) || 0,
     auxHelm: Number(row.aux_helm) || 0,
-    crewCount: Number(row.crew_count) || 0,
+    crewCount: Number(row.crew_count ?? row.extra_crew) || 0,
     cargoArea: Number(row.cargo_area) || 0,
     accessories: (row.ship_template_accessories || []).map((a: any) => ({
       accessoryId: a.accessory_id,

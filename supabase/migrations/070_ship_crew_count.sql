@@ -5,3 +5,8 @@
 -- at crew_count.
 
 ALTER TABLE ship_templates RENAME COLUMN extra_crew TO crew_count;
+
+-- RENAME COLUMN doesn't always invalidate the PostgREST schema cache, which would
+-- make the app fail with "Could not find the 'crew_count' column ... in the schema
+-- cache". Force a reload so the new column is visible immediately.
+NOTIFY pgrst, 'reload schema';
