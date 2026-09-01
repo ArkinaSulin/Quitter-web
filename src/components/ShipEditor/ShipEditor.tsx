@@ -95,7 +95,7 @@ function StatCell({ label, children, tone = 'default' }: { label: string; childr
   return (
     <div className="min-w-0">
       <label className="block text-[9px] text-gray-500 truncate">{label}</label>
-      <div className={`text-sm font-bold ${color}`}>{children}</div>
+      <div className={`text-sm font-bold truncate ${color}`}>{children}</div>
     </div>
   );
 }
@@ -852,19 +852,19 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                   {/* Stat */}
                   {stats && build && (
                     <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                      <div className="grid grid-cols-4 gap-1">
                         <StatCell label="Armor Class">{selectedArmor?.ac ?? '—'}</StatCell>
                         <StatCell label="Hull HP">{stats.shipHp}</StatCell>
                         <StatCell label="Damage Threshold">{stats.dt}</StatCell>
                         <StatCell label="Officer actions / game turn">{stats.officerActions}</StatCell>
                       </div>
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-2">
+                      <div className="grid grid-cols-4 gap-1 mt-2">
                         <StatCell label="Mass">{Math.round(stats.ladenMass)}t</StatCell>
                         <StatCell label="Cargo">{cargoClamped}t</StatCell>
                         <StatCell label="Reserve mass">{Math.max(0, Math.round(stats.unclaimedSpace))}t</StatCell>
                         <StatCell label="Deck used / max" tone={deckOverload ? 'red' : 'default'}>{Math.round(stats.deckUsed)} / {stats.deckSpace}</StatCell>
                       </div>
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-2">
+                      <div className="grid grid-cols-4 gap-1 mt-2">
                         <StatCell label="Current crew / Minimum crew">{formData.crewCount} / {stats.minCrew}</StatCell>
                         <StatCell label="Crew quarters">{stats.crewQuarters}</StatCell>
                         <StatCell label="Build cost">{stats.buildCost.toLocaleString()}gp</StatCell>
@@ -1016,7 +1016,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                   {/* Components */}
                   <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
                     <label className="block text-[10px] text-gray-400 mb-2">Components (counts drive mass, deck, crew, pools)</label>
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-2">
+                    <div className="grid grid-cols-4 gap-x-2 gap-y-2">
                       <Cell label="Auxiliary helm"><NumInput value={formData.auxHelm} min={0} max={2} onChange={(v) => updateFormData('auxHelm', Math.max(0, Math.min(2, Math.floor(v))))} /></Cell>
                       <Cell label="Command bridge"><NumInput value={formData.bridge} min={0} max={2} onChange={(v) => updateFormData('bridge', Math.max(0, Math.min(2, Math.floor(v))))} /></Cell>
                       <Cell label="Sail"><NumInput value={formData.sails} min={0} max={99} onChange={(v) => updateFormData('sails', Math.max(0, Math.floor(v)))} /></Cell>
