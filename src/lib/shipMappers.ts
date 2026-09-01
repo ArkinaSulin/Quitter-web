@@ -120,7 +120,7 @@ export function mapShipTemplateRow(row: any): ShipTemplate {
     hullR: Number(row.hull_r) || 0,
     bridge: Number(row.bridge) || 0,
     auxHelm: Number(row.aux_helm) || 0,
-    extraCrew: Number(row.extra_crew) || 0,
+    crewCount: Number(row.crew_count) || 0,
     cargoArea: Number(row.cargo_area) || 0,
     accessories: (row.ship_template_accessories || []).map((a: any) => ({
       accessoryId: a.accessory_id,
@@ -153,7 +153,7 @@ export function mapShipTemplateToRow(t: ShipTemplate) {
     hull_r: t.hullR,
     bridge: t.bridge,
     aux_helm: t.auxHelm,
-    extra_crew: t.extraCrew,
+    crew_count: t.crewCount,
     cargo_area: t.cargoArea,
     updated_at: new Date().toISOString(),
   };

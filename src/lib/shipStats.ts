@@ -81,15 +81,25 @@ export interface ShipBuild {
   hullR: number;
   bridge: number;
   auxHelm: number;
-  extraCrew: number;
+  crewCount: number;
   cargoArea: number;
   templateAccessories: ShipTemplateAccessory[];
   templateWeapons: ShipTemplateWeapon[];
 }
 
 // --- Crew -------------------------------------------------------------------
+//
+// `crew_count` (Components box "Crew") = the ship's crew complement — CURRENT crew on
+// board. Minimum crew = the Σ of component/accessory crew requirements needed to
+// operate the ship (whole number, rounded up). Quarters house the current crew.
 
+/** Current crew on board = the `crew_count` complement set in the Components box. */
 export function computeCrew(build: ShipBuild): number {
+  return build.crewCount;
+}
+
+/** Σ component + accessory crew requirements (excludes the crew_count complement). */
+export function computeComponentCrew(build: ShipBuild): number {
   const c = build.components;
   const helm = componentById(c, COMPONENT_IDS.helmBridge);
   const aux = componentById(c, COMPONENT_IDS.auxHelm);
@@ -110,9 +120,13 @@ export function computeCrew(build: ShipBuild): number {
     build.lWeap * lw.crew +
     build.sWeap * sw.crew +
     build.bridge * bridge.crew +
-    build.extraCrew +
     accessoryCrew
   );
+}
+
+/** Minimum crew to operate the ship — a whole number (0.5 sums round up). */
+export function computeMinCrew(build: ShipBuild): number {
+  return Math.ceil(computeComponentCrew(build));
 }
 
 export function computeCrewQuartersTons(crew: number): number {
@@ -465,6 +479,7 @@ export function computeBuildCost(build: ShipBuild): number {
 
 export interface ShipDerivedStats {
   crew: number;
+  minCrew: number;
   crewQuarters: number;
   armorMass: number;
   gearMass: number;
@@ -491,6 +506,7 @@ export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
   const ladenMass = computeLadenMass(build, Math.max(0, build.cargoArea));
   return {
     crew: computeCrew(build),
+    minCrew: computeMinCrew(build),
     crewQuarters: computeCrewQuartersTons(computeCrew(build)),
     armorMass: computeArmorMass(build.frame, build.armor),
     gearMass: computeGearMass(build),

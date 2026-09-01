@@ -94,13 +94,13 @@ describe('mapShipTemplateRow', () => {
     const t = mapShipTemplateRow({
       id: 'wasp', name: 'Wasp Ship', role: 'Shuttle', frame_id: 'tiny', armor_id: 'wood',
       atmosphere_speed: 5, rudders: 2, sails: 6, l_weap: 0, s_weap: 1, hull_r: 0,
-      bridge: 0, aux_helm: 0, extra_crew: '0', cargo_area: 8,
+      bridge: 0, aux_helm: 0, crew_count: '0', cargo_area: 8,
       ship_template_accessories: [{ accessory_id: 'ram', count: 1 }],
       ship_template_weapons: [{ weapon_id: 'ballista_light', mount_slot: 'Fore', count: 2 }],
     });
     expect(t.frameId).toBe('tiny');
     expect(t.sails).toBe(6);
-    expect(t.extraCrew).toBe(0);
+    expect(t.crewCount).toBe(0);
     expect(t.accessories).toEqual([{ accessoryId: 'ram', count: 1 }]);
     expect(t.weapons).toEqual([{ weaponId: 'ballista_light', mountSlot: 'Fore', count: 2 }]);
   });
@@ -111,7 +111,7 @@ describe('mapShipTemplateToRow', () => {
     const row = mapShipTemplateToRow({
       id: 'wasp', name: 'Wasp Ship', role: null, frameId: 'tiny', armorId: 'wood',
       atmosphereSpeed: 5, rudders: 2, sails: 6, lWeap: 0, sWeap: 1, hullR: 0,
-      bridge: 0, auxHelm: 0, extraCrew: 0, cargoArea: 8, accessories: [], weapons: [], crews: [],
+      bridge: 0, auxHelm: 0, crewCount: 0, cargoArea: 8, accessories: [], weapons: [], crews: [],
       createdAt: '', updatedAt: '',
     });
     expect(row.l_weap).toBe(0);

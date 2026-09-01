@@ -27,6 +27,7 @@ import {
   computeMC,
   computeMCBand,
   computeMCParts,
+  computeMinCrew,
   computeOfficerActions,
   computePools,
   computeShipBuild,
@@ -100,7 +101,7 @@ const acc = (id: string): ShipTemplateAccessory => ({ accessoryId: id, count: 1 
 
 function buildBase(opts: {
   frameId: string; armorId: string; rudders: number; sails: number; lWeap: number; sWeap: number;
-  hullR?: number; bridge?: number; auxHelm?: number; extraCrew?: number; cargoArea?: number;
+  hullR?: number; bridge?: number; auxHelm?: number; crewCount?: number; cargoArea?: number;
   atmosphereSpeed?: number; accessories?: ShipTemplateAccessory[];
 }): ShipBuild {
   return {
@@ -117,7 +118,7 @@ function buildBase(opts: {
     hullR: opts.hullR ?? 0,
     bridge: opts.bridge ?? 0,
     auxHelm: opts.auxHelm ?? 0,
-    extraCrew: opts.extraCrew ?? 0,
+    crewCount: opts.crewCount ?? 0,
     cargoArea: opts.cargoArea ?? 0,
     templateAccessories: opts.accessories ?? [],
     templateWeapons: [],
@@ -125,52 +126,56 @@ function buildBase(opts: {
 }
 
 describe('ship mass / space', () => {
-  it('Wasp (Tiny/Wood, 2R/6S/0L/1S, cargo 8): mass 22, avail 13, unclaimed 5', () => {
+  it('Wasp (Tiny/Wood, 2R/6S/0L/1S, cargo 8, crew 0): mass 20, avail 15, unclaimed 7', () => {
     const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, cargoArea: 8, atmosphereSpeed: 5 });
-    expect(computeGearMass(b)).toBe(22);
-    expect(computeEmptyMass(b)).toBe(22);
-    expect(computeAvailableSpace(b)).toBe(13);
-    expect(computeUnclaimedSpace(b)).toBe(5);
+    expect(computeGearMass(b)).toBe(20);
+    expect(computeEmptyMass(b)).toBe(20);
+    expect(computeAvailableSpace(b)).toBe(15);
+    expect(computeUnclaimedSpace(b)).toBe(7);
   });
 
   it('Damselfly (Small/Plated): armor eats 11 t of capacity', () => {
-    const b = buildBase({ frameId: 'small', armorId: 'plated', rudders: 3, sails: 8, lWeap: 1, sWeap: 1, extraCrew: 2, bridge: 1, cargoArea: 5, atmosphereSpeed: 7 });
-    expect(computeEmptyMass(b)).toBe(46); // armor 11 + gear 35
-    expect(computeAvailableSpace(b)).toBe(9);
-    expect(computeUnclaimedSpace(b)).toBe(4);
+    const b = buildBase({ frameId: 'small', armorId: 'plated', rudders: 3, sails: 8, lWeap: 1, sWeap: 1, crewCount: 2, bridge: 1, cargoArea: 5, atmosphereSpeed: 7 });
+    expect(computeEmptyMass(b)).toBe(44); // armor 11 + gear 33
+    expect(computeAvailableSpace(b)).toBe(11);
+    expect(computeUnclaimedSpace(b)).toBe(6);
   });
 
-  it('Scorpion (Small/Metal): heavy armor eats 22 t, cargo 10 -> unclaimed 0', () => {
-    const b = buildBase({ frameId: 'small', armorId: 'metal', rudders: 3, sails: 2, lWeap: 1, sWeap: 1, extraCrew: 5, cargoArea: 10, atmosphereSpeed: 3, accessories: [acc('scorpion_claws')] });
-    expect(computeEmptyMass(b)).toBe(45);
-    expect(computeAvailableSpace(b)).toBe(10);
-    expect(computeUnclaimedSpace(b)).toBe(0);
+  it('Scorpion (Small/Metal): heavy armor eats 22 t, cargo 10 -> unclaimed 2', () => {
+    const b = buildBase({ frameId: 'small', armorId: 'metal', rudders: 3, sails: 2, lWeap: 1, sWeap: 1, crewCount: 5, cargoArea: 10, atmosphereSpeed: 3, accessories: [acc('scorpion_claws')] });
+    expect(computeEmptyMass(b)).toBe(43);
+    expect(computeAvailableSpace(b)).toBe(12);
+    expect(computeUnclaimedSpace(b)).toBe(2);
   });
 });
 
 describe('crew & quarters', () => {
-  it('Wasp: 7 crew -> 2 quarters tons', () => {
-    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
+  it('Wasp: crew_count 7 is the current crew; quarters ceil(7/5) = 2; min crew 7', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, crewCount: 7 });
     expect(computeCrew(b)).toBe(7);
     expect(computeCrewQuartersTons(computeCrew(b))).toBe(2);
+    expect(computeMinCrew(b)).toBe(7);
   });
 
-  it('Damselfly: 14 crew (incl. bridge + extra) -> 3 tons', () => {
-    const b = buildBase({ frameId: 'small', armorId: 'plated', rudders: 3, sails: 8, lWeap: 1, sWeap: 1, extraCrew: 2, bridge: 1 });
-    expect(computeCrew(b)).toBe(14);
-    expect(computeCrewQuartersTons(computeCrew(b))).toBe(3);
+  it('Damselfly: crew_count 2 -> quarters 1; min crew 12 (incl. bridge)', () => {
+    const b = buildBase({ frameId: 'small', armorId: 'plated', rudders: 3, sails: 8, lWeap: 1, sWeap: 1, crewCount: 2, bridge: 1 });
+    expect(computeCrew(b)).toBe(2);
+    expect(computeCrewQuartersTons(computeCrew(b))).toBe(1);
+    expect(computeMinCrew(b)).toBe(12);
   });
 
-  it('Lamprey: fractional sail crew 17.5 -> ceil 4 tons', () => {
-    const b = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 3, sails: 9, lWeap: 0, sWeap: 4, hullR: 10, extraCrew: 5, cargoArea: 6, accessories: [acc('grappling_jaws')] });
-    expect(computeCrew(b)).toBeCloseTo(17.5);
-    expect(computeCrewQuartersTons(computeCrew(b))).toBe(4);
+  it('Lamprey: fractional component crew 12.5 rounds min crew up to 13', () => {
+    const b = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 3, sails: 9, lWeap: 0, sWeap: 4, hullR: 10, crewCount: 5, cargoArea: 6, accessories: [acc('grappling_jaws')] });
+    expect(computeCrew(b)).toBe(5);          // current = crew_count
+    expect(computeCrewQuartersTons(computeCrew(b))).toBe(1);
+    expect(computeMinCrew(b)).toBe(13);      // ceil(12.5)
   });
 
-  it('Bombard: 16 crew (bridge + extra + s-weapons) -> 4 tons', () => {
-    const b = buildBase({ frameId: 'large', armorId: 'wood', rudders: 3, sails: 8, lWeap: 0, sWeap: 2, extraCrew: 4, bridge: 1, cargoArea: 15, accessories: [acc('bombard_mount'), { accessoryId: 'magazine', count: 2 }] });
-    expect(computeCrew(b)).toBe(16);
-    expect(computeCrewQuartersTons(computeCrew(b))).toBe(4);
+  it('Bombard: crew_count 4 -> quarters 1; min crew 12', () => {
+    const b = buildBase({ frameId: 'large', armorId: 'wood', rudders: 3, sails: 8, lWeap: 0, sWeap: 2, crewCount: 4, bridge: 1, cargoArea: 15, accessories: [acc('bombard_mount'), { accessoryId: 'magazine', count: 2 }] });
+    expect(computeCrew(b)).toBe(4);
+    expect(computeCrewQuartersTons(computeCrew(b))).toBe(1);
+    expect(computeMinCrew(b)).toBe(12);
   });
 });
 
@@ -178,15 +183,15 @@ describe('accel', () => {
   it('Accel = 18 x sails / mass (round)', () => {
     const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, cargoArea: 8 });
     expect(SAIL_THRUST).toBe(18);
-    expect(computeAccel(b, computeEmptyMass(b))).toBe(5);       // 108/22 = 4.9
-    expect(computeAccel(b, computeEmptyMass(b) + 8)).toBe(4);   // laden 108/30 = 3.6
+    expect(computeAccel(b, computeEmptyMass(b))).toBe(5);       // 108/20 = 5.4
+    expect(computeAccel(b, computeEmptyMass(b) + 8)).toBe(4);   // laden 108/28 = 3.9
   });
 
   it('Bombard (laden) crawls: 2', () => {
-    const b = buildBase({ frameId: 'large', armorId: 'wood', rudders: 3, sails: 8, lWeap: 0, sWeap: 2, extraCrew: 4, bridge: 1, cargoArea: 15, accessories: [acc('bombard_mount'), { accessoryId: 'magazine', count: 2 }] });
-    expect(computeEmptyMass(b)).toBe(78);
-    expect(computeAccel(b, 78)).toBe(2);
-    expect(computeAccel(b, 93)).toBe(2);
+    const b = buildBase({ frameId: 'large', armorId: 'wood', rudders: 3, sails: 8, lWeap: 0, sWeap: 2, crewCount: 4, bridge: 1, cargoArea: 15, accessories: [acc('bombard_mount'), { accessoryId: 'magazine', count: 2 }] });
+    expect(computeEmptyMass(b)).toBe(75);
+    expect(computeAccel(b, 75)).toBe(2);
+    expect(computeAccel(b, 90)).toBe(2);
   });
 });
 
@@ -228,13 +233,13 @@ describe('box HP & pools', () => {
     expect(p.lWeap).toBe(0);
     expect(p.sWeap).toBe(10);
     expect(p.cargo).toBe(40);
-    expect(p.unclaimed).toBe(25);
-    expect(p.crewQuarters).toBe(10);
+    expect(p.unclaimed).toBe(35);
+    expect(p.crewQuarters).toBe(0);
     expect(p.total).toBe(175);
   });
 
   it('Lamprey: hullR 10 reinforces Helm, Rudder and S.Weap pools', () => {
-    const b = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 3, sails: 9, lWeap: 0, sWeap: 4, hullR: 10, extraCrew: 5, cargoArea: 6, accessories: [acc('grappling_jaws')] });
+    const b = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 3, sails: 9, lWeap: 0, sWeap: 4, hullR: 10, crewCount: 5, cargoArea: 6, accessories: [acc('grappling_jaws')] });
     const p = computePools(b);
     expect(p.helm).toBe(20);      // 2 x 5 x 2 (reinforced #1)
     expect(p.sails).toBe(90);     // never reinforced
@@ -242,12 +247,13 @@ describe('box HP & pools', () => {
     expect(p.sWeap).toBe(80);     // 10 x 4 x 2 (reinforced #6)
     expect(p.accessories).toBe(10); // jaws 2t x 5
     expect(p.cargo).toBe(30);
-    expect(p.unclaimed).toBe(120); // 24 unclaimed x 5
+    expect(p.unclaimed).toBe(135); // 27 unclaimed x 5
+    expect(p.crewQuarters).toBe(5); // crew_count 5 -> 1 ton x 5
     expect(p.total).toBe(430);
   });
 
   it('Scorpion: small-anchor special = 10, not mass x boxHP', () => {
-    const b = buildBase({ frameId: 'small', armorId: 'metal', rudders: 3, sails: 2, lWeap: 1, sWeap: 1, extraCrew: 5, cargoArea: 10, accessories: [acc('scorpion_claws')] });
+    const b = buildBase({ frameId: 'small', armorId: 'metal', rudders: 3, sails: 2, lWeap: 1, sWeap: 1, crewCount: 5, cargoArea: 10, accessories: [acc('scorpion_claws')] });
     const p = computePools(b);
     expect(p.accessories).toBe(10); // small anchor, NOT 2 x 7 = 14
     expect(p.lWeap).toBe(20);
@@ -267,10 +273,10 @@ describe('MC / TE (parabola)', () => {
     const wasp = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
     expect(computeUStar(wasp, computeEmptyMass(wasp))).toBe(0.6); // clamped: tiny edge
 
-    const fast = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 4, sails: 12, lWeap: 1, sWeap: 4, extraCrew: 5 });
+    const fast = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 4, sails: 12, lWeap: 1, sWeap: 4, crewCount: 5 });
     expect(computeUStar(fast, 62)).toBeCloseTo(0.581, 3);
 
-    const galleon = buildBase({ frameId: 'large', armorId: 'wood', rudders: 2, sails: 3, lWeap: 1, sWeap: 2, extraCrew: 4, cargoArea: 70 });
+    const galleon = buildBase({ frameId: 'large', armorId: 'wood', rudders: 2, sails: 3, lWeap: 1, sWeap: 2, crewCount: 4, cargoArea: 70 });
     expect(computeUStar(galleon, 93)).toBeCloseTo(0.392, 3);
   });
 
@@ -283,26 +289,26 @@ describe('MC / TE (parabola)', () => {
 
   it('Wasp empty: MC band + TE band', () => {
     const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
-    const band = computeMCBand(b, computeEmptyMass(b)); // 22
+    const band = computeMCBand(b, computeEmptyMass(b)); // 20 (crew 0)
     expect(band.map(x => x.mc)).toEqual([2, 3, 2, 2, 2, 2, 2, 3, 3, 4, 6, 11]);
     expect(band.map(x => x.te)).toEqual([0.5, 0.7, 1.5, 2, 2.5, 3, 3.5, 2.7, 3, 2.5, 1.8, 1.1]);
   });
 
   it('Wasp laden: load taxes maneuver (MC up, TE down)', () => {
     const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, cargoArea: 8 });
-    const band = computeMCBand(b, computeEmptyMass(b) + 8); // 30
-    expect(band.map(x => x.mc)).toEqual([2, 3, 2, 2, 2, 2, 3, 3, 4, 5, 7, 13]);
-    expect(band.map(x => x.te)).toEqual([0.5, 0.7, 1.5, 2, 2.5, 3, 2.3, 2.7, 2.3, 2, 1.6, 0.9]);
+    const band = computeMCBand(b, computeEmptyMass(b) + 8); // 28
+    expect(band.map(x => x.mc)).toEqual([2, 3, 2, 2, 2, 2, 3, 3, 4, 5, 7, 12]);
+    expect(band.map(x => x.te)).toEqual([0.5, 0.7, 1.5, 2, 2.5, 3, 2.3, 2.7, 2.3, 2, 1.6, 1.0]);
   });
 
   it('Fast Lamprey (4 rudders) keeps a wide mid–top band', () => {
-    const b = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 4, sails: 12, lWeap: 1, sWeap: 4, extraCrew: 5 });
+    const b = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 4, sails: 12, lWeap: 1, sWeap: 4, crewCount: 5 });
     const band = computeMCBand(b, 62);
     expect(band.map(x => x.mc)).toEqual([2, 2, 2, 3, 3, 4, 5, 6, 8, 12]);
   });
 
   it('Heavy laden Galleon can barely turn at top (TE floor 0.5)', () => {
-    const b = buildBase({ frameId: 'large', armorId: 'wood', rudders: 2, sails: 3, lWeap: 1, sWeap: 2, extraCrew: 4, cargoArea: 70 });
+    const b = buildBase({ frameId: 'large', armorId: 'wood', rudders: 2, sails: 3, lWeap: 1, sWeap: 2, crewCount: 4, cargoArea: 70 });
     const band = computeMCBand(b, 93);
     expect(band.map(x => x.mc)).toEqual([1, 2, 3, 3, 5, 7, 14, 16, 18]);
     expect(band[8].te).toBe(0.5);
@@ -344,16 +350,15 @@ describe('Officer actions', () => {
 });
 
 describe('deck', () => {
-  it('Damselfly fits its deck: 27 of 30', () => {
-    const b = buildBase({ frameId: 'small', armorId: 'plated', rudders: 3, sails: 8, lWeap: 1, sWeap: 1, extraCrew: 2, bridge: 1, cargoArea: 5 });
-    expect(computeDeckUsed(b)).toBe(27);
+  it('Damselfly fits its deck: 25 of 30', () => {
+    const b = buildBase({ frameId: 'small', armorId: 'plated', rudders: 3, sails: 8, lWeap: 1, sWeap: 1, crewCount: 2, bridge: 1, cargoArea: 5 });
+    expect(computeDeckUsed(b)).toBe(25);
     expect(b.frame.deckSpace).toBe(30);
   });
 
-  it('Wasp overloads Tiny deck: 12 of 10 (soft penalty, shown red)', () => {
+  it('Wasp overloads Tiny deck: 10 of 10 (crew 0 -> no quarters deck)', () => {
     const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
-    expect(computeDeckUsed(b)).toBe(12);
-    expect(computeDeckUsed(b)).toBeGreaterThan(b.frame.deckSpace);
+    expect(computeDeckUsed(b)).toBe(10);
   });
 });
 
@@ -365,7 +370,7 @@ describe('cost', () => {
   });
 
   it('Damselfly: plated x2 frame + bridge + weapons catalog costs', () => {
-    const b = buildBase({ frameId: 'small', armorId: 'plated', rudders: 3, sails: 8, lWeap: 1, sWeap: 1, extraCrew: 2, bridge: 1, cargoArea: 5 });
+    const b = buildBase({ frameId: 'small', armorId: 'plated', rudders: 3, sails: 8, lWeap: 1, sWeap: 1, crewCount: 2, bridge: 1, cargoArea: 5 });
     // 30000 + (0 + 9000 + 16000 + 4000 + 2000 + 6000) = 67000; no weapon assignments
     expect(computeBuildCost(b)).toBe(67000);
   });
@@ -378,17 +383,18 @@ describe('cost', () => {
 });
 
 describe('computeShipBuild aggregate', () => {
-  it('Wasp: full readout matches the CSV columns', () => {
+  it('Wasp (crew 0): current crew 0, min crew 7, quarters 0', () => {
     const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, cargoArea: 8, atmosphereSpeed: 5 });
     const s = computeShipBuild(b);
-    expect(s.crew).toBe(7);
-    expect(s.crewQuarters).toBe(2);
+    expect(s.crew).toBe(0);
+    expect(s.minCrew).toBe(7);
+    expect(s.crewQuarters).toBe(0);
     expect(s.armorMass).toBe(0);
-    expect(s.gearMass).toBe(22);
-    expect(s.emptyMass).toBe(22);
-    expect(s.availableSpace).toBe(13);
-    expect(s.unclaimedSpace).toBe(5);
-    expect(s.ladenMass).toBe(30);
+    expect(s.gearMass).toBe(20);
+    expect(s.emptyMass).toBe(20);
+    expect(s.availableSpace).toBe(15);
+    expect(s.unclaimedSpace).toBe(7);
+    expect(s.ladenMass).toBe(28);
     expect(s.accelEmpty).toBe(5);
     expect(s.accelLaden).toBe(4);
     expect(s.topSpeed).toBe(12);
@@ -397,7 +403,7 @@ describe('computeShipBuild aggregate', () => {
     expect(s.dt).toBe(15);
     expect(s.boxHp).toBe(5);
     expect(s.pools.total).toBe(175);
-    expect(s.deckUsed).toBe(12);
+    expect(s.deckUsed).toBe(10);
     expect(s.deckSpace).toBe(10);
     expect(s.buildCost).toBe(25000);
     expect(s.officerActions).toBe(1); // no bridge -> max(1, 0)

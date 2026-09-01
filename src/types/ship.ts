@@ -110,7 +110,8 @@ export interface ShipTemplate {
   hullR: number;
   bridge: number;
   auxHelm: number;
-  extraCrew: number;
+  /** Crew complement (current crew on board) — set in the Components box. */
+  crewCount: number;
   /** Designated load (tons) — drives the laden readout. */
   cargoArea: number;
   accessories: ShipTemplateAccessory[];
