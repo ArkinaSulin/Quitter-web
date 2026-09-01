@@ -8,6 +8,7 @@ import { useCallback, useState } from 'react';
 import { Unit, AllianceGroup, Formation, SizeCategory, hexDistance } from '@/types/gameProtocol';
 import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/lib/formationRules';
+import { isProtectedHero } from '@/lib/unitInteractions';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
 import { getSetting } from '@/lib/settingsCache';
 import { unitAttackCap } from '@/lib/attackCap';
@@ -643,6 +644,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return;
+    // A hero attached BEHIND a unit is protected — it cannot be attacked in any
+    // way; the host unit must be engaged first.
+    if (isProtectedHero(target)) {
+      const host = target.attachedToUnitId ? units.find(u => u.id === target.attachedToUnitId && !u.isDeleted) : null;
+      addError(`${target.unitName} is protected behind ${host?.unitName ?? 'its unit'} — attack the unit first`);
+      return;
+    }
     if ((target.currentUnitHp ?? 0) <= 0) return;
     // A downed hero may be dragged for recovery, but cannot initiate attacks.
     if ((attacker.currentUnitHp ?? 0) <= 0) return;

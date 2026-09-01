@@ -289,6 +289,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     verboseCombat,
     execute,
     addMessage,
+    addError,
     unitMaxMP,
     flashRangeViolation,
   });

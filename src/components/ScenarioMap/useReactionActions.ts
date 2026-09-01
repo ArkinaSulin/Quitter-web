@@ -13,6 +13,7 @@ import { isRangedCapableWeapon, getReactionMoveBudget, findEligibleReactionArche
 import { parseWeapons } from '@/lib/weaponParser';
 import { applyHeroMoveCost, applyMoveCost, computeReachableMap, MovePathEntry } from '@/lib/moveCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout } from '@/lib/unitMorale';
+import { isProtectedHero } from '@/lib/unitInteractions';
 import { UnitChange, SubStep } from '@/lib/commandLog';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { computeOccupiedHexes } from './mapGeometry';
@@ -29,6 +30,7 @@ interface ReactionActionsDeps {
   verboseCombat: boolean;
   execute: ExecuteFn;
   addMessage: (msg: string) => void;
+  addError: (msg: string) => void;
   unitMaxMP: (unit: Unit) => number;
   flashRangeViolation: (hex: Hex) => void;
 }
@@ -45,6 +47,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     verboseCombat,
     execute,
     addMessage,
+    addError,
     unitMaxMP,
     flashRangeViolation,
   } = deps;
@@ -303,6 +306,11 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       addMessage('That target is hidden — cannot reaction-shoot');
       return;
     }
+    if (isProtectedHero(target)) {
+      const host = target.attachedToUnitId ? units.find(u => u.id === target.attachedToUnitId && !u.isDeleted) : null;
+      addError(`${target.unitName} is protected behind ${host?.unitName ?? 'its unit'} — cannot reaction-shoot the hero`);
+      return;
+    }
     if ((alliances[target.team] || 'friendly') === (alliances[archer.team] || 'friendly')) {
       addMessage(`${target.unitName} is not hostile — cannot reaction-shoot`);
       return;
@@ -315,7 +323,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       return;
     }
     await performReactionShot(archer, target);
-  }, [reactionMode, units, alliances, addMessage, performReactionShot]);
+  }, [reactionMode, units, alliances, addMessage, addError, performReactionShot]);
 
   const handleReactionMove = useCallback(async (unitId: string, targetHex: Hex) => {
     if (!reactionMode || unitId !== reactionMode.archer.id) return;

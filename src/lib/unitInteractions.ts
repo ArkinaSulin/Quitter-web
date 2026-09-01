@@ -14,3 +14,14 @@ export function isUnitInteractable(
 ): boolean {
   return !unit.isDeleted && !unit.attachedToUnitId && (unit.currentUnitHp > 0 || unit.isHero);
 }
+
+/**
+ * A hero attached BEHIND a unit is protected — it cannot be attacked in any way
+ * (the host unit must be engaged first). Front-attached heroes fight openly and
+ * share damage; back-attached heroes are shielded.
+ */
+export function isProtectedHero(
+  unit: Pick<Unit, 'isHero' | 'attachedToUnitId' | 'attachedPosition'>,
+): boolean {
+  return !!unit.isHero && !!unit.attachedToUnitId && unit.attachedPosition === 'back';
+}

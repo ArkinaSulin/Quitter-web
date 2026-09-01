@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isUnitInteractable } from './unitInteractions';
+import { isUnitInteractable, isProtectedHero } from './unitInteractions';
 
 const base = { isDeleted: false, attachedToUnitId: null, currentUnitHp: 10, isHero: false };
 
@@ -23,5 +23,23 @@ describe('isUnitInteractable', () => {
 
   it('attached units are not hit-testable', () => {
     expect(isUnitInteractable({ ...base, attachedToUnitId: 'host' })).toBe(false);
+  });
+});
+
+describe('isProtectedHero', () => {
+  it('a hero attached at the back is protected', () => {
+    expect(isProtectedHero({ isHero: true, attachedToUnitId: 'host', attachedPosition: 'back' })).toBe(true);
+  });
+
+  it('a front-attached hero is NOT protected (fights openly)', () => {
+    expect(isProtectedHero({ isHero: true, attachedToUnitId: 'host', attachedPosition: 'front' })).toBe(false);
+  });
+
+  it('an unattached hero is not protected', () => {
+    expect(isProtectedHero({ isHero: true, attachedToUnitId: null, attachedPosition: null })).toBe(false);
+  });
+
+  it('a regular unit (even behind another) is not a protected hero', () => {
+    expect(isProtectedHero({ isHero: false, attachedToUnitId: 'host', attachedPosition: 'back' })).toBe(false);
   });
 });
