@@ -15,14 +15,14 @@ import { unitAttackCap } from '@/lib/attackCap';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone } from '@/lib/unitMorale';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc } from '@/lib/meleeFallback';
-import { parseWeapons, Weapon } from '@/lib/weaponParser';
+import { parseWeapons, Weapon, isOffensiveWeapon } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow } from '@/lib/unitStats';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { computeOccupiedHexes } from './mapGeometry';
 import { ExecuteFn, routeUnit } from './routeUnit';
-import { PendingAttack, PendingAttackCap, PendingRetaliationCap, PendingChargeAttack, PendingChargeThrough } from './SoftEnforcementModals';
+import { PendingAttack, PendingAttackCap, PendingRetaliationCap, PendingChargeAttack, PendingChargeThrough, PendingCrossAlliance } from './SoftEnforcementModals';
 import { useMagicCast } from '@/hooks/useMagicCast';
 
 // A stashed attack resumes a previously-computed outcome (the retaliation-cap
@@ -51,7 +51,7 @@ interface CombatActionsDeps {
   magicCast: ReturnType<typeof useMagicCast>;
   playerId: string;
   playerName: string;
-  setAttachModal: (m: { hero: Unit; target: Unit } | null) => void;
+  setAttachModal: (m: { hero: Unit; target: Unit; canCast?: boolean } | null) => void;
 }
 
 export function useCombatActions(deps: CombatActionsDeps) {
@@ -79,6 +79,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingRetaliationCap, setPendingRetaliationCap] = useState<PendingRetaliationCap | null>(null);
   const [pendingChargeAttack, setPendingChargeAttack] = useState<PendingChargeAttack | null>(null);
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
+  const [pendingCrossAlliance, setPendingCrossAlliance] = useState<PendingCrossAlliance | null>(null);
 
   const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; stashed?: AttackStash }) => {
     if (overBudget) {
@@ -561,10 +562,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
   // A healing weapon (isHealing) recovers the target's HP instead of damaging it —
   // same dice mechanic as damage, capped at maxUnitHp. No combat sequence, AGR,
-  // retaliation, morale, or LoS requirement. The caller (handleAttackRequest)
-  // enforces the own-alliance rule before reaching here. Heals with the unit's FULL
-  // rank volley (same attack count as combat: rank capacity × weapon attacks), so
-  // a full-rank healer heals like a full-rank attacker strikes.
+  // retaliation, morale, or LoS requirement (healing never misses). The caller
+  // (handleAttackRequest) soft-gates cross-alliance healing before reaching here.
+  // Heals with the unit's FULL rank volley (same attack count as combat: rank
+  // capacity × weapon attacks), so a full-rank healer heals like a full-rank
+  // attacker strikes.
   const performHeal = useCallback(async (healer: Unit, target: Unit, weapon: Weapon) => {
     const rowCap = getRowCapacity(sizeCategories, healer.sizeCategory);
     const capMult = getFormationMultiplier(formationsMap, healer.currentFormation, 'attack_capacity_multiplier');
@@ -641,7 +643,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     await performChargeEnd(attacker, true);
   }, [units, formationsMap, performChargeEnd]);
 
-  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string) => {
+  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; allowCrossAlliance?: boolean }) => {
     const attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return;
@@ -655,62 +657,61 @@ export function useCombatActions(deps: CombatActionsDeps) {
     }
     if (!canControlUnit(attacker)) return;
 
-    const targetHasHero = units.some(u => u.attachedToUnitId === targetId && !u.isDeleted);
-    const canAttach = attacker.isHero && (attacker.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !target.isHero && !target.attachedToUnitId && !target.isDeleted && !target.hidden && !targetHasHero && attacker.team === target.team;
-    if (canAttach) {
-      setAttachModal({ hero: attacker, target });
-      return;
-    }
+    const attackerGroup = alliances[attacker.team] || 'friendly';
+    const targetGroup = alliances[target.team] || 'friendly';
+    const sameAlliance = attackerGroup === targetGroup;
+    const dist = hexDistance(attacker.hex, target.hex);
+    const isAdjacent = isAdjacentDistance(dist);
 
     const attackerWeapons = parseWeapons(attacker.weaponString || '');
     const weapon = attackerWeapons[attacker.activeWeaponIndex ?? 0];
+    const isSpellCaster = !!weapon && (weapon.magicDimension > 0 || weapon.isHealing);
+
+    // Attach chooser: a friendly hero adjacent to a same-team unit may attach. When
+    // it also holds a spell/heal weapon, offer "Cast spell" alongside the attach.
+    const targetHasHero = units.some(u => u.attachedToUnitId === targetId && !u.isDeleted);
+    const canAttach = !opts?.forceCast && attacker.isHero && (attacker.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !target.isHero && !target.attachedToUnitId && !target.isDeleted && !target.hidden && !targetHasHero && attacker.team === target.team && isAdjacent;
+    if (canAttach) {
+      setAttachModal({ hero: attacker, target, canCast: isSpellCaster });
+      return;
+    }
+
     if (!weapon) {
       addMessage(`${attacker.unitName} has no weapon to attack with`);
       return;
     }
-
-    const attackerGroup = alliances[attacker.team] || 'friendly';
-    const targetGroup = alliances[target.team] || 'friendly';
-    const sameAlliance = attackerGroup === targetGroup;
-
-    const dist = hexDistance(attacker.hex, target.hex);
     // Hard range cap: beyond maxRange is out of range (maxRange >= range).
     if (dist > weapon.maxRange) {
       flashRangeViolation(target.hex);
       addMessage(`${attacker.unitName} cannot reach ${target.unitName} — out of range (max ${weapon.maxRange} hexes)`);
       return;
     }
-    // Healing weapons recover HP instead of dealing damage — no combat, no AGR /
-    // retaliation / morale, and no LoS requirement, but they may only target units
-    // of the healer's OWN alliance (any team within it). Area heal spells
-    // (magicDimension > 0) flow through the magic cast window instead.
-    if (weapon.isHealing && weapon.magicDimension <= 0) {
-      if (!sameAlliance) {
-        addError(`${attacker.unitName} can only heal units of their own alliance`);
-        return;
-      }
-      await performHeal(attacker, target, weapon);
+
+    // ONE cross-alliance soft gate: offensive weapons target enemies by default,
+    // healing targets allies by default; the reverse direction (friendly fire /
+    // healing an enemy) is a soft confirm — anyone can attack (or heal) anyone.
+    const isOffensive = isOffensiveWeapon(weapon);
+    const targetMismatch = isOffensive ? sameAlliance : !sameAlliance;
+    if (targetMismatch && !opts?.allowCrossAlliance) {
+      setPendingCrossAlliance({ attacker, target, kind: isOffensive ? 'attack' : 'heal' });
       return;
     }
-    // Non-healing attacks cannot be aimed at your own alliance.
-    if (sameAlliance && attackerGroup === 'friendly') {
-      addMessage(`${attacker.unitName} cannot attack ${target.unitName}: same alliance`);
+
+    // Healing / non-offensive: recover HP, never-miss, no LoS, no combat. Area heal
+    // spells (magicDimension > 0) flow through the magic cast window instead.
+    if (weapon.isHealing && weapon.magicDimension <= 0) {
+      await performHeal(attacker, target, weapon);
       return;
     }
     // Magic (area) weapons always act at range. Every other attack at adjacency
     // is a melee attempt (a ranged primary auto-switches to a melee weapon or
     // fights with Fists); beyond adjacency is a ranged attack (thrown/shot).
-    const isRangedThisAttack = weapon.magicDimension > 0 || !isAdjacentDistance(dist);
+    const isRangedThisAttack = weapon.magicDimension > 0 || !isAdjacent;
 
     // Area-effect weapons (magic radius > 0) open the shared magic targeting window.
     if (weapon.magicDimension > 0) {
       if (isUnitRouted(attacker)) {
         addMessage(`${attacker.unitName} (Routed) cannot cast spells`);
-        return;
-      }
-      // Area healing may only target your own alliance.
-      if (weapon.isHealing && !sameAlliance) {
-        addError(`${attacker.unitName} can only heal units of their own alliance`);
         return;
       }
       const snapshot: SpellCastTokenSnapshot = {
@@ -811,7 +812,17 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
     await performAttack(attacker, target, false);
-  }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP]);
+  }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP, setAttachModal, setPendingCrossAlliance]);
+
+  const confirmCrossAlliance = useCallback(() => {
+    const pending = pendingCrossAlliance;
+    setPendingCrossAlliance(null);
+    if (pending) {
+      handleAttackRequest(pending.attacker.id, pending.target.id, { allowCrossAlliance: true });
+    }
+  }, [pendingCrossAlliance, handleAttackRequest]);
+
+  const cancelCrossAlliance = useCallback(() => setPendingCrossAlliance(null), []);
 
   return {
     pendingAttack,
@@ -824,6 +835,10 @@ export function useCombatActions(deps: CombatActionsDeps) {
     setPendingChargeAttack,
     pendingChargeThrough,
     setPendingChargeThrough,
+    pendingCrossAlliance,
+    setPendingCrossAlliance,
+    confirmCrossAlliance,
+    cancelCrossAlliance,
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,

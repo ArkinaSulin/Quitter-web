@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseWeapons, stringifyWeapons, formatWeaponDisplay, isAreaWeapon, Weapon } from './weaponParser';
+import { parseWeapons, stringifyWeapons, formatWeaponDisplay, isAreaWeapon, isOffensiveWeapon, Weapon } from './weaponParser';
 
 describe('parseWeapons', () => {
   it('parses a single weapon from CSV string', () => {
@@ -51,6 +51,13 @@ describe('parseWeapons', () => {
     expect(result[0].magicDimension).toBe(2);
     expect(isAreaWeapon(result[0])).toBe(true);
     expect(isAreaWeapon(parseWeapons('Spear,3,1d6+1,false,1,0,0,false,false,false,false,1')[0])).toBe(false);
+  });
+
+  it('isOffensiveWeapon = !isHealing', () => {
+    expect(isOffensiveWeapon({ isHealing: false })).toBe(true);
+    expect(isOffensiveWeapon({ isHealing: true })).toBe(false);
+    expect(isOffensiveWeapon(parseWeapons('Sword,3,1d8,false,1,1,0,false,false,false,false,1')[0])).toBe(true);
+    expect(isOffensiveWeapon(parseWeapons('Healing Touch,0,2d6,true,1,1,0,false,false,false,false,1')[0])).toBe(false);
   });
 
   it('parses maxRange (field 5)', () => {

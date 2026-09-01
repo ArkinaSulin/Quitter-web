@@ -33,6 +33,16 @@ export function isAreaWeapon(weapon: Pick<Weapon, 'magicDimension'>): boolean {
 }
 
 /**
+ * An offensive weapon deals damage to the target (isHealing is the only non-offensive
+ * type today — healing recovers HP instead). Offensive weapons target enemies by
+ * default; the cross-alliance soft gate confirms friendly fire. Non-offensive
+ * (healing) weapons target allies by default; the same gate confirms healing an enemy.
+ */
+export function isOffensiveWeapon(weapon: Pick<Weapon, 'isHealing'>): boolean {
+  return !weapon.isHealing;
+}
+
+/**
  * Parse a weapon string into an array of Weapon objects.
  * Format: "Name,AttackBonus,DamageDice,IsHealing,Range,MaxRange,MagicDimension,Reach,NoRetaliation,FreeAction,IsTwoHanded,NumberOfAttacks,OnSaveHalfOrNeg,SavingThrow,Shape"
  * Older strings missing the trailing fields parse with defaults (isHealing false,

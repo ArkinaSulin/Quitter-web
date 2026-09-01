@@ -76,6 +76,13 @@ export interface PendingChargeThrough {
   attachedHero?: Unit;
 }
 
+/** Offensive on an ally (friendly fire) or healing an enemy — soft cross-alliance confirm. */
+export interface PendingCrossAlliance {
+  attacker: Unit;
+  target: Unit;
+  kind: 'attack' | 'heal';
+}
+
 export interface SoftEnforcementModalsProps {
   pending: {
     move: PendingMove | null;
@@ -90,6 +97,7 @@ export interface SoftEnforcementModalsProps {
     castOverBudget: boolean;
     chargeAttack: PendingChargeAttack | null;
     chargeThrough: PendingChargeThrough | null;
+    crossAlliance: PendingCrossAlliance | null;
   };
   /** Fully-bound confirm handlers (clear state + controlsLocked guard + act). */
   actions: {
@@ -107,6 +115,7 @@ export interface SoftEnforcementModalsProps {
     confirmChargeAttack: () => void;
     confirmChargeThrough: () => void;
     declineChargeThrough: () => void;
+    confirmCrossAlliance: () => void;
   };
   cancels: {
     move: () => void;
@@ -120,6 +129,7 @@ export interface SoftEnforcementModalsProps {
     formation: () => void;
     castOverBudget: () => void;
     chargeAttack: () => void;
+    crossAlliance: () => void;
   };
   unitMaxMP: (unit: Unit) => number;
 }
@@ -272,6 +282,21 @@ export function SoftEnforcementModals({ pending, actions, cancels, unitMaxMP }: 
           ]}
         >
           {p.chargeThrough.attacker.unitName} can charge over {p.chargeThrough.target.unitName} and land at ({p.chargeThrough.landHex.q}, {p.chargeThrough.landHex.r}) for 2 MP.
+        </ConfirmModal>
+      )}
+
+      {p.crossAlliance && (
+        <ConfirmModal
+          tone="amber"
+          title={p.crossAlliance.kind === 'attack' ? 'Friendly fire?' : 'Heal an enemy?'}
+          buttons={[
+            { label: p.crossAlliance.kind === 'attack' ? 'Yes, attack anyway' : 'Yes, heal anyway', variant: 'red', onClick: actions.confirmCrossAlliance },
+          ]}
+          onCancel={cancels.crossAlliance}
+        >
+          {p.crossAlliance.kind === 'attack'
+            ? `${p.crossAlliance.attacker.unitName} attacks ${p.crossAlliance.target.unitName}, who is in the same alliance. Attack anyway? (friendly fire)`
+            : `${p.crossAlliance.attacker.unitName} heals ${p.crossAlliance.target.unitName}, who is in a different alliance. Heal an enemy anyway?`}
         </ConfirmModal>
       )}
     </>

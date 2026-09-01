@@ -153,10 +153,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // While set, that hero is the grabbable entity at its host's hex.
   const [activeHeroId, setActiveHeroId] = useState<string | null>(null);
 
-  // Attach position modal
+  // Attach position modal (canCast = the hero also holds a spell/heal weapon, so
+  // offer "Cast spell" alongside Leader/Protected modes).
   const [attachModal, setAttachModal] = useState<{
     hero: Unit;
     target: Unit;
+    canCast?: boolean;
   } | null>(null);
 
   const playerId = currentUser?.id || '';
@@ -497,6 +499,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setPendingChargeAttack,
     pendingChargeThrough,
     setPendingChargeThrough,
+    pendingCrossAlliance,
+    setPendingCrossAlliance,
+    confirmCrossAlliance,
+    cancelCrossAlliance,
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,
@@ -1018,6 +1024,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setPendingChargeThrough(null);
       if (!controlsLocked) await performChargeEnd(pct.attacker, true);
     },
+    confirmCrossAlliance: () => {
+      if (controlsLocked) {
+        cancelCrossAlliance();
+        return;
+      }
+      confirmCrossAlliance();
+    },
   };
   const softCancels = {
     move: () => setPendingMove(null),
@@ -1031,6 +1044,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     formation: () => setPendingFormation(null),
     castOverBudget: () => setPendingCastOverBudget(false),
     chargeAttack: () => setPendingChargeAttack(null),
+    crossAlliance: () => cancelCrossAlliance(),
   };
 
   if (loading) return <div className="w-full h-screen bg-[#0d0d1a] text-white flex items-center justify-center">Loading scenario...</div>;
@@ -1219,6 +1233,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           castOverBudget: pendingCastOverBudget,
           chargeAttack: pendingChargeAttack,
           chargeThrough: pendingChargeThrough,
+          crossAlliance: pendingCrossAlliance,
         }}
         actions={softActions}
         cancels={softCancels}
@@ -1351,6 +1366,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               {attachModal.hero.unitName} → {attachModal.target.unitName}
             </p>
             <div className="flex flex-col gap-2">
+              {attachModal.canCast && (
+                <button
+                  className="bg-purple-700 hover:bg-purple-600 text-white px-4 py-2 rounded-lg text-sm"
+                  onClick={() => { handleAttackRequest(attachModal.hero.id, attachModal.target.id, { forceCast: true }); setAttachModal(null); }}
+                >
+                  Cast spell
+                </button>
+              )}
               <button
                 className="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"
                 onClick={() => { handleAttachHero(attachModal.hero.id, attachModal.target.id, 'front'); setAttachModal(null); }}
