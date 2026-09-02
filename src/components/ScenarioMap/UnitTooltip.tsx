@@ -104,7 +104,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
         <span className="text-gray-400">Move:</span><span>{Math.floor(unit.movementPointsAvailable)}/{effectiveMaxMovement}{unit.isHero ? ` (${heroMovePerAction(effectiveMaxMovement)} MP/action)` : ''}{showTroops && formationMovMult !== 1 ? ` (base ${unit.movementPoints} × ${formationMovMult})` : ''}</span>
         <span className="text-gray-400">Actions:</span><span className={unit.actionsAvailable <= 0 ? 'text-red-400' : ''}>{unit.actionsAvailable}/{unit.isHero ? getSetting('hero_actions_per_turn', 5) : getSetting('actions_per_turn', 2)} <span className="text-gray-500">{unit.isHero ? '(convert to MP)' : '(1 = full move)'}</span></span>
         {typeof unit.attacksUsed === 'number' && (
-          <span className="text-gray-400">Attacks:</span>
+          <span className="text-gray-400">Attacks used:</span>
         )}
         {typeof unit.attacksUsed === 'number' && (
           <span className={unit.attacksUsed >= unitAttackCap() ? 'text-red-400' : ''}>{unit.attacksUsed}/{unitAttackCap()} <span className="text-gray-500">(attacks + retaliations)</span></span>
