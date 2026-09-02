@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useMessages } from '@/contexts/MessageContext';
 
 /** Copy text to the system clipboard (navigator.clipboard with a fallback for
@@ -105,7 +106,7 @@ export function MessagesPanel() {
       ))}
       <div ref={bottomRef} />
 
-      {menu && (
+      {menu && createPortal(
         <div
           data-msg-menu
           className="fixed z-[100] bg-gray-800 border border-gray-600 rounded shadow-lg py-1"
@@ -130,7 +131,8 @@ export function MessagesPanel() {
           >
             Copy all
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
