@@ -4,7 +4,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { parseSubSteps, CommandLogRow } from '@/lib/commandLog';
-import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
+import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
 import { getFormations } from '@/lib/formationCache';
 import { loadSettings } from '@/lib/settingsCache';
@@ -28,7 +28,8 @@ import { UnitTooltip } from './UnitTooltip';
 import { ReplayOverlay } from './ReplayOverlay';
 import { UnitEditorModal } from './UnitEditorModal';
 import { PingLayer } from './PingLayer';
-import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
+import { TEAM_COLORS, TEAMS, Team } from '@/components/TokenRenderer/tokenUtils';
+import { TeamChip } from '@/components/TokenRenderer/TeamChip';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { isRangedCapableWeapon, getReactionMoveBudget, findEligibleReactionArchers } from '@/lib/archerReaction';
 import { supabase } from '@/lib/supabaseClient';
@@ -75,6 +76,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const { getMyRole, updateScreenshot, fetchScenarios, currentUser, fetchScenarioMapData, updateScenarioField, updateScenarioMapData } = useScenarios();
   const { addMessage, addError } = useMessageSync(scenarioId);
   const [isGM, setIsGM] = useState(false);
+  // DM can assume a player role (effective GM off, SuperPlayer caps) so they don't
+  // accidentally make GM-only changes. Real isGM stays for End Turn / heartbeat /
+  // replay. A team is required to enter player mode (blocking picker).
+  const [gmAsPlayer, setGmAsPlayer] = useState(false);
+  const [showGmTeamPick, setShowGmTeamPick] = useState(false);
+  // Interactive/editorial GM privileges are off while playing as a player; real
+  // isGM stays for End Turn / heartbeat / replay. Declared early (used by
+  // useTeamAlliances and the permission gates below).
+  const effectiveIsGM = isGM && !gmAsPlayer;
   const [dmGone, setDmGone] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [currentTurnAlliance, setCurrentTurnAlliance] = useState<AllianceGroup | null>(null);
@@ -176,7 +186,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const inReplay = replay.mode === 'replay';
   const controlsLocked = inReplay || dmGone;
 
-  const { alliances, setAlliance, setAllianceLocal } = useTeamAlliances(scenarioId, isGM);
+  const { alliances, setAlliance, setAllianceLocal } = useTeamAlliances(scenarioId, effectiveIsGM);
 
   // Player management + role capabilities (feature: teams, roles, room, kick).
   const participantsSync = useParticipants(scenarioId, currentUser?.id);
@@ -191,6 +201,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     : myRole === 'SuperPlayer' ? 'Super Player'
     : 'Player';
 
+  // DM-as-player mode: interactive GM privileges drop to a full player (SuperPlayer
+  // caps — control + adjust the DM's own alliance), while the real isGM stays for
+  // End Turn, the heartbeat, replay and the label toggle.
+  const effectiveRole = gmAsPlayer ? ('SuperPlayer' as ScenarioRole) : myRole;
+  const headerRoleLabel = gmAsPlayer ? 'Player (DM)' : roleLabel;
+
   // Permission gates read from a ref so their identity stays stable across renders
   // (caps/team/alliances update live when the GM reassigns a player). Turn state is
   // folded in too: from turn 1 on, non-GM players may only act on the current
@@ -204,12 +220,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     isGM,
   });
   permRef.current = {
-    caps: getRoleCapabilities(myRole),
+    caps: getRoleCapabilities(effectiveRole),
     team: myTeam,
     alliances,
     currentTurnAlliance,
     freeMove,
-    isGM,
+    isGM: effectiveIsGM,
   };
   const canControlUnit = useCallback((unit: Unit): boolean => {
     const { caps, team, alliances: al, currentTurnAlliance: turn, freeMove: fm, isGM: gm } = permRef.current;
@@ -227,8 +243,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // opponent's turn, so ownership (same team) is enough; the turn gate does not
   // apply (canControlUnit would block the owner outside their own turn).
   const canReactToUnit = useCallback((unit: Unit): boolean => {
-    return isGM || unit.team === myTeam;
-  }, [isGM, myTeam]);
+    return effectiveIsGM || unit.team === myTeam;
+  }, [effectiveIsGM, myTeam]);
+
+  // Toggle DM <-> player mode. Entering player mode requires a team; without one a
+  // blocking team-picker opens (Cancel keeps the DM in DM mode).
+  const togglePlayerMode = useCallback(() => {
+    if (gmAsPlayer) {
+      setGmAsPlayer(false);
+      return;
+    }
+    if (!myTeam) {
+      setShowGmTeamPick(true);
+      return;
+    }
+    setGmAsPlayer(true);
+  }, [gmAsPlayer, myTeam]);
 
   // Attention ping (feature #4).
   const { pings, pingAtHex } = usePing(scenarioId);
@@ -302,7 +332,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     displayUnits,
     displayAlliances,
     displayTurnNumber,
-    isGM,
+    isGM: effectiveIsGM,
     formationsMap,
     sizeCategories,
     activeHeroId,
@@ -393,12 +423,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, [isEndingTurn, performEndTurn]);
 
   const handleToggleFreeMove = useCallback(async () => {
-    if (!isGM) return;
+    if (!effectiveIsGM) return;
     const next = !freeMove;
     setFreeMove(next);
     await updateScenarioField(scenarioId, { free_move: next });
     addMessage(`Free Move ${next ? 'enabled' : 'disabled'} — ${next ? 'all moves are free' : 'normal movement restored'}`);
-  }, [isGM, freeMove, scenarioId, updateScenarioField, addMessage]);
+  }, [effectiveIsGM, freeMove, scenarioId, updateScenarioField, addMessage]);
 
   const handleSaveBackground = useCallback((config: MapBackgroundConfig) => {
     setBackgroundConfig(config);
@@ -536,7 +566,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     units,
     alliances,
     formationsMap,
-    isGM,
+    isGM: effectiveIsGM,
     playerId,
     verboseCombat,
     execute,
@@ -590,13 +620,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         }
         return;
       }
-      if (unit && !unit.isDeleted && (isGM || (!unit.hidden && canControlUnit(unit)))) {
+      if (unit && !unit.isDeleted && (effectiveIsGM || (!unit.hidden && canControlUnit(unit)))) {
         setContextMenuUnit(unit);
         setContextMenuPos({ x: clientX, y: clientY });
       }
     },
     onUnitHover: (unit, screenX, screenY) => {
-      if (unit.isDeleted || (unit.hidden && !isGM)) return;
+      if (unit.isDeleted || (unit.hidden && !effectiveIsGM)) return;
       setHoveredUnit(unit);
       setTooltipPos({ x: screenX, y: screenY });
     },
@@ -715,9 +745,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (!hex) return;
     const unit = getUnitAt(hex);
     if (!unit) return;
-    if (unit.hidden && !isGM) return;
-    if (isGM || canEditUnit(unit)) setEditUnit(unit);
-  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAt, isGM, canEditUnit]);
+    if (unit.hidden && !effectiveIsGM) return;
+    if (effectiveIsGM || canEditUnit(unit)) setEditUnit(unit);
+  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAt, effectiveIsGM, canEditUnit]);
 
   // Editor Save → one chained command entry, one sub-step per changed field.
   const handleEditorSave = useCallback(async (changes: { field: string; from: any; to: any }[], description: string) => {
@@ -1054,7 +1084,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     <div className="relative w-full h-screen bg-[#0d0d1a] overflow-hidden select-none">
       {/* Top Bar */}
       <TopBar
-        roleLabel={roleLabel}
+        roleLabel={headerRoleLabel}
         myTeam={myTeam}
         controlsLocked={controlsLocked}
         undo={undo}
@@ -1062,6 +1092,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         peekUndoChainLength={peekUndoChainLength}
         displayTurnNumber={displayTurnNumber}
         isGM={isGM}
+        gmAsPlayer={gmAsPlayer}
+        onTogglePlayerMode={isGM ? togglePlayerMode : undefined}
         currentTurnAlliance={currentTurnAlliance}
         alliances={alliances}
         handleEndTurn={handleEndTurn}
@@ -1083,7 +1115,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             scenarioId={scenarioId}
             playerId={playerId}
             onUnitDragStart={handleUnitDragStart}
-            isGM={isGM}
+            isGM={effectiveIsGM}
             alliances={alliances}
             onMoveTeam={handleMoveTeam}
             participants={participantsSync.participants}
@@ -1152,7 +1184,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           unit={contextMenuUnit}
           x={contextMenuPos.x}
           y={contextMenuPos.y}
-          isGM={isGM}
+          isGM={effectiveIsGM}
           selectedWeapon={contextMenuUnit.activeWeaponIndex ?? 0}
           formationsMap={formationsMap}
           attachedHero={contextMenuUnit.attachedToUnitId ? undefined : units.find(u => u.attachedToUnitId === contextMenuUnit.id && !u.isDeleted)}
@@ -1397,12 +1429,51 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         </div>
       )}
 
+      {/* DM -> player mode team picker (blocking until a team is chosen or cancelled) */}
+      {showGmTeamPick && participantsSync.myParticipant && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-6 min-w-[340px]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Choose your team to play as a player</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              As a player you'll control the alliance your team belongs to (Super Player
+              privileges). You can change team later from the Players tab in DM mode.
+            </p>
+            <div className="flex flex-wrap gap-2 justify-center mb-3">
+              {(TEAMS as Team[]).map(team => (
+                <TeamChip
+                  key={team}
+                  team={team}
+                  selected={myTeam === team}
+                  onClick={async (t) => {
+                    const mp = participantsSync.myParticipant;
+                    if (mp) await participantsSync.setParticipantTeam(mp.id, t);
+                    setShowGmTeamPick(false);
+                    setGmAsPlayer(true);
+                  }}
+                />
+              ))}
+            </div>
+            <div className="text-[11px] text-gray-500 text-center mb-4">
+              {TEAMS.map(team => `${team} → ${alliances[team] || 'friendly'}`).join(' · ')}
+            </div>
+            <div className="flex justify-center">
+              <button
+                onClick={() => setShowGmTeamPick(false)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm"
+              >
+                Cancel — stay DM
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Magic cast targeting window (realtime-synced) */}
       {magicCast.cast && (
         <MagicCastModal
           cast={magicCast.cast}
           playerId={playerId}
-          isGM={isGM}
+          isGM={effectiveIsGM}
           sizeCategories={sizeCategories}
           formationsMap={formationsMap}
           onCancel={magicCast.cancelCast}
@@ -1448,7 +1519,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         <div className="text-green-400 text-xs">Realtime active</div>
         <div className="text-gray-400 text-xs">Units: {units.length}</div>
         <div className="text-gray-500 text-xs">Scenario: {scenarioId.slice(0, 8)}…</div>
-        {isGM && <div className="text-yellow-400 text-xs">DM</div>}
+        {isGM && <div className="text-yellow-400 text-xs">{gmAsPlayer ? 'DM → Player mode' : 'DM'}</div>}
       </div>
     </div>
   );

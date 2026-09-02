@@ -12,6 +12,8 @@ interface TopBarProps {
   peekUndoChainLength: () => number;
   displayTurnNumber: number;
   isGM: boolean;
+  gmAsPlayer: boolean;
+  onTogglePlayerMode?: () => void;
   currentTurnAlliance: AllianceGroup | null;
   alliances: Record<string, AllianceGroup>;
   handleEndTurn: () => void;
@@ -36,6 +38,8 @@ export function TopBar(props: TopBarProps) {
     peekUndoChainLength,
     displayTurnNumber,
     isGM,
+    gmAsPlayer,
+    onTogglePlayerMode,
     currentTurnAlliance,
     alliances,
     handleEndTurn,
@@ -50,12 +54,28 @@ export function TopBar(props: TopBarProps) {
     goToLobby,
   } = props;
 
+  // The DM keeps End Turn (and replay exit) even while playing as a player; the
+  // editorial GM actions (Free Move / Settings / enter Replay) drop in player mode.
+  const editMode = isGM && !gmAsPlayer;
+
   return (
     <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-2 bg-black/40 backdrop-blur-sm">
       <div className="flex items-center gap-3">
-        <span className="text-white text-lg font-semibold">
-          Scenario Map - {roleLabel}{myTeam ? ` · ${myTeam}` : ''}
-        </span>
+        {onTogglePlayerMode ? (
+          <button
+            onClick={onTogglePlayerMode}
+            title={gmAsPlayer
+              ? 'Playing as a player — click to return to DM mode'
+              : 'DM mode — click to play as a player'}
+            className={`text-lg font-semibold hover:underline ${gmAsPlayer ? 'text-amber-300' : 'text-white'}`}
+          >
+            Scenario Map - {roleLabel}{myTeam ? ` · ${myTeam}` : ''}
+          </button>
+        ) : (
+          <span className="text-white text-lg font-semibold">
+            Scenario Map - {roleLabel}{myTeam ? ` · ${myTeam}` : ''}
+          </span>
+        )}
         {!controlsLocked && (
           <button
             onClick={undo}
@@ -97,15 +117,15 @@ export function TopBar(props: TopBarProps) {
         })()}
         {!controlsLocked && (
           <button
-            onClick={isGM ? handleToggleFreeMove : undefined}
-            disabled={!isGM}
-            title={isGM ? 'Toggle free movement (no MP/action cost for any player)' : 'Only the DM can toggle free movement'}
+            onClick={editMode ? handleToggleFreeMove : undefined}
+            disabled={!editMode}
+            title={editMode ? 'Toggle free movement (no MP/action cost for any player)' : 'Only the DM can toggle free movement'}
             className={`px-3 py-1 rounded shadow-lg text-sm ${
               freeMove
-                ? isGM
+                ? editMode
                   ? 'bg-emerald-700 hover:bg-emerald-600 text-white'
                   : 'bg-emerald-900 text-emerald-300 cursor-not-allowed'
-                : isGM
+                : editMode
                   ? 'bg-gray-800 hover:bg-gray-700 text-white'
                   : 'bg-gray-800 text-gray-500 cursor-not-allowed'
             }`}
@@ -113,7 +133,7 @@ export function TopBar(props: TopBarProps) {
             {`Free Move: ${freeMove ? 'ON' : 'OFF'}`}
           </button>
         )}
-        {isGM && !controlsLocked && (
+        {editMode && !controlsLocked && (
           <button
             onClick={onOpenSettings}
             className="px-3 py-1 rounded shadow-lg text-sm bg-gray-800 hover:bg-gray-700 text-white"
@@ -123,7 +143,7 @@ export function TopBar(props: TopBarProps) {
           </button>
         )}
         {/* Mode 2 (join scenario): GM enters/leaves replay of the live session */}
-        {!replayMode && isGM && !controlsLocked && (
+        {!replayMode && editMode && !controlsLocked && (
           <button
             onClick={onEnterReplay}
             className="px-3 py-1 rounded shadow-lg text-sm bg-amber-700 hover:bg-amber-600 text-white"

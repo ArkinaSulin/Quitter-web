@@ -71,11 +71,31 @@ export function PlayerPanel({
         </button>
       </div>
 
-      {/* Game Master (creator — fixed) */}
+      {/* Game Master (creator — fixed role, but may pick a team to play as a player) */}
       {gm.map(p => (
-        <div key={p.id} className="px-3 py-2 bg-amber-900/20 border border-amber-700/40 rounded-lg">
-          <span className="text-xs text-amber-300 font-semibold">Game Master</span>
-          <div className="text-white text-sm">{names[p.userId] || 'Unknown'}</div>
+        <div key={p.id} className="px-3 py-2 bg-amber-900/20 border border-amber-700/40 rounded-lg space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-amber-300 font-semibold">Game Master</span>
+            <span className="text-white text-sm truncate">{names[p.userId] || 'Unknown'}</span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-[11px] text-gray-400 shrink-0">Team (player mode)</label>
+            <div className="flex flex-wrap gap-1 items-center justify-end">
+              {(TEAMS as Team[]).map(team => (
+                <TeamChip
+                  key={team}
+                  team={team}
+                  selected={p.team === team}
+                  onClick={t => onSetParticipantTeam(p.id, p.team === t ? null : t)}
+                />
+              ))}
+            </div>
+          </div>
+          {!p.team && (
+            <div className="text-[11px] text-amber-200/70">
+              No team — the DM must pick a team before playing as a player.
+            </div>
+          )}
         </div>
       ))}
 
