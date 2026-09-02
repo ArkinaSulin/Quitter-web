@@ -303,6 +303,10 @@ export function useReplay(scenarioId: string, { initialMode = 'play', playerId =
   const replayUnits: Unit[] = currentStep ? replayStateToUnits(currentStep.state) : [];
   const replayAlliances: Record<string, AllianceGroup> = currentStep?.state.alliances ?? {};
   const replayTurnNumber = (currentStep?.state.scenario?.turn_number as number) ?? 0;
+  const replayCurrentTurnAlliance =
+    currentStep && typeof currentStep.state.scenario?.current_turn_alliance === 'string'
+      ? (currentStep.state.scenario.current_turn_alliance as AllianceGroup)
+      : null;
 
   // Slider marker: the cursor value (1-based step count) of the first frame where
   // turn 1 begins — i.e. the first step whose state has turn_number >= 1. Returns
@@ -326,6 +330,7 @@ export function useReplay(scenarioId: string, { initialMode = 'play', playerId =
     replayUnits,
     replayAlliances,
     replayTurnNumber,
+    replayCurrentTurnAlliance,
     turnOneIndex,
     seek,
     play,

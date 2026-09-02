@@ -581,6 +581,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
       weeklyCostGp: 4,
       canCharge: firstRace?.can_charge || false,
       ignoreMoraleChecks: false,
+      nightVision: firstRace?.night_vision || 0,
       str: 0,
       dex: 0,
       con: 0,
@@ -996,6 +997,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                                 raceName: race?.name || '',
                                 raceIconUrl: raceIconFromName(race?.name, race?.icon_url),
                                 raceCanCharge: race?.can_charge || false,
+                                nightVision: race?.night_vision || 0,
                                 troopHp: newHp,
                                 level: race?.base_hd || 1,
                                 movementPoints: newMovement,
@@ -1053,6 +1055,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                         <div className="flex items-end gap-2">
                           <Cell label="Base AC"><NumInput value={formData.baseAc || 10} min={1} max={30} onChange={(v) => updateFormData('baseAc', v || 10)} /></Cell>
                           <Cell label="Movement"><NumInput value={formData.movementPoints || 3} min={1} onChange={(v) => updateFormData('movementPoints', Math.max(1, v || 3))} /></Cell>
+                          <Cell label="Night vision"><NumInput value={formData.nightVision || 0} min={0} max={9} onChange={(v) => updateFormData('nightVision', Math.max(0, Math.min(9, Math.floor(v) || 0)))} /></Cell>
                         </div>
                         <div className="flex items-end gap-2">
                           <Cell label="Armor" widthClass="flex-1">

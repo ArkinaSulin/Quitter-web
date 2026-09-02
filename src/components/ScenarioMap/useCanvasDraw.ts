@@ -18,6 +18,8 @@ interface CanvasDrawDeps {
   displayAlliances: Record<string, AllianceGroup>;
   displayTurnNumber: number;
   isGM: boolean;
+  fogReveal: Set<string> | null;
+  fogFill: string | null;
   formationsMap: Record<string, Formation>;
   sizeCategories: SizeCategory[];
   activeHeroId: string | null;
@@ -39,6 +41,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     displayAlliances,
     displayTurnNumber,
     isGM,
+    fogReveal,
+    fogFill,
     formationsMap,
     sizeCategories,
     activeHeroId,
@@ -155,7 +159,37 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         }
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit]);
+
+    // Fog of war: darken every hex the viewer cannot see. Player fog is near-opaque
+    // (tokens beneath are hidden); DM / replay fog is translucent so the boundary
+    // reads while units under it stay visible through it.
+    if (fogFill && fogReveal) {
+      const gridRadius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
+      const fogHex = (hex: Hex) => {
+        const pos = hexToPixel(hex, HEX_SIZE);
+        const cx = pos.x * currentZoom + offsetX;
+        const cy = pos.y * currentZoom + offsetY;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const angle = (Math.PI / 180) * (60 * i - 30);
+          const px = cx + HEX_SIZE * currentZoom * Math.cos(angle);
+          const py = cy + HEX_SIZE * currentZoom * Math.sin(angle);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fillStyle = fogFill;
+        ctx.fill();
+      };
+      for (let q = -gridRadius; q <= gridRadius; q++) {
+        for (let r = -gridRadius; r <= gridRadius; r++) {
+          const s = -q - r;
+          if (Math.abs(s) > gridRadius) continue;
+          if (!fogReveal.has(`${q},${r}`)) fogHex({ q, r, s });
+        }
+      }
+    }
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogFill, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;

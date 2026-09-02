@@ -1,7 +1,7 @@
 // src/components/ScenarioMap/ScenarioMap.tsx
 'use client';
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { parseSubSteps, CommandLogRow } from '@/lib/commandLog';
 import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel } from '@/types/gameProtocol';
@@ -32,6 +32,7 @@ import { TEAM_COLORS, TEAMS, Team } from '@/components/TokenRenderer/tokenUtils'
 import { TeamChip } from '@/components/TokenRenderer/TeamChip';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { isRangedCapableWeapon, getReactionMoveBudget, findEligibleReactionArchers } from '@/lib/archerReaction';
+import { computeVisibleHexes, DEFAULT_SIGHT_RADIUS } from '@/lib/fogOfWar';
 import { supabase } from '@/lib/supabaseClient';
 import { getFormationMultiplier, computeEffectiveMovement } from '@/lib/unitStats';
 import { useMagicCast } from '@/hooks/useMagicCast';
@@ -99,6 +100,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [archerReactionEnabled, setArcherReactionEnabled] = useState(false);
   const [mountedChargeEnabled, setMountedChargeEnabled] = useState(true);
   const [verboseCombat, setVerboseCombat] = useState(false);
+  // Fog of war (per scenario): off by default; sight radius is the base each unit
+  // reveals beyond its own hex (night vision raises it).
+  const [fogOfWar, setFogOfWar] = useState(false);
+  const [sightRadius, setSightRadius] = useState(DEFAULT_SIGHT_RADIUS);
   const [showScenarioSettings, setShowScenarioSettings] = useState(false);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
   // Persist the docked side per scenario + user, like the open-tab state. Restore
@@ -185,6 +190,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const replay = useReplay(scenarioId, { initialMode: replayMode ? 'replay' : 'play', playerId });
   const inReplay = replay.mode === 'replay';
   const controlsLocked = inReplay || dmGone;
+  const replayCurrentTurnAlliance = replay.replayCurrentTurnAlliance;
 
   const { alliances, setAlliance, setAllianceLocal } = useTeamAlliances(scenarioId, effectiveIsGM);
 
@@ -271,6 +277,30 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const displayAlliances = inReplay ? replay.replayAlliances : alliances;
   const displayTurnNumber = inReplay ? replay.replayTurnNumber : turnNumber;
 
+  // Fog of war: which alliance's sight drives the reveal. A player sees their own
+  // alliance; the DM (and replay) sees the current/acting alliance so the boundary
+  // follows whoever acts — the DM/reviewer sees THROUGH it (translucent overlay).
+  const fogGroup: AllianceGroup | null = (() => {
+    if (!fogOfWar) return null;
+    if (inReplay) return replayCurrentTurnAlliance;
+    if (effectiveIsGM) return currentTurnAlliance;
+    return myTeam ? displayAlliances[myTeam] || 'friendly' : null;
+  })();
+  const fogReveal = useMemo<Set<string> | null>(() => {
+    if (!fogGroup) return null;
+    return computeVisibleHexes(displayUnits, fogGroup, displayAlliances, sightRadius);
+  }, [fogGroup, displayUnits, displayAlliances, sightRadius]);
+  // Player fog is near-opaque (hides the unseen); DM and replay fog is translucent.
+  const fogFill = fogReveal
+    ? inReplay || effectiveIsGM
+      ? 'rgba(4,4,12,0.5)'
+      : 'rgba(2,2,8,0.97)'
+    : null;
+  const canSeeHex = useCallback((h: { q: number; r: number; s: number }): boolean => {
+    if (!fogFill) return true;
+    return fogReveal!.has(`${h.q},${h.r}`);
+  }, [fogFill, fogReveal]);
+
   // Optimistic local update for SCENARIO sub-steps (turn tracking). Paints the
   // result on screen; the END_TURN RPC is the DB writer, realtime confirms.
   const setScenarioLocal = useCallback((fields: Record<string, any>) => {
@@ -280,6 +310,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if ('archer_reaction_enabled' in fields) setArcherReactionEnabled(fields.archer_reaction_enabled);
     if ('mounted_charge_enabled' in fields) setMountedChargeEnabled(fields.mounted_charge_enabled ?? true);
     if ('verbose_combat' in fields) setVerboseCombat(fields.verbose_combat ?? false);
+    if ('fog_of_war' in fields) setFogOfWar(!!fields.fog_of_war);
+    if ('sight_radius' in fields) setSightRadius(fields.sight_radius ?? DEFAULT_SIGHT_RADIUS);
   }, []);
 
 
@@ -333,6 +365,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     displayAlliances,
     displayTurnNumber,
     isGM: effectiveIsGM,
+    fogReveal,
+    fogFill,
     formationsMap,
     sizeCategories,
     activeHeroId,
@@ -620,13 +654,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         }
         return;
       }
-      if (unit && !unit.isDeleted && (effectiveIsGM || (!unit.hidden && canControlUnit(unit)))) {
+      if (unit && !unit.isDeleted && (effectiveIsGM || ((!unit.hidden && canControlUnit(unit)) && canSeeHex(unit.hex)))) {
         setContextMenuUnit(unit);
         setContextMenuPos({ x: clientX, y: clientY });
       }
     },
     onUnitHover: (unit, screenX, screenY) => {
       if (unit.isDeleted || (unit.hidden && !effectiveIsGM)) return;
+      if (!effectiveIsGM && !canSeeHex(unit.hex)) return;
       setHoveredUnit(unit);
       setTooltipPos({ x: screenX, y: screenY });
     },
@@ -859,7 +894,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let cancelled = false;
     supabase
       .from('scenarios')
-      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat')
+      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius')
       .eq('id', scenarioId)
       .single()
       .then(({ data, error }) => {
@@ -870,6 +905,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setArcherReactionEnabled(data.archer_reaction_enabled ?? false);
         setMountedChargeEnabled(data.mounted_charge_enabled ?? true);
         setVerboseCombat(data.verbose_combat ?? false);
+        setFogOfWar(data.fog_of_war ?? false);
+        setSightRadius(data.sight_radius ?? DEFAULT_SIGHT_RADIUS);
       });
     return () => { cancelled = true; };
   }, [scenarioId]);
@@ -881,7 +918,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'scenarios', filter: `id=eq.${scenarioId}` },
         (payload: any) => {
-          const row = payload.new;
+          const row = payload.new as Record<string, any>;
           if (row.current_turn_alliance !== undefined) {
             setCurrentTurnAlliance(row.current_turn_alliance || null);
           }
@@ -899,6 +936,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }
           if (row.verbose_combat !== undefined) {
             setVerboseCombat(row.verbose_combat ?? false);
+          }
+          if (row.fog_of_war !== undefined) {
+            setFogOfWar(row.fog_of_war ?? false);
+          }
+          if (row.sight_radius !== undefined) {
+            setSightRadius(row.sight_radius ?? DEFAULT_SIGHT_RADIUS);
           }
         }
       )
@@ -1378,6 +1421,40 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 </span>
               </span>
             </label>
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={fogOfWar}
+                onChange={async (e) => {
+                  await updateScenarioField(scenarioId, { fog_of_war: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">Fog of war</span>
+                <span className="block text-gray-400 text-[11px]">
+                  Each alliance sees only within sight of its own units. The DM sees the fog
+                  boundary darkened but can see through it.
+                </span>
+              </span>
+            </label>
+            {fogOfWar && (
+              <label className="flex items-center justify-between gap-2 text-sm text-gray-200 mb-2">
+                <span className="text-gray-300">Sight radius (hex, beyond own hex)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={9}
+                  value={sightRadius}
+                  onChange={async (e) => {
+                    const v = Math.max(1, Math.min(9, parseInt(e.target.value) || 2));
+                    setSightRadius(v);
+                    await updateScenarioField(scenarioId, { sight_radius: v });
+                  }}
+                  className="w-16 bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700"
+                />
+              </label>
+            )}
             <div className="flex justify-end">
               <button
                 onClick={() => setShowScenarioSettings(false)}
