@@ -19,10 +19,10 @@ import { Unit, AllianceGroup, hexDistance } from '@/types/gameProtocol';
 export const DEFAULT_SIGHT_RADIUS = 2;
 
 // Dimmed-edge alpha values from a unit's sight edge inward (edge -> next -> next).
-export const FOG_RING_ALPHAS = [0.45, 0.30, 0.15];
+export const FOG_RING_ALPHAS = [0.6, 0.4, 0.2];
 // Unseen hexes: opaque for players, translucent for the DM / replay viewer.
 export const FOG_UNSEEN_PLAYER_ALPHA = 1.0;
-export const FOG_UNSEEN_GM_ALPHA = 0.6;
+export const FOG_UNSEEN_GM_ALPHA = 0.8;
 
 export function hexKey(hex: { q: number; r: number; s: number }): string {
   return `${hex.q},${hex.r}`;
