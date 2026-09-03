@@ -52,6 +52,9 @@ interface CombatActionsDeps {
   playerId: string;
   playerName: string;
   setAttachModal: (m: { hero: Unit; target: Unit; canCast?: boolean } | null) => void;
+  /** Optional fog-of-war gate: whether the attacker's own side can see the target.
+   *  Absent when fog is off. */
+  canAttackTarget?: (attacker: Unit, target: Unit) => boolean;
 }
 
 export function useCombatActions(deps: CombatActionsDeps) {
@@ -72,6 +75,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     playerId,
     playerName,
     setAttachModal,
+    canAttackTarget,
   } = deps;
 
   const [pendingAttack, setPendingAttack] = useState<PendingAttack | null>(null);
@@ -703,6 +707,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
       await performHeal(attacker, target, weapon);
       return;
     }
+    // Fog-of-war gate: a unit cannot attack what its OWN side cannot see — even a
+    // DM-controlled unit (the DM's translucent overlay is viewer convenience, not
+    // the unit's sight). Healing above is LoS-free by design, so it is exempt.
+    if (canAttackTarget && !canAttackTarget(attacker, target)) {
+      addError(`${attacker.unitName} cannot see ${target.unitName} — it is hidden in the dark beyond the side's sight`);
+      return;
+    }
     // Magic (area) weapons always act at range. Every other attack at adjacency
     // is a melee attempt (a ranged primary auto-switches to a melee weapon or
     // fights with Fists); beyond adjacency is a ranged attack (thrown/shot).
@@ -812,7 +823,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
     await performAttack(attacker, target, false);
-  }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP, setAttachModal, setPendingCrossAlliance]);
+  }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP, setAttachModal, setPendingCrossAlliance, canAttackTarget]);
 
   const confirmCrossAlliance = useCallback(() => {
     const pending = pendingCrossAlliance;

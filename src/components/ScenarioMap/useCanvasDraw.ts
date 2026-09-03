@@ -19,7 +19,8 @@ interface CanvasDrawDeps {
   displayTurnNumber: number;
   isGM: boolean;
   fogReveal: Set<string> | null;
-  fogFill: string | null;
+  fogDim: Map<string, number> | null;
+  fogUnseenAlpha: number | null;
   formationsMap: Record<string, Formation>;
   sizeCategories: SizeCategory[];
   activeHeroId: string | null;
@@ -42,7 +43,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     displayTurnNumber,
     isGM,
     fogReveal,
-    fogFill,
+    fogDim,
+    fogUnseenAlpha,
     formationsMap,
     sizeCategories,
     activeHeroId,
@@ -160,12 +162,15 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       }
     }
 
-    // Fog of war: darken every hex the viewer cannot see. Player fog is near-opaque
-    // (tokens beneath are hidden); DM / replay fog is translucent so the boundary
-    // reads while units under it stay visible through it.
-    if (fogFill && fogReveal) {
+    // Fog of war: GRADED visibility (soft fog rings), not binary. Revealed hexes
+    // that no unit can see stay under an opaque veil for players (hides enemies)
+    // or a translucent one for the DM / replay (so they see through the boundary).
+    // At the EDGE of a unit's sight the veil is dim instead: the outermost revealed
+    // ring gets fogDim (0.6), the next ring in 0.3, and hexes closer than that are
+    // crisp (no fill). Where units overlap, computeFog already kept the clearest.
+    if (fogReveal && fogDim && fogUnseenAlpha !== null) {
       const gridRadius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
-      const fogHex = (hex: Hex) => {
+      const fogHex = (hex: Hex, alpha: number) => {
         const pos = hexToPixel(hex, HEX_SIZE);
         const cx = pos.x * currentZoom + offsetX;
         const cy = pos.y * currentZoom + offsetY;
@@ -178,18 +183,22 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           else ctx.lineTo(px, py);
         }
         ctx.closePath();
-        ctx.fillStyle = fogFill;
+        ctx.fillStyle = `rgba(2,2,8,${alpha})`;
         ctx.fill();
       };
       for (let q = -gridRadius; q <= gridRadius; q++) {
         for (let r = -gridRadius; r <= gridRadius; r++) {
           const s = -q - r;
           if (Math.abs(s) > gridRadius) continue;
-          if (!fogReveal.has(`${q},${r}`)) fogHex({ q, r, s });
+          const key = `${q},${r}`;
+          const alpha = fogReveal.has(key)
+            ? (fogDim.get(key) ?? 0)
+            : fogUnseenAlpha;
+          if (alpha > 0) fogHex({ q, r, s }, alpha);
         }
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogFill, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;

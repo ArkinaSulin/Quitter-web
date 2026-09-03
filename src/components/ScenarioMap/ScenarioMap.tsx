@@ -32,7 +32,7 @@ import { TEAM_COLORS, TEAMS, Team } from '@/components/TokenRenderer/tokenUtils'
 import { TeamChip } from '@/components/TokenRenderer/TeamChip';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { isRangedCapableWeapon, getReactionMoveBudget, findEligibleReactionArchers } from '@/lib/archerReaction';
-import { computeVisibleHexes, DEFAULT_SIGHT_RADIUS } from '@/lib/fogOfWar';
+import { computeVisibleHexes, computeFog, hexKey, DEFAULT_SIGHT_RADIUS, FOG_UNSEEN_GM_ALPHA, FOG_UNSEEN_PLAYER_ALPHA } from '@/lib/fogOfWar';
 import { supabase } from '@/lib/supabaseClient';
 import { getFormationMultiplier, computeEffectiveMovement } from '@/lib/unitStats';
 import { useMagicCast } from '@/hooks/useMagicCast';
@@ -286,20 +286,26 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (effectiveIsGM) return currentTurnAlliance;
     return myTeam ? displayAlliances[myTeam] || 'friendly' : null;
   })();
-  const fogReveal = useMemo<Set<string> | null>(() => {
+  const fog = useMemo(() => {
     if (!fogGroup) return null;
-    return computeVisibleHexes(displayUnits, fogGroup, displayAlliances, sightRadius);
+    return computeFog(displayUnits, fogGroup, displayAlliances, sightRadius);
   }, [fogGroup, displayUnits, displayAlliances, sightRadius]);
-  // Player fog is near-opaque (hides the unseen); DM and replay fog is translucent.
-  const fogFill = fogReveal
-    ? inReplay || effectiveIsGM
-      ? 'rgba(4,4,12,0.5)'
-      : 'rgba(2,2,8,0.97)'
-    : null;
+  const fogReveal = fog?.reveal ?? null;
+  const fogDim = fog?.dim ?? null;
   const canSeeHex = useCallback((h: { q: number; r: number; s: number }): boolean => {
-    if (!fogFill) return true;
-    return fogReveal!.has(`${h.q},${h.r}`);
-  }, [fogFill, fogReveal]);
+    if (!fogReveal) return true;
+    return fogReveal.has(hexKey(h));
+  }, [fogReveal]);
+
+  // A unit may only attack a target its OWN side can currently see — even for the
+  // DM's units. The DM sees through the fog (translucent overlay), but that is
+  // viewer convenience, not the unit's sight: sight is the alliance group's reveal
+  // of the target's hex, independent of who is watching.
+  const canAttackInFog = useCallback((attacker: Unit, target: Unit): boolean => {
+    if (!fogOfWar || attacker.isDeleted || target.isDeleted) return true;
+    const group = displayAlliances[attacker.team] || 'friendly';
+    return computeVisibleHexes(displayUnits, group, displayAlliances, sightRadius).has(hexKey(target.hex));
+  }, [fogOfWar, displayUnits, displayAlliances, sightRadius]);
 
   // Optimistic local update for SCENARIO sub-steps (turn tracking). Paints the
   // result on screen; the END_TURN RPC is the DB writer, realtime confirms.
@@ -356,6 +362,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     addError,
     unitMaxMP,
     flashRangeViolation,
+    canAttackTarget: canAttackInFog,
   });
 
   const { customDraw, captureAndUploadScreenshot } = useCanvasDraw({
@@ -366,7 +373,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     displayTurnNumber,
     isGM: effectiveIsGM,
     fogReveal,
-    fogFill,
+    fogDim,
+    fogUnseenAlpha: fogReveal
+      ? inReplay || effectiveIsGM
+        ? FOG_UNSEEN_GM_ALPHA
+        : FOG_UNSEEN_PLAYER_ALPHA
+      : null,
     formationsMap,
     sizeCategories,
     activeHeroId,
@@ -588,6 +600,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     playerId,
     playerName,
     setAttachModal,
+    canAttackTarget: canAttackInFog,
   });
 
   const {

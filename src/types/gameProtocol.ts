@@ -82,9 +82,9 @@ export interface UnitTemplate {
   unitTypeIconUrl?: string | null;
   canCharge: boolean;                 // new: override for race/mount can_charge
   ignoreMoraleChecks: boolean;        // unit never routs
-  /** Racial night vision (hex) — authored here (inherited from race at creation),
+  /** Racial darkvision (hex) — authored here (inherited from race at creation),
    *  copied to each spawned unit. */
-  nightVision?: number;
+  darkvision?: number;
   // Ability save bonuses (used by area-effect spells). Store the bonus directly.
   str: number;
   dex: number;
@@ -135,9 +135,9 @@ export interface Unit {
   unitTypeIconUrl?: string;
   customImageUrl?: string;
   canCharge: boolean;                 // new: calculated from race.canCharge || mount.canCharge
-  /** Racial night vision (hex) — copied from template at spawn; effective sight =
-   *  max(scenario sight_radius, night_vision), own hex not counted. */
-  nightVision?: number;
+  /** Racial darkvision (hex) — copied from template at spawn; effective sight =
+   *  max(scenario sight_radius, darkvision), own hex not counted. */
+  darkvision?: number;
   hex: Hex;
   facing: number;
   team: string;
@@ -236,7 +236,7 @@ export interface Race {
   size_category: number;
   visual_scale: number;
   can_charge: boolean;               // new
-  night_vision: number;              // racial night vision in hex (fog of war)
+  darkvision: number;                // racial darkvision in hex (fog of war)
 }
 
 export interface WeaponLookup {

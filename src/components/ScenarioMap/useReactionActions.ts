@@ -33,6 +33,9 @@ interface ReactionActionsDeps {
   addError: (msg: string) => void;
   unitMaxMP: (unit: Unit) => number;
   flashRangeViolation: (hex: Hex) => void;
+  /** Optional fog-of-war gate: whether the archer's own side can see the target.
+   *  Absent when fog is off. */
+  canAttackTarget?: (attacker: Unit, target: Unit) => boolean;
 }
 
 export function useReactionActions(deps: ReactionActionsDeps) {
@@ -50,6 +53,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     addError,
     unitMaxMP,
     flashRangeViolation,
+    canAttackTarget,
   } = deps;
 
   const [reactionOffers, setReactionOffers] = useState<Map<string, string>>(new Map()); // archerId -> moverId
@@ -318,6 +322,12 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       addMessage(`${target.unitName} is not hostile — cannot reaction-shoot`);
       return;
     }
+    // Fog-of-war gate: the archer's own side must be able to see the target to
+    // reaction-shoot it (no shots fired into darkness).
+    if (canAttackTarget && !canAttackTarget(archer, target)) {
+      addError(`${archer.unitName} cannot see ${target.unitName} — it is hidden in the dark beyond the side's sight`);
+      return;
+    }
     const weapon = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0];
     const dist = hexDistance(archer.hex, target.hex);
     if (!weapon || !isRangedCapableWeapon(weapon) || dist > weapon.range) {
@@ -326,7 +336,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       return;
     }
     await performReactionShot(archer, target);
-  }, [reactionMode, units, alliances, addMessage, addError, performReactionShot]);
+  }, [reactionMode, units, alliances, addMessage, addError, performReactionShot, canAttackTarget]);
 
   const handleReactionMove = useCallback(async (unitId: string, targetHex: Hex) => {
     if (!reactionMode || unitId !== reactionMode.archer.id) return;
