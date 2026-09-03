@@ -16,7 +16,7 @@ import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout } from '@/lib/
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { UnitChange, SubStep } from '@/lib/commandLog';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
-import { computeOccupiedHexes } from './mapGeometry';
+import { computeOccupiedHexes, terrainCostOf, TerrainCosts } from './mapGeometry';
 import { ExecuteFn, routeUnit } from './routeUnit';
 
 interface ReactionActionsDeps {
@@ -36,6 +36,7 @@ interface ReactionActionsDeps {
   /** Optional fog-of-war gate: whether the archer's own side can see the target.
    *  Absent when fog is off. */
   canAttackTarget?: (attacker: Unit, target: Unit) => boolean;
+  terrainCosts?: TerrainCosts;
 }
 
 export function useReactionActions(deps: ReactionActionsDeps) {
@@ -54,6 +55,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     unitMaxMP,
     flashRangeViolation,
     canAttackTarget,
+    terrainCosts,
   } = deps;
 
   const [reactionOffers, setReactionOffers] = useState<Map<string, string>>(new Map()); // archerId -> moverId
@@ -295,8 +297,8 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const maxMP = unitMaxMP(archer);
     const budget = getReactionMoveBudget(maxMP);
     const occupied = computeOccupiedHexes(displayUnits, archer.id);
-    return computeReachableMap(archer, budget, occupied, new Set());
-  }, [displayUnits, unitMaxMP]);
+    return computeReachableMap(archer, budget, occupied, new Set(), (q, r) => terrainCostOf(terrainCosts, q, r));
+  }, [displayUnits, unitMaxMP, terrainCosts]);
 
   const handleReactionAttack = useCallback(async (attackerId: string, targetId: string) => {
     if (!reactionMode || attackerId !== reactionMode.archer.id) return;

@@ -155,6 +155,8 @@ export interface Unit {
   /** True once the unit takes its defensive-archer reaction this turn; cleared at the start of its turn. */
   archerReactionUsed: boolean;
   activeWeaponIndex: number;           // index into weaponString of the active weapon (0 = first)
+  /** Active temporary effects on this unit (buff/debuff/DoT). Empty = none. */
+  effects?: UnitEffect[];
   // Ability save bonuses (used by area-effect spells). Store the bonus directly.
   str: number;
   dex: number;
@@ -162,6 +164,58 @@ export interface Unit {
   int: number;
   wis: number;
   cha: number;
+}
+
+// --- Temporary effects (buffs / debuffs / damage over time) ---
+export type EffectKind = 'ac' | 'morale' | 'movement' | 'dot';
+
+/**
+ * A temporary effect instance. Duration counts ACTIVATIONS OF THE CASTER (not the
+ * carrier): it ticks when the caster's alliance gets the turn and expires at 0 —
+ * "1 turn" ends at the start of the caster's next activation. If the caster unit
+ * is destroyed the effect expires immediately. No same-kind stacking per carrier.
+ */
+export interface UnitEffect {
+  /** Stable id for this instance (also keys a ground-zone membership). */
+  key: string;
+  /** When present, this is a GROUND-zone membership: the delta applies only while
+   *  the carrier stands on `zoneHex` and the zone still exists. */
+  zoneHex?: Hex | null;
+  name: string;
+  color: string;
+  kind: EffectKind;
+  /** Signed stat delta (ac/morale/movement) or per-tick DoT damage (dot). */
+  delta: number;
+  /** Full duration in caster activations (zones too). */
+  duration: number;
+  /** Remaining caster activations. */
+  turnsLeft: number;
+  casterUnitId?: string | null;
+  casterTeam?: string | null;
+  casterPlayerId?: string | null;
+  /** Snapshot of the modified field BEFORE this effect applied (restore target). */
+  base?: number;
+}
+
+/**
+ * A ground effect painted on a hex (stored in scenarios.map_data.groundEffects).
+ * Its stat delta applies to any unit standing on the hex (materialized as zone
+ * membership UnitEffects); its dot deals damage to every unit standing there on
+ * the caster's activation. Duration counts caster activations like UnitEffect.
+ */
+export interface GroundEffect {
+  key: string;
+  q: number;
+  r: number;
+  name: string;
+  color: string;
+  kind: EffectKind;
+  delta: number;
+  duration: number;
+  turnsLeft: number;
+  casterUnitId?: string | null;
+  casterTeam?: string | null;
+  casterPlayerId?: string | null;
 }
 
 // --- Scenario ---

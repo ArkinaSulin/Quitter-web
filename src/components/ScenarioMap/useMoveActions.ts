@@ -13,7 +13,7 @@ import { isMeleeWeapon, isInAnyHostileKillZone, computeWeaponSwitchAc } from '@/
 import { areHexesAdjacent } from '@/lib/unitMorale';
 import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep } from '@/lib/commandLog';
-import { computeOccupiedHexes, computeThreatHexes } from './mapGeometry';
+import { computeOccupiedHexes, computeThreatHexes, terrainCostOf, TerrainCosts } from './mapGeometry';
 import { ExecuteFn } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingHeroSwapConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
 
@@ -38,6 +38,7 @@ interface MoveActionsDeps {
   pruneReactionOffers: () => void;
   weaponSelectedTurnRef: { current: Record<string, number> };
   setActiveHeroId: (id: string | null) => void;
+  terrainCosts?: TerrainCosts;
 }
 
 export function useMoveActions(deps: MoveActionsDeps) {
@@ -62,6 +63,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     pruneReactionOffers,
     weaponSelectedTurnRef,
     setActiveHeroId,
+    terrainCosts,
   } = deps;
 
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
@@ -87,8 +89,23 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (isInAnyHostileKillZone(unit, displayUnits, displayAlliances)) return;
     const primary = weapons[0];
     if (!primary) return;
-    const ac = computeWeaponSwitchAc(unit, primary);
-    const acChanges = ac !== unit.currentAc ? [{ field: 'currentAc', from: unit.currentAc, to: ac }] : [];
+    const baseAc = computeWeaponSwitchAc(unit, primary);
+    // An active AC effect rides the weapon return: keep its delta, rebase its
+    // snapshot onto the returned weapon's no-buff AC.
+    const acEffect = (unit.effects ?? []).find(e => e.kind === 'ac' && !e.zoneHex);
+    const ac = acEffect ? baseAc + acEffect.delta : baseAc;
+    const acChanges = ac !== unit.currentAc
+      ? [
+          { field: 'currentAc', from: unit.currentAc, to: ac },
+          ...(acEffect
+            ? [{
+                field: 'effects',
+                from: unit.effects ?? [],
+                to: (unit.effects ?? []).map(e => (e.key === acEffect.key ? { ...e, base: baseAc } : e)),
+              }]
+            : []),
+        ]
+      : [];
     await execute('WEAPON_SELECT', [{
       type: 'WEAPON_SELECT',
       description: `${unit.unitName} returned to ${primary.name}`,
@@ -202,7 +219,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       unit.isHero ? computeHeroMovePool(unit, effectiveMax) : computeMovePool(unit, effectiveMax),
       attachedHero && heroMax ? (attachedHero.isHero ? computeHeroMovePool(attachedHero, heroMax) : computeMovePool(attachedHero, heroMax)) : Infinity,
     );
-    const reachableMap = computeReachableMap(unit, combinedPool, occupied, threatHexes);
+    const reachableMap = computeReachableMap(unit, combinedPool, occupied, threatHexes, (q, r) => terrainCostOf(terrainCosts, q, r));
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
       // Soft gate (matches the rest of the economy family): a unit with no MP/actions
@@ -228,7 +245,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
     await performMove(unit, targetHex, entry.cost, false, effectiveMax, attachedHero, heroMax);
     await finishHeroMove(unit);
-  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, isHeroMoveAffordable, unitMaxMP]);
+  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts]);
 
   const handleChangeFormation = useCallback(async (unit: Unit, formation: string) => {
     if (unit.isHero || freeMove) {

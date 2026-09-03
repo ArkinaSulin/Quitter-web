@@ -41,6 +41,8 @@ interface ContextMenuProps {
   hostUnit?: Unit;
   onSwitchToHero?: (hero: Unit) => void;
   onSwitchToUnit?: (host: Unit) => void;
+  /** Open the temporary-effects dialog for this unit (GM or players). */
+  onAddEffect?: () => void;
   units: Unit[];
 }
 
@@ -69,6 +71,7 @@ export function ContextMenu({
   hostUnit,
   onSwitchToHero,
   onSwitchToUnit,
+  onAddEffect,
   units,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -139,6 +142,18 @@ export function ContextMenu({
       className="absolute z-50 bg-gray-900 border border-gray-700 rounded shadow-xl py-1 min-w-[180px] text-sm text-white"
       style={{ left: x, top: y }}
     >
+      {/* Temporary effects — GM or any player on any unit */}
+      {onAddEffect && (
+        <>
+          <div
+            className="px-3 py-1 hover:bg-yellow-800 cursor-pointer text-yellow-300"
+            onClick={() => { onClose(); onAddEffect(); }}
+          >
+            Effects…
+          </div>
+          <div className="border-t border-gray-700 my-1" />
+        </>
+      )}
       {/* Switch between a host unit and its attached hero (attached heroes act as
           independent combatants; drag them away to separate). */}
       {attachedHero && onSwitchToHero && (

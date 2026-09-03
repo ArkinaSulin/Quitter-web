@@ -30,6 +30,7 @@ export type ActionType =
   | 'WEAPON_SELECT'
   | 'CAST'
   | 'EDIT_UNIT'
+  | 'EFFECT'
   | 'ARCHER_REACTION';
 
 export interface UnitChange {

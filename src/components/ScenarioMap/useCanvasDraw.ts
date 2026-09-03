@@ -6,10 +6,10 @@
 import { useCallback } from 'react';
 import type { RefObject } from 'react';
 import { hexToPixel } from '@/hooks/useHexGrid';
-import { Unit, Hex, AllianceGroup, Formation, SizeCategory } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, SizeCategory, GroundEffect } from '@/types/gameProtocol';
 import { drawToken, loadImage, drawArcherReactionButton } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
-import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig } from './mapGeometry';
+import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig, TerrainCosts } from './mapGeometry';
 
 interface CanvasDrawDeps {
   canvasRef: RefObject<HTMLCanvasElement>;
@@ -30,6 +30,8 @@ interface CanvasDrawDeps {
   canReactToUnit: (unit: Unit) => boolean;
   alliances: Record<string, AllianceGroup>;
   backgroundConfig: MapBackgroundConfig | null;
+  terrainCosts?: TerrainCosts;
+  groundZones?: GroundEffect[];
   scenarioId: string;
   updateScreenshot: (scenarioId: string, file: File) => Promise<void>;
 }
@@ -54,6 +56,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     canReactToUnit,
     alliances,
     backgroundConfig,
+    terrainCosts,
+    groundZones,
     scenarioId,
     updateScreenshot,
   } = deps;
@@ -70,6 +74,64 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
 
     // Corpses (HP <= 0) draw first so live tokens stacked on their hex render on top.
     const drawOrder = [...displayUnits].sort(corpseLast);
+
+    // Ground effects + painted terrain tints (drawn beneath tokens; fog drawn last
+    // covers the unseen). Visible only where the viewer can see when fog is on.
+    const hexCenter = (hex: Hex) => {
+      const pos = hexToPixel(hex, HEX_SIZE);
+      return { cx: pos.x * currentZoom + offsetX, cy: pos.y * currentZoom + offsetY };
+    };
+    const fillHex = (hex: Hex, color: string) => {
+      const { cx, cy } = hexCenter(hex);
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = (Math.PI / 180) * (60 * i - 30);
+        const px = cx + HEX_SIZE * currentZoom * Math.cos(angle);
+        const py = cy + HEX_SIZE * currentZoom * Math.sin(angle);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+    };
+    const isFogHidden = (key: string) => !!fogReveal && !fogReveal.has(key);
+    if (groundZones && groundZones.length > 0) {
+      for (const z of groundZones) {
+        const key = `${z.q},${z.r}`;
+        if (isFogHidden(key)) continue;
+        const c = z.color || '#ff7043';
+        ctx.save();
+        ctx.globalAlpha = 0.3;
+        fillHex({ q: z.q, r: z.r, s: -z.q - z.r }, c);
+        ctx.globalAlpha = 0.9;
+        const { cx, cy } = hexCenter({ q: z.q, r: z.r, s: -z.q - z.r });
+        ctx.fillStyle = c;
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(3, 6 * currentZoom), 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    if (terrainCosts) {
+      ctx.save();
+      ctx.font = `${Math.max(8, 13 * currentZoom)}px ui-monospace, monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const [key, cost] of Object.entries(terrainCosts)) {
+        if (cost <= 1) continue;
+        if (isFogHidden(key)) continue;
+        const [q, r] = key.split(',').map(Number);
+        if (Number.isNaN(q) || Number.isNaN(r)) continue;
+        ctx.globalAlpha = 0.55;
+        fillHex({ q, r, s: -q - r }, '#c2a35a');
+        ctx.globalAlpha = 1;
+        const { cx, cy } = hexCenter({ q, r, s: -q - r });
+        ctx.fillStyle = '#3b3118';
+        ctx.fillText(String(cost), cx, cy);
+      }
+      ctx.restore();
+    }
 
     for (const unit of drawOrder) {
       if (unit.isDeleted || unit.attachedToUnitId) continue;
@@ -162,6 +224,25 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       }
     }
 
+    // Active-effect pips: one colored dot per effect under the token (small, cheap).
+    if (!isGM) {
+      ctx.save();
+      for (const unit of displayUnits) {
+        const effects = unit.effects ?? [];
+        if (unit.isDeleted || unit.attachedToUnitId || effects.length === 0) continue;
+        const { cx, cy } = hexCenter(unit.hex);
+        const baseY = cy + tokenHeight * 0.62;
+        const visible = effects.slice(0, 5);
+        for (let i = 0; i < visible.length; i++) {
+          ctx.fillStyle = visible[i].color || '#cccccc';
+          ctx.beginPath();
+          ctx.arc(cx - (visible.length - 1) * 4 * currentZoom + i * 8 * currentZoom, baseY, Math.max(1.5, 3 * currentZoom), 0, 2 * Math.PI);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
     // Fog of war: GRADED visibility (soft fog rings), not binary. Revealed hexes
     // that no unit can see stay under an opaque veil for players (hides enemies)
     // or a translucent one for the DM / replay (so they see through the boundary).
@@ -198,7 +279,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         }
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, groundZones]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;

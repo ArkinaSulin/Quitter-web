@@ -22,7 +22,7 @@ export const FOG_OUTER_RING_ALPHA = 0.6;
 export const FOG_INNER_RING_ALPHA = 0.3;
 // Unseen hexes: opaque for players, translucent for the DM / replay viewer.
 export const FOG_UNSEEN_PLAYER_ALPHA = 1.0;
-export const FOG_UNSEEN_GM_ALPHA = 0.5;
+export const FOG_UNSEEN_GM_ALPHA = 0.7;
 
 export function hexKey(hex: { q: number; r: number; s: number }): string {
   return `${hex.q},${hex.r}`;

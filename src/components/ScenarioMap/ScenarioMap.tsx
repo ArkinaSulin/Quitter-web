@@ -4,7 +4,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { parseSubSteps, CommandLogRow } from '@/lib/commandLog';
-import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel } from '@/types/gameProtocol';
+import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel, GroundEffect } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
 import { getFormations } from '@/lib/formationCache';
 import { loadSettings } from '@/lib/settingsCache';
@@ -37,7 +37,10 @@ import { supabase } from '@/lib/supabaseClient';
 import { getFormationMultiplier, computeEffectiveMovement } from '@/lib/unitStats';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
-import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig } from './mapGeometry';
+import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf } from './mapGeometry';
+import { newEffectKey } from '@/lib/unitEffects';
+import { AddEffectModal } from './AddEffectModal';
+import { EffectTemplate, EFFECT_TEMPLATES, EffectSpec } from '@/lib/unitEffects';
 import { routeUnit } from './routeUnit';
 import { useCanvasDraw } from './useCanvasDraw';
 import { useReactionActions } from './useReactionActions';
@@ -106,6 +109,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [sightRadius, setSightRadius] = useState(DEFAULT_SIGHT_RADIUS);
   const [showScenarioSettings, setShowScenarioSettings] = useState(false);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
+  // GM-painted map overlays (persisted in scenarios.map_data).
+  const [terrainCosts, setTerrainCosts] = useState<TerrainCosts>({});
+  const [groundZones, setGroundZones] = useState<GroundEffect[]>([]);
+  // GM map-edit brushes: terrain = entry-cost value (null = off); zone = template
+  // armed for placement (null = off).
+  const [terrainBrushCost, setTerrainBrushCost] = useState<number | null>(null);
+  const [zoneTemplate, setZoneTemplate] = useState<EffectTemplate | null>(null);
+  // Temporary-effect modal target (context menu → "Effects…").
+  const [effectMenuUnit, setEffectMenuUnit] = useState<Unit | null>(null);
   // Persist the docked side per scenario + user, like the open-tab state. Restore
   // only once the user id is known (auth settles after the first render), and only
   // persist on an explicit toggle — otherwise the default 'left' would overwrite a
@@ -307,6 +319,58 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     return computeVisibleHexes(displayUnits, group, displayAlliances, sightRadius).has(hexKey(target.hex));
   }, [fogOfWar, displayUnits, displayAlliances, sightRadius]);
 
+  // ---- GM map painting (terrain costs / ground-effect zones) ----
+  const persistMapData = useCallback(async (next: { terrainCosts?: TerrainCosts; groundEffects?: GroundEffect[] }) => {
+    await updateScenarioMapData(scenarioId, {
+      backgroundImageUrl: backgroundConfig?.imageUrl ?? '',
+      bgOffsetX: backgroundConfig?.offsetX ?? 0,
+      bgOffsetY: backgroundConfig?.offsetY ?? 0,
+      bgScale: backgroundConfig?.scale ?? 1,
+      gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
+      terrainCosts: next.terrainCosts !== undefined ? next.terrainCosts : terrainCosts,
+      groundEffects: next.groundEffects !== undefined ? next.groundEffects : groundZones,
+    });
+  }, [scenarioId, updateScenarioMapData, backgroundConfig, terrainCosts, groundZones]);
+
+  const paintTerrain = useCallback(async (q: number, r: number) => {
+    if (terrainBrushCost === null) return;
+    const next = { ...terrainCosts };
+    if (terrainBrushCost <= 1) delete next[`${q},${r}`];
+    else next[`${q},${r}`] = terrainBrushCost;
+    setTerrainCosts(next);
+    await persistMapData({ terrainCosts: next });
+  }, [terrainBrushCost, terrainCosts, persistMapData]);
+
+  const placeOrToggleZone = useCallback(async (q: number, r: number) => {
+    if (!zoneTemplate) return;
+    const existing = groundZones.find(z => z.q === q && z.r === r && z.name === zoneTemplate.name);
+    if (existing) {
+      const next = groundZones.filter(z => !(z.q === q && z.r === r && z.name === zoneTemplate.name));
+      setGroundZones(next);
+      await persistMapData({ groundEffects: next });
+      return;
+    }
+    const duration = Math.max(1, zoneTemplate.defaultDuration);
+    const zone: GroundEffect = {
+      key: newEffectKey(),
+      q,
+      r,
+      name: zoneTemplate.name,
+      color: zoneTemplate.color,
+      kind: zoneTemplate.kind,
+      delta: zoneTemplate.defaultDelta,
+      duration,
+      turnsLeft: duration,
+      casterUnitId: null,
+      casterTeam: myTeam ?? null,
+      casterPlayerId: playerId,
+    };
+    const next = [...groundZones, zone];
+    setGroundZones(next);
+    await persistMapData({ groundEffects: next });
+    addMessage(`${zoneTemplate.name} ground effect placed at (${q}, ${r})`);
+  }, [zoneTemplate, groundZones, persistMapData, myTeam, playerId, addMessage]);
+
   // Optimistic local update for SCENARIO sub-steps (turn tracking). Paints the
   // result on screen; the END_TURN RPC is the DB writer, realtime confirms.
   const setScenarioLocal = useCallback((fields: Record<string, any>) => {
@@ -322,7 +386,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
 
   const {
-    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, endTurn, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog,
+    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, endTurn, applyEffect, removeEffect, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog,
   } = useGameEngine({
     scenarioId,
     playerId,
@@ -363,6 +427,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     unitMaxMP,
     flashRangeViolation,
     canAttackTarget: canAttackInFog,
+    terrainCosts,
   });
 
   const { customDraw, captureAndUploadScreenshot } = useCanvasDraw({
@@ -388,6 +453,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     canReactToUnit,
     alliances,
     backgroundConfig,
+    terrainCosts,
+    groundZones,
     scenarioId,
     updateScreenshot,
   });
@@ -433,19 +500,62 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pruneReactionOffers,
     weaponSelectedTurnRef,
     setActiveHeroId,
+    terrainCosts,
   });
+
+  // ---- Temporary-effect apply/remove handlers (opened from the context menu) ----
+  const teamOptions = Object.keys(alliances).length > 0 ? Object.keys(alliances) : TEAMS;
+
+  const handleApplyUnitEffect = useCallback((spec: EffectSpec, duration: number) => {
+    const target = effectMenuUnit;
+    if (!target) return;
+    void applyEffect(target, spec, duration, playerId);
+    setEffectMenuUnit(null);
+  }, [effectMenuUnit, applyEffect, playerId]);
+
+  const handleRemoveUnitEffect = useCallback((key: string) => {
+    const target = effectMenuUnit;
+    if (!target) return;
+    void removeEffect(target, key);
+  }, [effectMenuUnit, removeEffect]);
+
+  const handlePlaceZoneFromUnit = useCallback(async (spec: EffectSpec, duration: number) => {
+    const target = effectMenuUnit;
+    if (!target) return;
+    const dur = Math.max(1, duration);
+    const zone: GroundEffect = {
+      key: newEffectKey(),
+      q: target.hex.q,
+      r: target.hex.r,
+      name: spec.name,
+      color: spec.color,
+      kind: spec.kind,
+      delta: spec.delta,
+      duration: dur,
+      turnsLeft: dur,
+      casterUnitId: null,
+      casterTeam: spec.casterTeam ?? null,
+      casterPlayerId: playerId,
+    };
+    const next = [...groundZones, zone];
+    setGroundZones(next);
+    await persistMapData({ groundEffects: next });
+    addMessage(`${spec.name} ground zone placed at ${target.unitName}'s hex`);
+    setEffectMenuUnit(null);
+  }, [effectMenuUnit, groundZones, persistMapData, playerId, addMessage]);
 
   const performEndTurn = useCallback(async () => {
     if (isEndingTurn) return;
     setIsEndingTurn(true);
     try {
-      const { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded, ok } = await endTurn({
+      const { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded, ok, zonesAfter } = await endTurn({
         currentAlliance: currentTurnAlliance,
         alliances,
         units,
         formationsMap,
         turnNumber,
         freeMove,
+        zones: groundZones,
       });
       // Only advance the client's turn state when the server actually committed —
       // otherwise the UI shows a turn that never happened (and units never reset).
@@ -454,6 +564,19 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (wrapped || freeMoveEnded) setTurnNumber(newTurnNumber);
       // Turn 0 free play ends when the first real turn begins.
       if (freeMoveEnded) setFreeMove(false);
+      // Ground zones ticked/expired inside the END_TURN command — persist survivors.
+      setGroundZones(zonesAfter);
+      if (zonesAfter.length !== groundZones.length) {
+        await updateScenarioMapData(scenarioId, {
+          backgroundImageUrl: backgroundConfig?.imageUrl ?? '',
+          bgOffsetX: backgroundConfig?.offsetX ?? 0,
+          bgOffsetY: backgroundConfig?.offsetY ?? 0,
+          bgScale: backgroundConfig?.scale ?? 1,
+          gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
+          terrainCosts,
+          groundEffects: zonesAfter,
+        });
+      }
       // Reactions are once-per-turn — clear all markers at the turn boundary.
       setReactionOffers(new Map());
       setReactionMode(null);
@@ -461,7 +584,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     } finally {
       setIsEndingTurn(false);
     }
-  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, freeMove, isEndingTurn]);
+  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, freeMove, isEndingTurn, groundZones, updateScenarioMapData, backgroundConfig, terrainCosts]);
 
   const handleEndTurn = useCallback(async () => {
     if (isEndingTurn) return;
@@ -649,6 +772,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     onHexClick: (hex) => {
       // Locked reaction mode: only Esc ends it; clicks are inert.
       if (reactionMode) return;
+      // GM map-edit brushes paint instead of selecting.
+      if (effectiveIsGM && terrainBrushCost !== null) { void paintTerrain(hex.q, hex.r); return; }
+      if (effectiveIsGM && zoneTemplate) { void placeOrToggleZone(hex.q, hex.r); return; }
       setSelectedHex(hex);
     },
     onUnitClick: (unit, _clientX, _clientY) => {
@@ -696,8 +822,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings).
   useEffect(() => {
-    setOverlayMap(computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex }));
-  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex]);
+    setOverlayMap(computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts }));
+  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts]);
 
   // Center map on initial load
   useEffect(() => {
@@ -889,7 +1015,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     loadSettings();
   }, []);
 
-  // ---- Load map background config ----
+  // ---- Load map background config + painted overlays ----
   useEffect(() => {
     fetchScenarioMapData(scenarioId).then(data => {
       setBackgroundConfig({
@@ -899,6 +1025,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         scale: data?.bgScale ?? 1,
         gridRadius: data?.gridRadius ?? DEFAULT_GRID_RADIUS,
       });
+      setTerrainCosts(data?.terrainCosts ?? {});
+      setGroundZones(Array.isArray(data?.groundEffects) ? data.groundEffects : []);
     });
   }, [scenarioId, fetchScenarioMapData]);
 
@@ -956,6 +1084,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           if (row.sight_radius !== undefined) {
             setSightRadius(row.sight_radius ?? DEFAULT_SIGHT_RADIUS);
           }
+          if (row.map_data !== undefined) {
+            const md = row.map_data || {};
+            if (md.terrainCosts !== undefined) setTerrainCosts(md.terrainCosts ?? {});
+            if (md.groundEffects !== undefined) setGroundZones(Array.isArray(md.groundEffects) ? md.groundEffects : []);
+            if (md.backgroundImageUrl !== undefined) {
+              setBackgroundConfig({
+                imageUrl: md.backgroundImageUrl ?? '',
+                offsetX: md.bgOffsetX ?? 0,
+                offsetY: md.bgOffsetY ?? 0,
+                scale: md.bgScale ?? 1,
+                gridRadius: md.gridRadius ?? DEFAULT_GRID_RADIUS,
+              });
+            }
+          }
         }
       )
       .subscribe();
@@ -969,6 +1111,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // Esc ends the locked reaction mode (or closes the formation picker) — as
       // if nothing happened; the reaction marker stays.
       if (e.key === 'Escape') {
+        if (terrainBrushCost !== null || zoneTemplate) {
+          setTerrainBrushCost(null);
+          setZoneTemplate(null);
+          return;
+        }
         if (reactionMode || reactionFormationPicker) {
           setReactionMode(null);
           setReactionFormationPicker(null);
@@ -989,7 +1136,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [controlsLocked, undo, redo, contextMenuUnit, rotateUnit, canControlUnit, reactionMode, reactionFormationPicker]);
+  }, [controlsLocked, undo, redo, contextMenuUnit, rotateUnit, canControlUnit, reactionMode, reactionFormationPicker, terrainBrushCost, zoneTemplate]);
 
   // Soft-enforcement prompts: fully-bound confirm handlers (clear state +
   // controlsLocked guard + act). The modals render from the pending states.
@@ -1164,6 +1311,38 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         goToLobby={goToLobby}
       />
 
+      {/* GM map-edit palette (terrain entry costs + ground-effect zones) */}
+      {effectiveIsGM && !controlsLocked && !inReplay && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 flex flex-wrap items-center gap-1.5 bg-gray-900/95 border border-gray-700 rounded-lg px-3 py-1.5 max-w-[80vw] shadow-lg">
+          <span className="text-xs text-gray-400 mr-1">GM Map</span>
+          {[1, 2, 3, 4, 5].map(n => (
+            <button
+              key={n}
+              title={n === 1 ? 'Remove terrain (cost 1)' : `Terrain cost ${n} MP`}
+              className={`px-2 py-0.5 rounded text-xs border ${terrainBrushCost === n && zoneTemplate === null ? 'bg-yellow-600 border-yellow-400 text-black' : 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700'}`}
+              onClick={() => { setZoneTemplate(null); setTerrainBrushCost(terrainBrushCost === n ? null : n); }}
+            >
+              {n === 1 ? 'clear' : `${n} MP`}
+            </button>
+          ))}
+          <span className="text-gray-600 mx-1">|</span>
+          {EFFECT_TEMPLATES.map(t => (
+            <button
+              key={t.id}
+              title={`Place ${t.name} ground zone (${t.description})`}
+              className={`px-2 py-0.5 rounded text-xs border ${zoneTemplate?.id === t.id && terrainBrushCost === null ? 'text-black' : 'bg-gray-800 text-gray-200 hover:bg-gray-700'}`}
+              style={zoneTemplate?.id === t.id && terrainBrushCost === null ? { background: t.color, borderColor: t.color } : { borderColor: t.color }}
+              onClick={() => { setTerrainBrushCost(null); setZoneTemplate(zoneTemplate?.id === t.id ? null : t); }}
+            >
+              {t.name}
+            </button>
+          ))}
+          {(terrainBrushCost !== null || zoneTemplate) && (
+            <span className="text-yellow-300 text-xs ml-1">Click a hex · Esc exits</span>
+          )}
+        </div>
+      )}
+
       {/* Floating Left Panel — hidden in replay or when the DM is gone */}
       {!controlsLocked && (
         <div className={`absolute top-14 z-10 ${panelSide === 'left' ? 'left-2' : 'right-2'}`}>
@@ -1272,7 +1451,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             const target = units.find(u => u.id === targetUnitId);
             if (hero && target) setAttachModal({ hero, target });
           }}
+          onAddEffect={() => setEffectMenuUnit(contextMenuUnit)}
           units={units}
+        />
+      )}
+
+      {/* Add / remove temporary effects (context menu → Effects…) */}
+      {effectMenuUnit && (
+        <AddEffectModal
+          unit={effectMenuUnit}
+          teamOptions={teamOptions}
+          canPlaceZone={effectiveIsGM}
+          onApply={handleApplyUnitEffect}
+          onRemove={handleRemoveUnitEffect}
+          onPlaceZone={handlePlaceZoneFromUnit}
+          onClose={() => setEffectMenuUnit(null)}
         />
       )}
 

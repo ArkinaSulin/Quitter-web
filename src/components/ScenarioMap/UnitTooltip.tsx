@@ -110,6 +110,18 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
           <span className={unit.attacksUsed >= unitAttackCap() ? 'text-red-400' : ''}>{unit.attacksUsed}/{unitAttackCap()} <span className="text-gray-500">(attacks + retaliations)</span></span>
         )}
         <span className="text-gray-400">AC:</span><span>{showTroops ? `${effectiveAc - shieldPenalty} = ${unit.baselineAc}${shieldPenalty > 0 ? ` - ${shieldPenalty} (${shieldInfo.reason === 'routing' ? 'routing, no shield' : 'two-handed'})` : ''}${formationAcMod !== 0 ? ` + ${formationAcMod} (formation)` : ''}${formationAcMod >= 0 && shieldPenalty === 0 ? ' +0' : ''}` : effectiveAc - shieldPenalty}</span>
+        {(unit.effects ?? []).length > 0 && (
+          <>
+            <span className="col-span-2 mt-0.5 text-[10px] uppercase tracking-wide text-gray-500">Effects</span>
+            {(unit.effects ?? []).map(e => (
+              <span key={e.key} className="col-span-2 flex items-center gap-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: e.color }} />
+                <span className={e.kind === 'dot' ? 'text-orange-400' : e.delta < 0 ? 'text-red-400' : 'text-green-400'}>{e.name}</span>
+                <span className="text-gray-500">{e.zoneHex ? 'zone' : e.kind === 'dot' ? `${Math.abs(e.delta)}/tick` : `${e.delta > 0 ? '+' : ''}${e.delta}`} · {e.turnsLeft} turn{e.turnsLeft === 1 ? '' : 's'}</span>
+              </span>
+            ))}
+          </>
+        )}
       </div>
 
       <div className="border-t border-gray-600 my-1.5" />

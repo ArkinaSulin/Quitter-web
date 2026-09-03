@@ -279,51 +279,67 @@ export function computeChargeReachable(
 /**
  * Reachable map for one move.
  *
- * Movement only costs distance (1 MP per hex); turning is paid separately when
- * the unit actually rotates (a ROTATE command). So:
+ * Movement costs MP per hex ENTERED — normally 1 MP per hex, but a hex may cost
+ * more via `costOfHex` (painted terrain, e.g. difficult ground at 2+ MP). Turning
+ * is paid separately when the unit actually rotates (a ROTATE command). So:
  *   - WHITE entries (needsTurn false): reachable straight ahead from the current
- *     facing, cost = distance. These are droppable.
+ *     facing, cost = cheapest entry-cost path. These are droppable.
  *   - GREY entries (needsTurn true): reachable only if the unit could turn for
  *     free — a hint that it must rotate first, then move. Not droppable.
  *
  * Threat hexes are reachable but cannot be passed through. Occupied hexes are
- * never reachable. Routed / Scattered / Hero units move in any direction at 1 MP
- * per hex (no facing) — always white.
+ * never reachable. Routed / Scattered / Hero units move in any direction (no
+ * facing) — always white. All three passes are min-cost Dijkstras so a cheaper
+ * later path can revisit a hex (required once entry costs are non-uniform).
  */
 export function computeReachableMap(
   unit: { hex: Hex; facing: number; currentFormation: string; isHero?: boolean; mountId?: string | null; mountName?: string },
   maxMP: number,
   occupied: Set<string>,
   threatHexes: Set<string>,
+  costOfHex?: (q: number, r: number) => number,
 ): Map<string, MovePathEntry> {
+  // MP to ENTER hex (q,r). Defaults to 1; clamps fractional/absurd values to >=1.
+  const stepCost = (q: number, r: number): number => {
+    if (!costOfHex) return 1;
+    const c = Math.round(costOfHex(q, r) || 1);
+    return c >= 1 ? c : 1;
+  };
+
   const result = new Map<string, MovePathEntry>();
   const loose = isUnitRouted(unit) || unit.currentFormation === 'Scattered' || unit.currentFormation === 'Hero' || unit.isHero === true;
 
+  // Linear pop-min over a small state space (bounded by maxMP hexes).
+  const popMin = <T extends { d: number }>(list: T[]): T => {
+    let best = 0;
+    for (let i = 1; i < list.length; i++) {
+      if (list[i].d < list[best].d) best = i;
+    }
+    return list.splice(best, 1)[0];
+  };
+
   if (loose) {
-    const visited = new Set<string>();
-    const queue: { q: number; r: number; dist: number; path: Hex[] }[] = [];
-    queue.push({ q: unit.hex.q, r: unit.hex.r, dist: 0, path: [] });
-    visited.add(key(unit.hex.q, unit.hex.r));
+    const best = new Map<string, number>();
+    const queue: { q: number; r: number; d: number; path: Hex[] }[] = [];
+    queue.push({ q: unit.hex.q, r: unit.hex.r, d: 0, path: [] });
+    best.set(key(unit.hex.q, unit.hex.r), 0);
 
     while (queue.length > 0) {
-      const cur = queue.shift()!;
-      if (cur.dist >= maxMP) continue;
+      const cur = popMin(queue);
+      if (cur.d > (best.get(key(cur.q, cur.r)) ?? Infinity)) continue;
+      if (cur.d >= maxMP) continue; // reachable at maxMP, not expandable past it
       for (const dir of HEX_DIRS) {
         const nq = cur.q + dir.q;
         const nr = cur.r + dir.r;
         const k = key(nq, nr);
-        if (visited.has(k) || occupied.has(k)) continue;
-        visited.add(k);
-        const entry: MovePathEntry = {
-          cost: cur.dist + 1,
-          path: [...cur.path, { q: nq, r: nr, s: -nq - nr }],
-          finalFacing: unit.facing,
-          needsTurn: false,
-        };
-        result.set(k, entry);
-        if (!threatHexes.has(k)) {
-          queue.push({ q: nq, r: nr, dist: cur.dist + 1, path: entry.path });
-        }
+        if (occupied.has(k)) continue;
+        const nc = cur.d + stepCost(nq, nr);
+        if (nc > maxMP) continue;
+        if ((best.get(k) ?? Infinity) <= nc) continue;
+        best.set(k, nc);
+        const path = [...cur.path, { q: nq, r: nr, s: -nq - nr }];
+        result.set(k, { cost: nc, path, finalFacing: unit.facing, needsTurn: false });
+        if (!threatHexes.has(k)) queue.push({ q: nq, r: nr, d: nc, path });
       }
     }
     return result;
@@ -332,28 +348,30 @@ export function computeReachableMap(
   // WHITE set: the full front wedge reachable WITHOUT turning — at each step the
   // unit moves into either front-arc hex and keeps its facing. The wedge (not
   // just the two edge rays) is straight-ahead reachable, so every interior hex
-  // is droppable. Cost = distance.
+  // is droppable. Cost = cheapest entry-cost path through the wedge.
   const white = new Map<string, MovePathEntry>();
   const frontDirs = [(unit.facing + 4) % 6, (unit.facing + 5) % 6];
-  const whiteVisited = new Set<string>([key(unit.hex.q, unit.hex.r)]);
-  const wq: { q: number; r: number; d: number; path: Hex[] }[] = [
-    { q: unit.hex.q, r: unit.hex.r, d: 0, path: [] },
-  ];
+  const whiteBest = new Map<string, number>();
+  const wq: { q: number; r: number; d: number; path: Hex[] }[] = [];
+  wq.push({ q: unit.hex.q, r: unit.hex.r, d: 0, path: [] });
+  whiteBest.set(key(unit.hex.q, unit.hex.r), 0);
   while (wq.length > 0) {
-    const cur = wq.shift()!;
+    const cur = popMin(wq);
+    if (cur.d > (whiteBest.get(key(cur.q, cur.r)) ?? Infinity)) continue;
     if (cur.d >= maxMP) continue;
     for (const dirIdx of frontDirs) {
       const dir = HEX_DIRS[dirIdx];
       const nq = cur.q + dir.q;
       const nr = cur.r + dir.r;
       const k = key(nq, nr);
-      if (whiteVisited.has(k) || occupied.has(k)) continue;
-      whiteVisited.add(k);
+      if (occupied.has(k)) continue;
+      const nc = cur.d + stepCost(nq, nr);
+      if (nc > maxMP) continue;
+      if ((whiteBest.get(k) ?? Infinity) <= nc) continue;
+      whiteBest.set(k, nc);
       const path = [...cur.path, { q: nq, r: nr, s: -nq - nr }];
-      white.set(k, { cost: cur.d + 1, path, finalFacing: unit.facing, needsTurn: false });
-      if (!threatHexes.has(k)) {
-        wq.push({ q: nq, r: nr, d: cur.d + 1, path });
-      }
+      white.set(k, { cost: nc, path, finalFacing: unit.facing, needsTurn: false });
+      if (!threatHexes.has(k)) wq.push({ q: nq, r: nr, d: nc, path });
     }
   }
 
@@ -378,13 +396,6 @@ export function computeReachableMap(
   const pq: { q: number; r: number; facing: number; d: number }[] = [
     { q: unit.hex.q, r: unit.hex.r, facing: unit.facing, d: 0 },
   ];
-  const popMin = () => {
-    let best = 0;
-    for (let i = 1; i < pq.length; i++) {
-      if (pq[i].d < pq[best].d) best = i;
-    }
-    return pq.splice(best, 1)[0];
-  };
   const relax = (q: number, r: number, facing: number, nd: number) => {
     if (facing === blockedFacing) return;
     const nk = `${q},${r},${facing}`;
@@ -394,7 +405,7 @@ export function computeReachableMap(
     }
   };
   while (pq.length > 0) {
-    const cur = popMin();
+    const cur = popMin(pq);
     const curKey = `${cur.q},${cur.r},${cur.facing}`;
     if (cur.d !== distMap.get(curKey)) continue; // stale entry
     if (cur.d >= maxMP) continue;
@@ -405,7 +416,7 @@ export function computeReachableMap(
       const nq = cur.q + dir.q;
       const nr = cur.r + dir.r;
       if (occupied.has(key(nq, nr))) continue;
-      relax(nq, nr, cur.facing, cur.d + 1);
+      relax(nq, nr, cur.facing, cur.d + stepCost(nq, nr));
     }
     // 60° turns: ±1 facing, 1 MP each.
     for (const newFacing of [(cur.facing + 5) % 6, (cur.facing + 1) % 6]) {

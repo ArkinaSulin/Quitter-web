@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Unit, Hex, UnitTemplate, SizeCategory, getOrganizationLevel } from '@/types/gameProtocol';
+import { Unit, Hex, UnitTemplate, SizeCategory, getOrganizationLevel, UnitEffect } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
 import { alphaLabel } from '@/lib/unitNaming';
 import { normalizeLocalAssetUrl, raceIconFromName } from '@/lib/imageUrls';
@@ -11,6 +11,25 @@ import { getSetting } from '@/lib/settingsCache';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // --- Converters ---
+/** Sanitize a units.effects jsonb array into UnitEffect[] (defensive parsing). */
+function parseEffects(raw: any): UnitEffect[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((e: any) => ({
+    key: String(e?.key ?? ''),
+    zoneHex: e?.zoneHex ? { q: Number(e.zoneHex.q) || 0, r: Number(e.zoneHex.r) || 0, s: Number(e.zoneHex.s) || 0 } : undefined,
+    name: e?.name || '',
+    color: e?.color || '#cccccc',
+    kind: e?.kind || 'ac',
+    delta: Number(e?.delta) || 0,
+    duration: Number(e?.duration) || 1,
+    turnsLeft: Number(e?.turnsLeft) ?? 1,
+    casterUnitId: e?.casterUnitId ?? null,
+    casterTeam: e?.casterTeam ?? null,
+    casterPlayerId: e?.casterPlayerId ?? null,
+    base: e?.base == null ? undefined : Number(e.base),
+  })).filter(e => e.key);
+}
+
 function mapRowToUnit(row: any): Unit {
   return {
     id: row.id,
@@ -50,6 +69,7 @@ function mapRowToUnit(row: any): Unit {
     customImageUrl: normalizeLocalAssetUrl(row.custom_image_url),
     canCharge: row.can_charge || false,
     darkvision: Number(row.darkvision) || 0,
+    effects: parseEffects(row.effects),
     hex: { q: row.hex_q, r: row.hex_r, s: row.hex_s },
     facing: row.facing || 0,
     team: row.team || 'black',
@@ -113,6 +133,7 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     custom_image_url: unit.customImageUrl || '',
     can_charge: unit.canCharge || false,
     darkvision: unit.darkvision || 0,
+    effects: unit.effects ?? [],
     hex_q: unit.hex.q,
     hex_r: unit.hex.r,
     hex_s: unit.hex.s,
@@ -394,6 +415,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       customImageUrl: normalizeLocalAssetUrl(template.customImageUrl),
       canCharge: canCharge,
       darkvision: template.darkvision || 0,
+      effects: [],
       hex: hex,
       facing: 0,
       team: team,

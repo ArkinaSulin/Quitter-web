@@ -382,6 +382,64 @@ describe('hero movement — 5 actions = 1 full movement, prorated with fraction 
   });
 });
 
+describe('computeReachableMap — per-hex terrain entry costs', () => {
+  // costOfHex: default 1 everywhere; painted hexes pay extra on ENTRY.
+  const costs = (c: Record<string, number>) => (q: number, r: number) => c[`${q},${r}`] ?? 1;
+
+  it('formed unit pays the entry cost of each hex it steps into (front arc)', () => {
+    const map = computeReachableMap(formedUnit, 4, new Set(), new Set(), costs({ '0,-1': 2 }));
+    expect(map.get('0,-1')).toMatchObject({ cost: 2, needsTurn: false }); // expensive first step
+    expect(map.get('1,-1')).toMatchObject({ cost: 1, needsTurn: false }); // cheap neighbor stays cheap
+    // (0,-2) is only reachable through (0,-1): 2 + 1 = 3.
+    expect(map.get('0,-2')?.cost).toBe(3);
+    // (1,-2) is reachable through the cheap ray (1,-1) then (1,-2): 1 + 1 = 2.
+    expect(map.get('1,-2')?.cost).toBe(2);
+  });
+
+  it('a 2-MP hex halves a 2-MP pool: one step only', () => {
+    const map = computeReachableMap(formedUnit, 2, new Set(), new Set(), costs({ '0,-1': 2, '1,-1': 2 }));
+    expect(map.get('0,-1')).toMatchObject({ cost: 2, needsTurn: false });
+    expect(map.get('1,-1')).toMatchObject({ cost: 2, needsTurn: false });
+    expect(map.has('0,-2')).toBe(false); // 2 + 1 > 2
+    expect(map.has('1,-2')).toBe(false);
+  });
+
+  it('loose (routed/scattered) units pay terrain entry costs omnidirectionally', () => {
+    const looseUnit = { ...formedUnit, currentFormation: 'Routed' };
+    const map = computeReachableMap(looseUnit, 6, new Set(), new Set(), costs({ '1,0': 3 }));
+    expect(map.get('1,0')).toMatchObject({ cost: 3, needsTurn: false });
+    // (0,-1) has no terrain: still 1.
+    expect(map.get('0,-1')).toMatchObject({ cost: 1, needsTurn: false });
+  });
+
+  it('heroes (omnidirectional) pay terrain entry costs', () => {
+    const heroUnit = { ...formedUnit, currentFormation: 'Hero', isHero: true };
+    const map = computeReachableMap(heroUnit, 4, new Set(), new Set(), costs({ '-1,0': 2 }));
+    expect(map.get('-1,0')).toMatchObject({ cost: 2, needsTurn: false });
+    expect(map.get('1,0')).toMatchObject({ cost: 1, needsTurn: false });
+    expect(map.get('0,1')).toMatchObject({ cost: 1, needsTurn: false });
+  });
+
+  it('terrain applies inside the needs-turn (grey) hint pass too', () => {
+    // (1,0) needs a turn (1 MP) + a step. Entry cost of (1,0) is 2 -> grey cost 3.
+    const map = computeReachableMap(formedUnit, 4, new Set(), new Set(), costs({ '1,0': 2 }));
+    const entry = map.get('1,0');
+    expect(entry).toBeDefined();
+    expect(entry!.needsTurn).toBe(true);
+    expect(entry!.cost).toBe(3);
+  });
+
+  it('records the cheapest path even when a detour beats a straight expensive line', () => {
+    const looseUnit = { ...formedUnit, currentFormation: 'Scattered' };
+    // Straight into (1,0) costs 3, but looping through the untouched east face is
+    // 1 + 1 + 1 = 3 too; a 5-MP straight wall forces a cheap roundabout.
+    const map = computeReachableMap(looseUnit, 8, new Set(), new Set(), costs({ '1,0': 5, '1,-1': 5, '0,-1': 5 }));
+    // (2,0) reachable via (1,1)? No — (2,0)'s neighbours include (1,0),(1,1),(2,-1),…
+    // So Dijkstra must find the route through the cheap north-east wedge.
+    expect(map.get('2,0')?.cost ?? Infinity).toBeLessThanOrEqual(5);
+  });
+});
+
 describe('computeChargeReachable — front-arc BFS wedge', () => {
   it('fans out a wedge: 1 step -> 2 hexes, 2 steps -> 3, 3 steps -> 4', () => {
     const map = computeChargeReachable({ hex: h(0, 0), facing: 0 }, new Set(), 3);

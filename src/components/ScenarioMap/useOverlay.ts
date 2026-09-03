@@ -12,7 +12,7 @@ import { isUnitRouted } from '@/lib/unitMorale';
 import { parseWeapons } from '@/lib/weaponParser';
 import { isRangedCapableWeapon, getReactionMoveBudget } from '@/lib/archerReaction';
 import { determineCombatPosition } from '@/lib/unitCombat';
-import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig } from './mapGeometry';
+import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, TerrainCosts } from './mapGeometry';
 
 /** Hovered unit's front-arc threat tint (non-loose units only). */
 function getOverlayForUnit(unit: Unit): Record<string, string> {
@@ -40,6 +40,7 @@ export interface OverlayState {
   freeMove: boolean;
   backgroundConfig: MapBackgroundConfig | null;
   rangeViolationHex: Hex | null;
+  terrainCosts?: TerrainCosts;
 }
 
 export function computeOverlayMap(state: OverlayState): Record<string, string> {
@@ -53,6 +54,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     freeMove,
     backgroundConfig,
     rangeViolationHex,
+    terrainCosts,
   } = state;
 
   // Reaction mode drag: hovering a hostile in weapon range shows range rings;
@@ -74,7 +76,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const maxMP = computeEffectiveMovement(archer, getFormationMultiplier(formationsMap, archer.currentFormation, 'movement_multiplier'));
       const budget = getReactionMoveBudget(maxMP);
       const occupied = computeOccupiedHexes(units, archer.id);
-      const reachable = computeReachableMap(archer, budget, occupied, new Set());
+      const reachable = computeReachableMap(archer, budget, occupied, new Set(), (q, r) => terrainCostOf(terrainCosts, q, r));
       reachable.forEach((entry, key) => {
         combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
       });
@@ -133,7 +135,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const heroMax = computeEffectiveMovement(attachedHero, heroMult);
       pool = Math.min(pool, attachedHero.isHero ? computeHeroMovePool(attachedHero, heroMax) : computeMovePool(attachedHero, heroMax));
     }
-    const reachableMap = computeReachableMap(draggedUnit, pool, occupied, threatHexes);
+    const reachableMap = computeReachableMap(draggedUnit, pool, occupied, threatHexes, (q, r) => terrainCostOf(terrainCosts, q, r));
 
     const combined: Record<string, string> = {};
 

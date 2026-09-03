@@ -13,6 +13,8 @@ import { isUnitRouted } from '@/lib/unitMorale';
 import { useMessageSync } from '@/hooks/useMessageSync';
 import { ActionType, SubStep, CommandLogRow, UndoState, parseSubSteps } from '@/lib/commandLog';
 import { getActiveGroups, advanceTurn } from '@/lib/turnState';
+import { UnitEffect, GroundEffect } from '@/types/gameProtocol';
+import { applyEffectChanges, removeEffectChanges, computeEndTurnEffects, newEffectKey, EffectSpec } from '@/lib/unitEffects';
 
 interface UseGameEngineProps {
   scenarioId: string;
@@ -511,8 +513,22 @@ export function useGameEngine({
 
       // Shield is unusable while a two-handed weapon is active: effective AC = baseline - 2.
       const shieldPenalty = unit.isShielded && nextWeapon.isTwoHanded ? 2 : 0;
-      const nextAc = (unit.baselineAc || 10) - shieldPenalty;
+      const baseAc = (unit.baselineAc || 10) - shieldPenalty;
       const fromAc = unit.currentAc;
+      // An active AC effect rides the switch: keep its delta, rebase its snapshot
+      // onto the new weapon's no-buff AC so expiry restores the right value.
+      const acEffect = (unit.effects ?? []).find(e => e.kind === 'ac' && !e.zoneHex);
+      const nextAc = acEffect ? baseAc + acEffect.delta : baseAc;
+      const acChanges = acEffect && nextAc !== fromAc
+        ? [
+            { field: 'currentAc', from: fromAc, to: nextAc },
+            {
+              field: 'effects',
+              from: unit.effects ?? [],
+              to: (unit.effects ?? []).map(e => (e.key === acEffect.key ? { ...e, base: baseAc } : e)),
+            },
+          ]
+        : [{ field: 'currentAc', from: fromAc, to: nextAc }];
 
       const subSteps: SubStep[] = [
         {
@@ -521,7 +537,7 @@ export function useGameEngine({
           unitId: unit.id,
           changes: [
             { field: 'activeWeaponIndex', from: unit.activeWeaponIndex ?? 0, to: weaponIndex },
-            { field: 'currentAc', from: fromAc, to: nextAc },
+            ...acChanges,
           ],
         },
       ];
@@ -663,7 +679,8 @@ export function useGameEngine({
       formationsMap: Record<string, Formation>;
       turnNumber: number;
       freeMove: boolean;
-    }): Promise<{ next: AllianceGroup; wrapped: boolean; turnNumber: number; freeMoveEnded: boolean; ok: boolean }> => {
+      zones?: GroundEffect[];
+    }): Promise<{ next: AllianceGroup; wrapped: boolean; turnNumber: number; freeMoveEnded: boolean; ok: boolean; zonesAfter: GroundEffect[] }> => {
       const activeGroups = getActiveGroups(args.alliances);
       const { next, wrapped } = advanceTurn(args.currentAlliance, activeGroups);
       // Turn 0 = free play (null alliance). The first End Turn leaves free play and
@@ -689,6 +706,18 @@ export function useGameEngine({
           changes,
         },
       ];
+
+      // Temporary effects: fold the start-of-{next}-turn expiry / DoT ticks / zone
+      // membership reconcile into the SAME END_TURN command (undo/redo/realtime all
+      // ride it). Zones after expiry return for the caller to persist to map_data.
+      const effectsRes = computeEndTurnEffects({
+        units: args.units,
+        zones: args.zones ?? [],
+        nextGroup: next,
+        alliances: args.alliances,
+      });
+      for (const s of effectsRes.subSteps) subSteps.push(s);
+      let zonesAfter = effectsRes.zonesAfter;
 
       // Charge forfeit: units in the ending group that charged but never used their
       // free attack drop one organization level and clear their charge state.
@@ -747,10 +776,40 @@ export function useGameEngine({
       }
 
       const row = await execute('END_TURN', subSteps, `End Turn — ${next} turn begins`);
-      return { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded: leavingFreePlay, ok: !!row };
+      return { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded: leavingFreePlay, ok: !!row, zonesAfter };
     },
     [execute, scenarioId],
   );
+
+  // Apply / remove a temporary effect as a command (undoable, broadcast). Returns
+  // { ok:false, reason } when the carrier already holds a same-kind effect.
+  const applyEffect = useCallback(async (unit: Unit, spec: EffectSpec, duration: number, casterPlayerId?: string) => {
+    const full: Omit<UnitEffect, 'key' | 'base'> = { ...spec, duration: Math.max(1, duration), turnsLeft: Math.max(1, duration), casterPlayerId };
+    const { changes } = applyEffectChanges(unit, full, newEffectKey());
+    if (changes.length === 0) {
+      addError(`${unit.unitName} already has a ${spec.name} effect active`);
+      return { ok: false as const, reason: 'stack' };
+    }
+    await execute('EFFECT', [{
+      type: 'EFFECT',
+      description: `${spec.name} applied to ${unit.unitName}`,
+      unitId: unit.id,
+      changes,
+    }], `${unit.unitName} gains ${spec.name}${spec.kind === 'dot' ? ` (${spec.delta}/tick, ${duration} turns)` : ` ${spec.delta > 0 ? '+' : ''}${spec.delta}, ${duration} turns`}`);
+    return { ok: true as const };
+  }, [execute, addError]);
+
+  const removeEffect = useCallback(async (unit: Unit, key: string, reason = '') => {
+    const changes = removeEffectChanges(unit, key);
+    if (changes.length === 0) return { ok: false as const };
+    await execute('EFFECT', [{
+      type: 'EFFECT',
+      description: `Effect removed from ${unit.unitName}`,
+      unitId: unit.id,
+      changes,
+    }], `${unit.unitName}'s effect ended${reason ? ` (${reason})` : ''}`);
+    return { ok: true as const };
+  }, [execute]);
 
   return {
     execute,
@@ -771,6 +830,8 @@ export function useGameEngine({
     attachHero,
     swapHeroPosition,
     endTurn,
+    applyEffect,
+    removeEffect,
     charge,
     refreshUndoState,
     subscribeToCommandLog,
