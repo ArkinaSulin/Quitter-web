@@ -447,6 +447,28 @@ describe('computeReachableMap — per-hex terrain entry costs', () => {
     expect(map.get('0,-2')?.cost).toBe(1); // 0 + entry 1
   });
 
+  it('allowBeyondBudget includes a too-expensive front hex at its true cost', () => {
+    const costs = (c: Record<string, number>) => (q: number, r: number) => c[`${q},${r}`] ?? 1;
+    // Default: excluded (cost 5 > pool 2).
+    const payable = computeReachableMap(formedUnit, 2, new Set(), new Set(), costs({ '0,-1': 5 }));
+    expect(payable.has('0,-1')).toBe(false);
+    // allowBeyondBudget: present at its real cost, still hop-bounded.
+    const over = computeReachableMap(formedUnit, 2, new Set(), new Set(), costs({ '0,-1': 5, '0,-2': 1 }), true);
+    expect(over.get('0,-1')).toMatchObject({ cost: 5, needsTurn: false });
+    expect(over.get('0,-2')).toMatchObject({ cost: 6, needsTurn: false }); // 5 + 1, within 2 hops
+    expect(over.has('0,-3')).toBe(false); // hop 3 would exceed the 2-hop cap
+  });
+
+  it('allowBeyondBudget: hero/loose single high-cost hop is found, reach stays hop-bounded', () => {
+    const costs = (c: Record<string, number>) => (q: number, r: number) => c[`${q},${r}`] ?? 1;
+    const hero = { ...formedUnit, currentFormation: 'Hero', isHero: true };
+    const payable = computeReachableMap(hero, 3, new Set(), new Set(), costs({ '1,0': 5 }));
+    expect(payable.has('1,0')).toBe(false); // cost 5 > pool 3: excluded by default
+    const over = computeReachableMap(hero, 3, new Set(), new Set(), costs({ '1,0': 5 }), true);
+    expect(over.get('1,0')).toMatchObject({ cost: 5, needsTurn: false }); // real 5 MP entry
+    expect(over.has('4,0')).toBe(false); // 4 hops would exceed the 3-hop cap
+  });
+
   it('records the cheapest path even when a detour beats a straight expensive line', () => {
     const looseUnit = { ...formedUnit, currentFormation: 'Scattered' };
     // Straight into (1,0) costs 3, but looping through the untouched east face is

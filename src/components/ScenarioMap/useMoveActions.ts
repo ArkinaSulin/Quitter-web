@@ -5,7 +5,7 @@
 // (pendingMove, pendingFormation, hero attach/swap conversion + over-budget).
 import { useCallback, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
-import { computeReachableMap, computeMoveBudget, computeHeroMoveBudget, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable } from '@/lib/moveCost';
+import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable } from '@/lib/moveCost';
 import { isFormationChangeAffordable } from '@/lib/formationCost';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { isUnitRouted } from '@/lib/unitMorale';
@@ -213,20 +213,19 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const occupied = computeOccupiedHexes(units, unitId);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
     const costOfHex = (q: number, r: number) => terrainCostOf(terrainCosts, q, r);
-    // Drop reachability uses the FULL move budget (leftover MP + every action as
-    // a full pool), NOT the payable-highlight pool — so painted MP-cost hexes are
-    // entered at their true cost. An over-budget drop keeps its real cost for the
-    // soft-enforcement confirm instead of a bogus straight-line distance.
-    const unitBudget = unit.isHero ? computeHeroMoveBudget(unit, effectiveMax) : computeMoveBudget(unit, effectiveMax);
-    const heroBudget = attachedHero && heroMax
-      ? (attachedHero.isHero ? computeHeroMoveBudget(attachedHero, heroMax) : computeMoveBudget(attachedHero, heroMax))
-      : Infinity;
-    const searchBudget = Math.max(1, Math.min(unitBudget, heroBudget));
-    const reachableMap = computeReachableMap(unit, searchBudget, occupied, threatHexes, costOfHex);
+    // The drop search is bounded by the PHYSICAL hex-hop limit (a unit can't walk
+    // more hexes than its move), but NOT by MP: painted hexes are found at their
+    // TRUE entry cost even when that cost exceeds the pool, so affordability (and
+    // the soft over-budget confirm) use the real number instead of a hard block.
+    const hopCap = Math.max(1, Math.min(
+      effectiveMax,
+      attachedHero && heroMax ? heroMax : Infinity,
+    ));
+    const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true);
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
-      // Even the full budget can't reach the target — no plausible cost exists.
-      addMessage(`${unit.unitName} cannot make that move — (${targetHex.q}, ${targetHex.r}) is beyond its movement budget`);
+      // Beyond the physical hop limit — genuinely can't walk that far.
+      addMessage(`${unit.unitName} cannot make that move — (${targetHex.q}, ${targetHex.r}) is out of reach`);
       return;
     }
     // Movement only pays distance; turning is a separate paid ROTATE. A grey

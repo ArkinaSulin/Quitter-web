@@ -301,6 +301,11 @@ export function computeReachableMap(
   occupied: Set<string>,
   threatHexes: Set<string>,
   costOfHex?: (q: number, r: number) => number,
+  /** When true, keep hexes whose entry path COST exceeds maxMP (the unit can't
+   *  pay, but soft enforcement may still be asked to move there). The hex-STEP
+   *  cap (maxMP) always applies, so reach stays physically bounded. Default
+   *  false keeps today's payable-only behavior (overlay highlight). */
+  allowBeyondBudget?: boolean,
 ): Map<string, MovePathEntry> {
   // MP to ENTER hex (q,r). Defaults to 1; a painted 0 = free entry; clamps only
   // negative/garbage to 1.
@@ -349,7 +354,7 @@ export function computeReachableMap(
         if (occupied.has(k)) continue;
         const nc = cur.d + stepCost(nq, nr);
         const nh = cur.hops + 1;
-        if (nc > maxMP || nh > maxMP) continue;
+        if ((!allowBeyondBudget && nc > maxMP) || nh > maxMP) continue;
         if (!improves(bestCost.get(k), bestHops.get(k), nc, nh)) continue;
         bestCost.set(k, nc);
         bestHops.set(k, nh);
@@ -410,7 +415,7 @@ export function computeReachableMap(
     const curKey = `${cur.q},${cur.r},${cur.facing}`;
     const known = distMap.get(curKey);
     if (!known || cur.d !== known.cost || cur.hops !== known.hops) continue; // stale entry
-    if (cur.d >= maxMP || cur.hops >= maxMP) continue;
+    if ((!allowBeyondBudget && cur.d >= maxMP) || cur.hops >= maxMP) continue;
     if (threatHexes.has(key(cur.q, cur.r))) continue; // can stop here, not pass through
     const cf = [(cur.facing + 4) % 6, (cur.facing + 5) % 6];
     for (const dirIdx of cf) {
@@ -419,7 +424,7 @@ export function computeReachableMap(
       const nr = cur.r + dir.r;
       if (occupied.has(key(nq, nr))) continue;
       const nc = cur.d + stepCost(nq, nr);
-      if (nc <= maxMP && cur.hops + 1 <= maxMP) {
+      if ((allowBeyondBudget || nc <= maxMP) && cur.hops + 1 <= maxMP) {
         relax(nq, nr, cur.facing, nc, cur.hops + 1);
       }
     }
