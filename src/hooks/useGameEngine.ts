@@ -155,9 +155,16 @@ export function useGameEngine({
         p_chained: isChained,
       });
       if (error || !data || (data as any[]).length === 0) {
-        console.error('[CommandLog] Execute failed:', error, { actionType, description });
+        const errMsg = error?.message || 'blocked by the server (no permission)';
+        const errDetails = error?.details || error?.hint || '';
+        const errCode = error?.code || '';
+        // Serialize the full error so the DB reason is readable in the console.
+        console.error('[CommandLog] Execute failed:', JSON.stringify({
+          message: errMsg, code: errCode, details: errDetails, hint: error?.hint,
+          actionType, description,
+        }, null, 2));
         if (error) {
-          addError(`Action failed — ${description}: ${error.message}`);
+          addError(`Action failed — ${description}: ${errMsg}${errDetails ? ` (${errDetails})` : ''}`);
         } else {
           // The RPC returned an EMPTY set with no error: a SECURITY DEFINER gate
           // rejected the command (e.g. END_TURN outside the current alliance in a
