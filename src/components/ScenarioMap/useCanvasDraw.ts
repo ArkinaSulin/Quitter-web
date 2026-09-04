@@ -9,7 +9,8 @@ import { hexToPixel } from '@/hooks/useHexGrid';
 import { Unit, Hex, AllianceGroup, Formation, SizeCategory, GroundEffect } from '@/types/gameProtocol';
 import { drawToken, loadImage, drawArcherReactionButton } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
-import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig, TerrainCosts } from './mapGeometry';
+import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig, TerrainCosts, costShade } from './mapGeometry';
+import { FOG_RGB } from '@/lib/fogOfWar';
 
 interface CanvasDrawDeps {
   canvasRef: RefObject<HTMLCanvasElement>;
@@ -115,19 +116,23 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     }
     if (terrainCosts) {
       ctx.save();
-      ctx.font = `${Math.max(8, 13 * currentZoom)}px ui-monospace, monospace`;
+      ctx.font = `bold ${Math.max(9, 14 * currentZoom)}px ui-monospace, monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = Math.max(1, 3 * currentZoom);
       for (const [key, cost] of Object.entries(terrainCosts)) {
-        if (cost <= 1) continue;
+        if (cost === 1) continue;
         if (isFogHidden(key)) continue;
         const [q, r] = key.split(',').map(Number);
         if (Number.isNaN(q) || Number.isNaN(r)) continue;
-        ctx.globalAlpha = 0.55;
-        fillHex({ q, r, s: -q - r }, '#c2a35a');
-        ctx.globalAlpha = 1;
+        const shade = costShade(cost);
+        if (!shade) continue;
+        fillHex({ q, r, s: -q - r }, shade);
         const { cx, cy } = hexCenter({ q, r, s: -q - r });
-        ctx.fillStyle = '#3b3118';
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.strokeText(String(cost), cx, cy);
+        ctx.fillStyle = '#ffffff';
         ctx.fillText(String(cost), cx, cy);
       }
       ctx.restore();
@@ -264,7 +269,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           else ctx.lineTo(px, py);
         }
         ctx.closePath();
-        ctx.fillStyle = `rgba(2,2,8,${alpha})`;
+        ctx.fillStyle = `rgba(${FOG_RGB.r},${FOG_RGB.g},${FOG_RGB.b},${alpha})`;
         ctx.fill();
       };
       for (let q = -gridRadius; q <= gridRadius; q++) {

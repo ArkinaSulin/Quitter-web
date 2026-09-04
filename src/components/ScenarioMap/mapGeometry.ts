@@ -22,6 +22,19 @@ export function terrainCostOf(terrain: TerrainCosts | null | undefined, q: numbe
   return Number.isFinite(c) && c >= 0 ? c : 1;
 }
 
+/**
+ * Canvas fill for a painted terrain cost: green for free (0), a neutral black
+ * overlay for costly hexes whose darkness ramps 10% (cost 2) to 80% (cost 9) so
+ * the map art stays faintly visible even on a 9. Returns null for cost 1 (clear).
+ */
+export function costShade(cost: number): string | null {
+  if (cost === 0) return 'rgba(76, 175, 80, 0.42)';
+  if (cost <= 1) return null;
+  const c = Math.min(9, Math.max(2, cost));
+  const alpha = 0.1 + ((c - 2) / 7) * 0.7; // 2 -> 0.10, 9 -> 0.80
+  return `rgba(0, 0, 0, ${alpha})`;
+}
+
 export interface MapBackgroundConfig {
   imageUrl: string;
   offsetX: number;

@@ -20,6 +20,9 @@ export const DEFAULT_SIGHT_RADIUS = 2;
 
 // Dimmed-edge alpha values from a unit's sight edge inward (edge -> next -> next).
 export const FOG_RING_ALPHAS = [0.6, 0.4, 0.2];
+// Warm "torchlight darkness" base for the veil, kept distinct from the grey
+// terrain-cost shading so the two layers read separately.
+export const FOG_RGB = { r: 30, g: 16, b: 4 } as const;
 // Unseen hexes: opaque for players, translucent for the DM / replay viewer.
 export const FOG_UNSEEN_PLAYER_ALPHA = 1.0;
 export const FOG_UNSEEN_GM_ALPHA = 0.8;

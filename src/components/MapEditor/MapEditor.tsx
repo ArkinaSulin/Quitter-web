@@ -282,7 +282,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                   <input type="number" value={entity.offsetY} disabled={readOnly} onChange={(e) => update({ offsetY: Number(e.target.value) || 0 })} className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm disabled:opacity-50" />
                 </label>
                 <label className="block text-xs text-gray-400">Scale ({entity.scale.toFixed(2)})
-                  <input type="range" min={0.1} max={4} step={0.05} value={entity.scale} disabled={readOnly} onChange={(e) => update({ scale: Number(e.target.value) })} className="w-full" />
+                  <input type="range" min={0.1} max={6} step={0.05} value={entity.scale} disabled={readOnly} onChange={(e) => update({ scale: Number(e.target.value) })} className="w-full" />
                 </label>
                 <label className="block text-xs text-gray-400">Grid radius ({entity.gridRadius})
                   <input type="number" min={3} max={30} value={entity.gridRadius} disabled={readOnly} onChange={(e) => update({ gridRadius: Math.max(3, Math.min(30, Math.floor(Number(e.target.value) || 12))) })} className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm disabled:opacity-50" />
