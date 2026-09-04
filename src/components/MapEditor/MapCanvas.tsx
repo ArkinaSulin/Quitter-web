@@ -99,8 +99,9 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
     if (bg && p.imageUrl) {
       const imgW = bg.naturalWidth * p.scale;
       const imgH = bg.naturalHeight * p.scale;
-      const cp = hexToPixel({ q: p.offsetX, r: p.offsetY, s: -p.offsetX - p.offsetY }, HEX_SIZE);
-      ctx.drawImage(bg, cp.x - imgW / 2, cp.y - imgH / 2, imgW, imgH);
+      // Offset is a plain Cartesian world-pixel center (x moves X only, y moves Y
+      // only) — matches how the scenario map renders the same snapshot.
+      ctx.drawImage(bg, p.offsetX - imgW / 2, p.offsetY - imgH / 2, imgW, imgH);
     }
 
     const hexPath = (cx: number, cy: number) => {

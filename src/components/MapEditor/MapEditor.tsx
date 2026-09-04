@@ -43,8 +43,23 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
   const [paintValue, setPaintValue] = useState<number | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  // Natural dimensions of the selected image (for offset-slider steps of ~1% of
+  // the currently scaled image size).
+  const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
 
   const entity = selectedId ? maps.find(m => m.id === selectedId) ?? null : null;
+
+  // Measure the selected image's natural size whenever it changes.
+  useEffect(() => {
+    let cancelled = false;
+    const url = entity?.imageUrl;
+    if (!url) { setImgSize(null); return; }
+    const img = new Image();
+    img.onload = () => { if (!cancelled) setImgSize({ w: img.naturalWidth || 0, h: img.naturalHeight || 0 }); };
+    img.onerror = () => { if (!cancelled) setImgSize(null); };
+    img.src = url;
+    return () => { cancelled = true; };
+  }, [entity?.imageUrl]);
 
   // ---- maps load ----
   useEffect(() => {
@@ -151,12 +166,26 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
 
   const uploadImage = useCallback(async (file: File) => {
     if (!file) return;
-    const ext = file.name.split('.').pop() || 'png';
-    const path = `map_${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from('map_images').upload(path, file, { cacheControl: '3600', upsert: false });
-    if (error) { console.error('[MapEditor] upload failed:', error.message); return; }
+    // Keep the original file name, sanitized for storage: lowercase, spaces -> _,
+    // any other unsafe chars collapsed to _, and a serial suffix on duplicates.
+    const rawName = file.name.replace(/\.[^./\\]+$/, '') || 'map';
+    const ext = ((file.name.split('.').pop() || 'png').toLowerCase() || 'png');
+    const base = (rawName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '')) || 'map';
+    let path = `${base}.${ext}`;
+    let serial = 2;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const { error } = await supabase.storage.from('map_images').upload(path, file, { cacheControl: '3600', upsert: false });
+      if (!error) break;
+      const msg = (error?.message || '').toLowerCase();
+      if (!msg.includes('duplicate') && !/already exists|23505/.test(msg)) {
+        console.error('[MapEditor] upload failed:', error.message);
+        return;
+      }
+      path = `${base}_${serial}.${ext}`;
+      serial += 1;
+    }
     const url = supabase.storage.from('map_images').getPublicUrl(path).data.publicUrl;
-    setImages(prev => [url, ...prev]);
+    setImages(prev => (prev.includes(url) ? prev : [url, ...prev]));
     update({ imageUrl: url });
   }, [update]);
 
@@ -275,14 +304,28 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                   )}
                 </div>
 
-                <label className="block text-xs text-gray-400">Offset X
-                  <input type="number" value={entity.offsetX} disabled={readOnly} onChange={(e) => update({ offsetX: Number(e.target.value) || 0 })} className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm disabled:opacity-50" />
-                </label>
-                <label className="block text-xs text-gray-400">Offset Y
-                  <input type="number" value={entity.offsetY} disabled={readOnly} onChange={(e) => update({ offsetY: Number(e.target.value) || 0 })} className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm disabled:opacity-50" />
-                </label>
-                <label className="block text-xs text-gray-400">Scale ({entity.scale.toFixed(2)})
-                  <input type="range" min={0.1} max={6} step={0.05} value={entity.scale} disabled={readOnly} onChange={(e) => update({ scale: Number(e.target.value) })} className="w-full" />
+                {(() => {
+                  const scaledW = (imgSize?.w || 0) * entity.scale;
+                  const scaledH = (imgSize?.h || 0) * entity.scale;
+                  const stepX = Math.max(0.01, Math.round(scaledW * 0.01 * 100) / 100);
+                  const stepY = Math.max(0.01, Math.round(scaledH * 0.01 * 100) / 100);
+                  const offset = (axis: 'x' | 'y', v: number) => {
+                    const rounded = Math.round((Number(v) || 0) * 10) / 10;
+                    return axis === 'x' ? update({ offsetX: rounded }) : update({ offsetY: rounded });
+                  };
+                  return (
+                    <>
+                      <label className="block text-xs text-gray-400">Offset X ({entity.offsetX.toFixed(1)}) — 1% of width
+                        <input type="range" min={-scaledW} max={scaledW} step={stepX} value={entity.offsetX} disabled={readOnly || scaledW <= 0} onChange={(e) => offset('x', Number(e.target.value))} className="w-full disabled:opacity-40" />
+                      </label>
+                      <label className="block text-xs text-gray-400">Offset Y ({entity.offsetY.toFixed(1)}) — 1% of height
+                        <input type="range" min={-scaledH} max={scaledH} step={stepY} value={entity.offsetY} disabled={readOnly || scaledH <= 0} onChange={(e) => offset('y', Number(e.target.value))} className="w-full disabled:opacity-40" />
+                      </label>
+                    </>
+                  );
+                })()}
+                <label className="block text-xs text-gray-400">Scale ({entity.scale.toFixed(1)})
+                  <input type="range" min={0.1} max={6} step={0.1} value={entity.scale} disabled={readOnly} onChange={(e) => update({ scale: Math.round(Number(e.target.value) * 10) / 10 })} className="w-full" />
                 </label>
                 <label className="block text-xs text-gray-400">Grid radius ({entity.gridRadius})
                   <input type="number" min={3} max={30} value={entity.gridRadius} disabled={readOnly} onChange={(e) => update({ gridRadius: Math.max(3, Math.min(30, Math.floor(Number(e.target.value) || 12))) })} className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm disabled:opacity-50" />
