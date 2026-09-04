@@ -8,11 +8,11 @@
 //
 // Visibility is GRADED at the edge of sight (soft fog rings), not binary: the dim
 // band is edge-anchored and up to 3 rings deep — the outermost revealed ring
-// dims 0.45, the next 0.30, the next 0.15 — and everything deeper (plus the
+// dims 0.6, the next 0.4, the next 0.2 — and everything deeper (plus the
 // unit's own hex) is crisp. Where more than one unit reveals a hex, the CLEAREST
 // coverage wins (lowest alpha). Hexes no unit of the group can see are "unseen" —
 // the drawer fills those with an opaque veil for players (1.0) and a translucent
-// one for the DM/replay (0.6) so they can see through the boundary.
+// one for the DM/replay (0.8) so they can see through the boundary.
 
 import { Unit, AllianceGroup, hexDistance } from '@/types/gameProtocol';
 
@@ -73,7 +73,7 @@ export function computeVisibleHexes(
 export interface FogResult {
   /** Every hex the group can currently see (targetable / hoverable). */
   reveal: Set<string>;
-  /** Revealed hexes at the dimmed edge of sight: hexKey -> alpha (0.15/0.30/0.45).
+  /** Revealed hexes at the dimmed edge of sight: hexKey -> alpha (0.2/0.4/0.6).
    *  Hexes fully inside sight are crisp and absent. */
   dim: Map<string, number>;
 }
@@ -81,7 +81,7 @@ export interface FogResult {
 /**
  * Graded fog-of-war reveal for a group. Every hex within a group unit's sight is
  * `reveal`ed; a hex `ringsIn` = (sight − distance) rings inside that unit's edge
- * dims `FOG_RING_ALPHAS[ringsIn]` (0.45 edge → 0.30 → 0.15), and hexes deeper
+ * dims `FOG_RING_ALPHAS[ringsIn]` (0.6 edge → 0.4 → 0.2), and hexes deeper
  * than that (or the unit's own hex) are crisp (absent from `dim`). Where several
  * units see the same hex the CLEAREST wins (lowest alpha). Hidden units exert no
  * reveal. Unseen hexes (in neither structure) are filled by the drawer with the
@@ -109,9 +109,9 @@ export function computeFog(
         if (d > r) continue;
         const key = hexKey(hex);
         reveal.add(key);
-        // Edge-anchored band: d == sight -> 0.45, sight-1 -> 0.30, sight-2 -> 0.15;
+        // Edge-anchored band: d == sight -> 0.6, sight-1 -> 0.4, sight-2 -> 0.2;
         // own hex (d 0) and anything 3+ rings inside are crisp. A sight-1 unit only
-        // dims its ring-1 neighbors (0.45), never its own hex.
+        // dims its ring-1 neighbors (0.6), never its own hex.
         const ringsIn = r - d;
         const alpha = d > 0 && ringsIn < FOG_RING_ALPHAS.length ? FOG_RING_ALPHAS[ringsIn] : 0;
         const existing = best.get(key);

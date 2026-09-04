@@ -12,14 +12,14 @@ export const TOKEN_WIDTH = HEX_SIZE * 1.6;
 export const TOKEN_HEIGHT = TOKEN_WIDTH * 0.75;
 export const DEFAULT_GRID_RADIUS = 12;
 
-/** Painted per-hex terrain entry costs: "q,r" -> MP cost to ENTER (2..9). */
+/** Painted per-hex terrain entry costs: "q,r" -> MP cost to ENTER (0 free, 1 default, 2..9 costly). */
 export type TerrainCosts = Record<string, number>;
 
-/** MP to enter hex (q,r): 1 unless the GM painted a higher cost there. */
+/** MP to enter hex (q,r): 1 unless the GM painted a cost there (0 = free entry). */
 export function terrainCostOf(terrain: TerrainCosts | null | undefined, q: number, r: number): number {
   const v = terrain ? terrain[`${q},${r}`] : undefined;
   const c = v == null ? 1 : Math.round(v);
-  return c >= 1 ? c : 1;
+  return Number.isFinite(c) && c >= 0 ? c : 1;
 }
 
 export interface MapBackgroundConfig {

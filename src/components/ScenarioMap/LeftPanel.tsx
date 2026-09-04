@@ -7,9 +7,11 @@ import { UnitSelector } from './UnitSelector';
 import { MessagesPanel } from './MessagesPanel';
 import { AlliancePanel } from './AlliancePanel';
 import { MapEditorPanel } from './MapEditorPanel';
+import { MapPickerList } from './MapPickerList';
 import { PlayerPanel } from './PlayerPanel';
 import { UndoDebugPanel } from './UndoDebugPanel';
 import { UnitTemplate, AllianceGroup, Participant, ScenarioRole } from '@/types/gameProtocol';
+import { MapEntity } from '@/lib/mapEntities';
 
 interface LeftPanelProps {
   scenarioId: string;
@@ -27,11 +29,14 @@ interface LeftPanelProps {
   backgroundConfig: { imageUrl: string; offsetX: number; offsetY: number; scale: number; gridRadius: number } | null;
   onSaveBackground: (config: { imageUrl: string; offsetX: number; offsetY: number; scale: number; gridRadius: number }) => void;
   onPreviewMapConfig: (config: Partial<{ imageUrl: string; offsetX: number; offsetY: number; scale: number; gridRadius: number }>) => void;
+  currentMapId: string | null;
+  onAssignMap: (entity: MapEntity) => void;
+  onClearMap: () => void;
   side: 'left' | 'right';
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, side, onToggleSide }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, side, onToggleSide }: LeftPanelProps) {
   // Persist which tabs are open per scenario + user, so a rejoined session
   // restores the same panel layout.
   // Persist which tabs are open per scenario + user. The saved layout is restored
@@ -79,7 +84,12 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
         </svg>
       ),
       requiresGM: true,
-      content: <MapEditorPanel currentConfig={backgroundConfig} onSave={onSaveBackground} onPreviewChange={onPreviewMapConfig} />,
+      content: (
+        <div className="space-y-0">
+          <MapPickerList currentMapId={currentMapId} onAssignMap={onAssignMap} onClearMap={onClearMap} />
+          <MapEditorPanel currentConfig={backgroundConfig} onSave={onSaveBackground} onPreviewChange={onPreviewMapConfig} />
+        </div>
+      ),
     },
     {
       id: 'players',

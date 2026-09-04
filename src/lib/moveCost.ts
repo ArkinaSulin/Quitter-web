@@ -299,11 +299,12 @@ export function computeReachableMap(
   threatHexes: Set<string>,
   costOfHex?: (q: number, r: number) => number,
 ): Map<string, MovePathEntry> {
-  // MP to ENTER hex (q,r). Defaults to 1; clamps fractional/absurd values to >=1.
+  // MP to ENTER hex (q,r). Defaults to 1; a painted 0 = free entry; clamps only
+  // negative/garbage to 1.
   const stepCost = (q: number, r: number): number => {
     if (!costOfHex) return 1;
-    const c = Math.round(costOfHex(q, r) || 1);
-    return c >= 1 ? c : 1;
+    const c = Math.round(costOfHex(q, r) ?? 1);
+    return Number.isFinite(c) && c >= 0 ? c : 1;
   };
 
   const result = new Map<string, MovePathEntry>();
@@ -318,62 +319,56 @@ export function computeReachableMap(
     return list.splice(best, 1)[0];
   };
 
-  if (loose) {
-    const best = new Map<string, number>();
-    const queue: { q: number; r: number; d: number; path: Hex[] }[] = [];
-    queue.push({ q: unit.hex.q, r: unit.hex.r, d: 0, path: [] });
-    best.set(key(unit.hex.q, unit.hex.r), 0);
+  // Better when strictly cheaper, or same cost with fewer hex-steps (a 0-cost
+  // chain still spends one "hop" per hex, so maxMP bounds hex COUNT not just MP).
+  const improves = (bestCost: number | undefined, bestHops: number | undefined, cost: number, hops: number): boolean =>
+    bestCost === undefined || cost < bestCost || (cost === bestCost && hops < (bestHops ?? Infinity));
 
+  // Omnidirectional (loose) or forward-wedge pass: both pay entry cost + one hop
+  // per hex entered; reachable hexes are capped by maxMP MP AND maxMP hex-steps.
+  const walk = (dirs: { q: number; r: number }[]): Map<string, MovePathEntry> => {
+    const out = new Map<string, MovePathEntry>();
+    const bestCost = new Map<string, number>();
+    const bestHops = new Map<string, number>();
+    const queue: { q: number; r: number; d: number; hops: number; path: Hex[] }[] = [];
+    queue.push({ q: unit.hex.q, r: unit.hex.r, d: 0, hops: 0, path: [] });
+    const originKey = key(unit.hex.q, unit.hex.r);
+    bestCost.set(originKey, 0);
+    bestHops.set(originKey, 0);
     while (queue.length > 0) {
       const cur = popMin(queue);
-      if (cur.d > (best.get(key(cur.q, cur.r)) ?? Infinity)) continue;
-      if (cur.d >= maxMP) continue; // reachable at maxMP, not expandable past it
-      for (const dir of HEX_DIRS) {
+      if (cur.d > (bestCost.get(key(cur.q, cur.r)) ?? Infinity)) continue;
+      if (cur.hops >= maxMP) continue; // reachable at the step cap, not expandable past it
+      for (const dir of dirs) {
         const nq = cur.q + dir.q;
         const nr = cur.r + dir.r;
         const k = key(nq, nr);
         if (occupied.has(k)) continue;
         const nc = cur.d + stepCost(nq, nr);
-        if (nc > maxMP) continue;
-        if ((best.get(k) ?? Infinity) <= nc) continue;
-        best.set(k, nc);
+        const nh = cur.hops + 1;
+        if (nc > maxMP || nh > maxMP) continue;
+        if (!improves(bestCost.get(k), bestHops.get(k), nc, nh)) continue;
+        bestCost.set(k, nc);
+        bestHops.set(k, nh);
         const path = [...cur.path, { q: nq, r: nr, s: -nq - nr }];
-        result.set(k, { cost: nc, path, finalFacing: unit.facing, needsTurn: false });
-        if (!threatHexes.has(k)) queue.push({ q: nq, r: nr, d: nc, path });
+        out.set(k, { cost: nc, path, finalFacing: unit.facing, needsTurn: false });
+        if (!threatHexes.has(k)) queue.push({ q: nq, r: nr, d: nc, hops: nh, path });
       }
     }
-    return result;
+    return out;
+  };
+
+  if (loose) {
+    return walk(HEX_DIRS);
   }
 
   // WHITE set: the full front wedge reachable WITHOUT turning — at each step the
   // unit moves into either front-arc hex and keeps its facing. The wedge (not
   // just the two edge rays) is straight-ahead reachable, so every interior hex
   // is droppable. Cost = cheapest entry-cost path through the wedge.
-  const white = new Map<string, MovePathEntry>();
   const frontDirs = [(unit.facing + 4) % 6, (unit.facing + 5) % 6];
-  const whiteBest = new Map<string, number>();
-  const wq: { q: number; r: number; d: number; path: Hex[] }[] = [];
-  wq.push({ q: unit.hex.q, r: unit.hex.r, d: 0, path: [] });
-  whiteBest.set(key(unit.hex.q, unit.hex.r), 0);
-  while (wq.length > 0) {
-    const cur = popMin(wq);
-    if (cur.d > (whiteBest.get(key(cur.q, cur.r)) ?? Infinity)) continue;
-    if (cur.d >= maxMP) continue;
-    for (const dirIdx of frontDirs) {
-      const dir = HEX_DIRS[dirIdx];
-      const nq = cur.q + dir.q;
-      const nr = cur.r + dir.r;
-      const k = key(nq, nr);
-      if (occupied.has(k)) continue;
-      const nc = cur.d + stepCost(nq, nr);
-      if (nc > maxMP) continue;
-      if ((whiteBest.get(k) ?? Infinity) <= nc) continue;
-      whiteBest.set(k, nc);
-      const path = [...cur.path, { q: nq, r: nr, s: -nq - nr }];
-      white.set(k, { cost: nc, path, finalFacing: unit.facing, needsTurn: false });
-      if (!threatHexes.has(k)) wq.push({ q: nq, r: nr, d: nc, path });
-    }
-  }
+  const frontHexDirs = frontDirs.map(i => HEX_DIRS[i]);
+  const white = walk(frontHexDirs);
 
   // GREY set (hint): hexes reachable only by turning, shown as a lighter-shade
   // cone. Steps and 60° turns each cost 1 MP; a 180° about-turn is a single
@@ -390,25 +385,29 @@ export function computeReachableMap(
   const blockedFacing = aboutTurnBlocked ? (unit.facing + 3) % 6 : -1;
 
   const INF = Number.MAX_SAFE_INTEGER;
-  const distMap = new Map<string, number>(); // "q,r,facing" -> min cost (steps + turns)
-  distMap.set(`${unit.hex.q},${unit.hex.r},${unit.facing}`, 0);
+  type GreyState = { cost: number; hops: number };
+  const distMap = new Map<string, GreyState>(); // "q,r,facing" -> min (cost, hops)
+  const startKey = `${unit.hex.q},${unit.hex.r},${unit.facing}`;
+  distMap.set(startKey, { cost: 0, hops: 0 });
   // Small state space (hexes within maxMP × 6 facings) — plain Dijkstra.
-  const pq: { q: number; r: number; facing: number; d: number }[] = [
-    { q: unit.hex.q, r: unit.hex.r, facing: unit.facing, d: 0 },
+  const pq: { q: number; r: number; facing: number; d: number; hops: number }[] = [
+    { q: unit.hex.q, r: unit.hex.r, facing: unit.facing, d: 0, hops: 0 },
   ];
-  const relax = (q: number, r: number, facing: number, nd: number) => {
+  const relax = (q: number, r: number, facing: number, cost: number, hops: number) => {
     if (facing === blockedFacing) return;
     const nk = `${q},${r},${facing}`;
-    if (nd < (distMap.get(nk) ?? INF)) {
-      distMap.set(nk, nd);
-      pq.push({ q, r, facing, d: nd });
+    const cur = distMap.get(nk);
+    if (improves(cur?.cost, cur?.hops, cost, hops)) {
+      distMap.set(nk, { cost, hops });
+      pq.push({ q, r, facing, d: cost, hops });
     }
   };
   while (pq.length > 0) {
     const cur = popMin(pq);
     const curKey = `${cur.q},${cur.r},${cur.facing}`;
-    if (cur.d !== distMap.get(curKey)) continue; // stale entry
-    if (cur.d >= maxMP) continue;
+    const known = distMap.get(curKey);
+    if (!known || cur.d !== known.cost || cur.hops !== known.hops) continue; // stale entry
+    if (cur.d >= maxMP || cur.hops >= maxMP) continue;
     if (threatHexes.has(key(cur.q, cur.r))) continue; // can stop here, not pass through
     const cf = [(cur.facing + 4) % 6, (cur.facing + 5) % 6];
     for (const dirIdx of cf) {
@@ -416,25 +415,28 @@ export function computeReachableMap(
       const nq = cur.q + dir.q;
       const nr = cur.r + dir.r;
       if (occupied.has(key(nq, nr))) continue;
-      relax(nq, nr, cur.facing, cur.d + stepCost(nq, nr));
+      const nc = cur.d + stepCost(nq, nr);
+      if (nc <= maxMP && cur.hops + 1 <= maxMP) {
+        relax(nq, nr, cur.facing, nc, cur.hops + 1);
+      }
     }
-    // 60° turns: ±1 facing, 1 MP each.
+    // 60° turns: ±1 facing, 1 MP each (no hop spent).
     for (const newFacing of [(cur.facing + 5) % 6, (cur.facing + 1) % 6]) {
-      relax(cur.q, cur.r, newFacing, cur.d + 1);
+      relax(cur.q, cur.r, newFacing, cur.d + 1, cur.hops);
     }
     // 180° about-turn: single maneuver at its setting cost (blocked when mounted
     // in Close Order). Covers both directions (±3 ≡ +3 mod 6).
     if (!aboutTurnBlocked) {
-      relax(cur.q, cur.r, (cur.facing + 3) % 6, cur.d + aboutTurnCost);
+      relax(cur.q, cur.r, (cur.facing + 3) % 6, cur.d + aboutTurnCost, cur.hops);
     }
   }
 
   const ownKey = key(unit.hex.q, unit.hex.r);
   const grey = new Map<string, number>();
-  distMap.forEach((d, sk) => {
+  distMap.forEach(({ cost }, sk) => {
     const hk = sk.split(',').slice(0, 2).join(',');
     if (hk === ownKey) return;
-    if (d < (grey.get(hk) ?? INF)) grey.set(hk, d);
+    if (cost < (grey.get(hk) ?? INF)) grey.set(hk, cost);
   });
 
   grey.forEach((d, k) => {

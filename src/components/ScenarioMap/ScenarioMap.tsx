@@ -39,6 +39,7 @@ import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf } from './mapGeometry';
 import { newEffectKey } from '@/lib/unitEffects';
+import { MapEntity } from '@/lib/mapEntities';
 import { AddEffectModal } from './AddEffectModal';
 import { EffectTemplate, EFFECT_TEMPLATES, EffectSpec } from '@/lib/unitEffects';
 import { routeUnit } from './routeUnit';
@@ -112,6 +113,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // GM-painted map overlays (persisted in scenarios.map_data).
   const [terrainCosts, setTerrainCosts] = useState<TerrainCosts>({});
   const [groundZones, setGroundZones] = useState<GroundEffect[]>([]);
+  // Provenance of the snapshot currently loaded from a reusable map (maps.id).
+  const [mapId, setMapId] = useState<string | null>(null);
   // GM map-edit brushes: terrain = entry-cost value (null = off); zone = template
   // armed for placement (null = off).
   const [terrainBrushCost, setTerrainBrushCost] = useState<number | null>(null);
@@ -319,27 +322,60 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     return computeVisibleHexes(displayUnits, group, displayAlliances, sightRadius).has(hexKey(target.hex));
   }, [fogOfWar, displayUnits, displayAlliances, sightRadius]);
 
-  // ---- GM map painting (terrain costs / ground-effect zones) ----
-  const persistMapData = useCallback(async (next: { terrainCosts?: TerrainCosts; groundEffects?: GroundEffect[] }) => {
+  // ---- GM map data (background + terrain + ground zones + source map) ----
+  // Whole-object writer: every save merges the CURRENT local state, so no writer
+  // ever drops another layer (the old bg-only save dropped painted terrain).
+  const persistMapData = useCallback(async (next: {
+    backgroundConfig?: MapBackgroundConfig | null;
+    terrainCosts?: TerrainCosts;
+    groundEffects?: GroundEffect[];
+    mapId?: string | null;
+  }) => {
+    const bg = next.backgroundConfig !== undefined ? next.backgroundConfig : backgroundConfig;
     await updateScenarioMapData(scenarioId, {
-      backgroundImageUrl: backgroundConfig?.imageUrl ?? '',
-      bgOffsetX: backgroundConfig?.offsetX ?? 0,
-      bgOffsetY: backgroundConfig?.offsetY ?? 0,
-      bgScale: backgroundConfig?.scale ?? 1,
-      gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
+      backgroundImageUrl: bg?.imageUrl ?? '',
+      bgOffsetX: bg?.offsetX ?? 0,
+      bgOffsetY: bg?.offsetY ?? 0,
+      bgScale: bg?.scale ?? 1,
+      gridRadius: bg?.gridRadius ?? DEFAULT_GRID_RADIUS,
       terrainCosts: next.terrainCosts !== undefined ? next.terrainCosts : terrainCosts,
       groundEffects: next.groundEffects !== undefined ? next.groundEffects : groundZones,
+      mapId: next.mapId !== undefined ? next.mapId : mapId,
     });
-  }, [scenarioId, updateScenarioMapData, backgroundConfig, terrainCosts, groundZones]);
+  }, [scenarioId, updateScenarioMapData, backgroundConfig, terrainCosts, groundZones, mapId]);
 
   const paintTerrain = useCallback(async (q: number, r: number) => {
     if (terrainBrushCost === null) return;
     const next = { ...terrainCosts };
-    if (terrainBrushCost <= 1) delete next[`${q},${r}`];
-    else next[`${q},${r}`] = terrainBrushCost;
+    if (terrainBrushCost === 1) delete next[`${q},${r}`]; // default
+    else next[`${q},${r}`] = terrainBrushCost; // 0 = free, 2..9 = cost
     setTerrainCosts(next);
     await persistMapData({ terrainCosts: next });
   }, [terrainBrushCost, terrainCosts, persistMapData]);
+
+  // Assign a reusable map: snapshot its image + terrain into the scenario copy.
+  const assignMap = useCallback(async (entity: MapEntity) => {
+    const bg: MapBackgroundConfig = {
+      imageUrl: entity.imageUrl,
+      offsetX: entity.offsetX,
+      offsetY: entity.offsetY,
+      scale: entity.scale,
+      gridRadius: entity.gridRadius,
+    };
+    setBackgroundConfig(bg);
+    setTerrainCosts(entity.terrainCosts);
+    setMapId(entity.id);
+    await persistMapData({ backgroundConfig: bg, terrainCosts: entity.terrainCosts, mapId: entity.id });
+    addMessage(`Loaded map "${entity.name}" — snapshot copied to this scenario`);
+  }, [persistMapData, addMessage]);
+
+  const clearMap = useCallback(async () => {
+    setBackgroundConfig(null);
+    setTerrainCosts({});
+    setMapId(null);
+    await persistMapData({ backgroundConfig: null, terrainCosts: {}, mapId: null });
+    addMessage('Map cleared — plain board');
+  }, [persistMapData, addMessage]);
 
   const placeOrToggleZone = useCallback(async (q: number, r: number) => {
     if (!zoneTemplate) return;
@@ -567,15 +603,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // Ground zones ticked/expired inside the END_TURN command — persist survivors.
       setGroundZones(zonesAfter);
       if (zonesAfter.length !== groundZones.length) {
-        await updateScenarioMapData(scenarioId, {
-          backgroundImageUrl: backgroundConfig?.imageUrl ?? '',
-          bgOffsetX: backgroundConfig?.offsetX ?? 0,
-          bgOffsetY: backgroundConfig?.offsetY ?? 0,
-          bgScale: backgroundConfig?.scale ?? 1,
-          gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
-          terrainCosts,
-          groundEffects: zonesAfter,
-        });
+        await persistMapData({ groundEffects: zonesAfter });
       }
       // Reactions are once-per-turn — clear all markers at the turn boundary.
       setReactionOffers(new Map());
@@ -584,7 +612,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     } finally {
       setIsEndingTurn(false);
     }
-  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, freeMove, isEndingTurn, groundZones, updateScenarioMapData, backgroundConfig, terrainCosts]);
+  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, freeMove, isEndingTurn, groundZones, persistMapData]);
 
   const handleEndTurn = useCallback(async () => {
     if (isEndingTurn) return;
@@ -601,14 +629,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   const handleSaveBackground = useCallback((config: MapBackgroundConfig) => {
     setBackgroundConfig(config);
-    updateScenarioMapData(scenarioId, {
-      backgroundImageUrl: config.imageUrl,
-      bgOffsetX: config.offsetX,
-      bgOffsetY: config.offsetY,
-      bgScale: config.scale,
-      gridRadius: config.gridRadius,
-    });
-  }, [scenarioId, updateScenarioMapData]);
+    void persistMapData({ backgroundConfig: config });
+  }, [persistMapData]);
 
   const handlePreviewMapConfig = useCallback((config: Partial<MapBackgroundConfig>) => {
     setBackgroundConfig(prev => ({
@@ -1027,6 +1049,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       });
       setTerrainCosts(data?.terrainCosts ?? {});
       setGroundZones(Array.isArray(data?.groundEffects) ? data.groundEffects : []);
+      setMapId(data?.mapId ?? null);
     });
   }, [scenarioId, fetchScenarioMapData]);
 
@@ -1088,6 +1111,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             const md = row.map_data || {};
             if (md.terrainCosts !== undefined) setTerrainCosts(md.terrainCosts ?? {});
             if (md.groundEffects !== undefined) setGroundZones(Array.isArray(md.groundEffects) ? md.groundEffects : []);
+            if (md.mapId !== undefined) setMapId(md.mapId ?? null);
             if (md.backgroundImageUrl !== undefined) {
               setBackgroundConfig({
                 imageUrl: md.backgroundImageUrl ?? '',
@@ -1315,14 +1339,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       {effectiveIsGM && !controlsLocked && !inReplay && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 flex flex-wrap items-center gap-1.5 bg-gray-900/95 border border-gray-700 rounded-lg px-3 py-1.5 max-w-[80vw] shadow-lg">
           <span className="text-xs text-gray-400 mr-1">GM Map</span>
-          {[1, 2, 3, 4, 5].map(n => (
+          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
             <button
               key={n}
-              title={n === 1 ? 'Remove terrain (cost 1)' : `Terrain cost ${n} MP`}
+              title={n === 0 ? 'Free entry (0 MP)' : n === 1 ? 'Clear terrain (default 1 MP)' : `Terrain cost ${n} MP`}
               className={`px-2 py-0.5 rounded text-xs border ${terrainBrushCost === n && zoneTemplate === null ? 'bg-yellow-600 border-yellow-400 text-black' : 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700'}`}
               onClick={() => { setZoneTemplate(null); setTerrainBrushCost(terrainBrushCost === n ? null : n); }}
             >
-              {n === 1 ? 'clear' : `${n} MP`}
+              {n === 0 ? 'free' : n === 1 ? 'clear' : `${n} MP`}
             </button>
           ))}
           <span className="text-gray-600 mx-1">|</span>
@@ -1362,6 +1386,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             backgroundConfig={backgroundConfig}
             onSaveBackground={handleSaveBackground}
             onPreviewMapConfig={handlePreviewMapConfig}
+            currentMapId={mapId}
+            onAssignMap={(entity) => void assignMap(entity)}
+            onClearMap={() => void clearMap()}
             side={panelSide}
             onToggleSide={togglePanelSide}
           />

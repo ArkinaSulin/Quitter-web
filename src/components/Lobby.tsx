@@ -357,6 +357,8 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const canReplay = !!currentUser && !!access?.canViewReplay; // pending users can watch replays but not play
   const canViewShipEditor = !!currentUser && !!access?.canViewShipEditor; // Archfar's Shipyard (admin-only)
   const canUseShipEditor = !!currentUser && !!access?.canUseShipEditor;
+  const canViewMapEditor = !!currentUser && !!access?.canViewMapEditor; // Map editor (admin + dm)
+  const canUseMapEditor = !!currentUser && !!access?.canUseMapEditor;
 
   const renderHeader = () => (
     <div className="flex flex-col items-center px-6 py-3 border-b border-gray-700 bg-[#0d0d1a]">
@@ -440,6 +442,14 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
               className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
             >
               {canUseUnitEditor ? 'Unit Editor' : 'Unit Library'}
+            </button>
+          )}
+          {canViewMapEditor && (
+            <button
+              onClick={() => router.push('/map-editor')}
+              className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+            >
+              {canUseMapEditor ? 'Map Editor' : 'Map Library'}
             </button>
           )}
           {canCreateScenario && (

@@ -105,18 +105,18 @@ describe('computeFog', () => {
   it('sight 3 (darkvision 3) matches the authored example: 0.45 / 0.30 / 0.15', () => {
     const watcher = unit('a', 'blue', h(0, 0), { darkvision: 3 });
     const fog = computeFog([watcher], 'friendly', groups, DEFAULT_SIGHT_RADIUS);
-    expect(fog.dim.get(hexKey(h(3, 0)))).toBe(0.45); // 3 hex away
-    expect(fog.dim.get(hexKey(h(2, 0)))).toBe(0.30); // 2 hex away
-    expect(fog.dim.get(hexKey(h(1, 0)))).toBe(0.15); // 1 hex away
+    expect(fog.dim.get(hexKey(h(3, 0)))).toBe(FOG_RING_ALPHAS[0]); // 3 hex away
+    expect(fog.dim.get(hexKey(h(2, 0)))).toBe(FOG_RING_ALPHAS[1]); // 2 hex away
+    expect(fog.dim.get(hexKey(h(1, 0)))).toBe(FOG_RING_ALPHAS[2]); // 1 hex away
     expect(fog.dim.has(hexKey(h(0, 0)))).toBe(false); // own hex crisp
   });
 
   it('the dim band stays ≤3 rings deep for long darkvision', () => {
     const watcher = unit('a', 'blue', h(0, 0), { darkvision: 6 });
     const fog = computeFog([watcher], 'friendly', groups, DEFAULT_SIGHT_RADIUS);
-    expect(fog.dim.get(hexKey(h(6, 0)))).toBe(0.45); // edge
-    expect(fog.dim.get(hexKey(h(5, 0)))).toBe(0.30);
-    expect(fog.dim.get(hexKey(h(4, 0)))).toBe(0.15);
+    expect(fog.dim.get(hexKey(h(6, 0)))).toBe(FOG_RING_ALPHAS[0]); // edge
+    expect(fog.dim.get(hexKey(h(5, 0)))).toBe(FOG_RING_ALPHAS[1]);
+    expect(fog.dim.get(hexKey(h(4, 0)))).toBe(FOG_RING_ALPHAS[2]);
     expect(fog.dim.has(hexKey(h(3, 0)))).toBe(false); // deeper than 3 rings: crisp
     expect(fog.dim.has(hexKey(h(1, 0)))).toBe(false);
     expect(fog.dim.has(hexKey(h(0, 0)))).toBe(false);
@@ -125,9 +125,9 @@ describe('computeFog', () => {
   it('darkvision extends the graded edge outward', () => {
     const watcher = unit('a', 'blue', h(0, 0), { darkvision: 4 });
     const fog = computeFog([watcher], 'friendly', groups, DEFAULT_SIGHT_RADIUS);
-    expect(fog.dim.get(hexKey(h(4, 0)))).toBe(0.45); // d == 4 == sight
-    expect(fog.dim.get(hexKey(h(3, 0)))).toBe(0.30); // d == 3 == sight-1
-    expect(fog.dim.get(hexKey(h(2, 0)))).toBe(0.15); // d == 2 == sight-2
+    expect(fog.dim.get(hexKey(h(4, 0)))).toBe(FOG_RING_ALPHAS[0]); // d == 4 == sight
+    expect(fog.dim.get(hexKey(h(3, 0)))).toBe(FOG_RING_ALPHAS[1]); // d == 3 == sight-1
+    expect(fog.dim.get(hexKey(h(2, 0)))).toBe(FOG_RING_ALPHAS[2]); // d == 2 == sight-2
     expect(fog.dim.has(hexKey(h(1, 0)))).toBe(false); // 3+ rings in: crisp
   });
 
@@ -139,7 +139,7 @@ describe('computeFog', () => {
     expect(fog.reveal.has(hexKey(h(2, 0)))).toBe(true);
     expect(fog.dim.has(hexKey(h(2, 0)))).toBe(false);
     // Hex (4,0): a sees nothing (d 4); b's edge ring (d 2) dims it 0.45.
-    expect(fog.dim.get(hexKey(h(4, 0)))).toBe(0.45);
+    expect(fog.dim.get(hexKey(h(4, 0)))).toBe(FOG_RING_ALPHAS[0]);
     expect(fog.reveal.has(hexKey(h(4, 0)))).toBe(true);
   });
 
@@ -150,7 +150,7 @@ describe('computeFog', () => {
     const b = unit('b', 'blue', h(3, 0));
     const fog = computeFog([a, b], 'friendly', groups, DEFAULT_SIGHT_RADIUS);
     expect(fog.reveal.has(hexKey(h(2, 0)))).toBe(true);
-    expect(fog.dim.get(hexKey(h(2, 0)))).toBe(0.30);
+    expect(fog.dim.get(hexKey(h(2, 0)))).toBe(FOG_RING_ALPHAS[1]);
   });
 
   it('hidden units exert no darkvision (their whole area stays dark)', () => {

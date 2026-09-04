@@ -429,6 +429,24 @@ describe('computeReachableMap — per-hex terrain entry costs', () => {
     expect(entry!.cost).toBe(3);
   });
 
+  it('a 0-MP painted hex is free to enter (loose unit moves through freely)', () => {
+    const costs = (c: Record<string, number>) => (q: number, r: number) => c[`${q},${r}`] ?? 1;
+    const looseUnit = { ...formedUnit, currentFormation: 'Routed' };
+    const map = computeReachableMap(looseUnit, 3, new Set(), new Set(), costs({ '1,0': 0 }));
+    expect(map.get('1,0')).toMatchObject({ cost: 0, needsTurn: false });
+    // A zero-cost chain stays bounded by maxMP in hex COUNT, not MP sum.
+    const chain = computeReachableMap(looseUnit, 1, new Set(), new Set(), costs({ '1,0': 0, '2,0': 0, '3,0': 0 }));
+    expect(chain.get('1,0')?.cost).toBe(0);
+    expect(chain.has('2,0')).toBe(false); // 2 hexes away > pool of 1
+  });
+
+  it('formed units treat a 0-MP front hex as free too', () => {
+    const costs = (c: Record<string, number>) => (q: number, r: number) => c[`${q},${r}`] ?? 1;
+    const map = computeReachableMap(formedUnit, 2, new Set(), new Set(), costs({ '0,-1': 0, '0,-2': 1 }));
+    expect(map.get('0,-1')).toMatchObject({ cost: 0, needsTurn: false });
+    expect(map.get('0,-2')?.cost).toBe(1); // 0 + entry 1
+  });
+
   it('records the cheapest path even when a detour beats a straight expensive line', () => {
     const looseUnit = { ...formedUnit, currentFormation: 'Scattered' };
     // Straight into (1,0) costs 3, but looping through the untouched east face is
