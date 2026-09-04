@@ -112,7 +112,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const combined: Record<string, string> = {};
       const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
       const effectiveMax = computeEffectiveMovement(draggedUnit, movementMult);
-      const chargeReach = computeChargeReachable(draggedUnit, occupied, effectiveMax);
+      const chargeReach = computeChargeReachable(draggedUnit, occupied, effectiveMax, (q, r) => terrainCostOf(terrainCosts, q, r));
       for (const [key, cost] of Array.from(chargeReach.entries())) {
         combined[key] = cost >= getSetting('charge_full_distance', 2) ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';
       }

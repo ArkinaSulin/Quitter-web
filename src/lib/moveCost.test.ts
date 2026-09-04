@@ -498,4 +498,23 @@ describe('computeChargeReachable — front-arc BFS wedge', () => {
     expect(map.has('0,-2')).toBe(false);
     expect(map.size).toBe(2);
   });
+
+  it('cannot enter or pass through broken terrain (painted MP cost > 1)', () => {
+    const costs = (c: Record<string, number>) => (q: number, r: number) => c[`${q},${r}`] ?? 1;
+    const map = computeChargeReachable({ hex: h(0, 0), facing: 0 }, new Set(), 3, costs({ '0,-1': 2 }));
+    expect(map.has('0,-1')).toBe(false); // mud at the front — no entry
+    // Only reachable through (0,-1): gone. (1,-1) normal -> the rest of the wedge lives.
+    expect(map.has('0,-2')).toBe(false);
+    expect(map.has('0,-3')).toBe(false);
+    expect(map.get('1,-1')).toBe(1);
+    expect(map.get('1,-2')).toBe(2);
+    expect(map.get('2,-2')).toBe(2);
+  });
+
+  it('still charges across free (0) and normal (1) terrain', () => {
+    const costs = (c: Record<string, number>) => (q: number, r: number) => c[`${q},${r}`] ?? 1;
+    const map = computeChargeReachable({ hex: h(0, 0), facing: 0 }, new Set(), 3, costs({ '0,-1': 0 }));
+    expect(map.get('0,-1')).toBe(1); // free terrain chargeable
+    expect(map.get('0,-2')).toBe(2);
+  });
 });

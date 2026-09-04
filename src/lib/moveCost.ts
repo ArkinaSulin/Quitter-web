@@ -249,6 +249,7 @@ export function computeChargeReachable(
   unit: { hex: Hex; facing: number },
   occupied: Set<string>,
   maxHexes = 2,
+  costOfHex?: (q: number, r: number) => number,
 ): Map<string, number> {
   const result = new Map<string, number>();
   const frontDirs = [(unit.facing + 4) % 6, (unit.facing + 5) % 6];
@@ -267,6 +268,8 @@ export function computeChargeReachable(
       const nr = cur.r + dir.r;
       const k = key(nq, nr);
       if (visited.has(k) || occupied.has(k)) continue;
+      // A charge cannot enter OR pass through broken terrain (painted MP cost > 1).
+      if (costOfHex && (costOfHex(nq, nr) ?? 1) > 1) continue;
       visited.add(k);
       const cost = cur.cost + 1;
       result.set(k, cost);

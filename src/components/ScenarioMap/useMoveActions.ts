@@ -4,8 +4,8 @@
 // to the primary ranged weapon. Owns the move-related soft-enforcement states
 // (pendingMove, pendingFormation, hero attach/swap conversion + over-budget).
 import { useCallback, useState } from 'react';
-import { Unit, Hex, AllianceGroup, Formation, hexDistance } from '@/types/gameProtocol';
-import { computeReachableMap, computeMovePool, computeHeroMovePool, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable } from '@/lib/moveCost';
+import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
+import { computeReachableMap, computeMoveBudget, computeHeroMoveBudget, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable } from '@/lib/moveCost';
 import { isFormationChangeAffordable } from '@/lib/formationCost';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { isUnitRouted } from '@/lib/unitMorale';
@@ -166,11 +166,12 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const attachedHero = unit.attachedToUnitId ? undefined : units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted);
     const heroMax = attachedHero ? unitMaxMP(attachedHero) : undefined;
 
-    // Charging units may only move forward through the front-arc charge wedge.
+    // Charging units may only move forward through the front-arc charge wedge,
+    // and cannot enter broken terrain (painted MP cost > 1).
     if (unit.isCharging) {
       const occupied = computeOccupiedHexes(units, unitId);
       const maxMP = unitMaxMP(unit);
-      const chargeReach = computeChargeReachable(unit, occupied, maxMP);
+      const chargeReach = computeChargeReachable(unit, occupied, maxMP, (q, r) => terrainCostOf(terrainCosts, q, r));
       const cost = chargeReach.get(`${targetHex.q},${targetHex.r}`);
       if (!cost) {
         addMessage(`${unit.unitName} cannot move there — outside the charge route`);
@@ -211,22 +212,21 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const effectiveMax = computeEffectiveMovement(unit, movementMult);
     const occupied = computeOccupiedHexes(units, unitId);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
-    // The droppable area matches the shown highlight: leftover MP (or one full
-    // pool when MP is exhausted and an action remains). Heroes show their full
-    // conversion potential (MP + actions × maxMP/5). A move beyond this budget
-    // still soft-enforces below.
-    const combinedPool = Math.min(
-      unit.isHero ? computeHeroMovePool(unit, effectiveMax) : computeMovePool(unit, effectiveMax),
-      attachedHero && heroMax ? (attachedHero.isHero ? computeHeroMovePool(attachedHero, heroMax) : computeMovePool(attachedHero, heroMax)) : Infinity,
-    );
-    const reachableMap = computeReachableMap(unit, combinedPool, occupied, threatHexes, (q, r) => terrainCostOf(terrainCosts, q, r));
+    const costOfHex = (q: number, r: number) => terrainCostOf(terrainCosts, q, r);
+    // Drop reachability uses the FULL move budget (leftover MP + every action as
+    // a full pool), NOT the payable-highlight pool — so painted MP-cost hexes are
+    // entered at their true cost. An over-budget drop keeps its real cost for the
+    // soft-enforcement confirm instead of a bogus straight-line distance.
+    const unitBudget = unit.isHero ? computeHeroMoveBudget(unit, effectiveMax) : computeMoveBudget(unit, effectiveMax);
+    const heroBudget = attachedHero && heroMax
+      ? (attachedHero.isHero ? computeHeroMoveBudget(attachedHero, heroMax) : computeMoveBudget(attachedHero, heroMax))
+      : Infinity;
+    const searchBudget = Math.max(1, Math.min(unitBudget, heroBudget));
+    const reachableMap = computeReachableMap(unit, searchBudget, occupied, threatHexes, costOfHex);
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
-      // Soft gate (matches the rest of the economy family): a unit with no MP/actions
-      // is still allowed to move, prompting first. Path cost isn't defined beyond the
-      // reach map, so use the straight-line distance as the (over-budget) cost.
-      const cost = Math.max(1, hexDistance(unit.hex, targetHex));
-      setPendingMove({ unit, targetHex, cost, attachedHero });
+      // Even the full budget can't reach the target — no plausible cost exists.
+      addMessage(`${unit.unitName} cannot make that move — (${targetHex.q}, ${targetHex.r}) is beyond its movement budget`);
       return;
     }
     // Movement only pays distance; turning is a separate paid ROTATE. A grey
