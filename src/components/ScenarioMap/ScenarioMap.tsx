@@ -1639,41 +1639,40 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 </span>
               </span>
             </label>
-            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={fogOfWar}
-                onChange={async (e) => {
-                  await updateScenarioField(scenarioId, { fog_of_war: e.target.checked });
-                }}
-                className="h-4 w-4 accent-amber-400 mt-0.5"
-              />
-              <span>
-                <span className="font-medium text-amber-300">Fog of war</span>
-                <span className="block text-gray-400 text-[11px]">
-                  Each alliance sees only within sight of its own units. The DM sees the fog
-                  boundary darkened but can see through it.
-                </span>
-              </span>
-            </label>
-            <label className={`flex items-center justify-between gap-2 text-sm text-gray-200 mb-2 ${fogOfWar ? '' : 'opacity-70'}`}>
-              <span className="text-gray-300">
-                Sight radius (hex, beyond own hex)
-                {!fogOfWar && <span className="block text-gray-500 text-[11px]">Armed but inactive until fog of war is on.</span>}
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={9}
-                value={sightRadius}
-                onChange={async (e) => {
-                  const v = Math.max(1, Math.min(9, parseInt(e.target.value) || 2));
-                  setSightRadius(v);
-                  await updateScenarioField(scenarioId, { sight_radius: v });
-                }}
-                className="w-16 bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700"
-              />
-            </label>
+            <div className="mb-2">
+              <div className="flex items-center justify-between gap-2 text-sm text-gray-200">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={fogOfWar}
+                    onChange={async (e) => {
+                      await updateScenarioField(scenarioId, { fog_of_war: e.target.checked });
+                    }}
+                    className="h-4 w-4 accent-amber-400"
+                  />
+                  <span className="font-medium text-amber-300">Fog of war</span>
+                </label>
+                <label className="flex items-center gap-2 text-gray-300 cursor-text">
+                  <span>Sight radius</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={9}
+                    value={sightRadius}
+                    onChange={async (e) => {
+                      const v = Math.max(1, Math.min(9, parseInt(e.target.value) || 2));
+                      setSightRadius(v);
+                      await updateScenarioField(scenarioId, { sight_radius: v });
+                    }}
+                    className="w-14 bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700"
+                  />
+                </label>
+              </div>
+              <p className="text-gray-500 text-[11px] mt-1">
+                Each alliance sees only within sight of its own units; the DM sees through the darkened boundary.
+                Sight radius is armed even while fog is off.
+              </p>
+            </div>
             <div className="flex justify-end">
               <button
                 onClick={() => setShowScenarioSettings(false)}

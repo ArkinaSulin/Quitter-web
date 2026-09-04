@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
 interface MapBackgroundConfig {
@@ -32,6 +32,19 @@ export function MapEditorPanel({ currentConfig, onSave, onPreviewChange }: MapEd
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Autosave: every edit (image/offset/scale/grid radius) persists to the scenario
+  // after a short debounce, so the DB always matches the preview (heartbeat echoes
+  // can no longer "reset" an unsaved change). Placement edits are not undoable.
+  const debouncedSave = useCallback((next: MapBackgroundConfig, immediate = false) => {
+    if (persistTimer.current) { clearTimeout(persistTimer.current); persistTimer.current = null; }
+    const fire = () => onSave(next);
+    if (immediate) { fire(); return; }
+    persistTimer.current = setTimeout(fire, 300);
+  }, [onSave]);
+
+  useEffect(() => () => { if (persistTimer.current) clearTimeout(persistTimer.current); }, []);
 
   // List directly from storage (same pattern as unit_images) so the list is always
   // fresh — no Next.js API route to cache. Paginates past storage's 100-item default.
@@ -105,12 +118,8 @@ export function MapEditorPanel({ currentConfig, onSave, onPreviewChange }: MapEd
     const next = Math.max(3, Math.min(30, value));
     setGridRadius(next);
     onPreviewChange?.({ gridRadius: next });
+    debouncedSave({ imageUrl, offsetX, offsetY, scale, gridRadius: next });
   };
-
-  const handleSave = useCallback(() => {
-    if (!imageUrl && gridRadius === (currentConfig?.gridRadius ?? 12)) return;
-    onSave({ imageUrl, offsetX, offsetY, scale, gridRadius });
-  }, [imageUrl, offsetX, offsetY, scale, gridRadius, onSave, currentConfig]);
 
   return (
     <div className="h-full flex flex-col p-3 space-y-3">
@@ -122,9 +131,10 @@ export function MapEditorPanel({ currentConfig, onSave, onPreviewChange }: MapEd
           max={30}
           value={gridRadius}
           onChange={e => handleRadiusChange(parseInt(e.target.value) || 12)}
+          onBlur={() => debouncedSave({ imageUrl, offsetX, offsetY, scale, gridRadius }, true)}
           className="w-full bg-gray-700 text-white text-sm px-2 py-1 rounded border border-gray-600"
         />
-        <p className="text-xs text-gray-400 mt-1">How many rings of hexes the map shows (default 12).</p>
+        <p className="text-xs text-gray-400 mt-1">How many rings of hexes the map shows (default 12). Edits autosave to this scenario (not undoable).</p>
       </div>
 
       <div>
@@ -135,6 +145,7 @@ export function MapEditorPanel({ currentConfig, onSave, onPreviewChange }: MapEd
               onClick={() => {
                 setImageUrl('');
                 onPreviewChange?.({ imageUrl: '' });
+                debouncedSave({ imageUrl: '', offsetX, offsetY, scale, gridRadius });
               }}
               className={`flex flex-col items-center justify-center aspect-video rounded border text-xs transition-colors ${
                 imageUrl === ''
@@ -151,6 +162,7 @@ export function MapEditorPanel({ currentConfig, onSave, onPreviewChange }: MapEd
                 onClick={() => {
                   setImageUrl(img.url);
                   onPreviewChange?.({ imageUrl: img.url });
+                  debouncedSave({ imageUrl: img.url, offsetX, offsetY, scale, gridRadius });
                 }}
                 className={`flex flex-col items-center overflow-hidden rounded border text-[10px] transition-colors ${
                   imageUrl === img.url
@@ -205,7 +217,10 @@ export function MapEditorPanel({ currentConfig, onSave, onPreviewChange }: MapEd
                 const next = Number(e.target.value);
                 setOffsetX(next);
                 onPreviewChange?.({ offsetX: next });
+                debouncedSave({ imageUrl, offsetX: next, offsetY, scale, gridRadius });
               }}
+              onPointerUp={() => debouncedSave({ imageUrl, offsetX, offsetY, scale, gridRadius }, true)}
+              onMouseUp={() => debouncedSave({ imageUrl, offsetX, offsetY, scale, gridRadius }, true)}
               className="w-full"
             />
           </div>
@@ -220,7 +235,10 @@ export function MapEditorPanel({ currentConfig, onSave, onPreviewChange }: MapEd
                 const next = Number(e.target.value);
                 setOffsetY(next);
                 onPreviewChange?.({ offsetY: next });
+                debouncedSave({ imageUrl, offsetX, offsetY: next, scale, gridRadius });
               }}
+              onPointerUp={() => debouncedSave({ imageUrl, offsetX, offsetY, scale, gridRadius }, true)}
+              onMouseUp={() => debouncedSave({ imageUrl, offsetX, offsetY, scale, gridRadius }, true)}
               className="w-full"
             />
           </div>
@@ -236,20 +254,15 @@ export function MapEditorPanel({ currentConfig, onSave, onPreviewChange }: MapEd
                 const next = Number(e.target.value);
                 setScale(next);
                 onPreviewChange?.({ scale: next });
+                debouncedSave({ imageUrl, offsetX, offsetY, scale: next, gridRadius });
               }}
+              onPointerUp={() => debouncedSave({ imageUrl, offsetX, offsetY, scale, gridRadius }, true)}
+              onMouseUp={() => debouncedSave({ imageUrl, offsetX, offsetY, scale, gridRadius }, true)}
               className="w-full"
             />
           </div>
         </>
       )}
-
-      <button
-        onClick={handleSave}
-        disabled={!imageUrl && gridRadius === (currentConfig?.gridRadius ?? 12)}
-        className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm px-3 py-1.5 rounded transition-colors"
-      >
-        Save Map Settings
-      </button>
     </div>
   );
 }
