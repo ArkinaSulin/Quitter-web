@@ -116,11 +116,13 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     }
     if (terrainCosts) {
       ctx.save();
-      ctx.font = `bold ${Math.max(9, 14 * currentZoom)}px ui-monospace, monospace`;
+      // Constant on-screen size (screen space, NOT multiplied by zoom) so the
+      // cost numbers stay readable at any zoom level.
+      ctx.font = 'bold 13px ui-monospace, monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.lineJoin = 'round';
-      ctx.lineWidth = Math.max(1, 3 * currentZoom);
+      ctx.lineWidth = 3;
       for (const [key, cost] of Object.entries(terrainCosts)) {
         if (cost === 1) continue;
         if (isFogHidden(key)) continue;

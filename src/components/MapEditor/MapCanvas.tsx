@@ -144,12 +144,13 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
       }
     }
 
-    // Cost labels (white with a dark outline so they read on any shade/art).
-    ctx.font = 'bold 13px ui-monospace, monospace';
+    // Cost labels: constant ~13px ON SCREEN (the ctx is zoom-scaled, so use
+    // world sizes of screen/zoom) so they stay readable at any zoom.
+    ctx.font = `bold ${Math.max(13 / zoom, 0.5)}px ui-monospace, monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 3 / zoom;
     for (const [key, cost] of Object.entries(p.terrainCosts)) {
       if (cost === 1) continue;
       const [q, r] = key.split(',').map(Number);
