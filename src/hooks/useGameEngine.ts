@@ -155,8 +155,15 @@ export function useGameEngine({
         p_chained: isChained,
       });
       if (error || !data || (data as any[]).length === 0) {
-        console.error('[CommandLog] Execute failed:', error);
-        addError(`Action failed — ${description}`);
+        console.error('[CommandLog] Execute failed:', error, { actionType, description });
+        if (error) {
+          addError(`Action failed — ${description}: ${error.message}`);
+        } else {
+          // The RPC returned an EMPTY set with no error: a SECURITY DEFINER gate
+          // rejected the command (e.g. END_TURN outside the current alliance in a
+          // non-GM role). Surface that it was blocked, not silently swallowed.
+          addError(`Action blocked by the server (insufficient permissions) — ${description}`);
+        }
         return null;
       }
 

@@ -603,7 +603,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       });
       // Only advance the client's turn state when the server actually committed —
       // otherwise the UI shows a turn that never happened (and units never reset).
-      if (!ok) return;
+      if (!ok) {
+        console.warn('[EndTurn] server rejected the END_TURN command', { currentTurnAlliance, next });
+        return;
+      }
       setCurrentTurnAlliance(next);
       if (wrapped || freeMoveEnded) setTurnNumber(newTurnNumber);
       // Turn 0 free play ends when the first real turn begins.
@@ -613,6 +616,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (zonesAfter.length !== groundZones.length) {
         await persistMapData({ groundEffects: zonesAfter });
       }
+      // Authoritative convergence: re-read the scenario turn fields so a missed
+      // realtime event can't leave the header on the previous alliance.
+      const { data: turnRow } = await supabase
+        .from('scenarios')
+        .select('current_turn_alliance, turn_number, free_move')
+        .eq('id', scenarioId)
+        .single();
+      if (turnRow) {
+        setCurrentTurnAlliance(turnRow.current_turn_alliance || null);
+        setTurnNumber(turnRow.turn_number || 0);
+        if (turnRow.free_move !== undefined) setFreeMove(!!turnRow.free_move);
+      }
       // Reactions are once-per-turn — clear all markers at the turn boundary.
       setReactionOffers(new Map());
       setReactionMode(null);
@@ -620,7 +635,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     } finally {
       setIsEndingTurn(false);
     }
-  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, freeMove, isEndingTurn, groundZones, persistMapData]);
+  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, freeMove, isEndingTurn, groundZones, persistMapData, scenarioId]);
 
   const handleEndTurn = useCallback(async () => {
     if (isEndingTurn) return;
