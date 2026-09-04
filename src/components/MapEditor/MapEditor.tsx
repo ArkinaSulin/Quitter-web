@@ -62,21 +62,23 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     return () => { cancelled = true; };
   }, []);
 
-  // ---- storage thumbnails ----
+  // ---- storage thumbnails (same bucket + listing as the scenario MapEditorPanel) ----
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const out: string[] = [];
-      for (let offset = 0; offset < 400 && !cancelled; offset += 100) {
-        const { data, error } = await supabase.storage.from('map_images').list('', { limit: 100, offset });
+      let offset = 0;
+      const pageSize = 100;
+      while (true) {
+        const { data, error } = await supabase.storage.from('map_images').list('', { limit: pageSize, offset });
         if (error) break;
         if (!data || data.length === 0) break;
         for (const f of data) {
-          if (f.id) continue; // folders carry an id ending in '/'; files do not
-          if (f.metadata?.mimetype?.startsWith('image/')) {
-            out.push(supabase.storage.from('map_images').getPublicUrl(f.name).data.publicUrl);
-          }
+          if (f.name === '.emptyFolderPlaceholder') continue;
+          out.push(supabase.storage.from('map_images').getPublicUrl(f.name).data.publicUrl);
         }
+        if (data.length < pageSize) break;
+        offset += data.length;
       }
       if (!cancelled) setImages(out);
     })();
