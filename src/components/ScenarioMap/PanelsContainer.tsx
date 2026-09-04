@@ -86,15 +86,15 @@ export function PanelsContainer({
       className="bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-lg shadow-2xl overflow-hidden select-none relative flex flex-col"
       style={{ width: autoSize ?? size.width, height: autoSize ?? size.height, minWidth: allCollapsed ? undefined : minWidth }}
     >
-      {/* Tab bar */}
-      <div className="flex items-stretch border-b border-gray-700 bg-gray-800 flex-none">
+      {/* Tab bar — icons + labels, wraps to a second line when there are many */}
+      <div className="flex flex-wrap items-stretch border-b border-gray-700 bg-gray-800 flex-none">
         {onToggleSide && side === 'right' && (
           <button
             onClick={onToggleSide}
             title="Dock panel on the left"
             className="px-3 py-1.5 flex items-center text-gray-400 hover:text-white hover:bg-gray-700 transition-colors border-r border-gray-700"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
               <path d="M15.5 5.5 7 12l8.5 6.5V5.5z" />
             </svg>
           </button>
@@ -104,13 +104,14 @@ export function PanelsContainer({
             key={tab.id}
             onClick={tab.onToggle}
             title={tab.label}
-            className={`px-2.5 py-2 flex items-center text-xs transition-colors border-r border-gray-700 last:border-r-0 ${
+            className={`px-2 py-1.5 flex items-center gap-1.5 text-[11px] transition-colors border-r border-gray-700 last:border-r-0 ${
               tab.active
                 ? 'bg-gray-700 text-white'
                 : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
             }`}
           >
             {tab.icon}
+            <span className="leading-none">{tab.label}</span>
           </button>
         ))}
         {onToggleSide && side === 'left' && (
@@ -119,7 +120,7 @@ export function PanelsContainer({
             title="Dock panel on the right"
             className="px-3 py-1.5 flex items-center text-gray-400 hover:text-white hover:bg-gray-700 transition-colors border-l border-gray-700"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
               <path d="M8.5 5.5 17 12l-8.5 6.5V5.5z" />
             </svg>
           </button>

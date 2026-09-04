@@ -164,6 +164,14 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     update({ terrainCosts });
   }, [paintValue, entity, update]);
 
+  // Right-click (paint mode): clear back to the default 1 MP.
+  const handleClearHex = useCallback((q: number, r: number) => {
+    if (!entity) return;
+    const terrainCosts = { ...entity.terrainCosts };
+    delete terrainCosts[`${q},${r}`];
+    update({ terrainCosts });
+  }, [entity, update]);
+
   const uploadImage = useCallback(async (file: File) => {
     if (!file) return;
     // Keep the original file name, sanitized for storage: lowercase, spaces -> _,
@@ -353,7 +361,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                   ))}
                 </div>
                 {paintValue === null ? (
-                  <p className="text-xs text-gray-500">Pick a number, then left-click / drag across hexes on the map to paint. Empty = default 1 MP.</p>
+                  <p className="text-xs text-gray-500">Pick a number, then left-click / drag across hexes on the map to paint. Empty = default 1 MP. <b>Right-click</b> in paint mode clears back to 1 MP.</p>
                 ) : (
                   <p className="text-xs text-yellow-300">
                     Pen: <b>{paintValue === 0 ? 'Free (0)' : paintValue === 1 ? 'Clear (1)' : `${paintValue} MP`}</b> — left-click or drag. Click the number again to put the pen down.
@@ -380,6 +388,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
             paintValue={tab === 'movement' ? paintValue : null}
             readOnly={readOnly}
             onPaintHex={handlePaint}
+            onClearHex={handleClearHex}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-500">

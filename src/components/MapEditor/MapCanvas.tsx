@@ -20,6 +20,8 @@ export interface MapCanvasProps {
   paintValue: number | null;
   readOnly?: boolean;
   onPaintHex: (q: number, r: number) => void;
+  /** Optional: right-click clears a hex back to the default 1 MP (paint mode). */
+  onClearHex?: (q: number, r: number) => void;
 }
 
 type View = { zoom: number; ox: number; oy: number };
@@ -33,14 +35,14 @@ function hexCorners(cx: number, cy: number, size: number): { x: number; y: numbe
   return pts;
 }
 
-export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, paintValue, readOnly = false, onPaintHex }: MapCanvasProps) {
+export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, paintValue, readOnly = false, onPaintHex, onClearHex }: MapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const view = useRef<View>({ zoom: 1, ox: 0, oy: 0 });
   const lastBg = useRef<HTMLImageElement | null>(null);
   const drag = useRef<{ mode: 'none' | 'paint' | 'pan'; lastHex: string; sx: number; sy: number }>({ mode: 'none', lastHex: '', sx: 0, sy: 0 });
   const [hover, setHover] = useState<string | null>(null);
-  const propsRef = useRef({ imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, paintValue, readOnly, onPaintHex });
-  propsRef.current = { imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, paintValue, readOnly, onPaintHex };
+  const propsRef = useRef({ imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, paintValue, readOnly, onPaintHex, onClearHex });
+  propsRef.current = { imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, paintValue, readOnly, onPaintHex, onClearHex };
 
   // Cache the background image so draw is synchronous.
   useEffect(() => {
@@ -263,9 +265,15 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
         onPointerUp={endPointer}
         onPointerLeave={endPointer}
         onPointerCancel={endPointer}
-        onWheel={onWheel}
-        onContextMenu={(e) => e.preventDefault()}
-      />
+      onWheel={onWheel}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        const p = propsRef.current;
+        if (p.readOnly || p.paintValue === null || !p.onClearHex) return;
+        const hex = hexAtClient(e.clientX, e.clientY);
+        if (hex) p.onClearHex(hex.q, hex.r);
+      }}
+    />
       {hover && (
         <div className="absolute top-1 left-1 z-10 bg-black/60 border border-gray-600 rounded px-1.5 py-0.5 text-[10px] text-gray-200 pointer-events-none font-mono">
           ({hover})

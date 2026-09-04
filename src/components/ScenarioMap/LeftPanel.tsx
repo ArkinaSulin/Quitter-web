@@ -8,10 +8,27 @@ import { MessagesPanel } from './MessagesPanel';
 import { AlliancePanel } from './AlliancePanel';
 import { MapEditorPanel } from './MapEditorPanel';
 import { MapPickerList } from './MapPickerList';
+import { TerrainPaintPanel } from './TerrainPaintPanel';
+import { EffectsPaintPanel } from './EffectsPaintPanel';
 import { PlayerPanel } from './PlayerPanel';
 import { UndoDebugPanel } from './UndoDebugPanel';
 import { UnitTemplate, AllianceGroup, Participant, ScenarioRole } from '@/types/gameProtocol';
 import { MapEntity } from '@/lib/mapEntities';
+
+const FootIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+    <path d="M8.6 3.2a2.2 2.2 0 0 1 2.9 2c.3 2-1.1 2.9-.9 4.8.2 1.6 1.4 2.3 2 4 .6 1.7.1 3.4-1.4 4.3-1.4.8-3.4.7-4.8-.1-1.5-.9-2.3-2.7-2.2-4.7.1-2.3-.6-4.3-1.5-6.3-.7-1.6-.1-3.2 1.1-4 .7-.5 1.9-.9 3.8 0z" />
+    <path d="M17.6 3.2a2.2 2.2 0 0 1 2.9 2c.3 2-1.1 2.9-.9 4.8.2 1.6 1.4 2.3 2 4 .6 1.7.1 3.4-1.4 4.3-1.4.8-3.4.7-4.8-.1-1.5-.9-2.3-2.7-2.2-4.7.1-2.3-.6-4.3-1.5-6.3-.7-1.6-.1-3.2 1.1-4 .7-.5 1.9-.9 3.8 0z" />
+  </svg>
+);
+
+const WindIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+    <path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2" />
+    <path d="M9.6 4.6A2 2 0 1 1 11 8H2" />
+    <path d="M12.6 19.4A2 2 0 1 0 14 16H2" />
+  </svg>
+);
 
 interface LeftPanelProps {
   scenarioId: string;
@@ -32,11 +49,15 @@ interface LeftPanelProps {
   currentMapId: string | null;
   onAssignMap: (entity: MapEntity) => void;
   onClearMap: () => void;
+  terrainBrushCost: number | null;
+  onSetTerrainBrushCost: (v: number | null) => void;
+  zoneTemplateId: string | null;
+  onSetZoneTemplateId: (id: string | null) => void;
   side: 'left' | 'right';
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, side, onToggleSide }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, zoneTemplateId, onSetZoneTemplateId, side, onToggleSide }: LeftPanelProps) {
   // Persist which tabs are open per scenario + user, so a rejoined session
   // restores the same panel layout.
   // Persist which tabs are open per scenario + user. The saved layout is restored
@@ -90,6 +111,20 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
           <MapEditorPanel currentConfig={backgroundConfig} onSave={onSaveBackground} onPreviewChange={onPreviewMapConfig} />
         </div>
       ),
+    },
+    {
+      id: 'movement-paint',
+      label: 'Movement',
+      icon: <FootIcon />,
+      requiresGM: true,
+      content: <TerrainPaintPanel value={terrainBrushCost} onSet={onSetTerrainBrushCost} />,
+    },
+    {
+      id: 'effects-paint',
+      label: 'Effects',
+      icon: <WindIcon />,
+      requiresGM: true,
+      content: <EffectsPaintPanel activeTemplateId={zoneTemplateId} onSetTemplate={onSetZoneTemplateId} />,
     },
     {
       id: 'players',

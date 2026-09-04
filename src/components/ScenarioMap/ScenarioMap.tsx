@@ -41,7 +41,7 @@ import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackground
 import { newEffectKey } from '@/lib/unitEffects';
 import { MapEntity } from '@/lib/mapEntities';
 import { AddEffectModal } from './AddEffectModal';
-import { EffectTemplate, EFFECT_TEMPLATES, EffectSpec } from '@/lib/unitEffects';
+import { EffectTemplate, templateById, EffectSpec } from '@/lib/unitEffects';
 import { routeUnit } from './routeUnit';
 import { useCanvasDraw } from './useCanvasDraw';
 import { useReactionActions } from './useReactionActions';
@@ -352,6 +352,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setTerrainCosts(next);
     await persistMapData({ terrainCosts: next });
   }, [terrainBrushCost, terrainCosts, persistMapData]);
+
+  // Right-click in paint mode resets a hex to the default 1 MP.
+  const clearTerrainHex = useCallback(async (q: number, r: number) => {
+    const next = { ...terrainCosts };
+    delete next[`${q},${r}`];
+    setTerrainCosts(next);
+    await persistMapData({ terrainCosts: next });
+  }, [terrainCosts, persistMapData]);
 
   // Assign a reusable map: snapshot its image + terrain into the scenario copy.
   const assignMap = useCallback(async (entity: MapEntity) => {
@@ -808,6 +816,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     },
     onHexRightClick: (hex, unit, clientX, clientY) => {
       if (controlsLocked) return;
+      // GM paint mode: right-click clears the MP cost back to the default 1.
+      if (effectiveIsGM && hex && (terrainBrushCost !== null || zoneTemplate)) {
+        void clearTerrainHex(hex.q, hex.r);
+        return;
+      }
       if (reactionMode) {
         // Locked: only the reacting archer's right-click changes formation.
         if (unit && unit.id === reactionMode.archer.id) {
@@ -1335,38 +1348,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         goToLobby={goToLobby}
       />
 
-      {/* GM map-edit palette (terrain entry costs + ground-effect zones) */}
-      {effectiveIsGM && !controlsLocked && !inReplay && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 flex flex-wrap items-center gap-1.5 bg-gray-900/95 border border-gray-700 rounded-lg px-3 py-1.5 max-w-[80vw] shadow-lg">
-          <span className="text-xs text-gray-400 mr-1">GM Map</span>
-          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
-            <button
-              key={n}
-              title={n === 0 ? 'Free entry (0 MP)' : n === 1 ? 'Clear terrain (default 1 MP)' : `Terrain cost ${n} MP`}
-              className={`px-2 py-0.5 rounded text-xs border ${terrainBrushCost === n && zoneTemplate === null ? 'bg-yellow-600 border-yellow-400 text-black' : 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700'}`}
-              onClick={() => { setZoneTemplate(null); setTerrainBrushCost(terrainBrushCost === n ? null : n); }}
-            >
-              {n === 0 ? 'free' : n === 1 ? 'clear' : `${n} MP`}
-            </button>
-          ))}
-          <span className="text-gray-600 mx-1">|</span>
-          {EFFECT_TEMPLATES.map(t => (
-            <button
-              key={t.id}
-              title={`Place ${t.name} ground zone (${t.description})`}
-              className={`px-2 py-0.5 rounded text-xs border ${zoneTemplate?.id === t.id && terrainBrushCost === null ? 'text-black' : 'bg-gray-800 text-gray-200 hover:bg-gray-700'}`}
-              style={zoneTemplate?.id === t.id && terrainBrushCost === null ? { background: t.color, borderColor: t.color } : { borderColor: t.color }}
-              onClick={() => { setTerrainBrushCost(null); setZoneTemplate(zoneTemplate?.id === t.id ? null : t); }}
-            >
-              {t.name}
-            </button>
-          ))}
-          {(terrainBrushCost !== null || zoneTemplate) && (
-            <span className="text-yellow-300 text-xs ml-1">Click a hex · Esc exits</span>
-          )}
-        </div>
-      )}
-
       {/* Floating Left Panel — hidden in replay or when the DM is gone */}
       {!controlsLocked && (
         <div className={`absolute top-14 z-10 ${panelSide === 'left' ? 'left-2' : 'right-2'}`}>
@@ -1389,6 +1370,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             currentMapId={mapId}
             onAssignMap={(entity) => void assignMap(entity)}
             onClearMap={() => void clearMap()}
+            terrainBrushCost={terrainBrushCost}
+            onSetTerrainBrushCost={setTerrainBrushCost}
+            zoneTemplateId={zoneTemplate?.id ?? null}
+            onSetZoneTemplateId={(id) => setZoneTemplate(id ? (templateById(id) ?? null) : null)}
             side={panelSide}
             onToggleSide={togglePanelSide}
           />
@@ -1671,23 +1656,24 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 </span>
               </span>
             </label>
-            {fogOfWar && (
-              <label className="flex items-center justify-between gap-2 text-sm text-gray-200 mb-2">
-                <span className="text-gray-300">Sight radius (hex, beyond own hex)</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={9}
-                  value={sightRadius}
-                  onChange={async (e) => {
-                    const v = Math.max(1, Math.min(9, parseInt(e.target.value) || 2));
-                    setSightRadius(v);
-                    await updateScenarioField(scenarioId, { sight_radius: v });
-                  }}
-                  className="w-16 bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700"
-                />
-              </label>
-            )}
+            <label className={`flex items-center justify-between gap-2 text-sm text-gray-200 mb-2 ${fogOfWar ? '' : 'opacity-70'}`}>
+              <span className="text-gray-300">
+                Sight radius (hex, beyond own hex)
+                {!fogOfWar && <span className="block text-gray-500 text-[11px]">Armed but inactive until fog of war is on.</span>}
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={9}
+                value={sightRadius}
+                onChange={async (e) => {
+                  const v = Math.max(1, Math.min(9, parseInt(e.target.value) || 2));
+                  setSightRadius(v);
+                  await updateScenarioField(scenarioId, { sight_radius: v });
+                }}
+                className="w-16 bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700"
+              />
+            </label>
             <div className="flex justify-end">
               <button
                 onClick={() => setShowScenarioSettings(false)}
