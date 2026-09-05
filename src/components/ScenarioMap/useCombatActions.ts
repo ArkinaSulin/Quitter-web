@@ -547,11 +547,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
     // Only the attacked unit can rout — no morale cascade to nearby units.
     if (defenderRouted || defenderKilled) {
-      await routeUnit(execute, target, defenderKilled ? 'slain in combat' : `morale ${defModUnit.baseMorale + defEffectiveMod} after combat`, defenderKilled);
+      await routeUnit(execute, target, defenderKilled ? 'slain in combat' : `morale ${defModUnit.baseMorale + defEffectiveMod} after combat`, defenderKilled, attacker.id);
     }
 
     if (attackerRouted || attackerKilled) {
-      await routeUnit(execute, attacker, attackerKilled ? 'slain in combat' : `morale ${attMoraleBreak} after combat`, attackerKilled);
+      await routeUnit(execute, attacker, attackerKilled ? 'slain in combat' : `morale ${attMoraleBreak} after combat`, attackerKilled, target.id);
     }
 
     // After the exchange, units that drew a melee weapon and are no longer in a

@@ -75,6 +75,8 @@ export interface RoutThroughOption {
  * Optional 2-hex rout: run THROUGH one adjacent friendly unit (Open Order or
  * Scattered) to the empty, non-kill-zone hex beyond it. Max distance = 2 hexes
  * (through exactly one friendly unit). Passing an Open Order friendly scatters it.
+ * Friendly ROUTING units never yield — they are NOT pass-through candidates, even
+ * when they are the only friendly neighbour (two crowds fleeing don't step aside).
  */
 export function routThroughOptions(ctx: RoutContext): RoutThroughOption[] {
   const occ = occupiedExcept(ctx);
@@ -123,6 +125,37 @@ export function defaultRetreat(ctx: RoutContext): RetreatResolution {
     return { kind: 'rout-through', option: byDisrupt[0] };
   }
   return { kind: 'none' };
+}
+
+const ORDERED_FORMATIONS = new Set(['Close Order', 'Phalanx', 'Shield Wall']);
+
+export interface RetreatDiagnosis {
+  adjacentLegal: number;
+  throughLegal: number;
+  /** Every adjacent friendly is itself routing (won't yield) — rout-through N/A. */
+  allAdjacentRouting: boolean;
+  /** Every adjacent friendly holds ordered ranks (Close Order/Phalanx/Shield Wall). */
+  allAdjacentOrdered: boolean;
+  hasAdjacentFriendly: boolean;
+}
+
+/** Structured reason when no legal retreat exists, for precise UI messaging. */
+export function retreatDiagnosis(ctx: RoutContext): RetreatDiagnosis {
+  const adjacentLegal = adjacentRetreatCandidates(ctx).length;
+  const throughLegal = routThroughOptions(ctx).length;
+  const group = ctx.alliances[ctx.routed.team] || 'friendly';
+  const adjacentFriendly = neighborsOf(ctx.routed.hex)
+    .map(n => ctx.units.find(u => !u.isDeleted && u.id !== ctx.routed.id && u.hex.q === n.q && u.hex.r === n.r && (ctx.alliances[u.team] || 'friendly') === group))
+    .filter(Boolean) as Unit[];
+  const allAdjacentRouting = adjacentFriendly.length > 0 && adjacentFriendly.every(u => u.currentFormation === 'Routed');
+  const allAdjacentOrdered = adjacentFriendly.length > 0 && adjacentFriendly.every(u => ORDERED_FORMATIONS.has(u.currentFormation));
+  return {
+    adjacentLegal,
+    throughLegal,
+    allAdjacentRouting,
+    allAdjacentOrdered,
+    hasAdjacentFriendly: adjacentFriendly.length > 0,
+  };
 }
 
 export interface PursuerPick {

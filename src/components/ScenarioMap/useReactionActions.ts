@@ -76,7 +76,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     return () => { clearInterval(t); setBowBlinkOn(false); };
   }, [reactionOffers.size]);
 
-  const routeReactionUnit = useCallback((unit: Unit, reason: string, killed: boolean) => routeUnit(execute, unit, reason, killed), [execute]);
+  const routeReactionUnit = useCallback((unit: Unit, reason: string, killed: boolean, causeId?: string | null) => routeUnit(execute, unit, reason, killed, causeId), [execute]);
 
   /** After a move commits, offer a reaction to every eligible hostile archer.
    *  `mover` is expected to carry its NEW hex (the move's end). */
@@ -197,7 +197,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     if (moverKilled || moverRouted) {
       const modUnit = { ...mover, currentUnitHp: newHp };
       const effMod = modUnit.currentMoraleModifier + computeEffectiveMoraleModifier(modUnit, displayUnits, displayAlliances, formationsMap[mover.currentFormation] ?? null);
-      await routeReactionUnit(mover, moverKilled ? 'slain by reaction fire' : `morale ${modUnit.baseMorale + effMod} after reaction shot`, moverKilled);
+      await routeReactionUnit(mover, moverKilled ? 'slain by reaction fire' : `morale ${modUnit.baseMorale + effMod} after reaction shot`, moverKilled, archer?.id);
     }
     setReactionMode(null);
   }, [execute, displayUnits, displayAlliances, formationsMap, sizeCategories, addMessage, routeReactionUnit, units, verboseCombat]);

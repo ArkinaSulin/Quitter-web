@@ -162,7 +162,7 @@ export function useCastActions(deps: CastActionsDeps) {
     const targetRouted = !targetKilled && shouldRout(modUnit, units, alliances, formationsMap[target.currentFormation] ?? null);
 
     if (targetRouted || targetKilled) {
-      await routeUnit(execute, target, targetKilled ? 'destroyed by magic' : `morale ${modUnit.baseMorale + effMod} after magic`, targetKilled);
+      await routeUnit(execute, target, targetKilled ? 'destroyed by magic' : `morale ${modUnit.baseMorale + effMod} after magic`, targetKilled, caster.id);
     }
 
     magicCast.sendResolve({
