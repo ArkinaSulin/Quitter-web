@@ -65,7 +65,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const [adminError, setAdminError] = useState<string | null>(null);
 
   const [scenarioSearch, setScenarioSearch] = useState('');
-  const [showMine, setShowMine] = useState(true);
+  const [showMine, setShowMine] = useState(false);
   const [showAvailable, setShowAvailable] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameInput, setRenameInput] = useState('');
@@ -558,8 +558,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     if (error) return <p className="text-red-500">Error: {error}</p>;
 
     // Independent toggles (union): Mine + Available shows both; neither shows all.
-    // A user with no participation falls back to the available-rooms view so the
-    // lobby is never empty for them while "My Scenarios" is on.
+    // Both are OFF by default so a fresh join sees every scenario unfiltered.
     const mineActive = showMine && myScenarioIds.length > 0;
     const availableActive = showAvailable || (showMine && myScenarioIds.length === 0 && !showAvailable);
 
