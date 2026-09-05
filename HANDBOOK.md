@@ -631,8 +631,13 @@ situationalModifier = wounds + isolatedPenalty - enemyThreats + formationMoraleM
 - If no legal rout exists at all, the routed unit stands (still Routed).
 
 **Pursuit (mandatory — cannot be declined):**
-- Eligibility: an adjacent hostile whose effective speed exceeds the routed unit's Routed-formation speed **and** that can pay the entry MP into the vacated hex. Selection order: the **attacker** (cause of the rout) if eligible → the **fastest** adjacent eligible hostile → the one with the most MP available → random.
+- Eligibility — all three must hold for an adjacent hostile:
+  1. the **vacated hex is reachable in one droppable move** from its current facing (front-arc/loose step — it can advance into that hex in a single movement),
+  2. its **effective MaxMP ≥ the routed unit's routing MaxMP × 1.5** (changed from strict ">" to "≥"),
+  3. it **can pay the MP** to enter the vacated hex.
+- Selection order: the **attacker** (cause of the rout) if eligible → the **fastest** eligible adjacent hostile → the one with the most MP available → random.
 - The pursuer follows into the vacated hex (pays MP), attacks, and **drops one organization level**. The fast follow triggers **no reaction**.
+- The rout, retreat, rout-through/disruption, pursuit move and pursuit attack all land as one **chained command group** with the initiating attack — undo reverts the whole episode.
 - **The pursuer attacks the friendly unit that was just disrupted by the rout** (the one scattered to `Scattered`) rather than the routed unit it can no longer reach. On a 1-hex rout (no disruption) it strikes the routed unit. If the rout only passed through a Scattered friendly (no disruption), the routed unit is behind an occupied hex — **no pursuit attack** occurs (ranged may still apply).
 - **No legal rout**: the routed unit can't move (actual movement = 0), so the attacker makes a **FREE pursue attack** ("as if it pursued") — no speed/MP gate, attacker preferred, still subject to the org −1 — clearly labeled in the message.
 

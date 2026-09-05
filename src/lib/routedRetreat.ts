@@ -8,6 +8,7 @@ import { Unit, AllianceGroup, Formation, Hex } from '@/types/gameProtocol';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { computeEffectiveMovement } from '@/lib/unitStats';
 import { computeThreatHexes } from '@/components/ScenarioMap/mapGeometry';
+import { computeReachableMap } from '@/lib/moveCost';
 
 const DIRS = [
   { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
@@ -172,10 +173,15 @@ export function canPayMove(unit: Unit, cost = 1): boolean {
 }
 
 /**
- * Choose the single pursuer: any ADJACENT hostile faster than routed speed that
- * can also pay the entry cost. Preference: the attacking unit (when given) → the
- * fastest eligible → the one with the most available MP → random (injected rnd).
- * Returns null when nobody qualifies.
+ * Choose the single pursuer. Eligibility (all three):
+ *   1. the vacated hex can be advanced into in ONE movement from the pursuer's
+ *      current position (a straight front-arc step — not necessarily 1 MP, but it
+ *      can reach it in a single droppable move),
+ *   2. the pursuer's effective MaxMP >= the routed unit's routing MaxMP × 1.5
+ *      (this changed from ">" to ">="),
+ *   3. the pursuer can spend the MP to enter the vacated hex.
+ * Preference: the attacking unit (when given) → fastest eligible → most available
+ * MP → random (injected rnd). Returns null when nobody qualifies.
  */
 export function choosePursuer(
   attacker: Unit | null | undefined,
@@ -186,17 +192,27 @@ export function choosePursuer(
   rnd: () => number = Math.random,
 ): Unit | null {
   const routedSpeedV = routedSpeed({ routed, units, alliances, formationsMap });
+  const speedGate = routedSpeedV * 1.5;
   const routedGroup = alliances[routed.team] || 'friendly';
-  const adjacentSet = new Set(neighborsOf(routed.hex).map(h => key(h.q, h.r)));
-  const eligible = units.filter(u =>
-    !u.isDeleted &&
-    u.id !== routed.id &&
-    (alliances[u.team] || 'friendly') !== routedGroup &&
-    !isUnitRouted(u) &&
-    adjacentSet.has(key(u.hex.q, u.hex.r)) &&
-    unitSpeed(u, formationsMap) > routedSpeedV &&
-    canPayMove(u, 1),
-  );
+  const vacKey = key(routed.hex.q, routed.hex.r);
+  const occ = new Set<string>();
+  for (const u of units) {
+    if (u.isDeleted || u.id === routed.id) continue;
+    occ.add(key(u.hex.q, u.hex.r));
+  }
+  const eligible = units.filter(u => {
+    if (u.isDeleted || u.id === routed.id) return false;
+    if ((alliances[u.team] || 'friendly') === routedGroup) return false;
+    if (isUnitRouted(u)) return false;
+    const speed = unitSpeed(u, formationsMap);
+    if (!(speed >= speedGate)) return false;
+    if (!canPayMove(u, 1)) return false;
+    // Gate 1: vacated hex reachable in one droppable move from this facing.
+    const reach = computeReachableMap(u, Math.max(1, speed), occ, new Set<string>(), undefined, true);
+    const entry = reach.get(vacKey);
+    if (!entry || entry.needsTurn) return false;
+    return true;
+  });
   if (eligible.length === 0) return null;
   if (attacker && eligible.some(u => u.id === attacker.id)) return attacker;
   const fastest = Math.max(...eligible.map(u => unitSpeed(u, formationsMap)));

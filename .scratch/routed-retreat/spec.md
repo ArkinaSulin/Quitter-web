@@ -24,15 +24,21 @@ reaction fire), including the mandatory follow-up pursuit.
 
 ## Pursuit (mandatory — player cannot decline)
 
-- Candidate pursuer: an **adjacent hostile** whose effective speed (formation
-  multiplier applied) is **greater than the routed unit's Routed-formation speed**
-  AND that can **pay the MP cost** to enter the vacated hex.
+- Candidate pursuer: an **adjacent hostile** that meets ALL THREE gates:
+  1. the **vacated hex is reachable in one droppable move** from its current facing
+     (a single front-arc/loose advance — "not necessarily one MP", but one move),
+  2. its **effective MaxMP ≥ the routed unit's routing MaxMP × 1.5** (changed from
+     strict ">" to "≥"),
+  3. it **can pay the MP cost** to enter the vacated hex.
 - Selection order: **(1)** the attacker that caused the rout if eligible →
   **(2)** the fastest eligible adjacent hostile → **(3)** the one with the most
   `movementPointsAvailable` → **(4)** random (tie-break).
 - On pursuit the pursuer **follows into the vacated hex** (pays MP), makes a
   mandatory **free attack**, and **drops one organization level**. The fast follow
   triggers **no reaction** (it happens immediately behind the routed unit).
+- The whole episode — rout, retreat move, rout-through/disruption, pursuit move,
+  and pursuit attack — is executed as one **chained command group** with the
+  initiating attack, so undo reverts everything together.
 
 ### Who the pursuer attacks
 - If the rout **disrupted** a friendly (rout-through an Open Order unit) → the

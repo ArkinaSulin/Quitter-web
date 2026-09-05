@@ -543,12 +543,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       attackerRouted = !attackerKilled && shouldRout(attModUnit, units, alliances, formationsMap[attacker.currentFormation] ?? null);
     }
 
-    const executeOpts = verboseCombat ? { message: msgDesc } : undefined;
-    if (options?.chained) {
-      await execute('ATTACK', subSteps, desc, { ...(executeOpts ?? {}), chained: true });
-    } else {
-      await execute('ATTACK', subSteps, desc, executeOpts);
-    }
+    await execute('ATTACK', subSteps, desc, (verboseCombat ? { message: msgDesc } : options?.chained ? { chained: true } : undefined));
 
     // Only the attacked unit can rout — no morale cascade to nearby units.
     if (defenderRouted || defenderKilled) {

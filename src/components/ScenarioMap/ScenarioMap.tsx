@@ -1858,6 +1858,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                     DM takes over — auto pick (farthest legal hex)
                   </button>
                 )}
+                {!retreatPick.reason && (
+                  <button
+                    onClick={() => void applyRoutedFlow(retreatPick.unit, { kind: 'none' }, retreatPick.attacker)}
+                    className="w-full bg-gray-800 hover:bg-gray-700 rounded px-3 py-1.5 text-xs text-gray-300"
+                  >
+                    DM: no retreat (stand — routed)
+                  </button>
+                )}
               </div>
             )}
           </div>

@@ -84,8 +84,10 @@ describe('defaultRetreat resolution', () => {
 
 describe('choosePursuer', () => {
   const rout = () => unit('r', 'blue', h(0, 0), { currentFormation: 'Routed', movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 0 });
+  // Pursuers use a loose (Scattered) formation so any adjacent vacated hex is a
+  // single droppable move from any facing (gate 1 focuses on reach, not arcs here).
   const host = (id: string, hex: { q: number; r: number; s: number }, mp = 6, availMp = 0) =>
-    unit(id, 'red', hex, { movementPoints: mp, movementPointsAvailable: availMp, actionsAvailable: 1 });
+    unit(id, 'red', hex, { currentFormation: 'Scattered', movementPoints: mp, movementPointsAvailable: availMp, actionsAvailable: 1 });
 
   it('returns the attacker when it is faster and can pay', () => {
     const attacker = host('a', h(1, 0), 6, 1);
@@ -123,6 +125,14 @@ describe('choosePursuer', () => {
     const slow = host('s', h(1, 0), 2, 2);
     const p = choosePursuer(slow, routed, [routed, slow], groups, forms(1));
     expect(p).toBeNull();
+  });
+
+  it('speed gate is >= routed speed x1.5 (equality qualifies)', () => {
+    const routed = unit('r', 'blue', h(0, 0), { currentFormation: 'Routed', movementPoints: 2, movementPointsAvailable: 0, actionsAvailable: 0 });
+    // routed speed 2 x1.5 = 3; pursuer mp 3 exactly qualifies (>=, not >).
+    const equal = host('e', h(1, 0), 3, 1);
+    const p = choosePursuer(equal, routed, [routed, equal], groups, forms(1));
+    expect(p?.id).toBe('e');
   });
 });
 
