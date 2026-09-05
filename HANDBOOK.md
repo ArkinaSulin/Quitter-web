@@ -622,14 +622,19 @@ situationalModifier = wounds + isolatedPenalty - enemyThreats + formationMoraleM
 - Heroes and already-routing units skip evaluation entirely.
 
 ### 7.5 Routing & Pursuit
-**Routing:**
-- Any broken unit drops to Scattered and moves 1 hex away.
-- One unit can do this once per turn.
+**Routing (owner-decided retreat):**
+- A unit that breaks and routs is set to `Routed` and the owner is shown a retreat modal.
+- Retreat hexes must be **unoccupied** and **outside any enemy kill zone** (ZOC).
+- Normal rout = 1 hex (free — "run for your life"). If no adjacent hex is legal, the unit may rout **2 hexes through one friendly unit** in Open Order or Scattered.
+- **Routed units never yield**: a rout can never pass through another routing (Routed) friendly — two crowds fleeing don't step aside. Ordered ranks (Close Order/Phalanx/Shield Wall) also can't be pushed through.
+- Passing through a friendly **Open Order** unit **disrupts that friendly to Scattered**; passing through a Scattered unit costs it nothing.
+- If no legal rout exists at all, the routed unit stands (still Routed).
 
-**Pursuit (Cavalry):**
-- Eligibility: Effective Speed > routing unit's Speed × 1.5.
-- Cost: Drop one Formation level.
-- Reward: Free attack + move 1 hex into vacated space.
+**Pursuit (mandatory — cannot be declined):**
+- Eligibility: an adjacent hostile whose effective speed exceeds the routed unit's Routed-formation speed **and** that can pay the entry MP into the vacated hex. Selection order: the **attacker** (cause of the rout) if eligible → the **fastest** adjacent eligible hostile → the one with the most MP available → random.
+- The pursuer follows into the vacated hex (pays MP), attacks, and **drops one organization level**. The fast follow triggers **no reaction**.
+- **The pursuer attacks the friendly unit that was just disrupted by the rout** (the one scattered to `Scattered`) rather than the routed unit it can no longer reach. On a 1-hex rout (no disruption) it strikes the routed unit. If the rout only passed through a Scattered friendly (no disruption), the routed unit is behind an occupied hex — **no pursuit attack** occurs (ranged may still apply).
+- **No legal rout**: the routed unit can't move (actual movement = 0), so the attacker makes a **FREE pursue attack** ("as if it pursued") — no speed/MP gate, attacker preferred, still subject to the org −1 — clearly labeled in the message.
 
 ### 7.6 Multiplayer Concurrency (Soft Lock)
 - When user starts dragging a unit, broadcast lock_unit via Supabase Realtime.

@@ -763,3 +763,13 @@ Redesigned the left panel from collapsible sections into a **tabbed panel**:
 | `src/components/ScenarioMap/LeftPanel.tsx` | Rewritten around tabs (Map Â· Alliances Â· Unit Selector Â· Messages); GM-only Map tab (leftmost) hosts `MapEditorPanel`; handshake/crossed-swords icons; first-available-tab-open default (GM â†’ Map); forwards `side`/`onToggleSide` to PanelsContainer |
 | `src/components/Lobby.tsx` | Removed Map Editor button + `mapEditorScenarioId` state + `MapEditorView` overlay/import |
 | `src/components/MapEditorView.tsx` | Deleted (full-screen overlay replaced by the Map tab editor) |
+
+---
+
+## Routed Retreat & Pursuit (ScenarioMap)
+
+- `src/lib/routedRetreat.ts` — pure retreat/pursuit rules: legal adjacent retreat hexes (unoccupied, out of enemy ZOC), 2-hex rout-through only through friendly Open Order/Scattered, **routed units never yield** and ordered ranks block, Open-Order-through disrupts that friendly to Scattered, `retreatDiagnosis` reasons, `choosePursuer` (faster than Routed speed **and** able to pay; attacker ? fastest ? most MP ? random).
+- `src/components/ScenarioMap/ScenarioMap.tsx` — `routFlowRef` orchestrator reacts to live ROUT rows: opens the retreat modal (always, even with zero options); option hover highlights the hex on the map; draggable card; chained MOVE/FORMATION/pursuit commands. Geometry is resolved at the pursuer's post-follow hex so melee never misfires as "long range".
+- Pursuit is **mandatory and cannot be declined**: the pursuer attacks the **disrupted friendly** when the rout-through scattered one, the routed unit on a 1-hex rout, and **no attack** when the rout only passed through a Scattered friendly (occupied hex). No legal rout ? attacker makes a labeled **FREE pursue attack** (no speed/MP gate, org -1 still applies).
+- `routeUnit.ts` carries the cause (`payload.cause`) so the attacker is preferred as pursuer.
+- Docs: `.scratch/routed-retreat/spec.md`, HANDBOOK §7.5.

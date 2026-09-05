@@ -125,7 +125,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Temporary-effect modal target (context menu → "Effects…").
   const [effectMenuUnit, setEffectMenuUnit] = useState<Unit | null>(null);
   // Routed retreat (owner picks when several legal hexes; auto when one/none).
-  const [retreatPick, setRetreatPick] = useState<{ unit: Unit; attacker: Unit | null; hexes: { q: number; r: number; s: number }[]; through: RoutThroughOption[] } | null>(null);
+  const [retreatPick, setRetreatPick] = useState<{
+    unit: Unit;
+    attacker: Unit | null;
+    hexes: { q: number; r: number; s: number }[];
+    through: RoutThroughOption[];
+    reason: string | null;
+    pursuer: Unit | null;
+  } | null>(null);
+  const [retreatHoverHex, setRetreatHoverHex] = useState<string | null>(null);
+  const [retreatCardPos, setRetreatCardPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const retreatDragRef = useRef<{ dx: number; dy: number } | null>(null);
   const routBusy = useRef(false);
   const routedHandled = useRef(new Set<string>());
   const routFlowRef = useRef<{ handle: (row: CommandLogRow) => Promise<void> } | null>(null);
@@ -794,6 +804,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (routBusy.current) { console.warn('[RoutFlow] busy — skipped', routed.unitName); return; }
     routBusy.current = true;
     setRetreatPick(null);
+    setRetreatHoverHex(null);
     console.info('[RoutFlow] begin', routed.unitName, move.kind);
     try {
       const cur = unitsRef.current;
@@ -801,10 +812,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (!live || live.isDeleted) { console.warn('[RoutFlow] unit gone', routed.id); return; }
       const vacated = { ...live.hex };
       const disruptId = move.kind === 'through' && move.option.disruptToScattered ? move.option.throughUnitId : null;
+      const throughId = move.kind === 'through' ? move.option.throughUnitId : null;
       const didMove = move.kind !== 'none';
+      const throughBlocked = move.kind === 'through' && !disruptId; // Scattered-only rout: no disruption to attack
 
       if (didMove) {
         const dest = move.kind === 'adjacent' ? move.hex : move.option.dest;
+        if (move.kind === 'through') {
+          const thru = cur.find(u => u.id === throughId);
+          const thruName = thru?.unitName ?? 'a friendly unit';
+          addMessage(`${live.unitName} has no safe adjacent retreat — its only rout is through ${thruName} (${thru?.currentFormation ?? 'friendly'}), ${disruptId ? 'disrupting it to Scattered' : 'which lets it pass'}.`);
+        }
         await execute('MOVE', [{
           type: 'MOVE',
           description: `${live.unitName} routs to (${dest.q}, ${dest.r})`,
@@ -833,6 +851,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         } else {
           addMessage(`${live.unitName} has no safe retreat — it stands, routed.`);
         }
+        addMessage(`${live.unitName} cannot move — it will face a FREE pursue attack if an enemy is in reach.`);
+      }
+
+      if (throughBlocked) {
+        // Rout went 2 hexes through a Scattered friendly (no disruption): the
+        // routed unit is behind an occupied friendly hex — no melee pursuer can
+        // reach it. State it and stop.
+        const name = attacker?.unitName ?? 'No enemy';
+        if (attacker) addMessage(`${attacker.unitName} cannot reach ${live.unitName} through the ranks — no pursuit attack.`);
+        void name;
+        return;
       }
 
       // Pick the pursuer.
@@ -871,10 +900,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }
       if (!pLive) { console.info('[RoutFlow] no pursuer for', live.unitName); return; }
 
-      // Attack: full melee vs the scattered friendly when the rout scattered one,
-      // otherwise the rout (which cannot retaliate).
-      const target = disruptId ? (cur.find(u => u.id === disruptId) ?? live) : live;
-      await performAttack(pLive, target, false);
+      // Attack geometry uses POST-follow positions (pursuer in the vacated hex,
+      // target at its real location) so melee never misfires as "long range".
+      const resolvedAttacker = didMove ? { ...pLive, hex: vacated } : pLive;
+      const target = disruptId
+        ? (cur.find(u => u.id === disruptId) ?? live)
+        : move.kind === 'adjacent'
+          ? { ...live, hex: move.hex }
+          : live;
+      await performAttack(resolvedAttacker, target, false);
       const lower = nextLowerFormation(pLive.currentFormation);
       if (lower) {
         await execute('FORMATION', [{
@@ -884,7 +918,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           changes: [{ field: 'currentFormation', from: pLive.currentFormation, to: lower }],
         }], `${pLive.unitName} disorganized`, { chained: true });
       }
-      addMessage(`${pLive.unitName} pursued and struck the routing unit`);
+      const verb = didMove ? 'pursued and struck' : 'made a FREE pursue attack on';
+      addMessage(didMove && disruptId
+        ? `${pLive.unitName} ${verb} ${target.unitName} (disrupted by the rout)`
+        : `${pLive.unitName} ${verb} ${target.unitName}`);
     } finally {
       routBusy.current = false;
       console.info('[RoutFlow] done');
@@ -918,18 +955,40 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const adj = adjacentRetreatCandidates(ctx);
     const through = routThroughOptions(ctx);
     console.info('[RoutFlow] candidates', { adjacent: adj.length, through: through.length });
-    if (adj.length > 1) {
-      setRetreatPick({ unit: routed, attacker, hexes: adj, through });
-      return;
+    // Always show the modal (even with zero options) as the informational
+    // precursor to the rout / FREE pursue attack. Zero options -> reason text.
+    let reason: string | null = null;
+    if (adj.length === 0 && through.length === 0) {
+      const diag = retreatDiagnosis(ctx);
+      if (diag.allAdjacentRouting) {
+        reason = 'every adjacent friendly unit is also routing and will not yield, so it cannot rout through them';
+      } else if (diag.allAdjacentOrdered) {
+        reason = 'adjacent friendly ranks hold formation, and routed troops cannot push through ordered ranks';
+      } else {
+        reason = 'no unoccupied hex outside an enemy kill zone is available';
+      }
     }
-    const move: RoutMove = adj.length === 1
-      ? { kind: 'adjacent', hex: adj[0] }
-      : through.length > 0
-        ? { kind: 'through', option: through.find(t => !t.disruptToScattered) ?? through[0] }
-        : { kind: 'none' };
-    await applyRoutedFlow(routed, move, attacker);
-  }, [unitsRef, alliances, formationsMap, participantsSync.participants, myTeam, effectiveIsGM, retreatPick, applyRoutedFlow]);
+    const pursuer = choosePursuer(attacker ?? null, routed, unitsRef.current, alliances, formationsMap);
+    if (typeof window !== 'undefined') {
+      setRetreatCardPos({ x: Math.max(8, Math.round((window.innerWidth - 480) / 2)), y: Math.max(8, Math.round((window.innerHeight - 320) / 2)) });
+    }
+    setRetreatHoverHex(null);
+    setRetreatPick({ unit: routed, attacker, hexes: adj, through, reason, pursuer });
+  }, [unitsRef, alliances, formationsMap, participantsSync.participants, myTeam, effectiveIsGM, retreatPick, applyRoutedFlow, choosePursuer]);
   routFlowRef.current = { handle: handleRoutRow };
+
+  const onRetreatDragStart = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    retreatDragRef.current = { dx: e.clientX - retreatCardPos.x, dy: e.clientY - retreatCardPos.y };
+  };
+  const onRetreatDragMove = (e: React.PointerEvent) => {
+    if (!retreatDragRef.current) return;
+    setRetreatCardPos({ x: e.clientX - retreatDragRef.current.dx, y: e.clientY - retreatDragRef.current.dy });
+  };
+  const onRetreatDragEnd = () => { retreatDragRef.current = null; };
+
 
   const {
     pendingCastOverBudget,
@@ -1030,10 +1089,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     readOnly: controlsLocked,
   });
 
-  // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings).
+  // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
+  // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
-    setOverlayMap(computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts }));
-  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts]);
+    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts });
+    if (retreatHoverHex) base[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
+    setOverlayMap(base);
+  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts, retreatHoverHex]);
 
   // Center map on initial load
   useEffect(() => {
@@ -1658,62 +1720,121 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         />
       )}
 
-      {/* Routed retreat picker — owner chooses among several legal retreat hexes */}
+      {/* Routed retreat modal — always shown on a rout (even with no options).
+          Draggable; hovering an option highlights that hex on the map. */}
       {retreatPick && (
-        <div className="absolute inset-0 z-[80] bg-black/60 flex items-center justify-center">
-          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-5 w-[420px] text-white space-y-3">
-            <p className="font-semibold text-amber-300">{retreatPick.unit.unitName} is routing — choose a retreat hex</p>
-            <p className="text-xs text-gray-400">Hex must be unoccupied and out of any enemy kill zone.</p>
+        <div className="absolute inset-0 z-[80] bg-black/50">
+          <div
+            className="absolute bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-4 w-[480px] text-white space-y-3"
+            style={{ left: retreatCardPos.x, top: retreatCardPos.y }}
+          >
+            <div
+              className="cursor-move select-none flex items-center justify-between"
+              onPointerDown={onRetreatDragStart}
+              onPointerMove={onRetreatDragMove}
+              onPointerUp={onRetreatDragEnd}
+              onPointerLeave={onRetreatDragEnd}
+            >
+              <p className="font-semibold text-amber-300">{retreatPick.unit.unitName} is routing</p>
+              <span className="text-[10px] text-gray-500">drag to move</span>
+            </div>
+
+            {retreatPick.reason ? (
+              <div className="space-y-2">
+                <p className="text-sm text-red-300">
+                  {retreatPick.unit.unitName} has nowhere to retreat: {retreatPick.reason}. It stands, routed.
+                </p>
+                <p className="text-sm text-yellow-200">
+                  It cannot move — it will face a <b>FREE pursue attack</b> from the routing enemy (no MP/action; cannot be declined).
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">Choose a retreat hex (unoccupied, outside any enemy kill zone). Hover an option to highlight it on the map.</p>
+            )}
+
             <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto">
               {retreatPick.hexes.map(hx => (
                 <button
                   key={`${hx.q},${hx.r}`}
                   onClick={() => void applyRoutedFlow(retreatPick.unit, { kind: 'adjacent', hex: hx }, retreatPick.attacker)}
+                  onMouseEnter={() => setRetreatHoverHex(`${hx.q},${hx.r}`)}
+                  onMouseLeave={() => setRetreatHoverHex(null)}
                   className="px-3 py-1.5 bg-yellow-700 hover:bg-yellow-600 rounded text-xs font-mono"
                 >
-                  ({hx.q}, {hx.r})
+                  Retreat to ({hx.q}, {hx.r})
                 </button>
               ))}
               {retreatPick.hexes.length === 0 && retreatPick.through.map(opt => (
                 <button
                   key={opt.throughUnitId}
                   onClick={() => void applyRoutedFlow(retreatPick.unit, { kind: 'through', option: opt }, retreatPick.attacker)}
+                  onMouseEnter={() => setRetreatHoverHex(`${opt.dest.q},${opt.dest.r}`)}
+                  onMouseLeave={() => setRetreatHoverHex(null)}
                   className="px-3 py-1.5 bg-purple-700 hover:bg-purple-600 rounded text-xs"
                   title={opt.disruptToScattered ? 'Passes through a friendly Open Order unit (it scatters)' : 'Passes through a friendly Scattered unit'}
                 >
-                  Rout through friendly ({opt.dest.q}, {opt.dest.r}){opt.disruptToScattered ? ' ⚠ disrupts' : ''}
+                  Rout through friendly to ({opt.dest.q}, {opt.dest.r}){opt.disruptToScattered ? ' ⚠ disrupts' : ''}
                 </button>
               ))}
             </div>
-            {effectiveIsGM && (
+
+            {retreatPick.pursuer ? (
+              <p className="text-xs text-gray-300">
+                This rout will be <b>pursued automatically by {retreatPick.pursuer.unitName}</b> and struck — you cannot decline the pursuit or its attack.
+              </p>
+            ) : retreatPick.reason ? (
+              <p className="text-xs text-gray-400">The routing enemy will make the FREE pursue attack if it is in reach.</p>
+            ) : (
+              <p className="text-xs text-gray-400">No enemy can pursue (none is faster with enough MP).</p>
+            )}
+
+            {retreatPick.reason && !effectiveIsGM && (
               <button
-                onClick={() => {
-                  const u = retreatPick.unit;
-                  let best = retreatPick.hexes[0];
-                  for (const hx of retreatPick.hexes) {
-                    if (hexDistance(u.hex, hx) > hexDistance(u.hex, best)) best = hx;
-                  }
-                  void applyRoutedFlow(u, best
-                    ? { kind: 'adjacent', hex: best }
-                    : retreatPick.through.length > 0
-                      ? { kind: 'through', option: retreatPick.through[0] }
-                      : { kind: 'none' }, retreatPick.attacker);
-                }}
-                className="w-full bg-gray-700 hover:bg-gray-600 rounded px-3 py-1.5 text-xs"
+                onClick={() => void applyRoutedFlow(retreatPick.unit, { kind: 'none' }, retreatPick.attacker)}
+                className="w-full bg-amber-700 hover:bg-amber-600 rounded px-3 py-1.5 text-sm"
               >
-                DM takes over — auto pick (farthest legal hex)
+                Continue (stand — FREE pursue attack)
               </button>
             )}
+
             {effectiveIsGM && (
-              <button
-                onClick={() => {
-                  setRetreatPick(null);
-                  void applyRoutedFlow(retreatPick.unit, { kind: 'none' }, retreatPick.attacker);
-                }}
-                className="w-full bg-gray-800 hover:bg-gray-700 rounded px-3 py-1.5 text-xs text-gray-300"
-              >
-                No retreat (stand — routed)
-              </button>
+              <div className="flex flex-col gap-1.5">
+                {retreatPick.reason && (
+                  <button
+                    onClick={() => void applyRoutedFlow(retreatPick.unit, { kind: 'none' }, retreatPick.attacker)}
+                    className="w-full bg-amber-700 hover:bg-amber-600 rounded px-3 py-1.5 text-sm"
+                  >
+                    DM: confirm stand (FREE pursue attack)
+                  </button>
+                )}
+                {!retreatPick.reason && (
+                  <button
+                    onClick={() => {
+                      const u = retreatPick.unit;
+                      let best = retreatPick.hexes[0];
+                      for (const hx of retreatPick.hexes) {
+                        if (hexDistance(u.hex, hx) > hexDistance(u.hex, best)) best = hx;
+                      }
+                      void applyRoutedFlow(u, best
+                        ? { kind: 'adjacent', hex: best }
+                        : retreatPick.through.length > 0
+                          ? { kind: 'through', option: retreatPick.through[0] }
+                          : { kind: 'none' }, retreatPick.attacker);
+                    }}
+                    className="w-full bg-gray-700 hover:bg-gray-600 rounded px-3 py-1.5 text-xs"
+                  >
+                    DM takes over — auto pick (farthest legal hex)
+                  </button>
+                )}
+                {!retreatPick.reason && (
+                  <button
+                    onClick={() => void applyRoutedFlow(retreatPick.unit, { kind: 'none' }, retreatPick.attacker)}
+                    className="w-full bg-gray-800 hover:bg-gray-700 rounded px-3 py-1.5 text-xs text-gray-300"
+                  >
+                    DM: no retreat (stand — routed)
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
