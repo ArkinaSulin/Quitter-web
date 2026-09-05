@@ -936,8 +936,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (!rStep || !rStep.unitId) return;
     console.info('[RoutFlow] ROUT row', row.id, rStep.unitId);
     const routed = unitsRef.current.find(u => u.id === rStep.unitId);
-    if (!routed || routed.isDeleted || routed.isHero || routed.currentFormation !== 'Routed') {
-      console.warn('[RoutFlow] skip routed guard', routed?.currentFormation, routed?.isDeleted);
+    if (!routed || routed.isDeleted || routed.isHero || (routed.currentUnitHp ?? 1) <= 0) {
+      console.warn('[RoutFlow] skip routed guard', routed?.isDeleted, routed?.currentUnitHp);
       return;
     }
     if (routBusy.current || retreatPick) { console.warn('[RoutFlow] busy/pick open'); return; }
@@ -952,23 +952,30 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const dmActs = effectiveIsGM && ownerPeers.length === 0;
     if (!isOwner && !dmActs) { console.warn('[RoutFlow] not owner/dm', myTeam, routed.team, ownerPeers.length); return; }
     const ctx = { routed, units: unitsRef.current, alliances, formationsMap };
-    const adj = adjacentRetreatCandidates(ctx);
-    const through = routThroughOptions(ctx);
-    console.info('[RoutFlow] candidates', { adjacent: adj.length, through: through.length });
-    // Always show the modal (even with zero options) as the informational
-    // precursor to the rout / FREE pursue attack. Zero options -> reason text.
+    let adj: { q: number; r: number; s: number }[] = [];
+    let through: RoutThroughOption[] = [];
     let reason: string | null = null;
-    if (adj.length === 0 && through.length === 0) {
-      const diag = retreatDiagnosis(ctx);
-      if (diag.allAdjacentRouting) {
-        reason = 'every adjacent friendly unit is also routing and will not yield, so it cannot rout through them';
-      } else if (diag.allAdjacentOrdered) {
-        reason = 'adjacent friendly ranks hold formation, and routed troops cannot push through ordered ranks';
-      } else {
-        reason = 'no unoccupied hex outside an enemy kill zone is available';
+    let pursuer: Unit | null = null;
+    try {
+      adj = adjacentRetreatCandidates(ctx);
+      through = routThroughOptions(ctx);
+      console.info('[RoutFlow] candidates', { adjacent: adj.length, through: through.length });
+      // Always show the modal (even with zero options) as the informational
+      // precursor to the rout / FREE pursue attack. Zero options -> reason text.
+      if (adj.length === 0 && through.length === 0) {
+        const diag = retreatDiagnosis(ctx);
+        if (diag.allAdjacentRouting) {
+          reason = 'every adjacent friendly unit is also routing and will not yield, so it cannot rout through them';
+        } else if (diag.allAdjacentOrdered) {
+          reason = 'adjacent friendly ranks hold formation, and routed troops cannot push through ordered ranks';
+        } else {
+          reason = 'no unoccupied hex outside an enemy kill zone is available';
+        }
       }
+      pursuer = choosePursuer(attacker ?? null, routed, unitsRef.current, alliances, formationsMap);
+    } catch (err) {
+      console.error('[RoutFlow] candidate/pursuer error:', err);
     }
-    const pursuer = choosePursuer(attacker ?? null, routed, unitsRef.current, alliances, formationsMap);
     if (typeof window !== 'undefined') {
       setRetreatCardPos({ x: Math.max(8, Math.round((window.innerWidth - 480) / 2)), y: Math.max(8, Math.round((window.innerHeight - 320) / 2)) });
     }
@@ -976,6 +983,31 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setRetreatPick({ unit: routed, attacker, hexes: adj, through, reason, pursuer });
   }, [unitsRef, alliances, formationsMap, participantsSync.participants, myTeam, effectiveIsGM, retreatPick, applyRoutedFlow, choosePursuer]);
   routFlowRef.current = { handle: handleRoutRow };
+
+  // Local-window rout event (dispatched by routeUnit on the acting client): open
+  // the retreat modal immediately instead of waiting on realtime.
+  useEffect(() => {
+    const onLocalRout = (e: Event) => {
+      const d = (e as CustomEvent<{ unitId: string; causeId?: string | null }>).detail;
+      if (!d?.unitId) return;
+      const pseudo: CommandLogRow = {
+        id: `local-rout-${d.unitId}`,
+        scenario_id: scenarioId,
+        player_id: playerId,
+        player_name: '',
+        action_type: 'ROUT',
+        description: 'local rout',
+        sub_steps: [{ type: 'ROUT', description: 'local rout', unitId: d.unitId, changes: [], payload: d.causeId ? { cause: d.causeId } : undefined }],
+        chained: true,
+        created_at: new Date().toISOString(),
+        deleted_at: null,
+        seq: 0,
+      };
+      void routFlowRef.current?.handle(pseudo);
+    };
+    window.addEventListener('quitter:rout', onLocalRout);
+    return () => window.removeEventListener('quitter:rout', onLocalRout);
+  }, [scenarioId, playerId]);
 
   const onRetreatDragStart = (e: React.PointerEvent) => {
     e.preventDefault();
