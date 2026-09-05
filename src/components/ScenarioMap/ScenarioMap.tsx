@@ -908,7 +908,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         : move.kind === 'adjacent'
           ? { ...live, hex: move.hex }
           : live;
-      await performAttack(resolvedAttacker, target, false);
+      await performAttack(resolvedAttacker, target, false, { chained: true });
       const lower = nextLowerFormation(pLive.currentFormation);
       if (lower) {
         await execute('FORMATION', [{
@@ -1856,14 +1856,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                     className="w-full bg-gray-700 hover:bg-gray-600 rounded px-3 py-1.5 text-xs"
                   >
                     DM takes over — auto pick (farthest legal hex)
-                  </button>
-                )}
-                {!retreatPick.reason && (
-                  <button
-                    onClick={() => void applyRoutedFlow(retreatPick.unit, { kind: 'none' }, retreatPick.attacker)}
-                    className="w-full bg-gray-800 hover:bg-gray-700 rounded px-3 py-1.5 text-xs text-gray-300"
-                  >
-                    DM: no retreat (stand — routed)
                   </button>
                 )}
               </div>

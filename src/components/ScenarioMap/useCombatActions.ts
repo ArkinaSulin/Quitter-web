@@ -85,7 +85,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
   const [pendingCrossAlliance, setPendingCrossAlliance] = useState<PendingCrossAlliance | null>(null);
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; stashed?: AttackStash }) => {
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; stashed?: AttackStash; chained?: boolean }) => {
     if (overBudget) {
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
@@ -251,7 +251,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
         ? Math.max(0, Math.round(computeThreatRating(target) / computeThreatRating(attacker)) - 1)
         : 0;
       const aggrFailDesc = `${attacker.unitName} AGR check (AGR ${attacker.aggressiveness}${threatPenalty > 0 ? ` - ${threatPenalty} threat` : ''} → need ≤${attacker.aggressiveness - threatPenalty}, rolled ${outcome.aggrRoll}) — failed, no attack`;
-      await execute('ATTACK', subSteps, aggrFailDesc);
+      await execute('ATTACK', subSteps, aggrFailDesc, options?.chained ? { chained: true } : undefined);
       return;
     }
 
@@ -543,7 +543,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
       attackerRouted = !attackerKilled && shouldRout(attModUnit, units, alliances, formationsMap[attacker.currentFormation] ?? null);
     }
 
-    await execute('ATTACK', subSteps, desc, verboseCombat ? { message: msgDesc } : undefined);
+    const executeOpts = verboseCombat ? { message: msgDesc } : undefined;
+    if (options?.chained) {
+      await execute('ATTACK', subSteps, desc, { ...(executeOpts ?? {}), chained: true });
+    } else {
+      await execute('ATTACK', subSteps, desc, executeOpts);
+    }
 
     // Only the attacked unit can rout — no morale cascade to nearby units.
     if (defenderRouted || defenderKilled) {
