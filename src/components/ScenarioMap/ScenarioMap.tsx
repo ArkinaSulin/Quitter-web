@@ -524,7 +524,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     handleAttachHero,
     handleSwapHeroPosition,
   } = useMoveActions({
-    scenarioId,
     units,
     displayUnits,
     displayAlliances,
@@ -1345,6 +1344,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         controlsLocked={controlsLocked}
         undo={undo}
         canUndo={canUndo}
+        redo={redo}
+        canRedo={canRedo}
         peekUndoChainLength={peekUndoChainLength}
         displayTurnNumber={displayTurnNumber}
         isGM={isGM}

@@ -9,6 +9,8 @@ interface TopBarProps {
   controlsLocked: boolean;
   undo: () => void;
   canUndo: () => boolean;
+  redo: () => void;
+  canRedo: () => boolean;
   peekUndoChainLength: () => number;
   displayTurnNumber: number;
   isGM: boolean;
@@ -35,6 +37,8 @@ export function TopBar(props: TopBarProps) {
     controlsLocked,
     undo,
     canUndo,
+    redo,
+    canRedo,
     peekUndoChainLength,
     displayTurnNumber,
     isGM,
@@ -87,6 +91,20 @@ export function TopBar(props: TopBarProps) {
             }`}
           >
             {`Undo${peekUndoChainLength() > 1 ? ` (${peekUndoChainLength()})` : ''}`}
+          </button>
+        )}
+        {!controlsLocked && (
+          <button
+            onClick={redo}
+            disabled={!canRedo()}
+            title="Redo (Ctrl+Y)"
+            className={`px-3 py-1 rounded shadow-lg text-sm ${
+              canRedo()
+                ? 'bg-emerald-700 hover:bg-emerald-600 text-white'
+                : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            Redo
           </button>
         )}
         <span className="text-white text-sm font-mono">Turn {displayTurnNumber}</span>
