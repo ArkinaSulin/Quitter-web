@@ -648,7 +648,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
   }, [units, formationsMap, performChargeEnd]);
 
   const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; allowCrossAlliance?: boolean }) => {
-    const attacker = units.find(u => u.id === attackerId);
+    let attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return;
     if ((target.currentUnitHp ?? 0) <= 0) return;
@@ -668,7 +668,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const isAdjacent = isAdjacentDistance(dist);
 
     const attackerWeapons = parseWeapons(attacker.weaponString || '');
-    const weapon = attackerWeapons[attacker.activeWeaponIndex ?? 0];
+    let weapon = attackerWeapons[attacker.activeWeaponIndex ?? 0];
     const isSpellCaster = !!weapon && (weapon.magicDimension > 0 || weapon.isHealing);
 
     // Attach chooser: a friendly hero adjacent to a same-team unit may attach. When
@@ -684,11 +684,26 @@ export function useCombatActions(deps: CombatActionsDeps) {
       addMessage(`${attacker.unitName} has no weapon to attack with`);
       return;
     }
-    // Hard range cap: beyond maxRange is out of range (maxRange >= range).
+    // Hard range cap: beyond maxRange is out of range. Auto-suggest a weapon that
+    // CAN reach the target (excluding healing) and switch to it before attacking.
     if (dist > weapon.maxRange) {
-      flashRangeViolation(target.hex);
-      addMessage(`${attacker.unitName} cannot reach ${target.unitName} — out of range (max ${weapon.maxRange} hexes)`);
-      return;
+      const suggestIndex = attackerWeapons.findIndex((w, i) =>
+        i !== (attacker!.activeWeaponIndex ?? 0) && !w.isHealing && (w.maxRange ?? w.range ?? 0) >= dist,
+      );
+      if (suggestIndex >= 0) {
+        weapon = attackerWeapons[suggestIndex];
+        await execute('WEAPON_SELECT', [{
+          type: 'WEAPON_SELECT',
+          description: `${attacker!.unitName} switches to ${weapon.name} to reach ${target.unitName}`,
+          unitId: attacker!.id,
+          changes: [{ field: 'activeWeaponIndex', from: attacker!.activeWeaponIndex ?? 0, to: suggestIndex }],
+        }], `${attacker!.unitName} switches to ${weapon.name}`);
+        attacker = { ...attacker!, activeWeaponIndex: suggestIndex };
+      } else {
+        flashRangeViolation(target.hex);
+        addMessage(`${attacker!.unitName} cannot reach ${target.unitName} — out of range (max ${weapon.maxRange} hexes)`);
+        return;
+      }
     }
 
     // ONE cross-alliance soft gate: offensive weapons target enemies by default,
@@ -823,7 +838,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
     await performAttack(attacker, target, false);
-  }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP, setAttachModal, setPendingCrossAlliance, canAttackTarget]);
+  }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP, setAttachModal, setPendingCrossAlliance, canAttackTarget, execute]);
 
   const confirmCrossAlliance = useCallback(() => {
     const pending = pendingCrossAlliance;

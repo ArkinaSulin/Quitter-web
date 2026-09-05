@@ -524,6 +524,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     handleAttachHero,
     handleSwapHeroPosition,
   } = useMoveActions({
+    scenarioId,
     units,
     displayUnits,
     displayAlliances,

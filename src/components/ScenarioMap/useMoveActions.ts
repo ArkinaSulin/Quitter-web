@@ -13,11 +13,13 @@ import { isMeleeWeapon, isInAnyHostileKillZone, computeWeaponSwitchAc } from '@/
 import { areHexesAdjacent } from '@/lib/unitMorale';
 import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep } from '@/lib/commandLog';
+import { getRememberedWeapon } from '@/lib/weaponMemory';
 import { computeOccupiedHexes, computeThreatHexes, terrainCostOf, TerrainCosts } from './mapGeometry';
 import { ExecuteFn } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingHeroSwapConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
 
 interface MoveActionsDeps {
+  scenarioId: string;
   units: Unit[];
   displayUnits: Unit[];
   displayAlliances: Record<string, AllianceGroup>;
@@ -43,6 +45,7 @@ interface MoveActionsDeps {
 
 export function useMoveActions(deps: MoveActionsDeps) {
   const {
+    scenarioId,
     units,
     displayUnits,
     displayAlliances,
@@ -83,13 +86,16 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (isUnitRouted(unit)) return;
     const weapons = parseWeapons(unit.weaponString || '');
     const active = weapons[unit.activeWeaponIndex ?? 0];
-    // Nothing to return: not holding a melee weapon, or already on the primary.
-    if (!active || !isMeleeWeapon(active) || unit.activeWeaponIndex === 0) return;
+    // Remembered manual pick wins over always returning to the primary (index 0).
+    const remembered = getRememberedWeapon(scenarioId, unit.id);
+    const targetIndex = remembered !== null && remembered < weapons.length ? remembered : 0;
+    // Nothing to return: not holding a melee weapon, or already back on the target.
+    if (!active || !isMeleeWeapon(active) || (unit.activeWeaponIndex ?? 0) === targetIndex) return;
     if (weaponSelectedTurnRef.current[unit.id] === turnNumber) return;
     if (isInAnyHostileKillZone(unit, displayUnits, displayAlliances)) return;
-    const primary = weapons[0];
-    if (!primary) return;
-    const baseAc = computeWeaponSwitchAc(unit, primary);
+    const target = weapons[targetIndex];
+    if (!target) return;
+    const baseAc = computeWeaponSwitchAc(unit, target);
     // An active AC effect rides the weapon return: keep its delta, rebase its
     // snapshot onto the returned weapon's no-buff AC.
     const acEffect = (unit.effects ?? []).find(e => e.kind === 'ac' && !e.zoneHex);
@@ -108,14 +114,14 @@ export function useMoveActions(deps: MoveActionsDeps) {
       : [];
     await execute('WEAPON_SELECT', [{
       type: 'WEAPON_SELECT',
-      description: `${unit.unitName} returned to ${primary.name}`,
+      description: `${unit.unitName} returned to ${target.name}`,
       unitId: unit.id,
       changes: [
-        { field: 'activeWeaponIndex', from: unit.activeWeaponIndex ?? 0, to: 0 },
+        { field: 'activeWeaponIndex', from: unit.activeWeaponIndex ?? 0, to: targetIndex },
         ...acChanges,
       ],
-    }], `${unit.unitName} returned to ${primary.name}`);
-  }, [displayUnits, displayAlliances, turnNumber, execute]);
+    }], `${unit.unitName} returned to ${target.name}`);
+  }, [displayUnits, displayAlliances, turnNumber, execute, scenarioId]);
 
   const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number) => {
     if (overBudget) {

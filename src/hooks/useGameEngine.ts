@@ -7,6 +7,7 @@ import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStat
 import { applyFormationChange } from '@/lib/formationCost';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { applyMoveCost, applyMpSpend, applyHeroMoveCost, applyHeroMpSpend } from '@/lib/moveCost';
+import { setRememberedWeapon } from '@/lib/weaponMemory';
 import { getSetting } from '@/lib/settingsCache';
 import { parseWeapons } from '@/lib/weaponParser';
 import { isUnitRouted } from '@/lib/unitMorale';
@@ -556,6 +557,8 @@ export function useGameEngine({
         },
       ];
       await execute('WEAPON_SELECT', subSteps, subSteps[0].description);
+      // Session weapon memory: manual picks win over auto-return-to-primary.
+      setRememberedWeapon(scenarioId, unit.id, weaponIndex);
     },
     [execute, addMessage],
   );
