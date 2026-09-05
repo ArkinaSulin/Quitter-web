@@ -791,19 +791,19 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     | { kind: 'none' };
 
   const applyRoutedFlow = useCallback(async (routed: Unit, move: RoutMove, attacker?: Unit | null) => {
-    if (routBusy.current) return;
+    if (routBusy.current) { console.warn('[RoutFlow] busy — skipped', routed.unitName); return; }
     routBusy.current = true;
     setRetreatPick(null);
+    console.info('[RoutFlow] begin', routed.unitName, move.kind);
     try {
       const cur = unitsRef.current;
       const live = cur.find(u => u.id === routed.id);
-      if (!live || live.isDeleted) return;
+      if (!live || live.isDeleted) { console.warn('[RoutFlow] unit gone', routed.id); return; }
       const vacated = { ...live.hex };
-      // Decide the pursuer BEFORE the rout moves (adjacency to the current hex).
-      const pursuer = choosePursuer(attacker ?? null, live, cur, alliances, formationsMap);
       const disruptId = move.kind === 'through' && move.option.disruptToScattered ? move.option.throughUnitId : null;
+      const didMove = move.kind !== 'none';
 
-      if (move.kind === 'adjacent' || move.kind === 'through') {
+      if (didMove) {
         const dest = move.kind === 'adjacent' ? move.hex : move.option.dest;
         await execute('MOVE', [{
           type: 'MOVE',
@@ -835,21 +835,42 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         }
       }
 
-      if (!pursuer) return;
-      // Pursuer follows into the vacated hex (1 MP) — no reaction (fast follow).
-      const pLive = cur.find(u => u.id === pursuer.id) ?? pursuer;
-      const pMax = unitMaxMP(pLive);
-      const pCost = applyMoveCost(pLive, 1, pMax);
-      await execute('MOVE', [{
-        type: 'MOVE',
-        description: `${pLive.unitName} pursues into the vacated hex`,
-        unitId: pLive.id,
-        changes: [
-          { field: 'hex', from: pLive.hex, to: vacated },
-          { field: 'movementPointsAvailable', from: pLive.movementPointsAvailable, to: pCost.movementPointsAvailable },
-          { field: 'actionsAvailable', from: pLive.actionsAvailable, to: pCost.actionsAvailable },
-        ],
-      }], `${pLive.unitName} pursues!`, { chained: true });
+      // Pick the pursuer.
+      let pLive: Unit | null = null;
+      if (didMove) {
+        const p = choosePursuer(attacker ?? null, live, cur, alliances, formationsMap);
+        pLive = p ? (cur.find(u => u.id === p.id) ?? p) : null;
+        if (pLive) {
+          // Follows into the vacated hex (1 MP) — no reaction (fast follow).
+          const pMax = unitMaxMP(pLive);
+          const pCost = applyMoveCost(pLive, 1, pMax);
+          await execute('MOVE', [{
+            type: 'MOVE',
+            description: `${pLive.unitName} pursues into the vacated hex`,
+            unitId: pLive.id,
+            changes: [
+              { field: 'hex', from: pLive.hex, to: vacated },
+              { field: 'movementPointsAvailable', from: pLive.movementPointsAvailable, to: pCost.movementPointsAvailable },
+              { field: 'actionsAvailable', from: pLive.actionsAvailable, to: pCost.actionsAvailable },
+            ],
+          }], `${pLive.unitName} pursues!`, { chained: true });
+        }
+      } else {
+        // Routed could not move (actual movement = 0): the attacker strikes as if
+        // it pursued — no speed gate needed, attacker preferred, subject to org -1.
+        if (attacker) {
+          const aLive = cur.find(u => u.id === attacker.id && !u.isDeleted);
+          if (aLive && (alliances[aLive.team] || 'friendly') !== (alliances[live.team] || 'friendly')) {
+            pLive = aLive;
+          }
+        }
+        if (!pLive) {
+          const p = choosePursuer(attacker ?? null, live, cur, alliances, formationsMap);
+          pLive = p ? (cur.find(u => u.id === p.id) ?? p) : null;
+        }
+      }
+      if (!pLive) { console.info('[RoutFlow] no pursuer for', live.unitName); return; }
+
       // Attack: full melee vs the scattered friendly when the rout scattered one,
       // otherwise the rout (which cannot retaliate).
       const target = disruptId ? (cur.find(u => u.id === disruptId) ?? live) : live;
@@ -866,6 +887,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       addMessage(`${pLive.unitName} pursued and struck the routing unit`);
     } finally {
       routBusy.current = false;
+      console.info('[RoutFlow] done');
     }
   }, [unitsRef, alliances, formationsMap, execute, addMessage, unitMaxMP, performAttack]);
 
@@ -875,9 +897,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const steps = parseSubSteps(row.sub_steps);
     const rStep = steps.find(s => s.type === 'ROUT');
     if (!rStep || !rStep.unitId) return;
+    console.info('[RoutFlow] ROUT row', row.id, rStep.unitId);
     const routed = unitsRef.current.find(u => u.id === rStep.unitId);
-    if (!routed || routed.isDeleted || routed.isHero || routed.currentFormation !== 'Routed') return;
-    if (routBusy.current || retreatPick) return;
+    if (!routed || routed.isDeleted || routed.isHero || routed.currentFormation !== 'Routed') {
+      console.warn('[RoutFlow] skip routed guard', routed?.currentFormation, routed?.isDeleted);
+      return;
+    }
+    if (routBusy.current || retreatPick) { console.warn('[RoutFlow] busy/pick open'); return; }
     routedHandled.current.add(row.id);
     // Who caused the rout (attacker/caster/archer) so the pursuer prefers them.
     const causeId = (rStep.payload as { cause?: string } | undefined)?.cause;
@@ -887,10 +913,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const ownerPeers = participantsSync.participants.filter(p => p.role !== 'GM' && p.team === routed.team);
     const isOwner = !effectiveIsGM && myTeam === routed.team;
     const dmActs = effectiveIsGM && ownerPeers.length === 0;
-    if (!isOwner && !dmActs) return;
+    if (!isOwner && !dmActs) { console.warn('[RoutFlow] not owner/dm', myTeam, routed.team, ownerPeers.length); return; }
     const ctx = { routed, units: unitsRef.current, alliances, formationsMap };
     const adj = adjacentRetreatCandidates(ctx);
     const through = routThroughOptions(ctx);
+    console.info('[RoutFlow] candidates', { adjacent: adj.length, through: through.length });
     if (adj.length > 1) {
       setRetreatPick({ unit: routed, attacker, hexes: adj, through });
       return;
