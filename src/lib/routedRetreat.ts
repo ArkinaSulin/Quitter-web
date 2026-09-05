@@ -140,12 +140,12 @@ export function canPayMove(unit: Unit, cost = 1): boolean {
 
 /**
  * Choose the single pursuer: any ADJACENT hostile faster than routed speed that
- * can also pay the entry cost. Preference: the attacking unit → the fastest
- * eligible → the one with the most available MP → random (injected rnd).
+ * can also pay the entry cost. Preference: the attacking unit (when given) → the
+ * fastest eligible → the one with the most available MP → random (injected rnd).
  * Returns null when nobody qualifies.
  */
 export function choosePursuer(
-  attacker: Unit,
+  attacker: Unit | null | undefined,
   routed: Unit,
   units: Unit[],
   alliances: Record<string, AllianceGroup>,
@@ -165,7 +165,7 @@ export function choosePursuer(
     canPayMove(u, 1),
   );
   if (eligible.length === 0) return null;
-  if (eligible.some(u => u.id === attacker.id)) return attacker;
+  if (attacker && eligible.some(u => u.id === attacker.id)) return attacker;
   const fastest = Math.max(...eligible.map(u => unitSpeed(u, formationsMap)));
   const fast = eligible.filter(u => unitSpeed(u, formationsMap) === fastest);
   if (fast.length === 1) return fast[0];

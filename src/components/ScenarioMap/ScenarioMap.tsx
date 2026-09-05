@@ -5,6 +5,9 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { parseSubSteps, CommandLogRow } from '@/lib/commandLog';
 import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel, GroundEffect } from '@/types/gameProtocol';
+import { adjacentRetreatCandidates, routThroughOptions, choosePursuer, RoutThroughOption } from '@/lib/routedRetreat';
+import { applyMoveCost } from '@/lib/moveCost';
+import { nextLowerFormation } from '@/lib/formationCost';
 import { parseWeapons } from '@/lib/weaponParser';
 import { getFormations } from '@/lib/formationCache';
 import { loadSettings } from '@/lib/settingsCache';
@@ -121,6 +124,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [zoneTemplate, setZoneTemplate] = useState<EffectTemplate | null>(null);
   // Temporary-effect modal target (context menu → "Effects…").
   const [effectMenuUnit, setEffectMenuUnit] = useState<Unit | null>(null);
+  // Routed retreat (owner picks when several legal hexes; auto when one/none).
+  const [retreatPick, setRetreatPick] = useState<{ unit: Unit; hexes: { q: number; r: number; s: number }[]; through: RoutThroughOption[] } | null>(null);
+  const routBusy = useRef(false);
+  const routedHandled = useRef(new Set<string>());
+  const routFlowRef = useRef<{ handle: (row: CommandLogRow) => Promise<void> } | null>(null);
   // Persist the docked side per scenario + user, like the open-tab state. Restore
   // only once the user id is known (auth settles after the first render), and only
   // persist on an explicit toggle — otherwise the default 'left' would overwrite a
@@ -678,6 +686,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const handleCommandLogEventRef = useRef((row: CommandLogRow) => {});
   handleCommandLogEventRef.current = (row) => {
     const steps = parseSubSteps(row.sub_steps);
+    if (row.action_type === 'ROUT') {
+      // Routed-retreat + pursuit orchestration (owner modal when multiple options).
+      void routFlowRef.current?.handle(row);
+      return;
+    }
     if (row.action_type === 'END_TURN') {
       setReactionOffers(new Map());
       setReactionMode(null);
@@ -770,6 +783,115 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setAttachModal,
     canAttackTarget: canAttackInFog,
   });
+
+  // ---- Routed retreat + pursuit orchestration (owner decides, auto when 1/0) ----
+  type RoutMove =
+    | { kind: 'adjacent'; hex: { q: number; r: number; s: number } }
+    | { kind: 'through'; option: RoutThroughOption }
+    | { kind: 'none' };
+
+  const applyRoutedFlow = useCallback(async (routed: Unit, move: RoutMove) => {
+    if (routBusy.current) return;
+    routBusy.current = true;
+    setRetreatPick(null);
+    try {
+      const cur = unitsRef.current;
+      const live = cur.find(u => u.id === routed.id);
+      if (!live || live.isDeleted) return;
+      const vacated = { ...live.hex };
+      // Decide the pursuer BEFORE the rout moves (adjacency to the current hex).
+      const pursuer = choosePursuer(null, live, cur, alliances, formationsMap);
+      const disruptId = move.kind === 'through' && move.option.disruptToScattered ? move.option.throughUnitId : null;
+
+      if (move.kind === 'adjacent' || move.kind === 'through') {
+        const dest = move.kind === 'adjacent' ? move.hex : move.option.dest;
+        await execute('MOVE', [{
+          type: 'MOVE',
+          description: `${live.unitName} routs to (${dest.q}, ${dest.r})`,
+          unitId: live.id,
+          changes: [{ field: 'hex', from: live.hex, to: dest }],
+        }], `${live.unitName} routs!`, { chained: true });
+        if (disruptId) {
+          const throughUnit = cur.find(u => u.id === disruptId);
+          if (throughUnit) {
+            await execute('FORMATION', [{
+              type: 'FORMATION',
+              description: `${throughUnit.unitName} disrupted by the rout — Scattered`,
+              unitId: throughUnit.id,
+              changes: [{ field: 'currentFormation', from: throughUnit.currentFormation, to: 'Scattered' }],
+            }], `${throughUnit.unitName} disrupted!`, { chained: true });
+          }
+        }
+        addMessage(`${live.unitName} routed to (${dest.q}, ${dest.r})`);
+      } else {
+        addMessage(`${live.unitName} has no safe retreat — it stands, routed`);
+      }
+
+      if (!pursuer) return;
+      // Pursuer follows into the vacated hex (1 MP) — no reaction (fast follow).
+      const pLive = cur.find(u => u.id === pursuer.id) ?? pursuer;
+      const pMax = unitMaxMP(pLive);
+      const pCost = applyMoveCost(pLive, 1, pMax);
+      await execute('MOVE', [{
+        type: 'MOVE',
+        description: `${pLive.unitName} pursues into the vacated hex`,
+        unitId: pLive.id,
+        changes: [
+          { field: 'hex', from: pLive.hex, to: vacated },
+          { field: 'movementPointsAvailable', from: pLive.movementPointsAvailable, to: pCost.movementPointsAvailable },
+          { field: 'actionsAvailable', from: pLive.actionsAvailable, to: pCost.actionsAvailable },
+        ],
+      }], `${pLive.unitName} pursues!`, { chained: true });
+      // Attack: full melee vs the scattered friendly when the rout scattered one,
+      // otherwise the rout (which cannot retaliate).
+      const target = disruptId ? (cur.find(u => u.id === disruptId) ?? live) : live;
+      await performAttack(pLive, target, false);
+      const lower = nextLowerFormation(pLive.currentFormation);
+      if (lower) {
+        await execute('FORMATION', [{
+          type: 'FORMATION',
+          description: `${pLive.unitName} disorganized by the pursuit — ${lower}`,
+          unitId: pLive.id,
+          changes: [{ field: 'currentFormation', from: pLive.currentFormation, to: lower }],
+        }], `${pLive.unitName} disorganized`, { chained: true });
+      }
+      addMessage(`${pLive.unitName} pursued and struck the routing unit`);
+    } finally {
+      routBusy.current = false;
+    }
+  }, [unitsRef, alliances, formationsMap, execute, addMessage, unitMaxMP, performAttack]);
+
+  const handleRoutRow = useCallback(async (row: CommandLogRow) => {
+    if (row.deleted_at != null) return;
+    if (routedHandled.current.has(row.id)) return;
+    const steps = parseSubSteps(row.sub_steps);
+    const rStep = steps.find(s => s.type === 'ROUT');
+    if (!rStep || !rStep.unitId) return;
+    const routed = unitsRef.current.find(u => u.id === rStep.unitId);
+    if (!routed || routed.isDeleted || routed.isHero || routed.currentFormation !== 'Routed') return;
+    if (routBusy.current || retreatPick) return;
+    routedHandled.current.add(row.id);
+    // Which client orchestrates: the routed unit's owner; the DM fills in when no
+    // non-GM participant controls the team.
+    const ownerPeers = participantsSync.participants.filter(p => p.role !== 'GM' && p.team === routed.team);
+    const isOwner = !effectiveIsGM && myTeam === routed.team;
+    const dmActs = effectiveIsGM && ownerPeers.length === 0;
+    if (!isOwner && !dmActs) return;
+    const ctx = { routed, units: unitsRef.current, alliances, formationsMap };
+    const adj = adjacentRetreatCandidates(ctx);
+    const through = routThroughOptions(ctx);
+    if (adj.length > 1) {
+      setRetreatPick({ unit: routed, hexes: adj, through });
+      return;
+    }
+    const move: RoutMove = adj.length === 1
+      ? { kind: 'adjacent', hex: adj[0] }
+      : through.length > 0
+        ? { kind: 'through', option: through.find(t => !t.disruptToScattered) ?? through[0] }
+        : { kind: 'none' };
+    await applyRoutedFlow(routed, move);
+  }, [unitsRef, alliances, formationsMap, participantsSync.participants, myTeam, effectiveIsGM, retreatPick, applyRoutedFlow]);
+  routFlowRef.current = { handle: handleRoutRow };
 
   const {
     pendingCastOverBudget,
@@ -1496,6 +1618,37 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onPlaceZone={handlePlaceZoneFromUnit}
           onClose={() => setEffectMenuUnit(null)}
         />
+      )}
+
+      {/* Routed retreat picker — owner chooses among several legal retreat hexes */}
+      {retreatPick && (
+        <div className="absolute inset-0 z-[80] bg-black/60 flex items-center justify-center">
+          <div className="bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-5 w-[420px] text-white space-y-3">
+            <p className="font-semibold text-amber-300">{retreatPick.unit.unitName} is routing — choose a retreat hex</p>
+            <p className="text-xs text-gray-400">Hex must be unoccupied and out of any enemy kill zone.</p>
+            <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto">
+              {retreatPick.hexes.map(hx => (
+                <button
+                  key={`${hx.q},${hx.r}`}
+                  onClick={() => void applyRoutedFlow(retreatPick.unit, { kind: 'adjacent', hex: hx })}
+                  className="px-3 py-1.5 bg-yellow-700 hover:bg-yellow-600 rounded text-xs font-mono"
+                >
+                  ({hx.q}, {hx.r})
+                </button>
+              ))}
+              {retreatPick.hexes.length === 0 && retreatPick.through.map(opt => (
+                <button
+                  key={opt.throughUnitId}
+                  onClick={() => void applyRoutedFlow(retreatPick.unit, { kind: 'through', option: opt })}
+                  className="px-3 py-1.5 bg-purple-700 hover:bg-purple-600 rounded text-xs"
+                  title={opt.disruptToScattered ? 'Passes through a friendly Open Order unit (it scatters)' : 'Passes through a friendly Scattered unit'}
+                >
+                  Rout through friendly ({opt.dest.q}, {opt.dest.r}){opt.disruptToScattered ? ' ⚠ disrupts' : ''}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Replay overlay — distinct frame + playback controls */}
