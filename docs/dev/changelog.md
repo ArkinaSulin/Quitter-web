@@ -1,5 +1,10 @@
 # QuiTTER Changelog
 
+## Lobby left panel button order + separators — 2026-09-06
+**Files:** `src/components/Lobby.tsx`, docs (changelog)
+
+- Lobby left panel reordered to: **Admin Panel · Settings** → separator → **New Scenario · Join Scenario · Replay Scenario** → separator → **Archfar's Shipyard · Unit Editor · Map Editor**, with **Delete Scenario pinned as the very last action** (contextual deletion banner / Request Deletion / Lock sit just above it). Lifecycle column merged into the single action list.
+
 ## Delete scenario requires typing the name — 2026-09-06
 **Files:** `src/components/Lobby.tsx`, docs (changelog)
 

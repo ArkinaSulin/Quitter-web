@@ -423,8 +423,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     const isJoinLockedOut = selectedFlagged && !isCreator;
 
     return (
-      <div className="w-64 p-4 border-r border-gray-700 flex flex-col justify-between h-full bg-[#0d0d1a]">
-        <div className="space-y-3">
+      <div className="w-64 p-4 border-r border-gray-700 flex flex-col gap-3 overflow-y-auto bg-[#0d0d1a]">
           {role === 'admin' && (
             <button
               onClick={openAdminPanel}
@@ -441,30 +440,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
               Settings
             </button>
           )}
-          {canViewShipEditor && (
-            <button
-              onClick={() => router.push('/ship-editor')}
-              className="w-full py-2 bg-gray-700 border-2 border-yellow-400 text-white rounded hover:bg-gray-600 transition"
-            >
-              Archfar's Shipyard
-            </button>
-          )}
-          {canViewUnitEditor && (
-            <button
-              onClick={() => router.push('/unit-editor')}
-              className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
-            >
-              {canUseUnitEditor ? 'Unit Editor' : 'Unit Library'}
-            </button>
-          )}
-          {canViewMapEditor && (
-            <button
-              onClick={() => router.push('/map-editor')}
-              className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
-            >
-              {canUseMapEditor ? 'Map Editor' : 'Map Library'}
-            </button>
-          )}
+          {role === 'admin' && <div className="border-t border-gray-700" />}
           {canCreateScenario && (
             <button
               onClick={() => setShowCreateModal(true)}
@@ -502,9 +478,35 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
               Replay Scenario
             </button>
           )}
-          {/* Upload Screenshot button removed */}
-        </div>
-        <div className="space-y-3">
+          {(role === 'admin' || canViewShipEditor || canViewUnitEditor || canViewMapEditor) && (
+            <div className="border-t border-gray-700" />
+          )}
+          {canViewShipEditor && (
+            <button
+              onClick={() => router.push('/ship-editor')}
+              className="w-full py-2 bg-gray-700 border-2 border-yellow-400 text-white rounded hover:bg-gray-600 transition"
+            >
+              Archfar's Shipyard
+            </button>
+          )}
+          {canViewUnitEditor && (
+            <button
+              onClick={() => router.push('/unit-editor')}
+              className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+            >
+              {canUseUnitEditor ? 'Unit Editor' : 'Unit Library'}
+            </button>
+          )}
+          {canViewMapEditor && (
+            <button
+              onClick={() => router.push('/map-editor')}
+              className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+            >
+              {canUseMapEditor ? 'Map Editor' : 'Map Library'}
+            </button>
+          )}
+          {/* Delete Scenario — always the very last action button */}
+          <div className="flex-1" />
           {selectedScenario && selectedScenario.deleteRequestedBy && (() => {
             const dl = daysLeft(selectedScenario);
             const flagDate = selectedScenario.deleteRequestedAt
@@ -561,7 +563,6 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
           >
             Delete Scenario
           </button>
-        </div>
       </div>
     );
   };
