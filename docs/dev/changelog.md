@@ -1,5 +1,10 @@
 # QuiTTER Changelog
 
+## Lobby: mute editor/library buttons — 2026-09-06
+**Files:** `src/components/Lobby.tsx`, docs (changelog)
+
+- Archfar's Shipyard, Unit Editor/Unit Library and Map Editor/Map Library now use a muted slate style (`bg-gray-800/70`, thin `border-gray-600`, `text-gray-300`) so the bright green action buttons (New/Join/Delete Scenario) remain the visual focus.
+
 ## Lobby left panel button order + separators — 2026-09-06
 **Files:** `src/components/Lobby.tsx`, docs (changelog)
 

@@ -484,7 +484,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
           {canViewShipEditor && (
             <button
               onClick={() => router.push('/ship-editor')}
-              className="w-full py-2 bg-gray-700 border-2 border-yellow-400 text-white rounded hover:bg-gray-600 transition"
+              className="w-full py-2 bg-gray-800/70 border border-gray-600 text-gray-300 rounded hover:bg-gray-700 transition"
             >
               Archfar's Shipyard
             </button>
@@ -492,7 +492,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
           {canViewUnitEditor && (
             <button
               onClick={() => router.push('/unit-editor')}
-              className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+              className="w-full py-2 bg-gray-800/70 border border-gray-600 text-gray-300 rounded hover:bg-gray-700 transition"
             >
               {canUseUnitEditor ? 'Unit Editor' : 'Unit Library'}
             </button>
@@ -500,7 +500,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
           {canViewMapEditor && (
             <button
               onClick={() => router.push('/map-editor')}
-              className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+              className="w-full py-2 bg-gray-800/70 border border-gray-600 text-gray-300 rounded hover:bg-gray-700 transition"
             >
               {canUseMapEditor ? 'Map Editor' : 'Map Library'}
             </button>
