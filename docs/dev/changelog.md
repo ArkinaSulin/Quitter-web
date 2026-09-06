@@ -1,5 +1,10 @@
 # QuiTTER Changelog
 
+## Delete scenario requires typing the name — 2026-09-06
+**Files:** `src/components/Lobby.tsx`, docs (changelog)
+
+- Both scenario-delete flows (creator "Confirm Delete" of a flagged deletion request and "Delete Scenario") now open a modal that requires **typing the exact scenario name** before the Delete button enables (Enter works too; Cancel dismisses). Removes the plain `confirm()` guard.
+
 ## Corpses (fallen circles) + Scenario statistics — 2026-09-06
 **Files:** `src/lib/{corpseTracker,battleStats}.ts` + tests (new), `src/hooks/useCommandLogRows.ts` (new), `src/components/ScenarioMap/{ScenarioStatsModal.tsx,TopBar.tsx,useCanvasDraw.ts,ScenarioMap.tsx}` (new/changed), `src/components/ScenarioMap/{useCombatActions,useCastActions,useReactionActions}.ts`, corpse-leak audit (`mapGeometry`,`unitMorale`,`fogOfWar`,`archerReaction`,`unitInteractions`), docs (changelog)
 

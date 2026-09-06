@@ -239,13 +239,26 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     }
   };
 
-  const handleDelete = async () => {
+  // Deleting a scenario requires typing its name (guard against accidental
+  // destruction of a hard-built battle).
+  const [deleteConfirm, setDeleteConfirm] = useState<Scenario | null>(null);
+  const [deleteTypeName, setDeleteTypeName] = useState('');
+
+  const confirmDeleteOpen = () => {
     if (!selectedScenarioId) return;
     const scenario = scenarios.find(s => s.id === selectedScenarioId);
     if (!scenario) return;
-    if (!confirm(`Delete scenario "${scenario.name}"?`)) return;
+    setDeleteTypeName('');
+    setDeleteConfirm(scenario);
+  };
+
+  const performDelete = async () => {
+    const scenario = deleteConfirm;
+    if (!scenario) return;
+    if (deleteTypeName.trim() !== scenario.name) return; // must type the exact name
     try {
-      await deleteScenario(selectedScenarioId);
+      await deleteScenario(scenario.id);
+      setDeleteConfirm(null);
       setSelectedScenarioId(null);
     } catch (err: any) {
       alert('Delete failed: ' + err.message);
@@ -508,7 +521,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                 {isCreator && (
                   <div className="flex gap-2">
                     <button
-                      onClick={handleDelete}
+                      onClick={confirmDeleteOpen}
                       className="flex-1 py-2 bg-red-800 border-2 border-red-400 text-white rounded hover:bg-red-700 transition"
                     >
                       Confirm Delete
@@ -542,7 +555,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
             </button>
           )}
           <button
-            onClick={handleDelete}
+            onClick={confirmDeleteOpen}
             disabled={!isDeleteEnabled}
             className="w-full py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -1034,6 +1047,45 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
 
       {showSettings && (
         <SettingsModal onClose={() => setShowSettings(false)} />
+      )}
+
+      {/* Delete confirmation — type the scenario's exact name to proceed */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onMouseDown={() => setDeleteConfirm(null)}>
+          <div
+            className="bg-gray-900 border border-red-800 rounded-xl shadow-2xl p-6 w-[420px]"
+            onMouseDown={e => e.stopPropagation()}
+          >
+            <p className="text-white font-semibold mb-1">Delete scenario</p>
+            <p className="text-gray-400 text-sm mb-4">
+              This permanently removes <span className="text-white font-medium">"{deleteConfirm.name}"</span>. Type the
+              scenario name to confirm.
+            </p>
+            <input
+              autoFocus
+              value={deleteTypeName}
+              onChange={e => setDeleteTypeName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && deleteTypeName.trim() === deleteConfirm.name && void performDelete()}
+              placeholder={deleteConfirm.name}
+              className="w-full bg-gray-800 text-white text-sm rounded px-3 py-2 border border-gray-700 mb-4 outline-none focus:border-red-600"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
+                onClick={() => setDeleteConfirm(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 bg-red-800 hover:bg-red-700 text-white rounded text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={deleteTypeName.trim() !== deleteConfirm.name}
+                onClick={() => void performDelete()}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
