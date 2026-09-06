@@ -105,13 +105,14 @@ describe('enemyAI gates', () => {
       ['killed', { currentUnitHp: 0 }],
       ['hidden', { hidden: true }],
       ['attached', { attachedToUnitId: 'host' }],
+      ['hero', { isHero: true }],
       ['no actions', { actionsAvailable: 0 }],
     ];
     for (const [label, patch] of cases) {
       expect(isAiControllable(mk({ ...ai, ...patch }), { alliances: ALLIANCES, teams: ['blue'], activeAlliance: 'enemy' }, hosted), label).toBe(false);
     }
-    // hosts with an attached hero are eligible (the hero rides with them)
-    expect(isAiControllable(ai, { alliances: ALLIANCES, teams: ['blue'], activeAlliance: 'enemy' }, new Set(['u1']))).toBe(true);
+    // hosted by an attached hero (people play hosts too)
+    expect(isAiControllable(ai, { alliances: ALLIANCES, teams: ['blue'], activeAlliance: 'enemy' }, new Set(['u1']))).toBe(false);
     // wrong alliance for the active turn
     expect(isAiControllable(ai, { alliances: ALLIANCES, teams: ['blue'], activeAlliance: 'friendly' }, hosted)).toBe(false);
     // team not handed to AI
@@ -234,13 +235,13 @@ describe('enemyAI planAiMoves', () => {
 
   it('moves never leave the unit\'s own team or target allies, and respect the action cap', () => {
     const ai = mk({ id: 'u1', team: 'blue', hex: hex(0, 0), facing: 0, actionsAvailable: 1, movementPoints: 2 });
-    const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, -3), facing: 2 });
+    const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, 4), facing: 2 });
     const plans = planAiMoves(ctxOf([ai, foe], ['blue'], 'enemy'));
     expect(plans.length).toBe(1);
     const move = plans[0].steps.find(s => s.kind === 'move');
     expect(move).toBeDefined();
     const attack = plans[0].steps.find(s => s.kind === 'attack');
-    expect(attack).toBeUndefined(); // out of melee reach -> approaches, no attack
+    expect(attack).toBeUndefined(); // out of range -> no attack, and actions spent on the move
   });
 
   it('is deterministic for identical inputs', () => {
@@ -249,6 +250,15 @@ describe('enemyAI planAiMoves', () => {
     const a = planAiMoves(ctxOf([ai, foe], ['blue'], 'enemy'));
     const b = planAiMoves(ctxOf([ai, foe], ['blue'], 'enemy'));
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+  it('never plots heroes or hosts with an attached hero', () => {
+    const foe = mk({ id: 'foe', team: 'black', hex: hex(0, 1), facing: 2 });
+    const hero = mk({ id: 'hero1', team: 'blue', hex: hex(0, 0), isHero: true, currentFormation: 'Hero', actionsAvailable: 5 });
+    expect(planAiMoves(ctxOf([hero, foe], ['blue'], 'enemy'))).toHaveLength(0); // lone hero excluded
+
+    const host = mk({ id: 'host1', team: 'blue', hex: hex(0, 0), facing: 0, actionsAvailable: 2, weaponString: SPEAR });
+    const her = mk({ id: 'her1', team: 'blue', hex: hex(0, 0), isHero: true, currentFormation: 'Hero', attachedToUnitId: 'host1', attachedPosition: 'front', actionsAvailable: 5 });
+    expect(planAiMoves(ctxOf([host, her, foe], ['blue'], 'enemy'))).toHaveLength(0); // hero-host excluded
   });
 });
 
@@ -313,29 +323,6 @@ describe('enemyAI smarter tactics', () => {
     expect(moves.length).toBeGreaterThan(0);
     const lastMove = moves[moves.length - 1];
     if (lastMove && lastMove.kind === 'move') expect(dist(lastMove.to, foe.hex)).toBe(1);
-  });
-  it('host with a FRONT hero plots as a normal melee unit (hero rides with it)', () => {
-    const host = mk({ id: 'host', team: 'blue', hex: hex(0, 0), facing: 0, actionsAvailable: 2, weaponString: SPEAR });
-    const hero = mk({ id: 'her', team: 'blue', hex: hex(0, 0), isHero: true, currentFormation: 'Hero', attachedToUnitId: 'host', attachedPosition: 'front', actionsAvailable: 5 });
-    const foe = mk({ id: 'foe', team: 'black', hex: hex(0, -1), facing: 2 });
-    const plans = planAiMoves(ctxOf([host, hero, foe], ['blue'], 'enemy'));
-    expect(plans.length).toBeGreaterThan(0);
-    expect(plans.every(p => p.unitId === 'host')).toBe(true); // the hero is not plotted separately
-    expect(plans[0].steps[0].kind).toBe('attack'); // normal melee logic (no AGR is an engine perk)
-  });
-
-  it('host with a BACK (protected) hero skirmishes instead of charging into melee', () => {
-    const host = mk({
-      id: 'host', team: 'blue', hex: hex(0, 0), facing: 0, actionsAvailable: 2, weaponString: SPEAR,
-      movementPoints: 4, formationAvailability: ['Open Order', 'Scattered'],
-    });
-    const hero = mk({ id: 'her', team: 'blue', hex: hex(0, 0), isHero: true, currentFormation: 'Hero', attachedToUnitId: 'host', attachedPosition: 'back', actionsAvailable: 5 });
-    const foe = mk({ id: 'foe', team: 'black', hex: hex(0, -1), facing: 2 }); // adjacent — would melee if normal
-    const plans = planAiMoves(ctxOf([host, hero, foe], ['blue'], 'enemy'));
-    expect(plans.length).toBeGreaterThan(0);
-    const steps = plans[0].steps;
-    expect(steps.some(s => s.kind === 'attack')).toBe(false); // never close into melee
-    expect(steps.some(s => s.kind === 'formation' && s.formation === 'Scattered')).toBe(true); // skirmish form
   });
 });
 

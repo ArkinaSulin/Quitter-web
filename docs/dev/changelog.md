@@ -1,11 +1,12 @@
 # QuiTTER Changelog
 
-## AI assist: units with attached heroes — 2026-09-06
-**Files:** `src/lib/enemyAI/planner.ts` + `planner.test.ts`, `src/components/ScenarioMap/{AiPanel,ScenarioMap}.tsx`, docs (`docs/dev/17-enemy-ai.md`, changelog)
+## AI assist: heroes & hero-mounted units are player/DM-only — 2026-09-06
+**Files:** `src/lib/enemyAI/planner.ts` + `planner.test.ts`, docs (`docs/dev/17-enemy-ai.md`, changelog)
 
-- Hosts **with an attached hero are now AI-eligible** (the attached hero token itself is not). Plotted moves are **combined**: the hero pays its own share (`applyHeroMoveCost`/`applyMoveCost`) and follows the host, capped by the lower pool; execution passes the hero through the real `performMove`.
-- **Front hero = normal unit logic** (no-AGR is already applied by combat); **back (protected) hero = forced skirmish**: the host stands off, adopts Scattered near contact and never charges into melee — even if it only has melee weapons.
-- Planner stays-put guard (don't move when no option improves on the current hex) added. 2 new tests; host eligibility gate updated. 512 tests, `tsc --noEmit` clean.
+- **Reverts** the previous "heroes ride with AI hosts" logic (combined moves are gone). Heroes are **never AI-controlled**, and neither is any unit with an attached hero — players and the DM play those;
+the AI only plots ordinary units. `isAiControllable` now rejects `isHero`
+units (lone or attached) and hero hosts. Planner tests updated. 511 tests,
+`tsc --noEmit` clean.
 
 ## AI assist: smarter planner (v2) — turns, doctrines, target priority — 2026-09-06
 **Files:** `src/lib/enemyAI/planner.ts` + `planner.test.ts`, `src/components/ScenarioMap/{AiPanel,ScenarioMap,aiTypes,useCanvasDraw}.tsx`, docs (`docs/dev/17-enemy-ai.md`, changelog, player-manual §12)

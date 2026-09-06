@@ -30,7 +30,7 @@ import { isProtectedHero } from '@/lib/unitInteractions';
 import { arcsContain, beAttackedModifier } from '@/lib/formationRules';
 import { getRowCapacityBase } from '@/lib/unitStats';
 import { unitAttackCap } from '@/lib/attackCap';
-import { computeReachableMap, computeMovePool, applyMoveCost, applyMpSpend, computeHeroMovePool, applyHeroMoveCost } from '@/lib/moveCost';
+import { computeReachableMap, computeMovePool, applyMoveCost, applyMpSpend } from '@/lib/moveCost';
 import { isMeleeWeapon } from '@/lib/meleeFallback';
 import { terrainCostOf, TerrainCosts, computeThreatHexes } from '@/components/ScenarioMap/mapGeometry';
 import { determineCombatPosition } from '@/lib/unitCombat';
@@ -42,7 +42,7 @@ const DIRS: { q: number; r: number; s: number }[] = [
 ];
 
 export type AiStep =
-  | { kind: 'move'; unitId: string; from: Hex; to: Hex; path: Hex[]; cost: number; heroId?: string }
+  | { kind: 'move'; unitId: string; from: Hex; to: Hex; path: Hex[]; cost: number }
   | { kind: 'attack'; unitId: string; from: Hex; targetId: string; target: Hex }
   | { kind: 'turn'; unitId: string; from: Hex; dir: 'left' | 'right' }
   | { kind: 'formation'; unitId: string; from: Hex; formation: string };
@@ -89,18 +89,19 @@ export function enemyGroupsOf(group: AllianceGroup): Set<AllianceGroup> {
 }
 
 /** True when a unit is eligible to be handed to the AI at this moment.
- *  Routed units ARE eligible — the planner flees them away from hostiles.
- *  A host WITH an attached hero is eligible too (the hero rides with it); the
- *  attached hero token itself is not (`attachedToUnitId`). */
+ *  Heroes (and units with an attached hero) are NEVER AI-controlled — players
+ *  and the DM play those. Routed units ARE eligible — the planner flees them. */
 export function isAiControllable(
   unit: Unit,
   ctx: Pick<AiPlanContext, 'alliances' | 'teams' | 'activeAlliance'>,
-  _hostedBy?: Set<string>,
+  hostedBy: Set<string>,
 ): boolean {
   if (unit.isDeleted) return false;
+  if (unit.isHero) return false; // heroes are played by people, not the AI
   if (unit.hidden) return false; // hidden units are never AI-controlled
   if ((unit.currentUnitHp ?? 0) <= 0) return false; // killed / downed
   if (unit.attachedToUnitId) return false; // attached hero rides its host
+  if (hostedBy.has(unit.id)) return false; // host of an attached hero — people play these too
   if (!ctx.teams.includes(unit.team)) return false;
   if (ctx.activeAlliance === null) return false; // free play — no plotting
   if (allianceOf(unit, ctx.alliances) !== ctx.activeAlliance) return false;
@@ -265,41 +266,6 @@ function effMax(u: Unit, formations: Record<string, Formation>): number {
   return Math.max(1, Math.floor((u.movementPoints ?? 0) * mult));
 }
 
-/** The hero attached to `u` (if any). */
-function heroOf(u: Unit, units: Unit[]): Unit | undefined {
-  return units.find(o => !o.isDeleted && !o.hidden && o.attachedToUnitId === u.id);
-}
-
-function unitHasRangedWeapon(u: Unit): boolean {
-  const weapons = parseWeapons(u.weaponString || '');
-  return weapons.some(w => (w.range ?? 1) > 1 || (w.maxRange ?? (w.range ?? 1)) > 1);
-}
-
-/** Combined move pool for a host + attached hero: the lower of the two pools. */
-function combinedPool(u: Unit, hero: Unit | null, formations: Record<string, Formation>): number {
-  const own = computeMovePool(u, effMax(u, formations));
-  if (!hero) return own;
-  const hm = effMax(hero, formations);
-  const heroPool = hero.isHero ? computeHeroMovePool(hero, hm) : computeMovePool(hero, hm);
-  return Math.min(own, heroPool);
-}
-
-/** Resource accounting after a move, on the host and (when present) the hero. */
-function hostAfterMove(
-  u: Unit,
-  hero: Unit | null,
-  cost: number,
-  formations: Record<string, Formation>,
-  to: Hex,
-): { host: Unit; hero: Unit | null } {
-  const hostRes = applyMoveCost(u, cost, effMax(u, formations));
-  const host = { ...u, hex: to, movementPointsAvailable: hostRes.movementPointsAvailable, actionsAvailable: hostRes.actionsAvailable };
-  if (!hero) return { host, hero: null };
-  const hm = effMax(hero, formations);
-  const heroRes = hero.isHero ? applyHeroMoveCost(hero, cost, hm) : applyMoveCost(hero, cost, hm);
-  return { host, hero: { ...hero, hex: to, movementPointsAvailable: heroRes.movementPointsAvailable, actionsAvailable: heroRes.actionsAvailable } };
-}
-
 interface PlannedMoveOption {
   to: Hex;
   path: Hex[];
@@ -363,7 +329,6 @@ interface Maneuver {
  *  MP accounting) followed by one straight leg, scored by `scorer`. */
 function maneuverOptions(
   u: Unit,
-  hero: Unit | null,
   working: Unit[],
   enemies: Unit[],
   ctx: Pick<AiPlanContext, 'alliances' | 'formations' | 'visibleHexes'>,
@@ -378,7 +343,8 @@ function maneuverOptions(
   const threat = computeThreatHexes(working, u.id, ctx.alliances, ctx.formations);
 
   const evaluate = (turns: { dir: 'left' | 'right' }[], unitAfter: Unit) => {
-    const pool = combinedPool(unitAfter, hero, ctx.formations);
+    const max = effMax(unitAfter, ctx.formations);
+    const pool = computeMovePool(unitAfter, max);
     if (pool < 1) return;
     const reach = computeReachableMap(unitAfter, pool, occ, threat, costOfHex);
     reach.forEach((entry, key) => {
@@ -419,20 +385,19 @@ function maneuverOptions(
  *  strictly safer / legal. */
 function chooseFleeHex(
   u: Unit,
-  hero: Unit | null,
   working: Unit[],
   enemies: Unit[],
   ctx: Pick<AiPlanContext, 'alliances' | 'formations' | 'visibleHexes'>,
   costOfHex: ((q: number, r: number) => number) | undefined,
   gridRadius: number | undefined,
-): { pick: PlannedMoveOption; path: Hex[] } | null {
+): { pick: PlannedMoveOption; updated: Unit; path: Hex[] } | null {
   const foes = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
   if (foes.length === 0) return null;
   const ring = (h: { q: number; r: number }) => Math.max(Math.abs(h.q), Math.abs(h.r), Math.abs(h.q + h.r));
   if (gridRadius !== undefined && ring(u.hex) >= gridRadius) return null; // at/over the rim: stay
   const occ = new Set<string>();
   for (const w of working) if (!w.isDeleted && w.id !== u.id) occ.add(hexKeyOf(w.hex));
-  const pool = combinedPool(u, hero, ctx.formations);
+  const pool = computeMovePool(u, effMax(u, ctx.formations));
   if (pool < 1) return null;
   const threat = computeThreatHexes(working, u.id, ctx.alliances, ctx.formations);
   const reach = computeReachableMap(u, pool, occ, threat, costOfHex);
@@ -452,7 +417,8 @@ function chooseFleeHex(
   if (candidates.length === 0) return null;
   let best = candidates[0];
   for (const c of candidates) if (c.score > best.score) best = c;
-  return { pick: best, path: best.path };
+  const applied = applyMoveCost(u, best.cost, effMax(u, ctx.formations));
+  return { pick: best, path: best.path, updated: { ...u, hex: best.to, movementPointsAvailable: applied.movementPointsAvailable, actionsAvailable: applied.actionsAvailable } };
 }
 
 /**
@@ -462,10 +428,12 @@ function chooseFleeHex(
 export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
   if (!ctx.activeAlliance || ctx.teams.length === 0) return [];
   const units = ctx.units.filter(u => !u.isDeleted);
+  const hostedBy = new Set<string>();
+  for (const u of units) if (u.attachedToUnitId) hostedBy.add(u.attachedToUnitId);
 
   const controllable = units.filter(u => {
     if (ctx.excludeUnitIds && ctx.excludeUnitIds.includes(u.id)) return false;
-    return isAiControllable(u, ctx);
+    return isAiControllable(u, ctx, hostedBy);
   });
   if (controllable.length === 0) return [];
 
@@ -480,7 +448,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
   const maxTurns = ctx.maxTurns ?? 3;
   const cap = unitAttackCap();
 
-  const commit = (id: string, updated: Unit) => {
+  const commit = (u: Unit, updated: Unit, id: string) => {
     byId.set(id, updated);
     const idx = working.findIndex(w => w.id === id);
     if (idx >= 0) working[idx] = updated;
@@ -494,28 +462,20 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       if ((u.actionsAvailable ?? 0) < 1) break;
       if ((u.attacksUsed ?? 0) >= cap) break;
       const from = u.hex;
-      const hero = heroOf(u, working) ?? null;
-      const enemiesAlive = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
 
       // Routed units can't fight — run as far from hostiles as possible, but
       // stop at the map's outer rim so the DM can hide the broken unit.
       if (isUnitRouted(u)) {
-        const flee = chooseFleeHex(u, hero, working, enemies, ctx, costOfHex, ctx.gridRadius);
+        const flee = chooseFleeHex(u, working, enemies, ctx, costOfHex, ctx.gridRadius);
         if (!flee) break;
-        const moved = hostAfterMove(u, hero, flee.pick.cost, ctx.formations, flee.pick.to);
-        commit(u.id, moved.host);
-        if (moved.hero) commit(moved.hero.id, moved.hero);
-        u = moved.host;
-        plan.steps.push({ kind: 'move', unitId: u.id, from, to: flee.pick.to, path: flee.path, cost: flee.pick.cost, heroId: moved.hero?.id });
+        commit(u, flee.updated, u.id);
+        u = flee.updated;
+        plan.steps.push({ kind: 'move', unitId: u.id, from, to: flee.pick.to, path: flee.path, cost: flee.pick.cost });
         continue;
       }
 
-      // Doctrine: front-attached hero = the unit is a normal unit (its only
-      // edge is no AGR check, which combat already applies). A BACK-attached
-      // (protected) hero forces skirmish/stand-off behaviour like an archer —
-      // keep distance, never charge into melee, keep the hero safe.
-      const forceSkirmish = !!hero && hero.attachedPosition === 'back';
-      const doctrine = forceSkirmish ? ('ranged' as Doctrine) : unitDoctrine(u);
+      const doctrine = unitDoctrine(u);
+      const enemiesAlive = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
 
       // Stand-off: adopt Scattered when contact looms and we can afford it.
       if (doctrine === 'ranged' && u.currentFormation !== 'Scattered' && !u.isHero) {
@@ -528,7 +488,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
           const newMax = effMax({ ...u, currentFormation: 'Scattered' }, ctx.formations);
           const applied = applyFormationChange(u, effMax(u, ctx.formations), newMax);
           const updated = { ...u, currentFormation: 'Scattered', movementPointsAvailable: applied.movementPointsAvailable, actionsAvailable: applied.actionsAvailable };
-          commit(u.id, updated);
+          commit(u, updated, u.id);
           u = updated;
           plan.steps.push({ kind: 'formation', unitId: u.id, from, formation: 'Scattered' });
           continue;
@@ -576,29 +536,22 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       if (attack) {
         plan.steps.push({ kind: 'attack', unitId: u.id, from, targetId: attack.unit.id, target: attack.unit.hex });
         const updated = { ...u, actionsAvailable: (u.actionsAvailable ?? 0) - 1, attacksUsed: (u.attacksUsed ?? 0) + 1 };
-        commit(u.id, updated);
+        commit(u, updated, u.id);
         u = updated;
         continue;
       }
 
       // No profitable attack — maneuver (approach/flank or stand-off band).
       const weapon = parseWeapons(u.weaponString || '')[u.activeWeaponIndex ?? 0];
-      const hasBow = unitHasRangedWeapon(u);
-      // A forced skirmisher without a bow must never rush into contact: treat
-      // its "reach" as effectively unbounded so it stays ≥ gap and backs off.
-      const weaponRange = doctrine === 'ranged' && !hasBow ? Infinity : (weapon?.range ?? 1);
-      const weaponMaxRange = doctrine === 'ranged' && !hasBow ? Infinity : Math.max(weaponRange, weapon?.maxRange ?? weaponRange);
+      const weaponRange = weapon?.range ?? 1;
+      const weaponMaxRange = Math.max(weaponRange, weapon?.maxRange ?? weaponRange);
       const scorer = doctrine === 'ranged'
         ? (d: Hex, foes: Unit[], threat: Set<string>) => rangedDestScore(d, foes, threat, weaponRange, weaponMaxRange)
         : (d: Hex, foes: Unit[], threat: Set<string>) => meleeDestScore(d, foes, threat);
-      const options = maneuverOptions(u, hero, working, enemiesAlive, ctx, costOfHex, doctrine === 'melee' ? maxTurns : Math.min(1, maxTurns), scorer);
+      const options = maneuverOptions(u, working, enemiesAlive, ctx, costOfHex, doctrine === 'melee' ? maxTurns : Math.min(1, maxTurns), scorer);
       if (options.length === 0) break;
-      // Prefer staying when no option actually improves on the current spot.
-      const threatNow = computeThreatHexes(working, u.id, ctx.alliances, ctx.formations);
-      const stayScore = scorer(u.hex, enemiesAlive, threatNow);
-      if (options[0].score <= stayScore) break;
       const best = options[0];
-      // Replay the simulated turns (host only) onto the real accounting.
+      // Replay the simulated turns/move onto the real accounting.
       for (const t of best.turns) {
         if (freeTurn(u)) {
           u = { ...u, facing: t.dir === 'left' ? (u.facing + 5) % 6 : (u.facing + 1) % 6 };
@@ -606,14 +559,14 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
           const { movementPointsAvailable, actionsAvailable } = applyMpSpend(u, 1, effMax(u, ctx.formations));
           u = { ...u, facing: t.dir === 'left' ? (u.facing + 5) % 6 : (u.facing + 1) % 6, movementPointsAvailable, actionsAvailable };
         }
-        commit(u.id, u);
+        commit(u, u, u.id);
         plan.steps.push({ kind: 'turn', unitId: u.id, from: u.hex, dir: t.dir });
       }
-      const moved = hostAfterMove(u, hero, best.move.cost, ctx.formations, best.move.to);
-      commit(u.id, moved.host);
-      if (moved.hero) commit(moved.hero.id, moved.hero);
-      u = moved.host;
-      plan.steps.push({ kind: 'move', unitId: u.id, from, to: best.move.to, path: best.move.path, cost: best.move.cost, heroId: moved.hero?.id });
+      const applied = applyMoveCost(u, best.move.cost, effMax(u, ctx.formations));
+      const updated = { ...u, hex: best.move.to, movementPointsAvailable: applied.movementPointsAvailable, actionsAvailable: applied.actionsAvailable };
+      commit(u, updated, u.id);
+      u = updated;
+      plan.steps.push({ kind: 'move', unitId: u.id, from, to: best.move.to, path: best.move.path, cost: best.move.cost });
     }
     if (plan.steps.length > 0) plans.push(plan);
   }
