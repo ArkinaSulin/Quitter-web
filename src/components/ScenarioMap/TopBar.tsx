@@ -28,6 +28,9 @@ interface TopBarProps {
   onEnterReplay: () => void;
   onBackToPlay: () => void;
   goToLobby: () => void;
+  /** Show the Scenario Stats button (GM in live play; anyone in replay). */
+  showStats: boolean;
+  onOpenStats: () => void;
 }
 
 export function TopBar(props: TopBarProps) {
@@ -56,6 +59,8 @@ export function TopBar(props: TopBarProps) {
     onEnterReplay,
     onBackToPlay,
     goToLobby,
+    showStats,
+    onOpenStats,
   } = props;
 
   // The DM keeps End Turn (and replay exit) even while playing as a player; the
@@ -178,6 +183,15 @@ export function TopBar(props: TopBarProps) {
             className="px-3 py-1 rounded shadow-lg text-sm bg-emerald-700 hover:bg-emerald-600 text-white"
           >
             Back to Play
+          </button>
+        )}
+        {showStats && (
+          <button
+            onClick={onOpenStats}
+            className="px-3 py-1 rounded shadow-lg text-sm bg-indigo-700 hover:bg-indigo-600 text-white"
+            title="Scenario statistics (troop kills, levels, status)"
+          >
+            📊 Stats
           </button>
         )}
         <button onClick={goToLobby} className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1 rounded shadow-lg text-sm">

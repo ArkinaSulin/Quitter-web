@@ -1,5 +1,6 @@
 import { Unit, AllianceGroup, Hex, Formation } from '@/types/gameProtocol';
 import { getSetting, getBandSetting, SettingBand } from './settingsCache';
+import { isDeadCorpse } from './unitInteractions';
 
 const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
@@ -52,7 +53,7 @@ export function computeThreatRating(unit: Unit): number {
  * never impose threat, but they can still be subject to it.
  */
 export function isInKillZone(unit: Unit, hex: Hex): boolean {
-  if (unit.isDeleted || isUnitRouted(unit)) return false;
+  if (unit.isDeleted || isUnitRouted(unit) || isDeadCorpse(unit)) return false;
   if (unit.currentFormation === 'Scattered' || unit.currentFormation === 'Routed') return false;
   const dq = hex.q - unit.hex.q;
   const dr = hex.r - unit.hex.r;
@@ -76,6 +77,7 @@ export function calcIsolation(unit: Unit, units: Unit[], alliances: Record<strin
   const unitAlliance = alliances[unit.team] || 'friendly';
   return !units.some(u =>
     !u.isDeleted &&
+    (u.currentUnitHp ?? 0) > 0 &&
     u.id !== unit.id &&
     (alliances[u.team] || 'friendly') === unitAlliance &&
     areHexesAdjacent(unit.hex, u.hex)
@@ -98,7 +100,7 @@ export function calcEnemyThreats(
   let totalSum = 0;
 
   for (const other of units) {
-    if (other.isDeleted || other.id === unit.id || isUnitRouted(other)) continue;
+    if (other.isDeleted || other.id === unit.id || isUnitRouted(other) || isDeadCorpse(other)) continue;
     const otherAlliance = alliances[other.team] || 'friendly';
     if (otherAlliance === unitAlliance) continue;
     if (isInKillZone(other, unit.hex)) {

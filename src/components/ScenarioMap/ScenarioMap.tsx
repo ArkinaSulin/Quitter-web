@@ -49,6 +49,9 @@ import { MapEntity } from '@/lib/mapEntities';
 import { AddEffectModal } from './AddEffectModal';
 import { EffectTemplate, templateById, EffectSpec } from '@/lib/unitEffects';
 import { routeUnit } from './routeUnit';
+import { ScenarioStatsModal } from './ScenarioStatsModal';
+import { useCommandLogRows } from '@/hooks/useCommandLogRows';
+import { buildFallen } from '@/lib/corpseTracker';
 import { useCanvasDraw } from './useCanvasDraw';
 import { useReactionActions } from './useReactionActions';
 import { useMoveActions } from './useMoveActions';
@@ -132,6 +135,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     aiLastTurnKeyRef.current = key;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTurnAlliance, turnNumber]);
+
+  // Command-log rows → corpse piles + battle statistics (derived, undo-safe).
+  const commandRows = useCommandLogRows(scenarioId);
+  const corpseCounts = useMemo(() => buildFallen(commandRows), [commandRows]);
+  const [showStats, setShowStats] = useState(false);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
   // GM-painted map overlays (persisted in scenarios.map_data).
   const [terrainCosts, setTerrainCosts] = useState<TerrainCosts>({});
@@ -540,6 +548,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     groundZones,
     scenarioId,
     updateScreenshot,
+    corpseCounts,
     aiOverlay,
     aiHoveredUnitId: hoveredUnit?.id ?? null,
   });
@@ -1705,6 +1714,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         onEnterReplay={() => replay.setMode('replay')}
         onBackToPlay={() => replay.setMode('play')}
         goToLobby={goToLobby}
+        showStats={(isGM && !inReplay && !replayMode) || inReplay || replayMode}
+        onOpenStats={() => setShowStats(true)}
       />
 
       {/* Floating Left Panel — hidden in replay or when the DM is gone */}
@@ -2285,6 +2296,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           alliances={alliances}
           onClose={() => setEditUnit(null)}
           onSave={handleEditorSave}
+        />
+      )}
+
+      {/* Scenario Statistics (DM in live play; anyone in replay) */}
+      {showStats && (
+        <ScenarioStatsModal
+          rows={commandRows}
+          units={units}
+          alliances={alliances}
+          onClose={() => setShowStats(false)}
+          onShare={text => {
+            addMessage(text);
+            setShowStats(false);
+          }}
         />
       )}
 

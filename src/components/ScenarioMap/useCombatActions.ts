@@ -329,6 +329,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
           { field: 'currentUnitHp', from: target.currentUnitHp, to: newDefenderHp },
           { field: 'currentTroopCount', from: target.currentTroopCount, to: newDefenderTroops },
         ],
+        payload: { killerUnitId: attacker.id, victimLevel: target.level },
       });
     }
 
@@ -345,6 +346,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
           { field: 'currentUnitHp', from: attacker.currentUnitHp, to: newAttackerHp },
           { field: 'currentTroopCount', from: attacker.currentTroopCount, to: newAttackerTroops },
         ],
+        payload: { killerUnitId: target.id, victimLevel: attacker.level },
       });
     }
 

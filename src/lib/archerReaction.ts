@@ -33,6 +33,7 @@ export function findEligibleReactionArchers(
   const moverAlliance = alliances[mover.team] || 'friendly';
   return units.filter(o => {
     if (o.id === mover.id || o.isDeleted || o.hidden || isUnitRouted(o) || isProtectedHero(o)) return false;
+    if ((o.currentUnitHp ?? 0) <= 0) return false; // corpses never react
     if ((alliances[o.team] || 'friendly') === moverAlliance) return false;
     if ((o.actionsAvailable ?? 0) < 1 || o.archerReactionUsed) return false;
     const weapon = parseWeapons(o.weaponString || '')[o.activeWeaponIndex ?? 0];

@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Corpses (fallen circles) + Scenario statistics — 2026-09-06
+**Files:** `src/lib/{corpseTracker,battleStats}.ts` + tests (new), `src/hooks/useCommandLogRows.ts` (new), `src/components/ScenarioMap/{ScenarioStatsModal.tsx,TopBar.tsx,useCanvasDraw.ts,ScenarioMap.tsx}` (new/changed), `src/components/ScenarioMap/{useCombatActions,useCastActions,useReactionActions}.ts`, corpse-leak audit (`mapGeometry`,`unitMorale`,`fogOfWar`,`archerReaction`,`unitInteractions`), docs (changelog)
+
+- **Corpses**: a dead non-hero is now pure scenery. Its hex is fully passable and it is excluded from every rule system (threat/ZoC, morale, fog reveal, reactions, hit-testing). A deterministic per-hex **fallen-troop pile** (derived from the command log; troop losses count on the hex the unit stood on; GM edits excluded; undo removes rows) is drawn as neutral scattered circles seeded by `q+r` (stable as the pile grows), under live tokens.
+- **Scenario statistics** (derived from the log + live units, undo-safe): roster of placed units (excl. GM-deleted, incl. hidden), level, max troops, troops at start of Turn 1 (turn-1 wins, else max), current troops, **troop kills** and **hostile levels** (Σ victim level × troops killed), status Effective/Routed/Killed. Damage sub-steps now carry `payload { killerUnitId, victimLevel }` for attack/retaliation/charge/magic/reaction; DoT/GM award nothing. Sorted friendly → enemy → neutral, heroes first, then level high→low.
+- **UI**: a 📊 **Stats** button in the TopBar — visible to the DM during live play and to anyone during replay. Opens a stats panel locally; **Share to all players** posts the summary to Messages (hidden units revealed fully).
+
 ## AI assist: heroes & hero-mounted units are player/DM-only — 2026-09-06
 **Files:** `src/lib/enemyAI/planner.ts` + `planner.test.ts`, docs (`docs/dev/17-enemy-ai.md`, changelog)
 

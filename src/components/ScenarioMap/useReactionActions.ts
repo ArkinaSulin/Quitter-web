@@ -180,6 +180,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
           { field: 'currentUnitHp', from: mover.currentUnitHp, to: newHp },
           { field: 'currentTroopCount', from: mover.currentTroopCount, to: newTroops },
         ],
+        payload: { killerUnitId: archer.id, victimLevel: mover.level },
       });
     }
     const desc = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks, ${hits} hits, ${outcome.firstStrikeDamage} damage (${troopsKilled} troops)`;

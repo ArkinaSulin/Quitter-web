@@ -9,6 +9,8 @@ import { hexToPixel } from '@/hooks/useHexGrid';
 import { Unit, Hex, AllianceGroup, Formation, SizeCategory, GroundEffect } from '@/types/gameProtocol';
 import { drawToken, loadImage, drawArcherReactionButton } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
+import { isDeadCorpse } from '@/lib/unitInteractions';
+import { corpseScatterPositions } from '@/lib/corpseTracker';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig, TerrainCosts, costShade } from './mapGeometry';
 import { FOG_RGB } from '@/lib/fogOfWar';
 import { AiOverlayData } from './aiTypes';
@@ -36,6 +38,8 @@ interface CanvasDrawDeps {
   groundZones?: GroundEffect[];
   scenarioId: string;
   updateScreenshot: (scenarioId: string, file: File) => Promise<void>;
+  /** Per-hex fallen-troop counts (decorative corpse piles), from the log. */
+  corpseCounts?: Record<string, number>;
   /** AI assist overlay (checkmarks + preview routes). Optional. */
   aiOverlay?: AiOverlayData | null;
   /** Unit currently hovered on the map — highlights its AI route. */
@@ -66,6 +70,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     groundZones,
     scenarioId,
     updateScreenshot,
+    corpseCounts,
     aiOverlay,
     aiHoveredUnitId,
   } = deps;
@@ -147,8 +152,35 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       ctx.restore();
     }
 
+    // Decorative fallen-troop piles: neutral circles per hex with deaths
+    // (positions seeded by q+r so the scatter is stable as piles grow). Drawn
+    // UNDER live tokens; corpses never occupy hexes or interact with rules.
+    if (corpseCounts) {
+      ctx.save();
+      const maxShown = 40;
+      for (const [key, count] of Object.entries(corpseCounts)) {
+        if (count <= 0) continue;
+        if (isFogHidden(key)) continue; // corpses never reveal through fog
+        const [q, r] = key.split(',').map(Number);
+        if (Number.isNaN(q) || Number.isNaN(r)) continue;
+        const c = hexCenter({ q, r, s: -q - r });
+        const positions = corpseScatterPositions(q, r, count, maxShown);
+        const dotR = Math.max(2, HEX_SIZE * currentZoom * 0.055);
+        for (const p of positions) {
+          ctx.beginPath();
+          ctx.arc(c.cx + p.dx * HEX_SIZE * currentZoom, c.cy + p.dy * HEX_SIZE * currentZoom, dotR, 0, 2 * Math.PI);
+          ctx.fillStyle = 'rgba(150,150,150,0.5)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(90,90,90,0.7)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
     for (const unit of drawOrder) {
-      if (unit.isDeleted || unit.attachedToUnitId) continue;
+      if (unit.isDeleted || unit.attachedToUnitId || isDeadCorpse(unit)) continue;
       if (unit.hidden) {
         if (!isGM) continue;
         ctx.save();
@@ -464,7 +496,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, groundZones, aiOverlay, aiHoveredUnitId]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, groundZones, corpseCounts, aiOverlay, aiHoveredUnitId]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;

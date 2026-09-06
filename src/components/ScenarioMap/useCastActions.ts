@@ -139,6 +139,7 @@ export function useCastActions(deps: CastActionsDeps) {
           { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
           { field: 'currentTroopCount', from: target.currentTroopCount, to: newTroops },
         ],
+        payload: { killerUnitId: caster.id, victimLevel: target.level },
       });
     }
 

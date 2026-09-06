@@ -16,6 +16,17 @@ export function isUnitInteractable(
 }
 
 /**
+ * A dead non-hero unit (HP <= 0): pure battlefield scenery. Its hex is fully
+ * passable and it is invisible to every rule system — no occupied/threat/
+ * morale/fog/reaction/target/hover effects. Drawn as a fallen-circle pile.
+ */
+export function isDeadCorpse(
+  unit: Pick<Unit, 'isHero' | 'isDeleted' | 'currentUnitHp'>,
+): boolean {
+  return !unit.isDeleted && !unit.isHero && (unit.currentUnitHp ?? 0) <= 0;
+}
+
+/**
  * A hero attached BEHIND a unit is protected — it cannot be attacked in any way
  * (the host unit must be engaged first). Front-attached heroes fight openly and
  * share damage; back-attached heroes are shielded.

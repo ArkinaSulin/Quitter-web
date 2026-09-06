@@ -42,9 +42,10 @@ export function unitSightRadius(
 type SightUnit = Pick<Unit, 'team' | 'hex' | 'isDeleted' | 'hidden' | 'currentUnitHp' | 'darkvision'>;
 
 /** True when a unit contributes sight to its alliance group's reveal. Hidden units
- *  never reveal anything (they act concealed); deleted units neither. */
+ *  never reveal anything (they act concealed); deleted units neither; dead
+ *  non-hero corpses are scenery and reveal nothing. */
 function revealsSight(unit: SightUnit, group: AllianceGroup, alliances: Record<string, AllianceGroup>): boolean {
-  if (unit.isDeleted || unit.hidden) return false;
+  if (unit.isDeleted || unit.hidden || (unit.currentUnitHp ?? 0) <= 0) return false;
   return (alliances[unit.team] || 'friendly') === group;
 }
 
