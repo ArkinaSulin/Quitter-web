@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# QuiTTER — Quick Terrestrial Tactical Encounter Rules
 
-## Getting Started
+A hex-map **mass-combat wargame for D&D 5e groups**. One GM and a handful of
+players run big battles on a shared board — units, formations, cavalry,
+heroes, morale and routing, spells, fog of war — in real time over the web.
 
-First, run the development server:
+**Stack:** Next.js 14 (TypeScript/React, Tailwind) · HTML5 canvas hex map ·
+Supabase (Postgres + RLS + Realtime websockets).
+
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
+npm test           # vitest (pure rule-lib tests)
+npx tsc --noEmit   # typecheck
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Requires a Supabase project (see `src/lib/supabaseClient.ts` / `.env.local`)
+with the schema + migrations under `supabase/migrations/` applied.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Documentation
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Documentation is reorganized under **`docs/`**:
 
-## Learn More
+- **[docs/README.md](docs/README.md)** — master menu.
+- **[Technical menu](docs/dev/README.md)** — how the system works (for
+  developers and future agent sessions): architecture, every subsystem
+  (`moveCost`, `unitCombat`, `unitMorale`, effects, fog, replay, editors…),
+  schema/migrations, command-log & undo, realtime. The code is canonical.
+- **[Player manual](docs/players/player-manual.md)** — one book: how to play
+  + rules reference + worked examples + GM chapters, ready to become the
+  Word/PDF manual.
+- **[Session changelog](docs/dev/changelog.md)** — append-only history of
+  every work session (newest first).
 
-To learn more about Next.js, take a look at the following resources:
+The app is a single flow: the **Lobby** (`/`) → **Scenario Map**; plus three
+authoring pages: **Unit Library** (`/unit-editor`), **Map Library**
+(`/map-editor`), and **Archfar's Shipyard** (`/ship-editor`, ship builder —
+engine pending). Roles gate everything: players browse read-only; DMs and
+admins edit.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Repo layout (quick map)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+app/            routes (/, /unit-editor, /map-editor, /ship-editor)
+src/lib/        PURE game-rule modules (movement, combat, morale, effects,
+                fog, routing/pursuit, weapon parsing, ship stats, …)
+src/hooks/      React bridges (useGameEngine, useSupabaseSync, useReplay,
+                useScenarios, useMessageSync, …)
+src/components/ Lobby, UnitEditor, ScenarioMap/*, TokenRenderer/*,
+                ShipEditor/*, MapEditor/*
+src/types/      gameProtocol.ts (Unit, Formation, UnitTemplate, effects …)
+supabase/       migrations/ 001…075 + RPCs + RLS
+docs/           this documentation tree
+```

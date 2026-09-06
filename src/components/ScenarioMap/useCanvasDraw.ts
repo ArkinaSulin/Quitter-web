@@ -11,6 +11,7 @@ import { drawToken, loadImage, drawArcherReactionButton } from '@/components/Tok
 import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig, TerrainCosts, costShade } from './mapGeometry';
 import { FOG_RGB } from '@/lib/fogOfWar';
+import { AiOverlayData } from './aiTypes';
 
 interface CanvasDrawDeps {
   canvasRef: RefObject<HTMLCanvasElement>;
@@ -35,6 +36,10 @@ interface CanvasDrawDeps {
   groundZones?: GroundEffect[];
   scenarioId: string;
   updateScreenshot: (scenarioId: string, file: File) => Promise<void>;
+  /** AI assist overlay (checkmarks + preview routes). Optional. */
+  aiOverlay?: AiOverlayData | null;
+  /** Unit currently hovered on the map — highlights its AI route. */
+  aiHoveredUnitId?: string | null;
 }
 
 export function useCanvasDraw(deps: CanvasDrawDeps) {
@@ -61,6 +66,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     groundZones,
     scenarioId,
     updateScreenshot,
+    aiOverlay,
+    aiHoveredUnitId,
   } = deps;
 
   const customDraw = useCallback(async (ctx: CanvasRenderingContext2D, width: number, height: number, currentZoom: number, offsetX: number, offsetY: number) => {
@@ -286,7 +293,114 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         }
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, groundZones]);
+
+    // AI assist overlay — drawn last so the DM always reads it. Checkmarks on
+    // AI-selected units; preview/execute routes (polyline + crossed swords for
+    // attacks + a ghost at the final hex). Routes dim unless hovered.
+    if (aiOverlay && (aiOverlay.checkedUnitIds.length > 0 || aiOverlay.routes.length > 0)) {
+      const byId = new Map(displayUnits.map(u => [u.id, u]));
+      // Checkmarks: fixed on-screen size (does not grow with zoom).
+      const badgeR = 9;
+      for (const id of aiOverlay.checkedUnitIds) {
+        const u = byId.get(id);
+        if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
+        const pos = hexToPixel(u.hex, HEX_SIZE);
+        const bx = pos.x * currentZoom + offsetX + tokenWidth * 0.46;
+        const by = pos.y * currentZoom + offsetY - tokenHeight * 0.52;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(bx, by, badgeR, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(17,24,39,0.92)';
+        ctx.fill();
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.moveTo(bx - 4.5, by);
+        ctx.lineTo(bx - 1.2, by + 3.6);
+        ctx.lineTo(bx + 4.8, by - 3.4);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      const hexP = (h: Hex) => {
+        const c = hexCenter(h);
+        return { x: c.cx, y: c.cy };
+      };
+      const line = (a: { x: number; y: number }, b: { x: number; y: number }, color: string, width: number) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      };
+      const arrowHead = (tip: { x: number; y: number }, from: { x: number; y: number }, color: string) => {
+        const ang = Math.atan2(tip.y - from.y, tip.x - from.x);
+        const s = 7;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(tip.x, tip.y);
+        ctx.lineTo(tip.x - s * Math.cos(ang - 0.42), tip.y - s * Math.sin(ang - 0.42));
+        ctx.lineTo(tip.x - s * Math.cos(ang + 0.42), tip.y - s * Math.sin(ang + 0.42));
+        ctx.closePath();
+        ctx.fill();
+      };
+
+      for (const route of aiOverlay.routes) {
+        const dimmed = aiHoveredUnitId != null && route.unitId !== aiHoveredUnitId;
+        const color = aiHoveredUnitId === route.unitId ? '#fde047' : '#38bdf8';
+        ctx.save();
+        if (dimmed) ctx.globalAlpha = 0.25;
+        const lineW = Math.max(2, 2.2 * currentZoom);
+        const pts = route.waypoints.map(hexP);
+        for (let i = 1; i < pts.length; i++) {
+          if (pts[i - 1].x === pts[i].x && pts[i - 1].y === pts[i].y) continue;
+          line(pts[i - 1], pts[i], color, lineW);
+          arrowHead(pts[i], pts[i - 1], color);
+        }
+        // Attack markers: hex-ring + crossed swords at each attacked target hex.
+        for (const atk of route.attacks) {
+          const t = hexP(atk.targetHex);
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = Math.max(2, 2 * currentZoom);
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, Math.max(10, HEX_SIZE * currentZoom * 0.42), 0, 2 * Math.PI);
+          ctx.stroke();
+          const s = Math.max(5, 7 * currentZoom);
+          ctx.beginPath();
+          ctx.moveTo(t.x - s, t.y - s);
+          ctx.lineTo(t.x + s, t.y + s);
+          ctx.moveTo(t.x + s, t.y - s);
+          ctx.lineTo(t.x - s, t.y + s);
+          ctx.moveTo(t.x, t.y - s * 1.4);
+          ctx.lineTo(t.x, t.y + s * 1.4);
+          ctx.stroke();
+        }
+        // Ghost at the final waypoint.
+        if (pts.length > 0) {
+          const g = pts[pts.length - 1];
+          const w = Math.min(tokenWidth * 0.8, tokenWidth);
+          const h = Math.min(tokenHeight * 0.8, tokenHeight);
+          ctx.fillStyle = 'rgba(56,189,248,0.22)';
+          ctx.strokeStyle = color;
+          ctx.lineWidth = Math.max(1.5, 1.5 * currentZoom);
+          ctx.setLineDash([4 * currentZoom, 3 * currentZoom]);
+          ctx.beginPath();
+          ctx.roundRect(g.x - w / 2, g.y - h / 2, w, h, 6);
+          ctx.fill();
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        ctx.restore();
+      }
+    }
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, groundZones, aiOverlay, aiHoveredUnitId]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;

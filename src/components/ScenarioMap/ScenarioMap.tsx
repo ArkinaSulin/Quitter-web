@@ -26,6 +26,8 @@ import { usePing } from '@/hooks/usePing';
 import { canActOnUnit, canAdjustUnit, allTrueCapabilities } from '@/lib/scenarioPermissions';
 import { isUnitInteractable } from '@/lib/unitInteractions';
 import { LeftPanel } from './LeftPanel';
+import { AiPanel } from './AiPanel';
+import { AiOverlayData } from './aiTypes';
 import { ContextMenu } from './ContextMenu';
 import { UnitTooltip } from './UnitTooltip';
 import { ReplayOverlay } from './ReplayOverlay';
@@ -111,6 +113,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // reveals beyond its own hex (night vision raises it).
   const [fogOfWar, setFogOfWar] = useState(false);
   const [sightRadius, setSightRadius] = useState(DEFAULT_SIGHT_RADIUS);
+  // AI Assist (GM tool): hands teams to a plotted (preview -> execute) enemy AI.
+  const [aiAssistEnabled, setAiAssistEnabled] = useState(false);
+  // Overlay (checkmarks + preview routes) pushed by the AI panel to the canvas.
+  const [aiOverlay, setAiOverlay] = useState<AiOverlayData | null>(null);
   const [showScenarioSettings, setShowScenarioSettings] = useState(false);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
   // GM-painted map overlays (persisted in scenarios.map_data).
@@ -444,6 +450,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if ('verbose_combat' in fields) setVerboseCombat(fields.verbose_combat ?? false);
     if ('fog_of_war' in fields) setFogOfWar(!!fields.fog_of_war);
     if ('sight_radius' in fields) setSightRadius(fields.sight_radius ?? DEFAULT_SIGHT_RADIUS);
+    if ('ai_assist_enabled' in fields) setAiAssistEnabled(!!fields.ai_assist_enabled);
   }, []);
 
 
@@ -519,6 +526,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     groundZones,
     scenarioId,
     updateScreenshot,
+    aiOverlay,
+    aiHoveredUnitId: hoveredUnit?.id ?? null,
   });
 
   const {
@@ -1355,7 +1364,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let cancelled = false;
     supabase
       .from('scenarios')
-      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius')
+      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled')
       .eq('id', scenarioId)
       .single()
       .then(({ data, error }) => {
@@ -1368,6 +1377,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setVerboseCombat(data.verbose_combat ?? false);
         setFogOfWar(data.fog_of_war ?? false);
         setSightRadius(data.sight_radius ?? DEFAULT_SIGHT_RADIUS);
+        setAiAssistEnabled(data.ai_assist_enabled ?? false);
       });
     return () => { cancelled = true; };
   }, [scenarioId]);
@@ -1403,6 +1413,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }
           if (row.sight_radius !== undefined) {
             setSightRadius(row.sight_radius ?? DEFAULT_SIGHT_RADIUS);
+          }
+          if (row.ai_assist_enabled !== undefined) {
+            setAiAssistEnabled(!!row.ai_assist_enabled);
           }
           if (row.map_data !== undefined) {
             const md = row.map_data || {};
@@ -1601,6 +1614,27 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     crossAlliance: () => cancelCrossAlliance(),
   };
 
+  const aiPanelNode =
+    effectiveIsGM && aiAssistEnabled && !inReplay && !controlsLocked ? (
+      <AiPanel
+        scenarioId={scenarioId}
+        units={units}
+        alliances={alliances}
+        formationsMap={formationsMap}
+        currentTurnAlliance={currentTurnAlliance}
+        fogOfWarEnabled={fogOfWar}
+        sightRadius={sightRadius}
+        terrainCosts={terrainCosts}
+        unitMaxMP={unitMaxMP}
+        performMove={(unit, targetHex, cost, overBudget, maxMP) => performMove(unit, targetHex, cost, overBudget, maxMP)}
+        performAttack={(attacker, target, overBudget) => performAttack(attacker, target, overBudget)}
+        undo={undo}
+        onOverlayChange={setAiOverlay}
+        addMessage={addMessage}
+        addError={addError}
+      />
+    ) : null;
+
   if (loading) return <div className="w-full h-screen bg-[#0d0d1a] text-white flex items-center justify-center">Loading scenario...</div>;
   if (error) return <div className="w-full h-screen bg-[#0d0d1a] text-red-500 flex items-center justify-center">Error: {error}</div>;
 
@@ -1662,6 +1696,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             onSetZoneTemplateId={(id) => setZoneTemplate(id ? (templateById(id) ?? null) : null)}
             side={panelSide}
             onToggleSide={togglePanelSide}
+            aiPanelContent={aiPanelNode ?? undefined}
           />
         </div>
       )}
@@ -2042,6 +2077,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 <span className="block text-gray-400 text-[11px]">
                   When on, combat descriptions print every dice roll (sorted) so the damage
                   formulas can be verified from the raw faces.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={aiAssistEnabled}
+                onChange={async (e) => {
+                  await updateScenarioField(scenarioId, { ai_assist_enabled: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">AI assist</span>
+                <span className="block text-gray-400 text-[11px]">
+                  Shows the AI tab: hand teams to a plotted enemy AI (preview, then execute move by move). The GM stays in control of every action.
                 </span>
               </span>
             </label>

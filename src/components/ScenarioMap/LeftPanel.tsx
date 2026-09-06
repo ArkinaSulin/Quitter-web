@@ -53,11 +53,13 @@ interface LeftPanelProps {
   onSetTerrainBrushCost: (v: number | null) => void;
   zoneTemplateId: string | null;
   onSetZoneTemplateId: (id: string | null) => void;
+  /** Optional AI-assist tab content (rendered for the GM when AI assist is on). */
+  aiPanelContent?: React.ReactNode;
   side: 'left' | 'right';
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, zoneTemplateId, onSetZoneTemplateId, side, onToggleSide }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, zoneTemplateId, onSetZoneTemplateId, aiPanelContent, side, onToggleSide }: LeftPanelProps) {
   // Persist which tabs are open per scenario + user, so a rejoined session
   // restores the same panel layout.
   // Persist which tabs are open per scenario + user. The saved layout is restored
@@ -200,6 +202,24 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
       content: <UndoDebugPanel scenarioId={scenarioId} />,
     },
   ];
+
+  if (aiPanelContent) {
+    panels.push({
+      id: 'ai-assist',
+      label: 'AI',
+      icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={iconClasses}>
+          <rect x="5" y="8" width="14" height="10" rx="2" />
+          <path d="M12 8V5" />
+          <path d="M9 5h6" />
+          <path d="m9.5 13 .5.5" />
+          <path d="m14.5 13 .5.5" />
+        </svg>
+      ),
+      requiresGM: true,
+      content: aiPanelContent,
+    });
+  }
 
   const visiblePanels = panels.filter(p => !p.requiresGM || isGM);
 
