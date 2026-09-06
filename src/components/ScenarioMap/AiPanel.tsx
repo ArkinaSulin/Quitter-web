@@ -11,7 +11,7 @@ import { Unit, Hex, AllianceGroup, Formation, ALLIANCE_COLORS } from '@/types/ga
 import { TEAMS } from '@/components/TokenRenderer/tokenUtils';
 import { planAiMoves, AiUnitPlan, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf } from '@/lib/enemyAI';
 import { isUnitRouted } from '@/lib/unitMorale';
-import { computeReachableMap, computeMovePool } from '@/lib/moveCost';
+import { computeReachableMap, computeMovePool, computeHeroMovePool } from '@/lib/moveCost';
 import { isFormationChangeAffordable } from '@/lib/formationCost';
 import { computeOccupiedHexes, computeThreatHexes, terrainCostOf, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/components/ScenarioMap/mapGeometry';
 import { legalTargets } from '@/lib/enemyAI';
@@ -43,7 +43,7 @@ interface AiPanelProps {
   /** Map grid radius (axial ring) — routed flee stops at this rim. */
   gridRadius?: number;
   unitMaxMP: (unit: Unit) => number;
-  performMove: (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number) => Promise<unknown>;
+  performMove: (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number) => Promise<unknown>;
   performAttack: (attacker: Unit, target: Unit, overBudget: boolean) => Promise<unknown>;
   rotateUnit: (unit: Unit, dir: 'left' | 'right', maxMP: number) => Promise<unknown>;
   changeFormation: (unit: Unit, formation: string, formationsMap: Record<string, Formation>) => Promise<unknown>;
@@ -361,7 +361,13 @@ export function AiPanel({
     try {
       if (step.kind === 'move') {
         const maxMP = props.unitMaxMP(live);
-        const pool = computeMovePool(live, maxMP);
+        const hero = step.heroId ? props.units.find(o => !o.isDeleted && o.id === step.heroId) ?? null : null;
+        const heroMax = hero ? props.unitMaxMP(hero) : undefined;
+        let pool = computeMovePool(live, maxMP);
+        if (hero && heroMax) {
+          const heroPool = hero.isHero ? computeHeroMovePool(hero, heroMax) : computeMovePool(hero, heroMax);
+          pool = Math.min(pool, heroPool);
+        }
         const occ = computeOccupiedHexes(props.units, live.id);
         const threat = computeThreatHexes(props.units, live.id, props.alliances, props.formationsMap);
         const costOf = (q: number, r: number) => terrainCostOf(props.terrainCosts, q, r);
@@ -370,7 +376,7 @@ export function AiPanel({
           addMessage(`${live.unitName} can no longer reach its plotted hex — skipped`);
         } else {
           setStatusText(`${live.unitName} → moves to (${step.to.q}, ${step.to.r})`);
-          await props.performMove(live, step.to, entry.cost, false, maxMP);
+          await props.performMove(live, step.to, entry.cost, false, maxMP, hero, heroMax);
         }
       } else if (step.kind === 'attack') {
         const target = props.units.find(u => u.id === step.targetId);

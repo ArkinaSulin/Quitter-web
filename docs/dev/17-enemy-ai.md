@@ -41,8 +41,12 @@ A unit may be handed to the AI **only when all** of:
 
 - not `isDeleted`, not `hidden`, and `currentUnitHp > 0` (killed/downed out) —
   *and* it never targets deleted/killed/hidden units either;
-- not an attached hero and not the host of an attached hero (split-accounting
-  is out of v0);
+- not an attached hero token (the hero rides with its host). A host **with an
+  attached hero IS eligible**: moves are combined (host + hero both pay via the
+  real accounting, capped by the lower pool) and the hero follows the host.
+  A **front-hero host fights as a normal unit** (its no-AGR perk is applied by
+  combat itself); a **back (protected) hero host is forced to skirmish** — it
+  stands off, adopts Scattered near contact, and never charges into melee;
 - **Routed units ARE eligible** — the planner flees them as far from the
   nearest hostile as their full move allows (`chooseFleeHex`), never attacking;
 - not in the DM's per-unit **opt-out** set (`excludeUnitIds` — clicking the
@@ -65,10 +69,11 @@ Deterministic, pure, snapshot-in/snapshot-out:
   free for Hero/Scattered/Routed; no about-turns — org levels are never dropped)
   and **change formation** (real `applyFormationChange` accounting) — so
   previews can show curved turn glyphs and a formation chip.
-- **Doctrine is automatic by weapon type**: ranged-only units **stand off**
-  (keep a gap from melee enemies, adopt **Scattered** when contact looms and it
-  is affordable) and back away instead of swinging fists; melee/hybrid units
-  **engage**.
+- **Doctrine is automatic by weapon type** (modulated by attached heroes):
+  ranged-only units **stand off** (keep a gap from melee enemies, adopt
+  **Scattered** when contact looms and it is affordable) and back away instead
+  of swinging fists; melee/hybrid units **engage**. A host with a
+  **back-attached hero** is forced to skirmish regardless of its weapons.
 - **Ranged targets pick the biggest threat first**: an enemy **within 2 hexes**,
   else a **Phalanx**, else a **Close Order** unit; expected damage (row/attack-cap
   math, hit chance incl. disadvantage, mean damage capped at troop HP) breaks
