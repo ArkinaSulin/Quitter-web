@@ -184,6 +184,16 @@ describe('enemyAI planAiMoves', () => {
     expect(plannedIds).toEqual(['u1']);
   });
 
+  it('excluded units are never plotted while teammates still are', () => {
+    const aiA = mk({ id: 'u1', team: 'blue', hex: hex(0, 0), facing: 0, actionsAvailable: 2 });
+    const aiB = mk({ id: 'u2', team: 'blue', hex: hex(1, 0), facing: 0, actionsAvailable: 2 });
+    const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, -1), facing: 2 });
+    const all = planAiMoves(ctxOf([aiA, aiB, foe], ['blue'], 'enemy', { excludeUnitIds: ['u2'] }));
+    const ids = all.map(p => p.unitId);
+    expect(ids).toContain('u1');
+    expect(ids).not.toContain('u2');
+  });
+
   it('moves never leave the unit\'s own team or target allies, and respect the action cap', () => {
     const ai = mk({ id: 'u1', team: 'blue', hex: hex(0, 0), facing: 0, actionsAvailable: 1, movementPoints: 2 });
     const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, 4), facing: 2 });

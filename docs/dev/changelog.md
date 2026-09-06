@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## AI assist: per-unit opt-out (click ✓ to exclude) — 2026-09-06
+**Files:** `src/components/ScenarioMap/{ScenarioMap,AiPanel,aiTypes,useCanvasDraw}.tsx`, `src/lib/enemyAI/planner.ts` + `planner.test.ts`, docs (`docs/dev/17-enemy-ai.md`, changelog, player-manual §12)
+
+- AI selection state lifted to ScenarioMap (`aiTeams`, `aiExcluded`, `aiBusy`); AiPanel is controlled. A **plain click on an AI-eligible token toggles its opt-out** (canvas `onUnitClick` — drags untouched; clicks ignored while Execute runs; reaction-arming takes precedence). Excluded-but-eligible units draw a **grey opt-out badge** in place of the ✓.
+- Opt-outs clear at each End Turn (fresh selection per alliance activation); teams persist. Opt-out or team changes invalidate the current idle plot.
+- Planner gains `excludeUnitIds` and skips excluded units (+ test). 503 tests, `tsc --noEmit` clean.
+
 ## AI assist (GM plotting tool) — 2026-09-06
 **Files:** `supabase/migrations/076_ai_assist.sql` (new), `src/lib/enemyAI/{planner,index}.ts` + `planner.test.ts` (new), `src/components/ScenarioMap/{AiPanel.tsx, aiTypes.ts}` (new), `src/components/ScenarioMap/{LeftPanel,useCanvasDraw,ScenarioMap}.tsx`, `docs/dev/17-enemy-ai.md`, docs/changelog + player-manual (§12 + S-33)
 

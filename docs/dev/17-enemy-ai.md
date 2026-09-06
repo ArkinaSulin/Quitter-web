@@ -9,7 +9,9 @@
 A Scenario-Settings toggle (`scenarios.ai_assist_enabled`, migration 076)
 reveals an **AI** tab in the GM's left panel. The GM drags teams into an
 **AI control box**; every eligible unit on those teams (for the active
-alliance) gets a **checkmark** on the map. **Preview** runs the pure planner
+alliance) gets a **checkmark** on the map — a plain **click on a checked token
+toggles that unit's opt-out** (grey badge), so individual units can be
+excluded from the plot. **Preview** runs the pure planner
 and draws the plot (route polylines, crossed-swords on attack targets, ghost
 at the end hex). **Reset** clears it — nothing is written until **Execute**.
 Execute replays the plan **through the normal action path** (`performMove` /
@@ -42,6 +44,8 @@ A unit may be handed to the AI **only when all** of:
 - not an attached hero and not the host of an attached hero (split-accounting
   is out of v0);
 - not Routed (the rout flow already handles those);
+- not in the DM's per-unit **opt-out** set (`excludeUnitIds` — clicking the
+  token toggles it; opt-outs clear at each End Turn);
 - its **team is in the AI control box** AND its **alliance equals the current
   turn alliance** (`currentTurnAlliance`); free play (null turn) never plots;
 - `actionsAvailable >= 1`.

@@ -44,6 +44,8 @@ export interface AiPlanContext {
   formations: Record<string, Formation>;
   /** Teams handed to the AI for this plot. */
   teams: string[];
+  /** Units the DM opted out of AI control (kept on the board, never plotted). */
+  excludeUnitIds?: string[];
   /** Current turn's alliance (null = free play — never plot). */
   activeAlliance: AllianceGroup | null;
   /** Fog reveal for the AI side (hex keys). null/undefined = no fog. */
@@ -298,7 +300,10 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
   const hostedBy = new Set<string>();
   for (const u of units) if (u.attachedToUnitId) hostedBy.add(u.attachedToUnitId);
 
-  const controllable = units.filter(u => isAiControllable(u, ctx, hostedBy));
+  const controllable = units.filter(u => {
+    if (ctx.excludeUnitIds && ctx.excludeUnitIds.includes(u.id)) return false;
+    return isAiControllable(u, ctx, hostedBy);
+  });
   if (controllable.length === 0) return [];
 
   // Work on copies: as each unit is plotted we advance its simulated position

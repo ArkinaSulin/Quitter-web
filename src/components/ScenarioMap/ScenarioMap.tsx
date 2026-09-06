@@ -28,6 +28,7 @@ import { isUnitInteractable } from '@/lib/unitInteractions';
 import { LeftPanel } from './LeftPanel';
 import { AiPanel } from './AiPanel';
 import { AiOverlayData } from './aiTypes';
+import { isAiControllable } from '@/lib/enemyAI';
 import { ContextMenu } from './ContextMenu';
 import { UnitTooltip } from './UnitTooltip';
 import { ReplayOverlay } from './ReplayOverlay';
@@ -115,9 +116,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [sightRadius, setSightRadius] = useState(DEFAULT_SIGHT_RADIUS);
   // AI Assist (GM tool): hands teams to a plotted (preview -> execute) enemy AI.
   const [aiAssistEnabled, setAiAssistEnabled] = useState(false);
+  // AI selection state lives here so canvas clicks can toggle per-unit opt-out.
+  const [aiTeams, setAiTeams] = useState<string[]>([]);
+  const [aiExcluded, setAiExcluded] = useState<Record<string, boolean>>({});
+  const [aiBusy, setAiBusy] = useState(false);
   // Overlay (checkmarks + preview routes) pushed by the AI panel to the canvas.
   const [aiOverlay, setAiOverlay] = useState<AiOverlayData | null>(null);
   const [showScenarioSettings, setShowScenarioSettings] = useState(false);
+
+  // AI opt-outs reset at each turn change — every alliance activation starts fresh.
+  const aiLastTurnKeyRef = useRef('');
+  useEffect(() => {
+    const key = `${currentTurnAlliance ?? 'fp'}:${turnNumber}`;
+    if (aiLastTurnKeyRef.current && aiLastTurnKeyRef.current !== key) setAiExcluded({});
+    aiLastTurnKeyRef.current = key;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTurnAlliance, turnNumber]);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
   // GM-painted map overlays (persisted in scenarios.map_data).
   const [terrainCosts, setTerrainCosts] = useState<TerrainCosts>({});
@@ -1090,6 +1104,24 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // Clicking an archer's reaction button arms that archer's reaction mode.
       if (!unit.isDeleted && !unit.archerReactionUsed && reactionOffers.has(unit.id) && canReactToUnit(unit)) {
         setReactionMode({ archer: unit });
+        return;
+      }
+      // AI assist: a plain click on an AI-eligible token toggles its opt-out
+      // (✓ included <-> grey "skipped" badge). Clicks are ignored mid-Execute.
+      if (effectiveIsGM && aiAssistEnabled && !inReplay && !aiBusy) {
+        const aiHostedBy = new Set<string>();
+        for (const u of units) if (u.attachedToUnitId && !u.isDeleted) aiHostedBy.add(u.attachedToUnitId);
+        if (
+          !unit.isDeleted &&
+          isAiControllable(unit, { alliances, teams: aiTeams, activeAlliance: currentTurnAlliance }, aiHostedBy)
+        ) {
+          setAiExcluded(prev => {
+            const next = { ...prev };
+            if (next[unit.id]) delete next[unit.id];
+            else next[unit.id] = true;
+            return next;
+          });
+        }
       }
     },
     onHexRightClick: (hex, unit, clientX, clientY) => {
@@ -1621,6 +1653,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         units={units}
         alliances={alliances}
         formationsMap={formationsMap}
+        aiTeams={aiTeams}
+        onSetAiTeams={setAiTeams}
+        aiExcluded={aiExcluded}
         currentTurnAlliance={currentTurnAlliance}
         fogOfWarEnabled={fogOfWar}
         sightRadius={sightRadius}
@@ -1630,6 +1665,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         performAttack={(attacker, target, overBudget) => performAttack(attacker, target, overBudget)}
         undo={undo}
         onOverlayChange={setAiOverlay}
+        onBusyChange={setAiBusy}
         addMessage={addMessage}
         addError={addError}
       />

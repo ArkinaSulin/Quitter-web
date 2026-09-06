@@ -29,6 +29,11 @@ interface AiPanelProps {
   units: Unit[];
   alliances: Record<string, AllianceGroup>;
   formationsMap: Record<string, Formation>;
+  /** Teams handed to the AI (owned by ScenarioMap so canvas clicks can toggle). */
+  aiTeams: string[];
+  onSetAiTeams: (teams: string[]) => void;
+  /** Per-unit opt-out map (owned by ScenarioMap). */
+  aiExcluded: Record<string, boolean>;
   currentTurnAlliance: AllianceGroup | null;
   fogOfWarEnabled: boolean;
   sightRadius: number;
@@ -38,6 +43,7 @@ interface AiPanelProps {
   performAttack: (attacker: Unit, target: Unit, overBudget: boolean) => Promise<unknown>;
   undo: () => Promise<unknown>;
   onOverlayChange: (o: AiOverlayData | null) => void;
+  onBusyChange?: (busy: boolean) => void;
   addMessage: (text: string) => void;
   addError: (text: string) => void;
 }
@@ -72,6 +78,9 @@ export function AiPanel({
   units,
   alliances,
   formationsMap,
+  aiTeams,
+  onSetAiTeams,
+  aiExcluded,
   currentTurnAlliance,
   fogOfWarEnabled,
   sightRadius,
@@ -81,13 +90,13 @@ export function AiPanel({
   performAttack,
   undo,
   onOverlayChange,
+  onBusyChange,
   addMessage,
   addError,
 }: AiPanelProps) {
   const propsRef = useRef<AiPanelProps | null>(null);
-  propsRef.current = { scenarioId, units, alliances, formationsMap, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, unitMaxMP, performMove, performAttack, undo, onOverlayChange, addMessage, addError };
+  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, unitMaxMP, performMove, performAttack, undo, onOverlayChange, onBusyChange, addMessage, addError };
 
-  const [aiTeams, setAiTeams] = useState<string[]>([]);
   const [plans, setPlans] = useState<AiUnitPlan[] | null>(null);
   const [remaining, setRemaining] = useState<ExecUnit[] | null>(null); // active during Execute
   const [stage, setStage] = useState<'idle' | 'running' | 'paused'>('idle');
@@ -102,10 +111,10 @@ export function AiPanel({
   const autoRef = useRef(false);
 
   const toggleTeam = (team: string) =>
-    setAiTeams(prev => (prev.includes(team) ? prev.filter(t => t !== team) : [...prev, team]));
+    onSetAiTeams(aiTeams.includes(team) ? aiTeams.filter(t => t !== team) : [...aiTeams, team]);
 
-  // Eligible (checkmark) units: AI teams on the ACTIVE turn's alliance.
-  const checked = useMemo(() => {
+  // Eligible units: AI teams on the ACTIVE turn's alliance (before opt-out).
+  const eligible = useMemo(() => {
     const hostedBy = new Set<string>();
     for (const u of units) if (u.attachedToUnitId && !u.isDeleted) hostedBy.add(u.attachedToUnitId);
     return units
@@ -113,13 +122,32 @@ export function AiPanel({
       .map(u => u.id);
   }, [units, alliances, aiTeams, currentTurnAlliance]);
 
-  // Publish the overlay whenever the checked set or plotted routes change.
+  // Report execution busy-ness up so ScenarioMap ignores canvas toggles mid-run.
   useEffect(() => {
+    onBusyChange?.(stage === 'running' || stage === 'paused');
+  }, [stage, onBusyChange]);
+
+  // Opt-out or team changes invalidate the current idle plot.
+  useEffect(() => {
+    if (stage === 'idle') {
+      setPlans(null);
+      setRemaining(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiTeams, aiExcluded]);
+
+  // Publish the overlay whenever the eligible set, opt-outs, or routes change.
+  useEffect(() => {
+    const excludedIds = eligible.filter(id => aiExcluded[id]);
     const active: { unitId: string; steps: AiStep[] }[] = remaining ?? (plans ?? []);
     const routes = buildRoutes(units, active);
-    onOverlayChange({ checkedUnitIds: checked, routes });
+    onOverlayChange({
+      checkedUnitIds: eligible.filter(id => !aiExcluded[id]),
+      excludedUnitIds: excludedIds,
+      routes,
+    });
     return () => onOverlayChange(null);
-  }, [units, checked, plans, remaining, phaseTick, onOverlayChange]);
+  }, [units, eligible, aiExcluded, plans, remaining, phaseTick, onOverlayChange]);
 
   const activeGroup = currentTurnAlliance;
   const canPlot = activeGroup !== null && aiTeams.length > 0 && stage === 'idle';
@@ -154,6 +182,7 @@ export function AiPanel({
       alliances,
       formations: formationsMap,
       teams: aiTeams,
+      excludeUnitIds: Object.keys(aiExcluded),
       activeAlliance: activeGroup,
       visibleHexes: fogOfWarEnabled ? visibleHexes : null,
       terrainCosts,
@@ -381,12 +410,12 @@ export function AiPanel({
         </div>
         <button
           className={`${btn} bg-gray-700 hover:bg-gray-600 text-gray-100`}
-          onClick={() => setAiTeams(TEAMS.slice())}
+          onClick={() => onSetAiTeams(TEAMS.slice())}
           title="Put every team in the AI control box"
         >
           Select all
         </button>
-        <button className={`${btn} bg-gray-800 hover:bg-gray-700 text-gray-300`} onClick={() => setAiTeams([])} title="Empty the AI control box">
+        <button className={`${btn} bg-gray-800 hover:bg-gray-700 text-gray-300`} onClick={() => onSetAiTeams([])} title="Empty the AI control box">
           Clear
         </button>
       </div>
@@ -429,7 +458,7 @@ export function AiPanel({
           onDrop={e => {
             e.preventDefault();
             const team = e.dataTransfer.getData('text/plain');
-            if (team && !inBox.has(team)) setAiTeams(prev => [...prev, team]);
+            if (team && !inBox.has(team)) onSetAiTeams([...aiTeams, team]);
           }}
         >
           {aiTeams.length === 0 ? (
@@ -457,9 +486,9 @@ export function AiPanel({
           )}
         </div>
 
-      {checked.length > 0 && (
+      {eligible.length > 0 && (
         <p className="text-emerald-300/90 text-[11px]">
-          {checked.length} unit(s) checked — they wear the ✓ on the map.
+          {eligible.filter(id => !aiExcluded[id]).length} checked · {eligible.filter(id => aiExcluded[id]).length} skipped — click a ✓ token to toggle.
         </p>
       )}
 

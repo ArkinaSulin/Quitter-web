@@ -295,9 +295,10 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     }
 
     // AI assist overlay — drawn last so the DM always reads it. Checkmarks on
-    // AI-selected units; preview/execute routes (polyline + crossed swords for
-    // attacks + a ghost at the final hex). Routes dim unless hovered.
-    if (aiOverlay && (aiOverlay.checkedUnitIds.length > 0 || aiOverlay.routes.length > 0)) {
+    // AI-selected units, grey opt-out badges on AI-excluded-but-eligible units,
+    // and preview/execute routes (polyline + crossed swords for attacks + a
+    // ghost at the final hex). Routes dim unless hovered.
+    if (aiOverlay && (aiOverlay.checkedUnitIds.length > 0 || aiOverlay.excludedUnitIds.length > 0 || aiOverlay.routes.length > 0)) {
       const byId = new Map(displayUnits.map(u => [u.id, u]));
       // Checkmarks: fixed on-screen size (does not grow with zoom).
       const badgeR = 9;
@@ -323,6 +324,30 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.moveTo(bx - 4.5, by);
         ctx.lineTo(bx - 1.2, by + 3.6);
         ctx.lineTo(bx + 4.8, by - 3.4);
+        ctx.stroke();
+        ctx.restore();
+      }
+      // Opt-out badge (AI-eligible unit the DM excluded): grey circle + minus.
+      for (const id of aiOverlay.excludedUnitIds ?? []) {
+        const u = byId.get(id);
+        if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
+        const pos = hexToPixel(u.hex, HEX_SIZE);
+        const bx = pos.x * currentZoom + offsetX + tokenWidth * 0.46;
+        const by = pos.y * currentZoom + offsetY - tokenHeight * 0.52;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(bx, by, badgeR, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(17,24,39,0.92)';
+        ctx.fill();
+        ctx.strokeStyle = '#9ca3af';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.strokeStyle = '#9ca3af';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(bx - 4, by);
+        ctx.lineTo(bx + 4, by);
         ctx.stroke();
         ctx.restore();
       }

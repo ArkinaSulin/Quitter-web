@@ -15,6 +15,8 @@ export interface AiRouteVisual {
 export interface AiOverlayData {
   /** Units wearing the "selected for AI" checkmark. */
   checkedUnitIds: string[];
+  /** Eligible units the DM opted OUT of AI control (grey badge). */
+  excludedUnitIds: string[];
   /** Preview/execute routes to draw (empty when idle). */
   routes: AiRouteVisual[];
 }

@@ -998,7 +998,9 @@ player's reaction resolve, then re-Preview against the changed board.
 Everything is undoable unit-by-unit (Ctrl+Z), and **Undo Execute** rewinds the
 last batch. Units the AI can't sensibly move keep their actions for you. AI
 assist never moves hidden, dead or downed units, never attacks what its side
-can't see, and only acts on the marked team's own turn.
+can't see, and only acts on the marked team's own turn. Click a ✓ token to
+exclude that one unit (it switches to a grey badge) — click again to include
+it; exclusions reset at each End Turn.
 
 ### During play
 
