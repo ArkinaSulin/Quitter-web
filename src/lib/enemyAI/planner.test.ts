@@ -194,6 +194,22 @@ describe('enemyAI planAiMoves', () => {
     expect(ids).not.toContain('u2');
   });
 
+  it('routed AI units flee as far from hostiles as possible (never attack)', () => {
+    const routed = mk({ id: 'r1', team: 'blue', hex: hex(0, 0), facing: 0, actionsAvailable: 1, movementPoints: 3, currentFormation: 'Routed' });
+    const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, 2), facing: 2 });
+    const startDist = Math.max(Math.abs(0), Math.abs(2), Math.abs(-2));
+    const plans = planAiMoves(ctxOf([routed, foe], ['blue'], 'enemy'));
+    expect(plans.length).toBe(1);
+    const steps = plans[0].steps;
+    expect(steps.length).toBeGreaterThan(0);
+    expect(steps.every(s => s.kind === 'move')).toBe(true);
+    const last = steps[steps.length - 1];
+    if (last.kind === 'move') {
+      const endDist = Math.max(Math.abs(last.to.q), Math.abs(last.to.r), Math.abs(-last.to.q - last.to.r));
+      expect(endDist).toBeGreaterThan(startDist);
+    }
+  });
+
   it('moves never leave the unit\'s own team or target allies, and respect the action cap', () => {
     const ai = mk({ id: 'u1', team: 'blue', hex: hex(0, 0), facing: 0, actionsAvailable: 1, movementPoints: 2 });
     const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, 4), facing: 2 });

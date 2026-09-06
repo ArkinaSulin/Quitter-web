@@ -10,6 +10,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, ALLIANCE_COLORS } from '@/types/gameProtocol';
 import { TEAMS } from '@/components/TokenRenderer/tokenUtils';
 import { planAiMoves, AiUnitPlan, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf } from '@/lib/enemyAI';
+import { isUnitRouted } from '@/lib/unitMorale';
 import { computeReachableMap, computeMovePool } from '@/lib/moveCost';
 import { computeOccupiedHexes, computeThreatHexes, terrainCostOf, TerrainCosts } from '@/components/ScenarioMap/mapGeometry';
 import { legalTargets } from '@/lib/enemyAI';
@@ -364,8 +365,8 @@ export function AiPanel({
         const legal = target && !target.isDeleted && !target.hidden && (target.currentUnitHp ?? 0) > 0
           ? legalTargets(live, [target], { alliances: props.alliances, formations: props.formationsMap, visibleHexes: props.fogOfWarEnabled ? visibleHexesRef.current : null })
           : [];
-        if (!target || legal.length === 0 || (live.actionsAvailable ?? 0) < 1 || (live.attacksUsed ?? 0) >= cap) {
-          addMessage(`${live.unitName} can no longer attack its target — skipped`);
+        if (isUnitRouted(live) || !target || legal.length === 0 || (live.actionsAvailable ?? 0) < 1 || (live.attacksUsed ?? 0) >= cap) {
+          addMessage(isUnitRouted(live) ? `${live.unitName} is routing — it cannot attack` : `${live.unitName} can no longer attack its target — skipped`);
         } else {
           setStatusText(`${live.unitName} → attacks ${target.unitName}`);
           await props.performAttack(live, target, false);

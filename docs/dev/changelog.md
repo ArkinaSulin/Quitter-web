@@ -1,5 +1,10 @@
 # QuiTTER Changelog
 
+## AI assist: routed units flee as far as possible — 2026-09-06
+**Files:** `src/lib/enemyAI/planner.ts` + `planner.test.ts`, `src/components/ScenarioMap/AiPanel.tsx`, docs (`docs/dev/17-enemy-ai.md`, changelog)
+
+- Routed units on AI teams are now plotted: instead of being skipped they **run away** — each step lands on the reachable hex strictly farthest from the nearest hostile (enemy kill-zone landings penalized), spending all their actions; they never attack. `isAiControllable` no longer excludes Routed; execution guards skip a routed unit's attack step ("X is routing — it cannot attack"). +1 test. 504 tests, `tsc --noEmit` clean.
+
 ## AI assist: per-unit opt-out (click ✓ to exclude) — 2026-09-06
 **Files:** `src/components/ScenarioMap/{ScenarioMap,AiPanel,aiTypes,useCanvasDraw}.tsx`, `src/lib/enemyAI/planner.ts` + `planner.test.ts`, docs (`docs/dev/17-enemy-ai.md`, changelog, player-manual §12)
 

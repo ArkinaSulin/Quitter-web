@@ -43,7 +43,8 @@ A unit may be handed to the AI **only when all** of:
   *and* it never targets deleted/killed/hidden units either;
 - not an attached hero and not the host of an attached hero (split-accounting
   is out of v0);
-- not Routed (the rout flow already handles those);
+- **Routed units ARE eligible** — the planner flees them as far from the
+  nearest hostile as their full move allows (`chooseFleeHex`), never attacking;
 - not in the DM's per-unit **opt-out** set (`excludeUnitIds` — clicking the
   token toggles it; opt-outs clear at each End Turn);
 - its **team is in the AI control box** AND its **alliance equals the current
@@ -68,6 +69,9 @@ Deterministic, pure, snapshot-in/snapshot-out:
   an over-budget (soft-enforcement) action**.
 - Scoring favors landing hexes that enable an attack now, then closeness to
   the nearest enemy; landing in an enemy zone of control is penalized.
+- Routed units instead **flee**: each step picks the reachable hex strictly
+  farthest from the nearest hostile (enemy kill-zone landings penalized), for
+  as many actions as they have — they never attack.
 
 ## Execute driver (in `AiPanel`)
 

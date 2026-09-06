@@ -6,7 +6,7 @@
 // Design rules (v0):
 //  - Gated out of AI control: deleted, killed (HP <= 0), hidden units, hero-
 //    hosted/attached units, and units whose alliance is not the active turn.
-//    Routed units are left to the DM (they are handled by the rout flow).
+//    Routed units ARE plotted — they flee as far from hostiles as possible.
 //  - A unit only ever attacks adversarial alliances (friendly<->enemy; neutral
 //    is never auto-attacked or auto-driven). No friendly fire by construction.
 //  - Plans stay strictly within budget (never a soft-enforcement prompt): moves
@@ -70,7 +70,8 @@ export function enemyGroupsOf(group: AllianceGroup): Set<AllianceGroup> {
   return new Set<AllianceGroup>();
 }
 
-/** True when a unit is eligible to be handed to the AI at this moment. */
+/** True when a unit is eligible to be handed to the AI at this moment.
+ *  Routed units ARE eligible — the planner flees them away from hostiles. */
 export function isAiControllable(
   unit: Unit,
   ctx: Pick<AiPlanContext, 'alliances' | 'teams' | 'activeAlliance'>,
@@ -81,7 +82,6 @@ export function isAiControllable(
   if ((unit.currentUnitHp ?? 0) <= 0) return false; // killed / downed
   if (unit.attachedToUnitId) return false; // attached hero rides its host
   if (hostedBy.has(unit.id)) return false; // host of an attached hero (split-accounting)
-  if (isUnitRouted(unit)) return false; // rout flow handles these
   if (!ctx.teams.includes(unit.team)) return false;
   if (ctx.activeAlliance === null) return false; // free play — no plotting
   if (allianceOf(unit, ctx.alliances) !== ctx.activeAlliance) return false;
@@ -290,6 +290,44 @@ function buildMoveOption(
   return { pick, path: pick.path, updated: { ...u, hex: pick.to, movementPointsAvailable: applied.movementPointsAvailable, actionsAvailable: applied.actionsAvailable } };
 }
 
+/** Best retreat step for a ROUTED unit: the reachable hex farthest from the
+ *  nearest hostile (ties → away from enemy kill zones, cheaper path first).
+ *  Returns null when nothing is strictly farther than its current hex. */
+function chooseFleeHex(
+  u: Unit,
+  working: Unit[],
+  enemies: Unit[],
+  ctx: AiPlanContext,
+  effMax: (x: Unit) => number,
+  costOfHex: ((q: number, r: number) => number) | undefined,
+): { pick: PlannedMoveOption; updated: Unit; path: Hex[] } | null {
+  const foes = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
+  if (foes.length === 0) return null;
+  const occ = new Set<string>();
+  for (const w of working) if (!w.isDeleted && w.id !== u.id) occ.add(hexKeyOf(w.hex));
+  const pool = computeMovePool(u, effMax(u));
+  if (pool < 1) return null;
+  const threat = computeThreatHexes(working, u.id, ctx.alliances, ctx.formations);
+  const reach = computeReachableMap(u, pool, occ, threat, costOfHex);
+  const startDist = nearestEnemyDist(u.hex, foes);
+  const candidates: PlannedMoveOption[] = [];
+  reach.forEach((entry, key) => {
+    if (entry.needsTurn) return;
+    const dest = entry.path[entry.path.length - 1];
+    if (!dest) return;
+    const d = nearestEnemyDist(dest, foes);
+    if (d <= startDist) return; // only strictly safer hexes
+    const threatPenalty = threat.has(key) ? 4 : 0;
+    const score = d * 10 - threatPenalty - entry.cost;
+    candidates.push({ to: dest, path: entry.path, cost: entry.cost, score, canAttack: false, attackScore: 0 });
+  });
+  if (candidates.length === 0) return null;
+  let best = candidates[0];
+  for (const c of candidates) if (c.score > best.score) best = c;
+  const applied = applyMoveCost(u, best.cost, effMax(u));
+  return { pick: best, path: best.path, updated: { ...u, hex: best.to, movementPointsAvailable: applied.movementPointsAvailable, actionsAvailable: applied.actionsAvailable } };
+}
+
 /**
  * Build the plot for the current turn's AI units. Mutates nothing — works on
  * copies so later callers (and tests) see the same snapshot.
@@ -328,6 +366,18 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       if ((u.actionsAvailable ?? 0) < 1) break;
       if ((u.attacksUsed ?? 0) >= cap) break;
       const from = u.hex;
+
+      // Routed units can't fight — run as far from hostiles as possible.
+      if (isUnitRouted(u)) {
+        const flee = chooseFleeHex(u, working, enemies, ctx, effMax, costOfHex);
+        if (!flee) break;
+        byId.set(u.id, flee.updated);
+        const wIdx = working.findIndex(w => w.id === u.id);
+        if (wIdx >= 0) working[wIdx] = flee.updated;
+        u = flee.updated;
+        plan.steps.push({ kind: 'move', unitId: u.id, from, to: flee.pick.to, path: flee.path, cost: flee.pick.cost });
+        continue;
+      }
 
       // Prefer the best legal attack available right now.
       const legal = legalTargets(u, enemies, ctx);
