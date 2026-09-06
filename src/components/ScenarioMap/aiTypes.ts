@@ -9,6 +9,10 @@ export interface AiRouteVisual {
   waypoints: Hex[];
   /** Attacks plotted along the route: hex the attacker fires from → target hex. */
   attacks: { from: Hex; targetHex: Hex }[];
+  /** 60° turns plotted along the route (drawn as curved glyphs). */
+  turns?: { hex: Hex; dir: 'left' | 'right' }[];
+  /** Formation the unit will adopt first (drawn as a chip). */
+  formation?: string;
 }
 
 /** Everything the canvas needs to draw for the AI assist UI. */

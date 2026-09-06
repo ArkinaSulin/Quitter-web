@@ -12,6 +12,7 @@ import { TEAMS } from '@/components/TokenRenderer/tokenUtils';
 import { planAiMoves, AiUnitPlan, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf } from '@/lib/enemyAI';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { computeReachableMap, computeMovePool } from '@/lib/moveCost';
+import { isFormationChangeAffordable } from '@/lib/formationCost';
 import { computeOccupiedHexes, computeThreatHexes, terrainCostOf, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/components/ScenarioMap/mapGeometry';
 import { legalTargets } from '@/lib/enemyAI';
 import { unitAttackCap } from '@/lib/attackCap';
@@ -44,6 +45,8 @@ interface AiPanelProps {
   unitMaxMP: (unit: Unit) => number;
   performMove: (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number) => Promise<unknown>;
   performAttack: (attacker: Unit, target: Unit, overBudget: boolean) => Promise<unknown>;
+  rotateUnit: (unit: Unit, dir: 'left' | 'right', maxMP: number) => Promise<unknown>;
+  changeFormation: (unit: Unit, formation: string, formationsMap: Record<string, Formation>) => Promise<unknown>;
   undo: () => Promise<unknown>;
   onOverlayChange: (o: AiOverlayData | null) => void;
   onBusyChange?: (busy: boolean) => void;
@@ -64,11 +67,15 @@ function buildRoutes(
     if (!unit) continue;
     const waypoints: Hex[] = [unit.hex];
     const attacks: { from: Hex; targetHex: Hex }[] = [];
+    const turns: { hex: Hex; dir: 'left' | 'right' }[] = [];
+    let formation: string | undefined;
     for (const s of p.steps) {
       if (s.kind === 'move') waypoints.push(s.to);
       if (s.kind === 'attack') attacks.push({ from: s.from, targetHex: s.target });
+      if (s.kind === 'turn') turns.push({ hex: s.from, dir: s.dir });
+      if (s.kind === 'formation') formation = s.formation;
     }
-    routes.push({ unitId: p.unitId, waypoints, attacks });
+    routes.push({ unitId: p.unitId, waypoints, attacks, turns, formation });
   }
   return routes;
 }
@@ -92,6 +99,8 @@ export function AiPanel({
   unitMaxMP,
   performMove,
   performAttack,
+  rotateUnit,
+  changeFormation,
   undo,
   onOverlayChange,
   onBusyChange,
@@ -99,7 +108,7 @@ export function AiPanel({
   addError,
 }: AiPanelProps) {
   const propsRef = useRef<AiPanelProps | null>(null);
-  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, gridRadius, unitMaxMP, performMove, performAttack, undo, onOverlayChange, onBusyChange, addMessage, addError };
+  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, gridRadius, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, undo, onOverlayChange, onBusyChange, addMessage, addError };
 
   const [plans, setPlans] = useState<AiUnitPlan[] | null>(null);
   const [remaining, setRemaining] = useState<ExecUnit[] | null>(null); // active during Execute
@@ -374,6 +383,28 @@ export function AiPanel({
         } else {
           setStatusText(`${live.unitName} → attacks ${target.unitName}`);
           await props.performAttack(live, target, false);
+        }
+      } else if (step.kind === 'turn') {
+        const freeRotate = live.isHero || live.currentFormation === 'Scattered' || isUnitRouted(live);
+        if (!freeRotate && (live.movementPointsAvailable ?? 0) < 1 && (live.actionsAvailable ?? 0) < 1) {
+          addMessage(`${live.unitName} cannot afford the turn — skipped`);
+        } else {
+          setStatusText(`${live.unitName} → turns ${step.dir}`);
+          await props.rotateUnit(live, step.dir, props.unitMaxMP(live));
+        }
+      } else if (step.kind === 'formation') {
+        const f = step.formation;
+        if (live.currentFormation === f) {
+          // Already there (e.g. a rally already handled by the DM).
+        } else if (isUnitRouted(live)) {
+          addMessage(`${live.unitName} is routing — formation change skipped`);
+        } else if (!(live.formationAvailability ?? []).includes(f)) {
+          addMessage(`${live.unitName} cannot adopt ${f} — skipped`);
+        } else if (!isFormationChangeAffordable(live, props.unitMaxMP(live))) {
+          addMessage(`${live.unitName} cannot afford ${f} — skipped`);
+        } else {
+          setStatusText(`${live.unitName} → forms ${f}`);
+          await props.changeFormation(live, f, props.formationsMap);
         }
       }
     } catch (err) {

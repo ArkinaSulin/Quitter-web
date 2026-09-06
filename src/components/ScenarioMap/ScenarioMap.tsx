@@ -1664,6 +1664,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         unitMaxMP={unitMaxMP}
         performMove={(unit, targetHex, cost, overBudget, maxMP) => performMove(unit, targetHex, cost, overBudget, maxMP)}
         performAttack={(attacker, target, overBudget) => performAttack(attacker, target, overBudget)}
+        rotateUnit={(unit, dir, maxMP) => rotateUnit(unit, dir, maxMP)}
+        changeFormation={(unit, formation, fm) => changeFormation(unit, formation, fm)}
         undo={undo}
         onOverlayChange={setAiOverlay}
         onBusyChange={setAiBusy}

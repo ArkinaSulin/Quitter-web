@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## AI assist: smarter planner (v2) — turns, doctrines, target priority — 2026-09-06
+**Files:** `src/lib/enemyAI/planner.ts` + `planner.test.ts`, `src/components/ScenarioMap/{AiPanel,ScenarioMap,aiTypes,useCanvasDraw}.tsx`, docs (`docs/dev/17-enemy-ai.md`, changelog, player-manual §12)
+
+- Planner steps now include **turn (60°) and formation**. Formed units rotate to face objectives (1 MP/60° via real `applyMpSpend`, free for Hero/Scattered/Routed, never about-turn/org-drop); previews draw turn glyphs + a formation chip.
+- **Doctrine auto by weapon**: ranged-only units stand off (Scattered near contact, keep a gap, no fist-fighting); melee/hybrid engage.
+- **Ranged target priority = biggest threat first**: enemy within 2 hexes → Phalanx → Close Order → expected damage breaks ties. Melee prefers targets attacked from the enemy's **rear/flank** and tries cheap flanking approaches (≤ a few turns + a straight leg, real budget); otherwise closes frontally.
+- Execution drives turn/formation through the real `rotateUnit`/`changeFormation` with just-in-time validation (affordability/availability). 4 new tests. 510 tests, `tsc --noEmit` clean.
+
 ## AI assist: routed flee stops at the map rim — 2026-09-06
 **Files:** `src/lib/enemyAI/planner.ts` + `planner.test.ts`, `src/components/ScenarioMap/{AiPanel,ScenarioMap}.tsx`, docs (`docs/dev/17-enemy-ai.md`, changelog)
 

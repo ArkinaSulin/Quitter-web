@@ -389,6 +389,45 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           line(pts[i - 1], pts[i], color, lineW);
           arrowHead(pts[i], pts[i - 1], color);
         }
+        // Turn glyphs: a curved arrow at the hex where the unit rotates.
+        if (route.turns) {
+          for (const t of route.turns) {
+            const c = hexCenter(t.hex);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = Math.max(1.5, 1.5 * currentZoom);
+            const r = Math.max(8, 10 * currentZoom);
+            const startA = t.dir === 'left' ? Math.PI * 0.2 : Math.PI * 0.8;
+            const sweep = t.dir === 'left' ? 1.5 : -1.5;
+            ctx.beginPath();
+            ctx.arc(c.cx, c.cy, r, startA, startA + sweep, sweep < 0);
+            ctx.stroke();
+            const endA = startA + sweep;
+            const tip = { x: c.cx + r * Math.cos(endA), y: c.cy + r * Math.sin(endA) };
+            const backA = endA + (sweep < 0 ? 1 : -1) * 0.4;
+            ctx.beginPath();
+            ctx.moveTo(tip.x, tip.y);
+            ctx.lineTo(c.cx + (r + 4 * currentZoom) * Math.cos(backA), c.cy + (r + 4 * currentZoom) * Math.sin(backA));
+            ctx.stroke();
+          }
+        }
+        // Formation chip drawn under the start hex when the unit will reform.
+        if (route.formation && pts.length > 0) {
+          const s = pts[0];
+          const label = route.formation;
+          ctx.font = `bold ${Math.max(9, 11 * currentZoom)}px ui-sans-serif, system-ui`;
+          const tw = ctx.measureText(label).width + 8;
+          ctx.fillStyle = 'rgba(17,24,39,0.9)';
+          ctx.beginPath();
+          ctx.roundRect(s.x - tw / 2, s.y + tokenHeight * 0.62, tw, Math.max(13, 15 * currentZoom), 4);
+          ctx.fill();
+          ctx.strokeStyle = '#a78bfa';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.fillStyle = '#e9d5ff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, s.x, s.y + tokenHeight * 0.62 + Math.max(13, 15 * currentZoom) / 2);
+        }
         // Attack markers: hex-ring + crossed swords at each attacked target hex.
         for (const atk of route.attacks) {
           const t = hexP(atk.targetHex);

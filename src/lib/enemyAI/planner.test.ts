@@ -252,6 +252,70 @@ describe('enemyAI planAiMoves', () => {
   });
 });
 
+describe('enemyAI smarter tactics', () => {
+  const LONGBOW = 'Longbow,3,1d8,false,3,6,0,false,true,false,false,1,true,Dex,circle';
+  const SHORTBOW2 = 'Shortbow,2,1d6,false,2,3,0,false,true,false,false,1,true,Dex,circle';
+
+  function dist(a: Hex, b: Hex): number {
+    return Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(a.s - b.s));
+  }
+
+  it('ranged picks the biggest threat: within-2 beats Phalanx beats Close Order', () => {
+    const archer = mk({ id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, weaponString: LONGBOW, actionsAvailable: 2 });
+    const nearOpen = mk({ id: 'open', team: 'black', hex: hex(0, 2), facing: 2, currentFormation: 'Open Order' });
+    const phalanx = mk({ id: 'pik', team: 'black', hex: hex(0, 4), facing: 2, currentFormation: 'Phalanx' });
+    // (0,2) is within 2 hexes -> tier 3 beats the Phalanx (tier 2).
+    const plan = planAiMoves(ctxOf([archer, nearOpen, phalanx], ['blue'], 'enemy'));
+    const attack = plan[0].steps.find(s => s.kind === 'attack');
+    expect(attack).toBeDefined();
+    if (attack && attack.kind === 'attack') expect(attack.targetId).toBe('open');
+
+    // No within-2 target: Phalanx (tier 2) beats the open order unit (tier 0).
+    const openFar = mk({ id: 'open2', team: 'black', hex: hex(0, 3), facing: 2, currentFormation: 'Open Order' });
+    const phalanxFar = mk({ id: 'pik2', team: 'black', hex: hex(0, 4), facing: 2, currentFormation: 'Phalanx' });
+    const plan2 = planAiMoves(ctxOf([archer, openFar, phalanxFar], ['blue'], 'enemy'));
+    const attack2 = plan2[0].steps.find(s => s.kind === 'attack');
+    if (attack2 && attack2.kind === 'attack') expect(attack2.targetId).toBe('pik2');
+  });
+
+  it('melee attacks prefer the target attacked from its rear', () => {
+    const attacker = mk({ id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, actionsAvailable: 2, weaponString: SPEAR });
+    const frontEnemy = mk({ id: 'front', team: 'black', hex: hex(0, -1), facing: 2 }); // attacker in its FRONT
+    const rearEnemy = mk({ id: 'rear', team: 'black', hex: hex(1, -1), facing: 1 }); // attacker in its REAR
+    const plan = planAiMoves(ctxOf([attacker, frontEnemy, rearEnemy], ['blue'], 'enemy'));
+    const attack = plan[0].steps.find(s => s.kind === 'attack');
+    if (attack && attack.kind === 'attack') expect(attack.targetId).toBe('rear');
+  });
+
+  it('ranged-only units adopt Scattered near contact and back off to a gap', () => {
+    const archer = mk({
+      id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, weaponString: SHORTBOW2,
+      movementPoints: 4, actionsAvailable: 2, formationAvailability: ['Open Order', 'Scattered'],
+    });
+    const meleeFoe = mk({ id: 'foe1', team: 'black', hex: hex(0, -1), facing: 2 }); // adjacent
+    const plan = planAiMoves(ctxOf([archer, meleeFoe], ['blue'], 'enemy'));
+    const kinds = plan[0].steps.map(s => s.kind);
+    expect(kinds).toContain('formation');
+    const formation = plan[0].steps.find(s => s.kind === 'formation');
+    if (formation && formation.kind === 'formation') expect(formation.formation).toBe('Scattered');
+    const lastMove = [...plan[0].steps].reverse().find(s => s.kind === 'move');
+    if (lastMove && lastMove.kind === 'move') expect(dist(lastMove.to, meleeFoe.hex)).toBeGreaterThanOrEqual(2);
+  });
+
+  it('formed melee units may turn to close with an enemy out of their arc', () => {
+    // Enemy two hexes "behind" facing 0: closing needs a turn first.
+    const attacker = mk({ id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, movementPoints: 4, actionsAvailable: 2, weaponString: SPEAR });
+    const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, 2), facing: 0 });
+    const plan = planAiMoves(ctxOf([attacker, foe], ['blue'], 'enemy'));
+    const steps = plan[0].steps;
+    expect(steps.some(s => s.kind === 'turn')).toBe(true);
+    const moves = steps.filter(s => s.kind === 'move');
+    expect(moves.length).toBeGreaterThan(0);
+    const lastMove = moves[moves.length - 1];
+    if (lastMove && lastMove.kind === 'move') expect(dist(lastMove.to, foe.hex)).toBe(1);
+  });
+});
+
 describe('enemyAI allianceOf', () => {
   it('defaults to friendly for unknown teams', () => {
     expect(allianceOf(mk({ id: 'x', team: 'nope', hex: hex(0, 0) }), ALLIANCES)).toBe('friendly');

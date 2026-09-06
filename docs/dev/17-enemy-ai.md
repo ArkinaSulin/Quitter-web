@@ -55,20 +55,32 @@ A team only ever attacks units of the **adversarial alliance**
 (`friendly ↔ enemy`; neutral is never auto-attacked or auto-driven). Fog is
 respected: attack targets must lie in the AI side's visible hexes.
 
-## Planner (`planAiMoves`)
+## Planner (`planAiMoves`) — v2 "smarter"
 
 Deterministic, pure, snapshot-in/snapshot-out:
 - Simulates the board on **copies** as it plots, so later units plan against
   the evolving positions/occupancy and two units never target the same hex.
-- Per unit (≤ `maxStepsPerUnit`, default 3): prefer the best **attack**
-  (highest expected damage among `legalTargets`, computed from row/attack-cap
-  math, hit chance incl. disadvantage, mean damage capped at troop HP); else
-  **move** to the best scored reachable hex (`computeReachableMap`, threat/
-  ZOC-aware via `computeThreatHexes`, terrain costs honored). A move uses real
-  MP accounting (`computeMovePool` + `applyMoveCost`) so the AI **never plans
-  an over-budget (soft-enforcement) action**.
-- Scoring favors landing hexes that enable an attack now, then closeness to
-  the nearest enemy; landing in an enemy zone of control is penalized.
+- Steps can be **move, attack, turn (60°), or formation**. A unit may now
+  **rotate** to face an objective (1 MP/60° for formed units via `applyMpSpend`,
+  free for Hero/Scattered/Routed; no about-turns — org levels are never dropped)
+  and **change formation** (real `applyFormationChange` accounting) — so
+  previews can show curved turn glyphs and a formation chip.
+- **Doctrine is automatic by weapon type**: ranged-only units **stand off**
+  (keep a gap from melee enemies, adopt **Scattered** when contact looms and it
+  is affordable) and back away instead of swinging fists; melee/hybrid units
+  **engage**.
+- **Ranged targets pick the biggest threat first**: an enemy **within 2 hexes**,
+  else a **Phalanx**, else a **Close Order** unit; expected damage (row/attack-cap
+  math, hit chance incl. disadvantage, mean damage capped at troop HP) breaks
+  ties within a tier.
+- **Melee attacks prefer the best arc**: of the targets at adjacency, the one it
+  is attacking from the enemy's **rear**, then **flank**, then front. Movement
+  approaches try **cheap flanking** — up to a few 60° turns plus a straight leg,
+  within the unit's real MP/action budget — landing in the enemy's flank/rear
+  hexes; otherwise it closes frontally.
+- **Never over-budget**: every simulated action uses the real accounting
+  functions (`applyMpSpend`, `applyMoveCost`, `applyFormationChange`) so no plan
+  raises a soft-enforcement prompt.
 - Routed units instead **flee**: each step picks the reachable hex strictly
   farthest from the nearest hostile (enemy kill-zone landings penalized), for
   as many actions as they have — they never attack. The run **stops at the
@@ -87,9 +99,10 @@ Deterministic, pure, snapshot-in/snapshot-out:
 - Rout decisions still route to the DM (existing flow: a routed team with no
   non-GM owner is orchestrated by the GM), so an AI unit that routs mid-execute
   shows the DM the normal retreat card.
-- Steps emit through the real `performMove`/`performAttack` callbacks — the
-  same code a human drag invokes — so retaliation, morale, reactions and rout
-  chains behave identically and land in the command log.
+- Steps emit through the real `performMove` / `performAttack` / `rotateUnit` /
+  `changeFormation` callbacks — the same code a human invokes — so facing, cost,
+  retaliation, morale, reactions and rout chains behave identically and land in
+  the command log.
 
 ## Undo
 
