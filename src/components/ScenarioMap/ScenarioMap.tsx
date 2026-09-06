@@ -916,7 +916,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           description: `${pLive.unitName} disorganized by the pursuit — ${lower}`,
           unitId: pLive.id,
           changes: [{ field: 'currentFormation', from: pLive.currentFormation, to: lower }],
-        }], `${pLive.unitName} disorganized`, { chained: true });
+        }], didMove
+          ? `${pLive.unitName} disorganized by the pursue attack — ${lower}`
+          : `${pLive.unitName} disorganized by the FREE pursue attack — ${lower}`, { chained: true });
       }
       const verb = didMove ? 'pursued and struck' : 'made a FREE pursue attack on';
       addMessage(didMove && disruptId
@@ -1052,6 +1054,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     getHexFromScreen,
     getUnitAt,
     centerMap,
+    centerOn,
   } = useHexGrid({
     canvasRef,
     size: HEX_SIZE,
@@ -1100,6 +1103,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }
     },
     onUnitHover: (unit, screenX, screenY) => {
+      if (retreatPick) return; // suppress tooltips while the rout modal is open
       if (unit.isDeleted || (unit.hidden && !effectiveIsGM)) return;
       if (!effectiveIsGM && !canSeeHex(unit.hex)) return;
       setHoveredUnit(unit);
@@ -1120,6 +1124,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     overlayMap,
     readOnly: controlsLocked,
   });
+
+  // When the rout modal opens: center the map on the routed unit and clear hover
+  // so the tooltip never covers it.
+  useEffect(() => {
+    if (retreatPick) {
+      setHoveredUnit(null);
+      setTooltipPos(null);
+      setRetreatHoverHex(null);
+      centerOn(retreatPick.unit.hex);
+    }
+  }, [retreatPick, centerOn]);
 
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).

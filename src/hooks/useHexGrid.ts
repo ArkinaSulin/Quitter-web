@@ -416,6 +416,15 @@ export function useHexGrid({
     }
   }, [getHexFromScreen, getUnitAt, onHexRightClick, readOnly]);
 
+  const centerOn = useCallback((hex: { q: number; r: number }) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const p = hexToPixel({ q: hex.q, r: hex.r, s: -hex.q - hex.r }, size);
+    setOffsetX(rect.width / 2 - p.x * zoom);
+    setOffsetY(rect.height / 2 - p.y * zoom);
+  }, [canvasRef, size, zoom]);
+
   return {
     handleMouseMove,
     handleMouseDown,
@@ -430,5 +439,6 @@ export function useHexGrid({
     getHexFromScreen,
     getUnitAt,
     centerMap,
+    centerOn,
   };
 }
