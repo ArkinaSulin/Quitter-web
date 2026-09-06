@@ -484,7 +484,12 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
           {canViewShipEditor && (
             <button
               onClick={() => router.push('/ship-editor')}
-              className="w-full py-2 bg-gray-800/70 border border-gray-600 text-gray-300 rounded hover:bg-gray-700 transition"
+              className="w-full py-2 border rounded hover:brightness-125 transition"
+              style={{
+                borderColor: '#8a7a12',
+                background: 'repeating-linear-gradient(45deg, #2c2608 0, #2c2608 10px, #0f0d08 10px, #0f0d08 20px)',
+                color: '#f5efd2',
+              }}
             >
               Archfar's Shipyard
             </button>
@@ -492,7 +497,12 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
           {canViewUnitEditor && (
             <button
               onClick={() => router.push('/unit-editor')}
-              className="w-full py-2 bg-gray-800/70 border border-gray-600 text-gray-300 rounded hover:bg-gray-700 transition"
+              className="w-full py-2 border rounded hover:brightness-125 transition"
+              style={{
+                borderColor: '#8a7a12',
+                background: 'repeating-linear-gradient(45deg, #2c2608 0, #2c2608 10px, #0f0d08 10px, #0f0d08 20px)',
+                color: '#f5efd2',
+              }}
             >
               {canUseUnitEditor ? 'Unit Editor' : 'Unit Library'}
             </button>
@@ -500,7 +510,12 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
           {canViewMapEditor && (
             <button
               onClick={() => router.push('/map-editor')}
-              className="w-full py-2 bg-gray-800/70 border border-gray-600 text-gray-300 rounded hover:bg-gray-700 transition"
+              className="w-full py-2 border rounded hover:brightness-125 transition"
+              style={{
+                borderColor: '#8a7a12',
+                background: 'repeating-linear-gradient(45deg, #2c2608 0, #2c2608 10px, #0f0d08 10px, #0f0d08 20px)',
+                color: '#f5efd2',
+              }}
             >
               {canUseMapEditor ? 'Map Editor' : 'Map Library'}
             </button>

@@ -1,5 +1,10 @@
 # QuiTTER Changelog
 
+## Lobby: construction-hazard editor buttons (2026-09-06)
+**Files:** `src/components/Lobby.tsx`, docs (changelog)
+
+- The three editor/library buttons (Archfar's Shipyard, Unit Editor/Unit Library, Map Editor/Map Library) now use diagonal black + muted-yellow hazard stripes (`repeating-linear-gradient(45deg, …)`, thin `#8a7a12` border, near-white label) so they read as builders'-yard entries — distinct from the disabled Replay Scenario gray and the green action buttons.
+
 ## Lobby: mute editor/library buttons — 2026-09-06
 **Files:** `src/components/Lobby.tsx`, docs (changelog)
 
