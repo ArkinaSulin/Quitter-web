@@ -210,6 +210,28 @@ describe('enemyAI planAiMoves', () => {
     }
   });
 
+  it('routed units stop at the map rim and never run beyond it', () => {
+    const routed = mk({ id: 'r1', team: 'blue', hex: hex(0, 0), facing: 0, actionsAvailable: 2, movementPoints: 8, currentFormation: 'Routed' });
+    const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, 8), facing: 2 });
+    const plans = planAiMoves(ctxOf([routed, foe], ['blue'], 'enemy', { gridRadius: 3 }));
+    expect(plans.length).toBe(1);
+    const steps = plans[0].steps;
+    expect(steps.every(s => s.kind === 'move')).toBe(true);
+    const last = steps[steps.length - 1];
+    if (last.kind === 'move') {
+      const ring = Math.max(Math.abs(last.to.q), Math.abs(last.to.r), Math.abs(last.to.q + last.to.r));
+      expect(ring).toBe(3); // rim, not beyond
+    }
+  });
+
+  it('routed units already at/outside the rim stay put', () => {
+    const atRim = mk({ id: 'r1', team: 'blue', hex: hex(0, 3), facing: 0, actionsAvailable: 2, movementPoints: 8, currentFormation: 'Routed' });
+    const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, 8), facing: 2 });
+    expect(planAiMoves(ctxOf([atRim, foe], ['blue'], 'enemy', { gridRadius: 3 }))).toHaveLength(0);
+    const outside = mk({ id: 'r2', team: 'blue', hex: hex(0, 4), facing: 0, actionsAvailable: 2, movementPoints: 8, currentFormation: 'Routed' });
+    expect(planAiMoves(ctxOf([outside, foe], ['blue'], 'enemy', { gridRadius: 3 }))).toHaveLength(0);
+  });
+
   it('moves never leave the unit\'s own team or target allies, and respect the action cap', () => {
     const ai = mk({ id: 'u1', team: 'blue', hex: hex(0, 0), facing: 0, actionsAvailable: 1, movementPoints: 2 });
     const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, 4), facing: 2 });

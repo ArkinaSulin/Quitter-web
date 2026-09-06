@@ -71,7 +71,10 @@ Deterministic, pure, snapshot-in/snapshot-out:
   the nearest enemy; landing in an enemy zone of control is penalized.
 - Routed units instead **flee**: each step picks the reachable hex strictly
   farthest from the nearest hostile (enemy kill-zone landings penalized), for
-  as many actions as they have — they never attack.
+  as many actions as they have — they never attack. The run **stops at the
+  map's outer rim** (`gridRadius` in the plan context): a routed unit never
+  moves beyond the drawn grid, and one already at/outside the rim (e.g. after
+  the GM shrank the grid) stays put — giving the DM a chance to hide it.
 
 ## Execute driver (in `AiPanel`)
 

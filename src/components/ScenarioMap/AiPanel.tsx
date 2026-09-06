@@ -12,7 +12,7 @@ import { TEAMS } from '@/components/TokenRenderer/tokenUtils';
 import { planAiMoves, AiUnitPlan, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf } from '@/lib/enemyAI';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { computeReachableMap, computeMovePool } from '@/lib/moveCost';
-import { computeOccupiedHexes, computeThreatHexes, terrainCostOf, TerrainCosts } from '@/components/ScenarioMap/mapGeometry';
+import { computeOccupiedHexes, computeThreatHexes, terrainCostOf, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/components/ScenarioMap/mapGeometry';
 import { legalTargets } from '@/lib/enemyAI';
 import { unitAttackCap } from '@/lib/attackCap';
 import { supabase } from '@/lib/supabaseClient';
@@ -39,6 +39,8 @@ interface AiPanelProps {
   fogOfWarEnabled: boolean;
   sightRadius: number;
   terrainCosts: TerrainCosts;
+  /** Map grid radius (axial ring) — routed flee stops at this rim. */
+  gridRadius?: number;
   unitMaxMP: (unit: Unit) => number;
   performMove: (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number) => Promise<unknown>;
   performAttack: (attacker: Unit, target: Unit, overBudget: boolean) => Promise<unknown>;
@@ -86,6 +88,7 @@ export function AiPanel({
   fogOfWarEnabled,
   sightRadius,
   terrainCosts,
+  gridRadius,
   unitMaxMP,
   performMove,
   performAttack,
@@ -96,7 +99,7 @@ export function AiPanel({
   addError,
 }: AiPanelProps) {
   const propsRef = useRef<AiPanelProps | null>(null);
-  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, unitMaxMP, performMove, performAttack, undo, onOverlayChange, onBusyChange, addMessage, addError };
+  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, gridRadius, unitMaxMP, performMove, performAttack, undo, onOverlayChange, onBusyChange, addMessage, addError };
 
   const [plans, setPlans] = useState<AiUnitPlan[] | null>(null);
   const [remaining, setRemaining] = useState<ExecUnit[] | null>(null); // active during Execute
@@ -187,6 +190,7 @@ export function AiPanel({
       activeAlliance: activeGroup,
       visibleHexes: fogOfWarEnabled ? visibleHexes : null,
       terrainCosts,
+      gridRadius: gridRadius ?? DEFAULT_GRID_RADIUS,
     });
     setPlans(next);
     setRemaining(null);

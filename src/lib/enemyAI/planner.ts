@@ -51,6 +51,9 @@ export interface AiPlanContext {
   /** Fog reveal for the AI side (hex keys). null/undefined = no fog. */
   visibleHexes?: Set<string> | null;
   terrainCosts?: TerrainCosts;
+  /** Grid radius (axial ring). When set, routed flee stops at the outer rim and
+   *  never moves beyond it — the DM then gets a chance to hide the broken unit. */
+  gridRadius?: number;
   /** Max plot steps per unit (default 3). */
   maxStepsPerUnit?: number;
 }
@@ -292,7 +295,9 @@ function buildMoveOption(
 
 /** Best retreat step for a ROUTED unit: the reachable hex farthest from the
  *  nearest hostile (ties → away from enemy kill zones, cheaper path first).
- *  Returns null when nothing is strictly farther than its current hex. */
+ *  When a `gridRadius` is set, the run stops at the map's outer rim — a unit
+ *  already at (or beyond) the rim does not move (gives the DM a chance to
+ *  hide it). Returns null when nothing is strictly safer / legal. */
 function chooseFleeHex(
   u: Unit,
   working: Unit[],
@@ -300,9 +305,13 @@ function chooseFleeHex(
   ctx: AiPlanContext,
   effMax: (x: Unit) => number,
   costOfHex: ((q: number, r: number) => number) | undefined,
+  gridRadius: number | undefined,
 ): { pick: PlannedMoveOption; updated: Unit; path: Hex[] } | null {
   const foes = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
   if (foes.length === 0) return null;
+  // Axial ring distance from the map centre (s = -q - r).
+  const ring = (h: { q: number; r: number }) => Math.max(Math.abs(h.q), Math.abs(h.r), Math.abs(h.q + h.r));
+  if (gridRadius !== undefined && ring(u.hex) >= gridRadius) return null; // at/over the rim: stay
   const occ = new Set<string>();
   for (const w of working) if (!w.isDeleted && w.id !== u.id) occ.add(hexKeyOf(w.hex));
   const pool = computeMovePool(u, effMax(u));
@@ -315,6 +324,7 @@ function chooseFleeHex(
     if (entry.needsTurn) return;
     const dest = entry.path[entry.path.length - 1];
     if (!dest) return;
+    if (gridRadius !== undefined && ring(dest) > gridRadius) return; // never flee off the board
     const d = nearestEnemyDist(dest, foes);
     if (d <= startDist) return; // only strictly safer hexes
     const threatPenalty = threat.has(key) ? 4 : 0;
@@ -367,9 +377,10 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       if ((u.attacksUsed ?? 0) >= cap) break;
       const from = u.hex;
 
-      // Routed units can't fight — run as far from hostiles as possible.
+      // Routed units can't fight — run as far from hostiles as possible, but
+      // stop at the map's outer rim so the DM can hide the broken unit.
       if (isUnitRouted(u)) {
-        const flee = chooseFleeHex(u, working, enemies, ctx, effMax, costOfHex);
+        const flee = chooseFleeHex(u, working, enemies, ctx, effMax, costOfHex, ctx.gridRadius);
         if (!flee) break;
         byId.set(u.id, flee.updated);
         const wIdx = working.findIndex(w => w.id === u.id);

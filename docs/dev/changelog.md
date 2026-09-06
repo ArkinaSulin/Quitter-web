@@ -1,5 +1,10 @@
 # QuiTTER Changelog
 
+## AI assist: routed flee stops at the map rim — 2026-09-06
+**Files:** `src/lib/enemyAI/planner.ts` + `planner.test.ts`, `src/components/ScenarioMap/{AiPanel,ScenarioMap}.tsx`, docs (`docs/dev/17-enemy-ai.md`, changelog)
+
+- Routed fleeing no longer runs off the board: `AiPlanContext.gridRadius` bounds `chooseFleeHex`, so the run stops on the **outer rim** of the grid and never moves beyond it. A unit already at/outside the rim (grid shrunk) stays put — the DM gets a chance to hide the broken unit. AiPanel passes the live map `gridRadius`. +2 tests. 506 tests, `tsc --noEmit` clean.
+
 ## AI assist: routed units flee as far as possible — 2026-09-06
 **Files:** `src/lib/enemyAI/planner.ts` + `planner.test.ts`, `src/components/ScenarioMap/AiPanel.tsx`, docs (`docs/dev/17-enemy-ai.md`, changelog)
 

@@ -1660,6 +1660,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         fogOfWarEnabled={fogOfWar}
         sightRadius={sightRadius}
         terrainCosts={terrainCosts}
+        gridRadius={backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS}
         unitMaxMP={unitMaxMP}
         performMove={(unit, targetHex, cost, overBudget, maxMP) => performMove(unit, targetHex, cost, overBudget, maxMP)}
         performAttack={(attacker, target, overBudget) => performAttack(attacker, target, overBudget)}
