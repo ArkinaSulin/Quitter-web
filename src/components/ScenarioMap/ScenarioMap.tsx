@@ -490,7 +490,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
 
   const {
-      execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, otherAction, endTurn, applyEffect, removeEffect, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog,
+      execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, otherAction, endTurn, applyEffect, removeEffect, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog, syncZoneEffects,
   } = useGameEngine({
     scenarioId,
     playerId,
@@ -517,6 +517,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     await otherAction(hero);
     addError(`${hero.unitName} used an Other Action with no actions left — over budget`);
   }, [otherActionHero, controlsLocked, otherAction, addError]);
+
+  // Keep the engine's zone list in sync so landing on an 'entry' zone deals damage.
+  useEffect(() => {
+    syncZoneEffects(groundZones);
+  }, [groundZones, syncZoneEffects]);
 
   const {
     reactionOffers,
@@ -674,7 +679,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [effectBorrowAmount, setEffectBorrowAmount] = useState(0);
 
   const UNIT_KINDS = ['ac', 'morale', 'movement', 'dot', 'hp_borrow'];
-  const ZONE_KINDS = ['ac', 'morale', 'dot'];
+  const ZONE_KINDS = ['ac', 'morale', 'dot', 'entry', 'mp_cost'];
 
   const applyUnitDrop = async () => {
     const d = effectUnitDrop;

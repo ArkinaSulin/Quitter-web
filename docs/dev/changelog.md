@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Effect engine: zone ENTRY damage (2026-09-06)
+**Files:** src/types/gameProtocol.ts, src/lib/unitEffects.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs (changelog)
+
+- New zone kind **entry**: landing on an 'entry' zone hex deals its damage immediately (in the same move command, so undo reverts the trap), to the mover and any attached hero. Works for drag moves, charges, pursuit and free-move landings (engine keeps a live zone list via syncZoneEffects). Zones can also carry 'mp_cost' (stored; movement effect still pending). Unit types extended with entry/mp_cost kinds.
+
+
+
 ## Glossary removed (keep tooltips); Sleep/hp_borrow engine (2026-09-06)
 **Files:** src/components/{ScenarioMap/TopBar,ScenarioMap,UnitTooltip}.tsx (tooltip help kept), src/lib/{unitEffects.ts,unitEffects.test.ts}, src/types/gameProtocol.ts, ScenarioMap drop UI, removed GlossaryModal/terms, docs (changelog)
 

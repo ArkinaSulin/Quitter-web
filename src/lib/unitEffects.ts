@@ -24,7 +24,9 @@ export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModif
     case 'morale': return 'currentMoraleModifier';
     case 'movement': return 'movementPoints';
     case 'dot':
-    case 'hp_borrow': return null;
+    case 'hp_borrow':
+    case 'entry':
+    case 'mp_cost': return null;
   }
 }
 

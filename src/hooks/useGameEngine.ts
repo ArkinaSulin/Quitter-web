@@ -14,7 +14,7 @@ import { useMessageSync } from '@/hooks/useMessageSync';
 import { ActionType, SubStep, CommandLogRow, UndoState, parseSubSteps } from '@/lib/commandLog';
 import { getActiveGroups, advanceTurn } from '@/lib/turnState';
 import { UnitEffect, GroundEffect } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, computeEndTurnEffects, newEffectKey, EffectSpec } from '@/lib/unitEffects';
+import { applyEffectChanges, removeEffectChanges, computeEndTurnEffects, newEffectKey, EffectSpec, dotDamageChanges } from '@/lib/unitEffects';
 
 interface UseGameEngineProps {
   scenarioId: string;
@@ -311,6 +311,23 @@ export function useGameEngine({
     return undoStateRef.current?.undo?.count ?? 0;
   }, []);
 
+  // Zone-entry damage: ground zones currently on the board (registered by the
+  // map). A zone with kind 'entry' damages any unit that lands on its hex.
+  const groundZonesRef = useRef<GroundEffect[]>([]);
+  const syncZoneEffects = useCallback((zones: GroundEffect[]) => {
+    groundZonesRef.current = zones;
+  }, []);
+
+  const entryDamageSteps = (actor: Unit, hex: Hex, zones: GroundEffect[]): SubStep[] =>
+    zones
+      .filter(z => z.kind === 'entry' && (z.delta || 0) > 0 && z.q === hex.q && z.r === hex.r)
+      .map(z => ({
+        type: 'DAMAGE' as const,
+        description: `${actor.unitName} entered ${z.name} (${z.delta} damage)`,
+        unitId: actor.id,
+        changes: dotDamageChanges(actor, z.delta),
+      }));
+
   const moveUnitRecorded = useCallback(
     async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean }): Promise<void> => {
       // Heroes convert actions at the prorated rate (5 actions = 1 full move);
@@ -349,9 +366,14 @@ export function useGameEngine({
         });
       }
 
+      // Zone traps: landing on an 'entry' zone deals its damage this same command.
+      const zones = groundZonesRef.current;
+      subSteps.push(...entryDamageSteps(unit, targetHex, zones));
+      if (attachedHero) subSteps.push(...entryDamageSteps(attachedHero, targetHex, zones));
+
       await execute('MOVE', subSteps, subSteps[0].description, options);
     },
-    [execute],
+    [execute, entryDamageSteps],
   );
 
   const moveUnitFree = useCallback(
@@ -376,9 +398,13 @@ export function useGameEngine({
           ],
         });
       }
+      // Zone traps apply on free-move landings too.
+      const zones = groundZonesRef.current;
+      subSteps.push(...entryDamageSteps(unit, targetHex, zones));
+      if (attachedHero) subSteps.push(...entryDamageSteps(attachedHero, targetHex, zones));
       await execute('MOVE', subSteps, subSteps[0].description);
     },
-    [execute],
+    [execute, entryDamageSteps],
   );
 
   const rotateUnit = useCallback(
@@ -843,6 +869,7 @@ export function useGameEngine({
 
   return {
     execute,
+    syncZoneEffects,
     undo,
     redo,
     canUndo,
