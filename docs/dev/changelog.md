@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Context menu: Other Action under Attach to Unit (2026-09-06)
+**Files:** src/components/ScenarioMap/ContextMenu.tsx, docs (changelog)
+
+- 'Other Action' now sits directly under 'Attach to Unit...' for unattached heroes (and stays available next to front/back swap for attached heroes). The context-menu 'Effects...' entry is temporarily retained until the Effects-tab drag-and-drop apply engine (empty hex -> zone with prompts; unit -> apply prompt) replaces it.
+
+
+
 ## Effects tab for assigned players (Stage 2a) - 2026-09-06
 **Files:** src/components/ScenarioMap/{LeftPanel,ScenarioMap}.tsx, docs (changelog)
 

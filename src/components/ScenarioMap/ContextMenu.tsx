@@ -145,7 +145,7 @@ export function ContextMenu({
       className="absolute z-50 bg-gray-900 border border-gray-700 rounded shadow-xl py-1 min-w-[180px] text-sm text-white"
       style={{ left: x, top: y }}
     >
-      {/* Temporary effects — GM or any player on any unit */}
+      {/* Temporary effects (kept until the Effects-tab drag/drop apply engine lands) */}
       {onAddEffect && (
         <>
           <div
@@ -176,7 +176,7 @@ export function ContextMenu({
         </div>
       )}
       {/* Other Action… (heroes): spend 1 action on a roleplayed deed. */}
-      {unit.isHero && onOtherAction && (
+      {unit.isHero && unit.attachedToUnitId && onOtherAction && (
         <div
           className="px-3 py-1 hover:bg-amber-900/60 cursor-pointer text-amber-200 font-semibold"
           onClick={() => { onOtherAction(unit); onClose(); }}
@@ -293,6 +293,19 @@ export function ContextMenu({
               {target.unitName}
             </div>
           ))}
+          <div className="border-t border-gray-700 my-1" />
+        </>
+      )}
+
+      {/* Other Action… for unattached heroes, right under "Attach to Unit…" */}
+      {unit.isHero && !unit.attachedToUnitId && onOtherAction && (
+        <>
+          <div
+            className="px-3 py-1 hover:bg-amber-900/60 cursor-pointer text-amber-200 font-semibold"
+            onClick={() => { onOtherAction(unit); onClose(); }}
+          >
+            Other Action… (1 action)
+          </div>
           <div className="border-t border-gray-700 my-1" />
         </>
       )}
