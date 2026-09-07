@@ -78,14 +78,16 @@ as applied in the notes — check the live DB before relying on it).
 | 060 | attack cap + hero actions (`attacks_used`, NUMERIC mp) | ✅ applied |
 | 061–065 | drop is_routing, archer reaction, apply_substeps coalesce fix, mounted charge, verbose combat | ❓ |
 | 066–067 | ship schema + seed | ❓ (code is canonical for ship data) |
-| 068 | ship RLS | ⏳ needs applying |
-| 069 | ship_crews | ⏳ needs applying |
-| 070 | extra_crew → crew_count | ⏳ needs applying |
-| 071 | fog of war columns + settings | ❓ (referenced as applied by 072 language) |
-| 072 | `night_vision` → `darkvision` rename (guarded) | ⏳ await DB apply |
-| 073 | `units.effects` + apply_substeps branch | ⏳ await DB apply |
-| 074 | map entities + access caps (`maps` table) | ⏳ await DB apply |
-| 075 | restore `archerReactionUsed` allowlist entry | ⏳ await DB apply (written after 073 dropped it) |
+| 068 | ship RLS | ✅ applied (verified 2026-09-06) |
+| 069 | ship_crews | ✅ applied (verified 2026-09-06) |
+| 070 | extra_crew → crew_count | ✅ applied (verified 2026-09-06) |
+| 071 | fog of war columns + settings | ✅ applied (verified 2026-09-06) |
+| 072 | `night_vision` → `darkvision` rename (guarded) | ✅ applied (verified 2026-09-06) |
+| 073 | `units.effects` + apply_substeps branch | ✅ applied (verified 2026-09-06) |
+| 074 | map entities + access caps (`maps` table) | ✅ applied (verified 2026-09-06) |
+| 075 | restore `archerReactionUsed` allowlist entry | ✅ applied (verified 2026-09-06) |
+| 076 | AI assist toggle (`ai_assist_enabled`) | ✅ applied (verified 2026-09-06) |
+| 077 | effects library (`effect_templates` + access caps) | ✅ applied (verified 2026-09-06) |
 
 ### Verify what's actually applied
 
