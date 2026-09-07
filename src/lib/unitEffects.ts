@@ -141,11 +141,13 @@ function teamsOf(alliances: Record<string, AllianceGroup>, group: AllianceGroup)
  * Compute every effect change that happens when play transitions into `nextGroup`
  * (the start of that alliance's segment):
  *   1. Unit effects whose caster unit was destroyed expire immediately.
- *   2. Effects whose caster is in the incoming alliance tick: DoT damage to the
- *      carrier, turnsLeft--, expire at 0 (stat restored).
- *   3. Ground zones with a caster in the incoming alliance tick: DoT damage to
- *      every unit standing on the zone; stat zones only expire at 0. Expired zones
- *      are removed and their membership effects restored on standing carriers.
+ *   2. Effects tick when the incoming alliance is the caster's; effects with NO
+ *      caster team (GM/table-tempo-free) tick once per game turn on the FIRST
+ *      active alliance: DoT damage to the carrier, turnsLeft--, expire at 0.
+ *   3. Ground zones: DoT to every unit standing on the zone when the caster's
+ *      alliance (or the first-active alliance for tempo-free zones) activates;
+ *      stat zones only expire at 0. Expired zones are removed and their
+ *      membership effects restored on standing carriers.
  *   4. Units of the incoming alliance reconcile their ground-zone memberships at
  *      the start of their own activation (enter/leave the zone).
  * Returns unit sub-steps (ordered, one per affected unit) + the surviving zones.
@@ -153,6 +155,11 @@ function teamsOf(alliances: Record<string, AllianceGroup>, group: AllianceGroup)
 export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffectsResult {
   const { units, zones, nextGroup, alliances, makeKey = newEffectKey } = ctx;
   const activeTeams = teamsOf(alliances, nextGroup);
+  // GM/table-placed effects and zones have no caster team ("tempo-free"). They
+  // should tick ONCE per game turn, not on every alliance's end-turn — anchor
+  // them to the FIRST active alliance in the cycle (friendly if none assigned).
+  const firstActive: AllianceGroup =
+    (['friendly', 'enemy', 'neutral'] as const).find(g => teamsOf(alliances, g).size > 0) ?? 'friendly';
   const subSteps: SubStep[] = [];
   const zonesAfter = zones.map(z => ({ ...z }));
 
@@ -184,7 +191,7 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
         d.effects = d.effects.filter(x => x.key !== e.key);
         continue;
       }
-      const casterActive = e.casterTeam ? activeTeams.has(e.casterTeam) : true;
+      const casterActive = e.casterTeam ? activeTeams.has(e.casterTeam) : nextGroup === firstActive;
       if (!casterActive) continue;
       // Caster's activation start: tick.
       const ticked = tickDown(e);
@@ -204,7 +211,7 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
   // --- 3: ground zones tick/expire ---
   const removedZones: string[] = [];
   for (const zone of zonesAfter) {
-    const casterActive = zone.casterTeam ? activeTeams.has(zone.casterTeam) : true;
+    const casterActive = zone.casterTeam ? activeTeams.has(zone.casterTeam) : nextGroup === firstActive;
     const casterDead = zone.casterUnitId ? !alive(zone.casterUnitId) : false;
     if (!casterActive && !casterDead) continue;
     const zoneKey = zone.key;

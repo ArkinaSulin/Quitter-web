@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Fix: tempo-free effects tick once per turn cycle + context cleanup (2026-09-06)
+**Files:** src/lib/unitEffects.ts + unitEffects.test.ts, src/components/ScenarioMap/ContextMenu.tsx, docs (changelog)
+
+- **DoT multi-burn bug**: effects/zones with no caster team (GM/player tempo-free) ticked on EVERY alliance's End Turn, burning 2-3x per cycle. They now tick once per game turn on the FIRST active alliance's activation (friendly if none assigned); caster-tagged effects are unchanged. +1 regression test.
+- Removed the separator between 'Attach to Unit...' and 'Other Action...'.
+- Clarification: the 'effect engine stage' only refers to the NEW library kinds (Sleep/hp_borrow, zone entry, zone mp_cost, composite instances, image layers) - core ac/morale/movement/dot + zones were already implemented.
+
+
+
 ## Effects tab: drag-&-drop application (assigned players) (2026-09-06)
 **Files:** src/components/ScenarioMap/{EffectsPanel.tsx (new),LeftPanel.tsx,ScenarioMap.tsx,ContextMenu.tsx}, docs (changelog)
 

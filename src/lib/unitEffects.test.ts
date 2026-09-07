@@ -222,4 +222,26 @@ describe('computeEndTurnEffects', () => {
     expect(step!.changes.find(c => c.field === 'currentUnitHp')!.to).toBe(7);
     expect(res.zonesAfter[0].turnsLeft).toBe(2); // not expired yet
   });
+
+  it('tempo-free (no caster team) effects tick once per turn cycle, not per alliance', () => {
+    // A GM/player-placed Burning with no caster team must damage only when the
+    // FIRST active alliance's turn arrives (once per full cycle) — not on every
+    // alliance's End Turn.
+    const dot: UnitEffect = ef({ key: 'no-cast', kind: 'dot', delta: 4, turnsLeft: 3, duration: 3, casterUnitId: null, casterTeam: null });
+    const target = unit('target', 'red', h(5, 0), { effects: [dot] });
+    const friendlyTick = computeEndTurnEffects({ units: [target], zones: [], nextGroup: 'friendly', alliances: groups, makeKey });
+    const hpAfterFriendly = friendlyTick.subSteps.find(s => s.unitId === 'target')!.changes.find(c => c.field === 'currentUnitHp')!.to as number;
+    expect(hpAfterFriendly).toBeLessThan(target.currentUnitHp);
+
+    const enemyTick = computeEndTurnEffects({ units: [target], zones: [], nextGroup: 'enemy', alliances: groups, makeKey });
+    expect(enemyTick.subSteps.find(s => s.unitId === 'target')).toBeUndefined(); // no burn on enemy's turn
+
+    // Zone with no caster team behaves the same way.
+    const z: GroundEffect = { key: 'zn', q: 5, r: 0, name: 'Burning Field', color: '#ff8844', kind: 'dot', delta: 3, duration: 3, turnsLeft: 3, casterTeam: null, casterUnitId: null };
+    const st = unit('standing', 'blue', h(5, 0));
+    const zFriendly = computeEndTurnEffects({ units: [st], zones: [z], nextGroup: 'friendly', alliances: groups, makeKey });
+    expect(zFriendly.subSteps.find(s => s.unitId === 'standing')).toBeDefined();
+    const zEnemy = computeEndTurnEffects({ units: [st], zones: [z], nextGroup: 'enemy', alliances: groups, makeKey });
+    expect(zEnemy.subSteps.find(s => s.unitId === 'standing')).toBeUndefined();
+  });
 });

@@ -293,7 +293,6 @@ export function ContextMenu({
               {target.unitName}
             </div>
           ))}
-          <div className="border-t border-gray-700 my-1" />
         </>
       )}
 
