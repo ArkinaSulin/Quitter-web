@@ -156,6 +156,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [groundZones, setGroundZones] = useState<GroundEffect[]>([]);
   // Provenance of the snapshot currently loaded from a reusable map (maps.id).
   const [mapId, setMapId] = useState<string | null>(null);
+
+  // Movement-cost terrain = painted costs + live zone 'mp_cost' deltas
+  // (clamped 0..9; painting still drives the visuals). Movement hooks/reach use
+  // this merged map so zone obstacles actually cost MP.
+  const moveTerrainCosts = useMemo(() => {
+    const merged: TerrainCosts = { ...terrainCosts };
+    for (const z of groundZones) {
+      if (z.kind !== 'mp_cost') continue;
+      const k = `${z.q},${z.r}`;
+      const base = merged[k] ?? 1;
+      const n = Math.max(0, Math.min(9, base + (z.delta || 0)));
+      if (n === 1) delete merged[k];
+      else merged[k] = n;
+    }
+    return merged;
+  }, [terrainCosts, groundZones]);
   // GM map-edit brushes: terrain = entry-cost value (null = off); zone = template
   // armed for placement (null = off).
   const [terrainBrushCost, setTerrainBrushCost] = useState<number | null>(null);
@@ -551,7 +567,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     unitMaxMP,
     flashRangeViolation,
     canAttackTarget: canAttackInFog,
-    terrainCosts,
+    terrainCosts: moveTerrainCosts,
   });
 
   const { customDraw, captureAndUploadScreenshot } = useCanvasDraw({
@@ -627,7 +643,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pruneReactionOffers,
     weaponSelectedTurnRef,
     setActiveHeroId,
-    terrainCosts,
+    terrainCosts: moveTerrainCosts,
   });
 
   // ---- Temporary-effect apply/remove handlers (opened from the context menu) ----
@@ -1321,10 +1337,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
-    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts });
+    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: moveTerrainCosts });
     if (retreatHoverHex) base[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(base);
-  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts, retreatHoverHex]);
+  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, moveTerrainCosts, retreatHoverHex]);
 
   // Center map on initial load
   useEffect(() => {
@@ -1800,7 +1816,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         currentTurnAlliance={currentTurnAlliance}
         fogOfWarEnabled={fogOfWar}
         sightRadius={sightRadius}
-        terrainCosts={terrainCosts}
+        terrainCosts={moveTerrainCosts}
         gridRadius={backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS}
         unitMaxMP={unitMaxMP}
         performMove={(unit, targetHex, cost, overBudget, maxMP) => performMove(unit, targetHex, cost, overBudget, maxMP)}

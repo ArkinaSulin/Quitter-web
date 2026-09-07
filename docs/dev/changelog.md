@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Effect engine: zone mp_cost affects movement (2026-09-06)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, docs (changelog)
+
+- Movement now uses a **merged cost map** = painted terrain + live zone 'mp_cost' deltas (clamped 0-9). Zone bog/slow hexes actually cost extra MP to enter, and zone 'free'/'cheaper' deltas reduce costs (floor 0). Reach overlay, drag moves, charges, pursuit, reactions and AI plotting all read the merged map; painting visuals still use the raw painted map.
+
+
+
 ## Effect engine: zone ENTRY damage (2026-09-06)
 **Files:** src/types/gameProtocol.ts, src/lib/unitEffects.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs (changelog)
 
