@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Map editor: painting 0-MP free hexes works (2026-09-06)
+**Files:** src/components/MapEditor/MapEditor.tsx, docs (changelog)
+
+- Standalone Map Editor treated every paint value <= 1 as 'clear', so arming the pen at 0 (free entry) silently erased instead of marking the hex free. Painting now deletes only for cost 1 (the default) and stores 0 as a free-entry hex; the free tint + 0 label render on the canvas.
+
+
+
 ## Lobby: construction-hazard editor buttons (2026-09-06)
 **Files:** `src/components/Lobby.tsx`, docs (changelog)
 

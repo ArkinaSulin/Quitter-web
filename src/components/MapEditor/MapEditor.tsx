@@ -159,8 +159,8 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
   const handlePaint = useCallback((q: number, r: number) => {
     if (paintValue === null || !entity) return;
     const terrainCosts = { ...entity.terrainCosts };
-    if (paintValue <= 1) delete terrainCosts[`${q},${r}`];
-    else terrainCosts[`${q},${r}`] = paintValue;
+    if (paintValue === 1) delete terrainCosts[`${q},${r}`]; // 1 = default/clear
+    else terrainCosts[`${q},${r}`] = paintValue; // 0 = free entry, 2..9 = cost
     update({ terrainCosts });
   }, [paintValue, entity, update]);
 
