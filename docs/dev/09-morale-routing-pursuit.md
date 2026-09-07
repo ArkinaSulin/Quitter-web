@@ -87,7 +87,9 @@ highlight on hover). Logic in `routedRetreat.ts`:
 Eligibility for an adjacent hostile, all three (`choosePursuer`):
 
 1. the **vacated hex is reachable in one droppable move** from its facing,
-2. its effective **MaxMP ≥ routedMaxMP × 1.5**,
+2. its effective **MaxMP ≥ the routed unit's effective routing MaxMP** (the Routed
+   formation's ×1.5 is already applied to the routed unit, so equal effective
+   speed is enough to pursue),
 3. it **can pay the entry MP**.
 
 Preference: the **attacker** who caused the rout (when eligible) → the fastest

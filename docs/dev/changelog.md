@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Pursuit speed gate: equal effective speed now pursues (2026-09-06)
+**Files:** src/lib/routedRetreat.ts + test, docs (dev/09 + changelog)
+
+- choosePursuer no longer multiplies the routed unit's (already x1.5) effective rout speed by another 1.5. Gate 2 is now 'pursuer effective MaxMP >= routed effective routing MaxMP', so an equally-fast rider (4 vs 4) pursues. Diagnostics and tests updated.
+
+
+
 ## Pursuit: verbose gate diagnostics + free pursue attack (2026-09-06)
 **Files:** src/lib/routedRetreat.ts, src/components/ScenarioMap/{ScenarioMap,useCombatActions}.tsx, docs (changelog)
 

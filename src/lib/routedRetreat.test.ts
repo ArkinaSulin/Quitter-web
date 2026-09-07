@@ -127,10 +127,10 @@ describe('choosePursuer', () => {
     expect(p).toBeNull();
   });
 
-  it('speed gate is >= routed speed x1.5 (equality qualifies)', () => {
+  it('speed gate is >= the routed unit\'s effective routing speed (equality pursues)', () => {
     const routed = unit('r', 'blue', h(0, 0), { currentFormation: 'Routed', movementPoints: 2, movementPointsAvailable: 0, actionsAvailable: 0 });
-    // routed speed 2 x1.5 = 3; pursuer mp 3 exactly qualifies (>=, not >).
-    const equal = host('e', h(1, 0), 3, 1);
+    // routed effective speed 2; a pursuer at exactly 2 qualifies (equal catches).
+    const equal = host('e', h(1, 0), 2, 1);
     const p = choosePursuer(equal, routed, [routed, equal], groups, forms(1));
     expect(p?.id).toBe('e');
   });

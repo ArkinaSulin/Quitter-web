@@ -177,8 +177,9 @@ export function canPayMove(unit: Unit, cost = 1): boolean {
  *   1. the vacated hex can be advanced into in ONE movement from the pursuer's
  *      current position (a straight front-arc step — not necessarily 1 MP, but it
  *      can reach it in a single droppable move),
- *   2. the pursuer's effective MaxMP >= the routed unit's routing MaxMP × 1.5
- *      (this changed from ">" to ">="),
+ *   2. the pursuer's effective MaxMP >= the routed unit's EFFECTIVE routing
+ *      MaxMP (the Routed formation's ×1.5 is already applied to the routed
+ *      unit's speed, so equal effective speed is enough to pursue),
  *   3. the pursuer can spend the MP to enter the vacated hex.
  * Preference: the attacking unit (when given) → fastest eligible → most available
  * MP → random (injected rnd). Returns null when nobody qualifies.
@@ -192,7 +193,7 @@ export function choosePursuer(
   rnd: () => number = Math.random,
 ): Unit | null {
   const routedSpeedV = routedSpeed({ routed, units, alliances, formationsMap });
-  const speedGate = routedSpeedV * 1.5;
+  const speedGate = routedSpeedV;
   const routedGroup = alliances[routed.team] || 'friendly';
   const vacKey = key(routed.hex.q, routed.hex.r);
   const occ = new Set<string>();
@@ -237,8 +238,9 @@ export interface PursuitGateInfo {
 
 /**
  * Verbose error-checking aid: why each nearby hostile can (or can't) pursue.
- * Mirrors choosePursuer's gates (speed ≥ routed effective × 1.5, one droppable
- * move into the vacated hex, affordable MP) so decline reasons are visible.
+ * Mirrors choosePursuer's gates (effective speed ≥ the routed unit's effective
+ * routing speed, one droppable move into the vacated hex, affordable MP) so
+ * decline reasons are visible.
  */
 export function pursuitGateInfo(
   routed: Unit,
@@ -247,7 +249,7 @@ export function pursuitGateInfo(
   formationsMap: Record<string, Formation>,
 ): PursuitGateInfo[] {
   const routedSpeedV = routedSpeed({ routed, units, alliances, formationsMap });
-  const speedNeed = routedSpeedV * 1.5;
+  const speedNeed = routedSpeedV;
   const routedGroup = alliances[routed.team] || 'friendly';
   const vacKey = key(routed.hex.q, routed.hex.r);
   const occ = new Set<string>();
