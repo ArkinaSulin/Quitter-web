@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Pursuit: verbose gate diagnostics + free pursue attack (2026-09-06)
+**Files:** src/lib/routedRetreat.ts, src/components/ScenarioMap/{ScenarioMap,useCombatActions}.tsx, docs (changelog)
+
+- When no enemy pursues, a log line now reports each nearby hostile and exactly which pursuit gate fails: speed (effective vs routed effective x1.5), one-droppable-move reach into the vacated hex, and affordable MP (e.g. rider 4 < 6 -> no pursuit).
+- **Pursuit attacks no longer cost an action** (they were spending 1 via the normal attack sub-step). They remain free like charge attacks, still +1 toward the attack cap; the follow move still pays 1 MP.
+
+
+
 ## Effect engine: zone mp_cost affects movement (2026-09-06)
 **Files:** src/components/ScenarioMap/ScenarioMap.tsx, docs (changelog)
 

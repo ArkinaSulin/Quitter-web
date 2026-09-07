@@ -5,7 +5,7 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { parseSubSteps, CommandLogRow } from '@/lib/commandLog';
 import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel, GroundEffect, hexDistance } from '@/types/gameProtocol';
-import { adjacentRetreatCandidates, routThroughOptions, choosePursuer, RoutThroughOption, retreatDiagnosis } from '@/lib/routedRetreat';
+import { adjacentRetreatCandidates, routThroughOptions, choosePursuer, RoutThroughOption, retreatDiagnosis, pursuitGateInfo, pursuitGateText } from '@/lib/routedRetreat';
 import { applyMoveCost } from '@/lib/moveCost';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { parseWeapons } from '@/lib/weaponParser';
@@ -1072,7 +1072,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           pLive = p ? (cur.find(u => u.id === p.id) ?? p) : null;
         }
       }
-      if (!pLive) { console.info('[RoutFlow] no pursuer for', live.unitName); return; }
+      if (!pLive) {
+        // Verbose error-checking: show exactly why each nearby hostile can't pursue.
+        const gates = pursuitGateInfo(live, cur, alliances, formationsMap);
+        addMessage(`No enemy can pursue ${live.unitName}: ${pursuitGateText(gates)}.`);
+        console.info('[RoutFlow] no pursuer for', live.unitName, gates);
+        return;
+      }
 
       // Attack geometry uses POST-follow positions (pursuer in the vacated hex,
       // target at its real location) so melee never misfires as "long range".
@@ -1082,7 +1088,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         : move.kind === 'adjacent'
           ? { ...live, hex: move.hex }
           : live;
-      await performAttack(resolvedAttacker, target, false, { chained: true });
+      await performAttack(resolvedAttacker, target, false, { chained: true, pursuit: true });
       const lower = nextLowerFormation(pLive.currentFormation);
       if (lower) {
         await execute('FORMATION', [{

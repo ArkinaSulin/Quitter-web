@@ -223,3 +223,72 @@ export function choosePursuer(
   if (withMp.length === 1) return withMp[0];
   return withMp[Math.floor(rnd() * withMp.length)];
 }
+
+export interface PursuitGateInfo {
+  id: string;
+  unitName: string;
+  speed: number;
+  speedNeed: number;
+  speedOk: boolean;
+  reachOk: boolean;
+  payOk: boolean;
+  note: string;
+}
+
+/**
+ * Verbose error-checking aid: why each nearby hostile can (or can't) pursue.
+ * Mirrors choosePursuer's gates (speed ≥ routed effective × 1.5, one droppable
+ * move into the vacated hex, affordable MP) so decline reasons are visible.
+ */
+export function pursuitGateInfo(
+  routed: Unit,
+  units: Unit[],
+  alliances: Record<string, AllianceGroup>,
+  formationsMap: Record<string, Formation>,
+): PursuitGateInfo[] {
+  const routedSpeedV = routedSpeed({ routed, units, alliances, formationsMap });
+  const speedNeed = routedSpeedV * 1.5;
+  const routedGroup = alliances[routed.team] || 'friendly';
+  const vacKey = key(routed.hex.q, routed.hex.r);
+  const occ = new Set<string>();
+  for (const u of units) {
+    if (u.isDeleted || u.id === routed.id) continue;
+    occ.add(key(u.hex.q, u.hex.r));
+  }
+  const out: PursuitGateInfo[] = [];
+  for (const u of units) {
+    if (u.isDeleted || u.id === routed.id) continue;
+    if ((alliances[u.team] || 'friendly') === routedGroup) continue;
+    if (isUnitRouted(u)) continue;
+    const speed = unitSpeed(u, formationsMap);
+    const speedOk = speed >= speedNeed;
+    const payOk = canPayMove(u, 1);
+    const reach = computeReachableMap(u, Math.max(1, speed), occ, new Set<string>(), undefined, true);
+    const entry = reach.get(vacKey);
+    const reachOk = !!entry && !entry.needsTurn;
+    const note = entry
+      ? entry.needsTurn
+        ? 'needs a turn first'
+        : 'can reach'
+      : 'cannot reach the vacated hex';
+    out.push({
+      id: u.id,
+      unitName: u.unitName,
+      speed,
+      speedNeed,
+      speedOk,
+      reachOk,
+      payOk,
+      note: `${note}${payOk ? '' : ' · no MP/action'}`,
+    });
+  }
+  return out;
+}
+
+/** One-line human summary of the pursuit gates (for the messages log). */
+export function pursuitGateText(info: PursuitGateInfo[]): string {
+  if (info.length === 0) return 'no adjacent hostile';
+  return info
+    .map(g => `${g.unitName}: speed ${g.speed}${g.speedOk ? ' ≥' : ' <'} ${g.speedNeed}${g.speedOk ? ' ✓' : ' ✗'} · reach ${g.reachOk ? '✓' : '✗'} (${g.note}) · MP ${g.payOk ? '✓' : '✗'}`)
+    .join(' · ');
+}

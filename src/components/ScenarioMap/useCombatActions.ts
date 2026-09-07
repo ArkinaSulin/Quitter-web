@@ -85,7 +85,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
   const [pendingCrossAlliance, setPendingCrossAlliance] = useState<PendingCrossAlliance | null>(null);
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; stashed?: AttackStash; chained?: boolean }) => {
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean }) => {
     if (overBudget) {
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
@@ -219,7 +219,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       });
     }
 
-    if (!weapon.freeAction && !isChargingAttack) {
+    if (!weapon.freeAction && !isChargingAttack && !options?.pursuit) {
       subSteps.push({
         type: 'ATTACK',
         description: `${attacker.unitName} spent an action attacking ${target.unitName}`,
@@ -231,8 +231,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
         ],
       });
     } else {
-      // Free-action / charge attacks carry no action cost but still count toward
-      // the cap (spent even on AGR failure).
+      // Free-action / charge / pursuit attacks carry no action cost but still
+      // count toward the cap (spent even on AGR failure).
       subSteps.push({
         type: 'ATTACK',
         description: `${attacker.unitName} attacked with ${weapon.name} — cap count`,
