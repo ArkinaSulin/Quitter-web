@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## Effects library — Stage 1: schema, access, editor (2026-09-06)
+**Files:** supabase/migrations/077_effect_templates.sql (new), src/lib/effectTemplates.ts (new), src/hooks/useProfile.ts, src/components/{Lobby,EffectEditor/EffectEditor}.tsx, app/effect-editor/page.tsx (new), docs (changelog)
+
+- Global **effect_templates** library (migration 077, apply to DB): DM/admin author; everyone may apply. Template = name/description/color/image_url/scope(unit|zone|both)/magnitude(fixed|caster_input)/default_duration + a modifiers array, so composites (Haunted = ac-2 + morale-1) and special kinds (hp_borrow Sleep, zone entry, zone mp_cost) are authored as data. Rows seeded from the in-code catalog plus Haunted/Sleep/Fire Field/Smoke/Bog examples. RLS + iew_effect_editor/effect_editor access caps and user_has_access cases added.
+- Types + row mappers (src/lib/effectTemplates.ts).
+- **Effects Library editor** at /effect-editor (3-panel like Unit Editor: left selector, middle authoring incl. a modifier composer, right preview summary). Lobby button in hazard style.
+- Note: applying templates into scenarios (tick/refund, zones/radius, image layer bands, hover/hit-testing) is the next stage. 515 tests, tsc clean.
+
+
+
 ## Map editor: painting 0-MP free hexes works (2026-09-06)
 **Files:** src/components/MapEditor/MapEditor.tsx, docs (changelog)
 

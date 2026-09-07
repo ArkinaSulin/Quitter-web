@@ -27,6 +27,8 @@ interface AccessRow {
   can_use_ship_editor: boolean;
   can_view_map_editor: boolean;
   can_use_map_editor: boolean;
+  can_view_effect_editor: boolean;
+  can_use_effect_editor: boolean;
 }
 
 export interface Access {
@@ -39,9 +41,11 @@ export interface Access {
   canUseShipEditor: boolean;
   canViewMapEditor: boolean;
   canUseMapEditor: boolean;
+  canViewEffectEditor: boolean;
+  canUseEffectEditor: boolean;
 }
 
-const EMPTY_ACCESS: Access = { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false, canViewShipEditor: false, canUseShipEditor: false, canViewMapEditor: false, canUseMapEditor: false };
+const EMPTY_ACCESS: Access = { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false, canViewShipEditor: false, canUseShipEditor: false, canViewMapEditor: false, canUseMapEditor: false, canViewEffectEditor: false, canUseEffectEditor: false };
 
 let accessCache: Record<string, AccessRow> | null = null;
 
@@ -49,7 +53,7 @@ async function loadAccessMatrix(): Promise<Record<string, AccessRow>> {
   if (accessCache) return accessCache;
   const { data } = await supabase
     .from('access_roles')
-    .select('role, can_use_unit_editor, can_view_unit_editor, can_create_scenario, can_join_game, can_view_replay, can_view_ship_editor, can_use_ship_editor, can_view_map_editor, can_use_map_editor');
+    .select('role, can_use_unit_editor, can_view_unit_editor, can_create_scenario, can_join_game, can_view_replay, can_view_ship_editor, can_use_ship_editor, can_view_map_editor, can_use_map_editor, can_view_effect_editor, can_use_effect_editor');
   accessCache = (data || []).reduce((acc: Record<string, AccessRow>, row: any) => {
     acc[row.role] = {
       can_use_unit_editor: !!row.can_use_unit_editor,
@@ -61,6 +65,8 @@ async function loadAccessMatrix(): Promise<Record<string, AccessRow>> {
       can_use_ship_editor: !!row.can_use_ship_editor,
       can_view_map_editor: !!row.can_view_map_editor,
       can_use_map_editor: !!row.can_use_map_editor,
+      can_view_effect_editor: !!row.can_view_effect_editor,
+      can_use_effect_editor: !!row.can_use_effect_editor,
     };
     return acc;
   }, {});
@@ -80,6 +86,8 @@ function accessForRole(role: ProfileRole): Access {
     canUseShipEditor: row.can_use_ship_editor,
     canViewMapEditor: row.can_view_map_editor,
     canUseMapEditor: row.can_use_map_editor,
+    canViewEffectEditor: row.can_view_effect_editor,
+    canUseEffectEditor: row.can_use_effect_editor,
   };
 }
 
