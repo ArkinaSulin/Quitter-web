@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Effects tab for assigned players (Stage 2a) - 2026-09-06
+**Files:** src/components/ScenarioMap/{LeftPanel,ScenarioMap}.tsx, docs (changelog)
+
+- The left-panel **Effects** tab now appears for every participant with a team (any role); unassigned viewers still see nothing. Assigned players may arm an effect zone template and paint zones on the map at any time (no action/MP or turn limit); terrain (MP-cost) painting remains GM-only. Unit-target effect application stays available via each unit's context menu.
+- (Still ahead: library drag-&amp;-drop + radius/unit-apply modals - the effect-template apply engine.)
+
+
+
 ## Hero 'Other Action' + Select wording + context clamp (Stage 1) - 2026-09-06
 **Files:** src/lib/commandLog.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ContextMenu,ScenarioMap}.tsx, docs (changelog)
 

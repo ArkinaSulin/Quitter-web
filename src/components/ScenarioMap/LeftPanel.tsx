@@ -53,13 +53,15 @@ interface LeftPanelProps {
   onSetTerrainBrushCost: (v: number | null) => void;
   zoneTemplateId: string | null;
   onSetZoneTemplateId: (id: string | null) => void;
+  /** Assigned players may paint effect zones (unassigned spectators cannot). */
+  canUseEffects?: boolean;
   /** Optional AI-assist tab content (rendered for the GM when AI assist is on). */
   aiPanelContent?: React.ReactNode;
   side: 'left' | 'right';
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, zoneTemplateId, onSetZoneTemplateId, aiPanelContent, side, onToggleSide }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, zoneTemplateId, onSetZoneTemplateId, canUseEffects, aiPanelContent, side, onToggleSide }: LeftPanelProps) {
   // Persist which tabs are open per scenario + user, so a rejoined session
   // restores the same panel layout.
   // Persist which tabs are open per scenario + user. The saved layout is restored
@@ -125,7 +127,7 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
       id: 'effects-paint',
       label: 'Effects',
       icon: <WindIcon />,
-      requiresGM: true,
+      requiresGM: false,
       content: <EffectsPaintPanel activeTemplateId={zoneTemplateId} onSetTemplate={onSetZoneTemplateId} />,
     },
     {
@@ -221,7 +223,9 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
     });
   }
 
-  const visiblePanels = panels.filter(p => !p.requiresGM || isGM);
+  const visiblePanels = panels
+    .filter(p => !p.requiresGM || isGM)
+    .filter(p => p.id !== 'effects-paint' || isGM || !!canUseEffects);
 
   // Restore the saved layout once the player id is known, re-merging whenever the
   // role resolves (isGM unlocks the GM tabs). The saved state is only ADDED to the

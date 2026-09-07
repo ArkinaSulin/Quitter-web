@@ -260,6 +260,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const { getRoleCapabilities } = useScenarioCapabilities();
   const myRole = participantsSync.myParticipant?.role ?? null;
   const myTeam = participantsSync.myParticipant?.team ?? null;
+  // Assigned players (any role with a team) may paint effect zones; unassigned
+  // spectators cannot. Terrain (MP-cost) painting stays GM-only.
+  const canPaintZones = effectiveIsGM || !!myTeam;
   // Pings render in the pinger's team color; the DM (no team) pings white.
   const pingColor = myTeam ? TEAM_COLORS[myTeam as Team] : '#ffffff';
   const roleLabel =
@@ -1120,7 +1123,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (reactionMode) return;
       // GM map-edit brushes paint instead of selecting.
       if (effectiveIsGM && terrainBrushCost !== null) { void paintTerrain(hex.q, hex.r); return; }
-      if (effectiveIsGM && zoneTemplate) { void placeOrToggleZone(hex.q, hex.r); return; }
+      // Effect zones: GM or any assigned player may paint.
+      if (zoneTemplate && canPaintZones) { void placeOrToggleZone(hex.q, hex.r); return; }
       setSelectedHex(hex);
     },
     onUnitClick: (unit, _clientX, _clientY) => {
@@ -1762,9 +1766,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             onClearMap={() => void clearMap()}
             terrainBrushCost={terrainBrushCost}
             onSetTerrainBrushCost={setTerrainBrushCost}
-            zoneTemplateId={zoneTemplate?.id ?? null}
-            onSetZoneTemplateId={(id) => setZoneTemplate(id ? (templateById(id) ?? null) : null)}
-            side={panelSide}
+          zoneTemplateId={zoneTemplate?.id ?? null}
+          onSetZoneTemplateId={(id) => setZoneTemplate(id ? (templateById(id) ?? null) : null)}
+          canUseEffects={effectiveIsGM || !!myTeam}
+          side={panelSide}
             onToggleSide={togglePanelSide}
             aiPanelContent={aiPanelNode ?? undefined}
           />
