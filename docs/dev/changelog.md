@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Plain-language glossary + inline term help (2026-09-06)
+**Files:** src/lib/terms.ts (new), src/components/GlossaryModal.tsx (new), src/components/ScenarioMap/{TopBar,ScenarioMap,UnitTooltip}.tsx, docs (changelog)
+
+- New searchable **Plain-language glossary** (TopBar '?') explains every abbreviation and wargame term in one line each (AC, AGR, MOR, MP, DoT, ZoC, 2H, F, NR, Reach, Rout/Rally/Charge, Rear/Flank, saves/DC, ranges, formations, Hero/Unit, Attach, Effects/tempo, alliances, Free Move, Undo, Replay).
+- Unit tooltip labels (HP/Move/Actions/Attacks/AC/AGR/MOR) gained hover tooltips with the same plain-language definitions so jargon is explained inline too.
+
+
+
 ## Fix: tempo-free effects tick once per turn cycle + context cleanup (2026-09-06)
 **Files:** src/lib/unitEffects.ts + unitEffects.test.ts, src/components/ScenarioMap/ContextMenu.tsx, docs (changelog)
 

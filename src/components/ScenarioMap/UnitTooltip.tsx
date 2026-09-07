@@ -81,13 +81,13 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
         <span className="text-gray-400">Attacks/rnd:</span><span>{activeWeapon?.numberOfAttacks ?? 1}</span>
         {showTroops && (
           <>
-            <span className="text-gray-400">AGR:</span><span>{unit.aggressiveness}</span>
+                  <span className="text-gray-400" title="AGR (Aggressiveness): the unit's will to attack. It rolls a d10; roll ≤ AGR to attack.">AGR:</span><span>{unit.aggressiveness}</span>
           </>
         )}
         {(showTroops || unit.ignoreMoraleChecks) && (
-          unit.ignoreMoraleChecks
-            ? <><span className="text-gray-400">MOR:</span><span className="text-yellow-400">fearless</span></>
-            : <><span className="text-gray-400">MOR:</span><span className="text-yellow-400">{morTotal} = {unit.baseMorale} {effectiveMoraleModifier >= 0 ? '+ ' : '- '}{Math.abs(effectiveMoraleModifier)}{formationMorMod !== 0 ? ` (incl. formation ${formationMorMod >= 0 ? '+' : ''}${formationMorMod})` : ''}</span></>
+                unit.ignoreMoraleChecks
+                  ? <><span className="text-gray-400" title="Morale: will to keep fighting; fearless units never rout.">MOR:</span><span className="text-yellow-400">fearless</span></>
+                  : <><span className="text-gray-400" title="Morale: will to keep fighting. At 0 or below after an attack the unit routs.">MOR:</span><span className="text-yellow-400">{morTotal} = {unit.baseMorale} {effectiveMoraleModifier >= 0 ? '+ ' : '- '}{Math.abs(effectiveMoraleModifier)}{formationMorMod !== 0 ? ` (incl. formation ${formationMorMod >= 0 ? '+' : ''}${formationMorMod})` : ''}</span></>
         )}
         <span className="text-gray-400">Threat:</span><span>{isUnitRouted(unit) ? `0 routed, was ${threatRating.toFixed(2)}` : threatRating.toFixed(2)}</span>
       </div>
@@ -100,16 +100,16 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
             <span className="text-gray-400">Troops:</span><span>{unit.currentTroopCount}/{unit.maxTroopCount}</span>
           </>
         )}
-        <span className="text-gray-400">HP:</span><span>{unit.currentUnitHp}/{unit.maxUnitHp}</span>
-        <span className="text-gray-400">Move:</span><span>{Math.floor(unit.movementPointsAvailable)}/{effectiveMaxMovement}{unit.isHero ? ` (${heroMovePerAction(effectiveMaxMovement)} MP/action)` : ''}{showTroops && formationMovMult !== 1 ? ` (base ${unit.movementPoints} × ${formationMovMult})` : ''}</span>
-        <span className="text-gray-400">Actions:</span><span className={unit.actionsAvailable <= 0 ? 'text-red-400' : ''}>{unit.actionsAvailable}/{unit.isHero ? getSetting('hero_actions_per_turn', 5) : getSetting('actions_per_turn', 2)} <span className="text-gray-500">{unit.isHero ? '(convert to MP)' : '(1 = full move)'}</span></span>
+        <span className="text-gray-400" title="Hit Points (HP): unit health. Non-hero damage is spread across troops.">HP:</span><span>{unit.currentUnitHp}/{unit.maxUnitHp}</span>
+        <span className="text-gray-400" title="Movement points (MP): how far it can move now; one action converts to a full pool.">Move:</span><span>{Math.floor(unit.movementPointsAvailable)}/{effectiveMaxMovement}{unit.isHero ? ` (${heroMovePerAction(effectiveMaxMovement)} MP/action)` : ''}{showTroops && formationMovMult !== 1 ? ` (base ${unit.movementPoints} × ${formationMovMult})` : ''}</span>
+        <span className="text-gray-400" title="Actions: what significant deeds cost. Attacking takes 1; units start each turn with 2, heroes 5.">Actions:</span><span className={unit.actionsAvailable <= 0 ? 'text-red-400' : ''}>{unit.actionsAvailable}/{unit.isHero ? getSetting('hero_actions_per_turn', 5) : getSetting('actions_per_turn', 2)} <span className="text-gray-500">{unit.isHero ? '(convert to MP)' : '(1 = full move)'}</span></span>
         {typeof unit.attacksUsed === 'number' && (
-          <span className="text-gray-400">Attacks used:</span>
+          <span className="text-gray-400" title="Attacks used this turn toward the 5-attack cap (attacks + retaliations).">Attacks used:</span>
         )}
         {typeof unit.attacksUsed === 'number' && (
           <span className={unit.attacksUsed >= unitAttackCap() ? 'text-red-400' : ''}>{unit.attacksUsed}/{unitAttackCap()} <span className="text-gray-500">(attacks + retaliations)</span></span>
         )}
-        <span className="text-gray-400">AC:</span><span>{showTroops ? `${effectiveAc - shieldPenalty} = ${unit.baselineAc}${shieldPenalty > 0 ? ` - ${shieldPenalty} (${shieldInfo.reason === 'routing' ? 'routing, no shield' : 'two-handed'})` : ''}${formationAcMod !== 0 ? ` + ${formationAcMod} (formation)` : ''}${formationAcMod >= 0 && shieldPenalty === 0 ? ' +0' : ''}` : effectiveAc - shieldPenalty}</span>
+        <span className="text-gray-400" title="Armor Class (AC): a d20 attack roll + bonuses must equal or beat this to hit.">AC:</span><span>{showTroops ? `${effectiveAc - shieldPenalty} = ${unit.baselineAc}${shieldPenalty > 0 ? ` - ${shieldPenalty} (${shieldInfo.reason === 'routing' ? 'routing, no shield' : 'two-handed'})` : ''}${formationAcMod !== 0 ? ` + ${formationAcMod} (formation)` : ''}${formationAcMod >= 0 && shieldPenalty === 0 ? ' +0' : ''}` : effectiveAc - shieldPenalty}</span>
         {(unit.effects ?? []).length > 0 && (
           <>
             <span className="col-span-2 mt-0.5 text-[10px] uppercase tracking-wide text-gray-500">Effects</span>

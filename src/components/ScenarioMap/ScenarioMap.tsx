@@ -50,6 +50,7 @@ import { AddEffectModal } from './AddEffectModal';
 import { EffectTemplate, templateById, EffectSpec } from '@/lib/unitEffects';
 import { routeUnit } from './routeUnit';
 import { ScenarioStatsModal } from './ScenarioStatsModal';
+import { GlossaryModal } from '@/components/GlossaryModal';
 import { parseDragPayload } from './EffectsPanel';
 import { useCommandLogRows } from '@/hooks/useCommandLogRows';
 import { buildFallen } from '@/lib/corpseTracker';
@@ -150,6 +151,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const commandRows = useCommandLogRows(scenarioId);
   const corpseCounts = useMemo(() => buildFallen(commandRows), [commandRows]);
   const [showStats, setShowStats] = useState(false);
+  const [showGlossary, setShowGlossary] = useState(false);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
   // GM-painted map overlays (persisted in scenarios.map_data).
   const [terrainCosts, setTerrainCosts] = useState<TerrainCosts>({});
@@ -1832,6 +1834,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         goToLobby={goToLobby}
         showStats={(isGM && !inReplay && !replayMode) || inReplay || replayMode}
         onOpenStats={() => setShowStats(true)}
+        onOpenGlossary={() => setShowGlossary(true)}
       />
 
       {/* Floating Left Panel — hidden in replay or when the DM is gone */}
@@ -2463,6 +2466,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           </div>
         </div>
       )}
+
+      {/* Plain-language glossary (every term/abbreviation explained) */}
+      {showGlossary && <GlossaryModal onClose={() => setShowGlossary(false)} />}
 
       {/* Scenario Statistics (DM in live play; anyone in replay) */}
       {showStats && (

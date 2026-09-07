@@ -31,6 +31,8 @@ interface TopBarProps {
   /** Show the Scenario Stats button (GM in live play; anyone in replay). */
   showStats: boolean;
   onOpenStats: () => void;
+  /** Open the plain-language glossary ("?"). */
+  onOpenGlossary?: () => void;
 }
 
 export function TopBar(props: TopBarProps) {
@@ -61,6 +63,7 @@ export function TopBar(props: TopBarProps) {
     goToLobby,
     showStats,
     onOpenStats,
+    onOpenGlossary,
   } = props;
 
   // The DM keeps End Turn (and replay exit) even while playing as a player; the
@@ -192,6 +195,15 @@ export function TopBar(props: TopBarProps) {
             title="Scenario statistics (troop kills, levels, status)"
           >
             📊 Stats
+          </button>
+        )}
+        {onOpenGlossary && (
+          <button
+            onClick={onOpenGlossary}
+            className="w-8 h-8 rounded-full bg-gray-800 hover:bg-gray-700 text-white font-bold text-sm"
+            title="Plain-language glossary for every term/abbreviation"
+          >
+            ?
           </button>
         )}
         <button onClick={goToLobby} className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1 rounded shadow-lg text-sm">
