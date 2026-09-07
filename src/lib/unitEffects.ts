@@ -17,18 +17,19 @@
 import { Unit, UnitEffect, GroundEffect, EffectKind, AllianceGroup } from '@/types/gameProtocol';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 
-/** The real unit field a stat kind modifies (dot has none — it damages HP). */
+/** The real unit field a stat kind modifies (dot/hp_borrow have none — they touch HP). */
 export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModifier' | 'movementPoints' | null {
   switch (kind) {
     case 'ac': return 'currentAc';
     case 'morale': return 'currentMoraleModifier';
     case 'movement': return 'movementPoints';
-    case 'dot': return null;
+    case 'dot':
+    case 'hp_borrow': return null;
   }
 }
 
 export function isStatEffect(kind: EffectKind): boolean {
-  return kind !== 'dot';
+  return kind === 'ac' || kind === 'morale' || kind === 'movement';
 }
 
 /** Apply-time payload for a new effect (duration/turnsLeft filled by the engine). */
@@ -75,6 +76,11 @@ export function applyEffectChanges(unit: Unit, spec: Omit<UnitEffect, 'key' | 'b
     const to = statValue(unit, spec.kind) + spec.delta;
     changes.unshift({ field, from: unit[field], to });
   }
+  // Sleep (hp_borrow): HP is deducted immediately (never below 1); the refund
+  // happens when the effect expires (see removeEffectChanges / END_TURN).
+  if (spec.kind === 'hp_borrow' && (spec.delta || 0) > 0) {
+    changes.unshift(...hpBorrowDamageChanges(unit, spec.delta));
+  }
   return { changes, effect };
 }
 
@@ -93,6 +99,11 @@ export function removeEffectChanges(unit: Unit, key: string): UnitChange[] {
   if (field && typeof entry.base === 'number') {
     changes.unshift({ field, from: unit[field], to: entry.base });
   }
+  // Sleep refund: expiring/removing an hp_borrow gives the borrowed HP back
+  // (capped) unless the unit was killed in the meantime.
+  if (entry.kind === 'hp_borrow') {
+    changes.unshift(...hpBorrowRefundChanges(unit, entry.delta || 0));
+  }
   return changes;
 }
 
@@ -104,6 +115,30 @@ export function dotDamageChanges(target: Unit, damage: number): UnitChange[] {
   return [
     { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
     { field: 'currentTroopCount', from: target.currentTroopCount, to: newTroops },
+  ];
+}
+
+function troopFromHp(target: Unit, hp: number): number {
+  return Math.min(target.maxTroopCount ?? hp, Math.max(1, Math.ceil(hp / Math.max(1, target.troopHp ?? 1))));
+}
+
+/** Sleep (hp_borrow): remove X HP now — NEVER below 1 HP (cannot kill). */
+export function hpBorrowDamageChanges(target: Unit, x: number): UnitChange[] {
+  if (x <= 0) return [];
+  const newHp = Math.max(1, (target.currentUnitHp ?? 1) - x);
+  return [
+    { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+    { field: 'currentTroopCount', from: target.currentTroopCount, to: troopFromHp(target, newHp) },
+  ];
+}
+
+/** Sleep refund: give the borrowed X HP back (capped at max) — only if alive. */
+export function hpBorrowRefundChanges(target: Unit, x: number): UnitChange[] {
+  if (x <= 0 || (target.currentUnitHp ?? 0) <= 0) return [];
+  const newHp = Math.min(target.maxUnitHp ?? (target.currentUnitHp ?? 0) + x, (target.currentUnitHp ?? 0) + x);
+  return [
+    { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+    { field: 'currentTroopCount', from: target.currentTroopCount, to: troopFromHp(target, newHp) },
   ];
 }
 

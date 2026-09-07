@@ -167,7 +167,7 @@ export interface Unit {
 }
 
 // --- Temporary effects (buffs / debuffs / damage over time) ---
-export type EffectKind = 'ac' | 'morale' | 'movement' | 'dot';
+export type EffectKind = 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow';
 
 /**
  * A temporary effect instance. Duration counts ACTIVATIONS OF THE CASTER (not the

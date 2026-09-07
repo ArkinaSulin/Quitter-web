@@ -224,9 +224,6 @@ describe('computeEndTurnEffects', () => {
   });
 
   it('tempo-free (no caster team) effects tick once per turn cycle, not per alliance', () => {
-    // A GM/player-placed Burning with no caster team must damage only when the
-    // FIRST active alliance's turn arrives (once per full cycle) — not on every
-    // alliance's End Turn.
     const dot: UnitEffect = ef({ key: 'no-cast', kind: 'dot', delta: 4, turnsLeft: 3, duration: 3, casterUnitId: null, casterTeam: null });
     const target = unit('target', 'red', h(5, 0), { effects: [dot] });
     const friendlyTick = computeEndTurnEffects({ units: [target], zones: [], nextGroup: 'friendly', alliances: groups, makeKey });
@@ -243,5 +240,27 @@ describe('computeEndTurnEffects', () => {
     expect(zFriendly.subSteps.find(s => s.unitId === 'standing')).toBeDefined();
     const zEnemy = computeEndTurnEffects({ units: [st], zones: [z], nextGroup: 'enemy', alliances: groups, makeKey });
     expect(zEnemy.subSteps.find(s => s.unitId === 'standing')).toBeUndefined();
+  });
+
+  it('hp_borrow (Sleep): deducts HP on apply (never kills) and refunds on expiry if alive', () => {
+    const victim = unit('v', 'red', h(0, 0), { currentUnitHp: 8, maxUnitHp: 10, troopHp: 1, currentTroopCount: 8, maxTroopCount: 10 });
+    const applied = applyEffectChanges(victim, { name: 'Sleep', color: '#90caf9', kind: 'hp_borrow', delta: 6, duration: 2, turnsLeft: 2, casterUnitId: null, casterTeam: null });
+    const hpStep = applied.changes.find(c => c.field === 'currentUnitHp');
+    expect(hpStep!.to).toBe(2); // 8 - 6, but never below 1
+    const asleep = { ...victim, currentUnitHp: 2, currentTroopCount: 2, effects: applied.effect ? [applied.effect] : [] };
+    // Refund on removal/expiry while alive: back to 8.
+    const refunded = removeEffectChanges(asleep, applied.effect.key);
+    expect(refunded.find(c => c.field === 'currentUnitHp')!.to).toBe(8);
+
+    // Large borrow cannot kill: 3 HP - 5 => 1 HP.
+    const nearDead = unit('d', 'red', h(0, 0), { currentUnitHp: 3, maxUnitHp: 10, troopHp: 1, currentTroopCount: 3, maxTroopCount: 10 });
+    const big = applyEffectChanges(nearDead, { name: 'Sleep', color: '#90caf9', kind: 'hp_borrow', delta: 5, duration: 2, turnsLeft: 2, casterUnitId: null, casterTeam: null });
+    expect(big.changes.find(c => c.field === 'currentUnitHp')!.to).toBe(1);
+
+    // No refund if the unit died while asleep.
+    const corpse = unit('c', 'red', h(0, 0), { currentUnitHp: 0, currentTroopCount: 0, maxUnitHp: 10, troopHp: 1, maxTroopCount: 10 });
+    const deadSleep: UnitEffect = ef({ key: 'ds', kind: 'hp_borrow', delta: 6, turnsLeft: 1, duration: 1, casterUnitId: null, casterTeam: null });
+    const corpseRemove = removeEffectChanges({ ...corpse, effects: [deadSleep] }, 'ds');
+    expect(corpseRemove.some(c => c.field === 'currentUnitHp')).toBe(false);
   });
 });

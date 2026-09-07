@@ -50,7 +50,6 @@ import { AddEffectModal } from './AddEffectModal';
 import { EffectTemplate, templateById, EffectSpec } from '@/lib/unitEffects';
 import { routeUnit } from './routeUnit';
 import { ScenarioStatsModal } from './ScenarioStatsModal';
-import { GlossaryModal } from '@/components/GlossaryModal';
 import { parseDragPayload } from './EffectsPanel';
 import { useCommandLogRows } from '@/hooks/useCommandLogRows';
 import { buildFallen } from '@/lib/corpseTracker';
@@ -151,7 +150,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const commandRows = useCommandLogRows(scenarioId);
   const corpseCounts = useMemo(() => buildFallen(commandRows), [commandRows]);
   const [showStats, setShowStats] = useState(false);
-  const [showGlossary, setShowGlossary] = useState(false);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
   // GM-painted map overlays (persisted in scenarios.map_data).
   const [terrainCosts, setTerrainCosts] = useState<TerrainCosts>({});
@@ -673,8 +671,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [effectZoneDrop, setEffectZoneDrop] = useState<{ t: DroppedEffect; hex: Hex } | null>(null);
   const [effectDuration, setEffectDuration] = useState(3);
   const [effectZoneRadius, setEffectZoneRadius] = useState(0);
+  const [effectBorrowAmount, setEffectBorrowAmount] = useState(0);
 
-  const UNIT_KINDS = ['ac', 'morale', 'movement', 'dot'];
+  const UNIT_KINDS = ['ac', 'morale', 'movement', 'dot', 'hp_borrow'];
   const ZONE_KINDS = ['ac', 'morale', 'dot'];
 
   const applyUnitDrop = async () => {
@@ -686,7 +685,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         addMessage(`${d.t.name}: '${m.kind}' applies via the effect engine — skipped`);
         continue;
       }
-      await applyEffect(d.unit, { name: d.t.name, color: d.t.color, kind: m.kind as 'ac' | 'morale' | 'movement' | 'dot', delta: m.delta }, effectDuration, playerId);
+      const delta =
+        m.kind === 'hp_borrow' && effectBorrowAmount > 0
+          ? effectBorrowAmount
+          : m.kind === 'hp_borrow'
+            ? Math.max(0, m.delta)
+            : m.delta;
+      if (m.kind === 'hp_borrow' && delta <= 0) {
+        addMessage(`${d.t.name}: enter a borrowed HP amount to Sleep the unit`);
+        continue;
+      }
+      await applyEffect(d.unit, { name: d.t.name, color: d.t.color, kind: m.kind as 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow', delta }, effectDuration, playerId);
     }
   };
 
@@ -1834,7 +1843,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         goToLobby={goToLobby}
         showStats={(isGM && !inReplay && !replayMode) || inReplay || replayMode}
         onOpenStats={() => setShowStats(true)}
-        onOpenGlossary={() => setShowGlossary(true)}
       />
 
       {/* Floating Left Panel — hidden in replay or when the DM is gone */}
@@ -2433,6 +2441,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 onChange={e => setEffectDuration(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
                 className="mt-1 w-24 bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700" />
             </label>
+            {effectUnitDrop.t.modifiers.some(m => m.kind === 'hp_borrow') && (
+              <label className="block text-xs text-gray-300 mb-4">
+                Borrow HP now (refunded after {effectDuration} caster activations; never kills)
+                <input type="number" min={1} value={effectBorrowAmount}
+                  onChange={e => setEffectBorrowAmount(Math.max(1, Math.floor(Number(e.target.value) || 0)))}
+                  className="mt-1 w-24 bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700" />
+              </label>
+            )}
             <div className="flex justify-end gap-2">
               <button className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-sm" onClick={() => setEffectUnitDrop(null)}>Cancel</button>
               <button className="px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-sm" onClick={() => void applyUnitDrop()}>Apply</button>
@@ -2466,9 +2482,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           </div>
         </div>
       )}
-
-      {/* Plain-language glossary (every term/abbreviation explained) */}
-      {showGlossary && <GlossaryModal onClose={() => setShowGlossary(false)} />}
 
       {/* Scenario Statistics (DM in live play; anyone in replay) */}
       {showStats && (

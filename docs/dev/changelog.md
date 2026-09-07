@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Glossary removed (keep tooltips); Sleep/hp_borrow engine (2026-09-06)
+**Files:** src/components/{ScenarioMap/TopBar,ScenarioMap,UnitTooltip}.tsx (tooltip help kept), src/lib/{unitEffects.ts,unitEffects.test.ts}, src/types/gameProtocol.ts, ScenarioMap drop UI, removed GlossaryModal/terms, docs (changelog)
+
+- Removed the TopBar '?' glossary (nobody reads a dictionary mid-game; tooltips remain), per request.
+- **hp_borrow (Sleep) engine**: new effect kind. Applying deducts X HP immediately (NEVER below 1 HP — cannot kill, troops derive), ticks on the caster activation, and refunds X (capped, troop-corrected) when it expires/removed — but only if the unit is still alive. Unit drop UI prompts for the borrowed amount. +2 tests; 517 tests, tsc clean.
+
+
+
 ## Plain-language glossary + inline term help (2026-09-06)
 **Files:** src/lib/terms.ts (new), src/components/GlossaryModal.tsx (new), src/components/ScenarioMap/{TopBar,ScenarioMap,UnitTooltip}.tsx, docs (changelog)
 
