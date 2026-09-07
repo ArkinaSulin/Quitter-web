@@ -9,7 +9,7 @@ import { AlliancePanel } from './AlliancePanel';
 import { MapEditorPanel } from './MapEditorPanel';
 import { MapPickerList } from './MapPickerList';
 import { TerrainPaintPanel } from './TerrainPaintPanel';
-import { EffectsPaintPanel } from './EffectsPaintPanel';
+import EffectsPanel from './EffectsPanel';
 import { PlayerPanel } from './PlayerPanel';
 import { UndoDebugPanel } from './UndoDebugPanel';
 import { UnitTemplate, AllianceGroup, Participant, ScenarioRole } from '@/types/gameProtocol';
@@ -61,7 +61,7 @@ interface LeftPanelProps {
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, zoneTemplateId, onSetZoneTemplateId, canUseEffects, aiPanelContent, side, onToggleSide }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, canUseEffects, aiPanelContent, side, onToggleSide }: LeftPanelProps) {
   // Persist which tabs are open per scenario + user, so a rejoined session
   // restores the same panel layout.
   // Persist which tabs are open per scenario + user. The saved layout is restored
@@ -128,7 +128,7 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
       label: 'Effects',
       icon: <WindIcon />,
       requiresGM: false,
-      content: <EffectsPaintPanel activeTemplateId={zoneTemplateId} onSetTemplate={onSetZoneTemplateId} />,
+      content: <EffectsPanel />,
     },
     {
       id: 'players',

@@ -50,6 +50,7 @@ import { AddEffectModal } from './AddEffectModal';
 import { EffectTemplate, templateById, EffectSpec } from '@/lib/unitEffects';
 import { routeUnit } from './routeUnit';
 import { ScenarioStatsModal } from './ScenarioStatsModal';
+import { parseDragPayload } from './EffectsPanel';
 import { useCommandLogRows } from '@/hooks/useCommandLogRows';
 import { buildFallen } from '@/lib/corpseTracker';
 import { useCanvasDraw } from './useCanvasDraw';
@@ -82,6 +83,15 @@ function DragGhost({ hex, zoom, offsetX, offsetY }: { hex: Hex; zoom: number; of
     />
   );
 }
+
+type DroppedEffect = {
+  id?: string;
+  name: string;
+  color: string;
+  scope: 'unit' | 'zone' | 'both';
+  defaultDuration: number;
+  modifiers: { kind: string; delta: number }[];
+};
 
 export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -655,6 +665,88 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     addMessage(`${spec.name} ground zone placed at ${target.unitName}'s hex`);
     setEffectMenuUnit(null);
   }, [effectMenuUnit, groundZones, persistMapData, playerId, addMessage]);
+
+  // ---- Effects tab: drag & drop an effect onto the board ----
+  const [effectUnitDrop, setEffectUnitDrop] = useState<{ t: DroppedEffect; unit: Unit } | null>(null);
+  const [effectZoneDrop, setEffectZoneDrop] = useState<{ t: DroppedEffect; hex: Hex } | null>(null);
+  const [effectDuration, setEffectDuration] = useState(3);
+  const [effectZoneRadius, setEffectZoneRadius] = useState(0);
+
+  const UNIT_KINDS = ['ac', 'morale', 'movement', 'dot'];
+  const ZONE_KINDS = ['ac', 'morale', 'dot'];
+
+  const applyUnitDrop = async () => {
+    const d = effectUnitDrop;
+    setEffectUnitDrop(null);
+    if (!d) return;
+    for (const m of d.t.modifiers) {
+      if (!UNIT_KINDS.includes(m.kind)) {
+        addMessage(`${d.t.name}: '${m.kind}' applies via the effect engine — skipped`);
+        continue;
+      }
+      await applyEffect(d.unit, { name: d.t.name, color: d.t.color, kind: m.kind as 'ac' | 'morale' | 'movement' | 'dot', delta: m.delta }, effectDuration, playerId);
+    }
+  };
+
+  const applyZoneDrop = async () => {
+    const d = effectZoneDrop;
+    setEffectZoneDrop(null);
+    if (!d) return;
+    const radius = Math.max(0, Math.min(5, Math.floor(effectZoneRadius) || 0));
+    const hexes: { q: number; r: number; s: number }[] = [];
+    for (let dq = -radius; dq <= radius; dq++) {
+      for (let dr = -radius; dr <= radius; dr++) {
+        const ds = -dq - dr;
+        if (Math.max(Math.abs(dq), Math.abs(dr), Math.abs(ds)) <= radius) {
+          hexes.push({ q: d.hex.q + dq, r: d.hex.r + dr, s: d.hex.s + ds });
+        }
+      }
+    }
+    const next = [...groundZones];
+    for (const m of d.t.modifiers) {
+      if (!ZONE_KINDS.includes(m.kind)) {
+        addMessage(`${d.t.name}: '${m.kind}' needs the zone engine stage — skipped`);
+        continue;
+      }
+      for (const hx of hexes) {
+        const zone: GroundEffect = {
+          key: newEffectKey(),
+          q: hx.q,
+          r: hx.r,
+          name: d.t.name,
+          color: d.t.color,
+          kind: m.kind as GroundEffect['kind'],
+          delta: m.delta,
+          duration: effectDuration,
+          turnsLeft: effectDuration,
+          casterUnitId: null,
+          casterTeam: null,
+          casterPlayerId: playerId,
+        };
+        next.push(zone);
+      }
+    }
+    setGroundZones(next);
+    await persistMapData({ groundEffects: next });
+    addMessage(`Placed ${d.t.name} over ${hexes.length} hex${hexes.length === 1 ? '' : 'es'} (${effectDuration} turns)`);
+  };
+
+  const handleEffectDrop = async (e: React.DragEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (controlsLocked || !canPaintZones) return;
+    const t = parseDragPayload(e.dataTransfer.getData('application/json'));
+    if (!t) return;
+    const hex = getHexFromScreen(e.clientX, e.clientY);
+    if (!hex) return;
+    const unit = getUnitAt(hex);
+    setEffectDuration(t.defaultDuration);
+    if (unit && (unit.currentUnitHp ?? 0) > 0) {
+      setEffectUnitDrop({ t, unit });
+    } else {
+      setEffectZoneRadius(0);
+      setEffectZoneDrop({ t, hex });
+    }
+  };
 
   const performEndTurn = useCallback(async () => {
     if (isEndingTurn) return;
@@ -1784,8 +1876,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onDoubleClick={handleDoubleClick}
-        onContextMenu={handleRightClick}
-      />
+      onContextMenu={handleRightClick}
+      onDragOver={e => e.preventDefault()}
+      onDrop={(e) => void handleEffectDrop(e)}
+    />
 
       {/* Attention pings (feature #4) */}
       <PingLayer pings={pings} zoom={zoom} offsetX={offsetX} offsetY={offsetY} hexSize={HEX_SIZE} />
@@ -1860,7 +1954,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             const target = units.find(u => u.id === targetUnitId);
             if (hero && target) setAttachModal({ hero, target });
           }}
-          onAddEffect={() => setEffectMenuUnit(contextMenuUnit)}
           units={units}
         />
       )}
@@ -2323,6 +2416,52 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onClose={() => setEditUnit(null)}
           onSave={handleEditorSave}
         />
+      )}
+
+      {/* Effects drop: apply to a unit */}
+      {effectUnitDrop && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={() => setEffectUnitDrop(null)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 w-[380px]" onMouseDown={e => e.stopPropagation()}>
+            <p className="text-white font-semibold mb-1">Apply "{effectUnitDrop.t.name}" to {effectUnitDrop.unit.unitName}</p>
+            <p className="text-[11px] text-gray-400 mb-3">{effectUnitDrop.t.modifiers.map(m => `${m.kind} ${m.delta >= 0 ? '+' : ''}${m.delta}`).join(', ')}</p>
+            <label className="block text-xs text-gray-300 mb-4">
+              Duration (caster activations)
+              <input type="number" min={1} max={50} value={effectDuration}
+                onChange={e => setEffectDuration(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                className="mt-1 w-24 bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700" />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-sm" onClick={() => setEffectUnitDrop(null)}>Cancel</button>
+              <button className="px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-sm" onClick={() => void applyUnitDrop()}>Apply</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Effects drop: place a zone */}
+      {effectZoneDrop && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={() => setEffectZoneDrop(null)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 w-[380px]" onMouseDown={e => e.stopPropagation()}>
+            <p className="text-white font-semibold mb-1">Place "{effectZoneDrop.t.name}" zone at ({effectZoneDrop.hex.q}, {effectZoneDrop.hex.r})</p>
+            <p className="text-[11px] text-gray-400 mb-3">{effectZoneDrop.t.modifiers.map(m => `${m.kind} ${m.delta >= 0 ? '+' : ''}${m.delta}`).join(', ')}</p>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <label className="text-xs text-gray-300">Duration
+                <input type="number" min={1} max={50} value={effectDuration}
+                  onChange={e => setEffectDuration(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                  className="mt-1 w-24 bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700" />
+              </label>
+              <label className="text-xs text-gray-300">Radius (hexes)
+                <input type="number" min={0} max={5} value={effectZoneRadius}
+                  onChange={e => setEffectZoneRadius(Math.max(0, Math.min(5, Math.floor(Number(e.target.value) || 0))))}
+                  className="mt-1 w-24 bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700" />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-sm" onClick={() => setEffectZoneDrop(null)}>Cancel</button>
+              <button className="px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-sm" onClick={() => void applyZoneDrop()}>Place</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Scenario Statistics (DM in live play; anyone in replay) */}

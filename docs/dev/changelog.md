@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Effects tab: drag-&-drop application (assigned players) (2026-09-06)
+**Files:** src/components/ScenarioMap/{EffectsPanel.tsx (new),LeftPanel.tsx,ScenarioMap.tsx,ContextMenu.tsx}, docs (changelog)
+
+- The Effects tab now lists the library as **draggable cards**. Drag onto an empty hex opens a **zone placement** prompt (duration + radius fill); drag onto a unit opens an **apply** prompt (duration). Zone placement expands ac/morale/dot modifiers across the radius and persists to map_data.groundEffects; unit apply uses the existing applyEffect path. hp_borrow/entry/mp_cost modifiers post a 'needs the engine stage' note for now.
+- Context-menu 'Effects...' removed (replaced by the drag path; unit effects are now placed from the Effects tab). Zone painting terrain MP-cost remains GM-only.
+
+
+
 ## Context menu: Other Action under Attach to Unit (2026-09-06)
 **Files:** src/components/ScenarioMap/ContextMenu.tsx, docs (changelog)
 
