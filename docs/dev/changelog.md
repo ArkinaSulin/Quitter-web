@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Hero 'Other Action' + Select wording + context clamp (Stage 1) - 2026-09-06
+**Files:** src/lib/commandLog.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ContextMenu,ScenarioMap}.tsx, docs (changelog)
+
+- Heroes get an **Other Action** context entry: spends 1 action (soft-confirm at 0; free under Free Move) and logs a generic line - the table roleplays/resolves the deed by hand. OTHER_ACTION action type, undoable.
+- Attached-hero wording renamed to **Select {name}** (hero/host), forward-compatible with multiple heroes per ship.
+- Context menu position is clamped to the viewport (tooltip-style).
+
+
+
 ## Effects library — Stage 1: schema, access, editor (2026-09-06)
 **Files:** supabase/migrations/077_effect_templates.sql (new), src/lib/effectTemplates.ts (new), src/hooks/useProfile.ts, src/components/{Lobby,EffectEditor/EffectEditor}.tsx, app/effect-editor/page.tsx (new), docs (changelog)
 

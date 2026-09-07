@@ -31,7 +31,8 @@ export type ActionType =
   | 'CAST'
   | 'EDIT_UNIT'
   | 'EFFECT'
-  | 'ARCHER_REACTION';
+  | 'ARCHER_REACTION'
+  | 'OTHER_ACTION';
 
 export interface UnitChange {
   field: string;

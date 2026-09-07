@@ -41,6 +41,8 @@ interface ContextMenuProps {
   hostUnit?: Unit;
   onSwitchToHero?: (hero: Unit) => void;
   onSwitchToUnit?: (host: Unit) => void;
+  /** Heroes may spend one action on a roleplayed "Other Action" (resolved by hand). */
+  onOtherAction?: (hero: Unit) => void;
   /** Open the temporary-effects dialog for this unit (GM or players). */
   onAddEffect?: () => void;
   units: Unit[];
@@ -71,6 +73,7 @@ export function ContextMenu({
   hostUnit,
   onSwitchToHero,
   onSwitchToUnit,
+  onOtherAction,
   onAddEffect,
   units,
 }: ContextMenuProps) {
@@ -161,7 +164,7 @@ export function ContextMenu({
           className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
           onClick={() => onSwitchToHero(attachedHero)}
         >
-          Switch to Hero: {attachedHero.unitName}
+          Select Hero: {attachedHero.unitName}
         </div>
       )}
       {hostUnit && onSwitchToUnit && (
@@ -169,7 +172,16 @@ export function ContextMenu({
           className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
           onClick={() => onSwitchToUnit(hostUnit)}
         >
-          Switch to Unit: {hostUnit.unitName}
+          Select Unit: {hostUnit.unitName}
+        </div>
+      )}
+      {/* Other Action… (heroes): spend 1 action on a roleplayed deed. */}
+      {unit.isHero && onOtherAction && (
+        <div
+          className="px-3 py-1 hover:bg-amber-900/60 cursor-pointer text-amber-200 font-semibold"
+          onClick={() => { onOtherAction(unit); onClose(); }}
+        >
+          Other Action… (1 action)
         </div>
       )}
       {/* Attached hero swaps front/back position (costs 1 hero MP). Shown on the

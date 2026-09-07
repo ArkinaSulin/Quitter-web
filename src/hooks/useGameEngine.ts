@@ -825,6 +825,22 @@ export function useGameEngine({
     return { ok: true as const };
   }, [execute]);
 
+  /**
+   * "Other Action…" (hero roleplay): spend 1 action on a described non-standard
+   * deed. The table resolves the fiction by hand. Free move costs nothing.
+   */
+  const otherAction = useCallback(async (unit: Unit) => {
+    const desc = `${unit.unitName} used an Other Action`;
+    const changes: { field: string; from: any; to: any }[] = [];
+    if (!freeMove) {
+      changes.push({ field: 'actionsAvailable', from: unit.actionsAvailable, to: unit.actionsAvailable - 1 });
+    }
+    const subSteps: SubStep[] = [
+      { type: 'OTHER_ACTION', description: desc, unitId: unit.id, changes },
+    ];
+    await execute('OTHER_ACTION', subSteps, desc);
+  }, [execute, freeMove]);
+
   return {
     execute,
     undo,
@@ -843,6 +859,7 @@ export function useGameEngine({
     placeUnit,
     attachHero,
     swapHeroPosition,
+    otherAction,
     endTurn,
     applyEffect,
     removeEffect,

@@ -477,7 +477,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
 
   const {
-    execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, endTurn, applyEffect, removeEffect, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog,
+      execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, otherAction, endTurn, applyEffect, removeEffect, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog,
   } = useGameEngine({
     scenarioId,
     playerId,
@@ -489,6 +489,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setAllianceLocal,
     setScenarioLocal,
   });
+
+  // "Other Action…" (hero roleplay): spend 1 action; the table resolves it by
+  // hand. Zero actions -> the standard soft-enforcement confirm.
+  const [otherActionHero, setOtherActionHero] = useState<Unit | null>(null);
+  const handleOtherAction = useCallback((hero: Unit) => {
+    if (freeMove || (hero.actionsAvailable ?? 0) >= 1) void otherAction(hero);
+    else setOtherActionHero(hero);
+  }, [freeMove, otherAction]);
+  const confirmOtherAction = useCallback(async () => {
+    const hero = otherActionHero;
+    setOtherActionHero(null);
+    if (!hero || controlsLocked) return;
+    await otherAction(hero);
+    addError(`${hero.unitName} used an Other Action with no actions left — over budget`);
+  }, [otherActionHero, controlsLocked, otherAction, addError]);
 
   const {
     reactionOffers,
@@ -1149,7 +1164,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }
       if (unit && !unit.isDeleted && (effectiveIsGM || ((!unit.hidden && canControlUnit(unit)) && canSeeHex(unit.hex)))) {
         setContextMenuUnit(unit);
-        setContextMenuPos({ x: clientX, y: clientY });
+        // Keep the menu on-screen (tooltip-style clamp).
+        const estW = 260;
+        const estH = 460;
+        const px = Math.max(8, Math.min(clientX, (typeof window !== 'undefined' ? window.innerWidth : 0) - estW - 8));
+        const py = Math.max(8, Math.min(clientY, (typeof window !== 'undefined' ? window.innerHeight : 0) - estH - 8));
+        setContextMenuPos({ x: px, y: py });
       }
     },
     onUnitHover: (unit, screenX, screenY) => {
@@ -1809,6 +1829,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           hostUnit={contextMenuUnit.attachedToUnitId ? units.find(u => u.id === contextMenuUnit.attachedToUnitId) : undefined}
           onSwitchToHero={(hero) => { setContextMenuUnit(hero); setActiveHeroId(hero.id); }}
           onSwitchToUnit={(host) => { setContextMenuUnit(host); setActiveHeroId(null); }}
+          onOtherAction={(hero) => handleOtherAction(hero)}
           onClose={() => { setContextMenuUnit(null); setContextMenuPos(null); }}
           onRotate={(dir) => rotateUnit(contextMenuUnit, dir, unitMaxMP(contextMenuUnit))}
           onRotate180={() => rotateUnit(contextMenuUnit, 'left', unitMaxMP(contextMenuUnit), 3)}
@@ -2311,6 +2332,26 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             setShowStats(false);
           }}
         />
+      )}
+
+      {/* Other Action over-budget confirm */}
+      {otherActionHero && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={() => setOtherActionHero(null)}>
+          <div className="bg-gray-900 border border-amber-700 rounded-xl p-5 max-w-sm" onMouseDown={e => e.stopPropagation()}>
+            <p className="text-white font-semibold mb-2">Other Action — no actions left</p>
+            <p className="text-sm text-gray-300 mb-4">
+              {otherActionHero.unitName} has no actions left. Spend the action anyway (goes over budget)?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-sm" onClick={() => setOtherActionHero(null)}>
+                Cancel
+              </button>
+              <button className="px-3 py-1.5 rounded bg-amber-700 hover:bg-amber-600 text-white text-sm" onClick={() => void confirmOtherAction()}>
+                Spend anyway
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Kicked — boot to Lobby */}
