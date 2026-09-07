@@ -53,7 +53,7 @@ async function loadAccessMatrix(): Promise<Record<string, AccessRow>> {
   if (accessCache) return accessCache;
   const { data } = await supabase
     .from('access_roles')
-    .select('role, can_use_unit_editor, can_view_unit_editor, can_create_scenario, can_join_game, can_view_replay, can_view_ship_editor, can_use_ship_editor, can_view_map_editor, can_use_map_editor, can_view_effect_editor, can_use_effect_editor');
+    .select('*');
   accessCache = (data || []).reduce((acc: Record<string, AccessRow>, row: any) => {
     acc[row.role] = {
       can_use_unit_editor: !!row.can_use_unit_editor,
