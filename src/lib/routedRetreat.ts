@@ -4,11 +4,13 @@
 // pursuer who can pay). Integration (two-phase owner pick over realtime + chained
 // ROUT/MOVE/pursuit commands) lives in the map layer; this file stays testable.
 
-import { Unit, AllianceGroup, Formation, Hex } from '@/types/gameProtocol';
+import { Unit, AllianceGroup, Formation, Hex, hexDistance } from '@/types/gameProtocol';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { computeEffectiveMovement } from '@/lib/unitStats';
 import { computeThreatHexes } from '@/components/ScenarioMap/mapGeometry';
 import { computeReachableMap } from '@/lib/moveCost';
+import { parseWeapons } from '@/lib/weaponParser';
+import { isMeleeWeapon } from '@/lib/meleeFallback';
 
 const DIRS = [
   { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
@@ -173,16 +175,16 @@ export function canPayMove(unit: Unit, cost = 1): boolean {
 }
 
 /**
- * Choose the single pursuer. Eligibility (all three):
- *   1. the vacated hex can be advanced into in ONE movement from the pursuer's
- *      current position (a straight front-arc step — not necessarily 1 MP, but it
- *      can reach it in a single droppable move),
- *   2. the pursuer's effective MaxMP >= the routed unit's EFFECTIVE routing
- *      MaxMP (the Routed formation's ×1.5 is already applied to the routed
- *      unit's speed, so equal effective speed is enough to pursue),
- *   3. the pursuer can spend the MP to enter the vacated hex.
- * Preference: the attacking unit (when given) → fastest eligible → most available
- * MP → random (injected rnd). Returns null when nobody qualifies.
+ * Choose the single MELEE pursuer. Eligibility (all of):
+ *   1. the unit is ADJACENT to the vacated/standing hex (no long run-up —
+ *      pursuing is a single step, not a teleport),
+ *   2. its ACTIVE (primary) weapon is melee — a ranged unit never pursues,
+ *   3. it can advance into the vacated hex in one droppable move,
+ *   4. its effective MaxMP >= the routed unit's EFFECTIVE routing MaxMP (the
+ *      Routed ×1.5 is already applied to the routed unit, so equal speed works),
+ *   5. it can pay the entry MP.
+ * Preference: the attacking unit (when given) → fastest eligible → most
+ * available MP → random. Ranged attackers never qualify.
  */
 export function choosePursuer(
   attacker: Unit | null | undefined,
@@ -205,10 +207,13 @@ export function choosePursuer(
     if (u.isDeleted || u.id === routed.id) return false;
     if ((alliances[u.team] || 'friendly') === routedGroup) return false;
     if (isUnitRouted(u)) return false;
+    if (hexDistance(u.hex, routed.hex) !== 1) return false; // must be adjacent
+    const weapons = parseWeapons(u.weaponString || '');
+    const active = weapons[u.activeWeaponIndex ?? 0] ?? weapons[0];
+    if (active && !isMeleeWeapon(active)) return false; // ranged never pursues
     const speed = unitSpeed(u, formationsMap);
     if (!(speed >= speedGate)) return false;
     if (!canPayMove(u, 1)) return false;
-    // Gate 1: vacated hex reachable in one droppable move from this facing.
     const reach = computeReachableMap(u, Math.max(1, speed), occ, new Set<string>(), undefined, true);
     const entry = reach.get(vacKey);
     if (!entry || entry.needsTurn) return false;
@@ -231,6 +236,8 @@ export interface PursuitGateInfo {
   speed: number;
   speedNeed: number;
   speedOk: boolean;
+  adjacentOk: boolean;
+  meleeOk: boolean;
   reachOk: boolean;
   payOk: boolean;
   note: string;
@@ -238,9 +245,9 @@ export interface PursuitGateInfo {
 
 /**
  * Verbose error-checking aid: why each nearby hostile can (or can't) pursue.
- * Mirrors choosePursuer's gates (effective speed ≥ the routed unit's effective
- * routing speed, one droppable move into the vacated hex, affordable MP) so
- * decline reasons are visible.
+ * Mirrors choosePursuer's gates (adjacency, melee primary weapon, effective
+ * speed ≥ the routed unit's effective routing speed, one droppable move into
+ * the vacated hex, affordable MP) so decline reasons are visible.
  */
 export function pursuitGateInfo(
   routed: Unit,
@@ -262,27 +269,18 @@ export function pursuitGateInfo(
     if (u.isDeleted || u.id === routed.id) continue;
     if ((alliances[u.team] || 'friendly') === routedGroup) continue;
     if (isUnitRouted(u)) continue;
+    const adjacentOk = hexDistance(u.hex, routed.hex) === 1;
+    const weapons = parseWeapons(u.weaponString || '');
+    const active = weapons[u.activeWeaponIndex ?? 0] ?? weapons[0];
+    const meleeOk = !active || isMeleeWeapon(active);
     const speed = unitSpeed(u, formationsMap);
     const speedOk = speed >= speedNeed;
     const payOk = canPayMove(u, 1);
     const reach = computeReachableMap(u, Math.max(1, speed), occ, new Set<string>(), undefined, true);
     const entry = reach.get(vacKey);
     const reachOk = !!entry && !entry.needsTurn;
-    const note = entry
-      ? entry.needsTurn
-        ? 'needs a turn first'
-        : 'can reach'
-      : 'cannot reach the vacated hex';
-    out.push({
-      id: u.id,
-      unitName: u.unitName,
-      speed,
-      speedNeed,
-      speedOk,
-      reachOk,
-      payOk,
-      note: `${note}${payOk ? '' : ' · no MP/action'}`,
-    });
+    const note = `${adjacentOk ? '' : 'not adjacent · '}${meleeOk ? '' : 'ranged primary · '}${speedOk ? '' : `speed ${speed} < ${speedNeed} · `}${entry ? (entry.needsTurn ? 'needs a turn first · ' : '') : 'cannot reach the vacated hex · '}${payOk ? '' : 'no MP/action'}`;
+    out.push({ id: u.id, unitName: u.unitName, speed, speedNeed, speedOk, adjacentOk, meleeOk, reachOk, payOk, note });
   }
   return out;
 }
@@ -291,6 +289,6 @@ export function pursuitGateInfo(
 export function pursuitGateText(info: PursuitGateInfo[]): string {
   if (info.length === 0) return 'no adjacent hostile';
   return info
-    .map(g => `${g.unitName}: speed ${g.speed}${g.speedOk ? ' ≥' : ' <'} ${g.speedNeed}${g.speedOk ? ' ✓' : ' ✗'} · reach ${g.reachOk ? '✓' : '✗'} (${g.note}) · MP ${g.payOk ? '✓' : '✗'}`)
+    .map(g => `${g.unitName}: ${g.note}`)
     .join(' · ');
 }

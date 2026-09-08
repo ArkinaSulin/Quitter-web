@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Pursuit is melee-only + adjacency-gated (2026-09-06)
+**Files:** src/lib/routedRetreat.ts + tests, src/components/ScenarioMap/ScenarioMap.tsx, docs (changelog)
+
+- Pursuit (and the no-retreat FREE pursue attack) is now **melee-only**: a pursuer must be ADJACENT to the vacated/standing hex (no 2-hex run-up / teleport) and its ACTIVE (primary) weapon must be melee — a ranged unit never pursues, even when it caused the rout.
+- The no-retreat 'attacker always free-attacks' shortcut was removed: the free pursue attack now uses the same gate (attacker still preferred when eligible melee); if no adjacent melee pursuer exists there is simply no free attack (log explains why).
+- Diagnostics report adjacency/melee/speed/reach/MP per candidate. 520 tests, tsc clean.
+
+
+
 ## Pursuit speed gate: equal effective speed now pursues (2026-09-06)
 **Files:** src/lib/routedRetreat.ts + test, docs (dev/09 + changelog)
 

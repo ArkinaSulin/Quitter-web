@@ -1038,44 +1038,32 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         return;
       }
 
-      // Pick the pursuer.
+      // Pick the MELEE pursuer. The routed unit is still referenced at its old
+      // (vacated / standing) hex for gate checks.
+      const routedForPick: Unit = { ...live, hex: vacated };
       let pLive: Unit | null = null;
-      if (didMove) {
-        const p = choosePursuer(attacker ?? null, live, cur, alliances, formationsMap);
-        pLive = p ? (cur.find(u => u.id === p.id) ?? p) : null;
-        if (pLive) {
-          // Follows into the vacated hex (1 MP) — no reaction (fast follow).
-          const pMax = unitMaxMP(pLive);
-          const pCost = applyMoveCost(pLive, 1, pMax);
-          await execute('MOVE', [{
-            type: 'MOVE',
-            description: `${pLive.unitName} pursues into the vacated hex`,
-            unitId: pLive.id,
-            changes: [
-              { field: 'hex', from: pLive.hex, to: vacated },
-              { field: 'movementPointsAvailable', from: pLive.movementPointsAvailable, to: pCost.movementPointsAvailable },
-              { field: 'actionsAvailable', from: pLive.actionsAvailable, to: pCost.actionsAvailable },
-            ],
-          }], `${pLive.unitName} pursues!`, { chained: true });
-        }
-      } else {
-        // Routed could not move (actual movement = 0): the attacker strikes as if
-        // it pursued — no speed gate needed, attacker preferred, subject to org -1.
-        if (attacker) {
-          const aLive = cur.find(u => u.id === attacker.id && !u.isDeleted);
-          if (aLive && (alliances[aLive.team] || 'friendly') !== (alliances[live.team] || 'friendly')) {
-            pLive = aLive;
-          }
-        }
-        if (!pLive) {
-          const p = choosePursuer(attacker ?? null, live, cur, alliances, formationsMap);
-          pLive = p ? (cur.find(u => u.id === p.id) ?? p) : null;
-        }
+      const p = choosePursuer(attacker ?? null, routedForPick, cur, alliances, formationsMap);
+      pLive = p ? (cur.find(u => u.id === p.id) ?? p) : null;
+      if (pLive && didMove) {
+        // Follows into the vacated hex (1 MP) — no reaction (fast follow).
+        const pMax = unitMaxMP(pLive);
+        const pCost = applyMoveCost(pLive, 1, pMax);
+        await execute('MOVE', [{
+          type: 'MOVE',
+          description: `${pLive.unitName} pursues into the vacated hex`,
+          unitId: pLive.id,
+          changes: [
+            { field: 'hex', from: pLive.hex, to: vacated },
+            { field: 'movementPointsAvailable', from: pLive.movementPointsAvailable, to: pCost.movementPointsAvailable },
+            { field: 'actionsAvailable', from: pLive.actionsAvailable, to: pCost.actionsAvailable },
+          ],
+        }], `${pLive.unitName} pursues!`, { chained: true });
       }
       if (!pLive) {
-        // Verbose error-checking: show exactly why each nearby hostile can't pursue.
-        const gates = pursuitGateInfo(live, cur, alliances, formationsMap);
-        addMessage(`No enemy can pursue ${live.unitName}: ${pursuitGateText(gates)}.`);
+        // Pursuit/free-pursue is melee-only and requires an adjacent melee
+        // pursuer — a ranged attacker (e.g. an archer) never pursues.
+        const gates = pursuitGateInfo(routedForPick, cur, alliances, formationsMap);
+        addMessage(`No melee pursuer can strike ${live.unitName}: ${pursuitGateText(gates)}.`);
         console.info('[RoutFlow] no pursuer for', live.unitName, gates);
         return;
       }

@@ -86,8 +86,14 @@ describe('choosePursuer', () => {
   const rout = () => unit('r', 'blue', h(0, 0), { currentFormation: 'Routed', movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 0 });
   // Pursuers use a loose (Scattered) formation so any adjacent vacated hex is a
   // single droppable move from any facing (gate 1 focuses on reach, not arcs here).
-  const host = (id: string, hex: { q: number; r: number; s: number }, mp = 6, availMp = 0) =>
-    unit(id, 'red', hex, { currentFormation: 'Scattered', movementPoints: mp, movementPointsAvailable: availMp, actionsAvailable: 1 });
+  const host = (id: string, hex: { q: number; r: number; s: number }, mp = 6, availMp = 0, weaponString?: string) =>
+    unit(id, 'red', hex, {
+      currentFormation: 'Scattered',
+      movementPoints: mp,
+      movementPointsAvailable: availMp,
+      actionsAvailable: 1,
+      ...(weaponString ? { weaponString } : {}),
+    });
 
   it('returns the attacker when it is faster and can pay', () => {
     const attacker = host('a', h(1, 0), 6, 1);
@@ -133,6 +139,31 @@ describe('choosePursuer', () => {
     const equal = host('e', h(1, 0), 2, 1);
     const p = choosePursuer(equal, routed, [routed, equal], groups, forms(1));
     expect(p?.id).toBe('e');
+  });
+
+  it('a melee pursuer two hexes away does NOT qualify (no run-up / teleport)', () => {
+    const routed = rout();
+    const far = host('f', h(2, 0), 6, 1); // adjacent? no - distance 2
+    const p = choosePursuer(far, routed, [routed, far], groups, forms(1));
+    expect(p).toBeNull();
+  });
+
+  it('an adjacent unit with a RANGED primary weapon never pursues', () => {
+    const routed = rout();
+    const bow = unit('b', 'red', h(1, 0), {
+      currentFormation: 'Scattered', movementPoints: 6, movementPointsAvailable: 1, actionsAvailable: 1,
+      weaponString: 'Shortbow,2,1d6,false,2,3,0,false,true,false,false,1,true,Dex,circle',
+    });
+    const p = choosePursuer(bow, routed, [routed, bow], groups, forms(1));
+    expect(p).toBeNull(); // ranged primary - never pursues
+  });
+
+  it('an adjacent MELEE attacker is preferred when multiple melee pursuers exist', () => {
+    const routed = rout();
+    const attacker = host('a', h(0, 1), 4, 1, 'Sword,3,1d8,false,1,1,0,false,false,false,false,1,true,Dex,circle');
+    const other = host('o', h(1, 0), 6, 1, 'Sword,3,1d8,false,1,1,0,false,false,false,false,1,true,Dex,circle');
+    const p = choosePursuer(attacker, routed, [routed, attacker, other], groups, forms(1));
+    expect(p?.id).toBe('a'); // attacker first even though 'other' is faster
   });
 });
 
