@@ -63,16 +63,19 @@ export function formatDamageFaces(
   return parts.length > 0 ? `{${parts.join('; ')}}` : '';
 }
 
-/** `{D20+{saveBonus} vs DC {saveDC}: {sorted save rolls}}` — magic/saving throws. */
-export function formatSaveRolls(result: SpellDamageResult, saveBonus: number, saveDC: number): string {
-  const rolls = sorted(result.perTroop.filter(t => t.roll > 0).map(t => t.roll));
-  return `{D20+${saveBonus} vs DC ${saveDC}: ${rolls.join(',')}}`;
-}
-
-/** Base damage dice of a spell: `{dice: faces}`. */
-export function formatSpellBaseFaces(result: SpellDamageResult, damageDice: string): string {
-  if (result.baseFaces.length === 0) return '';
-  return `{${damageDice}: ${sorted(result.baseFaces).join(',')}}`;
+/**
+ * Verbose roll line for an area spell: the single shared damage roll and its
+ * faces, then each troop's save total → damage applied (only for troops that
+ * rolled a save). e.g. `21 (1,1,1,2,3,4,4,5) per troop DC 16 → 18→10, 13→21`.
+ */
+export function formatSpellRollLine(result: SpellDamageResult, saveDC: number): string {
+  const prefix = result.baseFaces.length > 0
+    ? `${result.baseDamage} (${sorted(result.baseFaces).join(',')}) per troop`
+    : `${result.baseDamage} per troop`;
+  const hasSaves = result.perTroop.some(t => t.roll > 0);
+  if (!hasSaves) return prefix;
+  const pairs = result.perTroop.map(t => `${t.saveResult}→${t.damage}`).join(', ');
+  return `${prefix} DC ${saveDC} → ${pairs}`;
 }
 
 /**

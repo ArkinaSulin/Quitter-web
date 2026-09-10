@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Verbose rolls show save → damage per troop (2026-09-06)
+**Files:** src/lib/unitEffects.ts, src/lib/verboseCombat.ts, src/components/ScenarioMap/useCastActions.ts, src/lib/unitEffects.test.ts, src/lib/verboseCombat.test.ts, docs/dev/10-temporary-effects.md
+
+- Effects already rolled damage per troop; `EffectDamageDetail` now also carries `saveDC`, `saveRolls` (each troop's save total) and `applied` (post-save damage). `describeEffectDamage` (verbose) prints every roll paired: `1d2 per troop DC 16 → 2(18→1), 1(13→1), 2(3→2), 1(20→0) (Σ 6)` where each entry is `damageRoll(saveTotal→applied)`.
+- Magic keeps its single shared damage roll; `verboseCombat.formatSaveRolls`/`formatSpellBaseFaces` are replaced by `formatSpellRollLine` → `21 (1,1,1,2,3,4,4,5) per troop DC 16 → 18→10, 13→21, 3→21, 20→10`. `useCastActions` appends this to the verbose cast/heal message. `spellDamage.ts` mechanics unchanged.
+- Tests updated. tsc clean; 531 tests pass.
+
 ## Effect damage: roll dice per troop (2026-09-06)
 **Files:** src/lib/unitEffects.ts, src/lib/unitEffects.test.ts, docs/dev/10-temporary-effects.md
 

@@ -8,7 +8,7 @@ import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { resolveSpellDamage } from '@/lib/spellDamage';
 import { computeEffectiveMoraleModifier, shouldRout } from '@/lib/unitMorale';
 import { SubStep } from '@/lib/commandLog';
-import { formatSaveRolls, formatSpellBaseFaces } from '@/lib/verboseCombat';
+import { formatSpellRollLine } from '@/lib/verboseCombat';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { ExecuteFn, routeUnit } from './routeUnit';
 
@@ -97,10 +97,9 @@ export function useCastActions(deps: CastActionsDeps) {
           ],
         });
       }
-      const healFaces = verboseCombat && healResult.baseFaces.length > 0 ? ` {${cast.weapon.damageDice}: ${[...healResult.baseFaces].sort((a, b) => a - b).join(',')}}` : '';
       const healDesc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${healResult.baseDamage}, ${cast.affectedCount} troop(s) affected — ${healResult.totalDamage} total healing${troopsRecovered > 0 ? ` (${troopsRecovered} troop(s) recovered)` : ''}`;
-      const healMsg = healFaces
-        ? `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${healResult.baseDamage}${healFaces}, ${cast.affectedCount} troop(s) affected — ${healResult.totalDamage} total healing${troopsRecovered > 0 ? ` (${troopsRecovered} troop(s) recovered)` : ''}`
+      const healMsg = verboseCombat
+        ? `${healDesc} ${formatSpellRollLine(healResult, 0)}`
         : healDesc;
       await execute('HEAL', healSteps, healDesc, healMsg !== healDesc ? { message: healMsg } : undefined);
       magicCast.sendResolve({ baseDamage: healResult.baseDamage, totalDamage: healResult.totalDamage, troopsKilled: 0, newHp, savedCount: 0, failedCount: 0, description: healDesc });
@@ -146,11 +145,8 @@ export function useCastActions(deps: CastActionsDeps) {
     const savedCount = result.perTroop.filter(t => t.success).length;
     const failedCount = result.perTroop.length - savedCount;
     const desc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${result.baseDamage}, ${cast.affectedCount} troop(s) affected, ${savedCount} saved, ${failedCount} failed — ${result.totalDamage} total damage (${troopsKilled} troop(s))`;
-    const castVerbose = verboseCombat
-      ? ` ${formatSpellBaseFaces(result, cast.weapon.damageDice)} ${formatSaveRolls(result, cast.targetStats[cast.saveStat.toLowerCase() as keyof typeof cast.targetStats] ?? 0, cast.saveDC)}`
-      : '';
-    const msg = castVerbose
-      ? `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${result.baseDamage} ${formatSpellBaseFaces(result, cast.weapon.damageDice)}, ${cast.affectedCount} troop(s) affected, ${savedCount} saved, ${failedCount} failed ${formatSaveRolls(result, cast.targetStats[cast.saveStat.toLowerCase() as keyof typeof cast.targetStats] ?? 0, cast.saveDC)} — ${result.totalDamage} total damage (${troopsKilled} troop(s))`
+    const msg = verboseCombat
+      ? `${desc} ${formatSpellRollLine(result, cast.saveDC)}`
       : desc;
 
     await execute('CAST', subSteps, desc, msg !== desc ? { message: msg } : undefined);

@@ -357,8 +357,18 @@ describe('effect damage detail + messages', () => {
     expect(plain).toContain('10 damage');
     expect(plain).not.toContain('1d2');
     const verbose = describeEffectDamage('Goblins', 'Burning', detail, true);
-    expect(verbose).toContain('1d2 per troop');
-    expect(verbose).toContain('2, 2, 2, 2, 2');
+    expect(verbose).toContain('1d2 per troop DC 100');
+    expect(verbose).toContain('2(11→2)');
+  });
+
+  it('verbose effect line shows per-troop save total → applied damage', () => {
+    // Four troops, one damage roll each; every troop saves (huge bonus) → half.
+    const u = mk({ dex: 100 });
+    const { detail } = resolveEffectDamage(u, { delta: 0, dice: '1d6', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true }, () => 0.5);
+    const line = describeEffectDamage('Goblins', 'Burning', detail, true);
+    // floor(0.5*6)+1 = 4 damage roll; save 111 >= 10 → half floor(4/2)=2 applied.
+    expect(line).toContain('DC 10');
+    expect(line).toContain('4(111→2)');
   });
 
   it('computeEndTurnEffects emits a damage event for a ticking DoT', () => {

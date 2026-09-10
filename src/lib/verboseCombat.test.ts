@@ -3,8 +3,7 @@ import {
   formatAttackRolls,
   formatHitCritRolls,
   formatDamageFaces,
-  formatSaveRolls,
-  formatSpellBaseFaces,
+  formatSpellRollLine,
   formatStrikeDetail,
 } from './verboseCombat';
 import type { SingleAttackResult } from './unitCombat';
@@ -96,36 +95,33 @@ describe('verboseCombat', () => {
     });
   });
 
-  describe('formatSaveRolls', () => {
-    it('prints sorted save rolls with bonus and DC, skipping healing rows', () => {
+  describe('formatSpellRollLine', () => {
+    it('prints the shared damage roll + faces, then each troop save total → damage', () => {
+      const result: SpellDamageResult = {
+        baseDamage: 21,
+        baseFaces: [1, 1, 1, 2, 3, 4, 4, 5],
+        perTroop: [
+          { roll: 14, saveResult: 18, success: true, damage: 10 },
+          { roll: 8, saveResult: 13, success: false, damage: 21 },
+          { roll: 1, saveResult: 3, success: false, damage: 21 },
+          { roll: 16, saveResult: 20, success: true, damage: 10 },
+        ],
+        totalDamage: 62,
+      };
+      expect(formatSpellRollLine(result, 16)).toBe('21 (1,1,1,2,3,4,4,5) per troop DC 16 → 18→10, 13→21, 3→21, 20→10');
+    });
+
+    it('prints only the damage roll when no troop rolled a save (healing)', () => {
       const result: SpellDamageResult = {
         baseDamage: 12,
-        baseFaces: [12],
+        baseFaces: [8, 4],
         perTroop: [
-          { roll: 15, saveResult: 17, success: true, damage: 6 },
-          { roll: 4, saveResult: 6, success: false, damage: 12 },
+          { roll: 0, saveResult: 0, success: true, damage: 12 },
           { roll: 0, saveResult: 0, success: true, damage: 12 },
         ],
-        totalDamage: 30,
+        totalDamage: 24,
       };
-      expect(formatSaveRolls(result, 2, 13)).toBe('{D20+2 vs DC 13: 4,15}');
-    });
-  });
-
-  describe('formatSpellBaseFaces', () => {
-    it('prints sorted base dice faces', () => {
-      const result: SpellDamageResult = {
-        baseDamage: 12,
-        baseFaces: [8, 2],
-        perTroop: [],
-        totalDamage: 0,
-      };
-      expect(formatSpellBaseFaces(result, '2d6')).toBe('{2d6: 2,8}');
-    });
-
-    it('returns empty when no faces', () => {
-      const result: SpellDamageResult = { baseDamage: 0, baseFaces: [], perTroop: [], totalDamage: 0 };
-      expect(formatSpellBaseFaces(result, '2d6')).toBe('');
+      expect(formatSpellRollLine(result, 0)).toBe('12 (4,8) per troop');
     });
   });
 

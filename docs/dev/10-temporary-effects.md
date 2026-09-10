@@ -57,9 +57,16 @@ One sub-step per affected unit, `effects` collapsed to a single from-original
 → to-final change so undo never restores an intermediate draft. Each DoT/entry
 damage resolution also emits an `EffectDamageEvent` (per-troop rolls, saves, troop
 counts) that the engine turns into a chat line — **who**, how many **troops
-affected**, and the **damage taken**; `verbose_combat` adds the per-troop die
-rolls and save count (`UnitEffects.resolveEffectDamage` / `describeEffectDamage`).
-Dice are rolled **once per affected troop** (each capped at that troop's HP).
+affected**, and the **damage taken**; `verbose_combat` adds every roll
+(`UnitEffects.resolveEffectDamage` / `describeEffectDamage`).
+
+Effect damage rolls **once per affected troop** (each capped at that troop's
+HP), then — when the effect has a save — each troop rolls its own save. The
+verbose line pairs the damage roll with its save: `1d2 per troop DC 16 →
+2(18→1), 1(13→1), 2(3→2), 1(20→0) (Σ 6)` (`damageRoll(saveTotal→applied)`).
+Magic (`spellDamage.ts`) keeps a **single shared damage roll** but the same
+display: `verboseCombat.formatSpellRollLine` prints
+`21 (1,1,1,2,3,4,4,5) per troop DC 16 → 18→10, 13→21, 3→21, 20→10`.
 
 ## Catalog (apply UI offers; magnitude/duration overridable)
 

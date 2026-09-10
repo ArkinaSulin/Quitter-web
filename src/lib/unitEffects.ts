@@ -168,10 +168,10 @@ export function hpBorrowRefundChanges(target: Unit, x: number): UnitChange[] {
 const thOf = (t: Unit) => Math.max(1, t.troopHp ?? 1);
 type SaveStatName = 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha';
 
-/** One troop's saving throw: d20 + bonus >= DC passes (standard saves). */
-function troopSaves(target: Unit, stat: SaveStatName, dc: number, rng: () => number): boolean {
+/** One troop's saving throw total: d20 + bonus (compare to the DC). */
+function troopSaveTotal(target: Unit, stat: SaveStatName, rng: () => number): number {
   const bonus = ((target as any)[stat.toLowerCase()] as number) || 0;
-  return Math.floor(rng() * 20) + 1 + bonus >= dc;
+  return Math.floor(rng() * 20) + 1 + bonus;
 }
 
 function healChanges(target: Unit, amount: number): UnitChange[] {
@@ -203,6 +203,12 @@ export interface EffectDamageDetail {
   rolls?: number[];
   /** Sum of the per-troop rolls (dice path only). */
   roll?: number;
+  /** The save DC when saves were rolled (so messages can print it). */
+  saveDC?: number;
+  /** Each troop's save total (d20 + bonus), aligned to `rolls` when saves rolled. */
+  saveRolls?: number[];
+  /** Each troop's post-save damage/heal applied, aligned to `rolls`. */
+  applied?: number[];
   hpBefore: number;
   hpAfter: number;
   troopsBefore: number;
@@ -250,6 +256,8 @@ export function resolveEffectDamage(
   let passed = 0;
   let rolls: number[] | undefined;
   let roll: number | undefined;
+  let saveRolls: number[] | undefined;
+  let applied: number[] | undefined;
 
   if (!parsed) {
     const amt = mod.delta ?? 0;
@@ -261,16 +269,24 @@ export function resolveEffectDamage(
     if (affected > 0) {
       const th = thOf(target);
       const halfOnSave = mod.onSaveHalfOrNeg !== false;
+      const hasSave = !!(mod.savingThrow && mod.saveDC != null);
       rolls = [];
+      if (hasSave) saveRolls = [];
+      applied = [];
       let total = 0;
       for (let i = 0; i < affected; i++) {
         const r = Math.max(0, rollDice(mod.dice, rng));
         rolls.push(r);
         let per = Math.min(r, th);
-        if (mod.savingThrow && mod.saveDC != null && troopSaves(target, mod.savingThrow, mod.saveDC, rng)) {
-          passed++;
-          per = halfOnSave ? Math.min(Math.floor(r / 2), th) : 0;
+        if (hasSave) {
+          const saveTotal = troopSaveTotal(target, mod.savingThrow!, rng);
+          saveRolls!.push(saveTotal);
+          if (saveTotal >= mod.saveDC!) {
+            passed++;
+            per = halfOnSave ? Math.min(Math.floor(r / 2), th) : 0;
+          }
         }
+        applied.push(per);
         total += per;
       }
       roll = rolls.reduce((a, b) => a + b, 0);
@@ -299,6 +315,8 @@ export function resolveEffectDamage(
       ...(parsed ? { dice: mod.dice } : {}),
       ...(rolls ? { rolls } : {}),
       ...(roll != null ? { roll } : {}),
+      ...(saveRolls ? { saveDC: mod.saveDC ?? undefined, saveRolls } : {}),
+      ...(applied ? { applied } : {}),
       hpBefore,
       hpAfter,
       troopsBefore,
@@ -326,27 +344,32 @@ export function effectDamageChanges(
 
 /**
  * One-line chat summary of an effect damage/heal event: who, how many troops
- * were affected, and the damage/heal taken. Verbose mode adds the die roll and
- * the save count.
+ * were affected, and the damage/heal taken. Verbose mode prints every die roll:
+ * per-troop damage rolls, and (when saves apply) each troop's save total → applied
+ * damage, e.g. `1d2 per troop DC 16 → 2(18→1), 1(13→1)`.
  */
 export function describeEffectDamage(unitName: string, source: string, d: EffectDamageDetail, verbose = false): string {
   const troopWord = d.affected === 1 ? 'troop' : 'troops';
-  const rollTxt = d.dice
-    ? (d.rolls && d.rolls.length
-        ? `${d.dice} per troop → ${d.rolls.join(', ')}${d.rolls.length > 1 ? ` (Σ ${d.roll})` : ''}`
-        : d.dice)
-    : 'flat';
+  const rollTxt = (() => {
+    if (!d.dice) return 'flat';
+    if (!d.rolls || d.rolls.length === 0) return d.dice;
+    if (d.saveRolls) {
+      const pairs = d.rolls.map((r, i) => `${r}(${d.saveRolls![i]}→${d.applied?.[i] ?? 0})`).join(', ');
+      return `${d.dice} per troop DC ${d.saveDC ?? '?'} → ${pairs} (Σ ${d.roll})`;
+    }
+    return `${d.dice} per troop → ${d.rolls.join(', ')}${d.rolls.length > 1 ? ` (Σ ${d.roll})` : ''}`;
+  })();
   const saveTxt = d.passed > 0 ? `, ${d.passed} saved` : '';
   if (d.healing) {
     const recovered = Math.max(0, d.troopsAfter - d.troopsBefore);
     return verbose
-      ? `${unitName} healed ${d.total} from ${source} (${d.affected} ${troopWord}, ${rollTxt}${saveTxt})`
+      ? `${unitName} healed ${d.total} from ${source} (${d.affected} ${troopWord}, ${rollTxt})`
       : `${unitName} healed ${d.total} from ${source} (${d.affected} ${troopWord} affected${recovered ? `, ${recovered} recovered` : ''})`;
   }
   const lost = Math.max(0, d.troopsBefore - d.troopsAfter);
   return verbose
-    ? `${unitName} took ${d.total} from ${source} (${d.affected} ${troopWord}, ${rollTxt}${saveTxt}, ${lost} lost)`
-    : `${unitName} took ${d.total} damage from ${source} (${d.affected} ${troopWord} affected, ${lost} lost)`;
+    ? `${unitName} took ${d.total} from ${source} (${d.affected} ${troopWord}, ${rollTxt}, ${lost} lost)`
+    : `${unitName} took ${d.total} damage from ${source} (${d.affected} ${troopWord} affected${saveTxt}, ${lost} lost)`;
 }
 
 /** Remaining ticks of an effect (its own countdown) — DoT ticks then expires. */
