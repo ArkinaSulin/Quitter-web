@@ -68,15 +68,11 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
   **statistics**, **corpses**, and **AI assist** changes.
 - 🔜 Player manual screenshot **S-33** (AI tab) + all S-01…S-32 images pending
   from the GM; then the Word/PDF export pass.
-- 🔜 `docs/dev/02` currently marks 068–077 applied (verified). Add/record the
-  **`apply_substeps` array fix** (delivered as SQL, option "1") as a proper
-  migration file (`078_...`) for repo history if desired.
 
 ## Migrations
-- ✅ Applied & verified: 068–077.
-- ⚠️ The **`apply_substeps` array-write fix** (formation_availability etc.) was
-  handed over as pasted SQL, not a repo migration. Confirm it ran; if any DB
-  needs it again, re-paste. Consider committing `078_fix_apply_substeps_arrays.sql`.
+- ✅ Applied & verified: 068–080. The former hand-applied `apply_substeps`
+  array-write fix is now folded into migration **080** (array-aware unit writes),
+  so no separate fix migration is needed.
 
 ## Uncommitted working tree (owner's, left untouched)
 - `.scratch/ship-builder/spec.md`, `.scratch/shipyard-formula/{FINDINGS.md,shipyard.csv}`,
