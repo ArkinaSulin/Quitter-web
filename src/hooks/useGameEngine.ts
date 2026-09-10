@@ -14,7 +14,7 @@ import { useMessageSync } from '@/hooks/useMessageSync';
 import { ActionType, SubStep, CommandLogRow, UndoState, parseSubSteps } from '@/lib/commandLog';
 import { getActiveGroups, advanceTurn } from '@/lib/turnState';
 import { UnitEffect, GroundEffect } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, computeEndTurnEffects, newEffectKey, EffectSpec, dotDamageChanges } from '@/lib/unitEffects';
+import { applyEffectChanges, removeEffectChanges, computeEndTurnEffects, newEffectKey, EffectSpec, effectDamageChanges } from '@/lib/unitEffects';
 
 interface UseGameEngineProps {
   scenarioId: string;
@@ -320,12 +320,19 @@ export function useGameEngine({
 
   const entryDamageSteps = (actor: Unit, hex: Hex, zones: GroundEffect[]): SubStep[] =>
     zones
-      .filter(z => z.kind === 'entry' && (z.delta || 0) > 0 && z.q === hex.q && z.r === hex.r)
+      .filter(z => z.kind === 'entry' && ((z.dice && z.dice.trim()) || (z.delta || 0) > 0) && z.q === hex.q && z.r === hex.r)
       .map(z => ({
         type: 'DAMAGE' as const,
-        description: `${actor.unitName} entered ${z.name} (${z.delta} damage)`,
+        description: `${actor.unitName} entered ${z.name} (${z.dice || z.delta}${z.healing ? ' healing' : ' damage'})`,
         unitId: actor.id,
-        changes: dotDamageChanges(actor, z.delta),
+        changes: effectDamageChanges(actor, {
+          delta: z.delta,
+          dice: z.dice,
+          healing: z.healing,
+          savingThrow: z.savingThrow,
+          saveDC: z.saveDC,
+          onSaveHalfOrNeg: z.onSaveHalfOrNeg,
+        }),
       }));
 
   const moveUnitRecorded = useCallback(

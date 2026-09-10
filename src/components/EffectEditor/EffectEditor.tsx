@@ -178,25 +178,63 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
                 <p className="text-xs text-gray-400 mb-1">Modifiers (combine freely — e.g. Haunted = AC −2 + Morale −1)</p>
                 <div className="space-y-1.5">
                   {draft.modifiers.map((m, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <select className={input + ' !w-56'} value={m.kind} disabled={readOnly} onChange={e => patchMod(i, { kind: e.target.value as EffectModifierKind })}>
-                        {KIND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
-                      <input
-                        className={input + ' !w-28'} type="number"
-                        value={m.delta}
-                        disabled={readOnly}
-                        onChange={e => patchMod(i, { delta: Number(e.target.value) || 0 })}
-                        placeholder="± value / X"
-                      />
-                      {!readOnly && (
-                        <button
-                          className="px-2 py-1 rounded text-xs bg-red-900/60 hover:bg-red-800 text-red-100"
-                          onClick={() => setDraft({ ...draft, modifiers: draft.modifiers.filter((_, idx) => idx !== i) })}
+                    <div key={i} className="rounded border border-gray-800 p-1.5 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <select className={input + ' !w-56'} value={m.kind} disabled={readOnly} onChange={e => patchMod(i, { kind: e.target.value as EffectModifierKind })}>
+                          {KIND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                        <input
+                          className={input + ' !w-28'} type="number"
+                          value={m.delta}
+                          disabled={readOnly}
+                          onChange={e => patchMod(i, { delta: Number(e.target.value) || 0 })}
+                          placeholder="± stat / fallback"
+                        />
+                        <input
+                          className={input + ' !w-36'} type="text"
+                          value={m.dice ?? ''}
+                          disabled={readOnly}
+                          onChange={e => patchMod(i, { dice: e.target.value.trim() || undefined })}
+                          placeholder="dice 2d6+2 (0d0+4)"
+                          title="Damage/heal dice (XdY±Z). X=0 = flat Z. Overrides the number."
+                        />
+                        <label className="flex items-center gap-1 text-[11px] text-gray-300 whitespace-nowrap">
+                          <input type="checkbox" disabled={readOnly} checked={!!m.healing} onChange={e => patchMod(i, { healing: e.target.checked })} />
+                          heal
+                        </label>
+                        {!readOnly && (
+                          <button
+                            className="px-2 py-1 rounded text-xs bg-red-900/60 hover:bg-red-800 text-red-100"
+                            onClick={() => setDraft({ ...draft, modifiers: draft.modifiers.filter((_, idx) => idx !== i) })}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                        <span>Save:</span>
+                        <select
+                          className={input + ' !w-24'}
+                          value={m.savingThrow ?? ''}
+                          disabled={readOnly}
+                          onChange={e => patchMod(i, { savingThrow: (e.target.value || null) as EffectModifier['savingThrow'] })}
                         >
-                          ✕
-                        </button>
-                      )}
+                          <option value="">none</option>
+                          {['Str', 'Dex', 'Con', 'Int', 'Wis', 'Cha'].map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <span>DC</span>
+                        <input
+                          className={input + ' !w-20'} type="number"
+                          value={m.saveDC ?? ''}
+                          disabled={readOnly || !m.savingThrow}
+                          onChange={e => patchMod(i, { saveDC: e.target.value === '' ? null : Number(e.target.value) })}
+                          title="d20 + save bonus ≥ DC passes. Very high DC = auto-fail (full damage)."
+                        />
+                        <label className="flex items-center gap-1 whitespace-nowrap" title="Passing the save halves damage; unchecked = negates (0).">
+                          <input type="checkbox" disabled={readOnly || !m.savingThrow} checked={m.onSaveHalfOrNeg !== false} onChange={e => patchMod(i, { onSaveHalfOrNeg: e.target.checked })} />
+                          half on save
+                        </label>
+                      </div>
                     </div>
                   ))}
                 </div>

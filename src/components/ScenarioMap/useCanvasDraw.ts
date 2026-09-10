@@ -110,7 +110,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     };
     const isFogHidden = (key: string) => !!fogReveal && !fogReveal.has(key);
     if (groundZones && groundZones.length > 0) {
-      for (const z of groundZones) {
+      for (const z of [...groundZones].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))) {
         const key = `${z.q},${z.r}`;
         if (isFogHidden(key)) continue;
         const c = z.color || '#ff7043';

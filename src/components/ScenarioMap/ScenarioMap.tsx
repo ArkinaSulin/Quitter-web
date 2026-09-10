@@ -90,7 +90,15 @@ type DroppedEffect = {
   color: string;
   scope: 'unit' | 'zone' | 'both';
   defaultDuration: number;
-  modifiers: { kind: string; delta: number }[];
+  modifiers: {
+    kind: string;
+    delta: number;
+    dice?: string;
+    healing?: boolean;
+    savingThrow?: 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha' | null;
+    saveDC?: number | null;
+    onSaveHalfOrNeg?: boolean;
+  }[];
 };
 
 export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps) {
@@ -150,6 +158,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const commandRows = useCommandLogRows(scenarioId);
   const corpseCounts = useMemo(() => buildFallen(commandRows), [commandRows]);
   const [showStats, setShowStats] = useState(false);
+  const [zoneMenu, setZoneMenu] = useState<{ hex: Hex; x: number; y: number } | null>(null);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
   // GM-painted map overlays (persisted in scenarios.map_data).
   const [terrainCosts, setTerrainCosts] = useState<TerrainCosts>({});
@@ -716,7 +725,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         addMessage(`${d.t.name}: enter a borrowed HP amount to Sleep the unit`);
         continue;
       }
-      await applyEffect(d.unit, { name: d.t.name, color: d.t.color, kind: m.kind as 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow', delta }, effectDuration, playerId);
+      await applyEffect(d.unit, {
+        name: d.t.name,
+        color: d.t.color,
+        kind: m.kind as 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow',
+        delta,
+        ...(m.dice ? { dice: m.dice } : {}),
+        ...(m.healing ? { healing: true } : {}),
+        ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
+        ...(m.saveDC != null ? { saveDC: m.saveDC } : {}),
+        ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
+        casterTeam: currentTurnAlliance ?? 'friendly',
+      }, effectDuration, playerId);
     }
   };
 
@@ -749,10 +769,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           color: d.t.color,
           kind: m.kind as GroundEffect['kind'],
           delta: m.delta,
+          dice: m.dice,
+          healing: m.healing,
+          savingThrow: m.savingThrow,
+          saveDC: m.saveDC,
+          onSaveHalfOrNeg: m.onSaveHalfOrNeg,
+          zIndex: next.length,
           duration: effectDuration,
           turnsLeft: effectDuration,
           casterUnitId: null,
-          casterTeam: null,
+          casterTeam: currentTurnAlliance ?? 'friendly',
           casterPlayerId: playerId,
         };
         next.push(zone);
@@ -761,6 +787,34 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setGroundZones(next);
     await persistMapData({ groundEffects: next });
     addMessage(`Placed ${d.t.name} over ${hexes.length} hex${hexes.length === 1 ? '' : 'es'} (${effectDuration} turns)`);
+  };
+
+  // ---- "Effects at hex" menu: reorder (Move up/down) and Drop Effect ----
+  const canManageZone = (z: GroundEffect) => effectiveIsGM || z.casterPlayerId === playerId;
+
+  const moveZone = async (key: string, dir: -1 | 1) => {
+    const z = groundZones.find(g => g.key === key);
+    if (!z) return;
+    const same = groundZones
+      .filter(g => g.q === z.q && g.r === z.r)
+      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+    const i = same.findIndex(g => g.key === key);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= same.length) return;
+    const zi = same[i].zIndex ?? i;
+    const zj = same[j].zIndex ?? j;
+    const next = groundZones.map(g => (g.key === same[i].key ? { ...g, zIndex: zj } : g.key === same[j].key ? { ...g, zIndex: zi } : g));
+    setGroundZones(next);
+    await persistMapData({ groundEffects: next });
+  };
+
+  const dropZone = async (key: string) => {
+    const z = groundZones.find(g => g.key === key);
+    if (!z || !canManageZone(z)) return;
+    const next = groundZones.filter(g => g.key !== key);
+    setGroundZones(next);
+    await persistMapData({ groundEffects: next });
+    addMessage(`Dropped effect ${z.name}`);
   };
 
   const handleEffectDrop = async (e: React.DragEvent<HTMLCanvasElement>) => {
@@ -1292,6 +1346,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         const px = Math.max(8, Math.min(clientX, (typeof window !== 'undefined' ? window.innerWidth : 0) - estW - 8));
         const py = Math.max(8, Math.min(clientY, (typeof window !== 'undefined' ? window.innerHeight : 0) - estH - 8));
         setContextMenuPos({ x: px, y: py });
+        return;
+      }
+      // Empty hex with ground-effect zones → "Effects at hex" menu.
+      if (hex && groundZones.some(z => z.q === hex.q && z.r === hex.r)) {
+        const px = Math.max(8, Math.min(clientX, (typeof window !== 'undefined' ? window.innerWidth : 0) - 240));
+        const py = Math.max(8, Math.min(clientY, (typeof window !== 'undefined' ? window.innerHeight : 0) - 260));
+        setZoneMenu({ hex, x: px, y: py });
       }
     },
     onUnitHover: (unit, screenX, screenY) => {
@@ -2497,6 +2558,58 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           </div>
         </div>
       )}
+
+      {/* "Effects at hex" menu: Move up/down + Drop Effect */}
+      {zoneMenu && (() => {
+        const zones = groundZones
+          .filter(z => z.q === zoneMenu.hex.q && z.r === zoneMenu.hex.r)
+          .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+        if (zones.length === 0) return null;
+        return (
+          <div className="absolute inset-0 z-40" onMouseDown={() => setZoneMenu(null)}>
+            <div
+              className="absolute bg-gray-900 border border-gray-700 rounded shadow-xl py-1 w-64 text-sm text-white"
+              style={{ left: zoneMenu.x, top: zoneMenu.y }}
+              onMouseDown={e => e.stopPropagation()}
+            >
+              <div className="px-3 py-1 text-[11px] text-gray-400">Effects at ({zoneMenu.hex.q}, {zoneMenu.hex.r})</div>
+              {zones.map((z, i) => (
+                <div key={z.key} className="px-2 py-1 border-t border-gray-800">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: z.color }} />
+                    <span className="flex-1 text-yellow-200">{z.name}</span>
+                    <span className="text-[10px] text-gray-400">{z.dice || z.delta}{z.healing ? ' heal' : ''}</span>
+                  </div>
+                  <div className="flex gap-1 mt-1">
+                    <button
+                      disabled={i === 0}
+                      className="px-1.5 py-0.5 text-[11px] rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-40"
+                      onClick={() => void moveZone(z.key, -1)}
+                    >
+                      Move up
+                    </button>
+                    <button
+                      disabled={i === zones.length - 1}
+                      className="px-1.5 py-0.5 text-[11px] rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-40"
+                      onClick={() => void moveZone(z.key, 1)}
+                    >
+                      Move down
+                    </button>
+                    {canManageZone(z) && (
+                      <button
+                        className="px-1.5 py-0.5 text-[11px] rounded bg-red-900/60 hover:bg-red-800 ml-auto"
+                        onClick={() => { void dropZone(z.key); setZoneMenu(null); }}
+                      >
+                        Drop Effect
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Scenario Statistics (DM in live play; anyone in replay) */}
       {showStats && (

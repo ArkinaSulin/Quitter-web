@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## Effects: dice/heal/saves, zone menu (Move up/down, Drop Effect) (2026-09-06)
+**Files:** src/types/gameProtocol.ts, src/lib/effectTemplates.ts, src/lib/unitEffects.ts + test, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ScenarioMap,EffectsPanel,useCanvasDraw}.tsx, src/components/EffectEditor/EffectEditor.tsx, docs (changelog)
+
+- Effect modifiers now accept dice ('XdY+Z'; X=0 => flat Z) and a healing flag; plus savingThrow/saveDC/onSaveHalfOrNeg. DoT/entry dice roll each tick / on entry and are spread per affected troop, **capped at troop HP** (healing capped at troop HP too); per-troop saves: d20+bonus >= DC passes => half (or negate). Legacy numeric effects unchanged.
+- Tempo anchor: zones/effects dropped with no caster now carry casterTeam = current turn alliance so they tick once per cycle on that alliance (free play anchors friendly).
+- Right-click an empty hex with ground effects -> 'Effects at hex' menu: Move up/down (zIndex draw order) and **Drop Effect** (DM or the effect's creator). Effects Editor gained dice/heal/save/DC controls. 525 tests, tsc clean.
+- Still pending: the entry 'How many troops are affected' prompt (currently all troops), and the DoT no-tick-on-drop text note.
+
+
+
 ## Pursuit is melee-only + adjacency-gated (2026-09-06)
 **Files:** src/lib/routedRetreat.ts + tests, src/components/ScenarioMap/ScenarioMap.tsx, docs (changelog)
 

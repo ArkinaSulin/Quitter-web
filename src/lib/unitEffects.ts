@@ -16,6 +16,7 @@
 
 import { Unit, UnitEffect, GroundEffect, EffectKind, AllianceGroup } from '@/types/gameProtocol';
 import { SubStep, UnitChange } from '@/lib/commandLog';
+import { parseDice, rollDice } from '@/lib/effectTemplates';
 
 /** The real unit field a stat kind modifies (dot/hp_borrow have none — they touch HP). */
 export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModifier' | 'movementPoints' | null {
@@ -144,6 +145,78 @@ export function hpBorrowRefundChanges(target: Unit, x: number): UnitChange[] {
   ];
 }
 
+const thOf = (t: Unit) => Math.max(1, t.troopHp ?? 1);
+type SaveStatName = 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha';
+
+/** Per-troop saving throw count: d20 + bonus >= DC passes (standard saves). */
+function savedTroopCount(target: Unit, stat: SaveStatName, dc: number, affected: number, rng: () => number): number {
+  const bonus = ((target as any)[stat.toLowerCase()] as number) || 0;
+  let passed = 0;
+  for (let i = 0; i < affected; i++) {
+    const roll = Math.floor(rng() * 20) + 1;
+    if (roll + bonus >= dc) passed++;
+  }
+  return passed;
+}
+
+function healChanges(target: Unit, amount: number): UnitChange[] {
+  if (amount <= 0) return [];
+  const newHp = Math.min(target.maxUnitHp ?? (target.currentUnitHp ?? 0) + amount, (target.currentUnitHp ?? 0) + amount);
+  return [
+    { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+    { field: 'currentTroopCount', from: target.currentTroopCount, to: troopFromHp(target, newHp) },
+  ];
+}
+
+/**
+ * Damage/heal from an effect modifier.
+ *  - `dice` present: roll ONCE, spread across the affected troops — each troop
+ *    takes the (save-adjusted) amount CAPPED at its troop HP; `healing` flips
+ *    damage to healing (also capped per troop at troopHp). Per-troop saves when
+ *    `savingThrow` + `saveDC` are set (pass => half if onSaveHalfOrNeg, else 0).
+ *  - no `dice`: legacy flat amount applied to the unit HP once (unchanged).
+ */
+export function effectDamageChanges(
+  target: Unit,
+  mod: {
+    delta?: number;
+    dice?: string;
+    healing?: boolean;
+    savingThrow?: SaveStatName | null;
+    saveDC?: number | null;
+    onSaveHalfOrNeg?: boolean;
+  },
+  rng: () => number = Math.random,
+  affectedOverride?: number,
+): UnitChange[] {
+  const parsed = parseDice(mod.dice);
+  if (!parsed) {
+    const amt = mod.delta ?? 0;
+    if (amt <= 0) return [];
+    return mod.healing ? healChanges(target, amt) : dotDamageChanges(target, amt);
+  }
+  const amount = Math.max(0, rollDice(mod.dice, rng));
+  if (amount <= 0) return [];
+  const currentTroops = Math.max(0, target.currentTroopCount ?? 0);
+  const affected = Math.max(0, Math.min(affectedOverride ?? currentTroops, currentTroops));
+  if (affected === 0) return [];
+  const th = thOf(target);
+  const halfOnSave = mod.onSaveHalfOrNeg !== false;
+  let passed = 0;
+  if (mod.savingThrow && mod.saveDC != null) {
+    passed = savedTroopCount(target, mod.savingThrow, mod.saveDC, affected, rng);
+  }
+  const full = Math.min(amount, th);
+  const half = halfOnSave ? Math.min(Math.floor(amount / 2), th) : 0;
+  const total = passed * half + (affected - passed) * full;
+  if (mod.healing) return healChanges(target, total);
+  const newHp = Math.max(0, (target.currentUnitHp ?? 0) - total);
+  return [
+    { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+    { field: 'currentTroopCount', from: target.currentTroopCount, to: Math.max(0, Math.ceil(newHp / th)) },
+  ];
+}
+
 /** Remaining ticks of an effect (its own countdown) — DoT ticks then expires. */
 function tickDown(effect: UnitEffect): UnitEffect {
   return { ...effect, turnsLeft: Math.max(0, effect.turnsLeft - 1) };
@@ -157,6 +230,8 @@ interface EndTurnEffectsContext {
   /** Team -> alliance group for the scenario. */
   alliances: Record<string, AllianceGroup>;
   makeKey?: () => string;
+  /** Injectable RNG for dice/save rolls (tests). */
+  rng?: () => number;
 }
 
 export interface EndTurnEffectsResult {
@@ -190,7 +265,7 @@ function teamsOf(alliances: Record<string, AllianceGroup>, group: AllianceGroup)
  * Returns unit sub-steps (ordered, one per affected unit) + the surviving zones.
  */
 export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffectsResult {
-  const { units, zones, nextGroup, alliances, makeKey = newEffectKey } = ctx;
+  const { units, zones, nextGroup, alliances, makeKey = newEffectKey, rng = Math.random } = ctx;
   const activeTeams = teamsOf(alliances, nextGroup);
   // GM/table-placed effects and zones have no caster team ("tempo-free"). They
   // should tick ONCE per game turn, not on every alliance's end-turn — anchor
@@ -233,7 +308,7 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
       // Caster's activation start: tick.
       const ticked = tickDown(e);
       if (e.kind === 'dot') {
-        for (const c of dotDamageChanges(unit, e.delta)) d.changes.push(c);
+        for (const c of effectDamageChanges(unit, e, rng)) d.changes.push(c);
         d.hpChanged = true;
       }
       if (ticked.turnsLeft <= 0) {
@@ -259,7 +334,7 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
       if (zone.kind === 'dot') {
         for (const u of standing) {
           const d = draftFor(u);
-          for (const c of dotDamageChanges(u, zone.delta)) { d.changes.push(c); d.hpChanged = true; }
+          for (const c of effectDamageChanges(u, zone, rng)) { d.changes.push(c); d.hpChanged = true; }
         }
       }
       surviving = { ...zone, turnsLeft: Math.max(0, zone.turnsLeft - 1) };

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, dotDamageChanges, computeEndTurnEffects, effectByKey, newEffectKey } from './unitEffects';
+import { applyEffectChanges, removeEffectChanges, dotDamageChanges, computeEndTurnEffects, effectByKey, newEffectKey, effectDamageChanges } from './unitEffects';
+import { parseDice } from './effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
 
@@ -262,5 +263,45 @@ describe('computeEndTurnEffects', () => {
     const deadSleep: UnitEffect = ef({ key: 'ds', kind: 'hp_borrow', delta: 6, turnsLeft: 1, duration: 1, casterUnitId: null, casterTeam: null });
     const corpseRemove = removeEffectChanges({ ...corpse, effects: [deadSleep] }, 'ds');
     expect(corpseRemove.some(c => c.field === 'currentUnitHp')).toBe(false);
+  });
+});
+
+describe('effect dice + saves', () => {
+  const mk = (over: Partial<Unit> = {}) => unit('t', 'red', h(0, 0), { troopHp: 2, currentUnitHp: 10, maxUnitHp: 10, currentTroopCount: 5, maxTroopCount: 5, ...over });
+
+  it('parseDice handles XdY±Z and flat numbers', () => {
+    expect(parseDice('2d6+2')).toEqual({ count: 2, sides: 6, bonus: 2 });
+    expect(parseDice('0d0+4')).toEqual({ count: 0, sides: 0, bonus: 4 });
+    expect(parseDice('7')).toEqual({ count: 0, sides: 0, bonus: 7 });
+    expect(parseDice('nonsense')).toBeNull();
+  });
+
+  it('dice damage is spread per troop and capped at troop HP', () => {
+    // 3d1 = 3 per troop, capped at troopHp 2 across 5 troops = 10 -> 0 HP.
+    const changes = effectDamageChanges(mk(), { delta: 0, dice: '3d1' }, () => 0.5);
+    expect(changes.find(c => c.field === 'currentUnitHp')!.to).toBe(0);
+    // 1d1 = 1 per troop capped at 2 -> 5 total -> 5 HP left.
+    const changes2 = effectDamageChanges(mk(), { delta: 0, dice: '1d1' }, () => 0.5);
+    expect(changes2.find(c => c.field === 'currentUnitHp')!.to).toBe(5);
+  });
+
+  it('healing dice restore per troop (capped at troop HP / max)', () => {
+    const hurt = mk({ currentUnitHp: 5, currentTroopCount: 3 });
+    const changes = effectDamageChanges(hurt, { delta: 0, dice: '1d1', healing: true }, () => 0.5);
+    expect(changes.find(c => c.field === 'currentUnitHp')!.to).toBe(8); // +1 x 3 troops
+  });
+
+  it('saves halve or negate per troop; DC 1 auto-passes, huge DC auto-fails', () => {
+    // 1d1, half on save, DC 1 => every troop saves => 0 damage.
+    const passed = effectDamageChanges(mk(), { delta: 0, dice: '1d1', savingThrow: 'Dex', saveDC: 1, onSaveHalfOrNeg: true }, () => 0.5);
+    expect(passed.find(c => c.field === 'currentUnitHp')!.to).toBe(10);
+    // huge DC => all fail => full 1 x 5 = 5.
+    const failed = effectDamageChanges(mk(), { delta: 0, dice: '1d1', savingThrow: 'Dex', saveDC: 100, onSaveHalfOrNeg: true }, () => 0.5);
+    expect(failed.find(c => c.field === 'currentUnitHp')!.to).toBe(5);
+  });
+
+  it('affected override limits the troops hit', () => {
+    const changes = effectDamageChanges(mk(), { delta: 0, dice: '1d1' }, () => 0.5, 2);
+    expect(changes.find(c => c.field === 'currentUnitHp')!.to).toBe(8); // only 2 troops take 1
   });
 });

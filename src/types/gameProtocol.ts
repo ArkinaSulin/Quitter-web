@@ -186,6 +186,14 @@ export interface UnitEffect {
   kind: EffectKind;
   /** Signed stat delta (ac/morale/movement) or per-tick DoT damage (dot). */
   delta: number;
+  /** Dice amount for damage/heal kinds ("2d6+2"; X=0 => flat Z). Overrides delta. */
+  dice?: string;
+  /** When true, dice/delta HEALS instead of damaging. */
+  healing?: boolean;
+  /** Saving throw stat / DC / half-or-negate (standard d20+bonus >= DC passes). */
+  savingThrow?: 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha' | null;
+  saveDC?: number | null;
+  onSaveHalfOrNeg?: boolean;
   /** Full duration in caster activations (zones too). */
   duration: number;
   /** Remaining caster activations. */
@@ -211,6 +219,13 @@ export interface GroundEffect {
   color: string;
   kind: EffectKind;
   delta: number;
+  dice?: string;
+  healing?: boolean;
+  savingThrow?: 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha' | null;
+  saveDC?: number | null;
+  onSaveHalfOrNeg?: boolean;
+  /** Stable draw order on its hex (Move up/down). */
+  zIndex?: number;
   duration: number;
   turnsLeft: number;
   casterUnitId?: string | null;

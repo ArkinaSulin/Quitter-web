@@ -70,7 +70,7 @@ export default function EffectsPanel() {
         >
           <span className="font-semibold text-gray-100">{t.name}</span>
           <span className="block text-[10px] text-gray-400">
-            {t.scope} · {t.modifiers.map(m => `${m.kind}${m.delta >= 0 ? '+' : ''}${m.delta}`).join(', ') || '—'}
+            {t.scope} · {t.modifiers.map(m => `${m.kind} ${m.dice ?? (m.delta >= 0 ? '+' + m.delta : m.delta)}${m.healing ? ' heal' : ''}`).join(', ') || '—'}
           </span>
         </div>
       ))}
