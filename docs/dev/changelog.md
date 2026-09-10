@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Effect editor: one amount field + responsive mid panel (2026-09-06)
+**Files:** src/components/EffectEditor/EffectEditor.tsx, src/lib/effectTemplates.ts, docs/dev/10-temporary-effects.md
+
+- Removed the redundant numeric magnitude/delta input: each modifier now has a single **amount** field accepting a plain number (flat) or dice XdY±Z (X=0 = flat Z). The flat part is mirrored into delta so stat kinds and legacy consumers are unaffected; blank clears both. New modifiers and lankEffectTemplate seed dice: '1', and the preview summary shows the dice when present.
+- Effect editor mid panel now shrinks to fit: dropped the fixed max-width, grids collapse (lg:grid-cols-2, sm:grid-cols-3), modifier rows wrap, and the side panels narrow (w-52/w-56, widening at lg).
+
+
+
 ## Log outstanding backlog for next session (2026-09-06)
 **Files:** docs/dev/outstanding.md (new), docs/dev/README.md, docs/README.md, AGENTS.md
 

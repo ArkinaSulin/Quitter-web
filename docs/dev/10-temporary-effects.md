@@ -77,3 +77,9 @@ One sub-step per affected unit, `effects` collapsed to a single from-original
 - UnitTooltip shows effect chips (color + remaining turns); tokens draw effect
   pips below the token.
 - GM palette tab paints ground zones onto hexes (with the stat/tempo picker).
+- **Effects Library** (`/effect-editor`, `EffectEditor.tsx`) authors reusable
+  templates: identity (name/color/image), scope, magnitude mode, default
+  duration, and one or more modifiers. Each modifier has a single **amount**
+  field that accepts either a plain number (flat) or dice `XdY±Z` (`X=0` = flat
+  `Z`); the flat part is mirrored into `delta` so stat kinds and legacy
+  consumers keep working. Save/save-on-blur writes `effect_templates`.

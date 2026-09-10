@@ -131,6 +131,6 @@ export function blankEffectTemplate(): Omit<EffectTemplate, 'id' | 'createdAt' |
     scope: 'unit',
     magnitudeMode: 'fixed',
     defaultDuration: 3,
-    modifiers: [{ kind: 'ac', delta: 1 }],
+    modifiers: [{ kind: 'ac', delta: 1, dice: '1' }],
   };
 }

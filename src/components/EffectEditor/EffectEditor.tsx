@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import {
   EffectTemplate, EffectModifier, EffectModifierKind, EffectScope, MagnitudeMode,
-  mapEffectRow, mapEffectToRow, blankEffectTemplate,
+  mapEffectRow, mapEffectToRow, blankEffectTemplate, parseDice,
 } from '@/lib/effectTemplates';
 
 const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
@@ -93,10 +93,18 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
     setDraft({ ...draft, modifiers: draft.modifiers.map((m, idx) => (idx === i ? { ...m, ...p } : m)) });
   };
 
+  // One "amount" field: a plain number or dice ("2d6+2"; X=0 => flat Z). The
+  // flat part is mirrored into `delta` for stat kinds / legacy consumers.
+  const patchAmount = (i: number, raw: string) => {
+    const text = raw.trim();
+    const parsed = parseDice(text);
+    patchMod(i, { dice: text || undefined, delta: parsed ? parsed.bonus : 0 });
+  };
+
   const summary = useMemo(
     () =>
       draft
-        ? draft.modifiers.map(m => `${m.kind}: ${m.delta > 0 ? '+' : ''}${m.delta}`).join(' · ') || '(no modifiers)'
+        ? draft.modifiers.map(m => `${m.kind}: ${m.dice ?? (m.delta > 0 ? `+${m.delta}` : m.delta)}`).join(' · ') || '(no modifiers)'
         : '',
     [draft],
   );
@@ -113,7 +121,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
 
       <div className="flex flex-1 min-h-0">
         {/* LEFT — template selector */}
-        <div className="w-64 border-r border-gray-700 p-2 space-y-1 overflow-y-auto">
+        <div className="w-52 lg:w-64 shrink-0 border-r border-gray-700 p-2 space-y-1 overflow-y-auto">
           {!readOnly && (
             <button onClick={fresh} className="w-full py-1.5 rounded bg-emerald-800 hover:bg-emerald-700 text-sm mb-2">
               New Effect
@@ -140,8 +148,8 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
           {!draft ? (
             <p className="text-gray-500 text-sm">Select an effect from the list (or create one) to edit it.</p>
           ) : (
-            <fieldset disabled={readOnly} className="space-y-3 max-w-2xl">
-              <div className="grid grid-cols-2 gap-3">
+            <fieldset disabled={readOnly} className="space-y-3 w-full max-w-full">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                 <label className="text-xs text-gray-400">Name
                   <input className={input} value={draft.name} disabled={readOnly} onChange={e => setDraft({ ...draft, name: e.target.value })} />
                 </label>
@@ -155,7 +163,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
               <label className="block text-xs text-gray-400">Description
                 <textarea className={input} rows={2} value={draft.description} disabled={readOnly} onChange={e => setDraft({ ...draft, description: e.target.value })} />
               </label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <label className="text-xs text-gray-400">Scope
                   <select className={input} value={draft.scope} disabled={readOnly} onChange={e => setDraft({ ...draft, scope: e.target.value as EffectScope })}>
                     <option value="unit">Unit</option>
@@ -179,24 +187,17 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
                 <div className="space-y-1.5">
                   {draft.modifiers.map((m, i) => (
                     <div key={i} className="rounded border border-gray-800 p-1.5 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <select className={input + ' !w-56'} value={m.kind} disabled={readOnly} onChange={e => patchMod(i, { kind: e.target.value as EffectModifierKind })}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select className={input + ' !w-48 min-w-0'} value={m.kind} disabled={readOnly} onChange={e => patchMod(i, { kind: e.target.value as EffectModifierKind })}>
                           {KIND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
                         <input
-                          className={input + ' !w-28'} type="number"
-                          value={m.delta}
-                          disabled={readOnly}
-                          onChange={e => patchMod(i, { delta: Number(e.target.value) || 0 })}
-                          placeholder="± stat / fallback"
-                        />
-                        <input
-                          className={input + ' !w-36'} type="text"
+                          className={input + ' flex-1 min-w-[8rem]'} type="text"
                           value={m.dice ?? ''}
                           disabled={readOnly}
-                          onChange={e => patchMod(i, { dice: e.target.value.trim() || undefined })}
-                          placeholder="dice 2d6+2 (0d0+4)"
-                          title="Damage/heal dice (XdY±Z). X=0 = flat Z. Overrides the number."
+                          onChange={e => patchAmount(i, e.target.value)}
+                          placeholder="amount — 4 or 2d6+2"
+                          title="Amount: a plain number (flat) or dice XdY±Z (X=0 = flat Z). Used for both stats and damage."
                         />
                         <label className="flex items-center gap-1 text-[11px] text-gray-300 whitespace-nowrap">
                           <input type="checkbox" disabled={readOnly} checked={!!m.healing} onChange={e => patchMod(i, { healing: e.target.checked })} />
@@ -241,7 +242,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
                 {!readOnly && (
                   <button
                     className="mt-2 px-3 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600"
-                    onClick={() => setDraft({ ...draft, modifiers: [...draft.modifiers, { kind: 'ac', delta: 1 }] })}
+                    onClick={() => setDraft({ ...draft, modifiers: [...draft.modifiers, { kind: 'ac', delta: 1, dice: '1' }] })}
                   >
                     + Add modifier
                   </button>
@@ -266,7 +267,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
         </div>
 
         {/* RIGHT — preview summary */}
-        <div className="w-80 border-l border-gray-700 p-4 space-y-3 overflow-y-auto">
+        <div className="w-56 lg:w-80 shrink-0 border-l border-gray-700 p-4 space-y-3 overflow-y-auto">
           <p className="text-[10px] uppercase tracking-wide text-gray-500">Preview</p>
           {!draft ? (
             <p className="text-xs text-gray-500">Nothing selected.</p>
