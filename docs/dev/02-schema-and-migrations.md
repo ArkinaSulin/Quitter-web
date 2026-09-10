@@ -88,6 +88,8 @@ as applied in the notes — check the live DB before relying on it).
 | 075 | restore `archerReactionUsed` allowlist entry | ✅ applied (verified 2026-09-06) |
 | 076 | AI assist toggle (`ai_assist_enabled`) | ✅ applied (verified 2026-09-06) |
 | 077 | effects library (`effect_templates` + access caps) | ✅ applied (verified 2026-09-06) |
+| 078 | effect editor: drop `magnitude_mode`, add `layer` (above/below) | ⏳ run in Supabase |
+| 079 | `effect_images` storage bucket + policies | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

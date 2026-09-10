@@ -1,11 +1,12 @@
 'use client';
 // src/components/ScenarioMap/EffectsPanel.tsx
-// Left-panel Effects tab for every assigned player (and the GM): the effect
-// library is shown as draggable cards. Drag one onto the map — an empty hex
-// places a zone (with duration/radius prompts), a unit applies the effect.
+// Left-panel Effects tab for every assigned player (and the GM): the effects
+// authored in the Effect Editor are shown as draggable cards. Drag one onto the
+// map — an empty hex places a zone (with an editable pre-apply form), a unit
+// applies the effect.
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { EffectTemplate, mapEffectRow } from '@/lib/effectTemplates';
+import { EffectTemplate, mapEffectRow, modifierSummary } from '@/lib/effectTemplates';
 
 export function dragPayload(t: EffectTemplate): string {
   return JSON.stringify({
@@ -13,13 +14,15 @@ export function dragPayload(t: EffectTemplate): string {
     id: t.id,
     name: t.name,
     color: t.color,
+    imageUrl: t.imageUrl,
+    layer: t.layer,
     scope: t.scope,
     defaultDuration: t.defaultDuration,
     modifiers: t.modifiers,
   });
 }
 
-export function parseDragPayload(raw: string): Pick<EffectTemplate, 'id' | 'name' | 'color' | 'scope' | 'defaultDuration' | 'modifiers'> | null {
+export function parseDragPayload(raw: string): Pick<EffectTemplate, 'id' | 'name' | 'color' | 'imageUrl' | 'layer' | 'scope' | 'defaultDuration' | 'modifiers'> | null {
   try {
     const o = JSON.parse(raw);
     if (!o || o.kind !== 'quitter-effect' || !o.name) return null;
@@ -27,6 +30,8 @@ export function parseDragPayload(raw: string): Pick<EffectTemplate, 'id' | 'name
       id: o.id,
       name: o.name,
       color: o.color || '#cccccc',
+      imageUrl: o.imageUrl || '',
+      layer: o.layer === 'above' ? 'above' : 'below',
       scope: o.scope === 'zone' ? 'zone' : o.scope === 'both' ? 'both' : 'unit',
       defaultDuration: Number(o.defaultDuration) || 3,
       modifiers: Array.isArray(o.modifiers) ? o.modifiers : [],
@@ -55,7 +60,7 @@ export default function EffectsPanel() {
   return (
     <div className="space-y-2">
       <p className="text-[10px] uppercase tracking-wide text-gray-500">Effects (drag onto the map)</p>
-      {list.length === 0 && <p className="text-xs text-gray-500">No effects in the library yet.</p>}
+      {list.length === 0 && <p className="text-xs text-gray-500">No effects yet.</p>}
       {list.map(t => (
         <div
           key={t.id}
@@ -70,7 +75,7 @@ export default function EffectsPanel() {
         >
           <span className="font-semibold text-gray-100">{t.name}</span>
           <span className="block text-[10px] text-gray-400">
-            {t.scope} · {t.modifiers.map(m => `${m.kind} ${m.dice ?? (m.delta >= 0 ? '+' + m.delta : m.delta)}${m.healing ? ' heal' : ''}`).join(', ') || '—'}
+            {t.scope} · {t.modifiers.map(modifierSummary).join(', ') || '—'}
           </span>
         </div>
       ))}

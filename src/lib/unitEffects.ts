@@ -110,6 +110,26 @@ export function removeEffectChanges(unit: Unit, key: string): UnitChange[] {
   return changes;
 }
 
+/**
+ * UnitChanges that replace one effect in place (same key slot, new payload):
+ * remove the old (restores any stat snapshot) then re-apply the new spec. Used
+ * by the instance edit modal so stat effects rebase correctly.
+ */
+export function editEffectChanges(
+  unit: Unit,
+  key: string,
+  spec: Omit<UnitEffect, 'key' | 'base' | 'turnsLeft' | 'duration'>,
+  duration: number,
+  newKey = newEffectKey(),
+): UnitChange[] {
+  const remove = removeEffectChanges(unit, key);
+  if (remove.length === 0) return [];
+  const unitAfter: Unit = { ...unit };
+  for (const c of remove) (unitAfter as any)[c.field] = c.to;
+  const { changes: apply } = applyEffectChanges(unitAfter, { ...spec, duration: Math.max(1, duration), turnsLeft: Math.max(1, duration) }, newKey);
+  return [...remove, ...apply];
+}
+
 /** DoT damage: a unit's damage over time landing on `target` (flat per tick). */
 export function dotDamageChanges(target: Unit, damage: number): UnitChange[] {
   if (damage <= 0) return [];

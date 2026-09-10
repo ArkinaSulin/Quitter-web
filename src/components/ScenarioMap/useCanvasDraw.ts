@@ -3,11 +3,11 @@
 // Canvas rendering for the scenario map: live token drawing (customDraw, fed
 // into useHexGrid) and the GM screenshot capture. Both are pure functions of
 // the passed-in state — no handlers, no DB access.
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
 import { hexToPixel } from '@/hooks/useHexGrid';
 import { Unit, Hex, AllianceGroup, Formation, SizeCategory, GroundEffect } from '@/types/gameProtocol';
-import { drawToken, loadImage, drawArcherReactionButton } from '@/components/TokenRenderer/drawToken';
+import { drawToken, loadImage, getLoadedImage, drawArcherReactionButton } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
 import { isDeadCorpse } from '@/lib/unitInteractions';
 import { corpseScatterPositions } from '@/lib/corpseTracker';
@@ -75,6 +75,29 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     aiHoveredUnitId,
   } = deps;
 
+  // Effect artwork is loaded asynchronously; bump a tick once the set decodes so
+  // the canvas redraws (customDraw itself stays synchronous via getLoadedImage).
+  const [imageTick, setImageTick] = useState(0);
+  const effectImageUrls = useMemo(() => {
+    const urls = new Set<string>();
+    for (const z of groundZones ?? []) if (z.imageUrl) urls.add(z.imageUrl);
+    for (const u of displayUnits) {
+      if (u.isDeleted) continue;
+      for (const e of u.effects ?? []) if (e.imageUrl && !e.zoneHex) urls.add(e.imageUrl);
+    }
+    return Array.from(urls).sort().join('|');
+  }, [groundZones, displayUnits]);
+
+  useEffect(() => {
+    const urls = effectImageUrls ? effectImageUrls.split('|') : [];
+    if (urls.length === 0) return;
+    let cancelled = false;
+    Promise.all(urls.map(u => loadImage(u).catch(() => null))).then(() => {
+      if (!cancelled) setImageTick(t => t + 1);
+    });
+    return () => { cancelled = true; };
+  }, [effectImageUrls]);
+
   const customDraw = useCallback(async (ctx: CanvasRenderingContext2D, width: number, height: number, currentZoom: number, offsetX: number, offsetY: number) => {
     const tokenWidth = TOKEN_WIDTH * currentZoom;
     const tokenHeight = TOKEN_HEIGHT * currentZoom;
@@ -109,6 +132,42 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       ctx.fill();
     };
     const isFogHidden = (key: string) => !!fogReveal && !fogReveal.has(key);
+
+    // Effect artwork on hexes. "below" draws under corpses/tokens (here);
+    // "above" draws after the token loop. A hex whose unit is hovered skips its
+    // "above" artwork so the token stays inspectable.
+    const drawEffectImage = (hex: Hex, url: string) => {
+      const img = getLoadedImage(url);
+      if (!img) return;
+      const { cx, cy } = hexCenter(hex);
+      const ratio = img.naturalWidth / Math.max(1, img.naturalHeight);
+      const h = tokenHeight;
+      const w = h * ratio;
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+      ctx.restore();
+    };
+    const belowImages: { hex: Hex; url: string; z: number }[] = [];
+    const aboveImages: { hex: Hex; url: string; z: number }[] = [];
+    const pushEffectImage = (hex: Hex, url: string, layer: 'above' | 'below', z: number) => {
+      if (!url || isFogHidden(`${hex.q},${hex.r}`)) return;
+      (layer === 'above' ? aboveImages : belowImages).push({ hex, url, z });
+    };
+    for (const z of groundZones ?? []) {
+      if (z.imageUrl) pushEffectImage({ q: z.q, r: z.r, s: -z.q - z.r }, z.imageUrl, z.layer ?? 'below', z.zIndex ?? 0);
+    }
+    for (const u of displayUnits) {
+      if (u.isDeleted || u.attachedToUnitId) continue;
+      for (const e of u.effects ?? []) {
+        if (e.imageUrl && !e.zoneHex) pushEffectImage(u.hex, e.imageUrl, e.layer ?? 'below', 0);
+      }
+    }
+    for (const im of belowImages) drawEffectImage(im.hex, im.url);
+    const hoveredHexKey = (() => {
+      const hu = displayUnits.find(u => u.id === aiHoveredUnitId);
+      return hu ? `${hu.hex.q},${hu.hex.r}` : null;
+    })();
     if (groundZones && groundZones.length > 0) {
       for (const z of [...groundZones].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))) {
         const key = `${z.q},${z.r}`;
@@ -268,6 +327,12 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           ctx.restore();
         }
       }
+    }
+
+    // "Above unit" effect artwork (hides while the unit on its hex is hovered).
+    for (const im of aboveImages.sort((a, b) => a.z - b.z)) {
+      if (hoveredHexKey && `${im.hex.q},${im.hex.r}` === hoveredHexKey) continue;
+      drawEffectImage(im.hex, im.url);
     }
 
     // Active-effect pips: one colored dot per effect under the token (small, cheap).
@@ -496,7 +561,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, groundZones, corpseCounts, aiOverlay, aiHoveredUnitId]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, groundZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;

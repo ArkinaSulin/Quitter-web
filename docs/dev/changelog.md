@@ -1,5 +1,17 @@
 # QuiTTER Changelog
 
+## Effect Editor: images/layers, editable drops, edit + clone (2026-09-06)
+**Files:** supabase/migrations/078_effect_editor_layer.sql (new), supabase/migrations/079_effect_images_bucket.sql (new), src/lib/effectTemplates.ts, src/types/gameProtocol.ts, src/lib/unitEffects.ts, src/hooks/useGameEngine.ts, src/components/ColorField.tsx (new), src/components/EffectEditor/EffectModifierFields.tsx (new), src/components/ImagePickerModal.tsx, src/components/EffectEditor/EffectEditor.tsx, src/components/ScenarioMap/EffectFormModal.tsx (new), src/components/ScenarioMap/{ScenarioMap,EffectsPanel,AddEffectModal}.tsx, src/components/ScenarioMap/useCanvasDraw.ts, src/components/TokenRenderer/drawToken.ts, src/components/Lobby.tsx, docs/dev/{10-temporary-effects,02-schema-and-migrations,01-architecture}.md, README.md, src/lib/unitEffects.test.ts
+
+- **Removed the obsolete magnitude mode**: deleted the editor select + magnitudeMode type/mapper plumbing; migration 078 drops effect_templates.magnitude_mode.
+- **Effect images + layers**: migration 079 adds the effect_images bucket; migration 078 adds effect_templates.layer ('above'|'below'). Effect artwork now renders on the map on its hex — below unit in the ground-effects pass, above unit after the tokens (still under fog); an "above" image hides while the unit on its hex is hovered (getLoadedImage sync cache lookup + a preload tick in useCanvasDraw). UnitEffect/GroundEffect gained imageUrl/layer, threaded through drag payloads and all apply paths.
+- **Effect Editor polish**: title "Effects Library" → "Effect Editor" (and the Lobby button); the image URL text box is now a picker/uploader from effect_images (generalized ImagePickerModal with bucket/title/showRaces); a **below/above unit** select sits beside it; the colour input is a swatch + hex box + preset palette (ColorField). Extracted the shared modifier row into EffectModifierFields.
+- **Editable pre-apply drop form** (EffectFormModal): shows and lets you edit name/colour/image+layer, duration, tempo, and every modifier before applying; **removed the zone radius** (a zone drops on the single dropped hex) and there is no description field. (The old hp_borrow borrow-amount box is gone — the modifier's own amount field carries it.)
+- **Placed-effect edit + clone**: the "Effects at hex" right-click menu gains **Edit** (reopens the shared form, persists to map_data.groundEffects) and **Clone** (one-shot — the next left-click places a copy; Esc / right-click cancels). The unit **Effects…** modal now lists the ground zones on the unit's hex with Edit/Clone/✕, and its unit effects gain **Edit**. Unit-effect edits go through the new editEffectChanges (remove + re-apply in one EFFECT command; stat snapshots rebase) exposed as editEffect in useGameEngine.
+- Tests: editEffectChanges added (3). tsc clean; 528 tests pass.
+- **Migrations 078 / 079 must be applied in Supabase.**
+
+
 ## Effect editor: one amount field + responsive mid panel (2026-09-06)
 **Files:** src/components/EffectEditor/EffectEditor.tsx, src/lib/effectTemplates.ts, docs/dev/10-temporary-effects.md
 

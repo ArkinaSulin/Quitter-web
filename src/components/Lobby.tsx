@@ -532,7 +532,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                 color: '#f5efd2',
               }}
             >
-              Effects Library
+              Effect Editor
             </button>
           )}
           {/* Delete Scenario — always the very last action button */}

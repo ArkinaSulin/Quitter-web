@@ -14,7 +14,7 @@ import { useMessageSync } from '@/hooks/useMessageSync';
 import { ActionType, SubStep, CommandLogRow, UndoState, parseSubSteps } from '@/lib/commandLog';
 import { getActiveGroups, advanceTurn } from '@/lib/turnState';
 import { UnitEffect, GroundEffect } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, computeEndTurnEffects, newEffectKey, EffectSpec, effectDamageChanges } from '@/lib/unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, newEffectKey, EffectSpec, effectDamageChanges } from '@/lib/unitEffects';
 
 interface UseGameEngineProps {
   scenarioId: string;
@@ -874,6 +874,23 @@ export function useGameEngine({
     return { ok: true as const };
   }, [execute]);
 
+  // Replace one effect in place (remove + re-apply) as a single EFFECT command so
+  // stat snapshots rebase correctly and undo restores the previous effect.
+  const editEffect = useCallback(async (unit: Unit, key: string, spec: EffectSpec, duration: number) => {
+    const changes = editEffectChanges(unit, key, spec, duration);
+    if (changes.length === 0) {
+      addError(`Could not edit the effect on ${unit.unitName}`);
+      return { ok: false as const };
+    }
+    await execute('EFFECT', [{
+      type: 'EFFECT',
+      description: `Effect edited on ${unit.unitName}`,
+      unitId: unit.id,
+      changes,
+    }], `${unit.unitName}'s ${spec.name} updated`);
+    return { ok: true as const };
+  }, [execute, addError]);
+
   /**
    * "Other Action…" (hero roleplay): spend 1 action on a described non-standard
    * deed. The table resolves the fiction by hand. Free move costs nothing.
@@ -913,6 +930,7 @@ export function useGameEngine({
     endTurn,
     applyEffect,
     removeEffect,
+    editEffect,
     charge,
     refreshUndoState,
     subscribeToCommandLog,

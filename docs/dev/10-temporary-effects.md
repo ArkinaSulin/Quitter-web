@@ -72,14 +72,30 @@ One sub-step per affected unit, `effects` collapsed to a single from-original
 ## UI surfaces
 
 - Context menu → **Effects…** modal (`AddEffectModal`): pick a catalog
-  template, magnitude + duration + tempo (whose team's turn counts), Apply to
-  Unit or (GM) Place Zone; list of active effects with remove.
-- UnitTooltip shows effect chips (color + remaining turns); tokens draw effect
-  pips below the token.
+  template, amount + duration + tempo (whose team's turn counts), Apply to Unit
+  or (GM) Place Zone; lists the unit's active effects **and** the ground zones
+  on its hex, each with **Edit / Clone / ✕**.
+- **Effect Editor** (`/effect-editor`, `EffectEditor.tsx`) authors reusable
+  templates: identity (name/colour/**image**/**layer**), scope, default
+  duration, and one or more modifiers. The colour field is a swatch + hex box +
+  preset palette (`ColorField`); the image is picked/uploaded from the
+  `effect_images` storage bucket (`ImagePickerModal`, generalized by bucket);
+  `layer` is **below unit** (default) or **above unit**. Each modifier has a
+  single **amount** field accepting a plain number (flat) or dice `XdY±Z`
+  (`X=0` = flat `Z`); the flat part is mirrored into `delta` for stat kinds and
+  legacy consumers. The modifier row is the shared `EffectModifierFields`.
+- **Drop form** (`EffectFormModal`): dragging a library effect onto the map (unit
+  or hex) opens an editable form showing name/colour/image/layer, duration,
+  tempo, and every modifier *before* applying. There is **no radius** — a zone
+  drops on a single hex. There is no description field here (descriptions are
+  authored only in the Effect Editor).
+- **Placed-effect edit**: right-clicking a hex with zones offers
+  **Move up / Move down / Edit / Clone / Drop**. *Edit* reopens
+  `EffectFormModal` for that zone (or a unit's own effect, via its context
+  menu). *Clone* arms a one-shot copy — the next left-click places it (Esc /
+  right-click cancels).
+- Effect artwork renders on the map at `layer` (below / above the unit token);
+  "above" artwork hides while the unit on its hex is hovered so the token stays
+  inspectable. UnitTooltip shows effect chips (colour + remaining turns); tokens
+  draw effect pips below the token.
 - GM palette tab paints ground zones onto hexes (with the stat/tempo picker).
-- **Effects Library** (`/effect-editor`, `EffectEditor.tsx`) authors reusable
-  templates: identity (name/color/image), scope, magnitude mode, default
-  duration, and one or more modifiers. Each modifier has a single **amount**
-  field that accepts either a plain number (flat) or dice `XdY±Z` (`X=0` = flat
-  `Z`); the flat part is mirrored into `delta` so stat kinds and legacy
-  consumers keep working. Save/save-on-blur writes `effect_templates`.

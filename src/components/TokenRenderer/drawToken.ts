@@ -34,6 +34,18 @@ export function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
+/**
+ * Synchronous cache lookup for the draw loop: returns the image when it is
+ * already decoded, otherwise kicks off a load and returns null (draw again on
+ * the next frame). Keeps customDraw free of await.
+ */
+export function getLoadedImage(url: string): HTMLImageElement | null {
+  const cached = imageCache.get(url);
+  if (cached?.complete && cached.naturalWidth > 0) return cached;
+  if (!cached) void loadImage(url).catch(() => {});
+  return null;
+}
+
 function computeScatterSeed(unit: Unit, turnNumber: number): number {
   const str = `${turnNumber}|${unit.hex.q},${unit.hex.r}|${unit.currentTroopCount}`;
   let hash = 5381;

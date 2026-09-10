@@ -4,7 +4,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { parseSubSteps, CommandLogRow } from '@/lib/commandLog';
-import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel, GroundEffect, hexDistance } from '@/types/gameProtocol';
+import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel, GroundEffect, EffectKind, hexDistance } from '@/types/gameProtocol';
 import { adjacentRetreatCandidates, routThroughOptions, choosePursuer, RoutThroughOption, retreatDiagnosis, pursuitGateInfo, pursuitGateText } from '@/lib/routedRetreat';
 import { applyMoveCost } from '@/lib/moveCost';
 import { nextLowerFormation } from '@/lib/formationCost';
@@ -47,7 +47,9 @@ import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackground
 import { newEffectKey } from '@/lib/unitEffects';
 import { MapEntity } from '@/lib/mapEntities';
 import { AddEffectModal } from './AddEffectModal';
+import { EffectFormModal, EffectFormValue } from './EffectFormModal';
 import { EffectTemplate, templateById, EffectSpec } from '@/lib/unitEffects';
+import { EffectModifier } from '@/lib/effectTemplates';
 import { routeUnit } from './routeUnit';
 import { ScenarioStatsModal } from './ScenarioStatsModal';
 import { parseDragPayload } from './EffectsPanel';
@@ -88,6 +90,8 @@ type DroppedEffect = {
   id?: string;
   name: string;
   color: string;
+  imageUrl: string;
+  layer: 'above' | 'below';
   scope: 'unit' | 'zone' | 'both';
   defaultDuration: number;
   modifiers: {
@@ -100,6 +104,69 @@ type DroppedEffect = {
     onSaveHalfOrNeg?: boolean;
   }[];
 };
+
+/** Build an editable form value from a dropped template. */
+function formFromDrop(t: DroppedEffect, casterTeam: string): EffectFormValue {
+  return {
+    name: t.name,
+    color: t.color,
+    imageUrl: t.imageUrl,
+    layer: t.layer,
+    duration: t.defaultDuration,
+    casterTeam,
+    modifiers: t.modifiers.map(m => ({
+      kind: m.kind as EffectModifier['kind'],
+      delta: m.delta,
+      ...(m.dice ? { dice: m.dice } : {}),
+      ...(m.healing ? { healing: true } : {}),
+      ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
+      ...(m.saveDC != null ? { saveDC: m.saveDC } : {}),
+      ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
+    })),
+  };
+}
+
+/** Build an editable form value from a placed ground zone. */
+function formFromZone(z: GroundEffect): EffectFormValue {
+  return {
+    name: z.name,
+    color: z.color,
+    imageUrl: z.imageUrl ?? '',
+    layer: z.layer ?? 'below',
+    duration: z.turnsLeft,
+    casterTeam: z.casterTeam ?? '',
+    modifiers: [{
+      kind: z.kind as EffectModifier['kind'],
+      delta: z.delta,
+      ...(z.dice ? { dice: z.dice } : {}),
+      ...(z.healing ? { healing: true } : {}),
+      ...(z.savingThrow ? { savingThrow: z.savingThrow } : {}),
+      ...(z.saveDC != null ? { saveDC: z.saveDC } : {}),
+      ...(z.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: z.onSaveHalfOrNeg } : {}),
+    }],
+  };
+}
+
+/** Build an editable form value from a placed unit effect. */
+function formFromUnitEffect(e: import('@/types/gameProtocol').UnitEffect): EffectFormValue {
+  return {
+    name: e.name,
+    color: e.color,
+    imageUrl: e.imageUrl ?? '',
+    layer: e.layer ?? 'below',
+    duration: Math.max(1, e.turnsLeft),
+    casterTeam: e.casterTeam ?? '',
+    modifiers: [{
+      kind: e.kind as EffectModifier['kind'],
+      delta: e.delta,
+      ...(e.dice ? { dice: e.dice } : {}),
+      ...(e.healing ? { healing: true } : {}),
+      ...(e.savingThrow ? { savingThrow: e.savingThrow } : {}),
+      ...(e.saveDC != null ? { saveDC: e.saveDC } : {}),
+      ...(e.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: e.onSaveHalfOrNeg } : {}),
+    }],
+  };
+}
 
 export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -534,7 +601,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, []);
 
   const {
-      execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, otherAction, endTurn, applyEffect, removeEffect, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog, syncZoneEffects,
+      execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, otherAction, endTurn, applyEffect, removeEffect, editEffect, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog, syncZoneEffects,
   } = useGameEngine({
     scenarioId,
     playerId,
@@ -701,8 +768,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       r: target.hex.r,
       name: spec.name,
       color: spec.color,
+      ...(spec.imageUrl ? { imageUrl: spec.imageUrl } : {}),
+      layer: spec.layer ?? 'below',
       kind: spec.kind,
       delta: spec.delta,
+      ...(spec.dice ? { dice: spec.dice } : {}),
+      ...(spec.healing ? { healing: true } : {}),
+      ...(spec.savingThrow ? { savingThrow: spec.savingThrow } : {}),
+      ...(spec.saveDC != null ? { saveDC: spec.saveDC } : {}),
+      ...(spec.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: spec.onSaveHalfOrNeg } : {}),
       duration: dur,
       turnsLeft: dur,
       casterUnitId: null,
@@ -717,97 +791,179 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, [effectMenuUnit, groundZones, persistMapData, playerId, addMessage]);
 
   // ---- Effects tab: drag & drop an effect onto the board ----
-  const [effectUnitDrop, setEffectUnitDrop] = useState<{ t: DroppedEffect; unit: Unit } | null>(null);
-  const [effectZoneDrop, setEffectZoneDrop] = useState<{ t: DroppedEffect; hex: Hex } | null>(null);
-  const [effectDuration, setEffectDuration] = useState(3);
-  const [effectZoneRadius, setEffectZoneRadius] = useState(0);
-  const [effectBorrowAmount, setEffectBorrowAmount] = useState(0);
+  // One editable pre-apply form (no radius; zones land on the dropped hex only).
+  const [effectDrop, setEffectDrop] = useState<{ unit: Unit | null; hex: Hex; form: EffectFormValue } | null>(null);
+  // Instance edit (placed ground zone or a unit's own effect).
+  const [effectEdit, setEffectEdit] = useState<
+    | { target: 'zone'; key: string; form: EffectFormValue }
+    | { target: 'unit'; unit: Unit; key: string; form: EffectFormValue }
+    | null
+  >(null);
+  // Armed clone: the next left-click places a copy of this zone.
+  const [cloneZone, setCloneZone] = useState<GroundEffect | null>(null);
 
   const UNIT_KINDS = ['ac', 'morale', 'movement', 'dot', 'hp_borrow'];
   const ZONE_KINDS = ['ac', 'morale', 'dot', 'entry', 'mp_cost'];
 
-  const applyUnitDrop = async () => {
-    const d = effectUnitDrop;
-    setEffectUnitDrop(null);
-    if (!d) return;
-    for (const m of d.t.modifiers) {
+  const applyUnitDrop = async (d: { unit: Unit; form: EffectFormValue }) => {
+    for (const m of d.form.modifiers) {
       if (!UNIT_KINDS.includes(m.kind)) {
-        addMessage(`${d.t.name}: '${m.kind}' applies via the effect engine — skipped`);
+        addMessage(`${d.form.name}: '${m.kind}' applies via the effect engine — skipped`);
         continue;
       }
-      const delta =
-        m.kind === 'hp_borrow' && effectBorrowAmount > 0
-          ? effectBorrowAmount
-          : m.kind === 'hp_borrow'
-            ? Math.max(0, m.delta)
-            : m.delta;
-      if (m.kind === 'hp_borrow' && delta <= 0) {
-        addMessage(`${d.t.name}: enter a borrowed HP amount to Sleep the unit`);
+      if (m.kind === 'hp_borrow' && (m.dice ? 0 : m.delta) <= 0 && !m.dice) {
+        addMessage(`${d.form.name}: enter a borrowed HP amount to Sleep the unit`);
         continue;
       }
       await applyEffect(d.unit, {
-        name: d.t.name,
-        color: d.t.color,
+        name: d.form.name,
+        color: d.form.color,
+        ...(d.form.imageUrl ? { imageUrl: d.form.imageUrl } : {}),
+        layer: d.form.layer,
         kind: m.kind as 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow',
-        delta,
+        delta: m.delta,
         ...(m.dice ? { dice: m.dice } : {}),
         ...(m.healing ? { healing: true } : {}),
         ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
         ...(m.saveDC != null ? { saveDC: m.saveDC } : {}),
         ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
-        casterTeam: currentTurnAlliance ?? 'friendly',
-      }, effectDuration, playerId);
+        casterTeam: d.form.casterTeam || null,
+      }, d.form.duration, playerId);
     }
   };
 
-  const applyZoneDrop = async () => {
-    const d = effectZoneDrop;
-    setEffectZoneDrop(null);
-    if (!d) return;
-    const radius = Math.max(0, Math.min(5, Math.floor(effectZoneRadius) || 0));
-    const hexes: { q: number; r: number; s: number }[] = [];
-    for (let dq = -radius; dq <= radius; dq++) {
-      for (let dr = -radius; dr <= radius; dr++) {
-        const ds = -dq - dr;
-        if (Math.max(Math.abs(dq), Math.abs(dr), Math.abs(ds)) <= radius) {
-          hexes.push({ q: d.hex.q + dq, r: d.hex.r + dr, s: d.hex.s + ds });
-        }
-      }
-    }
+  const applyZoneDrop = async (d: { hex: Hex; form: EffectFormValue }) => {
     const next = [...groundZones];
-    for (const m of d.t.modifiers) {
+    for (const m of d.form.modifiers) {
       if (!ZONE_KINDS.includes(m.kind)) {
-        addMessage(`${d.t.name}: '${m.kind}' needs the zone engine stage — skipped`);
+        addMessage(`${d.form.name}: '${m.kind}' needs the zone engine stage — skipped`);
         continue;
       }
-      for (const hx of hexes) {
-        const zone: GroundEffect = {
-          key: newEffectKey(),
-          q: hx.q,
-          r: hx.r,
-          name: d.t.name,
-          color: d.t.color,
-          kind: m.kind as GroundEffect['kind'],
-          delta: m.delta,
-          dice: m.dice,
-          healing: m.healing,
-          savingThrow: m.savingThrow,
-          saveDC: m.saveDC,
-          onSaveHalfOrNeg: m.onSaveHalfOrNeg,
-          zIndex: next.length,
-          duration: effectDuration,
-          turnsLeft: effectDuration,
-          casterUnitId: null,
-          casterTeam: currentTurnAlliance ?? 'friendly',
-          casterPlayerId: playerId,
-        };
-        next.push(zone);
-      }
+      next.push({
+        key: newEffectKey(),
+        q: d.hex.q,
+        r: d.hex.r,
+        name: d.form.name,
+        color: d.form.color,
+        ...(d.form.imageUrl ? { imageUrl: d.form.imageUrl } : {}),
+        layer: d.form.layer,
+        kind: m.kind as GroundEffect['kind'],
+        delta: m.delta,
+        dice: m.dice,
+        healing: m.healing,
+        savingThrow: m.savingThrow,
+        saveDC: m.saveDC,
+        onSaveHalfOrNeg: m.onSaveHalfOrNeg,
+        zIndex: next.length,
+        duration: d.form.duration,
+        turnsLeft: d.form.duration,
+        casterUnitId: null,
+        casterTeam: d.form.casterTeam || null,
+        casterPlayerId: playerId,
+      });
     }
     setGroundZones(next);
     await persistMapData({ groundEffects: next });
-    addMessage(`Placed ${d.t.name} over ${hexes.length} hex${hexes.length === 1 ? '' : 'es'} (${effectDuration} turns)`);
+    addMessage(`Placed ${d.form.name} at (${d.hex.q}, ${d.hex.r}) (${d.form.duration} turns)`);
   };
+
+  const confirmEffectDrop = async () => {
+    const d = effectDrop;
+    setEffectDrop(null);
+    if (!d) return;
+    if (d.unit) await applyUnitDrop({ unit: d.unit, form: d.form });
+    else await applyZoneDrop({ hex: d.hex, form: d.form });
+  };
+
+  const saveZoneEdit = async (key: string, form: EffectFormValue) => {
+    const z = groundZones.find(g => g.key === key);
+    if (!z) return;
+    const m = form.modifiers[0] ?? { kind: z.kind, delta: z.delta };
+    const updated: GroundEffect = {
+      ...z,
+      name: form.name,
+      color: form.color,
+      imageUrl: form.imageUrl,
+      layer: form.layer,
+      kind: (m.kind as GroundEffect['kind']) ?? z.kind,
+      delta: m.delta,
+      dice: m.dice,
+      healing: m.healing,
+      savingThrow: m.savingThrow,
+      saveDC: m.saveDC,
+      onSaveHalfOrNeg: m.onSaveHalfOrNeg,
+      duration: form.duration,
+      turnsLeft: Math.min(form.duration, z.turnsLeft),
+      casterTeam: form.casterTeam || null,
+    };
+    const next = groundZones.map(g => (g.key === key ? updated : g));
+    setGroundZones(next);
+    await persistMapData({ groundEffects: next });
+    addMessage(`Effect ${form.name} updated`);
+  };
+
+  const saveUnitEffectEdit = async (unit: Unit, key: string, form: EffectFormValue) => {
+    const m = form.modifiers[0];
+    if (!m) return;
+    const orig = (unit.effects ?? []).find(e => e.key === key);
+    await editEffect(unit, key, {
+      name: form.name,
+      color: form.color,
+      imageUrl: form.imageUrl,
+      layer: form.layer,
+      kind: m.kind as EffectKind,
+      delta: m.delta,
+      ...(m.dice ? { dice: m.dice } : {}),
+      ...(m.healing ? { healing: true } : {}),
+      ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
+      ...(m.saveDC != null ? { saveDC: m.saveDC } : {}),
+      ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
+      casterUnitId: orig?.casterUnitId ?? null,
+      casterTeam: form.casterTeam || null,
+    }, form.duration);
+  };
+
+  const confirmEffectEdit = async () => {
+    const d = effectEdit;
+    setEffectEdit(null);
+    if (!d) return;
+    if (d.target === 'zone') await saveZoneEdit(d.key, d.form);
+    else await saveUnitEffectEdit(d.unit, d.key, d.form);
+  };
+
+  const placeClone = async (hex: Hex) => {
+    const src = cloneZone;
+    setCloneZone(null);
+    if (!src) return;
+    const clone: GroundEffect = {
+      ...src,
+      key: newEffectKey(),
+      q: hex.q,
+      r: hex.r,
+      turnsLeft: src.duration,
+      zIndex: groundZones.length,
+    };
+    const next = [...groundZones, clone];
+    setGroundZones(next);
+    await persistMapData({ groundEffects: next });
+    addMessage(`Cloned ${src.name} to (${hex.q}, ${hex.r})`);
+  };
+
+  /** If a clone is armed, place it on `hex` and consume the click. */
+  const handleCloneClick = (hex: Hex): boolean => {
+    if (!cloneZone || !canPaintZones) return false;
+    void placeClone(hex);
+    return true;
+  };
+
+  // Esc cancels an armed clone.
+  useEffect(() => {
+    if (!cloneZone) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setCloneZone(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [cloneZone]);
+
 
   // ---- "Effects at hex" menu: reorder (Move up/down) and Drop Effect ----
   const canManageZone = (z: GroundEffect) => effectiveIsGM || z.casterPlayerId === playerId;
@@ -845,12 +1001,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (!hex) return;
     const unit = getUnitAt(hex);
-    setEffectDuration(t.defaultDuration);
+    const form = formFromDrop(t as DroppedEffect, currentTurnAlliance ?? 'friendly');
     if (unit && (unit.currentUnitHp ?? 0) > 0) {
-      setEffectUnitDrop({ t, unit });
+      setEffectDrop({ unit, hex, form });
     } else {
-      setEffectZoneRadius(0);
-      setEffectZoneDrop({ t, hex });
+      setEffectDrop({ unit: null, hex, form });
     }
   };
 
@@ -1313,6 +1468,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     onHexClick: (hex) => {
       // Locked reaction mode: only Esc ends it; clicks are inert.
       if (reactionMode) return;
+      // A clone is armed: this click places it (consumes the click).
+      if (handleCloneClick(hex)) return;
       // GM map-edit brushes paint instead of selecting.
       if (effectiveIsGM && terrainBrushCost !== null) { void paintTerrain(hex.q, hex.r); return; }
       // Effect zones: GM or any assigned player may paint.
@@ -1321,6 +1478,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     },
     onUnitClick: (unit, _clientX, _clientY) => {
       if (controlsLocked || reactionMode) return;
+      if (handleCloneClick(unit.hex)) return;
       // Clicking an archer's reaction button arms that archer's reaction mode.
       if (!unit.isDeleted && !unit.archerReactionUsed && reactionOffers.has(unit.id) && canReactToUnit(unit)) {
         setReactionMode({ archer: unit });
@@ -1346,6 +1504,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     },
     onHexRightClick: (hex, unit, clientX, clientY) => {
       if (controlsLocked) return;
+      if (cloneZone) { setCloneZone(null); return; }
       // GM paint mode: right-click clears the MP cost back to the default 1.
       if (effectiveIsGM && hex && (terrainBrushCost !== null || zoneTemplate)) {
         void clearTerrainHex(hex.q, hex.r);
@@ -2074,6 +2233,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onApply={handleApplyUnitEffect}
           onRemove={handleRemoveUnitEffect}
           onPlaceZone={handlePlaceZoneFromUnit}
+          onEditEffect={e => setEffectEdit({ target: 'unit', unit: effectMenuUnit, key: e.key, form: formFromUnitEffect(e) })}
+          zones={groundZones.filter(z => z.q === effectMenuUnit.hex.q && z.r === effectMenuUnit.hex.r)}
+          onEditZone={z => setEffectEdit({ target: 'zone', key: z.key, form: formFromZone(z) })}
+          onCloneZone={z => setCloneZone(z)}
+          onDropZone={z => void dropZone(z.key)}
           onClose={() => setEffectMenuUnit(null)}
         />
       )}
@@ -2525,57 +2689,39 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         />
       )}
 
-      {/* Effects drop: apply to a unit */}
-      {effectUnitDrop && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={() => setEffectUnitDrop(null)}>
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 w-[380px]" onMouseDown={e => e.stopPropagation()}>
-            <p className="text-white font-semibold mb-1">Apply "{effectUnitDrop.t.name}" to {effectUnitDrop.unit.unitName}</p>
-            <p className="text-[11px] text-gray-400 mb-3">{effectUnitDrop.t.modifiers.map(m => `${m.kind} ${m.delta >= 0 ? '+' : ''}${m.delta}`).join(', ')}</p>
-            <label className="block text-xs text-gray-300 mb-4">
-              Duration (caster activations)
-              <input type="number" min={1} max={50} value={effectDuration}
-                onChange={e => setEffectDuration(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
-                className="mt-1 w-24 bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700" />
-            </label>
-            {effectUnitDrop.t.modifiers.some(m => m.kind === 'hp_borrow') && (
-              <label className="block text-xs text-gray-300 mb-4">
-                Borrow HP now (refunded after {effectDuration} caster activations; never kills)
-                <input type="number" min={1} value={effectBorrowAmount}
-                  onChange={e => setEffectBorrowAmount(Math.max(1, Math.floor(Number(e.target.value) || 0)))}
-                  className="mt-1 w-24 bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700" />
-              </label>
-            )}
-            <div className="flex justify-end gap-2">
-              <button className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-sm" onClick={() => setEffectUnitDrop(null)}>Cancel</button>
-              <button className="px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-sm" onClick={() => void applyUnitDrop()}>Apply</button>
-            </div>
-          </div>
-        </div>
+      {/* Effects drop: editable pre-apply form (single hex, no radius) */}
+      {effectDrop && (
+        <EffectFormModal
+          title={effectDrop.unit
+            ? `Apply "${effectDrop.form.name}" to ${effectDrop.unit.unitName}`
+            : `Place "${effectDrop.form.name}" at (${effectDrop.hex.q}, ${effectDrop.hex.r})`}
+          value={effectDrop.form}
+          onChange={form => setEffectDrop({ ...effectDrop, form })}
+          teamOptions={teamOptions}
+          confirmLabel={effectDrop.unit ? 'Apply' : 'Place'}
+          onConfirm={() => void confirmEffectDrop()}
+          onCancel={() => setEffectDrop(null)}
+        />
       )}
 
-      {/* Effects drop: place a zone */}
-      {effectZoneDrop && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={() => setEffectZoneDrop(null)}>
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 w-[380px]" onMouseDown={e => e.stopPropagation()}>
-            <p className="text-white font-semibold mb-1">Place "{effectZoneDrop.t.name}" zone at ({effectZoneDrop.hex.q}, {effectZoneDrop.hex.r})</p>
-            <p className="text-[11px] text-gray-400 mb-3">{effectZoneDrop.t.modifiers.map(m => `${m.kind} ${m.delta >= 0 ? '+' : ''}${m.delta}`).join(', ')}</p>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <label className="text-xs text-gray-300">Duration
-                <input type="number" min={1} max={50} value={effectDuration}
-                  onChange={e => setEffectDuration(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
-                  className="mt-1 w-24 bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700" />
-              </label>
-              <label className="text-xs text-gray-300">Radius (hexes)
-                <input type="number" min={0} max={5} value={effectZoneRadius}
-                  onChange={e => setEffectZoneRadius(Math.max(0, Math.min(5, Math.floor(Number(e.target.value) || 0))))}
-                  className="mt-1 w-24 bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700" />
-              </label>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-sm" onClick={() => setEffectZoneDrop(null)}>Cancel</button>
-              <button className="px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-sm" onClick={() => void applyZoneDrop()}>Place</button>
-            </div>
-          </div>
+      {/* Placed-effect edit (ground zone or a unit's own effect) */}
+      {effectEdit && (
+        <EffectFormModal
+          title={effectEdit.target === 'zone' ? 'Edit effect' : `Edit ${effectEdit.unit.unitName}'s effect`}
+          value={effectEdit.form}
+          onChange={form => setEffectEdit({ ...effectEdit, form })}
+          teamOptions={teamOptions}
+          allowMultipleModifiers={false}
+          confirmLabel="Save"
+          onConfirm={() => void confirmEffectEdit()}
+          onCancel={() => setEffectEdit(null)}
+        />
+      )}
+
+      {/* Clone armed: click a hex to place a copy */}
+      {cloneZone && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[60] bg-amber-900/90 border border-amber-500 text-amber-100 text-xs px-3 py-1.5 rounded shadow-lg">
+          Click a hex to clone <b>{cloneZone.name}</b> · Esc / right-click to cancel
         </div>
       )}
 
@@ -2633,7 +2779,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                     <span className="flex-1 text-yellow-200">{z.name}</span>
                     <span className="text-[10px] text-gray-400">{z.dice || z.delta}{z.healing ? ' heal' : ''}</span>
                   </div>
-                  <div className="flex gap-1 mt-1">
+                  <div className="flex flex-wrap gap-1 mt-1">
                     <button
                       disabled={i === 0}
                       className="px-1.5 py-0.5 text-[11px] rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-40"
@@ -2649,12 +2795,26 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                       Move down
                     </button>
                     {canManageZone(z) && (
-                      <button
-                        className="px-1.5 py-0.5 text-[11px] rounded bg-red-900/60 hover:bg-red-800 ml-auto"
-                        onClick={() => { void dropZone(z.key); setZoneMenu(null); }}
-                      >
-                        Drop Effect
-                      </button>
+                      <>
+                        <button
+                          className="px-1.5 py-0.5 text-[11px] rounded bg-gray-800 hover:bg-gray-700"
+                          onClick={() => { setEffectEdit({ target: 'zone', key: z.key, form: formFromZone(z) }); setZoneMenu(null); }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="px-1.5 py-0.5 text-[11px] rounded bg-gray-800 hover:bg-gray-700"
+                          onClick={() => { setCloneZone(z); setZoneMenu(null); }}
+                        >
+                          Clone
+                        </button>
+                        <button
+                          className="px-1.5 py-0.5 text-[11px] rounded bg-red-900/60 hover:bg-red-800 ml-auto"
+                          onClick={() => { void dropZone(z.key); setZoneMenu(null); }}
+                        >
+                          Drop Effect
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>

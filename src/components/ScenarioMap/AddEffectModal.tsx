@@ -5,7 +5,7 @@
 // drops the same effect as a ground zone on the unit's hex.
 'use client';
 import React, { useState } from 'react';
-import { Unit } from '@/types/gameProtocol';
+import { Unit, UnitEffect, GroundEffect } from '@/types/gameProtocol';
 import { EFFECT_TEMPLATES, isStatEffect, EffectSpec } from '@/lib/unitEffects';
 
 interface AddEffectModalProps {
@@ -16,10 +16,17 @@ interface AddEffectModalProps {
   onApply: (spec: EffectSpec, duration: number) => void;
   onRemove: (key: string) => void;
   onPlaceZone: (spec: EffectSpec, duration: number) => void;
+  /** Edit this unit's own effect (opens the shared instance form). */
+  onEditEffect?: (effect: UnitEffect) => void;
+  /** Ground zones on the unit's hex, with edit/clone/drop. */
+  zones?: GroundEffect[];
+  onEditZone?: (zone: GroundEffect) => void;
+  onCloneZone?: (zone: GroundEffect) => void;
+  onDropZone?: (zone: GroundEffect) => void;
   onClose: () => void;
 }
 
-export function AddEffectModal({ unit, teamOptions, canPlaceZone, onApply, onRemove, onPlaceZone, onClose }: AddEffectModalProps) {
+export function AddEffectModal({ unit, teamOptions, canPlaceZone, onApply, onRemove, onPlaceZone, onEditEffect, zones = [], onEditZone, onCloneZone, onDropZone, onClose }: AddEffectModalProps) {
   const [templateId, setTemplateId] = useState('bless');
   const [delta, setDelta] = useState(0);
   const [duration, setDuration] = useState(3);
@@ -114,9 +121,36 @@ export function AddEffectModal({ unit, teamOptions, canPlaceZone, onApply, onRem
                   <span className="flex items-center gap-2">
                     <span className="inline-block w-3 h-3 rounded-full" style={{ background: e.color }} />
                     {e.name}
-                    <span className="text-gray-400 text-xs">{e.kind === 'dot' ? `${e.delta}/tick` : `${e.delta > 0 ? '+' : ''}${e.delta}`} · {e.turnsLeft} turn{e.turnsLeft === 1 ? '' : 's'}</span>
+                    <span className="text-gray-400 text-xs">{e.dice ?? (e.kind === 'dot' ? `${e.delta}/tick` : `${e.delta > 0 ? '+' : ''}${e.delta}`)} · {e.turnsLeft} turn{e.turnsLeft === 1 ? '' : 's'}</span>
                   </span>
-                  <button className="text-red-400 hover:text-red-300 text-xs" onClick={() => onRemove(e.key)}>✕</button>
+                  <span className="flex items-center gap-2">
+                    {onEditEffect && (
+                      <button className="text-yellow-300 hover:text-yellow-200 text-xs" onClick={() => { onEditEffect(e); onClose(); }}>Edit</button>
+                    )}
+                    <button className="text-red-400 hover:text-red-300 text-xs" onClick={() => onRemove(e.key)}>✕</button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {zones.length > 0 && (
+          <div>
+            <p className="text-xs text-gray-400 mb-1">Ground effects on this hex</p>
+            <div className="space-y-1 max-h-32 overflow-y-auto">
+              {zones.map(z => (
+                <div key={z.key} className="flex items-center justify-between bg-gray-800 rounded px-2 py-1 text-sm">
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block w-3 h-3 rounded-full" style={{ background: z.color }} />
+                    {z.name}
+                    <span className="text-gray-400 text-xs">{z.dice ?? z.delta}{z.healing ? ' heal' : ''} · {z.turnsLeft} turn{z.turnsLeft === 1 ? '' : 's'}</span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    {onEditZone && <button className="text-yellow-300 hover:text-yellow-200 text-xs" onClick={() => { onEditZone(z); onClose(); }}>Edit</button>}
+                    {onCloneZone && <button className="text-cyan-300 hover:text-cyan-200 text-xs" onClick={() => { onCloneZone(z); onClose(); }}>Clone</button>}
+                    {onDropZone && <button className="text-red-400 hover:text-red-300 text-xs" onClick={() => onDropZone(z)}>✕</button>}
+                  </span>
                 </div>
               ))}
             </div>

@@ -184,6 +184,10 @@ export interface UnitEffect {
   name: string;
   color: string;
   kind: EffectKind;
+  /** Optional effect artwork drawn on the carrier's hex. */
+  imageUrl?: string;
+  /** Draw the artwork above or below the unit token on that hex. */
+  layer?: 'above' | 'below';
   /** Signed stat delta (ac/morale/movement) or per-tick DoT damage (dot). */
   delta: number;
   /** Dice amount for damage/heal kinds ("2d6+2"; X=0 => flat Z). Overrides delta. */
@@ -218,6 +222,10 @@ export interface GroundEffect {
   name: string;
   color: string;
   kind: EffectKind;
+  /** Optional effect artwork drawn on this hex. */
+  imageUrl?: string;
+  /** Draw the artwork above or below the unit token on this hex. */
+  layer?: 'above' | 'below';
   delta: number;
   dice?: string;
   healing?: boolean;

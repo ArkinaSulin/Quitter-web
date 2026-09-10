@@ -51,8 +51,14 @@ export function effectAmount(mod: { dice?: string; delta: number }, rng: () => n
   return p ? rollDice(mod.dice, rng) : mod.delta;
 }
 
+/** Short one-line label for a modifier (used in lists/tooltips). */
+export function modifierSummary(m: EffectModifier): string {
+  return `${m.kind} ${m.dice ?? (m.delta >= 0 ? '+' + m.delta : m.delta)}${m.healing ? ' heal' : ''}`;
+}
+
 export type EffectScope = 'unit' | 'zone' | 'both';
-export type MagnitudeMode = 'fixed' | 'caster_input';
+/** Whether the effect image draws below or above unit tokens on the map. */
+export type EffectLayer = 'above' | 'below';
 
 export interface EffectTemplate {
   id: string;
@@ -60,8 +66,8 @@ export interface EffectTemplate {
   description: string;
   color: string;
   imageUrl: string;
+  layer: EffectLayer;
   scope: EffectScope;
-  magnitudeMode: MagnitudeMode;
   defaultDuration: number;
   modifiers: EffectModifier[];
   createdAt: string;
@@ -98,8 +104,8 @@ export function mapEffectRow(row: any): EffectTemplate {
     description: row.description || '',
     color: row.color || '#cccccc',
     imageUrl: row.image_url || '',
+    layer: row.layer === 'above' ? 'above' : 'below',
     scope: row.scope === 'zone' ? 'zone' : row.scope === 'both' ? 'both' : 'unit',
-    magnitudeMode: row.magnitude_mode === 'caster_input' ? 'caster_input' : 'fixed',
     defaultDuration: Number(row.default_duration) || 3,
     modifiers: parseModifiers(row.modifiers),
     createdAt: row.created_at,
@@ -108,15 +114,15 @@ export function mapEffectRow(row: any): EffectTemplate {
 }
 
 export function mapEffectToRow(
-  t: Pick<EffectTemplate, 'name' | 'description' | 'color' | 'imageUrl' | 'scope' | 'magnitudeMode' | 'defaultDuration' | 'modifiers'>,
+  t: Pick<EffectTemplate, 'name' | 'description' | 'color' | 'imageUrl' | 'layer' | 'scope' | 'defaultDuration' | 'modifiers'>,
 ) {
   return {
     name: t.name,
     description: t.description,
     color: t.color,
     image_url: t.imageUrl,
+    layer: t.layer,
     scope: t.scope,
-    magnitude_mode: t.magnitudeMode,
     default_duration: t.defaultDuration,
     modifiers: t.modifiers,
   };
@@ -128,8 +134,8 @@ export function blankEffectTemplate(): Omit<EffectTemplate, 'id' | 'createdAt' |
     description: '',
     color: '#ffd54d',
     imageUrl: '',
+    layer: 'below',
     scope: 'unit',
-    magnitudeMode: 'fixed',
     defaultDuration: 3,
     modifiers: [{ kind: 'ac', delta: 1, dice: '1' }],
   };

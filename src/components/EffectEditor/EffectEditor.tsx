@@ -1,24 +1,17 @@
 'use client';
 // src/components/EffectEditor/EffectEditor.tsx
-// Effects Library editor (3 panels like Unit Editor). Author reusable effect
-// templates — a name/color/image plus a list of modifiers (ac/morale/movement/
-// dot/hp_borrow/entry/mp_cost) — that any scenario can apply.
+// Effect Editor (3 panels like Unit Editor). Author reusable effect templates —
+// a name/color/image/layer plus a list of modifiers (ac/morale/movement/dot/
+// hp_borrow/entry/mp_cost) — that any scenario can apply.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { ImagePickerModal } from '@/components/ImagePickerModal';
+import { ColorField } from '@/components/ColorField';
+import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
 import {
-  EffectTemplate, EffectModifier, EffectModifierKind, EffectScope, MagnitudeMode,
-  mapEffectRow, mapEffectToRow, blankEffectTemplate, parseDice,
+  EffectTemplate, EffectModifier, EffectLayer, EffectScope,
+  mapEffectRow, mapEffectToRow, blankEffectTemplate,
 } from '@/lib/effectTemplates';
-
-const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
-  { value: 'ac', label: 'AC ±' },
-  { value: 'morale', label: 'Morale ±' },
-  { value: 'movement', label: 'Movement ±' },
-  { value: 'dot', label: 'DoT / heal per tick' },
-  { value: 'hp_borrow', label: 'Borrow HP (sleep)' },
-  { value: 'entry', label: 'Zone: damage on entry' },
-  { value: 'mp_cost', label: 'Zone: hex MP cost' },
-];
 
 type Draft = Omit<EffectTemplate, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
 
@@ -30,6 +23,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [showImagePicker, setShowImagePicker] = useState(false);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from('effect_templates').select('*').order('name', { ascending: true });
@@ -93,14 +87,6 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
     setDraft({ ...draft, modifiers: draft.modifiers.map((m, idx) => (idx === i ? { ...m, ...p } : m)) });
   };
 
-  // One "amount" field: a plain number or dice ("2d6+2"; X=0 => flat Z). The
-  // flat part is mirrored into `delta` for stat kinds / legacy consumers.
-  const patchAmount = (i: number, raw: string) => {
-    const text = raw.trim();
-    const parsed = parseDice(text);
-    patchMod(i, { dice: text || undefined, delta: parsed ? parsed.bonus : 0 });
-  };
-
   const summary = useMemo(
     () =>
       draft
@@ -114,7 +100,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
   return (
     <div className="flex flex-col w-full h-screen bg-[#0d0d1a] text-white overflow-hidden select-none">
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-700 bg-gray-900">
-        <h1 className="text-xl font-bold text-yellow-300">Effects Library</h1>
+        <h1 className="text-xl font-bold text-yellow-300">Effect Editor</h1>
         {readOnly && <span className="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-gray-300">Read-only view</span>}
         <a href="/" className="text-sm bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded">Main Menu</a>
       </header>
@@ -149,32 +135,46 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
             <p className="text-gray-500 text-sm">Select an effect from the list (or create one) to edit it.</p>
           ) : (
             <fieldset disabled={readOnly} className="space-y-3 w-full max-w-full">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                <label className="text-xs text-gray-400">Name
-                  <input className={input} value={draft.name} disabled={readOnly} onChange={e => setDraft({ ...draft, name: e.target.value })} />
-                </label>
-                <label className="text-xs text-gray-400">Color
-                  <input className={input} type="text" value={draft.color} disabled={readOnly} onChange={e => setDraft({ ...draft, color: e.target.value })} placeholder="#rrggbb" />
+              <label className="block text-xs text-gray-400">Name
+                <input className={input} value={draft.name} disabled={readOnly} onChange={e => setDraft({ ...draft, name: e.target.value })} />
+              </label>
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Color</p>
+                <ColorField value={draft.color} readOnly={readOnly} onChange={color => setDraft({ ...draft, color })} />
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex items-center gap-2">
+                  {draft.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={draft.imageUrl} alt="" className="w-12 h-12 rounded border border-gray-700 object-contain bg-gray-900" />
+                  ) : (
+                    <span className="w-12 h-12 rounded border border-dashed border-gray-600 grid place-items-center text-[10px] text-gray-500">none</span>
+                  )}
+                  <button type="button" disabled={readOnly} className="px-3 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50" onClick={() => setShowImagePicker(true)}>
+                    {draft.imageUrl ? 'Change image' : 'Select image'}
+                  </button>
+                  {draft.imageUrl && (
+                    <button type="button" disabled={readOnly} className="px-2 py-1.5 rounded text-xs bg-red-900/60 hover:bg-red-800 disabled:opacity-50" onClick={() => setDraft({ ...draft, imageUrl: '' })}>
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <label className="text-xs text-gray-400">Layer
+                  <select className={input + ' !w-36'} value={draft.layer} disabled={readOnly} onChange={e => setDraft({ ...draft, layer: e.target.value as EffectLayer })}>
+                    <option value="below">Below unit</option>
+                    <option value="above">Above unit</option>
+                  </select>
                 </label>
               </div>
-              <label className="block text-xs text-gray-400">Image URL (optional — rendered on the map as the effect image)
-                <input className={input} value={draft.imageUrl} disabled={readOnly} onChange={e => setDraft({ ...draft, imageUrl: e.target.value })} />
-              </label>
               <label className="block text-xs text-gray-400">Description
                 <textarea className={input} rows={2} value={draft.description} disabled={readOnly} onChange={e => setDraft({ ...draft, description: e.target.value })} />
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="text-xs text-gray-400">Scope
                   <select className={input} value={draft.scope} disabled={readOnly} onChange={e => setDraft({ ...draft, scope: e.target.value as EffectScope })}>
                     <option value="unit">Unit</option>
                     <option value="zone">Zone (area)</option>
                     <option value="both">Unit + Zone</option>
-                  </select>
-                </label>
-                <label className="text-xs text-gray-400">Magnitude
-                  <select className={input} value={draft.magnitudeMode} disabled={readOnly} onChange={e => setDraft({ ...draft, magnitudeMode: e.target.value as MagnitudeMode })}>
-                    <option value="fixed">Fixed</option>
-                    <option value="caster_input">Caster chooses (X)</option>
                   </select>
                 </label>
                 <label className="text-xs text-gray-400">Duration (caster activations)
@@ -186,57 +186,14 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
                 <p className="text-xs text-gray-400 mb-1">Modifiers (combine freely — e.g. Haunted = AC −2 + Morale −1)</p>
                 <div className="space-y-1.5">
                   {draft.modifiers.map((m, i) => (
-                    <div key={i} className="rounded border border-gray-800 p-1.5 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <select className={input + ' !w-48 min-w-0'} value={m.kind} disabled={readOnly} onChange={e => patchMod(i, { kind: e.target.value as EffectModifierKind })}>
-                          {KIND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                        <input
-                          className={input + ' flex-1 min-w-[8rem]'} type="text"
-                          value={m.dice ?? ''}
-                          disabled={readOnly}
-                          onChange={e => patchAmount(i, e.target.value)}
-                          placeholder="amount — 4 or 2d6+2"
-                          title="Amount: a plain number (flat) or dice XdY±Z (X=0 = flat Z). Used for both stats and damage."
-                        />
-                        <label className="flex items-center gap-1 text-[11px] text-gray-300 whitespace-nowrap">
-                          <input type="checkbox" disabled={readOnly} checked={!!m.healing} onChange={e => patchMod(i, { healing: e.target.checked })} />
-                          heal
-                        </label>
-                        {!readOnly && (
-                          <button
-                            className="px-2 py-1 rounded text-xs bg-red-900/60 hover:bg-red-800 text-red-100"
-                            onClick={() => setDraft({ ...draft, modifiers: draft.modifiers.filter((_, idx) => idx !== i) })}
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 text-[11px] text-gray-400">
-                        <span>Save:</span>
-                        <select
-                          className={input + ' !w-24'}
-                          value={m.savingThrow ?? ''}
-                          disabled={readOnly}
-                          onChange={e => patchMod(i, { savingThrow: (e.target.value || null) as EffectModifier['savingThrow'] })}
-                        >
-                          <option value="">none</option>
-                          {['Str', 'Dex', 'Con', 'Int', 'Wis', 'Cha'].map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                        <span>DC</span>
-                        <input
-                          className={input + ' !w-20'} type="number"
-                          value={m.saveDC ?? ''}
-                          disabled={readOnly || !m.savingThrow}
-                          onChange={e => patchMod(i, { saveDC: e.target.value === '' ? null : Number(e.target.value) })}
-                          title="d20 + save bonus ≥ DC passes. Very high DC = auto-fail (full damage)."
-                        />
-                        <label className="flex items-center gap-1 whitespace-nowrap" title="Passing the save halves damage; unchecked = negates (0).">
-                          <input type="checkbox" disabled={readOnly || !m.savingThrow} checked={m.onSaveHalfOrNeg !== false} onChange={e => patchMod(i, { onSaveHalfOrNeg: e.target.checked })} />
-                          half on save
-                        </label>
-                      </div>
-                    </div>
+                    <EffectModifierFields
+                      key={i}
+                      modifier={m}
+                      readOnly={readOnly}
+                      inputClass={input}
+                      onChange={next => patchMod(i, next)}
+                      onRemove={() => setDraft({ ...draft, modifiers: draft.modifiers.filter((_, idx) => idx !== i) })}
+                    />
                   ))}
                 </div>
                 {!readOnly && (
@@ -284,12 +241,24 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
               <p className="text-xs text-gray-300">{summary}</p>
               <p className="text-[11px] text-gray-500">{draft.description}</p>
               <p className="text-[11px] text-gray-500">
-                Scope: {draft.scope} · Magnitude: {draft.magnitudeMode} · Duration: {draft.defaultDuration}
+                Scope: {draft.scope} · Layer: {draft.layer} · Duration: {draft.defaultDuration}
               </p>
             </>
           )}
         </div>
       </div>
+
+      {showImagePicker && draft && (
+        <ImagePickerModal
+          current={draft.imageUrl}
+          uploadKey="effect"
+          bucket="effect_images"
+          title="Select Effect Image"
+          showRaces={false}
+          onSelect={url => { setDraft({ ...draft, imageUrl: url ?? '' }); setShowImagePicker(false); }}
+          onClose={() => setShowImagePicker(false)}
+        />
+      )}
     </div>
   );
 }

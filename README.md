@@ -34,16 +34,17 @@ Documentation is reorganized under **`docs/`**:
 - **[Session changelog](docs/dev/changelog.md)** — append-only history of
   every work session (newest first).
 
-The app is a single flow: the **Lobby** (`/`) → **Scenario Map**; plus three
+The app is a single flow: the **Lobby** (`/`) → **Scenario Map**; plus four
 authoring pages: **Unit Library** (`/unit-editor`), **Map Library**
-(`/map-editor`), and **Archfar's Shipyard** (`/ship-editor`, ship builder —
-engine pending). Roles gate everything: players browse read-only; DMs and
-admins edit.
+(`/map-editor`), **Archfar's Shipyard** (`/ship-editor`, ship builder —
+engine pending), and the **Effect Editor** (`/effect-editor`, reusable effect
+templates). Roles gate everything: players browse read-only; DMs and admins
+edit.
 
 ## Repo layout (quick map)
 
 ```
-app/            routes (/, /unit-editor, /map-editor, /ship-editor)
+app/            routes (/, /unit-editor, /map-editor, /ship-editor, /effect-editor)
 src/lib/        PURE game-rule modules (movement, combat, morale, effects,
                 fog, routing/pursuit, weapon parsing, ship stats, …)
 src/hooks/      React bridges (useGameEngine, useSupabaseSync, useReplay,

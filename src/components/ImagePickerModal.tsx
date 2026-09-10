@@ -41,20 +41,20 @@ function resizeImage(file: File, maxWidth: number, maxHeight: number): Promise<B
   });
 }
 
-async function uploadCustomImage(file: File, key: string): Promise<string | null> {
+async function uploadCustomImage(file: File, key: string, bucket: string): Promise<string | null> {
   try {
     const resizedBlob = await resizeImage(file, 256, 256);
     const fileExt = file.name.split('.').pop() || 'png';
     const fileName = `${key}_${Date.now()}.${fileExt}`;
     const { data, error } = await supabase.storage
-      .from('unit_images')
+      .from(bucket)
       .upload(fileName, resizedBlob, {
         cacheControl: '3600',
         upsert: true,
       });
     if (error) throw error;
     const { data: urlData } = supabase.storage
-      .from('unit_images')
+      .from(bucket)
       .getPublicUrl(fileName);
     return urlData.publicUrl;
   } catch (err) {
@@ -68,11 +68,25 @@ interface ImagePickerModalProps {
   current?: string | null;
   /** Storage key prefix for uploads (e.g. the unit id). */
   uploadKey?: string;
+  /** Supabase storage bucket to list/upload into (default unit_images). */
+  bucket?: string;
+  /** Modal heading. */
+  title?: string;
+  /** Offer the race icon grid (unit pickers do; effect pickers don't). */
+  showRaces?: boolean;
   onSelect: (url: string | null) => void;
   onClose: () => void;
 }
 
-export function ImagePickerModal({ current, uploadKey = 'temp', onSelect, onClose }: ImagePickerModalProps) {
+export function ImagePickerModal({
+  current,
+  uploadKey = 'temp',
+  bucket = 'unit_images',
+  title = 'Select Unit Image',
+  showRaces = true,
+  onSelect,
+  onClose,
+}: ImagePickerModalProps) {
   const [races, setRaces] = useState<{ id: string; name: string; icon_url: string | null }[]>([]);
   const [userImages, setUserImages] = useState<string[]>([]);
   const [loadingImages, setLoadingImages] = useState(false);
@@ -86,14 +100,14 @@ export function ImagePickerModal({ current, uploadKey = 'temp', onSelect, onClos
       const pageSize = 100;
       while (true) {
         const { data, error } = await supabase.storage
-          .from('unit_images')
+          .from(bucket)
           .list('', { limit: pageSize, offset });
         if (error) throw error;
         if (!data || data.length === 0) break;
         for (const file of data) {
           if (file.name === '.emptyFolderPlaceholder') continue;
           const { data: urlData } = supabase.storage
-            .from('unit_images')
+            .from(bucket)
             .getPublicUrl(file.name);
           urls.push(urlData.publicUrl);
         }
@@ -106,21 +120,23 @@ export function ImagePickerModal({ current, uploadKey = 'temp', onSelect, onClos
     } finally {
       setLoadingImages(false);
     }
-  }, []);
+  }, [bucket]);
 
   useEffect(() => {
-    supabase.from('races').select('id, name, icon_url').then(({ data }) => {
-      if (data) setRaces((data as { id: string; name: string; icon_url: string | null }[]));
-    });
+    if (showRaces) {
+      supabase.from('races').select('id, name, icon_url').then(({ data }) => {
+        if (data) setRaces((data as { id: string; name: string; icon_url: string | null }[]));
+      });
+    }
     loadUserImages();
-  }, [loadUserImages]);
+  }, [loadUserImages, showRaces]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      const url = await uploadCustomImage(file, uploadKey);
+      const url = await uploadCustomImage(file, uploadKey, bucket);
       if (url) {
         onSelect(url);
         await loadUserImages();
@@ -136,10 +152,10 @@ export function ImagePickerModal({ current, uploadKey = 'temp', onSelect, onClos
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
       <div className="bg-gray-800 p-6 rounded-lg w-[600px] max-h-[80vh] flex flex-col border border-gray-700">
-        <h2 className="text-xl font-bold mb-4 text-white">Select Unit Image</h2>
+        <h2 className="text-xl font-bold mb-4 text-white">{title}</h2>
         <div className="flex-1 overflow-y-auto">
           <div className="grid grid-cols-4 gap-2 mb-4">
-            {races.map(race => {
+            {showRaces && races.map(race => {
               const icon = raceIconFromName(race.name, race.icon_url);
               return icon && (
                 <div

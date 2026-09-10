@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, dotDamageChanges, computeEndTurnEffects, effectByKey, newEffectKey, effectDamageChanges } from './unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, effectByKey, newEffectKey, effectDamageChanges } from './unitEffects';
 import { parseDice } from './effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
@@ -119,6 +119,35 @@ describe('apply / remove effect changes', () => {
     const u = unit('u', 'blue');
     const { changes } = applyEffectChanges(u, { name: 'Burning', color: '#ff8844', kind: 'dot', delta: 3, duration: 2, turnsLeft: 2, casterUnitId: 'c', casterTeam: 'blue' }, 'k9');
     expect(changes.some(c => c.field !== 'effects')).toBe(false);
+  });
+});
+
+describe('editEffectChanges', () => {
+  it('rebases a stat effect: restores the old base, then applies the new delta', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'k1', base: 12, delta: 2 })], currentAc: 14 });
+    const changes = editEffectChanges(u, 'k1', { name: 'Bless', color: '#ffd700', kind: 'ac', delta: 5, casterUnitId: null, casterTeam: null }, 3, 'k2');
+    expect(changes.filter(c => c.field === 'currentAc')).toEqual([
+      { field: 'currentAc', from: 14, to: 12 },
+      { field: 'currentAc', from: 12, to: 17 },
+    ]);
+    const effects = changes.filter(c => c.field === 'effects').pop()!;
+    const final = effects.to as UnitEffect[];
+    expect(final.length).toBe(1);
+    expect(final[0].key).toBe('k2');
+    expect(final[0].delta).toBe(5);
+  });
+
+  it('edits a dot effect (no stat field) with new dice', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'k1', kind: 'dot', delta: 3, base: undefined })] });
+    const changes = editEffectChanges(u, 'k1', { name: 'Burning', color: '#ff8844', kind: 'dot', delta: 0, dice: '2d6', casterUnitId: null, casterTeam: null }, 2, 'k2');
+    expect(changes.some(c => c.field !== 'effects')).toBe(false);
+    const final = changes.filter(c => c.field === 'effects').pop()!.to as UnitEffect[];
+    expect(final[0].dice).toBe('2d6');
+  });
+
+  it('editing an unknown key is a no-op', () => {
+    const u = unit('u', 'blue');
+    expect(editEffectChanges(u, 'nope', { name: 'x', color: '#fff', kind: 'ac', delta: 1, casterUnitId: null, casterTeam: null }, 1)).toEqual([]);
   });
 });
 
