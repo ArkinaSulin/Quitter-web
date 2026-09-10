@@ -90,6 +90,7 @@ as applied in the notes — check the live DB before relying on it).
 | 077 | effects library (`effect_templates` + access caps) | ✅ applied (verified 2026-09-06) |
 | 078 | effect editor: drop `magnitude_mode`, add `layer` (above/below) | ⏳ run in Supabase |
 | 079 | `effect_images` storage bucket + policies | ⏳ run in Supabase |
+| 080 | zone ops via command log (`apply_substeps` ZONE branch) + array-safe unit writes | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

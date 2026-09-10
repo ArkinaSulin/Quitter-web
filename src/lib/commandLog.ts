@@ -31,6 +31,7 @@ export type ActionType =
   | 'CAST'
   | 'EDIT_UNIT'
   | 'EFFECT'
+  | 'ZONE'
   | 'ARCHER_REACTION'
   | 'OTHER_ACTION';
 

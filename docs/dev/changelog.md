@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Effects: zones undoable, library context menu, stat zones on move (2026-09-06)
+**Files:** supabase/migrations/080_zone_command_log.sql (new), src/lib/commandLog.ts, src/lib/unitEffects.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ScenarioMap,AddEffectModal}.tsx, src/lib/unitEffects.test.ts, docs/dev/{02-schema-and-migrations,10-temporary-effects,outstanding}.md
+
+- **Zone ops ride the command log** (migration 080): a new `ZONE` sub-step writes the whole `groundEffects` array into `scenarios.map_data` in the same transaction as the log row, so paint/drop/edit/clone/reorder/drop-effect **and the END_TURN tick/expiry** are undoable and appear in replay. The engine gains `applyZoneChange(prev, next, desc)` + `setZonesLocal`; ScenarioMap routes every zone mutation through it (no more direct `map_data` writes for zones). Migration 080 also makes `apply_substeps` array-aware for `text[]` columns (supersedes the hand-applied array fix).
+- **Unit "Effects…" dialog now uses the effect library** (`effect_templates`) instead of the hardcoded in-code catalog — composites (Haunted), Sleep (`hp_borrow`, with a borrow-amount field), and zone templates apply from the context menu. It builds an `EffectFormValue` and reuses `applyUnitDrop`/`applyZoneDrop`.
+- **Stat zones apply on move**: `computeZoneReconcile(unit, zones)` (extracted, tested) is used by a new move-time `EFFECT` sub-step, so entering/leaving a Bless/Bane/Slow hex applies/restores the stat immediately rather than waiting for the unit's next activation. END_TURN's sweep unchanged.
+- Tests: `computeZoneReconcile` (4). tsc clean; 535 tests pass. **Migration 080 must be applied in Supabase.**
+
 ## Verbose rolls show save → damage per troop (2026-09-06)
 **Files:** src/lib/unitEffects.ts, src/lib/verboseCombat.ts, src/components/ScenarioMap/useCastActions.ts, src/lib/unitEffects.test.ts, src/lib/verboseCombat.test.ts, docs/dev/10-temporary-effects.md
 

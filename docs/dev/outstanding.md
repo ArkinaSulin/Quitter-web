@@ -10,17 +10,17 @@ Statuses: 🔜 next / ⏳ later / 🚧 blocked / ✅ done-here-listed-for-contex
 - ✅ Entry-zone **"How many troops are caught?"** prompt.
 - ✅ Interactable zones: right-click empty hex → **Effects at hex** (Move up/down,
   **Drop Effect**), tempo anchor = alliance active at drop.
-- 🔜 **Effect images + layer bands**: optional `imageUrl` per effect rendered on
-  the map; bands **under tokens** (above terrain, below corpses/units) and
-  **above tokens**; hover-lowering so a token under an effect can be inspected;
-  Alt-cycling / "Effects at hex" ordering already exists for zones.
+- ✅ **Effect images + layer bands**: `imageUrl`/`layer` (below/above unit token)
+  rendered on the map; "above" hides while the unit on its hex is hovered.
+- ✅ **Zones ride the command log** (migration 080 `ZONE` branch): paint/drop/edit/
+  clone/order/drop + END_TURN ticks are undoable and replay. Stat-zone membership
+  reconciles on move (`computeZoneReconcile`), not just at activation start.
+- ✅ **Unit Effects… dialog reads the library** (`effect_templates`), so composites
+  / Sleep / zone templates apply from the context menu too.
 - ⏳ **Composite instance semantics**: the original design was "one instance
   carries `modifiers[]`". Today a composite template is **expanded into one
   primitive effect per kind** on apply. Consider consolidating to a single
   instance (removal/stacking by template) — behavioral decision needed.
-- 🔜 Unit-effect (not just zone) images / on-map markers.
-- ⏳ Remove path for **unit effects** is via the unit context **Effects…** modal;
-  consider consolidating into the interactable-effects surface.
 
 ## AI assist
 - 🔜 **Full AI mode** (auto whole-turn director: watches turn, runs the plot,

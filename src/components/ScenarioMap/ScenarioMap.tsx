@@ -48,7 +48,7 @@ import { newEffectKey } from '@/lib/unitEffects';
 import { MapEntity } from '@/lib/mapEntities';
 import { AddEffectModal } from './AddEffectModal';
 import { EffectFormModal, EffectFormValue } from './EffectFormModal';
-import { EffectTemplate, templateById, EffectSpec } from '@/lib/unitEffects';
+import { EffectTemplate, templateById } from '@/lib/unitEffects';
 import { EffectModifier } from '@/lib/effectTemplates';
 import { routeUnit } from './routeUnit';
 import { ScenarioStatsModal } from './ScenarioStatsModal';
@@ -536,36 +536,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     addMessage('Map cleared — plain board');
   }, [persistMapData, addMessage]);
 
-  const placeOrToggleZone = useCallback(async (q: number, r: number) => {
-    if (!zoneTemplate) return;
-    const existing = groundZones.find(z => z.q === q && z.r === r && z.name === zoneTemplate.name);
-    if (existing) {
-      const next = groundZones.filter(z => !(z.q === q && z.r === r && z.name === zoneTemplate.name));
-      setGroundZones(next);
-      await persistMapData({ groundEffects: next });
-      return;
-    }
-    const duration = Math.max(1, zoneTemplate.defaultDuration);
-    const zone: GroundEffect = {
-      key: newEffectKey(),
-      q,
-      r,
-      name: zoneTemplate.name,
-      color: zoneTemplate.color,
-      kind: zoneTemplate.kind,
-      delta: zoneTemplate.defaultDelta,
-      duration,
-      turnsLeft: duration,
-      casterUnitId: null,
-      casterTeam: myTeam ?? null,
-      casterPlayerId: playerId,
-    };
-    const next = [...groundZones, zone];
-    setGroundZones(next);
-    await persistMapData({ groundEffects: next });
-    addMessage(`${zoneTemplate.name} ground effect placed at (${q}, ${r})`);
-  }, [zoneTemplate, groundZones, persistMapData, myTeam, playerId, addMessage]);
-
   // Optimistic local update for SCENARIO sub-steps (turn tracking). Paints the
   // result on screen; the END_TURN RPC is the DB writer, realtime confirms.
   const setScenarioLocal = useCallback((fields: Record<string, any>) => {
@@ -601,7 +571,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, []);
 
   const {
-      execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, otherAction, endTurn, applyEffect, removeEffect, editEffect, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog, syncZoneEffects,
+      execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, otherAction, endTurn, applyEffect, removeEffect, editEffect, applyZoneChange, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog, syncZoneEffects,
   } = useGameEngine({
     scenarioId,
     playerId,
@@ -612,6 +582,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     refreshUnitsByIds,
     setAllianceLocal,
     setScenarioLocal,
+    setZonesLocal: setGroundZones,
     requestEntryTroops,
     verboseCombat,
   });
@@ -746,50 +717,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // ---- Temporary-effect apply/remove handlers (opened from the context menu) ----
   const teamOptions = Object.keys(alliances).length > 0 ? Object.keys(alliances) : TEAMS;
 
-  const handleApplyUnitEffect = useCallback((spec: EffectSpec, duration: number) => {
-    const target = effectMenuUnit;
-    if (!target) return;
-    void applyEffect(target, spec, duration, playerId);
-    setEffectMenuUnit(null);
-  }, [effectMenuUnit, applyEffect, playerId]);
-
   const handleRemoveUnitEffect = useCallback((key: string) => {
     const target = effectMenuUnit;
     if (!target) return;
     void removeEffect(target, key);
   }, [effectMenuUnit, removeEffect]);
-
-  const handlePlaceZoneFromUnit = useCallback(async (spec: EffectSpec, duration: number) => {
-    const target = effectMenuUnit;
-    if (!target) return;
-    const dur = Math.max(1, duration);
-    const zone: GroundEffect = {
-      key: newEffectKey(),
-      q: target.hex.q,
-      r: target.hex.r,
-      name: spec.name,
-      color: spec.color,
-      ...(spec.imageUrl ? { imageUrl: spec.imageUrl } : {}),
-      layer: spec.layer ?? 'below',
-      kind: spec.kind,
-      delta: spec.delta,
-      ...(spec.dice ? { dice: spec.dice } : {}),
-      ...(spec.healing ? { healing: true } : {}),
-      ...(spec.savingThrow ? { savingThrow: spec.savingThrow } : {}),
-      ...(spec.saveDC != null ? { saveDC: spec.saveDC } : {}),
-      ...(spec.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: spec.onSaveHalfOrNeg } : {}),
-      duration: dur,
-      turnsLeft: dur,
-      casterUnitId: null,
-      casterTeam: spec.casterTeam ?? null,
-      casterPlayerId: playerId,
-    };
-    const next = [...groundZones, zone];
-    setGroundZones(next);
-    await persistMapData({ groundEffects: next });
-    addMessage(`${spec.name} ground zone placed at ${target.unitName}'s hex`);
-    setEffectMenuUnit(null);
-  }, [effectMenuUnit, groundZones, persistMapData, playerId, addMessage]);
 
   // ---- Effects tab: drag & drop an effect onto the board ----
   // One editable pre-apply form (no radius; zones land on the dropped hex only).
@@ -863,9 +795,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         casterPlayerId: playerId,
       });
     }
-    setGroundZones(next);
-    await persistMapData({ groundEffects: next });
-    addMessage(`Placed ${d.form.name} at (${d.hex.q}, ${d.hex.r}) (${d.form.duration} turns)`);
+    await applyZoneChange(groundZones, next, `Placed ${d.form.name} at (${d.hex.q}, ${d.hex.r}) (${d.form.duration} turns)`);
   };
 
   const confirmEffectDrop = async () => {
@@ -874,6 +804,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (!d) return;
     if (d.unit) await applyUnitDrop({ unit: d.unit, form: d.form });
     else await applyZoneDrop({ hex: d.hex, form: d.form });
+  };
+
+  // Unit context "Effects…" actions (library template → shared apply paths).
+  const handleApplyUnitForm = (form: EffectFormValue) => {
+    if (!effectMenuUnit) return;
+    void applyUnitDrop({ unit: effectMenuUnit, form });
+    setEffectMenuUnit(null);
+  };
+  const handlePlaceZoneForm = (form: EffectFormValue) => {
+    if (!effectMenuUnit) return;
+    void applyZoneDrop({ hex: effectMenuUnit.hex, form });
+    setEffectMenuUnit(null);
   };
 
   const saveZoneEdit = async (key: string, form: EffectFormValue) => {
@@ -898,9 +840,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       casterTeam: form.casterTeam || null,
     };
     const next = groundZones.map(g => (g.key === key ? updated : g));
-    setGroundZones(next);
-    await persistMapData({ groundEffects: next });
-    addMessage(`Effect ${form.name} updated`);
+    await applyZoneChange(groundZones, next, `Effect ${form.name} updated`);
   };
 
   const saveUnitEffectEdit = async (unit: Unit, key: string, form: EffectFormValue) => {
@@ -945,9 +885,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       zIndex: groundZones.length,
     };
     const next = [...groundZones, clone];
-    setGroundZones(next);
-    await persistMapData({ groundEffects: next });
-    addMessage(`Cloned ${src.name} to (${hex.q}, ${hex.r})`);
+    await applyZoneChange(groundZones, next, `Cloned ${src.name} to (${hex.q}, ${hex.r})`);
   };
 
   /** If a clone is armed, place it on `hex` and consume the click. */
@@ -981,18 +919,44 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const zi = same[i].zIndex ?? i;
     const zj = same[j].zIndex ?? j;
     const next = groundZones.map(g => (g.key === same[i].key ? { ...g, zIndex: zj } : g.key === same[j].key ? { ...g, zIndex: zi } : g));
-    setGroundZones(next);
-    await persistMapData({ groundEffects: next });
+    await applyZoneChange(groundZones, next, 'Effect order changed');
   };
 
   const dropZone = async (key: string) => {
     const z = groundZones.find(g => g.key === key);
     if (!z || !canManageZone(z)) return;
     const next = groundZones.filter(g => g.key !== key);
-    setGroundZones(next);
-    await persistMapData({ groundEffects: next });
-    addMessage(`Dropped effect ${z.name}`);
+    await applyZoneChange(groundZones, next, `Dropped effect ${z.name}`);
   };
+
+  // GM/assigned-player zone brush: click toggles the armed template's zone on a
+  // hex (log-backed so it is undoable).
+  const placeOrToggleZone = useCallback(async (q: number, r: number) => {
+    if (!zoneTemplate) return;
+    const existing = groundZones.find(z => z.q === q && z.r === r && z.name === zoneTemplate.name);
+    if (existing) {
+      const next = groundZones.filter(z => !(z.q === q && z.r === r && z.name === zoneTemplate.name));
+      await applyZoneChange(groundZones, next, `Cleared ${zoneTemplate.name} at (${q}, ${r})`);
+      return;
+    }
+    const duration = Math.max(1, zoneTemplate.defaultDuration);
+    const zone: GroundEffect = {
+      key: newEffectKey(),
+      q,
+      r,
+      name: zoneTemplate.name,
+      color: zoneTemplate.color,
+      kind: zoneTemplate.kind,
+      delta: zoneTemplate.defaultDelta,
+      duration,
+      turnsLeft: duration,
+      casterUnitId: null,
+      casterTeam: myTeam ?? null,
+      casterPlayerId: playerId,
+    };
+    const next = [...groundZones, zone];
+    await applyZoneChange(groundZones, next, `${zoneTemplate.name} ground effect placed at (${q}, ${r})`);
+  }, [zoneTemplate, groundZones, applyZoneChange, myTeam, playerId]);
 
   const handleEffectDrop = async (e: React.DragEvent<HTMLCanvasElement>) => {
     e.preventDefault();
@@ -1033,11 +997,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (wrapped || freeMoveEnded) setTurnNumber(newTurnNumber);
       // Turn 0 free play ends when the first real turn begins.
       if (freeMoveEnded) setFreeMove(false);
-      // Ground zones ticked/expired inside the END_TURN command — persist survivors.
+      // Ground zones ticked/expired inside the END_TURN command (ZONE sub-step),
+      // so undo restores them and no separate map_data write is needed.
       setGroundZones(zonesAfter);
-      if (zonesAfter.length !== groundZones.length) {
-        await persistMapData({ groundEffects: zonesAfter });
-      }
       // Authoritative convergence: re-read the scenario turn fields so a missed
       // realtime event can't leave the header on the previous alliance.
       const { data: turnRow } = await supabase
@@ -2231,9 +2193,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           unit={effectMenuUnit}
           teamOptions={teamOptions}
           canPlaceZone={effectiveIsGM}
-          onApply={handleApplyUnitEffect}
+          onApplyForm={handleApplyUnitForm}
           onRemove={handleRemoveUnitEffect}
-          onPlaceZone={handlePlaceZoneFromUnit}
+          onPlaceZoneForm={handlePlaceZoneForm}
           onEditEffect={e => setEffectEdit({ target: 'unit', unit: effectMenuUnit, key: e.key, form: formFromUnitEffect(e) })}
           zones={groundZones.filter(z => z.q === effectMenuUnit.hex.q && z.r === effectMenuUnit.hex.r)}
           onEditZone={z => setEffectEdit({ target: 'zone', key: z.key, form: formFromZone(z) })}

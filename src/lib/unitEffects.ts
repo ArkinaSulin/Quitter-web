@@ -595,6 +595,76 @@ function sameEffects(a: UnitEffect[], b: UnitEffect[]): boolean {
   });
 }
 
+/**
+ * Reconcile a unit's ground-zone memberships against `zones` at its CURRENT hex:
+ * drop memberships whose zone is gone / no longer underfoot, and add a membership
+ * for each stat zone it now stands on (dot zones create none). Pure: returns the
+ * `effects` array plus the UnitChanges (a single collapsed `effects` change + the
+ * stat restores/applies). Used by the END_TURN sweep AND on move, so entering a
+ * buff/debuff zone applies immediately.
+ */
+export function computeZoneReconcile(unit: Unit, zones: GroundEffect[]): { effects: UnitEffect[]; changes: UnitChange[] } {
+  const original = unit.effects ?? [];
+  let effects = [...original];
+  const statChanges: UnitChange[] = [];
+  const fieldNow = new Map<string, number>();
+  const now = (f: string): number => (fieldNow.has(f) ? fieldNow.get(f)! : ((unit as any)[f] as number) ?? 0);
+
+  const zonesHere = zones.filter(z => z.q === unit.hex.q && z.r === unit.hex.r);
+  const keysHere = new Set(zonesHere.map(z => z.key));
+
+  // Drop memberships whose zone is gone or whose hex no longer matches.
+  for (const e of [...effects]) {
+    if (!e.zoneHex) continue;
+    const still = keysHere.has(e.key) && e.zoneHex.q === unit.hex.q && e.zoneHex.r === unit.hex.r;
+    if (still) continue;
+    const restores = removeEffectChanges({ ...unit, effects }, e.key);
+    for (const c of restores) {
+      if (c.field === 'effects') continue;
+      statChanges.push({ field: c.field, from: now(c.field), to: c.to });
+      fieldNow.set(c.field, c.to);
+    }
+    effects = effects.filter(x => x.key !== e.key);
+  }
+
+  // Add a membership for each stat zone underfoot (skips same-kind stacking).
+  for (const z of zonesHere) {
+    if (z.kind === 'dot') continue;
+    const already = effects.some(e => e.zoneHex && e.key === z.key) || effects.some(e => e.kind === z.kind);
+    if (already) continue;
+    effects.push({
+      key: z.key,
+      zoneHex: { q: unit.hex.q, r: unit.hex.r, s: -unit.hex.q - unit.hex.r },
+      name: z.name,
+      color: z.color,
+      kind: z.kind,
+      delta: z.delta,
+      duration: z.duration,
+      turnsLeft: z.turnsLeft,
+      casterUnitId: z.casterUnitId,
+      casterTeam: z.casterTeam,
+      casterPlayerId: z.casterPlayerId,
+      base: isStatEffect(z.kind) ? statValue(unit, z.kind) : undefined,
+    });
+    const field = statFieldOf(z.kind);
+    if (field) {
+      const from = now(field);
+      const to = from + z.delta;
+      statChanges.push({ field, from, to });
+      fieldNow.set(field, to);
+    }
+  }
+
+  const effChanged = !sameEffects(original, effects);
+  if (!effChanged && statChanges.length === 0) return { effects, changes: [] };
+  return {
+    effects,
+    changes: effChanged
+      ? [{ field: 'effects', from: original, to: effects }, ...statChanges]
+      : statChanges,
+  };
+}
+
 /** All active ground zones' stat kinds at a hex (used for tooltips/tests). */
 export function zonesAt(zones: GroundEffect[], hex: { q: number; r: number }): GroundEffect[] {
   return zones.filter(z => z.q === hex.q && z.r === hex.r);

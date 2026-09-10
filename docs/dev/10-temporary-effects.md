@@ -106,6 +106,16 @@ display: `verboseCombat.formatSpellRollLine` prints
   `EffectFormModal` for that zone (or a unit's own effect, via its context
   menu). *Clone* arms a one-shot copy — the next left-click places it (Esc /
   right-click cancels).
+- **Zones ride the command log.** Every zone op (paint, drop, edit, clone, order,
+  drop-effect) and the END_TURN tick/expiry are `ZONE` sub-steps
+  (`apply_substeps`, migration 080) writing `scenarios.map_data.groundEffects`
+  in the same transaction as the log row — so they are **undoable** and appear in
+  replay. (Terrain/background still persist via `map_data` directly.)
+- **Stat zones apply immediately**: a `ZONE`-derived `Effect` sub-step reconciles
+  membership on move (`computeZoneReconcile`), so entering a Bless/Bane/Slow hex
+  applies/restores its stat at once instead of waiting for the next activation.
+- **The unit's Effects… dialog uses the library** (`effect_templates`), so
+  composites (Haunted), Sleep, and zone templates are all applicable there too.
 - Effect artwork renders on the map at `layer` (below / above the unit token);
   "above" artwork hides while the unit on its hex is hovered so the token stays
   inspectable. UnitTooltip shows effect chips (colour + remaining turns); tokens

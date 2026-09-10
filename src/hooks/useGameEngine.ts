@@ -14,7 +14,7 @@ import { useMessageSync } from '@/hooks/useMessageSync';
 import { ActionType, SubStep, CommandLogRow, UndoState, parseSubSteps } from '@/lib/commandLog';
 import { getActiveGroups, advanceTurn } from '@/lib/turnState';
 import { UnitEffect, GroundEffect } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, newEffectKey, EffectSpec, resolveEffectDamage, describeEffectDamage, EffectDamageEvent } from '@/lib/unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, computeZoneReconcile, newEffectKey, EffectSpec, resolveEffectDamage, describeEffectDamage, EffectDamageEvent } from '@/lib/unitEffects';
 
 interface UseGameEngineProps {
   scenarioId: string;
@@ -26,6 +26,8 @@ interface UseGameEngineProps {
   refreshUnitsByIds?: (ids: string[]) => Promise<void>;
   setAllianceLocal?: (team: string, group: AllianceGroup) => void;
   setScenarioLocal?: (fields: Record<string, any>) => void;
+  /** Optimistic local apply for ZONE commands (ground effects array). */
+  setZonesLocal?: (zones: GroundEffect[]) => void;
   /** Ask the table how many troops are caught by an 'entry' zone (default: all). */
   requestEntryTroops?: (actor: Unit, zone: GroundEffect) => Promise<number>;
   /** Verbose combat: add die rolls / save counts to effect-damage messages. */
@@ -41,6 +43,7 @@ export function useGameEngine({
   refreshUnitsByIds,
   setAllianceLocal,
   setScenarioLocal,
+  setZonesLocal,
   requestEntryTroops,
   verboseCombat = false,
 }: UseGameEngineProps) {
@@ -101,6 +104,10 @@ export function useGameEngine({
           for (const change of step.changes) {
             setAllianceLocal(step.unitId, change[field] as AllianceGroup);
           }
+        } else if (step.type === 'ZONE' && setZonesLocal) {
+          for (const change of step.changes) {
+            if (change.field === 'ground_effects') setZonesLocal(change[field] as GroundEffect[]);
+          }
         } else if (step.type === 'SCENARIO' && setScenarioLocal) {
           const update: any = {};
           for (const change of step.changes) {
@@ -121,7 +128,7 @@ export function useGameEngine({
         }
       }
     },
-    [applyLocalUnit, setAllianceLocal, setScenarioLocal],
+    [applyLocalUnit, setAllianceLocal, setScenarioLocal, setZonesLocal],
   );
 
   // All unit ids touched by a batch of sub-steps (units written by the command).
@@ -130,7 +137,7 @@ export function useGameEngine({
       const ids: string[] = [];
       for (const row of rows) {
         for (const step of parseSubSteps(row.sub_steps)) {
-          if (step.unitId && step.type !== 'ALLIANCE' && step.type !== 'SCENARIO') {
+          if (step.unitId && step.type !== 'ALLIANCE' && step.type !== 'SCENARIO' && step.type !== 'ZONE') {
             ids.push(step.unitId);
           }
         }
@@ -357,6 +364,21 @@ export function useGameEngine({
     return { steps, messages };
   };
 
+  // Stat zones (ac/morale/movement) materialize as zone-membership effects.
+  // Reconcile them as part of a move so entering/leaving a zone applies/restores
+  // immediately instead of waiting for the unit's next activation.
+  const zoneMembershipSteps = (unit: Unit, hex: Hex, zones: GroundEffect[]): SubStep[] => {
+    const moved: Unit = { ...unit, hex: { q: hex.q, r: hex.r, s: -hex.q - hex.r } };
+    const { changes } = computeZoneReconcile(moved, zones);
+    if (changes.length === 0) return [];
+    return [{
+      type: 'EFFECT',
+      description: `${unit.unitName} — ground effect membership updated`,
+      unitId: unit.id,
+      changes,
+    }];
+  };
+
   const moveUnitRecorded = useCallback(
     async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string }): Promise<void> => {
       // Heroes convert actions at the prorated rate (5 actions = 1 full move);
@@ -405,6 +427,9 @@ export function useGameEngine({
         subSteps.push(...heroEntry.steps);
         entryMessages.push(...heroEntry.messages);
       }
+      // Enter/leave stat zones immediately (zone-membership reconcile).
+      subSteps.push(...zoneMembershipSteps(unit, targetHex, zones));
+      if (attachedHero) subSteps.push(...zoneMembershipSteps(attachedHero, targetHex, zones));
       const message = [options?.message, ...entryMessages].filter(Boolean).join('  ·  ');
       await execute('MOVE', subSteps, subSteps[0].description, { ...options, message: message || undefined });
     },
@@ -443,6 +468,9 @@ export function useGameEngine({
         subSteps.push(...heroEntry.steps);
         entryMessages.push(...heroEntry.messages);
       }
+      // Enter/leave stat zones immediately (zone-membership reconcile).
+      subSteps.push(...zoneMembershipSteps(unit, targetHex, zones));
+      if (attachedHero) subSteps.push(...zoneMembershipSteps(attachedHero, targetHex, zones));
       await execute('MOVE', subSteps, subSteps[0].description, entryMessages.length ? { message: [subSteps[0].description, ...entryMessages].join('  ·  ') } : undefined);
     },
     [execute, entryDamageSteps, requestEntryTroops],
@@ -800,6 +828,16 @@ export function useGameEngine({
       for (const s of effectsRes.subSteps) subSteps.push(s);
       let zonesAfter = effectsRes.zonesAfter;
 
+      // Persist any zone tick/expiry through the SAME command so undo restores it.
+      if (JSON.stringify(zonesAfter) !== JSON.stringify(args.zones ?? [])) {
+        subSteps.push({
+          type: 'ZONE',
+          description: 'Ground effects ticked',
+          unitId: scenarioId,
+          changes: [{ field: 'ground_effects', from: args.zones ?? [], to: zonesAfter }],
+        });
+      }
+
       // Effect damage/heal this tick is surfaced in the chat (previously only the
       // command description showed, so DoT/zone damage was invisible).
       const effectMessages = effectsRes.damageEvents.map((ev: EffectDamageEvent) =>
@@ -918,6 +956,25 @@ export function useGameEngine({
   }, [execute, addError]);
 
   /**
+   * Persist a ground-effects array change through the command log so it is
+   * undoable and appears in replay. `prev` is the current array, `next` the
+   * desired one; the server merges `next` into scenarios.map_data.groundEffects.
+   */
+  const applyZoneChange = useCallback(async (
+    prev: GroundEffect[],
+    next: GroundEffect[],
+    description: string,
+    message?: string,
+  ): Promise<CommandLogRow | null> => {
+    return execute('ZONE', [{
+      type: 'ZONE',
+      description,
+      unitId: scenarioId,
+      changes: [{ field: 'ground_effects', from: prev, to: next }],
+    }], description, message ? { message } : undefined);
+  }, [execute, scenarioId]);
+
+  /**
    * "Other Action…" (hero roleplay): spend 1 action on a described non-standard
    * deed. The table resolves the fiction by hand. Free move costs nothing.
    */
@@ -957,6 +1014,7 @@ export function useGameEngine({
     applyEffect,
     removeEffect,
     editEffect,
+    applyZoneChange,
     charge,
     refreshUndoState,
     subscribeToCommandLog,

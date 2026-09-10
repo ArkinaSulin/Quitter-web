@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage } from './unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage } from './unitEffects';
 import { parseDice } from './effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
@@ -381,5 +381,42 @@ describe('effect damage detail + messages', () => {
     expect(res.damageEvents[0].unitName).toBe('u');
     expect(res.damageEvents[0].source).toBe('Bless');
     expect(res.damageEvents[0].detail.total).toBe(10);
+  });
+});
+
+describe('computeZoneReconcile', () => {
+  const zone = (over: Partial<GroundEffect> = {}): GroundEffect => ({
+    key: 'z1', q: 0, r: 0, name: 'Bless', color: '#ffd700', kind: 'ac', delta: 2,
+    duration: 3, turnsLeft: 3, ...over,
+  });
+
+  it('adds a stat-zone membership on enter and applies the delta', () => {
+    const u = unit('u', 'blue');
+    const { effects, changes } = computeZoneReconcile(u, [zone()]);
+    expect(effects).toHaveLength(1);
+    expect(effects[0].zoneHex).toEqual(h(0, 0));
+    expect(changes.find(c => c.field === 'currentAc')).toEqual({ field: 'currentAc', from: 12, to: 14 });
+    expect(changes.find(c => c.field === 'effects')).toBeDefined();
+  });
+
+  it('drops the membership and restores the stat on leave', () => {
+    const membershipped = ef({ key: 'z1', kind: 'ac', delta: 2, base: 12, zoneHex: h(0, 0) });
+    const u = unit('u', 'blue', h(1, 0), { effects: [membershipped], currentAc: 14 });
+    const { effects, changes } = computeZoneReconcile(u, [zone()]);
+    expect(effects).toHaveLength(0);
+    expect(changes.find(c => c.field === 'currentAc')).toEqual({ field: 'currentAc', from: 14, to: 12 });
+  });
+
+  it('ignores dot zones (no membership)', () => {
+    const u = unit('u', 'blue');
+    const { changes } = computeZoneReconcile(u, [zone({ kind: 'dot', delta: 4 })]);
+    expect(changes).toEqual([]);
+  });
+
+  it('no-ops when already in sync', () => {
+    const membershipped = ef({ key: 'z1', kind: 'ac', delta: 2, base: 12, zoneHex: h(0, 0) });
+    const u = unit('u', 'blue', h(0, 0), { effects: [membershipped], currentAc: 14 });
+    const { changes } = computeZoneReconcile(u, [zone()]);
+    expect(changes).toEqual([]);
   });
 });
