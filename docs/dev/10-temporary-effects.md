@@ -55,10 +55,11 @@ Expired zones are removed and memberships restored.
 
 One sub-step per affected unit, `effects` collapsed to a single from-original
 → to-final change so undo never restores an intermediate draft. Each DoT/entry
-damage resolution also emits an `EffectDamageEvent` (roll, saves, troop counts)
-that the engine turns into a chat line — **who**, how many **troops affected**,
-and the **damage taken**; `verbose_combat` adds the die roll and save count
-(`UnitEffects.resolveEffectDamage` / `describeEffectDamage`).
+damage resolution also emits an `EffectDamageEvent` (per-troop rolls, saves, troop
+counts) that the engine turns into a chat line — **who**, how many **troops
+affected**, and the **damage taken**; `verbose_combat` adds the per-troop die
+rolls and save count (`UnitEffects.resolveEffectDamage` / `describeEffectDamage`).
+Dice are rolled **once per affected troop** (each capped at that troop's HP).
 
 ## Catalog (apply UI offers; magnitude/duration overridable)
 

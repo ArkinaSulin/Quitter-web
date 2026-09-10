@@ -338,17 +338,18 @@ describe('effect dice + saves', () => {
 describe('effect damage detail + messages', () => {
   const mk = (over: Partial<Unit> = {}) => unit('t', 'red', h(0, 0), { troopHp: 2, currentUnitHp: 10, maxUnitHp: 10, currentTroopCount: 5, maxTroopCount: 5, ...over });
 
-  it('resolveEffectDamage reports roll, affected troops and total', () => {
+  it('resolveEffectDamage rolls per troop and reports each roll', () => {
     const { detail } = resolveEffectDamage(mk(), { delta: 0, dice: '1d2', savingThrow: 'Dex', saveDC: 100, onSaveHalfOrNeg: true }, () => 0.5);
     expect(detail.affected).toBe(5);
-    expect(detail.roll).toBe(2); // floor(0.5 * 2) + 1
+    expect(detail.rolls).toEqual([2, 2, 2, 2, 2]); // floor(0.5 * 2) + 1 per troop
+    expect(detail.roll).toBe(10);
     expect(detail.passed).toBe(0);
-    expect(detail.total).toBe(10); // 5 troops x 2 (capped at troop HP 2)
+    expect(detail.total).toBe(10); // 5 troops x 2 each (capped at troop HP 2)
     expect(detail.troopsBefore).toBe(5);
     expect(detail.troopsAfter).toBe(0);
   });
 
-  it('describeEffectDamage shows who/affected/damage; verbose adds the roll', () => {
+  it('describeEffectDamage shows who/affected/damage; verbose adds the per-troop rolls', () => {
     const { detail } = resolveEffectDamage(mk(), { delta: 0, dice: '1d2', savingThrow: 'Dex', saveDC: 100 }, () => 0.5);
     const plain = describeEffectDamage('Goblins', 'Burning', detail);
     expect(plain).toContain('Goblins');
@@ -356,7 +357,8 @@ describe('effect damage detail + messages', () => {
     expect(plain).toContain('10 damage');
     expect(plain).not.toContain('1d2');
     const verbose = describeEffectDamage('Goblins', 'Burning', detail, true);
-    expect(verbose).toContain('1d2 = 2');
+    expect(verbose).toContain('1d2 per troop');
+    expect(verbose).toContain('2, 2, 2, 2, 2');
   });
 
   it('computeEndTurnEffects emits a damage event for a ticking DoT', () => {

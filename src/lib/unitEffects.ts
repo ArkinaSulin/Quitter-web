@@ -168,15 +168,10 @@ export function hpBorrowRefundChanges(target: Unit, x: number): UnitChange[] {
 const thOf = (t: Unit) => Math.max(1, t.troopHp ?? 1);
 type SaveStatName = 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha';
 
-/** Per-troop saving throw count: d20 + bonus >= DC passes (standard saves). */
-function savedTroopCount(target: Unit, stat: SaveStatName, dc: number, affected: number, rng: () => number): number {
+/** One troop's saving throw: d20 + bonus >= DC passes (standard saves). */
+function troopSaves(target: Unit, stat: SaveStatName, dc: number, rng: () => number): boolean {
   const bonus = ((target as any)[stat.toLowerCase()] as number) || 0;
-  let passed = 0;
-  for (let i = 0; i < affected; i++) {
-    const roll = Math.floor(rng() * 20) + 1;
-    if (roll + bonus >= dc) passed++;
-  }
-  return passed;
+  return Math.floor(rng() * 20) + 1 + bonus >= dc;
 }
 
 function healChanges(target: Unit, amount: number): UnitChange[] {
@@ -204,7 +199,9 @@ export interface EffectDamageDetail {
   healing: boolean;
   /** Dice expression when one was rolled. */
   dice?: string;
-  /** Rolled dice sum (when dice was used). */
+  /** Each troop's individual raw die roll (dice path only). */
+  rolls?: number[];
+  /** Sum of the per-troop rolls (dice path only). */
   roll?: number;
   hpBefore: number;
   hpAfter: number;
@@ -223,9 +220,9 @@ export interface EffectDamageEvent {
 
 /**
  * Damage/heal from an effect modifier, returning both the UnitChanges and a
- * structured detail (roll, saves, troop counts) for messaging.
- *  - `dice` present: roll ONCE, spread across the affected troops — each troop
- *    takes the (save-adjusted) amount CAPPED at its troop HP; `healing` flips
+ * structured detail (rolls, saves, troop counts) for messaging.
+ *  - `dice` present: the dice are rolled **once per affected troop** — each troop
+ *    takes its own roll (save-adjusted, CAPPED at its troop HP); `healing` flips
  *    damage to healing (also capped per troop at troopHp). Per-troop saves when
  *    `savingThrow` + `saveDC` are set (pass => half if onSaveHalfOrNeg, else 0).
  *  - no `dice`: legacy flat amount applied to the unit HP once (unchanged).
@@ -251,6 +248,7 @@ export function resolveEffectDamage(
   let changes: UnitChange[] = [];
   let affected = 0;
   let passed = 0;
+  let rolls: number[] | undefined;
   let roll: number | undefined;
 
   if (!parsed) {
@@ -258,18 +256,24 @@ export function resolveEffectDamage(
     affected = Math.max(0, troopsBefore);
     if (amt > 0) changes = healing ? healChanges(target, amt) : dotDamageChanges(target, amt);
   } else {
-    roll = Math.max(0, rollDice(mod.dice, rng));
     const currentTroops = Math.max(0, troopsBefore);
     affected = Math.max(0, Math.min(affectedOverride ?? currentTroops, currentTroops));
-    if (roll > 0 && affected > 0) {
+    if (affected > 0) {
       const th = thOf(target);
       const halfOnSave = mod.onSaveHalfOrNeg !== false;
-      if (mod.savingThrow && mod.saveDC != null) {
-        passed = savedTroopCount(target, mod.savingThrow, mod.saveDC, affected, rng);
+      rolls = [];
+      let total = 0;
+      for (let i = 0; i < affected; i++) {
+        const r = Math.max(0, rollDice(mod.dice, rng));
+        rolls.push(r);
+        let per = Math.min(r, th);
+        if (mod.savingThrow && mod.saveDC != null && troopSaves(target, mod.savingThrow, mod.saveDC, rng)) {
+          passed++;
+          per = halfOnSave ? Math.min(Math.floor(r / 2), th) : 0;
+        }
+        total += per;
       }
-      const full = Math.min(roll, th);
-      const half = halfOnSave ? Math.min(Math.floor(roll / 2), th) : 0;
-      const total = passed * half + (affected - passed) * full;
+      roll = rolls.reduce((a, b) => a + b, 0);
       if (healing) {
         changes = healChanges(target, total);
       } else {
@@ -293,6 +297,7 @@ export function resolveEffectDamage(
       total: Math.abs(hpAfter - hpBefore),
       healing,
       ...(parsed ? { dice: mod.dice } : {}),
+      ...(rolls ? { rolls } : {}),
       ...(roll != null ? { roll } : {}),
       hpBefore,
       hpAfter,
@@ -326,7 +331,11 @@ export function effectDamageChanges(
  */
 export function describeEffectDamage(unitName: string, source: string, d: EffectDamageDetail, verbose = false): string {
   const troopWord = d.affected === 1 ? 'troop' : 'troops';
-  const rollTxt = d.dice ? `${d.dice}${d.roll != null ? ` = ${d.roll}` : ''}` : 'flat';
+  const rollTxt = d.dice
+    ? (d.rolls && d.rolls.length
+        ? `${d.dice} per troop → ${d.rolls.join(', ')}${d.rolls.length > 1 ? ` (Σ ${d.roll})` : ''}`
+        : d.dice)
+    : 'flat';
   const saveTxt = d.passed > 0 ? `, ${d.passed} saved` : '';
   if (d.healing) {
     const recovered = Math.max(0, d.troopsAfter - d.troopsBefore);

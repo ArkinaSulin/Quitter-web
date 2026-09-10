@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Effect damage: roll dice per troop (2026-09-06)
+**Files:** src/lib/unitEffects.ts, src/lib/unitEffects.test.ts, docs/dev/10-temporary-effects.md
+
+- esolveEffectDamage now rolls the effect dice **once per affected troop** (each troop takes its own roll, save-adjusted, capped at its troop HP) instead of one roll spread across the unit. EffectDamageDetail gains olls (each troop's roll) alongside oll (the sum). Verbose messages list the per-troop rolls ("1d2 per troop → 2, 2, 1, 2, 1 (Σ 8)").
+- Removed the now-unused savedTroopCount helper; saves roll per troop inline. Tests updated. tsc clean; 531 tests pass.
+
+
 ## Effect damage now reported in chat (2026-09-06)
 **Files:** src/lib/unitEffects.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/ScenarioMap.tsx, src/lib/unitEffects.test.ts, docs/dev/10-temporary-effects.md
 
