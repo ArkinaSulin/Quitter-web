@@ -53,16 +53,22 @@ describe('corpseTracker', () => {
     });
     const undone = row({ action_type: 'ATTACK', seq: 5, deleted_at: 'x', sub_steps: [] });
     const fallen = buildFallen([place, attack, moveThenLoss, edit, undone]);
-    expect(fallen['0,0']).toBe(5); // first loss at (0,0)
-    expect(fallen['2,1']).toBe(5); // later losses land on the moved-to hex
+    const total = (g?: { count: number }[]) => (g ?? []).reduce((a, x) => a + x.count, 0);
+    expect(total(fallen['0,0'])).toBe(5); // first loss at (0,0)
+    expect(total(fallen['2,1'])).toBe(5); // later losses land on the moved-to hex
   });
 
-  it('scatter positions are stable as the pile grows', () => {
-    const small = corpseScatterPositions(3, 7, 5, 40);
-    const big = corpseScatterPositions(3, 7, 12, 40);
+  it('scatter positions are stable as the pile grows, and avoid the exact centre', () => {
+    const small = corpseScatterPositions(3, 7, 5);
+    const big = corpseScatterPositions(3, 7, 12);
     for (let i = 0; i < 5; i++) {
       expect(big[i].dx).toBe(small[i].dx);
       expect(big[i].dy).toBe(small[i].dy);
+    }
+    for (const p of big) {
+      const r = Math.hypot(p.dx, p.dy);
+      expect(r).toBeGreaterThanOrEqual(0.2);
+      expect(r).toBeLessThanOrEqual(0.44);
     }
   });
 });

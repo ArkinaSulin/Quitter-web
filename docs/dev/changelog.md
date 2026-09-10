@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Corpse piles match the dead unit + spread from the centre (2026-09-06)
+**Files:** src/lib/corpseTracker.ts, src/components/ScenarioMap/useCanvasDraw.ts, src/lib/battleStats.test.ts, docs/dev/15-token-rendering.md
+
+- Fallen-troop dots now mirror the unit that died: **team colour**, **mounted = triangle / foot = circle**, radius scaled by `sizeCategory`×`visualScale` — all recovered from the `PLACE` sub-step payload in the command log (no migration, no new table; still derived, not stored).
+- `FallenMap` is now `Record<string, FallenGroup[]>` (per team/mounted/size group), so a hex that saw a foot unit and a mounted one keeps both.
+- Removed the 40-dot cap; scatter now uses an **annulus `0.20 + √rand · 0.24`** so piles no longer over-clump at the centre (overlap elsewhere is fine). Deterministic + prefix-stable (test updated).
+- tsc clean; 535 tests pass.
+
 ## Effects: zones undoable, library context menu, stat zones on move (2026-09-06)
 **Files:** supabase/migrations/080_zone_command_log.sql (new), src/lib/commandLog.ts, src/lib/unitEffects.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ScenarioMap,AddEffectModal}.tsx, src/lib/unitEffects.test.ts, docs/dev/{02-schema-and-migrations,10-temporary-effects,outstanding}.md
 

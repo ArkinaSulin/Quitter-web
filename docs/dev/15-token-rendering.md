@@ -55,6 +55,11 @@ Name runs flush along the bottom in white with a dark shadow.
 - **Effect pips** render under tokens (buffs/debuffs present, `10`); corpse
   (HP ≤ 0, non-hero) = grayscaled; downed **hero** (HP ≤ 0) grayscales but
   stays interactable.
+- **Fallen piles** (decorative, drawn under tokens): per-hex dots derived from
+  the command log (`corpseTracker.buildFallen`). Each dot matches the dead unit —
+  team colour, **mounted = triangle / foot = circle**, radius from
+  `sizeCategory`×`visualScale`. Scatter is deterministic and stable as the pile
+  grows (annulus 0.20–0.44 of `HEX_SIZE`, no cap).
 - Routed is drawn from `currentFormation === 'Routed'` (white flag).
 
 ## Async image handling

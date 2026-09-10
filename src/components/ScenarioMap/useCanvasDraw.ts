@@ -10,7 +10,8 @@ import { Unit, Hex, AllianceGroup, Formation, SizeCategory, GroundEffect } from 
 import { drawToken, loadImage, getLoadedImage, drawArcherReactionButton } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
 import { isDeadCorpse } from '@/lib/unitInteractions';
-import { corpseScatterPositions } from '@/lib/corpseTracker';
+import { corpseScatterPositions, flattenFallen, FallenMap } from '@/lib/corpseTracker';
+import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig, TerrainCosts, costShade } from './mapGeometry';
 import { FOG_RGB } from '@/lib/fogOfWar';
 import { AiOverlayData } from './aiTypes';
@@ -38,8 +39,8 @@ interface CanvasDrawDeps {
   groundZones?: GroundEffect[];
   scenarioId: string;
   updateScreenshot: (scenarioId: string, file: File) => Promise<void>;
-  /** Per-hex fallen-troop counts (decorative corpse piles), from the log. */
-  corpseCounts?: Record<string, number>;
+  /** Per-hex fallen-troop piles (decorative corpses), from the log. */
+  corpseCounts?: FallenMap;
   /** AI assist overlay (checkmarks + preview routes). Optional. */
   aiOverlay?: AiOverlayData | null;
   /** Unit currently hovered on the map — highlights its AI route. */
@@ -211,26 +212,42 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       ctx.restore();
     }
 
-    // Decorative fallen-troop piles: neutral circles per hex with deaths
-    // (positions seeded by q+r so the scatter is stable as piles grow). Drawn
-    // UNDER live tokens; corpses never occupy hexes or interact with rules.
+    // Decorative fallen-troop piles: dots per hex with deaths (positions seeded
+    // by q+r so the scatter is stable as piles grow). Each dot mirrors its dead
+    // unit: team colour, mounted = triangle vs foot = circle, radius from size.
+    // Drawn UNDER live tokens; corpses never occupy hexes or interact with rules.
     if (corpseCounts) {
       ctx.save();
-      const maxShown = 40;
-      for (const [key, count] of Object.entries(corpseCounts)) {
-        if (count <= 0) continue;
+      for (const [key, groups] of Object.entries(corpseCounts)) {
+        if (!groups || groups.length === 0) continue;
         if (isFogHidden(key)) continue; // corpses never reveal through fog
         const [q, r] = key.split(',').map(Number);
         if (Number.isNaN(q) || Number.isNaN(r)) continue;
+        const specs = flattenFallen(groups);
+        if (specs.length === 0) continue;
         const c = hexCenter({ q, r, s: -q - r });
-        const positions = corpseScatterPositions(q, r, count, maxShown);
-        const dotR = Math.max(2, HEX_SIZE * currentZoom * 0.055);
-        for (const p of positions) {
+        const positions = corpseScatterPositions(q, r, specs.length);
+        for (let i = 0; i < specs.length; i++) {
+          const spec = specs[i];
+          const p = positions[i];
+          const cr = Math.max(1.2, HEX_SIZE * currentZoom * 0.03 * (spec.visualScale / 100) * (spec.sizeCategory / 100));
+          const x = c.cx + p.dx * HEX_SIZE * currentZoom;
+          const y = c.cy + p.dy * HEX_SIZE * currentZoom;
+          const color = TEAM_COLORS[spec.team as Team] || '#9e9e9e';
           ctx.beginPath();
-          ctx.arc(c.cx + p.dx * HEX_SIZE * currentZoom, c.cy + p.dy * HEX_SIZE * currentZoom, dotR, 0, 2 * Math.PI);
-          ctx.fillStyle = 'rgba(150,150,150,0.5)';
+          if (spec.mounted) {
+            ctx.moveTo(x, y - cr * 1.15);
+            ctx.lineTo(x - cr * 1.0, y + cr * 0.8);
+            ctx.lineTo(x + cr * 1.0, y + cr * 0.8);
+            ctx.closePath();
+          } else {
+            ctx.arc(x, y, cr, 0, 2 * Math.PI);
+          }
+          ctx.globalAlpha = 0.5;
+          ctx.fillStyle = color;
           ctx.fill();
-          ctx.strokeStyle = 'rgba(90,90,90,0.7)';
+          ctx.globalAlpha = 0.8;
+          ctx.strokeStyle = 'rgba(0,0,0,0.5)';
           ctx.lineWidth = 1;
           ctx.stroke();
         }
