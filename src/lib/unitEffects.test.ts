@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, effectByKey, newEffectKey, effectDamageChanges } from './unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage } from './unitEffects';
 import { parseDice } from './effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
@@ -332,5 +332,42 @@ describe('effect dice + saves', () => {
   it('affected override limits the troops hit', () => {
     const changes = effectDamageChanges(mk(), { delta: 0, dice: '1d1' }, () => 0.5, 2);
     expect(changes.find(c => c.field === 'currentUnitHp')!.to).toBe(8); // only 2 troops take 1
+  });
+});
+
+describe('effect damage detail + messages', () => {
+  const mk = (over: Partial<Unit> = {}) => unit('t', 'red', h(0, 0), { troopHp: 2, currentUnitHp: 10, maxUnitHp: 10, currentTroopCount: 5, maxTroopCount: 5, ...over });
+
+  it('resolveEffectDamage reports roll, affected troops and total', () => {
+    const { detail } = resolveEffectDamage(mk(), { delta: 0, dice: '1d2', savingThrow: 'Dex', saveDC: 100, onSaveHalfOrNeg: true }, () => 0.5);
+    expect(detail.affected).toBe(5);
+    expect(detail.roll).toBe(2); // floor(0.5 * 2) + 1
+    expect(detail.passed).toBe(0);
+    expect(detail.total).toBe(10); // 5 troops x 2 (capped at troop HP 2)
+    expect(detail.troopsBefore).toBe(5);
+    expect(detail.troopsAfter).toBe(0);
+  });
+
+  it('describeEffectDamage shows who/affected/damage; verbose adds the roll', () => {
+    const { detail } = resolveEffectDamage(mk(), { delta: 0, dice: '1d2', savingThrow: 'Dex', saveDC: 100 }, () => 0.5);
+    const plain = describeEffectDamage('Goblins', 'Burning', detail);
+    expect(plain).toContain('Goblins');
+    expect(plain).toContain('5 troops');
+    expect(plain).toContain('10 damage');
+    expect(plain).not.toContain('1d2');
+    const verbose = describeEffectDamage('Goblins', 'Burning', detail, true);
+    expect(verbose).toContain('1d2 = 2');
+  });
+
+  it('computeEndTurnEffects emits a damage event for a ticking DoT', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      troopHp: 2, currentUnitHp: 10, maxUnitHp: 10, currentTroopCount: 5, maxTroopCount: 5,
+      effects: [ef({ key: 'd1', kind: 'dot', delta: 0, dice: '1d2', base: undefined, casterUnitId: null, casterTeam: 'blue' })],
+    });
+    const res = computeEndTurnEffects({ units: [u], zones: [], nextGroup: 'friendly', alliances: groups, rng: () => 0.5 });
+    expect(res.damageEvents).toHaveLength(1);
+    expect(res.damageEvents[0].unitName).toBe('u');
+    expect(res.damageEvents[0].source).toBe('Bless');
+    expect(res.damageEvents[0].detail.total).toBe(10);
   });
 });

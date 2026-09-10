@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Effect damage now reported in chat (2026-09-06)
+**Files:** src/lib/unitEffects.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/ScenarioMap.tsx, src/lib/unitEffects.test.ts, docs/dev/10-temporary-effects.md
+
+- DoT ticks (unit effects + ground zones) and zone **entry** damage previously only produced the command line (e.g. "End Turn — enemy turn begins"), so the damage was invisible. esolveEffectDamage now returns a structured EffectDamageDetail (roll, saves, troops before/after, HP before/after) alongside the changes, and computeEndTurnEffects emits damageEvents.
+- describeEffectDamage formats one chat line per event: **who**, **how many troops affected**, **damage/heal taken**, and troops lost; **verbose combat** (erbose_combat) appends the die roll (2d6 = 7) and save count. END_TURN and MOVE now pass these as the message (entry-zone damage rides the move message).
+- effectDamageChanges kept as a thin wrapper over esolveEffectDamage. New tests: detail/roll/affected, non-verbose vs verbose text, and a DoT tick event. tsc clean; 531 tests pass.
+
+
 ## Effect Editor: images/layers, editable drops, edit + clone (2026-09-06)
 **Files:** supabase/migrations/078_effect_editor_layer.sql (new), supabase/migrations/079_effect_images_bucket.sql (new), src/lib/effectTemplates.ts, src/types/gameProtocol.ts, src/lib/unitEffects.ts, src/hooks/useGameEngine.ts, src/components/ColorField.tsx (new), src/components/EffectEditor/EffectModifierFields.tsx (new), src/components/ImagePickerModal.tsx, src/components/EffectEditor/EffectEditor.tsx, src/components/ScenarioMap/EffectFormModal.tsx (new), src/components/ScenarioMap/{ScenarioMap,EffectsPanel,AddEffectModal}.tsx, src/components/ScenarioMap/useCanvasDraw.ts, src/components/TokenRenderer/drawToken.ts, src/components/Lobby.tsx, docs/dev/{10-temporary-effects,02-schema-and-migrations,01-architecture}.md, README.md, src/lib/unitEffects.test.ts
 

@@ -189,13 +189,120 @@ function healChanges(target: Unit, amount: number): UnitChange[] {
 }
 
 /**
- * Damage/heal from an effect modifier.
+ * Structured result of an effect damage/heal resolution (for chat messages/logs).
+ * `total` is the absolute HP changed; troop counts bracket the resolution.
+ */
+export interface EffectDamageDetail {
+  /** Troops targeted (flat path: all current troops). */
+  affected: number;
+  /** Troops that passed their save. */
+  passed: number;
+  /** Troops that failed their save (affected - passed). */
+  failed: number;
+  /** Absolute HP change. */
+  total: number;
+  healing: boolean;
+  /** Dice expression when one was rolled. */
+  dice?: string;
+  /** Rolled dice sum (when dice was used). */
+  roll?: number;
+  hpBefore: number;
+  hpAfter: number;
+  troopsBefore: number;
+  troopsAfter: number;
+}
+
+/** One damage/heal event from a temporary effect, for the message log. */
+export interface EffectDamageEvent {
+  unitId: string;
+  unitName: string;
+  /** Effect or zone name that caused it. */
+  source: string;
+  detail: EffectDamageDetail;
+}
+
+/**
+ * Damage/heal from an effect modifier, returning both the UnitChanges and a
+ * structured detail (roll, saves, troop counts) for messaging.
  *  - `dice` present: roll ONCE, spread across the affected troops — each troop
  *    takes the (save-adjusted) amount CAPPED at its troop HP; `healing` flips
  *    damage to healing (also capped per troop at troopHp). Per-troop saves when
  *    `savingThrow` + `saveDC` are set (pass => half if onSaveHalfOrNeg, else 0).
  *  - no `dice`: legacy flat amount applied to the unit HP once (unchanged).
  */
+export function resolveEffectDamage(
+  target: Unit,
+  mod: {
+    delta?: number;
+    dice?: string;
+    healing?: boolean;
+    savingThrow?: SaveStatName | null;
+    saveDC?: number | null;
+    onSaveHalfOrNeg?: boolean;
+  },
+  rng: () => number = Math.random,
+  affectedOverride?: number,
+): { changes: UnitChange[]; detail: EffectDamageDetail } {
+  const hpBefore = target.currentUnitHp ?? 0;
+  const troopsBefore = target.currentTroopCount ?? 0;
+  const healing = !!mod.healing;
+  const parsed = parseDice(mod.dice);
+
+  let changes: UnitChange[] = [];
+  let affected = 0;
+  let passed = 0;
+  let roll: number | undefined;
+
+  if (!parsed) {
+    const amt = mod.delta ?? 0;
+    affected = Math.max(0, troopsBefore);
+    if (amt > 0) changes = healing ? healChanges(target, amt) : dotDamageChanges(target, amt);
+  } else {
+    roll = Math.max(0, rollDice(mod.dice, rng));
+    const currentTroops = Math.max(0, troopsBefore);
+    affected = Math.max(0, Math.min(affectedOverride ?? currentTroops, currentTroops));
+    if (roll > 0 && affected > 0) {
+      const th = thOf(target);
+      const halfOnSave = mod.onSaveHalfOrNeg !== false;
+      if (mod.savingThrow && mod.saveDC != null) {
+        passed = savedTroopCount(target, mod.savingThrow, mod.saveDC, affected, rng);
+      }
+      const full = Math.min(roll, th);
+      const half = halfOnSave ? Math.min(Math.floor(roll / 2), th) : 0;
+      const total = passed * half + (affected - passed) * full;
+      if (healing) {
+        changes = healChanges(target, total);
+      } else {
+        const newHp = Math.max(0, hpBefore - total);
+        changes = [
+          { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+          { field: 'currentTroopCount', from: target.currentTroopCount, to: Math.max(0, Math.ceil(newHp / th)) },
+        ];
+      }
+    }
+  }
+
+  const hpAfter = changes.find(c => c.field === 'currentUnitHp')?.to ?? hpBefore;
+  const troopsAfter = changes.find(c => c.field === 'currentTroopCount')?.to ?? troopsBefore;
+  return {
+    changes,
+    detail: {
+      affected,
+      passed,
+      failed: Math.max(0, affected - passed),
+      total: Math.abs(hpAfter - hpBefore),
+      healing,
+      ...(parsed ? { dice: mod.dice } : {}),
+      ...(roll != null ? { roll } : {}),
+      hpBefore,
+      hpAfter,
+      troopsBefore,
+      troopsAfter,
+    },
+  };
+}
+
+/** UnitChanges only (legacy signature used by apply/entry paths). */
 export function effectDamageChanges(
   target: Unit,
   mod: {
@@ -209,32 +316,28 @@ export function effectDamageChanges(
   rng: () => number = Math.random,
   affectedOverride?: number,
 ): UnitChange[] {
-  const parsed = parseDice(mod.dice);
-  if (!parsed) {
-    const amt = mod.delta ?? 0;
-    if (amt <= 0) return [];
-    return mod.healing ? healChanges(target, amt) : dotDamageChanges(target, amt);
+  return resolveEffectDamage(target, mod, rng, affectedOverride).changes;
+}
+
+/**
+ * One-line chat summary of an effect damage/heal event: who, how many troops
+ * were affected, and the damage/heal taken. Verbose mode adds the die roll and
+ * the save count.
+ */
+export function describeEffectDamage(unitName: string, source: string, d: EffectDamageDetail, verbose = false): string {
+  const troopWord = d.affected === 1 ? 'troop' : 'troops';
+  const rollTxt = d.dice ? `${d.dice}${d.roll != null ? ` = ${d.roll}` : ''}` : 'flat';
+  const saveTxt = d.passed > 0 ? `, ${d.passed} saved` : '';
+  if (d.healing) {
+    const recovered = Math.max(0, d.troopsAfter - d.troopsBefore);
+    return verbose
+      ? `${unitName} healed ${d.total} from ${source} (${d.affected} ${troopWord}, ${rollTxt}${saveTxt})`
+      : `${unitName} healed ${d.total} from ${source} (${d.affected} ${troopWord} affected${recovered ? `, ${recovered} recovered` : ''})`;
   }
-  const amount = Math.max(0, rollDice(mod.dice, rng));
-  if (amount <= 0) return [];
-  const currentTroops = Math.max(0, target.currentTroopCount ?? 0);
-  const affected = Math.max(0, Math.min(affectedOverride ?? currentTroops, currentTroops));
-  if (affected === 0) return [];
-  const th = thOf(target);
-  const halfOnSave = mod.onSaveHalfOrNeg !== false;
-  let passed = 0;
-  if (mod.savingThrow && mod.saveDC != null) {
-    passed = savedTroopCount(target, mod.savingThrow, mod.saveDC, affected, rng);
-  }
-  const full = Math.min(amount, th);
-  const half = halfOnSave ? Math.min(Math.floor(amount / 2), th) : 0;
-  const total = passed * half + (affected - passed) * full;
-  if (mod.healing) return healChanges(target, total);
-  const newHp = Math.max(0, (target.currentUnitHp ?? 0) - total);
-  return [
-    { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
-    { field: 'currentTroopCount', from: target.currentTroopCount, to: Math.max(0, Math.ceil(newHp / th)) },
-  ];
+  const lost = Math.max(0, d.troopsBefore - d.troopsAfter);
+  return verbose
+    ? `${unitName} took ${d.total} from ${source} (${d.affected} ${troopWord}, ${rollTxt}${saveTxt}, ${lost} lost)`
+    : `${unitName} took ${d.total} damage from ${source} (${d.affected} ${troopWord} affected, ${lost} lost)`;
 }
 
 /** Remaining ticks of an effect (its own countdown) — DoT ticks then expires. */
@@ -259,6 +362,8 @@ export interface EndTurnEffectsResult {
   subSteps: SubStep[];
   /** Ground zones after ticks/expiry — persist to scenarios.map_data. */
   zonesAfter: GroundEffect[];
+  /** Damage/heal events this tick, for the message log (who/affected/damage). */
+  damageEvents: EffectDamageEvent[];
 }
 
 function teamsOf(alliances: Record<string, AllianceGroup>, group: AllianceGroup): Set<string> {
@@ -294,6 +399,7 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
     (['friendly', 'enemy', 'neutral'] as const).find(g => teamsOf(alliances, g).size > 0) ?? 'friendly';
   const subSteps: SubStep[] = [];
   const zonesAfter = zones.map(z => ({ ...z }));
+  const damageEvents: EffectDamageEvent[] = [];
 
   // Fold changes onto per-unit change lists so one sub-step per affected unit.
   type UnitDraft = { effects: UnitEffect[]; changes: UnitChange[]; hpChanged: boolean };
@@ -328,8 +434,10 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
       // Caster's activation start: tick.
       const ticked = tickDown(e);
       if (e.kind === 'dot') {
-        for (const c of effectDamageChanges(unit, e, rng)) d.changes.push(c);
+        const { changes, detail } = resolveEffectDamage(unit, e, rng);
+        for (const c of changes) d.changes.push(c);
         d.hpChanged = true;
+        damageEvents.push({ unitId: unit.id, unitName: unit.unitName, source: e.name, detail });
       }
       if (ticked.turnsLeft <= 0) {
         for (const c of removeEffectChanges({ ...unit, effects: d.effects }, e.key)) d.changes.push(c);
@@ -354,7 +462,9 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
       if (zone.kind === 'dot') {
         for (const u of standing) {
           const d = draftFor(u);
-          for (const c of effectDamageChanges(u, zone, rng)) { d.changes.push(c); d.hpChanged = true; }
+          const { changes, detail } = resolveEffectDamage(u, zone, rng);
+          for (const c of changes) { d.changes.push(c); d.hpChanged = true; }
+          damageEvents.push({ unitId: u.id, unitName: u.unitName, source: zone.name, detail });
         }
       }
       surviving = { ...zone, turnsLeft: Math.max(0, zone.turnsLeft - 1) };
@@ -442,7 +552,7 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
     });
   });
 
-  return { subSteps, zonesAfter: finalZones };
+  return { subSteps, zonesAfter: finalZones, damageEvents };
 }
 
 function sameEffects(a: UnitEffect[], b: UnitEffect[]): boolean {

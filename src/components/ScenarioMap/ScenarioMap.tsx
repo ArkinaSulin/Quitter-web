@@ -613,6 +613,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setAllianceLocal,
     setScenarioLocal,
     requestEntryTroops,
+    verboseCombat,
   });
 
   // "Other Action…" (hero roleplay): spend 1 action; the table resolves it by
