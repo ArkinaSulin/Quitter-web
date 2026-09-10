@@ -39,8 +39,17 @@ const EDITOR_COMMANDS = new Set(['EDIT_UNIT', 'DELETE', 'PLACE', 'TEAM', 'ALLIAN
 /** Deterministic seeded positions for a hex (stable as the pile grows).
  *  Positions are returned in hex-local offsets; draw the first `count`.
  *  An annulus (0.20–0.44 of HEX_SIZE) with sqrt area bias keeps dots off the
- *  exact centre so piles never over-clump in the middle. */
+ *  exact centre so piles never over-clump in the middle.
+ *  Cached per (q,r,count) — the layout is deterministic, so the per-frame cost
+ *  is just drawing, not regenerating. */
+const scatterCache = new Map<string, { dx: number; dy: number }[]>();
+const SCATTER_CACHE_MAX = 5000;
+
 export function corpseScatterPositions(q: number, r: number, count: number): { dx: number; dy: number }[] {
+  const cacheKey = `${q},${r},${count}`;
+  const cached = scatterCache.get(cacheKey);
+  if (cached) return cached;
+
   let seed = (q * 73856093) ^ (r * 19349663);
   const rand = () => {
     // xorshift32-ish deterministic generator
@@ -55,6 +64,8 @@ export function corpseScatterPositions(q: number, r: number, count: number): { d
     const r2 = 0.20 + Math.sqrt(rand()) * 0.24;
     out.push({ dx: Math.cos(a) * r2, dy: Math.sin(a) * r2 });
   }
+  if (scatterCache.size >= SCATTER_CACHE_MAX) scatterCache.clear();
+  scatterCache.set(cacheKey, out);
   return out;
 }
 
@@ -66,6 +77,30 @@ export function flattenFallen(groups: FallenGroup[]): Omit<FallenGroup, 'count'>
     for (let i = 0; i < g.count; i++) out.push(spec);
   }
   return out;
+}
+
+/** One drawable corpse dot: its unit spec plus its hex-local offset. */
+export interface CorpseDot extends Omit<FallenGroup, 'count'> {
+  dx: number;
+  dy: number;
+}
+
+// The per-hex dot list (specs + positions) is deterministic given the groups, so
+// cache it too — `useCanvasDraw` calls this every redraw.
+const dotCache = new Map<string, CorpseDot[]>();
+const DOT_CACHE_MAX = 5000;
+
+export function corpseDots(q: number, r: number, groups: FallenGroup[]): CorpseDot[] {
+  const cacheKey = `${q},${r}|${groups.map(g => `${g.mounted}${g.sizeCategory}${g.visualScale}${g.team}${g.count}`).join(';')}`;
+  const cached = dotCache.get(cacheKey);
+  if (cached) return cached;
+
+  const specs = flattenFallen(groups);
+  const positions = corpseScatterPositions(q, r, specs.length);
+  const dots = specs.map((s, i) => ({ ...s, dx: positions[i].dx, dy: positions[i].dy }));
+  if (dotCache.size >= DOT_CACHE_MAX) dotCache.clear();
+  dotCache.set(cacheKey, dots);
+  return dots;
 }
 
 function groupKey(g: Pick<FallenGroup, 'mounted' | 'sizeCategory' | 'visualScale' | 'team'>): string {

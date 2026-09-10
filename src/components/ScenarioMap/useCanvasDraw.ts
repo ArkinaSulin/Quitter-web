@@ -10,7 +10,7 @@ import { Unit, Hex, AllianceGroup, Formation, SizeCategory, GroundEffect } from 
 import { drawToken, loadImage, getLoadedImage, drawArcherReactionButton } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
 import { isDeadCorpse } from '@/lib/unitInteractions';
-import { corpseScatterPositions, flattenFallen, FallenMap } from '@/lib/corpseTracker';
+import { corpseDots, FallenMap } from '@/lib/corpseTracker';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig, TerrainCosts, costShade } from './mapGeometry';
 import { FOG_RGB } from '@/lib/fogOfWar';
@@ -223,19 +223,16 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         if (isFogHidden(key)) continue; // corpses never reveal through fog
         const [q, r] = key.split(',').map(Number);
         if (Number.isNaN(q) || Number.isNaN(r)) continue;
-        const specs = flattenFallen(groups);
-        if (specs.length === 0) continue;
+        const dots = corpseDots(q, r, groups);
+        if (dots.length === 0) continue;
         const c = hexCenter({ q, r, s: -q - r });
-        const positions = corpseScatterPositions(q, r, specs.length);
-        for (let i = 0; i < specs.length; i++) {
-          const spec = specs[i];
-          const p = positions[i];
-          const cr = Math.max(1.2, HEX_SIZE * currentZoom * 0.03 * (spec.visualScale / 100) * (spec.sizeCategory / 100));
-          const x = c.cx + p.dx * HEX_SIZE * currentZoom;
-          const y = c.cy + p.dy * HEX_SIZE * currentZoom;
-          const color = TEAM_COLORS[spec.team as Team] || '#9e9e9e';
+        for (const dot of dots) {
+          const cr = Math.max(1.2, HEX_SIZE * currentZoom * 0.03 * (dot.visualScale / 100) * (dot.sizeCategory / 100));
+          const x = c.cx + dot.dx * HEX_SIZE * currentZoom;
+          const y = c.cy + dot.dy * HEX_SIZE * currentZoom;
+          const color = TEAM_COLORS[dot.team as Team] || '#9e9e9e';
           ctx.beginPath();
-          if (spec.mounted) {
+          if (dot.mounted) {
             ctx.moveTo(x, y - cr * 1.15);
             ctx.lineTo(x - cr * 1.0, y + cr * 0.8);
             ctx.lineTo(x + cr * 1.0, y + cr * 0.8);

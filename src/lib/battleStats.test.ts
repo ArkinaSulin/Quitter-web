@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CommandLogRow } from '@/lib/commandLog';
-import { buildFallen, corpseScatterPositions } from '@/lib/corpseTracker';
+import { buildFallen, corpseScatterPositions, corpseDots, FallenGroup } from '@/lib/corpseTracker';
 import { buildStats, formatStatsText } from '@/lib/battleStats';
 import { Unit, AllianceGroup } from '@/types/gameProtocol';
 
@@ -70,6 +70,17 @@ describe('corpseTracker', () => {
       expect(r).toBeGreaterThanOrEqual(0.2);
       expect(r).toBeLessThanOrEqual(0.44);
     }
+  });
+
+  it('corpseDots is cached and matches the raw scatter', () => {
+    const groups: FallenGroup[] = [{ count: 3, mounted: false, sizeCategory: 100, visualScale: 100, team: 'blue' }];
+    const a = corpseDots(1, 2, groups);
+    const b = corpseDots(1, 2, groups);
+    expect(a).toBe(b); // identical reference from the cache
+    expect(a).toHaveLength(3);
+    const pos = corpseScatterPositions(1, 2, 3);
+    expect(a[0].dx).toBe(pos[0].dx);
+    expect(a[2].dy).toBe(pos[2].dy);
   });
 });
 

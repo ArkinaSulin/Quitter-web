@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Cache the deterministic corpse layout (2026-09-06)
+**Files:** src/lib/corpseTracker.ts, src/components/ScenarioMap/useCanvasDraw.ts, src/lib/battleStats.test.ts
+
+- `corpseScatterPositions` and the new `corpseDots(q, r, groups)` memoize their deterministic output (module `Map`, cleared past 5000 entries). `useCanvasDraw` now just looks up the per-hex dot list and draws — pan/zoom/hover/replay no longer regenerate positions or allocate spec arrays each frame. Drawing still scales with the total corpse count (unavoidable), but generation is one-time per hex+count.
+- Behaviour identical; test asserts the cached list is reference-stable and matches the raw scatter. tsc clean; 536 tests pass.
+
 ## Corpse piles match the dead unit + spread from the centre (2026-09-06)
 **Files:** src/lib/corpseTracker.ts, src/components/ScenarioMap/useCanvasDraw.ts, src/lib/battleStats.test.ts, docs/dev/15-token-rendering.md
 
