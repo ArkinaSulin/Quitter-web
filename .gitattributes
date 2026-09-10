@@ -1,0 +1,3 @@
+# Normalize line endings: store LF in the repo, check out LF everywhere.
+# Prevents CRLF/LF churn in diffs (Windows core.autocrlf).
+* text=auto eol=lf
