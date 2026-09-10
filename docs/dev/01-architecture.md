@@ -13,6 +13,7 @@ Router; there is **no multi-page game flow** — the Scenario Map is reached fro
 | `/map-editor` | `app/map-editor/page.tsx` | Map Library (reusable authored maps) | `canViewMapEditor` / `canUseMapEditor` |
 | `/ship-editor` | `app/ship-editor/page.tsx` | Archfar's Shipyard (ship builder) | `canViewShipEditor` / `canUseShipEditor` |
 | `/effect-editor` | `app/effect-editor/page.tsx` | Effect Editor (reusable effect templates) | `canViewEffectEditor` / `canUseEffectEditor` |
+| `/weapon-editor` | `app/weapon-editor/page.tsx` | Weapon Editor (reusable weapons library) | `canViewWeaponEditor` / `canUseWeaponEditor` |
 
 `app/layout.tsx` wraps everything in `MessageProvider` (the game-log
 context), so Messages state survives page switches.

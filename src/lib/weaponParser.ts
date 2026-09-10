@@ -32,6 +32,43 @@ export function isAreaWeapon(weapon: Pick<Weapon, 'magicDimension'>): boolean {
   return weapon.magicDimension > 0;
 }
 
+/** Damage dice grammar: `NdM±X` segments joined by `+` (e.g. "1d6", "2d6+2", "1d4+2d6"). */
+export function isValidDamageDice(dice: string): boolean {
+  const pattern = /^(\d+d\d+)([+-]\d+)?(\+\d+d\d+)*([+-]\d+)?$/;
+  return pattern.test((dice || '').trim());
+}
+
+/** A fresh, valid weapon for the editor's "New" action. */
+export function blankWeapon(): Weapon {
+  return {
+    name: '',
+    attackBonus: 0,
+    damageDice: '1d6',
+    isHealing: false,
+    range: 1,
+    maxRange: 0,
+    magicDimension: 0,
+    shape: 'circle',
+    reach: false,
+    noRetaliation: false,
+    freeAction: false,
+    isTwoHanded: false,
+    numberOfAttacks: 1,
+    onSaveHalfOrNeg: true,
+    savingThrow: 'Dex',
+  };
+}
+
+/** Shared validation for the weapon form (editor page + add-weapon modal). */
+export function validateWeapon(weapon: Weapon): string | null {
+  if (!weapon.name || !weapon.name.trim()) return 'Weapon name is required';
+  if (!isValidDamageDice(weapon.damageDice)) {
+    return 'Damage dice must be in format like "1d6", "2d6+2", or "1d4+2d6"';
+  }
+  if ((weapon.range || 0) < 1) return 'Range must be at least 1 (adjacent)';
+  return null;
+}
+
 /**
  * An offensive weapon deals damage to the target (isHealing is the only non-offensive
  * type today — healing recovers HP instead). Offensive weapons target enemies by

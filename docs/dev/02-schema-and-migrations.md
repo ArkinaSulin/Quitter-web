@@ -91,6 +91,7 @@ as applied in the notes — check the live DB before relying on it).
 | 078 | effect editor: drop `magnitude_mode`, add `layer` (above/below) | ✅ applied |
 | 079 | `effect_images` storage bucket + policies | ✅ applied |
 | 080 | zone ops via command log (`apply_substeps` ZONE branch) + array-safe unit writes | ✅ applied (2026-09-06) |
+| 081 | Weapon Editor: access caps + RLS on `weapons` | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

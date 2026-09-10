@@ -29,6 +29,8 @@ interface AccessRow {
   can_use_map_editor: boolean;
   can_view_effect_editor: boolean;
   can_use_effect_editor: boolean;
+  can_view_weapon_editor: boolean;
+  can_use_weapon_editor: boolean;
 }
 
 export interface Access {
@@ -43,9 +45,11 @@ export interface Access {
   canUseMapEditor: boolean;
   canViewEffectEditor: boolean;
   canUseEffectEditor: boolean;
+  canViewWeaponEditor: boolean;
+  canUseWeaponEditor: boolean;
 }
 
-const EMPTY_ACCESS: Access = { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false, canViewShipEditor: false, canUseShipEditor: false, canViewMapEditor: false, canUseMapEditor: false, canViewEffectEditor: false, canUseEffectEditor: false };
+const EMPTY_ACCESS: Access = { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false, canViewShipEditor: false, canUseShipEditor: false, canViewMapEditor: false, canUseMapEditor: false, canViewEffectEditor: false, canUseEffectEditor: false, canViewWeaponEditor: false, canUseWeaponEditor: false };
 
 let accessCache: Record<string, AccessRow> | null = null;
 
@@ -67,6 +71,8 @@ async function loadAccessMatrix(): Promise<Record<string, AccessRow>> {
       can_use_map_editor: !!row.can_use_map_editor,
       can_view_effect_editor: !!row.can_view_effect_editor,
       can_use_effect_editor: !!row.can_use_effect_editor,
+      can_view_weapon_editor: !!row.can_view_weapon_editor,
+      can_use_weapon_editor: !!row.can_use_weapon_editor,
     };
     return acc;
   }, {});
@@ -88,6 +94,8 @@ function accessForRole(role: ProfileRole): Access {
     canUseMapEditor: row.can_use_map_editor,
     canViewEffectEditor: row.can_view_effect_editor,
     canUseEffectEditor: row.can_use_effect_editor,
+    canViewWeaponEditor: row.can_view_weapon_editor,
+    canUseWeaponEditor: row.can_use_weapon_editor,
   };
 }
 

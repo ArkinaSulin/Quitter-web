@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Weapon Editor page + shared weapon form (2026-09-06)
+**Files:** supabase/migrations/081_weapon_editor.sql (new), src/lib/{weaponParser,weaponMappers}.ts, src/components/WeaponEditor/{WeaponFields,WeaponEditor}.tsx (new), src/components/WeaponEditorModal.tsx, app/weapon-editor/page.tsx (new), src/hooks/useProfile.ts, src/components/Lobby.tsx, docs/dev/{01-architecture,02-schema-and-migrations}.md, README.md, src/lib/weaponMappers.test.ts (new)
+
+- New **Weapon Editor** at `/weapon-editor` (Lobby button beside the other editors; admin/dm author, everyone views). Two panels — searchable list + form, **no preview** — with New / Clone / Save / Delete writing the `weapons` library directly instead of hand-editing the DB.
+- **Shared form**: the weapon fields were extracted into `WeaponFields`, used by both the new page and the existing Add/Edit Weapon modal, so they always match. Validation + defaults live in `weaponParser` (`isValidDamageDice`/`blankWeapon`/`validateWeapon`); row<->object mapping in `weaponMappers`.
+- Migration **081**: `can_view_weapon_editor`/`can_use_weapon_editor` access caps (view all, use admin/dm), `user_has_access` cases, defensive column adds, and RLS on `weapons` (select = view, insert/update/delete = use).
+- Tests: `weaponMappers` (5). tsc clean; 541 tests pass. **Migration 081 must be applied in Supabase.**
+
 ## Cache the deterministic corpse layout (2026-09-06)
 **Files:** src/lib/corpseTracker.ts, src/components/ScenarioMap/useCanvasDraw.ts, src/lib/battleStats.test.ts
 
