@@ -5,6 +5,7 @@
 - **Technical reference** (how the system works, per subsystem): `docs/dev/` — start at `docs/dev/README.md`. Code is canonical; chapters cite `src/lib` + migrations.
 - **Player manual** (rules for humans): `docs/players/player-manual.md`.
 - **Session changelog**: append entries (date-stamped, one per feature/fix, with a `**Files:**` line, newest first) to `docs/dev/changelog.md` — this is the old `handover.md`. Root `handover.md` is a pointer stub.
+- **Outstanding backlog**: `docs/dev/outstanding.md` is the forward-looking roadmap (next / later / blocked).
 
 ## Work Summary (Anchored)
 

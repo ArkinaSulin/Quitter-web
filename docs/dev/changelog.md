@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Log outstanding backlog for next session (2026-09-06)
+**Files:** docs/dev/outstanding.md (new), docs/dev/README.md, docs/README.md, AGENTS.md
+
+- Added a forward-looking roadmap: remaining effects work (images/layer bands, composite-instance decision), Full AI mode, the Spelljammer engine, blocked player-team/auth items, rules housekeeping, docs refresh + screenshot manifest, migration notes (068-077 applied; the apply_substeps array fix exists as SQL only - consider a 078 migration file), and the owner's uncommitted ship WIP.
+
+
+
 ## Entry-zone troop-count prompt + DoT tick help (2026-09-06)
 **Files:** src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ScenarioMap,EffectsPanel}.tsx, docs (changelog)
 

@@ -12,6 +12,7 @@ This tree is the single home for all documentation. It has two audiences:
 | [`dev/`](dev/README.md) — **Technical menu** | Developers & future agent sessions | How the system actually works: architecture, every subsystem, schema, migrations, command/undo pipeline, realtime sync. Written **from the code**, with `file:line` pointers. |
 | [`players/player-manual.md`](players/player-manual.md) — **Player manual** | Players & GMs | Instructions + rules reference + worked examples. One book, sized to become the Word/PDF manual. GM-only rules are flagged. |
 | [`dev/changelog.md`](dev/changelog.md) — **Session changelog** | Developers | Reverse-chronological log of every work session (was `handover.md`). Append here at the end of each session. |
+| [`dev/outstanding.md`](dev/outstanding.md) — **Backlog / roadmap** | Developers | What's left to build (effects images, Full AI, Spelljammer engine, docs refresh, migrations). |
 
 ## Reading order
 

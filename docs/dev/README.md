@@ -81,6 +81,7 @@ Two big ideas make the whole system coherent:
 | [16](16-ship-builder.md) | Ship builder (Shipyard) | Ship stats engine (v8.1 FINAL) + editor/renderer — **engine pending**, devs only | `src/lib/shipStats.ts`, `src/types/ship.ts`, `src/components/ShipEditor/*`, migrations 059/066–070 |
 | [17](17-enemy-ai.md) | AI assist (enemy AI) | GM plotting tool: planner gates, preview routes, execute-through-action-path, undo macro | `src/lib/enemyAI/*`, `src/components/ScenarioMap/{AiPanel,aiTypes,useCanvasDraw}.ts(x)`, migration 076 |
 | — | [changelog](changelog.md) | Session history (newest first) | append-only |
+| — | [outstanding](outstanding.md) | Forward-looking backlog / roadmap for next sessions | statuses: next / later / blocked |
 | — | [legacy/HANDBOOK.md](legacy/HANDBOOK.md) | Archived pre-reorg technical doc | read for history only |
 
 ## Cross-cutting quick references
