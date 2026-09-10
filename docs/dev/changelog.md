@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Effect Editor: image-size slider + 7-hex preview (2026-09-06)
+**Files:** supabase/migrations/082_effect_image_scale.sql (new), src/lib/effectTemplates.ts, src/types/gameProtocol.ts, src/components/EffectEditor/{EffectEditor,EffectHexPreview}.tsx (hex preview new), src/components/ScenarioMap/{ScenarioMap,EffectsPanel,EffectFormModal,AddEffectModal}.tsx, src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{02-schema-and-migrations,10-temporary-effects}.md
+
+- New per-template **image scale** (percent, default 100) with a slider in the Effect Editor under the image picker (and in the drop/edit form). Migration **082** adds `effect_templates.image_scale`; the scale rides the drag payload and every `UnitEffect`/`GroundEffect`, and `useCanvasDraw` multiplies the drawn artwork height (default = 1.2 hex-radii) by it.
+- New **`EffectHexPreview`**: the right panel now previews the effect over a **7-hex grid** (centre + 6 neighbours) at the same relative size as the map, so you can size the image against real hexes.
+- tsc clean; 541 tests pass. **Migration 082 must be applied in Supabase.**
+
 ## Unit Editor: contextual Create / Save / Cancel footer (2026-09-06)
 **Files:** src/components/UnitEditor.tsx, docs/dev/changelog.md
 

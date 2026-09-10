@@ -15,6 +15,7 @@ export function dragPayload(t: EffectTemplate): string {
     name: t.name,
     color: t.color,
     imageUrl: t.imageUrl,
+    imageScale: t.imageScale,
     layer: t.layer,
     scope: t.scope,
     defaultDuration: t.defaultDuration,
@@ -22,7 +23,7 @@ export function dragPayload(t: EffectTemplate): string {
   });
 }
 
-export function parseDragPayload(raw: string): Pick<EffectTemplate, 'id' | 'name' | 'color' | 'imageUrl' | 'layer' | 'scope' | 'defaultDuration' | 'modifiers'> | null {
+export function parseDragPayload(raw: string): Pick<EffectTemplate, 'id' | 'name' | 'color' | 'imageUrl' | 'imageScale' | 'layer' | 'scope' | 'defaultDuration' | 'modifiers'> | null {
   try {
     const o = JSON.parse(raw);
     if (!o || o.kind !== 'quitter-effect' || !o.name) return null;
@@ -31,6 +32,7 @@ export function parseDragPayload(raw: string): Pick<EffectTemplate, 'id' | 'name
       name: o.name,
       color: o.color || '#cccccc',
       imageUrl: o.imageUrl || '',
+      imageScale: Number(o.imageScale) || 100,
       layer: o.layer === 'above' ? 'above' : 'below',
       scope: o.scope === 'zone' ? 'zone' : o.scope === 'both' ? 'both' : 'unit',
       defaultDuration: Number(o.defaultDuration) || 3,

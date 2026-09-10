@@ -88,16 +88,19 @@ display: `verboseCombat.formatSpellRollLine` prints
   or (GM) Place Zone; lists the unit's active effects **and** the ground zones
   on its hex, each with **Edit / Clone / ✕**.
 - **Effect Editor** (`/effect-editor`, `EffectEditor.tsx`) authors reusable
-  templates: identity (name/colour/**image**/**layer**), scope, default
-  duration, and one or more modifiers. The colour field is a swatch + hex box +
-  preset palette (`ColorField`); the image is picked/uploaded from the
-  `effect_images` storage bucket (`ImagePickerModal`, generalized by bucket);
-  `layer` is **below unit** (default) or **above unit**. Each modifier has a
-  single **amount** field accepting a plain number (flat) or dice `XdY±Z`
-  (`X=0` = flat `Z`); the flat part is mirrored into `delta` for stat kinds and
-  legacy consumers. The modifier row is the shared `EffectModifierFields`.
+  templates: identity (name/colour/**image**/**image scale**/**layer**), scope,
+  default duration, and one or more modifiers. The colour field is a swatch + hex
+  box + preset palette (`ColorField`); the image is picked/uploaded from the
+  `effect_images` storage bucket (`ImagePickerModal`, generalized by bucket); an
+  **image-size slider** (`image_scale`, 10–300%) sits under the picker, and the
+  right panel previews it on a **7-hex grid** (`EffectHexPreview`) at the same
+  relative size the map uses. `layer` is **below unit** (default) or **above
+  unit**. Each modifier has a single **amount** field accepting a plain number
+  (flat) or dice `XdY±Z` (`X=0` = flat `Z`); the flat part is mirrored into
+  `delta` for stat kinds and legacy consumers. The modifier row is the shared
+  `EffectModifierFields`.
 - **Drop form** (`EffectFormModal`): dragging a library effect onto the map (unit
-  or hex) opens an editable form showing name/colour/image/layer, duration,
+  or hex) opens an editable form showing name/colour/image/scale/layer, duration,
   tempo, and every modifier *before* applying. There is **no radius** — a zone
   drops on a single hex. There is no description field here (descriptions are
   authored only in the Effect Editor).
@@ -116,7 +119,8 @@ display: `verboseCombat.formatSpellRollLine` prints
   applies/restores its stat at once instead of waiting for the next activation.
 - **The unit's Effects… dialog uses the library** (`effect_templates`), so
   composites (Haunted), Sleep, and zone templates are all applicable there too.
-- Effect artwork renders on the map at `layer` (below / above the unit token);
+- Effect artwork renders on the map at `layer` (below / above the unit token) and
+  `imageScale` (height = 1.2 hex-radii × scale%);
   "above" artwork hides while the unit on its hex is hovered so the token stays
   inspectable. UnitTooltip shows effect chips (colour + remaining turns); tokens
   draw effect pips below the token.

@@ -66,6 +66,8 @@ export interface EffectTemplate {
   description: string;
   color: string;
   imageUrl: string;
+  /** Image size multiplier in percent (100 = default 1.2-hex-high artwork). */
+  imageScale: number;
   layer: EffectLayer;
   scope: EffectScope;
   defaultDuration: number;
@@ -104,6 +106,7 @@ export function mapEffectRow(row: any): EffectTemplate {
     description: row.description || '',
     color: row.color || '#cccccc',
     imageUrl: row.image_url || '',
+    imageScale: Number(row.image_scale) || 100,
     layer: row.layer === 'above' ? 'above' : 'below',
     scope: row.scope === 'zone' ? 'zone' : row.scope === 'both' ? 'both' : 'unit',
     defaultDuration: Number(row.default_duration) || 3,
@@ -114,13 +117,14 @@ export function mapEffectRow(row: any): EffectTemplate {
 }
 
 export function mapEffectToRow(
-  t: Pick<EffectTemplate, 'name' | 'description' | 'color' | 'imageUrl' | 'layer' | 'scope' | 'defaultDuration' | 'modifiers'>,
+  t: Pick<EffectTemplate, 'name' | 'description' | 'color' | 'imageUrl' | 'imageScale' | 'layer' | 'scope' | 'defaultDuration' | 'modifiers'>,
 ) {
   return {
     name: t.name,
     description: t.description,
     color: t.color,
     image_url: t.imageUrl,
+    image_scale: Math.max(1, Math.round(t.imageScale || 100)),
     layer: t.layer,
     scope: t.scope,
     default_duration: t.defaultDuration,
@@ -134,6 +138,7 @@ export function blankEffectTemplate(): Omit<EffectTemplate, 'id' | 'createdAt' |
     description: '',
     color: '#ffd54d',
     imageUrl: '',
+    imageScale: 100,
     layer: 'below',
     scope: 'unit',
     defaultDuration: 3,

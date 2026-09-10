@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { ColorField } from '@/components/ColorField';
 import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
+import { EffectHexPreview } from '@/components/EffectEditor/EffectHexPreview';
 import {
   EffectTemplate, EffectModifier, EffectLayer, EffectScope,
   mapEffectRow, mapEffectToRow, blankEffectTemplate,
@@ -166,6 +167,15 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
                   </select>
                 </label>
               </div>
+              <label className="block text-xs text-gray-400">Image size — {draft.imageScale}%
+                <input
+                  type="range" min={10} max={300} step={5}
+                  value={draft.imageScale}
+                  disabled={readOnly || !draft.imageUrl}
+                  onChange={e => setDraft({ ...draft, imageScale: Math.max(10, Math.min(300, parseInt(e.target.value) || 100)) })}
+                  className="w-full accent-amber-400 disabled:opacity-40"
+                />
+              </label>
               <label className="block text-xs text-gray-400">Description
                 <textarea className={input} rows={2} value={draft.description} disabled={readOnly} onChange={e => setDraft({ ...draft, description: e.target.value })} />
               </label>
@@ -236,8 +246,10 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
               </div>
               {draft.imageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={draft.imageUrl} alt="" className="max-h-28 rounded border border-gray-700 object-contain bg-gray-900" />
+                <img src={draft.imageUrl} alt="" className="max-h-24 rounded border border-gray-700 object-contain bg-gray-900" />
               )}
+              <p className="text-[10px] uppercase tracking-wide text-gray-500">On the map</p>
+              <EffectHexPreview imageUrl={draft.imageUrl} imageScale={draft.imageScale} color={draft.color} layer={draft.layer} />
               <p className="text-xs text-gray-300">{summary}</p>
               <p className="text-[11px] text-gray-500">{draft.description}</p>
               <p className="text-[11px] text-gray-500">

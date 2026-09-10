@@ -137,34 +137,34 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     // Effect artwork on hexes. "below" draws under corpses/tokens (here);
     // "above" draws after the token loop. A hex whose unit is hovered skips its
     // "above" artwork so the token stays inspectable.
-    const drawEffectImage = (hex: Hex, url: string) => {
+    const drawEffectImage = (hex: Hex, url: string, scale: number) => {
       const img = getLoadedImage(url);
       if (!img) return;
       const { cx, cy } = hexCenter(hex);
       const ratio = img.naturalWidth / Math.max(1, img.naturalHeight);
-      const h = tokenHeight;
+      const h = tokenHeight * ((scale || 100) / 100);
       const w = h * ratio;
       ctx.save();
       ctx.globalAlpha = 0.95;
       ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
       ctx.restore();
     };
-    const belowImages: { hex: Hex; url: string; z: number }[] = [];
-    const aboveImages: { hex: Hex; url: string; z: number }[] = [];
-    const pushEffectImage = (hex: Hex, url: string, layer: 'above' | 'below', z: number) => {
+    const belowImages: { hex: Hex; url: string; z: number; scale: number }[] = [];
+    const aboveImages: { hex: Hex; url: string; z: number; scale: number }[] = [];
+    const pushEffectImage = (hex: Hex, url: string, layer: 'above' | 'below', z: number, scale: number) => {
       if (!url || isFogHidden(`${hex.q},${hex.r}`)) return;
-      (layer === 'above' ? aboveImages : belowImages).push({ hex, url, z });
+      (layer === 'above' ? aboveImages : belowImages).push({ hex, url, z, scale });
     };
     for (const z of groundZones ?? []) {
-      if (z.imageUrl) pushEffectImage({ q: z.q, r: z.r, s: -z.q - z.r }, z.imageUrl, z.layer ?? 'below', z.zIndex ?? 0);
+      if (z.imageUrl) pushEffectImage({ q: z.q, r: z.r, s: -z.q - z.r }, z.imageUrl, z.layer ?? 'below', z.zIndex ?? 0, z.imageScale ?? 100);
     }
     for (const u of displayUnits) {
       if (u.isDeleted || u.attachedToUnitId) continue;
       for (const e of u.effects ?? []) {
-        if (e.imageUrl && !e.zoneHex) pushEffectImage(u.hex, e.imageUrl, e.layer ?? 'below', 0);
+        if (e.imageUrl && !e.zoneHex) pushEffectImage(u.hex, e.imageUrl, e.layer ?? 'below', 0, e.imageScale ?? 100);
       }
     }
-    for (const im of belowImages) drawEffectImage(im.hex, im.url);
+    for (const im of belowImages) drawEffectImage(im.hex, im.url, im.scale);
     const hoveredHexKey = (() => {
       const hu = displayUnits.find(u => u.id === aiHoveredUnitId);
       return hu ? `${hu.hex.q},${hu.hex.r}` : null;
@@ -346,7 +346,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     // "Above unit" effect artwork (hides while the unit on its hex is hovered).
     for (const im of aboveImages.sort((a, b) => a.z - b.z)) {
       if (hoveredHexKey && `${im.hex.q},${im.hex.r}` === hoveredHexKey) continue;
-      drawEffectImage(im.hex, im.url);
+      drawEffectImage(im.hex, im.url, im.scale);
     }
 
     // Active-effect pips: one colored dot per effect under the token (small, cheap).

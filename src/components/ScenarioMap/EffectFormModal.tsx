@@ -13,6 +13,8 @@ export interface EffectFormValue {
   name: string;
   color: string;
   imageUrl: string;
+  /** Image size multiplier in percent (100 = default). */
+  imageScale: number;
   layer: EffectLayer;
   duration: number;
   /** '' = every alliance activation (tempo-free); otherwise a team name. */
@@ -87,6 +89,15 @@ export function EffectFormModal({
               </select>
             </label>
           </div>
+
+          <label className="block text-xs text-gray-400">Image size — {value.imageScale}%
+            <input
+              type="range" min={10} max={300} step={5}
+              value={value.imageScale}
+              onChange={e => patch({ imageScale: Math.max(10, Math.min(300, parseInt(e.target.value) || 100)) })}
+              className="w-full accent-amber-400"
+            />
+          </label>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="text-xs text-gray-400">Duration (caster activations)

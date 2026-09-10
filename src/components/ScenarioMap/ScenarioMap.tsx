@@ -91,6 +91,7 @@ type DroppedEffect = {
   name: string;
   color: string;
   imageUrl: string;
+  imageScale: number;
   layer: 'above' | 'below';
   scope: 'unit' | 'zone' | 'both';
   defaultDuration: number;
@@ -111,6 +112,7 @@ function formFromDrop(t: DroppedEffect, casterTeam: string): EffectFormValue {
     name: t.name,
     color: t.color,
     imageUrl: t.imageUrl,
+    imageScale: t.imageScale ?? 100,
     layer: t.layer,
     duration: t.defaultDuration,
     casterTeam,
@@ -132,6 +134,7 @@ function formFromZone(z: GroundEffect): EffectFormValue {
     name: z.name,
     color: z.color,
     imageUrl: z.imageUrl ?? '',
+    imageScale: z.imageScale ?? 100,
     layer: z.layer ?? 'below',
     duration: z.turnsLeft,
     casterTeam: z.casterTeam ?? '',
@@ -153,6 +156,7 @@ function formFromUnitEffect(e: import('@/types/gameProtocol').UnitEffect): Effec
     name: e.name,
     color: e.color,
     imageUrl: e.imageUrl ?? '',
+    imageScale: e.imageScale ?? 100,
     layer: e.layer ?? 'below',
     duration: Math.max(1, e.turnsLeft),
     casterTeam: e.casterTeam ?? '',
@@ -752,6 +756,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         name: d.form.name,
         color: d.form.color,
         ...(d.form.imageUrl ? { imageUrl: d.form.imageUrl } : {}),
+        imageScale: d.form.imageScale,
         layer: d.form.layer,
         kind: m.kind as 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow',
         delta: m.delta,
@@ -779,6 +784,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         name: d.form.name,
         color: d.form.color,
         ...(d.form.imageUrl ? { imageUrl: d.form.imageUrl } : {}),
+        imageScale: d.form.imageScale,
         layer: d.form.layer,
         kind: m.kind as GroundEffect['kind'],
         delta: m.delta,
@@ -827,6 +833,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       name: form.name,
       color: form.color,
       imageUrl: form.imageUrl,
+      imageScale: form.imageScale,
       layer: form.layer,
       kind: (m.kind as GroundEffect['kind']) ?? z.kind,
       delta: m.delta,
@@ -851,6 +858,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       name: form.name,
       color: form.color,
       imageUrl: form.imageUrl,
+      imageScale: form.imageScale,
       layer: form.layer,
       kind: m.kind as EffectKind,
       delta: m.delta,

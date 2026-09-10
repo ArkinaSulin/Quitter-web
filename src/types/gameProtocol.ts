@@ -186,6 +186,8 @@ export interface UnitEffect {
   kind: EffectKind;
   /** Optional effect artwork drawn on the carrier's hex. */
   imageUrl?: string;
+  /** Artwork size multiplier in percent (100 = default). */
+  imageScale?: number;
   /** Draw the artwork above or below the unit token on that hex. */
   layer?: 'above' | 'below';
   /** Signed stat delta (ac/morale/movement) or per-tick DoT damage (dot). */
@@ -224,6 +226,8 @@ export interface GroundEffect {
   kind: EffectKind;
   /** Optional effect artwork drawn on this hex. */
   imageUrl?: string;
+  /** Artwork size multiplier in percent (100 = default). */
+  imageScale?: number;
   /** Draw the artwork above or below the unit token on this hex. */
   layer?: 'above' | 'below';
   delta: number;
