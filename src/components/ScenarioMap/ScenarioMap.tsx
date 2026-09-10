@@ -514,6 +514,25 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, []);
 
 
+  // Entry-zone troop-count prompt: the engine awaits this while resolving a move
+  // that lands on an 'entry' zone.
+  const [entryPrompt, setEntryPrompt] = useState<{ actor: Unit; zone: GroundEffect; resolve: (n: number) => void } | null>(null);
+  const [entryCount, setEntryCount] = useState(0);
+  const requestEntryTroops = useCallback(
+    (actor: Unit, zone: GroundEffect) =>
+      new Promise<number>(resolve => {
+        setEntryCount(Math.max(0, actor.currentTroopCount ?? 0));
+        setEntryPrompt({ actor, zone, resolve });
+      }),
+    [],
+  );
+  const resolveEntryPrompt = useCallback((n: number) => {
+    setEntryPrompt(prev => {
+      if (prev) prev.resolve(Math.max(0, Math.floor(n)));
+      return null;
+    });
+  }, []);
+
   const {
       execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, otherAction, endTurn, applyEffect, removeEffect, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog, syncZoneEffects,
   } = useGameEngine({
@@ -526,6 +545,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     refreshUnitsByIds,
     setAllianceLocal,
     setScenarioLocal,
+    requestEntryTroops,
   });
 
   // "Other Action…" (hero roleplay): spend 1 action; the table resolves it by
@@ -2554,6 +2574,39 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             <div className="flex justify-end gap-2">
               <button className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-sm" onClick={() => setEffectZoneDrop(null)}>Cancel</button>
               <button className="px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-sm" onClick={() => void applyZoneDrop()}>Place</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Entry-zone troop-count prompt */}
+      {entryPrompt && (
+        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/50">
+          <div className="bg-gray-900 border border-red-700 rounded-xl p-5 w-[380px]">
+            <p className="text-white font-semibold mb-1">
+              {entryPrompt.actor.unitName} enters {entryPrompt.zone.name}
+            </p>
+            <p className="text-xs text-gray-400 mb-3">
+              How many troops are caught? The ones behind stop at the boundary (0 = none).
+              Each takes {entryPrompt.zone.dice || entryPrompt.zone.delta}{entryPrompt.zone.healing ? ' healing' : ' damage'} (capped at troop HP).
+            </p>
+            <input
+              autoFocus
+              type="number"
+              min={0}
+              max={entryPrompt.actor.currentTroopCount}
+              value={entryCount}
+              onChange={e => setEntryCount(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+              onKeyDown={e => { if (e.key === 'Enter') resolveEntryPrompt(entryCount); }}
+              className="w-24 bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700 mb-4"
+            />
+            <div className="flex justify-end gap-2">
+              <button className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-sm" onClick={() => resolveEntryPrompt(0)}>
+                None
+              </button>
+              <button className="px-3 py-1.5 rounded bg-red-800 hover:bg-red-700 text-white text-sm" onClick={() => resolveEntryPrompt(entryCount)}>
+                Continue
+              </button>
             </div>
           </div>
         </div>

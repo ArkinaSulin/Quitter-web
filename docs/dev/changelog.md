@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Entry-zone troop-count prompt + DoT tick help (2026-09-06)
+**Files:** src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ScenarioMap,EffectsPanel}.tsx, docs (changelog)
+
+- Landing on an **entry** zone now prompts 'How many troops are caught?' (0 = none; default = all). Only that many troops roll saves / take the dice damage (per-troop cap). The engine awaits the prompt and folds the result into the same MOVE command (undo-safe); all/legacy = all troops if no callback.
+- EffectsPanel notes DoT damage begins on the effect's next tick; use a zone entry effect for immediate damage.
+
+
+
 ## Effects: dice/heal/saves, zone menu (Move up/down, Drop Effect) (2026-09-06)
 **Files:** src/types/gameProtocol.ts, src/lib/effectTemplates.ts, src/lib/unitEffects.ts + test, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ScenarioMap,EffectsPanel,useCanvasDraw}.tsx, src/components/EffectEditor/EffectEditor.tsx, docs (changelog)
 

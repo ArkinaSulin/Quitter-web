@@ -26,6 +26,8 @@ interface UseGameEngineProps {
   refreshUnitsByIds?: (ids: string[]) => Promise<void>;
   setAllianceLocal?: (team: string, group: AllianceGroup) => void;
   setScenarioLocal?: (fields: Record<string, any>) => void;
+  /** Ask the table how many troops are caught by an 'entry' zone (default: all). */
+  requestEntryTroops?: (actor: Unit, zone: GroundEffect) => Promise<number>;
 }
 
 export function useGameEngine({
@@ -37,6 +39,7 @@ export function useGameEngine({
   refreshUnitsByIds,
   setAllianceLocal,
   setScenarioLocal,
+  requestEntryTroops,
 }: UseGameEngineProps) {
   const { addMessage, addError } = useMessageSync(scenarioId);
 
@@ -318,12 +321,22 @@ export function useGameEngine({
     groundZonesRef.current = zones;
   }, []);
 
-  const entryDamageSteps = (actor: Unit, hex: Hex, zones: GroundEffect[]): SubStep[] =>
-    zones
-      .filter(z => z.kind === 'entry' && ((z.dice && z.dice.trim()) || (z.delta || 0) > 0) && z.q === hex.q && z.r === hex.r)
-      .map(z => ({
-        type: 'DAMAGE' as const,
-        description: `${actor.unitName} entered ${z.name} (${z.dice || z.delta}${z.healing ? ' healing' : ' damage'})`,
+  const entryDamageSteps = async (actor: Unit, hex: Hex, zones: GroundEffect[]): Promise<SubStep[]> => {
+    const out: SubStep[] = [];
+    for (const z of zones.filter(z => z.kind === 'entry' && ((z.dice && z.dice.trim()) || (z.delta || 0) > 0) && z.q === hex.q && z.r === hex.r)) {
+      // Ask how many troops are caught (troops behind may stop at the boundary).
+      let affected = Math.max(0, actor.currentTroopCount ?? 0);
+      if (requestEntryTroops) {
+        try {
+          affected = await requestEntryTroops(actor, z);
+        } catch {
+          affected = Math.max(0, actor.currentTroopCount ?? 0);
+        }
+      }
+      if (affected <= 0) continue;
+      out.push({
+        type: 'DAMAGE',
+        description: `${actor.unitName} entered ${z.name} (${affected} troop${affected === 1 ? '' : 's'}, ${z.dice || z.delta}${z.healing ? ' healing' : ' damage'})`,
         unitId: actor.id,
         changes: effectDamageChanges(actor, {
           delta: z.delta,
@@ -332,8 +345,11 @@ export function useGameEngine({
           savingThrow: z.savingThrow,
           saveDC: z.saveDC,
           onSaveHalfOrNeg: z.onSaveHalfOrNeg,
-        }),
-      }));
+        }, Math.random, affected),
+      });
+    }
+    return out;
+  };
 
   const moveUnitRecorded = useCallback(
     async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean }): Promise<void> => {
@@ -375,12 +391,12 @@ export function useGameEngine({
 
       // Zone traps: landing on an 'entry' zone deals its damage this same command.
       const zones = groundZonesRef.current;
-      subSteps.push(...entryDamageSteps(unit, targetHex, zones));
-      if (attachedHero) subSteps.push(...entryDamageSteps(attachedHero, targetHex, zones));
+      subSteps.push(...await entryDamageSteps(unit, targetHex, zones));
+      if (attachedHero) subSteps.push(...await entryDamageSteps(attachedHero, targetHex, zones));
 
       await execute('MOVE', subSteps, subSteps[0].description, options);
     },
-    [execute, entryDamageSteps],
+    [execute, entryDamageSteps, requestEntryTroops],
   );
 
   const moveUnitFree = useCallback(
@@ -407,11 +423,11 @@ export function useGameEngine({
       }
       // Zone traps apply on free-move landings too.
       const zones = groundZonesRef.current;
-      subSteps.push(...entryDamageSteps(unit, targetHex, zones));
-      if (attachedHero) subSteps.push(...entryDamageSteps(attachedHero, targetHex, zones));
+      subSteps.push(...await entryDamageSteps(unit, targetHex, zones));
+      if (attachedHero) subSteps.push(...await entryDamageSteps(attachedHero, targetHex, zones));
       await execute('MOVE', subSteps, subSteps[0].description);
     },
-    [execute, entryDamageSteps],
+    [execute, entryDamageSteps, requestEntryTroops],
   );
 
   const rotateUnit = useCallback(

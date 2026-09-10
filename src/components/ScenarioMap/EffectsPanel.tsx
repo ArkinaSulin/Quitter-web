@@ -74,7 +74,10 @@ export default function EffectsPanel() {
           </span>
         </div>
       ))}
-      <p className="text-[11px] text-gray-500">{hint || 'Drag an effect onto the board to place it.'}</p>
+      <p className="text-[11px] text-gray-500">
+        {hint || 'Drag an effect onto the board to place it.'}
+        {' '}DoT damage begins on the effect's next tick — use a zone <b>entry</b> effect for immediate damage.
+      </p>
     </div>
   );
 }
