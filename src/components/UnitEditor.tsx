@@ -254,6 +254,11 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
 
   const isDirty = !!formData && JSON.stringify(formData) !== savedSnapshotRef.current;
 
+  // "New" = not yet persisted (its random id isn't in the loaded list). Drives the
+  // contextual footer: Create/Cancel for a fresh unit, Save/Save As/Cancel/Delete
+  // for one loaded from the DB (mirrors the Weapon Editor).
+  const isNewUnit = !!formData && !templates.some(t => t.id === formData.id);
+
   // If there are unsaved edits, route the action through the confirm modal.
   const requestAction = (action: () => void) => {
     if (isDirty) {
@@ -800,6 +805,20 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
     setCloneName(`${formData.unitName} (Copy)`);
     setCloneError('');
     setShowCloneModal(true);
+  };
+
+  // Discard the current draft and clear the selection (new unit = throw the
+  // blank away; existing = close the editor). Dirty edits prompt first.
+  const handleCancel = () => {
+    if (readOnly) return;
+    if (!formData) return;
+    requestAction(() => {
+      setFormData(null);
+      setSelectedId(null);
+      savedSnapshotRef.current = '';
+      setError(null);
+      setSuccess(null);
+    });
   };
 
   const handleDelete = async () => {
@@ -1351,20 +1370,30 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                   onClick={handleSave}
                   className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
                 >
-                  Save
+                  {isNewUnit ? 'Create' : 'Save'}
                 </button>
+                {!isNewUnit && (
+                  <button
+                    onClick={handleSaveAs}
+                    className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+                  >
+                    Save As
+                  </button>
+                )}
                 <button
-                  onClick={handleSaveAs}
-                  className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+                  onClick={handleCancel}
+                  className="px-6 py-2 bg-gray-700 border-2 border-gray-500 text-white rounded hover:bg-gray-600 transition"
                 >
-                  Save As
+                  Cancel
                 </button>
-                <button
-                  onClick={handleDelete}
-                  className="px-6 py-2 bg-red-800 border-2 border-red-400 text-white rounded hover:bg-red-700 transition"
-                >
-                  Delete
-                </button>
+                {!isNewUnit && (
+                  <button
+                    onClick={handleDelete}
+                    className="px-6 py-2 bg-red-800 border-2 border-red-400 text-white rounded hover:bg-red-700 transition"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
               )}
             </>

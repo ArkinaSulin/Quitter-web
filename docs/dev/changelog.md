@@ -1,5 +1,10 @@
 # QuiTTER Changelog
 
+## Unit Editor: contextual Create / Save / Cancel footer (2026-09-06)
+**Files:** src/components/UnitEditor.tsx, docs/dev/changelog.md
+
+- The sticky footer now matches the Weapon Editor's flow: a **new** unit (its id isn't in the loaded list) shows **Create** + **Cancel**; a **loaded** unit shows **Save** + **Save As** + **Cancel** + **Delete**. Cancel discards the draft and clears the selection (routed through the existing unsaved-changes prompt when dirty). tsc clean; 541 tests pass.
+
 ## Weapon Editor page + shared weapon form (2026-09-06)
 **Files:** supabase/migrations/081_weapon_editor.sql (new), src/lib/{weaponParser,weaponMappers}.ts, src/components/WeaponEditor/{WeaponFields,WeaponEditor}.tsx (new), src/components/WeaponEditorModal.tsx, app/weapon-editor/page.tsx (new), src/hooks/useProfile.ts, src/components/Lobby.tsx, docs/dev/{01-architecture,02-schema-and-migrations}.md, README.md, src/lib/weaponMappers.test.ts (new)
 
