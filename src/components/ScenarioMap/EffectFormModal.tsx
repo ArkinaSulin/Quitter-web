@@ -15,6 +15,8 @@ export interface EffectFormValue {
   imageUrl: string;
   /** Image size multiplier in percent (100 = default). */
   imageScale: number;
+  /** Skip the zone hex tint so only the artwork/marker show. */
+  transparentBackground: boolean;
   layer: EffectLayer;
   duration: number;
   /** '' = every alliance activation (tempo-free); otherwise a team name. */
@@ -97,6 +99,16 @@ export function EffectFormModal({
               onChange={e => patch({ imageScale: Math.max(10, Math.min(300, parseInt(e.target.value) || 100)) })}
               className="w-full accent-amber-400"
             />
+          </label>
+
+          <label className="flex items-center gap-2 text-[11px] text-gray-400">
+            <input
+              type="checkbox"
+              checked={value.transparentBackground}
+              onChange={e => patch({ transparentBackground: e.target.checked })}
+              className="h-3.5 w-3.5 accent-amber-400"
+            />
+            Transparent background (no zone hex tint)
           </label>
 
           <div className="grid grid-cols-2 gap-3">

@@ -92,6 +92,7 @@ type DroppedEffect = {
   color: string;
   imageUrl: string;
   imageScale: number;
+  transparentBackground: boolean;
   layer: 'above' | 'below';
   scope: 'unit' | 'zone' | 'both';
   defaultDuration: number;
@@ -113,6 +114,7 @@ function formFromDrop(t: DroppedEffect, casterTeam: string): EffectFormValue {
     color: t.color,
     imageUrl: t.imageUrl,
     imageScale: t.imageScale ?? 100,
+    transparentBackground: t.transparentBackground ?? false,
     layer: t.layer,
     duration: t.defaultDuration,
     casterTeam,
@@ -135,6 +137,7 @@ function formFromZone(z: GroundEffect): EffectFormValue {
     color: z.color,
     imageUrl: z.imageUrl ?? '',
     imageScale: z.imageScale ?? 100,
+    transparentBackground: z.transparentBackground ?? false,
     layer: z.layer ?? 'below',
     duration: z.turnsLeft,
     casterTeam: z.casterTeam ?? '',
@@ -157,6 +160,7 @@ function formFromUnitEffect(e: import('@/types/gameProtocol').UnitEffect): Effec
     color: e.color,
     imageUrl: e.imageUrl ?? '',
     imageScale: e.imageScale ?? 100,
+    transparentBackground: e.transparentBackground ?? false,
     layer: e.layer ?? 'below',
     duration: Math.max(1, e.turnsLeft),
     casterTeam: e.casterTeam ?? '',
@@ -757,6 +761,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         color: d.form.color,
         ...(d.form.imageUrl ? { imageUrl: d.form.imageUrl } : {}),
         imageScale: d.form.imageScale,
+        transparentBackground: d.form.transparentBackground,
         layer: d.form.layer,
         kind: m.kind as 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow',
         delta: m.delta,
@@ -785,6 +790,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         color: d.form.color,
         ...(d.form.imageUrl ? { imageUrl: d.form.imageUrl } : {}),
         imageScale: d.form.imageScale,
+        transparentBackground: d.form.transparentBackground,
         layer: d.form.layer,
         kind: m.kind as GroundEffect['kind'],
         delta: m.delta,
@@ -834,6 +840,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       color: form.color,
       imageUrl: form.imageUrl,
       imageScale: form.imageScale,
+      transparentBackground: form.transparentBackground,
       layer: form.layer,
       kind: (m.kind as GroundEffect['kind']) ?? z.kind,
       delta: m.delta,
@@ -859,6 +866,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       color: form.color,
       imageUrl: form.imageUrl,
       imageScale: form.imageScale,
+      transparentBackground: form.transparentBackground,
       layer: form.layer,
       kind: m.kind as EffectKind,
       delta: m.delta,

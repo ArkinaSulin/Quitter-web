@@ -142,6 +142,16 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
               <div>
                 <p className="text-xs text-gray-400 mb-1">Color</p>
                 <ColorField value={draft.color} readOnly={readOnly} onChange={color => setDraft({ ...draft, color })} />
+                <label className="flex items-center gap-2 mt-2 text-[11px] text-gray-400">
+                  <input
+                    type="checkbox"
+                    disabled={readOnly}
+                    checked={draft.transparentBackground}
+                    onChange={e => setDraft({ ...draft, transparentBackground: e.target.checked })}
+                    className="h-3.5 w-3.5 accent-amber-400"
+                  />
+                  Transparent background (no zone hex tint; the colour still marks the dot/pip)
+                </label>
               </div>
               <div className="flex flex-wrap items-end gap-3">
                 <div className="flex items-center gap-2">
@@ -249,7 +259,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
                 <img src={draft.imageUrl} alt="" className="max-h-24 rounded border border-gray-700 object-contain bg-gray-900" />
               )}
               <p className="text-[10px] uppercase tracking-wide text-gray-500">On the map</p>
-              <EffectHexPreview imageUrl={draft.imageUrl} imageScale={draft.imageScale} color={draft.color} layer={draft.layer} />
+              <EffectHexPreview imageUrl={draft.imageUrl} imageScale={draft.imageScale} color={draft.color} layer={draft.layer} transparentBackground={draft.transparentBackground} />
               <p className="text-xs text-gray-300">{summary}</p>
               <p className="text-[11px] text-gray-500">{draft.description}</p>
               <p className="text-[11px] text-gray-500">

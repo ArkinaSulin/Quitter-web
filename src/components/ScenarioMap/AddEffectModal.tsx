@@ -69,6 +69,7 @@ export function AddEffectModal({
     color: template?.color ?? '#cccccc',
     imageUrl: template?.imageUrl ?? '',
     imageScale: template?.imageScale ?? 100,
+    transparentBackground: template?.transparentBackground ?? false,
     layer: template?.layer ?? 'below',
     duration: Math.max(1, duration),
     casterTeam: tempo === 'every-turn' ? '' : tempo,

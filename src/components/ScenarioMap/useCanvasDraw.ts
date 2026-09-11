@@ -175,8 +175,10 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         if (isFogHidden(key)) continue;
         const c = z.color || '#ff7043';
         ctx.save();
-        ctx.globalAlpha = 0.3;
-        fillHex({ q: z.q, r: z.r, s: -z.q - z.r }, c);
+        if (!z.transparentBackground) {
+          ctx.globalAlpha = 0.3;
+          fillHex({ q: z.q, r: z.r, s: -z.q - z.r }, c);
+        }
         ctx.globalAlpha = 0.9;
         const { cx, cy } = hexCenter({ q: z.q, r: z.r, s: -z.q - z.r });
         ctx.fillStyle = c;

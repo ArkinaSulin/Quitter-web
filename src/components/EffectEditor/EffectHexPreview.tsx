@@ -20,9 +20,11 @@ interface EffectHexPreviewProps {
   imageScale: number;
   color: string;
   layer: 'above' | 'below';
+  /** Skip the centre-hex tint (only the artwork shows). */
+  transparentBackground?: boolean;
 }
 
-export function EffectHexPreview({ imageUrl, imageScale, color, layer }: EffectHexPreviewProps) {
+export function EffectHexPreview({ imageUrl, imageScale, color, layer, transparentBackground = false }: EffectHexPreviewProps) {
   const S = 28; // preview hex radius (px)
   const dirs = [{ q: 0, r: 0 }, ...HEX_DIRS];
   const pts = dirs.map(d => hexToPixel(d.q, d.r, S));
@@ -44,7 +46,9 @@ export function EffectHexPreview({ imageUrl, imageScale, color, layer }: EffectH
 
   const centre = { x: toX(0), y: toY(0) };
   const imgH = 1.2 * S * (Math.max(1, imageScale) / 100);
-  const tint = /^#[0-9a-fA-F]{6}$/.test(color) ? `${color}40` : 'rgba(255,255,255,0.08)';
+  const tint = transparentBackground
+    ? 'rgba(255,255,255,0.03)'
+    : (/^#[0-9a-fA-F]{6}$/.test(color) ? `${color}40` : 'rgba(255,255,255,0.08)');
 
   return (
     <div className="relative rounded border border-gray-700 bg-gray-900" style={{ width: W, height: H }}>

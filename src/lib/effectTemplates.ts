@@ -68,6 +68,8 @@ export interface EffectTemplate {
   imageUrl: string;
   /** Image size multiplier in percent (100 = default 1.2-hex-high artwork). */
   imageScale: number;
+  /** Skip the zone hex tint so only the artwork/marker show on the map. */
+  transparentBackground: boolean;
   layer: EffectLayer;
   scope: EffectScope;
   defaultDuration: number;
@@ -107,6 +109,7 @@ export function mapEffectRow(row: any): EffectTemplate {
     color: row.color || '#cccccc',
     imageUrl: row.image_url || '',
     imageScale: Number(row.image_scale) || 100,
+    transparentBackground: !!row.transparent_background,
     layer: row.layer === 'above' ? 'above' : 'below',
     scope: row.scope === 'zone' ? 'zone' : row.scope === 'both' ? 'both' : 'unit',
     defaultDuration: Number(row.default_duration) || 3,
@@ -117,7 +120,7 @@ export function mapEffectRow(row: any): EffectTemplate {
 }
 
 export function mapEffectToRow(
-  t: Pick<EffectTemplate, 'name' | 'description' | 'color' | 'imageUrl' | 'imageScale' | 'layer' | 'scope' | 'defaultDuration' | 'modifiers'>,
+  t: Pick<EffectTemplate, 'name' | 'description' | 'color' | 'imageUrl' | 'imageScale' | 'transparentBackground' | 'layer' | 'scope' | 'defaultDuration' | 'modifiers'>,
 ) {
   return {
     name: t.name,
@@ -125,6 +128,7 @@ export function mapEffectToRow(
     color: t.color,
     image_url: t.imageUrl,
     image_scale: Math.max(1, Math.round(t.imageScale || 100)),
+    transparent_background: !!t.transparentBackground,
     layer: t.layer,
     scope: t.scope,
     default_duration: t.defaultDuration,
@@ -139,6 +143,7 @@ export function blankEffectTemplate(): Omit<EffectTemplate, 'id' | 'createdAt' |
     color: '#ffd54d',
     imageUrl: '',
     imageScale: 100,
+    transparentBackground: false,
     layer: 'below',
     scope: 'unit',
     defaultDuration: 3,

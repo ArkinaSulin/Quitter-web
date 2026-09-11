@@ -188,6 +188,8 @@ export interface UnitEffect {
   imageUrl?: string;
   /** Artwork size multiplier in percent (100 = default). */
   imageScale?: number;
+  /** Skip the zone hex tint so only the artwork/marker show. */
+  transparentBackground?: boolean;
   /** Draw the artwork above or below the unit token on that hex. */
   layer?: 'above' | 'below';
   /** Signed stat delta (ac/morale/movement) or per-tick DoT damage (dot). */
@@ -228,6 +230,8 @@ export interface GroundEffect {
   imageUrl?: string;
   /** Artwork size multiplier in percent (100 = default). */
   imageScale?: number;
+  /** Skip the hex tint so only the artwork/marker show. */
+  transparentBackground?: boolean;
   /** Draw the artwork above or below the unit token on this hex. */
   layer?: 'above' | 'below';
   delta: number;

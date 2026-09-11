@@ -93,6 +93,7 @@ as applied in the notes — check the live DB before relying on it).
 | 080 | zone ops via command log (`apply_substeps` ZONE branch) + array-safe unit writes | ✅ applied (2026-09-06) |
 | 081 | Weapon Editor: access caps + RLS on `weapons` | ⏳ run in Supabase |
 | 082 | effect image scale (`effect_templates.image_scale`) | ⏳ run in Supabase |
+| 083 | effect transparent background (`effect_templates.transparent_background`) | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

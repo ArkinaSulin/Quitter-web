@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Effects: transparent background (2026-09-06)
+**Files:** supabase/migrations/083_effect_transparent_background.sql (new), src/lib/effectTemplates.ts (+ test), src/types/gameProtocol.ts, src/components/EffectEditor/{EffectEditor,EffectHexPreview}.tsx, src/components/ScenarioMap/{ScenarioMap,EffectsPanel,EffectFormModal,AddEffectModal}.tsx, src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{02-schema-and-migrations,10-temporary-effects}.md
+
+- New per-effect **Transparent background** toggle (template + per placed instance): the ground-zone hex tint is skipped so only the artwork (and the small marker dot / unit pip) show. The colour still drives the marker/pip/swatch. Migration **083** adds `effect_templates.transparent_background`; the flag rides the drag payload and every `UnitEffect`/`GroundEffect`; `EffectHexPreview` shows the bare hex.
+- Tests: `effectTemplates` mappers (3). tsc clean; 544 tests pass. **Migration 083 must be applied in Supabase.**
+
 ## Effect Editor: image-size slider + 7-hex preview (2026-09-06)
 **Files:** supabase/migrations/082_effect_image_scale.sql (new), src/lib/effectTemplates.ts, src/types/gameProtocol.ts, src/components/EffectEditor/{EffectEditor,EffectHexPreview}.tsx (hex preview new), src/components/ScenarioMap/{ScenarioMap,EffectsPanel,EffectFormModal,AddEffectModal}.tsx, src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{02-schema-and-migrations,10-temporary-effects}.md
 

@@ -94,16 +94,18 @@ display: `verboseCombat.formatSpellRollLine` prints
   `effect_images` storage bucket (`ImagePickerModal`, generalized by bucket); an
   **image-size slider** (`image_scale`, 10–300%) sits under the picker, and the
   right panel previews it on a **7-hex grid** (`EffectHexPreview`) at the same
-  relative size the map uses. `layer` is **below unit** (default) or **above
-  unit**. Each modifier has a single **amount** field accepting a plain number
-  (flat) or dice `XdY±Z` (`X=0` = flat `Z`); the flat part is mirrored into
-  `delta` for stat kinds and legacy consumers. The modifier row is the shared
-  `EffectModifierFields`.
+  relative size the map uses. A **Transparent background** toggle skips the zone
+  hex tint so only the artwork (and the small marker dot / unit pip) show — the
+  colour still drives the dot/pip/swatch. `layer` is **below unit** (default) or
+  **above unit**. Each modifier has a single **amount** field accepting a plain
+  number (flat) or dice `XdY±Z` (`X=0` = flat `Z`); the flat part is mirrored
+  into `delta` for stat kinds and legacy consumers. The modifier row is the
+  shared `EffectModifierFields`.
 - **Drop form** (`EffectFormModal`): dragging a library effect onto the map (unit
-  or hex) opens an editable form showing name/colour/image/scale/layer, duration,
-  tempo, and every modifier *before* applying. There is **no radius** — a zone
-  drops on a single hex. There is no description field here (descriptions are
-  authored only in the Effect Editor).
+  or hex) opens an editable form showing name/colour/image/scale/layer, the
+  **transparent background** toggle, duration, tempo, and every modifier *before*
+  applying. There is **no radius** — a zone drops on a single hex. There is no
+  description field here (descriptions are authored only in the Effect Editor).
 - **Placed-effect edit**: right-clicking a hex with zones offers
   **Move up / Move down / Edit / Clone / Drop**. *Edit* reopens
   `EffectFormModal` for that zone (or a unit's own effect, via its context
