@@ -152,15 +152,17 @@ export function stringifyWeapons(weapons: Weapon[]): string {
 }
 
 /**
- * Format a weapon for display: "Name Nx +B Dice(h) Rangehex Radiusft".
- * Example: "Fireball 2x +7 8d6 4hex 2ft", "Longsword 1x +5 1d8 1hex".
+ * Format a weapon for display: "Name Nx +B Dice(h) Range[–Max]hex Radiusft".
+ * Example: "Fireball 2x +7 8d6 4hex 2ft", "Long bow 1x +4 1d8 3–12hex".
  * The dice get a `(h)` appendix when the weapon heals instead of dealing damage.
+ * The range shows `N–Mhex` when maxRange extends past range (disadvantage band).
  */
 export function formatWeaponDisplay(weapon: Weapon): string {
   const attacks = weapon.numberOfAttacks && weapon.numberOfAttacks > 1 ? ` ${weapon.numberOfAttacks}x` : ' 1x';
   const attack = ` +${weapon.attackBonus}`;
   const dice = `${weapon.damageDice}${weapon.isHealing ? '(h)' : ''}`;
-  const range = ` ${weapon.range}hex`;
+  const rangeMax = weapon.maxRange && weapon.maxRange > weapon.range ? `${weapon.range}–${weapon.maxRange}` : `${weapon.range}`;
+  const range = ` ${rangeMax}hex`;
   const radius = weapon.magicDimension > 0 ? ` ${weapon.magicDimension}ft` : '';
   return `${weapon.name}${attacks}${attack} ${dice}${range}${radius}`;
 }
@@ -169,7 +171,8 @@ export function formatWeaponDisplay(weapon: Weapon): string {
  * Get a short display text for the weapon list.
  */
 export function getWeaponDisplayText(weapon: Weapon): string {
-  const rangeDisplay = weapon.range === 1 ? 'Adj' : `${weapon.range}h`;
+  const hasBand = weapon.maxRange && weapon.maxRange > weapon.range;
+  const rangeDisplay = weapon.range === 1 && !hasBand ? 'Adj' : `${weapon.range}${hasBand ? `–${weapon.maxRange}` : ''}h`;
   const radiusDisplay = weapon.magicDimension > 0 ? `, r${weapon.magicDimension}` : '';
   const attacksDisplay = weapon.numberOfAttacks && weapon.numberOfAttacks > 1 ? `, ${weapon.numberOfAttacks}atk` : '';
   return `${weapon.name} | +${weapon.attackBonus} | ${weapon.damageDice}${weapon.isHealing ? '(h)' : ''} | ${rangeDisplay}${radiusDisplay}${attacksDisplay}`;

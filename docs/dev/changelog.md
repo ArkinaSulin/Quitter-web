@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Fix: Add/Edit Weapon form wiped fields on a library pick (2026-09-06)
+**Files:** src/components/WeaponEditorModal.tsx, src/lib/weaponParser.ts, src/lib/weaponParser.test.ts, src/lib/weaponMappers.test.ts
+
+- Root cause: the Add/Edit Weapon modal pre-maps the `weapons` library with `mapWeaponRow`, then called `mapWeaponRow(lib)` **again** on click. The mapper reads snake_case, so the second pass found `max_range`/`damage_dice`/`attack_bonus`/… undefined and reset them to defaults — a library pick silently lost its **maximum range** (plus dice/bonus/magic dimension/saves). Fix: `setWeapon({ ...lib })` (already a `Weapon`), with a comment; affects both the scenario DM editor and the unit editor (shared modal).
+- `formatWeaponDisplay` (and `getWeaponDisplayText`) now show the disadvantage band as `range–maxRange`, e.g. `Long bow 1x +4 1d8 3–12hex`; melee/`maxRange === range` stay `Nhex`.
+- Tests: regression guard documenting `mapWeaponRow`'s snake_case-only contract + updated display expectations. tsc clean; 549 tests pass.
+
 ## Range-attack weapon-switch prompt (2026-09-06)
 **Files:** src/lib/weaponParser.ts (+ test), src/components/ScenarioMap/{useCombatActions,SoftEnforcementModals,ScenarioMap}.tsx, docs/dev/08-combat.md
 

@@ -42,6 +42,23 @@ describe('weaponMappers', () => {
     expect(row.number_of_attacks).toBe(1);
     expect(row.cost_gp).toBe(3);
   });
+
+  it('reads snake_case only — re-mapping an already-mapped object wipes fields', () => {
+    const mapped = mapWeaponRow({
+      id: 'w1', name: 'Long bow', damage_dice: '1d8', attack_bonus: 4,
+      range: 3, max_range: 12, shape: 'circle', saving_throw: 'Dex', cost_gp: 10,
+    });
+    expect(mapped.maxRange).toBe(12);
+    expect(mapped.range).toBe(3);
+    // The Add-Weapon modal pre-maps the library; running mapWeaponRow again on the
+    // camelCase result finds no snake_case keys and resets maxRange/dice/bonus to
+    // defaults (`range` survives only because it uses the same key in both forms).
+    // (Regression guard for the library-pick double-map bug.)
+    const again = mapWeaponRow(mapped as any);
+    expect(again.maxRange).toBe(0);
+    expect(again.range).toBe(3);
+    expect(again.damageDice).toBe('1d6');
+  });
 });
 
 describe('weapon validation', () => {

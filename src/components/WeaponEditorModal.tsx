@@ -105,7 +105,9 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
                 suggestions.map((lib) => (
                   <button
                     key={lib.id}
-                    onClick={() => { setWeapon(mapWeaponRow(lib)); setError(''); }}
+                    // `lib` is already a mapped Weapon — do NOT re-run mapWeaponRow
+                    // (it reads snake_case and would wipe every field to defaults).
+                    onClick={() => { setWeapon({ ...lib }); setError(''); }}
                     className="w-full text-left px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 transition text-sm flex items-center justify-between"
                   >
                     <span className="truncate">{lib.name}</span>

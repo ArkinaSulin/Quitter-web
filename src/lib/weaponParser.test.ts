@@ -206,16 +206,22 @@ describe('formatWeaponDisplay', () => {
     expect(formatWeaponDisplay(weapon)).toBe('Spear 1x +3 1d6+1 1hex');
   });
 
-  it('formats a ranged weapon with max range', () => {
+  it('formats a ranged weapon with max range as range–maxRange', () => {
     const weapon: Weapon = { name: 'Longbow', attackBonus: 3, damageDice: '1d8', isHealing: false, range: 4, maxRange: 8, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' };
 
-    expect(formatWeaponDisplay(weapon)).toBe('Longbow 1x +3 1d8 4hex');
+    expect(formatWeaponDisplay(weapon)).toBe('Longbow 1x +3 1d8 4–8hex');
+  });
+
+  it('shows a single range when maxRange equals range', () => {
+    const weapon: Weapon = { name: 'Spell', attackBonus: 5, damageDice: '8d6', isHealing: false, range: 3, maxRange: 3, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' };
+
+    expect(formatWeaponDisplay(weapon)).toBe('Spell 1x +5 8d6 3hex');
   });
 
   it('formats an area weapon with radius', () => {
     const weapon: Weapon = { name: 'Fireball', attackBonus: 7, damageDice: '8d6', isHealing: false, range: 4, maxRange: 8, magicDimension: 2, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 2, onSaveHalfOrNeg: true, savingThrow: 'Dex' };
 
-    expect(formatWeaponDisplay(weapon)).toBe('Fireball 2x +7 8d6 4hex 2ft');
+    expect(formatWeaponDisplay(weapon)).toBe('Fireball 2x +7 8d6 4–8hex 2ft');
   });
 
   it('shows a (h) appendix for healing weapons', () => {
