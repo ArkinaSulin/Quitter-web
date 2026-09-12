@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Range-attack weapon-switch prompt (2026-09-06)
+**Files:** src/lib/weaponParser.ts (+ test), src/components/ScenarioMap/{useCombatActions,SoftEnforcementModals,ScenarioMap}.tsx, docs/dev/08-combat.md
+
+- Attacking a target beyond the active weapon's `maxRange` no longer silently switches when several weapons could reach. New rule: **0 reachers** → red flash + "cannot reach"; **1** → silent auto-switch (unchanged); **2+** → a `PendingWeaponSwitch` confirm offering only the **first** reaching weapon (single green "Switch to X and attack" button + Cancel), so a caster with many spells isn't flooded with choices. Cancel lets the player pick manually and redo.
+- Added `weaponIndicesReaching(weapons, activeIndex, dist)` (arsenal order, non-healing) + tests; `handleAttackRequest` gains a `weaponIndex` resume option (also avoids stale-`units` re-prompting).
+- tsc clean; 547 tests pass.
+
 ## Effects: transparent background (2026-09-06)
 **Files:** supabase/migrations/083_effect_transparent_background.sql (new), src/lib/effectTemplates.ts (+ test), src/types/gameProtocol.ts, src/components/EffectEditor/{EffectEditor,EffectHexPreview}.tsx, src/components/ScenarioMap/{ScenarioMap,EffectsPanel,EffectFormModal,AddEffectModal}.tsx, src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{02-schema-and-migrations,10-temporary-effects}.md
 

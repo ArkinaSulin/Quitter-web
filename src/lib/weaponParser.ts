@@ -70,6 +70,23 @@ export function validateWeapon(weapon: Weapon): string | null {
 }
 
 /**
+ * Indices of the offensive weapons that can reach `dist` hexes, in arsenal
+ * order. Excludes the active weapon and healing weapons. Used to decide whether
+ * an out-of-range attack should silently auto-switch (one option) or prompt the
+ * player to confirm the first option (two or more).
+ */
+export function weaponIndicesReaching(weapons: Weapon[], activeIndex: number, dist: number): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < weapons.length; i++) {
+    if (i === activeIndex) continue;
+    const w = weapons[i];
+    if (!w || w.isHealing) continue;
+    if ((w.maxRange ?? w.range ?? 0) >= dist) out.push(i);
+  }
+  return out;
+}
+
+/**
  * An offensive weapon deals damage to the target (isHealing is the only non-offensive
  * type today — healing recovers HP instead). Offensive weapons target enemies by
  * default; the cross-alliance soft gate confirms friendly fire. Non-offensive

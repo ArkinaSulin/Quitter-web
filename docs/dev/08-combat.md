@@ -10,7 +10,13 @@ command-log sub-steps.
 
 1. Attacker & target exist, both have HP > 0; `canControlUnit(attacker)`.
 2. Friendly-fire / heal-an-enemy cross-alliance → soft confirm.
-3. Weapon exists; target within `maxRange`, else hard block + red flash.
+3. Weapon exists; out of `maxRange`:
+   - **exactly one** weapon reaches → silent auto-switch (`WEAPON_SELECT`) to it;
+   - **two or more** reach → `PendingWeaponSwitch` soft confirm offering only the
+     **first** reaching weapon (a caster may hold many spells — a full picker
+     would flood the screen); Cancel leaves the weapon and lets the player switch
+     manually and redo;
+   - **none** reach → hard block + red flash.
 4. Magic (`magicDimension > 0`) → cast window (Routed can't cast). Healing
    (`isHealing`) → heal resolution (no combat).
 5. Melee gates: attacker in the defender's permitted arc for its formation

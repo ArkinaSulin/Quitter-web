@@ -15,14 +15,14 @@ import { unitAttackCap } from '@/lib/attackCap';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone } from '@/lib/unitMorale';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc } from '@/lib/meleeFallback';
-import { parseWeapons, Weapon, isOffensiveWeapon } from '@/lib/weaponParser';
+import { parseWeapons, Weapon, isOffensiveWeapon, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow } from '@/lib/unitStats';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { computeOccupiedHexes } from './mapGeometry';
 import { ExecuteFn, routeUnit } from './routeUnit';
-import { PendingAttack, PendingAttackCap, PendingRetaliationCap, PendingChargeAttack, PendingChargeThrough, PendingCrossAlliance } from './SoftEnforcementModals';
+import { PendingAttack, PendingAttackCap, PendingRetaliationCap, PendingChargeAttack, PendingChargeThrough, PendingCrossAlliance, PendingWeaponSwitch } from './SoftEnforcementModals';
 import { useMagicCast } from '@/hooks/useMagicCast';
 
 // A stashed attack resumes a previously-computed outcome (the retaliation-cap
@@ -84,6 +84,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingChargeAttack, setPendingChargeAttack] = useState<PendingChargeAttack | null>(null);
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
   const [pendingCrossAlliance, setPendingCrossAlliance] = useState<PendingCrossAlliance | null>(null);
+  const [pendingWeaponSwitch, setPendingWeaponSwitch] = useState<PendingWeaponSwitch | null>(null);
 
   const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean }) => {
     if (overBudget) {
@@ -649,7 +650,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     await performChargeEnd(attacker, true);
   }, [units, formationsMap, performChargeEnd]);
 
-  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; allowCrossAlliance?: boolean }) => {
+  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; allowCrossAlliance?: boolean; weaponIndex?: number }) => {
     let attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return;
@@ -670,6 +671,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const isAdjacent = isAdjacentDistance(dist);
 
     const attackerWeapons = parseWeapons(attacker.weaponString || '');
+    // A resumed attack (post weapon-switch confirm) carries the chosen index; use
+    // it directly so a stale `units` snapshot can't re-trigger the range prompt.
+    if (opts?.weaponIndex != null && attackerWeapons[opts.weaponIndex]) {
+      attacker = { ...attacker, activeWeaponIndex: opts.weaponIndex };
+    }
     let weapon = attackerWeapons[attacker.activeWeaponIndex ?? 0];
     const isSpellCaster = !!weapon && (weapon.magicDimension > 0 || weapon.isHealing);
 
@@ -686,26 +692,37 @@ export function useCombatActions(deps: CombatActionsDeps) {
       addMessage(`${attacker.unitName} has no weapon to attack with`);
       return;
     }
-    // Hard range cap: beyond maxRange is out of range. Auto-suggest a weapon that
-    // CAN reach the target (excluding healing) and switch to it before attacking.
+    // Hard range cap: beyond maxRange is out of range. Exactly one weapon that can
+    // reach -> silently auto-switch to it. Two or more -> confirm the FIRST one
+    // (a caster with many spells would flood a picker); Cancel lets the player
+    // switch manually and redo the attack. None -> warn and abort.
     if (dist > weapon.maxRange) {
-      const suggestIndex = attackerWeapons.findIndex((w, i) =>
-        i !== (attacker!.activeWeaponIndex ?? 0) && !w.isHealing && (w.maxRange ?? w.range ?? 0) >= dist,
-      );
-      if (suggestIndex >= 0) {
-        weapon = attackerWeapons[suggestIndex];
-        await execute('WEAPON_SELECT', [{
-          type: 'WEAPON_SELECT',
-          description: `${attacker!.unitName} switches to ${weapon.name} to reach ${target.unitName}`,
-          unitId: attacker!.id,
-          changes: [{ field: 'activeWeaponIndex', from: attacker!.activeWeaponIndex ?? 0, to: suggestIndex }],
-        }], `${attacker!.unitName} switches to ${weapon.name}`);
-        attacker = { ...attacker!, activeWeaponIndex: suggestIndex };
-      } else {
+      const reaching = weaponIndicesReaching(attackerWeapons, attacker.activeWeaponIndex ?? 0, dist);
+      if (reaching.length === 0) {
         flashRangeViolation(target.hex);
-        addMessage(`${attacker!.unitName} cannot reach ${target.unitName} — out of range (max ${weapon.maxRange} hexes)`);
+        addMessage(`${attacker.unitName} cannot reach ${target.unitName} — out of range (max ${weapon.maxRange} hexes)`);
         return;
       }
+      if (reaching.length > 1) {
+        const idx = reaching[0];
+        const w = attackerWeapons[idx];
+        setPendingWeaponSwitch({
+          attacker, target, index: idx,
+          label: `${formatWeaponDisplay(w)}${w.freeAction ? ' (free)' : ' (1 action)'}`,
+          activeName: weapon.name,
+          options: { forceCast: opts?.forceCast, allowCrossAlliance: opts?.allowCrossAlliance },
+        });
+        return;
+      }
+      const suggestIndex = reaching[0];
+      weapon = attackerWeapons[suggestIndex];
+      await execute('WEAPON_SELECT', [{
+        type: 'WEAPON_SELECT',
+        description: `${attacker.unitName} switches to ${weapon.name} to reach ${target.unitName}`,
+        unitId: attacker.id,
+        changes: [{ field: 'activeWeaponIndex', from: attacker.activeWeaponIndex ?? 0, to: suggestIndex }],
+      }], `${attacker.unitName} switches to ${weapon.name}`);
+      attacker = { ...attacker, activeWeaponIndex: suggestIndex };
     }
 
     // ONE cross-alliance soft gate: offensive weapons target enemies by default,
@@ -852,6 +869,23 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
   const cancelCrossAlliance = useCallback(() => setPendingCrossAlliance(null), []);
 
+  // Confirm the offered weapon switch, then resume the attack with that weapon.
+  const confirmWeaponSwitch = useCallback(async () => {
+    const p = pendingWeaponSwitch;
+    setPendingWeaponSwitch(null);
+    if (!p) return;
+    const w = parseWeapons(p.attacker.weaponString || '')[p.index];
+    await execute('WEAPON_SELECT', [{
+      type: 'WEAPON_SELECT',
+      description: `${p.attacker.unitName} switches to ${w?.name ?? 'weapon'} to reach ${p.target.unitName}`,
+      unitId: p.attacker.id,
+      changes: [{ field: 'activeWeaponIndex', from: p.attacker.activeWeaponIndex ?? 0, to: p.index }],
+    }], `${p.attacker.unitName} switches to ${w?.name ?? 'weapon'}`);
+    await handleAttackRequest(p.attacker.id, p.target.id, { ...p.options, weaponIndex: p.index });
+  }, [pendingWeaponSwitch, execute, handleAttackRequest]);
+
+  const cancelWeaponSwitch = useCallback(() => setPendingWeaponSwitch(null), []);
+
   return {
     pendingAttack,
     setPendingAttack,
@@ -867,6 +901,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
     setPendingCrossAlliance,
     confirmCrossAlliance,
     cancelCrossAlliance,
+    pendingWeaponSwitch,
+    confirmWeaponSwitch,
+    cancelWeaponSwitch,
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,

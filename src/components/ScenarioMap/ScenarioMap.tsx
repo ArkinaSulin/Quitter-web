@@ -1152,6 +1152,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setPendingCrossAlliance,
     confirmCrossAlliance,
     cancelCrossAlliance,
+    pendingWeaponSwitch,
+    confirmWeaponSwitch,
+    cancelWeaponSwitch,
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,
@@ -2000,6 +2003,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }
       confirmCrossAlliance();
     },
+    confirmWeaponSwitch: () => {
+      if (controlsLocked) {
+        cancelWeaponSwitch();
+        return;
+      }
+      confirmWeaponSwitch();
+    },
   };
   const softCancels = {
     move: () => setPendingMove(null),
@@ -2014,6 +2024,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     castOverBudget: () => setPendingCastOverBudget(false),
     chargeAttack: () => setPendingChargeAttack(null),
     crossAlliance: () => cancelCrossAlliance(),
+    weaponSwitch: () => cancelWeaponSwitch(),
   };
 
   const aiPanelNode =
@@ -2387,6 +2398,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           chargeAttack: pendingChargeAttack,
           chargeThrough: pendingChargeThrough,
           crossAlliance: pendingCrossAlliance,
+          weaponSwitch: pendingWeaponSwitch,
         }}
         actions={softActions}
         cancels={softCancels}

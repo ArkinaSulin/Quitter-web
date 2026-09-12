@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseWeapons, stringifyWeapons, formatWeaponDisplay, isAreaWeapon, isOffensiveWeapon, Weapon } from './weaponParser';
+import { parseWeapons, stringifyWeapons, formatWeaponDisplay, isAreaWeapon, isOffensiveWeapon, weaponIndicesReaching, Weapon } from './weaponParser';
 
 describe('parseWeapons', () => {
   it('parses a single weapon from CSV string', () => {
@@ -228,5 +228,33 @@ describe('formatWeaponDisplay', () => {
     const weapon: Weapon = { name: 'Flame Blade', attackBonus: 5, damageDice: '2d6', isHealing: false, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 3, onSaveHalfOrNeg: true, savingThrow: 'Dex' };
 
     expect(formatWeaponDisplay(weapon)).toBe('Flame Blade 3x +5 2d6 1hex');
+  });
+});
+
+describe('weaponIndicesReaching', () => {
+  const w = (over: Partial<Weapon>): Weapon => ({
+    name: 'W', attackBonus: 0, damageDice: '1d6', isHealing: false, range: 1, maxRange: 0,
+    magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false,
+    isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', ...over,
+  });
+
+  it('returns reaching offensive weapons in arsenal order, excluding the active one', () => {
+    const weapons = [
+      w({ name: 'Sword', range: 1, maxRange: 1 }),                 // active
+      w({ name: 'Longbow', range: 4, maxRange: 8 }),               // reaches
+      w({ name: 'Sling', range: 2, maxRange: 6 }),                 // reaches
+      w({ name: 'Heal', range: 5, maxRange: 9, isHealing: true }), // excluded (healing)
+    ];
+    expect(weaponIndicesReaching(weapons, 0, 5)).toEqual([1, 2]);
+  });
+
+  it('returns nothing when no weapon reaches', () => {
+    const weapons = [w({ name: 'Sword', range: 1, maxRange: 1 }), w({ name: 'Dagger', range: 1, maxRange: 1 })];
+    expect(weaponIndicesReaching(weapons, 0, 4)).toEqual([]);
+  });
+
+  it('returns a single index when only one weapon reaches', () => {
+    const weapons = [w({ name: 'Sword', range: 1, maxRange: 1 }), w({ name: 'Longbow', range: 4, maxRange: 8 })];
+    expect(weaponIndicesReaching(weapons, 0, 6)).toEqual([1]);
   });
 });

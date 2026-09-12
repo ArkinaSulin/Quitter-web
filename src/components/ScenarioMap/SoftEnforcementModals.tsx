@@ -83,6 +83,24 @@ export interface PendingCrossAlliance {
   kind: 'attack' | 'heal';
 }
 
+/**
+ * The active weapon can't reach, and MORE THAN ONE weapon can: confirm a switch
+ * to the first reaching weapon before attacking (single button — a caster with
+ * many spells would otherwise flood the screen). Cancel leaves the weapon as-is.
+ */
+export interface PendingWeaponSwitch {
+  attacker: Unit;
+  target: Unit;
+  /** Index (into the attacker's parsed weapons) of the offered/first weapon. */
+  index: number;
+  /** Display label of the offered weapon (incl. cost). */
+  label: string;
+  /** Name of the weapon currently held (for the message). */
+  activeName: string;
+  /** Options preserved when the attack resumes after the switch. */
+  options?: { forceCast?: boolean; allowCrossAlliance?: boolean };
+}
+
 export interface SoftEnforcementModalsProps {
   pending: {
     move: PendingMove | null;
@@ -98,6 +116,7 @@ export interface SoftEnforcementModalsProps {
     chargeAttack: PendingChargeAttack | null;
     chargeThrough: PendingChargeThrough | null;
     crossAlliance: PendingCrossAlliance | null;
+    weaponSwitch: PendingWeaponSwitch | null;
   };
   /** Fully-bound confirm handlers (clear state + controlsLocked guard + act). */
   actions: {
@@ -116,6 +135,7 @@ export interface SoftEnforcementModalsProps {
     confirmChargeThrough: () => void;
     declineChargeThrough: () => void;
     confirmCrossAlliance: () => void;
+    confirmWeaponSwitch: () => void;
   };
   cancels: {
     move: () => void;
@@ -130,6 +150,7 @@ export interface SoftEnforcementModalsProps {
     castOverBudget: () => void;
     chargeAttack: () => void;
     crossAlliance: () => void;
+    weaponSwitch: () => void;
   };
   unitMaxMP: (unit: Unit) => number;
 }
@@ -297,6 +318,18 @@ export function SoftEnforcementModals({ pending, actions, cancels, unitMaxMP }: 
           {p.crossAlliance.kind === 'attack'
             ? `${p.crossAlliance.attacker.unitName} attacks ${p.crossAlliance.target.unitName}, who is in the same alliance. Attack anyway? (friendly fire)`
             : `${p.crossAlliance.attacker.unitName} heals ${p.crossAlliance.target.unitName}, who is in a different alliance. Heal an enemy anyway?`}
+        </ConfirmModal>
+      )}
+
+      {p.weaponSwitch && (
+        <ConfirmModal
+          tone="amber"
+          title="Switch weapon to attack?"
+          buttons={[{ label: `Switch to ${p.weaponSwitch.label} and attack`, variant: 'green', onClick: actions.confirmWeaponSwitch }]}
+          onCancel={cancels.weaponSwitch}
+        >
+          {p.weaponSwitch.attacker.unitName} can't reach {p.weaponSwitch.target.unitName} with {p.weaponSwitch.activeName}.
+          Switch to {p.weaponSwitch.label} and attack? (Cancel to pick another weapon instead.)
         </ConfirmModal>
       )}
     </>
