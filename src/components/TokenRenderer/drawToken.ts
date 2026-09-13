@@ -133,10 +133,10 @@ function drawFormationExtras(
       const left = rowDots[0];
       const right = rowDots[rowDots.length - 1];
       if (left && !left.isDead) {
-        drawShield(x - width / 2 + left.x - SHIELD_GAP, y - height / 2 + left.y, -SIDE_ROT + FRONT_TILT);
+        drawShield(x - width / 2 + left.x - SHIELD_GAP, y - height / 2 + left.y, -SIDE_ROT - FRONT_TILT);
       }
       if (right && rowDots.length > 1 && !right.isDead) {
-        drawShield(x - width / 2 + right.x + SHIELD_GAP, y - height / 2 + right.y, SIDE_ROT - FRONT_TILT);
+        drawShield(x - width / 2 + right.x + SHIELD_GAP, y - height / 2 + right.y, SIDE_ROT + FRONT_TILT);
       }
     }
   }
