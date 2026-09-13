@@ -154,6 +154,8 @@ export interface Unit {
   attacksUsed: number;
   /** True once the unit takes its defensive-archer reaction this turn; cleared at the start of its turn. */
   archerReactionUsed: boolean;
+  /** True once the unit makes its once-per-turn parting shot on a disengaging enemy; cleared at its turn start. */
+  partingShotUsed: boolean;
   activeWeaponIndex: number;           // index into weaponString of the active weapon (0 = first)
   /** Active temporary effects on this unit (buff/debuff/DoT). Empty = none. */
   effects?: UnitEffect[];

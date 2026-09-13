@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Kill-zone stop + parting shot on disengagement (2026-09-13)
+**Files:** supabase/migrations/084_parting_shot.sql (new), src/types/gameProtocol.ts, src/hooks/{useSupabaseSync,useGameEngine}.ts, src/lib/zocDisengage.ts (+ test, new), src/components/ScenarioMap/{useCombatActions,useMoveActions,ScenarioMap}.tsx, test fixtures, docs/dev/{02,07,08,09}, docs/players/player-manual.md
+
+- **Entering a kill zone ends the move.** A MOVE whose destination is a hostile threat hex now zeroes the leftover `movementPointsAvailable` (the mover may still spend another action, but that pool is spent) — the "remaining movement reduce to zero" rule the ZoC always implied. Pass-through was already blocked; this closes the leftover pool.
+- **Parting shot on disengagement.** Moving OUT of a hostile kill zone provokes **one free attack** from every formed hostile whose kill zone is being left (`zocDisengage.disengageAttackers` → `useCombatActions.performPartingShots`). Resolved through the normal melee tree at the **origin hex** (contact point): AGR applies, the mover's retaliation is suppressed, **free but +1 to the 5-attack cap**, **once per attacker per turn** (`units.parting_shot_used`, migration 084; reset at turn start like `archerReactionUsed`). Strikes resolve sequentially, tracking the mover's HP so a killed mover isn't struck again. **Scattered/Routed/Heroes never make one** (no kill zone), but **any mover can take one — including one that changed to Scattered** or a Hero, which is what closes the mounted hit-and-run (charge in → free double-damage strike → 2nd action scatter and flee). Charge-over overrun and free-move are exempt; routed retreats use the existing pursuit flow.
+- **Reuses the existing tree:** `isInKillZone` + `canStopEnemyMovement` for eligibility, the `pursuit` free-attack path in `performAttack`, and `suppressRetaliation`'s deny path for the no-counter. Fixes an adjacent bug where **verbose combat dropped `chained`** on ATTACK.
+- Wired through `completeMove` via a late-bound ref (hook-order cycle), so normal moves, charges, the over-budget confirm and **AI moves** all trigger it; the AI panel now drives `completeMove`.
+- Tests: `zocDisengage` (9) + `resolveCombatSequence` parting-shot case (1). tsc clean; 578 tests pass. **Migration 084 must be applied in Supabase.**
+
 ## Cross-alliance actions hard-blocked + move/charge continuation fixes (2026-09-13)
 **Files:** src/lib/weaponParser.ts (+ test), src/lib/chargeOver.ts (+ test), src/components/ScenarioMap/{useCombatActions,useCastActions,useMoveActions,useOverlay,SoftEnforcementModals,ScenarioMap}.tsx, docs/dev/08-combat.md, docs/players/player-manual.md
 

@@ -441,10 +441,17 @@ Drag a unit with the mouse. The game shades where it can move:
 - **White hexes** are reachable **right now** without turning — drop there.
 - **Grey hexes** need a turn first: the hint says "rotate, then move."
 - **Red hexes** are enemy **threat hexes** (kill-zone / zone-of-control):
-  reachable as a *destination*, never through.
+  reachable as a *destination*, never through. **Dropping into one ends your
+  move** — any MP left in that pool is spent (you may still use another action).
 - Occupied hexes can't be entered.
 
 ![S-14 Drag overlay](screenshots/s-14-drag-overlay.png)
+
+> **Disengaging.** Moving *out* of an enemy kill zone provokes a **parting
+> shot**: each formed enemy whose kill zone you leave gets one free attack on
+> you (you don't strike back). Each unit gets at most one parting shot per turn.
+> Scattered, Routed and Heroes never make one — but any unit that runs, even a
+> Scattered one, can take one. Charge-overs ride through without provoking.
 
 Movement costs **1 MP per hex entered** from your front arc (more for
 difficult terrain — below). Turning is paid separately: 60° = 1 MP (units),

@@ -380,12 +380,15 @@ export function useGameEngine({
   };
 
   const moveUnitRecorded = useCallback(
-    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string }): Promise<void> => {
+    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; stopInZoc?: boolean }): Promise<void> => {
       // Heroes convert actions at the prorated rate (5 actions = 1 full move);
       // units keep the "1 action = 1 full MP pool" economy.
       const { movementPointsAvailable, actionsAvailable } = unit.isHero
         ? applyHeroMoveCost(unit, cost, maxMP)
         : applyMoveCost(unit, cost, maxMP);
+      // Entering a hostile kill zone ends the move: any leftover MP is spent
+      // (the unit may still act/move with another action, but not this pool).
+      const mpTo = options?.stopInZoc ? 0 : movementPointsAvailable;
       const subSteps: SubStep[] = [
         {
           type: 'MOVE',
@@ -393,7 +396,7 @@ export function useGameEngine({
           unitId: unit.id,
           changes: [
             { field: 'hex', from: { ...unit.hex }, to: { ...targetHex } },
-            { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: movementPointsAvailable },
+            { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: mpTo },
             { field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsAvailable },
           ],
         },
@@ -411,7 +414,7 @@ export function useGameEngine({
           unitId: attachedHero.id,
           changes: [
             { field: 'hex', from: { ...attachedHero.hex }, to: { ...targetHex } },
-            { field: 'movementPointsAvailable', from: attachedHero.movementPointsAvailable, to: heroCost.movementPointsAvailable },
+            { field: 'movementPointsAvailable', from: attachedHero.movementPointsAvailable, to: options?.stopInZoc ? 0 : heroCost.movementPointsAvailable },
             { field: 'actionsAvailable', from: attachedHero.actionsAvailable, to: heroCost.actionsAvailable },
           ],
         });
@@ -918,6 +921,7 @@ export function useGameEngine({
           { field: 'attacksUsed', from: unit.attacksUsed ?? 0, to: 0 },
         ];
         changes.push({ field: 'archerReactionUsed', from: unit.archerReactionUsed ?? false, to: false });
+        changes.push({ field: 'partingShotUsed', from: unit.partingShotUsed ?? false, to: false });
         subSteps.push({
           type: 'END_TURN',
           description: `${unit.unitName} refreshed (${mpTo} MP, ${actionsTo} actions)`,

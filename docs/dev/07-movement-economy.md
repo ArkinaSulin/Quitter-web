@@ -101,6 +101,31 @@ Enemy **threat hexes** (ZOC) come from `computeThreatHexes` (mapGeometry) via
 the formations matrix `stop_enemy_movement_arcs` — Scattered/Routed/heroes
 never block. **Movement never routs.**
 
+**Entering a kill zone ends the move.** When a drop's destination is a hostile
+threat hex, the MOVE zeroes any leftover `movementPointsAvailable` (the mover
+may still act with another action, but this pool is spent). A unit may not pass
+through a threat hex — it stops on entry.
+
+## Disengaging — the parting shot
+
+Leaving a hostile kill zone provokes a **parting shot** (`src/lib/zocDisengage.ts`):
+every formed hostile whose kill zone covered the origin hex but not the
+destination gets **one free attack** at the mover (`disengageAttackers`). It is
+resolved by `performPartingShots` (`useCombatActions`) through the normal melee
+tree at the **point of contact** (origin hex) — AGR applies, the mover strikes
+back at nothing (retaliation is suppressed).
+
+- **Once per unit per turn** — the `parting_shot_used` flag (migration 084),
+  cleared at the unit's own turn start like `archerReactionUsed`.
+- **Free**, but counts **+1** toward the 5-attack cap (`pursuit` path).
+- Triggered from `completeMove` (normal move, charge and over-budget confirm);
+  **charge-over overrun and free-move are exempt**, and a routed retreat uses the
+  rout/pursuit path instead of this one.
+- **Only formed hostiles make one** (Scattered/Routed/Heroes impose no kill
+  zone), but **any mover can take one — including one that changed to Scattered**
+  or a Hero. This is what closes the mount hit-and-run (charge in → free strike →
+  scatter and flee).
+
 ## Charge (movement-side)
 
 `computeChargeReachable` — front-arc wedge, **no turning**, bounded by one

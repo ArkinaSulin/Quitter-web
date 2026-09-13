@@ -679,6 +679,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     aiHoveredUnitId: hoveredUnit?.id ?? null,
   });
 
+  // Parting-shot resolver is owned by useCombatActions (declared later); this ref
+  // bridges the hook-order cycle — useMoveActions reads it at move time.
+  const partingShotsRef = useRef<((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null>(null);
+
   const {
     pendingMove,
     setPendingMove,
@@ -693,7 +697,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingSwapOverBudget,
     setPendingSwapOverBudget,
     maybeAutoReturnToRanged,
-    performMove,
     completeMove,
     handleUnitMove,
     handleChangeFormation,
@@ -722,6 +725,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     weaponSelectedTurnRef,
     setActiveHeroId,
     terrainCosts: moveTerrainCosts,
+    partingShotsRef,
   });
 
   // ---- Temporary-effect apply/remove handlers (opened from the context menu) ----
@@ -1156,6 +1160,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,
+    performPartingShots,
     handleAttackRequest,
   } = useCombatActions({
     units,
@@ -1176,6 +1181,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setAttachModal,
     canAttackTarget: canAttackInFog,
   });
+  partingShotsRef.current = performPartingShots;
 
   // ---- Routed retreat + pursuit orchestration (owner decides, auto when 1/0) ----
   type RoutMove =
@@ -2036,7 +2042,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         terrainCosts={moveTerrainCosts}
         gridRadius={backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS}
         unitMaxMP={unitMaxMP}
-        performMove={(unit, targetHex, cost, overBudget, maxMP) => performMove(unit, targetHex, cost, overBudget, maxMP)}
+        performMove={(unit, targetHex, cost, overBudget, maxMP) => completeMove(unit, targetHex, cost, overBudget, maxMP)}
         performAttack={(attacker, target, overBudget) => performAttack(attacker, target, overBudget)}
         rotateUnit={(unit, dir, maxMP) => rotateUnit(unit, dir, maxMP)}
         changeFormation={(unit, formation, fm) => changeFormation(unit, formation, fm)}

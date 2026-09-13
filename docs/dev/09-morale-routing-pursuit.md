@@ -107,3 +107,12 @@ all, the attacker makes a labeled **FREE pursue attack** (no speed/MP gate,
 org −1 still applies). The whole episode (rout → retreat → rout-through/
 disruption → pursuit move → pursuit attack) lands as one chained command
 group, undoable in one step.
+
+## Parting shot (voluntary disengagement)
+
+Distinct from rout pursuit (which answers a *forced* rout): a unit that
+**voluntarily moves out of a kill zone** provokes one free parting attack from
+each formed hostile whose kill zone it leaves — fired at the **point of contact**
+(no chase, so the pursuit speed gate does not apply), once per attacker per turn.
+See `07` (movement) and `08` (combat). Routed retreats never trigger it; they use
+the pursuit flow above.

@@ -283,6 +283,9 @@ export function resolveCombatSequence(
   isCharging = false,
   attackerForm: Formation | null = null,
   defenderForm: Formation | null = null,
+  /** A parting shot at a disengaging unit: the attacker always strikes first and
+   *  the mover never gets a counter-blow (it is turning away, not fighting). */
+  partingShot = false,
 ): CombatOutcome {
   // AGR check: skip if hero, ranged, target routed, rear attack, a free/no-retaliation
   // weapon, or when the attacker has a front-attached hero (the hero's presence
@@ -330,7 +333,7 @@ export function resolveCombatSequence(
   // Who strikes first? A defender attacked from the rear, a routed defender, noRetaliation
   // weapons, and ranged attacks all let the attacker strike first (the defender can't react).
   let strikerFirst: 'attacker' | 'defender';
-  if (attackerWeapon.noRetaliation || isRanged || isRearAttack) {
+  if (attackerWeapon.noRetaliation || isRanged || isRearAttack || partingShot) {
     strikerFirst = 'attacker';
   } else if (isUnitRouted(defender)) {
     strikerFirst = 'attacker';
@@ -420,7 +423,7 @@ export function resolveCombatSequence(
 
   // --- Retaliation ---
   if (strikerFirst === 'attacker') {
-    if (!isUnitRouted(defender) && !attackerWeapon.noRetaliation && !(isRanged && !defenderForm?.retaliate_vs_ranged) && !isRearAttack) {
+    if (!partingShot && !isUnitRouted(defender) && !attackerWeapon.noRetaliation && !(isRanged && !defenderForm?.retaliate_vs_ranged) && !isRearAttack) {
       const rawPosition = determineCombatPosition(attacker.hex, defender.hex, defender.facing);
       const retPos = resolveRetaliationPosition(defender, defenderForm, rawPosition);
       if (retPos !== 'rear') {

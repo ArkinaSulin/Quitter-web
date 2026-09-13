@@ -94,6 +94,7 @@ as applied in the notes — check the live DB before relying on it).
 | 081 | Weapon Editor: access caps + RLS on `weapons` | ⏳ run in Supabase |
 | 082 | effect image scale (`effect_templates.image_scale`) | ⏳ run in Supabase |
 | 083 | effect transparent background (`effect_templates.transparent_background`) | ⏳ run in Supabase |
+| 084 | parting shot (`units.parting_shot_used` + allowlist) | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

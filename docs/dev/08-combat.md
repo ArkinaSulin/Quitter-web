@@ -152,6 +152,18 @@ start. Heroes also respect the cap in practice via their 5-action budget.
   and land behind (a chained MOVE).
 - Still charging at your own End Turn → forfeit (clear charge + org drop).
 
+## Parting shot (disengaging a kill zone)
+
+A unit that moves **out of a hostile kill zone** provokes a free parting attack
+from each formed hostile whose kill zone it is leaving (`zocDisengage.ts` →
+`disengageAttackers`; resolved by `performPartingShots`). It runs through the
+normal melee pipeline at the **origin hex** (contact point), with AGR applied and
+the mover's **retaliation suppressed** (`suppressRetaliation(..., atCap=true)`).
+It is **free** and **counts +1 to the attacker's 5-attack cap**, and each unit
+gets **at most one per turn** (`parting_shot_used`). Scattered/Routed/Heroes
+never make one (no kill zone); any mover — formed, Scattered or Hero — can take
+one. Charge-over overrun and free-move are exempt.
+
 ## Reactions (opportunity fire, archery)
 
 When any unit finishes a MOVE, eligible **archers of the opposing alliance**

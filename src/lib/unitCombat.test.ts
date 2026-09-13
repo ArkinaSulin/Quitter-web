@@ -67,6 +67,7 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     actionsAvailable: 1,
     attacksUsed: 0,
     archerReactionUsed: false,
+    partingShotUsed: false,
     activeWeaponIndex: 0,
     str: 0,
     dex: 0,
@@ -440,13 +441,14 @@ describe('resolveCombatSequence', () => {
     attachedAtkHero: { currentAc: number; troopHp: number } | null = null,
     attackerForm: Formation | null = null,
     defenderForm: Formation | null = null,
+    partingShot = false,
   ) {
     return resolveCombatSequence(
       att, def, atkW, defW,
       formationAtkMod, attackCapMult, attackCapMult,
       rowCap, rowCap, visualDotsPerRow,
       isRanged, isRear, attachedDefHero, attachedAtkHero, seededRng(42), false,
-      attackerForm, defenderForm,
+      attackerForm, defenderForm, partingShot,
     );
   }
 
@@ -680,6 +682,16 @@ describe('resolveCombatSequence', () => {
     const routedDef = { ...defender, currentFormation: 'Routed' };
     const result = callCombat(attacker, routedDef, { ...aw, is_reach: false }, { ...dw, is_reach: true });
     expect(result.strikerFirst).toBe('attacker');
+  });
+
+  it('parting shot: attacker always strikes first and the mover never retaliates', () => {
+    // Even with defender Reach (which would normally let the defender strike
+    // first), a parting shot is attacker-first with no counter-blow.
+    const result = callCombat(attacker, defender, { ...aw, is_reach: false }, { ...dw, is_reach: true }, 0, 1, false, false, null, null, null, null, true);
+    expect(result.strikerFirst).toBe('attacker');
+    expect(result.firstStrikeCount).toBeGreaterThan(0);
+    expect(result.retaliationAttacks).toHaveLength(0);
+    expect(result.retaliationDamage).toBe(0);
   });
 
   it('routed defender cannot retaliate', () => {

@@ -5,11 +5,12 @@
 // the soft 5-cap stash, morale/rout), healing weapons, and the charge
 // end/overrun helpers. Owns the attack-related soft-enforcement states.
 import { useCallback, useState } from 'react';
-import { Unit, AllianceGroup, Formation, SizeCategory, hexDistance } from '@/types/gameProtocol';
+import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance } from '@/types/gameProtocol';
 import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/lib/formationRules';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
+import { disengageAttackers } from '@/lib/zocDisengage';
 import { getSetting } from '@/lib/settingsCache';
 import { unitAttackCap } from '@/lib/attackCap';
 import { nextLowerFormation } from '@/lib/formationCost';
@@ -86,7 +87,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
   const [pendingWeaponSwitch, setPendingWeaponSwitch] = useState<PendingWeaponSwitch | null>(null);
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean }) => {
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean; partingShot?: boolean; onExecuted?: (steps: SubStep[]) => void }) => {
     if (overBudget) {
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
@@ -189,6 +190,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
           isChargingAttack,
           formationsMap[attacker.currentFormation],
           formationsMap[target.currentFormation],
+          options?.partingShot ?? false,
         );
 
     const subSteps: SubStep[] = [];
@@ -234,13 +236,18 @@ export function useCombatActions(deps: CombatActionsDeps) {
     } else {
       // Free-action / charge / pursuit attacks carry no action cost but still
       // count toward the cap (spent even on AGR failure).
+      const freeChanges: UnitChange[] = [
+        { field: 'attacksUsed', from: attacker.attacksUsed ?? 0, to: (attacker.attacksUsed ?? 0) + 1 },
+      ];
+      // A parting shot is once per turn per defender — flag it in the same command.
+      if (options?.partingShot) {
+        freeChanges.push({ field: 'partingShotUsed', from: attacker.partingShotUsed ?? false, to: true });
+      }
       subSteps.push({
         type: 'ATTACK',
         description: `${attacker.unitName} attacked with ${weapon.name} — cap count`,
         unitId: attacker.id,
-        changes: [
-          { field: 'attacksUsed', from: attacker.attacksUsed ?? 0, to: (attacker.attacksUsed ?? 0) + 1 },
-        ],
+        changes: freeChanges,
       });
     }
 
@@ -553,7 +560,15 @@ export function useCombatActions(deps: CombatActionsDeps) {
       attackerRouted = !attackerKilled && shouldRout(attModUnit, units, alliances, formationsMap[attacker.currentFormation] ?? null);
     }
 
-    await execute('ATTACK', subSteps, desc, (verboseCombat ? { message: msgDesc } : options?.chained ? { chained: true } : undefined));
+    // Preserve `chained` even in verbose mode (the message override used to drop
+    // it, orphaning cause-chain undo/replay grouping).
+    const execOpts = (verboseCombat || options?.chained)
+      ? { ...(options?.chained ? { chained: true } : {}), ...(verboseCombat ? { message: msgDesc } : {}) }
+      : undefined;
+    await execute('ATTACK', subSteps, desc, execOpts);
+    // Let the caller (parting shots) track the target's post-strike HP so a later
+    // attacker in the same chain does not compute damage from a stale snapshot.
+    options?.onExecuted?.(subSteps);
 
     // Only the attacked unit can rout — no morale cascade to nearby units.
     if (defenderRouted || defenderKilled) {
@@ -573,6 +588,38 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // attacker surviving and/or the target breaking.
     return { attackerRouted, attackerKilled, defenderRouted, defenderKilled };
   }, [units, alliances, formationsMap, sizeCategories, execute, addMessage, addError, maybeAutoReturnToRanged, verboseCombat]);
+
+  /**
+   * Parting shots: every formed hostile whose kill zone a mover LEFT gets one
+   * free attack at the mover (the mover strikes from its origin hex — the point
+   * of contact). Each attacker may part once per turn; strikes resolve
+   * sequentially and the mover's HP is tracked between them so a killed mover
+   * is never struck again. The mover gets no retaliation.
+   */
+  const performPartingShots = useCallback(async (mover: Unit, originHex: Hex, destHex: Hex) => {
+    const attackers = disengageAttackers(mover, originHex, destHex, units, alliances, formationsMap);
+    if (attackers.length === 0) return;
+    let live: Unit = { ...mover, hex: { ...originHex } };
+    for (const enemy of attackers) {
+      if ((live.currentUnitHp ?? 0) <= 0 || isUnitRouted(live)) break;
+      const outcome = await performAttack(enemy, live, false, {
+        pursuit: true,
+        partingShot: true,
+        chained: true,
+        onExecuted: (steps) => {
+          for (const s of steps) {
+            if (s.unitId !== live.id) continue;
+            for (const c of s.changes) {
+              if (c.field === 'currentUnitHp') live = { ...live, currentUnitHp: c.to as number };
+              else if (c.field === 'currentTroopCount') live = { ...live, currentTroopCount: c.to as number };
+            }
+          }
+        },
+      });
+      if (!outcome) continue; // AGR failed — the flag is spent, the mover unhurt
+      if (outcome.defenderKilled || outcome.defenderRouted) break;
+    }
+  }, [units, alliances, formationsMap, performAttack]);
 
   // A healing weapon (isHealing) recovers the target's HP instead of damaging it —
   // same dice mechanic as damage, capped at maxUnitHp. No combat sequence, AGR,
@@ -903,6 +950,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,
+    performPartingShots,
     handleAttackRequest,
   };
 }
