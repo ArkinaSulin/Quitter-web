@@ -58,7 +58,8 @@ describe('corpseTracker', () => {
     expect(total(fallen['2,1'])).toBe(5); // later losses land on the moved-to hex
   });
 
-  it('scatter positions are stable as the pile grows, and avoid the exact centre', () => {
+  it('scatter positions are stable as the pile grows, reachable to the centre, and bias outward', () => {
+    const R = 0.88;
     const small = corpseScatterPositions(3, 7, 5);
     const big = corpseScatterPositions(3, 7, 12);
     for (let i = 0; i < 5; i++) {
@@ -67,9 +68,14 @@ describe('corpseTracker', () => {
     }
     for (const p of big) {
       const r = Math.hypot(p.dx, p.dy);
-      expect(r).toBeGreaterThanOrEqual(0.2);
-      expect(r).toBeLessThanOrEqual(0.44);
+      expect(r).toBeGreaterThanOrEqual(0);
+      expect(r).toBeLessThanOrEqual(R);
     }
+    // Linear density p(r) ∝ r: ~25% of dots fall in the inner half, ~75% outside.
+    const sample = corpseScatterPositions(11, 13, 4000);
+    const inner = sample.filter(p => Math.hypot(p.dx, p.dy) < R / 2).length;
+    expect(inner / sample.length).toBeGreaterThan(0.18);
+    expect(inner / sample.length).toBeLessThan(0.32);
   });
 
   it('corpseDots is cached and matches the raw scatter', () => {

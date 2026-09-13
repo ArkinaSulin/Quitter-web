@@ -59,7 +59,8 @@ Name runs flush along the bottom in white with a dark shadow.
   the command log (`corpseTracker.buildFallen`). Each dot matches the dead unit —
   team colour, **mounted = triangle / foot = circle**, radius from
   `sizeCategory`×`visualScale`. Scatter is deterministic and stable as the pile
-  grows (annulus 0.20–0.44 of `HEX_SIZE`, no cap).
+  grows (random direction, radial density linear in distance out to `0.88` of
+  `HEX_SIZE`, no cap).
 - Routed is drawn from `currentFormation === 'Routed'` (white flag).
 
 ## Async image handling

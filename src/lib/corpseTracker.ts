@@ -38,10 +38,13 @@ const EDITOR_COMMANDS = new Set(['EDIT_UNIT', 'DELETE', 'PLACE', 'TEAM', 'ALLIAN
 
 /** Deterministic seeded positions for a hex (stable as the pile grows).
  *  Positions are returned in hex-local offsets; draw the first `count`.
- *  An annulus (0.20–0.44 of HEX_SIZE) with sqrt area bias keeps dots off the
- *  exact centre so piles never over-clump in the middle.
+ *  Random direction, radial density linear in distance (accept w.p. r/R, no
+ *  sqrt) out to R = 0.88 of HEX_SIZE (double the old 0.44 cap). The centre is
+ *  reachable but sparse, and the outer area — where a 60° sector is widest —
+ *  carries proportionally more dots, so piles don't over-clump in the middle.
  *  Cached per (q,r,count) — the layout is deterministic, so the per-frame cost
  *  is just drawing, not regenerating. */
+const SCATTER_RADIUS = 0.88; // × HEX_SIZE (old max was 0.44)
 const scatterCache = new Map<string, { dx: number; dy: number }[]>();
 const SCATTER_CACHE_MAX = 5000;
 
@@ -61,7 +64,10 @@ export function corpseScatterPositions(q: number, r: number, count: number): { d
   const out: { dx: number; dy: number }[] = [];
   for (let i = 0; i < count; i++) {
     const a = rand() * Math.PI * 2;
-    const r2 = 0.20 + Math.sqrt(rand()) * 0.24;
+    // Continuous linear outward density: accept a candidate radius with
+    // probability r/SCATTER_RADIUS (rejection sampling — no square root).
+    let r2: number;
+    do { r2 = rand() * SCATTER_RADIUS; } while (rand() > r2 / SCATTER_RADIUS);
     out.push({ dx: Math.cos(a) * r2, dy: Math.sin(a) * r2 });
   }
   if (scatterCache.size >= SCATTER_CACHE_MAX) scatterCache.clear();

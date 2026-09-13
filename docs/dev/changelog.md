@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Corpse scatter: linear outward density, centre reachable, 2× radius (2026-09-13)
+**Files:** src/lib/corpseTracker.ts, src/lib/battleStats.test.ts, docs/dev/15-token-rendering.md
+
+- Replaced the annulus `0.20 + √rand · 0.24` (a visible ring with an empty centre and a hard 0.44 cap) with a **continuous linear radial density**: random direction, candidate radius accepted with probability `r / R` (rejection sampling — no `sqrt`/square curve in the code). Density rises linearly from the centre to the edge, so the wider outer 60° sectors carry proportionally more dots and the middle stops over-clumping.
+- **Radius doubled** to `R = 0.88 × HEX_SIZE` (old max `0.44`) and the `0.20` inner floor removed, so dots now fill the hex and the centre is reachable (sparse) again.
+- Still deterministic + prefix-stable (extra draws happen in index order), so the cache/undo/replay behaviour is unchanged. Test now asserts the `[0, 0.88]` bounds and the ~25%/75% inner/outer split. tsc clean.
+
 ## Directional formation AC: no bonus from the rear (2026-09-06)
 **Files:** src/lib/attackDirection.ts (+ test, new), src/lib/unitStats.ts (+ test), src/lib/unitCombat.ts, src/lib/enemyAI/planner.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{useCombatActions,useReactionActions,ContextMenu,UnitTooltip,ScenarioMap}.tsx, src/components/TokenRenderer/drawToken.ts, docs/dev/08-combat.md, docs/players/player-manual.md
 
