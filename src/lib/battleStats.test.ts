@@ -59,7 +59,7 @@ describe('corpseTracker', () => {
   });
 
   it('scatter positions are stable as the pile grows, reachable to the centre, and bias outward', () => {
-    const R = 0.88;
+    const R = 0.704;
     const small = corpseScatterPositions(3, 7, 5);
     const big = corpseScatterPositions(3, 7, 12);
     for (let i = 0; i < 5; i++) {

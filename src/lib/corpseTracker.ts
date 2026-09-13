@@ -39,12 +39,12 @@ const EDITOR_COMMANDS = new Set(['EDIT_UNIT', 'DELETE', 'PLACE', 'TEAM', 'ALLIAN
 /** Deterministic seeded positions for a hex (stable as the pile grows).
  *  Positions are returned in hex-local offsets; draw the first `count`.
  *  Random direction, radial density linear in distance (accept w.p. r/R, no
- *  sqrt) out to R = 0.88 of HEX_SIZE (double the old 0.44 cap). The centre is
+ *  sqrt) out to R = 0.704 of HEX_SIZE (0.88 scaled by 0.8). The centre is
  *  reachable but sparse, and the outer area — where a 60° sector is widest —
  *  carries proportionally more dots, so piles don't over-clump in the middle.
  *  Cached per (q,r,count) — the layout is deterministic, so the per-frame cost
  *  is just drawing, not regenerating. */
-const SCATTER_RADIUS = 0.88; // × HEX_SIZE (old max was 0.44)
+const SCATTER_RADIUS = 0.704; // × HEX_SIZE (was 0.88; 80% length)
 const scatterCache = new Map<string, { dx: number; dy: number }[]>();
 const SCATTER_CACHE_MAX = 5000;
 
