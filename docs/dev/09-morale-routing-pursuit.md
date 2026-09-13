@@ -62,9 +62,13 @@ or spell). It routs when `effectiveMorale ≤ 0` — subject to `ignoreMoraleChe
   own **chained ROUT** command. Units *adjacent* to a routing unit also check
   (cascade), each a chained ROUT — one undo unwinds the whole episode.
 - Routed units: move any direction (loose, 1 MP/hex), cannot attack or cast,
-  cannot be in a kill zone, and are +2 AC-vulnerable (shield dropped). They may
-  **rally** via a formation change when their effective morale is > 0 (clears
-  Routed).
+  cannot be in a kill zone, and are +2 AC-vulnerable (shield dropped).
+- **Rally** (context menu, non-fearless units/heroes): while Routed and with
+  positive effective morale and no *visible* hostile adjacent, the unit returns
+  to **Scattered** (heroes: **Hero**) and spends the rest of its turn (0 actions,
+  0 MP). The normal formation picker is hidden while Routed, so Rally is the only
+  way out. Prereqs live in `src/lib/rally.ts` (`canRally`); the command is
+  `useGameEngine.rallyUnit`.
 
 ## Retreat (owner-decided)
 

@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Rally: recover routed units via the context menu (2026-09-06)
+**Files:** src/lib/rally.ts (+ test, new), src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ContextMenu,ScenarioMap}.tsx, docs/dev/09-morale-routing-pursuit.md
+
+- New **Rally** context-menu item for any **non-fearless** unit/hero (visible but greyed with a reason until eligible). Eligibility (`canRally`): currently Routed, alive, **positive effective morale**, and **no visible hostile adjacent** (hidden hostiles ignored; routed hostiles still count).
+- On Rally, one undoable `FORMATION` command sets `currentFormation → Scattered` (heroes → `Hero`), `organizationLevel → 0`, and clears `actionsAvailable`/`movementPointsAvailable` (spends the rest of the turn).
+- The normal formation picker is now **hidden while Routed**, so Rally is the only way out (the old `changeFormation` rally guard remains as a safety net for non-menu callers).
+- Tests: `canRally` (8). tsc clean; 557 tests pass.
+
 ## Fix: Add/Edit Weapon form wiped fields on a library pick (2026-09-06)
 **Files:** src/components/WeaponEditorModal.tsx, src/lib/weaponParser.ts, src/lib/weaponParser.test.ts, src/lib/weaponMappers.test.ts
 

@@ -593,6 +593,28 @@ export function useGameEngine({
     [execute, addMessage, freeMove],
   );
 
+  // Rally (context menu): a routed unit recovers to Scattered (heroes to Hero)
+  // and spends the rest of its turn — all actions and MP cleared. One command, so
+  // it undoes as a single step.
+  const rallyUnit = useCallback(
+    async (unit: Unit): Promise<void> => {
+      const target = unit.isHero ? 'Hero' : 'Scattered';
+      const changes = [
+        { field: 'currentFormation', from: unit.currentFormation, to: target },
+        { field: 'organizationLevel', from: unit.organizationLevel, to: 0 },
+        { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: 0 },
+        { field: 'actionsAvailable', from: unit.actionsAvailable, to: 0 },
+      ];
+      await execute('FORMATION', [{
+        type: 'FORMATION',
+        description: `${unit.unitName} rallies to ${target}`,
+        unitId: unit.id,
+        changes,
+      }], `${unit.unitName} rallies to ${target} — no actions left`);
+    },
+    [execute],
+  );
+
   const assignTeam = useCallback(
     async (unit: Unit, team: string): Promise<void> => {
       const subSteps: SubStep[] = [
@@ -1002,6 +1024,7 @@ export function useGameEngine({
     peekUndoChainLength,
     rotateUnit,
     changeFormation,
+    rallyUnit,
     selectWeapon,
     assignTeam,
     toggleHide,

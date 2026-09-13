@@ -45,6 +45,10 @@ interface ContextMenuProps {
   onOtherAction?: (hero: Unit) => void;
   /** Open the temporary-effects dialog for this unit (GM or players). */
   onAddEffect?: () => void;
+  /** Rally (routed, non-fearless units/heroes): leave Routed for Scattered/Hero. */
+  canRally?: boolean;
+  rallyReason?: string;
+  onRally?: () => void;
   units: Unit[];
 }
 
@@ -75,6 +79,9 @@ export function ContextMenu({
   onSwitchToUnit,
   onOtherAction,
   onAddEffect,
+  canRally,
+  rallyReason,
+  onRally,
   units,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -196,6 +203,23 @@ export function ContextMenu({
       )}
       {(attachedHero || hostUnit) && <div className="border-t border-gray-700 my-1" />}
 
+      {/* Rally: routed, non-fearless units/heroes only. Shown but disabled when
+          the prerequisites aren't met (positive morale, no visible enemy adjacent). */}
+      {!unit.ignoreMoraleChecks && onRally && (
+        <>
+          <div
+            className={`px-3 py-1 ${canRally ? 'hover:bg-emerald-900 cursor-pointer text-emerald-300 font-semibold' : 'text-gray-600 cursor-not-allowed'}`}
+            title={canRally
+              ? `Rally — leave Routed for ${unit.isHero ? 'Hero' : 'Scattered'} (spends all actions & MP)`
+              : `Rally unavailable — ${rallyReason ?? 'prerequisites not met'}`}
+            onClick={() => { if (!canRally) return; onRally(); onClose(); }}
+          >
+            Rally{canRally ? '' : ' (locked)'}
+          </div>
+          <div className="border-t border-gray-700 my-1" />
+        </>
+      )}
+
       {!unit.isHero && !unit.attachedToUnitId && (
         <>
           <div
@@ -254,7 +278,8 @@ export function ContextMenu({
         </>
       )}
 
-      {!unit.isHero && !unit.attachedToUnitId && (
+      {/* Formation list — hidden while Routed: Rally is the only way out. */}
+      {!unit.isHero && !unit.attachedToUnitId && !isUnitRouted(unit) && (
         <>
           {unit.isCharging && (
             <div className="px-3 py-1 text-gray-500 italic text-xs">Formation locked while charging</div>

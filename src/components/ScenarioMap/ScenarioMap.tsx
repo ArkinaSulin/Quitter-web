@@ -37,6 +37,7 @@ import { PingLayer } from './PingLayer';
 import { TEAM_COLORS, TEAMS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { TeamChip } from '@/components/TokenRenderer/TeamChip';
 import { isUnitRouted } from '@/lib/unitMorale';
+import { canRally } from '@/lib/rally';
 import { isRangedCapableWeapon, getReactionMoveBudget, findEligibleReactionArchers } from '@/lib/archerReaction';
 import { computeVisibleHexes, computeFog, hexKey, DEFAULT_SIGHT_RADIUS, FOG_UNSEEN_GM_ALPHA, FOG_UNSEEN_PLAYER_ALPHA } from '@/lib/fogOfWar';
 import { supabase } from '@/lib/supabaseClient';
@@ -579,7 +580,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, []);
 
   const {
-      execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, otherAction, endTurn, applyEffect, removeEffect, editEffect, applyZoneChange, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog, syncZoneEffects,
+      execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, rallyUnit, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, otherAction, endTurn, applyEffect, removeEffect, editEffect, applyZoneChange, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog, syncZoneEffects,
   } = useGameEngine({
     scenarioId,
     playerId,
@@ -2172,7 +2173,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       })()}
 
       {/* Context Menu */}
-      {contextMenuUnit && contextMenuPos && (
+      {contextMenuUnit && contextMenuPos && (() => {
+        const rallyCheck = canRally(contextMenuUnit, units, alliances, formationsMap);
+        return (
         <ContextMenu
           unit={contextMenuUnit}
           x={contextMenuPos.x}
@@ -2197,6 +2200,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onAssignTeam={(team) => assignTeam(contextMenuUnit, team)}
           onToggleHide={() => toggleHide(contextMenuUnit)}
           onSetRouting={() => setRouting(contextMenuUnit)}
+          canRally={rallyCheck.ok}
+          rallyReason={rallyCheck.reason}
+          onRally={() => rallyUnit(contextMenuUnit)}
           onDeleteUnit={async () => {
             await execute('DELETE', [{
               type: 'DELETE',
@@ -2212,7 +2218,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }}
           units={units}
         />
-      )}
+        );
+      })()}
 
       {/* Add / remove temporary effects (context menu → Effects…) */}
       {effectMenuUnit && (
