@@ -1,5 +1,5 @@
 // src/components/ScenarioMap/SoftEnforcementModals.tsx
-// The 12 soft-enforcement prompts (over-budget / cap / conversion confirms).
+// The soft-enforcement prompts (over-budget / cap / conversion confirms).
 // Pure rendering: the pending states + fully-bound action closures come from
 // ScenarioMap; the bodies are text built from the states.
 import { Unit, Hex } from '@/types/gameProtocol';
@@ -76,13 +76,6 @@ export interface PendingChargeThrough {
   attachedHero?: Unit;
 }
 
-/** Offensive on an ally (friendly fire) or healing an enemy — soft cross-alliance confirm. */
-export interface PendingCrossAlliance {
-  attacker: Unit;
-  target: Unit;
-  kind: 'attack' | 'heal';
-}
-
 /**
  * The active weapon can't reach, and MORE THAN ONE weapon can: confirm a switch
  * to the first reaching weapon before attacking (single button — a caster with
@@ -98,7 +91,7 @@ export interface PendingWeaponSwitch {
   /** Name of the weapon currently held (for the message). */
   activeName: string;
   /** Options preserved when the attack resumes after the switch. */
-  options?: { forceCast?: boolean; allowCrossAlliance?: boolean };
+  options?: { forceCast?: boolean };
 }
 
 export interface SoftEnforcementModalsProps {
@@ -115,7 +108,6 @@ export interface SoftEnforcementModalsProps {
     castOverBudget: boolean;
     chargeAttack: PendingChargeAttack | null;
     chargeThrough: PendingChargeThrough | null;
-    crossAlliance: PendingCrossAlliance | null;
     weaponSwitch: PendingWeaponSwitch | null;
   };
   /** Fully-bound confirm handlers (clear state + controlsLocked guard + act). */
@@ -134,7 +126,6 @@ export interface SoftEnforcementModalsProps {
     confirmChargeAttack: () => void;
     confirmChargeThrough: () => void;
     declineChargeThrough: () => void;
-    confirmCrossAlliance: () => void;
     confirmWeaponSwitch: () => void;
   };
   cancels: {
@@ -149,7 +140,6 @@ export interface SoftEnforcementModalsProps {
     formation: () => void;
     castOverBudget: () => void;
     chargeAttack: () => void;
-    crossAlliance: () => void;
     weaponSwitch: () => void;
   };
   unitMaxMP: (unit: Unit) => number;
@@ -303,21 +293,6 @@ export function SoftEnforcementModals({ pending, actions, cancels, unitMaxMP }: 
           ]}
         >
           {p.chargeThrough.attacker.unitName} can charge over {p.chargeThrough.target.unitName} and land at ({p.chargeThrough.landHex.q}, {p.chargeThrough.landHex.r}) for 2 MP.
-        </ConfirmModal>
-      )}
-
-      {p.crossAlliance && (
-        <ConfirmModal
-          tone="amber"
-          title={p.crossAlliance.kind === 'attack' ? 'Friendly fire?' : 'Heal an enemy?'}
-          buttons={[
-            { label: p.crossAlliance.kind === 'attack' ? 'Yes, attack anyway' : 'Yes, heal anyway', variant: 'red', onClick: actions.confirmCrossAlliance },
-          ]}
-          onCancel={cancels.crossAlliance}
-        >
-          {p.crossAlliance.kind === 'attack'
-            ? `${p.crossAlliance.attacker.unitName} attacks ${p.crossAlliance.target.unitName}, who is in the same alliance. Attack anyway? (friendly fire)`
-            : `${p.crossAlliance.attacker.unitName} heals ${p.crossAlliance.target.unitName}, who is in a different alliance. Heal an enemy anyway?`}
         </ConfirmModal>
       )}
 

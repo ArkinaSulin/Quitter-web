@@ -140,25 +140,55 @@ export function useMoveActions(deps: MoveActionsDeps) {
     pruneReactionOffers();
   }, [moveUnitRecorded, addError, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers]);
 
+  // An attached hero dragged away separates from its host (drag-away = the only
+  // way to detach) — the move's undo chain also undoes the separation.
+  const finishHeroMove = useCallback(async (moved: Unit): Promise<void> => {
+    if (!moved.attachedToUnitId) return;
+    await execute('DETACH_HERO', [{
+      type: 'DETACH_HERO',
+      description: `${moved.unitName} moved away from its host`,
+      unitId: moved.id,
+      changes: [
+        { field: 'attachedToUnitId', from: moved.attachedToUnitId, to: null },
+        { field: 'attachedPosition', from: moved.attachedPosition, to: null },
+      ],
+    }], `${moved.unitName} moved away from its host`, { chained: true });
+    setActiveHeroId(null);
+  }, [execute, setActiveHeroId]);
+
+  /**
+   * The full consequence of a paid move: the MOVE itself (performMove already
+   * runs auto-return + reactions), then the charge-distance tick, then the
+   * drag-away hero detach. Both the normal drop AND the over-budget confirm
+   * must run this — the confirm path used to call performMove alone, silently
+   * skipping the charge tick and the detach (the intermittent "can't detach" /
+   * "charge-over never offered" bugs).
+   */
+  const completeMove = useCallback(async (
+    unit: Unit,
+    targetHex: Hex,
+    cost: number,
+    overBudget: boolean,
+    maxMP: number,
+    attachedHero?: Unit | null,
+    heroMaxMP?: number,
+  ): Promise<void> => {
+    await performMove(unit, targetHex, cost, overBudget, maxMP, attachedHero, heroMaxMP);
+    // Track distance moved during this charge (2 hexes = full charge).
+    if (unit.isCharging) {
+      await execute('CHARGE', [{
+        type: 'CHARGE',
+        description: `${unit.unitName} advanced ${cost} hex(es) in its charge`,
+        unitId: unit.id,
+        changes: [{ field: 'chargeDistance', from: unit.chargeDistance, to: unit.chargeDistance + cost }],
+      }], `${unit.unitName} advanced ${cost} hex(es) in its charge`, { chained: true });
+    }
+    await finishHeroMove(unit);
+  }, [performMove, execute, finishHeroMove]);
+
   const handleUnitMove = useCallback(async (unitId: string, targetHex: Hex) => {
     const unit = units.find(u => u.id === unitId);
     if (!unit) return;
-
-    // An attached hero dragged away separates from its host (drag-away = the only
-    // way to detach) — the move's undo chain also undoes the separation.
-    const finishHeroMove = async (moved: Unit): Promise<void> => {
-      if (!moved.attachedToUnitId) return;
-      await execute('DETACH_HERO', [{
-        type: 'DETACH_HERO',
-        description: `${moved.unitName} moved away from its host`,
-        unitId: moved.id,
-        changes: [
-          { field: 'attachedToUnitId', from: moved.attachedToUnitId, to: null },
-          { field: 'attachedPosition', from: moved.attachedPosition, to: null },
-        ],
-      }], `${moved.unitName} moved away from its host`, { chained: true });
-      setActiveHeroId(null);
-    };
 
     // A host dragging with an attached hero moves the combined unit: the hero
     // shares the move cost (its own MP/actions) and its hex follows the host.
@@ -182,15 +212,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
         setPendingMove({ unit, targetHex, cost, attachedHero });
         return;
       }
-      await performMove(unit, targetHex, cost, false, maxMP, attachedHero, heroMax);
-      // Track distance moved during this charge (2 hexes = full charge).
-      await execute('CHARGE', [{
-        type: 'CHARGE',
-        description: `${unit.unitName} advanced ${cost} hex(es) in its charge`,
-        unitId: unit.id,
-        changes: [{ field: 'chargeDistance', from: unit.chargeDistance, to: unit.chargeDistance + cost }],
-      }], `${unit.unitName} advanced ${cost} hex(es) in its charge`, { chained: true });
-      await finishHeroMove(unit);
+      await completeMove(unit, targetHex, cost, false, maxMP, attachedHero, heroMax);
       return;
     }
 
@@ -242,9 +264,8 @@ export function useMoveActions(deps: MoveActionsDeps) {
       setPendingMove({ unit, targetHex, cost: entry.cost, attachedHero });
       return;
     }
-    await performMove(unit, targetHex, entry.cost, false, effectiveMax, attachedHero, heroMax);
-    await finishHeroMove(unit);
-  }, [units, formationsMap, alliances, performMove, addMessage, freeMove, moveUnitFree, execute, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts]);
+    await completeMove(unit, targetHex, entry.cost, false, effectiveMax, attachedHero, heroMax);
+  }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove]);
 
   const handleChangeFormation = useCallback(async (unit: Unit, formation: string) => {
     if (unit.isHero || freeMove) {
@@ -343,6 +364,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     setPendingSwapOverBudget,
     maybeAutoReturnToRanged,
     performMove,
+    completeMove,
     handleUnitMove,
     handleChangeFormation,
     handleMoveTeam,

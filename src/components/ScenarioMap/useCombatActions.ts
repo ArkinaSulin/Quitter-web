@@ -15,7 +15,7 @@ import { unitAttackCap } from '@/lib/attackCap';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone } from '@/lib/unitMorale';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc } from '@/lib/meleeFallback';
-import { parseWeapons, Weapon, isOffensiveWeapon, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
+import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc } from '@/lib/unitStats';
 import { attackDirection } from '@/lib/attackDirection';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
@@ -23,7 +23,7 @@ import { SubStep, UnitChange } from '@/lib/commandLog';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { computeOccupiedHexes } from './mapGeometry';
 import { ExecuteFn, routeUnit } from './routeUnit';
-import { PendingAttack, PendingAttackCap, PendingRetaliationCap, PendingChargeAttack, PendingChargeThrough, PendingCrossAlliance, PendingWeaponSwitch } from './SoftEnforcementModals';
+import { PendingAttack, PendingAttackCap, PendingRetaliationCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch } from './SoftEnforcementModals';
 import { useMagicCast } from '@/hooks/useMagicCast';
 
 // A stashed attack resumes a previously-computed outcome (the retaliation-cap
@@ -84,7 +84,6 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingRetaliationCap, setPendingRetaliationCap] = useState<PendingRetaliationCap | null>(null);
   const [pendingChargeAttack, setPendingChargeAttack] = useState<PendingChargeAttack | null>(null);
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
-  const [pendingCrossAlliance, setPendingCrossAlliance] = useState<PendingCrossAlliance | null>(null);
   const [pendingWeaponSwitch, setPendingWeaponSwitch] = useState<PendingWeaponSwitch | null>(null);
 
   const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean }) => {
@@ -577,8 +576,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
   // A healing weapon (isHealing) recovers the target's HP instead of damaging it —
   // same dice mechanic as damage, capped at maxUnitHp. No combat sequence, AGR,
-  // retaliation, morale, or LoS requirement (healing never misses). The caller
-  // (handleAttackRequest) soft-gates cross-alliance healing before reaching here.
+  // retaliation, morale, or LoS requirement (healing never misses). The alliance
+  // gate in handleAttackRequest restricts this to same-alliance targets only.
   // Heals with the unit's FULL rank volley (same attack count as combat: rank
   // capacity × weapon attacks), so a full-rank healer heals like a full-rank
   // attacker strikes.
@@ -658,7 +657,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     await performChargeEnd(attacker, true);
   }, [units, formationsMap, performChargeEnd]);
 
-  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; allowCrossAlliance?: boolean; weaponIndex?: number }) => {
+  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; weaponIndex?: number }) => {
     let attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return;
@@ -674,7 +673,6 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
     const attackerGroup = alliances[attacker.team] || 'friendly';
     const targetGroup = alliances[target.team] || 'friendly';
-    const sameAlliance = attackerGroup === targetGroup;
     const dist = hexDistance(attacker.hex, target.hex);
     const isAdjacent = isAdjacentDistance(dist);
 
@@ -718,7 +716,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
           attacker, target, index: idx,
           label: `${formatWeaponDisplay(w)}${w.freeAction ? ' (free)' : ' (1 action)'}`,
           activeName: weapon.name,
-          options: { forceCast: opts?.forceCast, allowCrossAlliance: opts?.allowCrossAlliance },
+          options: { forceCast: opts?.forceCast },
         });
         return;
       }
@@ -733,13 +731,17 @@ export function useCombatActions(deps: CombatActionsDeps) {
       attacker = { ...attacker, activeWeaponIndex: suggestIndex };
     }
 
-    // ONE cross-alliance soft gate: offensive weapons target enemies by default,
-    // healing targets allies by default; the reverse direction (friendly fire /
-    // healing an enemy) is a soft confirm — anyone can attack (or heal) anyone.
-    const isOffensive = isOffensiveWeapon(weapon);
-    const targetMismatch = isOffensive ? sameAlliance : !sameAlliance;
-    if (targetMismatch && !opts?.allowCrossAlliance) {
-      setPendingCrossAlliance({ attacker, target, kind: isOffensive ? 'attack' : 'heal' });
+    // Hard alliance gate: offensive weapons may only target a DIFFERENT
+    // alliance, healing weapons only the SAME alliance. No friendly fire and no
+    // healing an enemy (the old cross-alliance soft confirm is gone — those are
+    // anti-intuitive and near-unused; the DM has explicit tools for them).
+    const verdict = validateTargetAlliance(attackerGroup, targetGroup, weapon);
+    if (verdict === 'friendly-fire') {
+      addMessage(`${attacker.unitName} cannot attack ${target.unitName} — same alliance`);
+      return;
+    }
+    if (verdict === 'heal-enemy') {
+      addMessage(`${attacker.unitName} cannot heal ${target.unitName} — different alliance`);
       return;
     }
 
@@ -865,17 +867,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
     await performAttack(attacker, target, false);
-  }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP, setAttachModal, setPendingCrossAlliance, canAttackTarget, execute]);
-
-  const confirmCrossAlliance = useCallback(() => {
-    const pending = pendingCrossAlliance;
-    setPendingCrossAlliance(null);
-    if (pending) {
-      handleAttackRequest(pending.attacker.id, pending.target.id, { allowCrossAlliance: true });
-    }
-  }, [pendingCrossAlliance, handleAttackRequest]);
-
-  const cancelCrossAlliance = useCallback(() => setPendingCrossAlliance(null), []);
+  }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP, setAttachModal, canAttackTarget, execute]);
 
   // Confirm the offered weapon switch, then resume the attack with that weapon.
   const confirmWeaponSwitch = useCallback(async () => {
@@ -905,10 +897,6 @@ export function useCombatActions(deps: CombatActionsDeps) {
     setPendingChargeAttack,
     pendingChargeThrough,
     setPendingChargeThrough,
-    pendingCrossAlliance,
-    setPendingCrossAlliance,
-    confirmCrossAlliance,
-    cancelCrossAlliance,
     pendingWeaponSwitch,
     confirmWeaponSwitch,
     cancelWeaponSwitch,

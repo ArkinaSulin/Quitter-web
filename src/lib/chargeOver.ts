@@ -4,7 +4,7 @@
 import { Hex, Unit, Formation } from '@/types/gameProtocol';
 import { isInFrontArc, determineCombatPosition } from '@/lib/unitCombat';
 import { canChargeThrough } from '@/lib/formationRules';
-import { isMoveAffordable } from '@/lib/moveCost';
+import { isMoveAffordable, isHeroMoveAffordable } from '@/lib/moveCost';
 
 export interface CombatOutcome {
   attackerRouted: boolean;
@@ -41,7 +41,10 @@ export function isChargeOverEligible(
 ): boolean {
   if (result.attackerRouted || result.attackerKilled) return false;
   if (!isInFrontArc(charger.hex, charger.facing, target.hex)) return false;
-  if (!isMoveAffordable(charger, 2, maxMP)) return false;
+  const affordable = charger.isHero
+    ? isHeroMoveAffordable(charger, 2, maxMP)
+    : isMoveAffordable(charger, 2, maxMP);
+  if (!affordable) return false;
   const targetForm = result.defenderRouted || result.defenderKilled ? 'Routed' : target.currentFormation;
   const approachArc = determineCombatPosition(charger.hex, target.hex, target.facing);
   if (!canChargeThrough(formationsMap[targetForm], approachArc)) return false;

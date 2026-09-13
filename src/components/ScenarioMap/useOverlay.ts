@@ -141,36 +141,50 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
 
     const activeWeapon = parseWeapons(draggedUnit.weaponString || '')[draggedUnit.activeWeaponIndex ?? 0];
     const isRanged = !!activeWeapon && activeWeapon.maxRange > 1;
+    // A hovered unit is always a TARGET, never a movement destination: suppress
+    // the movement paint so what you see is what the drop does.
+    const hoveredIsUnit = !!hoveredUnit && hoveredUnit.id !== draggedUnit.id && !hoveredUnit.isDeleted;
     // A valid target: a hovered unit from a different alliance than the drag.
     const isValidTarget =
-      !!hoveredUnit && hoveredUnit.id !== draggedUnit.id && !hoveredUnit.isDeleted &&
-      (alliances[hoveredUnit.team] || 'friendly') !== (alliances[draggedUnit.team] || 'friendly');
+      hoveredIsUnit &&
+      (alliances[hoveredUnit!.team] || 'friendly') !== (alliances[draggedUnit.team] || 'friendly');
 
-    if (isRanged && isValidTarget) {
-      // Dragging a ranged unit over an enemy target: show range rings instead of
-      // the movement highlight (movement and range never compete visually).
-      for (const h of hexRing(draggedUnit.hex, activeWeapon.range)) {
-        combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.9)';
+    if (hoveredIsUnit) {
+      const targetKey = `${hoveredUnit!.hex.q},${hoveredUnit!.hex.r}`;
+      if (!isValidTarget) {
+        // Ally — cross-alliance attacks are hard-blocked; show it as invalid.
+        combined[targetKey] = 'rgba(255, 80, 80, 0.7)';
+        return combined;
       }
-      if (activeWeapon.maxRange > activeWeapon.range) {
-        for (const h of hexRing(draggedUnit.hex, activeWeapon.maxRange)) {
-          combined[`${h.q},${h.r}`] = 'rgba(255, 180, 60, 0.9)';
+      if (isRanged) {
+        // Dragging a ranged unit over an enemy target: show range rings.
+        for (const h of hexRing(draggedUnit.hex, activeWeapon!.range)) {
+          combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.9)';
         }
+        if (activeWeapon!.maxRange > activeWeapon!.range) {
+          for (const h of hexRing(draggedUnit.hex, activeWeapon!.maxRange)) {
+            combined[`${h.q},${h.r}`] = 'rgba(255, 180, 60, 0.9)';
+          }
+        }
+        const d = hexDistance(draggedUnit.hex, hoveredUnit!.hex);
+        let color = 'rgba(80, 220, 120, 0.8)';
+        if (d > activeWeapon!.maxRange) color = 'rgba(255, 80, 80, 0.85)';
+        else if (d > activeWeapon!.range) color = 'rgba(255, 180, 60, 0.85)';
+        combined[targetKey] = color;
+      } else {
+        // Melee target: mark it green (the drop attacks it, not a move).
+        combined[targetKey] = 'rgba(80, 220, 120, 0.85)';
       }
-      const d = hexDistance(draggedUnit.hex, hoveredUnit!.hex);
-      let color = 'rgba(80, 220, 120, 0.8)';
-      if (d > activeWeapon.maxRange) color = 'rgba(255, 80, 80, 0.85)';
-      else if (d > activeWeapon.range) color = 'rgba(255, 180, 60, 0.85)';
-      combined[`${hoveredUnit!.hex.q},${hoveredUnit!.hex.r}`] = color;
-    } else {
-      // Movement highlight only (no range rings unless a valid target is hovered).
-      reachableMap.forEach((entry, key) => {
-        // White = reachable straight ahead (droppable); light grey = needs a turn
-        // first (hint only — the unit must rotate before moving there).
-        combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.5)';
-      });
-      for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
+      return combined;
     }
+
+    // Movement highlight only (no unit hovered).
+    reachableMap.forEach((entry, key) => {
+      // White = reachable straight ahead (droppable); light grey = needs a turn
+      // first (hint only — the unit must rotate before moving there).
+      combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.5)';
+    });
+    for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
 
     return combined;
   }

@@ -80,6 +80,14 @@ describe('isChargeOverEligible', () => {
     expect(isChargeOverEligible(broke, target, ok(), empty, { 'Close Order': closeOrder }, 4)).toBe(false);
   });
 
+  it('uses the hero conversion rate for a hero charger', () => {
+    // Hero: maxMP 4 → 0.8 MP/action, so 2 MP needs 3 actions.
+    const hero = { ...charger, isHero: true, movementPointsAvailable: 0, actionsAvailable: 3 } as unknown as Unit;
+    expect(isChargeOverEligible(hero, target, ok(), empty, { 'Open Order': openOrder }, 4)).toBe(true);
+    const brokeHero = { ...hero, actionsAvailable: 2 } as unknown as Unit;
+    expect(isChargeOverEligible(brokeHero, target, ok(), empty, { 'Open Order': openOrder }, 4)).toBe(false);
+  });
+
   it('blocks when the landing hex is occupied', () => {
     expect(isChargeOverEligible(charger, target, ok(), new Set(['2,-2']), { 'Close Order': closeOrder }, 4)).toBe(false);
   });

@@ -59,9 +59,18 @@ export function useCastActions(deps: CastActionsDeps) {
       addError(`${caster.unitName} cast with no actions left — over budget`);
     }
 
+    // Hard alliance gate (defense in depth — handleAttackRequest gates cast-open):
+    // healing may only affect the SAME alliance, damage only a DIFFERENT alliance.
+    const casterGroup = alliances[caster.team] || 'friendly';
+    const targetGroup = alliances[target.team] || 'friendly';
+    if (cast.weapon.isHealing ? casterGroup !== targetGroup : casterGroup === targetGroup) {
+      addError(`${caster.unitName} cannot ${cast.weapon.isHealing ? 'heal' : 'target'} ${target.unitName} — ${cast.weapon.isHealing ? 'different' : 'same'} alliance`);
+      magicCast.cancelCast();
+      return;
+    }
+
     // Area healing: each affected troop recovers HP (capped at troopHp), applied
-    // to the unit up to maxUnitHp. No save, no morale/rout cascade. Cross-alliance
-    // healing is soft-gated at cast-open (handleAttackRequest), so no hard block here.
+    // to the unit up to maxUnitHp. No save, no morale/rout cascade.
     if (cast.weapon.isHealing) {
       const healResult = resolveSpellDamage({
         damageDice: cast.weapon.damageDice,

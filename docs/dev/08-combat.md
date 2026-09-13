@@ -9,7 +9,9 @@ command-log sub-steps.
 ## The combat gate (ScenarioMap `handleAttackRequest` → `performAttack`)
 
 1. Attacker & target exist, both have HP > 0; `canControlUnit(attacker)`.
-2. Friendly-fire / heal-an-enemy cross-alliance → soft confirm.
+2. **Alliance gate (hard)** — `validateTargetAlliance`: offensive weapons may
+   only target a **different** alliance; healing weapons only the **same**
+   alliance. Friendly fire and heal-an-enemy are blocked (no soft confirm).
 3. Weapon exists; out of `maxRange`:
    - **exactly one** weapon reaches → silent auto-switch (`WEAPON_SELECT`) to it;
    - **two or more** reach → `PendingWeaponSwitch` soft confirm offering only the
@@ -178,8 +180,8 @@ Save DC (`str/dex/con/int/wis/cha`):
 
 **Healing** (weapon `isHealing`): no save; each affected troop recovers the
 base roll (capped at troopHp); single-target healing rolls and heals up to
-`maxUnitHp` with no AGR/retaliation/morale/arc/alliance checks (but a healing
-weapon can't be aimed at enemies without the cross-alliance confirm).
+`maxUnitHp` with no AGR/retaliation/morale/arc checks — but healing is
+restricted to **same-alliance** targets (the hard alliance gate above).
 Morale is checked on damaged targets after the damage lands (a spell can rout).
 Magic costs an action unless `freeAction`.
 

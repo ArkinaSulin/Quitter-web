@@ -395,6 +395,11 @@ unwinds your last action even if it went negative — End Turn resets everyone.
 
 ![S-18 Soft-enforcement confirm](screenshots/s-18-soft-confirm.png)
 
+**Hard rules (no confirm):** attacks can't target your **own alliance**
+(friendly fire is not allowed), and **healing** can't target a different
+alliance (you can't heal an enemy). These aren't soft — the action is refused
+outright. A scenario that needs them can model it with the DM's tools.
+
 ### Ending your alliance's turn
 
 When your side has done all it wants, press **End Turn (your alliance)**. The

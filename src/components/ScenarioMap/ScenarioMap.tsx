@@ -694,6 +694,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setPendingSwapOverBudget,
     maybeAutoReturnToRanged,
     performMove,
+    completeMove,
     handleUnitMove,
     handleChangeFormation,
     handleMoveTeam,
@@ -1149,10 +1150,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setPendingChargeAttack,
     pendingChargeThrough,
     setPendingChargeThrough,
-    pendingCrossAlliance,
-    setPendingCrossAlliance,
-    confirmCrossAlliance,
-    cancelCrossAlliance,
     pendingWeaponSwitch,
     confirmWeaponSwitch,
     cancelWeaponSwitch,
@@ -1884,7 +1881,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Soft-enforcement prompts: fully-bound confirm handlers (clear state +
   // controlsLocked guard + act). The modals render from the pending states.
   const softActions = {
-    confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (!controlsLocked) performMove(pm.unit, pm.targetHex, pm.cost, true, unitMaxMP(pm.unit), pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined); },
+    confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (!controlsLocked) completeMove(pm.unit, pm.targetHex, pm.cost, true, unitMaxMP(pm.unit), pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined); },
     confirmAttack: () => { const pa = pendingAttack!; setPendingAttack(null); if (!controlsLocked) performAttack(pa.attacker, pa.target, true); },
     confirmAttackCap: async () => {
       const pa = pendingAttackCap!;
@@ -2000,13 +1997,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setPendingChargeThrough(null);
       if (!controlsLocked) await performChargeEnd(pct.attacker, true);
     },
-    confirmCrossAlliance: () => {
-      if (controlsLocked) {
-        cancelCrossAlliance();
-        return;
-      }
-      confirmCrossAlliance();
-    },
     confirmWeaponSwitch: () => {
       if (controlsLocked) {
         cancelWeaponSwitch();
@@ -2027,7 +2017,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     formation: () => setPendingFormation(null),
     castOverBudget: () => setPendingCastOverBudget(false),
     chargeAttack: () => setPendingChargeAttack(null),
-    crossAlliance: () => cancelCrossAlliance(),
     weaponSwitch: () => cancelWeaponSwitch(),
   };
 
@@ -2407,7 +2396,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           castOverBudget: pendingCastOverBudget,
           chargeAttack: pendingChargeAttack,
           chargeThrough: pendingChargeThrough,
-          crossAlliance: pendingCrossAlliance,
           weaponSwitch: pendingWeaponSwitch,
         }}
         actions={softActions}

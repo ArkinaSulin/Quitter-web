@@ -88,12 +88,31 @@ export function weaponIndicesReaching(weapons: Weapon[], activeIndex: number, di
 
 /**
  * An offensive weapon deals damage to the target (isHealing is the only non-offensive
- * type today — healing recovers HP instead). Offensive weapons target enemies by
- * default; the cross-alliance soft gate confirms friendly fire. Non-offensive
- * (healing) weapons target allies by default; the same gate confirms healing an enemy.
+ * type today — healing recovers HP instead). Offensive weapons may only target a
+ * DIFFERENT alliance; healing weapons only the SAME alliance.
  */
 export function isOffensiveWeapon(weapon: Pick<Weapon, 'isHealing'>): boolean {
   return !weapon.isHealing;
+}
+
+/** `ok` = legal target; the other two are hard-blocked (no soft confirm). */
+export type TargetAllianceVerdict = 'ok' | 'friendly-fire' | 'heal-enemy';
+
+/**
+ * Hard alliance gate for a targeted weapon action. Offensive weapons may only
+ * target a different alliance group; healing weapons may only target the same
+ * alliance group. Cross-alliance attacks (friendly fire) and heals (healing an
+ * enemy) are both blocked — they are anti-intuitive and near-unused, and the DM
+ * has explicit tools for those edge cases.
+ */
+export function validateTargetAlliance(
+  attackerAlliance: string,
+  targetAlliance: string,
+  weapon: Pick<Weapon, 'isHealing'>,
+): TargetAllianceVerdict {
+  const same = attackerAlliance === targetAlliance;
+  if (isOffensiveWeapon(weapon)) return same ? 'friendly-fire' : 'ok';
+  return same ? 'ok' : 'heal-enemy';
 }
 
 /**

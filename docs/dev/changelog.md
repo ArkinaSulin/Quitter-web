@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Cross-alliance actions hard-blocked + move/charge continuation fixes (2026-09-13)
+**Files:** src/lib/weaponParser.ts (+ test), src/lib/chargeOver.ts (+ test), src/components/ScenarioMap/{useCombatActions,useCastActions,useMoveActions,useOverlay,SoftEnforcementModals,ScenarioMap}.tsx, docs/dev/08-combat.md, docs/players/player-manual.md
+
+- **Friendly fire and heal-an-enemy are now hard-blocked** (`validateTargetAlliance`): offensive weapons may only target a **different** alliance; healing weapons only the **same** alliance. The `PendingCrossAlliance` soft confirm is removed (it arrived with the healing gate in `89b1fe9`, contradicting the original combat spec's "blocks friendly fire"). Rationale: cross-alliance attacks/heals are anti-intuitive and near-unused, and the DM/players have explicit tools for those edge cases. Area-cast resolution gains the same guard as defense in depth.
+- **Soft over-budget move confirm now runs the full move** (`completeMove`): the confirm path called `performMove` alone, skipping two continuations — the chained `CHARGE` `chargeDistance` tick (so a charging unit that moved over budget never reached a full charge, and the **charge-over prompt never appeared**) and `DETACH_HERO` (so an attached hero moved but stayed attached — "can't detach"). Both paths now share `completeMove` (move → charge tick → drag-away detach). `isChargeOverEligible` also uses the hero proration rate for hero chargers.
+- **Drag overlay matches the drop**: hovering any unit during a drag now paints it as a **target** (green hostile / red ally-invalid) and suppresses the movement-reachability paint, instead of showing a movement path that the drop would treat as an attack.
+- Tests: `validateTargetAlliance` (1), hero charge-over affordability (1). tsc clean; 568 tests pass.
+
 ## Corpse scatter: linear outward density, centre reachable, 1.6× radius (2026-09-13)
 **Files:** src/lib/corpseTracker.ts, src/lib/battleStats.test.ts, docs/dev/15-token-rendering.md
 

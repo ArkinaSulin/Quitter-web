@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseWeapons, stringifyWeapons, formatWeaponDisplay, isAreaWeapon, isOffensiveWeapon, weaponIndicesReaching, Weapon } from './weaponParser';
+import { parseWeapons, stringifyWeapons, formatWeaponDisplay, isAreaWeapon, isOffensiveWeapon, validateTargetAlliance, weaponIndicesReaching, Weapon } from './weaponParser';
 
 describe('parseWeapons', () => {
   it('parses a single weapon from CSV string', () => {
@@ -58,6 +58,17 @@ describe('parseWeapons', () => {
     expect(isOffensiveWeapon({ isHealing: true })).toBe(false);
     expect(isOffensiveWeapon(parseWeapons('Sword,3,1d8,false,1,1,0,false,false,false,false,1')[0])).toBe(true);
     expect(isOffensiveWeapon(parseWeapons('Healing Touch,0,2d6,true,1,1,0,false,false,false,false,1')[0])).toBe(false);
+  });
+
+  it('validateTargetAlliance hard-blocks friendly fire and healing enemies', () => {
+    const sword = { isHealing: false };
+    const heal = { isHealing: true };
+    expect(validateTargetAlliance('friendly', 'enemy', sword)).toBe('ok');
+    expect(validateTargetAlliance('friendly', 'neutral', sword)).toBe('ok');
+    expect(validateTargetAlliance('friendly', 'friendly', sword)).toBe('friendly-fire');
+    expect(validateTargetAlliance('friendly', 'friendly', heal)).toBe('ok');
+    expect(validateTargetAlliance('friendly', 'enemy', heal)).toBe('heal-enemy');
+    expect(validateTargetAlliance('neutral', 'neutral', heal)).toBe('ok');
   });
 
   it('parses maxRange (field 5)', () => {
