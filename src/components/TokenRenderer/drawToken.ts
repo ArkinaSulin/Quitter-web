@@ -101,6 +101,10 @@ function drawFormationExtras(
   if (formation === 'Shield Wall' && !isRouted && !isMounted) {
     const shieldRadius = dotRadius * 1.3;
     const shieldOffsetY = dotRadius * 0.5;
+    const FRONT_TILT = -Math.PI / 18;
+    const SIDE_ROT = (175 * Math.PI) / 180;
+    // Shields sit 1.5·dotRadius from the dot centre (matching the front row's gap).
+    const SHIELD_GAP = dotRadius * 1.5;
     const drawShield = (px: number, py: number, rot: number) => {
       ctx.save();
       ctx.translate(px, py);
@@ -115,14 +119,10 @@ function drawFormationExtras(
     // Front row shields.
     for (const pos of positions.slice(0, dotsPerRow)) {
       if (pos.isDead) continue;
-      const sx = x - width / 2 + pos.x;
-      const sy = y - height / 2 + pos.y - dotRadius * 2.5;
-      drawShield(sx, sy + dotRadius, -Math.PI / 18);
+      drawShield(x - width / 2 + pos.x, y - height / 2 + pos.y - SHIELD_GAP, FRONT_TILT);
     }
-    // Flank shields — the left and right edges of every row (the rear is open).
-    // Rotation is tuned to face the shield arc outward; tweak SIDE_SHIELD_ROT if
-    // the convex side points the wrong way.
-    const SIDE_SHIELD_ROT = (175 * Math.PI) / 180;
+    // Flank shields — the left and right edges of every row (the rear is open),
+    // tilted like the front row and kept at the same distance from the dots.
     const rows = Math.ceil(positions.length / dotsPerRow);
     for (let row = 0; row < rows; row++) {
       const start = row * dotsPerRow;
@@ -131,10 +131,10 @@ function drawFormationExtras(
       const left = rowDots[0];
       const right = rowDots[rowDots.length - 1];
       if (left && !left.isDead) {
-        drawShield(x - width / 2 + left.x - dotRadius * 2.5, y - height / 2 + left.y, SIDE_SHIELD_ROT);
+        drawShield(x - width / 2 + left.x - SHIELD_GAP, y - height / 2 + left.y, SIDE_ROT + FRONT_TILT);
       }
       if (right && rowDots.length > 1 && !right.isDead) {
-        drawShield(x - width / 2 + right.x + dotRadius * 2.5, y - height / 2 + right.y, -SIDE_SHIELD_ROT);
+        drawShield(x - width / 2 + right.x + SHIELD_GAP, y - height / 2 + right.y, -(SIDE_ROT + FRONT_TILT));
       }
     }
   }
