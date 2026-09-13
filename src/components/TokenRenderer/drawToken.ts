@@ -102,7 +102,9 @@ function drawFormationExtras(
     const shieldRadius = dotRadius * 1.3;
     const shieldOffsetY = dotRadius * 0.5;
     const FRONT_TILT = -Math.PI / 18;
-    const SIDE_ROT = (175 * Math.PI) / 180;
+    // Flank shields face OUTWARD (convex away from the dots) with the same slight
+    // tilt as the front row: left = -90° + tilt, right = +90° - tilt.
+    const SIDE_ROT = Math.PI / 2;
     // Shields sit 1.5·dotRadius from the dot centre (matching the front row's gap).
     const SHIELD_GAP = dotRadius * 1.5;
     const drawShield = (px: number, py: number, rot: number) => {
@@ -131,10 +133,10 @@ function drawFormationExtras(
       const left = rowDots[0];
       const right = rowDots[rowDots.length - 1];
       if (left && !left.isDead) {
-        drawShield(x - width / 2 + left.x - SHIELD_GAP, y - height / 2 + left.y, SIDE_ROT + FRONT_TILT);
+        drawShield(x - width / 2 + left.x - SHIELD_GAP, y - height / 2 + left.y, -SIDE_ROT + FRONT_TILT);
       }
       if (right && rowDots.length > 1 && !right.isDead) {
-        drawShield(x - width / 2 + right.x + SHIELD_GAP, y - height / 2 + right.y, -(SIDE_ROT + FRONT_TILT));
+        drawShield(x - width / 2 + right.x + SHIELD_GAP, y - height / 2 + right.y, SIDE_ROT - FRONT_TILT);
       }
     }
   }
