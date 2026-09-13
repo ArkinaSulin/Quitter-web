@@ -203,23 +203,6 @@ export function ContextMenu({
       )}
       {(attachedHero || hostUnit) && <div className="border-t border-gray-700 my-1" />}
 
-      {/* Rally: routed, non-fearless units/heroes only. Shown but disabled when
-          the prerequisites aren't met (positive morale, no visible enemy adjacent). */}
-      {!unit.ignoreMoraleChecks && onRally && (
-        <>
-          <div
-            className={`px-3 py-1 ${canRally ? 'hover:bg-emerald-900 cursor-pointer text-emerald-300 font-semibold' : 'text-gray-600 cursor-not-allowed'}`}
-            title={canRally
-              ? `Rally — leave Routed for ${unit.isHero ? 'Hero' : 'Scattered'} (spends all actions & MP)`
-              : `Rally unavailable — ${rallyReason ?? 'prerequisites not met'}`}
-            onClick={() => { if (!canRally) return; onRally(); onClose(); }}
-          >
-            Rally{canRally ? '' : ' (locked)'}
-          </div>
-          <div className="border-t border-gray-700 my-1" />
-        </>
-      )}
-
       {!unit.isHero && !unit.attachedToUnitId && (
         <>
           <div
@@ -278,26 +261,43 @@ export function ContextMenu({
         </>
       )}
 
-      {/* Formation list — hidden while Routed: Rally is the only way out. */}
-      {!unit.isHero && !unit.attachedToUnitId && !isUnitRouted(unit) && (
+      {/* Formation group — the unit's formations (hidden while Routed), then
+          Rally directly under Scattered. Heroes have no formations, so Rally only.
+          Rally stays visible but disabled until its prerequisites are met. */}
+      {!unit.attachedToUnitId && (!unit.isHero || (!unit.ignoreMoraleChecks && onRally)) && (
         <>
-          {unit.isCharging && (
-            <div className="px-3 py-1 text-gray-500 italic text-xs">Formation locked while charging</div>
+          {!unit.isHero && !isUnitRouted(unit) && (
+            <>
+              {unit.isCharging && (
+                <div className="px-3 py-1 text-gray-500 italic text-xs">Formation locked while charging</div>
+              )}
+              {formationOptions.map(opt => {
+                const isCurrent = opt.value === unit.currentFormation;
+                return (
+                  <div
+                    key={opt.value}
+                    className={`px-3 py-1 ${opt.disabled || unit.isCharging ? 'text-gray-600 cursor-not-allowed' : isCurrent ? 'text-amber-300 font-semibold cursor-default' : 'hover:bg-gray-700 cursor-pointer'}`}
+                    onClick={() => { if (opt.disabled || unit.isCharging) return; onChangeFormation(opt.value); onClose(); }}
+                  >
+                    {isCurrent ? `>${opt.value}<` : opt.value}
+                  </div>
+                );
+              })}
+              {formationOptions.length === 0 && (
+                <div className="px-3 py-1 text-gray-400 italic">No formations available</div>
+              )}
+            </>
           )}
-          {formationOptions.map(opt => {
-            const isCurrent = opt.value === unit.currentFormation;
-            return (
-              <div
-                key={opt.value}
-                className={`px-3 py-1 ${opt.disabled || unit.isCharging ? 'text-gray-600 cursor-not-allowed' : isCurrent ? 'text-amber-300 font-semibold cursor-default' : 'hover:bg-gray-700 cursor-pointer'}`}
-                onClick={() => { if (opt.disabled || unit.isCharging) return; onChangeFormation(opt.value); onClose(); }}
-              >
-                {isCurrent ? `>${opt.value}<` : opt.value}
-              </div>
-            );
-          })}
-          {formationOptions.length === 0 && (
-            <div className="px-3 py-1 text-gray-400 italic">No formations available</div>
+          {!unit.ignoreMoraleChecks && onRally && (
+            <div
+              className={`px-3 py-1 ${canRally ? 'hover:bg-emerald-900 cursor-pointer text-emerald-300 font-semibold' : 'text-gray-600 cursor-not-allowed'}`}
+              title={canRally
+                ? `Rally — leave Routed for ${unit.isHero ? 'Hero' : 'Scattered'} (spends all actions & MP)`
+                : `Rally unavailable — ${rallyReason ?? 'prerequisites not met'}`}
+              onClick={() => { if (!canRally) return; onRally(); onClose(); }}
+            >
+              Rally{canRally ? '' : ' (locked)'}
+            </div>
           )}
           <div className="border-t border-gray-700 my-1" />
         </>

@@ -3,7 +3,7 @@
 ## Rally: recover routed units via the context menu (2026-09-06)
 **Files:** src/lib/rally.ts (+ test, new), src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ContextMenu,ScenarioMap}.tsx, docs/dev/09-morale-routing-pursuit.md
 
-- New **Rally** context-menu item for any **non-fearless** unit/hero (visible but greyed with a reason until eligible). Eligibility (`canRally`): currently Routed, alive, **positive effective morale**, and **no visible hostile adjacent** (hidden hostiles ignored; routed hostiles still count).
+- New **Rally** context-menu item for any **non-fearless** unit/hero (visible but greyed with a reason until eligible), placed in the **formation group directly under Scattered** (heroes, who have no formation list, still get the row). Eligibility (`canRally`): currently Routed, alive, **positive effective morale**, and **no visible hostile adjacent** (hidden hostiles ignored; routed hostiles still count).
 - On Rally, one undoable `FORMATION` command sets `currentFormation → Scattered` (heroes → `Hero`), `organizationLevel → 0`, and clears `actionsAvailable`/`movementPointsAvailable` (spends the rest of the turn).
 - The normal formation picker is now **hidden while Routed**, so Rally is the only way out (the old `changeFormation` rally guard remains as a safety net for non-menu callers).
 - Tests: `canRally` (8). tsc clean; 557 tests pass.
