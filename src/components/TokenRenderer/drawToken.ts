@@ -128,10 +128,10 @@ function drawFormationExtras(
       const left = rowDots[0];
       const right = rowDots[rowDots.length - 1];
       if (left && !left.isDead) {
-        drawShield(x - width / 2 + left.x - dotRadius * 2.5, y - height / 2 + left.y, Math.PI / 2);
+        drawShield(x - width / 2 + left.x - dotRadius * 2.5, y - height / 2 + left.y, -Math.PI / 2);
       }
       if (right && rowDots.length > 1 && !right.isDead) {
-        drawShield(x - width / 2 + right.x + dotRadius * 2.5, y - height / 2 + right.y, -Math.PI / 2);
+        drawShield(x - width / 2 + right.x + dotRadius * 2.5, y - height / 2 + right.y, Math.PI / 2);
       }
     }
   }
