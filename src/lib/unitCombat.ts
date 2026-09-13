@@ -2,7 +2,8 @@ import { Unit, Hex, Formation, hexDistance } from '@/types/gameProtocol';
 import { computeThreatRating, isUnitRouted } from './unitMorale';
 import { getRetaliationMode, getEffectivePosition, beAttackedModifier, beAttackedModifierNote, Arc } from './formationRules';
 import { getSetting } from './settingsCache';
-import { getRowCapacityBase } from './unitStats';
+import { getRowCapacityBase, effectiveAc } from './unitStats';
+import { attackDirection } from './attackDirection';
 
 const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
@@ -320,10 +321,11 @@ export function resolveCombatSequence(
   const attackMaxRange = attackerWeapon.maxRange ?? attackRange;
   const disadvantage = attackDist > attackRange && attackDist <= attackMaxRange;
 
-  // Routed units drop their shield (no formation to protect them) — effectively
-  // -2 AC. Applies to both sides' AC when routing.
-  const defenderEffAc = isUnitRouted(defender) && defender.isShielded ? defender.currentAc - 2 : defender.currentAc;
-  const attackerEffAc = isUnitRouted(attacker) && attacker.isShielded ? attacker.currentAc - 2 : attacker.currentAc;
+  // Directional formation AC: a formation gives no AC bonus from the REAR
+  // (uniform rule); shields are 360° and stay in `baselineAc`. The shield drops
+  // for two-handed weapons / routing are handled inside effectiveAc.
+  const defenderEffAc = effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing));
+  const attackerEffAc = effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing));
 
   // Who strikes first? A defender attacked from the rear, a routed defender, noRetaliation
   // weapons, and ranged attacks all let the attacker strike first (the defender can't react).

@@ -16,7 +16,8 @@ import { nextLowerFormation } from '@/lib/formationCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone } from '@/lib/unitMorale';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc } from '@/lib/meleeFallback';
 import { parseWeapons, Weapon, isOffensiveWeapon, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
-import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow } from '@/lib/unitStats';
+import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc } from '@/lib/unitStats';
+import { attackDirection } from '@/lib/attackDirection';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
@@ -379,12 +380,19 @@ export function useCombatActions(deps: CombatActionsDeps) {
     if (hexDistance(attacker.hex, target.hex) > weapon.range) weaponTags.push('LONG RANGE - DISADVANTAGE');
     let desc = `${attacker.unitName} attacks ${target.unitName} with ${weapon.name}${weaponTags.length > 0 ? ` (${weaponTags.join(', ')})` : ''}`;
     let msgDesc = desc;
-    // Verbose: mirror the engine's effective AC (routed units drop their shield,
-    // -2 AC) and the exact strike-side bonus/dice, then append the dice detail.
-    // The verbose text goes ONLY to the chat message (options.message), never to
-    // the command log — the log keeps the short description.
-    const effTargetAc = isUnitRouted(effTarget) && effTarget.isShielded ? effTarget.currentAc - 2 : effTarget.currentAc;
-    const effAttackerAc = isUnitRouted(effAttacker) && effAttacker.isShielded ? effAttacker.currentAc - 2 : effAttacker.currentAc;
+    // Verbose: mirror the engine's effective (direction-aware) AC and the exact
+    // strike-side bonus/dice, then append the dice detail. The verbose text goes
+    // ONLY to the chat message (options.message), never to the command log.
+    const defenderAcDir = attackDirection(attacker.hex, target.hex, target.facing);
+    const attackerAcDir = attackDirection(target.hex, attacker.hex, attacker.facing);
+    const effTargetAc = effectiveAc(effTarget, formationsMap[effTarget.currentFormation] ?? null, defenderAcDir);
+    const effAttackerAc = effectiveAc(effAttacker, formationsMap[effAttacker.currentFormation] ?? null, attackerAcDir);
+    // A formation gives no AC from the rear — call it out instead of a bare number.
+    const defenderFormAc = formationsMap[target.currentFormation]?.ac_modifier ?? 0;
+    if (defenderAcDir === 'rear' && defenderFormAc !== 0) {
+      desc += ' [rear — no formation bonus]';
+      msgDesc += ' [rear — no formation bonus]';
+    }
     const unitFirstStrikeAttacks = outcome.firstStrikeAttacks.slice(0, firstStrikeUnitCount);
     const firstStrikeVerbose = verboseCombat
       ? formatStrikeDetail(

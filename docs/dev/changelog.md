@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## Directional formation AC: no bonus from the rear (2026-09-06)
+**Files:** src/lib/attackDirection.ts (+ test, new), src/lib/unitStats.ts (+ test), src/lib/unitCombat.ts, src/lib/enemyAI/planner.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{useCombatActions,useReactionActions,ContextMenu,UnitTooltip,ScenarioMap}.tsx, src/components/TokenRenderer/drawToken.ts, docs/dev/08-combat.md, docs/players/player-manual.md
+
+- **Formation AC is now actually applied in combat** (it was tooltip-only — combat rolled against raw `currentAc`, so the displayed formation bonus did nothing). New `unitStats.effectiveAc(unit, formation, direction) = baselineAc + (rear ? 0 : formation.ac_modifier) − shieldPenalty`, used by combat, tooltip, messages, and the AI.
+- **Uniform rear rule**: a formation gives **no AC bonus from the rear** for any formation. Direction comes from the new bearing-based `attackDirection()` (works for melee and ranged; reproduces the adjacent front/flank/rear classification exactly).
+- **Shields stay 360°** (in `baselineAc`); two-handed/routing drops unchanged. Heroes face all sides, so they never take the rear penalty.
+- **Shield Wall now requires a shield** to form (engine + reaction formation + context menu; two-handed still blocks it).
+- **Tooltip** shows `AC 21 (18 at rear)`; **verbose combat** rolls against the correct direction-aware AC and annotates `[rear — no formation bonus]`; reaction shots too. **Shield Wall tokens** now draw shield arcs on the flanks as well as the front row (the rear is left open).
+- Tests: `attackDirection` (4) + `effectiveAc` (5). tsc clean; 566 tests pass. No migration (values read from existing `formations.ac_modifier`).
+
 ## Pursuit diagnostics: adjacent units only, verbose-gated (2026-09-06)
 **Files:** src/lib/routedRetreat.ts, src/components/ScenarioMap/ScenarioMap.tsx
 

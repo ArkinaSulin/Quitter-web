@@ -2433,7 +2433,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           .sort((a, b) => getOrganizationLevel(b) - getOrganizationLevel(a) || a.localeCompare(b))
           .map(name => ({
             name,
-            disabled: getOrganizationLevel(name) > currentOrgLevel + 1 || (name === 'Shield Wall' && activeWeaponIsTwoHanded),
+            disabled: getOrganizationLevel(name) > currentOrgLevel + 1 || (name === 'Shield Wall' && (activeWeaponIsTwoHanded || !archer.isShielded)),
           }));
         return (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">

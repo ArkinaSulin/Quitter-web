@@ -86,13 +86,23 @@ front; **Scattered** → all sides flank; **Routed** → all sides rear.
 ## To-hit, damage, crits
 
 Per attack: roll D20. Hit when `roll + attackBonus + formation.attack_modifier
-≥ target.currentAc` (natural 1 auto-miss, natural 20 auto-hit **crit**). On a
+≥ effective AC` (natural 1 auto-miss, natural 20 auto-hit **crit**). On a
 hit, roll the damage dice; damage per hit is capped at `troopHp` (one troop).
 **Crit doubles the dice only (never the flat bonus)**; a charging attack also
 doubles dice (both = ×4). Damage pools into the unit HP; troop count =
 `ceil(hp / troopHp)`.
 
-Routed units drop their shield: −2 AC (`getShieldPenalty` reason 'routing').
+**Effective AC** (`unitStats.effectiveAc`) = `baselineAc + formation.ac_modifier
+− shieldPenalty`, but the **formation term applies front/flank only — a
+formation gives no AC from the REAR** (uniform for every formation; direction via
+`attackDirection` — bearing-based so it works for melee and ranged). Shields are
+**360°** (baked into `baselineAc`) and are NOT dropped from the rear. Heroes face
+all sides, so a hero never takes the rear penalty. `getShieldPenalty` drops the
+shield (−2) for a two-handed active weapon or while routing.
+
+**Shield Wall** additionally **requires a shield** to form (two-handed weapons
+still block it). Its rear is where the wall is weakest — the formation AC goes to
+0 there while the shield remains.
 
 **Range bands**: `dist ≤ range` full effect · `range < dist ≤ maxRange` =
 **disadvantage** (roll two D20, take the lower; a crit needs the taken roll to

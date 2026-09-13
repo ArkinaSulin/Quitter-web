@@ -1113,6 +1113,13 @@ rear) / Hero (always front). AC/attack/morale modifiers and exact row/attack
 capacity multipliers are data-driven per formation — hover any unit in that
 formation and read the tooltip for live numbers.
 
+**AC and facing:** a **shield is 360°** — it protects every side (units turn to
+face attackers). A **formation's AC bonus applies to the front and flanks only;
+there is no formation AC from the rear** for any formation. So attacking a
+ranked unit from behind is worth it even without flanking bonuses. **Shield
+Wall** also **requires a shield**, and its rear is its weak point. The tooltip
+shows both, e.g. `AC 21 (18 at rear)`.
+
 ## Appendix D. Token Legend and Controls
 
 **Token anatomy** (unit): team-color background at 75% + team border · alliance

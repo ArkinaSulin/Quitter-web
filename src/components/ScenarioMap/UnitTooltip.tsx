@@ -3,7 +3,7 @@
 import React from 'react';
 import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { computeEffectiveMoraleModifier, computeThreatRating, calcWounds, calcIsolation, calcEnemyThreats, isUnitRouted } from '@/lib/unitMorale';
-import { computeEffectiveAc, computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty } from '@/lib/unitStats';
+import { computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty, effectiveAc as effectiveAcFor } from '@/lib/unitStats';
 import { parseWeapons } from '@/lib/weaponParser';
 import { heroMovePerAction } from '@/lib/moveCost';
 import { unitAttackCap } from '@/lib/attackCap';
@@ -35,7 +35,6 @@ function heroColumn(hero: Unit, units: Unit[], alliances: Record<string, Allianc
 
 function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>, showTroops: boolean, formation: Formation | null | undefined) {
   const formationMod = formation ?? null;
-  const formationAcMod = formationMod?.ac_modifier ?? 0;
   const formationMovMult = formationMod?.movement_multiplier ?? 1;
   const formationAtkMod = formationMod?.attack_modifier ?? 0;
   const formationMorMod = formationMod?.morale_modifier ?? 0;
@@ -46,7 +45,8 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const enemyThreats = calcEnemyThreats(unit, units, alliances);
   const threatRating = computeThreatRating(unit);
   const morTotal = unit.baseMorale + effectiveMoraleModifier;
-  const effectiveAc = computeEffectiveAc(unit, formationAcMod);
+  const acFront = effectiveAcFor(unit, formationMod, 'front');
+  const acRear = effectiveAcFor(unit, formationMod, 'rear');
   const shieldInfo = getShieldPenalty(unit);
   const shieldPenalty = shieldInfo.penalty;
   const effectiveMaxMovement = computeEffectiveMovement(unit, formationMovMult);
@@ -109,7 +109,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
         {typeof unit.attacksUsed === 'number' && (
           <span className={unit.attacksUsed >= unitAttackCap() ? 'text-red-400' : ''}>{unit.attacksUsed}/{unitAttackCap()} <span className="text-gray-500">(attacks + retaliations)</span></span>
         )}
-        <span className="text-gray-400" title="Armor Class (AC): a d20 attack roll + bonuses must equal or beat this to hit.">AC:</span><span>{showTroops ? `${effectiveAc - shieldPenalty} = ${unit.baselineAc}${shieldPenalty > 0 ? ` - ${shieldPenalty} (${shieldInfo.reason === 'routing' ? 'routing, no shield' : 'two-handed'})` : ''}${formationAcMod !== 0 ? ` + ${formationAcMod} (formation)` : ''}${formationAcMod >= 0 && shieldPenalty === 0 ? ' +0' : ''}` : effectiveAc - shieldPenalty}</span>
+        <span className="text-gray-400" title="Armor Class (AC): a d20 attack roll + bonuses must equal or beat this to hit. Formation AC does NOT apply from the REAR; the shield is 360°.">AC:</span><span>{acRear !== acFront ? `${acFront} (${acRear} at rear)` : `${acFront}`}</span>
         {(unit.effects ?? []).length > 0 && (
           <>
             <span className="col-span-2 mt-0.5 text-[10px] uppercase tracking-wide text-gray-500">Effects</span>

@@ -126,7 +126,7 @@ export function ContextMenu({
     .sort((a, b) => getOrganizationLevel(b.value) - getOrganizationLevel(a.value))
     .map(opt => ({
       value: opt.value,
-      disabled: getOrganizationLevel(opt.value) > currentOrgLevel + 1 || (opt.value === 'Shield Wall' && activeWeaponIsTwoHanded),
+      disabled: getOrganizationLevel(opt.value) > currentOrgLevel + 1 || (opt.value === 'Shield Wall' && (activeWeaponIsTwoHanded || !unit.isShielded)),
     }));
 
   const canAttach = unit.isHero && (unit.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !unit.attachedToUnitId && !!onAttachHero;

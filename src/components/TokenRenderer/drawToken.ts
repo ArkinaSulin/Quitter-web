@@ -99,22 +99,39 @@ function drawFormationExtras(
 
   // ---- Shield Wall shields (only if not mounted and formation is actually Shield Wall) ----
   if (formation === 'Shield Wall' && !isRouted && !isMounted) {
-    const frontRowDots = positions.slice(0, dotsPerRow);
-    for (const pos of frontRowDots) {
-      if (!pos.isDead) {
-        const sx = x - width / 2 + pos.x;
-        const sy = y - height / 2 + pos.y - dotRadius * 2.5;
-        const shieldRadius = dotRadius * 1.3;
-        const shieldOffsetY = dotRadius * 0.5;
-        ctx.save();
-        ctx.translate(sx, sy + dotRadius);
-        ctx.rotate(-Math.PI / 18);
-        ctx.beginPath();
-        ctx.ellipse(0, 0, shieldRadius, shieldOffsetY, 0, Math.PI, 0, false);
-        ctx.strokeStyle = dotColor;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.restore();
+    const shieldRadius = dotRadius * 1.3;
+    const shieldOffsetY = dotRadius * 0.5;
+    const drawShield = (px: number, py: number, rot: number) => {
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(rot);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, shieldRadius, shieldOffsetY, 0, Math.PI, 0, false);
+      ctx.strokeStyle = dotColor;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    };
+    // Front row shields.
+    for (const pos of positions.slice(0, dotsPerRow)) {
+      if (pos.isDead) continue;
+      const sx = x - width / 2 + pos.x;
+      const sy = y - height / 2 + pos.y - dotRadius * 2.5;
+      drawShield(sx, sy + dotRadius, -Math.PI / 18);
+    }
+    // Flank shields — the left and right edges of every row (the rear is open).
+    const rows = Math.ceil(positions.length / dotsPerRow);
+    for (let row = 0; row < rows; row++) {
+      const start = row * dotsPerRow;
+      const end = Math.min(start + dotsPerRow, positions.length);
+      const rowDots = positions.slice(start, end);
+      const left = rowDots[0];
+      const right = rowDots[rowDots.length - 1];
+      if (left && !left.isDead) {
+        drawShield(x - width / 2 + left.x - dotRadius * 2.5, y - height / 2 + left.y, Math.PI / 2);
+      }
+      if (right && rowDots.length > 1 && !right.isDead) {
+        drawShield(x - width / 2 + right.x + dotRadius * 2.5, y - height / 2 + right.y, -Math.PI / 2);
       }
     }
   }

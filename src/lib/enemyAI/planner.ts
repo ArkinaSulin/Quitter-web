@@ -28,7 +28,8 @@ import { parseWeapons, isAreaWeapon } from '@/lib/weaponParser';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { arcsContain, beAttackedModifier } from '@/lib/formationRules';
-import { getRowCapacityBase } from '@/lib/unitStats';
+import { getRowCapacityBase, effectiveAc } from '@/lib/unitStats';
+import { attackDirection } from '@/lib/attackDirection';
 import { unitAttackCap } from '@/lib/attackCap';
 import { computeReachableMap, computeMovePool, applyMoveCost, applyMpSpend } from '@/lib/moveCost';
 import { isMeleeWeapon } from '@/lib/meleeFallback';
@@ -199,19 +200,20 @@ export function expectedDamage(
 ): number {
   const weapons = parseWeapons(attacker.weaponString || '');
   const weapon = weapons[attacker.activeWeaponIndex ?? 0] ?? weapons[0];
+  const targetForm = ctx.formations[target.currentFormation];
+  const targetAc = effectiveAc(target, targetForm, attackDirection(attacker.hex, target.hex, target.facing));
   if (weapon?.isHealing || (weapon && isAreaWeapon(weapon))) return 0; // AI doesn't heal/cast in v2
   if (!weapon) {
     if (dist !== 1) return 0;
-    return expectedAttackerCount(attacker, ctx) * hitChance(0, target.currentAc, false) * 1; // fists 1d1
+    return expectedAttackerCount(attacker, ctx) * hitChance(0, targetAc, false) * 1; // fists 1d1
   }
   const effBonus = weapon.attackBonus + (ctx.formations[attacker.currentFormation]?.attack_modifier ?? 0);
-  const targetForm = ctx.formations[target.currentFormation];
   const mod = beAttackedModifier(targetForm, isRanged) ?? 1;
   const count = Math.round(expectedAttackerCount(attacker, ctx) * mod);
   const heroCap = !isRanged && !attacker.isHero && target.isHero ? 0.5 : 1;
   const disadvantage = isRanged && dist > (weapon.range ?? 1);
   const perHit = Math.min(diceMean(weapon.damageDice), target.troopHp);
-  return Math.max(0, Math.round(count * heroCap) * hitChance(effBonus, target.currentAc, disadvantage) * perHit);
+  return Math.max(0, Math.round(count * heroCap) * hitChance(effBonus, targetAc, disadvantage) * perHit);
 }
 
 function nearestEnemyDist(hex: Hex, enemies: Unit[]): number {

@@ -8,7 +8,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, SizeCategory, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
 import { resolveCombatSequence } from '@/lib/unitCombat';
 import { applyFormationChange } from '@/lib/formationCost';
-import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement } from '@/lib/unitStats';
+import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement, effectiveAc } from '@/lib/unitStats';
+import { attackDirection } from '@/lib/attackDirection';
 import { isRangedCapableWeapon, getReactionMoveBudget, findEligibleReactionArchers } from '@/lib/archerReaction';
 import { parseWeapons } from '@/lib/weaponParser';
 import { applyHeroMoveCost, applyMoveCost, computeReachableMap, MovePathEntry } from '@/lib/moveCost';
@@ -185,7 +186,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     }
     const desc = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks, ${hits} hits, ${outcome.firstStrikeDamage} damage (${troopsKilled} troops)`;
     const msg = verboseCombat
-      ? `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${formatStrikeDetail(outcome.firstStrikeAttacks, weapon.attackBonus + formationAtkMod, isUnitRouted(mover) && mover.isShielded ? mover.currentAc - 2 : mover.currentAc, weapon.damageDice, false, outcome.firstStrikeDamage)} (${troopsKilled} troops)`
+      ? `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${formatStrikeDetail(outcome.firstStrikeAttacks, weapon.attackBonus + formationAtkMod, effectiveAc(mover, formationsMap[mover.currentFormation] ?? null, attackDirection(archer.hex, mover.hex, mover.facing)), weapon.damageDice, false, outcome.firstStrikeDamage)} (${troopsKilled} troops)`
       : desc;
     await execute('ARCHER_REACTION', subSteps, desc, verboseCombat ? { message: msg } : undefined);
     // A reaction hit is an attack — it can break the mover's morale into a rout.
@@ -246,6 +247,11 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     // Same limits as the normal formation change: no two-handed Shield Wall, and
     // at most one organization level above the current formation.
     if (formation === 'Shield Wall') {
+      if (!archer.isShielded) {
+        addMessage(`${archer.unitName} cannot form Shield Wall without a shield`);
+        setReactionFormationPicker(null);
+        return;
+      }
       const activeWeapon = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0];
       if (activeWeapon?.isTwoHanded) {
         addMessage(`${archer.unitName} cannot form Shield Wall while wielding ${activeWeapon.name} (two-handed)`);

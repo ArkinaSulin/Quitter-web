@@ -2,6 +2,7 @@ import { Unit, Formation, SizeCategory } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
 import { getBandSetting, SettingBand } from '@/lib/settingsCache';
 import { isUnitRouted } from '@/lib/unitMorale';
+import { AttackDirection } from '@/lib/attackDirection';
 
 // Code fallback matches migration 042 seed — the size_categories table row wins
 // in getRowCapacity; this is the fallback base for unknown categories.
@@ -67,4 +68,20 @@ export function getShieldPenalty(
   const activeWeapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
   if (activeWeapon?.isTwoHanded) return { penalty: 2, reason: 'two-handed' };
   return { penalty: 0 };
+}
+
+/**
+ * Effective AC against an attack from `direction`. The shield is 360° (baked into
+ * `baselineAc`); the formation's `ac_modifier` applies to front/flank only — a
+ * formation gives NO AC bonus from the rear (uniform rule). Heroes have no rear
+ * (all sides are front). Two-handed/routing still drop the shield everywhere.
+ */
+export function effectiveAc(
+  unit: Pick<Unit, 'baselineAc' | 'isShielded' | 'weaponString' | 'activeWeaponIndex' | 'currentFormation' | 'isHero'>,
+  formation: Formation | null | undefined,
+  direction: AttackDirection,
+): number {
+  const dir = unit.isHero || unit.currentFormation === 'Hero' ? 'front' : direction;
+  const formationAc = dir === 'rear' ? 0 : (formation?.ac_modifier ?? 0);
+  return (unit.baselineAc || 10) + formationAc - getShieldPenalty(unit).penalty;
 }

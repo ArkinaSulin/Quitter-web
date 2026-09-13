@@ -540,8 +540,12 @@ export function useGameEngine({
 
   const changeFormation = useCallback(
     async (unit: Unit, formation: string, formationsMap: Record<string, Formation>): Promise<void> => {
-      // Shield Wall requires a shield in hand — a two-handed weapon blocks it.
+      // Shield Wall requires a shield in hand — a two-handed weapon blocks it too.
       if (formation === 'Shield Wall') {
+        if (!unit.isShielded) {
+          addMessage(`${unit.unitName} cannot form Shield Wall without a shield`);
+          return;
+        }
         const activeWeapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
         if (activeWeapon?.isTwoHanded) {
           addMessage(`${unit.unitName} cannot form Shield Wall while wielding ${activeWeapon.name} (two-handed)`);
