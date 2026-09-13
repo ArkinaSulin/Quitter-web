@@ -120,6 +120,9 @@ function drawFormationExtras(
       drawShield(sx, sy + dotRadius, -Math.PI / 18);
     }
     // Flank shields — the left and right edges of every row (the rear is open).
+    // Rotation is tuned to face the shield arc outward; tweak SIDE_SHIELD_ROT if
+    // the convex side points the wrong way.
+    const SIDE_SHIELD_ROT = (175 * Math.PI) / 180;
     const rows = Math.ceil(positions.length / dotsPerRow);
     for (let row = 0; row < rows; row++) {
       const start = row * dotsPerRow;
@@ -128,10 +131,10 @@ function drawFormationExtras(
       const left = rowDots[0];
       const right = rowDots[rowDots.length - 1];
       if (left && !left.isDead) {
-        drawShield(x - width / 2 + left.x - dotRadius * 2.5, y - height / 2 + left.y, -Math.PI / 2);
+        drawShield(x - width / 2 + left.x - dotRadius * 2.5, y - height / 2 + left.y, SIDE_SHIELD_ROT);
       }
       if (right && rowDots.length > 1 && !right.isDead) {
-        drawShield(x - width / 2 + right.x + dotRadius * 2.5, y - height / 2 + right.y, Math.PI / 2);
+        drawShield(x - width / 2 + right.x + dotRadius * 2.5, y - height / 2 + right.y, -SIDE_SHIELD_ROT);
       }
     }
   }
