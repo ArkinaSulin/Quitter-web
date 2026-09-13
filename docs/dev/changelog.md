@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Pursuit diagnostics: adjacent units only, verbose-gated (2026-09-06)
+**Files:** src/lib/routedRetreat.ts, src/components/ScenarioMap/ScenarioMap.tsx
+
+- `pursuitGateInfo` now lists only **adjacent** hostiles (matching `choosePursuer`'s hard `hexDistance === 1` gate) and drops the `not adjacent` note; non-adjacent enemies were pure noise.
+- The per-unit gate list on a failed pursuit is shown only when **verbose combat** is on; otherwise the log says a short `No melee pursuer can strike {unit}.` (`verboseCombat` added to `applyRoutedFlow`'s deps). tsc clean; 557 tests pass.
+
 ## Rally: recover routed units via the context menu (2026-09-06)
 **Files:** src/lib/rally.ts (+ test, new), src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ContextMenu,ScenarioMap}.tsx, docs/dev/09-morale-routing-pursuit.md
 

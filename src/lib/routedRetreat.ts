@@ -236,7 +236,6 @@ export interface PursuitGateInfo {
   speed: number;
   speedNeed: number;
   speedOk: boolean;
-  adjacentOk: boolean;
   meleeOk: boolean;
   reachOk: boolean;
   payOk: boolean;
@@ -244,10 +243,12 @@ export interface PursuitGateInfo {
 }
 
 /**
- * Verbose error-checking aid: why each nearby hostile can (or can't) pursue.
- * Mirrors choosePursuer's gates (adjacency, melee primary weapon, effective
- * speed ≥ the routed unit's effective routing speed, one droppable move into
- * the vacated hex, affordable MP) so decline reasons are visible.
+ * Verbose error-checking aid: why each ADJACENT hostile can (or can't) pursue.
+ * Only adjacent hostiles can ever pursue (choosePursuer requires adjacency), so
+ * non-adjacent units are omitted. Mirrors choosePursuer's gates (melee primary
+ * weapon, effective speed ≥ the routed unit's effective routing speed, one
+ * droppable move into the vacated hex, affordable MP) so decline reasons are
+ * visible.
  */
 export function pursuitGateInfo(
   routed: Unit,
@@ -269,7 +270,7 @@ export function pursuitGateInfo(
     if (u.isDeleted || u.id === routed.id) continue;
     if ((alliances[u.team] || 'friendly') === routedGroup) continue;
     if (isUnitRouted(u)) continue;
-    const adjacentOk = hexDistance(u.hex, routed.hex) === 1;
+    if (hexDistance(u.hex, routed.hex) !== 1) continue; // only adjacent units can pursue
     const weapons = parseWeapons(u.weaponString || '');
     const active = weapons[u.activeWeaponIndex ?? 0] ?? weapons[0];
     const meleeOk = !active || isMeleeWeapon(active);
@@ -279,8 +280,8 @@ export function pursuitGateInfo(
     const reach = computeReachableMap(u, Math.max(1, speed), occ, new Set<string>(), undefined, true);
     const entry = reach.get(vacKey);
     const reachOk = !!entry && !entry.needsTurn;
-    const note = `${adjacentOk ? '' : 'not adjacent · '}${meleeOk ? '' : 'ranged primary · '}${speedOk ? '' : `speed ${speed} < ${speedNeed} · `}${entry ? (entry.needsTurn ? 'needs a turn first · ' : '') : 'cannot reach the vacated hex · '}${payOk ? '' : 'no MP/action'}`;
-    out.push({ id: u.id, unitName: u.unitName, speed, speedNeed, speedOk, adjacentOk, meleeOk, reachOk, payOk, note });
+    const note = `${meleeOk ? '' : 'ranged primary · '}${speedOk ? '' : `speed ${speed} < ${speedNeed} · `}${entry ? (entry.needsTurn ? 'needs a turn first · ' : '') : 'cannot reach the vacated hex · '}${payOk ? '' : 'no MP/action'}`;
+    out.push({ id: u.id, unitName: u.unitName, speed, speedNeed, speedOk, meleeOk, reachOk, payOk, note });
   }
   return out;
 }

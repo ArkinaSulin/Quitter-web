@@ -1273,9 +1273,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }
       if (!pLive) {
         // Pursuit/free-pursue is melee-only and requires an adjacent melee
-        // pursuer — a ranged attacker (e.g. an archer) never pursues.
+        // pursuer — a ranged attacker (e.g. an archer) never pursues. The
+        // per-adjacent-unit gate list is only shown in verbose combat.
         const gates = pursuitGateInfo(routedForPick, cur, alliances, formationsMap);
-        addMessage(`No melee pursuer can strike ${live.unitName}: ${pursuitGateText(gates)}.`);
+        addMessage(verboseCombat
+          ? `No melee pursuer can strike ${live.unitName}: ${pursuitGateText(gates)}.`
+          : `No melee pursuer can strike ${live.unitName}.`);
         console.info('[RoutFlow] no pursuer for', live.unitName, gates);
         return;
       }
@@ -1308,7 +1311,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       routBusy.current = false;
       console.info('[RoutFlow] done');
     }
-  }, [unitsRef, alliances, formationsMap, execute, addMessage, unitMaxMP, performAttack]);
+  }, [unitsRef, alliances, formationsMap, execute, addMessage, unitMaxMP, performAttack, verboseCombat]);
 
   const handleRoutRow = useCallback(async (row: CommandLogRow) => {
     if (row.deleted_at != null) return;
