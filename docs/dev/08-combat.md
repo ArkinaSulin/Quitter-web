@@ -94,13 +94,18 @@ hit, roll the damage dice; damage per hit is capped at `troopHp` (one troop).
 doubles dice (both = ×4). Damage pools into the unit HP; troop count =
 `ceil(hp / troopHp)`.
 
-**Effective AC** (`unitStats.effectiveAc`) = `baselineAc + formation.ac_modifier
+**Effective AC** (`unitStats.effectiveAc`) = `baselineAc + formation AC term
 − shieldPenalty`, but the **formation term applies front/flank only — a
 formation gives no AC from the REAR** (uniform for every formation; direction via
-`attackDirection` — bearing-based so it works for melee and ranged). Shields are
-**360°** (baked into `baselineAc`) and are NOT dropped from the rear. Heroes face
-all sides, so a hero never takes the rear penalty. `getShieldPenalty` drops the
-shield (−2) for a two-handed active weapon or while routing.
+`attackDirection` — bearing-based so it works for melee and ranged). The formation
+term is **split by attack type**: `melee_ac_modifier` (melee) vs
+`range_ac_modifier` (ranged — bows/thrown and **single-target magic weapons**,
+which roll attack rows like any weapon). Shield Wall is 3/5; every other
+formation defaults ranged to 0 until tuned (values live in the `formations` table,
+migration 085). Shields are **360°** (baked into `baselineAc`) and are NOT dropped
+from the rear. Heroes face all sides, so a hero never takes the rear penalty.
+`getShieldPenalty` drops the shield (−2) for a two-handed active weapon or while
+routing.
 
 **Shield Wall** additionally **requires a shield** to form (two-handed weapons
 still block it). Its rear is where the wall is weakest — the formation AC goes to

@@ -326,9 +326,10 @@ export function resolveCombatSequence(
 
   // Directional formation AC: a formation gives no AC bonus from the REAR
   // (uniform rule); shields are 360° and stay in `baselineAc`. The shield drops
-  // for two-handed weapons / routing are handled inside effectiveAc.
-  const defenderEffAc = effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing));
-  const attackerEffAc = effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing));
+  // for two-handed weapons / routing are handled inside effectiveAc. The
+  // formation term is melee/ranged-aware (`isRanged`).
+  const defenderEffAc = effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing), isRanged);
+  const attackerEffAc = effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing), isRanged);
 
   // Who strikes first? A defender attacked from the rear, a routed defender, noRetaliation
   // weapons, and ranged attacks all let the attacker strike first (the defender can't react).

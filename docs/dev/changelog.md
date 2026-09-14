@@ -1,5 +1,16 @@
 # QuiTTER Changelog
 
+## Formation AC split by attack type (melee vs ranged) (2026-09-13)
+**Files:** supabase/migrations/085_formation_range_ac.sql (new), src/types/gameProtocol.ts, src/lib/{unitStats,unitCombat,enemyAI/planner}.ts (+ unitStats test), src/components/ScenarioMap/{useCombatActions,useReactionActions,UnitTooltip,UnitEditorModal}.tsx, test fixtures, docs/dev/{02,08}, docs/players/player-manual.md
+
+- **Formations now carry two AC modifiers**: `ac_modifier` was renamed → `melee_ac_modifier`, and a new `range_ac_modifier` covers ranged attacks. `unitStats.effectiveAc(unit, formation, direction, isRanged)` picks the term (front/flank only; still 0 from the rear). **Migration 085 must be applied in Supabase.**
+- **Values are data-driven — never hard-coded.** The migration defaults every formation's `range_ac_modifier` to `0` and sets **Shield Wall to +5 ranged** (its melee term stays +3). Tune in test play via SQL (there is no formation editor yet). If the migration isn't applied, code falls back to `0` for ranged.
+- **The per-unit shield is unchanged**: its +2 stays baked into `baselineAc` (360°, dropped −2 for two-handed/routing exactly as before). The formation term is *additional* to baseline.
+- **`isRanged` is threaded everywhere AC is computed** — `resolveCombatSequence` (both sides), verbose combat, the "rear — no formation bonus" callout, archer reaction shots (already ranged), and the AI planner's expected-damage.
+- **Tooltip AC is now annotated by type**: `AC melee: 19, [Range: 21]. [rear: 16]` (brackets appear only when a value differs from melee). The DM editor shows `melee / ranged` when they differ.
+- **Note for future balance (magic):** single-target magic entered as a weapon (`magicDimension = 0`) rolls attack rows vs AC exactly like a bow, and has no magic flag to distinguish it — so `range_ac_modifier` currently applies to those hero-heavy attacks too. Area magic (`magicDimension > 0`) resolves by saving throws and is unaffected. Revisit if heroes over-benefit from the split.
+- Tests: `effectiveAc` ranged case (1). tsc clean; 579 tests pass.
+
 ## Kill-zone stop + parting shot on disengagement (2026-09-13)
 **Files:** supabase/migrations/084_parting_shot.sql (new), src/types/gameProtocol.ts, src/hooks/{useSupabaseSync,useGameEngine}.ts, src/lib/zocDisengage.ts (+ test, new), src/components/ScenarioMap/{useCombatActions,useMoveActions,ScenarioMap}.tsx, test fixtures, docs/dev/{02,07,08,09}, docs/players/player-manual.md
 

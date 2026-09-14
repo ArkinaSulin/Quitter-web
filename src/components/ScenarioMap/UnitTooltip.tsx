@@ -45,8 +45,9 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const enemyThreats = calcEnemyThreats(unit, units, alliances);
   const threatRating = computeThreatRating(unit);
   const morTotal = unit.baseMorale + effectiveMoraleModifier;
-  const acFront = effectiveAcFor(unit, formationMod, 'front');
-  const acRear = effectiveAcFor(unit, formationMod, 'rear');
+  const acMelee = effectiveAcFor(unit, formationMod, 'front', false);
+  const acRanged = effectiveAcFor(unit, formationMod, 'front', true);
+  const acRear = effectiveAcFor(unit, formationMod, 'rear', false);
   const shieldInfo = getShieldPenalty(unit);
   const shieldPenalty = shieldInfo.penalty;
   const effectiveMaxMovement = computeEffectiveMovement(unit, formationMovMult);
@@ -109,7 +110,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
         {typeof unit.attacksUsed === 'number' && (
           <span className={unit.attacksUsed >= unitAttackCap() ? 'text-red-400' : ''}>{unit.attacksUsed}/{unitAttackCap()} <span className="text-gray-500">(attacks + retaliations)</span></span>
         )}
-        <span className="text-gray-400" title="Armor Class (AC): a d20 attack roll + bonuses must equal or beat this to hit. Formation AC does NOT apply from the REAR; the shield is 360°.">AC:</span><span>{acRear !== acFront ? `${acFront} (${acRear} at rear)` : `${acFront}`}</span>
+        <span className="text-gray-400" title="Armor Class (AC): a d20 attack roll + bonuses must equal or beat this to hit. Melee and ranged can differ (formation range AC); formation AC does NOT apply from the REAR; the shield is 360°.">AC:</span><span>{`melee: ${acMelee}${acRanged !== acMelee ? `, [Range: ${acRanged}]` : ''}${acRear !== acMelee ? `. [rear: ${acRear}]` : ''}`}</span>
         {(unit.effects ?? []).length > 0 && (
           <>
             <span className="col-span-2 mt-0.5 text-[10px] uppercase tracking-wide text-gray-500">Effects</span>

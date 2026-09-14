@@ -17,7 +17,8 @@ function form(partial: Partial<Formation>): Formation {
   return {
     id: 'x',
     name: 'X',
-    ac_modifier: 0,
+    melee_ac_modifier: 0,
+    range_ac_modifier: 0,
     movement_multiplier: 1,
     attack_modifier: 0,
     morale_modifier: 0,

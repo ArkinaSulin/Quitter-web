@@ -36,7 +36,7 @@ describe('getShieldPenalty', () => {
 
 describe('effectiveAc', () => {
   const oneHand = 'Longsword,5,1d8,false,1,0,0,false,false,false,false,1,true,Dex';
-  const f = (ac_modifier: number) => ({ name: 'X', ac_modifier } as unknown as Formation);
+  const f = (melee_ac_modifier: number, range_ac_modifier = 0) => ({ name: 'X', melee_ac_modifier, range_ac_modifier } as unknown as Formation);
   const unit = (over: Partial<Parameters<typeof effectiveAc>[0]> = {}) => ({
     baselineAc: 16, isShielded: true, weaponString: oneHand, activeWeaponIndex: 0, currentFormation: 'Close Order', isHero: false, ...over,
   });
@@ -63,5 +63,14 @@ describe('effectiveAc', () => {
 
   it('treats heroes as all-front (no rear penalty)', () => {
     expect(effectiveAc(unit({ isHero: true }), f(2), 'rear')).toBe(18);
+  });
+
+  it('uses range_ac_modifier for ranged attacks (melee vs ranged split)', () => {
+    expect(effectiveAc(unit(), f(2, 4), 'front', true)).toBe(20); // 16 + 4
+    expect(effectiveAc(unit(), f(2, 4), 'flank', true)).toBe(20);
+    expect(effectiveAc(unit(), f(2, 4), 'rear', true)).toBe(16);  // rear loses it
+    expect(effectiveAc(unit(), f(2, 4), 'front', false)).toBe(18); // melee uses the melee term
+    // range defaults to 0 (data-driven) → no formation term vs ranged
+    expect(effectiveAc(unit(), f(2), 'front', true)).toBe(16);
   });
 });

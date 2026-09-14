@@ -186,7 +186,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     }
     const desc = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks, ${hits} hits, ${outcome.firstStrikeDamage} damage (${troopsKilled} troops)`;
     const msg = verboseCombat
-      ? `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${formatStrikeDetail(outcome.firstStrikeAttacks, weapon.attackBonus + formationAtkMod, effectiveAc(mover, formationsMap[mover.currentFormation] ?? null, attackDirection(archer.hex, mover.hex, mover.facing)), weapon.damageDice, false, outcome.firstStrikeDamage)} (${troopsKilled} troops)`
+      ? `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${formatStrikeDetail(outcome.firstStrikeAttacks, weapon.attackBonus + formationAtkMod, effectiveAc(mover, formationsMap[mover.currentFormation] ?? null, attackDirection(archer.hex, mover.hex, mover.facing), true), weapon.damageDice, false, outcome.firstStrikeDamage)} (${troopsKilled} troops)`
       : desc;
     await execute('ARCHER_REACTION', subSteps, desc, verboseCombat ? { message: msg } : undefined);
     // A reaction hit is an attack — it can break the mover's morale into a rout.

@@ -72,16 +72,22 @@ export function getShieldPenalty(
 
 /**
  * Effective AC against an attack from `direction`. The shield is 360° (baked into
- * `baselineAc`); the formation's `ac_modifier` applies to front/flank only — a
- * formation gives NO AC bonus from the rear (uniform rule). Heroes have no rear
- * (all sides are front). Two-handed/routing still drop the shield everywhere.
+ * `baselineAc`) and two-handed/routing still drop it everywhere. The formation's
+ * AC term applies front/flank only — a formation gives NO AC bonus from the rear
+ * (uniform rule) — and is split by attack type: `melee_ac_modifier` for melee,
+ * `range_ac_modifier` for ranged (`isRanged`; bows/thrown and single-target magic
+ * weapons alike). Values are data-driven; both default 0 when absent.
+ * Heroes have no rear (all sides are front).
  */
 export function effectiveAc(
   unit: Pick<Unit, 'baselineAc' | 'isShielded' | 'weaponString' | 'activeWeaponIndex' | 'currentFormation' | 'isHero'>,
   formation: Formation | null | undefined,
   direction: AttackDirection,
+  isRanged = false,
 ): number {
   const dir = unit.isHero || unit.currentFormation === 'Hero' ? 'front' : direction;
-  const formationAc = dir === 'rear' ? 0 : (formation?.ac_modifier ?? 0);
+  const formationAc = dir === 'rear'
+    ? 0
+    : (isRanged ? (formation?.range_ac_modifier ?? 0) : (formation?.melee_ac_modifier ?? 0));
   return (unit.baselineAc || 10) + formationAc - getShieldPenalty(unit).penalty;
 }

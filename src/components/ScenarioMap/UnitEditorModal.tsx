@@ -176,7 +176,8 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
   const maxHp = parsedTroopHp * parsedMaxTroop;
   const troops = Math.min(parsedMaxTroop, Math.max(0, Math.ceil(parsedCurrentHp / parsedTroopHp)));
   const formation = formationsMap[draftFormation] ?? null;
-  const acMod = formation?.ac_modifier ?? 0;
+  const meleeAcMod = formation?.melee_ac_modifier ?? 0;
+  const rangeAcMod = formation?.range_ac_modifier ?? 0;
   const movementMult = formation?.movement_multiplier ?? 1;
   const effMove = computeEffectiveMovement({ ...unit, movementPoints: num(draft.movementPoints) }, movementMult);
   const moraleSnap = { ...unit, currentUnitHp: parsedCurrentHp, currentFormation: draftFormation };
@@ -334,7 +335,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
 
           {/* R3 Armor */}
           <div className="flex items-end gap-2">
-            <Cell label="Effective AC"><ReadBox>{parsedBaselineAc + acMod}</ReadBox></Cell>
+            <Cell label="Effective AC"><ReadBox>{`${parsedBaselineAc + meleeAcMod}${rangeAcMod !== meleeAcMod ? ` / ${parsedBaselineAc + rangeAcMod} ranged` : ''}`}</ReadBox></Cell>
             <Cell label="Base AC"><NumInput value={draft.baselineAc} onChange={v => set('baselineAc', v)} /></Cell>
             <div className="pb-1"><Toggle checked={!!draft.isShielded} onChange={v => set('isShielded', v)} label="Shield" /></div>
           </div>

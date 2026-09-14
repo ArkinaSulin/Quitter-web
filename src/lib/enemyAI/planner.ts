@@ -201,7 +201,7 @@ export function expectedDamage(
   const weapons = parseWeapons(attacker.weaponString || '');
   const weapon = weapons[attacker.activeWeaponIndex ?? 0] ?? weapons[0];
   const targetForm = ctx.formations[target.currentFormation];
-  const targetAc = effectiveAc(target, targetForm, attackDirection(attacker.hex, target.hex, target.facing));
+  const targetAc = effectiveAc(target, targetForm, attackDirection(attacker.hex, target.hex, target.facing), isRanged);
   if (weapon?.isHealing || (weapon && isAreaWeapon(weapon))) return 0; // AI doesn't heal/cast in v2
   if (!weapon) {
     if (dist !== 1) return 0;

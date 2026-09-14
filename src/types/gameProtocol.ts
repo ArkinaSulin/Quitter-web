@@ -359,7 +359,10 @@ export interface SizeCategory {
 export interface Formation {
   id: string;
   name: string;
-  ac_modifier: number;
+  /** AC bonus vs melee attacks (was `ac_modifier`). */
+  melee_ac_modifier: number;
+  /** AC bonus vs ranged attacks (bows, thrown, single-target magic weapons). */
+  range_ac_modifier: number;
   movement_multiplier: number;
   attack_modifier: number;
   morale_modifier: number;

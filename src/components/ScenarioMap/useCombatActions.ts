@@ -391,10 +391,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // ONLY to the chat message (options.message), never to the command log.
     const defenderAcDir = attackDirection(attacker.hex, target.hex, target.facing);
     const attackerAcDir = attackDirection(target.hex, attacker.hex, attacker.facing);
-    const effTargetAc = effectiveAc(effTarget, formationsMap[effTarget.currentFormation] ?? null, defenderAcDir);
-    const effAttackerAc = effectiveAc(effAttacker, formationsMap[effAttacker.currentFormation] ?? null, attackerAcDir);
+    const effTargetAc = effectiveAc(effTarget, formationsMap[effTarget.currentFormation] ?? null, defenderAcDir, isRanged);
+    const effAttackerAc = effectiveAc(effAttacker, formationsMap[effAttacker.currentFormation] ?? null, attackerAcDir, isRanged);
     // A formation gives no AC from the rear — call it out instead of a bare number.
-    const defenderFormAc = formationsMap[target.currentFormation]?.ac_modifier ?? 0;
+    const defenderForm = formationsMap[target.currentFormation];
+    const defenderFormAc = (isRanged ? defenderForm?.range_ac_modifier : defenderForm?.melee_ac_modifier) ?? 0;
     if (defenderAcDir === 'rear' && defenderFormAc !== 0) {
       desc += ' [rear — no formation bonus]';
       msgDesc += ' [rear — no formation bonus]';

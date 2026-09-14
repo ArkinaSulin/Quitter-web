@@ -7,7 +7,8 @@ const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
 const form = (partial: Partial<Formation>): Formation => ({
   id: 'x',
   name: 'X',
-  ac_modifier: 0,
+  melee_ac_modifier: 0,
+  range_ac_modifier: 0,
   movement_multiplier: 1,
   attack_modifier: 0,
   morale_modifier: 0,

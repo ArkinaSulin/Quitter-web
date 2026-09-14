@@ -6,7 +6,7 @@ const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
 
 const form = (name: string, stop: string[] = ['front']): Formation => ({
   id: name, name,
-  ac_modifier: 0, movement_multiplier: 1, attack_modifier: 0, morale_modifier: 0,
+  melee_ac_modifier: 0, range_ac_modifier: 0, movement_multiplier: 1, attack_modifier: 0, morale_modifier: 0,
   row_capacity_multiplier: 1, attack_capacity_multiplier: 1,
   melee_target_arcs: ['front'], ranged_target_arcs: ['front', 'flank', 'rear'],
   threat_arcs: ['front', 'flank'], double_threat_arcs: ['rear'],

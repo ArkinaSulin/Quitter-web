@@ -95,6 +95,7 @@ as applied in the notes — check the live DB before relying on it).
 | 082 | effect image scale (`effect_templates.image_scale`) | ⏳ run in Supabase |
 | 083 | effect transparent background (`effect_templates.transparent_background`) | ⏳ run in Supabase |
 | 084 | parting shot (`units.parting_shot_used` + allowlist) | ⏳ run in Supabase |
+| 085 | formation AC split: `ac_modifier`→`melee_ac_modifier` + `range_ac_modifier` | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

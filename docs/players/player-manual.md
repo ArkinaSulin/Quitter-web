@@ -1128,9 +1128,12 @@ formation and read the tooltip for live numbers.
 **AC and facing:** a **shield is 360°** — it protects every side (units turn to
 face attackers). A **formation's AC bonus applies to the front and flanks only;
 there is no formation AC from the rear** for any formation. So attacking a
-ranked unit from behind is worth it even without flanking bonuses. **Shield
-Wall** also **requires a shield**, and its rear is its weak point. The tooltip
-shows both, e.g. `AC 21 (18 at rear)`.
+ranked unit from behind is worth it even without flanking bonuses. A formation's
+AC can also differ by **attack type** — e.g. **Shield Wall** is stronger against
+**ranged** attacks than melee — and counts for bows, thrown weapons, and
+single-target magic alike. **Shield Wall** also **requires a shield**, and its
+rear is its weak point. The tooltip shows the split, e.g.
+`AC melee: 19, [Range: 21]. [rear: 16]`.
 
 ## Appendix D. Token Legend and Controls
 

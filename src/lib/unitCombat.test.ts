@@ -177,7 +177,8 @@ describe('melee arc-validation frame of reference', () => {
   const closeOrder: Formation = {
     id: 'co',
     name: 'Close Order',
-    ac_modifier: 0,
+    melee_ac_modifier: 0,
+    range_ac_modifier: 0,
     movement_multiplier: 1,
     attack_modifier: 0,
     morale_modifier: 0,
@@ -379,7 +380,8 @@ describe('resolveCombatSequence', () => {
   const retaliateRangedForm: Formation = {
     id: 'rr',
     name: 'Retaliate Ranged',
-    ac_modifier: 0,
+    melee_ac_modifier: 0,
+    range_ac_modifier: 0,
     movement_multiplier: 1,
     attack_modifier: 0,
     morale_modifier: 0,
