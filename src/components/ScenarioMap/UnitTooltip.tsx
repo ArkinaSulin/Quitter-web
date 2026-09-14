@@ -110,7 +110,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
         {typeof unit.attacksUsed === 'number' && (
           <span className={unit.attacksUsed >= unitAttackCap() ? 'text-red-400' : ''}>{unit.attacksUsed}/{unitAttackCap()} <span className="text-gray-500">(attacks + retaliations)</span></span>
         )}
-        <span className="text-gray-400" title="Armor Class (AC): a d20 attack roll + bonuses must equal or beat this to hit. Melee and ranged can differ (formation range AC); formation AC does NOT apply from the REAR; the shield is 360°.">AC:</span><span>{`melee: ${acMelee}${acRanged !== acMelee ? `, [Range: ${acRanged}]` : ''}${acRear !== acMelee ? `. [rear: ${acRear}]` : ''}`}</span>
+        <span className="text-gray-400" title="Armor Class (AC): a d20 attack roll + bonuses must equal or beat this to hit. Melee and ranged can differ (formation range AC); formation AC does NOT apply from the REAR; the shield is 360°.">AC:</span><span>{`melee: ${acMelee}, [Range: ${acRanged}]. [rear: ${acRear}]`}</span>
         {(unit.effects ?? []).length > 0 && (
           <>
             <span className="col-span-2 mt-0.5 text-[10px] uppercase tracking-wide text-gray-500">Effects</span>
