@@ -157,6 +157,15 @@ export interface CombatOutcome {
   /** The subset of retaliation rolls directed at a front-attached hero. */
   retaliationHeroAttacks: SingleAttackResult[];
   retaliationCount: number;
+  /** The attacking hero's OWN volley merged into the attacker's first strike
+   *  (front-attached hero fights with its host). Damage is split by target. */
+  firstStrikeAttackerHeroAttacks: SingleAttackResult[];
+  firstStrikeAttackerHeroUnitDamage: number;
+  firstStrikeAttackerHeroHeroDamage: number;
+  /** Same, when the attacker's blow lands as the retaliation (defender first). */
+  retaliationAttackerHeroAttacks: SingleAttackResult[];
+  retaliationAttackerHeroUnitDamage: number;
+  retaliationAttackerHeroHeroDamage: number;
   /** Human-readable explanation of count modifiers on the first strike (e.g. "-50% ranged vs Open Order"). */
   firstStrikeCountNote?: string;
   /** Human-readable explanation of count modifiers on the retaliation. */
@@ -320,11 +329,17 @@ export function resolveCombatSequence(
       firstStrikeHeroDamage: 0,
       firstStrikeHeroAttacks: [],
       firstStrikeCount: 0,
+      firstStrikeAttackerHeroAttacks: [],
+      firstStrikeAttackerHeroUnitDamage: 0,
+      firstStrikeAttackerHeroHeroDamage: 0,
       retaliationAttacks: [],
       retaliationDamage: 0,
       retaliationHeroDamage: 0,
       retaliationHeroAttacks: [],
       retaliationCount: 0,
+      retaliationAttackerHeroAttacks: [],
+      retaliationAttackerHeroUnitDamage: 0,
+      retaliationAttackerHeroHeroDamage: 0,
     };
   }
 
@@ -366,12 +381,18 @@ export function resolveCombatSequence(
   let firstStrikeHeroAttacks: SingleAttackResult[] = [];
   let firstStrikeCount = 0;
   let firstStrikeCountNote: string | undefined;
+  let firstStrikeAttackerHeroAttacks: SingleAttackResult[] = [];
+  let firstStrikeAttackerHeroUnitDamage = 0;
+  let firstStrikeAttackerHeroHeroDamage = 0;
   let retaliationAttacks: SingleAttackResult[] = [];
   let retaliationDamage = 0;
   let retaliationHeroDamage = 0;
   let retaliationHeroAttacks: SingleAttackResult[] = [];
   let retaliationCount = 0;
   let retaliationCountNote: string | undefined;
+  let retaliationAttackerHeroAttacks: SingleAttackResult[] = [];
+  let retaliationAttackerHeroUnitDamage = 0;
+  let retaliationAttackerHeroHeroDamage = 0;
 
   // A front-attached hero joining the attack rolls its own weapon volley against
   // the same target (sharing the defender's front hero split when present).
@@ -424,6 +445,9 @@ export function resolveCombatSequence(
       firstStrikeHeroDamage += heroRoll.heroDamage;
       firstStrikeHeroAttacks = [...firstStrikeHeroAttacks, ...heroRoll.heroAttacks];
       firstStrikeCount += heroRoll.count;
+      firstStrikeAttackerHeroAttacks = [...firstStrikeAttackerHeroAttacks, ...heroRoll.attacks];
+      firstStrikeAttackerHeroUnitDamage += heroRoll.damage;
+      firstStrikeAttackerHeroHeroDamage += heroRoll.heroDamage;
     }
   } else {
     const rawPosition = determineCombatPosition(attacker.hex, defender.hex, defender.facing);
@@ -433,9 +457,11 @@ export function resolveCombatSequence(
     const defCountMod = beAttackedModifier(attackerForm, false);
     defenderCount = Math.round(defenderCount * defCountMod);
     firstStrikeCountNote = beAttackedModifierNote(attackerForm, false);
-    // A hero attacking (lone or front-attached) means only a fraction of the
-    // defender unit's troops can reach it — cap the defender's own attacks.
-    const defenderVsHero = !defender.isHero && (attacker.isHero || !!attachedAttackerHero);
+    // Cap the defender's volley only against a LONE hero attacker — only 30% of
+    // troops can reach a hero in melee. Against a unit with an attached hero,
+    // executeSplitAttacks already sends ~30% at the hero and the rest at the unit,
+    // so the full volley stands.
+    const defenderVsHero = !defender.isHero && attacker.isHero;
     if (defenderVsHero) {
       const cap = applyHeroCombatCap(defenderCount, true);
       defenderCount = cap.count;
@@ -468,10 +494,10 @@ export function resolveCombatSequence(
         const retMod = beAttackedModifier(attackerForm, false);
         defenderCount = Math.round(defenderCount * retMod);
         retaliationCountNote = beAttackedModifierNote(attackerForm, false);
-        // A hero attacking (lone or front-attached) limits how many defender
-        // troops can reach it — cap the defender's MELEE retaliation. Ranged
-        // retaliation is uncapped.
-        const defenderVsHeroRet = !defender.isHero && (attacker.isHero || !!attachedAttackerHero);
+        // Only a LONE hero attacker caps the defender's MELEE retaliation — only
+        // 30% of troops can reach a hero. A unit with an attached hero keeps its
+        // full volley (the split routes ~30% to the hero). Ranged is uncapped.
+        const defenderVsHeroRet = !defender.isHero && attacker.isHero;
         if (defenderVsHeroRet && !isRanged) {
           const cap = applyHeroCombatCap(defenderCount, true);
           defenderCount = cap.count;
@@ -529,6 +555,9 @@ export function resolveCombatSequence(
       retaliationHeroDamage += heroRoll.heroDamage;
       retaliationHeroAttacks = [...retaliationHeroAttacks, ...heroRoll.heroAttacks];
       retaliationCount += heroRoll.count;
+      retaliationAttackerHeroAttacks = [...retaliationAttackerHeroAttacks, ...heroRoll.attacks];
+      retaliationAttackerHeroUnitDamage += heroRoll.damage;
+      retaliationAttackerHeroHeroDamage += heroRoll.heroDamage;
     }
   }
   }
@@ -543,12 +572,18 @@ export function resolveCombatSequence(
     firstStrikeHeroAttacks,
     firstStrikeCount,
     firstStrikeCountNote,
+    firstStrikeAttackerHeroAttacks,
+    firstStrikeAttackerHeroUnitDamage,
+    firstStrikeAttackerHeroHeroDamage,
     retaliationAttacks,
     retaliationDamage,
     retaliationHeroDamage,
     retaliationHeroAttacks,
     retaliationCount,
     retaliationCountNote,
+    retaliationAttackerHeroAttacks,
+    retaliationAttackerHeroUnitDamage,
+    retaliationAttackerHeroHeroDamage,
   };
 }
 
@@ -579,6 +614,9 @@ export function suppressRetaliation(
       retaliationHeroDamage: 0,
       retaliationHeroAttacks: [],
       retaliationCount: 0,
+      retaliationAttackerHeroAttacks: [],
+      retaliationAttackerHeroUnitDamage: 0,
+      retaliationAttackerHeroHeroDamage: 0,
     };
   }
   if (simultaneous) return outcome;
@@ -590,5 +628,8 @@ export function suppressRetaliation(
     retaliationHeroDamage: 0,
     retaliationHeroAttacks: [],
     retaliationCount: 0,
+    retaliationAttackerHeroAttacks: [],
+    retaliationAttackerHeroUnitDamage: 0,
+    retaliationAttackerHeroHeroDamage: 0,
   };
 }

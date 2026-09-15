@@ -704,6 +704,25 @@ describe('resolveCombatSequence', () => {
     const withHero = callCombat(attacker, defender, aw, dw, 0, 1, false, false, null, null, null, null, false, { attackBonus: 5, damageDice: '1d8', numberOfAttacks: 2 });
     expect(withHero.firstStrikeCount).toBe(without.firstStrikeCount + 2);
     expect(withHero.firstStrikeAttacks.length).toBeGreaterThanOrEqual(without.firstStrikeAttacks.length + 2);
+    // The joining hero's own rolls are exposed separately for the log breakdown.
+    expect(withHero.firstStrikeAttackerHeroAttacks).toHaveLength(2);
+    expect(withHero.firstStrikeAttackerHeroUnitDamage).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a unit with a front-attached hero keeps its FULL defender retaliation (no lone-hero cap)', () => {
+    const heroPool = { currentAc: 15, troopHp: 10 };
+    const without = callCombat(attacker, defender);
+    const withHero = callCombat(attacker, defender, aw, dw, 0, 1, false, false, null, heroPool);
+    // Full volley (split ~30% to the hero), not capped to 30% of the whole.
+    expect(withHero.retaliationAttacks.length).toBe(without.retaliationAttacks.length);
+    expect(withHero.retaliationHeroAttacks.length).toBeGreaterThan(0);
+    expect(withHero.retaliationCountNote).toBeUndefined();
+  });
+
+  it('a LONE hero attacker still caps the defender retaliation', () => {
+    const unitAtk = callCombat(attacker, defender);
+    const heroAtk = callCombat({ ...attacker, isHero: true }, defender);
+    expect(heroAtk.retaliationAttacks.length).toBeLessThan(unitAtk.retaliationAttacks.length);
   });
 
   it('routed defender cannot retaliate', () => {

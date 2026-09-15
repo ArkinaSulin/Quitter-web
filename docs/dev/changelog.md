@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Hero-volley log breakdown + retaliation-cap fix (2026-09-13)
+**Files:** src/lib/unitCombat.ts (+ test), src/components/ScenarioMap/useCombatActions.ts, docs/dev/08-combat.md
+
+- **Fix — a unit with a front-attached hero no longer has its defender volley over-capped.** The `unit_melee_hero_cap` ("only 30% can reach hero") was applied to the *whole* retaliation **and then** `executeSplitAttacks` sent 30% of that at the hero — double-reducing the host unit's share (~21% of its real attacks). The cap now applies **only to a lone hero attacker** (`attacker.isHero`); a unit+hero keeps its full volley (e.g. 20 → 6 hero / 14 unit). Both the defender-first strike and the retaliation paths are fixed.
+- **Log breakdown — hero vs unit, in both the command-log description and verbose combat.** New `CombatOutcome` fields (`firstStrike`/`retaliation` `AttackerHeroAttacks` + `UnitDamage`/`HeroDamage`) separate the joining hero's own volley from the host's. The header reads `{Attacker} (+ {Hero}) attacks {Target} with {Weapon}`, and each blow lists `{Hero}: N attacks… ` and `{Unit}: N attacks…` separately; the incoming `{defender hero} took …` line is unchanged.
+- Tests: full-retaliation-with-hero (no cap), lone-hero still capped, joiner fields. tsc clean; 592 tests pass.
+
 ## Hero joins the volley — Phase 2 (2026-09-13)
 **Files:** src/lib/unitCombat.ts (+ test), src/components/ScenarioMap/{useCombatActions,SoftEnforcementModals,ScenarioMap}.tsx, docs/dev/{08,09}, docs/players/player-manual.md
 
