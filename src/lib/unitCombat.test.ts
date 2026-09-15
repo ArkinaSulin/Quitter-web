@@ -447,12 +447,13 @@ describe('resolveCombatSequence', () => {
     defenderForm: Formation | null = null,
     partingShot = false,
     attackerHero: { attackBonus: number; damageDice: string; numberOfAttacks: number } | null = null,
+    isCharging = false,
   ) {
     return resolveCombatSequence(
       att, def, atkW, defW,
       formationAtkMod, attackCapMult, attackCapMult,
       rowCap, rowCap, visualDotsPerRow,
-      isRanged, isRear, attachedDefHero, attachedAtkHero, seededRng(42), false,
+      isRanged, isRear, attachedDefHero, attachedAtkHero, seededRng(42), isCharging,
       attackerForm, defenderForm, partingShot, attackerHero,
     );
   }
@@ -723,6 +724,14 @@ describe('resolveCombatSequence', () => {
     const unitAtk = callCombat(attacker, defender);
     const heroAtk = callCombat({ ...attacker, isHero: true }, defender);
     expect(heroAtk.retaliationAttacks.length).toBeLessThan(unitAtk.retaliationAttacks.length);
+  });
+
+  it('the joining hero volley is doubled during a charge', () => {
+    const hero = { attackBonus: 20, damageDice: '1d1', numberOfAttacks: 4 };
+    const normal = callCombat(attacker, defender, aw, dw, 0, 1, false, false, null, null, null, null, false, hero, false);
+    const charge = callCombat(attacker, defender, aw, dw, 0, 1, false, false, null, null, null, null, false, hero, true);
+    expect(normal.firstStrikeAttackerHeroUnitDamage).toBeGreaterThan(0);
+    expect(charge.firstStrikeAttackerHeroUnitDamage).toBe(normal.firstStrikeAttackerHeroUnitDamage * 2);
   });
 
   it('routed defender cannot retaliate', () => {

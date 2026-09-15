@@ -25,6 +25,9 @@ export interface PendingAttackCap {
   attacker: Unit;
   target: Unit;
   isCharging?: boolean;
+  /** Front-attached hero joins the attack. */
+  heroJoin?: boolean;
+  heroOverBudget?: boolean;
 }
 
 export interface PendingRetaliationCap {
@@ -67,6 +70,9 @@ export interface PendingFormation {
 export interface PendingChargeAttack {
   attacker: Unit;
   target: Unit;
+  /** Front-attached hero joins the attack (resolved at the drag entry). */
+  heroJoin?: boolean;
+  heroOverBudget?: boolean;
 }
 
 export interface PendingChargeThrough {

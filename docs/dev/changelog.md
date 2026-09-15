@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Hero joins charge attacks; hero-volley rules documented (2026-09-13)
+**Files:** src/components/ScenarioMap/{useCombatActions,SoftEnforcementModals,ScenarioMap}.tsx, src/lib/unitCombat.test.ts, docs/dev/08-combat.md, docs/players/player-manual.md
+
+- **A front-attached hero now joins the host's CHARGE attack too** (previously melee-standard only). The hero-join is resolved once at the drag entry (before the charge branch), so it applies to the full charge, the premature-charge confirm, and the at-cap confirm alike. The hero spends one of its own actions, adds its volley — **doubled while charging** — and triggers Heroic Inspiration. `PendingChargeAttack` / `PendingAttackCap` now carry `heroJoin`/`heroOverBudget` so every confirm path is consistent.
+- **Exclusions made explicit (no accidental special cases):** ranged/magic volleys never include the hero, never spend its action, and never trigger Heroic Inspiration; likewise pursuit, parting shots, a defending front hero (stays a damage pool), and the AI. Documented in `08-combat.md` and the player manual, with a rationale comment at the ranged inspiration gate.
+- Tests: joining hero volley doubles during a charge (1). tsc clean; 593 tests pass.
+
 ## Hero-volley log breakdown + retaliation-cap fix (2026-09-13)
 **Files:** src/lib/unitCombat.ts (+ test), src/components/ScenarioMap/useCombatActions.ts, docs/dev/08-combat.md
 

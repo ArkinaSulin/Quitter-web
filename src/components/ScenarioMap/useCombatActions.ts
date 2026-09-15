@@ -142,9 +142,10 @@ export function useCombatActions(deps: CombatActionsDeps) {
       }
     }
     const isRanged = weapon.magicDimension > 0 || !isAdjacent;
-    // Heroic Inspiration: a hero making a melee attack on a hostile — either
+    // Heroic Inspiration: a hero making a MELEE attack on a hostile — either
     // stand-alone (the hero is the attacker) or leading (front-attached to the
-    // attacker) — inspires allies until the start of his next alliance turn.
+    // attacker, joining the volley) — inspires allies until the start of his next
+    // alliance turn. Ranged/magic volleys never inspire (the hero doesn't join).
     // Set on the hero (its own flag) and reflected in this attack's morale checks.
     const hostileTarget = (alliances[attacker.team] || 'friendly') !== (alliances[target.team] || 'friendly');
     const inspirationHero = (!isRanged && isHeroMoraleBoostEnabled() && hostileTarget && (attacker.isHero || options?.heroJoin === true))
@@ -969,20 +970,34 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
 
+    // Front-attached hero joins the host's MELEE attack — standard OR charge — so
+    // it spends its own action, adds its volley, and triggers Heroic Inspiration.
+    // Ranged/pursuit/parting/defending heroes never join. Soft-gate if the hero
+    // has no action (attack with hero over the limit, unit alone, or cancel).
+    const frontHero = (!attacker.isHero && !isRangedThisAttack)
+      ? units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted && u.attachedPosition === 'front') ?? null
+      : null;
+    if (frontHero && opts?.heroJoin === undefined && frontHero.actionsAvailable < 1) {
+      setPendingHeroJoin({ attacker, target, hero: frontHero });
+      return;
+    }
+    const heroJoin = opts?.heroJoin ?? !!frontHero;
+    const heroOverBudget = opts?.heroOverBudget;
+
     // Charging attacker: a full charge (2 hexes moved) grants a free double-damage
     // attack; an early attack is premature and requires confirmation.
     if (attacker.isCharging) {
       if (attacker.chargeDistance < getSetting('charge_full_distance', 2)) {
-        setPendingChargeAttack({ attacker, target });
+        setPendingChargeAttack({ attacker, target, heroJoin, heroOverBudget });
         return;
       }
       // Soft 5-cap: pause and ask before a charge attack past the cap.
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
-        setPendingAttackCap({ attacker, target, isCharging: true });
+        setPendingAttackCap({ attacker, target, isCharging: true, heroJoin, heroOverBudget });
         return;
       }
-      const result = await performAttack(attacker, target, false, { isCharging: true });
+      const result = await performAttack(attacker, target, false, { isCharging: true, heroJoin, heroOverBudget });
       // undefined = the retaliation-cap prompt is open — its handlers resume the
       // attack and finish the charge; don't end the charge here.
       if (!result) return;
@@ -996,7 +1011,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // Soft 5-cap: pause and ask before an attack past the cap.
     const attackCap = unitAttackCap();
     if ((attacker.attacksUsed ?? 0) >= attackCap) {
-      setPendingAttackCap({ attacker, target });
+      setPendingAttackCap({ attacker, target, heroJoin, heroOverBudget });
       return;
     }
 
@@ -1004,19 +1019,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       setPendingAttack({ attacker, target });
       return;
     }
-    // Front-attached hero joining a melee volley: if it has no action, soft-gate.
-    if (!isRangedThisAttack && !attacker.isHero) {
-      const frontHero = units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted && u.attachedPosition === 'front') ?? null;
-      if (frontHero) {
-        if (opts?.heroJoin === undefined && frontHero.actionsAvailable < 1) {
-          setPendingHeroJoin({ attacker, target, hero: frontHero });
-          return;
-        }
-        await performAttack(attacker, target, false, { heroJoin: opts?.heroJoin ?? true, heroOverBudget: opts?.heroOverBudget });
-        return;
-      }
-    }
-    await performAttack(attacker, target, false);
+    await performAttack(attacker, target, false, { heroJoin, heroOverBudget });
   }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP, setAttachModal, canAttackTarget, execute]);
 
   // Confirm the offered weapon switch, then resume the attack with that weapon.

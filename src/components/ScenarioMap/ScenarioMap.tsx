@@ -1908,11 +1908,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setPendingAttackCap(null);
       if (controlsLocked) return;
       if (pa.isCharging) {
-        const result = await performAttack(pa.attacker, pa.target, true, { isCharging: true });
+        const result = await performAttack(pa.attacker, pa.target, true, { isCharging: true, heroJoin: pa.heroJoin, heroOverBudget: pa.heroOverBudget });
         if (!result) return; // retaliation-cap prompt reopened
         await finishChargeAfterAttack(pa.attacker, pa.target, result);
       } else {
-        await performAttack(pa.attacker, pa.target, true);
+        await performAttack(pa.attacker, pa.target, true, { heroJoin: pa.heroJoin, heroOverBudget: pa.heroOverBudget });
       }
     },
     confirmRetaliationAllow: async () => {
@@ -1991,7 +1991,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const pca = pendingChargeAttack!;
       setPendingChargeAttack(null);
       if (controlsLocked) return;
-      await performAttack(pca.attacker, pca.target, false);
+      await performAttack(pca.attacker, pca.target, false, { heroJoin: pca.heroJoin, heroOverBudget: pca.heroOverBudget });
       await performChargeEnd(pca.attacker, true);
     },
     confirmChargeThrough: async () => {
