@@ -1165,6 +1165,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingWeaponSwitch,
     confirmWeaponSwitch,
     cancelWeaponSwitch,
+    pendingHeroJoin,
+    setPendingHeroJoin,
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,
@@ -2022,6 +2024,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }
       confirmWeaponSwitch();
     },
+    confirmHeroJoinOverBudget: () => {
+      const p = pendingHeroJoin!;
+      setPendingHeroJoin(null);
+      if (!controlsLocked) handleAttackRequest(p.attacker.id, p.target.id, { heroJoin: true, heroOverBudget: true });
+    },
+    confirmHeroJoinUnitOnly: () => {
+      const p = pendingHeroJoin!;
+      setPendingHeroJoin(null);
+      if (!controlsLocked) handleAttackRequest(p.attacker.id, p.target.id, { heroJoin: false });
+    },
   };
   const softCancels = {
     move: () => setPendingMove(null),
@@ -2036,6 +2048,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     castOverBudget: () => setPendingCastOverBudget(false),
     chargeAttack: () => setPendingChargeAttack(null),
     weaponSwitch: () => cancelWeaponSwitch(),
+    heroJoin: () => setPendingHeroJoin(null),
   };
 
   const aiPanelNode =
@@ -2415,6 +2428,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           chargeAttack: pendingChargeAttack,
           chargeThrough: pendingChargeThrough,
           weaponSwitch: pendingWeaponSwitch,
+          heroJoin: pendingHeroJoin,
         }}
         actions={softActions}
         cancels={softCancels}

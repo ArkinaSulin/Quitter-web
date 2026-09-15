@@ -24,7 +24,7 @@ import { SubStep, UnitChange } from '@/lib/commandLog';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { computeOccupiedHexes } from './mapGeometry';
 import { ExecuteFn, routeUnit } from './routeUnit';
-import { PendingAttack, PendingAttackCap, PendingRetaliationCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch } from './SoftEnforcementModals';
+import { PendingAttack, PendingAttackCap, PendingRetaliationCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch, PendingHeroJoin } from './SoftEnforcementModals';
 import { useMagicCast } from '@/hooks/useMagicCast';
 
 // A stashed attack resumes a previously-computed outcome (the retaliation-cap
@@ -86,8 +86,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingChargeAttack, setPendingChargeAttack] = useState<PendingChargeAttack | null>(null);
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
   const [pendingWeaponSwitch, setPendingWeaponSwitch] = useState<PendingWeaponSwitch | null>(null);
+  const [pendingHeroJoin, setPendingHeroJoin] = useState<PendingHeroJoin | null>(null);
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean; partingShot?: boolean; onExecuted?: (steps: SubStep[]) => void }) => {
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean; partingShot?: boolean; onExecuted?: (steps: SubStep[]) => void; heroJoin?: boolean; heroOverBudget?: boolean }) => {
     if (overBudget) {
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
@@ -146,7 +147,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // attacker) — inspires allies until the start of his next alliance turn.
     // Set on the hero (its own flag) and reflected in this attack's morale checks.
     const hostileTarget = (alliances[attacker.team] || 'friendly') !== (alliances[target.team] || 'friendly');
-    const inspirationHero = (!isRanged && isHeroMoraleBoostEnabled() && hostileTarget)
+    const inspirationHero = (!isRanged && isHeroMoraleBoostEnabled() && hostileTarget && (attacker.isHero || options?.heroJoin === true))
       ? (attacker.isHero
           ? attacker
           : units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted && u.attachedPosition === 'front') ?? null)
@@ -177,11 +178,22 @@ export function useCombatActions(deps: CombatActionsDeps) {
       if (!hero || hero.attachedPosition !== 'front') return null;
       return { currentAc: hero.currentAc, troopHp: hero.troopHp };
     })();
-    const attachedAttackerHero = (() => {
-      const hero = units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted);
-      if (!hero || hero.attachedPosition !== 'front') return null;
-      return { currentAc: hero.currentAc, troopHp: hero.troopHp };
-    })();
+    const attackerHeroUnit = units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted && u.attachedPosition === 'front') ?? null;
+    const attachedAttackerHero = attackerHeroUnit
+      ? { currentAc: attackerHeroUnit.currentAc, troopHp: attackerHeroUnit.troopHp }
+      : null;
+    // A front-attached hero joining the attack (Phase 2): its own weapon volley
+    // joins the host's blow, and it spends an action.
+    const heroJoins = options?.heroJoin === true && !!attackerHeroUnit;
+    const attackerHeroProfile = heroJoins && attackerHeroUnit
+      ? (() => {
+          const hw = parseWeapons(attackerHeroUnit.weaponString || '')[attackerHeroUnit.activeWeaponIndex ?? 0];
+          return hw ? { attackBonus: hw.attackBonus, damageDice: hw.damageDice, numberOfAttacks: hw.numberOfAttacks ?? 1 } : null;
+        })()
+      : null;
+    if (options?.heroOverBudget && attackerHeroUnit) {
+      addError(`${attackerHeroUnit.unitName} has no action left — attacked with the hero anyway (over budget)`);
+    }
 
     const outcome = stashed
       ? stashed.outcome
@@ -205,6 +217,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
           formationsMap[attacker.currentFormation],
           formationsMap[target.currentFormation],
           options?.partingShot ?? false,
+          attackerHeroProfile,
         );
 
     const subSteps: SubStep[] = [];
@@ -274,6 +287,17 @@ export function useCombatActions(deps: CombatActionsDeps) {
         description: `${inspirationHero.unitName}'s presence inspires nearby allies`,
         unitId: inspirationHero.id,
         changes: [{ field: 'heroicInspirationActive', from: false, to: true }],
+      });
+    }
+
+    // A hero fighting WITH the host spends one of its own actions (may go
+    // negative on the confirmed over-limit path — soft enforcement).
+    if (heroJoins && attackerHeroUnit) {
+      subSteps.push({
+        type: 'ATTACK',
+        description: `${attackerHeroUnit.unitName} joined the attack`,
+        unitId: attackerHeroUnit.id,
+        changes: [{ field: 'actionsAvailable', from: attackerHeroUnit.actionsAvailable, to: attackerHeroUnit.actionsAvailable - 1 }],
       });
     }
 
@@ -731,7 +755,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     await performChargeEnd(attacker, true);
   }, [units, formationsMap, performChargeEnd]);
 
-  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; weaponIndex?: number }) => {
+  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; weaponIndex?: number; heroJoin?: boolean; heroOverBudget?: boolean }) => {
     let attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return;
@@ -940,6 +964,18 @@ export function useCombatActions(deps: CombatActionsDeps) {
       setPendingAttack({ attacker, target });
       return;
     }
+    // Front-attached hero joining a melee volley: if it has no action, soft-gate.
+    if (!isRangedThisAttack && !attacker.isHero) {
+      const frontHero = units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted && u.attachedPosition === 'front') ?? null;
+      if (frontHero) {
+        if (opts?.heroJoin === undefined && frontHero.actionsAvailable < 1) {
+          setPendingHeroJoin({ attacker, target, hero: frontHero });
+          return;
+        }
+        await performAttack(attacker, target, false, { heroJoin: opts?.heroJoin ?? true, heroOverBudget: opts?.heroOverBudget });
+        return;
+      }
+    }
     await performAttack(attacker, target, false);
   }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP, setAttachModal, canAttackTarget, execute]);
 
@@ -974,6 +1010,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     pendingWeaponSwitch,
     confirmWeaponSwitch,
     cancelWeaponSwitch,
+    pendingHeroJoin,
+    setPendingHeroJoin,
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,

@@ -266,6 +266,13 @@ function executeSplitAttacks(
   };
 }
 
+/** A front-attached hero that joins its host's attack (its own weapon volley). */
+export interface AttackerHeroProfile {
+  attackBonus: number;
+  damageDice: string;
+  numberOfAttacks: number;
+}
+
 export function resolveCombatSequence(
   attacker: Unit,
   defender: Unit,
@@ -288,6 +295,9 @@ export function resolveCombatSequence(
   /** A parting shot at a disengaging unit: the attacker always strikes first and
    *  the mover never gets a counter-blow (it is turning away, not fighting). */
   partingShot = false,
+  /** A front-attached hero fighting WITH the unit: its own weapon volley is added
+   *  to the attacker's blow (first strike or retaliation). */
+  attackerHero: AttackerHeroProfile | null = null,
 ): CombatOutcome {
   // AGR check: skip if hero, ranged, target routed, rear attack, a free/no-retaliation
   // weapon, or when the attacker has a front-attached hero (the hero's presence
@@ -363,6 +373,21 @@ export function resolveCombatSequence(
   let retaliationCount = 0;
   let retaliationCountNote: string | undefined;
 
+  // A front-attached hero joining the attack rolls its own weapon volley against
+  // the same target (sharing the defender's front hero split when present).
+  const rollAttackerHero = (): { attacks: SingleAttackResult[]; damage: number; heroDamage: number; heroAttacks: SingleAttackResult[]; count: number } | null => {
+    if (!attackerHero) return null;
+    const count = attackerHero.numberOfAttacks ?? 1;
+    if (count <= 0) return null;
+    const heroBonus = attackerHero.attackBonus + formationAttackModifier;
+    if (attachedDefenderHero) {
+      const split = executeSplitAttacks(count, heroBonus, attackerHero.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, disadvantage);
+      return { attacks: split.attacks, damage: split.unitDamage, heroDamage: split.heroDamage, heroAttacks: split.heroAttacks, count };
+    }
+    const result = executeAttacks(count, heroBonus, attackerHero.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, disadvantage);
+    return { attacks: result.attacks, damage: result.totalDamage, heroDamage: 0, heroAttacks: [], count };
+  };
+
   // --- First strike ---
   if (strikerFirst === 'attacker') {
     // The attacker is a unit striking a lone hero: only a fraction of troops can
@@ -392,6 +417,14 @@ export function resolveCombatSequence(
       firstStrikeDamage = result.totalDamage;
     }
     firstStrikeCount = attackerCount;
+    const heroRoll = rollAttackerHero();
+    if (heroRoll) {
+      firstStrikeAttacks = [...firstStrikeAttacks, ...heroRoll.attacks];
+      firstStrikeDamage += heroRoll.damage;
+      firstStrikeHeroDamage += heroRoll.heroDamage;
+      firstStrikeHeroAttacks = [...firstStrikeHeroAttacks, ...heroRoll.heroAttacks];
+      firstStrikeCount += heroRoll.count;
+    }
   } else {
     const rawPosition = determineCombatPosition(attacker.hex, defender.hex, defender.facing);
     const retPos = resolveRetaliationPosition(defender, defenderForm, rawPosition);
@@ -489,6 +522,14 @@ export function resolveCombatSequence(
       retaliationDamage = result.totalDamage;
     }
     retaliationCount = attackerCount;
+    const heroRoll = rollAttackerHero();
+    if (heroRoll) {
+      retaliationAttacks = [...retaliationAttacks, ...heroRoll.attacks];
+      retaliationDamage += heroRoll.damage;
+      retaliationHeroDamage += heroRoll.heroDamage;
+      retaliationHeroAttacks = [...retaliationHeroAttacks, ...heroRoll.heroAttacks];
+      retaliationCount += heroRoll.count;
+    }
   }
   }
 

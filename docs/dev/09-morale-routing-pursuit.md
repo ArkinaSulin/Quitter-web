@@ -54,8 +54,10 @@ effectiveMorale = baseMorale + currentMoraleModifier
 - **Hero aura** (`heroBoost`, gated by `scenarios.hero_morale_boost_enabled`):
   the strongest single HERO of the same alliance within the hero's hex + 6
   neighbours (7 hexes). A hero carries a `morale_boost` value `n` = **Commanding
-  Presence**; while `heroic_inspiration_active` (set by a melee attack, cleared at
-  the hero's next turn start) the aura upgrades to **Heroic Inspiration `n+1`**
+  Presence**; while `heroic_inspiration_active` (set by a melee attack — a
+  stand-alone hero, or a front-attached hero whose host attacks and takes the
+  hero into the volley; cleared at the hero's next turn start) the aura upgrades
+  to **Heroic Inspiration `n+1`**
   (even from `n=0`). Non-heroes are inert, the hero does not inspire itself, and
   several heroes do not stack (max). See `calcMoraleBoost`.
 

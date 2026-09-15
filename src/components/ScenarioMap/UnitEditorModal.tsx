@@ -360,7 +360,6 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
             <Cell label="Aggress."><NumInput value={draft.aggressiveness} onChange={v => set('aggressiveness', v)} /></Cell>
             <Cell label="Current morale"><ReadBox>{effMorale}</ReadBox></Cell>
             <Cell label="Base morale"><NumInput value={draft.baseMorale} onChange={v => set('baseMorale', v)} /></Cell>
-            <Cell label="Morale boost"><NumInput value={draft.moraleBoost} min={0} onChange={v => set('moraleBoost', v)} /></Cell>
             <div className="pb-1"><Toggle checked={!!draft.ignoreMoraleChecks} onChange={v => set('ignoreMoraleChecks', v)} label="Fearless" /></div>
           </div>
 
@@ -403,11 +402,10 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
           <div className="flex items-end gap-1.5">
             <span className="text-[10px] text-gray-400 self-center mr-1">Saving throws</span>
             {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(s => (
-              <Cell key={s} label={s.toUpperCase()} widthClass="w-10">
+              <Cell key={s} label={s.toUpperCase()} widthClass="w-14">
                 <NumInput value={draft[s]} onChange={v => set(s, v)} />
               </Cell>
             ))}
-            <div className="pb-1 ml-2"><Toggle checked={!!draft.heroicInspirationActive} onChange={v => set('heroicInspirationActive', v)} label="Heroic Inspiration" /></div>
           </div>
 
           {/* R10 Rank & Token */}
@@ -415,6 +413,8 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
             <Cell label="Level"><NumInput value={draft.level} min={1} onChange={v => set('level', v)} /></Cell>
             <Cell label="Size" widthClass="w-24"><SelectInput value={String(draft.sizeCategory)} onChange={v => set('sizeCategory', v)} options={SIZE_VALUES.map(v => ({ value: String(v), label: `${SIZE_LABELS[v]} (${v})` }))} /></Cell>
             <Cell label="Visual scale"><NumInput value={draft.visualScale} min={50} max={149} onChange={v => set('visualScale', v)} /></Cell>
+            <Cell label="Morale boost"><NumInput value={draft.moraleBoost} min={0} onChange={v => set('moraleBoost', v)} /></Cell>
+            <div className="pb-1 ml-2"><Toggle checked={!!draft.heroicInspirationActive} onChange={v => set('heroicInspirationActive', v)} label="Heroic Inspiration" /></div>
           </div>
 
           {/* Weapons — edited via the shared weapon editor */}

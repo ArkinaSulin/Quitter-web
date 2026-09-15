@@ -446,13 +446,14 @@ describe('resolveCombatSequence', () => {
     attackerForm: Formation | null = null,
     defenderForm: Formation | null = null,
     partingShot = false,
+    attackerHero: { attackBonus: number; damageDice: string; numberOfAttacks: number } | null = null,
   ) {
     return resolveCombatSequence(
       att, def, atkW, defW,
       formationAtkMod, attackCapMult, attackCapMult,
       rowCap, rowCap, visualDotsPerRow,
       isRanged, isRear, attachedDefHero, attachedAtkHero, seededRng(42), false,
-      attackerForm, defenderForm, partingShot,
+      attackerForm, defenderForm, partingShot, attackerHero,
     );
   }
 
@@ -696,6 +697,13 @@ describe('resolveCombatSequence', () => {
     expect(result.firstStrikeCount).toBeGreaterThan(0);
     expect(result.retaliationAttacks).toHaveLength(0);
     expect(result.retaliationDamage).toBe(0);
+  });
+
+  it('a front-attached hero joins the volley with its own attacks', () => {
+    const without = callCombat(attacker, defender);
+    const withHero = callCombat(attacker, defender, aw, dw, 0, 1, false, false, null, null, null, null, false, { attackBonus: 5, damageDice: '1d8', numberOfAttacks: 2 });
+    expect(withHero.firstStrikeCount).toBe(without.firstStrikeCount + 2);
+    expect(withHero.firstStrikeAttacks.length).toBeGreaterThanOrEqual(without.firstStrikeAttacks.length + 2);
   });
 
   it('routed defender cannot retaliate', () => {

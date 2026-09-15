@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Hero joins the volley — Phase 2 (2026-09-13)
+**Files:** src/lib/unitCombat.ts (+ test), src/components/ScenarioMap/{useCombatActions,SoftEnforcementModals,ScenarioMap}.tsx, docs/dev/{08,09}, docs/players/player-manual.md
+
+- A hero attached **in front** now fights **with** its host: `resolveCombatSequence` takes an `attackerHero` profile (`attackBonus`/`damageDice`/`numberOfAttacks`) and rolls the hero's own active-weapon volley, merging it into the attacker's blow — the first strike, or the attacker's retaliation when the defender holds Reach. The host's formation attack modifier applies; a defender front hero's damage split still applies. The hero **spends one of its own actions** (separate ATTACK sub-step).
+- **3-option soft gate when the hero is out of actions**: *Attack with hero (over limit)* → proceed, hero goes negative + red message; *Unit only* → the host attacks alone (no hero blows, no Heroic Inspiration); *Cancel*. New `PendingHeroJoin` modal.
+- Attacker-side only (a **defending** front hero stays a damage pool). Charge/pursuit/parting and AI paths don't join. Heroic Inspiration for a front-attached hero now requires it to actually join (`heroJoin`), so a unit-only attack doesn't inspire.
+- Tests: `resolveCombatSequence` hero-volley (1). tsc clean; 590 tests pass.
+
 ## Hero morale boost: Commanding Presence / Heroic Inspiration + heroic capacity (2026-09-13)
 **Files:** supabase/migrations/086_hero_morale_boost.sql (new), src/types/gameProtocol.ts, src/lib/{unitMorale,unitStats,unitCombat,enemyAI/planner,templateMappers}.ts (+ tests), src/hooks/{useSupabaseSync,useGameEngine}.ts, src/components/{UnitEditor.tsx,ScenarioMap/{ScenarioMap,UnitEditorModal,UnitTooltip,UnitTemplateTooltip,useCombatActions,useReactionActions}.tsx}, test fixtures, docs/dev/{02,08,09}, docs/players/player-manual.md
 

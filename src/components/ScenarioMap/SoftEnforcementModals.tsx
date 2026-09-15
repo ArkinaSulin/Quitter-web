@@ -94,6 +94,13 @@ export interface PendingWeaponSwitch {
   options?: { forceCast?: boolean };
 }
 
+/** A front-attached hero has no action left but its host is attacking. */
+export interface PendingHeroJoin {
+  attacker: Unit;
+  target: Unit;
+  hero: Unit;
+}
+
 export interface SoftEnforcementModalsProps {
   pending: {
     move: PendingMove | null;
@@ -109,6 +116,7 @@ export interface SoftEnforcementModalsProps {
     chargeAttack: PendingChargeAttack | null;
     chargeThrough: PendingChargeThrough | null;
     weaponSwitch: PendingWeaponSwitch | null;
+    heroJoin: PendingHeroJoin | null;
   };
   /** Fully-bound confirm handlers (clear state + controlsLocked guard + act). */
   actions: {
@@ -127,6 +135,8 @@ export interface SoftEnforcementModalsProps {
     confirmChargeThrough: () => void;
     declineChargeThrough: () => void;
     confirmWeaponSwitch: () => void;
+    confirmHeroJoinOverBudget: () => void;
+    confirmHeroJoinUnitOnly: () => void;
   };
   cancels: {
     move: () => void;
@@ -141,6 +151,7 @@ export interface SoftEnforcementModalsProps {
     castOverBudget: () => void;
     chargeAttack: () => void;
     weaponSwitch: () => void;
+    heroJoin: () => void;
   };
   unitMaxMP: (unit: Unit) => number;
 }
@@ -293,6 +304,20 @@ export function SoftEnforcementModals({ pending, actions, cancels, unitMaxMP }: 
           ]}
         >
           {p.chargeThrough.attacker.unitName} can charge over {p.chargeThrough.target.unitName} and land at ({p.chargeThrough.landHex.q}, {p.chargeThrough.landHex.r}) for 2 MP.
+        </ConfirmModal>
+      )}
+
+      {p.heroJoin && (
+        <ConfirmModal
+          tone="amber"
+          title="Hero has no action"
+          buttons={[
+            { label: 'Attack with hero (over limit)', variant: 'amber', onClick: actions.confirmHeroJoinOverBudget },
+            { label: 'Unit only', onClick: actions.confirmHeroJoinUnitOnly },
+          ]}
+          onCancel={cancels.heroJoin}
+        >
+          {p.heroJoin.hero.unitName} has no action left. Attack with the hero anyway (over budget), attack with {p.heroJoin.attacker.unitName} alone (no hero attacks or inspiration), or cancel.
         </ConfirmModal>
       )}
 
