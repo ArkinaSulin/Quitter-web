@@ -169,7 +169,9 @@ export function computeAttackCount(unit: Unit, rowCapacity: number, attackCapaci
     const rows = Math.ceil(unit.currentTroopCount / visualDotsPerRow);
     return rows * weaponAttacks;
   }
-  const effectiveCapacity = Math.min(unit.currentTroopCount, rowCapacity * attackCapacityMultiplier);
+  // Decimal-safe: the capacity multiplier can be fractional (heroic capacity),
+  // so round the troop cap to a whole number of attackers.
+  const effectiveCapacity = Math.min(unit.currentTroopCount, Math.round(rowCapacity * attackCapacityMultiplier));
   return effectiveCapacity * weaponAttacks;
 }
 

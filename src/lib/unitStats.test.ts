@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { getShieldPenalty, effectiveAc } from './unitStats';
+import { describe, it, expect, afterEach } from 'vitest';
+import { getShieldPenalty, effectiveAc, heroicCapacityBonus } from './unitStats';
+import { setHeroMoraleBoostEnabled } from './unitMorale';
 import { Formation } from '@/types/gameProtocol';
 
 describe('getShieldPenalty', () => {
@@ -72,5 +73,44 @@ describe('effectiveAc', () => {
     expect(effectiveAc(unit(), f(2, 4), 'front', false)).toBe(18); // melee uses the melee term
     // range defaults to 0 (data-driven) → no formation term vs ranged
     expect(effectiveAc(unit(), f(2), 'front', true)).toBe(16);
+  });
+});
+
+describe('heroicCapacityBonus', () => {
+  const alliances = { blue: 'friendly' as const, red: 'enemy' as const };
+  const hero = (over: Record<string, unknown> = {}) => ({
+    id: 'h', isHero: true, isDeleted: false, hidden: false, currentUnitHp: 10,
+    attachedToUnitId: null, attachedPosition: null, heroicInspirationActive: false,
+    hex: { q: 0, r: 0, s: 0 }, team: 'blue', ...over,
+  }) as any;
+  const ally = (over: Record<string, unknown> = {}) => ({
+    id: 'u', isHero: false, hex: { q: 1, r: 0, s: -1 }, team: 'blue', ...over,
+  }) as any;
+
+  afterEach(() => setHeroMoraleBoostEnabled(false));
+
+  it('is 0 when the scenario toggle is off', () => {
+    setHeroMoraleBoostEnabled(false);
+    expect(heroicCapacityBonus(ally(), [hero({ attachedToUnitId: 'u', attachedPosition: 'front' }), ally()], alliances)).toBe(0);
+  });
+
+  it('adds the setting for a leading hero', () => {
+    setHeroMoraleBoostEnabled(true);
+    expect(heroicCapacityBonus(ally(), [hero({ attachedToUnitId: 'u', attachedPosition: 'front' }), ally()], alliances)).toBe(1);
+  });
+
+  it('adds for an inspired hero even when protected/moved to the back', () => {
+    setHeroMoraleBoostEnabled(true);
+    expect(heroicCapacityBonus(ally(), [hero({ attachedToUnitId: 'u', attachedPosition: 'back', heroicInspirationActive: true }), ally()], alliances)).toBe(1);
+  });
+
+  it('is 0 for a protected, non-inspired hero', () => {
+    setHeroMoraleBoostEnabled(true);
+    expect(heroicCapacityBonus(ally(), [hero({ attachedToUnitId: 'u', attachedPosition: 'back' }), ally()], alliances)).toBe(0);
+  });
+
+  it('never applies to a hero recipient', () => {
+    setHeroMoraleBoostEnabled(true);
+    expect(heroicCapacityBonus(hero(), [hero({ attachedToUnitId: 'x', attachedPosition: 'front' })], alliances)).toBe(0);
   });
 });

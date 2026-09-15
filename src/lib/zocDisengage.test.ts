@@ -34,7 +34,8 @@ function unit(over: Partial<Unit> & { id: string; team: string }): Unit {
     equipCostGp: 0, canCharge: false, hex: h(0, 0), facing: 0, hidden: false, isDeleted: false,
     ignoreMoraleChecks: false, isCharging: false, chargeDistance: 0, commandSeq: 0,
     organizationLevel: 2, actionsAvailable: 2, attacksUsed: 0, archerReactionUsed: false,
-    partingShotUsed: false, activeWeaponIndex: 0, str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
+    partingShotUsed: false,
+    heroicInspirationActive: false, activeWeaponIndex: 0, str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
     ...over,
   } as Unit;
 }

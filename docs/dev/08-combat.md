@@ -69,8 +69,12 @@ front; **Scattered** → all sides flank; **Routed** → all sides rear.
 
 ## Attack counts (how many die rolls)
 
-- **Attacker (unit)**: `min(currentTroopCount, rowCapacity ×
-  attack_capacity_multiplier) × weapon.numberOfAttacks`.
+- **Attacker (unit)**: `min(currentTroopCount, round(rowCapacity ×
+  attack_capacity_multiplier)) × weapon.numberOfAttacks`. The multiplier is
+  `formation.attack_capacity_multiplier + heroic_capacity_multiplier` (a decimal
+  setting, default 1) when a same-alliance **leading or inspired hero** is within
+  7 hexes (`heroicCapacityBonus`); heroes never receive this bonus. Rounded to a
+  whole troop cap so decimal settings stay safe.
 - **Retaliator (unit, defending)**: `rows × weapon.numberOfAttacks` where rows
   = `ceil(currentTroopCount / visualDotsPerRow)` — retaliation comes from the
   engaged front rows.

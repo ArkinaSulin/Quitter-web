@@ -36,7 +36,7 @@ import { UnitEditorModal } from './UnitEditorModal';
 import { PingLayer } from './PingLayer';
 import { TEAM_COLORS, TEAMS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { TeamChip } from '@/components/TokenRenderer/TeamChip';
-import { isUnitRouted } from '@/lib/unitMorale';
+import { isUnitRouted, setHeroMoraleBoostEnabled as setHeroMoraleBoostAmbient } from '@/lib/unitMorale';
 import { canRally } from '@/lib/rally';
 import { isRangedCapableWeapon, getReactionMoveBudget, findEligibleReactionArchers } from '@/lib/archerReaction';
 import { computeVisibleHexes, computeFog, hexKey, DEFAULT_SIGHT_RADIUS, FOG_UNSEEN_GM_ALPHA, FOG_UNSEEN_PLAYER_ALPHA } from '@/lib/fogOfWar';
@@ -213,6 +213,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [sightRadius, setSightRadius] = useState(DEFAULT_SIGHT_RADIUS);
   // AI Assist (GM tool): hands teams to a plotted (preview -> execute) enemy AI.
   const [aiAssistEnabled, setAiAssistEnabled] = useState(false);
+  // Hero morale boost (Commanding Presence / Heroic Inspiration) + heroic capacity.
+  const [heroMoraleBoostEnabled, setHeroMoraleBoostEnabled] = useState(true);
   // AI selection state lives here so canvas clicks can toggle per-unit opt-out.
   const [aiTeams, setAiTeams] = useState<string[]>([]);
   const [aiExcluded, setAiExcluded] = useState<Record<string, boolean>>({});
@@ -557,7 +559,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if ('fog_of_war' in fields) setFogOfWar(!!fields.fog_of_war);
     if ('sight_radius' in fields) setSightRadius(fields.sight_radius ?? DEFAULT_SIGHT_RADIUS);
     if ('ai_assist_enabled' in fields) setAiAssistEnabled(!!fields.ai_assist_enabled);
+    if ('hero_morale_boost_enabled' in fields) setHeroMoraleBoostEnabled(fields.hero_morale_boost_enabled ?? true);
   }, []);
+
+  // Mirror the scenario toggle into the pure morale lib's ambient flag.
+  useEffect(() => {
+    setHeroMoraleBoostAmbient(heroMoraleBoostEnabled);
+  }, [heroMoraleBoostEnabled]);
 
 
   // Entry-zone troop-count prompt: the engine awaits this while resolving a move
@@ -1776,7 +1784,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let cancelled = false;
     supabase
       .from('scenarios')
-      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled')
+      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled, hero_morale_boost_enabled')
       .eq('id', scenarioId)
       .single()
       .then(({ data, error }) => {
@@ -1790,6 +1798,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setFogOfWar(data.fog_of_war ?? false);
         setSightRadius(data.sight_radius ?? DEFAULT_SIGHT_RADIUS);
         setAiAssistEnabled(data.ai_assist_enabled ?? false);
+        setHeroMoraleBoostEnabled(data.hero_morale_boost_enabled ?? true);
       });
     return () => { cancelled = true; };
   }, [scenarioId]);
@@ -1828,6 +1837,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }
           if (row.ai_assist_enabled !== undefined) {
             setAiAssistEnabled(!!row.ai_assist_enabled);
+          }
+          if (row.hero_morale_boost_enabled !== undefined) {
+            setHeroMoraleBoostEnabled(row.hero_morale_boost_enabled ?? true);
           }
           if (row.map_data !== undefined) {
             const md = row.map_data || {};
@@ -2528,6 +2540,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 <span className="font-medium text-amber-300">AI assist</span>
                 <span className="block text-gray-400 text-[11px]">
                   Shows the AI tab: hand teams to a plotted enemy AI (preview, then execute move by move). The GM stays in control of every action.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={heroMoraleBoostEnabled}
+                onChange={async (e) => {
+                  await updateScenarioField(scenarioId, { hero_morale_boost_enabled: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">Hero morale boost</span>
+                <span className="block text-gray-400 text-[11px]">
+                  Heroes grant Commanding Presence to allies within 7 hexes, upgraded to Heroic Inspiration after attacking, and add heroic attack capacity while leading or inspired.
                 </span>
               </span>
             </label>

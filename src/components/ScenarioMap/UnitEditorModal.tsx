@@ -44,6 +44,7 @@ const FIELDS: FieldDef[] = [
   { key: 'movementPoints', label: 'Movement (max MP)', type: 'number', min: 0 },
   { key: 'aggressiveness', label: 'Aggressiveness', type: 'number' },
   { key: 'baseMorale', label: 'Base Morale', type: 'number' },
+  { key: 'moraleBoost', label: 'Morale boost', type: 'number', min: 0 },
   { key: 'str', label: 'Str save', type: 'number' },
   { key: 'dex', label: 'Dex save', type: 'number' },
   { key: 'con', label: 'Con save', type: 'number' },
@@ -53,6 +54,7 @@ const FIELDS: FieldDef[] = [
   { key: 'movementPointsAvailable', label: 'MP left this turn', type: 'number', min: 0 },
   { key: 'actionsAvailable', label: 'Actions left', type: 'number', min: 0 },
   { key: 'archerReactionUsed', label: 'Reaction used', type: 'boolean' },
+  { key: 'heroicInspirationActive', label: 'Heroic Inspiration', type: 'boolean' },
   {
     key: 'sizeCategory',
     label: 'Size',
@@ -358,6 +360,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
             <Cell label="Aggress."><NumInput value={draft.aggressiveness} onChange={v => set('aggressiveness', v)} /></Cell>
             <Cell label="Current morale"><ReadBox>{effMorale}</ReadBox></Cell>
             <Cell label="Base morale"><NumInput value={draft.baseMorale} onChange={v => set('baseMorale', v)} /></Cell>
+            <Cell label="Morale boost"><NumInput value={draft.moraleBoost} min={0} onChange={v => set('moraleBoost', v)} /></Cell>
             <div className="pb-1"><Toggle checked={!!draft.ignoreMoraleChecks} onChange={v => set('ignoreMoraleChecks', v)} label="Fearless" /></div>
           </div>
 
@@ -397,12 +400,14 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
           </div>
 
           {/* R9 Saving throws */}
-          <div className="flex gap-1.5">
+          <div className="flex items-end gap-1.5">
+            <span className="text-[10px] text-gray-400 self-center mr-1">Saving throws</span>
             {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(s => (
               <Cell key={s} label={s.toUpperCase()} widthClass="w-10">
                 <NumInput value={draft[s]} onChange={v => set(s, v)} />
               </Cell>
             ))}
+            <div className="pb-1 ml-2"><Toggle checked={!!draft.heroicInspirationActive} onChange={v => set('heroicInspirationActive', v)} label="Heroic Inspiration" /></div>
           </div>
 
           {/* R10 Rank & Token */}

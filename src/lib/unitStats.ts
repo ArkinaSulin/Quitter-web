@@ -1,7 +1,7 @@
-import { Unit, Formation, SizeCategory } from '@/types/gameProtocol';
+import { Unit, Formation, SizeCategory, AllianceGroup } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
-import { getBandSetting, SettingBand } from '@/lib/settingsCache';
-import { isUnitRouted } from '@/lib/unitMorale';
+import { getBandSetting, getSetting, SettingBand } from '@/lib/settingsCache';
+import { isUnitRouted, areHexesAdjacent, isHeroMoraleBoostEnabled } from '@/lib/unitMorale';
 import { AttackDirection } from '@/lib/attackDirection';
 
 // Code fallback matches migration 042 seed — the size_categories table row wins
@@ -90,4 +90,34 @@ export function effectiveAc(
     ? 0
     : (isRanged ? (formation?.range_ac_modifier ?? 0) : (formation?.melee_ac_modifier ?? 0));
   return (unit.baselineAc || 10) + formationAc - getShieldPenalty(unit).penalty;
+}
+
+/**
+ * Heroic capacity aura: the extra attack-capacity multiplier granted to `unit`
+ * when a same-alliance HERO within the 7 hexes is LEADING (attached front) or
+ * INSPIRED. Value = the `heroic_capacity_multiplier` setting (decimal, seed 1,
+ * added on top of the formation's attack capacity). Heroes never receive it;
+ * several heroes do not stack (the single setting value). Gated by the ambient
+ * scenario toggle. Returns 0 when nothing applies.
+ */
+export function heroicCapacityBonus(
+  unit: Pick<Unit, 'isHero' | 'hex' | 'team'>,
+  units: Unit[],
+  alliances: Record<string, AllianceGroup>,
+): number {
+  if (unit.isHero) return 0;
+  if (!isHeroMoraleBoostEnabled()) return 0;
+  const bonus = getSetting('heroic_capacity_multiplier', 1);
+  if (!bonus) return 0;
+  const unitAlliance = alliances[unit.team] || 'friendly';
+  for (const src of units) {
+    if (!src.isHero || src.isDeleted || src.hidden || (src.currentUnitHp ?? 0) <= 0) continue;
+    if ((alliances[src.team] || 'friendly') !== unitAlliance) continue;
+    const leading = !!src.attachedToUnitId && src.attachedPosition === 'front';
+    if (!leading && !src.heroicInspirationActive) continue;
+    const sameHex = src.hex.q === unit.hex.q && src.hex.r === unit.hex.r;
+    if (!sameHex && !areHexesAdjacent(src.hex, unit.hex)) continue;
+    return bonus;
+  }
+  return 0;
 }

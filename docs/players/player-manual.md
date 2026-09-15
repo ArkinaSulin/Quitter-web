@@ -705,12 +705,23 @@ routing units exert none. Your morale penalty is
 
 ```
 effective = base morale + current modifier
-          − wounds − isolation − kill-zone threats + formation bonus
+          − wounds − isolation − kill-zone threats + formation bonus + hero aura
   wounds:    −floor((1 − HP/max) × 10)          (factor 10)
   isolation: −1 when no friendly is adjacent
   threats:   normalized kill-zone threat sum (above)
   formation: from your formation (data-driven)
+  hero aura: +N from a nearby allied hero (see below)
 ```
+
+**Hero aura (Commanding Presence / Heroic Inspiration).** A hero with a
+**morale boost** value `N` steadies every allied unit in its hex and the 6
+around it (7 hexes). This is **Commanding Presence +N**. When the hero lands a
+**melee attack**, the aura upgrades to **Heroic Inspiration +N+1** and stays
+that way until the start of the hero's next turn (even if the hero then moves to
+the back of its unit). A hero with `N = 0` gives nothing until it attacks (then
++1). The hero doesn't inspire itself, non-heroes never grant it, and several
+heroes don't stack (strongest only). A **leading or inspired** hero also adds
+the scenario's **heroic attack capacity** to nearby allies' attacks.
 
 **Example — the "shaky" unit:**
 

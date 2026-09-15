@@ -60,6 +60,9 @@ export function UnitTemplateTooltip({ template, x, y }: UnitTemplateTooltipProps
         <span className="text-gray-400">Max unit HP:</span><span>{template.maxUnitHp}</span>
         <span className="text-gray-400">AGR:</span><span>{template.aggressiveness}</span>
         <span className="text-gray-400">MOR:</span><span className={template.ignoreMoraleChecks ? 'text-yellow-400' : ''}>{template.ignoreMoraleChecks ? 'fearless' : template.baseMorale}</span>
+        {template.isHero && (template.moraleBoost ?? 0) > 0 && (
+          <><span className="text-gray-400">Morale boost:</span><span className="text-green-400">+{template.moraleBoost} aura</span></>
+        )}
         <span className="text-gray-400">Can Charge:</span><span>{template.canCharge ? 'Yes' : 'No'}</span>
         <span className="text-gray-400">Mount:</span><span>{template.mountName || 'None'}</span>
         <span className="text-gray-400">Equip:</span><span>{template.equipCostGp}gp</span>

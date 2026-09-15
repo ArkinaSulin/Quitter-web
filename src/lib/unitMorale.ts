@@ -115,22 +115,66 @@ export function calcEnemyThreats(
   };
 }
 
+// --- Hero morale aura (Commanding Presence / Heroic Inspiration) ------------
+
+/** Heroic Inspiration adds +1 over the hero's Commanding Presence value. */
+export const HERO_INSPIRATION_BONUS = 1;
+
+// Ambient scenario flag (`scenarios.hero_morale_boost_enabled`), set by
+// ScenarioMap — mirrors how settingsCache feeds pure libs. Tests can pass the
+// `heroBoostEnabled` param explicitly instead.
+let heroMoraleBoostEnabled = false;
+export function setHeroMoraleBoostEnabled(enabled: boolean): void { heroMoraleBoostEnabled = enabled; }
+export function isHeroMoraleBoostEnabled(): boolean { return heroMoraleBoostEnabled; }
+
+/**
+ * Hero aura on `unit`: the strongest single HERO (same alliance, alive, visible,
+ * within the hero's hex + 6 neighbours — 7 hexes) whose Commanding Presence is
+ * positive. Presence = `moraleBoost`; while the hero is inspired it upgrades to
+ * `moraleBoost + 1` (even from 0). Non-hero sources are inert; several heroes
+ * do not stack (max). Returns 0 when nothing applies.
+ */
+export function calcMoraleBoost(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>): number {
+  return calcMoraleBoostInfo(unit, units, alliances)?.value ?? 0;
+}
+
+/** The best single hero aura on `unit` (value + whether that hero is inspired),
+ *  or null when none applies. */
+export function calcMoraleBoostInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>): { value: number; inspired: boolean } | null {
+  const unitAlliance = alliances[unit.team] || 'friendly';
+  let best: { value: number; inspired: boolean } | null = null;
+  for (const src of units) {
+    if (src.id === unit.id) continue; // a hero does not inspire itself
+    if (!src.isHero || src.isDeleted || src.hidden || (src.currentUnitHp ?? 0) <= 0) continue;
+    if ((alliances[src.team] || 'friendly') !== unitAlliance) continue;
+    const sameHex = src.hex.q === unit.hex.q && src.hex.r === unit.hex.r;
+    if (!sameHex && !areHexesAdjacent(src.hex, unit.hex)) continue;
+    const aura = (src.moraleBoost ?? 0) + (src.heroicInspirationActive ? HERO_INSPIRATION_BONUS : 0);
+    if (aura > 0 && (best === null || aura > best.value)) best = { value: aura, inspired: !!src.heroicInspirationActive };
+  }
+  return best;
+}
+
 /**
  * Total morale modifier for a unit: wounds + isolation + kill-zone threats +
- * the formation's morale bonus. `formation` is the unit's formation row or null
- * (used only for its morale bonus — threat is source-centric now).
+ * the formation's morale bonus + the hero aura (`heroBoost`). `formation` is the
+ * unit's formation row or null (used only for its morale bonus — threat is
+ * source-centric now). `heroBoostEnabled` defaults to the ambient scenario flag
+ * (set by ScenarioMap from `scenarios.hero_morale_boost_enabled`).
  */
 export function computeEffectiveMoraleModifier(
   unit: Unit,
   units: Unit[],
   alliances: Record<string, AllianceGroup>,
-  formation: Formation | null = null
+  formation: Formation | null = null,
+  heroBoostEnabled: boolean = isHeroMoraleBoostEnabled(),
 ): number {
   const wounds = calcWounds(unit);
   const isolated = calcIsolation(unit, units, alliances);
   const threats = calcEnemyThreats(unit, units, alliances);
   const formationMorMod = formation?.morale_modifier ?? 0;
-  return wounds + (isolated ? -getSetting('isolation_penalty', 1) : 0) - threats.total + formationMorMod;
+  const heroBoost = heroBoostEnabled ? calcMoraleBoost(unit, units, alliances) : 0;
+  return wounds + (isolated ? -getSetting('isolation_penalty', 1) : 0) - threats.total + formationMorMod + heroBoost;
 }
 
 /**
@@ -145,9 +189,10 @@ export function shouldRout(
   unit: Unit,
   units: Unit[],
   alliances: Record<string, AllianceGroup>,
-  formation: Formation | null = null
+  formation: Formation | null = null,
+  heroBoostEnabled: boolean = isHeroMoraleBoostEnabled(),
 ): boolean {
   if (unit.ignoreMoraleChecks || isUnitRouted(unit)) return false;
-  const effectiveMod = unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, units, alliances, formation);
+  const effectiveMod = unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, units, alliances, formation, heroBoostEnabled);
   return unit.baseMorale + effectiveMod <= 0;
 }

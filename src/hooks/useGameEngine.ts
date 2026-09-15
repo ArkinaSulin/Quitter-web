@@ -922,6 +922,7 @@ export function useGameEngine({
         ];
         changes.push({ field: 'archerReactionUsed', from: unit.archerReactionUsed ?? false, to: false });
         changes.push({ field: 'partingShotUsed', from: unit.partingShotUsed ?? false, to: false });
+        changes.push({ field: 'heroicInspirationActive', from: unit.heroicInspirationActive ?? false, to: false });
         subSteps.push({
           type: 'END_TURN',
           description: `${unit.unitName} refreshed (${mpTo} MP, ${actionsTo} actions)`,

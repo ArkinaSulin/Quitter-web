@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, SizeCategory, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
 import { resolveCombatSequence } from '@/lib/unitCombat';
 import { applyFormationChange } from '@/lib/formationCost';
-import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement, effectiveAc } from '@/lib/unitStats';
+import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection } from '@/lib/attackDirection';
 import { isRangedCapableWeapon, getReactionMoveBudget, findEligibleReactionArchers } from '@/lib/archerReaction';
 import { parseWeapons } from '@/lib/weaponParser';
@@ -141,8 +141,8 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       return;
     }
     const formationAtkMod = getFormationModifier(formationsMap, archer.currentFormation, 'attack_modifier');
-    const attackCapMult = getFormationMultiplier(formationsMap, archer.currentFormation, 'attack_capacity_multiplier');
-    const defAttackCapMult = getFormationMultiplier(formationsMap, mover.currentFormation, 'attack_capacity_multiplier');
+    const attackCapMult = getFormationMultiplier(formationsMap, archer.currentFormation, 'attack_capacity_multiplier') + heroicCapacityBonus(archer, units, alliances);
+    const defAttackCapMult = getFormationMultiplier(formationsMap, mover.currentFormation, 'attack_capacity_multiplier') + heroicCapacityBonus(mover, units, alliances);
     const archerRowCap = getRowCapacity(sizeCategories, archer.sizeCategory);
     const moverRowCap = getRowCapacity(sizeCategories, mover.sizeCategory);
     const moverVisualDpr = getVisualDotsPerRow(formationsMap, moverRowCap, mover.currentFormation);

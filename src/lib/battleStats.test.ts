@@ -99,11 +99,11 @@ describe('battleStats', () => {
       mountId: null, mountName: '', isHero: false, attachedToUnitId: null, attachedPosition: null,
       currentTroopCount: 10, maxTroopCount: 20, level: 3, troopHp: 10, maxUnitHp: 200, currentUnitHp: 200,
       isShielded: false, baselineAc: 13, currentAc: 13, weaponString: '', movementPoints: 3, movementPointsAvailable: 0,
-      aggressiveness: 7, baseMorale: 6, currentMoraleModifier: 0, sizeCategory: 100, visualScale: 100,
+      aggressiveness: 7, baseMorale: 6, currentMoraleModifier: 0, moraleBoost: 0, sizeCategory: 100, visualScale: 100,
       currentFormation: 'Open Order', formationAvailability: [], equipCostGp: 0, canCharge: false,
       hex: hex(0, 0), facing: 0, team: 'blue', hidden: false, isDeleted: false, ignoreMoraleChecks: false,
       isCharging: false, chargeDistance: 0, commandSeq: 0, organizationLevel: 1, actionsAvailable: 2,
-      attacksUsed: 0, archerReactionUsed: false, partingShotUsed: false, activeWeaponIndex: 0, str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
+      attacksUsed: 0, archerReactionUsed: false, partingShotUsed: false, heroicInspirationActive: false, activeWeaponIndex: 0, str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
     };
     return { ...base, ...over, unitName: over.unitName ?? over.id };
   }

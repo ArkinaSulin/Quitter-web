@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## Hero morale boost: Commanding Presence / Heroic Inspiration + heroic capacity (2026-09-13)
+**Files:** supabase/migrations/086_hero_morale_boost.sql (new), src/types/gameProtocol.ts, src/lib/{unitMorale,unitStats,unitCombat,enemyAI/planner,templateMappers}.ts (+ tests), src/hooks/{useSupabaseSync,useGameEngine}.ts, src/components/{UnitEditor.tsx,ScenarioMap/{ScenarioMap,UnitEditorModal,UnitTooltip,UnitTemplateTooltip,useCombatActions,useReactionActions}.tsx}, test fixtures, docs/dev/{02,08,09}, docs/players/player-manual.md
+
+- **New unit attribute `morale_boost` (`n`)** on `unit_templates` + `units` (heroes seeded 1; the template editor auto-fills 1 when **Hero** is toggled). A HERO with `n` steadies every same-alliance unit in its hex + 6 neighbours (**7 hexes**): **Commanding Presence +n**. When the hero **lands a melee attack** (stand-alone, or leading a unit) the aura upgrades to **Heroic Inspiration +n+1** and persists until the start of the hero's next alliance turn (survives moving to the back). `n=0` gives nothing until inspired. Non-heroes are inert, heroes don't inspire themselves, and several heroes don't stack (max). `calcMoraleBoost` feeds `computeEffectiveMoraleModifier`, so combat routs, the tooltip, rally, and the canvas hearts all inherit it.
+- **Scenario toggle `hero_morale_boost_enabled`** (default **true**) in Scenario Settings; mirrors into an ambient flag the pure morale lib reads. New `heroic_inspiration_active` unit flag (command-logged; reset at turn start beside `archerReactionUsed`/`partingShotUsed`).
+- **Heroic capacity aura**: `heroicCapacityBonus` adds the global `heroic_capacity_multiplier` setting (decimal, seed 1) to a non-hero unit's **attack and retaliation** capacity when a same-alliance hero within 7 hexes is **leading (attached front) or inspired**. Applied in `performAttack`, `useReactionActions`, and the AI planner; `computeAttackCount` now rounds the troop cap so decimal settings are safe.
+- **UI**: tooltip Morale-factors row labelled **Commanding Presence +n** / **Heroic Inspiration +n+1** plus an **Aura** line on the generating hero; template blueprint shows “Morale boost +n aura”. `UnitEditorModal` gained a `Morale boost` field and a `Heroic Inspiration` toggle, and the 6 save fields are now labelled **“Saving throws”**.
+- Tests: `calcMoraleBoost` (5) + `heroicCapacityBonus` (5). tsc clean; 589 tests pass. **Migration 086 must be applied in Supabase.**
+- **Phase 2 (deferred):** the front-attached hero's own attacks will join the host's volley (hero spends an action; 3-option soft gate when out of actions).
+
 ## Formation AC split by attack type (melee vs ranged) (2026-09-13)
 **Files:** supabase/migrations/085_formation_range_ac.sql (new), src/types/gameProtocol.ts, src/lib/{unitStats,unitCombat,enemyAI/planner}.ts (+ unitStats test), src/components/ScenarioMap/{useCombatActions,useReactionActions,UnitTooltip,UnitEditorModal}.tsx, test fixtures, docs/dev/{02,08}, docs/players/player-manual.md
 

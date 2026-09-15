@@ -14,10 +14,10 @@ import { disengageAttackers } from '@/lib/zocDisengage';
 import { getSetting } from '@/lib/settingsCache';
 import { unitAttackCap } from '@/lib/attackCap';
 import { nextLowerFormation } from '@/lib/formationCost';
-import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone } from '@/lib/unitMorale';
+import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, isHeroMoraleBoostEnabled } from '@/lib/unitMorale';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc } from '@/lib/meleeFallback';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
-import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc } from '@/lib/unitStats';
+import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection } from '@/lib/attackDirection';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
@@ -100,8 +100,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const stashed = options?.stashed;
 
     const formationAtkMod = getFormationModifier(formationsMap, attacker.currentFormation, 'attack_modifier');
-    const attackCapMult = getFormationMultiplier(formationsMap, attacker.currentFormation, 'attack_capacity_multiplier');
-    const defAttackCapMult = getFormationMultiplier(formationsMap, target.currentFormation, 'attack_capacity_multiplier');
+    const attackCapMult = getFormationMultiplier(formationsMap, attacker.currentFormation, 'attack_capacity_multiplier') + heroicCapacityBonus(attacker, units, alliances);
+    const defAttackCapMult = getFormationMultiplier(formationsMap, target.currentFormation, 'attack_capacity_multiplier') + heroicCapacityBonus(target, units, alliances);
     const attackerRowCap = getRowCapacity(sizeCategories, attacker.sizeCategory);
     const defenderRowCap = getRowCapacity(sizeCategories, target.sizeCategory);
     const defenderVisualDpr = getVisualDotsPerRow(formationsMap, defenderRowCap, target.currentFormation);
@@ -141,6 +141,20 @@ export function useCombatActions(deps: CombatActionsDeps) {
       }
     }
     const isRanged = weapon.magicDimension > 0 || !isAdjacent;
+    // Heroic Inspiration: a hero making a melee attack on a hostile — either
+    // stand-alone (the hero is the attacker) or leading (front-attached to the
+    // attacker) — inspires allies until the start of his next alliance turn.
+    // Set on the hero (its own flag) and reflected in this attack's morale checks.
+    const hostileTarget = (alliances[attacker.team] || 'friendly') !== (alliances[target.team] || 'friendly');
+    const inspirationHero = (!isRanged && isHeroMoraleBoostEnabled() && hostileTarget)
+      ? (attacker.isHero
+          ? attacker
+          : units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted && u.attachedPosition === 'front') ?? null)
+      : null;
+    const willInspire = !!inspirationHero && !inspirationHero.heroicInspirationActive;
+    const moraleUnits = willInspire
+      ? units.map(u => (u.id === inspirationHero!.id ? { ...u, heroicInspirationActive: true } : u))
+      : units;
     // Combat uses the post-switch state: a two-handed melee draw drops the shield
     // (-2 AC) before AGR / first-strike / retaliation resolve.
     const effAttacker = attackerSwitchIdx !== null
@@ -251,6 +265,18 @@ export function useCombatActions(deps: CombatActionsDeps) {
       });
     }
 
+    // Heroic Inspiration: the attacking hero's aura upgrades for allies (until
+    // his next alliance turn). A separate sub-step (the hero may be the host's
+    // attached hero, not the attacker itself).
+    if (willInspire && inspirationHero) {
+      subSteps.push({
+        type: 'ATTACK',
+        description: `${inspirationHero.unitName}'s presence inspires nearby allies`,
+        unitId: inspirationHero.id,
+        changes: [{ field: 'heroicInspirationActive', from: false, to: true }],
+      });
+    }
+
     if (!outcome.aggrPassed) {
       // Threat penalty only applies while the attacker stands in the target's
       // kill zone (front two hexes) — otherwise the target's rating doesn't
@@ -289,7 +315,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
         && !isUnitRouted(retaliatorPreMoraleUnit)
         && (retaliatorPreMoraleUnit.baseMorale
           + retaliatorPreMoraleUnit.currentMoraleModifier
-          + computeEffectiveMoraleModifier(retaliatorPreMoraleUnit, units, alliances, formationsMap[retaliatorPreMoraleUnit.currentFormation] ?? null) <= 0);
+          + computeEffectiveMoraleModifier(retaliatorPreMoraleUnit, moraleUnits, alliances, formationsMap[retaliatorPreMoraleUnit.currentFormation] ?? null) <= 0);
 
       effectiveOutcome = suppressRetaliation(outcome, retaliatorKilled, retaliatorRouted, reachSymmetric);
 
@@ -362,8 +388,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // strike or the attacker's retaliation) — an attack that breaks morale routs.
     const defModUnit = { ...target, currentUnitHp: newDefenderHp };
     const defFormation = formationsMap[target.currentFormation] ?? null;
-    const defEffectiveMod = defModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(defModUnit, units, alliances, defFormation);
-    const defenderRouted = !defenderKilled && shouldRout(defModUnit, units, alliances, defFormation);
+    const defEffectiveMod = defModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(defModUnit, moraleUnits, alliances, defFormation);
+    const defenderRouted = !defenderKilled && shouldRout(defModUnit, moraleUnits, alliances, defFormation);
 
     // Build description — unit volley and (when attached front) the hero's own
     // share are reported separately so the hero's AC/HP tanking is visible.
@@ -557,8 +583,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     let attMoraleBreak = 0;
     if (damageToAttacker > 0) {
       const attModUnit = { ...attacker, currentUnitHp: newAttackerHp };
-      attMoraleBreak = attModUnit.baseMorale + attModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(attModUnit, units, alliances, formationsMap[attacker.currentFormation] ?? null);
-      attackerRouted = !attackerKilled && shouldRout(attModUnit, units, alliances, formationsMap[attacker.currentFormation] ?? null);
+      attMoraleBreak = attModUnit.baseMorale + attModUnit.currentMoraleModifier + computeEffectiveMoraleModifier(attModUnit, moraleUnits, alliances, formationsMap[attacker.currentFormation] ?? null);
+      attackerRouted = !attackerKilled && shouldRout(attModUnit, moraleUnits, alliances, formationsMap[attacker.currentFormation] ?? null);
     }
 
     // Preserve `chained` even in verbose mode (the message override used to drop

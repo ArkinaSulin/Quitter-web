@@ -28,7 +28,7 @@ import { parseWeapons, isAreaWeapon } from '@/lib/weaponParser';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { arcsContain, beAttackedModifier } from '@/lib/formationRules';
-import { getRowCapacityBase, effectiveAc } from '@/lib/unitStats';
+import { getRowCapacityBase, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection } from '@/lib/attackDirection';
 import { unitAttackCap } from '@/lib/attackCap';
 import { computeReachableMap, computeMovePool, applyMoveCost, applyMpSpend } from '@/lib/moveCost';
@@ -178,15 +178,15 @@ function hitChance(atkBonus: number, targetAc: number, disadvantage: boolean): n
   return p;
 }
 
-function expectedAttackerCount(attacker: Unit, ctx: Pick<AiPlanContext, 'formations'>): number {
+function expectedAttackerCount(attacker: Unit, ctx: Pick<AiPlanContext, 'formations' | 'units' | 'alliances'>): number {
   const form = ctx.formations[attacker.currentFormation];
   const weapons = parseWeapons(attacker.weaponString || '');
   const weapon = weapons[attacker.activeWeaponIndex ?? 0] ?? weapons[0];
   const weaponAttacks = weapon?.numberOfAttacks ?? 1;
   if (attacker.isHero) return weaponAttacks;
   const rowCap = getRowCapacityBase(attacker.sizeCategory);
-  const atkCapMult = form?.attack_capacity_multiplier ?? 1;
-  const cap = Math.min(attacker.currentTroopCount, rowCap * atkCapMult);
+  const atkCapMult = (form?.attack_capacity_multiplier ?? 1) + heroicCapacityBonus(attacker, ctx.units, ctx.alliances);
+  const cap = Math.min(attacker.currentTroopCount, Math.round(rowCap * atkCapMult));
   return Math.max(1, cap * weaponAttacks);
 }
 
@@ -196,7 +196,7 @@ export function expectedDamage(
   target: Unit,
   dist: number,
   isRanged: boolean,
-  ctx: Pick<AiPlanContext, 'formations'>,
+  ctx: Pick<AiPlanContext, 'formations' | 'units' | 'alliances'>,
 ): number {
   const weapons = parseWeapons(attacker.weaponString || '');
   const weapon = weapons[attacker.activeWeaponIndex ?? 0] ?? weapons[0];

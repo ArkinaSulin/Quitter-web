@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
-import { computeEffectiveMoraleModifier, computeThreatRating, calcWounds, calcIsolation, calcEnemyThreats, isUnitRouted } from '@/lib/unitMorale';
+import { computeEffectiveMoraleModifier, computeThreatRating, calcWounds, calcIsolation, calcEnemyThreats, isUnitRouted, calcMoraleBoostInfo, isHeroMoraleBoostEnabled } from '@/lib/unitMorale';
 import { computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty, effectiveAc as effectiveAcFor } from '@/lib/unitStats';
 import { parseWeapons } from '@/lib/weaponParser';
 import { heroMovePerAction } from '@/lib/moveCost';
@@ -43,6 +43,8 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const wounds = calcWounds(unit);
   const isolated = calcIsolation(unit, units, alliances);
   const enemyThreats = calcEnemyThreats(unit, units, alliances);
+  const heroBoost = isHeroMoraleBoostEnabled() ? calcMoraleBoostInfo(unit, units, alliances) : null;
+  const heroAura = unit.isHero ? (unit.moraleBoost ?? 0) + (unit.heroicInspirationActive ? 1 : 0) : 0;
   const threatRating = computeThreatRating(unit);
   const morTotal = unit.baseMorale + effectiveMoraleModifier;
   const acMelee = effectiveAcFor(unit, formationMod, 'front', false);
@@ -129,6 +131,12 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
         <span className="text-gray-400">Shielded:</span><span>{shieldDropped ? <span className="text-red-400">Yes (dropped — {shieldInfo.reason === 'routing' ? 'routing' : 'two-handed'})</span> : (unit.isShielded ? 'Yes' : 'No')}</span>
+        {heroAura > 0 && (
+          <>
+            <span className="text-gray-400" title="Hero aura: same-alliance units within 7 hexes gain Commanding Presence (Heroic Inspiration after the hero attacks).">Aura:</span>
+            <span className="text-green-400">{unit.heroicInspirationActive ? `Heroic Inspiration +${heroAura}` : `Commanding Presence +${heroAura}`}</span>
+          </>
+        )}
         {showTroops && (
           <><span className="text-gray-400">Formation:</span><span className="capitalize">{unit.currentFormation}{formationMod ? ` (org lv ${unit.organizationLevel})` : ''}</span></>
         )}
@@ -160,6 +168,12 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
               <>
                 <span className="text-gray-400">formation</span>
                 <span className={formationMorMod > 0 ? 'text-green-400' : 'text-red-400'}>{formationMorMod >= 0 ? '+' : ''}{formationMorMod}</span>
+              </>
+            )}
+            {heroBoost && (
+              <>
+                <span className="text-gray-400">{heroBoost.inspired ? 'Heroic Inspiration' : 'Commanding Presence'}</span>
+                <span className="text-green-400">+{heroBoost.value}</span>
               </>
             )}
           </div>

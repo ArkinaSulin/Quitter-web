@@ -42,6 +42,7 @@ notices the goblin. The tooltip shows the formula as
 effectiveMorale = baseMorale + currentMoraleModifier
                 + wounds + (isolated ? −isolation_penalty : 0) − killZoneThreats
                 + formation.morale_modifier
+                + heroBoost
 ```
 
 - **Wounds**: `−floor((1 − currentUnitHp/maxUnitHp) × wounds_morale_factor)`
@@ -50,6 +51,13 @@ effectiveMorale = baseMorale + currentMoraleModifier
   (`calcIsolation`).
 - **Threats**: the normalized kill-zone sum above (subtracted).
 - **Formation morale**: from the `formations` row (data-driven).
+- **Hero aura** (`heroBoost`, gated by `scenarios.hero_morale_boost_enabled`):
+  the strongest single HERO of the same alliance within the hero's hex + 6
+  neighbours (7 hexes). A hero carries a `morale_boost` value `n` = **Commanding
+  Presence**; while `heroic_inspiration_active` (set by a melee attack, cleared at
+  the hero's next turn start) the aura upgrades to **Heroic Inspiration `n+1`**
+  (even from `n=0`). Non-heroes are inert, the hero does not inspire itself, and
+  several heroes do not stack (max). See `calcMoraleBoost`.
 
 `shouldRout(unit, …)`: routing is consulted **only after an attack** (combat
 or spell). It routs when `effectiveMorale ≤ 0` — subject to `ignoreMoraleChecks`

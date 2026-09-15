@@ -73,6 +73,9 @@ export interface UnitTemplate {
   movementPoints: number;
   aggressiveness: number;
   baseMorale: number;
+  /** Hero aura: same-alliance allies within 7 hexes gain Commanding Presence +N
+   *  (Heroic Inspiration N+1 after the hero attacks). Heroes only. */
+  moraleBoost: number;
   sizeCategory: number;               // 75 (Small), 100 (Medium), 200 (Large), 300 (Huge), 400 (Gargantuan)
   visualScale: number;                // 50-149
   formationAvailability: string[];
@@ -126,6 +129,8 @@ export interface Unit {
   aggressiveness: number;
   baseMorale: number;
   currentMoraleModifier: number;
+  /** Hero aura value (Commanding Presence N). Heroes only; non-hero values are inert. */
+  moraleBoost: number;
   sizeCategory: number;
   visualScale: number;
   currentFormation: string;           // was: formation
@@ -156,6 +161,9 @@ export interface Unit {
   archerReactionUsed: boolean;
   /** True once the unit makes its once-per-turn parting shot on a disengaging enemy; cleared at its turn start. */
   partingShotUsed: boolean;
+  /** Hero aura upgrade: set when the hero lands a melee attack, cleared at the
+   *  start of his next alliance turn. Grants Heroic Inspiration (N+1) + capacity. */
+  heroicInspirationActive: boolean;
   activeWeaponIndex: number;           // index into weaponString of the active weapon (0 = first)
   /** Active temporary effects on this unit (buff/debuff/DoT). Empty = none. */
   effects?: UnitEffect[];

@@ -3,8 +3,10 @@ import {
   areHexesAdjacent,
   calcEnemyThreats,
   calcIsolation,
+  calcMoraleBoost,
   computeEffectiveMoraleModifier,
   computeThreatRating,
+  HERO_INSPIRATION_BONUS,
   isInKillZone,
   shouldRout,
 } from './unitMorale';
@@ -39,6 +41,7 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     aggressiveness: 7,
     baseMorale: 7,
     currentMoraleModifier: 0,
+    moraleBoost: 0,
     sizeCategory: 100,
     visualScale: 100,
     currentFormation: 'Open Order',
@@ -62,6 +65,7 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     attacksUsed: 0,
     archerReactionUsed: false,
     partingShotUsed: false,
+    heroicInspirationActive: false,
     activeWeaponIndex: 0,
     str: 0,
     dex: 0,
@@ -264,5 +268,45 @@ describe('shouldRout', () => {
     expect(shouldRout(fearless, DIR_HEXES.map(h => enemyAt(h, { ...threat1 })), alliances)).toBe(false);
     const routed = makeUnit({ ...threat1, baseMorale: 1, currentFormation: 'Routed' });
     expect(shouldRout(routed, DIR_HEXES.map(h => enemyAt(h, { ...threat1 })), alliances)).toBe(false);
+  });
+});
+
+describe('calcMoraleBoost (hero aura)', () => {
+  it('is 0 with no hero', () => {
+    const me = makeUnit({ hex: { q: 0, r: 0, s: 0 }, team: 'blue' });
+    expect(calcMoraleBoost(me, [me], alliances)).toBe(0);
+  });
+
+  it('gives Commanding Presence +n to allies within 7 hexes, never itself', () => {
+    const hero = makeUnit({ id: 'h', team: 'blue', isHero: true, moraleBoost: 1, hex: { q: 0, r: 0, s: 0 } });
+    const ally = makeUnit({ id: 'a', team: 'blue', hex: DIR_HEXES[0] });
+    const far = makeUnit({ id: 'f', team: 'blue', hex: { q: 2, r: 0, s: -2 } });
+    expect(calcMoraleBoost(ally, [hero, ally, far], alliances)).toBe(1);
+    expect(calcMoraleBoost(far, [hero, ally, far], alliances)).toBe(0);
+    expect(calcMoraleBoost(hero, [hero, ally, far], alliances)).toBe(0);
+  });
+
+  it('Heroic Inspiration upgrades the aura by +1', () => {
+    const hero = makeUnit({ id: 'h', team: 'blue', isHero: true, moraleBoost: 1, heroicInspirationActive: true, hex: { q: 0, r: 0, s: 0 } });
+    const ally = makeUnit({ id: 'a', team: 'blue', hex: DIR_HEXES[0] });
+    expect(calcMoraleBoost(ally, [hero, ally], alliances)).toBe(1 + HERO_INSPIRATION_BONUS);
+  });
+
+  it('a 0-boost hero gives nothing unless inspired', () => {
+    const hero = makeUnit({ id: 'h', team: 'blue', isHero: true, moraleBoost: 0, hex: { q: 0, r: 0, s: 0 } });
+    const ally = makeUnit({ id: 'a', team: 'blue', hex: DIR_HEXES[0] });
+    expect(calcMoraleBoost(ally, [hero, ally], alliances)).toBe(0);
+    expect(calcMoraleBoost(ally, [{ ...hero, heroicInspirationActive: true }, ally], alliances)).toBe(HERO_INSPIRATION_BONUS);
+  });
+
+  it('non-heroes are inert, enemies excluded, heroes do not stack (max)', () => {
+    const ally = makeUnit({ id: 'a', team: 'blue', hex: DIR_HEXES[0] });
+    const fake = makeUnit({ id: 'x', team: 'blue', isHero: false, moraleBoost: 5, hex: { q: 0, r: 0, s: 0 } });
+    expect(calcMoraleBoost(ally, [fake, ally], alliances)).toBe(0);
+    const enemyHero = makeUnit({ id: 'eh', team: 'red', isHero: true, moraleBoost: 3, hex: { q: 0, r: 0, s: 0 } });
+    expect(calcMoraleBoost(ally, [enemyHero, ally], alliances)).toBe(0);
+    const h1 = makeUnit({ id: 'h1', team: 'blue', isHero: true, moraleBoost: 1, hex: { q: 0, r: 0, s: 0 } });
+    const h2 = makeUnit({ id: 'h2', team: 'blue', isHero: true, moraleBoost: 2, hex: DIR_HEXES[1] });
+    expect(calcMoraleBoost(ally, [h1, h2, ally], alliances)).toBe(2);
   });
 });
