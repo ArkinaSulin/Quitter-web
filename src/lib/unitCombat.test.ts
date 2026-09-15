@@ -14,7 +14,7 @@ import {
 } from './unitCombat';
 import { canMeleeTarget } from './formationRules';
 import { Unit, Hex, Formation } from '@/types/gameProtocol';
-import type { CombatOutcome } from './unitCombat';
+import type { CombatOutcome, AttackerHeroProfile } from './unitCombat';
 
 function makeUnit(overrides: Partial<Unit> = {}): Unit {
   return {
@@ -446,7 +446,7 @@ describe('resolveCombatSequence', () => {
     attackerForm: Formation | null = null,
     defenderForm: Formation | null = null,
     partingShot = false,
-    attackerHero: { attackBonus: number; damageDice: string; numberOfAttacks: number } | null = null,
+    attackerHero: AttackerHeroProfile | null = null,
     isCharging = false,
   ) {
     return resolveCombatSequence(
@@ -702,7 +702,7 @@ describe('resolveCombatSequence', () => {
 
   it('a front-attached hero joins the volley with its own attacks', () => {
     const without = callCombat(attacker, defender);
-    const withHero = callCombat(attacker, defender, aw, dw, 0, 1, false, false, null, null, null, null, false, { attackBonus: 5, damageDice: '1d8', numberOfAttacks: 2 });
+    const withHero = callCombat(attacker, defender, aw, dw, 0, 1, false, false, null, null, null, null, false, { attackBonus: 5, damageDice: '1d8', numberOfAttacks: 2, range: 1, maxRange: 1 });
     expect(withHero.firstStrikeCount).toBe(without.firstStrikeCount + 2);
     expect(withHero.firstStrikeAttacks.length).toBeGreaterThanOrEqual(without.firstStrikeAttacks.length + 2);
     // The joining hero's own rolls are exposed separately for the log breakdown.
@@ -727,7 +727,7 @@ describe('resolveCombatSequence', () => {
   });
 
   it('the joining hero volley is doubled during a charge', () => {
-    const hero = { attackBonus: 20, damageDice: '1d1', numberOfAttacks: 4 };
+    const hero = { attackBonus: 20, damageDice: '1d1', numberOfAttacks: 4, range: 1, maxRange: 1 };
     const normal = callCombat(attacker, defender, aw, dw, 0, 1, false, false, null, null, null, null, false, hero, false);
     const charge = callCombat(attacker, defender, aw, dw, 0, 1, false, false, null, null, null, null, false, hero, true);
     expect(normal.firstStrikeAttackerHeroUnitDamage).toBeGreaterThan(0);

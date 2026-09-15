@@ -6,7 +6,7 @@
 // end/overrun helpers. Owns the attack-related soft-enforcement states.
 import { useCallback, useState } from 'react';
 import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance } from '@/types/gameProtocol';
-import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome } from '@/lib/unitCombat';
+import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome, AttackerHeroProfile } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/lib/formationRules';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
@@ -24,7 +24,7 @@ import { SubStep, UnitChange } from '@/lib/commandLog';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { computeOccupiedHexes } from './mapGeometry';
 import { ExecuteFn, routeUnit } from './routeUnit';
-import { PendingAttack, PendingAttackCap, PendingRetaliationCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch, PendingHeroJoin } from './SoftEnforcementModals';
+import { PendingAttack, PendingAttackCap, PendingRetaliationCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch } from './SoftEnforcementModals';
 import { useMagicCast } from '@/hooks/useMagicCast';
 
 // A stashed attack resumes a previously-computed outcome (the retaliation-cap
@@ -86,9 +86,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingChargeAttack, setPendingChargeAttack] = useState<PendingChargeAttack | null>(null);
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
   const [pendingWeaponSwitch, setPendingWeaponSwitch] = useState<PendingWeaponSwitch | null>(null);
-  const [pendingHeroJoin, setPendingHeroJoin] = useState<PendingHeroJoin | null>(null);
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean; partingShot?: boolean; onExecuted?: (steps: SubStep[]) => void; heroJoin?: boolean; heroOverBudget?: boolean }) => {
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean; partingShot?: boolean; onExecuted?: (steps: SubStep[]) => void }) => {
     if (overBudget) {
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
@@ -142,16 +141,49 @@ export function useCombatActions(deps: CombatActionsDeps) {
       }
     }
     const isRanged = weapon.magicDimension > 0 || !isAdjacent;
-    // Heroic Inspiration: a hero making a MELEE attack on a hostile — either
-    // stand-alone (the hero is the attacker) or leading (front-attached to the
-    // attacker, joining the volley) — inspires allies until the start of his next
-    // alliance turn. Ranged/magic volleys never inspire (the hero doesn't join).
-    // Set on the hero (its own flag) and reflected in this attack's morale checks.
     const hostileTarget = (alliances[attacker.team] || 'friendly') !== (alliances[target.team] || 'friendly');
-    const inspirationHero = (!isRanged && isHeroMoraleBoostEnabled() && hostileTarget && (attacker.isHero || options?.heroJoin === true))
-      ? (attacker.isHero
-          ? attacker
-          : units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted && u.attachedPosition === 'front') ?? null)
+
+    // A leading (front-attached) hero AUTO-joins the host's attack — melee OR
+    // ranged — when it has an action and a weapon that reaches, spending that
+    // action and triggering Heroic Inspiration. It auto-switches to a suitable
+    // weapon (a melee draw at adjacency, else its first reaching ranged weapon),
+    // mirroring the host's auto-draw. A protected (back) hero never joins; with
+    // no action left it sits out.
+    const frontAttachedHero = units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted && u.attachedPosition === 'front') ?? null;
+    let attackerHeroUnit: Unit | null = null;
+    let attackerHeroWeapon: Weapon | null = null;
+    let heroWeaponSwitchIdx: number | null = null;
+    if (frontAttachedHero && frontAttachedHero.actionsAvailable >= 1) {
+      const heroWeapons = parseWeapons(frontAttachedHero.weaponString || '');
+      const activeHeroWeapon = heroWeapons[frontAttachedHero.activeWeaponIndex ?? 0];
+      if (isAdjacent && weapon.magicDimension <= 0) {
+        if (activeHeroWeapon && isMeleeWeapon(activeHeroWeapon)) {
+          attackerHeroWeapon = activeHeroWeapon;
+        } else {
+          const mi = findFirstMeleeWeaponIndex(heroWeapons);
+          if (mi !== -1) { attackerHeroWeapon = heroWeapons[mi]; heroWeaponSwitchIdx = mi; }
+          else attackerHeroWeapon = FISTS_WEAPON;
+        }
+      } else {
+        const activeMax = activeHeroWeapon ? (activeHeroWeapon.maxRange ?? activeHeroWeapon.range ?? 1) : 0;
+        if (activeHeroWeapon && !activeHeroWeapon.isHealing && activeMax >= dist) {
+          attackerHeroWeapon = activeHeroWeapon;
+        } else {
+          const reaching = weaponIndicesReaching(heroWeapons, frontAttachedHero.activeWeaponIndex ?? 0, dist);
+          if (reaching.length > 0) { attackerHeroWeapon = heroWeapons[reaching[0]]; heroWeaponSwitchIdx = reaching[0]; }
+        }
+      }
+      if (attackerHeroWeapon) attackerHeroUnit = frontAttachedHero;
+    }
+    const attackerHeroProfile: AttackerHeroProfile | null = (attackerHeroUnit && attackerHeroWeapon)
+      ? { attackBonus: attackerHeroWeapon.attackBonus, damageDice: attackerHeroWeapon.damageDice, numberOfAttacks: attackerHeroWeapon.numberOfAttacks ?? 1, range: attackerHeroWeapon.range, maxRange: attackerHeroWeapon.maxRange }
+      : null;
+
+    // Heroic Inspiration: a hero making a hostile attack — stand-alone (the hero
+    // is the attacker) or leading (a front-attached hero joining the volley) —
+    // inspires allies until the start of his next alliance turn.
+    const inspirationHero = (isHeroMoraleBoostEnabled() && hostileTarget)
+      ? (attacker.isHero ? attacker : attackerHeroUnit)
       : null;
     const willInspire = !!inspirationHero && !inspirationHero.heroicInspirationActive;
     const moraleUnits = willInspire
@@ -172,29 +204,16 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const effectivePos = getEffectivePosition(formationsMap[target.currentFormation], rawPos);
     const isRear = effectivePos === 'rear';
     // Attached heroes only share damage when attached in FRONT (Leader mode); a
-    // back-attached (protected) hero is untouched. The hero never contributes to
-    // the host's attack and never retaliates — it's purely a damage-sharing pool.
+    // back-attached (protected) hero is untouched. A front hero is a damage pool
+    // whether or not it joins the volley.
     const attachedDefenderHero = (() => {
       const hero = units.find(u => u.attachedToUnitId === target.id && !u.isDeleted);
       if (!hero || hero.attachedPosition !== 'front') return null;
       return { currentAc: hero.currentAc, troopHp: hero.troopHp };
     })();
-    const attackerHeroUnit = units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted && u.attachedPosition === 'front') ?? null;
-    const attachedAttackerHero = attackerHeroUnit
-      ? { currentAc: attackerHeroUnit.currentAc, troopHp: attackerHeroUnit.troopHp }
+    const attachedAttackerHero = frontAttachedHero
+      ? { currentAc: frontAttachedHero.currentAc, troopHp: frontAttachedHero.troopHp }
       : null;
-    // A front-attached hero joining the attack (Phase 2): its own weapon volley
-    // joins the host's blow, and it spends an action.
-    const heroJoins = options?.heroJoin === true && !!attackerHeroUnit;
-    const attackerHeroWeapon = heroJoins && attackerHeroUnit
-      ? (parseWeapons(attackerHeroUnit.weaponString || '')[attackerHeroUnit.activeWeaponIndex ?? 0] ?? null)
-      : null;
-    const attackerHeroProfile = attackerHeroWeapon
-      ? { attackBonus: attackerHeroWeapon.attackBonus, damageDice: attackerHeroWeapon.damageDice, numberOfAttacks: attackerHeroWeapon.numberOfAttacks ?? 1 }
-      : null;
-    if (options?.heroOverBudget && attackerHeroUnit) {
-      addError(`${attackerHeroUnit.unitName} has no action left — attacked with the hero anyway (over budget)`);
-    }
 
     const outcome = stashed
       ? stashed.outcome
@@ -249,6 +268,20 @@ export function useCombatActions(deps: CombatActionsDeps) {
         ],
       });
     }
+    // The leading hero auto-switches to a suitable weapon (melee draw at
+    // adjacency / first reaching ranged weapon) — persistent, like the host.
+    if (heroWeaponSwitchIdx !== null && attackerHeroUnit && attackerHeroWeapon) {
+      const heAc = computeWeaponSwitchAc(attackerHeroUnit, attackerHeroWeapon);
+      subSteps.push({
+        type: 'WEAPON_SELECT',
+        description: `${attackerHeroUnit.unitName} drew ${attackerHeroWeapon.name}`,
+        unitId: attackerHeroUnit.id,
+        changes: [
+          { field: 'activeWeaponIndex', from: attackerHeroUnit.activeWeaponIndex ?? 0, to: heroWeaponSwitchIdx },
+          ...(heAc !== attackerHeroUnit.currentAc ? [{ field: 'currentAc', from: attackerHeroUnit.currentAc, to: heAc }] : []),
+        ],
+      });
+    }
 
     if (!weapon.freeAction && !isChargingAttack && !options?.pursuit) {
       subSteps.push({
@@ -291,9 +324,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
       });
     }
 
-    // A hero fighting WITH the host spends one of its own actions (may go
-    // negative on the confirmed over-limit path — soft enforcement).
-    if (heroJoins && attackerHeroUnit) {
+    // The leading hero spends one of its own actions to fight (it only joins with
+    // an action left, so this never goes negative).
+    if (attackerHeroUnit) {
       subSteps.push({
         type: 'ATTACK',
         description: `${attackerHeroUnit.unitName} joined the attack`,
@@ -443,7 +476,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     if (isChargingAttack) weaponTags.push('CHARGE');
     if (usedFists) weaponTags.push('FISTS — NO MELEE WEAPON');
     if (hexDistance(attacker.hex, target.hex) > weapon.range) weaponTags.push('LONG RANGE - DISADVANTAGE');
-    const heroTag = heroJoins && attackerHeroUnit ? ` (+ ${attackerHeroUnit.unitName})` : '';
+    const heroTag = attackerHeroUnit ? ` (+ ${attackerHeroUnit.unitName})` : '';
     let desc = `${attacker.unitName}${heroTag} attacks ${target.unitName} with ${weapon.name}${weaponTags.length > 0 ? ` (${weaponTags.join(', ')})` : ''}`;
     let msgDesc = desc;
     // Verbose: mirror the engine's effective (direction-aware) AC and the exact
@@ -970,34 +1003,21 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
 
-    // Front-attached hero joins the host's MELEE attack — standard OR charge — so
-    // it spends its own action, adds its volley, and triggers Heroic Inspiration.
-    // Ranged/pursuit/parting/defending heroes never join. Soft-gate if the hero
-    // has no action (attack with hero over the limit, unit alone, or cancel).
-    const frontHero = (!attacker.isHero && !isRangedThisAttack)
-      ? units.find(u => u.attachedToUnitId === attacker.id && !u.isDeleted && u.attachedPosition === 'front') ?? null
-      : null;
-    if (frontHero && opts?.heroJoin === undefined && frontHero.actionsAvailable < 1) {
-      setPendingHeroJoin({ attacker, target, hero: frontHero });
-      return;
-    }
-    const heroJoin = opts?.heroJoin ?? !!frontHero;
-    const heroOverBudget = opts?.heroOverBudget;
-
+    // A leading hero's participation is resolved inside performAttack (auto-join).
     // Charging attacker: a full charge (2 hexes moved) grants a free double-damage
     // attack; an early attack is premature and requires confirmation.
     if (attacker.isCharging) {
       if (attacker.chargeDistance < getSetting('charge_full_distance', 2)) {
-        setPendingChargeAttack({ attacker, target, heroJoin, heroOverBudget });
+        setPendingChargeAttack({ attacker, target });
         return;
       }
       // Soft 5-cap: pause and ask before a charge attack past the cap.
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
-        setPendingAttackCap({ attacker, target, isCharging: true, heroJoin, heroOverBudget });
+        setPendingAttackCap({ attacker, target, isCharging: true });
         return;
       }
-      const result = await performAttack(attacker, target, false, { isCharging: true, heroJoin, heroOverBudget });
+      const result = await performAttack(attacker, target, false, { isCharging: true });
       // undefined = the retaliation-cap prompt is open — its handlers resume the
       // attack and finish the charge; don't end the charge here.
       if (!result) return;
@@ -1011,7 +1031,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // Soft 5-cap: pause and ask before an attack past the cap.
     const attackCap = unitAttackCap();
     if ((attacker.attacksUsed ?? 0) >= attackCap) {
-      setPendingAttackCap({ attacker, target, heroJoin, heroOverBudget });
+      setPendingAttackCap({ attacker, target });
       return;
     }
 
@@ -1019,7 +1039,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       setPendingAttack({ attacker, target });
       return;
     }
-    await performAttack(attacker, target, false, { heroJoin, heroOverBudget });
+    await performAttack(attacker, target, false);
   }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP, setAttachModal, canAttackTarget, execute]);
 
   // Confirm the offered weapon switch, then resume the attack with that weapon.
@@ -1053,8 +1073,6 @@ export function useCombatActions(deps: CombatActionsDeps) {
     pendingWeaponSwitch,
     confirmWeaponSwitch,
     cancelWeaponSwitch,
-    pendingHeroJoin,
-    setPendingHeroJoin,
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,

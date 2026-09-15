@@ -280,6 +280,9 @@ export interface AttackerHeroProfile {
   attackBonus: number;
   damageDice: string;
   numberOfAttacks: number;
+  /** The hero's own weapon bands, so it rolls at ITS range (not the host's). */
+  range: number;
+  maxRange: number;
 }
 
 export function resolveCombatSequence(
@@ -401,11 +404,13 @@ export function resolveCombatSequence(
     const count = attackerHero.numberOfAttacks ?? 1;
     if (count <= 0) return null;
     const heroBonus = attackerHero.attackBonus + formationAttackModifier;
+    // The hero rolls at ITS OWN weapon bands (the host's range doesn't apply).
+    const heroDisadvantage = attackDist > attackerHero.range && attackDist <= attackerHero.maxRange;
     if (attachedDefenderHero) {
-      const split = executeSplitAttacks(count, heroBonus, attackerHero.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, disadvantage);
+      const split = executeSplitAttacks(count, heroBonus, attackerHero.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, heroDisadvantage);
       return { attacks: split.attacks, damage: split.unitDamage, heroDamage: split.heroDamage, heroAttacks: split.heroAttacks, count };
     }
-    const result = executeAttacks(count, heroBonus, attackerHero.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, disadvantage);
+    const result = executeAttacks(count, heroBonus, attackerHero.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, heroDisadvantage);
     return { attacks: result.attacks, damage: result.totalDamage, heroDamage: 0, heroAttacks: [], count };
   };
 

@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Leading hero auto-joins every attack (replaces the participation prompt) (2026-09-13)
+**Files:** src/lib/unitCombat.ts (+ test), src/components/ScenarioMap/{useCombatActions,SoftEnforcementModals,ScenarioMap}.tsx, docs/dev/08-combat.md, docs/players/player-manual.md
+
+- **Simpler rule — no prompt, no cross-client coordination:** a hero attached **in front** now AUTO-joins **every** attack its host makes (melee, ranged, charge, pursuit, parting) when it has an action and a weapon that reaches; a **back-attached (protected)** hero never joins. The attach position is the participation toggle.
+- **Weapon auto-switch** mirrors the host: at melee range the hero draws its first melee weapon (or Fists); at range it uses its first weapon whose `maxRange` reaches (else it can't join). `AttackerHeroProfile` gained `range`/`maxRange` so the hero rolls at **its own** disadvantage, not the host's.
+- **Out of actions → sits out** (no gate, no negative actions). Heroic Inspiration now triggers on any attack the leading hero joins (melee or ranged).
+- **Removed** the `PendingHeroJoin` 3-option modal, the `heroJoin`/`heroOverBudget` options, and their threading through `PendingChargeAttack`/`PendingAttackCap` and the confirm handlers — a net simplification.
+- Tests: `unitCombat` hero volley (auto profile) + charge doubling. tsc clean; 593 tests pass.
+
 ## Hero joins charge attacks; hero-volley rules documented (2026-09-13)
 **Files:** src/components/ScenarioMap/{useCombatActions,SoftEnforcementModals,ScenarioMap}.tsx, src/lib/unitCombat.test.ts, docs/dev/08-combat.md, docs/players/player-manual.md
 

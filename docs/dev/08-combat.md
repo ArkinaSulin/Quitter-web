@@ -134,21 +134,20 @@ itself). For a **unit with an attached hero**, the 30% split already routes a
 share at the hero, so the unit's volley is **not** additionally capped (it keeps
 its full count and splits ~30% → hero, ~70% → unit).
 
-## Attached hero joins the attack (Phase 2)
+## Attached hero joins the attack (auto)
 
-A hero attached **in front** fights **with** its host: the ATTACK command passes
-an `attackerHero` profile to `resolveCombatSequence`, which rolls the hero's own
-active-weapon volley and adds it to the attacker's blow (the first strike, or the
-attacker's retaliation when the defender holds Reach). The hero **spends one of
-its own actions** (a separate sub-step). Applies to **melee attacks — standard and
-charge** (the hero's volley is doubled while charging) — including the
-premature-charge and at-cap confirm paths. **Excluded by design:** ranged/magic
-volleys (the hero does not join, spend an action, or trigger Heroic Inspiration),
-pursuit and parting shots, a **defending** hero (stays a damage pool), and the AI.
+A hero attached **in front AUTO-joins every attack its host makes** — melee,
+ranged, charge, pursuit and parting — when it has an action and a weapon that
+reaches. It spends one of its **own** actions and rolls its own weapon volley
+into the attacker's blow (the first strike, or the attacker's retaliation when
+the defender holds Reach). At melee range it auto-draws its first melee weapon
+(or Fists); at range it uses its first weapon whose `maxRange` reaches the
+target (otherwise it can't join). The hero rolls at **its own** range bands
+(its own disadvantage), and its volley is **doubled while charging**.
 
-When the hero is out of actions, a 3-option soft gate opens: **Attack with hero
-(over limit)** (proceed; the hero goes negative, red message), **Unit only**
-(normal host attack, no hero blows and no Heroic Inspiration), or **Cancel**.
+A **back-attached (protected)** hero never joins. A front hero **with no action
+left sits out** (no prompt, no negative). A **defending** hero stays a damage
+pool and reaction shots never include a hero.
 
 ## Retaliation
 

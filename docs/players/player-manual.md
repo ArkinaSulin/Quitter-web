@@ -810,12 +810,12 @@ and choose:
   front hero:
   - **shares damage**: 30% of every incoming volley is directed at the hero;
   - **steadies the troops**: the host's attacks **ignore AGR**;
-  - **fights in the volley**: when the host makes a **melee attack** (including a
-    charge — the hero's blows double too), the hero adds its own weapon attacks to
-    the same attack and **spends one of its own actions**. Ranged volleys never
-    include the hero. If the hero is out of actions you're asked: attack with the
-    hero anyway (over budget), attack with the unit alone (no hero blows, no
-    Heroic Inspiration), or cancel;
+  - **fights in the volley**: a leading hero **automatically joins every attack**
+    the host makes — melee, ranged, charge, pursuit, parting — as long as it has
+    an action and a weapon that reaches. It adds its own weapon attacks to the
+    same attack and **spends one of its own actions** (drawn melee at contact,
+    its best reaching weapon at range). If it's out of actions it simply sits
+    that attack out — no prompt. A **protected (rear)** hero never joins;
   - still makes the host's charge/retaliation share, etc.
 - **Protected mode (rear)** — the hero hides behind the ranks and **cannot be
   hit at all** until the host falls.
