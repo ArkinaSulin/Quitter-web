@@ -43,7 +43,7 @@ deliberate.
   balance issue best fixed by a hard rule if a lever needs one.
 - Reuse the existing combat pipeline (`performAttack` / `resolveCombatSequence`)
   and reaction system rather than adding a parallel one.
-- Any new per-turn flag mirrors `archerReactionUsed` / `partingShotUsed`
+- Any new per-turn flag mirrors `archerReactionUsed` / `opportunityAttackUsed`
   (column + `unit_field_to_column` allowlist + turn-start reset).
 
 ## Open questions

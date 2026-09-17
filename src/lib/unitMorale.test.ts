@@ -64,7 +64,7 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     actionsAvailable: 1,
     attacksUsed: 0,
     archerReactionUsed: false,
-    partingShotUsed: false,
+    opportunityAttackUsed: false,
     heroicInspirationActive: false,
     activeWeaponIndex: 0,
     str: 0,

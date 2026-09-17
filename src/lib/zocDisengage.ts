@@ -44,7 +44,7 @@ export function disengageAttackers(
     e.id !== mover.id &&
     !e.isDeleted &&
     (alliances[e.team] || 'friendly') !== moverAlliance &&
-    !(e.partingShotUsed ?? false) &&
+    !(e.opportunityAttackUsed ?? false) &&
     imposesZocOn(e, originHex, formationsMap) &&
     !imposesZocOn(e, destHex, formationsMap),
   );

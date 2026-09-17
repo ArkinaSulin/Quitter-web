@@ -1,9 +1,16 @@
 # QuiTTER Changelog
 
+## Rename `partingShotUsed` → `opportunityAttackUsed` (migration 087) (2026-09-13)
+**Files:** supabase/migrations/087_opportunity_attack_rename.sql (new), src/types/gameProtocol.ts, src/hooks/{useSupabaseSync,useGameEngine}.ts, src/components/ScenarioMap/useCombatActions.ts, src/lib/{unitCombat,unitCombat.test,zocDisengage,zocDisengage.test}.ts, test fixtures, docs/dev/{02-schema-and-migrations,07-movement-economy,08-combat}.md
+
+- Follow-up to the opportunity-attack rename: the **per-turn flag** is now consistent too — `units.parting_shot_used` → `units.opportunity_attack_used`, `Unit.partingShotUsed` → `Unit.opportunityAttackUsed`, and the internal `performAttack` / `resolveCombatSequence` option `partingShot` → `opportunityAttack`. The `unit_field_to_column` allowlist is rebuilt accordingly.
+- **Migration 087** does a **guarded rename** (safe whether or not 084 was applied) and adds the column if missing. **Apply in Supabase.**
+- tsc clean; 593 tests pass.
+
 ## Opportunity attacks: all attackers strike before any rout (+ rename) (2026-09-13)
 **Files:** src/components/ScenarioMap/{useCombatActions,useMoveActions,ScenarioMap}.tsx, src/lib/{unitCombat,unitCombat.test,zocDisengage}.ts, docs/dev/{07-movement-economy,08-combat}.md, docs/players/player-manual.md
 
-- **Renamed `performPartingShots` → `performOpportunityAttacks`** (D&D terminology; users are D&D players), and the late-bound ref `partingShotsRef` → `opportunityAttacksRef`. The internal `partingShotUsed` flag / `parting_shot_used` column are unchanged (no migration).
+- **Renamed `performPartingShots` → `performOpportunityAttacks`** (D&D terminology; users are D&D players), and the late-bound ref `partingShotsRef` → `opportunityAttacksRef`. (The `partingShotUsed` flag / `parting_shot_used` column were renamed in the next entry, migration 087.)
 - **Bug**: when a unit disengaged from the kill zone of **two** enemies, only the **first** one struck — whichever landed its attack first **routed** the mover and the loop stopped (`defenderRouted` break), skipping the rest. (Order-dependent: Z-then-AB vs AB-then-Z gave different survivors.)
 - **Fix**: routing is now **deferred** to after the whole volley. `performAttack` gained a `deferRouting` option (skips its `routeUnit` calls); `performOpportunityAttacks` passes it, tracks the mover's HP between strikes, breaks only on a **killed** mover, and issues **one** ROUT afterwards. So every kill-zone enemy strikes once at the contact hex, then the mover breaks once.
 - **Melee-only, clarified**: the strike resolves at the contact hex, so an active-ranged unit **auto-draws its melee weapon** (or Fists) for it — no ranged opportunity attacks. Documented in `08-combat.md` / `07-movement-economy.md` / player manual.

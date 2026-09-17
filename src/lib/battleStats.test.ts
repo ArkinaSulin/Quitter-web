@@ -103,7 +103,7 @@ describe('battleStats', () => {
       currentFormation: 'Open Order', formationAvailability: [], equipCostGp: 0, canCharge: false,
       hex: hex(0, 0), facing: 0, team: 'blue', hidden: false, isDeleted: false, ignoreMoraleChecks: false,
       isCharging: false, chargeDistance: 0, commandSeq: 0, organizationLevel: 1, actionsAvailable: 2,
-      attacksUsed: 0, archerReactionUsed: false, partingShotUsed: false, heroicInspirationActive: false, activeWeaponIndex: 0, str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
+      attacksUsed: 0, archerReactionUsed: false, opportunityAttackUsed: false, heroicInspirationActive: false, activeWeaponIndex: 0, str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
     };
     return { ...base, ...over, unitName: over.unitName ?? over.id };
   }

@@ -34,7 +34,7 @@ function unit(over: Partial<Unit> & { id: string; team: string }): Unit {
     equipCostGp: 0, canCharge: false, hex: h(0, 0), facing: 0, hidden: false, isDeleted: false,
     ignoreMoraleChecks: false, isCharging: false, chargeDistance: 0, commandSeq: 0,
     organizationLevel: 2, actionsAvailable: 2, attacksUsed: 0, archerReactionUsed: false,
-    partingShotUsed: false,
+    opportunityAttackUsed: false,
     heroicInspirationActive: false, activeWeaponIndex: 0, str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
     ...over,
   } as Unit;
@@ -91,7 +91,7 @@ describe('disengageAttackers', () => {
   });
 
   it('a unit that already parted this turn is skipped', () => {
-    const used = { ...enemy, partingShotUsed: true };
+    const used = { ...enemy, opportunityAttackUsed: true };
     const out = disengageAttackers(mover, h(0, -1), h(0, -2), [mover, used], ALLIANCES, FORMS);
     expect(out).toEqual([]);
   });

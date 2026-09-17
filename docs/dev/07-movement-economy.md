@@ -119,7 +119,7 @@ suppressed), and a ranged-active unit auto-draws its melee weapon.
 - **All attackers strike before any rout**: routing is deferred and applied once
   after the volley (`performAttack`'s `deferRouting`), so an early morale break
   can't skip the rest — only a **killed** mover stops it.
-- **Once per unit per turn** — the `parting_shot_used` flag (migration 084),
+- **Once per unit per turn** — the `opportunity_attack_used` flag (migrations 084/087),
   cleared at the unit's own turn start like `archerReactionUsed`.
 - **Free**, but counts **+1** toward the 5-attack cap (`pursuit` path).
 - Triggered from `completeMove` (normal move, charge and over-budget confirm);

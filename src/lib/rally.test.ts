@@ -15,7 +15,7 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     currentFormation: 'Routed', formationAvailability: [], equipCostGp: 0, raceIconUrl: '', unitTypeIconUrl: '',
     customImageUrl: '', canCharge: false, ignoreMoraleChecks: false, hex: h(0, 0), facing: 0, team: 'blue',
     hidden: false, isDeleted: false, isCharging: false, chargeDistance: 0, commandSeq: 0, organizationLevel: 0,
-    actionsAvailable: 0, attacksUsed: 0, archerReactionUsed: false,     partingShotUsed: false,
+    actionsAvailable: 0, attacksUsed: 0, archerReactionUsed: false,     opportunityAttackUsed: false,
     heroicInspirationActive: false, activeWeaponIndex: 0,
     str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0, effects: [],
     ...overrides,

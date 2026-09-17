@@ -94,9 +94,10 @@ as applied in the notes — check the live DB before relying on it).
 | 081 | Weapon Editor: access caps + RLS on `weapons` | ⏳ run in Supabase |
 | 082 | effect image scale (`effect_templates.image_scale`) | ⏳ run in Supabase |
 | 083 | effect transparent background (`effect_templates.transparent_background`) | ⏳ run in Supabase |
-| 084 | parting shot (`units.parting_shot_used` + allowlist) | ⏳ run in Supabase |
+| 084 | parting shot (`units.parting_shot_used` + allowlist) — renamed by 087 | ⏳ run in Supabase |
 | 085 | formation AC split: `ac_modifier`→`melee_ac_modifier` + `range_ac_modifier` | ⏳ run in Supabase |
 | 086 | hero morale boost: `units`/`unit_templates.morale_boost`, `units.heroic_inspiration_active`, `scenarios.hero_morale_boost_enabled`, `settings.heroic_capacity_multiplier` | ⏳ run in Supabase |
+| 087 | rename `parting_shot_used` → `opportunity_attack_used` + allowlist | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

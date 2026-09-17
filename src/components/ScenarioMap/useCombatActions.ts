@@ -87,7 +87,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
   const [pendingWeaponSwitch, setPendingWeaponSwitch] = useState<PendingWeaponSwitch | null>(null);
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean; partingShot?: boolean; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean }) => {
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean; opportunityAttack?: boolean; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean }) => {
     if (overBudget) {
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
@@ -236,7 +236,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
           isChargingAttack,
           formationsMap[attacker.currentFormation],
           formationsMap[target.currentFormation],
-          options?.partingShot ?? false,
+          options?.opportunityAttack ?? false,
           attackerHeroProfile,
         );
 
@@ -301,8 +301,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
         { field: 'attacksUsed', from: attacker.attacksUsed ?? 0, to: (attacker.attacksUsed ?? 0) + 1 },
       ];
       // A parting shot is once per turn per defender — flag it in the same command.
-      if (options?.partingShot) {
-        freeChanges.push({ field: 'partingShotUsed', from: attacker.partingShotUsed ?? false, to: true });
+      if (options?.opportunityAttack) {
+        freeChanges.push({ field: 'opportunityAttackUsed', from: attacker.opportunityAttackUsed ?? false, to: true });
       }
       subSteps.push({
         type: 'ATTACK',
@@ -734,7 +734,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       if ((live.currentUnitHp ?? 0) <= 0) break; // dead — no further strikes
       const outcome = await performAttack(enemy, live, false, {
         pursuit: true,
-        partingShot: true,
+        opportunityAttack: true,
         chained: true,
         deferRouting: true,
         onExecuted: (steps) => {

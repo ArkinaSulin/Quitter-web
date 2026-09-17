@@ -68,7 +68,7 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     actionsAvailable: 1,
     attacksUsed: 0,
     archerReactionUsed: false,
-    partingShotUsed: false,
+    opportunityAttackUsed: false,
     heroicInspirationActive: false,
     activeWeaponIndex: 0,
     str: 0,
@@ -445,7 +445,7 @@ describe('resolveCombatSequence', () => {
     attachedAtkHero: { currentAc: number; troopHp: number } | null = null,
     attackerForm: Formation | null = null,
     defenderForm: Formation | null = null,
-    partingShot = false,
+    opportunityAttack = false,
     attackerHero: AttackerHeroProfile | null = null,
     isCharging = false,
   ) {
@@ -454,7 +454,7 @@ describe('resolveCombatSequence', () => {
       formationAtkMod, attackCapMult, attackCapMult,
       rowCap, rowCap, visualDotsPerRow,
       isRanged, isRear, attachedDefHero, attachedAtkHero, seededRng(42), isCharging,
-      attackerForm, defenderForm, partingShot, attackerHero,
+      attackerForm, defenderForm, opportunityAttack, attackerHero,
     );
   }
 

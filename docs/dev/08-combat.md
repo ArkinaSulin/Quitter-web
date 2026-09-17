@@ -199,7 +199,7 @@ any adjacency attack. AGR applies and the mover's **retaliation is suppressed**
 break can't skip the remaining attackers — only a **killed** mover stops the volley
 (dead troops aren't struck again).
 
-Each attacker gets **at most one per turn** (`parting_shot_used`), it is **free**,
+Each attacker gets **at most one per turn** (`opportunity_attack_used`), it is **free**,
 and **counts +1 to the 5-attack cap**. Scattered/Routed/Heroes never make one (no
 kill zone); any mover — formed, Scattered or Hero — can take one. Charge-over
 overrun and free-move are exempt.

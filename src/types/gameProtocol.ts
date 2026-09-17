@@ -159,8 +159,8 @@ export interface Unit {
   attacksUsed: number;
   /** True once the unit takes its defensive-archer reaction this turn; cleared at the start of its turn. */
   archerReactionUsed: boolean;
-  /** True once the unit makes its once-per-turn parting shot on a disengaging enemy; cleared at its turn start. */
-  partingShotUsed: boolean;
+  /** True once the unit makes its once-per-turn opportunity attack on a disengaging enemy; cleared at its turn start. */
+  opportunityAttackUsed: boolean;
   /** Hero aura upgrade: set when the hero lands a melee attack, cleared at the
    *  start of his next alliance turn. Grants Heroic Inspiration (N+1) + capacity. */
   heroicInspirationActive: boolean;

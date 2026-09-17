@@ -921,7 +921,7 @@ export function useGameEngine({
           { field: 'attacksUsed', from: unit.attacksUsed ?? 0, to: 0 },
         ];
         changes.push({ field: 'archerReactionUsed', from: unit.archerReactionUsed ?? false, to: false });
-        changes.push({ field: 'partingShotUsed', from: unit.partingShotUsed ?? false, to: false });
+        changes.push({ field: 'opportunityAttackUsed', from: unit.opportunityAttackUsed ?? false, to: false });
         changes.push({ field: 'heroicInspirationActive', from: unit.heroicInspirationActive ?? false, to: false });
         subSteps.push({
           type: 'END_TURN',
