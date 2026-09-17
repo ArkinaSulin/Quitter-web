@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Combat messages print one clause per line (2026-09-13)
+**Files:** src/components/ScenarioMap/{useCombatActions.ts,MessagesPanel.tsx}, docs/dev/changelog.md
+
+- The ATTACK message (command-log description **and** chat/verbose text) now puts each clause on its own line: the attack header, `{striker} strikes first`, the hero's volley, the unit's volley, the defender-hero line, `{retaliator} retaliates`, the hero that TOOK the retaliation (moved ahead of the volley lines), then the retaliation hero/unit volleys. Verbose dice detail sits on its own clause line.
+- `MessagesPanel` gained `whitespace-pre-wrap break-words` so the newlines render and long lines wrap. No test impact (message text only).
+
 ## Leading hero auto-joins every attack (replaces the participation prompt) (2026-09-13)
 **Files:** src/lib/unitCombat.ts (+ test), src/components/ScenarioMap/{useCombatActions,SoftEnforcementModals,ScenarioMap}.tsx, docs/dev/08-combat.md, docs/players/player-manual.md
 

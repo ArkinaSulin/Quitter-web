@@ -99,7 +99,7 @@ export function MessagesPanel() {
         <div
           key={idx}
           onContextMenu={(e) => openMenu(e, idx)}
-          className={`border-b border-gray-800 pb-1 select-none ${msg.tone === 'error' ? 'text-red-400 font-bold' : 'text-gray-300'}`}
+          className={`border-b border-gray-800 pb-1 select-none whitespace-pre-wrap break-words ${msg.tone === 'error' ? 'text-red-400 font-bold' : 'text-gray-300'}`}
         >
           {msg.text}
         </div>

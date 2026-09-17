@@ -498,7 +498,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const joinerActive = firstStrikeJoiner.length > 0 && !!attackerHeroUnit && !!attackerHeroWeapon;
 
     const unitFirstStrikeAttacks = outcome.firstStrikeAttacks.slice(0, firstStrikeUnitCount);
-    const unitStrikeVerbose = verboseCombat
+    const unitStrikeDice = verboseCombat
       ? formatStrikeDetail(
           unitFirstStrikeAttacks,
           outcome.strikerFirst === 'attacker'
@@ -510,30 +510,24 @@ export function useCombatActions(deps: CombatActionsDeps) {
           firstStrikeHostDamage,
         )
       : '';
-    const joinerVerbose = verboseCombat && joinerActive
+    const joinerDice = verboseCombat && joinerActive
       ? formatStrikeDetail(firstStrikeJoiner, attackerHeroWeapon!.attackBonus + formationAtkMod, effTargetAc, attackerHeroWeapon!.damageDice, isChargingAttack, firstStrikeJoinerDamage)
       : '';
-    const unitStrikePart = `${firstStriker.unitName}: ${firstStrikeUnitCount} attacks${firstStrikeCountNote}, ${firstStrikeUnitHits} hits${firstStrikeUnitCrits > 0 ? `, ${firstStrikeUnitCrits} critical` : ''}, ${firstStrikeHostDamage} damage`;
-    const joinerStrikePart = joinerActive
-      ? `${attackerHeroUnit!.unitName}: ${firstStrikeJoiner.length} attacks, ${firstStrikeJoinerHits} hits${firstStrikeJoinerCrits > 0 ? `, ${firstStrikeJoinerCrits} critical` : ''}, ${firstStrikeJoinerDamage} damage`
-      : '';
-    const strikeShort = joinerActive
-      ? ` — ${firstStriker.unitName} strikes first — ${joinerStrikePart}; ${unitStrikePart} (${troopsKilledFirst} troops)`
-      : ` — ${firstStriker.unitName} strikes first — ${firstStrikeUnitCount} attacks${firstStrikeCountNote}, ${firstStrikeUnitHits} hits${firstStrikeUnitCrits > 0 ? `, ${firstStrikeUnitCrits} critical` : ''}, ${firstStrikeHostDamage} damage (${troopsKilledFirst} troops)`;
-    const strikeVerbose = verboseCombat
-      ? (joinerActive
-          ? ` — ${firstStriker.unitName} strikes first — ${attackerHeroUnit!.unitName}: ${firstStrikeJoiner.length} attacks${joinerVerbose}; ${firstStriker.unitName}: ${firstStrikeUnitCount} attacks${firstStrikeCountNote}${unitStrikeVerbose} (${troopsKilledFirst} troops)`
-          : ` — ${firstStriker.unitName} strikes first — ${firstStrikeUnitCount} attacks${firstStrikeCountNote}${unitStrikeVerbose} (${troopsKilledFirst} troops)`)
-      : '';
-    desc += strikeShort;
-    if (strikeVerbose) msgDesc += strikeVerbose;
+    // One clause per line.
+    desc += `\n${firstStriker.unitName} strikes first`;
+    if (verboseCombat) msgDesc += `\n${firstStriker.unitName} strikes first`;
+    if (joinerActive) {
+      desc += `\n${attackerHeroUnit!.unitName}: ${firstStrikeJoiner.length} attacks, ${firstStrikeJoinerHits} hits${firstStrikeJoinerCrits > 0 ? `, ${firstStrikeJoinerCrits} critical` : ''}, ${firstStrikeJoinerDamage} damage`;
+      if (verboseCombat) msgDesc += `\n${attackerHeroUnit!.unitName}: ${firstStrikeJoiner.length} attacks${joinerDice}`;
+    }
+    desc += `\n${firstStriker.unitName}: ${firstStrikeUnitCount} attacks${firstStrikeCountNote}, ${firstStrikeUnitHits} hits${firstStrikeUnitCrits > 0 ? `, ${firstStrikeUnitCrits} critical` : ''}, ${firstStrikeHostDamage} damage (${troopsKilledFirst} troops)`;
+    if (verboseCombat) msgDesc += `\n${firstStriker.unitName}: ${firstStrikeUnitCount} attacks${firstStrikeCountNote}${unitStrikeDice} (${troopsKilledFirst} troops)`;
 
     // Hero's own share of the first strike (front-attached hero absorbs its volley)
     if (firstStrikeHeroUnit && firstStrikeHeroAttacks.length > 0) {
       const heroDamage = outcome.firstStrikeHeroDamage;
-      const heroShort = `. ${firstStrikeHeroUnit.unitName} took ${firstStrikeHeroAttacks.length} attacks, ${firstStrikeHeroHits} hits${firstStrikeHeroCrits > 0 ? `, ${firstStrikeHeroCrits} critical` : ''}, ${heroDamage} damage`;
-      let heroVerbose = verboseCombat
-        ? `. ${firstStrikeHeroUnit.unitName} took ${firstStrikeHeroAttacks.length} attacks${formatStrikeDetail(
+      const heroDice = verboseCombat
+        ? formatStrikeDetail(
             firstStrikeHeroAttacks,
             outcome.strikerFirst === 'attacker'
               ? weapon.attackBonus + formationAtkMod
@@ -542,12 +536,14 @@ export function useCombatActions(deps: CombatActionsDeps) {
             outcome.strikerFirst === 'attacker' ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
             outcome.strikerFirst === 'attacker' && isChargingAttack,
             heroDamage,
-          )}`
+          )
         : '';
+      let strikeKilledSuffix = '';
       if (heroDamage > 0) {
         const newHeroHp = Math.max(0, firstStrikeHeroUnit.currentUnitHp - heroDamage);
         const newHeroTroops = Math.ceil(newHeroHp / firstStrikeHeroUnit.troopHp);
         const heroTroopsKilled = firstStrikeHeroUnit.currentTroopCount - newHeroTroops;
+        strikeKilledSuffix = ` (${heroTroopsKilled} troops)`;
         subSteps.push({
           type: 'DAMAGE',
           description: `${firstStrikeHeroUnit.unitName} took ${heroDamage} damage (attached hero)`,
@@ -557,13 +553,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
             { field: 'currentTroopCount', from: firstStrikeHeroUnit.currentTroopCount, to: newHeroTroops },
           ],
         });
-        const suffix = ` (${heroTroopsKilled} troops)`;
-        desc += heroShort + suffix;
-        if (heroVerbose) msgDesc += heroVerbose + suffix;
-      } else {
-        desc += heroShort;
-        if (heroVerbose) msgDesc += heroVerbose;
       }
+      desc += `\n${firstStrikeHeroUnit.unitName} took ${firstStrikeHeroAttacks.length} attacks, ${firstStrikeHeroHits} hits${firstStrikeHeroCrits > 0 ? `, ${firstStrikeHeroCrits} critical` : ''}, ${heroDamage} damage${strikeKilledSuffix}`;
+      if (verboseCombat) msgDesc += `\n${firstStrikeHeroUnit.unitName} took ${firstStrikeHeroAttacks.length} attacks${heroDice}${strikeKilledSuffix}`;
     }
 
     // Retaliation — reported whenever the actual retaliator attacked, even if every
@@ -604,7 +596,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       const retJoinerActive = retJoiner.length > 0 && !!attackerHeroUnit && !!attackerHeroWeapon;
       const retaliationCountNote = effectiveOutcome.retaliationCountNote ? ` [${effectiveOutcome.retaliationCountNote}]` : '';
       const troopsKilledRet = effectiveOutcome.strikerFirst === 'attacker' ? attackerTroopsKilled : defenderTroopsKilled;
-      const retaliationVerbose = verboseCombat
+      const retaliationDice = verboseCombat
         ? formatStrikeDetail(
             effectiveOutcome.retaliationAttacks.slice(0, retaliationUnitCount),
             retIsAttacker
@@ -616,39 +608,23 @@ export function useCombatActions(deps: CombatActionsDeps) {
             retaliationHostDamage,
           )
         : '';
-      const retJoinerVerbose = verboseCombat && retJoinerActive
+      const retJoinerDice = verboseCombat && retJoinerActive
         ? formatStrikeDetail(retJoiner, attackerHeroWeapon!.attackBonus + formationAtkMod, retIsAttacker ? effTargetAc : effAttackerAc, attackerHeroWeapon!.damageDice, isChargingAttack, retJoinerDamage)
         : '';
-      if (retJoinerActive) {
-        desc += `. ${retaliator.unitName} retaliates — ${attackerHeroUnit!.unitName}: ${retJoiner.length} attacks, ${retJoinerHits} hits${retJoinerCrits > 0 ? `, ${retJoinerCrits} critical` : ''}, ${retJoinerDamage} damage; ${retaliator.unitName}: ${retaliationUnitCount} attacks${retaliationCountNote}, ${retaliationUnitHits} hits${retaliationUnitCrits > 0 ? `, ${retaliationUnitCrits} critical` : ''}, ${retaliationHostDamage} damage (${troopsKilledRet} troops)`;
-        if (verboseCombat) msgDesc += `. ${retaliator.unitName} retaliates — ${attackerHeroUnit!.unitName}: ${retJoiner.length} attacks${retJoinerVerbose}; ${retaliator.unitName}: ${retaliationUnitCount} attacks${retaliationCountNote}${retaliationVerbose} (${troopsKilledRet} troops)`;
-      } else {
-        desc += `. ${retaliator.unitName} retaliates — ${retaliationUnitCount} attacks${retaliationCountNote}, ${retaliationUnitHits} hits${retaliationUnitCrits > 0 ? `, ${retaliationUnitCrits} critical` : ''}, ${retaliationHostDamage} damage (${troopsKilledRet} troops)`;
-        if (retaliationVerbose) msgDesc += `. ${retaliator.unitName} retaliates — ${retaliationUnitCount} attacks${retaliationCountNote}${retaliationVerbose} (${troopsKilledRet} troops)`;
-      }
-
-      // Hero's own share of the retaliation (hero on whoever received it)
+      // The hero on the receiving side of the retaliation (front-attached). Its
+      // "took" line is placed BEFORE the retaliator's own volley lines.
       const retaliationHeroHostId = effectiveOutcome.strikerFirst === 'attacker' ? attacker.id : target.id;
       const retaliationHeroUnit = units.find(u => u.attachedToUnitId === retaliationHeroHostId && !u.isDeleted);
+      let heroTookLine = '';
+      let heroTookVerbose = '';
       if (retaliationHeroUnit && retaliationHeroAttacks.length > 0) {
         const heroDamage = effectiveOutcome.retaliationHeroDamage;
-        let heroVerbose = verboseCombat
-          ? `. ${retaliationHeroUnit.unitName} took ${retaliationHeroAttacks.length} attacks${formatStrikeDetail(
-              retaliationHeroAttacks,
-              retIsAttacker
-                ? weapon.attackBonus + formationAtkMod
-                : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
-              retaliationHeroUnit.currentAc,
-              retIsAttacker ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
-              retIsAttacker && isChargingAttack,
-              heroDamage,
-            )}`
-          : '';
-        const heroShort = `. ${retaliationHeroUnit.unitName} took ${retaliationHeroAttacks.length} attacks, ${retaliationHeroHits} hits${retaliationHeroCrits > 0 ? `, ${retaliationHeroCrits} critical` : ''}, ${heroDamage} damage`;
+        let retKilledSuffix = '';
         if (heroDamage > 0) {
           const newHeroHp = Math.max(0, retaliationHeroUnit.currentUnitHp - heroDamage);
           const newHeroTroops = Math.ceil(newHeroHp / retaliationHeroUnit.troopHp);
           const heroTroopsKilled = retaliationHeroUnit.currentTroopCount - newHeroTroops;
+          retKilledSuffix = ` (${heroTroopsKilled} troops)`;
           subSteps.push({
             type: 'DAMAGE',
             description: `${retaliationHeroUnit.unitName} took ${heroDamage} retaliation damage (attached hero)`,
@@ -658,20 +634,40 @@ export function useCombatActions(deps: CombatActionsDeps) {
               { field: 'currentTroopCount', from: retaliationHeroUnit.currentTroopCount, to: newHeroTroops },
             ],
           });
-          const suffix = ` (${heroTroopsKilled} troops)`;
-          desc += heroShort + suffix;
-          if (heroVerbose) msgDesc += heroVerbose + suffix;
-        } else {
-          desc += heroShort;
-          if (heroVerbose) msgDesc += heroVerbose;
         }
+        heroTookLine = `${retaliationHeroUnit.unitName} took ${retaliationHeroAttacks.length} attacks, ${retaliationHeroHits} hits${retaliationHeroCrits > 0 ? `, ${retaliationHeroCrits} critical` : ''}, ${heroDamage} damage${retKilledSuffix}`;
+        heroTookVerbose = verboseCombat
+          ? `${retaliationHeroUnit.unitName} took ${retaliationHeroAttacks.length} attacks${formatStrikeDetail(
+              retaliationHeroAttacks,
+              retIsAttacker
+                ? weapon.attackBonus + formationAtkMod
+                : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
+              retaliationHeroUnit.currentAc,
+              retIsAttacker ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
+              retIsAttacker && isChargingAttack,
+              heroDamage,
+            )}${retKilledSuffix}`
+          : '';
+      }
+      // One clause per line: retaliates → the hero that took it → the volley.
+      desc += `\n${retaliator.unitName} retaliates`;
+      if (heroTookLine) desc += `\n${heroTookLine}`;
+      if (retJoinerActive) {
+        desc += `\n${attackerHeroUnit!.unitName}: ${retJoiner.length} attacks, ${retJoinerHits} hits${retJoinerCrits > 0 ? `, ${retJoinerCrits} critical` : ''}, ${retJoinerDamage} damage`;
+      }
+      desc += `\n${retaliator.unitName}: ${retaliationUnitCount} attacks${retaliationCountNote}, ${retaliationUnitHits} hits${retaliationUnitCrits > 0 ? `, ${retaliationUnitCrits} critical` : ''}, ${retaliationHostDamage} damage (${troopsKilledRet} troops)`;
+      if (verboseCombat) {
+        msgDesc += `\n${retaliator.unitName} retaliates`;
+        if (heroTookVerbose) msgDesc += `\n${heroTookVerbose}`;
+        if (retJoinerActive) msgDesc += `\n${attackerHeroUnit!.unitName}: ${retJoiner.length} attacks${retJoinerDice}`;
+        msgDesc += `\n${retaliator.unitName}: ${retaliationUnitCount} attacks${retaliationCountNote}${retaliationDice} (${troopsKilledRet} troops)`;
       }
     } else if (isRear) {
-      desc += `. ${target.unitName} caught from behind — no retaliation`;
-      msgDesc += `. ${target.unitName} caught from behind — no retaliation`;
+      desc += `\n${target.unitName} caught from behind — no retaliation`;
+      msgDesc += `\n${target.unitName} caught from behind — no retaliation`;
     } else if (!isRanged && !weapon.noRetaliation && !reachSymmetric && (retaliatorKilled || retaliatorRouted)) {
-      desc += `. ${retaliator.unitName} ${retaliatorKilled ? 'killed' : 'routed'} by the first strike — no retaliation`;
-      msgDesc += `. ${retaliator.unitName} ${retaliatorKilled ? 'killed' : 'routed'} by the first strike — no retaliation`;
+      desc += `\n${retaliator.unitName} ${retaliatorKilled ? 'killed' : 'routed'} by the first strike — no retaliation`;
+      msgDesc += `\n${retaliator.unitName} ${retaliatorKilled ? 'killed' : 'routed'} by the first strike — no retaliation`;
     }
 
     // Morale check for the attacker after taking damage (from the defender's first strike
