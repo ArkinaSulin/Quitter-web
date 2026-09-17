@@ -87,7 +87,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
   const [pendingWeaponSwitch, setPendingWeaponSwitch] = useState<PendingWeaponSwitch | null>(null);
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean; partingShot?: boolean; onExecuted?: (steps: SubStep[]) => void }) => {
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean; partingShot?: boolean; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean }) => {
     if (overBudget) {
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
@@ -692,12 +692,17 @@ export function useCombatActions(deps: CombatActionsDeps) {
     options?.onExecuted?.(subSteps);
 
     // Only the attacked unit can rout — no morale cascade to nearby units.
-    if (defenderRouted || defenderKilled) {
-      await routeUnit(execute, target, defenderKilled ? 'slain in combat' : `morale ${defModUnit.baseMorale + defEffectiveMod} after combat`, defenderKilled, attacker.id);
-    }
+    // `deferRouting` (opportunity attacks): the whole volley resolves first and the
+    // caller issues a single ROUT afterwards, so an early break can't skip the
+    // remaining attackers.
+    if (!options?.deferRouting) {
+      if (defenderRouted || defenderKilled) {
+        await routeUnit(execute, target, defenderKilled ? 'slain in combat' : `morale ${defModUnit.baseMorale + defEffectiveMod} after combat`, defenderKilled, attacker.id);
+      }
 
-    if (attackerRouted || attackerKilled) {
-      await routeUnit(execute, attacker, attackerKilled ? 'slain in combat' : `morale ${attMoraleBreak} after combat`, attackerKilled, target.id);
+      if (attackerRouted || attackerKilled) {
+        await routeUnit(execute, attacker, attackerKilled ? 'slain in combat' : `morale ${attMoraleBreak} after combat`, attackerKilled, target.id);
+      }
     }
 
     // After the exchange, units that drew a melee weapon and are no longer in a
@@ -711,22 +716,27 @@ export function useCombatActions(deps: CombatActionsDeps) {
   }, [units, alliances, formationsMap, sizeCategories, execute, addMessage, addError, maybeAutoReturnToRanged, verboseCombat]);
 
   /**
-   * Parting shots: every formed hostile whose kill zone a mover LEFT gets one
-   * free attack at the mover (the mover strikes from its origin hex — the point
-   * of contact). Each attacker may part once per turn; strikes resolve
-   * sequentially and the mover's HP is tracked between them so a killed mover
-   * is never struck again. The mover gets no retaliation.
+   * Opportunity attacks (D&D term; a.k.a. "parting shots"): every formed hostile
+   * whose kill zone a mover LEFT makes ONE melee attack at the mover, resolved at
+   * the CONTACT hex (the hex it left) before it finishes leaving. Each attacker
+   * may do this once per turn. All attackers strike before any rout — routing is
+   * deferred and applied ONCE afterwards — so an early morale break can never skip
+   * the remaining attackers; only a KILLED mover stops the volley. The mover gets
+   * no retaliation.
    */
-  const performPartingShots = useCallback(async (mover: Unit, originHex: Hex, destHex: Hex) => {
+  const performOpportunityAttacks = useCallback(async (mover: Unit, originHex: Hex, destHex: Hex) => {
     const attackers = disengageAttackers(mover, originHex, destHex, units, alliances, formationsMap);
     if (attackers.length === 0) return;
     let live: Unit = { ...mover, hex: { ...originHex } };
+    let moverKilled = false;
+    let moverRouted = false;
     for (const enemy of attackers) {
-      if ((live.currentUnitHp ?? 0) <= 0 || isUnitRouted(live)) break;
+      if ((live.currentUnitHp ?? 0) <= 0) break; // dead — no further strikes
       const outcome = await performAttack(enemy, live, false, {
         pursuit: true,
         partingShot: true,
         chained: true,
+        deferRouting: true,
         onExecuted: (steps) => {
           for (const s of steps) {
             if (s.unitId !== live.id) continue;
@@ -738,9 +748,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
         },
       });
       if (!outcome) continue; // AGR failed — the flag is spent, the mover unhurt
-      if (outcome.defenderKilled || outcome.defenderRouted) break;
+      if (outcome.defenderKilled) { moverKilled = true; break; }
+      if (outcome.defenderRouted) moverRouted = true;
     }
-  }, [units, alliances, formationsMap, performAttack]);
+    if (moverKilled || moverRouted) {
+      await routeUnit(execute, mover, moverKilled ? 'slain by the opportunity attacks' : 'morale broke under the opportunity attacks', moverKilled);
+    }
+  }, [units, alliances, formationsMap, performAttack, execute]);
 
   // A healing weapon (isHealing) recovers the target's HP instead of damaging it —
   // same dice mechanic as damage, capped at maxUnitHp. No combat sequence, AGR,
@@ -1072,7 +1086,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,
-    performPartingShots,
+    performOpportunityAttacks,
     handleAttackRequest,
   };
 }

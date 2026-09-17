@@ -689,7 +689,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   // Parting-shot resolver is owned by useCombatActions (declared later); this ref
   // bridges the hook-order cycle — useMoveActions reads it at move time.
-  const partingShotsRef = useRef<((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null>(null);
+  const opportunityAttacksRef = useRef<((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null>(null);
 
   const {
     pendingMove,
@@ -733,7 +733,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     weaponSelectedTurnRef,
     setActiveHeroId,
     terrainCosts: moveTerrainCosts,
-    partingShotsRef,
+    opportunityAttacksRef,
   });
 
   // ---- Temporary-effect apply/remove handlers (opened from the context menu) ----
@@ -1168,7 +1168,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,
-    performPartingShots,
+    performOpportunityAttacks,
     handleAttackRequest,
   } = useCombatActions({
     units,
@@ -1189,7 +1189,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setAttachModal,
     canAttackTarget: canAttackInFog,
   });
-  partingShotsRef.current = performPartingShots;
+  opportunityAttacksRef.current = performOpportunityAttacks;
 
   // ---- Routed retreat + pursuit orchestration (owner decides, auto when 1/0) ----
   type RoutMove =

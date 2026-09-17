@@ -304,7 +304,7 @@ export function resolveCombatSequence(
   isCharging = false,
   attackerForm: Formation | null = null,
   defenderForm: Formation | null = null,
-  /** A parting shot at a disengaging unit: the attacker always strikes first and
+  /** An opportunity attack at a disengaging unit: the attacker always strikes first and
    *  the mover never gets a counter-blow (it is turning away, not fighting). */
   partingShot = false,
   /** A front-attached hero fighting WITH the unit: its own weapon volley is added

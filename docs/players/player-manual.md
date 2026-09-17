@@ -447,9 +447,10 @@ Drag a unit with the mouse. The game shades where it can move:
 
 ![S-14 Drag overlay](screenshots/s-14-drag-overlay.png)
 
-> **Disengaging.** Moving *out* of an enemy kill zone provokes a **parting
-> shot**: each formed enemy whose kill zone you leave gets one free attack on
-> you (you don't strike back). Each unit gets at most one parting shot per turn.
+> **Disengaging (opportunity attack).** Moving *out* of an enemy kill zone
+> provokes an **opportunity attack** from each formed enemy whose kill zone you
+> leave — one free **melee** attack on you (you don't strike back). Every such
+> enemy strikes before any rout check, and each unit gets at most one per turn.
 > Scattered, Routed and Heroes never make one — but any unit that runs, even a
 > Scattered one, can take one. Charge-overs ride through without provoking.
 
@@ -811,7 +812,7 @@ and choose:
   - **shares damage**: 30% of every incoming volley is directed at the hero;
   - **steadies the troops**: the host's attacks **ignore AGR**;
   - **fights in the volley**: a leading hero **automatically joins every attack**
-    the host makes — melee, ranged, charge, pursuit, parting — as long as it has
+    the host makes — melee, ranged, charge, pursuit, opportunity attack — as long as it has
     an action and a weapon that reaches. It adds its own weapon attacks to the
     same attack and **spends one of its own actions** (drawn melee at contact,
     its best reaching weapon at range). If it's out of actions it simply sits

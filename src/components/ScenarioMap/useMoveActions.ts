@@ -39,9 +39,9 @@ interface MoveActionsDeps {
   weaponSelectedTurnRef: { current: Record<string, number> };
   setActiveHeroId: (id: string | null) => void;
   terrainCosts?: TerrainCosts;
-  /** Late-bound parting-shot resolver (owned by useCombatActions, assigned via a
-   *  ref to break the useMoveActions → useCombatActions hook-order cycle). */
-  partingShotsRef: { current: ((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null };
+  /** Late-bound opportunity-attack resolver (owned by useCombatActions, assigned
+   *  via a ref to break the useMoveActions → useCombatActions hook-order cycle). */
+  opportunityAttacksRef: { current: ((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null };
 }
 
 export function useMoveActions(deps: MoveActionsDeps) {
@@ -67,7 +67,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     weaponSelectedTurnRef,
     setActiveHeroId,
     terrainCosts,
-    partingShotsRef,
+    opportunityAttacksRef,
   } = deps;
 
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
@@ -180,10 +180,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
     heroMaxMP?: number,
   ): Promise<void> => {
     await performMove(unit, targetHex, cost, overBudget, maxMP, attachedHero, heroMaxMP);
-    // Disengagement: a move that leaves a hostile kill zone provokes one free
-    // parting shot from each formed enemy whose kill zone was left (routed
+    // Disengagement: a move that leaves a hostile kill zone provokes one melee
+    // opportunity attack from each formed enemy whose kill zone was left (routed
     // retreats and the charge-over overrun use separate paths and are exempt).
-    await partingShotsRef.current?.(unit, unit.hex, targetHex);
+    await opportunityAttacksRef.current?.(unit, unit.hex, targetHex);
     // Track distance moved during this charge (2 hexes = full charge).
     if (unit.isCharging) {
       await execute('CHARGE', [{
@@ -194,7 +194,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       }], `${unit.unitName} advanced ${cost} hex(es) in its charge`, { chained: true });
     }
     await finishHeroMove(unit);
-  }, [performMove, execute, finishHeroMove, partingShotsRef]);
+  }, [performMove, execute, finishHeroMove, opportunityAttacksRef]);
 
   const handleUnitMove = useCallback(async (unitId: string, targetHex: Hex) => {
     const unit = units.find(u => u.id === unitId);

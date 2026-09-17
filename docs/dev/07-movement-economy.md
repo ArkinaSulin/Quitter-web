@@ -106,15 +106,19 @@ threat hex, the MOVE zeroes any leftover `movementPointsAvailable` (the mover
 may still act with another action, but this pool is spent). A unit may not pass
 through a threat hex — it stops on entry.
 
-## Disengaging — the parting shot
+## Disengaging — the opportunity attack
 
-Leaving a hostile kill zone provokes a **parting shot** (`src/lib/zocDisengage.ts`):
-every formed hostile whose kill zone covered the origin hex but not the
-destination gets **one free attack** at the mover (`disengageAttackers`). It is
-resolved by `performPartingShots` (`useCombatActions`) through the normal melee
-tree at the **point of contact** (origin hex) — AGR applies, the mover strikes
-back at nothing (retaliation is suppressed).
+Leaving a hostile kill zone provokes an **opportunity attack** (D&D term; a.k.a.
+"parting shot") — `src/lib/zocDisengage.ts`): every formed hostile whose kill zone
+covered the origin hex but not the destination gets **one free melee attack** at
+the mover (`disengageAttackers`). It is resolved by `performOpportunityAttacks`
+(`useCombatActions`) through the normal melee tree at the **point of contact**
+(origin hex) — AGR applies, the mover strikes back at nothing (retaliation is
+suppressed), and a ranged-active unit auto-draws its melee weapon.
 
+- **All attackers strike before any rout**: routing is deferred and applied once
+  after the volley (`performAttack`'s `deferRouting`), so an early morale break
+  can't skip the rest — only a **killed** mover stops it.
 - **Once per unit per turn** — the `parting_shot_used` flag (migration 084),
   cleared at the unit's own turn start like `archerReactionUsed`.
 - **Free**, but counts **+1** toward the 5-attack cap (`pursuit` path).

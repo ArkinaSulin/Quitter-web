@@ -182,17 +182,27 @@ start. Heroes also respect the cap in practice via their 5-action budget.
   and land behind (a chained MOVE).
 - Still charging at your own End Turn → forfeit (clear charge + org drop).
 
-## Parting shot (disengaging a kill zone)
+## Opportunity attack (disengaging a kill zone)
 
-A unit that moves **out of a hostile kill zone** provokes a free parting attack
-from each formed hostile whose kill zone it is leaving (`zocDisengage.ts` →
-`disengageAttackers`; resolved by `performPartingShots`). It runs through the
-normal melee pipeline at the **origin hex** (contact point), with AGR applied and
-the mover's **retaliation suppressed** (`suppressRetaliation(..., atCap=true)`).
-It is **free** and **counts +1 to the attacker's 5-attack cap**, and each unit
-gets **at most one per turn** (`parting_shot_used`). Scattered/Routed/Heroes
-never make one (no kill zone); any mover — formed, Scattered or Hero — can take
-one. Charge-over overrun and free-move are exempt.
+A unit that moves **out of a hostile kill zone** provokes an **opportunity attack**
+(D&D term; a.k.a. "parting shot") from each formed hostile whose kill zone it is
+leaving (`zocDisengage.ts` → `disengageAttackers`; resolved by
+`performOpportunityAttacks`). It is **strictly melee** and runs through the normal
+melee pipeline at the **origin hex** (contact point) — the event it models happened
+*before* the mover left, so it resolves when the move completes. A unit whose active
+weapon is ranged auto-draws its first melee weapon (or Fists) for it, exactly like
+any adjacency attack. AGR applies and the mover's **retaliation is suppressed**
+(`suppressRetaliation(..., atCap=true)`).
+
+**All attackers strike before any rout.** Routing is deferred (`performAttack`'s
+`deferRouting`) and applied **once** after the whole volley, so an early morale
+break can't skip the remaining attackers — only a **killed** mover stops the volley
+(dead troops aren't struck again).
+
+Each attacker gets **at most one per turn** (`parting_shot_used`), it is **free**,
+and **counts +1 to the 5-attack cap**. Scattered/Routed/Heroes never make one (no
+kill zone); any mover — formed, Scattered or Hero — can take one. Charge-over
+overrun and free-move are exempt.
 
 ## Reactions (opportunity fire, archery)
 

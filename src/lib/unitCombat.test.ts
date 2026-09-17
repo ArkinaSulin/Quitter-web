@@ -690,9 +690,9 @@ describe('resolveCombatSequence', () => {
     expect(result.strikerFirst).toBe('attacker');
   });
 
-  it('parting shot: attacker always strikes first and the mover never retaliates', () => {
+  it('opportunity attack: attacker always strikes first and the mover never retaliates', () => {
     // Even with defender Reach (which would normally let the defender strike
-    // first), a parting shot is attacker-first with no counter-blow.
+    // first), an opportunity attack is attacker-first with no counter-blow.
     const result = callCombat(attacker, defender, { ...aw, is_reach: false }, { ...dw, is_reach: true }, 0, 1, false, false, null, null, null, null, true);
     expect(result.strikerFirst).toBe('attacker');
     expect(result.firstStrikeCount).toBeGreaterThan(0);

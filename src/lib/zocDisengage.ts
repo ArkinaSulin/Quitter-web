@@ -1,7 +1,7 @@
 // src/lib/zocDisengage.ts
-// Zone-of-control disengagement: which formed hostiles get a free "parting shot"
-// when a unit moves out of their kill zone, and whether a destination is itself
-// a kill-zone hex (the mover's remaining movement is spent on entry).
+// Zone-of-control disengagement: which formed hostiles get a free opportunity
+// attack (D&D term; a.k.a. "parting shot") when a unit moves out of their kill
+// zone, and whether a destination is itself a kill-zone hex (spent on entry).
 //
 // Kill zones are the SAME front-arc hexes the movement overlay paints red
 // (`isInKillZone`), gated by the formation matrix (`canStopEnemyMovement`).
@@ -27,9 +27,9 @@ export function imposesZocOn(
 }
 
 /**
- * The formed hostiles that may make a parting shot against `mover`: each is a
- * different alliance, has not already parted this turn, and its kill zone covers
- * the hex the mover LEFT but not the hex it arrived on.
+ * The formed hostiles that may make an opportunity attack against `mover`: each
+ * is a different alliance, has not already done so this turn, and its kill zone
+ * covers the hex the mover LEFT but not the hex it arrived on.
  */
 export function disengageAttackers(
   mover: Unit,
