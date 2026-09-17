@@ -28,7 +28,6 @@ interface ReactionActionsDeps {
   formationsMap: Record<string, Formation>;
   sizeCategories: SizeCategory[];
   archerReactionEnabled: boolean;
-  verboseCombat: boolean;
   execute: ExecuteFn;
   addMessage: (msg: string) => void;
   addError: (msg: string) => void;
@@ -49,7 +48,6 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     formationsMap,
     sizeCategories,
     archerReactionEnabled,
-    verboseCombat,
     execute,
     addMessage,
     addError,
@@ -184,11 +182,10 @@ export function useReactionActions(deps: ReactionActionsDeps) {
         payload: { killerUnitId: archer.id, victimLevel: mover.level },
       });
     }
-    const desc = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks, ${hits} hits, ${outcome.firstStrikeDamage} damage (${troopsKilled} troops)`;
-    const msg = verboseCombat
-      ? `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${formatStrikeDetail(outcome.firstStrikeAttacks, weapon.attackBonus + formationAtkMod, effectiveAc(mover, formationsMap[mover.currentFormation] ?? null, attackDirection(archer.hex, mover.hex, mover.facing), true), weapon.damageDice, false, outcome.firstStrikeDamage)} (${troopsKilled} troops)`
-      : desc;
-    await execute('ARCHER_REACTION', subSteps, desc, verboseCombat ? { message: msg } : undefined);
+    const rollNote = outcome.firstStrikeRoll.note;
+    const desc = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${rollNote}, ${hits} hits, ${outcome.firstStrikeDamage} damage (${troopsKilled} troops)`;
+    const msg = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${rollNote}${formatStrikeDetail(outcome.firstStrikeAttacks, weapon.attackBonus + formationAtkMod, effectiveAc(mover, formationsMap[mover.currentFormation] ?? null, attackDirection(archer.hex, mover.hex, mover.facing), true), weapon.damageDice, false, outcome.firstStrikeDamage)} (${troopsKilled} troops)`;
+    await execute('ARCHER_REACTION', subSteps, desc, { verboseMessage: msg });
     // A reaction hit is an attack — it can break the mover's morale into a rout.
     const moverKilled = newHp <= 0;
     const moverRouted = !moverKilled && shouldRout(
@@ -202,7 +199,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       await routeReactionUnit(mover, moverKilled ? 'slain by reaction fire' : `morale ${modUnit.baseMorale + effMod} after reaction shot`, moverKilled, archer?.id);
     }
     setReactionMode(null);
-  }, [execute, displayUnits, displayAlliances, formationsMap, sizeCategories, addMessage, routeReactionUnit, units, verboseCombat]);
+  }, [execute, displayUnits, displayAlliances, formationsMap, sizeCategories, addMessage, routeReactionUnit, units]);
 
   const performReactionMove = useCallback(async (archer: Unit, targetHex: Hex, cost: number) => {
     const liveArcher = units.find(u => u.id === archer.id) ?? archer;

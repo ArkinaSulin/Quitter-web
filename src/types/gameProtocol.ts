@@ -177,7 +177,12 @@ export interface Unit {
 }
 
 // --- Temporary effects (buffs / debuffs / damage over time) ---
-export type EffectKind = 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow' | 'entry' | 'mp_cost';
+// Attack-roll flags: `advantage`/`disadvantage` modify the CARRIER's own attack
+// rolls; `grant_advantage`/`grant_disadvantage` modify the rolls of anyone
+// ATTACKING the carrier. Any advantage cancels any disadvantage (D&D 5e).
+export type EffectKind =
+  | 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow' | 'entry' | 'mp_cost'
+  | 'advantage' | 'disadvantage' | 'grant_advantage' | 'grant_disadvantage';
 
 /**
  * A temporary effect instance. Duration counts ACTIVATIONS OF THE CASTER (not the

@@ -860,9 +860,19 @@ temporary, undoable, and synced to everyone.
 | **Fear** | Morale | −3 · 3 | −3 morale |
 | **Burning** | Damage | 4 · 3 | 4 damage every tick |
 | **Regen** | Damage | −4 · 3 | heal 4 every tick |
+| **Advantage** | Attack roll | · 3 | advantage on that unit's own attacks |
+| **Disadvantage** | Attack roll | · 3 | disadvantage on that unit's own attacks |
+| **Grant Advantage** | Attack roll | · 3 | anyone **attacking** the carrier gains advantage |
+| **Grant Disadvantage** | Attack roll | · 3 | anyone **attacking** the carrier suffers disadvantage |
 
 You pick the magnitude and duration; the GM can also paint a **ground zone**
 (an effect tied to a hex) instead of a unit.
+
+> **Advantage / Disadvantage (attack rolls).** Advantage rolls 2 D20 and keeps the
+> higher; disadvantage keeps the lower. **Any advantage cancels any
+> disadvantage** — including the long-range band — back to a normal roll, no
+> matter how many of each are in play. The message says why (e.g.
+> `advantage — target grants advantage`, `disadvantage — long range`).
 
 ### How durations work (read this twice)
 
@@ -1008,7 +1018,7 @@ Players can skim it to know what the GM can do.
 
 - **Reactive archery** — opportunity fire on/off.
 - **Mounted charge** — Charge! for mounted units on/off.
-- **Verbose combat** — print every dice roll in the log (great for teaching).
+- **Verbose combat** — show every dice roll in the log (great for teaching). Every message records its full detail regardless; this toggle only changes what is **displayed**, so turning it on mid-game reveals the rolls for the whole history.
 - **Fog of war** + **Sight radius** (1–9).
 
 (Admin-only **Settings** in the Lobby edits game-wide JSON values — balance

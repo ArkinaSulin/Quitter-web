@@ -9,7 +9,14 @@ import React, { useEffect, useState } from 'react';
 import { Unit, UnitEffect, GroundEffect } from '@/types/gameProtocol';
 import { supabase } from '@/lib/supabaseClient';
 import { EffectTemplate, mapEffectRow, modifierSummary } from '@/lib/effectTemplates';
+import { isAttackRollEffect } from '@/lib/unitEffects';
 import { EffectFormValue } from './EffectFormModal';
+
+/** Amount label for a placed effect: flag kinds have no amount. */
+function effectAmountText(e: { kind: UnitEffect['kind']; delta: number; dice?: string; healing?: boolean }): string {
+  if (isAttackRollEffect(e.kind)) return 'attack roll';
+  return e.dice ?? (e.kind === 'dot' ? `${e.delta}/tick` : `${e.delta > 0 ? '+' : ''}${e.delta}`) + (e.healing ? ' heal' : '');
+}
 
 interface AddEffectModalProps {
   unit: Unit;
@@ -165,7 +172,7 @@ export function AddEffectModal({
                   <span className="flex items-center gap-2">
                     <span className="inline-block w-3 h-3 rounded-full" style={{ background: e.color }} />
                     {e.name}
-                    <span className="text-gray-400 text-xs">{e.dice ?? (e.kind === 'dot' ? `${e.delta}/tick` : `${e.delta > 0 ? '+' : ''}${e.delta}`)} · {e.turnsLeft} turn{e.turnsLeft === 1 ? '' : 's'}</span>
+                    <span className="text-gray-400 text-xs">{effectAmountText(e)} · {e.turnsLeft} turn{e.turnsLeft === 1 ? '' : 's'}</span>
                   </span>
                   <span className="flex items-center gap-2">
                     {onEditEffect && (
@@ -188,7 +195,7 @@ export function AddEffectModal({
                   <span className="flex items-center gap-2">
                     <span className="inline-block w-3 h-3 rounded-full" style={{ background: z.color }} />
                     {z.name}
-                    <span className="text-gray-400 text-xs">{z.dice ?? z.delta}{z.healing ? ' heal' : ''} · {z.turnsLeft} turn{z.turnsLeft === 1 ? '' : 's'}</span>
+                    <span className="text-gray-400 text-xs">{effectAmountText(z)} · {z.turnsLeft} turn{z.turnsLeft === 1 ? '' : 's'}</span>
                   </span>
                   <span className="flex items-center gap-2">
                     {onEditZone && <button className="text-yellow-300 hover:text-yellow-200 text-xs" onClick={() => { onEditZone(z); onClose(); }}>Edit</button>}

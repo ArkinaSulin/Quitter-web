@@ -40,10 +40,14 @@ interface MenuState {
 const MENU_WIDTH = 130;
 const MENU_HEIGHT = 80;
 
-export function MessagesPanel() {
+export function MessagesPanel({ verboseCombat = false }: { verboseCombat?: boolean }) {
   const { messages } = useMessages();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
+
+  // Every message records both the plain and the full verbose text; the scenario's
+  // "verbose combat" setting only decides which one is DISPLAYED.
+  const display = (m: { text: string; verboseText?: string }) => (verboseCombat ? m.verboseText ?? m.text : m.text);
 
   useEffect(() => {
     // block:'nearest' scrolls only the messages' own overflow container — a plain
@@ -85,7 +89,7 @@ export function MessagesPanel() {
     setMenu({ x: e.clientX, y: e.clientY, messageIndex });
   };
 
-  const copyAll = () => copyText(messages.map(m => m.text).join('\n'));
+  const copyAll = () => copyText(messages.map(m => display(m)).join('\n'));
 
   return (
     <div
@@ -101,7 +105,7 @@ export function MessagesPanel() {
           onContextMenu={(e) => openMenu(e, idx)}
           className={`border-b border-gray-800 pb-1 select-none whitespace-pre-wrap break-words ${msg.tone === 'error' ? 'text-red-400 font-bold' : 'text-gray-300'}`}
         >
-          {msg.text}
+          {display(msg)}
         </div>
       ))}
       <div ref={bottomRef} />
@@ -119,7 +123,7 @@ export function MessagesPanel() {
         >
           {menu.messageIndex !== null && messages[menu.messageIndex] && (
             <button
-              onClick={() => { copyText(messages[menu.messageIndex!].text); closeMenu(); }}
+              onClick={() => { copyText(display(messages[menu.messageIndex!])); closeMenu(); }}
               className="w-full text-left px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-700"
             >
               Copy

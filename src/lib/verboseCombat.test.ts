@@ -48,6 +48,13 @@ describe('verboseCombat', () => {
       const attacks = [atk({ roll: 4, dicePair: [4, 7] }), atk({ roll: 15 })];
       expect(formatAttackRolls(attacks, 3, 12)).toBe('{D20+3 vs 12: 4,15}');
     });
+
+    it('tags the roll mode when present', () => {
+      const adv = [atk({ roll: 20, dicePair: [20, 4], rollMode: 'advantage' })];
+      expect(formatAttackRolls(adv, 3, 12)).toBe('[adv] {D20+3 vs 12: (20,4)}');
+      const dis = [atk({ roll: 4, dicePair: [4, 20], rollMode: 'disadvantage' })];
+      expect(formatAttackRolls(dis, 3, 12)).toBe('[dis] {D20+3 vs 12: (4,20)}');
+    });
   });
 
   describe('formatHitCritRolls', () => {

@@ -7,7 +7,9 @@ export type ExecuteFn = (
   actionType: ActionType,
   subSteps: SubStep[],
   description: string,
-  options?: { chained?: boolean; message?: string },
+  /** `message` = plain chat override (defaults to `description`); `verboseMessage`
+   *  = full verbose text, always recorded and shown when verbose combat is on. */
+  options?: { chained?: boolean; message?: string; verboseMessage?: string },
 ) => Promise<CommandLogRow | null>;
 
 /**

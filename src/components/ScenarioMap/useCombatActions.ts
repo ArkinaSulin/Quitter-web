@@ -19,6 +19,7 @@ import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDista
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection } from '@/lib/attackDirection';
+import { attackRollFlags } from '@/lib/unitEffects';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
@@ -42,7 +43,6 @@ interface CombatActionsDeps {
   alliances: Record<string, AllianceGroup>;
   formationsMap: Record<string, Formation>;
   sizeCategories: SizeCategory[];
-  verboseCombat: boolean;
   execute: ExecuteFn;
   addMessage: (msg: string) => void;
   addError: (msg: string) => void;
@@ -65,7 +65,6 @@ export function useCombatActions(deps: CombatActionsDeps) {
     alliances,
     formationsMap,
     sizeCategories,
-    verboseCombat,
     execute,
     addMessage,
     addError,
@@ -176,7 +175,10 @@ export function useCombatActions(deps: CombatActionsDeps) {
       if (attackerHeroWeapon) attackerHeroUnit = frontAttachedHero;
     }
     const attackerHeroProfile: AttackerHeroProfile | null = (attackerHeroUnit && attackerHeroWeapon)
-      ? { attackBonus: attackerHeroWeapon.attackBonus, damageDice: attackerHeroWeapon.damageDice, numberOfAttacks: attackerHeroWeapon.numberOfAttacks ?? 1, range: attackerHeroWeapon.range, maxRange: attackerHeroWeapon.maxRange }
+      ? (() => {
+          const flags = attackRollFlags(attackerHeroUnit);
+          return { attackBonus: attackerHeroWeapon.attackBonus, damageDice: attackerHeroWeapon.damageDice, numberOfAttacks: attackerHeroWeapon.numberOfAttacks ?? 1, range: attackerHeroWeapon.range, maxRange: attackerHeroWeapon.maxRange, advantage: flags.advantage, disadvantage: flags.disadvantage };
+        })()
       : null;
 
     // Heroic Inspiration: a hero making a hostile attack — stand-alone (the hero
@@ -475,8 +477,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
     if (weapon.noRetaliation) weaponTags.push('NO RETALIATION');
     if (isChargingAttack) weaponTags.push('CHARGE');
     if (usedFists) weaponTags.push('FISTS — NO MELEE WEAPON');
-    if (hexDistance(attacker.hex, target.hex) > weapon.range) weaponTags.push('LONG RANGE - DISADVANTAGE');
     const heroTag = attackerHeroUnit ? ` (+ ${attackerHeroUnit.unitName})` : '';
+    // Roll-mode causes (advantage/disadvantage effect, long range, or a cancel).
+    const firstStrikeRollNote = outcome.firstStrikeRoll.note;
+    const retaliationRollNote = outcome.retaliationRoll.note;
+    const heroRollNote = outcome.attackerHeroRoll?.note ?? '';
     let desc = `${attacker.unitName}${heroTag} attacks ${target.unitName} with ${weapon.name}${weaponTags.length > 0 ? ` (${weaponTags.join(', ')})` : ''}`;
     let msgDesc = desc;
     // Verbose: mirror the engine's effective (direction-aware) AC and the exact
@@ -498,46 +503,43 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const joinerActive = firstStrikeJoiner.length > 0 && !!attackerHeroUnit && !!attackerHeroWeapon;
 
     const unitFirstStrikeAttacks = outcome.firstStrikeAttacks.slice(0, firstStrikeUnitCount);
-    const unitStrikeDice = verboseCombat
-      ? formatStrikeDetail(
-          unitFirstStrikeAttacks,
-          outcome.strikerFirst === 'attacker'
-            ? weapon.attackBonus + formationAtkMod
-            : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
-          outcome.strikerFirst === 'attacker' ? effTargetAc : effAttackerAc,
-          outcome.strikerFirst === 'attacker' ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
-          outcome.strikerFirst === 'attacker' && isChargingAttack,
-          firstStrikeHostDamage,
-        )
-      : '';
-    const joinerDice = verboseCombat && joinerActive
+    const unitStrikeDice = formatStrikeDetail(
+      unitFirstStrikeAttacks,
+      outcome.strikerFirst === 'attacker'
+        ? weapon.attackBonus + formationAtkMod
+        : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
+      outcome.strikerFirst === 'attacker' ? effTargetAc : effAttackerAc,
+      outcome.strikerFirst === 'attacker' ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
+      outcome.strikerFirst === 'attacker' && isChargingAttack,
+      firstStrikeHostDamage,
+    );
+    const joinerDice = joinerActive
       ? formatStrikeDetail(firstStrikeJoiner, attackerHeroWeapon!.attackBonus + formationAtkMod, effTargetAc, attackerHeroWeapon!.damageDice, isChargingAttack, firstStrikeJoinerDamage)
       : '';
-    // One clause per line.
+    // One clause per line. `desc` is the plain log/summary; `msgDesc` is the full
+    // verbose text — always recorded, only DISPLAYED when verbose combat is on.
     desc += `\n${firstStriker.unitName} strikes first`;
-    if (verboseCombat) msgDesc += `\n${firstStriker.unitName} strikes first`;
+    msgDesc += `\n${firstStriker.unitName} strikes first`;
     if (joinerActive) {
-      desc += `\n${attackerHeroUnit!.unitName}: ${firstStrikeJoiner.length} attacks, ${firstStrikeJoinerHits} hits${firstStrikeJoinerCrits > 0 ? `, ${firstStrikeJoinerCrits} critical` : ''}, ${firstStrikeJoinerDamage} damage`;
-      if (verboseCombat) msgDesc += `\n${attackerHeroUnit!.unitName}: ${firstStrikeJoiner.length} attacks${joinerDice}`;
+      desc += `\n${attackerHeroUnit!.unitName}: ${firstStrikeJoiner.length} attacks${heroRollNote}, ${firstStrikeJoinerHits} hits${firstStrikeJoinerCrits > 0 ? `, ${firstStrikeJoinerCrits} critical` : ''}, ${firstStrikeJoinerDamage} damage`;
+      msgDesc += `\n${attackerHeroUnit!.unitName}: ${firstStrikeJoiner.length} attacks${heroRollNote}${joinerDice}`;
     }
-    desc += `\n${firstStriker.unitName}: ${firstStrikeUnitCount} attacks${firstStrikeCountNote}, ${firstStrikeUnitHits} hits${firstStrikeUnitCrits > 0 ? `, ${firstStrikeUnitCrits} critical` : ''}, ${firstStrikeHostDamage} damage (${troopsKilledFirst} troops)`;
-    if (verboseCombat) msgDesc += `\n${firstStriker.unitName}: ${firstStrikeUnitCount} attacks${firstStrikeCountNote}${unitStrikeDice} (${troopsKilledFirst} troops)`;
+    desc += `\n${firstStriker.unitName}: ${firstStrikeUnitCount} attacks${firstStrikeCountNote}${firstStrikeRollNote}, ${firstStrikeUnitHits} hits${firstStrikeUnitCrits > 0 ? `, ${firstStrikeUnitCrits} critical` : ''}, ${firstStrikeHostDamage} damage (${troopsKilledFirst} troops)`;
+    msgDesc += `\n${firstStriker.unitName}: ${firstStrikeUnitCount} attacks${firstStrikeCountNote}${firstStrikeRollNote}${unitStrikeDice} (${troopsKilledFirst} troops)`;
 
     // Hero's own share of the first strike (front-attached hero absorbs its volley)
     if (firstStrikeHeroUnit && firstStrikeHeroAttacks.length > 0) {
       const heroDamage = outcome.firstStrikeHeroDamage;
-      const heroDice = verboseCombat
-        ? formatStrikeDetail(
-            firstStrikeHeroAttacks,
-            outcome.strikerFirst === 'attacker'
-              ? weapon.attackBonus + formationAtkMod
-              : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
-            firstStrikeHeroUnit.currentAc,
-            outcome.strikerFirst === 'attacker' ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
-            outcome.strikerFirst === 'attacker' && isChargingAttack,
-            heroDamage,
-          )
-        : '';
+      const heroDice = formatStrikeDetail(
+        firstStrikeHeroAttacks,
+        outcome.strikerFirst === 'attacker'
+          ? weapon.attackBonus + formationAtkMod
+          : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
+        firstStrikeHeroUnit.currentAc,
+        outcome.strikerFirst === 'attacker' ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
+        outcome.strikerFirst === 'attacker' && isChargingAttack,
+        heroDamage,
+      );
       let strikeKilledSuffix = '';
       if (heroDamage > 0) {
         const newHeroHp = Math.max(0, firstStrikeHeroUnit.currentUnitHp - heroDamage);
@@ -555,7 +557,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
         });
       }
       desc += `\n${firstStrikeHeroUnit.unitName} took ${firstStrikeHeroAttacks.length} attacks, ${firstStrikeHeroHits} hits${firstStrikeHeroCrits > 0 ? `, ${firstStrikeHeroCrits} critical` : ''}, ${heroDamage} damage${strikeKilledSuffix}`;
-      if (verboseCombat) msgDesc += `\n${firstStrikeHeroUnit.unitName} took ${firstStrikeHeroAttacks.length} attacks${heroDice}${strikeKilledSuffix}`;
+      msgDesc += `\n${firstStrikeHeroUnit.unitName} took ${firstStrikeHeroAttacks.length} attacks${heroDice}${strikeKilledSuffix}`;
     }
 
     // Retaliation — reported whenever the actual retaliator attacked, even if every
@@ -596,19 +598,17 @@ export function useCombatActions(deps: CombatActionsDeps) {
       const retJoinerActive = retJoiner.length > 0 && !!attackerHeroUnit && !!attackerHeroWeapon;
       const retaliationCountNote = effectiveOutcome.retaliationCountNote ? ` [${effectiveOutcome.retaliationCountNote}]` : '';
       const troopsKilledRet = effectiveOutcome.strikerFirst === 'attacker' ? attackerTroopsKilled : defenderTroopsKilled;
-      const retaliationDice = verboseCombat
-        ? formatStrikeDetail(
-            effectiveOutcome.retaliationAttacks.slice(0, retaliationUnitCount),
-            retIsAttacker
-              ? weapon.attackBonus + formationAtkMod
-              : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
-            retIsAttacker ? effTargetAc : effAttackerAc,
-            retIsAttacker ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
-            retIsAttacker && isChargingAttack,
-            retaliationHostDamage,
-          )
-        : '';
-      const retJoinerDice = verboseCombat && retJoinerActive
+      const retaliationDice = formatStrikeDetail(
+        effectiveOutcome.retaliationAttacks.slice(0, retaliationUnitCount),
+        retIsAttacker
+          ? weapon.attackBonus + formationAtkMod
+          : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
+        retIsAttacker ? effTargetAc : effAttackerAc,
+        retIsAttacker ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
+        retIsAttacker && isChargingAttack,
+        retaliationHostDamage,
+      );
+      const retJoinerDice = retJoinerActive
         ? formatStrikeDetail(retJoiner, attackerHeroWeapon!.attackBonus + formationAtkMod, retIsAttacker ? effTargetAc : effAttackerAc, attackerHeroWeapon!.damageDice, isChargingAttack, retJoinerDamage)
         : '';
       // The hero on the receiving side of the retaliation (front-attached). Its
@@ -636,32 +636,28 @@ export function useCombatActions(deps: CombatActionsDeps) {
           });
         }
         heroTookLine = `${retaliationHeroUnit.unitName} took ${retaliationHeroAttacks.length} attacks, ${retaliationHeroHits} hits${retaliationHeroCrits > 0 ? `, ${retaliationHeroCrits} critical` : ''}, ${heroDamage} damage${retKilledSuffix}`;
-        heroTookVerbose = verboseCombat
-          ? `${retaliationHeroUnit.unitName} took ${retaliationHeroAttacks.length} attacks${formatStrikeDetail(
-              retaliationHeroAttacks,
-              retIsAttacker
-                ? weapon.attackBonus + formationAtkMod
-                : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
-              retaliationHeroUnit.currentAc,
-              retIsAttacker ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
-              retIsAttacker && isChargingAttack,
-              heroDamage,
-            )}${retKilledSuffix}`
-          : '';
+        heroTookVerbose = `${retaliationHeroUnit.unitName} took ${retaliationHeroAttacks.length} attacks${formatStrikeDetail(
+          retaliationHeroAttacks,
+          retIsAttacker
+            ? weapon.attackBonus + formationAtkMod
+            : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
+          retaliationHeroUnit.currentAc,
+          retIsAttacker ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
+          retIsAttacker && isChargingAttack,
+          heroDamage,
+        )}${retKilledSuffix}`;
       }
       // One clause per line: retaliates → the hero that took it → the volley.
       desc += `\n${retaliator.unitName} retaliates`;
       if (heroTookLine) desc += `\n${heroTookLine}`;
       if (retJoinerActive) {
-        desc += `\n${attackerHeroUnit!.unitName}: ${retJoiner.length} attacks, ${retJoinerHits} hits${retJoinerCrits > 0 ? `, ${retJoinerCrits} critical` : ''}, ${retJoinerDamage} damage`;
+        desc += `\n${attackerHeroUnit!.unitName}: ${retJoiner.length} attacks${heroRollNote}, ${retJoinerHits} hits${retJoinerCrits > 0 ? `, ${retJoinerCrits} critical` : ''}, ${retJoinerDamage} damage`;
       }
-      desc += `\n${retaliator.unitName}: ${retaliationUnitCount} attacks${retaliationCountNote}, ${retaliationUnitHits} hits${retaliationUnitCrits > 0 ? `, ${retaliationUnitCrits} critical` : ''}, ${retaliationHostDamage} damage (${troopsKilledRet} troops)`;
-      if (verboseCombat) {
-        msgDesc += `\n${retaliator.unitName} retaliates`;
-        if (heroTookVerbose) msgDesc += `\n${heroTookVerbose}`;
-        if (retJoinerActive) msgDesc += `\n${attackerHeroUnit!.unitName}: ${retJoiner.length} attacks${retJoinerDice}`;
-        msgDesc += `\n${retaliator.unitName}: ${retaliationUnitCount} attacks${retaliationCountNote}${retaliationDice} (${troopsKilledRet} troops)`;
-      }
+      desc += `\n${retaliator.unitName}: ${retaliationUnitCount} attacks${retaliationCountNote}${retaliationRollNote}, ${retaliationUnitHits} hits${retaliationUnitCrits > 0 ? `, ${retaliationUnitCrits} critical` : ''}, ${retaliationHostDamage} damage (${troopsKilledRet} troops)`;
+      msgDesc += `\n${retaliator.unitName} retaliates`;
+      if (heroTookVerbose) msgDesc += `\n${heroTookVerbose}`;
+      if (retJoinerActive) msgDesc += `\n${attackerHeroUnit!.unitName}: ${retJoiner.length} attacks${heroRollNote}${retJoinerDice}`;
+      msgDesc += `\n${retaliator.unitName}: ${retaliationUnitCount} attacks${retaliationCountNote}${retaliationRollNote}${retaliationDice} (${troopsKilledRet} troops)`;
     } else if (isRear) {
       desc += `\n${target.unitName} caught from behind — no retaliation`;
       msgDesc += `\n${target.unitName} caught from behind — no retaliation`;
@@ -681,11 +677,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
       attackerRouted = !attackerKilled && shouldRout(attModUnit, moraleUnits, alliances, formationsMap[attacker.currentFormation] ?? null);
     }
 
-    // Preserve `chained` even in verbose mode (the message override used to drop
-    // it, orphaning cause-chain undo/replay grouping).
-    const execOpts = (verboseCombat || options?.chained)
-      ? { ...(options?.chained ? { chained: true } : {}), ...(verboseCombat ? { message: msgDesc } : {}) }
-      : undefined;
+    // The full verbose text is always recorded on the message; `chained` preserves
+    // cause-chain undo/replay grouping.
+    const execOpts = { ...(options?.chained ? { chained: true } : {}), verboseMessage: msgDesc };
     await execute('ATTACK', subSteps, desc, execOpts);
     // Let the caller (parting shots) track the target's post-strike HP so a later
     // attacker in the same chain does not compute damage from a stale snapshot.
@@ -713,7 +707,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // Post-combat outcome so callers (charge-over eligibility) can react to the
     // attacker surviving and/or the target breaking.
     return { attackerRouted, attackerKilled, defenderRouted, defenderKilled };
-  }, [units, alliances, formationsMap, sizeCategories, execute, addMessage, addError, maybeAutoReturnToRanged, verboseCombat]);
+  }, [units, alliances, formationsMap, sizeCategories, execute, addMessage, addError, maybeAutoReturnToRanged]);
 
   /**
    * Opportunity attacks (D&D term; a.k.a. "parting shots"): every formed hostile
@@ -798,9 +792,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
       });
     }
     const desc = `${healer.unitName} heals ${target.unitName} for ${heal} HP with ${weapon.name}${count > 1 ? ` (${count} attacks)` : ''}`;
-    const msg = verboseCombat && faces.length > 0 ? `${desc} {${weapon.damageDice}: ${[...faces].sort((a, b) => a - b).join(',')}}` : desc;
-    await execute('HEAL', subSteps, desc, verboseCombat && msg !== desc ? { message: msg } : undefined);
-  }, [execute, verboseCombat, sizeCategories, formationsMap]);
+    const msg = faces.length > 0 ? `${desc} {${weapon.damageDice}: ${[...faces].sort((a, b) => a - b).join(',')}}` : desc;
+    await execute('HEAL', subSteps, desc, msg !== desc ? { verboseMessage: msg } : undefined);
+  }, [execute, sizeCategories, formationsMap]);
 
   const performChargeEnd = useCallback(async (attacker: Unit, dropOrg: boolean) => {
     const changes: UnitChange[] = [

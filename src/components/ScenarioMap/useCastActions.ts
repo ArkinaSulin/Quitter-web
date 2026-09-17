@@ -19,7 +19,6 @@ interface CastActionsDeps {
   formationsMap: Record<string, Formation>;
   isGM: boolean;
   playerId: string;
-  verboseCombat: boolean;
   execute: ExecuteFn;
   addError: (msg: string) => void;
 }
@@ -32,7 +31,6 @@ export function useCastActions(deps: CastActionsDeps) {
     formationsMap,
     isGM,
     playerId,
-    verboseCombat,
     execute,
     addError,
   } = deps;
@@ -107,10 +105,8 @@ export function useCastActions(deps: CastActionsDeps) {
         });
       }
       const healDesc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${healResult.baseDamage}, ${cast.affectedCount} troop(s) affected — ${healResult.totalDamage} total healing${troopsRecovered > 0 ? ` (${troopsRecovered} troop(s) recovered)` : ''}`;
-      const healMsg = verboseCombat
-        ? `${healDesc} ${formatSpellRollLine(healResult, 0)}`
-        : healDesc;
-      await execute('HEAL', healSteps, healDesc, healMsg !== healDesc ? { message: healMsg } : undefined);
+      const healMsg = `${healDesc} ${formatSpellRollLine(healResult, 0)}`;
+      await execute('HEAL', healSteps, healDesc, { verboseMessage: healMsg });
       magicCast.sendResolve({ baseDamage: healResult.baseDamage, totalDamage: healResult.totalDamage, troopsKilled: 0, newHp, savedCount: 0, failedCount: 0, description: healDesc });
       return;
     }
@@ -154,11 +150,9 @@ export function useCastActions(deps: CastActionsDeps) {
     const savedCount = result.perTroop.filter(t => t.success).length;
     const failedCount = result.perTroop.length - savedCount;
     const desc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${result.baseDamage}, ${cast.affectedCount} troop(s) affected, ${savedCount} saved, ${failedCount} failed — ${result.totalDamage} total damage (${troopsKilled} troop(s))`;
-    const msg = verboseCombat
-      ? `${desc} ${formatSpellRollLine(result, cast.saveDC)}`
-      : desc;
+    const msg = `${desc} ${formatSpellRollLine(result, cast.saveDC)}`;
 
-    await execute('CAST', subSteps, desc, msg !== desc ? { message: msg } : undefined);
+    await execute('CAST', subSteps, desc, { verboseMessage: msg });
 
     // Morale check for the target — a spell that breaks morale routs (only an
     // attack can rout; no cascade to nearby units).
@@ -180,7 +174,7 @@ export function useCastActions(deps: CastActionsDeps) {
       failedCount,
       description: desc,
     });
-  }, [magicCast, units, alliances, formationsMap, isGM, playerId, execute, addError, verboseCombat]);
+  }, [magicCast, units, alliances, formationsMap, isGM, playerId, execute, addError]);
 
   const requestResolveCast = useCallback(() => {
     const cast = magicCast.cast;

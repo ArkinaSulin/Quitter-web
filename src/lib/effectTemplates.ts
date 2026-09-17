@@ -10,7 +10,18 @@ export type EffectModifierKind =
   | 'dot'          // per-tick damage (negative = heal)
   | 'hp_borrow'    // "Sleep": take X HP now, refund after caster activations
   | 'entry'        // zone: one-time damage when a unit enters/arrives
-  | 'mp_cost';     // zone: offset to the hex entry MP cost
+  | 'mp_cost'      // zone: offset to the hex entry MP cost
+  | 'advantage'    // carrier's own attacks roll 2d20 take higher
+  | 'disadvantage' // carrier's own attacks roll 2d20 take lower
+  | 'grant_advantage'    // attackers targeting the carrier take the higher of 2d20
+  | 'grant_disadvantage'; // attackers targeting the carrier take the lower of 2d20
+
+/** Attack-roll flag kinds carry no amount/dice/save — they are boolean markers. */
+export const FLAG_MODIFIER_KINDS: EffectModifierKind[] = ['advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'];
+
+export function isFlagModifierKind(kind: EffectModifierKind): boolean {
+  return FLAG_MODIFIER_KINDS.includes(kind);
+}
 
 export type SaveStatName = 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha';
 
@@ -51,8 +62,24 @@ export function effectAmount(mod: { dice?: string; delta: number }, rng: () => n
   return p ? rollDice(mod.dice, rng) : mod.delta;
 }
 
+/** Human label for a modifier kind (flag kinds carry no amount). */
+export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
+  ac: 'AC',
+  morale: 'Morale',
+  movement: 'Movement',
+  dot: 'DoT / heal per tick',
+  hp_borrow: 'Borrow HP (sleep)',
+  entry: 'Zone: damage on entry',
+  mp_cost: 'Zone: hex MP cost',
+  advantage: 'Advantage on own attacks',
+  disadvantage: 'Disadvantage on own attacks',
+  grant_advantage: 'Attackers gain advantage',
+  grant_disadvantage: 'Attackers suffer disadvantage',
+};
+
 /** Short one-line label for a modifier (used in lists/tooltips). */
 export function modifierSummary(m: EffectModifier): string {
+  if (isFlagModifierKind(m.kind)) return EFFECT_MODIFIER_LABELS[m.kind];
   return `${m.kind} ${m.dice ?? (m.delta >= 0 ? '+' + m.delta : m.delta)}${m.healing ? ' heal' : ''}`;
 }
 
@@ -78,7 +105,7 @@ export interface EffectTemplate {
   updatedAt: string;
 }
 
-const KINDS: EffectModifierKind[] = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'entry', 'mp_cost'];
+const KINDS: EffectModifierKind[] = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'entry', 'mp_cost', ...FLAG_MODIFIER_KINDS];
 
 export function parseModifiers(raw: unknown): EffectModifier[] {
   if (!Array.isArray(raw)) return [];
@@ -87,8 +114,9 @@ export function parseModifiers(raw: unknown): EffectModifier[] {
     if (!m || typeof m !== 'object') continue;
     const kind = (m as { kind?: unknown }).kind;
     const delta = Number((m as { delta?: unknown }).delta);
-    if (typeof kind === 'string' && KINDS.includes(kind as EffectModifierKind) && Number.isFinite(delta)) {
-      const out2: EffectModifier = { kind: kind as EffectModifierKind, delta };
+    const isKind = typeof kind === 'string' && KINDS.includes(kind as EffectModifierKind);
+    if (isKind && (Number.isFinite(delta) || FLAG_MODIFIER_KINDS.includes(kind as EffectModifierKind))) {
+      const out2: EffectModifier = { kind: kind as EffectModifierKind, delta: Number.isFinite(delta) ? delta : 0 };
       if (typeof (m as any).dice === 'string') out2.dice = (m as any).dice;
       if ((m as any).healing === true) out2.healing = true;
       const st = (m as any).savingThrow;

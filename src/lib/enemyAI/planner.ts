@@ -34,7 +34,8 @@ import { unitAttackCap } from '@/lib/attackCap';
 import { computeReachableMap, computeMovePool, applyMoveCost, applyMpSpend } from '@/lib/moveCost';
 import { isMeleeWeapon } from '@/lib/meleeFallback';
 import { terrainCostOf, TerrainCosts, computeThreatHexes } from '@/components/ScenarioMap/mapGeometry';
-import { determineCombatPosition } from '@/lib/unitCombat';
+import { determineCombatPosition, combatRollMode, RollMode } from '@/lib/unitCombat';
+import { attackRollFlags } from '@/lib/unitEffects';
 import { applyFormationChange, isFormationChangeAffordable } from '@/lib/formationCost';
 
 const DIRS: { q: number; r: number; s: number }[] = [
@@ -170,11 +171,12 @@ function diceMean(diceStr: string): number {
   return count * ((sides + 1) / 2) + bonus;
 }
 
-function hitChance(atkBonus: number, targetAc: number, disadvantage: boolean): number {
+function hitChance(atkBonus: number, targetAc: number, mode: RollMode): number {
   const need = targetAc - atkBonus;
   let p = (21 - Math.min(20, Math.max(1, need))) / 20;
   p = Math.max(0, Math.min(1, p));
-  if (disadvantage) p = p * p;
+  if (mode === 'advantage') p = 1 - (1 - p) * (1 - p);
+  else if (mode === 'disadvantage') p = p * p;
   return p;
 }
 
@@ -202,18 +204,30 @@ export function expectedDamage(
   const weapon = weapons[attacker.activeWeaponIndex ?? 0] ?? weapons[0];
   const targetForm = ctx.formations[target.currentFormation];
   const targetAc = effectiveAc(target, targetForm, attackDirection(attacker.hex, target.hex, target.facing), isRanged);
+  // Roll mode from attack-roll flag effects (any advantage cancels any
+  // disadvantage) plus the long-range band.
+  const aFlags = attackRollFlags(attacker);
+  const tFlags = attackRollFlags(target);
+  const weaponRange = weapon?.range ?? 1;
+  const weaponMax = weapon?.maxRange ?? weaponRange;
+  const rollMode = combatRollMode({
+    attackerAdvantage: aFlags.advantage,
+    attackerDisadvantage: aFlags.disadvantage,
+    targetAdvantage: tFlags.grantAdvantage,
+    targetDisadvantage: tFlags.grantDisadvantage,
+    rangeDisadvantage: !!weapon && isRanged && dist > weaponRange && dist <= weaponMax,
+  });
   if (weapon?.isHealing || (weapon && isAreaWeapon(weapon))) return 0; // AI doesn't heal/cast in v2
   if (!weapon) {
     if (dist !== 1) return 0;
-    return expectedAttackerCount(attacker, ctx) * hitChance(0, targetAc, false) * 1; // fists 1d1
+    return expectedAttackerCount(attacker, ctx) * hitChance(0, targetAc, rollMode.mode) * 1; // fists 1d1
   }
   const effBonus = weapon.attackBonus + (ctx.formations[attacker.currentFormation]?.attack_modifier ?? 0);
   const mod = beAttackedModifier(targetForm, isRanged) ?? 1;
   const count = Math.round(expectedAttackerCount(attacker, ctx) * mod);
   const heroCap = !isRanged && !attacker.isHero && target.isHero ? 0.5 : 1;
-  const disadvantage = isRanged && dist > (weapon.range ?? 1);
   const perHit = Math.min(diceMean(weapon.damageDice), target.troopHp);
-  return Math.max(0, Math.round(count * heroCap) * hitChance(effBonus, targetAc, disadvantage) * perHit);
+  return Math.max(0, Math.round(count * heroCap) * hitChance(effBonus, targetAc, rollMode.mode) * perHit);
 }
 
 function nearestEnemyDist(hex: Hex, enemies: Unit[]): number {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage } from './unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags } from './unitEffects';
 import { parseDice } from './effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
@@ -421,5 +421,48 @@ describe('computeZoneReconcile', () => {
     const u = unit('u', 'blue', h(0, 0), { effects: [membershipped], currentAc: 14 });
     const { changes } = computeZoneReconcile(u, [zone()]);
     expect(changes).toEqual([]);
+  });
+});
+
+describe('attack-roll flag effects', () => {
+  const flags = ['advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'] as const;
+
+  it('statFieldOf is null and isAttackRollEffect is true for all four', () => {
+    for (const kind of flags) {
+      expect(statFieldOf(kind)).toBeNull();
+      expect(isStatEffect(kind)).toBe(false);
+      expect(isAttackRollEffect(kind)).toBe(true);
+    }
+  });
+
+  it('applying a flag effect changes no stat field (only the effects list)', () => {
+    const u = unit('u', 'blue');
+    const { changes } = applyEffectChanges(u, { name: 'Advantage', color: '#fff', kind: 'advantage', delta: 0, duration: 3, turnsLeft: 3 });
+    expect(changes).toHaveLength(1);
+    expect(changes[0].field).toBe('effects');
+  });
+
+  it('does not stack the same flag kind twice', () => {
+    const first = ef({ kind: 'advantage', delta: 0 });
+    const u = unit('u', 'blue', h(0, 0), { effects: [first] });
+    const { changes } = applyEffectChanges(u, { name: 'Advantage', color: '#fff', kind: 'advantage', delta: 0, duration: 3, turnsLeft: 3 });
+    expect(changes).toEqual([]);
+  });
+
+  it('attackRollFlags reads the four kinds off a unit', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ kind: 'advantage' }), ef({ kind: 'grant_disadvantage' })] });
+    expect(attackRollFlags(u)).toEqual({ advantage: true, disadvantage: false, grantAdvantage: false, grantDisadvantage: true });
+    expect(attackRollFlags(null)).toEqual({ advantage: false, disadvantage: false, grantAdvantage: false, grantDisadvantage: false });
+  });
+
+  it('a zone flag materializes as a membership with no stat change', () => {
+    const zone: GroundEffect = { key: 'z9', q: 0, r: 0, name: 'Grant Advantage', color: '#69f0ae', kind: 'grant_advantage', delta: 0, duration: 3, turnsLeft: 3 };
+    const { effects, changes } = computeZoneReconcile(unit('u', 'blue'), [zone]);
+    expect(effects).toHaveLength(1);
+    expect(effects[0].kind).toBe('grant_advantage');
+    expect(effects[0].zoneHex).toEqual(h(0, 0));
+    // Only the collapsed effects-list change — no stat delta.
+    expect(changes).toHaveLength(1);
+    expect(changes[0].field).toBe('effects');
   });
 });

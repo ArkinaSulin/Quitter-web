@@ -8,7 +8,7 @@ expiry are all undoable and realtime-consistent.
 
 ## Types & materialization
 
-`EffectKind = 'ac' | 'morale' | 'movement' | 'dot'`.
+`EffectKind = 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow' | 'entry' | 'mp_cost' | 'advantage' | 'disadvantage' | 'grant_advantage' | 'grant_disadvantage'`.
 
 - Stat kinds materialize **on the real unit fields** (so combat/morale/
   movement consumers need no edits):
@@ -19,9 +19,42 @@ expiry are all undoable and realtime-consistent.
 - `dot` damages HP (`dotDamageChanges`: HP minus delta, troops = ceil(hp/troopHp),
   clamped to `[0, maxTroopCount]`, HP ≥ 0). A negative dot delta = **Regen**
   (healing).
+- **Attack-roll flags** (`advantage` / `disadvantage` / `grant_advantage` /
+  `grant_disadvantage`) carry no stat or amount — they are boolean markers read at
+  attack resolution by `attackRollFlags(unit)`:
+  - `advantage` / `disadvantage` modify the **carrier's own** attack rolls.
+  - `grant_advantage` / `grant_disadvantage` modify the rolls of **anyone
+    attacking the carrier**.
+  - They materialize through the same unit/zone-membership machinery (a hex zone
+    becomes a membership on the standing unit), so a unit-targeted and a
+    hex-targeted flag are one code path. `statFieldOf` returns `null`;
+    `isAttackRollEffect`/`isStatEffect` classify them for UI and message display.
+- **No same-kind stacking per carrier** — a second effect of an existing kind is
+  ignored.
 
-**No same-kind stacking per carrier** — a second effect of an existing kind is
-ignored.
+## Attack-roll modes (advantage / disadvantage)
+
+`unitCombat.combatRollMode` combines, for one attack, the acting unit's own
+`advantage`/`disadvantage` with the target's `grant_*` and the long-range band
+(beyond the weapon's `range`, within `maxRange`). **Any advantage cancels any
+disadvantage regardless of source count** (D&D 5e) → a normal roll; the result
+carries a `note` explaining why (`advantage — target grants advantage`,
+`disadvantage — long range`, `advantage effect cancelled by target grants
+disadvantage — normal roll`).
+
+- `executeAttacks`/`executeSplitAttacks` take a `RollMode` (`normal` |
+  `advantage` | `disadvantage`): advantage rolls two d20 and takes the higher
+  (crit if either die is 20), disadvantage takes the lower (crit only if both
+  are 20). A countered roll is normal. Each `SingleAttackResult` records its
+  `rollMode` and `[taken, discarded]` `dicePair`.
+- Modes are computed **per attacker**: the defender's retaliation uses the
+  defender's own flags + the attacker's `grant_*`; a front-attached hero's volley
+  uses the hero's own flags + the target's `grant_*` (its own `advantage` /
+  `disadvantage` ride `AttackerHeroProfile`).
+- The chat message states the cause on the volley line; verbose adds the
+  `[adv]`/`[dis]` tag and the two-die pair (`verboseCombat.formatAttackRolls`).
+- The AI planner's `hitChance` applies the same mode so expected damage tracks
+  the effects.
 
 ## Duration & the clock
 
@@ -80,6 +113,13 @@ display: `verboseCombat.formatSpellRollLine` prints
 | Fear | morale | −3 ×3 | −3 morale |
 | Burning | dot | 4 ×3 | 4 damage each tick |
 | Regen | dot | −4 ×3 | heal 4 each tick |
+| Advantage | advantage | ×3 | advantage on the carrier's own attacks |
+| Disadvantage | disadvantage | ×3 | disadvantage on the carrier's own attacks |
+| Grant Advantage | grant_advantage | ×3 | anyone attacking the carrier gains advantage |
+| Grant Disadvantage | grant_disadvantage | ×3 | anyone attacking the carrier suffers disadvantage |
+
+The four flag kinds are also seeded into the library table by migration
+`088_advantage_effects.sql` (scope `both`, so unit- or hex-applied).
 
 ## UI surfaces
 

@@ -4,6 +4,7 @@ import { getRetaliationMode, getEffectivePosition, beAttackedModifier, beAttacke
 import { getSetting } from './settingsCache';
 import { getRowCapacityBase, effectiveAc } from './unitStats';
 import { attackDirection } from './attackDirection';
+import { attackRollFlags, AttackRollFlags } from './unitEffects';
 
 const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
@@ -128,6 +129,60 @@ export function rollDamage(diceStr: string, rng: () => number): number {
   return rollDamageDetailed(diceStr, rng).total;
 }
 
+/**
+ * How a d20 attack roll is made. `advantage` rolls two d20 and takes the higher;
+ * `disadvantage` takes the lower. Any advantage source cancels any disadvantage
+ * source (count is irrelevant) back to `normal`.
+ */
+export type RollMode = 'normal' | 'advantage' | 'disadvantage';
+
+export interface RollModeInput {
+  /** The acting unit's own `advantage` effect. */
+  attackerAdvantage?: boolean;
+  /** The acting unit's own `disadvantage` effect. */
+  attackerDisadvantage?: boolean;
+  /** The target's `grant_advantage` effect. */
+  targetAdvantage?: boolean;
+  /** The target's `grant_disadvantage` effect. */
+  targetDisadvantage?: boolean;
+  /** The weapon's long-range band (beyond `range`, within `maxRange`). */
+  rangeDisadvantage?: boolean;
+}
+
+export interface RollModeResult {
+  mode: RollMode;
+  advantage: boolean;
+  disadvantage: boolean;
+  /** Both an advantage and a disadvantage source were present (cancelled). */
+  cancelled: boolean;
+  /** Short cause note for the chat message ('' when the roll is normal). */
+  note: string;
+}
+
+/**
+ * Combine every advantage/disadvantage source for one attack. D&D 5e: any number
+ * of advantage sources cancels any number of disadvantage sources (and vice
+ * versa) — the roll is then normal. `note` records WHY for the message log.
+ */
+export function combatRollMode(input: RollModeInput): RollModeResult {
+  const adv: string[] = [];
+  const dis: string[] = [];
+  if (input.attackerAdvantage) adv.push('advantage effect');
+  if (input.targetAdvantage) adv.push('target grants advantage');
+  if (input.attackerDisadvantage) dis.push('disadvantage effect');
+  if (input.targetDisadvantage) dis.push('target grants disadvantage');
+  if (input.rangeDisadvantage) dis.push('long range');
+  const advantage = adv.length > 0;
+  const disadvantage = dis.length > 0;
+  const cancelled = advantage && disadvantage;
+  const mode: RollMode = advantage && !disadvantage ? 'advantage' : disadvantage && !advantage ? 'disadvantage' : 'normal';
+  let note = '';
+  if (cancelled) note = ` (${adv.join(' + ')} cancelled by ${dis.join(' + ')} — normal roll)`;
+  else if (mode === 'advantage') note = ` (advantage — ${adv.join(' + ')})`;
+  else if (mode === 'disadvantage') note = ` (disadvantage — ${dis.join(' + ')})`;
+  return { mode, advantage, disadvantage, cancelled, note };
+}
+
 export interface SingleAttackResult {
   roll: number;
   isCrit: boolean;
@@ -137,8 +192,10 @@ export interface SingleAttackResult {
   actualDamage: number;
   /** Base damage dice faces (before any crit/charge doubling). */
   damageFaces?: number[];
-  /** [taken, discarded] d20 pair when the attack was at disadvantage. */
+  /** [taken, discarded] d20 pair when the attack rolled advantage/disadvantage. */
   dicePair?: [number, number];
+  /** The roll mode this attack was made with (omitted when normal). */
+  rollMode?: Exclude<RollMode, 'normal'>;
 }
 
 export interface CombatOutcome {
@@ -170,6 +227,12 @@ export interface CombatOutcome {
   firstStrikeCountNote?: string;
   /** Human-readable explanation of count modifiers on the retaliation. */
   retaliationCountNote?: string;
+  /** Roll mode of the first strike (attacker-first or defender-first). */
+  firstStrikeRoll: RollModeResult;
+  /** Roll mode of the retaliation. */
+  retaliationRoll: RollModeResult;
+  /** Roll mode of the attacking hero's own volley (null when no hero joins). */
+  attackerHeroRoll: RollModeResult | null;
 }
 
 export function computeAttackCount(unit: Unit, rowCapacity: number, attackCapacityMultiplier: number, visualDotsPerRow: number, isDefenderSide: boolean, weaponAttacks: number): number {
@@ -207,17 +270,18 @@ function executeAttacks(
   targetTroopHp: number,
   rng: () => number,
   isCharging: boolean,
-  disadvantage = false,
+  mode: RollMode = 'normal',
 ): { attacks: SingleAttackResult[]; totalDamage: number } {
   const attacks: SingleAttackResult[] = [];
   let totalDamage = 0;
   for (let i = 0; i < count; i++) {
-    // Disadvantage (e.g. long-range shots): roll two d20, take the lower.
-    // A crit needs the taken roll to be a 20 (both rolls 20); a natural 1 on the
+    // Advantage/disadvantage (e.g. long-range shots): roll two d20, take the
+    // higher (advantage) or lower (disadvantage). A crit needs the TAKEN roll to
+    // be a 20 (advantage: either die; disadvantage: both); a natural 1 on the
     // taken roll is an automatic miss.
     const r1 = rollD20(rng);
-    const r2 = disadvantage ? rollD20(rng) : null;
-    const roll = disadvantage ? Math.min(r1, r2!) : r1;
+    const r2 = mode === 'normal' ? null : rollD20(rng);
+    const roll = mode === 'advantage' ? Math.max(r1, r2!) : mode === 'disadvantage' ? Math.min(r1, r2!) : r1;
     const isCrit = roll === 20;
     const attackValue = roll + attackBonus;
     const isHit = roll === 1 ? false : isCrit ? true : attackValue >= targetAc;
@@ -243,7 +307,12 @@ function executeAttacks(
       rawDamage,
       actualDamage,
       damageFaces,
-      ...(disadvantage ? { dicePair: [Math.min(r1, r2!), Math.max(r1, r2!)] as [number, number] } : {}),
+      ...(mode !== 'normal'
+        ? {
+            dicePair: (mode === 'advantage' ? [Math.max(r1, r2!), Math.min(r1, r2!)] : [Math.min(r1, r2!), Math.max(r1, r2!)]) as [number, number],
+            rollMode: mode,
+          }
+        : {}),
     });
   }
   return { attacks, totalDamage };
@@ -259,13 +328,13 @@ function executeSplitAttacks(
   heroTroopHp: number,
   rng: () => number,
   isCharging: boolean,
-  disadvantage = false,
+  mode: RollMode = 'normal',
 ): { attacks: SingleAttackResult[]; unitDamage: number; heroDamage: number; heroAttacks: SingleAttackResult[] } {
   const heroCount = Math.ceil(totalCount * getSetting('hero_attack_split', 0.3));
   const unitCount = totalCount - heroCount;
 
-  const unitResult = executeAttacks(unitCount, attackBonus, damageDice, unitAc, unitTroopHp, rng, isCharging, disadvantage);
-  const heroResult = executeAttacks(heroCount, attackBonus, damageDice, heroAc, heroTroopHp, rng, isCharging, disadvantage);
+  const unitResult = executeAttacks(unitCount, attackBonus, damageDice, unitAc, unitTroopHp, rng, isCharging, mode);
+  const heroResult = executeAttacks(heroCount, attackBonus, damageDice, heroAc, heroTroopHp, rng, isCharging, mode);
 
   return {
     attacks: [...unitResult.attacks, ...heroResult.attacks],
@@ -283,6 +352,9 @@ export interface AttackerHeroProfile {
   /** The hero's own weapon bands, so it rolls at ITS range (not the host's). */
   range: number;
   maxRange: number;
+  /** The hero's own attack-roll flag effects. */
+  advantage?: boolean;
+  disadvantage?: boolean;
 }
 
 export function resolveCombatSequence(
@@ -343,16 +415,20 @@ export function resolveCombatSequence(
       retaliationAttackerHeroAttacks: [],
       retaliationAttackerHeroUnitDamage: 0,
       retaliationAttackerHeroHeroDamage: 0,
+      firstStrikeRoll: combatRollMode({}),
+      retaliationRoll: combatRollMode({}),
+      attackerHeroRoll: null,
     };
   }
 
-  // Long-range disadvantage: attacks beyond the weapon's normal range are made at
-  // disadvantage (roll two d20, take the lower). maxRange is always >= range;
-  // distances beyond maxRange are out of range (blocked by the caller).
+  // Long-range band: attacks beyond the weapon's normal range (but within
+  // maxRange) roll at disadvantage. maxRange is always >= range; distances beyond
+  // maxRange are out of range (blocked by the caller). This is folded into the
+  // roll mode below so an advantage source can cancel it.
   const attackDist = hexDistance(attacker.hex, defender.hex);
   const attackRange = attackerWeapon.range ?? 1;
   const attackMaxRange = attackerWeapon.maxRange ?? attackRange;
-  const disadvantage = attackDist > attackRange && attackDist <= attackMaxRange;
+  const rangeDisadvantage = attackDist > attackRange && attackDist <= attackMaxRange;
 
   // Directional formation AC: a formation gives no AC bonus from the REAR
   // (uniform rule); shields are 360° and stay in `baselineAc`. The shield drops
@@ -377,6 +453,37 @@ export function resolveCombatSequence(
   const isSymmetricReach = strikerFirst === 'attacker'
     ? (attackerWeapon.is_reach === (defenderWeapon?.is_reach ?? false))
     : (defenderWeapon?.is_reach === attackerWeapon.is_reach);
+
+  // Attack-roll modes (effect-driven advantage/disadvantage + the long-range
+  // band). Computed PER ATTACKER: whoever strikes rolls their own flag effects
+  // against the target's grant effects. Any advantage cancels any disadvantage.
+  const attackerFlags: AttackRollFlags = attackRollFlags(attacker);
+  const defenderFlags: AttackRollFlags = attackRollFlags(defender);
+  const modeAgainst = (acting: AttackRollFlags, target: AttackRollFlags, rangeDis: boolean): RollModeResult =>
+    combatRollMode({
+      attackerAdvantage: acting.advantage,
+      attackerDisadvantage: acting.disadvantage,
+      targetAdvantage: target.grantAdvantage,
+      targetDisadvantage: target.grantDisadvantage,
+      rangeDisadvantage: rangeDis,
+    });
+  // The attacker's own ranged band only applies when the ATTACKER strikes/retaliates.
+  const firstStrikeRoll = strikerFirst === 'attacker'
+    ? modeAgainst(attackerFlags, defenderFlags, rangeDisadvantage)
+    : modeAgainst(defenderFlags, attackerFlags, false);
+  const retaliationRoll = strikerFirst === 'attacker'
+    ? modeAgainst(defenderFlags, attackerFlags, false)
+    : modeAgainst(attackerFlags, defenderFlags, rangeDisadvantage);
+  const attackerHeroRoll: RollModeResult | null = attackerHero
+    ? combatRollMode({
+        attackerAdvantage: !!attackerHero.advantage,
+        attackerDisadvantage: !!attackerHero.disadvantage,
+        targetAdvantage: defenderFlags.grantAdvantage,
+        targetDisadvantage: defenderFlags.grantDisadvantage,
+        // The hero rolls at ITS OWN weapon bands (the host's range doesn't apply).
+        rangeDisadvantage: attackDist > attackerHero.range && attackDist <= attackerHero.maxRange,
+      })
+    : null;
 
   let firstStrikeAttacks: SingleAttackResult[] = [];
   let firstStrikeDamage = 0;
@@ -404,13 +511,13 @@ export function resolveCombatSequence(
     const count = attackerHero.numberOfAttacks ?? 1;
     if (count <= 0) return null;
     const heroBonus = attackerHero.attackBonus + formationAttackModifier;
-    // The hero rolls at ITS OWN weapon bands (the host's range doesn't apply).
-    const heroDisadvantage = attackDist > attackerHero.range && attackDist <= attackerHero.maxRange;
+    // The hero rolls at ITS OWN weapon bands + flag effects (mode precomputed).
+    const heroMode = attackerHeroRoll?.mode ?? 'normal';
     if (attachedDefenderHero) {
-      const split = executeSplitAttacks(count, heroBonus, attackerHero.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, heroDisadvantage);
+      const split = executeSplitAttacks(count, heroBonus, attackerHero.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, heroMode);
       return { attacks: split.attacks, damage: split.unitDamage, heroDamage: split.heroDamage, heroAttacks: split.heroAttacks, count };
     }
-    const result = executeAttacks(count, heroBonus, attackerHero.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, heroDisadvantage);
+    const result = executeAttacks(count, heroBonus, attackerHero.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, heroMode);
     return { attacks: result.attacks, damage: result.totalDamage, heroDamage: 0, heroAttacks: [], count };
   };
 
@@ -432,13 +539,13 @@ export function resolveCombatSequence(
     const effBonus = attackerWeapon.attackBonus + formationAttackModifier;
 
     if (attachedDefenderHero) {
-      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, disadvantage);
+      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, firstStrikeRoll.mode);
       firstStrikeAttacks = split.attacks;
       firstStrikeDamage = split.unitDamage;
       firstStrikeHeroDamage = split.heroDamage;
       firstStrikeHeroAttacks = split.heroAttacks;
     } else {
-      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, disadvantage);
+      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, firstStrikeRoll.mode);
       firstStrikeAttacks = result.attacks;
       firstStrikeDamage = result.totalDamage;
     }
@@ -475,13 +582,13 @@ export function resolveCombatSequence(
     const defEffBonus = (defenderWeapon?.attackBonus ?? 0) + formationAttackModifier;
 
     if (attachedAttackerHero) {
-      const split = executeSplitAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, attachedAttackerHero.currentAc, attachedAttackerHero.troopHp, rng, false);
+      const split = executeSplitAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, attachedAttackerHero.currentAc, attachedAttackerHero.troopHp, rng, false, firstStrikeRoll.mode);
       firstStrikeAttacks = split.attacks;
       firstStrikeDamage = split.unitDamage;
       firstStrikeHeroDamage = split.heroDamage;
       firstStrikeHeroAttacks = split.heroAttacks;
     } else {
-      const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, rng, false);
+      const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, rng, false, firstStrikeRoll.mode);
       firstStrikeAttacks = result.attacks;
       firstStrikeDamage = result.totalDamage;
     }
@@ -511,13 +618,13 @@ export function resolveCombatSequence(
         const defEffBonus = (defenderWeapon?.attackBonus ?? 0) + formationAttackModifier;
 
         if (attachedAttackerHero) {
-          const split = executeSplitAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, attachedAttackerHero.currentAc, attachedAttackerHero.troopHp, rng, false);
+          const split = executeSplitAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, attachedAttackerHero.currentAc, attachedAttackerHero.troopHp, rng, false, retaliationRoll.mode);
           retaliationAttacks = split.attacks;
           retaliationDamage = split.unitDamage;
           retaliationHeroDamage = split.heroDamage;
           retaliationHeroAttacks = split.heroAttacks;
         } else {
-          const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, rng, false);
+          const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, rng, false, retaliationRoll.mode);
           retaliationAttacks = result.attacks;
           retaliationDamage = result.totalDamage;
         }
@@ -542,13 +649,13 @@ export function resolveCombatSequence(
       const effBonus = attackerWeapon.attackBonus + formationAttackModifier;
 
     if (attachedDefenderHero) {
-      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, disadvantage);
+      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, retaliationRoll.mode);
       retaliationAttacks = split.attacks;
       retaliationDamage = split.unitDamage;
       retaliationHeroDamage = split.heroDamage;
       retaliationHeroAttacks = split.heroAttacks;
     } else {
-      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, disadvantage);
+      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, retaliationRoll.mode);
       retaliationAttacks = result.attacks;
       retaliationDamage = result.totalDamage;
     }
@@ -589,6 +696,9 @@ export function resolveCombatSequence(
     retaliationAttackerHeroAttacks,
     retaliationAttackerHeroUnitDamage,
     retaliationAttackerHeroHeroDamage,
+    firstStrikeRoll,
+    retaliationRoll,
+    attackerHeroRoll,
   };
 }
 

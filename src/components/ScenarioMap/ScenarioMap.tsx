@@ -601,7 +601,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setScenarioLocal,
     setZonesLocal: setGroundZones,
     requestEntryTroops,
-    verboseCombat,
   });
 
   // "Other Action…" (hero roleplay): spend 1 action; the table resolves it by
@@ -645,7 +644,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     formationsMap,
     sizeCategories,
     archerReactionEnabled,
-    verboseCombat,
     execute,
     addMessage,
     addError,
@@ -757,8 +755,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Armed clone: the next left-click places a copy of this zone.
   const [cloneZone, setCloneZone] = useState<GroundEffect | null>(null);
 
-  const UNIT_KINDS = ['ac', 'morale', 'movement', 'dot', 'hp_borrow'];
-  const ZONE_KINDS = ['ac', 'morale', 'dot', 'entry', 'mp_cost'];
+  const UNIT_KINDS = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'];
+  const ZONE_KINDS = ['ac', 'morale', 'dot', 'entry', 'mp_cost', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'];
 
   const applyUnitDrop = async (d: { unit: Unit; form: EffectFormValue }) => {
     for (const m of d.form.modifiers) {
@@ -777,7 +775,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         imageScale: d.form.imageScale,
         transparentBackground: d.form.transparentBackground,
         layer: d.form.layer,
-        kind: m.kind as 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow',
+        kind: m.kind,
         delta: m.delta,
         ...(m.dice ? { dice: m.dice } : {}),
         ...(m.healing ? { healing: true } : {}),
@@ -1175,7 +1173,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     alliances,
     formationsMap,
     sizeCategories,
-    verboseCombat,
     execute,
     addMessage,
     addError,
@@ -1287,9 +1284,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         // pursuer — a ranged attacker (e.g. an archer) never pursues. The
         // per-adjacent-unit gate list is only shown in verbose combat.
         const gates = pursuitGateInfo(routedForPick, cur, alliances, formationsMap);
-        addMessage(verboseCombat
-          ? `No melee pursuer can strike ${live.unitName}: ${pursuitGateText(gates)}.`
-          : `No melee pursuer can strike ${live.unitName}.`);
+        addMessage(
+          `No melee pursuer can strike ${live.unitName}.`,
+          `No melee pursuer can strike ${live.unitName}: ${pursuitGateText(gates)}.`,
+        );
         console.info('[RoutFlow] no pursuer for', live.unitName, gates);
         return;
       }
@@ -1430,7 +1428,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     formationsMap,
     isGM: effectiveIsGM,
     playerId,
-    verboseCombat,
     execute,
     addError,
   });
@@ -2131,6 +2128,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           side={panelSide}
             onToggleSide={togglePanelSide}
             aiPanelContent={aiPanelNode ?? undefined}
+            verboseCombat={verboseCombat}
           />
         </div>
       )}

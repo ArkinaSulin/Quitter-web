@@ -7,6 +7,9 @@ export type MessageTone = 'default' | 'error';
 
 export interface GameMessage {
   text: string;
+  /** Full dice/roll detail for the "verbose combat" view. Always recorded (when
+   *  available) so toggling verbose re-renders history; only DISPLAY is gated. */
+  verboseText?: string;
   tone: MessageTone;
 }
 
@@ -29,8 +32,8 @@ const messageReducer = (state: State, action: Action): State => {
 
 interface MessageContextType {
   messages: State;
-  addMessage: (msg: string) => void;
-  addError: (msg: string) => void;
+  addMessage: (msg: string, verboseText?: string) => void;
+  addError: (msg: string, verboseText?: string) => void;
   clearMessages: () => void;
 }
 
@@ -39,8 +42,10 @@ const MessageContext = createContext<MessageContextType | undefined>(undefined);
 export const MessageProvider = ({ children }: { children: ReactNode }) => {
   const [messages, dispatch] = useReducer(messageReducer, []);
 
-  const addMessage = (msg: string) => dispatch({ type: 'ADD_MESSAGE', payload: { text: msg, tone: 'default' } });
-  const addError = (msg: string) => dispatch({ type: 'ADD_MESSAGE', payload: { text: msg, tone: 'error' } });
+  const addMessage = (msg: string, verboseText?: string) =>
+    dispatch({ type: 'ADD_MESSAGE', payload: { text: msg, ...(verboseText ? { verboseText } : {}), tone: 'default' } });
+  const addError = (msg: string, verboseText?: string) =>
+    dispatch({ type: 'ADD_MESSAGE', payload: { text: msg, ...(verboseText ? { verboseText } : {}), tone: 'error' } });
   const clearMessages = () => dispatch({ type: 'CLEAR_MESSAGES' });
 
   return (

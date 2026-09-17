@@ -117,7 +117,17 @@ still block it). Its rear is where the wall is weakest — the formation AC goes
 
 **Range bands**: `dist ≤ range` full effect · `range < dist ≤ maxRange` =
 **disadvantage** (roll two D20, take the lower; a crit needs the taken roll to
-be 20) · `dist > maxRange` = out of range (hard block).
+be 20) · `dist > maxRange` = out of range (hard block). The band is a
+disadvantage source in the unified roll mode below.
+
+**Roll mode** (`combatRollMode`): a d20 attack roll can be `normal`, `advantage`
+(two D20, take the higher) or `disadvantage` (take the lower). Sources are the
+acting unit's own `advantage`/`disadvantage` effects, the target's
+`grant_advantage`/`grant_disadvantage` effects (see `10`), and the long-range
+band. **Any advantage cancels any disadvantage regardless of count** → normal.
+The mode is recomputed per attacker (retaliation uses the retaliator's own flags
++ the first striker's grants; a front-attached hero's volley uses the hero's own
+flags). Messages state the cause and verbose prints the `[adv]`/`[dis]` pair.
 
 ## Attached heroes take damage
 

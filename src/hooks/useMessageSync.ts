@@ -9,6 +9,7 @@ const MESSAGE_EVENT = 'game-message';
 
 interface PendingMessage {
   text: string;
+  verboseText?: string;
   tone?: string;
 }
 
@@ -19,7 +20,7 @@ interface ScenarioSync {
   dead: boolean;
   pending: PendingMessage[];
   listeners: number;
-  dispatchIncoming: (text: string, tone?: string) => void;
+  dispatchIncoming: (text: string, tone?: string, verboseText?: string) => void;
 }
 
 // One realtime channel per scenario, shared by every hook instance in this client
@@ -37,7 +38,7 @@ function subscribeChannel(sync: ScenarioSync): void {
     .on('broadcast', { event: MESSAGE_EVENT }, (payload: any) => {
       const msg = payload?.payload as PendingMessage | undefined;
       if (!msg?.text) return;
-      sync.dispatchIncoming(msg.text, msg.tone);
+      sync.dispatchIncoming(msg.text, msg.tone, msg.verboseText);
     })
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {
@@ -52,7 +53,7 @@ function subscribeChannel(sync: ScenarioSync): void {
   sync.channel = channel;
 }
 
-function getSync(scenarioId: string, dispatchIncoming: (text: string, tone?: string) => void): ScenarioSync {
+function getSync(scenarioId: string, dispatchIncoming: (text: string, tone?: string, verboseText?: string) => void): ScenarioSync {
   const existing = syncs.get(scenarioId);
   if (existing) {
     existing.dispatchIncoming = dispatchIncoming;
@@ -93,9 +94,9 @@ export function useMessageSync(scenarioId: string) {
   // Re-bind when scenarioId changes so a different scenario gets its own channel.
   const syncRef = useRef<ScenarioSync | null>(null);
   if (!syncRef.current || syncRef.current.scenarioId !== scenarioId) {
-    syncRef.current = getSync(scenarioId, (text, tone) => {
-      if (tone === 'error') addErrorRef.current(text);
-      else addMessageRef.current(text);
+    syncRef.current = getSync(scenarioId, (text, tone, verboseText) => {
+      if (tone === 'error') addErrorRef.current(text, verboseText);
+      else addMessageRef.current(text, verboseText);
     });
   }
 
@@ -129,14 +130,14 @@ export function useMessageSync(scenarioId: string) {
     }
   }, []);
 
-  const syncAddMessage = useCallback((text: string) => {
-    addMessageRef.current(text);
-    send({ text });
+  const syncAddMessage = useCallback((text: string, verboseText?: string) => {
+    addMessageRef.current(text, verboseText);
+    send({ text, ...(verboseText ? { verboseText } : {}) });
   }, [send]);
 
-  const syncAddError = useCallback((text: string) => {
-    addErrorRef.current(text);
-    send({ text, tone: 'error' });
+  const syncAddError = useCallback((text: string, verboseText?: string) => {
+    addErrorRef.current(text, verboseText);
+    send({ text, ...(verboseText ? { verboseText } : {}), tone: 'error' });
   }, [send]);
 
   return { addMessage: syncAddMessage, addError: syncAddError };

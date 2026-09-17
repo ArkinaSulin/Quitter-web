@@ -11,10 +11,15 @@ import {
   rollDamageDetailed,
   resolveCombatSequence,
   suppressRetaliation,
+  combatRollMode,
 } from './unitCombat';
 import { canMeleeTarget } from './formationRules';
-import { Unit, Hex, Formation } from '@/types/gameProtocol';
+import { Unit, Hex, Formation, UnitEffect } from '@/types/gameProtocol';
 import type { CombatOutcome, AttackerHeroProfile } from './unitCombat';
+
+function flagEffect(kind: UnitEffect['kind']): UnitEffect {
+  return { key: `eff-${kind}`, kind, name: kind, color: '#ffffff', delta: 0, duration: 3, turnsLeft: 3 };
+}
 
 function makeUnit(overrides: Partial<Unit> = {}): Unit {
   return {
@@ -639,6 +644,88 @@ describe('resolveCombatSequence', () => {
     expect(result.firstStrikeAttacks).toHaveLength(1);
     expect(result.firstStrikeAttacks[0].roll).toBe(7); // min(15, 7)
     expect(result.firstStrikeAttacks[0].isHit).toBe(false); // 7 + 0 < AC 10
+  });
+
+  it('an advantage effect on the attacker rolls two d20 and takes the higher', () => {
+    const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 }, effects: [flagEffect('advantage')] };
+    const nearDefender = { ...defender, hex: { q: 0, r: -1, s: 1 }, currentAc: 10 };
+    const rangedWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1, range: 2, maxRange: 6 };
+    const seq = [0.3, 0.7]; // roll1 = 7, roll2 = 15 → taken 15
+    const rng = () => seq.shift() ?? 0.5;
+    const result = resolveCombatSequence(heroAttacker, nearDefender, rangedWeapon, null, 0, 1, 1, 10, 10, 20, true, false, null, null, rng);
+    expect(result.firstStrikeAttacks[0].roll).toBe(15); // max(7, 15)
+    expect(result.firstStrikeAttacks[0].dicePair).toEqual([15, 7]); // [taken, discarded]
+    expect(result.firstStrikeAttacks[0].rollMode).toBe('advantage');
+    expect(result.firstStrikeRoll.mode).toBe('advantage');
+    expect(result.firstStrikeRoll.note).toContain('advantage effect');
+  });
+
+  it('a disadvantage effect on the attacker rolls two d20 and takes the lower', () => {
+    const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 }, effects: [flagEffect('disadvantage')] };
+    const nearDefender = { ...defender, hex: { q: 0, r: -1, s: 1 }, currentAc: 10 };
+    const rangedWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1, range: 2, maxRange: 6 };
+    const seq = [0.7, 0.3]; // roll1 = 15, roll2 = 7 → taken 7
+    const rng = () => seq.shift() ?? 0.5;
+    const result = resolveCombatSequence(heroAttacker, nearDefender, rangedWeapon, null, 0, 1, 1, 10, 10, 20, true, false, null, null, rng);
+    expect(result.firstStrikeAttacks[0].roll).toBe(7); // min(15, 7)
+    expect(result.firstStrikeAttacks[0].dicePair).toEqual([7, 15]);
+    expect(result.firstStrikeRoll.mode).toBe('disadvantage');
+  });
+
+  it('grant_advantage on the target gives the attacker advantage', () => {
+    const granted = { ...defender, effects: [flagEffect('grant_advantage')] };
+    const result = callCombat(attacker, granted);
+    expect(result.firstStrikeRoll.mode).toBe('advantage');
+    expect(result.firstStrikeAttacks.every(a => a.rollMode === 'advantage')).toBe(true);
+  });
+
+  it('grant_disadvantage on the target gives the attacker disadvantage', () => {
+    const granted = { ...defender, effects: [flagEffect('grant_disadvantage')] };
+    const result = callCombat(attacker, granted);
+    expect(result.firstStrikeRoll.mode).toBe('disadvantage');
+  });
+
+  it('any advantage cancels any disadvantage back to a normal roll', () => {
+    const cancellingTarget = { ...defender, effects: [flagEffect('grant_advantage')] };
+    const disadvantagedAttacker = { ...attacker, effects: [flagEffect('disadvantage')] };
+    const result = callCombat(disadvantagedAttacker, cancellingTarget);
+    expect(result.firstStrikeRoll.mode).toBe('normal');
+    expect(result.firstStrikeRoll.cancelled).toBe(true);
+    expect(result.firstStrikeRoll.note).toContain('cancelled');
+    expect(result.firstStrikeAttacks.every(a => a.dicePair === undefined)).toBe(true);
+  });
+
+  it('advantage cancels the long-range band back to a normal roll', () => {
+    const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 }, effects: [flagEffect('advantage')] };
+    const farDefender = { ...defender, hex: { q: 0, r: -4, s: 4 }, currentAc: 10 };
+    const rangedWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1, range: 2, maxRange: 6 };
+    const seq = [0.7, 0.5]; // single roll = 15 → hit; 0.5 feeds the damage roll
+    const rng = () => seq.shift() ?? 0.5;
+    const result = resolveCombatSequence(heroAttacker, farDefender, rangedWeapon, null, 0, 1, 1, 10, 10, 20, true, false, null, null, rng);
+    expect(result.firstStrikeRoll.mode).toBe('normal');
+    expect(result.firstStrikeRoll.cancelled).toBe(true);
+    expect(result.firstStrikeAttacks[0].roll).toBe(15);
+    expect(result.firstStrikeAttacks[0].dicePair).toBeUndefined();
+  });
+
+  describe('combatRollMode', () => {
+    it('advantage only → advantage; disadvantage only → disadvantage', () => {
+      expect(combatRollMode({ attackerAdvantage: true }).mode).toBe('advantage');
+      expect(combatRollMode({ targetAdvantage: true }).mode).toBe('advantage');
+      expect(combatRollMode({ attackerDisadvantage: true }).mode).toBe('disadvantage');
+      expect(combatRollMode({ rangeDisadvantage: true }).mode).toBe('disadvantage');
+    });
+    it('any advantage cancels any disadvantage regardless of count', () => {
+      const both = combatRollMode({ attackerAdvantage: true, targetDisadvantage: true, rangeDisadvantage: true });
+      expect(both.mode).toBe('normal');
+      expect(both.cancelled).toBe(true);
+      expect(both.note).toContain('long range');
+    });
+    it('no sources → normal with an empty note', () => {
+      const none = combatRollMode({});
+      expect(none.mode).toBe('normal');
+      expect(none.note).toBe('');
+    });
   });
 
   it('rear attack skips AGR and retaliation', () => {

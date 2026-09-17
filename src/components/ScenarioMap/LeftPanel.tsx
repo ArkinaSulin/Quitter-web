@@ -57,11 +57,13 @@ interface LeftPanelProps {
   canUseEffects?: boolean;
   /** Optional AI-assist tab content (rendered for the GM when AI assist is on). */
   aiPanelContent?: React.ReactNode;
+  /** Scenario "verbose combat" setting — MessagesPanel picks the verbose variant. */
+  verboseCombat?: boolean;
   side: 'left' | 'right';
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, canUseEffects, aiPanelContent, side, onToggleSide }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
   // Persist which tabs are open per scenario + user, so a rejoined session
   // restores the same panel layout.
   // Persist which tabs are open per scenario + user. The saved layout is restored
@@ -189,7 +191,7 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
         </svg>
       ),
       requiresGM: false,
-      content: <MessagesPanel />,
+      content: <MessagesPanel verboseCombat={verboseCombat} />,
     },
     {
       id: 'undo-debug',

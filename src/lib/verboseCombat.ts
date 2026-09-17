@@ -10,18 +10,21 @@ function sorted(nums: number[]): number[] {
 }
 
 /**
- * `{D20+{bonus} vs {AC}: {sorted rolls}}` — when every attack rolled a
- * disadvantage pair, the pair is shown as `(taken,discarded)` (no spaces),
- * sorted ascending by the taken roll; ties keep engine order.
+ * `[adv] {D20+{bonus} vs {AC}: {sorted rolls}}` — when every attack rolled a
+ * two-die pair (advantage/disadvantage), the pair is shown as `(taken,discarded)`
+ * (no spaces) and the roll is tagged `[adv]`/`[dis]`, sorted ascending by the
+ * taken roll; ties keep engine order.
  */
 export function formatAttackRolls(attacks: SingleAttackResult[], attackBonus: number, targetAc: number): string {
+  const mode = attacks.find(a => a.rollMode)?.rollMode;
+  const tag = mode === 'advantage' ? '[adv] ' : mode === 'disadvantage' ? '[dis] ' : '';
   const hasPairs = attacks.length > 0 && attacks.every(a => !!a.dicePair);
   if (hasPairs) {
     const pairs = [...attacks].map(a => a.dicePair!).sort((a, b) => a[0] - b[0]);
-    return `{D20+${attackBonus} vs ${targetAc}: ${pairs.map(p => `(${p[0]},${p[1]})`).join(',')}}`;
+    return `${tag}{D20+${attackBonus} vs ${targetAc}: ${pairs.map(p => `(${p[0]},${p[1]})`).join(',')}}`;
   }
   const rolls = sorted(attacks.map(a => a.roll));
-  return `{D20+${attackBonus} vs ${targetAc}: ${rolls.join(',')}}`;
+  return `${tag}{D20+${attackBonus} vs ${targetAc}: ${rolls.join(',')}}`;
 }
 
 /**

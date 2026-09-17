@@ -30,8 +30,6 @@ interface UseGameEngineProps {
   setZonesLocal?: (zones: GroundEffect[]) => void;
   /** Ask the table how many troops are caught by an 'entry' zone (default: all). */
   requestEntryTroops?: (actor: Unit, zone: GroundEffect) => Promise<number>;
-  /** Verbose combat: add die rolls / save counts to effect-damage messages. */
-  verboseCombat?: boolean;
 }
 
 export function useGameEngine({
@@ -45,7 +43,6 @@ export function useGameEngine({
   setScenarioLocal,
   setZonesLocal,
   requestEntryTroops,
-  verboseCombat = false,
 }: UseGameEngineProps) {
   const { addMessage, addError } = useMessageSync(scenarioId);
 
@@ -152,7 +149,7 @@ export function useGameEngine({
       actionType: ActionType,
       subSteps: SubStep[],
       description: string,
-      options?: { chained?: boolean; message?: string },
+      options?: { chained?: boolean; message?: string; verboseMessage?: string },
     ): Promise<CommandLogRow | null> => {
       const isChained = options?.chained ?? false;
 
@@ -206,10 +203,10 @@ export function useGameEngine({
       }
 
       // Unit edits (incl. by players editing their own unit) are flagged to everyone.
-      // options.message overrides the chat text (e.g. verbose dice detail) without
-      // changing the description stored in the command log.
+      // The verbose variant is always recorded alongside the plain text; the
+      // "verbose combat" setting only decides which one is DISPLAYED.
       if (actionType === 'EDIT_UNIT') addError(description);
-      else addMessage(options?.message ?? description);
+      else addMessage(options?.message ?? description, options?.verboseMessage ?? options?.message);
       refreshUndoState();
       return row;
     },
@@ -331,9 +328,10 @@ export function useGameEngine({
     groundZonesRef.current = zones;
   }, []);
 
-  const entryDamageSteps = async (actor: Unit, hex: Hex, zones: GroundEffect[]): Promise<{ steps: SubStep[]; messages: string[] }> => {
+  const entryDamageSteps = async (actor: Unit, hex: Hex, zones: GroundEffect[]): Promise<{ steps: SubStep[]; messages: string[]; verboseMessages: string[] }> => {
     const steps: SubStep[] = [];
     const messages: string[] = [];
+    const verboseMessages: string[] = [];
     for (const z of zones.filter(z => z.kind === 'entry' && ((z.dice && z.dice.trim()) || (z.delta || 0) > 0) && z.q === hex.q && z.r === hex.r)) {
       // Ask how many troops are caught (troops behind may stop at the boundary).
       let affected = Math.max(0, actor.currentTroopCount ?? 0);
@@ -359,9 +357,10 @@ export function useGameEngine({
         unitId: actor.id,
         changes,
       });
-      messages.push(describeEffectDamage(actor.unitName, z.name, detail, verboseCombat));
+      messages.push(describeEffectDamage(actor.unitName, z.name, detail, false));
+      verboseMessages.push(describeEffectDamage(actor.unitName, z.name, detail, true));
     }
-    return { steps, messages };
+    return { steps, messages, verboseMessages };
   };
 
   // Stat zones (ac/morale/movement) materialize as zone-membership effects.
@@ -380,7 +379,7 @@ export function useGameEngine({
   };
 
   const moveUnitRecorded = useCallback(
-    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; stopInZoc?: boolean }): Promise<void> => {
+    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean }): Promise<void> => {
       // Heroes convert actions at the prorated rate (5 actions = 1 full move);
       // units keep the "1 action = 1 full MP pool" economy.
       const { movementPointsAvailable, actionsAvailable } = unit.isHero
@@ -425,16 +424,19 @@ export function useGameEngine({
       const unitEntry = await entryDamageSteps(unit, targetHex, zones);
       subSteps.push(...unitEntry.steps);
       const entryMessages = [...unitEntry.messages];
+      const entryVerbose = [...unitEntry.verboseMessages];
       if (attachedHero) {
         const heroEntry = await entryDamageSteps(attachedHero, targetHex, zones);
         subSteps.push(...heroEntry.steps);
         entryMessages.push(...heroEntry.messages);
+        entryVerbose.push(...heroEntry.verboseMessages);
       }
       // Enter/leave stat zones immediately (zone-membership reconcile).
       subSteps.push(...zoneMembershipSteps(unit, targetHex, zones));
       if (attachedHero) subSteps.push(...zoneMembershipSteps(attachedHero, targetHex, zones));
       const message = [options?.message, ...entryMessages].filter(Boolean).join('  ·  ');
-      await execute('MOVE', subSteps, subSteps[0].description, { ...options, message: message || undefined });
+      const verboseMessage = [options?.verboseMessage, options?.message, ...entryVerbose].filter(Boolean).join('  ·  ');
+      await execute('MOVE', subSteps, subSteps[0].description, { ...options, message: message || undefined, verboseMessage: verboseMessage || undefined });
     },
     [execute, entryDamageSteps, requestEntryTroops],
   );
@@ -466,15 +468,19 @@ export function useGameEngine({
       const unitEntry = await entryDamageSteps(unit, targetHex, zones);
       subSteps.push(...unitEntry.steps);
       const entryMessages = [...unitEntry.messages];
+      const entryVerbose = [...unitEntry.verboseMessages];
       if (attachedHero) {
         const heroEntry = await entryDamageSteps(attachedHero, targetHex, zones);
         subSteps.push(...heroEntry.steps);
         entryMessages.push(...heroEntry.messages);
+        entryVerbose.push(...heroEntry.verboseMessages);
       }
       // Enter/leave stat zones immediately (zone-membership reconcile).
       subSteps.push(...zoneMembershipSteps(unit, targetHex, zones));
       if (attachedHero) subSteps.push(...zoneMembershipSteps(attachedHero, targetHex, zones));
-      await execute('MOVE', subSteps, subSteps[0].description, entryMessages.length ? { message: [subSteps[0].description, ...entryMessages].join('  ·  ') } : undefined);
+      const text = [subSteps[0].description, ...entryMessages].join('  ·  ');
+      const verboseText = [subSteps[0].description, ...entryVerbose].join('  ·  ');
+      await execute('MOVE', subSteps, subSteps[0].description, { message: text, verboseMessage: verboseText });
     },
     [execute, entryDamageSteps, requestEntryTroops],
   );
@@ -870,7 +876,10 @@ export function useGameEngine({
       // Effect damage/heal this tick is surfaced in the chat (previously only the
       // command description showed, so DoT/zone damage was invisible).
       const effectMessages = effectsRes.damageEvents.map((ev: EffectDamageEvent) =>
-        describeEffectDamage(ev.unitName, ev.source, ev.detail, verboseCombat),
+        describeEffectDamage(ev.unitName, ev.source, ev.detail, false),
+      );
+      const effectVerbose = effectsRes.damageEvents.map((ev: EffectDamageEvent) =>
+        describeEffectDamage(ev.unitName, ev.source, ev.detail, true),
       );
 
       // Charge forfeit: units in the ending group that charged but never used their
@@ -933,10 +942,11 @@ export function useGameEngine({
 
       const turnLine = `End Turn — ${next} turn begins`;
       const endMessage = [turnLine, ...effectMessages].join('  ·  ');
-      const row = await execute('END_TURN', subSteps, turnLine, { message: endMessage });
+      const endVerbose = [turnLine, ...effectVerbose].join('  ·  ');
+      const row = await execute('END_TURN', subSteps, turnLine, { message: endMessage, verboseMessage: endVerbose });
       return { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded: leavingFreePlay, ok: !!row, zonesAfter };
     },
-    [execute, scenarioId, verboseCombat],
+    [execute, scenarioId],
   );
 
   // Apply / remove a temporary effect as a command (undoable, broadcast). Returns
