@@ -13,7 +13,8 @@ import { isMeleeWeapon, isInAnyHostileKillZone, computeWeaponSwitchAc } from '@/
 import { areHexesAdjacent } from '@/lib/unitMorale';
 import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep } from '@/lib/commandLog';
-import { computeOccupiedHexes, computeThreatHexes, terrainCostOf, TerrainCosts } from './mapGeometry';
+import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
+import { Walls } from '@/lib/walls';
 import { ExecuteFn } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingHeroSwapConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
 
@@ -39,6 +40,7 @@ interface MoveActionsDeps {
   weaponSelectedTurnRef: { current: Record<string, number> };
   setActiveHeroId: (id: string | null) => void;
   terrainCosts?: TerrainCosts;
+  walls?: Walls;
   /** Late-bound opportunity-attack resolver (owned by useCombatActions, assigned
    *  via a ref to break the useMoveActions → useCombatActions hook-order cycle). */
   opportunityAttacksRef: { current: ((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null };
@@ -67,6 +69,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     weaponSelectedTurnRef,
     setActiveHeroId,
     terrainCosts,
+    walls,
     opportunityAttacksRef,
   } = deps;
 
@@ -211,7 +214,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (unit.isCharging) {
       const occupied = computeOccupiedHexes(units, unitId);
       const maxMP = unitMaxMP(unit);
-      const chargeReach = computeChargeReachable(unit, occupied, maxMP, (q, r) => terrainCostOf(terrainCosts, q, r));
+      const chargeReach = computeChargeReachable(unit, occupied, maxMP, makeCostOfHex(terrainCosts, walls), makeChargeBlockedEdge(walls));
       const cost = chargeReach.get(`${targetHex.q},${targetHex.r}`);
       if (!cost) {
         addMessage(`${unit.unitName} cannot move there — outside the charge route`);
@@ -244,7 +247,8 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const effectiveMax = computeEffectiveMovement(unit, movementMult);
     const occupied = computeOccupiedHexes(units, unitId);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
-    const costOfHex = (q: number, r: number) => terrainCostOf(terrainCosts, q, r);
+    const costOfHex = makeCostOfHex(terrainCosts, walls);
+    const blockedEdge = makeBlockedEdge(walls);
     // The drop search is bounded by the PHYSICAL hex-hop limit (a unit can't walk
     // more hexes than its move), but NOT by MP: painted hexes are found at their
     // TRUE entry cost even when that cost exceeds the pool, so affordability (and
@@ -253,7 +257,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       effectiveMax,
       attachedHero && heroMax ? heroMax : Infinity,
     ));
-    const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true);
+    const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true, blockedEdge);
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
       // Beyond the physical hop limit — genuinely can't walk that far.
@@ -275,7 +279,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       return;
     }
     await completeMove(unit, targetHex, entry.cost, false, effectiveMax, attachedHero, heroMax);
-  }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove]);
+  }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove]);
 
   const handleChangeFormation = useCallback(async (unit: Unit, formation: string) => {
     if (unit.isHero || freeMove) {

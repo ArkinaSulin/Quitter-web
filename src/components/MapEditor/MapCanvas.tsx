@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
 import { HEX_SIZE, DEFAULT_GRID_RADIUS, TerrainCosts, costShade } from '@/components/ScenarioMap/mapGeometry';
+import { Walls, edgeRef, nearestEdge, hexCorner } from '@/lib/walls';
 
 export interface MapCanvasProps {
   imageUrl: string;
@@ -16,12 +17,19 @@ export interface MapCanvasProps {
   scale: number;
   gridRadius: number;
   terrainCosts: TerrainCosts;
+  walls?: Walls;
   /** null = view/pan; { value } = paint hex entry costs (0..9) with left-drag. */
   paintValue: number | null;
+  /** Arm the wall brush: left-click/drag places on the nearest edge. */
+  wallTool?: boolean;
+  /** Edge currently selected for editing, as its canonical {q,r,dir}. */
+  selectedEdge?: { q: number; r: number; dir: number } | null;
   readOnly?: boolean;
   onPaintHex: (q: number, r: number) => void;
   /** Optional: right-click clears a hex back to the default 1 MP (paint mode). */
   onClearHex?: (q: number, r: number) => void;
+  onPaintWall?: (q: number, r: number, dir: number) => void;
+  onClearWall?: (q: number, r: number, dir: number) => void;
 }
 
 type View = { zoom: number; ox: number; oy: number };
@@ -35,14 +43,14 @@ function hexCorners(cx: number, cy: number, size: number): { x: number; y: numbe
   return pts;
 }
 
-export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, paintValue, readOnly = false, onPaintHex, onClearHex }: MapCanvasProps) {
+export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, walls, paintValue, wallTool = false, selectedEdge, readOnly = false, onPaintHex, onClearHex, onPaintWall, onClearWall }: MapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const view = useRef<View>({ zoom: 1, ox: 0, oy: 0 });
   const lastBg = useRef<HTMLImageElement | null>(null);
-  const drag = useRef<{ mode: 'none' | 'paint' | 'pan'; lastHex: string; sx: number; sy: number }>({ mode: 'none', lastHex: '', sx: 0, sy: 0 });
+  const drag = useRef<{ mode: 'none' | 'paint' | 'pan' | 'wall'; lastHex: string; sx: number; sy: number }>({ mode: 'none', lastHex: '', sx: 0, sy: 0 });
   const [hover, setHover] = useState<string | null>(null);
-  const propsRef = useRef({ imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, paintValue, readOnly, onPaintHex, onClearHex });
-  propsRef.current = { imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, paintValue, readOnly, onPaintHex, onClearHex };
+  const propsRef = useRef({ imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, walls, paintValue, wallTool, selectedEdge, readOnly, onPaintHex, onClearHex, onPaintWall, onClearWall });
+  propsRef.current = { imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, walls, paintValue, wallTool, selectedEdge, readOnly, onPaintHex, onClearHex, onPaintWall, onClearWall };
 
   // Cache the background image so draw is synchronous.
   useEffect(() => {
@@ -146,6 +154,38 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
       }
     }
 
+    // Edge walls: thick segment along the shared edge, styled by property.
+    const worldCorner = (q: number, r: number, i: number) => hexCorner({ q, r }, i, HEX_SIZE);
+    if (p.walls && Object.keys(p.walls).length > 0) {
+      ctx.lineCap = 'round';
+      for (const key of Object.keys(p.walls)) {
+        const [q, r, d] = key.split(',').map(Number);
+        if (!Number.isFinite(q) || !Number.isFinite(r) || !Number.isFinite(d)) continue;
+        const w = p.walls[key];
+        const blocked = !!w.a.block || !!w.b.block;
+        const hasCost = w.a.moveCost !== undefined || w.b.moveCost !== undefined;
+        ctx.strokeStyle = blocked ? 'rgba(20,20,24,0.95)' : hasCost ? 'rgba(196,154,88,0.95)' : 'rgba(150,165,185,0.9)';
+        ctx.lineWidth = blocked ? 7 : 5;
+        const a = worldCorner(q, r, d);
+        const b = worldCorner(q, r, d + 1);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+    }
+    if (p.selectedEdge) {
+      const ref = edgeRef(p.selectedEdge.q, p.selectedEdge.r, p.selectedEdge.dir);
+      ctx.strokeStyle = 'rgba(255, 220, 80, 0.95)';
+      ctx.lineWidth = 3;
+      const a = worldCorner(ref.aq, ref.ar, ref.dir);
+      const b = worldCorner(ref.aq, ref.ar, ref.dir + 1);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+
     // Cost labels: constant ~13px ON SCREEN (the ctx is zoom-scaled, so use
     // world sizes of screen/zoom) so they stay readable at any zoom.
     ctx.font = `bold ${Math.max(13 / zoom, 0.5)}px ui-monospace, monospace`;
@@ -198,12 +238,32 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
     return hex;
   };
 
+  const edgeAtClient = (sx: number, sy: number): { q: number; r: number; dir: number } | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const { zoom, ox, oy } = view.current;
+    const world = { x: (sx - rect.left - ox) / zoom, y: (sy - rect.top - oy) / zoom };
+    const hex = pixelToHex(world, HEX_SIZE);
+    const R = propsRef.current.gridRadius || DEFAULT_GRID_RADIUS;
+    if (Math.abs(hex.q) > R || Math.abs(hex.r) > R || Math.abs(hex.s) > R) return null;
+    const { dir } = nearestEdge(hex, world, HEX_SIZE);
+    return { q: hex.q, r: hex.r, dir };
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     canvas.setPointerCapture(e.pointerId);
     const p = propsRef.current;
-    if (e.button === 0 && p.paintValue !== null && !p.readOnly) {
+    if (e.button === 0 && p.wallTool && !p.readOnly && p.onPaintWall) {
+      drag.current.mode = 'wall';
+      const edge = edgeAtClient(e.clientX, e.clientY);
+      if (edge) {
+        drag.current.lastHex = `${edge.q},${edge.r},${edge.dir}`;
+        p.onPaintWall(edge.q, edge.r, edge.dir);
+      }
+    } else if (e.button === 0 && p.paintValue !== null && !p.readOnly) {
       drag.current.mode = 'paint';
       const hex = hexAtClient(e.clientX, e.clientY);
       if (hex) {
@@ -226,6 +286,15 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
       d.sx = e.clientX;
       d.sy = e.clientY;
       requestAnimationFrame(draw);
+      return;
+    }
+    if (d.mode === 'wall') {
+      const p = propsRef.current;
+      const edge = edgeAtClient(e.clientX, e.clientY);
+      if (edge && p.onPaintWall) {
+        const k = `${edge.q},${edge.r},${edge.dir}`;
+        if (k !== d.lastHex) { d.lastHex = k; p.onPaintWall(edge.q, edge.r, edge.dir); }
+      }
       return;
     }
     if (d.mode === 'paint') {
@@ -269,7 +338,13 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
       onContextMenu={(e) => {
         e.preventDefault();
         const p = propsRef.current;
-        if (p.readOnly || p.paintValue === null || !p.onClearHex) return;
+        if (p.readOnly) return;
+        if (p.wallTool && p.onClearWall) {
+          const edge = edgeAtClient(e.clientX, e.clientY);
+          if (edge) p.onClearWall(edge.q, edge.r, edge.dir);
+          return;
+        }
+        if (p.paintValue === null || !p.onClearHex) return;
         const hex = hexAtClient(e.clientX, e.clientY);
         if (hex) p.onClearHex(hex.q, hex.r);
       }}

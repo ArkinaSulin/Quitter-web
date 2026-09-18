@@ -9,6 +9,8 @@ import { AlliancePanel } from './AlliancePanel';
 import { MapEditorPanel } from './MapEditorPanel';
 import { MapPickerList } from './MapPickerList';
 import { TerrainPaintPanel } from './TerrainPaintPanel';
+import { WallPaintPanel } from './WallPaintPanel';
+import { Walls, WallFace } from '@/lib/walls';
 import EffectsPanel from './EffectsPanel';
 import { PlayerPanel } from './PlayerPanel';
 import { UndoDebugPanel } from './UndoDebugPanel';
@@ -51,6 +53,12 @@ interface LeftPanelProps {
   onClearMap: () => void;
   terrainBrushCost: number | null;
   onSetTerrainBrushCost: (v: number | null) => void;
+  wallBrush: boolean;
+  onToggleWallBrush: () => void;
+  walls: Walls;
+  selectedWallEdge: { q: number; r: number; dir: number } | null;
+  onChangeWallFace: (side: 'a' | 'b', patch: Partial<WallFace>) => void;
+  onRemoveWall: () => void;
   zoneTemplateId: string | null;
   onSetZoneTemplateId: (id: string | null) => void;
   /** Assigned players may paint effect zones (unassigned spectators cannot). */
@@ -63,7 +71,7 @@ interface LeftPanelProps {
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, wallBrush, onToggleWallBrush, walls, selectedWallEdge, onChangeWallFace, onRemoveWall, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
   // Persist which tabs are open per scenario + user, so a rejoined session
   // restores the same panel layout.
   // Persist which tabs are open per scenario + user. The saved layout is restored
@@ -123,7 +131,21 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
       label: 'Movement',
       icon: <FootIcon />,
       requiresGM: true,
-      content: <TerrainPaintPanel value={terrainBrushCost} onSet={onSetTerrainBrushCost} />,
+      content: (
+        <div className="space-y-4">
+          <TerrainPaintPanel value={terrainBrushCost} onSet={onSetTerrainBrushCost} />
+          <div className="pt-2 border-t border-gray-700">
+            <WallPaintPanel
+              armed={wallBrush}
+              onToggleArm={onToggleWallBrush}
+              walls={walls}
+              selectedEdge={selectedWallEdge}
+              onChangeFace={onChangeWallFace}
+              onRemove={onRemoveWall}
+            />
+          </div>
+        </div>
+      ),
     },
     {
       id: 'effects-paint',

@@ -4,6 +4,7 @@
 // entry costs (terrain_costs). Scenarios snapshot one into scenarios.map_data.
 
 import { TerrainCosts } from '@/components/ScenarioMap/mapGeometry';
+import { Walls, parseWalls } from '@/lib/walls';
 
 /** Reserved per-hex authored effects (future map-effects pass). Unused in v1. */
 export type MapHexEffect = {
@@ -22,6 +23,8 @@ export interface MapEntity {
   scale: number;
   gridRadius: number;
   terrainCosts: TerrainCosts;
+  /** Edge walls/barriers keyed "q,r,dir" (see `walls.ts`). */
+  walls: Walls;
   hexEffects: MapHexEffect[];
   createdAt: string;
   updatedAt: string;
@@ -44,6 +47,7 @@ export function mapMapRow(row: any): MapEntity {
     scale: Number(row.scale) || MAP_DEFAULTS.scale,
     gridRadius: Number(row.grid_radius) || MAP_DEFAULTS.gridRadius,
     terrainCosts: parseTerrainCosts(row.terrain_costs),
+    walls: parseWalls(row.walls),
     hexEffects: Array.isArray(row.hex_effects) ? row.hex_effects : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -74,6 +78,7 @@ export function mapEntityToRow(entity: MapEntity, creatorId?: string) {
     scale: entity.scale || MAP_DEFAULTS.scale,
     grid_radius: entity.gridRadius || MAP_DEFAULTS.gridRadius,
     terrain_costs: entity.terrainCosts || {},
+    walls: entity.walls || {},
     hex_effects: entity.hexEffects || [],
     created_by: creatorId,
   };

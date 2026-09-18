@@ -12,7 +12,8 @@ import { isUnitRouted } from '@/lib/unitMorale';
 import { parseWeapons } from '@/lib/weaponParser';
 import { isRangedCapableWeapon, getReactionMoveBudget } from '@/lib/archerReaction';
 import { determineCombatPosition } from '@/lib/unitCombat';
-import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, TerrainCosts } from './mapGeometry';
+import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
+import { Walls } from '@/lib/walls';
 
 /** Hovered unit's front-arc threat tint (non-loose units only). */
 function getOverlayForUnit(unit: Unit): Record<string, string> {
@@ -41,6 +42,7 @@ export interface OverlayState {
   backgroundConfig: MapBackgroundConfig | null;
   rangeViolationHex: Hex | null;
   terrainCosts?: TerrainCosts;
+  walls?: Walls;
 }
 
 export function computeOverlayMap(state: OverlayState): Record<string, string> {
@@ -55,7 +57,12 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     backgroundConfig,
     rangeViolationHex,
     terrainCosts,
+    walls,
   } = state;
+
+  const costOfHex = makeCostOfHex(terrainCosts, walls);
+  const blockedEdge = makeBlockedEdge(walls);
+  const chargeBlockedEdge = makeChargeBlockedEdge(walls);
 
   // Reaction mode drag: hovering a hostile in weapon range shows range rings;
   // otherwise the 50% reaction-move hexes.
@@ -76,7 +83,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const maxMP = computeEffectiveMovement(archer, getFormationMultiplier(formationsMap, archer.currentFormation, 'movement_multiplier'));
       const budget = getReactionMoveBudget(maxMP);
       const occupied = computeOccupiedHexes(units, archer.id);
-      const reachable = computeReachableMap(archer, budget, occupied, new Set(), (q, r) => terrainCostOf(terrainCosts, q, r));
+      const reachable = computeReachableMap(archer, budget, occupied, new Set(), costOfHex, false, blockedEdge);
       reachable.forEach((entry, key) => {
         combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
       });
@@ -112,7 +119,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const combined: Record<string, string> = {};
       const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
       const effectiveMax = computeEffectiveMovement(draggedUnit, movementMult);
-      const chargeReach = computeChargeReachable(draggedUnit, occupied, effectiveMax, (q, r) => terrainCostOf(terrainCosts, q, r));
+      const chargeReach = computeChargeReachable(draggedUnit, occupied, effectiveMax, costOfHex, chargeBlockedEdge);
       for (const [key, cost] of Array.from(chargeReach.entries())) {
         combined[key] = cost >= getSetting('charge_full_distance', 2) ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';
       }
@@ -135,7 +142,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const heroMax = computeEffectiveMovement(attachedHero, heroMult);
       pool = Math.min(pool, attachedHero.isHero ? computeHeroMovePool(attachedHero, heroMax) : computeMovePool(attachedHero, heroMax));
     }
-    const reachableMap = computeReachableMap(draggedUnit, pool, occupied, threatHexes, (q, r) => terrainCostOf(terrainCosts, q, r));
+    const reachableMap = computeReachableMap(draggedUnit, pool, occupied, threatHexes, costOfHex, false, blockedEdge);
 
     const combined: Record<string, string> = {};
 

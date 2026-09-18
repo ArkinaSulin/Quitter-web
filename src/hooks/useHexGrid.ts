@@ -42,7 +42,7 @@ export interface UseHexGridProps {
   gridRadius: number;
   units: Unit[];
   onUnitMove: (unitId: string, targetHex: Hex) => void;
-  onHexClick?: (hex: Hex, unit?: Unit) => void;
+  onHexClick?: (hex: Hex, unit?: Unit, clientX?: number, clientY?: number) => void;
   /** A click (mouse down + up with negligible movement) on a unit token. */
   onUnitClick?: (unit: Unit, clientX: number, clientY: number) => void;
   onHexRightClick?: (hex: Hex, unit: Unit | undefined, clientX: number, clientY: number) => void;
@@ -396,7 +396,7 @@ export function useHexGrid({
     }
 
     if (mouseDownTarget === 'hex' && !draggingUnitId) {
-      if (targetHex && onHexClick) onHexClick(targetHex, getUnitAt(targetHex));
+      if (targetHex && onHexClick) onHexClick(targetHex, getUnitAt(targetHex), e.clientX, e.clientY);
     }
 
     setIsPanning(false);

@@ -6,6 +6,8 @@ import { determineCombatPosition } from '@/lib/unitCombat';
 import { canStopEnemyMovement } from '@/lib/formationRules';
 import { isUnitInteractable, isDeadCorpse } from '@/lib/unitInteractions';
 import { isUnitRouted } from '@/lib/unitMorale';
+import { Walls, crossingCost, blockedStep, hasWallEdge } from '@/lib/walls';
+import type { CostOfHexFn, BlockedEdgeFn } from '@/lib/moveCost';
 
 export const HEX_SIZE = 100;
 export const TOKEN_WIDTH = HEX_SIZE * 1.6;
@@ -20,6 +22,33 @@ export function terrainCostOf(terrain: TerrainCosts | null | undefined, q: numbe
   const v = terrain ? terrain[`${q},${r}`] : undefined;
   const c = v == null ? 1 : Math.round(v);
   return Number.isFinite(c) && c >= 0 ? c : 1;
+}
+
+/**
+ * Combined step-cost for movement: a wall face on the destination's side REPLACES
+ * the hex's terrain entry cost when crossing that edge; otherwise terrain applies.
+ * `fromQ/fromR` are supplied by the movement BFS.
+ */
+export function makeCostOfHex(terrain: TerrainCosts | null | undefined, walls: Walls | null | undefined): CostOfHexFn {
+  return (q, r, fromQ, fromR) => {
+    if (walls && fromQ !== undefined && fromR !== undefined) {
+      const wc = crossingCost(walls, { q: fromQ, r: fromR }, { q, r });
+      if (wc !== undefined) return wc;
+    }
+    return terrainCostOf(terrain, q, r);
+  };
+}
+
+/** Impassable-edge predicate for the movement BFS (undefined when no walls). */
+export function makeBlockedEdge(walls: Walls | null | undefined): BlockedEdgeFn | undefined {
+  if (!walls || Object.keys(walls).length === 0) return undefined;
+  return (fromQ, fromR, toQ, toR) => blockedStep(walls, fromQ, fromR, toQ, toR);
+}
+
+/** Charges are blocked by ANY wall edge (they can't climb/charge over a barrier). */
+export function makeChargeBlockedEdge(walls: Walls | null | undefined): BlockedEdgeFn | undefined {
+  if (!walls || Object.keys(walls).length === 0) return undefined;
+  return (fromQ, fromR, toQ, toR) => hasWallEdge(walls, fromQ, fromR, toQ, toR);
 }
 
 /**

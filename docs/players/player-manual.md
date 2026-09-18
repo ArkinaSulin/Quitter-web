@@ -490,6 +490,16 @@ A 0-cost chain can't roam forever — each hex still costs one *step* and your
 pool caps both total MP and total hexes. The GM paints costs in the
 **Movement** tab (see §12) or assigns a reusable map.
 
+### Walls (edges)
+
+A **wall** sits on the border between two hexes and has a face on each side.
+Crossing **into** a walled side **replaces** that hex's entry cost with the
+wall's MP (or is impossible if the wall blocks there), and the wall can grant
+**melee / ranged AC** to whoever stands on that side — so a wall protects the
+defender behind it and is cheaper or dearer to climb from either direction.
+Charges cannot cross any wall. The GM places walls in the Map Editor's **Walls**
+tab or the scenario **Movement** tab; they show as thick edge segments.
+
 ### Changing formation
 
 Right-click → pick a formation you know. A change costs **half of your current

@@ -10,9 +10,10 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
 import { MapEntity, mapMapRow, mapEntityToRow } from '@/lib/mapEntities';
 import { MAP_DEFAULTS } from '@/lib/mapEntities';
+import { Walls, WallFace, edgeRef } from '@/lib/walls';
 import { MapCanvas } from './MapCanvas';
 
-type Tab = 'image' | 'movement';
+type Tab = 'image' | 'movement' | 'walls';
 
 function blankMap(): MapEntity {
   return {
@@ -25,6 +26,7 @@ function blankMap(): MapEntity {
     scale: MAP_DEFAULTS.scale,
     gridRadius: 12,
     terrainCosts: {},
+    walls: {},
     hexEffects: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -172,6 +174,47 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     update({ terrainCosts });
   }, [entity, update]);
 
+  // ---- walls ----
+  const [wallTool, setWallTool] = useState(false);
+  const [selectedEdge, setSelectedEdge] = useState<{ q: number; r: number; dir: number } | null>(null);
+
+  const paintWallEdge = useCallback((q: number, r: number, dir: number) => {
+    if (!entity) return;
+    const ref = edgeRef(q, r, dir);
+    const walls = { ...entity.walls };
+    if (!walls[ref.key]) walls[ref.key] = { a: { block: true }, b: { block: true } };
+    update({ walls });
+    setSelectedEdge({ q: ref.aq, r: ref.ar, dir: ref.dir });
+  }, [entity, update]);
+
+  const clearWallEdge = useCallback((q: number, r: number, dir: number) => {
+    if (!entity) return;
+    const ref = edgeRef(q, r, dir);
+    if (!entity.walls[ref.key]) return;
+    const walls = { ...entity.walls };
+    delete walls[ref.key];
+    update({ walls });
+    setSelectedEdge(sel => (sel && sel.q === ref.aq && sel.r === ref.ar && sel.dir === ref.dir ? null : sel));
+  }, [entity, update]);
+
+  const patchSelectedFace = useCallback((side: 'a' | 'b', patch: Partial<WallFace>) => {
+    if (!entity || !selectedEdge) return;
+    const ref = edgeRef(selectedEdge.q, selectedEdge.r, selectedEdge.dir);
+    const wall = entity.walls[ref.key];
+    if (!wall) return;
+    const face = { ...wall[side] };
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined || v === null || v === ('' as any)) delete (face as any)[k];
+      else (face as any)[k] = v;
+    }
+    update({ walls: { ...entity.walls, [ref.key]: { ...wall, [side]: face } } });
+  }, [entity, selectedEdge, update]);
+
+  const deleteSelectedWall = useCallback(() => {
+    if (!selectedEdge) return;
+    clearWallEdge(selectedEdge.q, selectedEdge.r, selectedEdge.dir);
+  }, [selectedEdge, clearWallEdge]);
+
   const uploadImage = useCallback(async (file: File) => {
     if (!file) return;
     // Keep the original file name, sanitized for storage: lowercase, spaces -> _,
@@ -204,6 +247,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
   const panelDefs: { id: Tab; label: string }[] = [
     { id: 'image', label: 'Image' },
     { id: 'movement', label: 'Movement cost' },
+    { id: 'walls', label: 'Walls' },
   ];
 
   return (
@@ -373,6 +417,72 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                 </div>
               </>
             )}
+
+            {tab === 'walls' && entity && (
+              <>
+                <p className="text-[10px] uppercase tracking-wide text-gray-500">Edge walls / barriers</p>
+                <button
+                  disabled={readOnly}
+                  onClick={() => { setWallTool(v => !v); setSelectedEdge(null); }}
+                  className={`w-full py-1.5 rounded border text-xs font-semibold ${wallTool ? 'bg-yellow-600 text-black border-yellow-300' : 'bg-gray-800 text-gray-100 border-gray-600 hover:bg-gray-700'}`}
+                >
+                  {wallTool ? 'Wall tool ON' : 'Arm wall tool'}
+                </button>
+                <p className="text-xs text-gray-500">
+                  {wallTool
+                    ? 'Left-click / drag near a hex edge to place a barrier. Right-click removes. Click a wall to edit its two faces.'
+                    : 'Arm the tool, then click near a hex edge. Drag places across several edges.'}
+                </p>
+                {selectedEdge ? (() => {
+                  const ref = edgeRef(selectedEdge.q, selectedEdge.r, selectedEdge.dir);
+                  const wall = entity.walls[ref.key];
+                  if (!wall) return <p className="text-xs text-gray-500">No wall on that edge.</p>;
+                  const num = (v: number | undefined) => (v === undefined ? '' : String(v));
+                  const editNum = (raw: string, max: number): number | undefined =>
+                    raw === '' ? undefined : Math.max(0, Math.min(max, Math.round(Number(raw))));
+                  const face = (key: 'a' | 'b', label: string) => {
+                    const f = wall[key];
+                    return (
+                      <div className="rounded border border-gray-700 p-2 space-y-1">
+                        <p className="text-[10px] uppercase tracking-wide text-gray-500">Face — hex {label}</p>
+                        <div className="flex items-center gap-2 text-[11px]">
+                          <label className="flex items-center gap-1" title="Replaces the entered hex's terrain cost when crossing into this side.">MP
+                            <input type="number" min={0} max={99} disabled={readOnly} value={num(f.moveCost)} placeholder="—"
+                              onChange={e => patchSelectedFace(key, { moveCost: editNum(e.target.value, 99) })}
+                              className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
+                          </label>
+                          <label className="flex items-center gap-1" title="Impassable from this side.">
+                            <input type="checkbox" disabled={readOnly} checked={!!f.block} onChange={e => patchSelectedFace(key, { block: e.target.checked })} />block
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px]">
+                          <label className="flex items-center gap-1">Melee AC
+                            <input type="number" disabled={readOnly} value={num(f.meleeAc)} placeholder="0"
+                              onChange={e => patchSelectedFace(key, { meleeAc: editNum(e.target.value, 99) })}
+                              className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
+                          </label>
+                          <label className="flex items-center gap-1">Ranged AC
+                            <input type="number" disabled={readOnly} value={num(f.rangedAc)} placeholder="0"
+                              onChange={e => patchSelectedFace(key, { rangedAc: editNum(e.target.value, 99) })}
+                              className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  };
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-400">Edge ({ref.aq},{ref.ar}) ⇄ ({ref.bq},{ref.br}). Each face belongs to the hex on its side: its MP replaces that hex's terrain when crossing in; its AC protects the unit standing there.</p>
+                      {face('a', `(${ref.aq}, ${ref.ar})`)}
+                      {face('b', `(${ref.bq}, ${ref.br})`)}
+                      {!readOnly && <button onClick={deleteSelectedWall} className="text-xs px-2 py-1 rounded bg-red-900/60 hover:bg-red-800 text-red-100">Remove wall</button>}
+                    </div>
+                  );
+                })() : (
+                  <p className="text-xs text-gray-500">Click an edge on the map to edit it.</p>
+                )}
+              </>
+            )}
           </div>
         </div>
 
@@ -385,10 +495,15 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
             scale={entity.scale}
             gridRadius={entity.gridRadius}
             terrainCosts={entity.terrainCosts}
+            walls={entity.walls}
+            wallTool={tab === 'walls' && wallTool}
+            selectedEdge={selectedEdge}
             paintValue={tab === 'movement' ? paintValue : null}
             readOnly={readOnly}
             onPaintHex={handlePaint}
             onClearHex={handleClearHex}
+            onPaintWall={paintWallEdge}
+            onClearWall={clearWallEdge}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-500">

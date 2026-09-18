@@ -16,6 +16,12 @@ export interface MovePathEntry {
 
 type MpBudget = Pick<Unit, 'movementPointsAvailable' | 'actionsAvailable'>;
 
+/** Per-hex MP entry cost; `fromQ/fromR` (when supplied) let a caller apply a
+ *  per-EDGE cost (walls) that replaces the destination hex's terrain cost. */
+export type CostOfHexFn = (q: number, r: number, fromQ?: number, fromR?: number) => number;
+/** Predicate: is the edge `from -> to` impassable? (walls authored as blocks). */
+export type BlockedEdgeFn = (fromQ: number, fromR: number, toQ: number, toR: number) => boolean;
+
 /**
  * Movement budget for a move, in the "1 action = 1 full MP pool" model.
  * Includes any already-materialized MP plus every remaining action as a full
@@ -249,7 +255,8 @@ export function computeChargeReachable(
   unit: { hex: Hex; facing: number },
   occupied: Set<string>,
   maxHexes = 2,
-  costOfHex?: (q: number, r: number) => number,
+  costOfHex?: CostOfHexFn,
+  blockedEdge?: BlockedEdgeFn,
 ): Map<string, number> {
   const result = new Map<string, number>();
   const frontDirs = [(unit.facing + 4) % 6, (unit.facing + 5) % 6];
@@ -268,8 +275,9 @@ export function computeChargeReachable(
       const nr = cur.r + dir.r;
       const k = key(nq, nr);
       if (visited.has(k) || occupied.has(k)) continue;
+      if (blockedEdge && blockedEdge(cur.q, cur.r, nq, nr)) continue;
       // A charge cannot enter OR pass through broken terrain (painted MP cost > 1).
-      if (costOfHex && (costOfHex(nq, nr) ?? 1) > 1) continue;
+      if (costOfHex && (costOfHex(nq, nr, cur.q, cur.r) ?? 1) > 1) continue;
       visited.add(k);
       const cost = cur.cost + 1;
       result.set(k, cost);
@@ -300,18 +308,20 @@ export function computeReachableMap(
   maxMP: number,
   occupied: Set<string>,
   threatHexes: Set<string>,
-  costOfHex?: (q: number, r: number) => number,
+  costOfHex?: CostOfHexFn,
   /** When true, keep hexes whose entry path COST exceeds maxMP (the unit can't
    *  pay, but soft enforcement may still be asked to move there). The hex-STEP
    *  cap (maxMP) always applies, so reach stays physically bounded. Default
    *  false keeps today's payable-only behavior (overlay highlight). */
   allowBeyondBudget?: boolean,
+  /** Optional: impassable edges (walls authored as blocks). */
+  blockedEdge?: BlockedEdgeFn,
 ): Map<string, MovePathEntry> {
   // MP to ENTER hex (q,r). Defaults to 1; a painted 0 = free entry; clamps only
-  // negative/garbage to 1.
-  const stepCost = (q: number, r: number): number => {
+  // negative/garbage to 1. `fromQ/fromR` let a wall face REPLACE the entry cost.
+  const stepCost = (q: number, r: number, fromQ: number, fromR: number): number => {
     if (!costOfHex) return 1;
-    const c = Math.round(costOfHex(q, r) ?? 1);
+    const c = Math.round(costOfHex(q, r, fromQ, fromR) ?? 1);
     return Number.isFinite(c) && c >= 0 ? c : 1;
   };
 
@@ -352,7 +362,8 @@ export function computeReachableMap(
         const nr = cur.r + dir.r;
         const k = key(nq, nr);
         if (occupied.has(k)) continue;
-        const nc = cur.d + stepCost(nq, nr);
+        if (blockedEdge && blockedEdge(cur.q, cur.r, nq, nr)) continue;
+        const nc = cur.d + stepCost(nq, nr, cur.q, cur.r);
         const nh = cur.hops + 1;
         if ((!allowBeyondBudget && nc > maxMP) || nh > maxMP) continue;
         if (!improves(bestCost.get(k), bestHops.get(k), nc, nh)) continue;
@@ -423,7 +434,8 @@ export function computeReachableMap(
       const nq = cur.q + dir.q;
       const nr = cur.r + dir.r;
       if (occupied.has(key(nq, nr))) continue;
-      const nc = cur.d + stepCost(nq, nr);
+      if (blockedEdge && blockedEdge(cur.q, cur.r, nq, nr)) continue;
+      const nc = cur.d + stepCost(nq, nr, cur.q, cur.r);
       if ((allowBeyondBudget || nc <= maxMP) && cur.hops + 1 <= maxMP) {
         relax(nq, nr, cur.facing, nc, cur.hops + 1);
       }

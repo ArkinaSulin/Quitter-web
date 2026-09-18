@@ -17,7 +17,8 @@ import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout } from '@/lib/
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { UnitChange, SubStep } from '@/lib/commandLog';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
-import { computeOccupiedHexes, terrainCostOf, TerrainCosts } from './mapGeometry';
+import { computeOccupiedHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts } from './mapGeometry';
+import { Walls } from '@/lib/walls';
 import { ExecuteFn, routeUnit } from './routeUnit';
 
 interface ReactionActionsDeps {
@@ -37,6 +38,7 @@ interface ReactionActionsDeps {
    *  Absent when fog is off. */
   canAttackTarget?: (attacker: Unit, target: Unit) => boolean;
   terrainCosts?: TerrainCosts;
+  walls?: Walls;
 }
 
 export function useReactionActions(deps: ReactionActionsDeps) {
@@ -55,6 +57,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     flashRangeViolation,
     canAttackTarget,
     terrainCosts,
+    walls,
   } = deps;
 
   const [reactionOffers, setReactionOffers] = useState<Map<string, string>>(new Map()); // archerId -> moverId
@@ -153,6 +156,9 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       true, false, null, null, Math.random, false,
       formationsMap[archer.currentFormation],
       formationsMap[mover.currentFormation],
+      false,
+      null,
+      walls,
     );
     const hits = outcome.firstStrikeAttacks.filter(a => a.isHit).length;
     const newHp = Math.max(0, mover.currentUnitHp - outcome.firstStrikeDamage);
@@ -301,8 +307,8 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const maxMP = unitMaxMP(archer);
     const budget = getReactionMoveBudget(maxMP);
     const occupied = computeOccupiedHexes(displayUnits, archer.id);
-    return computeReachableMap(archer, budget, occupied, new Set(), (q, r) => terrainCostOf(terrainCosts, q, r));
-  }, [displayUnits, unitMaxMP, terrainCosts]);
+    return computeReachableMap(archer, budget, occupied, new Set(), makeCostOfHex(terrainCosts, walls), false, makeBlockedEdge(walls));
+  }, [displayUnits, unitMaxMP, terrainCosts, walls]);
 
   const handleReactionAttack = useCallback(async (attackerId: string, targetId: string) => {
     if (!reactionMode || attackerId !== reactionMode.archer.id) return;

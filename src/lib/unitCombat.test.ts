@@ -708,6 +708,20 @@ describe('resolveCombatSequence', () => {
     expect(result.firstStrikeAttacks[0].dicePair).toBeUndefined();
   });
 
+  it('a wall face grants its melee AC to the defender across the edge', () => {
+    // Hero attacker (skips AGR), fixed roll 12 + bonus 3 = 15 vs defender AC 14.
+    const heroAttacker = { ...attacker, isHero: true };
+    const meleeWeapon = { attackBonus: 3, damageDice: '1d8', is_reach: false, numberOfAttacks: 1 };
+    const rng = () => 0.55; // d20 = 12
+    const clean = resolveCombatSequence(heroAttacker, defender, meleeWeapon, null, 0, 1, 1, 10, 10, 20, false, false, null, null, rng);
+    expect(clean.firstStrikeAttacks[0].isHit).toBe(true);
+    // The edge (0,-1) ⇄ (0,0): the defender's face grants +5 AC → 15 < 19.
+    const walls = { '0,-1,1': { a: {}, b: { meleeAc: 5 } } };
+    const walled = resolveCombatSequence(heroAttacker, defender, meleeWeapon, null, 0, 1, 1, 10, 10, 20, false, false, null, null, rng, false, null, null, false, null, walls);
+    expect(walled.firstStrikeAttacks[0].isHit).toBe(false);
+    expect(walled.firstStrikeDamage).toBe(0);
+  });
+
   describe('combatRollMode', () => {
     it('advantage only → advantage; disadvantage only → disadvantage', () => {
       expect(combatRollMode({ attackerAdvantage: true }).mode).toBe('advantage');

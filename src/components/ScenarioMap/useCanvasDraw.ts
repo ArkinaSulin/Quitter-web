@@ -14,6 +14,7 @@ import { corpseDots, FallenMap } from '@/lib/corpseTracker';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig, TerrainCosts, costShade } from './mapGeometry';
 import { FOG_RGB } from '@/lib/fogOfWar';
+import { Walls } from '@/lib/walls';
 import { AiOverlayData } from './aiTypes';
 
 interface CanvasDrawDeps {
@@ -36,6 +37,7 @@ interface CanvasDrawDeps {
   alliances: Record<string, AllianceGroup>;
   backgroundConfig: MapBackgroundConfig | null;
   terrainCosts?: TerrainCosts;
+  walls?: Walls;
   groundZones?: GroundEffect[];
   scenarioId: string;
   updateScreenshot: (scenarioId: string, file: File) => Promise<void>;
@@ -68,6 +70,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     alliances,
     backgroundConfig,
     terrainCosts,
+    walls,
     groundZones,
     scenarioId,
     updateScreenshot,
@@ -210,6 +213,36 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.strokeText(String(cost), cx, cy);
         ctx.fillStyle = '#ffffff';
         ctx.fillText(String(cost), cx, cy);
+      }
+      ctx.restore();
+    }
+
+    // Edge walls/barriers: a thick segment along the shared edge, styled by
+    // property (blocked = near-black, moveCost = tan, AC-only = steel). Drawn
+    // over the terrain shade, under tokens.
+    if (walls && Object.keys(walls).length > 0) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      const cornerScreen = (q: number, r: number, i: number) => {
+        const { cx, cy } = hexCenter({ q, r, s: -q - r });
+        const angle = (Math.PI / 180) * (60 * ((i % 6 + 6) % 6) - 30);
+        return { x: cx + HEX_SIZE * currentZoom * Math.cos(angle), y: cy + HEX_SIZE * currentZoom * Math.sin(angle) };
+      };
+      for (const key of Object.keys(walls)) {
+        const [q, r, d] = key.split(',').map(Number);
+        if (!Number.isFinite(q) || !Number.isFinite(r) || !Number.isFinite(d)) continue;
+        if (isFogHidden(`${q},${r}`)) continue;
+        const w = walls[key];
+        const blocked = !!w.a.block || !!w.b.block;
+        const hasCost = w.a.moveCost !== undefined || w.b.moveCost !== undefined;
+        ctx.strokeStyle = blocked ? 'rgba(20, 20, 24, 0.95)' : hasCost ? 'rgba(196, 154, 88, 0.95)' : 'rgba(150, 165, 185, 0.9)';
+        ctx.lineWidth = (blocked ? 7 : 5) * currentZoom;
+        const a = cornerScreen(q, r, d);
+        const b = cornerScreen(q, r, d + 1);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
       }
       ctx.restore();
     }
@@ -577,7 +610,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, groundZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, walls, groundZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;

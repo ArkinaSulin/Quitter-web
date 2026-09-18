@@ -540,3 +540,22 @@ describe('computeChargeReachable — front-arc BFS wedge', () => {
     expect(map.get('0,-2')).toBe(2);
   });
 });
+
+describe('computeReachableMap - edge walls', () => {
+  it('a wall face replaces the entered hex terrain cost (from-aware cost)', () => {
+    // Crossing (0,0) -> (0,-1): wall face costs 4 MP instead of the default 1.
+    const costOfHex = (q: number, r: number, fq?: number, fr?: number) =>
+      fq === 0 && fr === 0 && q === 0 && r === -1 ? 4 : 1;
+    const map = computeReachableMap(formedUnit, 5, new Set(), new Set(), costOfHex);
+    expect(map.get('0,-1')?.cost).toBe(4);
+    expect(map.get('1,-1')?.cost).toBe(1); // no wall on that edge
+  });
+
+  it('a blocked edge removes the direct step (maxMP 1 leaves no route around)', () => {
+    const blockedEdge = (fq: number, fr: number, tq: number, tr: number) =>
+      fq === 0 && fr === 0 && tq === 0 && tr === -1;
+    const map = computeReachableMap(formedUnit, 1, new Set(), new Set(), undefined, false, blockedEdge);
+    expect(map.get('0,-1')).toBeUndefined(); // the blocked front-arc step
+    expect(map.get('1,-1')).toBeDefined();   // the other front-arc step is open
+  });
+});

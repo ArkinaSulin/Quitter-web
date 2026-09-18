@@ -5,6 +5,8 @@ import { getSetting } from './settingsCache';
 import { getRowCapacityBase, effectiveAc } from './unitStats';
 import { attackDirection } from './attackDirection';
 import { attackRollFlags, AttackRollFlags } from './unitEffects';
+import { Walls, meleeWallAc, wallBetween } from './walls';
+import { hexEnteringFrom } from './hexLine';
 
 const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
@@ -357,6 +359,18 @@ export interface AttackerHeroProfile {
   disadvantage?: boolean;
 }
 
+/**
+ * AC a wall face grants the DEFENDER against a strike from `attackerHex`.
+ * Melee: the shared edge's defender face. Ranged: the face on the defender's hex
+ * along the edge the shot ENTERS through (cube-lerp line).
+ */
+function wallAcAgainst(walls: Walls | null | undefined, attackerHex: Hex, defenderHex: Hex, isRanged: boolean): number {
+  if (!walls) return 0;
+  if (!isRanged) return meleeWallAc(walls, attackerHex, defenderHex);
+  const entering = hexEnteringFrom(attackerHex, defenderHex) ?? attackerHex;
+  return wallBetween(walls, entering, defenderHex)?.faceTo.rangedAc ?? 0;
+}
+
 export function resolveCombatSequence(
   attacker: Unit,
   defender: Unit,
@@ -382,6 +396,8 @@ export function resolveCombatSequence(
   /** A front-attached hero fighting WITH the unit: its own weapon volley is added
    *  to the attacker's blow (first strike or retaliation). */
   attackerHero: AttackerHeroProfile | null = null,
+  /** Edge walls: the crossed face grants its melee/ranged AC to the defender. */
+  walls: Walls | null = null,
 ): CombatOutcome {
   // AGR check: skip if hero, ranged, target routed, rear attack, a free/no-retaliation
   // weapon, or when the attacker has a front-attached hero (the hero's presence
@@ -434,8 +450,8 @@ export function resolveCombatSequence(
   // (uniform rule); shields are 360° and stay in `baselineAc`. The shield drops
   // for two-handed weapons / routing are handled inside effectiveAc. The
   // formation term is melee/ranged-aware (`isRanged`).
-  const defenderEffAc = effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing), isRanged);
-  const attackerEffAc = effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing), isRanged);
+  const defenderEffAc = effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing), isRanged) + wallAcAgainst(walls, attacker.hex, defender.hex, isRanged);
+  const attackerEffAc = effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing), isRanged) + wallAcAgainst(walls, defender.hex, attacker.hex, isRanged);
 
   // Who strikes first? A defender attacked from the rear, a routed defender, noRetaliation
   // weapons, and ranged attacks all let the attacker strike first (the defender can't react).

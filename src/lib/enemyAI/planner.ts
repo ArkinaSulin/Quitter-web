@@ -33,7 +33,9 @@ import { attackDirection } from '@/lib/attackDirection';
 import { unitAttackCap } from '@/lib/attackCap';
 import { computeReachableMap, computeMovePool, applyMoveCost, applyMpSpend } from '@/lib/moveCost';
 import { isMeleeWeapon } from '@/lib/meleeFallback';
-import { terrainCostOf, TerrainCosts, computeThreatHexes } from '@/components/ScenarioMap/mapGeometry';
+import { terrainCostOf, TerrainCosts, computeThreatHexes, makeCostOfHex, makeBlockedEdge } from '@/components/ScenarioMap/mapGeometry';
+import { Walls } from '@/lib/walls';
+import type { BlockedEdgeFn } from '@/lib/moveCost';
 import { determineCombatPosition, combatRollMode, RollMode } from '@/lib/unitCombat';
 import { attackRollFlags } from '@/lib/unitEffects';
 import { applyFormationChange, isFormationChangeAffordable } from '@/lib/formationCost';
@@ -67,6 +69,8 @@ export interface AiPlanContext {
   /** Fog reveal for the AI side (hex keys). null/undefined = no fog. */
   visibleHexes?: Set<string> | null;
   terrainCosts?: TerrainCosts;
+  /** Edge walls (per-edge move cost / block / AC). */
+  walls?: Walls;
   /** Grid radius (axial ring). When set, routed flee stops at the outer rim. */
   gridRadius?: number;
   /** Max plot steps per unit (default 5 — enough for turn + move + attack). */
@@ -348,9 +352,10 @@ function maneuverOptions(
   working: Unit[],
   enemies: Unit[],
   ctx: Pick<AiPlanContext, 'alliances' | 'formations' | 'visibleHexes'>,
-  costOfHex: ((q: number, r: number) => number) | undefined,
+  costOfHex: ((q: number, r: number, fromQ?: number, fromR?: number) => number) | undefined,
   maxTurns: number,
   scorer: (dest: Hex, foes: Unit[], threat: Set<string>) => number,
+  blockedEdge?: BlockedEdgeFn,
 ): Maneuver[] {
   const foes = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
   const out: Maneuver[] = [];
@@ -362,7 +367,7 @@ function maneuverOptions(
     const max = effMax(unitAfter, ctx.formations);
     const pool = computeMovePool(unitAfter, max);
     if (pool < 1) return;
-    const reach = computeReachableMap(unitAfter, pool, occ, threat, costOfHex);
+    const reach = computeReachableMap(unitAfter, pool, occ, threat, costOfHex, false, blockedEdge);
     reach.forEach((entry, key) => {
       if (entry.needsTurn) return;
       const dest = entry.path[entry.path.length - 1];
@@ -404,8 +409,9 @@ function chooseFleeHex(
   working: Unit[],
   enemies: Unit[],
   ctx: Pick<AiPlanContext, 'alliances' | 'formations' | 'visibleHexes'>,
-  costOfHex: ((q: number, r: number) => number) | undefined,
+  costOfHex: ((q: number, r: number, fromQ?: number, fromR?: number) => number) | undefined,
   gridRadius: number | undefined,
+  blockedEdge?: BlockedEdgeFn,
 ): { pick: PlannedMoveOption; updated: Unit; path: Hex[] } | null {
   const foes = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
   if (foes.length === 0) return null;
@@ -416,7 +422,7 @@ function chooseFleeHex(
   const pool = computeMovePool(u, effMax(u, ctx.formations));
   if (pool < 1) return null;
   const threat = computeThreatHexes(working, u.id, ctx.alliances, ctx.formations);
-  const reach = computeReachableMap(u, pool, occ, threat, costOfHex);
+  const reach = computeReachableMap(u, pool, occ, threat, costOfHex, false, blockedEdge);
   const startDist = nearestEnemyDist(u.hex, foes);
   const candidates: PlannedMoveOption[] = [];
   reach.forEach((entry, key) => {
@@ -459,7 +465,8 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
   const enemies = working.filter(u =>
     !u.isDeleted && !u.hidden && (u.currentUnitHp ?? 0) > 0 && enemyGroupsOf(group).has(allianceOf(u, ctx.alliances)));
 
-  const costOfHex = ctx.terrainCosts ? (q: number, r: number) => terrainCostOf(ctx.terrainCosts ?? null, q, r) : undefined;
+  const costOfHex = (ctx.terrainCosts || ctx.walls) ? makeCostOfHex(ctx.terrainCosts ?? null, ctx.walls) : undefined;
+  const blockedEdge = makeBlockedEdge(ctx.walls);
   const maxSteps = ctx.maxStepsPerUnit ?? 5;
   const maxTurns = ctx.maxTurns ?? 3;
   const cap = unitAttackCap();
@@ -482,7 +489,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       // Routed units can't fight — run as far from hostiles as possible, but
       // stop at the map's outer rim so the DM can hide the broken unit.
       if (isUnitRouted(u)) {
-        const flee = chooseFleeHex(u, working, enemies, ctx, costOfHex, ctx.gridRadius);
+        const flee = chooseFleeHex(u, working, enemies, ctx, costOfHex, ctx.gridRadius, blockedEdge);
         if (!flee) break;
         commit(u, flee.updated, u.id);
         u = flee.updated;
@@ -564,7 +571,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const scorer = doctrine === 'ranged'
         ? (d: Hex, foes: Unit[], threat: Set<string>) => rangedDestScore(d, foes, threat, weaponRange, weaponMaxRange)
         : (d: Hex, foes: Unit[], threat: Set<string>) => meleeDestScore(d, foes, threat);
-      const options = maneuverOptions(u, working, enemiesAlive, ctx, costOfHex, doctrine === 'melee' ? maxTurns : Math.min(1, maxTurns), scorer);
+      const options = maneuverOptions(u, working, enemiesAlive, ctx, costOfHex, doctrine === 'melee' ? maxTurns : Math.min(1, maxTurns), scorer, blockedEdge);
       if (options.length === 0) break;
       const best = options[0];
       // Replay the simulated turns/move onto the real accounting.

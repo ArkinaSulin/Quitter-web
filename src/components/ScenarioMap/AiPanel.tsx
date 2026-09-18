@@ -13,7 +13,8 @@ import { planAiMoves, AiUnitPlan, isAiControllable, allianceOf, enemyGroupsOf, h
 import { isUnitRouted } from '@/lib/unitMorale';
 import { computeReachableMap, computeMovePool } from '@/lib/moveCost';
 import { isFormationChangeAffordable } from '@/lib/formationCost';
-import { computeOccupiedHexes, computeThreatHexes, terrainCostOf, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/components/ScenarioMap/mapGeometry';
+import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/components/ScenarioMap/mapGeometry';
+import { Walls } from '@/lib/walls';
 import { legalTargets } from '@/lib/enemyAI';
 import { unitAttackCap } from '@/lib/attackCap';
 import { supabase } from '@/lib/supabaseClient';
@@ -40,6 +41,7 @@ interface AiPanelProps {
   fogOfWarEnabled: boolean;
   sightRadius: number;
   terrainCosts: TerrainCosts;
+  walls: Walls;
   /** Map grid radius (axial ring) — routed flee stops at this rim. */
   gridRadius?: number;
   unitMaxMP: (unit: Unit) => number;
@@ -95,6 +97,7 @@ export function AiPanel({
   fogOfWarEnabled,
   sightRadius,
   terrainCosts,
+  walls,
   gridRadius,
   unitMaxMP,
   performMove,
@@ -108,7 +111,7 @@ export function AiPanel({
   addError,
 }: AiPanelProps) {
   const propsRef = useRef<AiPanelProps | null>(null);
-  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, gridRadius, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, undo, onOverlayChange, onBusyChange, addMessage, addError };
+  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, gridRadius, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, undo, onOverlayChange, onBusyChange, addMessage, addError };
 
   const [plans, setPlans] = useState<AiUnitPlan[] | null>(null);
   const [remaining, setRemaining] = useState<ExecUnit[] | null>(null); // active during Execute
@@ -199,6 +202,7 @@ export function AiPanel({
       activeAlliance: activeGroup,
       visibleHexes: fogOfWarEnabled ? visibleHexes : null,
       terrainCosts,
+      walls,
       gridRadius: gridRadius ?? DEFAULT_GRID_RADIUS,
     });
     setPlans(next);
@@ -364,8 +368,8 @@ export function AiPanel({
         const pool = computeMovePool(live, maxMP);
         const occ = computeOccupiedHexes(props.units, live.id);
         const threat = computeThreatHexes(props.units, live.id, props.alliances, props.formationsMap);
-        const costOf = (q: number, r: number) => terrainCostOf(props.terrainCosts, q, r);
-        const entry = computeReachableMap(live, pool, occ, threat, costOf).get(hexKeyOf(step.to));
+        const costOf = makeCostOfHex(props.terrainCosts, props.walls);
+        const entry = computeReachableMap(live, pool, occ, threat, costOf, false, makeBlockedEdge(props.walls)).get(hexKeyOf(step.to));
         if (!entry || entry.needsTurn || pool < 1) {
           addMessage(`${live.unitName} can no longer reach its plotted hex — skipped`);
         } else {

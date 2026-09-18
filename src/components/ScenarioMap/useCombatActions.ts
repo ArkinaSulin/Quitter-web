@@ -20,6 +20,7 @@ import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, fo
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection } from '@/lib/attackDirection';
 import { attackRollFlags } from '@/lib/unitEffects';
+import { Walls } from '@/lib/walls';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
@@ -43,6 +44,7 @@ interface CombatActionsDeps {
   alliances: Record<string, AllianceGroup>;
   formationsMap: Record<string, Formation>;
   sizeCategories: SizeCategory[];
+  walls?: Walls;
   execute: ExecuteFn;
   addMessage: (msg: string) => void;
   addError: (msg: string) => void;
@@ -65,6 +67,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     alliances,
     formationsMap,
     sizeCategories,
+    walls,
     execute,
     addMessage,
     addError,
@@ -240,6 +243,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
           formationsMap[target.currentFormation],
           options?.opportunityAttack ?? false,
           attackerHeroProfile,
+          walls,
         );
 
     const subSteps: SubStep[] = [];

@@ -45,6 +45,7 @@ import { getFormationMultiplier, computeEffectiveMovement } from '@/lib/unitStat
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf } from './mapGeometry';
+import { Walls, parseWalls, edgeRef, nearestEdge, type WallFace } from '@/lib/walls';
 import { newEffectKey } from '@/lib/unitEffects';
 import { MapEntity } from '@/lib/mapEntities';
 import { AddEffectModal } from './AddEffectModal';
@@ -240,6 +241,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
   // GM-painted map overlays (persisted in scenarios.map_data).
   const [terrainCosts, setTerrainCosts] = useState<TerrainCosts>({});
+  // Edge walls authored/snapshotted (map_data.walls).
+  const [walls, setWalls] = useState<Walls>({});
   const [groundZones, setGroundZones] = useState<GroundEffect[]>([]);
   // Provenance of the snapshot currently loaded from a reusable map (maps.id).
   const [mapId, setMapId] = useState<string | null>(null);
@@ -262,6 +265,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // GM map-edit brushes: terrain = entry-cost value (null = off); zone = template
   // armed for placement (null = off).
   const [terrainBrushCost, setTerrainBrushCost] = useState<number | null>(null);
+  // Wall brush (GM live edit): armed toggle + the edge selected for face editing.
+  const [wallBrush, setWallBrush] = useState(false);
+  const [selectedWallEdge, setSelectedWallEdge] = useState<{ q: number; r: number; dir: number } | null>(null);
   const [zoneTemplate, setZoneTemplate] = useState<EffectTemplate | null>(null);
   // Temporary-effect modal target (context menu → "Effects…").
   const [effectMenuUnit, setEffectMenuUnit] = useState<Unit | null>(null);
@@ -490,6 +496,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const persistMapData = useCallback(async (next: {
     backgroundConfig?: MapBackgroundConfig | null;
     terrainCosts?: TerrainCosts;
+    walls?: Walls;
     groundEffects?: GroundEffect[];
     mapId?: string | null;
   }) => {
@@ -501,10 +508,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       bgScale: bg?.scale ?? 1,
       gridRadius: bg?.gridRadius ?? DEFAULT_GRID_RADIUS,
       terrainCosts: next.terrainCosts !== undefined ? next.terrainCosts : terrainCosts,
+      walls: next.walls !== undefined ? next.walls : walls,
       groundEffects: next.groundEffects !== undefined ? next.groundEffects : groundZones,
       mapId: next.mapId !== undefined ? next.mapId : mapId,
     });
-  }, [scenarioId, updateScenarioMapData, backgroundConfig, terrainCosts, groundZones, mapId]);
+  }, [scenarioId, updateScenarioMapData, backgroundConfig, terrainCosts, walls, groundZones, mapId]);
 
   const paintTerrain = useCallback(async (q: number, r: number) => {
     if (terrainBrushCost === null) return;
@@ -523,6 +531,50 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     await persistMapData({ terrainCosts: next });
   }, [terrainCosts, persistMapData]);
 
+  // ---- Wall brush (GM live edit) ----
+  const persistWalls = useCallback(async (next: Walls) => {
+    setWalls(next);
+    await persistMapData({ walls: next });
+  }, [persistMapData]);
+
+  const toggleWallEdge = useCallback(async (q: number, r: number, dir: number) => {
+    const ref = edgeRef(q, r, dir);
+    setSelectedWallEdge({ q: ref.aq, r: ref.ar, dir: ref.dir });
+    if (walls[ref.key]) return; // already placed — just select it
+    await persistWalls({ ...walls, [ref.key]: { a: { block: true }, b: { block: true } } });
+  }, [walls, persistWalls]);
+
+  const clearWallAt = useCallback(async (q: number, r: number, dir: number) => {
+    const ref = edgeRef(q, r, dir);
+    if (!walls[ref.key]) return;
+    const next = { ...walls };
+    delete next[ref.key];
+    setSelectedWallEdge(sel => (sel && sel.q === ref.aq && sel.r === ref.ar && sel.dir === ref.dir ? null : sel));
+    await persistWalls(next);
+  }, [walls, persistWalls]);
+
+  const patchWallFace = useCallback(async (side: 'a' | 'b', patch: Partial<WallFace>) => {
+    if (!selectedWallEdge) return;
+    const ref = edgeRef(selectedWallEdge.q, selectedWallEdge.r, selectedWallEdge.dir);
+    const wall = walls[ref.key];
+    if (!wall) return;
+    const face = { ...wall[side] };
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined || v === null) delete (face as any)[k];
+      else (face as any)[k] = v;
+    }
+    await persistWalls({ ...walls, [ref.key]: { ...wall, [side]: face } });
+  }, [walls, selectedWallEdge, persistWalls]);
+
+  /** Direction (0..5) of the hex edge nearest a screen point (wall brush). */
+  function edgeDirAtClient(hex: Hex, clientX: number, clientY: number): number | null {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const world = { x: (clientX - rect.left - offsetX) / zoom, y: (clientY - rect.top - offsetY) / zoom };
+    return nearestEdge(hex, world, HEX_SIZE).dir;
+  }
+
   // Assign a reusable map: snapshot its image + terrain into the scenario copy.
   const assignMap = useCallback(async (entity: MapEntity) => {
     const bg: MapBackgroundConfig = {
@@ -534,16 +586,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     };
     setBackgroundConfig(bg);
     setTerrainCosts(entity.terrainCosts);
+    setWalls(entity.walls ?? {});
     setMapId(entity.id);
-    await persistMapData({ backgroundConfig: bg, terrainCosts: entity.terrainCosts, mapId: entity.id });
+    await persistMapData({ backgroundConfig: bg, terrainCosts: entity.terrainCosts, walls: entity.walls ?? {}, mapId: entity.id });
     addMessage(`Loaded map "${entity.name}" — snapshot copied to this scenario`);
   }, [persistMapData, addMessage]);
 
   const clearMap = useCallback(async () => {
     setBackgroundConfig(null);
     setTerrainCosts({});
+    setWalls({});
     setMapId(null);
-    await persistMapData({ backgroundConfig: null, terrainCosts: {}, mapId: null });
+    await persistMapData({ backgroundConfig: null, terrainCosts: {}, walls: {}, mapId: null });
     addMessage('Map cleared — plain board');
   }, [persistMapData, addMessage]);
 
@@ -651,6 +705,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     flashRangeViolation,
     canAttackTarget: canAttackInFog,
     terrainCosts: moveTerrainCosts,
+    walls,
   });
 
   const { customDraw, captureAndUploadScreenshot } = useCanvasDraw({
@@ -677,6 +732,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     alliances,
     backgroundConfig,
     terrainCosts,
+    walls,
     groundZones,
     scenarioId,
     updateScreenshot,
@@ -731,6 +787,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     weaponSelectedTurnRef,
     setActiveHeroId,
     terrainCosts: moveTerrainCosts,
+    walls,
     opportunityAttacksRef,
   });
 
@@ -1173,6 +1230,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     alliances,
     formationsMap,
     sizeCategories,
+    walls,
     execute,
     addMessage,
     addError,
@@ -1459,11 +1517,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             const u = units.find(x => x.id === unitId);
             if (u && canControlUnit(u)) handleUnitMove(unitId, targetHex);
           },
-    onHexClick: (hex) => {
+    onHexClick: (hex, _unit, clientX, clientY) => {
       // Locked reaction mode: only Esc ends it; clicks are inert.
       if (reactionMode) return;
       // A clone is armed: this click places it (consumes the click).
       if (handleCloneClick(hex)) return;
+      // GM wall brush: place (or select) a barrier on the nearest edge.
+      if (effectiveIsGM && wallBrush && clientX !== undefined && clientY !== undefined) {
+        const dir = edgeDirAtClient(hex, clientX, clientY);
+        if (dir !== null) void toggleWallEdge(hex.q, hex.r, dir);
+        return;
+      }
       // GM map-edit brushes paint instead of selecting.
       if (effectiveIsGM && terrainBrushCost !== null) { void paintTerrain(hex.q, hex.r); return; }
       // Effect zones: GM or any assigned player may paint.
@@ -1499,6 +1563,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     onHexRightClick: (hex, unit, clientX, clientY) => {
       if (controlsLocked) return;
       if (cloneZone) { setCloneZone(null); return; }
+      // GM wall brush: right-click removes the nearest edge.
+      if (effectiveIsGM && wallBrush && hex) {
+        const dir = edgeDirAtClient(hex, clientX, clientY);
+        if (dir !== null) void clearWallAt(hex.q, hex.r, dir);
+        return;
+      }
       // GM paint mode: right-click clears the MP cost back to the default 1.
       if (effectiveIsGM && hex && (terrainBrushCost !== null || zoneTemplate)) {
         void clearTerrainHex(hex.q, hex.r);
@@ -1565,7 +1635,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
-    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: moveTerrainCosts });
+    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: moveTerrainCosts, walls });
     if (retreatHoverHex) base[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(base);
   }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, moveTerrainCosts, retreatHoverHex]);
@@ -1771,6 +1841,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         gridRadius: data?.gridRadius ?? DEFAULT_GRID_RADIUS,
       });
       setTerrainCosts(data?.terrainCosts ?? {});
+      setWalls(parseWalls(data?.walls));
       setGroundZones(Array.isArray(data?.groundEffects) ? data.groundEffects : []);
       setMapId(data?.mapId ?? null);
     });
@@ -1841,6 +1912,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           if (row.map_data !== undefined) {
             const md = row.map_data || {};
             if (md.terrainCosts !== undefined) setTerrainCosts(md.terrainCosts ?? {});
+            if (md.walls !== undefined) setWalls(parseWalls(md.walls));
             if (md.groundEffects !== undefined) setGroundZones(Array.isArray(md.groundEffects) ? md.groundEffects : []);
             if (md.mapId !== undefined) setMapId(md.mapId ?? null);
             if (md.backgroundImageUrl !== undefined) {
@@ -1866,9 +1938,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // Esc ends the locked reaction mode (or closes the formation picker) — as
       // if nothing happened; the reaction marker stays.
       if (e.key === 'Escape') {
-        if (terrainBrushCost !== null || zoneTemplate) {
+        if (terrainBrushCost !== null || zoneTemplate || wallBrush) {
           setTerrainBrushCost(null);
           setZoneTemplate(null);
+          setWallBrush(false);
           return;
         }
         if (reactionMode || reactionFormationPicker) {
@@ -2049,6 +2122,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         fogOfWarEnabled={fogOfWar}
         sightRadius={sightRadius}
         terrainCosts={moveTerrainCosts}
+        walls={walls}
         gridRadius={backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS}
         unitMaxMP={unitMaxMP}
         performMove={(unit, targetHex, cost, overBudget, maxMP) => completeMove(unit, targetHex, cost, overBudget, maxMP)}
@@ -2122,6 +2196,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             onClearMap={() => void clearMap()}
             terrainBrushCost={terrainBrushCost}
             onSetTerrainBrushCost={setTerrainBrushCost}
+            wallBrush={wallBrush}
+            onToggleWallBrush={() => { setWallBrush(v => !v); setSelectedWallEdge(null); }}
+            walls={walls}
+            selectedWallEdge={selectedWallEdge}
+            onChangeWallFace={(side, patch) => void patchWallFace(side, patch)}
+            onRemoveWall={() => { if (selectedWallEdge) void clearWallAt(selectedWallEdge.q, selectedWallEdge.r, selectedWallEdge.dir); }}
           zoneTemplateId={zoneTemplate?.id ?? null}
           onSetZoneTemplateId={(id) => setZoneTemplate(id ? (templateById(id) ?? null) : null)}
           canUseEffects={effectiveIsGM || !!myTeam}

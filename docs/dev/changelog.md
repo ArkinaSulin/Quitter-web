@@ -1,5 +1,17 @@
 # QuiTTER Changelog
 
+## Edge walls / barriers on maps (migration 089) — Phase 1 (2026-09-18)
+**Files:** src/lib/{walls,walls.test,hexLine,hexLine.test,moveCost,moveCost.test,unitCombat,unitCombat.test,mapEntities,mapEntities.test,enemyAI/planner}.ts, src/components/MapEditor/{MapEditor,MapCanvas}.tsx, src/components/ScenarioMap/{mapGeometry,useOverlay,useMoveActions,useReactionActions,useCombatActions,useCanvasDraw,ScenarioMap,LeftPanel,WallPaintPanel}.tsx/.ts, supabase/migrations/089_map_walls.sql (new), docs/dev/13-map-entities-terrain.md
+
+- **A wall sits on a hex edge, with a face per side.** Each face can replace the destination hex's terrain MP cost when crossing in (`moveCost`), be impassable (`block`), and grant **melee AC / ranged AC** to the unit standing on that side. Edges are stored once, canonically, keyed `"q,r,dir"` (`src/lib/walls.ts`), so the two neighbours can't desync.
+- **Movement**: `computeReachableMap`/`computeChargeReachable` now pass the *from*-hex to the cost callback (a wall face REPLACES terrain) and accept a `blockedEdge` predicate; charges cannot cross any wall edge. `mapGeometry.makeCostOfHex`/`makeBlockedEdge`/`makeChargeBlockedEdge` build these, wired through the overlay, move, reaction, AI and AI-panel paths.
+- **Combat AC**: `resolveCombatSequence` takes an optional `walls`; the crossed face's melee/ranged AC is added to the defender. Adjacent edges exact; ranged uses the new cube-lerp `hexLine` to find the entering edge (`src/lib/hexLine.ts`).
+- **Authoring**: Map Editor gains a **Walls** tab (arm the tool, click/drag near an edge to place, right-click removes, a per-side face editor). The in-scenario **Movement** tab gains `WallPaintPanel` for live placement. Walls render as thick edge segments (blocked = near-black, cost = tan, AC-only = steel) in both canvases.
+- **Persistence**: migration **089** adds `maps.walls jsonb`; assigning a map snapshots `walls` into `scenarios.map_data.walls` (merged by `persistMapData` so no layer is dropped). **Apply 089 in Supabase.**
+- `tsc` clean; 627 tests pass (`walls`/`hexLine` suites added; moveCost/unitCombat wall cases).
+
+_Phase 2 (destructible segments: HP/DT + explicit targeting) and Phase 3 (magic-wall effects + effect HP) remain._
+
 ## Advantage/Disadvantage effects + always-recorded verbose messages (migration 088) (2026-09-17)
 **Files:** src/types/gameProtocol.ts, src/lib/{unitEffects,unitEffects.test,effectTemplates,unitCombat,unitCombat.test,verboseCombat,verboseCombat.test,enemyAI/planner}.ts, src/contexts/MessageContext.tsx, src/hooks/{useGameEngine,useMessageSync}.ts, src/components/ScenarioMap/{useCombatActions,useReactionActions,useCastActions,ScenarioMap,MessagesPanel,LeftPanel,AddEffectModal,UnitTooltip}.tsx, src/components/EffectEditor/EffectModifierFields.tsx, src/components/ScenarioMap/routeUnit.ts, supabase/migrations/088_advantage_effects.sql (new), docs/dev/{08-combat,10-temporary-effects}.md
 
