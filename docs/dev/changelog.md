@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Pursue: single AGR before the move (2026-09-18)
+**Files:** src/lib/unitCombat.ts, src/lib/unitCombat.test.ts, docs/dev/{08-combat,09-morale-routing-pursuit}.md, docs/players/player-manual.md
+
+- **Bug**: a pursue ran the selection AGR (plain) and then a **second** combat AGR (with a threat penalty) inside `resolveCombatSequence`. A pursuer could pass selection, **move** into the vacated hex, then fail the second roll and not attack — "moved but didn't attack".
+- **Fix**: `resolveCombatSequence` now skips its AGR for reaction strikes (`opportunityAttack`, used by `performPursuits` and the cornered volley). The single plain `d10 ≤ AGR` at selection is the only check: a failed candidate **does not move** and the next candidate is tried; the one that passes **always attacks**.
+- Test added (pursue strikes vs a high-threat target despite `aggressiveness: 1`). `tsc` clean; 636 tests pass.
+
 ## Withdraw by drag-to-rear + rout-modal visibility (2026-09-18)
 **Files:** src/lib/{withdraw,withdraw.test}.ts, src/components/ScenarioMap/{useOverlay,useOverlay.test,ScenarioMap,ContextMenu}.tsx, docs/dev/07-movement-economy.md, docs/players/player-manual.md
 

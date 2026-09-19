@@ -400,11 +400,13 @@ export function resolveCombatSequence(
   walls: Walls | null = null,
 ): CombatOutcome {
   // AGR check: skip if hero, ranged, target routed, rear attack, a free/no-retaliation
-  // weapon, or when the attacker has a front-attached hero (the hero's presence
-  // steadies the troops — no aggressiveness roll).
+  // weapon, when the attacker has a front-attached hero (the hero's presence
+  // steadies the troops), or on a REACTION strike (a pursue/opportunity attack
+  // already passed its single plain `d10 <= AGR` at selection time — it must not
+  // re-roll here, or a pursuer would move and then fail to attack).
   let aggrPassed = true;
   let aggrRoll = 1;
-  if (!attacker.isHero && !isRanged && !isUnitRouted(defender) && !isRearAttack && !attackerWeapon.noRetaliation && !attackerWeapon.freeAction && !attachedAttackerHero) {
+  if (!opportunityAttack && !attacker.isHero && !isRanged && !isUnitRouted(defender) && !isRearAttack && !attackerWeapon.noRetaliation && !attackerWeapon.freeAction && !attachedAttackerHero) {
     const threat = Math.round(computeThreatRating(defender) / computeThreatRating(attacker));
     const penalty = Math.max(0, threat - 1);
     aggrRoll = Math.floor(rng() * 10) + 1;

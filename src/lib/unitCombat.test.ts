@@ -483,6 +483,21 @@ describe('resolveCombatSequence', () => {
     expect(result.aggrPassed).toBe(true);
   });
 
+  it('a pursue (opportunityAttack) skips the internal AGR — it strikes even vs a high-threat target', () => {
+    // Low-AGR attacker vs a much scarier (non-routed) defender: the combat AGR
+    // would fail (penalty drives it to 0), so a normal attack gets no blows.
+    const weakAttacker = { ...attacker, aggressiveness: 1 };
+    const scaryDefender = { ...defender, level: 20, sizeCategory: 300, currentTroopCount: 80, maxTroopCount: 80 };
+    const normal = callCombat(weakAttacker, scaryDefender, aw, dw, 0, 1, false, false, null, null, null, null, false);
+    expect(normal.aggrPassed).toBe(false);
+    expect(normal.firstStrikeAttacks).toHaveLength(0);
+    // As a pursue/reaction strike the AGR is skipped at the combat layer (the
+    // single plain AGR happened at pursuit selection) → it always strikes.
+    const pursue = callCombat(weakAttacker, scaryDefender, aw, dw, 0, 1, false, false, null, null, null, null, true);
+    expect(pursue.aggrPassed).toBe(true);
+    expect(pursue.firstStrikeAttacks.length).toBeGreaterThan(0);
+  });
+
   it('AGR skips for ranged attacker', () => {
     const lowAggrAttacker = { ...attacker, aggressiveness: 1 };
     const result = callCombat(lowAggrAttacker, defender, aw, dw, 0, 1, true);

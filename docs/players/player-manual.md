@@ -791,6 +791,8 @@ zone (by move *or* rout) is dangerous:
   available MP → random**, and each candidate rolls `d10 ≤ Aggressiveness` in
   turn until one passes. A unit standing in a **hero's Commanding Presence** is
   held in line unless that hero's owner has ticked **Command: allow pursue**;
+- a candidate that **fails** its roll doesn't move — the next in order gets the
+  chance; the one that **passes** always carries out the chase;
 - the pursuer steps one hex into the vacated hex and strikes you **at the point
   you left** (no reaction), once per turn.
 

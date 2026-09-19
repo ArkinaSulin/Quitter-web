@@ -110,7 +110,9 @@ hostile kill zone** — a rout retreat, a voluntary move, anything — is punish
   most available MP → random**, each rolling **`d10 <= AGR`** until one passes. A
   candidate inside a hero's Commanding Presence is held unless that hero's
   `command_pursuit_permit` is true. If a chase is suppressed by a hero, the log
-  says so. `src/lib/pursuit.ts`.
+  says so. `src/lib/pursuit.ts`. A failed candidate **does not move** — it yields
+  the chance to the next in order; the one that passes **always** attacks (the
+  strike does not re-roll AGR — see `08`).
 - The pursuer takes a **free 1-hex step** into the contact hex and makes a **free
   melee attack resolved at the contact hex**, regardless of how far the router
   fled; **once per turn** (`pursuitUsed`, migrations 084/087/090), counts +1 to

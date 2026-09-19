@@ -44,6 +44,9 @@ drops the shield (−2 AC, recomputed).
   defender is Routed, it's a **rear attack**, the weapon has
   `noRetaliation`/`freeAction`, or the attacker has a **front-attached hero**
   (the hero steadies the troops).
+- AGR is also **skipped for a reaction strike** (`opportunityAttack`, used by the
+  ZoC pursue and the cornered volley): those already passed their single plain
+  `d10 ≤ AGR` at selection (see **Pursue** below), so they never re-roll here.
 - Failure = the attack does not happen but the action is still spent (the
   ATTACK sub-step with −1 action is recorded regardless).
 
@@ -207,6 +210,13 @@ hostile kill zone** (`zocDisengage.ts` → `pursuitCandidates`):
   melee attack resolved at the contact hex** — regardless of the leaver's final
   distance, with the mover's **retaliation suppressed** (the event happened as it
   turned away). A ranged-active pursuer auto-draws melee.
+
+**One AGR, checked before the move.** The `d10 <= AGR` roll at selection is the
+**only** aggressiveness check: a candidate that fails it does **not move** and the
+next candidate is tried; the one that passes **always** attacks. The reaction
+strike itself re-rolls nothing (`resolveCombatSequence` skips its combat AGR for
+`opportunityAttack`), so a pursuer can never move into the hex and then fail to
+strike.
 
 Each unit pursues **at most once per turn** (`pursuitUsed`), it is **free**, and
 **counts +1 to the 5-attack cap**. A **rout-through** makes the pursuer strike
