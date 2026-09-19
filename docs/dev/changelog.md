@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Withdraw by drag-to-rear + rout-modal visibility (2026-09-18)
+**Files:** src/lib/{withdraw,withdraw.test}.ts, src/components/ScenarioMap/{useOverlay,useOverlay.test,ScenarioMap,ContextMenu}.tsx, docs/dev/07-movement-economy.md, docs/players/player-manual.md
+
+- **Withdraw is now a drag, not a context-menu action.** The drag overlay paints a formed non-hero unit's two rear hexes **white/droppable** (no face change = no turn needed); dropping there opens an **always-on cost confirm** (2 actions, or free under `free_move`, with a red over-budget note) and applies `performWithdraw`. Removed the ContextMenu "Withdraw" item + the rear-hex picker.
+- **Withdraw can't enter a kill zone.** `withdrawDestinations(unit, occupied, gridRadius, threatHexes)` now excludes enemy-ZoC hexes, so the overlay never offers a retreat into danger (and the red danger tint is untouched).
+- **Rout modal visibility.** The retreat card's full-screen backdrop lightened (`bg-black/50` → `bg-black/10`), and every in-map overlay/modal (edit-unit modal, tooltips, context menu, effect/magic/settings/attach/stats modals, replay/DM bars, debug panel) is wrapped in a layer that goes `opacity-0 pointer-events-none` while `retreatPick` is active — auto-restoring when the rout resolves — so the highlighted retreat hexes stay visible.
+- Tests: `withdraw` threat-exclusion case + a new `useOverlay.test.ts` (rear hexes white, occupied rear hex not white). `tsc` clean; 635 tests pass.
+
 ## Zone-of-control pursue + Withdraw (migration 090) (2026-09-18)
 **Files:** src/lib/{pursuit,pursuit.test,withdraw,withdraw.test,zocDisengage,zocDisengage.test,routedRetreat,routedRetreat.test}.ts, src/components/ScenarioMap/{useCombatActions,useMoveActions,ScenarioMap,ContextMenu}.tsx, src/hooks/{useGameEngine,useSupabaseSync,useScenarios}.ts, src/components/{UnitEditor}.tsx, src/components/ScenarioMap/UnitEditorModal.tsx, src/lib/{templateMappers,unitMorale}.ts, src/types/gameProtocol.ts, test fixtures, supabase/migrations/090_zoc_pursuit.sql (new), docs/dev/{02,07,08,09}, docs/players/player-manual.md
 

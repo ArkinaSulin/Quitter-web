@@ -798,10 +798,13 @@ A routed unit with **no legal retreat** is cornered: every enemy that can reach
 it strikes it in place. With the setting **OFF**, none of this happens —
 entering a kill zone still costs the move, but leaving is just a move.
 
-**Withdraw (2 actions):** right-click a formed unit → **Withdraw 1 hex (2
-actions, no face change)** to step straight back into a rear hex keeping your
-facing. It costs 2 actions (free in free-move) but **never scatters and never
-provokes** — the ordered way out. Archer reaction fire still applies.
+**Withdraw (2 actions):** for a formed unit, the two hexes directly behind it are
+shown **white** in the drag overlay. Dropping there is a **Withdraw** — a confirm
+states the cost (2 actions; free in free-move) before it applies. You step
+straight back **keeping your facing**, and it **never scatters and never
+provokes** — the ordered way out. You can't withdraw into an enemy kill zone, and
+archer reaction fire still applies. (Loose units — Heroes, Scattered, Routed —
+already move any direction and have no Withdraw.)
 
 Routs, retreats, disruptions, pursuit moves and pursuit attacks all land as
 **one undoable group** — Ctrl+Z unwinds the entire bloody episode.

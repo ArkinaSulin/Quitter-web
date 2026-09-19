@@ -135,14 +135,17 @@ ON). With it ON, leaving a hostile kill zone (`src/lib/zocDisengage.ts` →
 
 ## Withdraw (ordered disengagement)
 
-The **Withdraw** action (`src/lib/withdraw.ts`, context menu under Rotate 180°)
-lets a **formed, non-hero** unit step **one hex into either rear-arc hex keeping
-its facing**, for **2 actions** — the ordered alternative to a scattering rout.
-It **never scatters and never provokes** a pursue; archer reactions still fire
-off the MOVE. It is **free under `free_move`**, and short on actions it may go
-negative via a confirm (soft enforcement). The destination must be an empty,
-in-bounds rear hex; entering a *new* hostile ZoC ends the step there (no
-scatter). See `07`/`09`.
+**Dragging a formed, non-hero unit one hex into either rear-arc hex is the
+Withdraw** (`src/lib/withdraw.ts`): it keeps its facing for **2 actions** — the
+ordered alternative to a scattering rout. The overlay paints legal rear hexes
+**white/droppable** (`useOverlay`; just like a normal move) since no face change
+is needed; on drop an **always-on confirm** states the cost before applying. It
+**never scatters and never provokes** a pursue; archer reactions still fire off
+the MOVE. **Free under `free_move`**; short on actions it may go negative via
+the same confirm (soft enforcement, shown red). The destination must be an empty,
+in-bounds rear hex that is **NOT inside an enemy kill zone** (retreating into a
+threat zone isn't a retreat). Heroes/Scattered/Routed are loose — no withdraw
+(their rear hexes are ordinary move hexes). See `09`.
 
 ## Charge (movement-side)
 

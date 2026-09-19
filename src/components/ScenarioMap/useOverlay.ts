@@ -14,6 +14,7 @@ import { isRangedCapableWeapon, getReactionMoveBudget } from '@/lib/archerReacti
 import { determineCombatPosition } from '@/lib/unitCombat';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
+import { canWithdraw, withdrawDestinations } from '@/lib/withdraw';
 
 /** Hovered unit's front-arc threat tint (non-loose units only). */
 function getOverlayForUnit(unit: Unit): Record<string, string> {
@@ -191,6 +192,15 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       // first (hint only — the unit must rotate before moving there).
       combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.5)';
     });
+    // Withdraw: a formed unit may step one hex into an empty rear hex that is NOT
+    // in a threat zone (no face change) — shown white/droppable like a move.
+    if (canWithdraw(draggedUnit)) {
+      const occupied = computeOccupiedHexes(units, draggedUnit.id);
+      const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
+      for (const hx of withdrawDestinations(draggedUnit, occupied, radius, threatHexes)) {
+        combined[`${hx.q},${hx.r}`] = 'rgba(255, 255, 255, 0.5)';
+      }
+    }
     for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
 
     return combined;

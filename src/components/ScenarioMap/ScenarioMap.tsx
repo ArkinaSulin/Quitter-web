@@ -44,8 +44,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { getFormationMultiplier, computeEffectiveMovement } from '@/lib/unitStats';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
-import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf, computeOccupiedHexes } from './mapGeometry';
-import { withdrawDestinations, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
+import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf, computeOccupiedHexes, computeThreatHexes } from './mapGeometry';
+import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { Walls, parseWalls, edgeRef, nearestEdge, type WallFace } from '@/lib/walls';
 import { newEffectKey } from '@/lib/unitEffects';
 import { MapEntity } from '@/lib/mapEntities';
@@ -797,26 +797,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pursuitsRef,
   });
 
-  // ---- Withdraw (2 actions, 1 hex straight back, no face change) ----
-  const [withdrawPick, setWithdrawPick] = useState<{ unit: Unit; hexes: Hex[] } | null>(null);
+  // ---- Withdraw (drag one hex into a rear hex; always warns the action cost) ----
   const [withdrawConfirm, setWithdrawConfirm] = useState<{ unit: Unit; dest: Hex } | null>(null);
-
-  const chooseWithdrawHex = useCallback((dest: Hex) => {
-    const unit = withdrawPick?.unit;
-    setWithdrawPick(null);
-    if (!unit) return;
-    if (!freeMove && unit.actionsAvailable < WITHDRAW_ACTION_COST) { setWithdrawConfirm({ unit, dest }); return; }
-    void performWithdraw(unit, dest);
-  }, [withdrawPick, freeMove, performWithdraw]);
-
-  const handleWithdraw = useCallback((unit: Unit) => {
-    const occupied = computeOccupiedHexes(units, unit.id);
-    const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
-    const hexes = withdrawDestinations(unit, occupied, radius);
-    if (hexes.length === 0) { addMessage(`${unit.unitName} has no empty rear hex to withdraw into.`); return; }
-    if (hexes.length === 1) { chooseWithdrawHex(hexes[0]); return; }
-    setWithdrawPick({ unit, hexes });
-  }, [units, backgroundConfig, chooseWithdrawHex, addMessage]);
 
   // ---- Temporary-effect apply/remove handlers (opened from the context menu) ----
   const teamOptions = Object.keys(alliances).length > 0 ? Object.keys(alliances) : TEAMS;
@@ -1484,7 +1466,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         ? (unitId, targetHex) => { if (unitId === reactionMode.archer.id) handleReactionMove(unitId, targetHex); }
         : (unitId, targetHex) => {
             const u = units.find(x => x.id === unitId);
-            if (u && canControlUnit(u)) handleUnitMove(unitId, targetHex);
+            if (!u || !canControlUnit(u)) return;
+            // A drag one hex into a rear hex is a WITHDRAW (2 actions, no face
+            // change, no scatter/pursue) — not a normal move. Confirm the cost.
+            if (canWithdraw(u) && !u.isCharging) {
+              const occupied = computeOccupiedHexes(units, unitId);
+              const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
+              const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
+              const dests = withdrawDestinations(u, occupied, radius, threatHexes);
+              if (dests.some(hx => hx.q === targetHex.q && hx.r === targetHex.r)) {
+                setWithdrawConfirm({ unit: u, dest: targetHex });
+                return;
+              }
+            }
+            handleUnitMove(unitId, targetHex);
           },
     onHexClick: (hex, _unit, clientX, clientY) => {
       // Locked reaction mode: only Esc ends it; clicks are inert.
@@ -2199,6 +2194,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       onDrop={(e) => void handleEffectDrop(e)}
     />
 
+      {/* In-map overlays/modals — dimmed to 0 while the rout card is up so the
+          retreat hexes on the canvas stay visible (auto-restores when it clears). */}
+      <div style={retreatPick ? { opacity: 0, pointerEvents: 'none' } : undefined}>
       {/* Attention pings (feature #4) */}
       <PingLayer pings={pings} zoom={zoom} offsetX={offsetX} offsetY={offsetY} hexSize={HEX_SIZE} />
 
@@ -2252,7 +2250,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onClose={() => { setContextMenuUnit(null); setContextMenuPos(null); }}
           onRotate={(dir) => rotateUnit(contextMenuUnit, dir, unitMaxMP(contextMenuUnit))}
           onRotate180={() => rotateUnit(contextMenuUnit, 'left', unitMaxMP(contextMenuUnit), 3)}
-          onWithdraw={() => handleWithdraw(contextMenuUnit)}
           freeMove={freeMove}
           onChangeFormation={(formation) => handleChangeFormation(contextMenuUnit, formation)}
           onCharge={() => charge(contextMenuUnit)}
@@ -2283,44 +2280,36 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         );
       })()}
 
-      {/* Withdraw: pick a rear hex, then (if short on actions) confirm the overage. */}
-      {withdrawPick && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/50" onContextMenu={e => e.preventDefault()}>
-          <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 w-80 text-white space-y-2">
-            <p className="text-sm font-semibold text-amber-300">Withdraw {withdrawPick.unit.unitName}</p>
-            <p className="text-xs text-gray-400">Step one hex straight back, keeping facing. Costs {freeMove ? 'nothing (free move)' : `${WITHDRAW_ACTION_COST} actions`}; never scatters and never provokes a pursue.</p>
-            <div className="flex flex-wrap gap-2">
-              {withdrawPick.hexes.map(hx => (
+      {/* Withdraw confirm: always warn the action cost before applying. */}
+      {withdrawConfirm && (() => {
+        const over = !freeMove && withdrawConfirm.unit.actionsAvailable < WITHDRAW_ACTION_COST;
+        return (
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/50" onContextMenu={e => e.preventDefault()}>
+            <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 w-80 text-white space-y-2">
+              <p className={`text-sm font-semibold ${over ? 'text-red-300' : 'text-amber-300'}`}>Withdraw to ({withdrawConfirm.dest.q}, {withdrawConfirm.dest.r})</p>
+              <p className="text-xs text-gray-300">
+                {withdrawConfirm.unit.unitName} steps one hex straight back, keeping facing,{' '}
+                {freeMove ? 'free (free-move).' : `costing ${WITHDRAW_ACTION_COST} actions.`}{' '}
+                It never scatters and never provokes a pursue.
+              </p>
+              {over && (
+                <p className="text-xs text-red-300">
+                  Only {withdrawConfirm.unit.actionsAvailable} action(s) left — it will go {WITHDRAW_ACTION_COST - withdrawConfirm.unit.actionsAvailable} over budget.
+                </p>
+              )}
+              <div className="flex gap-2">
                 <button
-                  key={`${hx.q},${hx.r}`}
-                  onClick={() => chooseWithdrawHex(hx)}
-                  className="px-3 py-1.5 rounded bg-gray-800 border border-gray-600 hover:bg-gray-700 text-sm"
+                  onClick={() => { const c = withdrawConfirm; setWithdrawConfirm(null); if (c) void performWithdraw(c.unit, c.dest, over); }}
+                  className={`flex-1 px-3 py-1.5 rounded border text-sm ${over ? 'bg-red-900 border-red-600 hover:bg-red-800' : 'bg-amber-800 border-amber-600 hover:bg-amber-700'}`}
                 >
-                  ({hx.q}, {hx.r})
+                  Withdraw
                 </button>
-              ))}
-            </div>
-            <button onClick={() => setWithdrawPick(null)} className="w-full mt-1 px-3 py-1 rounded bg-gray-800 border border-gray-600 hover:bg-gray-700 text-xs">Cancel</button>
-          </div>
-        </div>
-      )}
-      {withdrawConfirm && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/50" onContextMenu={e => e.preventDefault()}>
-          <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 w-80 text-white space-y-2">
-            <p className="text-sm font-semibold text-red-300">Over budget</p>
-            <p className="text-xs text-gray-300">{withdrawConfirm.unit.unitName} has only {withdrawConfirm.unit.actionsAvailable} action(s) left. Withdraw anyway? It will go {WITHDRAW_ACTION_COST - withdrawConfirm.unit.actionsAvailable} over budget.</p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => { const c = withdrawConfirm; setWithdrawConfirm(null); if (c) void performWithdraw(c.unit, c.dest, true); }}
-                className="flex-1 px-3 py-1.5 rounded bg-red-900 border border-red-600 hover:bg-red-800 text-sm"
-              >
-                Withdraw
-              </button>
-              <button onClick={() => setWithdrawConfirm(null)} className="flex-1 px-3 py-1.5 rounded bg-gray-800 border border-gray-600 hover:bg-gray-700 text-sm">Cancel</button>
+                <button onClick={() => setWithdrawConfirm(null)} className="flex-1 px-3 py-1.5 rounded bg-gray-800 border border-gray-600 hover:bg-gray-700 text-sm">Cancel</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Add / remove temporary effects (context menu → Effects…) */}
       {effectMenuUnit && (
@@ -2339,11 +2328,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onClose={() => setEffectMenuUnit(null)}
         />
       )}
+      </div>
 
       {/* Routed retreat modal — always shown on a rout (even with no options).
           Draggable; hovering an option highlights that hex on the map. */}
       {retreatPick && (
-        <div className="absolute inset-0 z-[80] bg-black/50">
+        <div className="absolute inset-0 z-[80] bg-black/10">
           <div
             className="absolute bg-gray-900 border border-amber-700 rounded-xl shadow-2xl p-4 w-[480px] text-white space-y-3"
             style={{ left: retreatCardPos.x, top: retreatCardPos.y }}
@@ -2458,6 +2448,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         </div>
       )}
 
+      {/* Everything below is also dimmed during a rout (modals/menus). */}
+      <div style={retreatPick ? { opacity: 0, pointerEvents: 'none' } : undefined}>
       {/* Replay overlay — distinct frame + playback controls */}
       {inReplay && (
         <ReplayOverlay
@@ -3009,6 +3001,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         <div className="text-gray-400 text-xs">Units: {units.length}</div>
         <div className="text-gray-500 text-xs">Scenario: {scenarioId.slice(0, 8)}…</div>
         {isGM && <div className="text-yellow-400 text-xs">{gmAsPlayer ? 'DM → Player mode' : 'DM'}</div>}
+      </div>
       </div>
     </div>
   );

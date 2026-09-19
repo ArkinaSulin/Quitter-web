@@ -37,4 +37,9 @@ describe('withdrawDestinations', () => {
     // radius 0: only (0,0) is in bounds, so neither rear hex qualifies.
     expect(withdrawDestinations(u, new Set(), 0)).toEqual([]);
   });
+  it('excludes rear hexes inside an enemy kill zone (no retreat into danger)', () => {
+    const u = mk({ hex: h(0, 0), facing: 0 });
+    expect(withdrawDestinations(u, new Set(), 12, new Set(['0,1']))).toEqual([h(-1, 1)]);
+    expect(withdrawDestinations(u, new Set(), 12, new Set(['0,1', '-1,1']))).toEqual([]);
+  });
 });
