@@ -34,11 +34,12 @@ export function canMeleeAttack(unit: Unit): boolean {
 }
 
 /**
- * The hostiles that may pursue `mover` after it left the hex `originHex` for
- * `destHex`: different alliance, not yet used its pursue this turn, melee-capable,
- * and its kill zone covered the hex the mover LEFT but not the one it arrived on.
+ * The hostiles whose kill zone covered the hex `mover` LEFT but NOT the one it
+ * arrived on — i.e. the enemies it disengaged from. Unfiltered (any weapon, any
+ * `pursuitUsed`), so callers can tell "did it leave a ZoC at all?" from "who can
+ * actually pursue?".
  */
-export function pursuitCandidates(
+export function hostilesLeftZoc(
   mover: Unit,
   originHex: Hex,
   destHex: Hex,
@@ -51,9 +52,24 @@ export function pursuitCandidates(
     e.id !== mover.id &&
     !e.isDeleted &&
     (alliances[e.team] || 'friendly') !== moverAlliance &&
-    !(e.pursuitUsed ?? false) &&
-    canMeleeAttack(e) &&
     imposesZocOn(e, originHex, formationsMap) &&
     !imposesZocOn(e, destHex, formationsMap),
   );
+}
+
+/**
+ * The hostiles that may pursue `mover` after it left the hex `originHex` for
+ * `destHex`: different alliance, not yet used its pursue this turn, melee-capable,
+ * and its kill zone covered the hex the mover LEFT but not the one it arrived on.
+ */
+export function pursuitCandidates(
+  mover: Unit,
+  originHex: Hex,
+  destHex: Hex,
+  units: Unit[],
+  alliances: Record<string, AllianceGroup>,
+  formationsMap: Record<string, Formation>,
+): Unit[] {
+  return hostilesLeftZoc(mover, originHex, destHex, units, alliances, formationsMap)
+    .filter(e => !(e.pursuitUsed ?? false) && canMeleeAttack(e));
 }

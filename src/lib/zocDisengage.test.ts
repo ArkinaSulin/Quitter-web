@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, Hex, Formation, AllianceGroup } from '@/types/gameProtocol';
-import { imposesZocOn, pursuitCandidates } from './zocDisengage';
+import { imposesZocOn, pursuitCandidates, hostilesLeftZoc } from './zocDisengage';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
 
@@ -100,5 +100,22 @@ describe('pursuitCandidates', () => {
     const friendly = { ...enemy, id: 'f', team: 'blue' };
     const out = pursuitCandidates(mover, h(0, -1), h(0, -2), [mover, friendly], ALLIANCES, FORMS);
     expect(out).toEqual([]);
+  });
+});
+
+describe('hostilesLeftZoc', () => {
+  const mover = unit({ id: 'm', team: 'blue', hex: h(0, -1) });
+  const enemy = unit({ id: 'e', team: 'red', hex: h(0, 0), facing: 0, weaponString: '' });
+
+  it('is empty when the mover only ENTERS a kill zone (no scatter/pursue)', () => {
+    // (0,-2) -> (0,-1): enters the enemy's front hex, leaves nothing.
+    expect(hostilesLeftZoc(mover, h(0, -2), h(0, -1), [mover, enemy], ALLIANCES, FORMS)).toEqual([]);
+  });
+
+  it('reports a hostile whose kill zone was left, regardless of weapon/used', () => {
+    // No melee weapon and already pursued: still a "left a ZoC" (drives the scatter).
+    const rangedUsed = { ...enemy, weaponString: '', pursuitUsed: true };
+    const out = hostilesLeftZoc(mover, h(0, -1), h(0, -2), [mover, rangedUsed], ALLIANCES, FORMS);
+    expect(out.map(u => u.id)).toEqual(['e']);
   });
 });

@@ -10,7 +10,7 @@ import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressR
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/lib/formationRules';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
-import { pursuitCandidates, imposesZocOn, canMeleeAttack } from '@/lib/zocDisengage';
+import { pursuitCandidates, hostilesLeftZoc, imposesZocOn, canMeleeAttack } from '@/lib/zocDisengage';
 import { selectPursuer, pursuitScatters } from '@/lib/pursuit';
 import { getSetting } from '@/lib/settingsCache';
 import { unitAttackCap } from '@/lib/attackCap';
@@ -776,6 +776,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
       if (killed) await routeUnit(execute, mover, 'slain by the pursuers', true);
       return;
     }
+
+    // Nothing to do unless a hostile kill zone was actually LEFT. This gates the
+    // WHOLE reaction (scatter included): entering a ZoC, or moving in open ground,
+    // must NOT scatter the mover — only disengaging does.
+    const leftZoc = hostilesLeftZoc(live, originHex, destHex, units, alliances, formationsMap);
+    if (leftZoc.length === 0) return;
 
     // A formed non-hero mover breaks formation to disengage.
     if (pursuitScatters(live)) {

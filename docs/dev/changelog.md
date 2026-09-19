@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Fix: ZoC scatter/pursue fired on every move (2026-09-18)
+**Files:** src/lib/zocDisengage.ts, src/lib/zocDisengage.test.ts, src/components/ScenarioMap/useCombatActions.ts
+
+- **Bug**: `performPursuits` ran the "breaks formation to disengage — Scattered" sub-step for **every** move by a formed non-hero (including moving in open ground or *entering* a kill zone), because only the pursuit *candidates* were gated on leaving a ZoC, not the scatter.
+- **Fix**: added `hostilesLeftZoc(...)` (the unfiltered "whose ZoC was left" set) and gated the whole reaction on it — if no hostile kill zone was actually left, `performPursuits` returns before the scatter. Entering a ZoC or moving in the open now does nothing; only disengaging scatters + pursues. `pursuitCandidates` now filters `hostilesLeftZoc` by melee/used.
+- Tests: `hostilesLeftZoc` enter-vs-leave cases. `tsc` clean; 638 tests pass.
+
 ## AGR-failure message: breakdown is verbose-only (2026-09-18)
 **Files:** src/components/ScenarioMap/useCombatActions.ts
 
