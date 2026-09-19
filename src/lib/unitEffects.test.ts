@@ -53,7 +53,7 @@ const unit = (id: string, team: string, hex = h(0, 0), overrides: Partial<Unit> 
   actionsAvailable: 2,
   attacksUsed: 0,
     archerReactionUsed: false,
-    opportunityAttackUsed: false,
+    pursuitUsed: false,
     heroicInspirationActive: false,
   activeWeaponIndex: 0,
   str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,

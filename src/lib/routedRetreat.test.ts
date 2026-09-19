@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
-import { adjacentRetreatCandidates, routThroughOptions, defaultRetreat, choosePursuer, enemyKillZone, retreatDiagnosis } from './routedRetreat';
+import { adjacentRetreatCandidates, routThroughOptions, defaultRetreat, enemyKillZone, retreatDiagnosis } from './routedRetreat';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
 
@@ -82,90 +82,6 @@ describe('defaultRetreat resolution', () => {
   });
 });
 
-describe('choosePursuer', () => {
-  const rout = () => unit('r', 'blue', h(0, 0), { currentFormation: 'Routed', movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 0 });
-  // Pursuers use a loose (Scattered) formation so any adjacent vacated hex is a
-  // single droppable move from any facing (gate 1 focuses on reach, not arcs here).
-  const host = (id: string, hex: { q: number; r: number; s: number }, mp = 6, availMp = 0, weaponString?: string) =>
-    unit(id, 'red', hex, {
-      currentFormation: 'Scattered',
-      movementPoints: mp,
-      movementPointsAvailable: availMp,
-      actionsAvailable: 1,
-      ...(weaponString ? { weaponString } : {}),
-    });
-
-  it('returns the attacker when it is faster and can pay', () => {
-    const attacker = host('a', h(1, 0), 6, 1);
-    const routed = rout();
-    const units = [routed, attacker];
-    const p = choosePursuer(attacker, routed, units, groups, forms(1), () => 0.1);
-    expect(p?.id).toBe('a');
-  });
-
-  it('skips faster units that cannot pay; pays with actions', () => {
-    const brokeFast = host('b', h(1, 0), 6, 0); // no MP, but 1 action (can pay)
-    const routed = rout();
-    const units = [routed, brokeFast];
-    const p = choosePursuer(unit('x', 'red', h(9, 0), { movementPoints: 1 }), routed, units, groups, forms(1));
-    expect(p?.id).toBe('b'); // b can convert its action
-    const brokeAll = host('c', h(1, 0), 6, 0);
-    brokeAll.actionsAvailable = 0;
-    const p2 = choosePursuer(unit('x', 'red', h(9, 0), { movementPoints: 1 }), routed, [routed, brokeAll], groups, forms(1));
-    expect(p2).toBeNull(); // faster but cannot pay -> no pursuit
-  });
-
-  it('picks the fastest eligible when the attacker is too slow', () => {
-    const slowAttacker = host('a', h(1, 0), 2, 1); // speed 2 not > 3
-    const fast1 = host('f1', h(0, 1), 5, 2);
-    const fast2 = host('f2', h(1, -1), 5, 1);
-    const routed = rout();
-    const units = [routed, slowAttacker, fast1, fast2];
-    const p = choosePursuer(slowAttacker, routed, units, groups, forms(1), () => 0.5);
-    // same speed: most available MP wins (fast1 has 2)
-    expect(p?.id).toBe('f1');
-  });
-
-  it('returns null when no adjacent hostile is faster', () => {
-    const routed = rout();
-    const slow = host('s', h(1, 0), 2, 2);
-    const p = choosePursuer(slow, routed, [routed, slow], groups, forms(1));
-    expect(p).toBeNull();
-  });
-
-  it('speed gate is >= the routed unit\'s effective routing speed (equality pursues)', () => {
-    const routed = unit('r', 'blue', h(0, 0), { currentFormation: 'Routed', movementPoints: 2, movementPointsAvailable: 0, actionsAvailable: 0 });
-    // routed effective speed 2; a pursuer at exactly 2 qualifies (equal catches).
-    const equal = host('e', h(1, 0), 2, 1);
-    const p = choosePursuer(equal, routed, [routed, equal], groups, forms(1));
-    expect(p?.id).toBe('e');
-  });
-
-  it('a melee pursuer two hexes away does NOT qualify (no run-up / teleport)', () => {
-    const routed = rout();
-    const far = host('f', h(2, 0), 6, 1); // adjacent? no - distance 2
-    const p = choosePursuer(far, routed, [routed, far], groups, forms(1));
-    expect(p).toBeNull();
-  });
-
-  it('an adjacent unit with a RANGED primary weapon never pursues', () => {
-    const routed = rout();
-    const bow = unit('b', 'red', h(1, 0), {
-      currentFormation: 'Scattered', movementPoints: 6, movementPointsAvailable: 1, actionsAvailable: 1,
-      weaponString: 'Shortbow,2,1d6,false,2,3,0,false,true,false,false,1,true,Dex,circle',
-    });
-    const p = choosePursuer(bow, routed, [routed, bow], groups, forms(1));
-    expect(p).toBeNull(); // ranged primary - never pursues
-  });
-
-  it('an adjacent MELEE attacker is preferred when multiple melee pursuers exist', () => {
-    const routed = rout();
-    const attacker = host('a', h(0, 1), 4, 1, 'Sword,3,1d8,false,1,1,0,false,false,false,false,1,true,Dex,circle');
-    const other = host('o', h(1, 0), 6, 1, 'Sword,3,1d8,false,1,1,0,false,false,false,false,1,true,Dex,circle');
-    const p = choosePursuer(attacker, routed, [routed, attacker, other], groups, forms(1));
-    expect(p?.id).toBe('a'); // attacker first even though 'other' is faster
-  });
-});
 
 describe('routing units never yield (no rout-through through another routing unit)', () => {
   const routedFriendly = () => unit('rf', 'blue', h(0, 0), { currentFormation: 'Routed', movementPoints: 3 });

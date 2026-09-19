@@ -447,12 +447,12 @@ Drag a unit with the mouse. The game shades where it can move:
 
 ![S-14 Drag overlay](screenshots/s-14-drag-overlay.png)
 
-> **Disengaging (opportunity attack).** Moving *out* of an enemy kill zone
-> provokes an **opportunity attack** from each formed enemy whose kill zone you
-> leave — one free **melee** attack on you (you don't strike back). Every such
-> enemy strikes before any rout check, and each unit gets at most one per turn.
-> Scattered, Routed and Heroes never make one — but any unit that runs, even a
-> Scattered one, can take one. Charge-overs ride through without provoking.
+> **Disengaging (zone of control).** Moving *out* of an enemy kill zone (setting
+> ON) drops you to **Scattered** and provokes a **pursue**: one enemy that had you
+> in its kill zone steps into the hex you left and strikes you there, once per
+> turn. Scattered, Routed and Heroes impose no kill zone but can still be pursued.
+> To leave cleanly, **Withdraw** (below). Charge-overs ride through without
+> provoking.
 
 Movement costs **1 MP per hex entered** from your front arc (more for
 difficult terrain — below). Turning is paid separately: 60° = 1 MP (units),
@@ -779,17 +779,29 @@ empty hexes **outside enemy kill zones**. You may:
 > friendly (two crowds don't part), and ordered ranks (Close/Phalanx/Shield
 > Wall) can't be pushed through either.
 
-### Pursuit (automatic — you can't decline)
+### Zone of control: disengaging, pursuit, and Withdraw
 
-When an enemy routs away, the best-placed adjacent hostile **pursues**:
-- eligible = can reach the vacated hex in one move, is at least **1.5× the
-  routed unit's speed**, and can pay the MP;
-- preference: the **attacker who caused the rout** → the fastest → the one
-  with the most MP → random;
-- the pursuer follows in (pays 1 MP), **attacks** (fast follow = no reaction),
-  and **drops one formation level** (they threw order away to chase);
-- if the rout scattered a friendly Open Order unit, the pursuer hits **that
-  disrupted unit** instead (the routed one is now behind cover).
+**Entering** an enemy's kill zone ends your move (leftover MP is lost). When a
+scenario's **Zone-of-control pursuit** setting is ON, **leaving** a hostile kill
+zone (by move *or* rout) is dangerous:
+
+- you **drop to Scattered** (a formed unit can only disengage by breaking order);
+- **one** hostile that can fight melee and had the hex in its kill zone
+  **pursues**: it is chosen **attacker who caused the rout → most Max MP → most
+  available MP → random**, and each candidate rolls `d10 ≤ Aggressiveness` in
+  turn until one passes. A unit standing in a **hero's Commanding Presence** is
+  held in line unless that hero's owner has ticked **Command: allow pursue**;
+- the pursuer steps one hex into the vacated hex and strikes you **at the point
+  you left** (no reaction), once per turn.
+
+A routed unit with **no legal retreat** is cornered: every enemy that can reach
+it strikes it in place. With the setting **OFF**, none of this happens —
+entering a kill zone still costs the move, but leaving is just a move.
+
+**Withdraw (2 actions):** right-click a formed unit → **Withdraw 1 hex (2
+actions, no face change)** to step straight back into a rear hex keeping your
+facing. It costs 2 actions (free in free-move) but **never scatters and never
+provokes** — the ordered way out. Archer reaction fire still applies.
 
 Routs, retreats, disruptions, pursuit moves and pursuit attacks all land as
 **one undoable group** — Ctrl+Z unwinds the entire bloody episode.

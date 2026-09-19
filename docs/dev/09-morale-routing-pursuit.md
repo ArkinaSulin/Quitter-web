@@ -96,33 +96,30 @@ highlight on hover). Logic in `routedRetreat.ts`:
   returns structured reasons for the modal ("every adjacent friendly is
   routing/ordered…").
 
-## Pursuit (mandatory, cannot be declined)
+## Pursuit (zone of control)
 
-Eligibility for an adjacent hostile, all three (`choosePursuer`):
+Gated by `scenarios.zoc_pursuit_enabled` (default ON). A unit that **leaves a
+hostile kill zone** — a rout retreat, a voluntary move, anything — is punished by
+`performPursuits` (`useCombatActions`), shared with the routine disengage path
+(see `07`/`08`):
 
-1. the **vacated hex is reachable in one droppable move** from its facing,
-2. its effective **MaxMP ≥ the routed unit's effective routing MaxMP** (the Routed
-   formation's ×1.5 is already applied to the routed unit, so equal effective
-   speed is enough to pursue),
-3. it **can pay the entry MP**.
+- The mover **drops to Scattered** if it is a formed non-hero (`pursuitScatters`);
+  a Routed unit stays Routed (so a rout retreat scatters nothing).
+- **One pursuer**, chosen from the melee-capable hostiles whose kill zone was left
+  (`pursuitCandidates`): ordered **attacker who caused the rout → most MaxMP →
+  most available MP → random**, each rolling **`d10 <= AGR`** until one passes. A
+  candidate inside a hero's Commanding Presence is held unless that hero's
+  `command_pursuit_permit` is true. If a chase is suppressed by a hero, the log
+  says so. `src/lib/pursuit.ts`.
+- The pursuer takes a **free 1-hex step** into the contact hex and makes a **free
+  melee attack resolved at the contact hex**, regardless of how far the router
+  fled; **once per turn** (`pursuitUsed`, migrations 084/087/090), counts +1 to
+  the attack cap. A **rout-through** makes the pursuer strike the friendly that
+  allowed the pass (now Scattered) instead of the router.
+- A routed unit with **no legal retreat** is CORNERED: every eligible ZoC unit
+  strikes it in place (once each per turn).
+- The rout → retreat → rout-through/disruption → pursue episode lands as one
+  chained command group, undoable in one step.
 
-Preference: the **attacker** who caused the rout (when eligible) → the fastest
-eligible → the most MP → random tie-break. The pursuer follows into the vacated
-hex (pays 1 MP), attacks (fast follow = **no reaction**), and **drops one
-organization level**. When the rout disrupted a friendly Open Order unit, the
-pursuer attacks **that scattered friendly** instead of the routed unit (it's
-behind an occupied hex); a pass-through of a Scattered friendly with no
-disruption yields **no pursuit attack**. When the routed unit couldn't move at
-all, the attacker makes a labeled **FREE pursue attack** (no speed/MP gate,
-org −1 still applies). The whole episode (rout → retreat → rout-through/
-disruption → pursuit move → pursuit attack) lands as one chained command
-group, undoable in one step.
-
-## Parting shot (voluntary disengagement)
-
-Distinct from rout pursuit (which answers a *forced* rout): a unit that
-**voluntarily moves out of a kill zone** provokes one free parting attack from
-each formed hostile whose kill zone it leaves — fired at the **point of contact**
-(no chase, so the pursuit speed gate does not apply), once per attacker per turn.
-See `07` (movement) and `08` (combat). Routed retreats never trigger it; they use
-the pursuit flow above.
+No reaction / morale-cascade special-casing: the pursue is a normal melee attack
+(the router does not retaliate).

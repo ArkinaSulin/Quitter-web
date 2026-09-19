@@ -414,6 +414,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
             <Cell label="Size" widthClass="w-24"><SelectInput value={String(draft.sizeCategory)} onChange={v => set('sizeCategory', v)} options={SIZE_VALUES.map(v => ({ value: String(v), label: `${SIZE_LABELS[v]} (${v})` }))} /></Cell>
             <Cell label="Visual scale"><NumInput value={draft.visualScale} min={50} max={149} onChange={v => set('visualScale', v)} /></Cell>
             <Cell label="Morale boost"><NumInput value={draft.moraleBoost} min={0} onChange={v => set('moraleBoost', v)} /></Cell>
+            <div className="pb-1 ml-2"><Toggle checked={!!draft.commandPursuitPermit} onChange={v => set('commandPursuitPermit', v)} label="Command: allow pursue" /></div>
             <div className="pb-1 ml-2"><Toggle checked={!!draft.heroicInspirationActive} onChange={v => set('heroicInspirationActive', v)} label="Heroic Inspiration" /></div>
           </div>
 

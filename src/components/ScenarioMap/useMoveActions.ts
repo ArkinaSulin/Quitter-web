@@ -11,6 +11,7 @@ import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStat
 import { isUnitRouted } from '@/lib/unitMorale';
 import { isMeleeWeapon, isInAnyHostileKillZone, computeWeaponSwitchAc } from '@/lib/meleeFallback';
 import { areHexesAdjacent } from '@/lib/unitMorale';
+import { WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep } from '@/lib/commandLog';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
@@ -43,7 +44,7 @@ interface MoveActionsDeps {
   walls?: Walls;
   /** Late-bound opportunity-attack resolver (owned by useCombatActions, assigned
    *  via a ref to break the useMoveActions → useCombatActions hook-order cycle). */
-  opportunityAttacksRef: { current: ((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null };
+  pursuitsRef: { current: ((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null };
 }
 
 export function useMoveActions(deps: MoveActionsDeps) {
@@ -70,7 +71,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     setActiveHeroId,
     terrainCosts,
     walls,
-    opportunityAttacksRef,
+    pursuitsRef,
   } = deps;
 
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
@@ -186,7 +187,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // Disengagement: a move that leaves a hostile kill zone provokes one melee
     // opportunity attack from each formed enemy whose kill zone was left (routed
     // retreats and the charge-over overrun use separate paths and are exempt).
-    await opportunityAttacksRef.current?.(unit, unit.hex, targetHex);
+    await pursuitsRef.current?.(unit, unit.hex, targetHex);
     // Track distance moved during this charge (2 hexes = full charge).
     if (unit.isCharging) {
       await execute('CHARGE', [{
@@ -197,7 +198,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       }], `${unit.unitName} advanced ${cost} hex(es) in its charge`, { chained: true });
     }
     await finishHeroMove(unit);
-  }, [performMove, execute, finishHeroMove, opportunityAttacksRef]);
+  }, [performMove, execute, finishHeroMove, pursuitsRef]);
 
   const handleUnitMove = useCallback(async (unitId: string, targetHex: Hex) => {
     const unit = units.find(u => u.id === unitId);
@@ -332,7 +333,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // [#] actions that make up 1 MP; only if even conversions can't cover it
     // (no actions left) fall back to the over-budget confirm.
     const maxMP = unitMaxMP(hero);
-    if (hero.movementPointsAvailable < 1) {
+    if (!freeMove && hero.movementPointsAvailable < 1) {
       const per = heroMovePerAction(maxMP);
       const actionsNeeded = Math.ceil((1 - Math.max(0, hero.movementPointsAvailable)) / per);
       if (hero.actionsAvailable >= actionsNeeded) {
@@ -344,7 +345,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
     await attachHero(hero, target, position, maxMP);
     addMessage(`${hero.unitName} attached to ${target.unitName} (${position})`);
-  }, [units, attachHero, addMessage, unitMaxMP, heroMovePerAction]);
+  }, [units, attachHero, addMessage, unitMaxMP, heroMovePerAction, freeMove]);
 
   const handleSwapHeroPosition = useCallback(async (hero: Unit) => {
     // Swapping front/back costs 1 hero MP (free during free-move) — ask before
@@ -362,6 +363,25 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
     await swapHeroPosition(hero, maxMP);
   }, [swapHeroPosition, freeMove, unitMaxMP, heroMovePerAction]);
+
+  /**
+   * Execute a Withdraw: step one hex into a rear-arc hex, keeping facing, for
+   * `WITHDRAW_ACTION_COST` actions (free under free-move). Never scatters and
+   * never provokes a pursue; reactions (archer) still fire off the MOVE command.
+   * `overBudget` only controls the red warning (the actions may go negative).
+   */
+  const performWithdraw = useCallback(async (unit: Unit, destHex: Hex, overBudget = false) => {
+    const changes: { field: string; from: any; to: any }[] = [
+      { field: 'hex', from: unit.hex, to: { ...destHex } },
+    ];
+    if (!freeMove) {
+      changes.push({ field: 'actionsAvailable', from: unit.actionsAvailable, to: unit.actionsAvailable - WITHDRAW_ACTION_COST });
+    }
+    const desc = `${unit.unitName} withdraws to (${destHex.q}, ${destHex.r})${freeMove ? '' : ` (${WITHDRAW_ACTION_COST} actions)`}`;
+    await execute('MOVE', [{ type: 'MOVE', description: desc, unitId: unit.id, changes }], `${unit.unitName} withdraws in good order`);
+    if (overBudget) addError(`${unit.unitName} withdrew with only ${unit.actionsAvailable} action(s) left, over budget`);
+    await maybeAutoReturnToRanged(unit);
+  }, [execute, freeMove, addError, maybeAutoReturnToRanged]);
 
   return {
     pendingMove,
@@ -384,5 +404,6 @@ export function useMoveActions(deps: MoveActionsDeps) {
     handleMoveTeam,
     handleAttachHero,
     handleSwapHeroPosition,
+    performWithdraw,
   };
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, Hex, Formation, AllianceGroup } from '@/types/gameProtocol';
-import { imposesZocOn, disengageAttackers } from './zocDisengage';
+import { imposesZocOn, pursuitCandidates } from './zocDisengage';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
 
@@ -34,7 +34,7 @@ function unit(over: Partial<Unit> & { id: string; team: string }): Unit {
     equipCostGp: 0, canCharge: false, hex: h(0, 0), facing: 0, hidden: false, isDeleted: false,
     ignoreMoraleChecks: false, isCharging: false, chargeDistance: 0, commandSeq: 0,
     organizationLevel: 2, actionsAvailable: 2, attacksUsed: 0, archerReactionUsed: false,
-    opportunityAttackUsed: false,
+    pursuitUsed: false,
     heroicInspirationActive: false, activeWeaponIndex: 0, str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
     ...over,
   } as Unit;
@@ -62,23 +62,23 @@ describe('imposesZocOn', () => {
   });
 });
 
-describe('disengageAttackers', () => {
+describe('pursuitCandidates', () => {
   const mover = unit({ id: 'm', team: 'blue', hex: h(0, -1) });
-  const enemy = unit({ id: 'e', team: 'red', hex: h(0, 0), facing: 0 });
+  const enemy = unit({ id: 'e', team: 'red', hex: h(0, 0), facing: 0, weaponString: 'Sword,3,1d8,false,1,1,0,false,false,false,false,1,true,Dex,circle' });
 
   it('returns a formed hostile whose kill zone is being left', () => {
-    const out = disengageAttackers(mover, h(0, -1), h(0, -2), [mover, enemy], ALLIANCES, FORMS);
+    const out = pursuitCandidates(mover, h(0, -1), h(0, -2), [mover, enemy], ALLIANCES, FORMS);
     expect(out.map(u => u.id)).toEqual(['e']);
   });
 
   it('does not fire when the mover stays inside the kill zone', () => {
     // (0,-1) -> (1,-1) is still one of the enemy's front hexes.
-    const out = disengageAttackers(mover, h(0, -1), h(1, -1), [mover, enemy], ALLIANCES, FORMS);
+    const out = pursuitCandidates(mover, h(0, -1), h(1, -1), [mover, enemy], ALLIANCES, FORMS);
     expect(out).toEqual([]);
   });
 
   it('ignores enemies whose kill zone only covers the destination', () => {
-    const out = disengageAttackers(mover, h(-2, 0), h(0, -1), [mover, enemy], ALLIANCES, FORMS);
+    const out = pursuitCandidates(mover, h(-2, 0), h(0, -1), [mover, enemy], ALLIANCES, FORMS);
     expect(out).toEqual([]);
   });
 
@@ -86,19 +86,19 @@ describe('disengageAttackers', () => {
     const scattered = { ...enemy, id: 's', currentFormation: 'Scattered' };
     const routed = { ...enemy, id: 'r', currentFormation: 'Routed' };
     const hero = { ...enemy, id: 'h', isHero: true, currentFormation: 'Hero' };
-    const out = disengageAttackers(mover, h(0, -1), h(0, -2), [mover, scattered, routed, hero], ALLIANCES, FORMS);
+    const out = pursuitCandidates(mover, h(0, -1), h(0, -2), [mover, scattered, routed, hero], ALLIANCES, FORMS);
     expect(out).toEqual([]);
   });
 
   it('a unit that already parted this turn is skipped', () => {
-    const used = { ...enemy, opportunityAttackUsed: true };
-    const out = disengageAttackers(mover, h(0, -1), h(0, -2), [mover, used], ALLIANCES, FORMS);
+    const used = { ...enemy, pursuitUsed: true };
+    const out = pursuitCandidates(mover, h(0, -1), h(0, -2), [mover, used], ALLIANCES, FORMS);
     expect(out).toEqual([]);
   });
 
   it('same-alliance enemies never part', () => {
     const friendly = { ...enemy, id: 'f', team: 'blue' };
-    const out = disengageAttackers(mover, h(0, -1), h(0, -2), [mover, friendly], ALLIANCES, FORMS);
+    const out = pursuitCandidates(mover, h(0, -1), h(0, -2), [mover, friendly], ALLIANCES, FORMS);
     expect(out).toEqual([]);
   });
 });

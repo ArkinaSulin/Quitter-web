@@ -745,15 +745,18 @@ export function useGameEngine({
 
   const attachHero = useCallback(
     async (hero: Unit, targetUnit: Unit, position: 'front' | 'back', heroMaxMP: number): Promise<void> => {
-      const { movementPointsAvailable, actionsAvailable } = applyHeroMpSpend(hero, 1, heroMaxMP);
       const changes: { field: string; from: any; to: any }[] = [
         { field: 'attachedToUnitId', from: null, to: targetUnit.id },
         { field: 'attachedPosition', from: null, to: position },
         { field: 'hex', from: { ...hero.hex }, to: { ...targetUnit.hex } },
-        { field: 'movementPointsAvailable', from: hero.movementPointsAvailable, to: movementPointsAvailable },
       ];
-      if (actionsAvailable !== hero.actionsAvailable) {
-        changes.push({ field: 'actionsAvailable', from: hero.actionsAvailable, to: actionsAvailable });
+      // Attaching costs 1 hero MP (free during free-move).
+      if (!freeMove) {
+        const { movementPointsAvailable, actionsAvailable } = applyHeroMpSpend(hero, 1, heroMaxMP);
+        changes.push({ field: 'movementPointsAvailable', from: hero.movementPointsAvailable, to: movementPointsAvailable });
+        if (actionsAvailable !== hero.actionsAvailable) {
+          changes.push({ field: 'actionsAvailable', from: hero.actionsAvailable, to: actionsAvailable });
+        }
       }
       const subSteps: SubStep[] = [
         {
@@ -765,7 +768,7 @@ export function useGameEngine({
       ];
       await execute('ATTACH_HERO', subSteps, subSteps[0].description);
     },
-    [execute],
+    [execute, freeMove],
   );
 
   const swapHeroPosition = useCallback(
@@ -930,7 +933,7 @@ export function useGameEngine({
           { field: 'attacksUsed', from: unit.attacksUsed ?? 0, to: 0 },
         ];
         changes.push({ field: 'archerReactionUsed', from: unit.archerReactionUsed ?? false, to: false });
-        changes.push({ field: 'opportunityAttackUsed', from: unit.opportunityAttackUsed ?? false, to: false });
+        changes.push({ field: 'pursuitUsed', from: unit.pursuitUsed ?? false, to: false });
         changes.push({ field: 'heroicInspirationActive', from: unit.heroicInspirationActive ?? false, to: false });
         subSteps.push({
           type: 'END_TURN',

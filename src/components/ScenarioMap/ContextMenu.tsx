@@ -22,6 +22,8 @@ interface ContextMenuProps {
   onRotate: (direction: 'left' | 'right') => void;
   /** 180° about-face: 1 MP + one organization level (free for Scattered/free-move). */
   onRotate180?: () => void;
+  /** Withdraw: 2 actions to step 1 hex into a rear-arc hex, keeping facing. */
+  onWithdraw?: () => void;
   onChangeFormation: (formation: string) => void;
   onSelectWeapon: (weaponIndex: number) => void;
   onAssignTeam: (team: string) => void;
@@ -63,6 +65,7 @@ export function ContextMenu({
   onClose,
   onRotate,
   onRotate180,
+  onWithdraw,
   onChangeFormation,
   onSelectWeapon,
   onAssignTeam,
@@ -239,6 +242,16 @@ export function ContextMenu({
               </div>
             );
           })()}
+          {/* Withdraw: an ordered rear step that never scatters or provokes. */}
+          {onWithdraw && !unit.isHero && !unit.isCharging && unit.currentFormation !== 'Scattered' && unit.currentFormation !== 'Routed' && (
+            <div
+              className="px-3 py-1 hover:bg-gray-700 cursor-pointer"
+              onClick={() => { onWithdraw(); onClose(); }}
+              title="Step one hex into a rear-arc hex, keeping facing. Costs 2 actions (free in free-move); never scatters and never provokes a pursue."
+            >
+              Withdraw 1 hex (2 actions, no face change)
+            </div>
+          )}
           {/* Attached hero swaps front/back position (costs 1 hero MP). Shown on
               the host's menu, right under rotate, above charge. */}
           {attachedHero && onSwapHeroPosition && (

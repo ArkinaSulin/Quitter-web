@@ -127,6 +127,13 @@ let heroMoraleBoostEnabled = false;
 export function setHeroMoraleBoostEnabled(enabled: boolean): void { heroMoraleBoostEnabled = enabled; }
 export function isHeroMoraleBoostEnabled(): boolean { return heroMoraleBoostEnabled; }
 
+// Ambient scenario flag (`scenarios.zoc_pursuit_enabled`), set by ScenarioMap. When
+// ON: leaving a hostile kill zone scatters a formed non-hero mover and provokes an
+// aggression-gated pursue. When OFF: no scatter/pursue/opportunity attack.
+let zocPursuitEnabled = true;
+export function setZocPursuitEnabled(enabled: boolean): void { zocPursuitEnabled = enabled; }
+export function isZocPursuitEnabled(): boolean { return zocPursuitEnabled; }
+
 /**
  * Hero aura on `unit`: the strongest single HERO (same alliance, alive, visible,
  * within the hero's hex + 6 neighbours — 7 hexes) whose Commanding Presence is

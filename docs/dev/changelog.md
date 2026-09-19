@@ -1,5 +1,16 @@
 # QuiTTER Changelog
 
+## Zone-of-control pursue + Withdraw (migration 090) (2026-09-18)
+**Files:** src/lib/{pursuit,pursuit.test,withdraw,withdraw.test,zocDisengage,zocDisengage.test,routedRetreat,routedRetreat.test}.ts, src/components/ScenarioMap/{useCombatActions,useMoveActions,ScenarioMap,ContextMenu}.tsx, src/hooks/{useGameEngine,useSupabaseSync,useScenarios}.ts, src/components/{UnitEditor}.tsx, src/components/ScenarioMap/UnitEditorModal.tsx, src/lib/{templateMappers,unitMorale}.ts, src/types/gameProtocol.ts, test fixtures, supabase/migrations/090_zoc_pursuit.sql (new), docs/dev/{02,07,08,09}, docs/players/player-manual.md
+
+- **Replaced the parting shot + speed-gated pursuit** with one rule: leaving a hostile kill zone **scatters** a formed non-hero mover and provokes **one** aggression-gated **pursue**. Candidates (`pursuitCandidates`) are melee-capable hostiles whose kill zone was left; ordered **attacker → most MaxMP → most avail MP → random**, each rolls **`d10 <= AGR`** until one passes. The pursuer takes a **free 1-hex step** into the contact hex and makes a **free melee attack at the contact hex** (no reaction, once/turn). Rout-through → attacks the friendly that let the pass; cornered fresh rout → every eligible ZoC unit strikes in place. `src/lib/pursuit.ts`.
+- **Hero Commanding-Presence leash**: a candidate inside a hero's 7-hex aura only pursues if that hero's `command_pursuit_permit` is true (**default false = hold the line**). A suppressed chase is annotated in the log. Authorable on the unit template + editable on the placed unit (`UnitEditor`, `UnitEditorModal`), plus a **Command: allow pursue** toggle.
+- **Withdraw** (context menu under Rotate 180°): a formed non-hero unit spends **2 actions** (free under free-move; soft over-budget confirm) to step **one hex into a rear-arc hex keeping facing** — **never scatters, never provokes**; archer reactions still fire. `src/lib/withdraw.ts`.
+- **Scenario toggle** `zoc_pursuit_enabled` (default ON): OFF = no scatter/pursue/opportunity attack; entering still spends MP, leaving just costs movement. New **Zone-of-control pursuit** setting.
+- **Rename** `units.opportunity_attack_used` → `units.pursuit_used` (+ allowlist). **Migration 090** adds the scenario column, the two unit/template columns, and the rename. **Apply 090 in Supabase.**
+- **Bug fix**: attaching a hero under **free-move** no longer spends MP/an action (`handleAttachHero` + `useGameEngine.attachHero` now guard on `freeMove`, matching `swapHeroPosition`).
+- Tests: `pursuit.test.ts`, `withdraw.test.ts`, reworked `zocDisengage.test.ts` (now `pursuitCandidates`), dropped the `routedRetreat` speed cases. `tsc` clean; 631 tests pass; `next build` clean.
+
 ## Edge walls / barriers on maps (migration 089) — Phase 1 (2026-09-18)
 **Files:** src/lib/{walls,walls.test,hexLine,hexLine.test,moveCost,moveCost.test,unitCombat,unitCombat.test,mapEntities,mapEntities.test,enemyAI/planner}.ts, src/components/MapEditor/{MapEditor,MapCanvas}.tsx, src/components/ScenarioMap/{mapGeometry,useOverlay,useMoveActions,useReactionActions,useCombatActions,useCanvasDraw,ScenarioMap,LeftPanel,WallPaintPanel}.tsx/.ts, supabase/migrations/089_map_walls.sql (new), docs/dev/13-map-entities-terrain.md
 

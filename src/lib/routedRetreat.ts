@@ -1,16 +1,12 @@
 // src/lib/routedRetreat.ts
-// Pure decision logic for routed-unit retreat + pursuit (owner-decided retreat,
-// rout-through friendly Open Order/Scattered, mandatory pursuit by the fastest
-// pursuer who can pay). Integration (two-phase owner pick over realtime + chained
-// ROUT/MOVE/pursuit commands) lives in the map layer; this file stays testable.
+// Pure decision logic for routed-unit retreat (owner-decided retreat, rout-through
+// friendly Open Order/Scattered). Pursuit is handled by `pursuit.ts` /
+// `zocDisengage.ts`; this file owns the retreat geometry + diagnosis. Integration
+// (two-phase owner pick over realtime + chained ROUT/MOVE commands) lives in the
+// map layer; this file stays testable.
 
-import { Unit, AllianceGroup, Formation, Hex, hexDistance } from '@/types/gameProtocol';
-import { isUnitRouted } from '@/lib/unitMorale';
-import { computeEffectiveMovement } from '@/lib/unitStats';
+import { Unit, AllianceGroup, Formation, Hex } from '@/types/gameProtocol';
 import { computeThreatHexes } from '@/components/ScenarioMap/mapGeometry';
-import { computeReachableMap } from '@/lib/moveCost';
-import { parseWeapons } from '@/lib/weaponParser';
-import { isMeleeWeapon } from '@/lib/meleeFallback';
 
 const DIRS = [
   { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
@@ -45,18 +41,6 @@ export function occupiedExcept(ctx: RoutContext): Set<string> {
     s.add(key(u.hex.q, u.hex.r));
   }
   return s;
-}
-
-/** Speed of a routed unit: its movement with the Routed formation's multiplier. */
-export function routedSpeed(ctx: RoutContext): number {
-  const mult = ctx.formationsMap['Routed']?.movement_multiplier ?? 1;
-  return computeEffectiveMovement(ctx.routed, mult);
-}
-
-/** Speed of any unit under its own formation multiplier. */
-export function unitSpeed(u: Unit, formationsMap: Record<string, Formation>): number {
-  const mult = formationsMap[u.currentFormation]?.movement_multiplier ?? 1;
-  return computeEffectiveMovement(u, mult);
 }
 
 /** Legal single-hex retreat candidates: empty hexes NOT in an enemy kill zone. */
@@ -159,137 +143,4 @@ export function retreatDiagnosis(ctx: RoutContext): RetreatDiagnosis {
     allAdjacentOrdered,
     hasAdjacentFriendly: adjacentFriendly.length > 0,
   };
-}
-
-export interface PursuerPick {
-  unit: Unit;
-  /** MP cost the pursuer must pay to enter the vacated hex (default 1). */
-  entryCost: number;
-  /** The routed unit scattered a friendly Open Order unit during its rout. */
-  scatteredFriendlyId: string | null;
-}
-
-/** Whether a unit can pay `cost` MP right now (materialized MP or an action pool). */
-export function canPayMove(unit: Unit, cost = 1): boolean {
-  return (unit.movementPointsAvailable ?? 0) >= cost || (unit.actionsAvailable ?? 0) >= 1;
-}
-
-/**
- * Choose the single MELEE pursuer. Eligibility (all of):
- *   1. the unit is ADJACENT to the vacated/standing hex (no long run-up —
- *      pursuing is a single step, not a teleport),
- *   2. its ACTIVE (primary) weapon is melee — a ranged unit never pursues,
- *   3. it can advance into the vacated hex in one droppable move,
- *   4. its effective MaxMP >= the routed unit's EFFECTIVE routing MaxMP (the
- *      Routed ×1.5 is already applied to the routed unit, so equal speed works),
- *   5. it can pay the entry MP.
- * Preference: the attacking unit (when given) → fastest eligible → most
- * available MP → random. Ranged attackers never qualify.
- */
-export function choosePursuer(
-  attacker: Unit | null | undefined,
-  routed: Unit,
-  units: Unit[],
-  alliances: Record<string, AllianceGroup>,
-  formationsMap: Record<string, Formation>,
-  rnd: () => number = Math.random,
-): Unit | null {
-  const routedSpeedV = routedSpeed({ routed, units, alliances, formationsMap });
-  const speedGate = routedSpeedV;
-  const routedGroup = alliances[routed.team] || 'friendly';
-  const vacKey = key(routed.hex.q, routed.hex.r);
-  const occ = new Set<string>();
-  for (const u of units) {
-    if (u.isDeleted || u.id === routed.id) continue;
-    occ.add(key(u.hex.q, u.hex.r));
-  }
-  const eligible = units.filter(u => {
-    if (u.isDeleted || u.id === routed.id) return false;
-    if ((alliances[u.team] || 'friendly') === routedGroup) return false;
-    if (isUnitRouted(u)) return false;
-    if (hexDistance(u.hex, routed.hex) !== 1) return false; // must be adjacent
-    const weapons = parseWeapons(u.weaponString || '');
-    const active = weapons[u.activeWeaponIndex ?? 0] ?? weapons[0];
-    if (active && !isMeleeWeapon(active)) return false; // ranged never pursues
-    const speed = unitSpeed(u, formationsMap);
-    if (!(speed >= speedGate)) return false;
-    if (!canPayMove(u, 1)) return false;
-    const reach = computeReachableMap(u, Math.max(1, speed), occ, new Set<string>(), undefined, true);
-    const entry = reach.get(vacKey);
-    if (!entry || entry.needsTurn) return false;
-    return true;
-  });
-  if (eligible.length === 0) return null;
-  if (attacker && eligible.some(u => u.id === attacker.id)) return attacker;
-  const fastest = Math.max(...eligible.map(u => unitSpeed(u, formationsMap)));
-  const fast = eligible.filter(u => unitSpeed(u, formationsMap) === fastest);
-  if (fast.length === 1) return fast[0];
-  const mostMp = Math.max(...fast.map(u => u.movementPointsAvailable ?? 0));
-  const withMp = fast.filter(u => (u.movementPointsAvailable ?? 0) === mostMp);
-  if (withMp.length === 1) return withMp[0];
-  return withMp[Math.floor(rnd() * withMp.length)];
-}
-
-export interface PursuitGateInfo {
-  id: string;
-  unitName: string;
-  speed: number;
-  speedNeed: number;
-  speedOk: boolean;
-  meleeOk: boolean;
-  reachOk: boolean;
-  payOk: boolean;
-  note: string;
-}
-
-/**
- * Verbose error-checking aid: why each ADJACENT hostile can (or can't) pursue.
- * Only adjacent hostiles can ever pursue (choosePursuer requires adjacency), so
- * non-adjacent units are omitted. Mirrors choosePursuer's gates (melee primary
- * weapon, effective speed ≥ the routed unit's effective routing speed, one
- * droppable move into the vacated hex, affordable MP) so decline reasons are
- * visible.
- */
-export function pursuitGateInfo(
-  routed: Unit,
-  units: Unit[],
-  alliances: Record<string, AllianceGroup>,
-  formationsMap: Record<string, Formation>,
-): PursuitGateInfo[] {
-  const routedSpeedV = routedSpeed({ routed, units, alliances, formationsMap });
-  const speedNeed = routedSpeedV;
-  const routedGroup = alliances[routed.team] || 'friendly';
-  const vacKey = key(routed.hex.q, routed.hex.r);
-  const occ = new Set<string>();
-  for (const u of units) {
-    if (u.isDeleted || u.id === routed.id) continue;
-    occ.add(key(u.hex.q, u.hex.r));
-  }
-  const out: PursuitGateInfo[] = [];
-  for (const u of units) {
-    if (u.isDeleted || u.id === routed.id) continue;
-    if ((alliances[u.team] || 'friendly') === routedGroup) continue;
-    if (isUnitRouted(u)) continue;
-    if (hexDistance(u.hex, routed.hex) !== 1) continue; // only adjacent units can pursue
-    const weapons = parseWeapons(u.weaponString || '');
-    const active = weapons[u.activeWeaponIndex ?? 0] ?? weapons[0];
-    const meleeOk = !active || isMeleeWeapon(active);
-    const speed = unitSpeed(u, formationsMap);
-    const speedOk = speed >= speedNeed;
-    const payOk = canPayMove(u, 1);
-    const reach = computeReachableMap(u, Math.max(1, speed), occ, new Set<string>(), undefined, true);
-    const entry = reach.get(vacKey);
-    const reachOk = !!entry && !entry.needsTurn;
-    const note = `${meleeOk ? '' : 'ranged primary · '}${speedOk ? '' : `speed ${speed} < ${speedNeed} · `}${entry ? (entry.needsTurn ? 'needs a turn first · ' : '') : 'cannot reach the vacated hex · '}${payOk ? '' : 'no MP/action'}`;
-    out.push({ id: u.id, unitName: u.unitName, speed, speedNeed, speedOk, meleeOk, reachOk, payOk, note });
-  }
-  return out;
-}
-
-/** One-line human summary of the pursuit gates (for the messages log). */
-export function pursuitGateText(info: PursuitGateInfo[]): string {
-  if (info.length === 0) return 'no adjacent hostile';
-  return info
-    .map(g => `${g.unitName}: ${g.note}`)
-    .join(' · ');
 }

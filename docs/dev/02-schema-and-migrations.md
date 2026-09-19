@@ -98,6 +98,9 @@ as applied in the notes — check the live DB before relying on it).
 | 085 | formation AC split: `ac_modifier`→`melee_ac_modifier` + `range_ac_modifier` | ⏳ run in Supabase |
 | 086 | hero morale boost: `units`/`unit_templates.morale_boost`, `units.heroic_inspiration_active`, `scenarios.hero_morale_boost_enabled`, `settings.heroic_capacity_multiplier` | ⏳ run in Supabase |
 | 087 | rename `parting_shot_used` → `opportunity_attack_used` + allowlist | ⏳ run in Supabase |
+| 088 | seed attack-roll effects (`effect_templates` Advantage/Disadvantage/Grant*) | ⏳ run in Supabase |
+| 089 | edge walls (`maps.walls` jsonb) | ⏳ run in Supabase |
+| 090 | ZoC pursue + Withdraw: `scenarios.zoc_pursuit_enabled`, rename `opportunity_attack_used`→`pursuit_used`, `units`/`unit_templates.command_pursuit_permit` + allowlist | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

@@ -192,27 +192,27 @@ start. Heroes also respect the cap in practice via their 5-action budget.
   and land behind (a chained MOVE).
 - Still charging at your own End Turn → forfeit (clear charge + org drop).
 
-## Opportunity attack (disengaging a kill zone)
+## Pursue (disengaging a kill zone)
 
-A unit that moves **out of a hostile kill zone** provokes an **opportunity attack**
-(D&D term; a.k.a. "parting shot") from each formed hostile whose kill zone it is
-leaving (`zocDisengage.ts` → `disengageAttackers`; resolved by
-`performOpportunityAttacks`). It is **strictly melee** and runs through the normal
-melee pipeline at the **origin hex** (contact point) — the event it models happened
-*before* the mover left, so it resolves when the move completes. A unit whose active
-weapon is ranged auto-draws its first melee weapon (or Fists) for it, exactly like
-any adjacency attack. AGR applies and the mover's **retaliation is suppressed**
-(`suppressRetaliation(..., atCap=true)`).
+Gated by `scenarios.zoc_pursuit_enabled` (default ON). When a unit **leaves a
+hostile kill zone** (`zocDisengage.ts` → `pursuitCandidates`):
 
-**All attackers strike before any rout.** Routing is deferred (`performAttack`'s
-`deferRouting`) and applied **once** after the whole volley, so an early morale
-break can't skip the remaining attackers — only a **killed** mover stops the volley
-(dead troops aren't struck again).
+- the formed non-hero mover **drops to Scattered** (`pursuitScatters`);
+- **one** melee-capable hostile whose kill zone was left **pursues**
+  (`useCombatActions.performPursuits`): candidates ordered **attacker → most MaxMP
+  → most available MP → random**, each rolling **`d10 <= AGR`** until one passes.
+  A candidate inside a hero's Commanding Presence is HELD unless that hero's
+  `command_pursuit_permit` is true (a suppressed chase is logged);
+- the pursuer takes a **free 1-hex step** into the contact hex and makes a **free
+  melee attack resolved at the contact hex** — regardless of the leaver's final
+  distance, with the mover's **retaliation suppressed** (the event happened as it
+  turned away). A ranged-active pursuer auto-draws melee.
 
-Each attacker gets **at most one per turn** (`opportunity_attack_used`), it is **free**,
-and **counts +1 to the 5-attack cap**. Scattered/Routed/Heroes never make one (no
-kill zone); any mover — formed, Scattered or Hero — can take one. Charge-over
-overrun and free-move are exempt.
+Each unit pursues **at most once per turn** (`pursuitUsed`), it is **free**, and
+**counts +1 to the 5-attack cap**. A **rout-through** makes the pursuer strike
+the friendly that let the pass (now Scattered) instead of the router. A router
+with **no legal retreat** is CORNERED — every eligible ZoC unit strikes it in
+place. A pursuit's own move never provokes. Setting OFF disables all of it.
 
 ## Reactions (opportunity fire, archery)
 

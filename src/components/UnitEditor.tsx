@@ -580,6 +580,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
       aggressiveness: 3,
       baseMorale: 3,
       moraleBoost: 0,
+      commandPursuitPermit: false,
       sizeCategory: firstRace?.size_category || 100,
       visualScale: firstRace?.visual_scale || 100,
       formationAvailability: ['Scattered', 'Routed'],
@@ -1169,9 +1170,10 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                         <Cell label="Aggress."><NumInput value={formData.aggressiveness || 3} min={1} max={10} disabled={formData.isHero} onChange={(v) => updateFormData('aggressiveness', Math.max(1, Math.min(10, v || 3)))} /></Cell>
                         <Cell label="Base morale"><NumInput value={formData.baseMorale || 3} min={1} max={10} disabled={!!formData.ignoreMoraleChecks} onChange={(v) => updateFormData('baseMorale', Math.max(1, Math.min(10, v || 3)))} /></Cell>
                         <Cell label="Morale boost"><NumInput value={formData.moraleBoost || 0} min={0} max={9} disabled={!formData.isHero} onChange={(v) => updateFormData('moraleBoost', Math.max(0, Math.min(9, v || 0)))} /></Cell>
+                        <div className="pb-1"><Toggle checked={formData.commandPursuitPermit || false} onChange={(v) => updateFormData('commandPursuitPermit', v)} label="Command: allow pursue" /></div>
                         <div className="pb-1"><Toggle checked={formData.ignoreMoraleChecks || false} onChange={(v) => updateFormData('ignoreMoraleChecks', v)} label="Fearless" /></div>
                       </div>
-                      {formData.isHero && <p className="text-[10px] text-yellow-400/80">Heroes ignore aggressiveness. Morale boost = Commanding Presence aura (0 = none).</p>}
+                      {formData.isHero && <p className="text-[10px] text-yellow-400/80">Heroes ignore aggressiveness. Morale boost = Commanding Presence aura (0 = none). "Command: allow pursue" lets allies in the aura chase — OFF holds the line.</p>}
                     </div>
                   </div>
 

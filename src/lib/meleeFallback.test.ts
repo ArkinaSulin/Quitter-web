@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+﻿import { describe, it, expect } from 'vitest';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, isInAnyHostileKillZone, computeWeaponSwitchAc } from './meleeFallback';
 import { Unit, Hex } from '@/types/gameProtocol';
 
@@ -54,7 +54,7 @@ const makeUnit = (overrides: Partial<Unit> = {}): Unit => ({
   actionsAvailable: 2,
   attacksUsed: 0,
     archerReactionUsed: false,
-    opportunityAttackUsed: false,
+    pursuitUsed: false,
     heroicInspirationActive: false,
   activeWeaponIndex: 0,
   str: 0,

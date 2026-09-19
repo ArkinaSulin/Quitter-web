@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+﻿import { describe, it, expect } from 'vitest';
 import {
   planAiMoves,
   isAiControllable,
@@ -65,7 +65,7 @@ const UNIT_DEFAULTS: Unit = {
   actionsAvailable: 2,
   attacksUsed: 0,
   archerReactionUsed: false,
-  opportunityAttackUsed: false,
+  pursuitUsed: false,
   heroicInspirationActive: false,
   activeWeaponIndex: 0,
   str: 0,

@@ -10,11 +10,12 @@ import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressR
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/lib/formationRules';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
-import { disengageAttackers } from '@/lib/zocDisengage';
+import { pursuitCandidates, imposesZocOn, canMeleeAttack } from '@/lib/zocDisengage';
+import { selectPursuer, pursuitScatters } from '@/lib/pursuit';
 import { getSetting } from '@/lib/settingsCache';
 import { unitAttackCap } from '@/lib/attackCap';
 import { nextLowerFormation } from '@/lib/formationCost';
-import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, isHeroMoraleBoostEnabled } from '@/lib/unitMorale';
+import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, isHeroMoraleBoostEnabled, isZocPursuitEnabled } from '@/lib/unitMorale';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc } from '@/lib/meleeFallback';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
@@ -308,7 +309,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       ];
       // A parting shot is once per turn per defender — flag it in the same command.
       if (options?.opportunityAttack) {
-        freeChanges.push({ field: 'opportunityAttackUsed', from: attacker.opportunityAttackUsed ?? false, to: true });
+        freeChanges.push({ field: 'pursuitUsed', from: attacker.pursuitUsed ?? false, to: true });
       }
       subSteps.push({
         type: 'ATTACK',
@@ -714,45 +715,104 @@ export function useCombatActions(deps: CombatActionsDeps) {
   }, [units, alliances, formationsMap, sizeCategories, execute, addMessage, addError, maybeAutoReturnToRanged]);
 
   /**
-   * Opportunity attacks (D&D term; a.k.a. "parting shots"): every formed hostile
-   * whose kill zone a mover LEFT makes ONE melee attack at the mover, resolved at
-   * the CONTACT hex (the hex it left) before it finishes leaving. Each attacker
-   * may do this once per turn. All attackers strike before any rout — routing is
-   * deferred and applied ONCE afterwards — so an early morale break can never skip
-   * the remaining attackers; only a KILLED mover stops the volley. The mover gets
-   * no retaliation.
+   * Zone-of-control pursuit (setting `zoc_pursuit_enabled`).
+   *
+   * A unit that LEAVES a hostile kill zone is punished: the formed non-hero mover
+   * drops to Scattered, then ONE pursuer chases (candidates ordered attacker ->
+   * most MaxMP -> most avail MP -> random, each rolling `d10 <= AGR` until one
+   * passes; a hero's Commanding Presence holds a unit unless permitted). The
+   * pursuer takes a free 1-hex step into the contact hex and makes a free melee
+   * attack resolved AT the contact hex, regardless of where the leaver fled.
+   *
+   * `cornered` (a unit that just routed and cannot move): EVERY eligible ZoC unit
+   * strikes in place instead. `throughUnitId` (rout-through): the pursuer attacks
+   * the friendly that let the rout pass instead of the router.
    */
-  const performOpportunityAttacks = useCallback(async (mover: Unit, originHex: Hex, destHex: Hex) => {
-    const attackers = disengageAttackers(mover, originHex, destHex, units, alliances, formationsMap);
-    if (attackers.length === 0) return;
-    let live: Unit = { ...mover, hex: { ...originHex } };
-    let moverKilled = false;
-    let moverRouted = false;
-    for (const enemy of attackers) {
-      if ((live.currentUnitHp ?? 0) <= 0) break; // dead — no further strikes
-      const outcome = await performAttack(enemy, live, false, {
-        pursuit: true,
-        opportunityAttack: true,
-        chained: true,
-        deferRouting: true,
-        onExecuted: (steps) => {
-          for (const s of steps) {
-            if (s.unitId !== live.id) continue;
-            for (const c of s.changes) {
-              if (c.field === 'currentUnitHp') live = { ...live, currentUnitHp: c.to as number };
-              else if (c.field === 'currentTroopCount') live = { ...live, currentTroopCount: c.to as number };
+  const performPursuits = useCallback(async (
+    mover: Unit,
+    originHex: Hex,
+    destHex: Hex,
+    opts?: { attacker?: Unit | null; cornered?: boolean; throughUnitId?: string | null; deferRouting?: boolean },
+  ) => {
+    if (!isZocPursuitEnabled()) return;
+    const moverAlliance = alliances[mover.team] || 'friendly';
+    let live = units.find(u => u.id === mover.id) ?? mover;
+
+    if (opts?.cornered) {
+      // No legal retreat: every eligible ZoC unit strikes the standing router.
+      const zoc = units.filter(e =>
+        e.id !== live.id && !e.isDeleted &&
+        (alliances[e.team] || 'friendly') !== moverAlliance &&
+        !(e.pursuitUsed ?? false) &&
+        canMeleeAttack(e) &&
+        imposesZocOn(e, live.hex, formationsMap),
+      );
+      if (zoc.length === 0) return;
+      let killed = false;
+      for (const enemy of zoc) {
+        if ((live.currentUnitHp ?? 0) <= 0) break;
+        const outcome = await performAttack(enemy, { ...live, hex: { ...originHex } }, false, {
+          pursuit: true,
+          opportunityAttack: true,
+          chained: true,
+          deferRouting: true,
+          onExecuted: (steps) => {
+            for (const s of steps) {
+              if (s.unitId !== live.id) continue;
+              for (const c of s.changes) {
+                if (c.field === 'currentUnitHp') live = { ...live, currentUnitHp: c.to as number };
+                else if (c.field === 'currentTroopCount') live = { ...live, currentTroopCount: c.to as number };
+              }
             }
-          }
-        },
-      });
-      if (!outcome) continue; // AGR failed — the flag is spent, the mover unhurt
-      if (outcome.defenderKilled) { moverKilled = true; break; }
-      if (outcome.defenderRouted) moverRouted = true;
+          },
+        });
+        if (outcome?.defenderKilled) { killed = true; break; }
+      }
+      if (killed) await routeUnit(execute, mover, 'slain by the pursuers', true);
+      return;
     }
-    if (moverKilled || moverRouted) {
-      await routeUnit(execute, mover, moverKilled ? 'slain by the opportunity attacks' : 'morale broke under the opportunity attacks', moverKilled);
+
+    // A formed non-hero mover breaks formation to disengage.
+    if (pursuitScatters(live)) {
+      await execute('FORMATION', [{
+        type: 'FORMATION',
+        description: `${live.unitName} scatters on disengaging`,
+        unitId: live.id,
+        changes: [{ field: 'currentFormation', from: live.currentFormation, to: 'Scattered' }],
+      }], `${live.unitName} breaks formation to disengage — Scattered!`, { chained: true });
     }
-  }, [units, alliances, formationsMap, performAttack, execute]);
+
+    const candidates = pursuitCandidates(live, originHex, destHex, units, alliances, formationsMap);
+    const sel = selectPursuer(candidates, opts?.attacker ?? null, units, alliances, formationsMap);
+    if (!sel.pursuer) {
+      if (sel.suppressed.length > 0) {
+        const heroes = Array.from(new Set(sel.suppressed.map(s => s.hero.unitName))).join(', ');
+        addMessage(`No pursue on ${live.unitName} — held in line by ${heroes}'s Commanding Presence.`);
+      }
+      return;
+    }
+    const pursuer = units.find(u => u.id === sel.pursuer!.id) ?? sel.pursuer;
+
+    // Free 1-hex step into the contact hex (only if it is empty), then a free
+    // melee attack resolved AT the contact hex.
+    const contactKey = `${originHex.q},${originHex.r}`;
+    if (!computeOccupiedHexes(units, pursuer.id).has(contactKey)) {
+      await execute('MOVE', [{
+        type: 'MOVE',
+        description: `${pursuer.unitName} pursues into the vacated hex`,
+        unitId: pursuer.id,
+        changes: [{ field: 'hex', from: pursuer.hex, to: { ...originHex } }],
+      }], `${pursuer.unitName} pursues!`, { chained: true });
+    }
+    const through = opts?.throughUnitId ? (units.find(u => u.id === opts.throughUnitId) ?? null) : null;
+    const target = through ?? { ...live, hex: { ...originHex } };
+    await performAttack({ ...pursuer, hex: { ...originHex } }, target, false, {
+      pursuit: true,
+      opportunityAttack: true,
+      chained: true,
+      ...(opts?.deferRouting ? { deferRouting: true } : {}),
+    });
+  }, [units, alliances, formationsMap, performAttack, execute, addMessage]);
 
   // A healing weapon (isHealing) recovers the target's HP instead of damaging it —
   // same dice mechanic as damage, capped at maxUnitHp. No combat sequence, AGR,
@@ -1084,7 +1144,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,
-    performOpportunityAttacks,
+    performPursuits,
     handleAttackRequest,
   };
 }

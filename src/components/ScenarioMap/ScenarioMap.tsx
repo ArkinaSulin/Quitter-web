@@ -5,7 +5,7 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
 import { parseSubSteps, CommandLogRow } from '@/lib/commandLog';
 import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel, GroundEffect, EffectKind, hexDistance } from '@/types/gameProtocol';
-import { adjacentRetreatCandidates, routThroughOptions, choosePursuer, RoutThroughOption, retreatDiagnosis, pursuitGateInfo, pursuitGateText } from '@/lib/routedRetreat';
+import { adjacentRetreatCandidates, routThroughOptions, RoutThroughOption, retreatDiagnosis } from '@/lib/routedRetreat';
 import { applyMoveCost } from '@/lib/moveCost';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { parseWeapons } from '@/lib/weaponParser';
@@ -36,7 +36,7 @@ import { UnitEditorModal } from './UnitEditorModal';
 import { PingLayer } from './PingLayer';
 import { TEAM_COLORS, TEAMS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { TeamChip } from '@/components/TokenRenderer/TeamChip';
-import { isUnitRouted, setHeroMoraleBoostEnabled as setHeroMoraleBoostAmbient } from '@/lib/unitMorale';
+import { isUnitRouted, setHeroMoraleBoostEnabled as setHeroMoraleBoostAmbient, setZocPursuitEnabled as setZocPursuitAmbient } from '@/lib/unitMorale';
 import { canRally } from '@/lib/rally';
 import { isRangedCapableWeapon, getReactionMoveBudget, findEligibleReactionArchers } from '@/lib/archerReaction';
 import { computeVisibleHexes, computeFog, hexKey, DEFAULT_SIGHT_RADIUS, FOG_UNSEEN_GM_ALPHA, FOG_UNSEEN_PLAYER_ALPHA } from '@/lib/fogOfWar';
@@ -44,7 +44,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { getFormationMultiplier, computeEffectiveMovement } from '@/lib/unitStats';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
-import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf } from './mapGeometry';
+import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf, computeOccupiedHexes } from './mapGeometry';
+import { withdrawDestinations, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { Walls, parseWalls, edgeRef, nearestEdge, type WallFace } from '@/lib/walls';
 import { newEffectKey } from '@/lib/unitEffects';
 import { MapEntity } from '@/lib/mapEntities';
@@ -216,6 +217,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [aiAssistEnabled, setAiAssistEnabled] = useState(false);
   // Hero morale boost (Commanding Presence / Heroic Inspiration) + heroic capacity.
   const [heroMoraleBoostEnabled, setHeroMoraleBoostEnabled] = useState(true);
+  const [zocPursuitEnabled, setZocPursuitEnabled] = useState(true);
   // AI selection state lives here so canvas clicks can toggle per-unit opt-out.
   const [aiTeams, setAiTeams] = useState<string[]>([]);
   const [aiExcluded, setAiExcluded] = useState<Record<string, boolean>>({});
@@ -278,7 +280,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     hexes: { q: number; r: number; s: number }[];
     through: RoutThroughOption[];
     reason: string | null;
-    pursuer: Unit | null;
   } | null>(null);
   const [retreatHoverHex, setRetreatHoverHex] = useState<string | null>(null);
   const [retreatCardPos, setRetreatCardPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -614,12 +615,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if ('sight_radius' in fields) setSightRadius(fields.sight_radius ?? DEFAULT_SIGHT_RADIUS);
     if ('ai_assist_enabled' in fields) setAiAssistEnabled(!!fields.ai_assist_enabled);
     if ('hero_morale_boost_enabled' in fields) setHeroMoraleBoostEnabled(fields.hero_morale_boost_enabled ?? true);
+    if ('zoc_pursuit_enabled' in fields) setZocPursuitEnabled(fields.zoc_pursuit_enabled ?? true);
   }, []);
 
-  // Mirror the scenario toggle into the pure morale lib's ambient flag.
+  // Mirror the scenario toggles into the pure libs' ambient flags.
   useEffect(() => {
     setHeroMoraleBoostAmbient(heroMoraleBoostEnabled);
   }, [heroMoraleBoostEnabled]);
+  useEffect(() => {
+    setZocPursuitAmbient(zocPursuitEnabled);
+  }, [zocPursuitEnabled]);
 
 
   // Entry-zone troop-count prompt: the engine awaits this while resolving a move
@@ -743,7 +748,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   // Parting-shot resolver is owned by useCombatActions (declared later); this ref
   // bridges the hook-order cycle — useMoveActions reads it at move time.
-  const opportunityAttacksRef = useRef<((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null>(null);
+  const pursuitsRef = useRef<((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null>(null);
 
   const {
     pendingMove,
@@ -765,6 +770,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     handleMoveTeam,
     handleAttachHero,
     handleSwapHeroPosition,
+    performWithdraw,
   } = useMoveActions({
     units,
     displayUnits,
@@ -788,8 +794,29 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setActiveHeroId,
     terrainCosts: moveTerrainCosts,
     walls,
-    opportunityAttacksRef,
+    pursuitsRef,
   });
+
+  // ---- Withdraw (2 actions, 1 hex straight back, no face change) ----
+  const [withdrawPick, setWithdrawPick] = useState<{ unit: Unit; hexes: Hex[] } | null>(null);
+  const [withdrawConfirm, setWithdrawConfirm] = useState<{ unit: Unit; dest: Hex } | null>(null);
+
+  const chooseWithdrawHex = useCallback((dest: Hex) => {
+    const unit = withdrawPick?.unit;
+    setWithdrawPick(null);
+    if (!unit) return;
+    if (!freeMove && unit.actionsAvailable < WITHDRAW_ACTION_COST) { setWithdrawConfirm({ unit, dest }); return; }
+    void performWithdraw(unit, dest);
+  }, [withdrawPick, freeMove, performWithdraw]);
+
+  const handleWithdraw = useCallback((unit: Unit) => {
+    const occupied = computeOccupiedHexes(units, unit.id);
+    const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
+    const hexes = withdrawDestinations(unit, occupied, radius);
+    if (hexes.length === 0) { addMessage(`${unit.unitName} has no empty rear hex to withdraw into.`); return; }
+    if (hexes.length === 1) { chooseWithdrawHex(hexes[0]); return; }
+    setWithdrawPick({ unit, hexes });
+  }, [units, backgroundConfig, chooseWithdrawHex, addMessage]);
 
   // ---- Temporary-effect apply/remove handlers (opened from the context menu) ----
   const teamOptions = Object.keys(alliances).length > 0 ? Object.keys(alliances) : TEAMS;
@@ -1223,7 +1250,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,
-    performOpportunityAttacks,
+    performPursuits,
     handleAttackRequest,
   } = useCombatActions({
     units,
@@ -1244,7 +1271,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setAttachModal,
     canAttackTarget: canAttackInFog,
   });
-  opportunityAttacksRef.current = performOpportunityAttacks;
+  pursuitsRef.current = performPursuits;
 
   // ---- Routed retreat + pursuit orchestration (owner decides, auto when 1/0) ----
   type RoutMove =
@@ -1306,79 +1333,23 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         addMessage(`${live.unitName} cannot move — it will face a FREE pursue attack if an enemy is in reach.`);
       }
 
-      if (throughBlocked) {
-        // Rout went 2 hexes through a Scattered friendly (no disruption): the
-        // routed unit is behind an occupied friendly hex — no melee pursuer can
-        // reach it. State it and stop.
-        const name = attacker?.unitName ?? 'No enemy';
-        if (attacker) addMessage(`${attacker.unitName} cannot reach ${live.unitName} through the ranks — no pursuit attack.`);
-        void name;
-        return;
-      }
-
-      // Pick the MELEE pursuer. The routed unit is still referenced at its old
-      // (vacated / standing) hex for gate checks.
-      const routedForPick: Unit = { ...live, hex: vacated };
-      let pLive: Unit | null = null;
-      const p = choosePursuer(attacker ?? null, routedForPick, cur, alliances, formationsMap);
-      pLive = p ? (cur.find(u => u.id === p.id) ?? p) : null;
-      if (pLive && didMove) {
-        // Follows into the vacated hex (1 MP) — no reaction (fast follow).
-        const pMax = unitMaxMP(pLive);
-        const pCost = applyMoveCost(pLive, 1, pMax);
-        await execute('MOVE', [{
-          type: 'MOVE',
-          description: `${pLive.unitName} pursues into the vacated hex`,
-          unitId: pLive.id,
-          changes: [
-            { field: 'hex', from: pLive.hex, to: vacated },
-            { field: 'movementPointsAvailable', from: pLive.movementPointsAvailable, to: pCost.movementPointsAvailable },
-            { field: 'actionsAvailable', from: pLive.actionsAvailable, to: pCost.actionsAvailable },
-          ],
-        }], `${pLive.unitName} pursues!`, { chained: true });
-      }
-      if (!pLive) {
-        // Pursuit/free-pursue is melee-only and requires an adjacent melee
-        // pursuer — a ranged attacker (e.g. an archer) never pursues. The
-        // per-adjacent-unit gate list is only shown in verbose combat.
-        const gates = pursuitGateInfo(routedForPick, cur, alliances, formationsMap);
-        addMessage(
-          `No melee pursuer can strike ${live.unitName}.`,
-          `No melee pursuer can strike ${live.unitName}: ${pursuitGateText(gates)}.`,
-        );
-        console.info('[RoutFlow] no pursuer for', live.unitName, gates);
-        return;
-      }
-
-      // Attack geometry uses POST-follow positions (pursuer in the vacated hex,
-      // target at its real location) so melee never misfires as "long range".
-      const resolvedAttacker = didMove ? { ...pLive, hex: vacated } : pLive;
-      const target = disruptId
-        ? (cur.find(u => u.id === disruptId) ?? live)
-        : move.kind === 'adjacent'
-          ? { ...live, hex: move.hex }
-          : live;
-      await performAttack(resolvedAttacker, target, false, { chained: true, pursuit: true });
-      const lower = nextLowerFormation(pLive.currentFormation);
-      if (lower) {
-        await execute('FORMATION', [{
-          type: 'FORMATION',
-          description: `${pLive.unitName} disorganized by the pursuit — ${lower}`,
-          unitId: pLive.id,
-          changes: [{ field: 'currentFormation', from: pLive.currentFormation, to: lower }],
-        }], didMove
-          ? `${pLive.unitName} disorganized by the pursue attack — ${lower}`
-          : `${pLive.unitName} disorganized by the FREE pursue attack — ${lower}`, { chained: true });
-      }
-      const verb = didMove ? 'pursued and struck' : 'made a FREE pursue attack on';
-      addMessage(didMove && disruptId
-        ? `${pLive.unitName} ${verb} ${target.unitName} (disrupted by the rout)`
-        : `${pLive.unitName} ${verb} ${target.unitName}`);
+      // Pursuit: leaving the kill zone is resolved by performPursuits. The router
+      // is already Routed (no scatter); a rout-through makes the pursuer strike
+      // the friendly that let it pass; the roll preference prefers `attacker`.
+      // A router with no legal retreat (`!didMove`) is CORNERED — every eligible
+      // ZoC unit strikes it in place.
+      const moveDest = move.kind === 'adjacent' ? move.hex : move.kind === 'through' ? move.option.dest : vacated;
+      await performPursuits(live, vacated, didMove ? moveDest : vacated, {
+        attacker: attacker ?? null,
+        cornered: !didMove,
+        throughUnitId: throughId,
+        deferRouting: true,
+      });
     } finally {
       routBusy.current = false;
       console.info('[RoutFlow] done');
     }
-  }, [unitsRef, alliances, formationsMap, execute, addMessage, unitMaxMP, performAttack, verboseCombat]);
+  }, [unitsRef, alliances, formationsMap, execute, addMessage, performPursuits, verboseCombat]);
 
   const handleRoutRow = useCallback(async (row: CommandLogRow) => {
     if (row.deleted_at != null) return;
@@ -1407,13 +1378,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let adj: { q: number; r: number; s: number }[] = [];
     let through: RoutThroughOption[] = [];
     let reason: string | null = null;
-    let pursuer: Unit | null = null;
     try {
       adj = adjacentRetreatCandidates(ctx);
       through = routThroughOptions(ctx);
       console.info('[RoutFlow] candidates', { adjacent: adj.length, through: through.length });
       // Always show the modal (even with zero options) as the informational
-      // precursor to the rout / FREE pursue attack. Zero options -> reason text.
+      // precursor to the rout / pursue. Zero options -> reason text.
       if (adj.length === 0 && through.length === 0) {
         const diag = retreatDiagnosis(ctx);
         if (diag.allAdjacentRouting) {
@@ -1424,16 +1394,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           reason = 'no unoccupied hex outside an enemy kill zone is available';
         }
       }
-      pursuer = choosePursuer(attacker ?? null, routed, unitsRef.current, alliances, formationsMap);
     } catch (err) {
-      console.error('[RoutFlow] candidate/pursuer error:', err);
+      console.error('[RoutFlow] candidate error:', err);
     }
     if (typeof window !== 'undefined') {
       setRetreatCardPos({ x: Math.max(8, Math.round((window.innerWidth - 480) / 2)), y: Math.max(8, Math.round((window.innerHeight - 320) / 2)) });
     }
     setRetreatHoverHex(null);
-    setRetreatPick({ unit: routed, attacker, hexes: adj, through, reason, pursuer });
-  }, [unitsRef, alliances, formationsMap, participantsSync.participants, myTeam, effectiveIsGM, retreatPick, applyRoutedFlow, choosePursuer]);
+    setRetreatPick({ unit: routed, attacker, hexes: adj, through, reason });
+  }, [unitsRef, alliances, formationsMap, participantsSync.participants, myTeam, effectiveIsGM, retreatPick, applyRoutedFlow]);
   routFlowRef.current = { handle: handleRoutRow };
 
   // Local-window rout event (dispatched by routeUnit on the acting client): open
@@ -1852,7 +1821,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let cancelled = false;
     supabase
       .from('scenarios')
-      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled, hero_morale_boost_enabled')
+      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled, hero_morale_boost_enabled, zoc_pursuit_enabled')
       .eq('id', scenarioId)
       .single()
       .then(({ data, error }) => {
@@ -1867,6 +1836,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setSightRadius(data.sight_radius ?? DEFAULT_SIGHT_RADIUS);
         setAiAssistEnabled(data.ai_assist_enabled ?? false);
         setHeroMoraleBoostEnabled(data.hero_morale_boost_enabled ?? true);
+        setZocPursuitEnabled(data.zoc_pursuit_enabled ?? true);
       });
     return () => { cancelled = true; };
   }, [scenarioId]);
@@ -1908,6 +1878,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }
           if (row.hero_morale_boost_enabled !== undefined) {
             setHeroMoraleBoostEnabled(row.hero_morale_boost_enabled ?? true);
+          }
+          if (row.zoc_pursuit_enabled !== undefined) {
+            setZocPursuitEnabled(row.zoc_pursuit_enabled ?? true);
           }
           if (row.map_data !== undefined) {
             const md = row.map_data || {};
@@ -2279,6 +2252,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onClose={() => { setContextMenuUnit(null); setContextMenuPos(null); }}
           onRotate={(dir) => rotateUnit(contextMenuUnit, dir, unitMaxMP(contextMenuUnit))}
           onRotate180={() => rotateUnit(contextMenuUnit, 'left', unitMaxMP(contextMenuUnit), 3)}
+          onWithdraw={() => handleWithdraw(contextMenuUnit)}
           freeMove={freeMove}
           onChangeFormation={(formation) => handleChangeFormation(contextMenuUnit, formation)}
           onCharge={() => charge(contextMenuUnit)}
@@ -2308,6 +2282,45 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         />
         );
       })()}
+
+      {/* Withdraw: pick a rear hex, then (if short on actions) confirm the overage. */}
+      {withdrawPick && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/50" onContextMenu={e => e.preventDefault()}>
+          <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 w-80 text-white space-y-2">
+            <p className="text-sm font-semibold text-amber-300">Withdraw {withdrawPick.unit.unitName}</p>
+            <p className="text-xs text-gray-400">Step one hex straight back, keeping facing. Costs {freeMove ? 'nothing (free move)' : `${WITHDRAW_ACTION_COST} actions`}; never scatters and never provokes a pursue.</p>
+            <div className="flex flex-wrap gap-2">
+              {withdrawPick.hexes.map(hx => (
+                <button
+                  key={`${hx.q},${hx.r}`}
+                  onClick={() => chooseWithdrawHex(hx)}
+                  className="px-3 py-1.5 rounded bg-gray-800 border border-gray-600 hover:bg-gray-700 text-sm"
+                >
+                  ({hx.q}, {hx.r})
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setWithdrawPick(null)} className="w-full mt-1 px-3 py-1 rounded bg-gray-800 border border-gray-600 hover:bg-gray-700 text-xs">Cancel</button>
+          </div>
+        </div>
+      )}
+      {withdrawConfirm && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/50" onContextMenu={e => e.preventDefault()}>
+          <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 w-80 text-white space-y-2">
+            <p className="text-sm font-semibold text-red-300">Over budget</p>
+            <p className="text-xs text-gray-300">{withdrawConfirm.unit.unitName} has only {withdrawConfirm.unit.actionsAvailable} action(s) left. Withdraw anyway? It will go {WITHDRAW_ACTION_COST - withdrawConfirm.unit.actionsAvailable} over budget.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { const c = withdrawConfirm; setWithdrawConfirm(null); if (c) void performWithdraw(c.unit, c.dest, true); }}
+                className="flex-1 px-3 py-1.5 rounded bg-red-900 border border-red-600 hover:bg-red-800 text-sm"
+              >
+                Withdraw
+              </button>
+              <button onClick={() => setWithdrawConfirm(null)} className="flex-1 px-3 py-1.5 rounded bg-gray-800 border border-gray-600 hover:bg-gray-700 text-sm">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add / remove temporary effects (context menu → Effects…) */}
       {effectMenuUnit && (
@@ -2385,14 +2398,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               ))}
             </div>
 
-            {retreatPick.pursuer ? (
+            {retreatPick.reason ? (
               <p className="text-xs text-gray-300">
-                This rout will be <b>pursued automatically by {retreatPick.pursuer.unitName}</b> and struck — you cannot decline the pursuit or its attack.
+                It cannot move — it will be struck in place by any enemy that can reach it (a free melee attack you cannot decline).
               </p>
-            ) : retreatPick.reason ? (
-              <p className="text-xs text-gray-400">The routing enemy will make the FREE pursue attack if it is in reach.</p>
             ) : (
-              <p className="text-xs text-gray-400">No enemy can pursue (none is faster with enough MP).</p>
+              <p className="text-xs text-gray-400">A hostile that can reach may pursue this rout automatically — you cannot decline the pursuit or its attack.</p>
             )}
 
             {retreatPick.reason && !effectiveIsGM && (
@@ -2634,6 +2645,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 <span className="font-medium text-amber-300">Hero morale boost</span>
                 <span className="block text-gray-400 text-[11px]">
                   Heroes grant Commanding Presence to allies within 7 hexes, upgraded to Heroic Inspiration after attacking, and add heroic attack capacity while leading or inspired.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={zocPursuitEnabled}
+                onChange={async (e) => {
+                  await updateScenarioField(scenarioId, { zoc_pursuit_enabled: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">Zone-of-control pursuit</span>
+                <span className="block text-gray-400 text-[11px]">
+                  Leaving a hostile kill zone scatters a formed unit and provokes an aggression-gated pursue. OFF: no scatter, no pursue, no opportunity attack; entering a kill zone still spends MP.
                 </span>
               </span>
             </label>

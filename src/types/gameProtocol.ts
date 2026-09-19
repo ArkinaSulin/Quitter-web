@@ -76,6 +76,9 @@ export interface UnitTemplate {
   /** Hero aura: same-alliance allies within 7 hexes gain Commanding Presence +N
    *  (Heroic Inspiration N+1 after the hero attacks). Heroes only. */
   moraleBoost: number;
+  /** Commanding-Presence leash default: a hero's aura inhibits allied pursuit
+   *  unless permitted. Default false. */
+  commandPursuitPermit?: boolean;
   sizeCategory: number;               // 75 (Small), 100 (Medium), 200 (Large), 300 (Huge), 400 (Gargantuan)
   visualScale: number;                // 50-149
   formationAvailability: string[];
@@ -159,8 +162,12 @@ export interface Unit {
   attacksUsed: number;
   /** True once the unit takes its defensive-archer reaction this turn; cleared at the start of its turn. */
   archerReactionUsed: boolean;
-  /** True once the unit makes its once-per-turn opportunity attack on a disengaging enemy; cleared at its turn start. */
-  opportunityAttackUsed: boolean;
+  /** True once the unit makes its once-per-turn pursue on a disengaging enemy; cleared at its turn start. */
+  pursuitUsed: boolean;
+  /** Commanding-Presence leash: while this (hero) unit's aura covers a pursuer,
+   *  that pursuer only chases when permit = true. DEFAULT false = the hero's
+   *  presence holds the line (suppresses pursuit). */
+  commandPursuitPermit?: boolean;
   /** Hero aura upgrade: set when the hero lands a melee attack, cleared at the
    *  start of his next alliance turn. Grants Heroic Inspiration (N+1) + capacity. */
   heroicInspirationActive: boolean;
@@ -289,6 +296,9 @@ export interface Scenario {
   deletionLocked: boolean;
   /** GM's last heartbeat (lobby "DM online" badge + join gate). Null = never beat. */
   dmHeartbeatAt: string | null;
+  /** ZoC danger layer: leaving a hostile kill zone scatters the mover + provokes
+   *  an aggression-gated pursue. When false, no scatter/pursue/OA. Default true. */
+  zocPursuitEnabled: boolean;
 }
 
 // --- Participant ---

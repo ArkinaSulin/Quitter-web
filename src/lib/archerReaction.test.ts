@@ -54,7 +54,7 @@ const makeUnit = (overrides: Partial<Unit> = {}): Unit => ({
   actionsAvailable: 2,
   attacksUsed: 0,
     archerReactionUsed: false,
-    opportunityAttackUsed: false,
+    pursuitUsed: false,
     heroicInspirationActive: false,
   activeWeaponIndex: 0,
   str: 0,

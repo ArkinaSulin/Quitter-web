@@ -31,6 +31,7 @@ function mapScenario(row: any): Scenario {
     deleteRequestedAt: row.delete_requested_at || null,
     deletionLocked: !!row.deletion_locked,
     dmHeartbeatAt: row.dm_heartbeat_at || null,
+    zocPursuitEnabled: row.zoc_pursuit_enabled ?? true,
   };
 }
 

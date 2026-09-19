@@ -1,16 +1,18 @@
-// src/lib/zocDisengage.ts
-// Zone-of-control disengagement: which formed hostiles get a free opportunity
-// attack (D&D term; a.k.a. "parting shot") when a unit moves out of their kill
-// zone, and whether a destination is itself a kill-zone hex (spent on entry).
+﻿// src/lib/zocDisengage.ts
+// Zone-of-control pursuit eligibility. When a unit LEAVES a hostile kill zone,
+// the formed hostiles that had it in their kill zone may pursue it (an
+// aggression-gated chase, once per turn). Kill zones are the SAME front-arc
+// hexes the movement overlay paints red (`isInKillZone`), gated by the formation
+// matrix (`canStopEnemyMovement`).
 //
-// Kill zones are the SAME front-arc hexes the movement overlay paints red
-// (`isInKillZone`), gated by the formation matrix (`canStopEnemyMovement`).
-// Scattered / Routed / Heroes impose no kill zone — they never part — but a
-// mover of ANY formation (including Scattered or a Hero) can be part-shot when
-// it leaves one.
+// Scattered / Routed / Heroes impose no kill zone — they never pursue — but a
+// mover of ANY formation (including Scattered or a Hero) can be pursued when it
+// leaves one.
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { isInKillZone } from '@/lib/unitMorale';
 import { canStopEnemyMovement } from '@/lib/formationRules';
+import { parseWeapons } from '@/lib/weaponParser';
+import { findFirstMeleeWeaponIndex } from '@/lib/meleeFallback';
 
 /** Does `enemy` impose a kill zone on `hex`? Formed hostiles only — hidden,
  *  attached, heroes, Scattered and Routed are excluded (routed/dead/scattered
@@ -26,12 +28,17 @@ export function imposesZocOn(
   return canStopEnemyMovement(formationsMap[enemy.currentFormation], 'front');
 }
 
+/** Can this unit make a MELEE attack? (a melee weapon in its list, not just Fists). */
+export function canMeleeAttack(unit: Unit): boolean {
+  return findFirstMeleeWeaponIndex(parseWeapons(unit.weaponString || '')) >= 0;
+}
+
 /**
- * The formed hostiles that may make an opportunity attack against `mover`: each
- * is a different alliance, has not already done so this turn, and its kill zone
- * covers the hex the mover LEFT but not the hex it arrived on.
+ * The hostiles that may pursue `mover` after it left the hex `originHex` for
+ * `destHex`: different alliance, not yet used its pursue this turn, melee-capable,
+ * and its kill zone covered the hex the mover LEFT but not the one it arrived on.
  */
-export function disengageAttackers(
+export function pursuitCandidates(
   mover: Unit,
   originHex: Hex,
   destHex: Hex,
@@ -44,7 +51,8 @@ export function disengageAttackers(
     e.id !== mover.id &&
     !e.isDeleted &&
     (alliances[e.team] || 'friendly') !== moverAlliance &&
-    !(e.opportunityAttackUsed ?? false) &&
+    !(e.pursuitUsed ?? false) &&
+    canMeleeAttack(e) &&
     imposesZocOn(e, originHex, formationsMap) &&
     !imposesZocOn(e, destHex, formationsMap),
   );

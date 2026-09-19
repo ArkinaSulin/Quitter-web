@@ -106,29 +106,43 @@ threat hex, the MOVE zeroes any leftover `movementPointsAvailable` (the mover
 may still act with another action, but this pool is spent). A unit may not pass
 through a threat hex — it stops on entry.
 
-## Disengaging — the opportunity attack
+## Disengaging — scatter + pursue
 
-Leaving a hostile kill zone provokes an **opportunity attack** (D&D term; a.k.a.
-"parting shot") — `src/lib/zocDisengage.ts`): every formed hostile whose kill zone
-covered the origin hex but not the destination gets **one free melee attack** at
-the mover (`disengageAttackers`). It is resolved by `performOpportunityAttacks`
-(`useCombatActions`) through the normal melee tree at the **point of contact**
-(origin hex) — AGR applies, the mover strikes back at nothing (retaliation is
-suppressed), and a ranged-active unit auto-draws its melee weapon.
+The whole ZoC-danger layer is gated by `scenarios.zoc_pursuit_enabled` (default
+ON). With it ON, leaving a hostile kill zone (`src/lib/zocDisengage.ts` →
+`pursuitCandidates`; resolved by `performPursuits` in `useCombatActions`):
 
-- **All attackers strike before any rout**: routing is deferred and applied once
-  after the volley (`performAttack`'s `deferRouting`), so an early morale break
-  can't skip the rest — only a **killed** mover stops it.
-- **Once per unit per turn** — the `opportunity_attack_used` flag (migrations 084/087),
-  cleared at the unit's own turn start like `archerReactionUsed`.
-- **Free**, but counts **+1** toward the 5-attack cap (`pursuit` path).
-- Triggered from `completeMove` (normal move, charge and over-budget confirm);
-  **charge-over overrun and free-move are exempt**, and a routed retreat uses the
-  rout/pursuit path instead of this one.
-- **Only formed hostiles make one** (Scattered/Routed/Heroes impose no kill
-  zone), but **any mover can take one — including one that changed to Scattered**
-  or a Hero. This is what closes the mount hit-and-run (charge in → free strike →
-  scatter and flee).
+- The mover **drops to Scattered** if it is a formed, non-hero unit
+  (`pursuitScatters`); heroes/loose are untouched, Routed stays Routed.
+- **ONE pursuer** chases. Candidates are the melee-capable hostiles whose kill
+  zone covered the origin but not the destination; they are ordered **attacker →
+  most MaxMP → most available MP → random** and each rolls **`d10 <= AGR`** in
+  turn; the first pass pursues. A candidate inside a hero's Commanding Presence
+  is HELD unless that hero's `command_pursuit_permit` is true; a suppressed
+  pursuit is announced in the log.
+- The pursuer takes a **free 1-hex step** into the contact (vacated) hex and
+  makes a **free melee attack resolved AT the contact hex** — regardless of how
+  far the leaver fled. No retaliation; **once per unit per turn** (`pursuitUsed`,
+  migrations 084/087/090), counted +1 toward the 5-attack cap. A rout-through
+  makes the pursuer attack the friendly that let the pass (now Scattered). A
+  pursuit's own move never provokes.
+- Triggered from `completeMove` (normal move and the over-budget confirm);
+  **charge-over overrun and free-move are exempt**; a routed retreat runs the
+  same path (the router is already Routed → no scatter), and a router with **no
+  legal retreat** is CORNERED — every eligible ZoC unit strikes it in place.
+- **Setting OFF**: no scatter, no pursue, no opportunity attack; entering still
+  spends MP, leaving just costs movement.
+
+## Withdraw (ordered disengagement)
+
+The **Withdraw** action (`src/lib/withdraw.ts`, context menu under Rotate 180°)
+lets a **formed, non-hero** unit step **one hex into either rear-arc hex keeping
+its facing**, for **2 actions** — the ordered alternative to a scattering rout.
+It **never scatters and never provokes** a pursue; archer reactions still fire
+off the MOVE. It is **free under `free_move`**, and short on actions it may go
+negative via a confirm (soft enforcement). The destination must be an empty,
+in-bounds rear hex; entering a *new* hostile ZoC ends the step there (no
+scatter). See `07`/`09`.
 
 ## Charge (movement-side)
 
