@@ -1,5 +1,10 @@
 # QuiTTER Changelog
 
+## AGR-failure message: breakdown is verbose-only (2026-09-18)
+**Files:** src/components/ScenarioMap/useCombatActions.ts
+
+- An AGR-failed attack now posts a plain line (`"<unit> AGR failed — no attack"`); the dice breakdown (`AGR N → need ≤M, rolled R`) moved to `verboseMessage`, so it only shows in verbose combat.
+
 ## Pursue: single AGR before the move (2026-09-18)
 **Files:** src/lib/unitCombat.ts, src/lib/unitCombat.test.ts, docs/dev/{08-combat,09-morale-routing-pursuit}.md, docs/players/player-manual.md
 

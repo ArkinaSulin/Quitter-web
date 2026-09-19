@@ -349,8 +349,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
       const threatPenalty = isInKillZone(target, attacker.hex)
         ? Math.max(0, Math.round(computeThreatRating(target) / computeThreatRating(attacker)) - 1)
         : 0;
-      const aggrFailDesc = `${attacker.unitName} AGR check (AGR ${attacker.aggressiveness}${threatPenalty > 0 ? ` - ${threatPenalty} threat` : ''} → need ≤${attacker.aggressiveness - threatPenalty}, rolled ${outcome.aggrRoll}) — failed, no attack`;
-      await execute('ATTACK', subSteps, aggrFailDesc, options?.chained ? { chained: true } : undefined);
+      // Plain: just the outcome. The dice/bonus breakdown is verbose-only.
+      const aggrFailDesc = `${attacker.unitName} AGR failed — no attack`;
+      const aggrFailVerbose = `${attacker.unitName} AGR check (AGR ${attacker.aggressiveness}${threatPenalty > 0 ? ` - ${threatPenalty} threat` : ''} → need ≤${attacker.aggressiveness - threatPenalty}, rolled ${outcome.aggrRoll}) — failed, no attack`;
+      await execute('ATTACK', subSteps, aggrFailDesc, {
+        ...(options?.chained ? { chained: true } : {}),
+        verboseMessage: aggrFailVerbose,
+      });
       return;
     }
 
