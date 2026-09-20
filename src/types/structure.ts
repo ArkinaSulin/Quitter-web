@@ -57,4 +57,6 @@ export interface StructureInstance {
   doorHp?: number;
   /** Edge structures: which canonical face is the outside. */
   outside?: StructureOutside;
+  /** Hex structures with a door: the gate is open (no extra cost, no door pool). */
+  open?: boolean;
 }

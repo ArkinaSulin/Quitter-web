@@ -46,7 +46,7 @@ import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf, computeOccupiedHexes, computeThreatHexes } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/lib/walls';
-import { MapStructures, parseStructures, structuresToWalls } from '@/lib/mapStructures';
+import { MapStructures, parseStructures, structuresToWalls, structureHexMoveCost, structureRangeBonus, isHexStructureKey } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/lib/wallCombat';
@@ -263,6 +263,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return next;
     });
   }, []);
+  const [structureTemplates, setStructureTemplates] = useState<Record<string, StructureTemplate>>({});
   const [groundZones, setGroundZones] = useState<GroundEffect[]>([]);
   // Provenance of the snapshot currently loaded from a reusable map (maps.id).
   const [mapId, setMapId] = useState<string | null>(null);
@@ -280,8 +281,19 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (n === 1) delete merged[k];
       else merged[k] = n;
     }
+    // Hex structures add their entry MP cost (open gates cost nothing extra).
+    for (const key of Object.keys(structures)) {
+      if (!isHexStructureKey(key)) continue;
+      const [q, r] = key.split(',').map(Number);
+      const add = structureHexMoveCost({ q, r }, structures, structureTemplates);
+      if (!add) continue;
+      const base = merged[key] ?? 1;
+      const n = Math.max(0, Math.min(9, base + add));
+      if (n === 1) delete merged[key];
+      else merged[key] = n;
+    }
     return merged;
-  }, [terrainCosts, groundZones]);
+  }, [terrainCosts, groundZones, structures, structureTemplates]);
   // GM map-edit brushes: terrain = entry-cost value (null = off); zone = template
   // armed for placement (null = off).
   const [terrainBrushCost, setTerrainBrushCost] = useState<number | null>(null);
@@ -290,7 +302,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [structureBrush, setStructureBrush] = useState(false);
   const [structurePaletteId, setStructurePaletteId] = useState<string | null>(null);
   const [selectedStructureKey, setSelectedStructureKey] = useState<string | null>(null);
-  const [structureTemplates, setStructureTemplates] = useState<Record<string, StructureTemplate>>({});
   const [zoneTemplate, setZoneTemplate] = useState<EffectTemplate | null>(null);
   // Temporary-effect modal target (context menu → "Effects…").
   const [effectMenuUnit, setEffectMenuUnit] = useState<Unit | null>(null);
@@ -593,7 +604,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     await persistStructures(next);
   }, [structures, persistStructures]);
 
-  const patchScenarioStructure = useCallback(async (patch: { maxHp?: number; hp?: number; dt?: number; doorHp?: number; outside?: 'a' | 'b' }) => {
+  const patchScenarioStructure = useCallback(async (patch: { maxHp?: number; hp?: number; dt?: number; doorHp?: number; outside?: 'a' | 'b'; open?: boolean }) => {
     if (!selectedStructureKey) return;
     const inst = structures[selectedStructureKey];
     if (!inst) return;

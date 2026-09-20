@@ -15,7 +15,7 @@ interface StructurePaintPanelProps {
   onSetPaletteId: (id: string | null) => void;
   structures: MapStructures;
   selectedKey: string | null;
-  onPatchStructure: (patch: { maxHp?: number; hp?: number; dt?: number; doorHp?: number; outside?: 'a' | 'b' }) => void;
+  onPatchStructure: (patch: { maxHp?: number; hp?: number; dt?: number; doorHp?: number; outside?: 'a' | 'b'; open?: boolean }) => void;
   onRemoveStructure: (key: string) => void;
 }
 
@@ -86,9 +86,17 @@ export function StructurePaintPanel({
             </label>
           </div>
           {instanceTemplate.anchor === 'hex' && instanceTemplate.doorHp !== null && (
-            <label className="flex items-center gap-1 text-[11px]">Door HP
-              <Num value={instance.doorHp} placeholder={String(instanceTemplate.doorHp)} disabled={false} onChange={v => onPatchStructure({ doorHp: v })} />
-            </label>
+            <>
+              <label className="flex items-center gap-1 text-[11px]">Door HP
+                <Num value={instance.doorHp} placeholder={String(instanceTemplate.doorHp)} disabled={false} onChange={v => onPatchStructure({ doorHp: v })} />
+              </label>
+              <button
+                onClick={() => onPatchStructure({ open: !instance.open })}
+                className={`text-xs px-2 py-1 rounded ${instance.open ? 'bg-emerald-800 hover:bg-emerald-700 text-emerald-50' : 'bg-gray-700 hover:bg-gray-600 text-gray-100'}`}
+              >
+                {instance.open ? 'Gate open — click to close' : 'Gate closed — click to open'}
+              </button>
+            </>
           )}
           {instanceTemplate.anchor === 'edge' && (
             <div className="text-[11px] text-gray-400">

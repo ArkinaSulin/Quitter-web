@@ -670,10 +670,14 @@ edge**.
   cannot. (Charges are stopped by any edge structure.)
 - **Watch towers** (hex) grant their occupant cover: the unit standing there
   attacks with **advantage** and attackers against it suffer **disadvantage**.
+  A tower can also carry a **range** modifier, extending (or shrinking) the
+  occupant's weapon range while they stand there.
 - **Gates / gate towers** (hex) have a **door**: drag a unit onto the hex to
   attack it. The door absorbs damage first; once it is destroyed the structure's
   own HP is exposed. If the hex could also be entered, you are asked whether to
   **attack** or **move**. Costs 1 action and counts toward the attack limit.
+  An **open** gate (GM toggle) costs no extra movement and exposes the structure
+  directly — the door is bypassed.
 
 ### Magic & area spells
 

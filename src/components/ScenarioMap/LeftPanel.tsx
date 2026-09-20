@@ -61,7 +61,7 @@ interface LeftPanelProps {
   onSetStructurePaletteId: (id: string | null) => void;
   structures: MapStructures;
   selectedStructureKey: string | null;
-  onPatchStructure: (patch: { maxHp?: number; hp?: number; dt?: number; doorHp?: number; outside?: 'a' | 'b' }) => void;
+  onPatchStructure: (patch: { maxHp?: number; hp?: number; dt?: number; doorHp?: number; outside?: 'a' | 'b'; open?: boolean }) => void;
   onRemoveStructure: (key: string) => void;
   zoneTemplateId: string | null;
   onSetZoneTemplateId: (id: string | null) => void;

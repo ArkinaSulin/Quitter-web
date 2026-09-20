@@ -268,17 +268,17 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         }
         const doorMax = t?.doorHp ?? null;
         const door = doorMax !== null ? (inst.doorHp ?? doorMax) : null;
-        if (door !== null && door > 0) {
-          const label = `door ${door}`;
+        const badge = inst.open ? 'open' : (door !== null && door > 0 ? `door ${door}` : null);
+        if (badge) {
           ctx.font = `bold ${Math.max(10, 11 * currentZoom)}px ui-monospace, monospace`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.lineWidth = Math.max(2, 3 * currentZoom);
           ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
           const ly = cy - HEX_SIZE * currentZoom * 0.55;
-          ctx.strokeText(label, cx, ly);
-          ctx.fillStyle = '#ffd9c9';
-          ctx.fillText(label, cx, ly);
+          ctx.strokeText(badge, cx, ly);
+          ctx.fillStyle = inst.open ? '#a5d6a7' : '#ffd9c9';
+          ctx.fillText(badge, cx, ly);
         }
       }
       ctx.restore();

@@ -189,7 +189,7 @@ export interface Unit {
 // ATTACKING the carrier. Any advantage cancels any disadvantage (D&D 5e).
 export type EffectKind =
   | 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow' | 'entry' | 'mp_cost'
-  | 'enter_org_max'
+  | 'enter_org_max' | 'range'
   | 'advantage' | 'disadvantage' | 'grant_advantage' | 'grant_disadvantage';
 
 /**

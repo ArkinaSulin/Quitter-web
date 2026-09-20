@@ -4,13 +4,12 @@ Authored map features — walls, archer spikes, gates, gate towers, watch towers
 split into a **template library** (authored once) and **placed instances** (on a
 map), exactly like weapons/effects split authored vs placed.
 
-> **Status.** Slices 1–4 shipped (migrations **093**–**095**): the template
-> library + editor, `enter_org_max` (authoring + movement gate), library and
-> scenario authoring (`maps.structures` / `map_data.structures`, per-key
-> `STRUCTURE` command sub-steps), edge-structure attacks, and the hex-structure
-> pass (tower auras, door-first attacks via a drop target-picker, scenario hex
-> rendering). Deferred: structure range bonuses; AI ignores structure rules for
-> v1.
+> **Status.** Complete (migrations **093**–**095**): template library + editor,
+> `enter_org_max` (authoring + movement gate), library and scenario authoring
+> (`maps.structures` / `map_data.structures`, per-key `STRUCTURE` sub-steps),
+> edge-structure attacks, hex structures (tower auras, door-first attacks via a
+> drop target-picker, scenario hex rendering), structure **range bonuses**, and
+> gate **open/close**. Only known gap: the AI planner ignores structure rules.
 
 ## Template vs instance
 
@@ -122,14 +121,25 @@ blocked by any edge structure. The AI planner ignores it for v1.
   structure HP is exposed; 0 HP deletes the instance. 1 action + attack cap.
 - **Rendering**: `useCanvasDraw` draws hex structures (tint + artwork + HP badge,
   and a `door N` badge).
-- **Deferred**: structure **range bonuses** (no range stat/effect kind yet);
-  gate open/close state.
+- **Deferred**: none — structure **range bonuses** and gate open/close state are
+  now implemented (see "Range & gates" below).
 
-## Pending (roadmap)
+## Range bonuses & gate state (shipped)
 
-- Structure **range bonuses** and gate open/close state (deferred).
-- **AI**: the enemy-AI planner ignores `enter_org_max`, structure auras and
-  structure attacks for v1.
+- **`range`** is a reusable effect modifier kind (label "Zone/structure: weapon
+  range +/-"). `structureRangeBonus(hex, structures, templates)` sums the
+  occupant's `range` modifiers; consumed in the attack range gate and the combat
+  weapon bands (`useCombatActions`) and in reaction shots
+  (`useReactionActions` + `findEligibleReactionArchers`). A watch tower's `range`
+  bonus extends (or a negative shrinks) the occupant's reach and shifts the
+  long-range disadvantage band. Authorable on zones too (not yet consumed from
+  zones — structures only).
+- **Gate open/close**: instances carry `open`. An open gate adds no entry MP
+  (`structureHexMoveCost` skips it) and **bypasses its door** — attacks hit the
+  structure HP directly (`resolveHexStructureAttack` treats it as doorless).
+  Closed gates keep their cost and door-first pool. Toggled by the GM in
+  `StructurePaintPanel`; both canvases show an `open` badge instead of `door N`.
+- **Still deferred**: AI ignores structure auras / range / gates (v1).
 
 ## Slice 2 — library authoring (shipped)
 

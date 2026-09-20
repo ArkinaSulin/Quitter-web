@@ -16,6 +16,7 @@ export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
   { value: 'entry', label: 'Zone: damage on entry' },
   { value: 'mp_cost', label: 'Zone: hex MP cost' },
   { value: 'enter_org_max', label: EFFECT_MODIFIER_LABELS.enter_org_max },
+  { value: 'range', label: EFFECT_MODIFIER_LABELS.range },
   { value: 'advantage', label: EFFECT_MODIFIER_LABELS.advantage },
   { value: 'disadvantage', label: EFFECT_MODIFIER_LABELS.disadvantage },
   { value: 'grant_advantage', label: EFFECT_MODIFIER_LABELS.grant_advantage },

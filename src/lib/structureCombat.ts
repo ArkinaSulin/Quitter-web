@@ -38,7 +38,7 @@ export function structureDoorMax(t: StructureTemplate): number | null {
 
 /** A hex structure is attackable while a door stands or its HP is destructible. */
 export function isAttackableHexStructure(t: StructureTemplate, inst: StructureInstance): boolean {
-  const doorMax = t.doorHp ?? null;
+  const doorMax = inst.open ? null : (t.doorHp ?? null);
   const doorCur = inst.doorHp ?? t.doorHp ?? 0;
   const maxHp = inst.maxHp ?? t.maxHp;
   return (doorMax !== null && doorCur > 0) || maxHp > 0;
@@ -67,7 +67,7 @@ export function resolveHexStructureAttack(
   weapon: HexStructureWeapon,
   rng: () => number,
 ): HexStructureAttackResult {
-  const doorMax = template.doorHp ?? null;
+  const doorMax = instance.open ? null : (template.doorHp ?? null);
   const doorCur = instance.doorHp ?? template.doorHp ?? 0;
   const doorAlive = doorMax !== null && doorCur > 0;
   const maxHp = instance.maxHp ?? template.maxHp;

@@ -23,7 +23,7 @@ import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
 import { attackRollFlags } from '@/lib/unitEffects';
 import { hasLineOfSight } from '@/lib/lineOfSight';
 import { Walls } from '@/lib/walls';
-import { MapStructures, structureAuraFlags, hasAuraFlags, StructureAuraFlags } from '@/lib/mapStructures';
+import { MapStructures, structureAuraFlags, hasAuraFlags, StructureAuraFlags, structureRangeBonus } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
@@ -254,17 +254,32 @@ export function useCombatActions(deps: CombatActionsDeps) {
       hasAuraFlags(f) ? { ...u, effects: [...(u.effects ?? []), ...auraEffects(f, u.unitName)] } : u;
     const combatAttacker = withAuras(effAttacker, attackerAuras);
     const combatTarget = withAuras(effTarget, targetAuras);
-    const combatHeroProfile = attackerHeroProfile && hasAuraFlags(attackerAuras)
-      ? { ...attackerHeroProfile, advantage: !!attackerHeroProfile.advantage || attackerAuras.advantage, disadvantage: !!attackerHeroProfile.disadvantage || attackerAuras.disadvantage }
-      : attackerHeroProfile;
+    // Structure range bonus (e.g. a watch tower) extends the occupant's reach.
+    const atkRangeBonus = structureRangeBonus(effAttacker.hex, structures, structureTemplates);
+    const tgtRangeBonus = structureRangeBonus(effTarget.hex, structures, structureTemplates);
+    const combatWeapon = atkRangeBonus
+      ? { ...weapon, range: (weapon.range ?? 1) + atkRangeBonus, maxRange: (weapon.maxRange ?? weapon.range ?? 1) + atkRangeBonus }
+      : weapon;
+    const combatDefWeapon = defWeapon && tgtRangeBonus
+      ? { ...defWeapon, range: (defWeapon.range ?? 1) + tgtRangeBonus, maxRange: (defWeapon.maxRange ?? defWeapon.range ?? 1) + tgtRangeBonus }
+      : defWeapon;
+    const combatHeroProfile = attackerHeroProfile
+      ? {
+          ...attackerHeroProfile,
+          range: attackerHeroProfile.range + atkRangeBonus,
+          maxRange: attackerHeroProfile.maxRange + atkRangeBonus,
+          advantage: !!attackerHeroProfile.advantage || attackerAuras.advantage,
+          disadvantage: !!attackerHeroProfile.disadvantage || attackerAuras.disadvantage,
+        }
+      : null;
 
     const outcome = stashed
       ? stashed.outcome
       : resolveCombatSequence(
           combatAttacker,
           combatTarget,
-          { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, numberOfAttacks: weapon.numberOfAttacks, range: weapon.range, maxRange: weapon.maxRange },
-          defWeapon ? { attackBonus: defWeapon.attackBonus, damageDice: defWeapon.damageDice, is_reach: defWeapon.reach, numberOfAttacks: defWeapon.numberOfAttacks } : null,
+          { attackBonus: combatWeapon.attackBonus, damageDice: combatWeapon.damageDice, is_reach: combatWeapon.reach, noRetaliation: combatWeapon.noRetaliation, freeAction: combatWeapon.freeAction, numberOfAttacks: combatWeapon.numberOfAttacks, range: combatWeapon.range, maxRange: combatWeapon.maxRange },
+          combatDefWeapon ? { attackBonus: combatDefWeapon.attackBonus, damageDice: combatDefWeapon.damageDice, is_reach: combatDefWeapon.reach, numberOfAttacks: combatDefWeapon.numberOfAttacks } : null,
           formationAtkMod,
           attackCapMult,
           defAttackCapMult,
@@ -991,11 +1006,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // reach -> silently auto-switch to it. Two or more -> confirm the FIRST one
     // (a caster with many spells would flood a picker); Cancel lets the player
     // switch manually and redo the attack. None -> warn and abort.
-    if (dist > weapon.maxRange) {
-      const reaching = weaponIndicesReaching(attackerWeapons, attacker.activeWeaponIndex ?? 0, dist);
+    const rangeBonus = structureRangeBonus(attacker.hex, structures, structureTemplates);
+    if (dist > weapon.maxRange + rangeBonus) {
+      const reaching = weaponIndicesReaching(attackerWeapons, attacker.activeWeaponIndex ?? 0, Math.max(1, dist - rangeBonus));
       if (reaching.length === 0) {
         flashRangeViolation(target.hex);
-        addMessage(`${attacker.unitName} cannot reach ${target.unitName} — out of range (max ${weapon.maxRange} hexes)`);
+        addMessage(`${attacker.unitName} cannot reach ${target.unitName} — out of range (max ${weapon.maxRange + rangeBonus} hexes)`);
         return;
       }
       if (reaching.length > 1) {

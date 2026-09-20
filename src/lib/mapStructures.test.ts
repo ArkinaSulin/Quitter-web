@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseStructures, structuresToWalls, isEdgeStructureKey, isHexStructureKey, structureCounts, structureBlocksOrg, zoneBlocksOrg } from './mapStructures';
+import { parseStructures, structuresToWalls, isEdgeStructureKey, isHexStructureKey, structureCounts, structureBlocksOrg, zoneBlocksOrg, structureRangeBonus, structureIsOpen, structureHexMoveCost, structureAuraFlags } from './mapStructures';
 import { StructureTemplate } from '@/types/structure';
 
 const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => ({
@@ -126,5 +126,36 @@ describe('enter_org_max gates', () => {
     expect(zoneBlocksOrg(zones, 0, 0, 1)).toBe(false);
     expect(zoneBlocksOrg(zones, 1, 0, 2)).toBe(false);
     expect(zoneBlocksOrg(null, 0, 0, 2)).toBe(false);
+  });
+});
+
+describe('hex structure helpers', () => {
+  const tower = template({ id: 'tower', anchor: 'hex', hexMoveCost: 2, doorHp: null, modifiers: [{ kind: 'range', delta: 1 }] });
+  const gate = template({ id: 'gate', anchor: 'hex', hexMoveCost: 2, doorHp: 30, modifiers: [] });
+  const templates = { tower, gate };
+
+  it('structureRangeBonus sums range modifiers at the hex', () => {
+    expect(structureRangeBonus({ q: 0, r: 0 }, { '0,0': { templateId: 'tower' } }, templates)).toBe(1);
+    expect(structureRangeBonus({ q: 0, r: 0 }, { '0,0': { templateId: 'gate' } }, templates)).toBe(0);
+    expect(structureRangeBonus({ q: 1, r: 0 }, {}, templates)).toBe(0);
+  });
+
+  it('structureHexMoveCost is 0 for open gates / no structure', () => {
+    expect(structureHexMoveCost({ q: 0, r: 0 }, { '0,0': { templateId: 'gate' } }, templates)).toBe(2);
+    expect(structureHexMoveCost({ q: 0, r: 0 }, { '0,0': { templateId: 'gate', open: true } }, templates)).toBe(0);
+    expect(structureHexMoveCost({ q: 0, r: 0 }, {}, templates)).toBe(0);
+  });
+
+  it('structureIsOpen reflects the instance flag', () => {
+    expect(structureIsOpen({ templateId: 'gate' })).toBe(false);
+    expect(structureIsOpen({ templateId: 'gate', open: true })).toBe(true);
+    expect(structureIsOpen(null)).toBe(false);
+  });
+
+  it('structureAuraFlags reads tower modifiers, ignoring open/closed', () => {
+    const aura = template({ id: 'a', anchor: 'hex', modifiers: [{ kind: 'advantage', delta: 0 }, { kind: 'grant_disadvantage', delta: 0 }] });
+    const f = structureAuraFlags({ q: 0, r: 0 }, { '0,0': { templateId: 'a' } }, { a: aura });
+    expect(f).toEqual({ advantage: true, disadvantage: false, grantAdvantage: false, grantDisadvantage: true });
+    expect(structureAuraFlags({ q: 2, r: 0 }, {}, {})).toEqual({ advantage: false, disadvantage: false, grantAdvantage: false, grantDisadvantage: false });
   });
 });

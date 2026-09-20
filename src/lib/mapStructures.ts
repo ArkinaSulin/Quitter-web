@@ -44,6 +44,7 @@ export function parseStructures(raw: any): MapStructures {
     const doorHp = intOr((v as any).doorHp); if (doorHp !== undefined) inst.doorHp = doorHp;
     const outside = (v as any).outside;
     if (outside === 'a' || outside === 'b') inst.outside = outside;
+    if ((v as any).open === true) inst.open = true;
     out[key] = inst;
   }
   return out;
@@ -157,4 +158,34 @@ export function structureAuraFlags(
 /** True when any aura flag is set. */
 export function hasAuraFlags(f: StructureAuraFlags): boolean {
   return f.advantage || f.disadvantage || f.grantAdvantage || f.grantDisadvantage;
+}
+
+/** Open/closed state of a hex structure (edge structures are never "open"). */
+export function structureIsOpen(inst: StructureInstance | null | undefined): boolean {
+  return inst?.open === true;
+}
+
+/** Extra MP to enter this hex from a hex structure (0 when open or none). */
+export function structureHexMoveCost(
+  hex: { q: number; r: number },
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+): number {
+  const inst = hexStructureAt(structures, hex);
+  if (!inst || structureIsOpen(inst)) return 0;
+  const t = templates?.[inst.templateId];
+  return Math.max(0, t?.hexMoveCost ?? 0);
+}
+
+/** Weapon-range bonus (hexes) a unit standing on this hex gains from a structure. */
+export function structureRangeBonus(
+  hex: { q: number; r: number },
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+): number {
+  const inst = hexStructureAt(structures, hex);
+  const t = inst ? templates?.[inst.templateId] : undefined;
+  let sum = 0;
+  for (const m of t?.modifiers ?? []) if (m.kind === 'range') sum += m.delta ?? 0;
+  return sum;
 }

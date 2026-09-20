@@ -212,6 +212,19 @@ export function MapCanvas({
           ctx.fillStyle = '#ffe0b2';
           ctx.fillText(`${inst.hp ?? hp}`, pos.x, pos.y + HEX_SIZE * 0.62);
         }
+        const doorMax = t?.doorHp ?? null;
+        const door = doorMax !== null ? (inst.doorHp ?? doorMax) : null;
+        const badge = inst.open ? 'open' : (door !== null && door > 0 ? `door ${door}` : null);
+        if (badge) {
+          ctx.font = `bold ${Math.max(10 / zoom, 0.5)}px ui-monospace, monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.lineWidth = 3 / zoom;
+          ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+          ctx.strokeText(badge, pos.x, pos.y - HEX_SIZE * 0.62);
+          ctx.fillStyle = inst.open ? '#a5d6a7' : '#ffd9c9';
+          ctx.fillText(badge, pos.x, pos.y - HEX_SIZE * 0.62);
+        }
       }
     }
     ctx.lineWidth = 1;

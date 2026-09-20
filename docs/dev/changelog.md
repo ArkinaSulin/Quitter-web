@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Map structures: range bonuses + gate open/close (2026-09-20)
+**Files:** src/lib/{effectTemplates,unitEffects,mapStructures,mapStructures.test,structureCombat,structureCombat.test,archerReaction}.ts, src/types/{gameProtocol,structure}.ts, src/components/EffectEditor/EffectModifierFields.tsx, src/components/ScenarioMap/{useCombatActions,useReactionActions,ScenarioMap,useCanvasDraw,StructurePaintPanel,LeftPanel}.tsx, src/components/MapEditor/MapCanvas.tsx, docs/dev/{18-map-structures,outstanding}.md, docs/players/player-manual.md
+
+- **Structure range bonuses**: a new reusable **`range`** effect modifier kind (authorable on zones/structures). `mapStructures.structureRangeBonus(hex, …)` sums the occupant's `range` modifiers and is consumed in the attack range gate + the combat weapon bands (`useCombatActions`) and reaction shots (`useReactionActions` + `findEligibleReactionArchers`), so a watch tower can extend (or shrink) its occupant's reach and shift the long-range band.
+- **Gate open/close**: hex structure instances gained `open`. An **open** gate costs no extra entry MP (`structureHexMoveCost` → skipped) and bypasses its door (attacks hit the structure HP directly, `resolveHexStructureAttack`); closed gates keep their cost + door-first pool. Toggled by the GM from the `StructurePaintPanel`; open gates render an `open` badge instead of `door N` in both canvases.
+- Tests: `structureRangeBonus` / `structureHexMoveCost` / `structureIsOpen` / `structureAuraFlags`, and prompt door bypass when open. `tsc` clean; 695 tests pass; `next build` clean. **No DB change.**
+- Remaining: AI still ignores structure auras/range/gates (v1).
+
 ## Map structures Slice 4: hex structures (2026-09-20)
 **Files:** src/lib/{structureCombat,structureCombat.test,mapStructures}.ts, src/components/ScenarioMap/{useCombatActions,ScenarioMap,useCanvasDraw,SoftEnforcementModals}.tsx, src/hooks/useHexGrid.ts, docs/dev/{18-map-structures,outstanding}.md, docs/players/player-manual.md
 

@@ -29,6 +29,7 @@ export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModif
     case 'entry':
     case 'mp_cost':
     case 'enter_org_max':
+    case 'range':
     case 'advantage':
     case 'disadvantage':
     case 'grant_advantage':

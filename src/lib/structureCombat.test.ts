@@ -78,6 +78,14 @@ describe('resolveHexStructureAttack (door-first)', () => {
     expect(r.hpAfter).toBe(94);
   });
 
+  it('an OPEN gate bypasses the door and exposes the structure HP', () => {
+    const r = resolveHexStructureAttack(template({ dt: 0 }), inst({ open: true }), bow, fixed(6));
+    expect(r.hitDoor).toBe(false);
+    expect(r.doorHpAfter).toBeNull();
+    expect(r.hpAfter).toBe(94);
+    expect(isAttackableHexStructure(template(), inst({ open: true }))).toBe(true);
+  });
+
   it('does nothing once the door is gone and the structure is indestructible', () => {
     const r = resolveHexStructureAttack(template({ dt: 0, maxHp: 0 }), inst({ doorHp: 0 }), bow, fixed(6));
     expect(r.applied).toBe(0);

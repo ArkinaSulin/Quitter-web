@@ -50,8 +50,11 @@ Template library + editor shipped (Slice 1). See `18-map-structures.md`.
   it for v1.
 - ✅ **Slice 4**: hex structures — tower auras (occupancy flags merged into combat),
   door-first attacks via a drop **target-picker** (`structureCombat.ts`), scenario
-  hex rendering (tint/art/HP/door badges). Structure **range bonuses** and gate
-  open/close state remain deferred; AI ignores structure rules (v1).
+  hex rendering (tint/art/HP/door badges).
+- ✅ **Range + gates**: reusable `range` effect modifier (watch-tower / zone reach
+  +/-), consumed by attacks + reactions; gate **open/close** (open = no extra
+  entry MP, door bypassed).
+- ⏳ Only gap: the AI planner ignores structure auras / range / gates (v1).
 
 ## Edge walls (migration 089)
 - ✅ **Phase 1 shipped**: edge `maps.walls` keyed `"q,r,dir"`, a face per side

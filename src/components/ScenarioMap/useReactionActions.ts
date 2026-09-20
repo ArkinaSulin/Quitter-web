@@ -21,7 +21,7 @@ import { UnitChange, SubStep } from '@/lib/commandLog';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { computeOccupiedHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
-import { MapStructures } from '@/lib/mapStructures';
+import { MapStructures, structureRangeBonus } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { ExecuteFn, routeUnit } from './routeUnit';
@@ -95,7 +95,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
    *  `mover` is expected to carry its NEW hex (the move's end). */
   const offerReactionsFor = useCallback((mover: Unit) => {
     if (!archerReactionEnabled) return;
-    const eligible = findEligibleReactionArchers(mover, units, alliances, formationsMap);
+    const eligible = findEligibleReactionArchers(mover, units, alliances, formationsMap, (u) => structureRangeBonus(u.hex, structures, structureTemplates));
     if (eligible.length === 0) return;
     setReactionOffers(prev => {
       const next = new Map(prev);
@@ -119,14 +119,15 @@ export function useReactionActions(deps: ReactionActionsDeps) {
         const weapon = archer ? parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0] : null;
         const inArc = !!archer && !!mover &&
           canRangedTarget(formationsMap[archer.currentFormation] ?? null, arcOfTarget(archer.hex, archer.facing, mover.hex));
-        if (!archer || !mover || !weapon || !isRangedCapableWeapon(weapon) || hexDistance(archer.hex, mover.hex) > weapon.range || !inArc) {
+        const reach = weapon ? weapon.range + (archer ? structureRangeBonus(archer.hex, structures, structureTemplates) : 0) : 0;
+        if (!archer || !mover || !weapon || !isRangedCapableWeapon(weapon) || hexDistance(archer.hex, mover.hex) > reach || !inArc) {
           next.delete(archerId);
           changed = true;
         }
       });
       return changed ? next : prev;
     });
-  }, [units, formationsMap]);
+  }, [units, formationsMap, structures, structureTemplates]);
 
   // Ordering-immune catch-all: after undo/redo or any realtime position change
   // lands in local `units`, re-validate the markers with authoritative positions.
@@ -149,7 +150,8 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       return;
     }
     const dist = hexDistance(archer.hex, mover.hex);
-    if (dist > weapon.range) {
+    const rangeBonus = structureRangeBonus(archer.hex, structures, structureTemplates);
+    if (dist > weapon.range + rangeBonus) {
       addMessage(`${mover.unitName} is out of reaction range now — reaction shot lost`);
       setReactionMode(null);
       return;
@@ -164,7 +166,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const indirectShot = !hasLineOfSight(archer.hex, mover.hex, units, new Set([archer.id, mover.id]));
     const outcome = resolveCombatSequence(
       archer, mover,
-      { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, numberOfAttacks: weapon.numberOfAttacks, range: weapon.range, maxRange: weapon.maxRange },
+      { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, numberOfAttacks: weapon.numberOfAttacks, range: weapon.range + rangeBonus, maxRange: weapon.maxRange + rangeBonus },
       null,
       formationAtkMod, attackCapMult, defAttackCapMult,
       archerRowCap, moverRowCap, moverVisualDpr,
@@ -362,9 +364,10 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     }
     const weapon = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0];
     const dist = hexDistance(archer.hex, target.hex);
-    if (!weapon || !isRangedCapableWeapon(weapon) || dist > weapon.range) {
+    const rangeBonus = structureRangeBonus(archer.hex, structures, structureTemplates);
+    if (!weapon || !isRangedCapableWeapon(weapon) || dist > weapon.range + rangeBonus) {
       flashRangeViolation(target.hex);
-      addMessage(`${target.unitName} is out of reaction range (max ${weapon?.range ?? 0} hexes)`);
+      addMessage(`${target.unitName} is out of reaction range (max ${(weapon?.range ?? 0) + rangeBonus} hexes)`);
       return;
     }
     await performReactionShot(archer, target);

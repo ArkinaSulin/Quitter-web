@@ -12,6 +12,7 @@ export type EffectModifierKind =
   | 'entry'        // zone: one-time damage when a unit enters/arrives
   | 'mp_cost'      // zone: offset to the hex entry MP cost
   | 'enter_org_max' // zone/structure: only formations with org level <= value may enter
+  | 'range'        // zone/structure: +/- weapon range (hexes) for the occupant
   | 'advantage'    // carrier's own attacks roll 2d20 take higher
   | 'disadvantage' // carrier's own attacks roll 2d20 take lower
   | 'grant_advantage'    // attackers targeting the carrier take the higher of 2d20
@@ -73,6 +74,7 @@ export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
   entry: 'Zone: damage on entry',
   mp_cost: 'Zone: hex MP cost',
   enter_org_max: 'Zone/structure: max org level to enter',
+  range: 'Zone/structure: weapon range +/-',
   advantage: 'Advantage on own attacks',
   disadvantage: 'Disadvantage on own attacks',
   grant_advantage: 'Attackers gain advantage',
@@ -107,7 +109,7 @@ export interface EffectTemplate {
   updatedAt: string;
 }
 
-const KINDS: EffectModifierKind[] = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'entry', 'mp_cost', 'enter_org_max', ...FLAG_MODIFIER_KINDS];
+const KINDS: EffectModifierKind[] = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'entry', 'mp_cost', 'enter_org_max', 'range', ...FLAG_MODIFIER_KINDS];
 
 export function parseModifiers(raw: unknown): EffectModifier[] {
   if (!Array.isArray(raw)) return [];

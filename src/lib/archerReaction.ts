@@ -43,6 +43,8 @@ export function findEligibleReactionArchers(
   units: Unit[],
   alliances: Record<string, AllianceGroup>,
   formationsMap?: Record<string, Formation>,
+  /** Optional per-archer weapon-range bonus (e.g. a watch tower). */
+  rangeBonus?: (unit: Unit) => number,
 ): Unit[] {
   const moverAlliance = alliances[mover.team] || 'friendly';
   return units.filter(o => {
@@ -52,7 +54,8 @@ export function findEligibleReactionArchers(
     if ((o.actionsAvailable ?? 0) < 1 || o.archerReactionUsed) return false;
     const weapon = parseWeapons(o.weaponString || '')[o.activeWeaponIndex ?? 0];
     if (!weapon || !isRangedCapableWeapon(weapon)) return false;
-    if (hexDistance(o.hex, mover.hex) > weapon.range) return false;
+    const reach = weapon.range + (rangeBonus?.(o) ?? 0);
+    if (hexDistance(o.hex, mover.hex) > reach) return false;
     const form = formationsMap?.[o.currentFormation] ?? null;
     return canRangedTarget(form, arcOfTarget(o.hex, o.facing, mover.hex));
   });
