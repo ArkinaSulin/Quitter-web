@@ -8,6 +8,7 @@ const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
 const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => ({
   id: 't', name: 'Gate Tower', description: '', anchor: 'hex', color: '#fff', imageUrl: '',
   battlement: false,
+  spikes: false,
   edgeABlock: false, edgeAMoveCost: null, edgeAMeleeAc: null, edgeARangedAc: null,
   edgeBBlock: false, edgeBMoveCost: null, edgeBMeleeAc: null, edgeBRangedAc: null,
   hexMoveCost: 2, doorHp: 30, maxHp: 100, dt: 15, modifiers: [], createdAt: '', updatedAt: '',

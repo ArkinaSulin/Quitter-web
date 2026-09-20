@@ -11,6 +11,7 @@ const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => (
   color: '#c49a58',
   imageUrl: '',
   battlement: true,
+  spikes: false,
   edgeABlock: true,
   edgeAMoveCost: 1,
   edgeAMeleeAc: 2,

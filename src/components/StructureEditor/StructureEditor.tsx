@@ -265,6 +265,10 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                     <input type="checkbox" disabled={readOnly} checked={draft.battlement} onChange={e => patch({ battlement: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
                     Draw a battlement (crenellation) on the outside face
                   </label>
+                  <label className="flex items-center gap-2 text-[11px] text-gray-300">
+                    <input type="checkbox" disabled={readOnly} checked={draft.spikes} onChange={e => patch({ spikes: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
+                    Draw small stakes (triangles) facing outward (e.g. archer's stakes)
+                  </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <FaceFields
                       title="Inside face (A)"
@@ -381,6 +385,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                   anchor={draft.anchor}
                   imageUrl={draft.imageUrl}
                   battlement={draft.battlement}
+                  spikes={draft.spikes}
                   inside={previewFaces.inside}
                   outside={previewFaces.outside}
                   hexMoveCost={draft.hexMoveCost}

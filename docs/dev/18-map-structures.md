@@ -33,7 +33,10 @@ scenario is migrated (Slice 3).
   - **Inside face (A)** / **Outside face (B)** — each has `block`,
     `moveCost` (replaces the entered hex's terrain when crossing INTO that face),
     `meleeAc` / `rangedAc` (cover for the unit standing on that side).
-  - `battlement` draws a crenellation (square wave) on the **outside** face.
+  - `battlement` draws a crenellation (square wave) on the **outside** face; the
+    amplitude is tied to the tooth width so the teeth read as squares.
+  - `spikes` draws a row of small outward-facing triangles (e.g. **Archer's
+    Stake**) instead of a plain segment / crenellation.
   - A placement's `outside` flip maps the template's inside/outside onto the
     canonical `a`/`b` sides — one control that swaps the directional stats and
     moves the battlement.

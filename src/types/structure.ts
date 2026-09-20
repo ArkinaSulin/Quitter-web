@@ -26,6 +26,8 @@ export interface StructureTemplate {
   imageUrl: string;
   /** Draw crenellations on the outside face of an edge structure. */
   battlement: boolean;
+  /** Draw small outward-facing triangles along the edge (e.g. archer's stakes). */
+  spikes: boolean;
   // Edge faces. A = inside, B = outside; null = normal terrain / no AC bonus.
   edgeABlock: boolean;
   edgeAMoveCost: number | null;

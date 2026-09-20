@@ -664,7 +664,7 @@ edge**.
 - Costs **1 action**, counts toward your **5-attack limit**; no AGR, no
   retaliation. At **0 HP** the segment is destroyed and the way opens.
 - Walls without HP are scenery and cannot be attacked.
-- Some structures **gate entry** (e.g. **archer spikes**): a formation above the
+- Some structures **gate entry** (e.g. **Archer's Stake**): a formation above the
   allowed organization level cannot move across that edge or into that hex.
   Loose troops — Open Order, Scattered, Hero — pass; Close Order and heavier
   cannot. (Charges are stopped by any edge structure.)

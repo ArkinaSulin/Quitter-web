@@ -121,7 +121,7 @@ INSERT INTO map_structure_templates
    edge_b_block, edge_b_move_cost, edge_b_melee_ac, edge_b_ranged_ac,
    hex_move_cost, door_hp, max_hp, dt, modifiers)
 VALUES
-  ('Archer Spikes', 'Low stakes that only loose troops can cross.', 'edge', '#a1887f', false,
+  ('Archer''s Stake', 'Low stakes that only loose troops can cross.', 'edge', '#a1887f', false,
    false, 2, NULL, NULL, false, 2, NULL, NULL,
    NULL, NULL, 30, 15, '[{"kind":"enter_org_max","delta":1}]'),
   ('Wood Wall', 'Wooden barrier. Blocks movement, grants cover.', 'edge', '#c49a58', true,

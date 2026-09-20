@@ -7,7 +7,7 @@
 // side is shown as outside (the real side is chosen per placement).
 import React, { useState } from 'react';
 import { StructureAnchor } from '@/types/structure';
-import { battlementPath } from '@/lib/structureDraw';
+import { battlementPath, battlementDepth, spikePath } from '@/lib/structureDraw';
 
 const HEX_DIRS = [
   { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
@@ -29,6 +29,7 @@ interface StructurePreviewProps {
   anchor: StructureAnchor;
   imageUrl: string;
   battlement: boolean;
+  spikes: boolean;
   inside: PreviewFace;
   outside: PreviewFace;
   hexMoveCost: number | null;
@@ -49,7 +50,7 @@ function faceLabel(f: PreviewFace): string {
 }
 
 export function StructurePreview({
-  anchor, imageUrl, battlement, inside, outside, hexMoveCost, doorHp, maxHp, dt,
+  anchor, imageUrl, battlement, spikes, inside, outside, hexMoveCost, doorHp, maxHp, dt,
 }: StructurePreviewProps) {
   const [flipped, setFlipped] = useState(false);
 
@@ -116,25 +117,31 @@ export function StructurePreview({
   const outsideUp = !flipped;
   const outsideFace = flipped ? inside : outside;
   const insideFace = flipped ? outside : inside;
-  const bbPath = battlementPath({ x: x0, y }, { x: x1, y }, { x: 0, y: outsideUp ? -1 : 1 }, 8, 8);
+  const outDir = { x: 0, y: outsideUp ? -1 : 1 };
+  const tooth = battlementDepth(x1 - x0, 8);
+  const decoration = spikes
+    ? spikePath({ x: x0, y }, { x: x1, y }, outDir, tooth * 0.7, 8)
+    : battlementPath({ x: x0, y }, { x: x1, y }, outDir, tooth, 8);
   return (
     <div className="space-y-2">
       <div className="relative rounded border border-gray-700 bg-gray-200" style={{ width: W, height: H }}>
         <svg width={W} height={H} className="absolute inset-0 block">
           <line x1={x0} y1={y} x2={x1} y2={y} stroke="rgba(0,0,0,0.95)" strokeWidth={7} strokeLinecap="round" />
-          {battlement && <path d={bbPath} fill="none" stroke="rgba(0,0,0,0.95)" strokeWidth={2.5} strokeLinejoin="round" />}
+          {spikes
+            ? <path d={decoration} fill="rgba(0,0,0,0.95)" stroke="rgba(0,0,0,0.95)" strokeWidth={1.5} />
+            : battlement && <path d={decoration} fill="none" stroke="rgba(0,0,0,0.95)" strokeWidth={2.5} strokeLinejoin="round" />}
         </svg>
         <span className="absolute left-1 top-0.5 text-[9px] uppercase tracking-wide text-amber-700">Outside</span>
         <span className="absolute left-1 bottom-0.5 text-[9px] uppercase tracking-wide text-sky-700">Inside</span>
         <span className="absolute right-1 top-0.5 text-[9px] text-gray-700">{faceLabel(outsideFace)}</span>
         <span className="absolute right-1 bottom-0.5 text-[9px] text-gray-700">{faceLabel(insideFace)}</span>
       </div>
-      {battlement && (
+      {(battlement || spikes) && (
         <button
           type="button"
           onClick={() => setFlipped(f => !f)}
           className="px-2 py-1 rounded text-[11px] bg-gray-700 hover:bg-gray-600"
-          title="Preview which side the battlement sits on; placement chooses the real side."
+          title="Preview which side the battlement/stakes sit on; placement chooses the real side."
         >
           Flip preview
         </button>

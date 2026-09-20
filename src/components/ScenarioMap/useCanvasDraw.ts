@@ -17,7 +17,7 @@ import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
 import { MapStructures, isHexStructureKey } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
-import { battlementPath } from '@/lib/structureDraw';
+import { battlementPath, battlementDepth, spikePath } from '@/lib/structureDraw';
 import { AiOverlayData } from './aiTypes';
 
 interface CanvasDrawDeps {
@@ -328,10 +328,11 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
-        // Battlement on the outside side (same colour as the wall, kept small).
+        // Decoration on the outside side: battlements (square crenellations) or
+        // archer's-stake triangles, same colour as the wall and kept small.
         const inst = structures?.[key];
         const t = inst ? templates?.[inst.templateId] : undefined;
-        if (t?.battlement && inst) {
+        if ((t?.battlement || t?.spikes) && inst) {
           const ref = edgeRef(q, r, d);
           const outsideIsA = (inst.outside ?? 'a') === 'a';
           const oc = hexCenter({ q: outsideIsA ? ref.aq : ref.bq, r: outsideIsA ? ref.ar : ref.br, s: 0 });
@@ -339,10 +340,16 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           let ny = oc.cy - (a.y + b.y) / 2;
           const nl = Math.hypot(nx, ny) || 1;
           nx /= nl; ny /= nl;
+          const seg = Math.hypot(b.x - a.x, b.y - a.y);
           ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
-          ctx.lineWidth = 2 * currentZoom;
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
+          ctx.lineWidth = 1.5 * currentZoom;
           ctx.beginPath();
-          ctx.stroke(new Path2D(battlementPath(a, b, { x: nx, y: ny }, HEX_SIZE * 0.12 * currentZoom, 8)));
+          const d2 = t.spikes
+            ? spikePath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8) * 0.7, 8)
+            : battlementPath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8), 8);
+          if (t.spikes) ctx.fill(new Path2D(d2));
+          else ctx.stroke(new Path2D(d2));
         }
         // Damaged barriers show their remaining HP at the segment midpoint.
         if (damaged) {

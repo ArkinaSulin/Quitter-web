@@ -32,6 +32,7 @@ export function mapStructureRow(row: any): StructureTemplate {
     color: row.color || '#cccccc',
     imageUrl: row.image_url || '',
     battlement: !!row.battlement,
+    spikes: !!row.spikes,
     edgeABlock: !!row.edge_a_block,
     edgeAMoveCost: numOrNull(row.edge_a_move_cost),
     edgeAMeleeAc: numOrNull(row.edge_a_melee_ac),
@@ -52,7 +53,7 @@ export function mapStructureRow(row: any): StructureTemplate {
 
 /** Map a template to a snake_case map_structure_templates row (no id). */
 export function mapStructureToRow(t: Pick<StructureTemplate,
-  'name' | 'description' | 'anchor' | 'color' | 'imageUrl' | 'battlement' |
+  'name' | 'description' | 'anchor' | 'color' | 'imageUrl' | 'battlement' | 'spikes' |
   'edgeABlock' | 'edgeAMoveCost' | 'edgeAMeleeAc' | 'edgeARangedAc' |
   'edgeBBlock' | 'edgeBMoveCost' | 'edgeBMeleeAc' | 'edgeBRangedAc' |
   'hexMoveCost' | 'doorHp' | 'maxHp' | 'dt' | 'modifiers'>) {
@@ -68,6 +69,7 @@ export function mapStructureToRow(t: Pick<StructureTemplate,
     color: t.color || '#cccccc',
     image_url: t.imageUrl || '',
     battlement: !!t.battlement,
+    spikes: !!t.spikes,
     edge_a_block: !!t.edgeABlock,
     edge_a_move_cost: clean(t.edgeAMoveCost),
     edge_a_melee_ac: clean(t.edgeAMeleeAc),
@@ -93,6 +95,7 @@ export function blankStructureTemplate(): Omit<StructureTemplate, 'id' | 'create
     color: '#c49a58',
     imageUrl: '',
     battlement: false,
+    spikes: false,
     edgeABlock: false,
     edgeAMoveCost: null,
     edgeAMeleeAc: null,

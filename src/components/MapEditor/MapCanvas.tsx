@@ -11,7 +11,7 @@ import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
 import { HEX_SIZE, DEFAULT_GRID_RADIUS, TerrainCosts, costShade } from '@/components/ScenarioMap/mapGeometry';
 import { edgeRef, nearestEdge, hexCorner } from '@/lib/walls';
 import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls } from '@/lib/mapStructures';
-import { battlementPath } from '@/lib/structureDraw';
+import { battlementPath, battlementDepth, spikePath } from '@/lib/structureDraw';
 import { StructureTemplate } from '@/types/structure';
 
 export interface MapCanvasProps {
@@ -246,8 +246,9 @@ export function MapCanvas({
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
-        // Battlement on the outside side (same colour as the wall, kept small).
-        if (t?.battlement) {
+        // Decoration on the outside side: battlements (square crenellations) or
+        // archer's-stake triangles, same colour as the wall and kept small.
+        if (t?.battlement || t?.spikes) {
           const ref = edgeRef(q, r, d);
           const outsideIsA = (inst.outside ?? 'a') === 'a';
           const ox = outsideIsA ? ref.aq : ref.bq;
@@ -259,11 +260,16 @@ export function MapCanvas({
           let ny = hexCenterPt.y - midY;
           const nl = Math.hypot(nx, ny) || 1;
           nx /= nl; ny /= nl;
+          const seg = Math.hypot(b.x - a.x, b.y - a.y);
           ctx.strokeStyle = 'rgba(0,0,0,0.95)';
-          ctx.lineWidth = 2;
+          ctx.fillStyle = 'rgba(0,0,0,0.95)';
           ctx.beginPath();
-          const path = battlementPath(a, b, { x: nx, y: ny }, HEX_SIZE * 0.12, 8);
-          ctx.stroke(new Path2D(path));
+          const d2 = t.spikes
+            ? spikePath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8) * 0.7, 8)
+            : battlementPath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8), 8);
+          ctx.lineWidth = 1.5;
+          if (t.spikes) ctx.fill(new Path2D(d2));
+          else ctx.stroke(new Path2D(d2));
         }
         // Move-cost labels on the edge, one per face that overrides the cost.
         const labelFor = (faceKey: 'a' | 'b') => {
