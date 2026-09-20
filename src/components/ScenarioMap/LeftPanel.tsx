@@ -9,8 +9,9 @@ import { AlliancePanel } from './AlliancePanel';
 import { MapEditorPanel } from './MapEditorPanel';
 import { MapPickerList } from './MapPickerList';
 import { TerrainPaintPanel } from './TerrainPaintPanel';
-import { WallPaintPanel } from './WallPaintPanel';
-import { Walls, WallFace } from '@/lib/walls';
+import { StructurePaintPanel } from './StructurePaintPanel';
+import { MapStructures } from '@/lib/mapStructures';
+import { StructureTemplate } from '@/types/structure';
 import EffectsPanel from './EffectsPanel';
 import { PlayerPanel } from './PlayerPanel';
 import { UndoDebugPanel } from './UndoDebugPanel';
@@ -53,13 +54,15 @@ interface LeftPanelProps {
   onClearMap: () => void;
   terrainBrushCost: number | null;
   onSetTerrainBrushCost: (v: number | null) => void;
-  wallBrush: boolean;
-  onToggleWallBrush: () => void;
-  walls: Walls;
-  selectedWallEdge: { q: number; r: number; dir: number } | null;
-  onChangeWallFace: (side: 'a' | 'b', patch: Partial<WallFace>) => void;
-  onChangeWall: (patch: { maxHp?: number; dt?: number }) => void;
-  onRemoveWall: () => void;
+  structureBrush: boolean;
+  onToggleStructureBrush: () => void;
+  structureTemplates: Record<string, StructureTemplate>;
+  structurePaletteId: string | null;
+  onSetStructurePaletteId: (id: string | null) => void;
+  structures: MapStructures;
+  selectedStructureKey: string | null;
+  onPatchStructure: (patch: { maxHp?: number; hp?: number; dt?: number; doorHp?: number; outside?: 'a' | 'b' }) => void;
+  onRemoveStructure: (key: string) => void;
   zoneTemplateId: string | null;
   onSetZoneTemplateId: (id: string | null) => void;
   /** Assigned players may paint effect zones (unassigned spectators cannot). */
@@ -72,7 +75,7 @@ interface LeftPanelProps {
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, wallBrush, onToggleWallBrush, walls, selectedWallEdge, onChangeWallFace, onChangeWall, onRemoveWall, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, structureBrush, onToggleStructureBrush, structureTemplates, structurePaletteId, onSetStructurePaletteId, structures, selectedStructureKey, onPatchStructure, onRemoveStructure, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
   // Persist which tabs are open per scenario + user, so a rejoined session
   // restores the same panel layout.
   // Persist which tabs are open per scenario + user. The saved layout is restored
@@ -136,14 +139,16 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
         <div className="space-y-4">
           <TerrainPaintPanel value={terrainBrushCost} onSet={onSetTerrainBrushCost} />
           <div className="pt-2 border-t border-gray-700">
-            <WallPaintPanel
-              armed={wallBrush}
-              onToggleArm={onToggleWallBrush}
-              walls={walls}
-              selectedEdge={selectedWallEdge}
-              onChangeFace={onChangeWallFace}
-              onChangeWall={onChangeWall}
-              onRemove={onRemoveWall}
+            <StructurePaintPanel
+              armed={structureBrush}
+              onToggleArm={onToggleStructureBrush}
+              templates={structureTemplates}
+              paletteId={structurePaletteId}
+              onSetPaletteId={onSetStructurePaletteId}
+              structures={structures}
+              selectedKey={selectedStructureKey}
+              onPatchStructure={onPatchStructure}
+              onRemoveStructure={onRemoveStructure}
             />
           </div>
         </div>

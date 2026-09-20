@@ -33,6 +33,7 @@ export type ActionType =
   | 'EFFECT'
   | 'ZONE'
   | 'WALL'
+  | 'STRUCTURE'
   | 'ARCHER_REACTION'
   | 'OTHER_ACTION';
 
@@ -40,6 +41,8 @@ export interface UnitChange {
   field: string;
   from: any;
   to: any;
+  /** Per-key targets (STRUCTURE/WALL changes keyed by anchor). */
+  key?: string;
 }
 
 export interface SubStep {

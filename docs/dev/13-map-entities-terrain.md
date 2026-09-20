@@ -63,10 +63,10 @@ corners `dir` and `dir+1`.
   **debounce-autosaves** to `maps`. Canvas paints terrain shading + structure
   segments (with battlements) + hex structures + edge move-cost labels +
   hover-coordinate chip.
-- **In-scenario Movement tab** (`TerrainPaintPanel` + `WallPaintPanel`): the same
-  0–9 pen paints on the scenario copy, and the legacy wall tool places barriers
-  live; the GM keeps adjusting terrain live at the table. (In-scenario *structure*
-  painting lands with Slice 3 of `18`.)
+- **In-scenario Movement tab** (`TerrainPaintPanel` + `StructurePaintPanel`): the
+  same 0–9 pen paints on the scenario copy, and the structure brush places
+  barriers/towers live (pick a template, click an edge or hex); the GM keeps
+  adjusting the map live at the table.
 
 
 ## Assigning a map to a scenario
@@ -86,7 +86,7 @@ Migration **089** added `maps.walls`; **094** replaces it with `maps.structures`
 
 A structure instance may carry `maxHp` / `hp` / `dt` (damage threshold). Authored
 in the Structure Editor as template defaults, overridable per placed instance
-(Structures tab + `WallPaintPanel`: **Max HP** / **DT**); an authored `maxHp` with
+(Structures tab + `StructurePaintPanel`: **Max HP** / **DT**); an authored `maxHp` with
 no `hp` starts at full health. A segment with no `maxHp` is indestructible scenery.
 
 **Attacking a barrier** is a drag onto the edge (`useHexGrid.hoveredEdge` via
@@ -100,18 +100,18 @@ below = no effect, above = full damage off HP). Attacking costs **1 action** and
 counts toward the attack cap (soft-confirmed when over), with no AGR/retaliation.
 `hp <= 0` removes the segment.
 
-Persistence rides the command log: the command is `ATTACK` with a **`WALL`**
-sub-step (`{ field: 'walls', from, to }`), applied by `apply_substeps` (migration
-**092**) with `jsonb_set(map_data, '{walls}')` — undo/redo/realtime/replay
-restore wall HP with the rest of the command. `useGameEngine.setWallsLocal` paints
-the optimistic result.
+Persistence rides the command log: the command is `ATTACK` with a **`STRUCTURE`**
+sub-step (`{ field: 'structures', key, from, to }`), applied by `apply_substeps`
+(migration **095**) as a per-key merge into `scenarios.map_data.structures` —
+undo/redo/realtime/replay restore wall HP with the rest of the command.
+`useGameEngine.setStructureLocal` paints the optimistic result.
 
 ## Reserved
 
 `hex_effects` (per-hex authored effects on library boards) is **reserved** —
 the map-effects pass is a future feature. Ground *effects* painted live in a
-scenario already work (see `10`). Still planned on top of walls (not yet built):
-**Phase 3** — temporary (magic) wall effects with a caster/duration sharing the
-same edge mechanic (ticked/expired at END_TURN like ground zones), plus
-generalizing HP/DT to ground-zone effects.
+scenario already work (see `10`). Still planned on top of structures (see `18`):
+the hex-structure pass (door-first combat, tower auras, target-picker) and
+`enter_org_max` movement consumption; later, temporary (magic) structures with a
+caster/duration ticked at END_TURN like ground zones.
 

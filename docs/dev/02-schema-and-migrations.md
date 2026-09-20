@@ -105,6 +105,7 @@ as applied in the notes — check the live DB before relying on it).
 | 092 | wall command log: `apply_substeps` WALL branch (`scenarios.map_data.walls`) | ⏳ run in Supabase |
 | 093 | map structure templates: caps + `map_structure_templates` + 9 seed templates | ⏳ run in Supabase |
 | 094 | map structures: `maps.structures` jsonb (drops `maps.walls`) | ⏳ run in Supabase |
+| 095 | structure command log: `apply_substeps` `STRUCTURE` per-key branch (`scenarios.map_data.structures`) | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

@@ -39,10 +39,12 @@ Template library + editor shipped (Slice 1). See `18-map-structures.md`.
   Editor **Structures** tab (template palette, edge/hex painting, click-again
   battlement flip, HP/DT/door overrides), `MapCanvas` edge + hex rendering, and
   assign-time `structuresToWalls` derivation into the runtime `walls`.
-- 🔜 **Slice 3**: scenario-native structures — `STRUCTURE` command-log sub-steps
-  (per-key merges), wall unification (stop deriving/wipe `map_data.walls`),
-  in-scenario structure painting, `enter_org_max` movement consumption,
-  edge-structure attacks.
+- ✅ **Slice 3**: scenario-native structures — `map_data.structures` as the source
+  of truth, per-key `STRUCTURE` command sub-steps (migration 095), in-scenario
+  `StructurePaintPanel`, edge-structure attacks via `STRUCTURE`; runtime `walls`
+  derived from structures (legacy `map_data.walls` no longer written).
+- 🔜 **Slice 3b**: wire `enter_org_max` into movement (block a zone/structure
+  hex/edge for over-level movers; authoring already works).
 - 🔜 **Slice 4**: hex door-first combat + tower auras (occupancy effects), hex
   HP/door rendering in `useCanvasDraw`, drop **target-picker** when a hex has
   ≥2 targetables.

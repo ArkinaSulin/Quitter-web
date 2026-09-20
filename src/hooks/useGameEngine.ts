@@ -31,6 +31,9 @@ interface UseGameEngineProps {
   setZonesLocal?: (zones: GroundEffect[]) => void;
   /** Optimistic local apply for WALL commands (edge walls object). */
   setWallsLocal?: (walls: Walls) => void;
+  /** Optimistic local apply for STRUCTURE commands (one keyed structure at a time;
+   *  null deletes the key). */
+  setStructureLocal?: (key: string, value: unknown | null) => void;
   /** Ask the table how many troops are caught by an 'entry' zone (default: all). */
   requestEntryTroops?: (actor: Unit, zone: GroundEffect) => Promise<number>;
 }
@@ -46,6 +49,7 @@ export function useGameEngine({
   setScenarioLocal,
   setZonesLocal,
   setWallsLocal,
+  setStructureLocal,
   requestEntryTroops,
 }: UseGameEngineProps) {
   const { addMessage, addError } = useMessageSync(scenarioId);
@@ -113,6 +117,12 @@ export function useGameEngine({
           for (const change of step.changes) {
             if (change.field === 'walls') setWallsLocal(change[field] as Walls);
           }
+        } else if (step.type === 'STRUCTURE' && setStructureLocal) {
+          for (const change of step.changes) {
+            if (change.field === 'structures' && change.key) {
+              setStructureLocal(change.key, change[field] ?? null);
+            }
+          }
         } else if (step.type === 'SCENARIO' && setScenarioLocal) {
           const update: any = {};
           for (const change of step.changes) {
@@ -133,7 +143,7 @@ export function useGameEngine({
         }
       }
     },
-    [applyLocalUnit, setAllianceLocal, setScenarioLocal, setZonesLocal, setWallsLocal],
+    [applyLocalUnit, setAllianceLocal, setScenarioLocal, setZonesLocal, setWallsLocal, setStructureLocal],
   );
 
   // All unit ids touched by a batch of sub-steps (units written by the command).
@@ -142,7 +152,7 @@ export function useGameEngine({
       const ids: string[] = [];
       for (const row of rows) {
         for (const step of parseSubSteps(row.sub_steps)) {
-          if (step.unitId && step.type !== 'ALLIANCE' && step.type !== 'SCENARIO' && step.type !== 'ZONE' && step.type !== 'WALL') {
+          if (step.unitId && step.type !== 'ALLIANCE' && step.type !== 'SCENARIO' && step.type !== 'ZONE' && step.type !== 'WALL' && step.type !== 'STRUCTURE') {
             ids.push(step.unitId);
           }
         }

@@ -45,8 +45,9 @@ import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf, computeOccupiedHexes, computeThreatHexes } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
-import { Walls, parseWalls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type WallFace, type EdgeRef } from '@/lib/walls';
+import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/lib/walls';
 import { MapStructures, parseStructures, structuresToWalls } from '@/lib/mapStructures';
+import { StructureTemplate } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/lib/wallCombat';
 import { unitAttackCap } from '@/lib/attackCap';
@@ -251,6 +252,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Placed structures (map_data.structures) — the source of truth; edge structures
   // are converted to `walls` for the runtime until the scenario is fully migrated.
   const [structures, setStructures] = useState<MapStructures>({});
+  // Optimistic per-key apply for STRUCTURE commands (undo/redo/realtime).
+  const setStructureLocal = useCallback((key: string, value: unknown | null) => {
+    setStructures(prev => {
+      const next = { ...prev };
+      if (value === null || value === undefined) delete next[key];
+      else next[key] = value as any;
+      return next;
+    });
+  }, []);
   const [groundZones, setGroundZones] = useState<GroundEffect[]>([]);
   // Provenance of the snapshot currently loaded from a reusable map (maps.id).
   const [mapId, setMapId] = useState<string | null>(null);
@@ -273,9 +283,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // GM map-edit brushes: terrain = entry-cost value (null = off); zone = template
   // armed for placement (null = off).
   const [terrainBrushCost, setTerrainBrushCost] = useState<number | null>(null);
-  // Wall brush (GM live edit): armed toggle + the edge selected for face editing.
-  const [wallBrush, setWallBrush] = useState(false);
-  const [selectedWallEdge, setSelectedWallEdge] = useState<{ q: number; r: number; dir: number } | null>(null);
+  // Structure brush (GM live edit): armed toggle + selected template + the
+  // instance selected for editing.
+  const [structureBrush, setStructureBrush] = useState(false);
+  const [structurePaletteId, setStructurePaletteId] = useState<string | null>(null);
+  const [selectedStructureKey, setSelectedStructureKey] = useState<string | null>(null);
+  const [structureTemplates, setStructureTemplates] = useState<Record<string, StructureTemplate>>({});
   const [zoneTemplate, setZoneTemplate] = useState<EffectTemplate | null>(null);
   // Temporary-effect modal target (context menu → "Effects…").
   const [effectMenuUnit, setEffectMenuUnit] = useState<Unit | null>(null);
@@ -503,7 +516,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const persistMapData = useCallback(async (next: {
     backgroundConfig?: MapBackgroundConfig | null;
     terrainCosts?: TerrainCosts;
-    walls?: Walls;
     structures?: MapStructures;
     groundEffects?: GroundEffect[];
     mapId?: string | null;
@@ -516,12 +528,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       bgScale: bg?.scale ?? 1,
       gridRadius: bg?.gridRadius ?? DEFAULT_GRID_RADIUS,
       terrainCosts: next.terrainCosts !== undefined ? next.terrainCosts : terrainCosts,
-      walls: next.walls !== undefined ? next.walls : walls,
       structures: next.structures !== undefined ? next.structures : structures,
       groundEffects: next.groundEffects !== undefined ? next.groundEffects : groundZones,
       mapId: next.mapId !== undefined ? next.mapId : mapId,
     });
-  }, [scenarioId, updateScenarioMapData, backgroundConfig, terrainCosts, walls, structures, groundZones, mapId]);
+  }, [scenarioId, updateScenarioMapData, backgroundConfig, terrainCosts, structures, groundZones, mapId]);
 
   const paintTerrain = useCallback(async (q: number, r: number) => {
     if (terrainBrushCost === null) return;
@@ -540,63 +551,72 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     await persistMapData({ terrainCosts: next });
   }, [terrainCosts, persistMapData]);
 
-  // ---- Wall brush (GM live edit) ----
-  const persistWalls = useCallback(async (next: Walls) => {
-    setWalls(next);
-    await persistMapData({ walls: next });
+  // ---- Structure brush (GM live edit) ----
+  const persistStructures = useCallback(async (next: MapStructures) => {
+    setStructures(next);
+    await persistMapData({ structures: next });
   }, [persistMapData]);
 
-  const toggleWallEdge = useCallback(async (q: number, r: number, dir: number) => {
+  const paintStructureEdge = useCallback(async (q: number, r: number, dir: number) => {
+    if (!structurePaletteId) return;
     const ref = edgeRef(q, r, dir);
-    setSelectedWallEdge({ q: ref.aq, r: ref.ar, dir: ref.dir });
-    if (walls[ref.key]) return; // already placed — just select it
-    await persistWalls({ ...walls, [ref.key]: { a: { block: true }, b: { block: true } } });
-  }, [walls, persistWalls]);
+    const existing = structures[ref.key];
+    if (!existing) {
+      await persistStructures({ ...structures, [ref.key]: { templateId: structurePaletteId } });
+      setSelectedStructureKey(ref.key);
+      return;
+    }
+    if (selectedStructureKey === ref.key) {
+      const outside = (existing.outside ?? 'a') === 'a' ? 'b' : 'a';
+      await persistStructures({ ...structures, [ref.key]: { ...existing, outside } });
+      return;
+    }
+    setSelectedStructureKey(ref.key);
+  }, [structures, structurePaletteId, selectedStructureKey, persistStructures]);
 
-  const clearWallAt = useCallback(async (q: number, r: number, dir: number) => {
-    const ref = edgeRef(q, r, dir);
-    if (!walls[ref.key]) return;
-    const next = { ...walls };
-    delete next[ref.key];
-    setSelectedWallEdge(sel => (sel && sel.q === ref.aq && sel.r === ref.ar && sel.dir === ref.dir ? null : sel));
-    await persistWalls(next);
-  }, [walls, persistWalls]);
+  const paintStructureHex = useCallback(async (q: number, r: number) => {
+    if (!structurePaletteId) return;
+    const key = `${q},${r}`;
+    if (!structures[key]) {
+      await persistStructures({ ...structures, [key]: { templateId: structurePaletteId } });
+    }
+    setSelectedStructureKey(key);
+  }, [structures, structurePaletteId, persistStructures]);
 
-  const patchWallFace = useCallback(async (side: 'a' | 'b', patch: Partial<WallFace>) => {
-    if (!selectedWallEdge) return;
-    const ref = edgeRef(selectedWallEdge.q, selectedWallEdge.r, selectedWallEdge.dir);
-    const wall = walls[ref.key];
-    if (!wall) return;
-    const face = { ...wall[side] };
+  const clearStructureKey = useCallback(async (key: string) => {
+    if (!structures[key]) return;
+    const next = { ...structures };
+    delete next[key];
+    setSelectedStructureKey(sel => (sel === key ? null : sel));
+    await persistStructures(next);
+  }, [structures, persistStructures]);
+
+  const patchScenarioStructure = useCallback(async (patch: { maxHp?: number; hp?: number; dt?: number; doorHp?: number; outside?: 'a' | 'b' }) => {
+    if (!selectedStructureKey) return;
+    const inst = structures[selectedStructureKey];
+    if (!inst) return;
+    const next = { ...inst };
     for (const [k, v] of Object.entries(patch)) {
-      if (v === undefined || v === null) delete (face as any)[k];
-      else (face as any)[k] = v;
+      if (v === undefined) delete (next as any)[k];
+      else (next as any)[k] = v;
     }
-    await persistWalls({ ...walls, [ref.key]: { ...wall, [side]: face } });
-  }, [walls, selectedWallEdge, persistWalls]);
+    if (next.maxHp !== undefined && next.hp === undefined) next.hp = next.maxHp;
+    await persistStructures({ ...structures, [selectedStructureKey]: next });
+  }, [structures, selectedStructureKey, persistStructures]);
 
-  /** Patch the whole segment (destructibility). Authoring resets HP to full. */
-  const patchWall = useCallback(async (patch: { maxHp?: number; dt?: number }) => {
-    if (!selectedWallEdge) return;
-    const ref = edgeRef(selectedWallEdge.q, selectedWallEdge.r, selectedWallEdge.dir);
-    const wall = walls[ref.key];
-    if (!wall) return;
-    const next = { ...wall };
-    if ('maxHp' in patch) {
-      if (patch.maxHp === undefined) {
-        delete next.maxHp;
-        delete next.hp;
-      } else {
-        next.maxHp = Math.max(0, Math.round(patch.maxHp));
-        next.hp = next.maxHp;
-      }
-    }
-    if ('dt' in patch) {
-      if (patch.dt === undefined) delete next.dt;
-      else next.dt = Math.max(0, Math.round(patch.dt));
-    }
-    await persistWalls({ ...walls, [ref.key]: next });
-  }, [walls, selectedWallEdge, persistWalls]);
+  // Load the structure template library (palette + walls derivation).
+  useEffect(() => {
+    let cancelled = false;
+    getStructureTemplates().then(t => { if (!cancelled) setStructureTemplates(t); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Derive the runtime walls from edge structures (the scenario's source of truth).
+  useEffect(() => {
+    let cancelled = false;
+    getStructureTemplates().then(t => { if (!cancelled) setWalls(structuresToWalls(structures, t)); });
+    return () => { cancelled = true; };
+  }, [structures]);
 
   /** Direction (0..5) of the hex edge nearest a screen point (wall brush). */
   function edgeDirAtClient(hex: Hex, clientX: number, clientY: number): number | null {
@@ -618,24 +638,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       scale: entity.scale,
       gridRadius: entity.gridRadius,
     };
-    const templates = await getStructureTemplates();
-    const derivedWalls = structuresToWalls(entity.structures ?? {}, templates);
     setBackgroundConfig(bg);
     setTerrainCosts(entity.terrainCosts);
     setStructures(entity.structures ?? {});
-    setWalls(derivedWalls);
     setMapId(entity.id);
-    await persistMapData({ backgroundConfig: bg, terrainCosts: entity.terrainCosts, walls: derivedWalls, structures: entity.structures ?? {}, mapId: entity.id });
+    await persistMapData({ backgroundConfig: bg, terrainCosts: entity.terrainCosts, structures: entity.structures ?? {}, mapId: entity.id });
     addMessage(`Loaded map "${entity.name}" — snapshot copied to this scenario`);
   }, [persistMapData, addMessage]);
 
   const clearMap = useCallback(async () => {
     setBackgroundConfig(null);
     setTerrainCosts({});
-    setWalls({});
     setStructures({});
     setMapId(null);
-    await persistMapData({ backgroundConfig: null, terrainCosts: {}, walls: {}, structures: {}, mapId: null });
+    await persistMapData({ backgroundConfig: null, terrainCosts: {}, structures: {}, mapId: null });
     addMessage('Map cleared — plain board');
   }, [persistMapData, addMessage]);
 
@@ -697,6 +713,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setScenarioLocal,
     setZonesLocal: setGroundZones,
     setWallsLocal: setWalls,
+    setStructureLocal,
     requestEntryTroops,
   });
 
@@ -850,7 +867,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   const performWallAttack = useCallback(async (attacker: Unit, ref: EdgeRef, force = false) => {
     const wall = walls[ref.key];
-    if (!wall || !isDestructibleWall(wall)) return;
+    const inst = structures[ref.key];
+    if (!wall || !inst || !isDestructibleWall(wall)) return;
     const weapon = parseWeapons(attacker.weaponString || '')[attacker.activeWeaponIndex ?? 0];
     const kind = wallAttackKind(attacker, ref, weapon);
     if (!weapon || !kind) {
@@ -870,9 +888,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (overCap) addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
 
     const result = resolveWallAttack(wall, weapon, Math.random);
-    const nextWalls: Walls = { ...walls };
-    if (result.destroyed) delete nextWalls[ref.key];
-    else nextWalls[ref.key] = result.wall;
+    const to = result.destroyed ? null : { ...inst, hp: result.wall.hp };
 
     const detail = result.deflected
       ? `${attacker.unitName} struck the barrier at ${label} — the blow is shrugged off (DT ${wall.dt ?? 0}, ${result.damage} damage)`
@@ -890,13 +906,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         ],
       },
       {
-        type: 'WALL',
+        type: 'STRUCTURE',
         description: result.destroyed ? `Barrier at ${label} destroyed` : `Barrier at ${label} damaged`,
         unitId: scenarioId,
-        changes: [{ field: 'walls', from: walls, to: nextWalls }],
+        changes: [{ field: 'structures', key: ref.key, from: inst, to }],
       },
     ], `${attacker.unitName} attacked the barrier at ${label}`, { message: detail, verboseMessage: detail });
-  }, [walls, execute, addError, addMessage, scenarioId]);
+  }, [walls, structures, execute, addError, addMessage, scenarioId]);
 
   // Drag-gate handed to useHexGrid: only a wall edge the dragged unit can reach
   // routes the drop to a barrier attack (otherwise the drop stays a move).
@@ -1595,10 +1611,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (reactionMode) return;
       // A clone is armed: this click places it (consumes the click).
       if (handleCloneClick(hex)) return;
-      // GM wall brush: place (or select) a barrier on the nearest edge.
-      if (effectiveIsGM && wallBrush && clientX !== undefined && clientY !== undefined) {
-        const dir = edgeDirAtClient(hex, clientX, clientY);
-        if (dir !== null) void toggleWallEdge(hex.q, hex.r, dir);
+      // GM structure brush: place (or select) a structure on the nearest edge / hex.
+      if (effectiveIsGM && structureBrush && structurePaletteId && clientX !== undefined && clientY !== undefined) {
+        const anchor = structureTemplates[structurePaletteId]?.anchor;
+        if (anchor === 'edge') {
+          const dir = edgeDirAtClient(hex, clientX, clientY);
+          if (dir !== null) void paintStructureEdge(hex.q, hex.r, dir);
+        } else if (anchor === 'hex') {
+          void paintStructureHex(hex.q, hex.r);
+        }
         return;
       }
       // GM map-edit brushes paint instead of selecting.
@@ -1636,10 +1657,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     onHexRightClick: (hex, unit, clientX, clientY) => {
       if (controlsLocked) return;
       if (cloneZone) { setCloneZone(null); return; }
-      // GM wall brush: right-click removes the nearest edge.
-      if (effectiveIsGM && wallBrush && hex) {
-        const dir = edgeDirAtClient(hex, clientX, clientY);
-        if (dir !== null) void clearWallAt(hex.q, hex.r, dir);
+      // GM structure brush: right-click removes the nearest structure.
+      if (effectiveIsGM && structureBrush && structurePaletteId) {
+        const anchor = structureTemplates[structurePaletteId]?.anchor;
+        if (anchor === 'edge') {
+          const dir = edgeDirAtClient(hex, clientX, clientY);
+          if (dir !== null) void clearStructureKey(edgeRef(hex.q, hex.r, dir).key);
+        } else if (anchor === 'hex') {
+          void clearStructureKey(`${hex.q},${hex.r}`);
+        }
         return;
       }
       // GM paint mode: right-click clears the MP cost back to the default 1.
@@ -1921,7 +1947,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         gridRadius: data?.gridRadius ?? DEFAULT_GRID_RADIUS,
       });
       setTerrainCosts(data?.terrainCosts ?? {});
-      setWalls(parseWalls(data?.walls));
       setStructures(parseStructures(data?.structures));
       setGroundZones(Array.isArray(data?.groundEffects) ? data.groundEffects : []);
       setMapId(data?.mapId ?? null);
@@ -1997,7 +2022,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           if (row.map_data !== undefined) {
             const md = row.map_data || {};
             if (md.terrainCosts !== undefined) setTerrainCosts(md.terrainCosts ?? {});
-            if (md.walls !== undefined) setWalls(parseWalls(md.walls));
             if (md.structures !== undefined) setStructures(parseStructures(md.structures));
             if (md.groundEffects !== undefined) setGroundZones(Array.isArray(md.groundEffects) ? md.groundEffects : []);
             if (md.mapId !== undefined) setMapId(md.mapId ?? null);
@@ -2024,10 +2048,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // Esc ends the locked reaction mode (or closes the formation picker) — as
       // if nothing happened; the reaction marker stays.
       if (e.key === 'Escape') {
-        if (terrainBrushCost !== null || zoneTemplate || wallBrush) {
+        if (terrainBrushCost !== null || zoneTemplate || structureBrush) {
           setTerrainBrushCost(null);
           setZoneTemplate(null);
-          setWallBrush(false);
+          setStructureBrush(false);
           return;
         }
         if (reactionMode || reactionFormationPicker) {
@@ -2290,13 +2314,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             onClearMap={() => void clearMap()}
             terrainBrushCost={terrainBrushCost}
             onSetTerrainBrushCost={setTerrainBrushCost}
-            wallBrush={wallBrush}
-            onToggleWallBrush={() => { setWallBrush(v => !v); setSelectedWallEdge(null); }}
-            walls={walls}
-            selectedWallEdge={selectedWallEdge}
-            onChangeWallFace={(side, patch) => void patchWallFace(side, patch)}
-            onChangeWall={(patch) => void patchWall(patch)}
-            onRemoveWall={() => { if (selectedWallEdge) void clearWallAt(selectedWallEdge.q, selectedWallEdge.r, selectedWallEdge.dir); }}
+            structureBrush={structureBrush}
+            onToggleStructureBrush={() => { setStructureBrush(v => !v); setSelectedStructureKey(null); }}
+            structureTemplates={structureTemplates}
+            structurePaletteId={structurePaletteId}
+            onSetStructurePaletteId={setStructurePaletteId}
+            structures={structures}
+            selectedStructureKey={selectedStructureKey}
+            onPatchStructure={(patch) => void patchScenarioStructure(patch)}
+            onRemoveStructure={(key) => void clearStructureKey(key)}
           zoneTemplateId={zoneTemplate?.id ?? null}
           onSetZoneTemplateId={(id) => setZoneTemplate(id ? (templateById(id) ?? null) : null)}
           canUseEffects={effectiveIsGM || !!myTeam}

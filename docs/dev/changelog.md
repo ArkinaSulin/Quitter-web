@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Map structures Slice 3: scenario-native structures (migration 095) (2026-09-20)
+**Files:** src/lib/commandLog.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ScenarioMap,StructurePaintPanel}.tsx (one new, one deleted WallPaintPanel), src/components/ScenarioMap/LeftPanel.tsx, supabase/migrations/095_structure_command_log.sql (new), docs/dev/{18-map-structures,13-map-entities-terrain,02-schema-and-migrations,outstanding}.md
+
+- **`scenarios.map_data.structures` is now the scenario's source of truth.** Edge structures are converted to the runtime `Walls` continuously (`structuresToWalls` in an effect), so movement/combat/render keep working; `map_data.walls` is no longer written (the legacy `WALL` command branch remains only for historical undo).
+- **Per-key `STRUCTURE` command sub-steps** (migration **095**): each change is `{ field:'structures', key, from, to }` (null `to` deletes) merged by `apply_substeps`, so concurrent structure edits can't clobber. `UnitChange` gained an optional `key`; `useGameEngine.setStructureLocal` applies the optimistic result; `'STRUCTURE'` added to `ActionType`.
+- **In-scenario structure brush** (`StructurePaintPanel`, LeftPanel Map tab) replaces the legacy `WallPaintPanel`: pick a template, click/drag to place edge or hex structures, click a placed edge again to flip its battlement, edit HP/DT/door, right-click removes — authoring writes straight to `map_data.structures`.
+- **Edge-structure attacks** now emit the per-key `STRUCTURE` change (destroyed = delete key) instead of a whole-object `WALL` write.
+- Still pending (Slice 3b/4): `enter_org_max` movement consumption; hex door/aura combat + drop target-picker. **Apply 095 in Supabase.** `tsc` clean; 680 tests pass; `next build` clean.
+
 ## Map structures Slice 2: library authoring (migration 094) (2026-09-20)
 **Files:** src/lib/{mapStructures,mapStructures.test,mapEntities,mapEntities.test,structureTemplateCache}.ts, src/components/MapEditor/{MapEditor,MapCanvas}.tsx, src/components/ScenarioMap/ScenarioMap.tsx, supabase/migrations/094_map_structures.sql (new), docs/dev/{18-map-structures,13-map-entities-terrain,02-schema-and-migrations,outstanding}.md
 

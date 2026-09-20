@@ -4,12 +4,13 @@ Authored map features — walls, archer spikes, gates, gate towers, watch towers
 split into a **template library** (authored once) and **placed instances** (on a
 map), exactly like weapons/effects split authored vs placed.
 
-> **Status.** Slices 1–2 shipped (migrations **093**–**094**): the template
-> table + editor, the `enter_org_max` effect kind, and **library authoring** —
-> `maps.structures` with a Structures tab in the Map Editor (paint edge/hex,
-> flip the battlement, HP/DT overrides). Scenario-side placement/combat
-> consumption is not built yet — see "Pending" at the bottom. Edge structures are
-> converted to the runtime `Walls` on assign so wall gameplay is unchanged.
+> **Status.** Slices 1–3 shipped (migrations **093**–**095**): the template
+> table + editor, the `enter_org_max` effect kind, library authoring
+> (`maps.structures` + Map Editor tab), and scenario-native structures
+> (`scenarios.map_data.structures` as the source of truth, per-key `STRUCTURE`
+> command sub-steps, in-scenario painting, edge-structure attacks). Still
+> pending: `enter_org_max` movement consumption and the hex-structure pass
+> (Slice 4).
 
 ## Template vs instance
 
@@ -65,6 +66,7 @@ The template's `modifiers` list is a standard `EffectModifier[]`
 
 - `supabase/migrations/093_map_structure_templates.sql` — caps, RLS, table, seeds.
 - `supabase/migrations/094_map_structures.sql` — `maps.structures` (drops `maps.walls`).
+- `supabase/migrations/095_structure_command_log.sql` — `STRUCTURE` per-key substep.
 - `src/types/structure.ts` — `StructureTemplate` / `StructureInstance`.
 - `src/lib/structureTemplates.ts` (+ test) — row mappers, sanitizers, defaults.
 - `src/lib/mapStructures.ts` (+ test) — parse placed instances, `structuresToWalls`.
@@ -73,18 +75,35 @@ The template's `modifiers` list is a standard `EffectModifier[]`
 - `src/components/StructureEditor/StructurePreview.tsx` — edge/hex preview with
   the battlement square-wave and a preview flip.
 - `src/components/MapEditor/{MapEditor,MapCanvas}.tsx` — the Structures tab + canvas.
+- `src/components/ScenarioMap/StructurePaintPanel.tsx` — in-scenario GM structure brush.
 - `app/structure-editor/page.tsx` — route gated on
   `can_view_structure_editor` / `can_use_structure_editor`.
 - `src/lib/effectTemplates.ts`, `src/components/EffectEditor/EffectModifierFields.tsx`,
   `src/lib/unitEffects.ts` — the `enter_org_max` modifier kind.
 
+## Slice 3 — scenario-native structures (shipped)
+
+`scenarios.map_data.structures` is the scenario's source of truth (the legacy
+`map_data.walls` is no longer written). Edge structures are still converted to the
+runtime `Walls` (`structuresToWalls`) so movement/combat/render are unchanged.
+
+- **Command log**: a `STRUCTURE` sub-step merges **one** structure per change
+  (`{ field:'structures', key, from, to }`; a null `to` deletes the key) via
+  `apply_substeps` (migration **095**), so two concurrent structure edits can't
+  clobber each other. `useGameEngine.setStructureLocal` applies the optimistic
+  result; the `WALL` branch is retained only for historical commands.
+- **In-scenario painting**: `StructurePaintPanel` (LeftPanel Map tab) mirrors the
+  Map Editor — pick a template, click/drag to place on an edge or hex, click a
+  placed edge again to flip its battlement, edit HP/DT/door, right-click removes.
+  These authoring writes go straight to `map_data.structures` (like terrain/zones).
+- **Edge-structure attacks**: the Phase 2 drag-onto-the-edge attack now reads the
+  derived `walls` and writes a `STRUCTURE` change back (destroyed = delete key).
+
 ## Pending (roadmap)
 
-- **Slice 3 — scenario unification**: `scenarios.map_data.structures` (snapshot
-  landed in Slice 2; the runtime still derives `walls`), `STRUCTURE` command-log
-  sub-steps (per-key merges instead of whole-object writes), wall unification +
-  wipe of `map_data.walls`, movement consumption of `enter_org_max`, edge-structure
-  attacks (Phase 2 retargeted), in-scenario structure painting.
+- **`enter_org_max` consumption**: movement must block a hex/edge whose zone or
+  structure carries `enter_org_max` for a mover above the level (authoring works
+  today; the movement gate is not wired).
 - **Slice 4 — hex structures**: door-first combat resolution, tower aura
   materialization (occupancy effects via the zone reconcile path), hex rendering
   with HP/door badges in `useCanvasDraw`, and a **target-picker prompt** when a
@@ -106,5 +125,5 @@ tab in the Map Editor:
 - `MapCanvas` renders edge segments (styled by block/cost, with the battlement
   square-wave on the outside) and hex structures (colour tint + artwork + HP
   badge); move-cost numbers are drawn on the edge per face.
-- `assignMap` snapshots structures into `map_data.structures` and derives
-  `map_data.walls` for the current runtime.
+- `assignMap` snapshots structures into `map_data.structures`; the runtime derives
+  `walls` continuously from structures (Slice 3).
