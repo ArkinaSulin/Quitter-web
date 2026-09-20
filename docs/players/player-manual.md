@@ -368,6 +368,7 @@ gives 1.2 (shows 1)… so the hero can keep moving well past its first 3 MP.
 | Attack | **−1** (even if the AGR roll fails) | 0 |
 | Free-action weapon (e.g. a quick spell/missile with `F`) | 0 | 0 |
 | Reaction shot (§6) | −1 | 0 |
+| Attack a barrier (drag onto the edge, §6) | **−1** | 0 |
 | Rotate 60° | 0 | **−1** MP (units only; heroes & loose free) |
 | About-turn 180° | 0 | 1 MP foot / 2 MP mounted + **drop 1 org level** |
 | Change formation | 0 | **half your current pool**, rescaled (§5) |
@@ -647,6 +648,22 @@ arcs):
 **Heroes under attack:** only **50%** of a unit's troops can reach a lone (or
 front-attached) hero in melee — heroes aren't surrounded by 80 swords. Ranged
 fire at heroes is uncapped.
+
+### Barriers (destructible walls)
+
+The GM can give a wall segment **Max HP** and a **Damage Threshold (DT)** in the
+wall editor. A segment with HP can be attacked: **drag your unit onto the wall
+edge**.
+
+- You can reach it if you stand on one of the two hexes sharing the edge
+  (**melee**), or if your weapon's **max range** covers the nearer of those two
+  hexes (**ranged**).
+- There is **no to-hit roll** — reaching the edge is the hit. Roll weapon
+  damage: a hit at or **below the DT does nothing**, above it deals its **full
+  damage** to the wall.
+- Costs **1 action**, counts toward your **5-attack limit**; no AGR, no
+  retaliation. At **0 HP** the segment is destroyed and the way opens.
+- Walls without HP are scenery and cannot be attacked.
 
 ### Magic & area spells
 

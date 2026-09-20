@@ -8,7 +8,11 @@ import {
   rangedWallAc,
   hasWallEdge,
   nearestEdge,
+  nearestWallEdge,
   parseWalls,
+  applyWallDamage,
+  isDestructibleWall,
+  wallHp,
   directionBetween,
   oppositeDir,
   WALL_DIRS,
@@ -86,6 +90,48 @@ describe('walls rendering geometry', () => {
     const center = { x: 100 * (Math.sqrt(3) * n.q + Math.sqrt(3) / 2 * n.r), y: 100 * 1.5 * n.r };
     expect(nearestEdge({ q: 0, r: 0 }, { x: center.x / 2, y: center.y / 2 }, 100).dir).toBe(1);
   });
+
+  it('nearestWallEdge only considers edges that carry a wall', () => {
+    const walls: Walls = { '0,0,0': { a: { block: true }, b: {} } };
+    // A point right on the east edge, which has the wall.
+    expect(nearestWallEdge(walls, { q: 0, r: 0 }, { x: 86, y: 0 }, 100, 20)?.key).toBe('0,0,0');
+    // The west edge is close to the point but has no wall → null.
+    expect(nearestWallEdge(walls, { q: 0, r: 0 }, { x: -86, y: 0 }, 100, 20)).toBeNull();
+    // Too far from any wall edge → null.
+    expect(nearestWallEdge(walls, { q: 0, r: 0 }, { x: 0, y: 0 }, 100, 20)).toBeNull();
+  });
+});
+
+describe('wall destructibility', () => {
+  it('isDestructibleWall requires maxHp; wallHp falls back to maxHp', () => {
+    expect(isDestructibleWall({ a: {}, b: {} })).toBe(false);
+    expect(isDestructibleWall({ a: {}, b: {}, maxHp: 10 })).toBe(true);
+    expect(wallHp({ a: {}, b: {}, maxHp: 10 })).toBe(10);
+    expect(wallHp({ a: {}, b: {}, maxHp: 10, hp: 4 })).toBe(4);
+  });
+
+  it('ignores damage at or below the DT and applies full damage above it', () => {
+    const w = { a: {}, b: {}, maxHp: 12, hp: 12, dt: 4 };
+    const deflected = applyWallDamage(w, 4);
+    expect(deflected.deflected).toBe(true);
+    expect(deflected.applied).toBe(0);
+    expect(deflected.wall.hp).toBe(12);
+    const hit = applyWallDamage(w, 7);
+    expect(hit.deflected).toBe(false);
+    expect(hit.applied).toBe(7);
+    expect(hit.wall.hp).toBe(5);
+    expect(hit.destroyed).toBe(false);
+  });
+
+  it('destroys at 0 HP and never damages a non-destructible wall', () => {
+    const w = { a: {}, b: {}, maxHp: 5, hp: 5 };
+    const killed = applyWallDamage(w, 9);
+    expect(killed.destroyed).toBe(true);
+    expect(killed.wall.hp).toBe(0);
+    const solid = applyWallDamage({ a: {}, b: {} }, 99);
+    expect(solid.destroyed).toBe(false);
+    expect(solid.applied).toBe(0);
+  });
 });
 
 describe('parseWalls', () => {
@@ -99,6 +145,13 @@ describe('parseWalls', () => {
     expect(Object.keys(parsed)).toEqual(['0,0,0']);
     expect(parsed['0,0,0'].a).toEqual({ moveCost: 4, meleeAc: 2, block: true });
     expect(parsed['0,0,0'].b).toEqual({ rangedAc: -4 });
+  });
+
+  it('parses HP/DT and fills hp from maxHp when omitted', () => {
+    const parsed = parseWalls({ '0,0,0': { a: {}, b: {}, maxHp: 10, dt: 3 } });
+    expect(parsed['0,0,0'].maxHp).toBe(10);
+    expect(parsed['0,0,0'].hp).toBe(10);
+    expect(parsed['0,0,0'].dt).toBe(3);
   });
 
   it('returns {} for non-objects', () => {

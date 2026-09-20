@@ -58,6 +58,7 @@ interface LeftPanelProps {
   walls: Walls;
   selectedWallEdge: { q: number; r: number; dir: number } | null;
   onChangeWallFace: (side: 'a' | 'b', patch: Partial<WallFace>) => void;
+  onChangeWall: (patch: { maxHp?: number; dt?: number }) => void;
   onRemoveWall: () => void;
   zoneTemplateId: string | null;
   onSetZoneTemplateId: (id: string | null) => void;
@@ -71,7 +72,7 @@ interface LeftPanelProps {
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, wallBrush, onToggleWallBrush, walls, selectedWallEdge, onChangeWallFace, onRemoveWall, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, wallBrush, onToggleWallBrush, walls, selectedWallEdge, onChangeWallFace, onChangeWall, onRemoveWall, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
   // Persist which tabs are open per scenario + user, so a rejoined session
   // restores the same panel layout.
   // Persist which tabs are open per scenario + user. The saved layout is restored
@@ -141,6 +142,7 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
               walls={walls}
               selectedEdge={selectedWallEdge}
               onChangeFace={onChangeWallFace}
+              onChangeWall={onChangeWall}
               onRemove={onRemoveWall}
             />
           </div>

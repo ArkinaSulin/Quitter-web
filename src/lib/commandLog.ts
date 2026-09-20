@@ -32,6 +32,7 @@ export type ActionType =
   | 'EDIT_UNIT'
   | 'EFFECT'
   | 'ZONE'
+  | 'WALL'
   | 'ARCHER_REACTION'
   | 'OTHER_ACTION';
 

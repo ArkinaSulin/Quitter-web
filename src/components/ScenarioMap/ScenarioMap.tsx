@@ -45,7 +45,9 @@ import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf, computeOccupiedHexes, computeThreatHexes } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
-import { Walls, parseWalls, edgeRef, nearestEdge, type WallFace } from '@/lib/walls';
+import { Walls, parseWalls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type WallFace, type EdgeRef } from '@/lib/walls';
+import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/lib/wallCombat';
+import { unitAttackCap } from '@/lib/attackCap';
 import { newEffectKey } from '@/lib/unitEffects';
 import { MapEntity } from '@/lib/mapEntities';
 import { AddEffectModal } from './AddEffectModal';
@@ -64,7 +66,7 @@ import { useCastActions } from './useCastActions';
 import { useCombatActions } from './useCombatActions';
 import { computeOverlayMap } from './useOverlay';
 import { TopBar } from './TopBar';
-import { SoftEnforcementModals } from './SoftEnforcementModals';
+import { SoftEnforcementModals, type PendingWallAttack } from './SoftEnforcementModals';
 
 interface ScenarioMapProps {
   scenarioId: string;
@@ -566,6 +568,29 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     await persistWalls({ ...walls, [ref.key]: { ...wall, [side]: face } });
   }, [walls, selectedWallEdge, persistWalls]);
 
+  /** Patch the whole segment (destructibility). Authoring resets HP to full. */
+  const patchWall = useCallback(async (patch: { maxHp?: number; dt?: number }) => {
+    if (!selectedWallEdge) return;
+    const ref = edgeRef(selectedWallEdge.q, selectedWallEdge.r, selectedWallEdge.dir);
+    const wall = walls[ref.key];
+    if (!wall) return;
+    const next = { ...wall };
+    if ('maxHp' in patch) {
+      if (patch.maxHp === undefined) {
+        delete next.maxHp;
+        delete next.hp;
+      } else {
+        next.maxHp = Math.max(0, Math.round(patch.maxHp));
+        next.hp = next.maxHp;
+      }
+    }
+    if ('dt' in patch) {
+      if (patch.dt === undefined) delete next.dt;
+      else next.dt = Math.max(0, Math.round(patch.dt));
+    }
+    await persistWalls({ ...walls, [ref.key]: next });
+  }, [walls, selectedWallEdge, persistWalls]);
+
   /** Direction (0..5) of the hex edge nearest a screen point (wall brush). */
   function edgeDirAtClient(hex: Hex, clientX: number, clientY: number): number | null {
     const canvas = canvasRef.current;
@@ -658,6 +683,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setAllianceLocal,
     setScenarioLocal,
     setZonesLocal: setGroundZones,
+    setWallsLocal: setWalls,
     requestEntryTroops,
   });
 
@@ -713,6 +739,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     walls,
   });
 
+  // Wall edge under the pointer while dragging a unit (drag-to-attack hint).
+  const [hoveredWallEdge, setHoveredWallEdge] = useState<EdgeRef | null>(null);
+
   const { customDraw, captureAndUploadScreenshot } = useCanvasDraw({
     canvasRef,
     units,
@@ -738,6 +767,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     backgroundConfig,
     terrainCosts,
     walls,
+    hoveredWallEdge,
     groundZones,
     scenarioId,
     updateScreenshot,
@@ -799,6 +829,72 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   // ---- Withdraw (drag one hex into a rear hex; always warns the action cost) ----
   const [withdrawConfirm, setWithdrawConfirm] = useState<{ unit: Unit; dest: Hex } | null>(null);
+
+  // ---- Barrier attacks (drag a unit onto a destructible wall edge) ----
+  // No to-hit roll: reaching the edge is the hit; the wall's DT gates the blow.
+  // Costs 1 action and counts toward the attack cap (soft-enforced).
+  const [pendingWallAttack, setPendingWallAttack] = useState<PendingWallAttack | null>(null);
+
+  const performWallAttack = useCallback(async (attacker: Unit, ref: EdgeRef, force = false) => {
+    const wall = walls[ref.key];
+    if (!wall || !isDestructibleWall(wall)) return;
+    const weapon = parseWeapons(attacker.weaponString || '')[attacker.activeWeaponIndex ?? 0];
+    const kind = wallAttackKind(attacker, ref, weapon);
+    if (!weapon || !kind) {
+      addMessage(`${attacker.unitName} cannot reach that barrier`);
+      return;
+    }
+    const cap = unitAttackCap();
+    const overCap = (attacker.attacksUsed ?? 0) >= cap;
+    const overBudget = (attacker.actionsAvailable ?? 0) < 1;
+    const [ha, hb] = edgeHexes(ref);
+    const label = `(${ha.q}, ${ha.r}) ⇄ (${hb.q}, ${hb.r})`;
+    if ((overCap || overBudget) && !force) {
+      setPendingWallAttack({ attacker, ref, label, overCap, overBudget });
+      return;
+    }
+    if (overBudget) addError(`${attacker.unitName} attacked a barrier with no actions left — over budget`);
+    if (overCap) addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
+
+    const result = resolveWallAttack(wall, weapon, Math.random);
+    const nextWalls: Walls = { ...walls };
+    if (result.destroyed) delete nextWalls[ref.key];
+    else nextWalls[ref.key] = result.wall;
+
+    const detail = result.deflected
+      ? `${attacker.unitName} struck the barrier at ${label} — the blow is shrugged off (DT ${wall.dt ?? 0}, ${result.damage} damage)`
+      : result.destroyed
+        ? `${attacker.unitName} destroyed the barrier at ${label} (${result.damage} damage)`
+        : `${attacker.unitName} hit the barrier at ${label} for ${result.applied} damage (${wallHp(result.wall)}/${wall.maxHp} HP left)`;
+    await execute('ATTACK', [
+      {
+        type: 'ATTACK',
+        description: `${attacker.unitName} attacked the barrier at ${label} (${kind})`,
+        unitId: attacker.id,
+        changes: [
+          { field: 'actionsAvailable', from: attacker.actionsAvailable, to: attacker.actionsAvailable - 1 },
+          { field: 'attacksUsed', from: attacker.attacksUsed ?? 0, to: (attacker.attacksUsed ?? 0) + 1 },
+        ],
+      },
+      {
+        type: 'WALL',
+        description: result.destroyed ? `Barrier at ${label} destroyed` : `Barrier at ${label} damaged`,
+        unitId: scenarioId,
+        changes: [{ field: 'walls', from: walls, to: nextWalls }],
+      },
+    ], `${attacker.unitName} attacked the barrier at ${label}`, { message: detail, verboseMessage: detail });
+  }, [walls, execute, addError, addMessage, scenarioId]);
+
+  // Drag-gate handed to useHexGrid: only a wall edge the dragged unit can reach
+  // routes the drop to a barrier attack (otherwise the drop stays a move).
+  const canAttackWallEdge = useCallback((unitId: string, edge: EdgeRef): boolean => {
+    const unit = units.find(u => u.id === unitId);
+    if (!unit || !canControlUnit(unit)) return false;
+    const wall = walls[edge.key];
+    if (!wall || !isDestructibleWall(wall)) return false;
+    const weapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
+    return !!weapon && wallAttackKind(unit, edge, weapon) !== null;
+  }, [units, walls, canControlUnit]);
 
   // ---- Temporary-effect apply/remove handlers (opened from the context menu) ----
   const teamOptions = Object.keys(alliances).length > 0 ? Object.keys(alliances) : TEAMS;
@@ -1574,6 +1670,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setTooltipPos(null);
     },
     onAttack: controlsLocked ? undefined : (reactionMode ? handleReactionAttack : handleAttackRequest),
+    walls,
+    canAttackWallEdge: (unitId, edge) => (reactionMode ? false : canAttackWallEdge(unitId, edge)),
+    onAttackWall: (unitId, edge) => {
+      const unit = units.find(u => u.id === unitId);
+      if (unit) void performWallAttack(unit, edge);
+    },
+    onHoverWallEdge: setHoveredWallEdge,
     canGrabUnit: (unit) => (reactionMode ? unit.id === reactionMode.archer.id : canControlUnit(unit)),
     onGrabUnit: (unit) => { if (unit.attachedToUnitId) setActiveHeroId(unit.id); },
     onPing: (hex) => pingAtHex(hex, playerName, pingColor),
@@ -1599,10 +1702,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
-    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: moveTerrainCosts, walls });
+    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: moveTerrainCosts, walls, hoveredEdge: hoveredWallEdge });
     if (retreatHoverHex) base[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(base);
-  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, moveTerrainCosts, retreatHoverHex]);
+  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, moveTerrainCosts, walls, hoveredWallEdge, retreatHoverHex]);
 
   // Center map on initial load
   useEffect(() => {
@@ -2060,6 +2163,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }
       confirmWeaponSwitch();
     },
+    confirmWallAttack: async () => {
+      const p = pendingWallAttack!;
+      setPendingWallAttack(null);
+      if (controlsLocked) return;
+      const unit = units.find(u => u.id === p.attacker.id) ?? p.attacker;
+      await performWallAttack(unit, p.ref, true);
+    },
   };
   const softCancels = {
     move: () => setPendingMove(null),
@@ -2074,6 +2184,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     castOverBudget: () => setPendingCastOverBudget(false),
     chargeAttack: () => setPendingChargeAttack(null),
     weaponSwitch: () => cancelWeaponSwitch(),
+    wallAttack: () => setPendingWallAttack(null),
   };
 
   const aiPanelNode =
@@ -2169,6 +2280,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             walls={walls}
             selectedWallEdge={selectedWallEdge}
             onChangeWallFace={(side, patch) => void patchWallFace(side, patch)}
+            onChangeWall={(patch) => void patchWall(patch)}
             onRemoveWall={() => { if (selectedWallEdge) void clearWallAt(selectedWallEdge.q, selectedWallEdge.r, selectedWallEdge.dir); }}
           zoneTemplateId={zoneTemplate?.id ?? null}
           onSetZoneTemplateId={(id) => setZoneTemplate(id ? (templateById(id) ?? null) : null)}
@@ -2496,6 +2608,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           chargeAttack: pendingChargeAttack,
           chargeThrough: pendingChargeThrough,
           weaponSwitch: pendingWeaponSwitch,
+          wallAttack: pendingWallAttack,
         }}
         actions={softActions}
         cancels={softCancels}

@@ -14,6 +14,7 @@ import { useMessageSync } from '@/hooks/useMessageSync';
 import { ActionType, SubStep, CommandLogRow, UndoState, parseSubSteps } from '@/lib/commandLog';
 import { getActiveGroups, advanceTurn } from '@/lib/turnState';
 import { UnitEffect, GroundEffect } from '@/types/gameProtocol';
+import { Walls } from '@/lib/walls';
 import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, computeZoneReconcile, newEffectKey, EffectSpec, resolveEffectDamage, describeEffectDamage, EffectDamageEvent } from '@/lib/unitEffects';
 
 interface UseGameEngineProps {
@@ -28,6 +29,8 @@ interface UseGameEngineProps {
   setScenarioLocal?: (fields: Record<string, any>) => void;
   /** Optimistic local apply for ZONE commands (ground effects array). */
   setZonesLocal?: (zones: GroundEffect[]) => void;
+  /** Optimistic local apply for WALL commands (edge walls object). */
+  setWallsLocal?: (walls: Walls) => void;
   /** Ask the table how many troops are caught by an 'entry' zone (default: all). */
   requestEntryTroops?: (actor: Unit, zone: GroundEffect) => Promise<number>;
 }
@@ -42,6 +45,7 @@ export function useGameEngine({
   setAllianceLocal,
   setScenarioLocal,
   setZonesLocal,
+  setWallsLocal,
   requestEntryTroops,
 }: UseGameEngineProps) {
   const { addMessage, addError } = useMessageSync(scenarioId);
@@ -105,6 +109,10 @@ export function useGameEngine({
           for (const change of step.changes) {
             if (change.field === 'ground_effects') setZonesLocal(change[field] as GroundEffect[]);
           }
+        } else if (step.type === 'WALL' && setWallsLocal) {
+          for (const change of step.changes) {
+            if (change.field === 'walls') setWallsLocal(change[field] as Walls);
+          }
         } else if (step.type === 'SCENARIO' && setScenarioLocal) {
           const update: any = {};
           for (const change of step.changes) {
@@ -125,7 +133,7 @@ export function useGameEngine({
         }
       }
     },
-    [applyLocalUnit, setAllianceLocal, setScenarioLocal, setZonesLocal],
+    [applyLocalUnit, setAllianceLocal, setScenarioLocal, setZonesLocal, setWallsLocal],
   );
 
   // All unit ids touched by a batch of sub-steps (units written by the command).
@@ -134,7 +142,7 @@ export function useGameEngine({
       const ids: string[] = [];
       for (const row of rows) {
         for (const step of parseSubSteps(row.sub_steps)) {
-          if (step.unitId && step.type !== 'ALLIANCE' && step.type !== 'SCENARIO' && step.type !== 'ZONE') {
+          if (step.unitId && step.type !== 'ALLIANCE' && step.type !== 'SCENARIO' && step.type !== 'ZONE' && step.type !== 'WALL') {
             ids.push(step.unitId);
           }
         }

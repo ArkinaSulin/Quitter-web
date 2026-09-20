@@ -164,6 +164,42 @@ export function hasWallEdge(walls: Walls | null | undefined, fromQ: number, from
   return !!wallBetween(walls, { q: fromQ, r: fromR }, { q: toQ, r: toR });
 }
 
+// --- Destructibility (Phase 2) ---
+
+/** Current HP of a wall (falls back to maxHp; 0 when neither is set). */
+export function wallHp(wall: Wall): number {
+  return Math.max(0, wall.hp ?? wall.maxHp ?? 0);
+}
+
+/** A wall can be attacked/destroyed only when it has HP (authored maxHp > 0). */
+export function isDestructibleWall(wall: Wall | null | undefined): boolean {
+  return !!wall && (wall.maxHp ?? 0) > 0;
+}
+
+export interface WallDamageResult {
+  /** The wall after the hit (hp may reach 0; the caller removes the edge). */
+  wall: Wall;
+  /** Damage actually deducted (0 when the hit was under the DT). */
+  applied: number;
+  /** True when hp reached 0 — remove the wall entry. */
+  destroyed: boolean;
+  /** True when the damage was ignored by the damage threshold. */
+  deflected: boolean;
+}
+
+/**
+ * Apply one attack's damage to a wall. Damage Threshold: a hit at or below `dt`
+ * does nothing at all; above it the FULL damage comes off HP. Non-destructible
+ * walls (no maxHp) are never damaged.
+ */
+export function applyWallDamage(wall: Wall, damage: number): WallDamageResult {
+  if (!isDestructibleWall(wall)) return { wall, applied: 0, destroyed: false, deflected: true };
+  const dt = Math.max(0, wall.dt ?? 0);
+  if (damage <= dt) return { wall, applied: 0, destroyed: false, deflected: true };
+  const hp = Math.max(0, wallHp(wall) - damage);
+  return { wall: { ...wall, hp }, applied: damage, destroyed: hp <= 0, deflected: false };
+}
+
 // --- Geometry (pointy-top; matches useHexGrid.hexToPixel + MapCanvas.hexCorners) ---
 
 export function hexCenter(hex: HexPoint, size: number): { x: number; y: number } {
@@ -206,6 +242,31 @@ export function nearestEdge(hex: HexPoint, point: { x: number; y: number }, size
   return { dir: best, dist: bestDist };
 }
 
+/**
+ * The nearest WALL edge of `hex` to a world-space point, within `maxDist`
+ * (used by the drag-onto-the-edge attack). Null when no wall edge is close
+ * enough (or nothing is close to the pointer at all).
+ */
+export function nearestWallEdge(
+  walls: Walls | null | undefined,
+  hex: HexPoint,
+  point: { x: number; y: number },
+  size: number,
+  maxDist: number,
+): EdgeRef | null {
+  if (!walls) return null;
+  let best: EdgeRef | null = null;
+  let bestDist = Infinity;
+  for (let d = 0; d < 6; d++) {
+    const ref = edgeRef(hex.q, hex.r, d);
+    if (!walls[ref.key]) continue;
+    const [a, b] = edgeSegment(hex, d, size);
+    const dist = distToSegment(point, a, b);
+    if (dist < bestDist) { bestDist = dist; best = ref; }
+  }
+  return best && bestDist <= maxDist ? best : null;
+}
+
 // --- Persistence sanitizer ---
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -230,6 +291,8 @@ export function parseWalls(raw: any): Walls {
     const wall: Wall = { a: parseFace((v as any).a), b: parseFace((v as any).b) };
     if (isNum((v as any).maxHp)) wall.maxHp = Math.max(0, Math.round((v as any).maxHp));
     if (isNum((v as any).hp)) wall.hp = Math.max(0, Math.round((v as any).hp));
+    // An authored maxHp with no explicit hp starts at full health.
+    if (wall.maxHp !== undefined && wall.hp === undefined) wall.hp = wall.maxHp;
     if (isNum((v as any).dt)) wall.dt = Math.max(0, Math.round((v as any).dt));
     const src = (v as any).source;
     if (src === 'map' || src === 'effect') wall.source = src;

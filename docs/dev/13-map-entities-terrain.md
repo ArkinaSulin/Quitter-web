@@ -57,7 +57,8 @@ corners `dir` and `dir+1`.
   upload/list, name, offsets ~1%, scale, grid radius, description), a
   **Movement cost** tab (0–9 pen + legend), and a **Walls** tab (arm the wall
   tool; click/drag near a hex edge to place, right-click removes; the selected
-  edge shows a face editor per side: MP / block / melee AC / ranged AC).
+  edge shows a face editor per side: MP / block / melee AC / ranged AC, plus
+  Max HP / DT for destructible segments).
   Click/drag paints every crossed hex; **right-click clears** to 1 MP. Every edit
   **debounce-autosaves** to `maps`. Canvas paints terrain shading + wall segments
   + hover-coordinate chip.
@@ -76,11 +77,36 @@ Access caps (migration 074): `can_view_map_editor` / `can_use_map_editor`
 (admin + dm) with matching `user_has_access` cases and RLS on `maps` (read =
 view, write = use). Migration **089** adds `maps.walls`.
 
+## Destructible walls (Phase 2)
+
+A wall segment may carry `maxHp` / `hp` / `dt` (damage threshold). Authored in
+either wall editor (Walls tab + `WallPaintPanel`: **Max HP** / **DT**); an
+authored `maxHp` with no `hp` starts at full health (`parseWalls`). A segment
+with no `maxHp` is indestructible scenery.
+
+**Attacking a barrier** is a drag onto the edge (`useHexGrid.hoveredEdge` via
+`nearestWallEdge`, threshold 0.38·hexSize): `canAttackWallEdge` gates the drop
+(unit reach + destructible wall), so dropping onto a legal move hex still moves.
+Reach (`wallCombat.wallAttackKind`) is **melee** when the attacker stands on
+either edge hex, else **ranged** when its weapon's `maxRange` covers the nearer
+edge hex. There is **no to-hit roll** — reaching the edge is the hit; the
+attacker rolls weapon damage and `applyWallDamage` compares it to `dt` (at or
+below = no effect, above = full damage off HP). Attacking costs **1 action** and
+counts toward the attack cap (soft-confirmed when over), with no AGR/retaliation.
+`hp <= 0` removes the segment.
+
+Persistence rides the command log: the command is `ATTACK` with a **`WALL`**
+sub-step (`{ field: 'walls', from, to }`), applied by `apply_substeps` (migration
+**092**) with `jsonb_set(map_data, '{walls}')` — undo/redo/realtime/replay
+restore wall HP with the rest of the command. `useGameEngine.setWallsLocal` paints
+the optimistic result.
+
 ## Reserved
 
 `hex_effects` (per-hex authored effects on library boards) is **reserved** —
 the map-effects pass is a future feature. Ground *effects* painted live in a
-scenario already work (see `10`). Planned on top of walls (not yet built):
-per-segment HP/DT destruction (attack an edge explicitly), and temporary
-(magic) wall effects with a caster/duration sharing the same edge mechanic.
+scenario already work (see `10`). Still planned on top of walls (not yet built):
+**Phase 3** — temporary (magic) wall effects with a caster/duration sharing the
+same edge mechanic (ticked/expired at END_TURN like ground zones), plus
+generalizing HP/DT to ground-zone effects.
 

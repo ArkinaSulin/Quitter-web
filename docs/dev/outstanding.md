@@ -36,10 +36,14 @@ Statuses: 🔜 next / ⏳ later / 🚧 blocked / ✅ done-here-listed-for-contex
   **Walls** tab + in-scenario `WallPaintPanel`; movement replace/block
   (`computeReachableMap`), combat AC (`hexLine` entering edge); snapshotted into
   `scenarios.map_data.walls`.
-- 🔜 **Phase 2**: per-segment HP/DT destruction (target an edge explicitly;
-  `dt` = below-threshold ignored, above = full).
-- 🔜 **Phase 3**: temporary (magic) wall effects with a caster/duration, and
-  generalize HP/DT to all effects.
+- ✅ **Phase 2 shipped** (migration **092**): per-segment `maxHp`/`hp`/`dt`
+  destructibility. Drag a unit onto the edge to attack it (melee on either edge
+  hex, else ranged by weapon max range; `wallCombat.ts`); no to-hit roll — the
+  DT gates the damage; 1 action + attack cap; destruction rides a `WALL`
+  command-log sub-step so undo/replay restore HP.
+- 🔜 **Phase 3**: temporary (magic) wall effects with a caster/duration, ticking
+  at END_TURN like ground zones; generalize HP/DT to all effects (destructible
+  ground zones).
 
 ## Zone of control, pursue & Withdraw (migration 090)
 - ✅ **Any** exit from a hostile kill zone scatters a formed non-hero mover and
@@ -107,6 +111,8 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
   (opportunity rename), **088** (attack-roll effects), **089** (map walls),
   **090** (ZoC pursue + Withdraw) — owner-confirmed. The former hand-applied
   `apply_substeps` array-write fix is folded into migration **080**.
+- 🔜 **Awaiting apply**: **091** (front-only ranged arc), **092** (wall
+  command-log branch).
 
 ## Uncommitted working tree (owner's, left untouched)
 - `.scratch/ship-builder/spec.md`, `.scratch/shipyard-formula/{FINDINGS.md,shipyard.csv}`,

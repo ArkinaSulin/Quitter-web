@@ -12,6 +12,8 @@ interface WallPaintPanelProps {
   walls: Walls;
   selectedEdge: { q: number; r: number; dir: number } | null;
   onChangeFace: (side: 'a' | 'b', patch: Partial<WallFace>) => void;
+  /** Patch the whole segment (destructibility: maxHp / dt). */
+  onChangeWall: (patch: { maxHp?: number; dt?: number }) => void;
   onRemove: () => void;
 }
 
@@ -19,7 +21,7 @@ function num(v: number | undefined): string {
   return v === undefined ? '' : String(v);
 }
 
-export function WallPaintPanel({ armed, onToggleArm, walls, selectedEdge, onChangeFace, onRemove }: WallPaintPanelProps) {
+export function WallPaintPanel({ armed, onToggleArm, walls, selectedEdge, onChangeFace, onChangeWall, onRemove }: WallPaintPanelProps) {
   const ref = selectedEdge ? edgeRef(selectedEdge.q, selectedEdge.r, selectedEdge.dir) : null;
   const wall = ref ? walls[ref.key] : undefined;
 
@@ -64,6 +66,21 @@ export function WallPaintPanel({ armed, onToggleArm, walls, selectedEdge, onChan
           <p className="text-xs text-gray-400">Edge ({ref.aq},{ref.ar}) ⇄ ({ref.bq},{ref.br}).</p>
           {face('a', `(${ref.aq}, ${ref.ar})`)}
           {face('b', `(${ref.bq}, ${ref.br})`)}
+          <div className="rounded border border-gray-700 p-2 space-y-1">
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">Destructibility</p>
+            <div className="flex items-center gap-3 text-[11px]">
+              <label className="flex items-center gap-1" title="Max HP: above 0 makes the segment attackable; destroyed at 0 HP.">Max HP
+                <input type="number" min={0} max={999} value={num(wall.maxHp)} placeholder="—"
+                  onChange={e => onChangeWall({ maxHp: e.target.value === '' ? undefined : Math.max(0, Math.min(999, Math.round(Number(e.target.value)))) })}
+                  className="w-12 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
+              </label>
+              <label className="flex items-center gap-1" title="Damage Threshold: a hit at or below this does nothing; above deals full damage.">DT
+                <input type="number" min={0} max={99} value={num(wall.dt)} placeholder="0"
+                  onChange={e => onChangeWall({ dt: e.target.value === '' ? undefined : Math.max(0, Math.min(99, Math.round(Number(e.target.value)))) })}
+                  className="w-12 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
+              </label>
+            </div>
+          </div>
           <button onClick={onRemove} className="text-xs px-2 py-1 rounded bg-red-900/60 hover:bg-red-800 text-red-100">Remove wall</button>
         </div>
       ) : (

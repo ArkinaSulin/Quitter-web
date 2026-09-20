@@ -210,6 +210,29 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     update({ walls: { ...entity.walls, [ref.key]: { ...wall, [side]: face } } });
   }, [entity, selectedEdge, update]);
 
+  const patchSelectedWall = useCallback((patch: { maxHp?: number; dt?: number }) => {
+    if (!entity || !selectedEdge) return;
+    const ref = edgeRef(selectedEdge.q, selectedEdge.r, selectedEdge.dir);
+    const wall = entity.walls[ref.key];
+    if (!wall) return;
+    const next = { ...wall };
+    if ('maxHp' in patch) {
+      if (patch.maxHp === undefined) {
+        delete next.maxHp;
+        delete next.hp;
+      } else {
+        next.maxHp = Math.max(0, Math.round(patch.maxHp));
+        // Authoring resets to full HP (destruction happens in-scenario).
+        next.hp = next.maxHp;
+      }
+    }
+    if ('dt' in patch) {
+      if (patch.dt === undefined) delete next.dt;
+      else next.dt = Math.max(0, Math.round(patch.dt));
+    }
+    update({ walls: { ...entity.walls, [ref.key]: next } });
+  }, [entity, selectedEdge, update]);
+
   const deleteSelectedWall = useCallback(() => {
     if (!selectedEdge) return;
     clearWallEdge(selectedEdge.q, selectedEdge.r, selectedEdge.dir);
@@ -475,6 +498,21 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                       <p className="text-xs text-gray-400">Edge ({ref.aq},{ref.ar}) ⇄ ({ref.bq},{ref.br}). Each face belongs to the hex on its side: its MP replaces that hex's terrain when crossing in; its AC protects the unit standing there.</p>
                       {face('a', `(${ref.aq}, ${ref.ar})`)}
                       {face('b', `(${ref.bq}, ${ref.br})`)}
+                      <div className="rounded border border-gray-700 p-2 space-y-1">
+                        <p className="text-[10px] uppercase tracking-wide text-gray-500">Destructibility</p>
+                        <div className="flex items-center gap-3 text-[11px]">
+                          <label className="flex items-center gap-1" title="Max HP: a value above 0 makes the segment attackable; it is destroyed at 0 HP.">Max HP
+                            <input type="number" min={0} max={999} disabled={readOnly} value={num(wall.maxHp)} placeholder="—"
+                              onChange={e => patchSelectedWall({ maxHp: editNum(e.target.value, 999) })}
+                              className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
+                          </label>
+                          <label className="flex items-center gap-1" title="Damage Threshold: a hit at or below this does nothing; above it deals full damage.">DT
+                            <input type="number" min={0} max={99} disabled={readOnly} value={num(wall.dt)} placeholder="0"
+                              onChange={e => patchSelectedWall({ dt: editNum(e.target.value, 99) })}
+                              className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
+                          </label>
+                        </div>
+                      </div>
                       {!readOnly && <button onClick={deleteSelectedWall} className="text-xs px-2 py-1 rounded bg-red-900/60 hover:bg-red-800 text-red-100">Remove wall</button>}
                     </div>
                   );

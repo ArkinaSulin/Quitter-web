@@ -4,6 +4,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Hex, Unit } from '@/types/gameProtocol';
 import { isUnitInteractable } from '@/lib/unitInteractions';
+import { EdgeRef, Walls, nearestWallEdge } from '@/lib/walls';
 
 // ---- Hex math (pointy-top) ----
 export function hexToPixel(hex: Hex, size: number): { x: number; y: number } {
@@ -49,6 +50,14 @@ export interface UseHexGridProps {
   onUnitHover?: (unit: Unit, screenX: number, screenY: number) => void;
   onUnitLeave?: () => void;
   onAttack?: (attackerId: string, targetId: string) => void;
+  /** Walls on the board (drag-onto-the-edge wall attacks). */
+  walls?: Walls;
+  /** Dropped onto a wall edge: attack that barrier instead of moving. */
+  onAttackWall?: (unitId: string, edge: EdgeRef) => void;
+  /** Whether the dragged unit may attack this wall edge (reach gate). */
+  canAttackWallEdge?: (unitId: string, edge: EdgeRef) => boolean;
+  /** Wall edge under the pointer while dragging (for the overlay hint). */
+  onHoverWallEdge?: (edge: EdgeRef | null) => void;
   /** Permission gate for grabbing a token (drag-move/attack). Return false to silently not grab. */
   canGrabUnit?: (unit: Unit) => boolean;
   /** Fired when a token starts being grabbed — lets callers auto-activate an
@@ -80,6 +89,10 @@ export function useHexGrid({
   onUnitHover,
   onUnitLeave,
   onAttack,
+  walls,
+  onAttackWall,
+  canAttackWallEdge,
+  onHoverWallEdge,
   canGrabUnit,
   onGrabUnit,
   onPing,
@@ -102,6 +115,8 @@ export function useHexGrid({
   const [lastHoveredUnit, setLastHoveredUnit] = useState<Unit | null>(null);
 
   const rafIdRef = useRef<number | null>(null);
+  /** Last reported hovered wall-edge key (dedupes the overlay-hint callback). */
+  const hoveredEdgeKeyRef = useRef<string | null>(null);
   const pointerDownRef = useRef<{ unitId: string; x: number; y: number } | null>(null);
 
   const bgImageRef = useRef<HTMLImageElement | null>(null);
@@ -288,6 +303,23 @@ export function useHexGrid({
     return pixelToHex({ x: worldX, y: worldY }, size);
   }, [canvasRef, offsetX, offsetY, zoom, size]);
 
+  /** World-space point under a screen point (canvas-local, pan/zoom applied). */
+  const getWorldFromScreen = useCallback((screenX: number, screenY: number): { x: number; y: number } => {
+    const canvas = canvasRef.current;
+    const rect = canvas ? canvas.getBoundingClientRect() : null;
+    const x = rect ? screenX - rect.left : screenX;
+    const y = rect ? screenY - rect.top : screenY;
+    return { x: (x - offsetX) / zoom, y: (y - offsetY) / zoom };
+  }, [canvasRef, offsetX, offsetY, zoom]);
+
+  /** The nearest wall edge to a screen point, within the drop threshold. */
+  const getWallEdgeAt = useCallback((screenX: number, screenY: number): EdgeRef | null => {
+    const hex = getHexFromScreen(screenX, screenY);
+    if (!hex) return null;
+    const world = getWorldFromScreen(screenX, screenY);
+    return nearestWallEdge(walls, hex, world, size, size * 0.38);
+  }, [getHexFromScreen, getWorldFromScreen, walls, size]);
+
   const getUnitAt = useCallback((hex: Hex): Unit | undefined => {
     // An "active" attached hero (switched via the context menu) becomes the
     // grabbable entity at its host's hex instead of the host.
@@ -321,7 +353,16 @@ export function useHexGrid({
       setOffsetY(prev => prev + dy);
       setPanStart({ x: e.clientX, y: e.clientY });
     }
-  }, [getHexFromScreen, getUnitAt, isPanning, panStart, lastHoveredUnit, onUnitHover, onUnitLeave]);
+
+    // Drag-onto-the-edge: while dragging, report the wall edge under the pointer
+    // (only when the dragged unit may actually attack it) for the overlay hint.
+    const rawEdge = draggingUnitId ? getWallEdgeAt(e.clientX, e.clientY) : null;
+    const nextEdge = rawEdge && draggingUnitId && (!canAttackWallEdge || canAttackWallEdge(draggingUnitId, rawEdge)) ? rawEdge : null;
+    if (nextEdge?.key !== hoveredEdgeKeyRef.current) {
+      hoveredEdgeKeyRef.current = nextEdge?.key ?? null;
+      onHoverWallEdge?.(nextEdge);
+    }
+  }, [getHexFromScreen, getUnitAt, isPanning, panStart, lastHoveredUnit, onUnitHover, onUnitLeave, draggingUnitId, canAttackWallEdge, getWallEdgeAt, onHoverWallEdge]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const hex = getHexFromScreen(e.clientX, e.clientY);
@@ -383,8 +424,13 @@ export function useHexGrid({
       const unit = units.find(u => u.id === draggingUnitId);
       if (unit) {
         const targetUnit = getUnitAt(targetHex);
+        const wallEdge = getWallEdgeAt(e.clientX, e.clientY);
+        const canHitWall = !!wallEdge && (!canAttackWallEdge || canAttackWallEdge(draggingUnitId, wallEdge));
         if (targetUnit && targetUnit.id !== draggingUnitId) {
           if (onAttack) onAttack(draggingUnitId, targetUnit.id);
+        } else if (!targetUnit && canHitWall && onAttackWall) {
+          // Dropped onto a wall segment the unit can reach: attack the barrier.
+          onAttackWall(draggingUnitId, wallEdge!);
         } else if (!targetUnit) {
           if (unit.hex.q !== targetHex.q || unit.hex.r !== targetHex.r) {
             onUnitMove(draggingUnitId, targetHex);
@@ -393,6 +439,10 @@ export function useHexGrid({
       }
       setDraggingUnitId(null);
       setDragStartPos(null);
+      if (hoveredEdgeKeyRef.current !== null) {
+        hoveredEdgeKeyRef.current = null;
+        onHoverWallEdge?.(null);
+      }
     }
 
     if (mouseDownTarget === 'hex' && !draggingUnitId) {
@@ -402,7 +452,7 @@ export function useHexGrid({
     setIsPanning(false);
     setPanStart(null);
     setMouseDownTarget('none');
-  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAt, onAttack, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
+  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAt, onAttack, onAttackWall, canAttackWallEdge, getWallEdgeAt, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
 
   const handleRightClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();

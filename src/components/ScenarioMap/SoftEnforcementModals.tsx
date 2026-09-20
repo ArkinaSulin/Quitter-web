@@ -3,6 +3,7 @@
 // Pure rendering: the pending states + fully-bound action closures come from
 // ScenarioMap; the bodies are text built from the states.
 import { Unit, Hex } from '@/types/gameProtocol';
+import { EdgeRef } from '@/lib/walls';
 import { CombatOutcome } from '@/lib/unitCombat';
 import { heroMovePerAction } from '@/lib/moveCost';
 import { unitAttackCap } from '@/lib/attackCap';
@@ -94,6 +95,17 @@ export interface PendingWeaponSwitch {
   options?: { forceCast?: boolean };
 }
 
+/** Attacking a barrier over budget / past the attack cap (soft confirm). */
+export interface PendingWallAttack {
+  attacker: Unit;
+  /** The target wall edge. */
+  ref: EdgeRef;
+  /** Human label for the edge, e.g. "(0,0) ⇄ (1,0)". */
+  label: string;
+  overBudget: boolean;
+  overCap: boolean;
+}
+
 export interface SoftEnforcementModalsProps {
   pending: {
     move: PendingMove | null;
@@ -109,6 +121,7 @@ export interface SoftEnforcementModalsProps {
     chargeAttack: PendingChargeAttack | null;
     chargeThrough: PendingChargeThrough | null;
     weaponSwitch: PendingWeaponSwitch | null;
+    wallAttack: PendingWallAttack | null;
   };
   /** Fully-bound confirm handlers (clear state + controlsLocked guard + act). */
   actions: {
@@ -127,6 +140,7 @@ export interface SoftEnforcementModalsProps {
     confirmChargeThrough: () => void;
     declineChargeThrough: () => void;
     confirmWeaponSwitch: () => void;
+    confirmWallAttack: () => void;
   };
   cancels: {
     move: () => void;
@@ -141,6 +155,7 @@ export interface SoftEnforcementModalsProps {
     castOverBudget: () => void;
     chargeAttack: () => void;
     weaponSwitch: () => void;
+    wallAttack: () => void;
   };
   unitMaxMP: (unit: Unit) => number;
 }
@@ -305,6 +320,20 @@ export function SoftEnforcementModals({ pending, actions, cancels, unitMaxMP }: 
         >
           {p.weaponSwitch.attacker.unitName} can't reach {p.weaponSwitch.target.unitName} with {p.weaponSwitch.activeName}.
           Switch to {p.weaponSwitch.label} and attack? (Cancel to pick another weapon instead.)
+        </ConfirmModal>
+      )}
+
+      {p.wallAttack && (
+        <ConfirmModal
+          tone="amber"
+          title={p.wallAttack.overCap ? `Attack past the ${unitAttackCap()}-attack cap?` : 'Attack with no actions?'}
+          buttons={[{ label: 'Yes, attack the barrier', variant: 'red', onClick: actions.confirmWallAttack }]}
+          onCancel={cancels.wallAttack}
+        >
+          {p.wallAttack.overCap
+            ? `${p.wallAttack.attacker.unitName} has already attacked ${p.wallAttack.attacker.attacksUsed}/${unitAttackCap()} times this turn.`
+            : `${p.wallAttack.attacker.unitName} has no actions left, but can still attack.`}
+          {' '}Strike the barrier at {p.wallAttack.label} anyway?
         </ConfirmModal>
       )}
     </>

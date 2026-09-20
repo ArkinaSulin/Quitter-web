@@ -1,5 +1,16 @@
 # QuiTTER Changelog
 
+## Edge walls Phase 2: destructible segments (migration 092) (2026-09-20)
+**Files:** src/lib/{walls,walls.test,wallCombat,wallCombat.test,commandLog}.ts, src/hooks/{useGameEngine,useHexGrid}.ts, src/components/ScenarioMap/{ScenarioMap,useOverlay,useCanvasDraw,WallPaintPanel,LeftPanel,SoftEnforcementModals}.tsx, src/components/MapEditor/MapEditor.tsx, supabase/migrations/092_wall_command_log.sql (new), docs/dev/13-map-entities-terrain.md, docs/players/player-manual.md
+
+- **Walls can carry HP/DT** (`maxHp` / `hp` / `dt`, already reserved in `walls.ts`): a segment with no `maxHp` is indestructible scenery; an authored `maxHp` starts at full HP. Editable in both wall editors (Map Editor **Walls** tab + in-scenario `WallPaintPanel`).
+- **Attacking a barrier = drag a unit onto the edge.** `useHexGrid` tracks the wall edge under the pointer (`nearestWallEdge`, 0.38·hexSize threshold) while dragging; `canAttackWallEdge` (unit reach + destructible wall) routes the drop to the attack, so a legal move hex still moves. `wallCombat.wallAttackKind`: **melee** if the attacker stands on either edge hex, else **ranged** if the weapon's max range covers the nearer hex.
+- **No to-hit roll** — reaching the edge is the hit. `resolveWallAttack` rolls weapon damage; `applyWallDamage` compares it to `dt` (≤ DT = no effect, above = full damage off HP); `hp ≤ 0` removes the segment. Costs **1 action**, counts toward the **5-attack cap** (soft-confirmed when over via the new `PendingWallAttack` modal), no AGR/retaliation.
+- **Persistence**: new `WALL` sub-step (migration **092** recreates `apply_substeps` with the branch) merges the walls object into `scenarios.map_data.walls`; `useGameEngine.setWallsLocal` applies it optimistically, so undo/redo/realtime/replay restore wall HP with the command.
+- **Rendering**: damaged segments shift to a damage colour and show `hp/maxHp`; the edge under the pointer gets an orange cap while dragging; the two adjacent hexes are tinted (drag overlay).
+- Tests: `wallCombat.test.ts` (reach classification, DT gate, destruction), `walls.test.ts` (HP/DT parse default, `applyWallDamage`, `nearestWallEdge`). `tsc` clean; 665 tests pass. **Apply 092 in Supabase.**
+- **Phase 3 pending**: temporary (magic) walls with caster/duration (tick at END_TURN like zones) and generalized HP/DT for ground zones.
+
 ## Reaction move = full action; formation change merged with move (2026-09-19)
 **Files:** src/lib/{archerReaction,archerReaction.test}.ts, src/components/ScenarioMap/{useReactionActions,useOverlay,ScenarioMap}.tsx, docs/dev/08-combat.md, docs/players/player-manual.md
 

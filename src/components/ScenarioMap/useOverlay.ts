@@ -15,7 +15,8 @@ import { determineCombatPosition } from '@/lib/unitCombat';
 import { canRangedTarget } from '@/lib/formationRules';
 import { arcOfTarget } from '@/lib/attackDirection';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
-import { Walls } from '@/lib/walls';
+import { Walls, EdgeRef } from '@/lib/walls';
+import { edgeHexes } from '@/lib/wallCombat';
 import { canWithdraw, withdrawDestinations } from '@/lib/withdraw';
 
 /** Hovered unit's front-arc threat tint (non-loose units only). */
@@ -46,6 +47,8 @@ export interface OverlayState {
   rangeViolationHex: Hex | null;
   terrainCosts?: TerrainCosts;
   walls?: Walls;
+  /** Wall edge under the pointer while dragging (drag-to-attack hint). */
+  hoveredEdge?: EdgeRef | null;
 }
 
 export function computeOverlayMap(state: OverlayState): Record<string, string> {
@@ -61,6 +64,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     rangeViolationHex,
     terrainCosts,
     walls,
+    hoveredEdge,
   } = state;
 
   const costOfHex = makeCostOfHex(terrainCosts, walls);
@@ -208,6 +212,13 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       }
     }
     for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
+    // Dropping on a wall edge the unit can reach attacks the barrier instead of
+    // moving — tint the two hexes sharing that edge.
+    if (hoveredEdge) {
+      for (const hx of edgeHexes(hoveredEdge)) {
+        combined[`${hx.q},${hx.r}`] = 'rgba(255, 140, 60, 0.85)';
+      }
+    }
 
     return combined;
   }
