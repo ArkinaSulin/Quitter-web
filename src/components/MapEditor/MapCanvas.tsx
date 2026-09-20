@@ -11,7 +11,7 @@ import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
 import { HEX_SIZE, DEFAULT_GRID_RADIUS, TerrainCosts, costShade } from '@/components/ScenarioMap/mapGeometry';
 import { edgeRef, nearestEdge, hexCorner } from '@/lib/walls';
 import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls } from '@/lib/mapStructures';
-import { battlementPath, battlementDepth, spikePath } from '@/lib/structureDraw';
+import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
 import { StructureTemplate } from '@/types/structure';
 
 export interface MapCanvasProps {
@@ -262,14 +262,12 @@ export function MapCanvas({
           nx /= nl; ny /= nl;
           const seg = Math.hypot(b.x - a.x, b.y - a.y);
           ctx.strokeStyle = 'rgba(0,0,0,0.95)';
-          ctx.fillStyle = 'rgba(0,0,0,0.95)';
+          ctx.lineWidth = 2;
           ctx.beginPath();
           const d2 = t.spikes
-            ? spikePath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8) * 0.7, 8)
+            ? triangleWavePath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8), 8)
             : battlementPath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8), 8);
-          ctx.lineWidth = 1.5;
-          if (t.spikes) ctx.fill(new Path2D(d2));
-          else ctx.stroke(new Path2D(d2));
+          ctx.stroke(new Path2D(d2));
         }
         // Move-cost labels on the edge, one per face that overrides the cost.
         const labelFor = (faceKey: 'a' | 'b') => {

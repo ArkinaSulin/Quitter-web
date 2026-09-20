@@ -17,7 +17,7 @@ import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
 import { MapStructures, isHexStructureKey } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
-import { battlementPath, battlementDepth, spikePath } from '@/lib/structureDraw';
+import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
 import { AiOverlayData } from './aiTypes';
 
 interface CanvasDrawDeps {
@@ -342,14 +342,12 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           nx /= nl; ny /= nl;
           const seg = Math.hypot(b.x - a.x, b.y - a.y);
           ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
-          ctx.lineWidth = 1.5 * currentZoom;
+          ctx.lineWidth = 2 * currentZoom;
           ctx.beginPath();
           const d2 = t.spikes
-            ? spikePath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8) * 0.7, 8)
+            ? triangleWavePath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8), 8)
             : battlementPath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8), 8);
-          if (t.spikes) ctx.fill(new Path2D(d2));
-          else ctx.stroke(new Path2D(d2));
+          ctx.stroke(new Path2D(d2));
         }
         // Damaged barriers show their remaining HP at the segment midpoint.
         if (damaged) {

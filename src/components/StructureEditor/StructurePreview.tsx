@@ -7,7 +7,7 @@
 // side is shown as outside (the real side is chosen per placement).
 import React, { useState } from 'react';
 import { StructureAnchor } from '@/types/structure';
-import { battlementPath, battlementDepth, spikePath } from '@/lib/structureDraw';
+import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
 
 const HEX_DIRS = [
   { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
@@ -120,16 +120,15 @@ export function StructurePreview({
   const outDir = { x: 0, y: outsideUp ? -1 : 1 };
   const tooth = battlementDepth(x1 - x0, 8);
   const decoration = spikes
-    ? spikePath({ x: x0, y }, { x: x1, y }, outDir, tooth * 0.7, 8)
+    ? triangleWavePath({ x: x0, y }, { x: x1, y }, outDir, tooth, 8)
     : battlementPath({ x: x0, y }, { x: x1, y }, outDir, tooth, 8);
   return (
     <div className="space-y-2">
       <div className="relative rounded border border-gray-700 bg-gray-200" style={{ width: W, height: H }}>
         <svg width={W} height={H} className="absolute inset-0 block">
           <line x1={x0} y1={y} x2={x1} y2={y} stroke="rgba(0,0,0,0.95)" strokeWidth={7} strokeLinecap="round" />
-          {spikes
-            ? <path d={decoration} fill="rgba(0,0,0,0.95)" stroke="rgba(0,0,0,0.95)" strokeWidth={1.5} />
-            : battlement && <path d={decoration} fill="none" stroke="rgba(0,0,0,0.95)" strokeWidth={2.5} strokeLinejoin="round" />}
+          {(spikes || battlement) &&
+            <path d={decoration} fill="none" stroke="rgba(0,0,0,0.95)" strokeWidth={2.5} strokeLinejoin="round" />}
         </svg>
         <span className="absolute left-1 top-0.5 text-[9px] uppercase tracking-wide text-amber-700">Outside</span>
         <span className="absolute left-1 bottom-0.5 text-[9px] uppercase tracking-wide text-sky-700">Inside</span>

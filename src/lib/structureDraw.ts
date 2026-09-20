@@ -37,10 +37,12 @@ export function battlementPath(a: Pt, b: Pt, outward: Pt, depth: number, teeth =
 }
 
 /**
- * SVG/canvas path `d` for a row of small triangle stakes along a→b, apexes
- * pointing `outward` (away from the inside face).
+ * SVG/canvas path `d` for a triangle (sawtooth) wave along a→b whose minima sit
+ * ON the edge and whose peaks point `outward` — a row of triangles growing out of
+ * the hex edge (e.g. Archer's Stake). `depth` matches the battlement amplitude so
+ * the two decorations read at the same size.
  */
-export function spikePath(a: Pt, b: Pt, outward: Pt, depth: number, count = 8): string {
+export function triangleWavePath(a: Pt, b: Pt, outward: Pt, depth: number, teeth = 8): string {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const len = Math.hypot(dx, dy) || 1;
@@ -48,17 +50,14 @@ export function spikePath(a: Pt, b: Pt, outward: Pt, depth: number, count = 8): 
   const uy = dy / len;
   const ox = outward.x * depth;
   const oy = outward.y * depth;
-  const n = Math.max(1, Math.round(count));
+  const n = Math.max(1, Math.round(teeth));
   const step = len / n;
-  let d = '';
+  let d = `M ${a.x} ${a.y}`;
   for (let i = 0; i < n; i++) {
-    const bx = a.x + ux * step * i;
-    const by = a.y + uy * step * i;
-    const ex = a.x + ux * step * (i + 1);
-    const ey = a.y + uy * step * (i + 1);
-    const cx = a.x + ux * step * (i + 0.5) + ox;
-    const cy = a.y + uy * step * (i + 0.5) + oy;
-    d += `M ${bx} ${by} L ${cx} ${cy} L ${ex} ${ey} Z `;
+    const peakT = (i + 0.5) * step; // apex, pushed outward
+    const edgeT = (i + 1) * step;   // back down to the edge
+    d += ` L ${a.x + ux * peakT + ox} ${a.y + uy * peakT + oy}`;
+    d += ` L ${a.x + ux * edgeT} ${a.y + uy * edgeT}`;
   }
   return d;
 }

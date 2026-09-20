@@ -35,8 +35,8 @@ scenario is migrated (Slice 3).
     `meleeAc` / `rangedAc` (cover for the unit standing on that side).
   - `battlement` draws a crenellation (square wave) on the **outside** face; the
     amplitude is tied to the tooth width so the teeth read as squares.
-  - `spikes` draws a row of small outward-facing triangles (e.g. **Archer's
-    Stake**) instead of a plain segment / crenellation.
+  - `spikes` draws a triangle (sawtooth) wave — minima on the edge, peaks
+    outward, at the battlement amplitude — e.g. **Archer's Stake**.
   - A placement's `outside` flip maps the template's inside/outside onto the
     canonical `a`/`b` sides — one control that swaps the directional stats and
     moves the battlement.
