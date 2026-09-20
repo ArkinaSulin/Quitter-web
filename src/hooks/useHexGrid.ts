@@ -56,6 +56,10 @@ export interface UseHexGridProps {
   onAttackWall?: (unitId: string, edge: EdgeRef) => void;
   /** Whether the dragged unit may attack this wall edge (reach gate). */
   canAttackWallEdge?: (unitId: string, edge: EdgeRef) => boolean;
+  /** Dropped onto a hex with an attackable structure (gate/tower): attack it. */
+  onAttackStructure?: (unitId: string, hex: Hex) => void;
+  /** Whether the dragged unit may attack the structure on this hex. */
+  canAttackStructure?: (unitId: string, hex: Hex) => boolean;
   /** Wall edge under the pointer while dragging (for the overlay hint). */
   onHoverWallEdge?: (edge: EdgeRef | null) => void;
   /** Permission gate for grabbing a token (drag-move/attack). Return false to silently not grab. */
@@ -92,6 +96,8 @@ export function useHexGrid({
   walls,
   onAttackWall,
   canAttackWallEdge,
+  onAttackStructure,
+  canAttackStructure,
   onHoverWallEdge,
   canGrabUnit,
   onGrabUnit,
@@ -431,6 +437,9 @@ export function useHexGrid({
         } else if (!targetUnit && canHitWall && onAttackWall) {
           // Dropped onto a wall segment the unit can reach: attack the barrier.
           onAttackWall(draggingUnitId, wallEdge!);
+        } else if (!targetUnit && onAttackStructure && canAttackStructure?.(draggingUnitId, targetHex)) {
+          // Dropped onto a hex with an attackable structure (gate/tower).
+          onAttackStructure(draggingUnitId, targetHex);
         } else if (!targetUnit) {
           if (unit.hex.q !== targetHex.q || unit.hex.r !== targetHex.r) {
             onUnitMove(draggingUnitId, targetHex);
@@ -452,7 +461,7 @@ export function useHexGrid({
     setIsPanning(false);
     setPanStart(null);
     setMouseDownTarget('none');
-  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAt, onAttack, onAttackWall, canAttackWallEdge, getWallEdgeAt, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
+  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAt, onAttack, onAttackWall, canAttackWallEdge, onAttackStructure, canAttackStructure, getWallEdgeAt, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
 
   const handleRightClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();

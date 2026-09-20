@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Map structures Slice 4: hex structures (2026-09-20)
+**Files:** src/lib/{structureCombat,structureCombat.test,mapStructures}.ts, src/components/ScenarioMap/{useCombatActions,ScenarioMap,useCanvasDraw,SoftEnforcementModals}.tsx, src/hooks/useHexGrid.ts, docs/dev/{18-map-structures,outstanding}.md, docs/players/player-manual.md
+
+- **Tower auras** (occupancy): a unit standing on a hex structure gains its effect flags — `advantage`/`disadvantage` on its own attacks, `grant_advantage`/`grant_disadvantage` against attackers. `useCombatActions.performAttack` merges `structureAuraFlags(hex, …)` into the combat copies (and the leading-hero profile) as synthetic effects, so the existing roll-mode reader applies them with no persistence.
+- **Hex structures are now attackable** (`src/lib/structureCombat.ts`): a drop on a structure hex opens a **target-picker** ("Attack structure" / "Move here", `useHexGrid` → ScenarioMap `hexAction`). Reach is melee at adjacency, else ranged by `maxRange`. No to-hit roll; the **door resolves first** (`resolveHexStructureAttack`: door HP takes damage until destroyed, then the structure HP), gated by the template/instance DT. Costs 1 action + the attack cap (soft-confirmed), and writes a per-key `STRUCTURE` change.
+- **Scenario rendering**: `useCanvasDraw` draws hex structures (colour tint + artwork + HP badge, plus a `door N` badge while the door stands); their images join the preload set.
+- Tests: `structureCombat.test.ts` (reach, door-first, destruction, doorless). `tsc` clean; 690 tests pass; `next build` clean. **No DB change.**
+- Still pending: structure **range bonuses**; AI ignores structure auras/gates for v1.
+
 ## Map structures Slice 3b: `enter_org_max` movement gate (2026-09-20)
 **Files:** src/lib/mapStructures.ts (+ test), src/components/ScenarioMap/{mapGeometry,useMoveActions,useOverlay,useReactionActions,ScenarioMap}.ts, docs/dev/{18-map-structures,outstanding}.md, docs/players/player-manual.md
 

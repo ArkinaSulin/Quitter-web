@@ -15,6 +15,8 @@ import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig, TerrainCosts, costShade } from './mapGeometry';
 import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp } from '@/lib/walls';
+import { MapStructures, isHexStructureKey } from '@/lib/mapStructures';
+import { StructureTemplate } from '@/types/structure';
 import { AiOverlayData } from './aiTypes';
 
 interface CanvasDrawDeps {
@@ -38,6 +40,9 @@ interface CanvasDrawDeps {
   backgroundConfig: MapBackgroundConfig | null;
   terrainCosts?: TerrainCosts;
   walls?: Walls;
+  /** Placed structures + templates (hex structure rendering; battlement aura). */
+  structures?: MapStructures;
+  templates?: Record<string, StructureTemplate>;
   /** Wall edge highlighted while dragging a unit over it (drag-to-attack). */
   hoveredWallEdge?: EdgeRef | null;
   groundZones?: GroundEffect[];
@@ -73,6 +78,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     backgroundConfig,
     terrainCosts,
     walls,
+    structures,
+    templates,
     hoveredWallEdge,
     groundZones,
     scenarioId,
@@ -92,8 +99,12 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       if (u.isDeleted) continue;
       for (const e of u.effects ?? []) if (e.imageUrl && !e.zoneHex) urls.add(e.imageUrl);
     }
+    for (const inst of Object.values(structures ?? {})) {
+      const t = templates?.[inst.templateId];
+      if (t?.imageUrl) urls.add(t.imageUrl);
+    }
     return Array.from(urls).sort().join('|');
-  }, [groundZones, displayUnits]);
+  }, [groundZones, displayUnits, structures, templates]);
 
   useEffect(() => {
     const urls = effectImageUrls ? effectImageUrls.split('|') : [];
@@ -216,6 +227,59 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.strokeText(String(cost), cx, cy);
         ctx.fillStyle = '#ffffff';
         ctx.fillText(String(cost), cx, cy);
+      }
+      ctx.restore();
+    }
+
+    // Hex structures (gates/towers): tint + artwork + HP/door badge, drawn under
+    // the edge walls and tokens.
+    if (structures && Object.keys(structures).length > 0) {
+      ctx.save();
+      for (const key of Object.keys(structures)) {
+        if (!isHexStructureKey(key)) continue;
+        const [q, r] = key.split(',').map(Number);
+        if (!Number.isFinite(q) || !Number.isFinite(r)) continue;
+        if (isFogHidden(`${q},${r}`)) continue;
+        const inst = structures[key];
+        const t = templates?.[inst.templateId];
+        const hx = { q, r, s: -q - r };
+        fillHex(hx, t && /^#[0-9a-fA-F]{6}$/.test(t.color) ? `${t.color}55` : 'rgba(255,255,255,0.08)');
+        const { cx, cy } = hexCenter(hx);
+        if (t?.imageUrl) {
+          const img = getLoadedImage(t.imageUrl);
+          if (img && img.complete && img.naturalWidth > 0) {
+            const h = 1.2 * HEX_SIZE * currentZoom;
+            const w = (img.naturalWidth / img.naturalHeight) * h;
+            ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+          }
+        }
+        const hp = inst.hp ?? inst.maxHp ?? t?.maxHp ?? 0;
+        if (hp > 0) {
+          const label = `${hp}`;
+          ctx.font = `bold ${Math.max(11, 12 * currentZoom)}px ui-monospace, monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.lineWidth = Math.max(2, 3 * currentZoom);
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+          const ly = cy + HEX_SIZE * currentZoom * 0.55;
+          ctx.strokeText(label, cx, ly);
+          ctx.fillStyle = '#ffe0b2';
+          ctx.fillText(label, cx, ly);
+        }
+        const doorMax = t?.doorHp ?? null;
+        const door = doorMax !== null ? (inst.doorHp ?? doorMax) : null;
+        if (door !== null && door > 0) {
+          const label = `door ${door}`;
+          ctx.font = `bold ${Math.max(10, 11 * currentZoom)}px ui-monospace, monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.lineWidth = Math.max(2, 3 * currentZoom);
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+          const ly = cy - HEX_SIZE * currentZoom * 0.55;
+          ctx.strokeText(label, cx, ly);
+          ctx.fillStyle = '#ffd9c9';
+          ctx.fillText(label, cx, ly);
+        }
       }
       ctx.restore();
     }
@@ -640,7 +704,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, walls, hoveredWallEdge, groundZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, walls, structures, templates, hoveredWallEdge, groundZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;

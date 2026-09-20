@@ -48,10 +48,10 @@ Template library + editor shipped (Slice 1). See `18-map-structures.md`.
   movers) via `makeBlockedEdge(walls, { structures, templates, zones, orgLevel })`;
   wired through drag-move, the drag overlay and reaction repositioning. AI ignores
   it for v1.
-- 🔜 **Slice 4**: hex door-first combat + tower auras (occupancy effects), hex
-  HP/door rendering in `useCanvasDraw`, drop **target-picker** when a hex has
-  ≥2 targetables.
-- ⏳ Deferred: structure **range bonuses**, gate open/close state.
+- ✅ **Slice 4**: hex structures — tower auras (occupancy flags merged into combat),
+  door-first attacks via a drop **target-picker** (`structureCombat.ts`), scenario
+  hex rendering (tint/art/HP/door badges). Structure **range bonuses** and gate
+  open/close state remain deferred; AI ignores structure rules (v1).
 
 ## Edge walls (migration 089)
 - ✅ **Phase 1 shipped**: edge `maps.walls` keyed `"q,r,dir"`, a face per side

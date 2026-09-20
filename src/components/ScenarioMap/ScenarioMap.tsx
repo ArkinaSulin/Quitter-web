@@ -50,6 +50,7 @@ import { MapStructures, parseStructures, structuresToWalls } from '@/lib/mapStru
 import { StructureTemplate } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/lib/wallCombat';
+import { hexStructureAttackKind, resolveHexStructureAttack, isAttackableHexStructure } from '@/lib/structureCombat';
 import { unitAttackCap } from '@/lib/attackCap';
 import { newEffectKey } from '@/lib/unitEffects';
 import { MapEntity } from '@/lib/mapEntities';
@@ -70,6 +71,7 @@ import { useCombatActions } from './useCombatActions';
 import { computeOverlayMap } from './useOverlay';
 import { TopBar } from './TopBar';
 import { SoftEnforcementModals, type PendingWallAttack } from './SoftEnforcementModals';
+import { ConfirmModal } from './ConfirmModal';
 
 interface ScenarioMapProps {
   scenarioId: string;
@@ -800,6 +802,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     backgroundConfig,
     terrainCosts,
     walls,
+    structures,
+    templates: structureTemplates,
     hoveredWallEdge,
     groundZones,
     scenarioId,
@@ -870,6 +874,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // No to-hit roll: reaching the edge is the hit; the wall's DT gates the blow.
   // Costs 1 action and counts toward the attack cap (soft-enforced).
   const [pendingWallAttack, setPendingWallAttack] = useState<PendingWallAttack | null>(null);
+  // Dropping a unit on a hex that holds an attackable structure opens a small
+  // picker (attack the structure vs move onto the hex) — the hex target-picker.
+  const [hexAction, setHexAction] = useState<{ unit: Unit; hex: Hex } | null>(null);
 
   const performWallAttack = useCallback(async (attacker: Unit, ref: EdgeRef, force = false) => {
     const wall = walls[ref.key];
@@ -930,6 +937,72 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const weapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
     return !!weapon && wallAttackKind(unit, edge, weapon) !== null;
   }, [units, walls, canControlUnit]);
+
+  // ---- Hex structure attacks (drag a unit onto a gate/tower hex) ----
+  const performStructureAttack = useCallback(async (attacker: Unit, hex: Hex, force = false) => {
+    const key = `${hex.q},${hex.r}`;
+    const inst = structures[key];
+    const template = inst ? structureTemplates[inst.templateId] : undefined;
+    if (!inst || !template || !isAttackableHexStructure(template, inst)) return;
+    const weapon = parseWeapons(attacker.weaponString || '')[attacker.activeWeaponIndex ?? 0];
+    const kind = hexStructureAttackKind(attacker, hex, weapon);
+    if (!weapon || !kind) {
+      addMessage(`${attacker.unitName} cannot reach that structure`);
+      return;
+    }
+    const cap = unitAttackCap();
+    const overCap = (attacker.attacksUsed ?? 0) >= cap;
+    const overBudget = (attacker.actionsAvailable ?? 0) < 1;
+    const label = `(${hex.q}, ${hex.r})`;
+    if ((overCap || overBudget) && !force) {
+      setPendingWallAttack({ attacker, hex, label, overCap, overBudget });
+      return;
+    }
+    if (overBudget) addError(`${attacker.unitName} attacked a structure with no actions left — over budget`);
+    if (overCap) addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
+
+    const result = resolveHexStructureAttack(template, inst, weapon, Math.random);
+    const hasDoor = template.doorHp !== null;
+    const to = result.destroyed
+      ? null
+      : { ...inst, hp: result.hpAfter, ...(hasDoor ? { doorHp: result.doorHpAfter ?? 0 } : {}) };
+
+    const doorNow = result.doorHpAfter ?? 0;
+    const detail = result.deflected
+      ? `${attacker.unitName} struck the structure at ${label} — the blow is shrugged off (DT ${template.dt}, ${result.damage} damage)`
+      : result.destroyed
+        ? `${attacker.unitName} destroyed the structure at ${label} (${result.damage} damage)`
+        : result.hitDoor
+          ? `${attacker.unitName} hit the door at ${label} for ${result.applied} damage (${doorNow}/${template.doorHp} door HP left)`
+          : `${attacker.unitName} hit the structure at ${label} for ${result.applied} damage (${result.hpAfter}/${inst.maxHp ?? template.maxHp} HP left)`;
+    await execute('ATTACK', [
+      {
+        type: 'ATTACK',
+        description: `${attacker.unitName} attacked the structure at ${label} (${kind})`,
+        unitId: attacker.id,
+        changes: [
+          { field: 'actionsAvailable', from: attacker.actionsAvailable, to: attacker.actionsAvailable - 1 },
+          { field: 'attacksUsed', from: attacker.attacksUsed ?? 0, to: (attacker.attacksUsed ?? 0) + 1 },
+        ],
+      },
+      {
+        type: 'STRUCTURE',
+        description: result.destroyed ? `Structure at ${label} destroyed` : `Structure at ${label} damaged`,
+        unitId: scenarioId,
+        changes: [{ field: 'structures', key, from: inst, to }],
+      },
+    ], `${attacker.unitName} attacked the structure at ${label}`, { message: detail, verboseMessage: detail });
+  }, [structures, structureTemplates, execute, addError, addMessage, scenarioId]);
+
+  const canAttackStructure = useCallback((unitId: string, hex: Hex): boolean => {
+    const unit = units.find(u => u.id === unitId);
+    if (!unit || !canControlUnit(unit)) return false;
+    const inst = structures[`${hex.q},${hex.r}`];
+    const template = inst ? structureTemplates[inst.templateId] : undefined;
+    if (!inst || !template || !isAttackableHexStructure(template, inst)) return false;
+    const weapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
+    return !!weapon && hexStructureAttackKind(unit, hex, weapon) !== null;
+  }, [units, structures, structureTemplates, canControlUnit]);
 
   // ---- Temporary-effect apply/remove handlers (opened from the context menu) ----
   const teamOptions = Object.keys(alliances).length > 0 ? Object.keys(alliances) : TEAMS;
@@ -1371,6 +1444,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     formationsMap,
     sizeCategories,
     walls,
+    structures,
+    structureTemplates,
     execute,
     addMessage,
     addError,
@@ -1720,6 +1795,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     onAttackWall: (unitId, edge) => {
       const unit = units.find(u => u.id === unitId);
       if (unit) void performWallAttack(unit, edge);
+    },
+    canAttackStructure: (unitId, hex) => (reactionMode ? false : canAttackStructure(unitId, hex)),
+    onAttackStructure: (unitId, hex) => {
+      const unit = units.find(u => u.id === unitId);
+      if (unit) setHexAction({ unit, hex });
     },
     onHoverWallEdge: setHoveredWallEdge,
     canGrabUnit: (unit) => (reactionMode ? unit.id === reactionMode.archer.id : canControlUnit(unit)),
@@ -2213,7 +2293,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setPendingWallAttack(null);
       if (controlsLocked) return;
       const unit = units.find(u => u.id === p.attacker.id) ?? p.attacker;
-      await performWallAttack(unit, p.ref, true);
+      if (p.ref) await performWallAttack(unit, p.ref, true);
+      else if (p.hex) await performStructureAttack(unit, p.hex, true);
     },
   };
   const softCancels = {
@@ -2637,6 +2718,36 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             {isGM ? 'Connection lost — reconnecting…' : 'GM is offline — controls disabled until they return'}
           </span>
         </div>
+      )}
+
+      {/* Hex target-picker: a drop on a structure hex asks attack vs move. */}
+      {hexAction && (
+        <ConfirmModal
+          tone="amber"
+          title="Hex action"
+          buttons={[
+            {
+              label: 'Attack structure',
+              variant: 'red',
+              onClick: () => {
+                const a = hexAction;
+                setHexAction(null);
+                if (!controlsLocked) void performStructureAttack(a.unit, a.hex);
+              },
+            },
+            {
+              label: 'Move here',
+              onClick: () => {
+                const a = hexAction;
+                setHexAction(null);
+                if (!controlsLocked) void handleUnitMove(a.unit.id, a.hex);
+              },
+            },
+          ]}
+          onCancel={() => setHexAction(null)}
+        >
+          {hexAction.unit.unitName} at ({hexAction.hex.q}, {hexAction.hex.r}): attack the structure, or move onto the hex?
+        </ConfirmModal>
       )}
 
       {/* Soft-enforcement prompts (over-budget / cap / conversion confirms) */}

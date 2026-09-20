@@ -668,6 +668,12 @@ edge**.
   allowed organization level cannot move across that edge or into that hex.
   Loose troops — Open Order, Scattered, Hero — pass; Close Order and heavier
   cannot. (Charges are stopped by any edge structure.)
+- **Watch towers** (hex) grant their occupant cover: the unit standing there
+  attacks with **advantage** and attackers against it suffer **disadvantage**.
+- **Gates / gate towers** (hex) have a **door**: drag a unit onto the hex to
+  attack it. The door absorbs damage first; once it is destroyed the structure's
+  own HP is exposed. If the hex could also be entered, you are asked whether to
+  **attack** or **move**. Costs 1 action and counts toward the attack limit.
 
 ### Magic & area spells
 

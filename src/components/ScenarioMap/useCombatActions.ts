@@ -5,7 +5,7 @@
 // the soft 5-cap stash, morale/rout), healing weapons, and the charge
 // end/overrun helpers. Owns the attack-related soft-enforcement states.
 import { useCallback, useState } from 'react';
-import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance } from '@/types/gameProtocol';
+import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance, UnitEffect } from '@/types/gameProtocol';
 import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome, AttackerHeroProfile } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/lib/formationRules';
 import { isProtectedHero } from '@/lib/unitInteractions';
@@ -23,6 +23,8 @@ import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
 import { attackRollFlags } from '@/lib/unitEffects';
 import { hasLineOfSight } from '@/lib/lineOfSight';
 import { Walls } from '@/lib/walls';
+import { MapStructures, structureAuraFlags, hasAuraFlags, StructureAuraFlags } from '@/lib/mapStructures';
+import { StructureTemplate } from '@/types/structure';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
@@ -41,12 +43,27 @@ interface AttackStash {
   allowRetaliation: boolean;
 }
 
+/** Synthetic unit effects carrying a hex structure's aura flags so the combat
+ *  roll-mode reader picks them up (tower: occupant advantage / attacker cover). */
+function auraEffects(f: StructureAuraFlags, unitName: string): UnitEffect[] {
+  const out: UnitEffect[] = [];
+  const add = (kind: UnitEffect['kind']) => out.push({ key: `struct-${kind}-${unitName}`, name: 'Structure', color: '#8d6e63', kind, delta: 0, duration: 1, turnsLeft: 1 });
+  if (f.advantage) add('advantage');
+  if (f.disadvantage) add('disadvantage');
+  if (f.grantAdvantage) add('grant_advantage');
+  if (f.grantDisadvantage) add('grant_disadvantage');
+  return out;
+}
+
 interface CombatActionsDeps {
   units: Unit[];
   alliances: Record<string, AllianceGroup>;
   formationsMap: Record<string, Formation>;
   sizeCategories: SizeCategory[];
   walls?: Walls;
+  /** Placed structures + templates (tower auras on the occupant's hex). */
+  structures?: MapStructures;
+  structureTemplates?: Record<string, StructureTemplate>;
   execute: ExecuteFn;
   addMessage: (msg: string) => void;
   addError: (msg: string) => void;
@@ -70,6 +87,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     formationsMap,
     sizeCategories,
     walls,
+    structures,
+    structureTemplates,
     execute,
     addMessage,
     addError,
@@ -226,11 +245,24 @@ export function useCombatActions(deps: CombatActionsDeps) {
       ? { currentAc: frontAttachedHero.currentAc, troopHp: frontAttachedHero.troopHp }
       : null;
 
+    // Tower auras: a unit standing on a hex structure gains its effect flags
+    // (advantage on its own attacks / grant_* for attackers). Merge them into the
+    // combat copies so the roll-mode reader sees them, without persisting effects.
+    const attackerAuras = structureAuraFlags(effAttacker.hex, structures, structureTemplates);
+    const targetAuras = structureAuraFlags(effTarget.hex, structures, structureTemplates);
+    const withAuras = (u: Unit, f: StructureAuraFlags): Unit =>
+      hasAuraFlags(f) ? { ...u, effects: [...(u.effects ?? []), ...auraEffects(f, u.unitName)] } : u;
+    const combatAttacker = withAuras(effAttacker, attackerAuras);
+    const combatTarget = withAuras(effTarget, targetAuras);
+    const combatHeroProfile = attackerHeroProfile && hasAuraFlags(attackerAuras)
+      ? { ...attackerHeroProfile, advantage: !!attackerHeroProfile.advantage || attackerAuras.advantage, disadvantage: !!attackerHeroProfile.disadvantage || attackerAuras.disadvantage }
+      : attackerHeroProfile;
+
     const outcome = stashed
       ? stashed.outcome
       : resolveCombatSequence(
-          effAttacker,
-          effTarget,
+          combatAttacker,
+          combatTarget,
           { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, numberOfAttacks: weapon.numberOfAttacks, range: weapon.range, maxRange: weapon.maxRange },
           defWeapon ? { attackBonus: defWeapon.attackBonus, damageDice: defWeapon.damageDice, is_reach: defWeapon.reach, numberOfAttacks: defWeapon.numberOfAttacks } : null,
           formationAtkMod,
@@ -248,7 +280,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
           formationsMap[attacker.currentFormation],
           formationsMap[target.currentFormation],
           options?.opportunityAttack ?? false,
-          attackerHeroProfile,
+          combatHeroProfile,
           walls,
           indirectShot,
         );

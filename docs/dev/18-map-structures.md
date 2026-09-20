@@ -4,13 +4,13 @@ Authored map features — walls, archer spikes, gates, gate towers, watch towers
 split into a **template library** (authored once) and **placed instances** (on a
 map), exactly like weapons/effects split authored vs placed.
 
-> **Status.** Slices 1–3 (+3b) shipped (migrations **093**–**095**): the template
-> table + editor, the `enter_org_max` effect kind **and its movement gate**,
-> library authoring (`maps.structures` + Map Editor tab), and scenario-native
-> structures (`scenarios.map_data.structures`, per-key `STRUCTURE` command
-> sub-steps, in-scenario painting, edge-structure attacks). Still pending: the
-> hex-structure pass (Slice 4) — door-first combat, tower auras, hex rendering,
-> drop target-picker.
+> **Status.** Slices 1–4 shipped (migrations **093**–**095**): the template
+> library + editor, `enter_org_max` (authoring + movement gate), library and
+> scenario authoring (`maps.structures` / `map_data.structures`, per-key
+> `STRUCTURE` command sub-steps), edge-structure attacks, and the hex-structure
+> pass (tower auras, door-first attacks via a drop target-picker, scenario hex
+> rendering). Deferred: structure range bonuses; AI ignores structure rules for
+> v1.
 
 ## Template vs instance
 
@@ -69,7 +69,8 @@ The template's `modifiers` list is a standard `EffectModifier[]`
 - `supabase/migrations/095_structure_command_log.sql` — `STRUCTURE` per-key substep.
 - `src/types/structure.ts` — `StructureTemplate` / `StructureInstance`.
 - `src/lib/structureTemplates.ts` (+ test) — row mappers, sanitizers, defaults.
-- `src/lib/mapStructures.ts` (+ test) — parse placed instances, `structuresToWalls`.
+- `src/lib/mapStructures.ts` (+ test) — parse placed instances, `structuresToWalls`, auras, org gates.
+- `src/lib/structureCombat.ts` (+ test) — hex reach + door-first resolution.
 - `src/lib/structureTemplateCache.ts` — session cache of the template library.
 - `src/components/StructureEditor/StructureEditor.tsx` — the editor page body.
 - `src/components/StructureEditor/StructurePreview.tsx` — edge/hex preview with
@@ -108,14 +109,27 @@ whose `enter_org_max` is below the mover's organization level. Wired through the
 player move path, the drag overlay, and reaction repositioning. Charges are still
 blocked by any edge structure. The AI planner ignores it for v1.
 
+## Slice 4 — hex structures (shipped)
+
+- **Tower auras** (occupancy, `mapStructures.structureAuraFlags`): a unit on a
+  hex structure gains `advantage`/`disadvantage` (its own attacks) and
+  `grant_advantage`/`grant_disadvantage` (attackers against it). Merged into the
+  combat copies in `useCombatActions` as synthetic effects so the roll-mode reader
+  applies them (no persisted effect, no END_TURN bookkeeping). The AI ignores them.
+- **Door-first combat** (`structureCombat.ts`): dropping a unit on a gate/tower
+  hex opens a **target-picker** (Attack structure / Move here). No to-hit roll;
+  the DT gates the blow; a standing door absorbs damage until destroyed, then the
+  structure HP is exposed; 0 HP deletes the instance. 1 action + attack cap.
+- **Rendering**: `useCanvasDraw` draws hex structures (tint + artwork + HP badge,
+  and a `door N` badge).
+- **Deferred**: structure **range bonuses** (no range stat/effect kind yet);
+  gate open/close state.
+
 ## Pending (roadmap)
 
-- **Slice 4 — hex structures**: door-first combat resolution, tower aura
-  materialization (occupancy effects), hex rendering with HP/door badges in
-  `useCanvasDraw`, and a **target-picker prompt** when a drop lands on a hex with
-  ≥2 targetables (unit, structure, targetable effect, …).
-- **AI**: the enemy-AI planner ignores `enter_org_max` and structure auras for v1.
-- Deferred by decision: structure **range bonuses**, gate open/close state.
+- Structure **range bonuses** and gate open/close state (deferred).
+- **AI**: the enemy-AI planner ignores `enter_org_max`, structure auras and
+  structure attacks for v1.
 
 ## Slice 2 — library authoring (shipped)
 

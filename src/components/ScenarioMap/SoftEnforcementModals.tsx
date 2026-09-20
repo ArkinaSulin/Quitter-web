@@ -95,12 +95,14 @@ export interface PendingWeaponSwitch {
   options?: { forceCast?: boolean };
 }
 
-/** Attacking a barrier over budget / past the attack cap (soft confirm). */
+/** Attacking a barrier/hex structure over budget / past the attack cap. */
 export interface PendingWallAttack {
   attacker: Unit;
-  /** The target wall edge. */
-  ref: EdgeRef;
-  /** Human label for the edge, e.g. "(0,0) ⇄ (1,0)". */
+  /** Edge structure target (walls/spikes). */
+  ref?: EdgeRef;
+  /** Hex structure target (gates/towers). */
+  hex?: Hex;
+  /** Human label for the target, e.g. "(0,0) ⇄ (1,0)" or "(2,1)". */
   label: string;
   overBudget: boolean;
   overCap: boolean;

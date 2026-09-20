@@ -116,3 +116,45 @@ export function zoneBlocksOrg(zones: GroundEffect[] | null | undefined, q: numbe
   if (!zones) return false;
   return zones.some(z => z.q === q && z.r === r && z.kind === 'enter_org_max' && orgLevel > (z.delta ?? 0));
 }
+
+/** The hex structure instance at a hex (keyed "q,r"), if any. */
+export function hexStructureAt(
+  structures: MapStructures | null | undefined,
+  hex: { q: number; r: number },
+): StructureInstance | null {
+  return structures?.[`${hex.q},${hex.r}`] ?? null;
+}
+
+/**
+ * Attack-roll flags a unit standing on a hex structure gains from its effect
+ * modifiers (tower auras). `advantage`/`disadvantage` affect the occupant's own
+ * attacks; `grant_advantage`/`grant_disadvantage` affect attackers targeting it.
+ */
+export interface StructureAuraFlags {
+  advantage: boolean;
+  disadvantage: boolean;
+  grantAdvantage: boolean;
+  grantDisadvantage: boolean;
+}
+
+export function structureAuraFlags(
+  hex: { q: number; r: number },
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+): StructureAuraFlags {
+  const flags: StructureAuraFlags = { advantage: false, disadvantage: false, grantAdvantage: false, grantDisadvantage: false };
+  const inst = hexStructureAt(structures, hex);
+  const t = inst ? templates?.[inst.templateId] : undefined;
+  for (const m of t?.modifiers ?? []) {
+    if (m.kind === 'advantage') flags.advantage = true;
+    else if (m.kind === 'disadvantage') flags.disadvantage = true;
+    else if (m.kind === 'grant_advantage') flags.grantAdvantage = true;
+    else if (m.kind === 'grant_disadvantage') flags.grantDisadvantage = true;
+  }
+  return flags;
+}
+
+/** True when any aura flag is set. */
+export function hasAuraFlags(f: StructureAuraFlags): boolean {
+  return f.advantage || f.disadvantage || f.grantAdvantage || f.grantDisadvantage;
+}
