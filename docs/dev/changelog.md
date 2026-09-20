@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Fix: authored map effects didn't repaint until a structure changed (2026-09-20)
+**Files:** src/components/MapEditor/MapCanvas.tsx, docs/dev/changelog.md
+
+- **Bug**: `MapCanvas`'s redraw effect's dependency array omitted `hexEffects`/`effectTemplates`, so painting an authored map effect only became visible when an unrelated prop it *did* track (`structures`, `terrainCosts`, …) changed.
+- **Fix**: added `hexEffects` and `effectTemplates` to the redraw deps.
+- `tsc` clean; `next build` clean.
+
 ## Map Editor Effects tab + permanent authored effects (2026-09-20)
 **Files:** src/lib/{mapEffects,mapEffects.test,mapEntities,unitEffects,unitEffects.test}.ts, src/types/gameProtocol.ts, src/components/MapEditor/{MapEditor,MapCanvas}.tsx, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{13-map-entities-terrain,changelog}.md
 

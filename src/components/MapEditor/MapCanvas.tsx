@@ -393,7 +393,7 @@ export function MapCanvas({
   // Redraw on prop edits without touching the view.
   useEffect(() => {
     requestAnimationFrame(draw);
-  }, [draw, terrainCosts, structures, templates, selectedStructureKey, imageUrl, offsetX, offsetY, scale]);
+  }, [draw, terrainCosts, structures, templates, hexEffects, effectTemplates, selectedStructureKey, imageUrl, offsetX, offsetY, scale]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
