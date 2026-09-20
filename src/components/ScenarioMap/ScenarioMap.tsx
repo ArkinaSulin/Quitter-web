@@ -31,6 +31,7 @@ import { AiOverlayData } from './aiTypes';
 import { isAiControllable } from '@/lib/enemyAI';
 import { ContextMenu } from './ContextMenu';
 import { UnitTooltip } from './UnitTooltip';
+import { MapInfoTooltip } from './MapInfoTooltip';
 import { ReplayOverlay } from './ReplayOverlay';
 import { UnitEditorModal } from './UnitEditorModal';
 import { PingLayer } from './PingLayer';
@@ -72,7 +73,6 @@ import { useCombatActions } from './useCombatActions';
 import { computeOverlayMap } from './useOverlay';
 import { TopBar } from './TopBar';
 import { SoftEnforcementModals, type PendingWallAttack } from './SoftEnforcementModals';
-import { ConfirmModal } from './ConfirmModal';
 
 interface ScenarioMapProps {
   scenarioId: string;
@@ -801,6 +801,25 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   // Wall edge under the pointer while dragging a unit (drag-to-attack hint).
   const [hoveredWallEdge, setHoveredWallEdge] = useState<EdgeRef | null>(null);
+  // Inspect mode: while Shift is held all unit/corpse tokens hide so the map
+  // (structures/effects) reads through, and Shift+drop attacks a structure.
+  const [shiftHeld, setShiftHeld] = useState(false);
+  // Hex/edge info-hover (structure + effect tooltip), from useHexGrid.
+  const [infoHover, setInfoHover] = useState<{ kind: 'hex' | 'edge'; hex?: Hex; edge?: EdgeRef; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(true); };
+    const up = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(false); };
+    const blur = () => setShiftHeld(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+    };
+  }, []);
 
   const { customDraw, captureAndUploadScreenshot } = useCanvasDraw({
     canvasRef,
@@ -830,6 +849,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     structures,
     templates: structureTemplates,
     hoveredWallEdge,
+    hideUnits: shiftHeld,
     groundZones,
     scenarioId,
     updateScreenshot,
@@ -899,10 +919,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // No to-hit roll: reaching the edge is the hit; the wall's DT gates the blow.
   // Costs 1 action and counts toward the attack cap (soft-enforced).
   const [pendingWallAttack, setPendingWallAttack] = useState<PendingWallAttack | null>(null);
-  // Dropping a unit on a hex that holds an attackable structure opens a small
-  // picker (attack the structure vs move onto the hex) — the hex target-picker.
-  const [hexAction, setHexAction] = useState<{ unit: Unit; hex: Hex } | null>(null);
-
   const performWallAttack = useCallback(async (attacker: Unit, ref: EdgeRef, force = false) => {
     const wall = walls[ref.key];
     const inst = structures[ref.key];
@@ -1700,7 +1716,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             if (!u || !canControlUnit(u)) return;
             // A drag one hex into a rear hex is a WITHDRAW (2 actions, no face
             // change, no scatter/pursue) — not a normal move. Confirm the cost.
-            if (canWithdraw(u) && !u.isCharging) {
+            // Under free-move there is no cost, so it is just a free move.
+            if (!freeMove && canWithdraw(u) && !u.isCharging) {
               const occupied = computeOccupiedHexes(units, unitId);
               const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
               const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
@@ -1824,10 +1841,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     canAttackStructure: (unitId, hex) => (reactionMode ? false : canAttackStructure(unitId, hex)),
     onAttackStructure: (unitId, hex) => {
       const unit = units.find(u => u.id === unitId);
-      if (unit) setHexAction({ unit, hex });
+      if (unit) void performStructureAttack(unit, hex);
     },
     onHoverWallEdge: setHoveredWallEdge,
-    canGrabUnit: (unit) => (reactionMode ? unit.id === reactionMode.archer.id : canControlUnit(unit)),
+    shiftHeld,
+    onHexHover: (hex, x, y) => setInfoHover({ kind: 'hex', hex, x, y }),
+    onEdgeHover: (edge, x, y) => setInfoHover({ kind: 'edge', edge, x, y }),
+    onHexLeave: () => setInfoHover(null),
+    onEdgeLeave: () => setInfoHover(null),
+    canGrabUnit: (unit) => (reactionMode ? unit.id === reactionMode.archer.id : !shiftHeld && canControlUnit(unit)),
     onGrabUnit: (unit) => { if (unit.attachedToUnitId) setActiveHeroId(unit.id); },
     onPing: (hex) => pingAtHex(hex, playerName, pingColor),
     activeHeroId,
@@ -2496,6 +2518,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         );
       })()}
 
+      {/* Hex/edge info tooltip (structures + effects). */}
+      {infoHover && (
+        <MapInfoTooltip
+          kind={infoHover.kind}
+          hex={infoHover.hex}
+          edge={infoHover.edge}
+          x={infoHover.x}
+          y={infoHover.y}
+          structures={structures}
+          templates={structureTemplates}
+          zones={groundZones}
+          sideBySide={shiftHeld}
+        />
+      )}
+
       {/* Context Menu */}
       {contextMenuUnit && contextMenuPos && (() => {
         const rallyCheck = canRally(contextMenuUnit, units, alliances, formationsMap);
@@ -2743,36 +2780,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             {isGM ? 'Connection lost — reconnecting…' : 'GM is offline — controls disabled until they return'}
           </span>
         </div>
-      )}
-
-      {/* Hex target-picker: a drop on a structure hex asks attack vs move. */}
-      {hexAction && (
-        <ConfirmModal
-          tone="amber"
-          title="Hex action"
-          buttons={[
-            {
-              label: 'Attack structure',
-              variant: 'red',
-              onClick: () => {
-                const a = hexAction;
-                setHexAction(null);
-                if (!controlsLocked) void performStructureAttack(a.unit, a.hex);
-              },
-            },
-            {
-              label: 'Move here',
-              onClick: () => {
-                const a = hexAction;
-                setHexAction(null);
-                if (!controlsLocked) void handleUnitMove(a.unit.id, a.hex);
-              },
-            },
-          ]}
-          onCancel={() => setHexAction(null)}
-        >
-          {hexAction.unit.unitName} at ({hexAction.hex.q}, {hexAction.hex.r}): attack the structure, or move onto the hex?
-        </ConfirmModal>
       )}
 
       {/* Soft-enforcement prompts (over-budget / cap / conversion confirms) */}

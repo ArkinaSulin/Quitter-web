@@ -46,6 +46,10 @@ interface CanvasDrawDeps {
   templates?: Record<string, StructureTemplate>;
   /** Wall edge highlighted while dragging a unit over it (drag-to-attack). */
   hoveredWallEdge?: EdgeRef | null;
+  /** Inspect mode (Shift held): hide all unit/hero tokens and corpse piles,
+   *  except `keepVisibleUnitId` (the unit currently being dragged). */
+  hideUnits?: boolean;
+  keepVisibleUnitId?: string | null;
   groundZones?: GroundEffect[];
   scenarioId: string;
   updateScreenshot: (scenarioId: string, file: File) => Promise<void>;
@@ -82,6 +86,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     structures,
     templates,
     hoveredWallEdge,
+    hideUnits = false,
+    keepVisibleUnitId = null,
     groundZones,
     scenarioId,
     updateScreenshot,
@@ -380,7 +386,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     // by q+r so the scatter is stable as piles grow). Each dot mirrors its dead
     // unit: team colour, mounted = triangle vs foot = circle, radius from size.
     // Drawn UNDER live tokens; corpses never occupy hexes or interact with rules.
-    if (corpseCounts) {
+    if (corpseCounts && !hideUnits) {
       ctx.save();
       for (const [key, groups] of Object.entries(corpseCounts)) {
         if (!groups || groups.length === 0) continue;
@@ -418,6 +424,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
 
     for (const unit of drawOrder) {
       if (unit.isDeleted || unit.attachedToUnitId || isDeadCorpse(unit)) continue;
+      // Inspect mode: hide every token except the unit being dragged (or a host
+      // whose attached hero is being dragged).
+      if (hideUnits && unit.id !== keepVisibleUnitId && attachedByHost.get(unit.id)?.id !== keepVisibleUnitId) continue;
       if (unit.hidden) {
         if (!isGM) continue;
         ctx.save();
@@ -514,7 +523,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     }
 
     // Active-effect pips: one colored dot per effect under the token (small, cheap).
-    if (!isGM) {
+    if (!isGM && !hideUnits) {
       ctx.save();
       for (const unit of displayUnits) {
         const effects = unit.effects ?? [];
@@ -739,7 +748,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, walls, structures, templates, hoveredWallEdge, groundZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, walls, structures, templates, hoveredWallEdge, hideUnits, keepVisibleUnitId, groundZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;

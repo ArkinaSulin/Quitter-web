@@ -652,8 +652,8 @@ fire at heroes is uncapped.
 ### Barriers (destructible walls)
 
 The GM can give a wall segment **Max HP** and a **Damage Threshold (DT)** in the
-wall editor. A segment with HP can be attacked: **drag your unit onto the wall
-edge**.
+wall editor. Structures are neutral scenery — to attack one, hold **Shift** and
+**drop** your unit on it (a plain drop just moves onto the hex).
 
 - You can reach it if you stand on one of the two hexes sharing the edge
   (**melee**), or if your weapon's **max range** covers the nearer of those two
@@ -672,12 +672,18 @@ edge**.
   attacks with **advantage** and attackers against it suffer **disadvantage**.
   A tower can also carry a **range** modifier, extending (or shrinking) the
   occupant's weapon range while they stand there.
-- **Gates / gate towers** (hex) have a **door**: drag a unit onto the hex to
-  attack it. The door absorbs damage first; once it is destroyed the structure's
-  own HP is exposed. If the hex could also be entered, you are asked whether to
-  **attack** or **move**. Costs 1 action and counts toward the attack limit.
-  An **open** gate (GM toggle) costs no extra movement and exposes the structure
-  directly — the door is bypassed.
+- **Gates / gate towers** (hex) have a **door**: **Shift-drop** a unit on the hex
+  to attack it. The door absorbs damage first; once it is destroyed the
+  structure's own HP is exposed. Costs 1 action and counts toward the attack
+  limit. An **open** gate (GM toggle) costs no extra movement and exposes the
+  structure directly — the door is bypassed.
+
+**Inspecting the map:** holding **Shift** hides every unit (and corpse pile) so
+the board reads through — the map's structures and effects stay visible. While
+Shift is held, hovering a **hex** shows its effects and hex structure (side by
+side), and hovering near an **edge** shows that barrier's tooltip (edge
+wall/spike). The pointer's edge hit-box is enlarged in this mode. Mouse over a
+hex/edge for info anytime; unit tokens keep their own tooltip.
 
 ### Magic & area spells
 
@@ -836,7 +842,8 @@ entering a kill zone still costs the move, but leaving is just a move.
 
 **Withdraw (2 actions):** for a formed unit, the two hexes directly behind it are
 shown **white** in the drag overlay. Dropping there is a **Withdraw** — a confirm
-states the cost (2 actions; free in free-move) before it applies. You step
+states the cost (2 actions; **free in free-move**, where it is just a normal move
+with no prompt) before it applies. You step
 straight back **keeping your facing**, and it **never scatters and never
 provokes** — the ordered way out. You can't withdraw into an enemy kill zone, and
 archer reaction fire still applies. (Loose units — Heroes, Scattered, Routed —

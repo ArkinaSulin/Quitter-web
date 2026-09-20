@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Shift inspect mode + Shift-drop structure attacks; free-move withdraw fix (2026-09-20)
+**Files:** src/components/ScenarioMap/{ScenarioMap,MapInfoTooltip(new),useCanvasDraw}.tsx, src/hooks/useHexGrid.ts, docs/players/player-manual.md, docs/dev/changelog.md
+
+- **Withdraw in free-move**: the withdraw interception in `onUnitMove` is now guarded by `!freeMove`, so a rear-hex drag under free-move is a plain free move (no confirm, no cost).
+- **Shift = inspect map**: holding Shift hides all unit/hero tokens and corpse piles (`useCanvasDraw` `hideUnits`), keeping terrain/structures/effects visible; unit grab/hover is disabled while Shift is held. Pressing Shift mid-drag keeps working because the drop reads `event.shiftKey`.
+- **Shift + drop = attack a structure** (edge walls/spikes and hex gates/towers): `useHexGrid.handleMouseUp` routes to the attack only when Shift is held; a plain drop moves. The old "attack vs move" target-picker modal is removed (reach gates `canAttackWallEdge`/`canAttackStructure` stay).
+- **Hex/edge info tooltips** (new `MapInfoTooltip`): hovering a hex shows its effects and hex structure (priority effect → structure), each edge structure has its own tooltip, and the edge hit-box is enlarged while Shift is held. With Shift, the hex tooltip shows effect + structure side by side. A "Shift + drop a unit here to attack" hint is shown on structure tooltips.
+- Docs: player manual (free-move withdraw; Shift inspect; Shift-drop attack). `tsc` clean; 703 tests pass; `next build` clean. No DB change.
+
 ## Fix: authored map effects didn't repaint until a structure changed (2026-09-20)
 **Files:** src/components/MapEditor/MapCanvas.tsx, docs/dev/changelog.md
 

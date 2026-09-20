@@ -62,6 +62,14 @@ export interface UseHexGridProps {
   canAttackStructure?: (unitId: string, hex: Hex) => boolean;
   /** Wall edge under the pointer while dragging (for the overlay hint). */
   onHoverWallEdge?: (edge: EdgeRef | null) => void;
+  /** Inspect mode (Shift held): unit hover is suppressed and hex/edge info hover fires. */
+  shiftHeld?: boolean;
+  /** Hover on a hex with no unit under the cursor (hex info tooltip). */
+  onHexHover?: (hex: Hex, x: number, y: number) => void;
+  onHexLeave?: () => void;
+  /** Hover near a wall edge (edge structure tooltip). */
+  onEdgeHover?: (edge: EdgeRef, x: number, y: number) => void;
+  onEdgeLeave?: () => void;
   /** Permission gate for grabbing a token (drag-move/attack). Return false to silently not grab. */
   canGrabUnit?: (unit: Unit) => boolean;
   /** Fired when a token starts being grabbed — lets callers auto-activate an
@@ -99,6 +107,11 @@ export function useHexGrid({
   onAttackStructure,
   canAttackStructure,
   onHoverWallEdge,
+  shiftHeld = false,
+  onHexHover,
+  onHexLeave,
+  onEdgeHover,
+  onEdgeLeave,
   canGrabUnit,
   onGrabUnit,
   onPing,
@@ -123,6 +136,8 @@ export function useHexGrid({
   const rafIdRef = useRef<number | null>(null);
   /** Last reported hovered wall-edge key (dedupes the overlay-hint callback). */
   const hoveredEdgeKeyRef = useRef<string | null>(null);
+  /** Last reported hex/edge info-hover key (dedupes the tooltip callbacks). */
+  const hoveredInfoKeyRef = useRef<string | null>(null);
   const pointerDownRef = useRef<{ unitId: string; x: number; y: number } | null>(null);
 
   const bgImageRef = useRef<HTMLImageElement | null>(null);
@@ -318,12 +333,12 @@ export function useHexGrid({
     return { x: (x - offsetX) / zoom, y: (y - offsetY) / zoom };
   }, [canvasRef, offsetX, offsetY, zoom]);
 
-  /** The nearest wall edge to a screen point, within the drop threshold. */
-  const getWallEdgeAt = useCallback((screenX: number, screenY: number): EdgeRef | null => {
+  /** The nearest wall edge to a screen point, within a fraction-of-hex threshold. */
+  const getWallEdgeAt = useCallback((screenX: number, screenY: number, ratio = 0.38): EdgeRef | null => {
     const hex = getHexFromScreen(screenX, screenY);
     if (!hex) return null;
     const world = getWorldFromScreen(screenX, screenY);
-    return nearestWallEdge(walls, hex, world, size, size * 0.38);
+    return nearestWallEdge(walls, hex, world, size, size * ratio);
   }, [getHexFromScreen, getWorldFromScreen, walls, size]);
 
   const getUnitAt = useCallback((hex: Hex): Unit | undefined => {
@@ -341,15 +356,41 @@ export function useHexGrid({
     if (hex) setHoveredHex(hex);
 
     const unit = hex ? getUnitAt(hex) : undefined;
-    if (unit && unit !== lastHoveredUnit) {
-      setLastHoveredUnit(unit);
+    // Inspect mode (Shift) suppresses unit hover so the map info tooltip shows.
+    const hoverUnit = shiftHeld ? undefined : unit;
+    if (hoverUnit && hoverUnit !== lastHoveredUnit) {
+      setLastHoveredUnit(hoverUnit);
       if (onUnitHover) {
         const rect = canvasRef.current!.getBoundingClientRect();
-        onUnitHover(unit, e.clientX - rect.left, e.clientY - rect.top);
+        onUnitHover(hoverUnit, e.clientX - rect.left, e.clientY - rect.top);
       }
-    } else if (!unit && lastHoveredUnit) {
+    } else if (!hoverUnit && lastHoveredUnit) {
       setLastHoveredUnit(null);
       if (onUnitLeave) onUnitLeave();
+    }
+
+    // Hex/edge info hover (skip while a unit tooltip is showing). The edge
+    // hit-box is enlarged in inspect mode for easier navigation.
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const infoKey = (() => {
+      if (hoverUnit || draggingUnitId || !hex || !rect) return null;
+      const edge = getWallEdgeAt(e.clientX, e.clientY, shiftHeld ? 0.6 : 0.38);
+      return edge ? `e:${edge.key}` : `h:${hex.q},${hex.r}`;
+    })();
+    if (infoKey !== hoveredInfoKeyRef.current) {
+      hoveredInfoKeyRef.current = infoKey;
+      onHexLeave?.();
+      onEdgeLeave?.();
+      if (infoKey && hex && rect) {
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        if (infoKey.startsWith('e:')) {
+          const edge = getWallEdgeAt(e.clientX, e.clientY, shiftHeld ? 0.6 : 0.38);
+          if (edge) onEdgeHover?.(edge, sx, sy);
+        } else {
+          onHexHover?.(hex, sx, sy);
+        }
+      }
     }
 
     if (isPanning && panStart) {
@@ -368,7 +409,7 @@ export function useHexGrid({
       hoveredEdgeKeyRef.current = nextEdge?.key ?? null;
       onHoverWallEdge?.(nextEdge);
     }
-  }, [getHexFromScreen, getUnitAt, isPanning, panStart, lastHoveredUnit, onUnitHover, onUnitLeave, draggingUnitId, canAttackWallEdge, getWallEdgeAt, onHoverWallEdge]);
+  }, [getHexFromScreen, getUnitAt, isPanning, panStart, lastHoveredUnit, onUnitHover, onUnitLeave, draggingUnitId, canAttackWallEdge, getWallEdgeAt, onHoverWallEdge, shiftHeld, onHexHover, onHexLeave, onEdgeHover, onEdgeLeave]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const hex = getHexFromScreen(e.clientX, e.clientY);
@@ -432,13 +473,16 @@ export function useHexGrid({
         const targetUnit = getUnitAt(targetHex);
         const wallEdge = getWallEdgeAt(e.clientX, e.clientY);
         const canHitWall = !!wallEdge && (!canAttackWallEdge || canAttackWallEdge(draggingUnitId, wallEdge));
+        // Structure attacks require Shift at drop (plain drop = move). This is
+        // the same gesture for edge (walls/spikes) and hex (gates/towers).
+        const shift = e.shiftKey;
         if (targetUnit && targetUnit.id !== draggingUnitId) {
           if (onAttack) onAttack(draggingUnitId, targetUnit.id);
-        } else if (!targetUnit && canHitWall && onAttackWall) {
-          // Dropped onto a wall segment the unit can reach: attack the barrier.
+        } else if (!targetUnit && shift && canHitWall && onAttackWall) {
+          // Shift-dropped onto a wall segment the unit can reach: attack it.
           onAttackWall(draggingUnitId, wallEdge!);
-        } else if (!targetUnit && onAttackStructure && canAttackStructure?.(draggingUnitId, targetHex)) {
-          // Dropped onto a hex with an attackable structure (gate/tower).
+        } else if (!targetUnit && shift && onAttackStructure && canAttackStructure?.(draggingUnitId, targetHex)) {
+          // Shift-dropped onto a hex with an attackable structure (gate/tower).
           onAttackStructure(draggingUnitId, targetHex);
         } else if (!targetUnit) {
           if (unit.hex.q !== targetHex.q || unit.hex.r !== targetHex.r) {
