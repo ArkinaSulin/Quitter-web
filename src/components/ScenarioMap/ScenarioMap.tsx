@@ -57,7 +57,8 @@ import { MapEntity } from '@/lib/mapEntities';
 import { AddEffectModal } from './AddEffectModal';
 import { EffectFormModal, EffectFormValue } from './EffectFormModal';
 import { EffectTemplate, templateById } from '@/lib/unitEffects';
-import { EffectModifier } from '@/lib/effectTemplates';
+import { EffectModifier, EffectTemplate as EffectLibraryTemplate, mapEffectRow } from '@/lib/effectTemplates';
+import { expandHexEffects } from '@/lib/mapEffects';
 import { routeUnit } from './routeUnit';
 import { ScenarioStatsModal } from './ScenarioStatsModal';
 import { parseDragPayload } from './EffectsPanel';
@@ -651,11 +652,23 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       scale: entity.scale,
       gridRadius: entity.gridRadius,
     };
+    // Expand authored per-hex effects into PERMANENT ground zones.
+    let authoredZones: GroundEffect[] = [];
+    if ((entity.hexEffects ?? []).length > 0) {
+      const { data } = await supabase.from('effect_templates').select('*');
+      const lib: Record<string, EffectLibraryTemplate> = {};
+      for (const row of (data ?? []) as any[]) {
+        const t = mapEffectRow(row);
+        lib[t.id] = t;
+      }
+      authoredZones = expandHexEffects(entity.hexEffects, lib);
+    }
     setBackgroundConfig(bg);
     setTerrainCosts(entity.terrainCosts);
     setStructures(entity.structures ?? {});
+    setGroundZones(authoredZones);
     setMapId(entity.id);
-    await persistMapData({ backgroundConfig: bg, terrainCosts: entity.terrainCosts, structures: entity.structures ?? {}, mapId: entity.id });
+    await persistMapData({ backgroundConfig: bg, terrainCosts: entity.terrainCosts, structures: entity.structures ?? {}, groundEffects: authoredZones, mapId: entity.id });
     addMessage(`Loaded map "${entity.name}" — snapshot copied to this scenario`);
   }, [persistMapData, addMessage]);
 
@@ -663,8 +676,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setBackgroundConfig(null);
     setTerrainCosts({});
     setStructures({});
+    setGroundZones([]);
     setMapId(null);
-    await persistMapData({ backgroundConfig: null, terrainCosts: {}, structures: {}, mapId: null });
+    await persistMapData({ backgroundConfig: null, terrainCosts: {}, structures: {}, groundEffects: [], mapId: null });
     addMessage('Map cleared — plain board');
   }, [persistMapData, addMessage]);
 

@@ -267,6 +267,8 @@ export interface GroundEffect {
   zIndex?: number;
   duration: number;
   turnsLeft: number;
+  /** A permanent zone (e.g. authored on a map board): never ticks or expires. */
+  permanent?: boolean;
   casterUnitId?: string | null;
   casterTeam?: string | null;
   casterPlayerId?: string | null;

@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Map Editor Effects tab + permanent authored effects (2026-09-20)
+**Files:** src/lib/{mapEffects,mapEffects.test,mapEntities,unitEffects,unitEffects.test}.ts, src/types/gameProtocol.ts, src/components/MapEditor/{MapEditor,MapCanvas}.tsx, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{13-map-entities-terrain,changelog}.md
+
+- **Map Editor "Effects" tab** (next to Structures): loads the zone-capable `effect_templates` as a palette, then click/drag hexes to paint a per-hex effect (one per hex) into `maps.hex_effects`; clicking a hex's own effect clears it, right-click clears. `MapCanvas` renders authored effects (tint + colour marker + artwork).
+- **Authored board effects are permanent.** New `GroundEffect.permanent`; `unitEffects.computeEndTurnEffects` **skips tick/expiry** for permanent zones (stat membership reconcile still runs, so entering/leaving still applies buffs). Map-authored effects are always permanent.
+- **Assign snapshot**: `ScenarioMap.assignMap` runs `mapEffects.expandHexEffects` (one zone per template modifier) into `scenarios.map_data.groundEffects` (and `clearMap` resets them), so the whole ground-effect runtime — memberships, `range`, `mp_cost`, `enter_org_max`, DoT/entry — works on authored boards.
+- No DB migration (`maps.hex_effects` already existed). Tests: `mapEffects.test.ts` + a permanent-zone engine test. `tsc` clean; 703 tests pass; `next build` clean.
+
 ## Structure images bucket + gate-tower badge swap (migration 097) (2026-09-20)
 **Files:** supabase/migrations/097_structure_images_bucket.sql (new), src/components/StructureEditor/StructureEditor.tsx, src/components/ScenarioMap/useCanvasDraw.ts, src/components/MapEditor/MapCanvas.tsx, docs/dev/02-schema-and-migrations.md
 

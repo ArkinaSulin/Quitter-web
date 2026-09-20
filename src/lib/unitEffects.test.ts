@@ -232,6 +232,19 @@ describe('computeEndTurnEffects', () => {
     expect(step!.changes.find(c => c.field === 'currentAc')!.to).toBe(12); // restored
   });
 
+  it('a permanent zone never ticks or expires across many turns', () => {
+    const perm: GroundEffect = { key: 'p1', q: 0, r: 0, name: 'Ancient Ward', color: '#ffffff', kind: 'ac', delta: 2, duration: 0, turnsLeft: 0, permanent: true };
+    const u = unit('u', 'blue');
+    let zones: GroundEffect[] = [perm];
+    for (let i = 0; i < 6; i++) {
+      const res = computeEndTurnEffects({ units: [u], zones, nextGroup: 'friendly', alliances: groups, makeKey });
+      zones = res.zonesAfter;
+    }
+    expect(zones).toHaveLength(1);
+    expect(zones[0].turnsLeft).toBe(0); // never decremented
+    expect(zones[0].permanent).toBe(true);
+  });
+
   it('a stat zone expires at 0 on its caster activation: removed + memberships restored', () => {
     const zone: GroundEffect = { key: 'z1', q: 0, r: 0, name: 'Acid Pool', color: '#88ff44', kind: 'ac', delta: -2, duration: 1, turnsLeft: 1, casterTeam: 'blue', casterUnitId: 'caster' };
     const caster = unit('caster', 'blue', h(3, 3));

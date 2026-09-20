@@ -14,9 +14,10 @@ import { edgeRef } from '@/lib/walls';
 import { MapStructures } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
+import { EffectTemplate, mapEffectRow } from '@/lib/effectTemplates';
 import { MapCanvas } from './MapCanvas';
 
-type Tab = 'image' | 'movement' | 'structures';
+type Tab = 'image' | 'movement' | 'structures' | 'effects';
 
 function blankMap(): MapEntity {
   return {
@@ -177,6 +178,50 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     update({ terrainCosts });
   }, [entity, update]);
 
+  // ---- effects (authored per-hex effect templates) ----
+  const [effectTemplates, setEffectTemplates] = useState<Record<string, EffectTemplate>>({});
+  const [effectTemplateId, setEffectTemplateId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from('effect_templates')
+      .select('*')
+      .order('name', { ascending: true })
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const map: Record<string, EffectTemplate> = {};
+        for (const row of data as any[]) {
+          const t = mapEffectRow(row);
+          // Hex-authored effects only make sense for zone-capable templates.
+          if (t.scope !== 'unit') map[t.id] = t;
+        }
+        setEffectTemplates(map);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (effectTemplateId && !effectTemplates[effectTemplateId]) setEffectTemplateId(null);
+  }, [effectTemplates, effectTemplateId]);
+
+  /** Paint the armed template on a hex (one effect per hex). Clicking the same
+   *  template on its own hex clears it; a different template replaces it. */
+  const paintHexEffect = useCallback((q: number, r: number) => {
+    if (!entity || !effectTemplateId) return;
+    const existing = entity.hexEffects.find(h => h.q === q && h.r === r);
+    const next = existing && existing.effectId === effectTemplateId
+      ? entity.hexEffects.filter(h => !(h.q === q && h.r === r))
+      : [...entity.hexEffects.filter(h => !(h.q === q && h.r === r)), { q, r, effectId: effectTemplateId }];
+    update({ hexEffects: next });
+  }, [entity, effectTemplateId, update]);
+
+  const clearHexEffect = useCallback((q: number, r: number) => {
+    if (!entity) return;
+    update({ hexEffects: entity.hexEffects.filter(h => !(h.q === q && h.r === r)) });
+  }, [entity, update]);
+
+
   // ---- structures ----
   const [templates, setTemplates] = useState<Record<string, StructureTemplate>>({});
   const [paletteId, setPaletteId] = useState<string | null>(null);
@@ -284,6 +329,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     { id: 'image', label: 'Image' },
     { id: 'movement', label: 'Movement cost' },
     { id: 'structures', label: 'Structures' },
+    { id: 'effects', label: 'Effects' },
   ];
 
   return (
@@ -526,6 +572,40 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                 )}
               </>
             )}
+
+            {tab === 'effects' && entity && (
+              <>
+                <p className="text-[10px] uppercase tracking-wide text-gray-500">Map effects (permanent)</p>
+                <div className="space-y-1 max-h-72 overflow-y-auto">
+                  {Object.values(effectTemplates).length === 0 && (
+                    <p className="text-xs text-gray-500">No zone-capable effects yet — author them in the Effect Editor.</p>
+                  )}
+                  {Object.values(effectTemplates).map(t => {
+                    const active = effectTemplateId === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        disabled={readOnly}
+                        onClick={() => setEffectTemplateId(active ? null : t.id)}
+                        className={`w-full text-left text-xs px-2 py-1.5 rounded border ${active ? 'bg-yellow-700/40 border-yellow-500' : 'bg-gray-800 border-transparent hover:bg-gray-700'}`}
+                      >
+                        <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ backgroundColor: t.color }} />
+                        {t.name}
+                        <span className="block text-[10px] text-gray-400">{t.scope} · {t.modifiers.map(m => m.kind).join('+') || '—'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-gray-500">
+                  {effectTemplateId
+                    ? 'Effect pen armed — click/drag hexes to place (one per hex); clicking its own hex clears it. Right-click clears. Esc exits.'
+                    : 'Pick an effect to place it on hexes.'}
+                </p>
+                <p className="text-xs text-gray-400">
+                  Authored effects are <span className="text-amber-300">permanent</span> and snapshot into the scenario on assign.
+                </p>
+              </>
+            )}
           </div>
         </div>
 
@@ -542,6 +622,9 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
             templates={templates}
             structureAnchors={tab === 'structures' ? armedAnchor : null}
             selectedStructureKey={selectedStructureKey}
+            hexEffects={entity.hexEffects}
+            effectTemplates={effectTemplates}
+            effectArmed={tab === 'effects' && !!effectTemplateId}
             paintValue={tab === 'movement' ? paintValue : null}
             readOnly={readOnly}
             onPaintHex={handlePaint}
@@ -549,6 +632,8 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
             onPaintStructureEdge={paintStructureEdge}
             onPaintStructureHex={paintStructureHex}
             onClearStructure={clearStructure}
+            onPaintEffect={paintHexEffect}
+            onClearEffect={clearHexEffect}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-500">

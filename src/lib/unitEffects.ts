@@ -525,6 +525,9 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
   // --- 3: ground zones tick/expire ---
   const removedZones: string[] = [];
   for (const zone of zonesAfter) {
+    // Permanent zones (authored on a map board) never tick or expire — their
+    // memberships live as long as the zone itself.
+    if (zone.permanent) continue;
     const casterActive = zone.casterTeam ? activeTeams.has(zone.casterTeam) : nextGroup === firstActive;
     const casterDead = zone.casterUnitId ? !alive(zone.casterUnitId) : false;
     if (!casterActive && !casterDead) continue;

@@ -5,13 +5,9 @@
 
 import { TerrainCosts } from '@/components/ScenarioMap/mapGeometry';
 import { MapStructures, parseStructures } from '@/lib/mapStructures';
+import { MapHexEffect, parseHexEffects } from '@/lib/mapEffects';
 
-/** Reserved per-hex authored effects (future map-effects pass). Unused in v1. */
-export type MapHexEffect = {
-  q: number;
-  r: number;
-  effectId: string;
-};
+export type { MapHexEffect };
 
 export interface MapEntity {
   id: string;
@@ -48,7 +44,7 @@ export function mapMapRow(row: any): MapEntity {
     gridRadius: Number(row.grid_radius) || MAP_DEFAULTS.gridRadius,
     terrainCosts: parseTerrainCosts(row.terrain_costs),
     structures: parseStructures(row.structures),
-    hexEffects: Array.isArray(row.hex_effects) ? row.hex_effects : [],
+    hexEffects: parseHexEffects(row.hex_effects),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
