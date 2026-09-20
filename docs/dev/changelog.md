@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Map Structure Editor + template library (migration 093) — Slice 1 (2026-09-20)
+**Files:** src/types/structure.ts (new), src/lib/{structureTemplates,structureTemplates.test,effectTemplates,unitEffects}.ts, src/types/gameProtocol.ts, src/components/StructureEditor/{StructureEditor,StructurePreview}.tsx (new), src/components/EffectEditor/EffectModifierFields.tsx, app/structure-editor/page.tsx (new), src/hooks/useProfile.ts, src/components/Lobby.tsx, supabase/migrations/093_map_structure_templates.sql (new), docs/dev/{README,14-editors,18-map-structures,outstanding}.md
+
+- **Authored structure library** (`map_structure_templates`, migration **093**): name/description/anchor ('edge'|'hex')/colour/image, `battlement`, directional edge faces **Inside (A)** / **Outside (B)** (block / move cost / melee AC / ranged AC), hex move cost, optional **Door HP** (NULL = none), durability **Max HP 30 / DT 15**, and a standard `modifiers` jsonb. Caps `can_view_structure_editor` / `can_use_structure_editor` + RLS mirror the effect/weapon editors; 9 starter templates seeded (archer spikes, wood/stone wall, gates, gate towers, watch towers).
+- **Structures are anchored, not multi-hex**: edge structures carry one directional face per side; hex structures carry an entry cost and an optional destructible door (door resolves door-first, then structure HP — combat lands in a later slice).
+- **New reusable effect kind `enter_org_max`**: only formations with an org level ≤ the value may enter. Added to `EffectModifierKind`/`EffectKind`, the modifier-row UI and `statFieldOf`; usable on zones and structures (movement consumption is pending).
+- **Map Structure Editor** (`/structure-editor`, arranged like the Effect Editor): 3 panels — searchable template list (New/Clone), the form, and a `StructurePreview` drawing the segment with its battlement square-wave + per-face cost/AC labels (or the hex with image/door badges). Lobby button + `useProfile` access caps.
+- **Slices 2–4 pending** (see `docs/dev/18-map-structures.md`): Map Editor Structures tab + `maps.structures`, scenario unification (`map_data.structures`, per-key `STRUCTURE` substeps, wall wipe), hex door/aura combat + drop target-picker. `tsc` clean; 672 tests pass. **Apply 093 in Supabase.**
+
 ## Edge walls Phase 2: destructible segments (migration 092) (2026-09-20)
 **Files:** src/lib/{walls,walls.test,wallCombat,wallCombat.test,commandLog}.ts, src/hooks/{useGameEngine,useHexGrid}.ts, src/components/ScenarioMap/{ScenarioMap,useOverlay,useCanvasDraw,WallPaintPanel,LeftPanel,SoftEnforcementModals}.tsx, src/components/MapEditor/MapEditor.tsx, supabase/migrations/092_wall_command_log.sql (new), docs/dev/13-map-entities-terrain.md, docs/players/player-manual.md
 

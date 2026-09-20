@@ -31,6 +31,8 @@ interface AccessRow {
   can_use_effect_editor: boolean;
   can_view_weapon_editor: boolean;
   can_use_weapon_editor: boolean;
+  can_view_structure_editor: boolean;
+  can_use_structure_editor: boolean;
 }
 
 export interface Access {
@@ -47,9 +49,11 @@ export interface Access {
   canUseEffectEditor: boolean;
   canViewWeaponEditor: boolean;
   canUseWeaponEditor: boolean;
+  canViewStructureEditor: boolean;
+  canUseStructureEditor: boolean;
 }
 
-const EMPTY_ACCESS: Access = { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false, canViewShipEditor: false, canUseShipEditor: false, canViewMapEditor: false, canUseMapEditor: false, canViewEffectEditor: false, canUseEffectEditor: false, canViewWeaponEditor: false, canUseWeaponEditor: false };
+const EMPTY_ACCESS: Access = { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false, canViewShipEditor: false, canUseShipEditor: false, canViewMapEditor: false, canUseMapEditor: false, canViewEffectEditor: false, canUseEffectEditor: false, canViewWeaponEditor: false, canUseWeaponEditor: false, canViewStructureEditor: false, canUseStructureEditor: false };
 
 let accessCache: Record<string, AccessRow> | null = null;
 
@@ -73,6 +77,8 @@ async function loadAccessMatrix(): Promise<Record<string, AccessRow>> {
       can_use_effect_editor: !!row.can_use_effect_editor,
       can_view_weapon_editor: !!row.can_view_weapon_editor,
       can_use_weapon_editor: !!row.can_use_weapon_editor,
+      can_view_structure_editor: !!row.can_view_structure_editor,
+      can_use_structure_editor: !!row.can_use_structure_editor,
     };
     return acc;
   }, {});
@@ -96,6 +102,8 @@ function accessForRole(role: ProfileRole): Access {
     canUseEffectEditor: row.can_use_effect_editor,
     canViewWeaponEditor: row.can_view_weapon_editor,
     canUseWeaponEditor: row.can_use_weapon_editor,
+    canViewStructureEditor: row.can_view_structure_editor,
+    canUseStructureEditor: row.can_use_structure_editor,
   };
 }
 

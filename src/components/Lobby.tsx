@@ -376,6 +376,8 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const canUseEffectEditor = !!currentUser && !!access?.canUseEffectEditor;
   const canViewWeaponEditor = !!currentUser && (!!access?.canViewWeaponEditor || !!access?.canUseWeaponEditor);
   const canUseWeaponEditor = !!currentUser && !!access?.canUseWeaponEditor;
+  const canViewStructureEditor = !!currentUser && (!!access?.canViewStructureEditor || !!access?.canUseStructureEditor);
+  const canUseStructureEditor = !!currentUser && !!access?.canUseStructureEditor;
 
   const renderHeader = () => (
     <div className="flex flex-col items-center px-6 py-3 border-b border-gray-700 bg-[#0d0d1a]">
@@ -482,7 +484,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
               Replay Scenario
             </button>
           )}
-          {(role === 'admin' || canViewShipEditor || canViewUnitEditor || canViewMapEditor || canViewEffectEditor || canViewWeaponEditor) && (
+          {(role === 'admin' || canViewShipEditor || canViewUnitEditor || canViewMapEditor || canViewEffectEditor || canViewWeaponEditor || canViewStructureEditor) && (
             <div className="border-t border-gray-700" />
           )}
           {canViewShipEditor && (
@@ -548,6 +550,19 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                 }}
               >
                 {canUseWeaponEditor ? 'Weapon Editor' : 'Weapon Library'}
+              </button>
+            )}
+            {canViewStructureEditor && (
+              <button
+                onClick={() => router.push('/structure-editor')}
+                className="w-full py-2 border rounded hover:brightness-125 transition"
+                style={{
+                  borderColor: '#8a7a12',
+                  background: 'repeating-linear-gradient(45deg, #2c2608 0, #2c2608 10px, #0f0d08 10px, #0f0d08 20px)',
+                  color: '#f5efd2',
+                }}
+              >
+                {canUseStructureEditor ? 'Structure Editor' : 'Structure Library'}
               </button>
             )}
           {/* Delete Scenario — always the very last action button */}

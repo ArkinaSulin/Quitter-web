@@ -80,6 +80,7 @@ Two big ideas make the whole system coherent:
 | [15](15-token-rendering.md) | Token rendering | Token anatomy, team shapes, dots/hearts/action badge, formation layouts, hero tokens, effect pips | `src/components/TokenRenderer/drawToken.ts`, `tokenUtils.ts` |
 | [16](16-ship-builder.md) | Ship builder (Shipyard) | Ship stats engine (v8.1 FINAL) + editor/renderer — **engine pending**, devs only | `src/lib/shipStats.ts`, `src/types/ship.ts`, `src/components/ShipEditor/*`, migrations 059/066–070 |
 | [17](17-enemy-ai.md) | AI assist (enemy AI) | GM plotting tool: planner gates, preview routes, execute-through-action-path, undo macro | `src/lib/enemyAI/*`, `src/components/ScenarioMap/{AiPanel,aiTypes,useCanvasDraw}.ts(x)`, migration 076 |
+| [18](18-map-structures.md) | Map structures | Structure template library (walls/spikes/gates/towers), inside/outside faces + battlement, doors, `enter_org_max` — placement pending | `src/types/structure.ts`, `src/lib/structureTemplates.ts`, `src/components/StructureEditor/*`, migration 093 |
 | — | [changelog](changelog.md) | Session history (newest first) | append-only |
 | — | [outstanding](outstanding.md) | Forward-looking backlog / roadmap for next sessions | statuses: next / later / blocked |
 | — | [legacy/HANDBOOK.md](legacy/HANDBOOK.md) | Archived pre-reorg technical doc | read for history only |

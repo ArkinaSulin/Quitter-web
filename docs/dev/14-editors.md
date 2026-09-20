@@ -78,3 +78,26 @@ missing — Max MP was the canonical bug).
 
 See `16-ship-builder.md` and `13-map-entities-terrain.md`. Both follow the
 same 3-panel + read-only + RLS pattern.
+
+## Structure Editor (`/structure-editor`, read-only for non-authors)
+
+Authors reusable **map structure templates** (walls, spikes, gates, towers) in
+the `map_structure_templates` table (migration **093**; caps
+`can_view_structure_editor` / `can_use_structure_editor`). Laid out like the
+Effect Editor: left = template list (search, New, Clone), middle = the form,
+right = a `StructurePreview`.
+
+- **Anchor** `edge` or `hex`. Edge structures carry two directional faces —
+  **Inside (A)** / **Outside (B)** — each with block / move cost / melee AC /
+  ranged AC; a `battlement` flag draws crenellations on the outside face.
+- Hex structures carry an extra entry MP cost and an optional **Door HP**
+  (`NULL` = no door; the door shares the template DT and resolves door-first,
+  then the structure HP).
+- **Durability** `maxHp` (default 30) / `dt` (default 15).
+- **Modifiers** reuse the effect modifier row (`EffectModifierFields`), so a
+  tower can carry `advantage` + `grant_disadvantage` auras, entry damage, or the
+  reusable **`enter_org_max`** gate (only formations at or below an org level may
+  enter the hex/edge).
+
+See `18-map-structures.md` for the model and what is still pending (placement,
+movement/combat consumption, wall unification).

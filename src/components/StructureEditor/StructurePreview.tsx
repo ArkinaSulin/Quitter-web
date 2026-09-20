@@ -1,0 +1,169 @@
+'use client';
+// src/components/StructureEditor/StructurePreview.tsx
+// Right-panel preview for the Structure Editor. Edge structures draw the segment
+// with its battlement (crenellation) square-wave on the OUTSIDE face plus the
+// per-face MP/AC labels; hex structures draw a 7-hex board with the artwork and
+// the movement-cost / door / durability badges. A local Flip button swaps which
+// side is shown as outside (the real side is chosen per placement).
+import React, { useState } from 'react';
+import { StructureAnchor } from '@/types/structure';
+
+const HEX_DIRS = [
+  { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
+  { q: -1, r: 0 }, { q: 0, r: -1 }, { q: 1, r: -1 },
+];
+const hexToPixel = (q: number, r: number, size: number) => ({
+  x: size * (Math.sqrt(3) * q + (Math.sqrt(3) / 2) * r),
+  y: size * 1.5 * r,
+});
+
+export interface PreviewFace {
+  block: boolean;
+  moveCost: number | null;
+  meleeAc: number | null;
+  rangedAc: number | null;
+}
+
+interface StructurePreviewProps {
+  anchor: StructureAnchor;
+  color: string;
+  imageUrl: string;
+  battlement: boolean;
+  inside: PreviewFace;
+  outside: PreviewFace;
+  hexMoveCost: number | null;
+  doorHp: number | null;
+  maxHp: number;
+  dt: number;
+}
+
+function faceLabel(f: PreviewFace): string {
+  const bits: string[] = [];
+  bits.push(f.block ? 'block' : 'pass');
+  if (f.moveCost !== null) bits.push(`MP ${f.moveCost}`);
+  const ac: string[] = [];
+  if (f.meleeAc) ac.push(`m${f.meleeAc}`);
+  if (f.rangedAc) ac.push(`r${f.rangedAc}`);
+  if (ac.length) bits.push(`AC ${ac.join('/')}`);
+  return bits.join(' · ');
+}
+
+export function StructurePreview({
+  anchor, color, imageUrl, battlement, inside, outside, hexMoveCost, doorHp, maxHp, dt,
+}: StructurePreviewProps) {
+  const [flipped, setFlipped] = useState(false);
+
+  if (anchor === 'hex') {
+    const S = 28;
+    const dirs = [{ q: 0, r: 0 }, ...HEX_DIRS];
+    const pts = dirs.map(d => hexToPixel(d.q, d.r, S));
+    const pad = 4;
+    const minX = Math.min(...pts.map(p => p.x)) - S * Math.cos(Math.PI / 6);
+    const maxX = Math.max(...pts.map(p => p.x)) + S * Math.cos(Math.PI / 6);
+    const minY = Math.min(...pts.map(p => p.y)) - S;
+    const maxY = Math.max(...pts.map(p => p.y)) + S;
+    const W = Math.round(maxX - minX + pad * 2);
+    const H = Math.round(maxY - minY + pad * 2);
+    const toX = (x: number) => x - minX + pad;
+    const toY = (y: number) => y - minY + pad;
+    const hexPoints = (cx: number, cy: number) =>
+      Array.from({ length: 6 }, (_, i) => {
+        const a = ((60 * i - 30) * Math.PI) / 180;
+        return `${cx + S * Math.cos(a)},${cy + S * Math.sin(a)}`;
+      }).join(' ');
+    const centre = { x: toX(0), y: toY(0) };
+    const tint = /^#[0-9a-fA-F]{6}$/.test(color) ? `${color}40` : 'rgba(255,255,255,0.08)';
+    return (
+      <div className="space-y-2">
+        <div className="relative rounded border border-gray-700 bg-gray-900" style={{ width: W, height: H }}>
+          <svg width={W} height={H} className="absolute inset-0 block">
+            {pts.map((p, i) => (
+              <polygon
+                key={i}
+                points={hexPoints(toX(p.x), toY(p.y))}
+                fill={i === 0 ? tint : 'rgba(255,255,255,0.03)'}
+                stroke="rgba(255,255,255,0.25)"
+                strokeWidth={1}
+              />
+            ))}
+          </svg>
+          {imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageUrl}
+              alt=""
+              className="absolute pointer-events-none"
+              style={{ left: centre.x, top: centre.y, height: 1.2 * S, width: 'auto', transform: 'translate(-50%,-50%)', opacity: 0.95 }}
+            />
+          ) : (
+            <span className="absolute inset-0 grid place-items-center text-[10px] text-gray-500">no image</span>
+          )}
+        </div>
+        <p className="text-[11px] text-gray-400">
+          Enter: {hexMoveCost === null ? 'normal MP' : `+${hexMoveCost} MP`}
+          {doorHp !== null ? ` · Door ${doorHp} HP` : ' · no door'}
+        </p>
+        <p className="text-[11px] text-gray-500">HP {maxHp} · DT {dt}{doorHp !== null ? ' (door shares DT)' : ''}</p>
+      </div>
+    );
+  }
+
+  // Edge preview.
+  const W = 240;
+  const H = 120;
+  const y = H / 2;
+  const x0 = 28;
+  const x1 = W - 28;
+  const outsideUp = !flipped;
+  const outColor = 'rgba(255, 200, 120, 0.95)';
+  const segColor = /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#c49a58';
+  const teeth = 6;
+  const toothW = (x1 - x0) / (teeth * 2 - 1);
+  const depth = 10;
+  const battlementPath = () => {
+    const dy = outsideUp ? -depth : depth;
+    let d = `M ${x0} ${y}`;
+    // Up (outside) to the crest, then square teeth back to the segment.
+    d += ` L ${x0} ${y + dy}`;
+    for (let i = 0; i < teeth; i++) {
+      const sx = x0 + i * toothW * 2;
+      d += ` L ${sx} ${y + dy}`;
+      d += ` L ${sx} ${y}`;
+      d += ` L ${sx + toothW} ${y}`;
+      d += ` L ${sx + toothW} ${y + dy}`;
+    }
+    d += ` L ${x1} ${y + dy}`;
+    d += ` L ${x1} ${y}`;
+    return d;
+  };
+  const outsideFace = flipped ? inside : outside;
+  const insideFace = flipped ? outside : inside;
+  return (
+    <div className="space-y-2">
+      <div className="relative rounded border border-gray-700 bg-gray-900" style={{ width: W, height: H }}>
+        <svg width={W} height={H} className="absolute inset-0 block">
+          <line x1={x0} y1={y} x2={x1} y2={y} stroke={segColor} strokeWidth={6} strokeLinecap="round" />
+          {battlement && <path d={battlementPath()} fill="none" stroke={segColor} strokeWidth={3} strokeLinejoin="round" />}
+          {outsideFace.block && (
+            <line x1={x0} y1={y} x2={x1} y2={y} stroke="rgba(20,20,24,0.9)" strokeWidth={10} strokeLinecap="round" />
+          )}
+        </svg>
+        <span className="absolute left-1 top-0.5 text-[9px] uppercase tracking-wide text-amber-300">Outside</span>
+        <span className="absolute left-1 bottom-0.5 text-[9px] uppercase tracking-wide text-sky-300">Inside</span>
+        <span className="absolute right-1 top-0.5 text-[9px] text-gray-400">{faceLabel(outsideFace)}</span>
+        <span className="absolute right-1 bottom-0.5 text-[9px] text-gray-400">{faceLabel(insideFace)}</span>
+      </div>
+      {battlement && (
+        <button
+          type="button"
+          onClick={() => setFlipped(f => !f)}
+          className="px-2 py-1 rounded text-[11px] bg-gray-700 hover:bg-gray-600"
+          title="Preview which side the battlement sits on; placement chooses the real side."
+        >
+          Flip preview
+        </button>
+      )}
+      <p className="text-[11px] text-gray-500">HP {maxHp} · DT {dt}</p>
+    </div>
+  );
+}

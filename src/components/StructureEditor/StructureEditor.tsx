@@ -1,0 +1,419 @@
+'use client';
+// src/components/StructureEditor/StructureEditor.tsx
+// Map Structure Editor (arranged like the Effect Editor): author reusable map
+// features — walls, spikes, gates, towers. A template is an anchor (edge or hex),
+// directional edge faces (A = inside, B = outside), an optional battlement, an
+// optional door, durability (HP/DT) and a list of effect modifiers (tower auras,
+// entry damage, the reusable `enter_org_max` gate).
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';
+import { ImagePickerModal } from '@/components/ImagePickerModal';
+import { ColorField } from '@/components/ColorField';
+import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
+import { StructurePreview, PreviewFace } from '@/components/StructureEditor/StructurePreview';
+import { StructureTemplate, StructureAnchor } from '@/types/structure';
+import { EffectModifier } from '@/lib/effectTemplates';
+import {
+  mapStructureRow, mapStructureToRow, blankStructureTemplate, sanitizeStructureTemplate,
+} from '@/lib/structureTemplates';
+
+type Draft = Omit<StructureTemplate, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
+
+const input =
+  'w-full bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700 focus:border-amber-400 outline-none disabled:opacity-50';
+
+/** Nullable integer field: blank = null (unset). */
+function NumInput({ value, onChange, readOnly, max = 999, placeholder = '—' }: {
+  value: number | null;
+  onChange: (v: number | null) => void;
+  readOnly: boolean;
+  max?: number;
+  placeholder?: string;
+}) {
+  return (
+    <input
+      className={input + ' !w-20'}
+      type="number"
+      min={0}
+      max={max}
+      value={value === null ? '' : String(value)}
+      placeholder={placeholder}
+      disabled={readOnly}
+      onChange={e => {
+        const raw = e.target.value;
+        if (raw === '') return onChange(null);
+        const n = Math.round(Number(raw));
+        onChange(Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : null);
+      }}
+    />
+  );
+}
+
+interface FaceFieldsProps {
+  title: string;
+  hint: string;
+  block: boolean;
+  moveCost: number | null;
+  meleeAc: number | null;
+  rangedAc: number | null;
+  readOnly: boolean;
+  onChange: (p: { block?: boolean; moveCost?: number | null; meleeAc?: number | null; rangedAc?: number | null }) => void;
+}
+
+function FaceFields({ title, hint, block, moveCost, meleeAc, rangedAc, readOnly, onChange }: FaceFieldsProps) {
+  return (
+    <div className="rounded border border-gray-700 p-2 space-y-2">
+      <p className="text-[10px] uppercase tracking-wide text-gray-500">{title}</p>
+      <p className="text-[10px] text-gray-500">{hint}</p>
+      <div className="flex flex-wrap items-center gap-3 text-[11px]">
+        <label className="flex items-center gap-1">
+          <input type="checkbox" disabled={readOnly} checked={block} onChange={e => onChange({ block: e.target.checked })} />
+          block crossing
+        </label>
+        <label className="flex items-center gap-1">Move cost
+          <NumInput value={moveCost} readOnly={readOnly} onChange={v => onChange({ moveCost: v })} max={99} />
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 text-[11px]">
+        <label className="flex items-center gap-1">Melee AC
+          <NumInput value={meleeAc} readOnly={readOnly} onChange={v => onChange({ meleeAc: v })} max={99} placeholder="0" />
+        </label>
+        <label className="flex items-center gap-1">Ranged AC
+          <NumInput value={rangedAc} readOnly={readOnly} onChange={v => onChange({ rangedAc: v })} max={99} placeholder="0" />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
+  const [list, setList] = useState<StructureTemplate[]>([]);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [search, setSearch] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+  const [showImagePicker, setShowImagePicker] = useState(false);
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('map_structure_templates').select('*').order('name', { ascending: true });
+    if (data) setList((data as any[]).map(mapStructureRow));
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const patch = (p: Partial<Draft>) => setDraft(d => (d ? { ...d, ...p } : d));
+  const select = (t: StructureTemplate) => setDraft({ ...t, id: t.id });
+  const fresh = () => setDraft({ ...blankStructureTemplate() });
+  const clone = () => {
+    if (!draft) return;
+    const { id, ...rest } = draft;
+    setDraft({ ...rest, name: `${draft.name} copy` });
+  };
+
+  const save = async () => {
+    if (!draft || !draft.name.trim()) { setStatus('Give the structure a name.'); return; }
+    setBusy(true);
+    setStatus('');
+    try {
+      const row = mapStructureToRow(sanitizeStructureTemplate(draft));
+      let id = draft.id;
+      if (id) {
+        await supabase.from('map_structure_templates').update(row).eq('id', id);
+      } else {
+        const { data, error } = await supabase.from('map_structure_templates').insert(row).select('id').single();
+        if (error) throw error;
+        id = data.id;
+      }
+      setStatus('Saved.');
+      await load();
+      if (id) {
+        const { data } = await supabase.from('map_structure_templates').select('*').eq('id', id).single();
+        if (data) select(mapStructureRow(data));
+      }
+    } catch (err: any) {
+      setStatus('Save failed: ' + (err?.message || 'unknown'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!draft?.id || readOnly) return;
+    if (!confirm(`Delete structure "${draft.name}"?`)) return;
+    setBusy(true);
+    try {
+      await supabase.from('map_structure_templates').delete().eq('id', draft.id);
+      setDraft(null);
+      setStatus('Deleted.');
+      await load();
+    } catch (err: any) {
+      setStatus('Delete failed: ' + (err?.message || 'unknown'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const patchMod = (i: number, p: Partial<EffectModifier>) => {
+    if (!draft) return;
+    patch({ modifiers: draft.modifiers.map((m, idx) => (idx === i ? { ...m, ...p } : m)) });
+  };
+
+  const summary = useMemo(
+    () =>
+      draft
+        ? draft.modifiers.map(m => `${m.kind}: ${m.dice ?? m.delta}`).join(' · ') || '(no modifiers)'
+        : '',
+    [draft],
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? list.filter(t => t.name.toLowerCase().includes(q)) : list;
+  }, [list, search]);
+
+  const previewFaces: { inside: PreviewFace; outside: PreviewFace } | null = draft
+    ? {
+        inside: { block: draft.edgeABlock, moveCost: draft.edgeAMoveCost, meleeAc: draft.edgeAMeleeAc, rangedAc: draft.edgeARangedAc },
+        outside: { block: draft.edgeBBlock, moveCost: draft.edgeBMoveCost, meleeAc: draft.edgeBMeleeAc, rangedAc: draft.edgeBRangedAc },
+      }
+    : null;
+
+  return (
+    <div className="flex flex-col w-full h-screen bg-[#0d0d1a] text-white overflow-hidden select-none">
+      <header className="flex items-center justify-between px-4 py-2 border-b border-gray-700 bg-gray-900">
+        <h1 className="text-xl font-bold text-yellow-300">Map Structure Editor</h1>
+        {readOnly && <span className="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-gray-300">Read-only view</span>}
+        <a href="/" className="text-sm bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded">Main Menu</a>
+      </header>
+
+      <div className="flex flex-1 min-h-0">
+        {/* LEFT — template selector */}
+        <div className="w-56 lg:w-64 shrink-0 border-r border-gray-700 p-2 space-y-1 overflow-y-auto">
+          {!readOnly && (
+            <button onClick={fresh} className="w-full py-1.5 rounded bg-emerald-800 hover:bg-emerald-700 text-sm mb-2">
+              New Structure
+            </button>
+          )}
+          <input
+            className="w-full bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700 focus:border-amber-400 outline-none mb-2"
+            placeholder="Search…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {filtered.length === 0 && <p className="text-xs text-gray-500">No structures yet.</p>}
+          {filtered.map(t => (
+            <button
+              key={t.id}
+              onClick={() => select(t)}
+              className={`w-full text-left text-xs px-2 py-1.5 rounded border ${draft?.id === t.id ? 'bg-yellow-700/40 border-yellow-500' : 'bg-gray-800 border-transparent hover:bg-gray-700'}`}
+            >
+              <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ backgroundColor: t.color }} />
+              {t.name}
+              <span className="block text-[10px] text-gray-400">
+                {t.anchor}{t.battlement ? ' · battlement' : ''}{t.doorHp !== null ? ` · door ${t.doorHp}` : ''} · {t.maxHp}hp
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* MIDDLE — editor */}
+        <div className="flex-1 min-w-0 p-4 overflow-y-auto">
+          {!draft ? (
+            <p className="text-gray-500 text-sm">Select a structure from the list (or create one) to edit it.</p>
+          ) : (
+            <fieldset disabled={readOnly} className="space-y-3 w-full max-w-3xl">
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="block text-xs text-gray-400 flex-1 min-w-[12rem]">Name
+                  <input className={input} value={draft.name} disabled={readOnly} onChange={e => patch({ name: e.target.value })} />
+                </label>
+                <label className="text-xs text-gray-400">Anchor
+                  <select className={input + ' !w-32'} value={draft.anchor} disabled={readOnly} onChange={e => patch({ anchor: e.target.value as StructureAnchor })}>
+                    <option value="edge">Edge</option>
+                    <option value="hex">Hex</option>
+                  </select>
+                </label>
+                {!readOnly && draft.id && (
+                  <button type="button" onClick={clone} className="px-3 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600">Clone</button>
+                )}
+              </div>
+
+              <label className="block text-xs text-gray-400">Description
+                <textarea className={input} rows={2} value={draft.description} disabled={readOnly} onChange={e => patch({ description: e.target.value })} />
+              </label>
+
+              <div className="flex flex-wrap items-start gap-4">
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Color</p>
+                  <ColorField value={draft.color} readOnly={readOnly} onChange={color => patch({ color })} />
+                </div>
+                <div className="flex items-center gap-2">
+                  {draft.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={draft.imageUrl} alt="" className="w-12 h-12 rounded border border-gray-700 object-contain bg-gray-900" />
+                  ) : (
+                    <span className="w-12 h-12 rounded border border-dashed border-gray-600 grid place-items-center text-[10px] text-gray-500">none</span>
+                  )}
+                  <button type="button" disabled={readOnly} className="px-3 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50" onClick={() => setShowImagePicker(true)}>
+                    {draft.imageUrl ? 'Change image' : 'Select image'}
+                  </button>
+                  {draft.imageUrl && (
+                    <button type="button" disabled={readOnly} className="px-2 py-1.5 rounded text-xs bg-red-900/60 hover:bg-red-800 disabled:opacity-50" onClick={() => patch({ imageUrl: '' })}>
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {draft.anchor === 'edge' ? (
+                <>
+                  <label className="flex items-center gap-2 text-[11px] text-gray-300">
+                    <input type="checkbox" disabled={readOnly} checked={draft.battlement} onChange={e => patch({ battlement: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
+                    Draw a battlement (crenellation) on the outside face
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <FaceFields
+                      title="Inside face (A)"
+                      hint="The face belonging to the inside hex: governs crossing INTO it and covers the unit standing there."
+                      block={draft.edgeABlock}
+                      moveCost={draft.edgeAMoveCost}
+                      meleeAc={draft.edgeAMeleeAc}
+                      rangedAc={draft.edgeARangedAc}
+                      readOnly={readOnly}
+                      onChange={p => patch({
+                        ...(p.block !== undefined ? { edgeABlock: p.block } : {}),
+                        ...(p.moveCost !== undefined ? { edgeAMoveCost: p.moveCost } : {}),
+                        ...(p.meleeAc !== undefined ? { edgeAMeleeAc: p.meleeAc } : {}),
+                        ...(p.rangedAc !== undefined ? { edgeARangedAc: p.rangedAc } : {}),
+                      })}
+                    />
+                    <FaceFields
+                      title="Outside face (B)"
+                      hint="The face belonging to the outside hex; the battlement draws on this side."
+                      block={draft.edgeBBlock}
+                      moveCost={draft.edgeBMoveCost}
+                      meleeAc={draft.edgeBMeleeAc}
+                      rangedAc={draft.edgeBRangedAc}
+                      readOnly={readOnly}
+                      onChange={p => patch({
+                        ...(p.block !== undefined ? { edgeBBlock: p.block } : {}),
+                        ...(p.moveCost !== undefined ? { edgeBMoveCost: p.moveCost } : {}),
+                        ...(p.meleeAc !== undefined ? { edgeBMeleeAc: p.meleeAc } : {}),
+                        ...(p.rangedAc !== undefined ? { edgeBRangedAc: p.rangedAc } : {}),
+                      })}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded border border-gray-700 p-2 space-y-2">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Hex</p>
+                    <label className="flex items-center gap-2 text-[11px]">Extra MP to enter
+                      <NumInput value={draft.hexMoveCost} readOnly={readOnly} onChange={v => patch({ hexMoveCost: v })} max={99} />
+                    </label>
+                    <label className="flex items-center gap-2 text-[11px]">Door HP
+                      <NumInput value={draft.doorHp} readOnly={readOnly} onChange={v => patch({ doorHp: v })} max={999} placeholder="none" />
+                    </label>
+                    <p className="text-[10px] text-gray-500">A door shares the structure DT and resolves door-first, then the structure HP.</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded border border-gray-700 p-2 space-y-2">
+                <p className="text-[10px] uppercase tracking-wide text-gray-500">Durability</p>
+                <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                  <label className="flex items-center gap-1">Max HP
+                    <NumInput value={draft.maxHp} readOnly={readOnly} onChange={v => patch({ maxHp: v ?? 0 })} max={9999} />
+                  </label>
+                  <label className="flex items-center gap-1">DT
+                    <NumInput value={draft.dt} readOnly={readOnly} onChange={v => patch({ dt: v ?? 0 })} max={999} />
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Effect modifiers (tower auras, entry damage, `enter_org_max` gate)</p>
+                <div className="space-y-1.5">
+                  {draft.modifiers.map((m, i) => (
+                    <EffectModifierFields
+                      key={i}
+                      modifier={m}
+                      readOnly={readOnly}
+                      inputClass={input}
+                      onChange={next => patchMod(i, next)}
+                      onRemove={() => patch({ modifiers: draft.modifiers.filter((_, idx) => idx !== i) })}
+                    />
+                  ))}
+                </div>
+                {!readOnly && (
+                  <button
+                    className="mt-2 px-3 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600"
+                    onClick={() => patch({ modifiers: [...draft.modifiers, { kind: 'advantage', delta: 0 }] })}
+                  >
+                    + Add modifier
+                  </button>
+                )}
+              </div>
+
+              {!readOnly && (
+                <div className="flex gap-2 sticky bottom-0 bg-[#0d0d1a]/95 py-2 border-t border-gray-800">
+                  <button onClick={() => void save()} disabled={busy} className="px-4 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-sm disabled:opacity-50">
+                    {draft.id ? 'Save' : 'Create'}
+                  </button>
+                  {draft.id && (
+                    <button onClick={() => void remove()} disabled={busy} className="px-4 py-1.5 rounded bg-red-900 hover:bg-red-800 text-sm disabled:opacity-50">
+                      Delete
+                    </button>
+                  )}
+                </div>
+              )}
+              {status && <p className="text-xs text-amber-300">{status}</p>}
+            </fieldset>
+          )}
+        </div>
+
+        {/* RIGHT — preview */}
+        <div className="w-64 lg:w-80 shrink-0 border-l border-gray-700 p-4 space-y-3 overflow-y-auto">
+          <p className="text-[10px] uppercase tracking-wide text-gray-500">Preview</p>
+          {!draft ? (
+            <p className="text-xs text-gray-500">Nothing selected.</p>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded border border-gray-600" style={{ backgroundColor: draft.color || '#cccccc' }} />
+                <span className="text-sm font-semibold">{draft.name || '(unnamed)'}</span>
+              </div>
+              {previewFaces && (
+                <StructurePreview
+                  anchor={draft.anchor}
+                  color={draft.color}
+                  imageUrl={draft.imageUrl}
+                  battlement={draft.battlement}
+                  inside={previewFaces.inside}
+                  outside={previewFaces.outside}
+                  hexMoveCost={draft.hexMoveCost}
+                  doorHp={draft.doorHp}
+                  maxHp={draft.maxHp}
+                  dt={draft.dt}
+                />
+              )}
+              <p className="text-xs text-gray-300">{summary}</p>
+              <p className="text-[11px] text-gray-500">{draft.description}</p>
+            </>
+          )}
+        </div>
+      </div>
+
+      {showImagePicker && draft && (
+        <ImagePickerModal
+          current={draft.imageUrl}
+          uploadKey="structure"
+          bucket="effect_images"
+          title="Select Structure Image"
+          showRaces={false}
+          onSelect={url => { patch({ imageUrl: url ?? '' }); setShowImagePicker(false); }}
+          onClose={() => setShowImagePicker(false)}
+        />
+      )}
+    </div>
+  );
+}

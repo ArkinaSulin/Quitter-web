@@ -101,6 +101,9 @@ as applied in the notes — check the live DB before relying on it).
 | 088 | seed attack-roll effects (`effect_templates` Advantage/Disadvantage/Grant*) | ⏳ run in Supabase |
 | 089 | edge walls (`maps.walls` jsonb) | ⏳ run in Supabase |
 | 090 | ZoC pursue + Withdraw: `scenarios.zoc_pursuit_enabled`, rename `opportunity_attack_used`→`pursuit_used`, `units`/`unit_templates.command_pursuit_permit` + allowlist | ⏳ run in Supabase |
+| 091 | archer rules: formed formations front-only ranged arc (`formations.ranged_target_arcs`) | ⏳ run in Supabase |
+| 092 | wall command log: `apply_substeps` WALL branch (`scenarios.map_data.walls`) | ⏳ run in Supabase |
+| 093 | map structure templates: caps + `map_structure_templates` + 9 seed templates | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 
