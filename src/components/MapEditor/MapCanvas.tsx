@@ -1,14 +1,17 @@
 // src/components/MapEditor/MapCanvas.tsx
 'use client';
 // ScenarioMap-style canvas for the Map Editor: draws the authored map (background
-// image + hex grid + painted MP-cost shading) and turns mouse painting into
-// terrainCosts edits. 1:1 buffer math (CSS pixels) so the pointer paints exactly
-// where it points. Zoom/pan via wheel + drag; hovering shows the hex coordinate.
+// image + hex grid + painted MP-cost shading + placed structures) and turns mouse
+// painting into terrainCosts / structures edits. 1:1 buffer math (CSS pixels) so
+// the pointer paints exactly where it points. Zoom/pan via wheel + drag; hovering
+// shows the hex coordinate.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
 import { HEX_SIZE, DEFAULT_GRID_RADIUS, TerrainCosts, costShade } from '@/components/ScenarioMap/mapGeometry';
-import { Walls, edgeRef, nearestEdge, hexCorner } from '@/lib/walls';
+import { edgeRef, nearestEdge, hexCorner } from '@/lib/walls';
+import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls } from '@/lib/mapStructures';
+import { StructureTemplate } from '@/types/structure';
 
 export interface MapCanvasProps {
   imageUrl: string;
@@ -17,19 +20,21 @@ export interface MapCanvasProps {
   scale: number;
   gridRadius: number;
   terrainCosts: TerrainCosts;
-  walls?: Walls;
+  structures?: MapStructures;
+  templates?: Record<string, StructureTemplate>;
   /** null = view/pan; { value } = paint hex entry costs (0..9) with left-drag. */
   paintValue: number | null;
-  /** Arm the wall brush: left-click/drag places on the nearest edge. */
-  wallTool?: boolean;
-  /** Edge currently selected for editing, as its canonical {q,r,dir}. */
-  selectedEdge?: { q: number; r: number; dir: number } | null;
+  /** Armed structure palette anchor: clicks place/select structures of that kind. */
+  structureAnchors?: 'edge' | 'hex' | null;
+  /** Currently selected structure key (edge "q,r,dir" or hex "q,r"). */
+  selectedStructureKey?: string | null;
   readOnly?: boolean;
   onPaintHex: (q: number, r: number) => void;
   /** Optional: right-click clears a hex back to the default 1 MP (paint mode). */
   onClearHex?: (q: number, r: number) => void;
-  onPaintWall?: (q: number, r: number, dir: number) => void;
-  onClearWall?: (q: number, r: number, dir: number) => void;
+  onPaintStructureEdge?: (q: number, r: number, dir: number) => void;
+  onPaintStructureHex?: (q: number, r: number) => void;
+  onClearStructure?: (key: string) => void;
 }
 
 type View = { zoom: number; ox: number; oy: number };
@@ -43,14 +48,55 @@ function hexCorners(cx: number, cy: number, size: number): { x: number; y: numbe
   return pts;
 }
 
-export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, walls, paintValue, wallTool = false, selectedEdge, readOnly = false, onPaintHex, onClearHex, onPaintWall, onClearWall }: MapCanvasProps) {
+/** Square-wave crenellation path along an edge, offset to `outward` (+1/-1). */
+function battlementPath(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  outward: { x: number; y: number },
+  depth: number,
+): string {
+  const teeth = 5;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const ox = outward.x * depth;
+  const oy = outward.y * depth;
+  const step = len / (teeth * 2 - 1);
+  let d = `M ${a.x} ${a.y} L ${a.x + ox} ${a.y + oy}`;
+  for (let i = 0; i < teeth; i++) {
+    const sx = a.x + ux * step * (i * 2);
+    const sy = a.y + uy * step * (i * 2);
+    const ex = sx + ux * step;
+    const ey = sy + uy * step;
+    d += ` L ${sx} ${sy} L ${sx + ox} ${sy + oy} L ${ex + ox} ${ey + oy} L ${ex} ${ey}`;
+  }
+  d += ` L ${b.x} ${b.y}`;
+  return d;
+}
+
+export function MapCanvas({
+  imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, structures, templates,
+  paintValue, structureAnchors = null, selectedStructureKey = null, readOnly = false,
+  onPaintHex, onClearHex, onPaintStructureEdge, onPaintStructureHex, onClearStructure,
+}: MapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const view = useRef<View>({ zoom: 1, ox: 0, oy: 0 });
   const lastBg = useRef<HTMLImageElement | null>(null);
-  const drag = useRef<{ mode: 'none' | 'paint' | 'pan' | 'wall'; lastHex: string; sx: number; sy: number }>({ mode: 'none', lastHex: '', sx: 0, sy: 0 });
+  const structImgs = useRef<Map<string, HTMLImageElement>>(new Map());
+  const drag = useRef<{ mode: 'none' | 'paint' | 'pan' | 'structure'; lastHex: string; sx: number; sy: number }>({ mode: 'none', lastHex: '', sx: 0, sy: 0 });
   const [hover, setHover] = useState<string | null>(null);
-  const propsRef = useRef({ imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, walls, paintValue, wallTool, selectedEdge, readOnly, onPaintHex, onClearHex, onPaintWall, onClearWall });
-  propsRef.current = { imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, walls, paintValue, wallTool, selectedEdge, readOnly, onPaintHex, onClearHex, onPaintWall, onClearWall };
+  const propsRef = useRef({
+    imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, structures, templates,
+    paintValue, structureAnchors, selectedStructureKey, readOnly,
+    onPaintHex, onClearHex, onPaintStructureEdge, onPaintStructureHex, onClearStructure,
+  });
+  propsRef.current = {
+    imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, structures, templates,
+    paintValue, structureAnchors, selectedStructureKey, readOnly,
+    onPaintHex, onClearHex, onPaintStructureEdge, onPaintStructureHex, onClearStructure,
+  };
 
   // Cache the background image so draw is synchronous.
   useEffect(() => {
@@ -109,8 +155,6 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
     if (bg && p.imageUrl) {
       const imgW = bg.naturalWidth * p.scale;
       const imgH = bg.naturalHeight * p.scale;
-      // Offset is a plain Cartesian world-pixel center (x moves X only, y moves Y
-      // only) — matches how the scenario map renders the same snapshot.
       ctx.drawImage(bg, p.offsetX - imgW / 2, p.offsetY - imgH / 2, imgW, imgH);
     }
 
@@ -131,6 +175,44 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
       hexPath(pos.x, pos.y);
       ctx.fillStyle = shade;
       ctx.fill();
+    }
+    // Hex structures: tint the hex + artwork/Cost badge (drawn under the grid).
+    if (p.structures) {
+      for (const [key, inst] of Object.entries(p.structures)) {
+        if (!isHexStructureKey(key)) continue;
+        const [q, r] = key.split(',').map(Number);
+        if (Number.isNaN(q) || Number.isNaN(r)) continue;
+        const t = p.templates?.[inst.templateId];
+        const pos = hexToPixel({ q, r, s: -q - r }, HEX_SIZE);
+        hexPath(pos.x, pos.y);
+        ctx.fillStyle = t && /^#[0-9a-fA-F]{6}$/.test(t.color) ? `${t.color}55` : 'rgba(255,255,255,0.08)';
+        ctx.fill();
+        if (t?.imageUrl) {
+          let img = structImgs.current.get(t.imageUrl);
+          if (!img) {
+            img = new Image();
+            img.onload = () => requestAnimationFrame(draw);
+            img.src = t.imageUrl;
+            structImgs.current.set(t.imageUrl, img);
+          }
+          if (img.complete && img.naturalWidth > 0) {
+            const h = 1.2 * HEX_SIZE;
+            const w = (img.naturalWidth / img.naturalHeight) * h;
+            ctx.drawImage(img, pos.x - w / 2, pos.y - h / 2, w, h);
+          }
+        }
+        const hp = inst.maxHp ?? t?.maxHp ?? 0;
+        if (hp > 0) {
+          ctx.font = `bold ${Math.max(10 / zoom, 0.5)}px ui-monospace, monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.lineWidth = 3 / zoom;
+          ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+          ctx.strokeText(`${inst.hp ?? hp}`, pos.x, pos.y + HEX_SIZE * 0.62);
+          ctx.fillStyle = '#ffe0b2';
+          ctx.fillText(`${inst.hp ?? hp}`, pos.x, pos.y + HEX_SIZE * 0.62);
+        }
+      }
     }
     ctx.lineWidth = 1;
     ctx.strokeStyle = 'rgba(0,0,0,0.28)';
@@ -154,16 +236,21 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
       }
     }
 
-    // Edge walls: thick segment along the shared edge, styled by property.
+    // Edge structures: thick segment along the shared edge, styled by property,
+    // with the battlement square-wave drawn on the outside side.
     const worldCorner = (q: number, r: number, i: number) => hexCorner({ q, r }, i, HEX_SIZE);
-    if (p.walls && Object.keys(p.walls).length > 0) {
+    if (p.structures) {
+      const walls = structuresToWalls(p.structures, p.templates ?? {});
       ctx.lineCap = 'round';
-      for (const key of Object.keys(p.walls)) {
+      for (const key of Object.keys(p.structures)) {
+        if (!isEdgeStructureKey(key)) continue;
         const [q, r, d] = key.split(',').map(Number);
         if (!Number.isFinite(q) || !Number.isFinite(r) || !Number.isFinite(d)) continue;
-        const w = p.walls[key];
-        const blocked = !!w.a.block || !!w.b.block;
-        const hasCost = w.a.moveCost !== undefined || w.b.moveCost !== undefined;
+        const w = walls[key];
+        const inst = p.structures[key];
+        const t = p.templates?.[inst.templateId];
+        const blocked = !!w?.a.block || !!w?.b.block;
+        const hasCost = w?.a.moveCost !== undefined || w?.b.moveCost !== undefined;
         ctx.strokeStyle = blocked ? 'rgba(20,20,24,0.95)' : hasCost ? 'rgba(196,154,88,0.95)' : 'rgba(150,165,185,0.9)';
         ctx.lineWidth = blocked ? 7 : 5;
         const a = worldCorner(q, r, d);
@@ -172,18 +259,70 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
+        // Battlement on the outside side.
+        if (t?.battlement) {
+          const ref = edgeRef(q, r, d);
+          const outsideIsA = (inst.outside ?? 'a') === 'a';
+          const ox = outsideIsA ? ref.aq : ref.bq;
+          const or = outsideIsA ? ref.ar : ref.br;
+          const midX = (a.x + b.x) / 2;
+          const midY = (a.y + b.y) / 2;
+          const hexCenterPt = hexToPixel({ q: ox, r: or, s: -ox - or }, HEX_SIZE);
+          let nx = hexCenterPt.x - midX;
+          let ny = hexCenterPt.y - midY;
+          const nl = Math.hypot(nx, ny) || 1;
+          nx /= nl; ny /= nl;
+          ctx.strokeStyle = blocked ? 'rgba(60,60,70,0.95)' : 'rgba(196,154,88,0.95)';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          const path = battlementPath(a, b, { x: nx, y: ny }, HEX_SIZE * 0.28);
+          ctx.stroke(new Path2D(path));
+        }
+        // Move-cost labels on the edge, one per face that overrides the cost.
+        const labelFor = (faceKey: 'a' | 'b') => {
+          const face = faceKey === 'a' ? w?.a : w?.b;
+          if (!face || face.moveCost === undefined) return null;
+          const ref2 = edgeRef(q, r, d);
+          const hq = faceKey === 'a' ? ref2.aq : ref2.bq;
+          const hr = faceKey === 'a' ? ref2.ar : ref2.br;
+          const c = hexToPixel({ q: hq, r: hr, s: -hq - hr }, HEX_SIZE);
+          const mx = (a.x + b.x) / 2;
+          const my = (a.y + b.y) / 2;
+          const lx = mx + (c.x - mx) * 0.3;
+          const ly = my + (c.y - my) * 0.3;
+          return { text: String(face.moveCost), x: lx, y: ly };
+        };
+        for (const lbl of [labelFor('a'), labelFor('b')]) {
+          if (!lbl) continue;
+          ctx.font = `bold ${Math.max(11 / zoom, 0.5)}px ui-monospace, monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.lineWidth = 3 / zoom;
+          ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+          ctx.strokeText(lbl.text, lbl.x, lbl.y);
+          ctx.fillStyle = '#ffe0b2';
+          ctx.fillText(lbl.text, lbl.x, lbl.y);
+        }
       }
     }
-    if (p.selectedEdge) {
-      const ref = edgeRef(p.selectedEdge.q, p.selectedEdge.r, p.selectedEdge.dir);
+    if (p.selectedStructureKey) {
       ctx.strokeStyle = 'rgba(255, 220, 80, 0.95)';
       ctx.lineWidth = 3;
-      const a = worldCorner(ref.aq, ref.ar, ref.dir);
-      const b = worldCorner(ref.aq, ref.ar, ref.dir + 1);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+      if (isEdgeStructureKey(p.selectedStructureKey)) {
+        const [q, r, d] = p.selectedStructureKey.split(',').map(Number);
+        const ref = edgeRef(q, r, d);
+        const a = worldCorner(ref.aq, ref.ar, ref.dir);
+        const b = worldCorner(ref.aq, ref.ar, ref.dir + 1);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      } else if (isHexStructureKey(p.selectedStructureKey)) {
+        const [q, r] = p.selectedStructureKey.split(',').map(Number);
+        const pos = hexToPixel({ q, r, s: -q - r }, HEX_SIZE);
+        hexPath(pos.x, pos.y);
+        ctx.stroke();
+      }
     }
 
     // Cost labels: constant ~13px ON SCREEN (the ctx is zoom-scaled, so use
@@ -215,7 +354,7 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
   // Redraw on prop edits without touching the view.
   useEffect(() => {
     requestAnimationFrame(draw);
-  }, [draw, terrainCosts, imageUrl, offsetX, offsetY, scale]);
+  }, [draw, terrainCosts, structures, templates, selectedStructureKey, imageUrl, offsetX, offsetY, scale]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -256,12 +395,19 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
     if (!canvas) return;
     canvas.setPointerCapture(e.pointerId);
     const p = propsRef.current;
-    if (e.button === 0 && p.wallTool && !p.readOnly && p.onPaintWall) {
-      drag.current.mode = 'wall';
+    if (e.button === 0 && p.structureAnchors === 'edge' && !p.readOnly && p.onPaintStructureEdge) {
+      drag.current.mode = 'structure';
       const edge = edgeAtClient(e.clientX, e.clientY);
       if (edge) {
         drag.current.lastHex = `${edge.q},${edge.r},${edge.dir}`;
-        p.onPaintWall(edge.q, edge.r, edge.dir);
+        p.onPaintStructureEdge(edge.q, edge.r, edge.dir);
+      }
+    } else if (e.button === 0 && p.structureAnchors === 'hex' && !p.readOnly && p.onPaintStructureHex) {
+      drag.current.mode = 'structure';
+      const hex = hexAtClient(e.clientX, e.clientY);
+      if (hex) {
+        drag.current.lastHex = `${hex.q},${hex.r}`;
+        p.onPaintStructureHex(hex.q, hex.r);
       }
     } else if (e.button === 0 && p.paintValue !== null && !p.readOnly) {
       drag.current.mode = 'paint';
@@ -288,12 +434,19 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
       requestAnimationFrame(draw);
       return;
     }
-    if (d.mode === 'wall') {
+    if (d.mode === 'structure') {
       const p = propsRef.current;
-      const edge = edgeAtClient(e.clientX, e.clientY);
-      if (edge && p.onPaintWall) {
-        const k = `${edge.q},${edge.r},${edge.dir}`;
-        if (k !== d.lastHex) { d.lastHex = k; p.onPaintWall(edge.q, edge.r, edge.dir); }
+      if (p.structureAnchors === 'edge' && p.onPaintStructureEdge) {
+        const edge = edgeAtClient(e.clientX, e.clientY);
+        if (edge) {
+          const k = `${edge.q},${edge.r},${edge.dir}`;
+          if (k !== d.lastHex) { d.lastHex = k; p.onPaintStructureEdge(edge.q, edge.r, edge.dir); }
+        }
+      } else if (p.structureAnchors === 'hex' && p.onPaintStructureHex) {
+        if (hex) {
+          const k = `${hex.q},${hex.r}`;
+          if (k !== d.lastHex) { d.lastHex = k; p.onPaintStructureHex(hex.q, hex.r); }
+        }
       }
       return;
     }
@@ -334,21 +487,25 @@ export function MapCanvas({ imageUrl, offsetX, offsetY, scale, gridRadius, terra
         onPointerUp={endPointer}
         onPointerLeave={endPointer}
         onPointerCancel={endPointer}
-      onWheel={onWheel}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        const p = propsRef.current;
-        if (p.readOnly) return;
-        if (p.wallTool && p.onClearWall) {
-          const edge = edgeAtClient(e.clientX, e.clientY);
-          if (edge) p.onClearWall(edge.q, edge.r, edge.dir);
-          return;
-        }
-        if (p.paintValue === null || !p.onClearHex) return;
-        const hex = hexAtClient(e.clientX, e.clientY);
-        if (hex) p.onClearHex(hex.q, hex.r);
-      }}
-    />
+        onWheel={onWheel}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          const p = propsRef.current;
+          if (p.readOnly) return;
+          if (p.structureAnchors && p.onClearStructure) {
+            if (p.structureAnchors === 'edge') {
+              const edge = edgeAtClient(e.clientX, e.clientY);
+              if (edge) { p.onClearStructure(edgeRef(edge.q, edge.r, edge.dir).key); return; }
+            } else {
+              const hex = hexAtClient(e.clientX, e.clientY);
+              if (hex) { p.onClearStructure(`${hex.q},${hex.r}`); return; }
+            }
+          }
+          if (p.paintValue === null || !p.onClearHex) return;
+          const hex = hexAtClient(e.clientX, e.clientY);
+          if (hex) p.onClearHex(hex.q, hex.r);
+        }}
+      />
       {hover && (
         <div className="absolute top-1 left-1 z-10 bg-black/60 border border-gray-600 rounded px-1.5 py-0.5 text-[10px] text-gray-200 pointer-events-none font-mono">
           ({hover})

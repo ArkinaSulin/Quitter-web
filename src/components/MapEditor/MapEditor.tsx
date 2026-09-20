@@ -10,10 +10,13 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
 import { MapEntity, mapMapRow, mapEntityToRow } from '@/lib/mapEntities';
 import { MAP_DEFAULTS } from '@/lib/mapEntities';
-import { Walls, WallFace, edgeRef } from '@/lib/walls';
+import { edgeRef } from '@/lib/walls';
+import { MapStructures } from '@/lib/mapStructures';
+import { StructureTemplate } from '@/types/structure';
+import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { MapCanvas } from './MapCanvas';
 
-type Tab = 'image' | 'movement' | 'walls';
+type Tab = 'image' | 'movement' | 'structures';
 
 function blankMap(): MapEntity {
   return {
@@ -26,7 +29,7 @@ function blankMap(): MapEntity {
     scale: MAP_DEFAULTS.scale,
     gridRadius: 12,
     terrainCosts: {},
-    walls: {},
+    structures: {},
     hexEffects: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -174,69 +177,79 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     update({ terrainCosts });
   }, [entity, update]);
 
-  // ---- walls ----
-  const [wallTool, setWallTool] = useState(false);
-  const [selectedEdge, setSelectedEdge] = useState<{ q: number; r: number; dir: number } | null>(null);
+  // ---- structures ----
+  const [templates, setTemplates] = useState<Record<string, StructureTemplate>>({});
+  const [paletteId, setPaletteId] = useState<string | null>(null);
+  const [selectedStructureKey, setSelectedStructureKey] = useState<string | null>(null);
 
-  const paintWallEdge = useCallback((q: number, r: number, dir: number) => {
-    if (!entity) return;
+  useEffect(() => {
+    let cancelled = false;
+    getStructureTemplates().then(t => { if (!cancelled) setTemplates(t); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Reconcile the armed palette if its template disappears.
+  useEffect(() => {
+    if (paletteId && !templates[paletteId]) setPaletteId(null);
+  }, [templates, paletteId]);
+
+  const selectedStructure = entity && selectedStructureKey ? entity.structures[selectedStructureKey] ?? null : null;
+  const selectedStructureTemplate = selectedStructure ? templates[selectedStructure.templateId] ?? null : null;
+
+  /** Click an edge structure: place a new one, select an existing one, or (already
+   *  selected) flip its battlement/outside to the other side. */
+  const paintStructureEdge = useCallback((q: number, r: number, dir: number) => {
+    if (!entity || !paletteId) return;
     const ref = edgeRef(q, r, dir);
-    const walls = { ...entity.walls };
-    if (!walls[ref.key]) walls[ref.key] = { a: { block: true }, b: { block: true } };
-    update({ walls });
-    setSelectedEdge({ q: ref.aq, r: ref.ar, dir: ref.dir });
+    const existing = entity.structures[ref.key];
+    if (!existing) {
+      update({ structures: { ...entity.structures, [ref.key]: { templateId: paletteId } } });
+      setSelectedStructureKey(ref.key);
+    } else if (selectedStructureKey === ref.key) {
+      const nextOutside = (existing.outside ?? 'a') === 'a' ? 'b' : 'a';
+      update({ structures: { ...entity.structures, [ref.key]: { ...existing, outside: nextOutside } } });
+    } else {
+      setSelectedStructureKey(ref.key);
+    }
+  }, [entity, paletteId, selectedStructureKey, update]);
+
+  const paintStructureHex = useCallback((q: number, r: number) => {
+    if (!entity || !paletteId) return;
+    const key = `${q},${r}`;
+    const existing = entity.structures[key];
+    if (!existing) {
+      update({ structures: { ...entity.structures, [key]: { templateId: paletteId } } });
+    }
+    setSelectedStructureKey(key);
+  }, [entity, paletteId, update]);
+
+  const clearStructure = useCallback((key: string) => {
+    if (!entity || !entity.structures[key]) return;
+    const next: MapStructures = { ...entity.structures };
+    delete next[key];
+    update({ structures: next });
+    setSelectedStructureKey(sel => (sel === key ? null : sel));
   }, [entity, update]);
 
-  const clearWallEdge = useCallback((q: number, r: number, dir: number) => {
-    if (!entity) return;
-    const ref = edgeRef(q, r, dir);
-    if (!entity.walls[ref.key]) return;
-    const walls = { ...entity.walls };
-    delete walls[ref.key];
-    update({ walls });
-    setSelectedEdge(sel => (sel && sel.q === ref.aq && sel.r === ref.ar && sel.dir === ref.dir ? null : sel));
-  }, [entity, update]);
-
-  const patchSelectedFace = useCallback((side: 'a' | 'b', patch: Partial<WallFace>) => {
-    if (!entity || !selectedEdge) return;
-    const ref = edgeRef(selectedEdge.q, selectedEdge.r, selectedEdge.dir);
-    const wall = entity.walls[ref.key];
-    if (!wall) return;
-    const face = { ...wall[side] };
+  const patchSelectedStructure = useCallback((patch: { maxHp?: number; hp?: number; dt?: number; doorHp?: number; outside?: 'a' | 'b' }) => {
+    if (!entity || !selectedStructureKey) return;
+    const inst = entity.structures[selectedStructureKey];
+    if (!inst) return;
+    const next = { ...inst };
     for (const [k, v] of Object.entries(patch)) {
-      if (v === undefined || v === null || v === ('' as any)) delete (face as any)[k];
-      else (face as any)[k] = v;
+      if (v === undefined) delete (next as any)[k];
+      else (next as any)[k] = v;
     }
-    update({ walls: { ...entity.walls, [ref.key]: { ...wall, [side]: face } } });
-  }, [entity, selectedEdge, update]);
+    // Keep current HP from exceeding the max when authoring.
+    if (next.maxHp !== undefined && next.hp === undefined) next.hp = next.maxHp;
+    update({ structures: { ...entity.structures, [selectedStructureKey]: next } });
+  }, [entity, selectedStructureKey, update]);
 
-  const patchSelectedWall = useCallback((patch: { maxHp?: number; dt?: number }) => {
-    if (!entity || !selectedEdge) return;
-    const ref = edgeRef(selectedEdge.q, selectedEdge.r, selectedEdge.dir);
-    const wall = entity.walls[ref.key];
-    if (!wall) return;
-    const next = { ...wall };
-    if ('maxHp' in patch) {
-      if (patch.maxHp === undefined) {
-        delete next.maxHp;
-        delete next.hp;
-      } else {
-        next.maxHp = Math.max(0, Math.round(patch.maxHp));
-        // Authoring resets to full HP (destruction happens in-scenario).
-        next.hp = next.maxHp;
-      }
-    }
-    if ('dt' in patch) {
-      if (patch.dt === undefined) delete next.dt;
-      else next.dt = Math.max(0, Math.round(patch.dt));
-    }
-    update({ walls: { ...entity.walls, [ref.key]: next } });
-  }, [entity, selectedEdge, update]);
+  const deleteSelectedStructure = useCallback(() => {
+    if (selectedStructureKey) clearStructure(selectedStructureKey);
+  }, [selectedStructureKey, clearStructure]);
 
-  const deleteSelectedWall = useCallback(() => {
-    if (!selectedEdge) return;
-    clearWallEdge(selectedEdge.q, selectedEdge.r, selectedEdge.dir);
-  }, [selectedEdge, clearWallEdge]);
+  const armedAnchor = paletteId ? templates[paletteId]?.anchor ?? null : null;
 
   const uploadImage = useCallback(async (file: File) => {
     if (!file) return;
@@ -270,7 +283,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
   const panelDefs: { id: Tab; label: string }[] = [
     { id: 'image', label: 'Image' },
     { id: 'movement', label: 'Movement cost' },
-    { id: 'walls', label: 'Walls' },
+    { id: 'structures', label: 'Structures' },
   ];
 
   return (
@@ -441,83 +454,75 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
               </>
             )}
 
-            {tab === 'walls' && entity && (
+            {tab === 'structures' && entity && (
               <>
-                <p className="text-[10px] uppercase tracking-wide text-gray-500">Edge walls / barriers</p>
-                <button
-                  disabled={readOnly}
-                  onClick={() => { setWallTool(v => !v); setSelectedEdge(null); }}
-                  className={`w-full py-1.5 rounded border text-xs font-semibold ${wallTool ? 'bg-yellow-600 text-black border-yellow-300' : 'bg-gray-800 text-gray-100 border-gray-600 hover:bg-gray-700'}`}
-                >
-                  {wallTool ? 'Wall tool ON' : 'Arm wall tool'}
-                </button>
+                <p className="text-[10px] uppercase tracking-wide text-gray-500">Map structures</p>
+                <div className="space-y-1 max-h-56 overflow-y-auto">
+                  {Object.values(templates).length === 0 && (
+                    <p className="text-xs text-gray-500">No structure templates yet — author them in the Structure Editor.</p>
+                  )}
+                  {Object.values(templates)
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map(t => (
+                      <button
+                        key={t.id}
+                        disabled={readOnly}
+                        onClick={() => { setPaletteId(id => (id === t.id ? null : t.id)); setSelectedStructureKey(null); }}
+                        className={`w-full text-left text-xs px-2 py-1.5 rounded border ${paletteId === t.id ? 'bg-yellow-700/40 border-yellow-500' : 'bg-gray-800 border-transparent hover:bg-gray-700'}`}
+                      >
+                        <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ backgroundColor: t.color }} />
+                        {t.name}
+                        <span className="block text-[10px] text-gray-400">{t.anchor}{t.battlement ? ' · battlement' : ''}{t.doorHp !== null ? ` · door ${t.doorHp}` : ''} · {t.maxHp}hp</span>
+                      </button>
+                    ))}
+                </div>
                 <p className="text-xs text-gray-500">
-                  {wallTool
-                    ? 'Left-click / drag near a hex edge to place a barrier. Right-click removes. Click a wall to edit its two faces.'
-                    : 'Arm the tool, then click near a hex edge. Drag places across several edges.'}
+                  {paletteId
+                    ? `Armed: ${templates[paletteId]?.name}. Click/drag ${armedAnchor === 'hex' ? 'a hex' : 'near a hex edge'} to place; click a placed one again to flip its battlement. Right-click removes.`
+                    : 'Pick a structure to arm the brush.'}
                 </p>
-                {selectedEdge ? (() => {
-                  const ref = edgeRef(selectedEdge.q, selectedEdge.r, selectedEdge.dir);
-                  const wall = entity.walls[ref.key];
-                  if (!wall) return <p className="text-xs text-gray-500">No wall on that edge.</p>;
-                  const num = (v: number | undefined) => (v === undefined ? '' : String(v));
-                  const editNum = (raw: string, max: number): number | undefined =>
-                    raw === '' ? undefined : Math.max(0, Math.min(max, Math.round(Number(raw))));
-                  const face = (key: 'a' | 'b', label: string) => {
-                    const f = wall[key];
-                    return (
-                      <div className="rounded border border-gray-700 p-2 space-y-1">
-                        <p className="text-[10px] uppercase tracking-wide text-gray-500">Face — hex {label}</p>
-                        <div className="flex items-center gap-2 text-[11px]">
-                          <label className="flex items-center gap-1" title="Replaces the entered hex's terrain cost when crossing into this side.">MP
-                            <input type="number" min={0} max={99} disabled={readOnly} value={num(f.moveCost)} placeholder="—"
-                              onChange={e => patchSelectedFace(key, { moveCost: editNum(e.target.value, 99) })}
-                              className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
-                          </label>
-                          <label className="flex items-center gap-1" title="Impassable from this side.">
-                            <input type="checkbox" disabled={readOnly} checked={!!f.block} onChange={e => patchSelectedFace(key, { block: e.target.checked })} />block
-                          </label>
-                        </div>
-                        <div className="flex items-center gap-2 text-[11px]">
-                          <label className="flex items-center gap-1">Melee AC
-                            <input type="number" disabled={readOnly} value={num(f.meleeAc)} placeholder="0"
-                              onChange={e => patchSelectedFace(key, { meleeAc: editNum(e.target.value, 99) })}
-                              className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
-                          </label>
-                          <label className="flex items-center gap-1">Ranged AC
-                            <input type="number" disabled={readOnly} value={num(f.rangedAc)} placeholder="0"
-                              onChange={e => patchSelectedFace(key, { rangedAc: editNum(e.target.value, 99) })}
-                              className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
-                          </label>
-                        </div>
-                      </div>
-                    );
-                  };
-                  return (
-                    <div className="space-y-2">
-                      <p className="text-xs text-gray-400">Edge ({ref.aq},{ref.ar}) ⇄ ({ref.bq},{ref.br}). Each face belongs to the hex on its side: its MP replaces that hex's terrain when crossing in; its AC protects the unit standing there.</p>
-                      {face('a', `(${ref.aq}, ${ref.ar})`)}
-                      {face('b', `(${ref.bq}, ${ref.br})`)}
-                      <div className="rounded border border-gray-700 p-2 space-y-1">
-                        <p className="text-[10px] uppercase tracking-wide text-gray-500">Destructibility</p>
-                        <div className="flex items-center gap-3 text-[11px]">
-                          <label className="flex items-center gap-1" title="Max HP: a value above 0 makes the segment attackable; it is destroyed at 0 HP.">Max HP
-                            <input type="number" min={0} max={999} disabled={readOnly} value={num(wall.maxHp)} placeholder="—"
-                              onChange={e => patchSelectedWall({ maxHp: editNum(e.target.value, 999) })}
-                              className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
-                          </label>
-                          <label className="flex items-center gap-1" title="Damage Threshold: a hit at or below this does nothing; above it deals full damage.">DT
-                            <input type="number" min={0} max={99} disabled={readOnly} value={num(wall.dt)} placeholder="0"
-                              onChange={e => patchSelectedWall({ dt: editNum(e.target.value, 99) })}
-                              className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
-                          </label>
-                        </div>
-                      </div>
-                      {!readOnly && <button onClick={deleteSelectedWall} className="text-xs px-2 py-1 rounded bg-red-900/60 hover:bg-red-800 text-red-100">Remove wall</button>}
+
+                {selectedStructure && selectedStructureTemplate ? (
+                  <div className="space-y-2 rounded border border-gray-700 p-2">
+                    <p className="text-xs text-gray-300 font-semibold">{selectedStructureTemplate.name}</p>
+                    <p className="text-[10px] text-gray-500">{selectedStructureKey}</p>
+                    <div className="flex items-center gap-3 text-[11px]">
+                      <label className="flex items-center gap-1">Max HP
+                        <input type="number" min={0} max={9999} disabled={readOnly}
+                          value={selectedStructure.maxHp ?? ''} placeholder={String(selectedStructureTemplate.maxHp)}
+                          onChange={e => patchSelectedStructure({ maxHp: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })}
+                          className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
+                      </label>
+                      <label className="flex items-center gap-1">DT
+                        <input type="number" min={0} max={999} disabled={readOnly}
+                          value={selectedStructure.dt ?? ''} placeholder={String(selectedStructureTemplate.dt)}
+                          onChange={e => patchSelectedStructure({ dt: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })}
+                          className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
+                      </label>
                     </div>
-                  );
-                })() : (
-                  <p className="text-xs text-gray-500">Click an edge on the map to edit it.</p>
+                    {selectedStructureTemplate.anchor === 'hex' && selectedStructureTemplate.doorHp !== null && (
+                      <label className="flex items-center gap-1 text-[11px]">Door HP
+                        <input type="number" min={0} max={999} disabled={readOnly}
+                          value={selectedStructure.doorHp ?? ''} placeholder={String(selectedStructureTemplate.doorHp)}
+                          onChange={e => patchSelectedStructure({ doorHp: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })}
+                          className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
+                      </label>
+                    )}
+                    {selectedStructureTemplate.anchor === 'edge' && (
+                      <div className="text-[11px] text-gray-400">
+                        Battlement side: <span className="text-amber-300">{(selectedStructure.outside ?? 'a') === 'a' ? 'A (outside)' : 'B (outside)'}</span>{' '}
+                        {!readOnly && (
+                          <button className="px-2 py-0.5 rounded bg-gray-700 hover:bg-gray-600"
+                            onClick={() => patchSelectedStructure({ outside: (selectedStructure.outside ?? 'a') === 'a' ? 'b' : 'a' })}>
+                            Flip
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {!readOnly && <button onClick={deleteSelectedStructure} className="text-xs px-2 py-1 rounded bg-red-900/60 hover:bg-red-800 text-red-100">Remove structure</button>}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500">Click a placed structure to edit it.</p>
                 )}
               </>
             )}
@@ -533,15 +538,17 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
             scale={entity.scale}
             gridRadius={entity.gridRadius}
             terrainCosts={entity.terrainCosts}
-            walls={entity.walls}
-            wallTool={tab === 'walls' && wallTool}
-            selectedEdge={selectedEdge}
+            structures={entity.structures}
+            templates={templates}
+            structureAnchors={tab === 'structures' ? armedAnchor : null}
+            selectedStructureKey={selectedStructureKey}
             paintValue={tab === 'movement' ? paintValue : null}
             readOnly={readOnly}
             onPaintHex={handlePaint}
             onClearHex={handleClearHex}
-            onPaintWall={paintWallEdge}
-            onClearWall={clearWallEdge}
+            onPaintStructureEdge={paintStructureEdge}
+            onPaintStructureHex={paintStructureHex}
+            onClearStructure={clearStructure}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-500">

@@ -55,34 +55,39 @@ corners `dir` and `dir+1`.
 - **Standalone Map Editor** (`/map-editor`, `MapEditor/`): header (New/Delete/
   Main Menu), left panel with a maps list, an **Image** tab (map_images
   upload/list, name, offsets ~1%, scale, grid radius, description), a
-  **Movement cost** tab (0–9 pen + legend), and a **Walls** tab (arm the wall
-  tool; click/drag near a hex edge to place, right-click removes; the selected
-  edge shows a face editor per side: MP / block / melee AC / ranged AC, plus
-  Max HP / DT for destructible segments).
+  **Movement cost** tab (0–9 pen + legend), and a **Structures** tab (see `18`):
+  pick a structure template from the library, then click/drag to place it on an
+  edge or hex; click a placed edge again to flip its battlement; the selected
+  instance exposes Max HP / DT / Door HP / battlement-side + Remove.
   Click/drag paints every crossed hex; **right-click clears** to 1 MP. Every edit
-  **debounce-autosaves** to `maps`. Canvas paints terrain shading + wall segments
-  + hover-coordinate chip.
+  **debounce-autosaves** to `maps`. Canvas paints terrain shading + structure
+  segments (with battlements) + hex structures + edge move-cost labels +
+  hover-coordinate chip.
 - **In-scenario Movement tab** (`TerrainPaintPanel` + `WallPaintPanel`): the same
-  0–9 pen paints on the scenario copy, and the wall tool places barriers live;
-  the GM keeps adjusting terrain live at the table.
+  0–9 pen paints on the scenario copy, and the legacy wall tool places barriers
+  live; the GM keeps adjusting terrain live at the table. (In-scenario *structure*
+  painting lands with Slice 3 of `18`.)
 
 
 ## Assigning a map to a scenario
 
 ScenarioMap's Map tab = **MapPickerList** (assign/clear) above the retained
 placement panel (`MapEditorPanel`). Assigning **snapshots** the chosen board
-into `scenarios.map_data` (background keys + `terrainCosts` + `walls` + `mapId`
-provenance), so the battle is independent of later edits to the library board.
-Access caps (migration 074): `can_view_map_editor` / `can_use_map_editor`
-(admin + dm) with matching `user_has_access` cases and RLS on `maps` (read =
-view, write = use). Migration **089** adds `maps.walls`.
+into `scenarios.map_data` (background keys + `terrainCosts` + `structures` +
+`walls` + `mapId` provenance), so the battle is independent of later edits to the
+library board. Edge structures are converted to the runtime `walls` shape via
+`structuresToWalls` on assign, so movement/combat keep working until the scenario
+is fully structure-native (Slice 3). Access caps (migration 074):
+`can_view_map_editor` / `can_use_map_editor` (admin + dm) with matching
+`user_has_access` cases and RLS on `maps` (read = view, write = use).
+Migration **089** added `maps.walls`; **094** replaces it with `maps.structures`.
 
 ## Destructible walls (Phase 2)
 
-A wall segment may carry `maxHp` / `hp` / `dt` (damage threshold). Authored in
-either wall editor (Walls tab + `WallPaintPanel`: **Max HP** / **DT**); an
-authored `maxHp` with no `hp` starts at full health (`parseWalls`). A segment
-with no `maxHp` is indestructible scenery.
+A structure instance may carry `maxHp` / `hp` / `dt` (damage threshold). Authored
+in the Structure Editor as template defaults, overridable per placed instance
+(Structures tab + `WallPaintPanel`: **Max HP** / **DT**); an authored `maxHp` with
+no `hp` starts at full health. A segment with no `maxHp` is indestructible scenery.
 
 **Attacking a barrier** is a drag onto the edge (`useHexGrid.hoveredEdge` via
 `nearestWallEdge`, threshold 0.38·hexSize): `canAttackWallEdge` gates the drop

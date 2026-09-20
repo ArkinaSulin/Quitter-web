@@ -35,14 +35,17 @@ Template library + editor shipped (Slice 1). See `18-map-structures.md`.
 - ✅ **Slice 1**: `map_structure_templates` (edge/hex, inside/outside faces,
   battlement, door HP, 30/15 defaults), Structure Editor (`/structure-editor`),
   caps/RLS, seeds, and the reusable **`enter_org_max`** effect kind.
-- 🔜 **Slice 2**: `maps.structures` jsonb + Map Editor **Structures** tab
-  (template palette, edge/hex painting, click-a-side outside/flip, cost labels on
-  the edge), hex-structure rendering in `MapCanvas`.
-- 🔜 **Slice 3**: scenario `map_data.structures` + derived runtime, `STRUCTURE`
-  command-log sub-steps (per-key merges), wall unification (wipe
-  `map_data.walls`), `enter_org_max` movement consumption, edge-structure attacks.
+- ✅ **Slice 2**: `maps.structures` (migration 094, `maps.walls` dropped) + Map
+  Editor **Structures** tab (template palette, edge/hex painting, click-again
+  battlement flip, HP/DT/door overrides), `MapCanvas` edge + hex rendering, and
+  assign-time `structuresToWalls` derivation into the runtime `walls`.
+- 🔜 **Slice 3**: scenario-native structures — `STRUCTURE` command-log sub-steps
+  (per-key merges), wall unification (stop deriving/wipe `map_data.walls`),
+  in-scenario structure painting, `enter_org_max` movement consumption,
+  edge-structure attacks.
 - 🔜 **Slice 4**: hex door-first combat + tower auras (occupancy effects), hex
-  HP/door rendering, drop **target-picker** when a hex has ≥2 targetables.
+  HP/door rendering in `useCanvasDraw`, drop **target-picker** when a hex has
+  ≥2 targetables.
 - ⏳ Deferred: structure **range bonuses**, gate open/close state.
 
 ## Edge walls (migration 089)

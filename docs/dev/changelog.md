@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Map structures Slice 2: library authoring (migration 094) (2026-09-20)
+**Files:** src/lib/{mapStructures,mapStructures.test,mapEntities,mapEntities.test,structureTemplateCache}.ts, src/components/MapEditor/{MapEditor,MapCanvas}.tsx, src/components/ScenarioMap/ScenarioMap.tsx, supabase/migrations/094_map_structures.sql (new), docs/dev/{18-map-structures,13-map-entities-terrain,02-schema-and-migrations,outstanding}.md
+
+- **`maps.structures`** replaces `maps.walls` (migration **094**, `maps.walls` dropped — no backfill per the agreed wipe). Instances are keyed `"q,r,dir"` (edge) / `"q,r"` (hex) and hold `{ templateId, hp?, maxHp?, dt?, doorHp?, outside? }`.
+- **Map Editor Structures tab** replaces the Walls tab: pick a template from the library palette, click/drag to place edge or hex structures; clicking a placed edge again flips its battlement (`outside`); the selected instance exposes Max HP / DT overrides, Door HP (hex doors), battlement Flip and Remove.
+- **`MapCanvas`** renders edge structures (blocked/cost styling, battlement square-wave on the outside, per-face move-cost labels) and hex structures (colour tint + artwork + HP badge).
+- **Assign derives the runtime**: `assignMap` snapshots `map_data.structures` and converts edge structures to the runtime `Walls` via `structuresToWalls`, so movement/combat/render are unchanged; `structures` is now a persisted map_data layer (`persistMapData` merge) and loaded/realtime-synced. New `mapStructures.ts` (+ tests) and `structureTemplateCache.ts`.
+- **Slice 3/4 pending** (`18-map-structures.md`): scenario-native structures + `STRUCTURE` substeps + wall wipe, in-scenario painting, hex door/aura combat + drop target-picker. `tsc` clean; 680 tests pass. **Apply 094 in Supabase.**
+
 ## Map Structure Editor + template library (migration 093) — Slice 1 (2026-09-20)
 **Files:** src/types/structure.ts (new), src/lib/{structureTemplates,structureTemplates.test,effectTemplates,unitEffects}.ts, src/types/gameProtocol.ts, src/components/StructureEditor/{StructureEditor,StructurePreview}.tsx (new), src/components/EffectEditor/EffectModifierFields.tsx, app/structure-editor/page.tsx (new), src/hooks/useProfile.ts, src/components/Lobby.tsx, supabase/migrations/093_map_structure_templates.sql (new), docs/dev/{README,14-editors,18-map-structures,outstanding}.md
 

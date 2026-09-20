@@ -104,6 +104,7 @@ as applied in the notes — check the live DB before relying on it).
 | 091 | archer rules: formed formations front-only ranged arc (`formations.ranged_target_arcs`) | ⏳ run in Supabase |
 | 092 | wall command log: `apply_substeps` WALL branch (`scenarios.map_data.walls`) | ⏳ run in Supabase |
 | 093 | map structure templates: caps + `map_structure_templates` + 9 seed templates | ⏳ run in Supabase |
+| 094 | map structures: `maps.structures` jsonb (drops `maps.walls`) | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

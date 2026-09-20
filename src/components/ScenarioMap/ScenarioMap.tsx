@@ -46,6 +46,8 @@ import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf, computeOccupiedHexes, computeThreatHexes } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { Walls, parseWalls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type WallFace, type EdgeRef } from '@/lib/walls';
+import { MapStructures, parseStructures, structuresToWalls } from '@/lib/mapStructures';
+import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/lib/wallCombat';
 import { unitAttackCap } from '@/lib/attackCap';
 import { newEffectKey } from '@/lib/unitEffects';
@@ -246,6 +248,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [terrainCosts, setTerrainCosts] = useState<TerrainCosts>({});
   // Edge walls authored/snapshotted (map_data.walls).
   const [walls, setWalls] = useState<Walls>({});
+  // Placed structures (map_data.structures) — the source of truth; edge structures
+  // are converted to `walls` for the runtime until the scenario is fully migrated.
+  const [structures, setStructures] = useState<MapStructures>({});
   const [groundZones, setGroundZones] = useState<GroundEffect[]>([]);
   // Provenance of the snapshot currently loaded from a reusable map (maps.id).
   const [mapId, setMapId] = useState<string | null>(null);
@@ -499,6 +504,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     backgroundConfig?: MapBackgroundConfig | null;
     terrainCosts?: TerrainCosts;
     walls?: Walls;
+    structures?: MapStructures;
     groundEffects?: GroundEffect[];
     mapId?: string | null;
   }) => {
@@ -511,10 +517,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       gridRadius: bg?.gridRadius ?? DEFAULT_GRID_RADIUS,
       terrainCosts: next.terrainCosts !== undefined ? next.terrainCosts : terrainCosts,
       walls: next.walls !== undefined ? next.walls : walls,
+      structures: next.structures !== undefined ? next.structures : structures,
       groundEffects: next.groundEffects !== undefined ? next.groundEffects : groundZones,
       mapId: next.mapId !== undefined ? next.mapId : mapId,
     });
-  }, [scenarioId, updateScenarioMapData, backgroundConfig, terrainCosts, walls, groundZones, mapId]);
+  }, [scenarioId, updateScenarioMapData, backgroundConfig, terrainCosts, walls, structures, groundZones, mapId]);
 
   const paintTerrain = useCallback(async (q: number, r: number) => {
     if (terrainBrushCost === null) return;
@@ -600,7 +607,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     return nearestEdge(hex, world, HEX_SIZE).dir;
   }
 
-  // Assign a reusable map: snapshot its image + terrain into the scenario copy.
+  // Assign a reusable map: snapshot its image + terrain + structures into the
+  // scenario copy. Edge structures are converted to the runtime `walls` so wall
+  // movement/combat keeps working until the scenario is fully structure-native.
   const assignMap = useCallback(async (entity: MapEntity) => {
     const bg: MapBackgroundConfig = {
       imageUrl: entity.imageUrl,
@@ -609,11 +618,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       scale: entity.scale,
       gridRadius: entity.gridRadius,
     };
+    const templates = await getStructureTemplates();
+    const derivedWalls = structuresToWalls(entity.structures ?? {}, templates);
     setBackgroundConfig(bg);
     setTerrainCosts(entity.terrainCosts);
-    setWalls(entity.walls ?? {});
+    setStructures(entity.structures ?? {});
+    setWalls(derivedWalls);
     setMapId(entity.id);
-    await persistMapData({ backgroundConfig: bg, terrainCosts: entity.terrainCosts, walls: entity.walls ?? {}, mapId: entity.id });
+    await persistMapData({ backgroundConfig: bg, terrainCosts: entity.terrainCosts, walls: derivedWalls, structures: entity.structures ?? {}, mapId: entity.id });
     addMessage(`Loaded map "${entity.name}" — snapshot copied to this scenario`);
   }, [persistMapData, addMessage]);
 
@@ -621,8 +633,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setBackgroundConfig(null);
     setTerrainCosts({});
     setWalls({});
+    setStructures({});
     setMapId(null);
-    await persistMapData({ backgroundConfig: null, terrainCosts: {}, walls: {}, mapId: null });
+    await persistMapData({ backgroundConfig: null, terrainCosts: {}, walls: {}, structures: {}, mapId: null });
     addMessage('Map cleared — plain board');
   }, [persistMapData, addMessage]);
 
@@ -1909,6 +1922,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       });
       setTerrainCosts(data?.terrainCosts ?? {});
       setWalls(parseWalls(data?.walls));
+      setStructures(parseStructures(data?.structures));
       setGroundZones(Array.isArray(data?.groundEffects) ? data.groundEffects : []);
       setMapId(data?.mapId ?? null);
     });
@@ -1984,6 +1998,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             const md = row.map_data || {};
             if (md.terrainCosts !== undefined) setTerrainCosts(md.terrainCosts ?? {});
             if (md.walls !== undefined) setWalls(parseWalls(md.walls));
+            if (md.structures !== undefined) setStructures(parseStructures(md.structures));
             if (md.groundEffects !== undefined) setGroundZones(Array.isArray(md.groundEffects) ? md.groundEffects : []);
             if (md.mapId !== undefined) setMapId(md.mapId ?? null);
             if (md.backgroundImageUrl !== undefined) {
