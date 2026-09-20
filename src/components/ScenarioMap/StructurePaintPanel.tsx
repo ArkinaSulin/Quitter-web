@@ -48,14 +48,14 @@ export function StructurePaintPanel({
         onClick={onToggleArm}
         className={`w-full py-1.5 rounded border text-xs font-semibold ${armed ? 'bg-yellow-600 text-black border-yellow-300' : 'bg-gray-800 text-gray-100 border-gray-600 hover:bg-gray-700'}`}
       >
-        {armed ? 'Structure tool ON' : 'Arm structure tool'}
+        {armed ? 'Structure tools enabled' : 'Enable structure tools'}
       </button>
       <p className="text-xs text-gray-500">
         {armed
           ? armedTemplate
             ? `Armed: ${armedTemplate.name}. Click/drag ${armedTemplate.anchor === 'hex' ? 'a hex' : 'near a hex edge'} to place; click a placed edge again to flip its battlement. Right-click removes.`
             : 'Pick a structure below.'
-          : 'Arm the tool to place structures in this scenario.'}
+          : 'Enable the tools to place structures in this scenario.'}
       </p>
 
       <div className="space-y-1 max-h-48 overflow-y-auto">
@@ -66,7 +66,7 @@ export function StructurePaintPanel({
             onClick={() => onSetPaletteId(paletteId === t.id ? null : t.id)}
             className={`w-full text-left text-xs px-2 py-1.5 rounded border ${paletteId === t.id ? 'bg-yellow-700/40 border-yellow-500' : 'bg-gray-800 border-transparent hover:bg-gray-700'}`}
           >
-            <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ backgroundColor: t.color }} />
+            <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle bg-black/80 border border-gray-500" />
             {t.name}
             <span className="block text-[10px] text-gray-400">{t.anchor}{t.battlement ? ' · battlement' : ''}{t.doorHp !== null ? ` · door ${t.doorHp}` : ''} · {t.maxHp}hp</span>
           </button>

@@ -7,6 +7,7 @@
 // side is shown as outside (the real side is chosen per placement).
 import React, { useState } from 'react';
 import { StructureAnchor } from '@/types/structure';
+import { battlementPath } from '@/lib/structureDraw';
 
 const HEX_DIRS = [
   { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
@@ -26,7 +27,6 @@ export interface PreviewFace {
 
 interface StructurePreviewProps {
   anchor: StructureAnchor;
-  color: string;
   imageUrl: string;
   battlement: boolean;
   inside: PreviewFace;
@@ -49,7 +49,7 @@ function faceLabel(f: PreviewFace): string {
 }
 
 export function StructurePreview({
-  anchor, color, imageUrl, battlement, inside, outside, hexMoveCost, doorHp, maxHp, dt,
+  anchor, imageUrl, battlement, inside, outside, hexMoveCost, doorHp, maxHp, dt,
 }: StructurePreviewProps) {
   const [flipped, setFlipped] = useState(false);
 
@@ -72,18 +72,17 @@ export function StructurePreview({
         return `${cx + S * Math.cos(a)},${cy + S * Math.sin(a)}`;
       }).join(' ');
     const centre = { x: toX(0), y: toY(0) };
-    const tint = /^#[0-9a-fA-F]{6}$/.test(color) ? `${color}40` : 'rgba(255,255,255,0.08)';
     return (
       <div className="space-y-2">
-        <div className="relative rounded border border-gray-700 bg-gray-900" style={{ width: W, height: H }}>
+        <div className="relative rounded border border-gray-700 bg-gray-200" style={{ width: W, height: H }}>
           <svg width={W} height={H} className="absolute inset-0 block">
             {pts.map((p, i) => (
               <polygon
                 key={i}
                 points={hexPoints(toX(p.x), toY(p.y))}
-                fill={i === 0 ? tint : 'rgba(255,255,255,0.03)'}
-                stroke="rgba(255,255,255,0.25)"
-                strokeWidth={1}
+                fill={i === 0 ? 'none' : 'rgba(0,0,0,0.03)'}
+                stroke={i === 0 ? 'rgba(0,0,0,0.95)' : 'rgba(0,0,0,0.25)'}
+                strokeWidth={i === 0 ? 4 : 1}
               />
             ))}
           </svg>
@@ -115,43 +114,20 @@ export function StructurePreview({
   const x0 = 28;
   const x1 = W - 28;
   const outsideUp = !flipped;
-  const outColor = 'rgba(255, 200, 120, 0.95)';
-  const segColor = /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#c49a58';
-  const teeth = 6;
-  const toothW = (x1 - x0) / (teeth * 2 - 1);
-  const depth = 10;
-  const battlementPath = () => {
-    const dy = outsideUp ? -depth : depth;
-    let d = `M ${x0} ${y}`;
-    // Up (outside) to the crest, then square teeth back to the segment.
-    d += ` L ${x0} ${y + dy}`;
-    for (let i = 0; i < teeth; i++) {
-      const sx = x0 + i * toothW * 2;
-      d += ` L ${sx} ${y + dy}`;
-      d += ` L ${sx} ${y}`;
-      d += ` L ${sx + toothW} ${y}`;
-      d += ` L ${sx + toothW} ${y + dy}`;
-    }
-    d += ` L ${x1} ${y + dy}`;
-    d += ` L ${x1} ${y}`;
-    return d;
-  };
   const outsideFace = flipped ? inside : outside;
   const insideFace = flipped ? outside : inside;
+  const bbPath = battlementPath({ x: x0, y }, { x: x1, y }, { x: 0, y: outsideUp ? -1 : 1 }, 8, 8);
   return (
     <div className="space-y-2">
-      <div className="relative rounded border border-gray-700 bg-gray-900" style={{ width: W, height: H }}>
+      <div className="relative rounded border border-gray-700 bg-gray-200" style={{ width: W, height: H }}>
         <svg width={W} height={H} className="absolute inset-0 block">
-          <line x1={x0} y1={y} x2={x1} y2={y} stroke={segColor} strokeWidth={6} strokeLinecap="round" />
-          {battlement && <path d={battlementPath()} fill="none" stroke={segColor} strokeWidth={3} strokeLinejoin="round" />}
-          {outsideFace.block && (
-            <line x1={x0} y1={y} x2={x1} y2={y} stroke="rgba(20,20,24,0.9)" strokeWidth={10} strokeLinecap="round" />
-          )}
+          <line x1={x0} y1={y} x2={x1} y2={y} stroke="rgba(0,0,0,0.95)" strokeWidth={7} strokeLinecap="round" />
+          {battlement && <path d={bbPath} fill="none" stroke="rgba(0,0,0,0.95)" strokeWidth={2.5} strokeLinejoin="round" />}
         </svg>
-        <span className="absolute left-1 top-0.5 text-[9px] uppercase tracking-wide text-amber-300">Outside</span>
-        <span className="absolute left-1 bottom-0.5 text-[9px] uppercase tracking-wide text-sky-300">Inside</span>
-        <span className="absolute right-1 top-0.5 text-[9px] text-gray-400">{faceLabel(outsideFace)}</span>
-        <span className="absolute right-1 bottom-0.5 text-[9px] text-gray-400">{faceLabel(insideFace)}</span>
+        <span className="absolute left-1 top-0.5 text-[9px] uppercase tracking-wide text-amber-700">Outside</span>
+        <span className="absolute left-1 bottom-0.5 text-[9px] uppercase tracking-wide text-sky-700">Inside</span>
+        <span className="absolute right-1 top-0.5 text-[9px] text-gray-700">{faceLabel(outsideFace)}</span>
+        <span className="absolute right-1 bottom-0.5 text-[9px] text-gray-700">{faceLabel(insideFace)}</span>
       </div>
       {battlement && (
         <button

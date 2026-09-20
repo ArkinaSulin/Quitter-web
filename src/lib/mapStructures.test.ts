@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseStructures, structuresToWalls, isEdgeStructureKey, isHexStructureKey, structureCounts, structureBlocksOrg, zoneBlocksOrg, structureRangeBonus, structureIsOpen, structureHexMoveCost, structureAuraFlags } from './mapStructures';
+import { meleeWallAc, rangedWallAc } from './walls';
 import { StructureTemplate } from '@/types/structure';
 
 const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => ({
@@ -157,5 +158,25 @@ describe('hex structure helpers', () => {
     const f = structureAuraFlags({ q: 0, r: 0 }, { '0,0': { templateId: 'a' } }, { a: aura });
     expect(f).toEqual({ advantage: true, disadvantage: false, grantAdvantage: false, grantDisadvantage: true });
     expect(structureAuraFlags({ q: 2, r: 0 }, {}, {})).toEqual({ advantage: false, disadvantage: false, grantAdvantage: false, grantDisadvantage: false });
+  });
+});
+
+describe('edge structure cover (wood wall regression)', () => {
+  // Mirrors the seeded Wood Wall: block + 2 melee / 2 ranged AC on both faces.
+  const woodWall = template({
+    id: 'wood-wall', anchor: 'edge', battlement: true,
+    edgeABlock: true, edgeAMeleeAc: 2, edgeARangedAc: 2,
+    edgeBBlock: true, edgeBMeleeAc: 2, edgeBRangedAc: 2,
+  });
+  const templates = { 'wood-wall': woodWall };
+
+  it('grants its melee/ranged AC to the defender across the edge (either outside)', () => {
+    for (const outside of ['a', 'b'] as const) {
+      const walls = structuresToWalls({ '0,0,0': { templateId: 'wood-wall', outside } }, templates);
+      expect(meleeWallAc(walls, { q: 0, r: 0 }, { q: 1, r: 0 })).toBe(2);
+      expect(rangedWallAc(walls, { q: 0, r: 0 }, { q: 1, r: 0 })).toBe(2);
+      // ...and the other side likewise.
+      expect(meleeWallAc(walls, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(2);
+    }
   });
 });

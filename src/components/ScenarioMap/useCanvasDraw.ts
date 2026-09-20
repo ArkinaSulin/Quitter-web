@@ -14,9 +14,10 @@ import { corpseDots, FallenMap } from '@/lib/corpseTracker';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig, TerrainCosts, costShade } from './mapGeometry';
 import { FOG_RGB } from '@/lib/fogOfWar';
-import { Walls, EdgeRef, wallHp } from '@/lib/walls';
+import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
 import { MapStructures, isHexStructureKey } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
+import { battlementPath } from '@/lib/structureDraw';
 import { AiOverlayData } from './aiTypes';
 
 interface CanvasDrawDeps {
@@ -149,6 +150,21 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       ctx.fillStyle = color;
       ctx.fill();
     };
+    const strokeHex = (hex: Hex, color: string, width: number) => {
+      const { cx, cy } = hexCenter(hex);
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = (Math.PI / 180) * (60 * i - 30);
+        const px = cx + HEX_SIZE * currentZoom * Math.cos(angle);
+        const py = cy + HEX_SIZE * currentZoom * Math.sin(angle);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.stroke();
+    };
     const isFogHidden = (key: string) => !!fogReveal && !fogReveal.has(key);
 
     // Effect artwork on hexes. "below" draws under corpses/tokens (here);
@@ -243,7 +259,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const inst = structures[key];
         const t = templates?.[inst.templateId];
         const hx = { q, r, s: -q - r };
-        fillHex(hx, t && /^#[0-9a-fA-F]{6}$/.test(t.color) ? `${t.color}55` : 'rgba(255,255,255,0.08)');
+        // Transparent background: a thick black outline only (no colour tint).
+        strokeHex(hx, 'rgba(0,0,0,0.95)', Math.max(3, 5 * currentZoom));
         const { cx, cy } = hexCenter(hx);
         if (t?.imageUrl) {
           const img = getLoadedImage(t.imageUrl);
@@ -300,20 +317,33 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         if (!Number.isFinite(q) || !Number.isFinite(r) || !Number.isFinite(d)) continue;
         if (isFogHidden(`${q},${r}`)) continue;
         const w = walls[key];
-        const blocked = !!w.a.block || !!w.b.block;
-        const hasCost = w.a.moveCost !== undefined || w.b.moveCost !== undefined;
         const destructible = (w.maxHp ?? 0) > 0;
         const damaged = destructible && wallHp(w) < (w.maxHp ?? 0);
-        ctx.strokeStyle = damaged
-          ? 'rgba(220, 110, 90, 0.95)'
-          : blocked ? 'rgba(20, 20, 24, 0.95)' : hasCost ? 'rgba(196, 154, 88, 0.95)' : 'rgba(150, 165, 185, 0.9)';
-        ctx.lineWidth = (blocked ? 7 : 5) * currentZoom;
+        // All edge structures render as one thick black outline.
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
+        ctx.lineWidth = 6 * currentZoom;
         const a = cornerScreen(q, r, d);
         const b = cornerScreen(q, r, d + 1);
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
+        // Battlement on the outside side (same colour as the wall, kept small).
+        const inst = structures?.[key];
+        const t = inst ? templates?.[inst.templateId] : undefined;
+        if (t?.battlement && inst) {
+          const ref = edgeRef(q, r, d);
+          const outsideIsA = (inst.outside ?? 'a') === 'a';
+          const oc = hexCenter({ q: outsideIsA ? ref.aq : ref.bq, r: outsideIsA ? ref.ar : ref.br, s: 0 });
+          let nx = oc.cx - (a.x + b.x) / 2;
+          let ny = oc.cy - (a.y + b.y) / 2;
+          const nl = Math.hypot(nx, ny) || 1;
+          nx /= nl; ny /= nl;
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
+          ctx.lineWidth = 2 * currentZoom;
+          ctx.beginPath();
+          ctx.stroke(new Path2D(battlementPath(a, b, { x: nx, y: ny }, HEX_SIZE * 0.12 * currentZoom, 8)));
+        }
         // Damaged barriers show their remaining HP at the segment midpoint.
         if (damaged) {
           const mx = (a.x + b.x) / 2;
@@ -331,7 +361,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         // Drag-to-attack hint: the edge under the pointer gets a bright cap.
         if (hoveredWallEdge && hoveredWallEdge.key === key) {
           ctx.strokeStyle = 'rgba(255, 140, 60, 0.95)';
-          ctx.lineWidth = (blocked ? 11 : 9) * currentZoom;
+          ctx.lineWidth = 11 * currentZoom;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
           ctx.lineTo(b.x, b.y);

@@ -11,6 +11,7 @@ import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
 import { HEX_SIZE, DEFAULT_GRID_RADIUS, TerrainCosts, costShade } from '@/components/ScenarioMap/mapGeometry';
 import { edgeRef, nearestEdge, hexCorner } from '@/lib/walls';
 import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls } from '@/lib/mapStructures';
+import { battlementPath } from '@/lib/structureDraw';
 import { StructureTemplate } from '@/types/structure';
 
 export interface MapCanvasProps {
@@ -46,34 +47,6 @@ function hexCorners(cx: number, cy: number, size: number): { x: number; y: numbe
     pts.push({ x: cx + size * Math.cos(angle), y: cy + size * Math.sin(angle) });
   }
   return pts;
-}
-
-/** Square-wave crenellation path along an edge, offset to `outward` (+1/-1). */
-function battlementPath(
-  a: { x: number; y: number },
-  b: { x: number; y: number },
-  outward: { x: number; y: number },
-  depth: number,
-): string {
-  const teeth = 5;
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const ux = dx / len;
-  const uy = dy / len;
-  const ox = outward.x * depth;
-  const oy = outward.y * depth;
-  const step = len / (teeth * 2 - 1);
-  let d = `M ${a.x} ${a.y} L ${a.x + ox} ${a.y + oy}`;
-  for (let i = 0; i < teeth; i++) {
-    const sx = a.x + ux * step * (i * 2);
-    const sy = a.y + uy * step * (i * 2);
-    const ex = sx + ux * step;
-    const ey = sy + uy * step;
-    d += ` L ${sx} ${sy} L ${sx + ox} ${sy + oy} L ${ex + ox} ${ey + oy} L ${ex} ${ey}`;
-  }
-  d += ` L ${b.x} ${b.y}`;
-  return d;
 }
 
 export function MapCanvas({
@@ -184,9 +157,11 @@ export function MapCanvas({
         if (Number.isNaN(q) || Number.isNaN(r)) continue;
         const t = p.templates?.[inst.templateId];
         const pos = hexToPixel({ q, r, s: -q - r }, HEX_SIZE);
+        // Transparent background: a thick black outline only (no colour tint).
         hexPath(pos.x, pos.y);
-        ctx.fillStyle = t && /^#[0-9a-fA-F]{6}$/.test(t.color) ? `${t.color}55` : 'rgba(255,255,255,0.08)';
-        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+        ctx.lineWidth = 5;
+        ctx.stroke();
         if (t?.imageUrl) {
           let img = structImgs.current.get(t.imageUrl);
           if (!img) {
@@ -262,17 +237,16 @@ export function MapCanvas({
         const w = walls[key];
         const inst = p.structures[key];
         const t = p.templates?.[inst.templateId];
-        const blocked = !!w?.a.block || !!w?.b.block;
-        const hasCost = w?.a.moveCost !== undefined || w?.b.moveCost !== undefined;
-        ctx.strokeStyle = blocked ? 'rgba(20,20,24,0.95)' : hasCost ? 'rgba(196,154,88,0.95)' : 'rgba(150,165,185,0.9)';
-        ctx.lineWidth = blocked ? 7 : 5;
+        // All edge structures render as one thick black outline.
+        ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+        ctx.lineWidth = 6;
         const a = worldCorner(q, r, d);
         const b = worldCorner(q, r, d + 1);
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
-        // Battlement on the outside side.
+        // Battlement on the outside side (same colour as the wall, kept small).
         if (t?.battlement) {
           const ref = edgeRef(q, r, d);
           const outsideIsA = (inst.outside ?? 'a') === 'a';
@@ -285,10 +259,10 @@ export function MapCanvas({
           let ny = hexCenterPt.y - midY;
           const nl = Math.hypot(nx, ny) || 1;
           nx /= nl; ny /= nl;
-          ctx.strokeStyle = blocked ? 'rgba(60,60,70,0.95)' : 'rgba(196,154,88,0.95)';
-          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+          ctx.lineWidth = 2;
           ctx.beginPath();
-          const path = battlementPath(a, b, { x: nx, y: ny }, HEX_SIZE * 0.28);
+          const path = battlementPath(a, b, { x: nx, y: ny }, HEX_SIZE * 0.12, 8);
           ctx.stroke(new Path2D(path));
         }
         // Move-cost labels on the edge, one per face that overrides the cost.

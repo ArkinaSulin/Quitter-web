@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Map structures polish: battlement, black outline, wall-cover display (2026-09-20)
+**Files:** src/lib/{unitCombat,structureDraw(new),mapStructures.test}.ts, src/components/ScenarioMap/{useCombatActions,useCanvasDraw,StructurePaintPanel}.tsx, src/components/MapEditor/{MapCanvas,MapEditor}.tsx, src/components/StructureEditor/{StructureEditor,StructurePreview}.tsx, docs/dev/changelog.md
+
+- **Rename**: "Arm structure tool" → **"Enable structure tools"** (and the place/enable hints).
+- **Battlement square-wave now draws on the scenario map too** (`useCanvasDraw` previously only drew plain segments). Shared `src/lib/structureDraw.ts` `battlementPath` used by `useCanvasDraw`, `MapCanvas` and `StructurePreview`; stroke matches the wall colour and is much **smaller** (depth `HEX_SIZE*0.12`, 8 teeth).
+- **Structures render as a thick black outline on a transparent background**: the `colour` control is removed from the Structure Editor (and the list dots), and both canvases + the preview drop the colour tint / block-vs-cost styling in favour of a uniform thick black outline (hex = black hex outline, edge = black segment + black battlement). The `StructureTemplate.color` column is left in the DB, now unused (no migration).
+- **Wood-wall cover now shows in the verbose combat message.** The roll always used the wall AC (`wallCoverAgainst`, exported from `unitCombat`), but the displayed AC was recomputed from `effectiveAc` only. The verbose roll detail now adds the per-direction cover (`targetAcCovered` / `attackerAcCovered`) so each strike line shows the exact AC used. Unit AC stats and the tooltip are deliberately unchanged — cover is a per-attack modifier, not a unit stat.
+- Regression test: seeded wood-wall template → `structuresToWalls` → `meleeWallAc`/`rangedWallAc` = 2. `tsc` clean; 697 tests pass; `next build` clean. No DB change.
+
 ## Effect Editor: `range` + `enter_org_max` usable on units and zones (2026-09-20)
 **Files:** src/lib/{unitEffects,unitEffects.test}.ts, src/components/ScenarioMap/{ScenarioMap,useCombatActions,useReactionActions}.tsx/.ts
 

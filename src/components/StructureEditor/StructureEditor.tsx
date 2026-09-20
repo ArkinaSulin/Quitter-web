@@ -8,7 +8,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
-import { ColorField } from '@/components/ColorField';
 import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
 import { StructurePreview, PreviewFace } from '@/components/StructureEditor/StructurePreview';
 import { StructureTemplate, StructureAnchor } from '@/types/structure';
@@ -207,7 +206,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
               onClick={() => select(t)}
               className={`w-full text-left text-xs px-2 py-1.5 rounded border ${draft?.id === t.id ? 'bg-yellow-700/40 border-yellow-500' : 'bg-gray-800 border-transparent hover:bg-gray-700'}`}
             >
-              <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ backgroundColor: t.color }} />
+              <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle bg-black/80 border border-gray-500" />
               {t.name}
               <span className="block text-[10px] text-gray-400">
                 {t.anchor}{t.battlement ? ' · battlement' : ''}{t.doorHp !== null ? ` · door ${t.doorHp}` : ''} · {t.maxHp}hp
@@ -242,10 +241,6 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
               </label>
 
               <div className="flex flex-wrap items-start gap-4">
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">Color</p>
-                  <ColorField value={draft.color} readOnly={readOnly} onChange={color => patch({ color })} />
-                </div>
                 <div className="flex items-center gap-2">
                   {draft.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -379,13 +374,11 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <span className="w-8 h-8 rounded border border-gray-600" style={{ backgroundColor: draft.color || '#cccccc' }} />
                 <span className="text-sm font-semibold">{draft.name || '(unnamed)'}</span>
               </div>
               {previewFaces && (
                 <StructurePreview
                   anchor={draft.anchor}
-                  color={draft.color}
                   imageUrl={draft.imageUrl}
                   battlement={draft.battlement}
                   inside={previewFaces.inside}

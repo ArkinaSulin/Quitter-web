@@ -6,7 +6,7 @@
 // end/overrun helpers. Owns the attack-related soft-enforcement states.
 import { useCallback, useState } from 'react';
 import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance, UnitEffect } from '@/types/gameProtocol';
-import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome, AttackerHeroProfile } from '@/lib/unitCombat';
+import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome, AttackerHeroProfile, wallCoverAgainst } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/lib/formationRules';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
@@ -554,6 +554,10 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const attackerAcDir = attackDirection(target.hex, attacker.hex, attacker.facing);
     const effTargetAc = effectiveAc(effTarget, formationsMap[effTarget.currentFormation] ?? null, defenderAcDir, isRanged);
     const effAttackerAc = effectiveAc(effAttacker, formationsMap[effAttacker.currentFormation] ?? null, attackerAcDir, isRanged);
+    // Wall cover is a per-attack modifier (not a unit stat): the display must show
+    // the same cover-adjusted AC the roll uses, per strike direction.
+    const targetAcCovered = effTargetAc + wallCoverAgainst(walls, attacker.hex, target.hex, isRanged);
+    const attackerAcCovered = effAttackerAc + wallCoverAgainst(walls, target.hex, attacker.hex, isRanged);
     // A formation gives no AC from the rear — call it out instead of a bare number.
     const defenderForm = formationsMap[target.currentFormation];
     const defenderFormAc = (isRanged ? defenderForm?.range_ac_modifier : defenderForm?.melee_ac_modifier) ?? 0;
@@ -571,13 +575,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
       outcome.strikerFirst === 'attacker'
         ? weapon.attackBonus + formationAtkMod
         : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
-      outcome.strikerFirst === 'attacker' ? effTargetAc : effAttackerAc,
+      outcome.strikerFirst === 'attacker' ? targetAcCovered : attackerAcCovered,
       outcome.strikerFirst === 'attacker' ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
       outcome.strikerFirst === 'attacker' && isChargingAttack,
       firstStrikeHostDamage,
     );
     const joinerDice = joinerActive
-      ? formatStrikeDetail(firstStrikeJoiner, attackerHeroWeapon!.attackBonus + formationAtkMod, effTargetAc, attackerHeroWeapon!.damageDice, isChargingAttack, firstStrikeJoinerDamage)
+        ? formatStrikeDetail(firstStrikeJoiner, attackerHeroWeapon!.attackBonus + formationAtkMod, targetAcCovered, attackerHeroWeapon!.damageDice, isChargingAttack, firstStrikeJoinerDamage)
       : '';
     // One clause per line. `desc` is the plain log/summary; `msgDesc` is the full
     // verbose text — always recorded, only DISPLAYED when verbose combat is on.
@@ -666,13 +670,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
         retIsAttacker
           ? weapon.attackBonus + formationAtkMod
           : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
-        retIsAttacker ? effTargetAc : effAttackerAc,
+        retIsAttacker ? targetAcCovered : attackerAcCovered,
         retIsAttacker ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
         retIsAttacker && isChargingAttack,
         retaliationHostDamage,
       );
       const retJoinerDice = retJoinerActive
-        ? formatStrikeDetail(retJoiner, attackerHeroWeapon!.attackBonus + formationAtkMod, retIsAttacker ? effTargetAc : effAttackerAc, attackerHeroWeapon!.damageDice, isChargingAttack, retJoinerDamage)
+        ? formatStrikeDetail(retJoiner, attackerHeroWeapon!.attackBonus + formationAtkMod, retIsAttacker ? targetAcCovered : attackerAcCovered, attackerHeroWeapon!.damageDice, isChargingAttack, retJoinerDamage)
         : '';
       // The hero on the receiving side of the retaliation (front-attached). Its
       // "took" line is placed BEFORE the retaliator's own volley lines.

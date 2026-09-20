@@ -367,7 +367,7 @@ export interface AttackerHeroProfile {
  * Melee: the shared edge's defender face. Ranged: the face on the defender's hex
  * along the edge the shot ENTERS through (cube-lerp line).
  */
-function wallAcAgainst(walls: Walls | null | undefined, attackerHex: Hex, defenderHex: Hex, isRanged: boolean): number {
+export function wallCoverAgainst(walls: Walls | null | undefined, attackerHex: Hex, defenderHex: Hex, isRanged: boolean): number {
   if (!walls) return 0;
   if (!isRanged) return meleeWallAc(walls, attackerHex, defenderHex);
   const entering = hexEnteringFrom(attackerHex, defenderHex) ?? attackerHex;
@@ -459,8 +459,8 @@ export function resolveCombatSequence(
   // (uniform rule); shields are 360° and stay in `baselineAc`. The shield drops
   // for two-handed weapons / routing are handled inside effectiveAc. The
   // formation term is melee/ranged-aware (`isRanged`).
-  const defenderEffAc = effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing), isRanged) + wallAcAgainst(walls, attacker.hex, defender.hex, isRanged);
-  const attackerEffAc = effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing), isRanged) + wallAcAgainst(walls, defender.hex, attacker.hex, isRanged);
+  const defenderEffAc = effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing), isRanged) + wallCoverAgainst(walls, attacker.hex, defender.hex, isRanged);
+  const attackerEffAc = effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing), isRanged) + wallCoverAgainst(walls, defender.hex, attacker.hex, isRanged);
 
   // Who strikes first? A defender attacked from the rear, a routed defender, noRetaliation
   // weapons, and ranged attacks all let the attacker strike first (the defender can't react).
