@@ -19,8 +19,9 @@ import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreat
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc } from '@/lib/meleeFallback';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
-import { attackDirection } from '@/lib/attackDirection';
+import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
 import { attackRollFlags } from '@/lib/unitEffects';
+import { hasLineOfSight } from '@/lib/lineOfSight';
 import { Walls } from '@/lib/walls';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
@@ -144,6 +145,10 @@ export function useCombatActions(deps: CombatActionsDeps) {
       }
     }
     const isRanged = weapon.magicDimension > 0 || !isAdjacent;
+    // Line of sight: any other unit (friendly or hostile) between the two hex
+    // centres turns a ranged shot into an "indirect shot" (disadvantage). Melee
+    // is not LoS-gated; the auto-draw already resolved adjacent weapons above.
+    const indirectShot = isRanged && !hasLineOfSight(attacker.hex, target.hex, units, new Set([attacker.id, target.id]));
     const hostileTarget = (alliances[attacker.team] || 'friendly') !== (alliances[target.team] || 'friendly');
 
     // A leading (front-attached) hero AUTO-joins the host's attack — melee OR
@@ -245,6 +250,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
           options?.opportunityAttack ?? false,
           attackerHeroProfile,
           walls,
+          indirectShot,
         );
 
     const subSteps: SubStep[] = [];
@@ -1077,7 +1083,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
         addMessage(`${attacker.unitName} cannot attack ${target.unitName}: target not in front arc`);
         return;
       }
-    } else if (!canRangedTarget(attackerForm, targetPos)) {
+    } else if (!canRangedTarget(attackerForm, arcOfTarget(attacker.hex, attacker.facing, target.hex))) {
       addMessage(`${attacker.unitName} (${attacker.currentFormation}) cannot ranged-attack target in that direction`);
       return;
     }

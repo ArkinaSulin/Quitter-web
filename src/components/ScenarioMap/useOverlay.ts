@@ -12,6 +12,8 @@ import { isUnitRouted } from '@/lib/unitMorale';
 import { parseWeapons } from '@/lib/weaponParser';
 import { isRangedCapableWeapon, getReactionMoveBudget } from '@/lib/archerReaction';
 import { determineCombatPosition } from '@/lib/unitCombat';
+import { canRangedTarget } from '@/lib/formationRules';
+import { arcOfTarget } from '@/lib/attackDirection';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
 import { canWithdraw, withdrawDestinations } from '@/lib/withdraw';
@@ -75,8 +77,9 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       !!hoveredUnit && hoveredUnit.id !== archer.id && !hoveredUnit.isDeleted &&
       (alliances[hoveredUnit.team] || 'friendly') !== (alliances[archer.team] || 'friendly');
     if (hostileHover && weapon && isRangedCapableWeapon(weapon)) {
+      const allow = (h: Hex) => canRangedTarget(formationsMap[archer.currentFormation] ?? null, arcOfTarget(archer.hex, archer.facing, h));
       for (const h of hexRing(archer.hex, weapon.range)) {
-        combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.85)';
+        if (allow(h)) combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.85)';
       }
       const d = hexDistance(archer.hex, hoveredUnit!.hex);
       combined[`${hoveredUnit!.hex.q},${hoveredUnit!.hex.r}`] = d <= weapon.range ? 'rgba(80, 220, 120, 0.8)' : 'rgba(255, 80, 80, 0.85)';
@@ -165,13 +168,16 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
         return combined;
       }
       if (isRanged) {
-        // Dragging a ranged unit over an enemy target: show range rings.
+        // Dragging a ranged unit over an enemy target: show range rings, clipped
+        // to the formation's allowed ranged arcs (formed units: front cone only).
+        const form = formationsMap[draggedUnit.currentFormation] ?? null;
+        const allow = (h: Hex) => canRangedTarget(form, arcOfTarget(draggedUnit.hex, draggedUnit.facing, h));
         for (const h of hexRing(draggedUnit.hex, activeWeapon!.range)) {
-          combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.9)';
+          if (allow(h)) combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.9)';
         }
         if (activeWeapon!.maxRange > activeWeapon!.range) {
           for (const h of hexRing(draggedUnit.hex, activeWeapon!.maxRange)) {
-            combined[`${h.q},${h.r}`] = 'rgba(255, 180, 60, 0.9)';
+            if (allow(h)) combined[`${h.q},${h.r}`] = 'rgba(255, 180, 60, 0.9)';
           }
         }
         const d = hexDistance(draggedUnit.hex, hoveredUnit!.hex);

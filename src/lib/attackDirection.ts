@@ -29,3 +29,13 @@ export function attackDirection(attackerHex: Hex, defenderHex: Hex, defenderFaci
   if (abs <= 120) return 'flank';
   return 'rear';
 }
+
+/**
+ * Which arc a TARGET lies in relative to the shooter's own facing, at any range
+ * (bearing-based). This is the ranged counterpart to `determineCombatPosition`,
+ * which only resolves the 6 adjacent hexes and returns 'front' for everything
+ * farther away. `arcOfTarget(o, facing, t) === attackDirection(t, o, facing)`.
+ */
+export function arcOfTarget(originHex: Hex, facing: number, targetHex: Hex): AttackDirection {
+  return attackDirection(targetHex, originHex, facing);
+}

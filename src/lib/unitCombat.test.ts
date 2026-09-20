@@ -723,6 +723,42 @@ describe('resolveCombatSequence', () => {
     expect(result.firstStrikeAttacks[0].dicePair).toBeUndefined();
   });
 
+  it('an indirect shot (blocked line) rolls the attacker at disadvantage', () => {
+    const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 } };
+    const nearDefender = { ...defender, hex: { q: 0, r: -1, s: 1 }, currentAc: 10 };
+    const rangedWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1, range: 2, maxRange: 6 };
+    const seq = [0.7, 0.3]; // roll1 = 15, roll2 = 7 → taken 7
+    const rng = () => seq.shift() ?? 0.5;
+    const result = resolveCombatSequence(heroAttacker, nearDefender, rangedWeapon, null, 0, 1, 1, 10, 10, 20, true, false, null, null, rng, false, null, null, false, null, null, true);
+    expect(result.firstStrikeAttacks).toHaveLength(1);
+    expect(result.firstStrikeAttacks[0].roll).toBe(7); // min(15, 7)
+    expect(result.firstStrikeAttacks[0].dicePair).toEqual([7, 15]);
+    expect(result.firstStrikeRoll.mode).toBe('disadvantage');
+    expect(result.firstStrikeRoll.note).toContain('indirect shot');
+  });
+
+  it('advantage cancels an indirect shot back to a normal roll', () => {
+    const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 }, effects: [flagEffect('advantage')] };
+    const nearDefender = { ...defender, hex: { q: 0, r: -1, s: 1 }, currentAc: 10 };
+    const rangedWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1, range: 2, maxRange: 6 };
+    const seq = [0.7, 0.5]; // single roll = 15 → hit; 0.5 feeds the damage roll
+    const rng = () => seq.shift() ?? 0.5;
+    const result = resolveCombatSequence(heroAttacker, nearDefender, rangedWeapon, null, 0, 1, 1, 10, 10, 20, true, false, null, null, rng, false, null, null, false, null, null, true);
+    expect(result.firstStrikeRoll.mode).toBe('normal');
+    expect(result.firstStrikeRoll.cancelled).toBe(true);
+    expect(result.firstStrikeAttacks[0].dicePair).toBeUndefined();
+  });
+
+  it('the defender counter-blow ignores an indirect-shot penalty', () => {
+    // A melee exchange with the (ranged-only) flag forced on: the attacker's own
+    // blow is disadvantaged, but the defender's retaliation rolls normally.
+    const meleeWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1 };
+    const rng = () => 0.5;
+    const result = resolveCombatSequence(attacker, defender, meleeWeapon, meleeWeapon, 0, 1, 1, 10, 10, 20, false, false, null, null, rng, false, null, null, false, null, null, true);
+    expect(result.firstStrikeRoll.mode).toBe('disadvantage');
+    expect(result.retaliationRoll.mode).toBe('normal');
+  });
+
   it('a wall face grants its melee AC to the defender across the edge', () => {
     // Hero attacker (skips AGR), fixed roll 12 + bonus 3 = 15 vs defender AC 14.
     const heroAttacker = { ...attacker, isHero: true };
@@ -743,12 +779,18 @@ describe('resolveCombatSequence', () => {
       expect(combatRollMode({ targetAdvantage: true }).mode).toBe('advantage');
       expect(combatRollMode({ attackerDisadvantage: true }).mode).toBe('disadvantage');
       expect(combatRollMode({ rangeDisadvantage: true }).mode).toBe('disadvantage');
+      expect(combatRollMode({ losDisadvantage: true }).mode).toBe('disadvantage');
+    });
+    it('an indirect shot names its cause', () => {
+      const indirect = combatRollMode({ losDisadvantage: true });
+      expect(indirect.note).toContain('indirect shot');
     });
     it('any advantage cancels any disadvantage regardless of count', () => {
-      const both = combatRollMode({ attackerAdvantage: true, targetDisadvantage: true, rangeDisadvantage: true });
+      const both = combatRollMode({ attackerAdvantage: true, targetDisadvantage: true, rangeDisadvantage: true, losDisadvantage: true });
       expect(both.mode).toBe('normal');
       expect(both.cancelled).toBe(true);
       expect(both.note).toContain('long range');
+      expect(both.note).toContain('indirect shot');
     });
     it('no sources → normal with an empty note', () => {
       const none = combatRollMode({});

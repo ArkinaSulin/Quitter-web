@@ -136,4 +136,13 @@ describe('findEligibleReactionArchers', () => {
     });
     expect(findEligibleReactionArchers(mover, [frontHero], alliances as any).map(u => u.id)).toEqual(['h1']);
   });
+
+  it('formed archers only react into their front arc', () => {
+    const forms = { 'Open Order': { name: 'Open Order', ranged_target_arcs: ['front'] } as any };
+    // Mover is due east. Facing 1 puts it in the front cone; facing 0 makes it a flank shot.
+    const front = makeUnit({ id: 'a1', team: 'red', hex: h(0, 0), facing: 1, weaponString: bow, actionsAvailable: 2 });
+    const side = makeUnit({ id: 'a2', team: 'red', hex: h(0, 0), facing: 0, weaponString: bow, actionsAvailable: 2 });
+    expect(findEligibleReactionArchers(mover, [front], alliances as any, forms).map(u => u.id)).toEqual(['a1']);
+    expect(findEligibleReactionArchers(mover, [side], alliances as any, forms)).toHaveLength(0);
+  });
 });

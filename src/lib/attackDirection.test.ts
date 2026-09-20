@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { attackDirection } from './attackDirection';
+import { attackDirection, arcOfTarget } from './attackDirection';
 import { Hex } from '@/types/gameProtocol';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
@@ -39,5 +39,22 @@ describe('attackDirection', () => {
 
   it('same hex = front', () => {
     expect(attackDirection(h(2, 1), h(2, 1), 0)).toBe('front');
+  });
+});
+
+describe('arcOfTarget', () => {
+  it('classifies where a target sits relative to the shooter facing, at range', () => {
+    const o = h(0, 0);
+    expect(arcOfTarget(o, 0, h(0, -3))).toBe('front'); // far ahead
+    expect(arcOfTarget(o, 0, h(0, 3))).toBe('rear');   // far behind
+    expect(arcOfTarget(o, 0, h(3, 0))).toBe('flank');  // far right
+    expect(arcOfTarget(o, 0, h(-3, 0))).toBe('flank'); // far left
+  });
+
+  it('rotates with the shooter facing', () => {
+    const o = h(0, 0);
+    // Facing 3 (opposite): the far-ahead hex is now behind.
+    expect(arcOfTarget(o, 3, h(0, -3))).toBe('rear');
+    expect(arcOfTarget(o, 3, h(0, 3))).toBe('front');
   });
 });

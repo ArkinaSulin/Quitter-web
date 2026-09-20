@@ -29,7 +29,7 @@ import { isUnitRouted } from '@/lib/unitMorale';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { arcsContain, beAttackedModifier } from '@/lib/formationRules';
 import { getRowCapacityBase, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
-import { attackDirection } from '@/lib/attackDirection';
+import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
 import { unitAttackCap } from '@/lib/attackCap';
 import { computeReachableMap, computeMovePool, applyMoveCost, applyMpSpend } from '@/lib/moveCost';
 import { isMeleeWeapon } from '@/lib/meleeFallback';
@@ -39,11 +39,7 @@ import type { BlockedEdgeFn } from '@/lib/moveCost';
 import { determineCombatPosition, combatRollMode, RollMode } from '@/lib/unitCombat';
 import { attackRollFlags } from '@/lib/unitEffects';
 import { applyFormationChange, isFormationChangeAffordable } from '@/lib/formationCost';
-
-const DIRS: { q: number; r: number; s: number }[] = [
-  { q: 1, r: 0, s: -1 }, { q: 0, r: 1, s: -1 }, { q: -1, r: 1, s: 0 },
-  { q: -1, r: 0, s: 1 }, { q: 0, r: -1, s: 1 }, { q: 1, r: -1, s: 0 },
-];
+import { hasLineOfSight } from '@/lib/lineOfSight';
 
 export type AiStep =
   | { kind: 'move'; unitId: string; from: Hex; to: Hex; path: Hex[]; cost: number }
@@ -116,13 +112,7 @@ export function isAiControllable(
 }
 
 function arcBetween(from: Hex, facing: number, to: Hex): 'front' | 'flank' | 'rear' {
-  const idx = DIRS.findIndex(d => d.q === to.q - from.q && d.r === to.r - from.r && d.s === to.s - from.s);
-  if (idx === -1) return 'front';
-  const front = [(facing + 4) % 6, (facing + 5) % 6];
-  const rear = [(facing + 1) % 6, (facing + 2) % 6];
-  if (front.includes(idx)) return 'front';
-  if (rear.includes(idx)) return 'rear';
-  return 'flank';
+  return arcOfTarget(from, facing, to);
 }
 
 /** Legal targets of `attacker`, with the basic ranged/melee classification. */
@@ -220,6 +210,7 @@ export function expectedDamage(
     targetAdvantage: tFlags.grantAdvantage,
     targetDisadvantage: tFlags.grantDisadvantage,
     rangeDisadvantage: !!weapon && isRanged && dist > weaponRange && dist <= weaponMax,
+    losDisadvantage: !!weapon && isRanged && !hasLineOfSight(attacker.hex, target.hex, ctx.units, new Set([attacker.id, target.id])),
   });
   if (weapon?.isHealing || (weapon && isAreaWeapon(weapon))) return 0; // AI doesn't heal/cast in v2
   if (!weapon) {

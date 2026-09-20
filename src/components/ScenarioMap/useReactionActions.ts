@@ -9,8 +9,10 @@ import { Unit, Hex, AllianceGroup, Formation, SizeCategory, hexDistance, getOrga
 import { resolveCombatSequence } from '@/lib/unitCombat';
 import { applyFormationChange } from '@/lib/formationCost';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
-import { attackDirection } from '@/lib/attackDirection';
+import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
 import { isRangedCapableWeapon, getReactionMoveBudget, findEligibleReactionArchers } from '@/lib/archerReaction';
+import { canRangedTarget } from '@/lib/formationRules';
+import { hasLineOfSight } from '@/lib/lineOfSight';
 import { parseWeapons } from '@/lib/weaponParser';
 import { applyHeroMoveCost, applyMoveCost, computeReachableMap, MovePathEntry } from '@/lib/moveCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout } from '@/lib/unitMorale';
@@ -84,14 +86,14 @@ export function useReactionActions(deps: ReactionActionsDeps) {
    *  `mover` is expected to carry its NEW hex (the move's end). */
   const offerReactionsFor = useCallback((mover: Unit) => {
     if (!archerReactionEnabled) return;
-    const eligible = findEligibleReactionArchers(mover, units, alliances);
+    const eligible = findEligibleReactionArchers(mover, units, alliances, formationsMap);
     if (eligible.length === 0) return;
     setReactionOffers(prev => {
       const next = new Map(prev);
       for (const a of eligible) if (!next.has(a.id)) next.set(a.id, mover.id);
       return next;
     });
-  }, [archerReactionEnabled, units, alliances]);
+  }, [archerReactionEnabled, units, alliances, formationsMap]);
 
   /** Drop markers whose mover is no longer within the archer's weapon range or
    *  whose archer became invalid. An archer that used its once-per-turn reaction
@@ -106,14 +108,16 @@ export function useReactionActions(deps: ReactionActionsDeps) {
         const archer = units.find(u => u.id === archerId);
         const mover = units.find(u => u.id === moverId);
         const weapon = archer ? parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0] : null;
-        if (!archer || !mover || !weapon || !isRangedCapableWeapon(weapon) || hexDistance(archer.hex, mover.hex) > weapon.range) {
+        const inArc = !!archer && !!mover &&
+          canRangedTarget(formationsMap[archer.currentFormation] ?? null, arcOfTarget(archer.hex, archer.facing, mover.hex));
+        if (!archer || !mover || !weapon || !isRangedCapableWeapon(weapon) || hexDistance(archer.hex, mover.hex) > weapon.range || !inArc) {
           next.delete(archerId);
           changed = true;
         }
       });
       return changed ? next : prev;
     });
-  }, [units]);
+  }, [units, formationsMap]);
 
   // Ordering-immune catch-all: after undo/redo or any realtime position change
   // lands in local `units`, re-validate the markers with authoritative positions.
@@ -147,6 +151,8 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const archerRowCap = getRowCapacity(sizeCategories, archer.sizeCategory);
     const moverRowCap = getRowCapacity(sizeCategories, mover.sizeCategory);
     const moverVisualDpr = getVisualDotsPerRow(formationsMap, moverRowCap, mover.currentFormation);
+    // Blocked shot line (any other unit between centres) = indirect shot at disadvantage.
+    const indirectShot = !hasLineOfSight(archer.hex, mover.hex, units, new Set([archer.id, mover.id]));
     const outcome = resolveCombatSequence(
       archer, mover,
       { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, numberOfAttacks: weapon.numberOfAttacks, range: weapon.range, maxRange: weapon.maxRange },
@@ -159,6 +165,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       false,
       null,
       walls,
+      indirectShot,
     );
     const hits = outcome.firstStrikeAttacks.filter(a => a.isHit).length;
     const newHp = Math.max(0, mover.currentUnitHp - outcome.firstStrikeDamage);

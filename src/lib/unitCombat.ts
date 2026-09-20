@@ -149,6 +149,8 @@ export interface RollModeInput {
   targetDisadvantage?: boolean;
   /** The weapon's long-range band (beyond `range`, within `maxRange`). */
   rangeDisadvantage?: boolean;
+  /** Another unit (friendly or hostile) stands on the shot line — an indirect shot. */
+  losDisadvantage?: boolean;
 }
 
 export interface RollModeResult {
@@ -174,6 +176,7 @@ export function combatRollMode(input: RollModeInput): RollModeResult {
   if (input.attackerDisadvantage) dis.push('disadvantage effect');
   if (input.targetDisadvantage) dis.push('target grants disadvantage');
   if (input.rangeDisadvantage) dis.push('long range');
+  if (input.losDisadvantage) dis.push('indirect shot');
   const advantage = adv.length > 0;
   const disadvantage = dis.length > 0;
   const cancelled = advantage && disadvantage;
@@ -398,6 +401,10 @@ export function resolveCombatSequence(
   attackerHero: AttackerHeroProfile | null = null,
   /** Edge walls: the crossed face grants its melee/ranged AC to the defender. */
   walls: Walls | null = null,
+  /** A unit blocks the shot line: the shooter's ranged blow is an indirect shot
+   *  and rolls at disadvantage (see lineOfSight.ts). Never applied to the
+   *  defender's counter-blow. */
+  indirectShot = false,
 ): CombatOutcome {
   // AGR check: skip if hero, ranged, target routed, rear attack, a free/no-retaliation
   // weapon, when the attacker has a front-attached hero (the hero's presence
@@ -477,21 +484,23 @@ export function resolveCombatSequence(
   // against the target's grant effects. Any advantage cancels any disadvantage.
   const attackerFlags: AttackRollFlags = attackRollFlags(attacker);
   const defenderFlags: AttackRollFlags = attackRollFlags(defender);
-  const modeAgainst = (acting: AttackRollFlags, target: AttackRollFlags, rangeDis: boolean): RollModeResult =>
+  const modeAgainst = (acting: AttackRollFlags, target: AttackRollFlags, rangeDis: boolean, losDis: boolean): RollModeResult =>
     combatRollMode({
       attackerAdvantage: acting.advantage,
       attackerDisadvantage: acting.disadvantage,
       targetAdvantage: target.grantAdvantage,
       targetDisadvantage: target.grantDisadvantage,
       rangeDisadvantage: rangeDis,
+      losDisadvantage: losDis,
     });
-  // The attacker's own ranged band only applies when the ATTACKER strikes/retaliates.
+  // The attacker's own ranged band / indirect shot only apply when the ATTACKER
+  // strikes/retaliates — never to the defender's counter-blow.
   const firstStrikeRoll = strikerFirst === 'attacker'
-    ? modeAgainst(attackerFlags, defenderFlags, rangeDisadvantage)
-    : modeAgainst(defenderFlags, attackerFlags, false);
+    ? modeAgainst(attackerFlags, defenderFlags, rangeDisadvantage, indirectShot)
+    : modeAgainst(defenderFlags, attackerFlags, false, false);
   const retaliationRoll = strikerFirst === 'attacker'
-    ? modeAgainst(defenderFlags, attackerFlags, false)
-    : modeAgainst(attackerFlags, defenderFlags, rangeDisadvantage);
+    ? modeAgainst(defenderFlags, attackerFlags, false, false)
+    : modeAgainst(attackerFlags, defenderFlags, rangeDisadvantage, indirectShot);
   const attackerHeroRoll: RollModeResult | null = attackerHero
     ? combatRollMode({
         attackerAdvantage: !!attackerHero.advantage,
@@ -500,6 +509,7 @@ export function resolveCombatSequence(
         targetDisadvantage: defenderFlags.grantDisadvantage,
         // The hero rolls at ITS OWN weapon bands (the host's range doesn't apply).
         rangeDisadvantage: attackDist > attackerHero.range && attackDist <= attackerHero.maxRange,
+        losDisadvantage: indirectShot,
       })
     : null;
 

@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## Archer rules: front-only ranged arc + indirect-shot LoS (migration 091) (2026-09-19)
+**Files:** src/lib/{attackDirection,lineOfSight,lineOfSight.test,unitCombat,unitCombat.test,archerReaction,archerReaction.test,enemyAI/planner,attackDirection.test}.ts, src/components/ScenarioMap/{useCombatActions,useReactionActions,useOverlay}.ts, supabase/migrations/091_archer_rules.sql (new), docs/dev/changelog.md
+
+- **Front-only ranged arc for formed units.** Phalanx, Shield Wall, Close Order and Open Order may only ranged-attack into their **120° front cone** (mirroring the charge wedge); range/maxRange bands are unchanged. Loose formations (Scattered, Hero) keep all-round; Routed already cannot shoot. Migration **091** sets their `ranged_target_arcs = '{front}'`. **Apply 091 in Supabase.**
+- **Root-cause fix**: the ranged-arc gate used `determineCombatPosition`, which only resolves the 6 *adjacent* hexes and returns `'front'` for any distance ≥ 2 — so the arc never restricted long shots ("range is a circle, not an arc"). Added a bearing-based `arcOfTarget(origin, facing, target)` (`attackDirection.ts`) and used it in the player attack path, the reaction-arc check, and the AI planner (its `arcBetween` had the same adjacency bug).
+- **Indirect shot (blocked line of sight).** New `src/lib/lineOfSight.ts` traces the hex-centre line (`hexLine`); any other unit (friendly or hostile) strictly between shooter and target turns a ranged attack into an **indirect shot**, resolved at **disadvantage**. Hidden, deleted and dead units do not block (a concealed unit must not reveal itself). Threaded as `indirectShot` through `resolveCombatSequence` → new `RollModeInput.losDisadvantage` cause `'indirect shot'` (so any advantage cancels it, and it shows in the roll note). Applies to normal attacks, archer reaction shots, and the AI expected-damage model; healing/magic stay exempt.
+- **Reaction shots** respect both rules: `findEligibleReactionArchers` takes the formations map and requires the mover be in the archer's front arc; blocked-line reactions roll at disadvantage.
+- **UI**: drag range rings (and the reaction-mode ring) are clipped to the formation's allowed arcs, so painted range equals legal range.
+- Tests: `lineOfSight.test.ts` (new), `arcOfTarget` cases, `combatRollMode`/`resolveCombatSequence` indirect-shot cases, `findEligibleReactionArchers` arc case. `tsc` clean; 651 tests pass.
+
 ## Fix: ZoC scatter/pursue fired on every move (2026-09-18)
 **Files:** src/lib/zocDisengage.ts, src/lib/zocDisengage.test.ts, src/components/ScenarioMap/useCombatActions.ts
 
