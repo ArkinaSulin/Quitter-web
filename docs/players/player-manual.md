@@ -368,7 +368,7 @@ gives 1.2 (shows 1)… so the hero can keep moving well past its first 3 MP.
 | Attack | **−1** (even if the AGR roll fails) | 0 |
 | Free-action weapon (e.g. a quick spell/missile with `F`) | 0 | 0 |
 | Reaction shot (§6) | −1 | 0 |
-| Attack a barrier (drag onto the edge, §6) | **−1** | 0 |
+| Attack a structure (Shift + drop, §6) | **−1** | 0 |
 | Rotate 60° | 0 | **−1** MP (units only; heroes & loose free) |
 | About-turn 180° | 0 | 1 MP foot / 2 MP mounted + **drop 1 org level** |
 | Change formation | 0 | **half your current pool**, rescaled (§5) |

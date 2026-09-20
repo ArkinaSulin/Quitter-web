@@ -10,13 +10,20 @@
 ## Work Summary (Anchored)
 
 Newest work first; the authoritative, per-session record is `docs/dev/changelog.md`.
-The most recent sessions added **attack-roll effects** (migration 088), **edge
-walls** (089, Phase 1), and the **Zone-of-control pursue + Withdraw** economy
-(090) with a hero command leash. Earlier: the movement economy ("1 action = 1 full
-MP pool"), combat, effects, fog, and reusable maps. Here's the state:
+The most recent sessions added **map structures** (migrations 093–095: template
+library + Structure Editor, edge/hex instances, door-first combat, tower auras,
+`range` bonuses, gate open/close, **Shift + drop** attacks and Shift-held
+inspect-mode hex/edge tooltips), the **Map Editor Effects tab** with *permanent*
+authored board effects, **archer rules** (front-only ranged arc + indirect-shot
+LoS, 091), and **destructible wall segments** (092). Earlier: edge walls (089),
+the Zone-of-control pursue + Withdraw economy (090) with a hero command leash,
+attack-roll effects (088), the movement economy ("1 action = 1 full MP pool"),
+combat, effects, fog, and reusable maps. Here's the state:
 
 ### Completed
 
+- **Map structures + Effects tab (migrations 093–095)**: `map_structure_templates` (edge faces A=inside/B=outside, battlement/spikes, door HP, 30/15 defaults) authored via `/structure-editor`; instances in `maps.structures` / `scenarios.map_data.structures` (per-key `STRUCTURE` command sub-steps; runtime `Walls` derived from edge instances). Map Editor **Structures** and **Effects** tabs; the Effects tab paints permanent `hex_effects` (`GroundEffect.permanent`, expanded on assign via `mapEffects.expandHexEffects`). Attacks are **Shift + drop** (edge walls/spikes and hex gates/towers); **Shift held** hides unit/corpse tokens and shows `MapInfoTooltip` (hex effect+structure, separate edge tooltip; side-by-side with Shift). Tower auras, `range` modifiers and `enter_org_max` gates consumed by combat/movement; gate open/close. `wallCombat.ts` / `structureCombat.ts`; no AGR/retaliation on structures.
+- **Archer rules (migration 091)**: formed formations shoot only into the front cone (`arcOfTarget`); any unit on the shot line makes it an **indirect shot** at disadvantage (`lineOfSight.ts` + `RollModeInput.losDisadvantage`). `docs/dev/18` + `08`.
 - **Attack-roll effects (migration 088)**: `advantage`/`disadvantage` (carrier's own attacks) and `grant_advantage`/`grant_disadvantage` (attackers vs the carrier) as boolean flag effects; `unitCombat.combatRollMode` unifies them with the long-range band — **any advantage cancels any disadvantage (count irrelevant)** → normal, with a cause note; recomputed per attacker (hero volley uses its own flags via `AttackerHeroProfile`). UI kinds/tooltips show `attack roll`. Seed migration 088.
 - **Always-recorded verbose messages (088)**: `GameMessage` gained `verboseText`; producers always build the verbose string and pass it as `execute`'s `verboseMessage`; `MessagesPanel` renders `verboseCombat ? verboseText ?? text : text`, so toggling verbose re-renders the whole history. `useMessageSync` broadcasts both. The command-log description stays plain.
 - **Edge walls (migration 089, Phase 1)**: `src/lib/walls.ts` — a wall on the shared edge between two hexes, one **face per side** (`moveCost` replaces the entered hex's terrain / `block` / `meleeAc` / `rangedAc`), keyed canonically `"q,r,dir"`. `src/lib/hexLine.ts` (cube-lerp) finds the ranged-entering edge. Movement (`computeReachableMap`/`computeChargeReachable` take the from-hex + `blockedEdge`), combat AC (`resolveCombatSequence` optional `walls`), Map Editor **Walls** tab + in-scenario `WallPaintPanel`, snapshot into `scenarios.map_data.walls`. Phase 2 (destructible HP/DT) + Phase 3 (magic-wall effects) pending.

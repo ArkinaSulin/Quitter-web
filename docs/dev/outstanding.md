@@ -49,8 +49,9 @@ Template library + editor shipped (Slice 1). See `18-map-structures.md`.
   wired through drag-move, the drag overlay and reaction repositioning. AI ignores
   it for v1.
 - ✅ **Slice 4**: hex structures — tower auras (occupancy flags merged into combat),
-  door-first attacks via a drop **target-picker** (`structureCombat.ts`), scenario
-  hex rendering (tint/art/HP/door badges).
+  door-first attacks via **Shift + drop** (`structureCombat.ts`), scenario
+  hex rendering (black outline/art/HP/door badges), and hex/edge **info tooltips**
+  + Shift-held inspect mode (`MapInfoTooltip`).
 - ✅ **Range + gates**: reusable `range` effect modifier (watch-tower / zone reach
   +/-), consumed by attacks + reactions; gate **open/close** (open = no extra
   entry MP, door bypassed).
@@ -62,8 +63,8 @@ Template library + editor shipped (Slice 1). See `18-map-structures.md`.
   longer written, and destruction rides a per-key `STRUCTURE` command sub-step.
 - ✅ **Movement + combat**: a face replaces terrain / blocks
   (`computeReachableMap`) and grants melee/ranged AC (`hexLine` entering edge).
-- ✅ **Destructible segments**: `maxHp`/`hp`/`dt`; drag a unit onto the edge to
-  attack it (no to-hit roll, DT gates; 1 action + attack cap).
+- ✅ **Destructible segments**: `maxHp`/`hp`/`dt`; **Shift + drop** a unit on the
+  edge to attack it (no to-hit roll, DT gates; 1 action + attack cap).
 
 ## Zone of control, pursue & Withdraw (migration 090)
 - ✅ **Any** exit from a hostile kill zone scatters a formed non-hero mover and

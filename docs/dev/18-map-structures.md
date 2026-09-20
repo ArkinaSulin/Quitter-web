@@ -7,9 +7,9 @@ map), exactly like weapons/effects split authored vs placed.
 > **Status.** Complete (migrations **093**–**095**): template library + editor,
 > `enter_org_max` (authoring + movement gate), library and scenario authoring
 > (`maps.structures` / `map_data.structures`, per-key `STRUCTURE` sub-steps),
-> edge-structure attacks, hex structures (tower auras, door-first attacks via a
-> drop target-picker, scenario hex rendering), structure **range bonuses**, and
-> gate **open/close**. Only known gap: the AI planner ignores structure rules.
+> edge- and hex-structure attacks via **Shift + drop**, tower auras, scenario hex
+> rendering, hex/edge **info tooltips**, structure **range bonuses**, and gate
+> **open/close**. Only known gap: the AI planner ignores structure rules.
 
 ## Template vs instance
 
@@ -118,12 +118,17 @@ blocked by any edge structure. The AI planner ignores it for v1.
   `grant_advantage`/`grant_disadvantage` (attackers against it). Merged into the
   combat copies in `useCombatActions` as synthetic effects so the roll-mode reader
   applies them (no persisted effect, no END_TURN bookkeeping). The AI ignores them.
-- **Door-first combat** (`structureCombat.ts`): dropping a unit on a gate/tower
-  hex opens a **target-picker** (Attack structure / Move here). No to-hit roll;
+- **Door-first combat** (`structureCombat.ts`): **Shift + drop** a unit on a
+  gate/tower hex to attack it (a plain drop moves). No to-hit roll;
   the DT gates the blow; a standing door absorbs damage until destroyed, then the
   structure HP is exposed; 0 HP deletes the instance. 1 action + attack cap.
-- **Rendering**: `useCanvasDraw` draws hex structures (tint + artwork + HP badge,
-  and a `door N` badge).
+- **Rendering**: `useCanvasDraw` draws hex structures (black hex outline + artwork
+  + HP badge, and a `door N`/`open` badge; tower HP above, door below).
+- **Inspect mode & tooltips**: holding **Shift** hides all unit/corpse tokens and
+  disables unit interaction; hovering a **hex** shows a `MapInfoTooltip` (effects
+  and hex structure, priority effect → structure; side by side with Shift), and
+  hovering near an **edge** shows that barrier's own tooltip, with an enlarged
+  edge hit-box while Shift is held. The old "attack vs move" target-picker is gone.
 - **Deferred**: none — structure **range bonuses** and gate open/close state are
   now implemented (see "Range & gates" below).
 

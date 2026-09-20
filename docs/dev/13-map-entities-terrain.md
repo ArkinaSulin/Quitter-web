@@ -98,23 +98,25 @@ to the library board. Authored `hex_effects` are expanded into permanent
 `user_has_access` cases and RLS on `maps` (read = view, write = use).
 Migration **089** added `maps.walls`; **094** replaces it with `maps.structures`.
 
-## Destructible walls (Phase 2)
+## Destructible structures (Phase 2)
 
 A structure instance may carry `maxHp` / `hp` / `dt` (damage threshold). Authored
 in the Structure Editor as template defaults, overridable per placed instance
 (Structures tab + `StructurePaintPanel`: **Max HP** / **DT**); an authored `maxHp` with
 no `hp` starts at full health. A segment with no `maxHp` is indestructible scenery.
 
-**Attacking a barrier** is a drag onto the edge (`useHexGrid.hoveredEdge` via
-`nearestWallEdge`, threshold 0.38·hexSize): `canAttackWallEdge` gates the drop
-(unit reach + destructible wall), so dropping onto a legal move hex still moves.
-Reach (`wallCombat.wallAttackKind`) is **melee** when the attacker stands on
-either edge hex, else **ranged** when its weapon's `maxRange` covers the nearer
-edge hex. There is **no to-hit roll** — reaching the edge is the hit; the
-attacker rolls weapon damage and `applyWallDamage` compares it to `dt` (at or
-below = no effect, above = full damage off HP). Attacking costs **1 action** and
-counts toward the attack cap (soft-confirmed when over), with no AGR/retaliation.
-`hp <= 0` removes the segment.
+**Attacking a structure is Shift + drop** (a plain drop just moves). The gesture is
+the same for **edge** (walls/spikes) and **hex** (gates/towers) structures:
+`useHexGrid.handleMouseUp` routes to `onAttackWall` / `onAttackStructure` only when
+`event.shiftKey`; `canAttackWallEdge` / `canAttackStructure` gate reach (destructible
+target + unit in range) so dropping onto a legal move hex otherwise moves. Shift
+also hides unit/corpse tokens ("inspect mode"). Reach (`wallCombat.wallAttackKind`)
+is **melee** when the attacker stands on either edge hex, else **ranged** when its
+weapon's `maxRange` covers the nearer edge hex. There is **no to-hit roll** —
+reaching the target is the hit; the attacker rolls weapon damage and
+`applyWallDamage` compares it to `dt` (at or below = no effect, above = full damage
+off HP). Attacking costs **1 action** and counts toward the attack cap
+(soft-confirmed when over), with no AGR/retaliation. `hp <= 0` removes the segment.
 
 Persistence rides the command log: the command is `ATTACK` with a **`STRUCTURE`**
 sub-step (`{ field: 'structures', key, from, to }`), applied by `apply_substeps`
@@ -128,6 +130,7 @@ undo/redo/realtime/replay restore wall HP with the rest of the command.
 the Map Editor's Effects tab paints refs, expanded into permanent ground zones on
 assign (see "Authored map effects"). Ground *effects* painted live in a scenario
 already work (see `10`), and structures (see `18`) cover the edge/hex pass:
-door-first combat, tower auras, the drop target-picker and `enter_org_max`
-movement consumption are all shipped.
+door-first combat, tower auras, Shift-drop structure attacks and `enter_org_max`
+movement consumption are all shipped. The **hex/edge info tooltip**
+(`MapInfoTooltip`) and inspect mode are described in `18`.
 

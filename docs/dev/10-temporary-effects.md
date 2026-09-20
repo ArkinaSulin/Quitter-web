@@ -73,6 +73,11 @@ same-kind stacking conflicts). `dot` zones tick every standing unit when the
 zone's caster team activates; `stat` zones only expire on their own clock.
 Expired zones are removed and memberships restored.
 
+A zone may be flagged **`permanent: true`** — it **never ticks or expires**
+(`computeEndTurnEffects` skips it entirely; membership enter/leave still
+reconciles). Map-authored board effects (`maps.hex_effects`, expanded on assign
+via `mapEffects.expandHexEffects`) are permanent; see `13`.
+
 ## The END_TURN sweep
 
 `computeEndTurnEffects(ctx)` is folded into the END_TURN command

@@ -139,7 +139,9 @@ ON). With it ON, leaving a hostile kill zone (`src/lib/zocDisengage.ts` →
 Withdraw** (`src/lib/withdraw.ts`): it keeps its facing for **2 actions** — the
 ordered alternative to a scattering rout. The overlay paints legal rear hexes
 **white/droppable** (`useOverlay`; just like a normal move) since no face change
-is needed; on drop an **always-on confirm** states the cost before applying. It
+is needed; on drop an **always-on confirm** states the cost before applying —
+**skipped under `free_move`**, where a rear drag is just a free move (no prompt).
+It
 **never scatters and never provokes** a pursue; archer reactions still fire off
 the MOVE. **Free under `free_move`**; short on actions it may go negative via
 the same confirm (soft enforcement, shown red). The destination must be an empty,
