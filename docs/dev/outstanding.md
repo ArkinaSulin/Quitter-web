@@ -17,10 +17,41 @@ Statuses: 🔜 next / ⏳ later / 🚧 blocked / ✅ done-here-listed-for-contex
   reconciles on move (`computeZoneReconcile`), not just at activation start.
 - ✅ **Unit Effects… dialog reads the library** (`effect_templates`), so composites
   / Sleep / zone templates apply from the context menu too.
+- ✅ **Attack-roll flag effects** (`advantage` / `disadvantage` / `grant_advantage`
+  / `grant_disadvantage`): boolean markers read at attack resolution; any advantage
+  cancels any disadvantage (count irrelevant). Library seed = migration **088**;
+  UI/tooltips show `attack roll`. `src/lib/unitCombat.combatRollMode`.
+- ✅ **Messages record both variants**: every `GameMessage` carries the plain
+  `text` plus an always-recorded `verboseText` (dice/roll detail); the scenario
+  verbose setting only picks which is **displayed**, so toggling it re-renders the
+  whole history. Broadcast carries both (`useMessageSync`).
 - ⏳ **Composite instance semantics**: the original design was "one instance
   carries `modifiers[]`". Today a composite template is **expanded into one
   primitive effect per kind** on apply. Consider consolidating to a single
   instance (removal/stacking by template) — behavioral decision needed.
+
+## Edge walls (migration 089)
+- ✅ **Phase 1 shipped**: edge `maps.walls` keyed `"q,r,dir"`, a face per side
+  (`moveCost` replaces terrain / `block` / `meleeAc` / `rangedAc`). Map Editor
+  **Walls** tab + in-scenario `WallPaintPanel`; movement replace/block
+  (`computeReachableMap`), combat AC (`hexLine` entering edge); snapshotted into
+  `scenarios.map_data.walls`.
+- 🔜 **Phase 2**: per-segment HP/DT destruction (target an edge explicitly;
+  `dt` = below-threshold ignored, above = full).
+- 🔜 **Phase 3**: temporary (magic) wall effects with a caster/duration, and
+  generalize HP/DT to all effects.
+
+## Zone of control, pursue & Withdraw (migration 090)
+- ✅ **Any** exit from a hostile kill zone scatters a formed non-hero mover and
+  provokes **one** aggression-gated pursue; moves that don't leave a ZoC do
+  nothing. Pursuer order attacker → most MaxMP → most avail MP → random; a failed
+  `d10 ≤ AGR` does not move and yields to the next candidate; the selected
+  pursuer always attacks (single AGR — no combat re-roll). `src/lib/pursuit.ts`.
+- ✅ **Hero Command-Presence leash** (`command_pursuit_permit`, default **hold**;
+  template + placed-unit editable) and the scenario toggle `zoc_pursuit_enabled`.
+- ✅ **Withdraw**: drag a formed unit one hex into a rear hex (2 actions, keeps
+  facing, never scatters/pursues; can't enter a ZoC; free under free-move).
+- ⏳ Rout-modal/eventual AI handling of the new pursue (AI planner ignores it for v1).
 
 ## AI assist
 - 🔜 **Full AI mode** (auto whole-turn director: watches turn, runs the plot,
@@ -29,7 +60,7 @@ Statuses: 🔜 next / ⏳ later / 🚧 blocked / ✅ done-here-listed-for-contex
 - ⏳ AI **charges / magic / reactions / hero attach** (v0 excludes them).
 - ⏳ Difficulty knobs; per-team doctrine toggles (currently auto by weapon type).
 - ✅ v0/v2 shipped: plotting, turns/formation, doctrines, stand-off, cheap
-  flanking, routed flee-to-rim, per-unit opt-out, verbose pursuit gates.
+  flanking, routed flee-to-rim, per-unit opt-out.
 - ✅ By design: AI **never** controls heroes or hero-hosted units.
 
 ## Spelljammer module (largest remaining)
@@ -63,16 +94,19 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
   Web Worker skeleton unused.
 
 ## Docs
-- 🔜 Refresh dev chapters + player manual for the **effects** (dice/saves/entry/
-  troop prompt), **pursuit** (melee-only, adjacency, equal-speed, free attack),
-  **statistics**, **corpses**, and **AI assist** changes.
+- ✅ Refreshed dev chapters + player manual for the **effects** (dice/saves/entry/
+  troop prompt, attack-roll flags), **pursuit/ZoC/Withdraw**, **walls**, and the
+  message (verbose) model.
+- 🔜 Still to document: **statistics**, **corpses**, and any remaining **AI assist**
+  changes.
 - 🔜 Player manual screenshot **S-33** (AI tab) + all S-01…S-32 images pending
   from the GM; then the Word/PDF export pass.
 
 ## Migrations
-- ✅ Applied & verified: 068–080. The former hand-applied `apply_substeps`
-  array-write fix is now folded into migration **080** (array-aware unit writes),
-  so no separate fix migration is needed.
+- ✅ Applied & verified: 068–080, plus **085** (formation AC split), **087**
+  (opportunity rename), **088** (attack-roll effects), **089** (map walls),
+  **090** (ZoC pursue + Withdraw) — owner-confirmed. The former hand-applied
+  `apply_substeps` array-write fix is folded into migration **080**.
 
 ## Uncommitted working tree (owner's, left untouched)
 - `.scratch/ship-builder/spec.md`, `.scratch/shipyard-formula/{FINDINGS.md,shipyard.csv}`,

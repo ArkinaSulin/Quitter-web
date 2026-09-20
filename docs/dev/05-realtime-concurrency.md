@@ -69,9 +69,11 @@ action is resolved by the server (last `seq` wins the authoritative write).
 ## Messages (game log) sync
 
 `src/hooks/useMessageSync.ts`:
-- Local producers call `MessageContext.addMessage/addError`.
-- The hook mirrors every message onto the `messages:{scenarioId}` broadcast
-  channel (`self:false`) and forwards inbound messages into the same context.
+- Local producers call `MessageContext.addMessage/addError` (each carrying the
+  plain `text` and — when available — the always-recorded `verboseText`).
+- The hook mirrors every message (both variants) onto the
+  `messages:{scenarioId}` broadcast channel (`self:false`) and forwards inbound
+  messages into the same context.
 - Because a shared registry holds one channel per scenario, a message produced
   on your own client broadcasts to others but is not re-added locally
   (self:false), and every client renders the same log.

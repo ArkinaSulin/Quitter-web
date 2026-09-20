@@ -93,9 +93,14 @@ the dock toggle (left/right edge). A new tab = one entry in the `panels` array.
 ## Message bus
 
 `src/contexts/MessageContext.tsx`: `messages: GameMessage[]` where
-`GameMessage = { text, tone: 'default'|'error' }`. `addMessage` (normal) and
-`addError` (rendered red) — the latter is used by every soft-enforcement
-over-budget notification. Messages panel auto-scrolls; rows can be copied.
+`GameMessage = { text, verboseText?, tone: 'default'|'error' }`. `addMessage`
+(normal) and `addError` (rendered red — every soft-enforcement over-budget
+notification) both take an optional `verboseText`. Producers **always** record
+the verbose variant (dice/roll detail) regardless of the scenario setting; the
+setting only decides what `MessagesPanel` **displays** (`verboseCombat ?
+verboseText ?? text : text`), so toggling verbose re-renders the whole history.
+The command-log description (log/replay text) stays the plain `text`. Messages
+panel auto-scrolls; rows can be copied (copies the displayed variant).
 
 ## Concurrency model (short form)
 

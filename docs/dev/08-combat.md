@@ -114,6 +114,11 @@ from the rear. Heroes face all sides, so a hero never takes the rear penalty.
 `getShieldPenalty` drops the shield (−2) for a two-handed active weapon or while
 routing.
 
+**Edge walls** add a separate AC term: `resolveCombatSequence` takes an optional
+`walls` set and adds the **crossed edge's face** AC (`meleeAc`/`rangedAc`, melee
+vs ranged) to the defender — melee uses the shared edge, ranged uses the edge the
+shot enters through (cube-lerp `hexLine`). See `13`.
+
 **Shield Wall** additionally **requires a shield** to form (two-handed weapons
 still block it). Its rear is where the wall is weakest — the formation AC goes to
 0 there while the shield remains.
