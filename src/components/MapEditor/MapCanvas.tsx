@@ -183,9 +183,9 @@ export function MapCanvas({
           ctx.textBaseline = 'middle';
           ctx.lineWidth = 3 / zoom;
           ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-          ctx.strokeText(`${inst.hp ?? hp}`, pos.x, pos.y + HEX_SIZE * 0.62);
+          ctx.strokeText(`${inst.hp ?? hp}`, pos.x, pos.y - HEX_SIZE * 0.62);
           ctx.fillStyle = '#ffe0b2';
-          ctx.fillText(`${inst.hp ?? hp}`, pos.x, pos.y + HEX_SIZE * 0.62);
+          ctx.fillText(`${inst.hp ?? hp}`, pos.x, pos.y - HEX_SIZE * 0.62);
         }
         const doorMax = t?.doorHp ?? null;
         const door = doorMax !== null ? (inst.doorHp ?? doorMax) : null;
@@ -196,9 +196,9 @@ export function MapCanvas({
           ctx.textBaseline = 'middle';
           ctx.lineWidth = 3 / zoom;
           ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-          ctx.strokeText(badge, pos.x, pos.y - HEX_SIZE * 0.62);
+          ctx.strokeText(badge, pos.x, pos.y + HEX_SIZE * 0.62);
           ctx.fillStyle = inst.open ? '#a5d6a7' : '#ffd9c9';
-          ctx.fillText(badge, pos.x, pos.y - HEX_SIZE * 0.62);
+          ctx.fillText(badge, pos.x, pos.y + HEX_SIZE * 0.62);
         }
       }
     }

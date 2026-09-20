@@ -405,7 +405,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
         <ImagePickerModal
           current={draft.imageUrl}
           uploadKey="structure"
-          bucket="effect_images"
+          bucket="structure_images"
           title="Select Structure Image"
           showRaces={false}
           onSelect={url => { patch({ imageUrl: url ?? '' }); setShowImagePicker(false); }}

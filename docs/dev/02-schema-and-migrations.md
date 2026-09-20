@@ -107,6 +107,7 @@ as applied in the notes — check the live DB before relying on it).
 | 094 | map structures: `maps.structures` jsonb (drops `maps.walls`) | ⏳ run in Supabase |
 | 095 | structure command log: `apply_substeps` `STRUCTURE` per-key branch (`scenarios.map_data.structures`) | ⏳ run in Supabase |
 | 096 | structure `spikes` flag + rename "Archer Spikes" → "Archer's Stake" | ⏳ run in Supabase |
+| 097 | `structure_images` storage bucket + policies | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

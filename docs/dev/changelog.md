@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Structure images bucket + gate-tower badge swap (migration 097) (2026-09-20)
+**Files:** supabase/migrations/097_structure_images_bucket.sql (new), src/components/StructureEditor/StructureEditor.tsx, src/components/ScenarioMap/useCanvasDraw.ts, src/components/MapEditor/MapCanvas.tsx, docs/dev/02-schema-and-migrations.md
+
+- **`structure_images` bucket** (migration **097**, public read + authenticated write, same pattern as `effect_images`). The Structure Editor's image picker now defaults to it (`bucket="structure_images"`).
+- **Gate-tower badges swapped**: on a hex structure the tower **HP** badge now sits **above** the hex and the **door / open** badge **below** (was the other way around) in both the scenario canvas and the Map Editor canvas.
+- `tsc` clean; 697 tests pass; `next build` clean. **Apply 097 in Supabase.**
+
 ## Structure battlements square + Archer's Stake spikes (migration 096) (2026-09-20)
 **Files:** src/lib/{structureDraw,structureTemplates,structureCombat,mapStructures}.ts (+ tests), src/types/{structure,gameProtocol}.ts, src/components/StructureEditor/{StructureEditor,StructurePreview}.tsx, src/components/ScenarioMap/useCanvasDraw.ts, src/components/MapEditor/MapCanvas.tsx, supabase/migrations/096_structure_spikes.sql (new), supabase/migrations/093_map_structure_templates.sql, docs/dev/{02-schema-and-migrations,changelog}.md
 

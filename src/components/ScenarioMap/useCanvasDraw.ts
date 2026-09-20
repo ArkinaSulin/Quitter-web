@@ -278,7 +278,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           ctx.textBaseline = 'middle';
           ctx.lineWidth = Math.max(2, 3 * currentZoom);
           ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-          const ly = cy + HEX_SIZE * currentZoom * 0.55;
+          const ly = cy - HEX_SIZE * currentZoom * 0.55;
           ctx.strokeText(label, cx, ly);
           ctx.fillStyle = '#ffe0b2';
           ctx.fillText(label, cx, ly);
@@ -292,7 +292,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           ctx.textBaseline = 'middle';
           ctx.lineWidth = Math.max(2, 3 * currentZoom);
           ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-          const ly = cy - HEX_SIZE * currentZoom * 0.55;
+          const ly = cy + HEX_SIZE * currentZoom * 0.55;
           ctx.strokeText(badge, cx, ly);
           ctx.fillStyle = inst.open ? '#a5d6a7' : '#ffd9c9';
           ctx.fillText(badge, cx, ly);
