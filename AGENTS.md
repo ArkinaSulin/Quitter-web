@@ -60,12 +60,8 @@ MP pool"), combat, effects, fog, and reusable maps. Here's the state:
 
 ### Pending
 
-- **Edge walls Phase 2/3** (migration 089 Phase 1 shipped): per-segment HP/DT destruction (target an edge explicitly) and temporary (magic) wall effects with a caster/duration; optionally generalize HP/DT to all effects.
 - **AI vs the new ZoC rules**: the enemy-AI planner ignores the scatter/pursue economy for v1 (it accounts for terrain/walls, not the pursue reaction).
 - **Spelljammer module implementation** (docs + access caps + shipyard builder done; no engine code yet): ship engine files (`src/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`) applied to the DB.
-- **Player→Team assignment tab** (deferred, blocked on auth decision): new GM-only LeftPanel tab between Map and Alliances. Mirrors `AlliancePanel` drag-drop — player chips (non-DM `scenario_participants` rows) dragged into one drop box per team (blue/yellow/violet/black/orange/green). Persist via `scenario_participants.team` + optimistic upsert, same pattern as `team_alliances`. Player label: read the player's global `profiles.display_name` — the host cannot read `auth.users` client-side, so names are written by the player's own client (`useProfile` creates the row from `user_metadata` fallback on first load).
-- **Auth/provider decision** (blocking the above): switching login to email/Google/Discord, or Discord-only. Provider-agnostic for the tab (option 1 above works for all); only affects which metadata key populates `display_name`.
-- **End Turn GM-only** (decided Option A, not yet implemented): hide the End Turn button for non-GM players in `ScenarioMap.tsx` (~lines 1151-1162); `Turn {n}` counter stays visible. Matches the creator-only UPDATE RLS on `scenarios` so the write always succeeds when the button shows.
 - Migration `013_turn_tracking.sql` — applied to the DB (done).
 - Migrations 010/011/012 — user applied to the DB.
 - `UnitEditor.tsx`: `isHero` toggle should force `'Hero'` formation — postponed until the consolidated interface update.

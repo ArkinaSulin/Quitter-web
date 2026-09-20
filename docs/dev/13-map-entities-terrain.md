@@ -110,8 +110,7 @@ undo/redo/realtime/replay restore wall HP with the rest of the command.
 
 `hex_effects` (per-hex authored effects on library boards) is **reserved** —
 the map-effects pass is a future feature. Ground *effects* painted live in a
-scenario already work (see `10`). Still planned on top of structures (see `18`):
-the hex-structure pass (door-first combat, tower auras, target-picker) and
-`enter_org_max` movement consumption; later, temporary (magic) structures with a
-caster/duration ticked at END_TURN like ground zones.
+scenario already work (see `10`), and structures (see `18`) cover the edge/hex
+pass: door-first combat, tower auras, the drop target-picker and `enter_org_max`
+movement consumption are all shipped.
 

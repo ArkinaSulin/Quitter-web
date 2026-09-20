@@ -56,20 +56,14 @@ Template library + editor shipped (Slice 1). See `18-map-structures.md`.
   entry MP, door bypassed).
 - ⏳ Only gap: the AI planner ignores structure auras / range / gates (v1).
 
-## Edge walls (migration 089)
-- ✅ **Phase 1 shipped**: edge `maps.walls` keyed `"q,r,dir"`, a face per side
-  (`moveCost` replaces terrain / `block` / `meleeAc` / `rangedAc`). Map Editor
-  **Walls** tab + in-scenario `WallPaintPanel`; movement replace/block
-  (`computeReachableMap`), combat AC (`hexLine` entering edge); snapshotted into
-  `scenarios.map_data.walls`.
-- ✅ **Phase 2 shipped** (migration **092**): per-segment `maxHp`/`hp`/`dt`
-  destructibility. Drag a unit onto the edge to attack it (melee on either edge
-  hex, else ranged by weapon max range; `wallCombat.ts`); no to-hit roll — the
-  DT gates the damage; 1 action + attack cap; destruction rides a `WALL`
-  command-log sub-step so undo/replay restore HP.
-- 🔜 **Phase 3**: temporary (magic) wall effects with a caster/duration, ticking
-  at END_TURN like ground zones; generalize HP/DT to all effects (destructible
-  ground zones).
+## Edge walls (migration 089) — unified into map structures
+- ✅ **Edge walls are authored as structures** (see "Map structures"): the runtime
+  `Walls` map is derived from edge structure instances, `map_data.walls` is no
+  longer written, and destruction rides a per-key `STRUCTURE` command sub-step.
+- ✅ **Movement + combat**: a face replaces terrain / blocks
+  (`computeReachableMap`) and grants melee/ranged AC (`hexLine` entering edge).
+- ✅ **Destructible segments**: `maxHp`/`hp`/`dt`; drag a unit onto the edge to
+  attack it (no to-hit roll, DT gates; 1 action + attack cap).
 
 ## Zone of control, pursue & Withdraw (migration 090)
 - ✅ **Any** exit from a hostile kill zone scatters a formed non-hero mover and
@@ -107,12 +101,6 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
   hit-box damage resolution, Jettison/space mines.
 - Out of scope by decision: **boarding** (hand off to a D&D VTT).
 
-## Access / players
-- 🚧 **Player→Team assignment tab** — deferred pending the auth decision below.
-  (The Players tab already sets roles/teams; decide if the dedicated tab is still wanted.)
-- 🚧 **Auth/provider decision** (email/Google/Discord vs Discord-only) — affects
-  which metadata key seeds `profiles.display_name`; blocks the tab above.
-
 ## Rules / housekeeping
 - ⏳ `UnitEditor`: toggling **Hero** may force the `Hero` formation (postponed).
 - ⏳ Troop soft caps per size category (Medium 80 / Large 20 / Huge 6) —
@@ -135,10 +123,11 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
 ## Migrations
 - ✅ Applied & verified: 068–080, plus **085** (formation AC split), **087**
   (opportunity rename), **088** (attack-roll effects), **089** (map walls),
-  **090** (ZoC pursue + Withdraw) — owner-confirmed. The former hand-applied
-  `apply_substeps` array-write fix is folded into migration **080**.
-- 🔜 **Awaiting apply**: **091** (front-only ranged arc), **092** (wall
-  command-log branch).
+  **090** (ZoC pursue + Withdraw), **091** (front-only ranged arc), **092** (wall
+  command-log branch), **093–095** (map structures) — owner-confirmed. The former
+  hand-applied `apply_substeps` array-write fix is folded into migration **080**.
+- 🔜 **Awaiting apply**: **096** (structure `spikes` + "Archer's Stake" rename),
+  **097** (`structure_images` bucket).
 
 ## Uncommitted working tree (owner's, left untouched)
 - `.scratch/ship-builder/spec.md`, `.scratch/shipyard-formula/{FINDINGS.md,shipyard.csv}`,
