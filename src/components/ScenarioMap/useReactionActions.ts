@@ -21,6 +21,9 @@ import { UnitChange, SubStep } from '@/lib/commandLog';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { computeOccupiedHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
+import { MapStructures } from '@/lib/mapStructures';
+import { StructureTemplate } from '@/types/structure';
+import { GroundEffect } from '@/types/gameProtocol';
 import { ExecuteFn, routeUnit } from './routeUnit';
 
 interface ReactionActionsDeps {
@@ -41,6 +44,9 @@ interface ReactionActionsDeps {
   canAttackTarget?: (attacker: Unit, target: Unit) => boolean;
   terrainCosts?: TerrainCosts;
   walls?: Walls;
+  structures?: MapStructures;
+  structureTemplates?: Record<string, StructureTemplate>;
+  groundZones?: GroundEffect[];
 }
 
 export function useReactionActions(deps: ReactionActionsDeps) {
@@ -60,6 +66,9 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     canAttackTarget,
     terrainCosts,
     walls,
+    structures,
+    structureTemplates,
+    groundZones,
   } = deps;
 
   const [reactionOffers, setReactionOffers] = useState<Map<string, string>>(new Map()); // archerId -> moverId
@@ -313,8 +322,13 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const maxMP = unitMaxMP(archer);
     const budget = reactionMovePool(archer, maxMP);
     const occupied = computeOccupiedHexes(displayUnits, archer.id);
-    return computeReachableMap(archer, budget, occupied, new Set(), makeCostOfHex(terrainCosts, walls), false, makeBlockedEdge(walls));
-  }, [displayUnits, unitMaxMP, terrainCosts, walls]);
+    return computeReachableMap(archer, budget, occupied, new Set(), makeCostOfHex(terrainCosts, walls), false, makeBlockedEdge(walls, {
+      structures,
+      templates: structureTemplates,
+      zones: groundZones,
+      orgLevel: getOrganizationLevel(archer.currentFormation),
+    }));
+  }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones]);
 
   const handleReactionAttack = useCallback(async (attackerId: string, targetId: string) => {
     if (!reactionMode || attackerId !== reactionMode.archer.id) return;

@@ -4,7 +4,7 @@
 // to the primary ranged weapon. Owns the move-related soft-enforcement states
 // (pendingMove, pendingFormation, hero attach/swap conversion + over-budget).
 import { useCallback, useState } from 'react';
-import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, GroundEffect, getOrganizationLevel } from '@/types/gameProtocol';
 import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable } from '@/lib/moveCost';
 import { isFormationChangeAffordable } from '@/lib/formationCost';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
@@ -16,6 +16,8 @@ import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep } from '@/lib/commandLog';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
+import { MapStructures } from '@/lib/mapStructures';
+import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingHeroSwapConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
 
@@ -42,6 +44,9 @@ interface MoveActionsDeps {
   setActiveHeroId: (id: string | null) => void;
   terrainCosts?: TerrainCosts;
   walls?: Walls;
+  structures?: MapStructures;
+  structureTemplates?: Record<string, StructureTemplate>;
+  groundZones?: GroundEffect[];
   /** Late-bound opportunity-attack resolver (owned by useCombatActions, assigned
    *  via a ref to break the useMoveActions → useCombatActions hook-order cycle). */
   pursuitsRef: { current: ((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null };
@@ -71,6 +76,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     setActiveHeroId,
     terrainCosts,
     walls,
+    structures,
+    structureTemplates,
+    groundZones,
     pursuitsRef,
   } = deps;
 
@@ -249,7 +257,12 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const occupied = computeOccupiedHexes(units, unitId);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
     const costOfHex = makeCostOfHex(terrainCosts, walls);
-    const blockedEdge = makeBlockedEdge(walls);
+    const blockedEdge = makeBlockedEdge(walls, {
+      structures,
+      templates: structureTemplates,
+      zones: groundZones,
+      orgLevel: getOrganizationLevel(unit.currentFormation),
+    });
     // The drop search is bounded by the PHYSICAL hex-hop limit (a unit can't walk
     // more hexes than its move), but NOT by MP: painted hexes are found at their
     // TRUE entry cost even when that cost exceeds the pool, so affordability (and

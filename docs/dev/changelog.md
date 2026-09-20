@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Map structures Slice 3b: `enter_org_max` movement gate (2026-09-20)
+**Files:** src/lib/mapStructures.ts (+ test), src/components/ScenarioMap/{mapGeometry,useMoveActions,useOverlay,useReactionActions,ScenarioMap}.ts, docs/dev/{18-map-structures,outstanding}.md, docs/players/player-manual.md
+
+- **`enter_org_max` is now consumed by movement** (player paths). `mapStructures.structureBlocksOrg` / `zoneBlocksOrg` + `makeBlockedEdge(walls, { structures, templates, zones, orgLevel })`: a structure on the crossed edge or the destination hex, or a ground zone there, gates entry for movers above the allowed organization level. Wired through `useMoveActions` (drag move), `useOverlay` (drag overlay), and `useReactionActions` (reaction reposition); scatter/charge unchanged. So Archer Spikes now actually stop Close Order+ from entering while Open Order/Scattered/Hero pass.
+- **AI assist still ignores the gate** (consistent with the documented v1 AI scope); the `enter_org_max` authoring was already available on zones and structures.
+- Tests: `structureBlocksOrg` / `zoneBlocksOrg` cases. `tsc` clean; 682 tests pass; `next build` clean. No DB change (permission-neutral).
+
 ## Map structures Slice 3: scenario-native structures (migration 095) (2026-09-20)
 **Files:** src/lib/commandLog.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ScenarioMap,StructurePaintPanel}.tsx (one new, one deleted WallPaintPanel), src/components/ScenarioMap/LeftPanel.tsx, supabase/migrations/095_structure_command_log.sql (new), docs/dev/{18-map-structures,13-map-entities-terrain,02-schema-and-migrations,outstanding}.md
 

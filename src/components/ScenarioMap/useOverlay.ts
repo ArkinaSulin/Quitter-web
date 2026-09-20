@@ -4,7 +4,7 @@
 // move hexes, threat zones, charge wedge, range rings, reaction rings) plus
 // the hovered-unit front-arc tint. Pure function — ScenarioMap feeds it the
 // grid state (draggingUnitId/hoveredUnit come from useHexGrid) in an effect.
-import { Unit, Hex, AllianceGroup, Formation, hexDistance } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
 import { computeReachableMap, computeMovePool, computeHeroMovePool, computeChargeReachable } from '@/lib/moveCost';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { getSetting } from '@/lib/settingsCache';
@@ -16,6 +16,9 @@ import { canRangedTarget } from '@/lib/formationRules';
 import { arcOfTarget } from '@/lib/attackDirection';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls, EdgeRef } from '@/lib/walls';
+import { MapStructures } from '@/lib/mapStructures';
+import { StructureTemplate } from '@/types/structure';
+import { GroundEffect } from '@/types/gameProtocol';
 import { edgeHexes } from '@/lib/wallCombat';
 import { canWithdraw, withdrawDestinations } from '@/lib/withdraw';
 
@@ -47,6 +50,10 @@ export interface OverlayState {
   rangeViolationHex: Hex | null;
   terrainCosts?: TerrainCosts;
   walls?: Walls;
+  /** Placed structures + templates + ground zones (entry gates for the overlay). */
+  structures?: MapStructures;
+  templates?: Record<string, StructureTemplate>;
+  zones?: GroundEffect[];
   /** Wall edge under the pointer while dragging (drag-to-attack hint). */
   hoveredEdge?: EdgeRef | null;
 }
@@ -64,11 +71,14 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     rangeViolationHex,
     terrainCosts,
     walls,
+    structures,
+    templates,
+    zones,
     hoveredEdge,
   } = state;
 
   const costOfHex = makeCostOfHex(terrainCosts, walls);
-  const blockedEdge = makeBlockedEdge(walls);
+  const blockedEdgeFor = (orgLevel: number) => makeBlockedEdge(walls, { structures, templates, zones, orgLevel });
   const chargeBlockedEdge = makeChargeBlockedEdge(walls);
 
   // Reaction mode drag: hovering a hostile in weapon range shows range rings;
@@ -91,7 +101,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const maxMP = computeEffectiveMovement(archer, getFormationMultiplier(formationsMap, archer.currentFormation, 'movement_multiplier'));
       const budget = reactionMovePool(archer, maxMP);
       const occupied = computeOccupiedHexes(units, archer.id);
-      const reachable = computeReachableMap(archer, budget, occupied, new Set(), costOfHex, false, blockedEdge);
+      const reachable = computeReachableMap(archer, budget, occupied, new Set(), costOfHex, false, blockedEdgeFor(getOrganizationLevel(archer.currentFormation)));
       reachable.forEach((entry, key) => {
         combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
       });
@@ -150,7 +160,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const heroMax = computeEffectiveMovement(attachedHero, heroMult);
       pool = Math.min(pool, attachedHero.isHero ? computeHeroMovePool(attachedHero, heroMax) : computeMovePool(attachedHero, heroMax));
     }
-    const reachableMap = computeReachableMap(draggedUnit, pool, occupied, threatHexes, costOfHex, false, blockedEdge);
+    const reachableMap = computeReachableMap(draggedUnit, pool, occupied, threatHexes, costOfHex, false, blockedEdgeFor(getOrganizationLevel(draggedUnit.currentFormation)));
 
     const combined: Record<string, string> = {};
 

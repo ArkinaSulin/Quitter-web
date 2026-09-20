@@ -6,7 +6,10 @@ import { determineCombatPosition } from '@/lib/unitCombat';
 import { canStopEnemyMovement } from '@/lib/formationRules';
 import { isUnitInteractable, isDeadCorpse } from '@/lib/unitInteractions';
 import { isUnitRouted } from '@/lib/unitMorale';
-import { Walls, crossingCost, blockedStep, hasWallEdge } from '@/lib/walls';
+import { Walls, crossingCost, blockedStep, hasWallEdge, edgeRef, directionBetween } from '@/lib/walls';
+import { MapStructures, structureBlocksOrg, zoneBlocksOrg } from '@/lib/mapStructures';
+import { StructureTemplate } from '@/types/structure';
+import { GroundEffect } from '@/types/gameProtocol';
 import type { CostOfHexFn, BlockedEdgeFn } from '@/lib/moveCost';
 
 export const HEX_SIZE = 100;
@@ -39,10 +42,44 @@ export function makeCostOfHex(terrain: TerrainCosts | null | undefined, walls: W
   };
 }
 
-/** Impassable-edge predicate for the movement BFS (undefined when no walls). */
-export function makeBlockedEdge(walls: Walls | null | undefined): BlockedEdgeFn | undefined {
-  if (!walls || Object.keys(walls).length === 0) return undefined;
-  return (fromQ, fromR, toQ, toR) => blockedStep(walls, fromQ, fromR, toQ, toR);
+/** Optional extra movement gates beyond wall `block`. */
+export interface BlockEdgeOpts {
+  /** Placed structures (edge `enter_org_max` gates + hex structure gates). */
+  structures?: MapStructures;
+  templates?: Record<string, StructureTemplate>;
+  /** Ground zones (a `enter_org_max` zone blocks entry for over-level movers). */
+  zones?: GroundEffect[];
+  /** The moving unit's organization level — enables the `enter_org_max` gate. */
+  orgLevel?: number;
+}
+
+/**
+ * Impassable-edge predicate for the movement BFS (undefined when nothing can
+ * block). Wall `block` faces always block; when `orgLevel` is provided, a
+ * structure on the crossed edge / destination hex or a ground zone there with an
+ * `enter_org_max` modifier blocks movers above the allowed organization level.
+ */
+export function makeBlockedEdge(walls: Walls | null | undefined, opts: BlockEdgeOpts = {}): BlockedEdgeFn | undefined {
+  const { structures, templates, zones, orgLevel } = opts;
+  const hasWalls = !!walls && Object.keys(walls).length > 0;
+  const hasExtra = (!!structures && Object.keys(structures).length > 0) || (!!zones && zones.length > 0);
+  if (!hasWalls && !hasExtra) return undefined;
+  return (fromQ, fromR, toQ, toR) => {
+    if (walls && blockedStep(walls, fromQ, fromR, toQ, toR)) return true;
+    if (orgLevel === undefined) return false;
+    if (structures) {
+      const dir = directionBetween({ q: fromQ, r: fromR }, { q: toQ, r: toR });
+      if (dir >= 0) {
+        const ref = edgeRef(fromQ, fromR, dir);
+        const edgeInst = structures[ref.key];
+        if (edgeInst && structureBlocksOrg(templates?.[edgeInst.templateId], orgLevel)) return true;
+      }
+      const hexInst = structures[`${toQ},${toR}`];
+      if (hexInst && structureBlocksOrg(templates?.[hexInst.templateId], orgLevel)) return true;
+    }
+    if (zoneBlocksOrg(zones, toQ, toR, orgLevel)) return true;
+    return false;
+  };
 }
 
 /** Charges are blocked by ANY wall edge (they can't climb/charge over a barrier). */

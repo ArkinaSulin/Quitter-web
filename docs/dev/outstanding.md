@@ -43,8 +43,11 @@ Template library + editor shipped (Slice 1). See `18-map-structures.md`.
   of truth, per-key `STRUCTURE` command sub-steps (migration 095), in-scenario
   `StructurePaintPanel`, edge-structure attacks via `STRUCTURE`; runtime `walls`
   derived from structures (legacy `map_data.walls` no longer written).
-- 🔜 **Slice 3b**: wire `enter_org_max` into movement (block a zone/structure
-  hex/edge for over-level movers; authoring already works).
+- ✅ **Slice 3b**: `enter_org_max` is consumed by player movement (structures on
+  the crossed edge / destination hex, or a ground zone there, gate over-level
+  movers) via `makeBlockedEdge(walls, { structures, templates, zones, orgLevel })`;
+  wired through drag-move, the drag overlay and reaction repositioning. AI ignores
+  it for v1.
 - 🔜 **Slice 4**: hex door-first combat + tower auras (occupancy effects), hex
   HP/door rendering in `useCanvasDraw`, drop **target-picker** when a hex has
   ≥2 targetables.

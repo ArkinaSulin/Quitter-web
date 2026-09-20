@@ -4,13 +4,13 @@ Authored map features — walls, archer spikes, gates, gate towers, watch towers
 split into a **template library** (authored once) and **placed instances** (on a
 map), exactly like weapons/effects split authored vs placed.
 
-> **Status.** Slices 1–3 shipped (migrations **093**–**095**): the template
-> table + editor, the `enter_org_max` effect kind, library authoring
-> (`maps.structures` + Map Editor tab), and scenario-native structures
-> (`scenarios.map_data.structures` as the source of truth, per-key `STRUCTURE`
-> command sub-steps, in-scenario painting, edge-structure attacks). Still
-> pending: `enter_org_max` movement consumption and the hex-structure pass
-> (Slice 4).
+> **Status.** Slices 1–3 (+3b) shipped (migrations **093**–**095**): the template
+> table + editor, the `enter_org_max` effect kind **and its movement gate**,
+> library authoring (`maps.structures` + Map Editor tab), and scenario-native
+> structures (`scenarios.map_data.structures`, per-key `STRUCTURE` command
+> sub-steps, in-scenario painting, edge-structure attacks). Still pending: the
+> hex-structure pass (Slice 4) — door-first combat, tower auras, hex rendering,
+> drop target-picker.
 
 ## Template vs instance
 
@@ -99,15 +99,22 @@ runtime `Walls` (`structuresToWalls`) so movement/combat/render are unchanged.
 - **Edge-structure attacks**: the Phase 2 drag-onto-the-edge attack now reads the
   derived `walls` and writes a `STRUCTURE` change back (destroyed = delete key).
 
+## Slice 3b — `enter_org_max` movement gate (shipped)
+
+Movement now honours `enter_org_max`: `mapGeometry.makeBlockedEdge` takes
+`{ structures, templates, zones, orgLevel }` and blocks a step when the crossed
+edge / destination hex carries a structure (or a ground zone on the destination)
+whose `enter_org_max` is below the mover's organization level. Wired through the
+player move path, the drag overlay, and reaction repositioning. Charges are still
+blocked by any edge structure. The AI planner ignores it for v1.
+
 ## Pending (roadmap)
 
-- **`enter_org_max` consumption**: movement must block a hex/edge whose zone or
-  structure carries `enter_org_max` for a mover above the level (authoring works
-  today; the movement gate is not wired).
 - **Slice 4 — hex structures**: door-first combat resolution, tower aura
-  materialization (occupancy effects via the zone reconcile path), hex rendering
-  with HP/door badges in `useCanvasDraw`, and a **target-picker prompt** when a
-  drop lands on a hex with ≥2 targetables (unit, structure, targetable effect, …).
+  materialization (occupancy effects), hex rendering with HP/door badges in
+  `useCanvasDraw`, and a **target-picker prompt** when a drop lands on a hex with
+  ≥2 targetables (unit, structure, targetable effect, …).
+- **AI**: the enemy-AI planner ignores `enter_org_max` and structure auras for v1.
 - Deferred by decision: structure **range bonuses**, gate open/close state.
 
 ## Slice 2 — library authoring (shipped)

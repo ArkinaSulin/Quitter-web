@@ -8,6 +8,7 @@
 // onto the canonical edge sides by the instance `outside` flag.
 import { Walls, Wall, WallFace, edgeRef } from './walls';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
+import { GroundEffect } from '@/types/gameProtocol';
 
 export type MapStructures = Record<string, StructureInstance>;
 
@@ -102,4 +103,16 @@ export function structureCounts(s: MapStructures): { edges: number; hexes: numbe
     else if (isHexStructureKey(key)) hexes++;
   }
   return { edges, hexes };
+}
+
+/** True when a structure's modifiers gate entry for a unit of this org level
+ *  (`enter_org_max`: only formations with org level <= value may enter). */
+export function structureBlocksOrg(t: StructureTemplate | null | undefined, orgLevel: number): boolean {
+  return !!t && t.modifiers.some(m => m.kind === 'enter_org_max' && orgLevel > (m.delta ?? 0));
+}
+
+/** True when a ground zone on (q,r) gates entry for this org level. */
+export function zoneBlocksOrg(zones: GroundEffect[] | null | undefined, q: number, r: number, orgLevel: number): boolean {
+  if (!zones) return false;
+  return zones.some(z => z.q === q && z.r === r && z.kind === 'enter_org_max' && orgLevel > (z.delta ?? 0));
 }

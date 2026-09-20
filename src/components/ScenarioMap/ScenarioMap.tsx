@@ -767,6 +767,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     canAttackTarget: canAttackInFog,
     terrainCosts: moveTerrainCosts,
     walls,
+    structures,
+    structureTemplates,
+    groundZones,
   });
 
   // Wall edge under the pointer while dragging a unit (drag-to-attack hint).
@@ -854,6 +857,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setActiveHeroId,
     terrainCosts: moveTerrainCosts,
     walls,
+    structures,
+    structureTemplates,
+    groundZones,
     pursuitsRef,
   });
 
@@ -1741,10 +1747,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
-    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: moveTerrainCosts, walls, hoveredEdge: hoveredWallEdge });
+    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: moveTerrainCosts, walls, structures, templates: structureTemplates, zones: groundZones, hoveredEdge: hoveredWallEdge });
     if (retreatHoverHex) base[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(base);
-  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, moveTerrainCosts, walls, hoveredWallEdge, retreatHoverHex]);
+  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, moveTerrainCosts, walls, structures, structureTemplates, groundZones, hoveredWallEdge, retreatHoverHex]);
 
   // Center map on initial load
   useEffect(() => {

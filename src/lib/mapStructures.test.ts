@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseStructures, structuresToWalls, isEdgeStructureKey, isHexStructureKey, structureCounts } from './mapStructures';
+import { parseStructures, structuresToWalls, isEdgeStructureKey, isHexStructureKey, structureCounts, structureBlocksOrg, zoneBlocksOrg } from './mapStructures';
 import { StructureTemplate } from '@/types/structure';
 
 const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => ({
@@ -106,5 +106,25 @@ describe('structuresToWalls', () => {
 describe('structureCounts', () => {
   it('counts edge and hex structures separately', () => {
     expect(structureCounts({ '0,0,0': { templateId: 't' }, '1,-1': { templateId: 't' } })).toEqual({ edges: 1, hexes: 1 });
+  });
+});
+
+describe('enter_org_max gates', () => {
+  const spikes = template({ modifiers: [{ kind: 'enter_org_max', delta: 1 }] });
+
+  it('structureBlocksOrg allows org <= value and blocks above', () => {
+    expect(structureBlocksOrg(spikes, 0)).toBe(false);
+    expect(structureBlocksOrg(spikes, 1)).toBe(false);
+    expect(structureBlocksOrg(spikes, 2)).toBe(true);
+    expect(structureBlocksOrg(template({ modifiers: [] }), 3)).toBe(false);
+    expect(structureBlocksOrg(null, 3)).toBe(false);
+  });
+
+  it('zoneBlocksOrg blocks over-level movers only on the zone hex', () => {
+    const zones = [{ key: 'z', q: 0, r: 0, name: 'Spikes', color: '#fff', kind: 'enter_org_max' as const, delta: 1, duration: 3, turnsLeft: 3 }];
+    expect(zoneBlocksOrg(zones, 0, 0, 2)).toBe(true);
+    expect(zoneBlocksOrg(zones, 0, 0, 1)).toBe(false);
+    expect(zoneBlocksOrg(zones, 1, 0, 2)).toBe(false);
+    expect(zoneBlocksOrg(null, 0, 0, 2)).toBe(false);
   });
 });
