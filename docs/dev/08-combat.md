@@ -234,14 +234,23 @@ place. A pursuit's own move never provokes. Setting OFF disables all of it.
 When any unit finishes a MOVE, eligible **archers of the opposing alliance**
 with an unused reaction and a ranged weapon may fire:
 `findEligibleReactionArchers` (archer reaction logic in `archerReaction.ts`).
-Archer within `range` of the mover's landing hex; mover hidden/deleted/routed
+Archer within `range` of the mover's landing hex (and, for formed formations, in
+the archer's **front cone** — `arcOfTarget`); mover hidden/deleted/routed
 excluded; protected (back-attached) heroes never react. Owner of the archer
-clicks the blinking bow → reaction mode locks the actor: fire a reaction shot
-(−1 action, counts to the cap, can rout) or reposition to a hex within
-**50% of max MP** (`getReactionMoveBudget`). All set `archerReactionUsed`
-(true, cleared at the unit's own turn start). Gated by
-`archer_reaction_enabled`. Reaction shots ride `resolveCombatSequence` and the
-command log.
+clicks the blinking bow → reaction mode locks the actor. A reaction is one of:
+
+- **Reaction shot** — the mover (‑1 action, counts to the cap, can rout); closes
+  the session immediately,
+- **Reposition** — move up to **one full action's movement**
+  (`reactionMovePool` = leftover MP, or a full pool when MP is 0; heroes use the
+  prorated hero pool), and/or **change formation** (right-click). Move and
+  formation may be combined **in either order** within the same session (each
+  checks its own MP); a formation change no longer ends the reaction.
+
+The session closes on **End reaction** (toolbar) or **Escape**; a shot closes it
+at once. Any sub-action sets `archerReactionUsed` (true, cleared at the unit's
+own turn start). Gated by `archer_reaction_enabled`. Reaction shots ride
+`resolveCombatSequence` and the command log.
 
 ## Magic & area effects
 

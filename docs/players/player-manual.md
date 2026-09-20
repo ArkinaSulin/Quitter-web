@@ -676,12 +676,15 @@ an eligible archer's range, that archer's owner sees a blinking **bow** marker.
 Click it to enter reaction mode (you control only that archer):
 
 - fire a **reaction shot** at the mover (costs 1 action, counts to the attack
-  cap, can rout), or
-- **reposition** the archer to a hex within **half its move** (costs 1 action).
+  cap, can rout) — this ends the reaction at once, or
+- **reposition** the archer up to a **full move** (one action's movement), and/or
+  **change formation** (right-click the archer). You can do both, in either
+  order, as long as each has MP available.
 
-An archer reacts **once per turn**; the reaction refreshes when its own turn
-begins. Your reaction is not limited to your own alliance's turn — that's the
-point of opportunity fire.
+The reaction stays open until you press **End reaction** (or Escape); a reaction
+shot closes it immediately. An archer reacts **once per turn**; the reaction
+refreshes when its own turn begins. Your reaction is not limited to your own
+alliance's turn — that's the point of opportunity fire.
 
 ---
 

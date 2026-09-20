@@ -10,7 +10,7 @@ import { resolveCombatSequence } from '@/lib/unitCombat';
 import { applyFormationChange } from '@/lib/formationCost';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
-import { isRangedCapableWeapon, getReactionMoveBudget, findEligibleReactionArchers } from '@/lib/archerReaction';
+import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers } from '@/lib/archerReaction';
 import { canRangedTarget } from '@/lib/formationRules';
 import { hasLineOfSight } from '@/lib/lineOfSight';
 import { parseWeapons } from '@/lib/weaponParser';
@@ -215,12 +215,6 @@ export function useReactionActions(deps: ReactionActionsDeps) {
   }, [execute, displayUnits, displayAlliances, formationsMap, sizeCategories, addMessage, routeReactionUnit, units]);
 
   const performReactionMove = useCallback(async (archer: Unit, targetHex: Hex, cost: number) => {
-    const liveArcher = units.find(u => u.id === archer.id) ?? archer;
-    if (liveArcher.archerReactionUsed) {
-      addMessage(`${archer.unitName} already reacted this turn`);
-      setReactionMode(null);
-      return;
-    }
     const maxMP = unitMaxMP(archer);
     const { movementPointsAvailable, actionsAvailable } = archer.isHero
       ? applyHeroMoveCost(archer, cost, maxMP)
@@ -243,17 +237,10 @@ export function useReactionActions(deps: ReactionActionsDeps) {
         unitId: archer.id,
         changes,
       },
-    ], `${archer.unitName} repositioned up to 50% (reaction)`);
-    setReactionMode(null);
-  }, [execute, addMessage, units]);
+    ], `${archer.unitName} repositioned a full move (reaction)`);
+  }, [execute, unitMaxMP]);
 
   const performReactionFormation = useCallback(async (archer: Unit, formation: string) => {
-    const liveArcher = units.find(u => u.id === archer.id) ?? archer;
-    if (liveArcher.archerReactionUsed) {
-      addMessage(`${archer.unitName} already reacted this turn`);
-      setReactionMode(null);
-      return;
-    }
     // Same limits as the normal formation change: no two-handed Shield Wall, and
     // at most one organization level above the current formation.
     if (formation === 'Shield Wall') {
@@ -302,17 +289,29 @@ export function useReactionActions(deps: ReactionActionsDeps) {
         changes,
       },
     ], `${archer.unitName} changed formation to ${formation} (reaction)`);
+  }, [execute, formationsMap, addMessage]);
+
+  /**
+   * End the current reaction session. Any sub-action already set
+   * `archerReactionUsed` (the move/formation commands above), so this just
+   * closes the mode; if nothing was done the marker stays and the archer can
+   * react again. Escape calls the same thing.
+   */
+  const endReaction = useCallback(() => {
     setReactionMode(null);
-  }, [execute, formationsMap, addMessage, units]);
+    setReactionFormationPicker(null);
+  }, []);
 
   /**
    * Locked reaction mode drag helpers: only the reacting archer can act.
    * Dragging onto a hostile unit within weapon `range` shoots it; dragging to a
-   * reachable (<= 50% max MP) empty hex repositions; right-click changes formation.
+   * reachable (one full move) empty hex repositions; right-click changes
+   * formation. A reaction may combine a full move and a formation change, in
+   * either order, until End/Escape.
    */
   const getReactionReachable = useCallback((archer: Unit): Map<string, MovePathEntry> => {
     const maxMP = unitMaxMP(archer);
-    const budget = getReactionMoveBudget(maxMP);
+    const budget = reactionMovePool(archer, maxMP);
     const occupied = computeOccupiedHexes(displayUnits, archer.id);
     return computeReachableMap(archer, budget, occupied, new Set(), makeCostOfHex(terrainCosts, walls), false, makeBlockedEdge(walls));
   }, [displayUnits, unitMaxMP, terrainCosts, walls]);
@@ -363,7 +362,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const reachable = getReactionReachable(archer);
     const entry = reachable.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
-      addMessage(`${archer.unitName} cannot reposition there — outside the 50% reaction move`);
+      addMessage(`${archer.unitName} cannot reposition there — outside its reaction move`);
       return;
     }
     if (entry.needsTurn) {
@@ -386,5 +385,6 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     handleReactionAttack,
     handleReactionMove,
     performReactionFormation,
+    endReaction,
   };
 }

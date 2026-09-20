@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Reaction move = full action; formation change merged with move (2026-09-19)
+**Files:** src/lib/{archerReaction,archerReaction.test}.ts, src/components/ScenarioMap/{useReactionActions,useOverlay,ScenarioMap}.tsx, docs/dev/08-combat.md, docs/players/player-manual.md
+
+- **Reaction reposition now uses one full action's movement** (was half): `reactionMovePool(unit, maxMP)` = `computeMovePool` for units / `computeHeroMovePool` for heroes (leftover MP, or a full pool when MP is 0). Replaces `getReactionMoveBudget`; used by `getReactionReachable` and the reaction branch of the drag overlay.
+- **Reaction move + formation change merged into one session.** A reaction session may combine a full move and a formation change (right-click) in **either order**, each checking its own MP. `performReactionMove`/`performReactionFormation` no longer end the session or abort on `archerReactionUsed`; the flag is still set on the first sub-action so the bow can't be re-offered.
+- **New End reaction toolbar** (`ScenarioMap`) while a reaction is locked; Escape closes it too. A **reaction shot is unchanged** and still closes the session immediately (a shot can't be combined with a move/formation).
+- Tests: `reactionMovePool` cases (unit full pool / leftover / 0; hero proration). `tsc` clean; 652 tests pass.
+
 ## Archer rules: front-only ranged arc + indirect-shot LoS (migration 091) (2026-09-19)
 **Files:** src/lib/{attackDirection,lineOfSight,lineOfSight.test,unitCombat,unitCombat.test,archerReaction,archerReaction.test,enemyAI/planner,attackDirection.test}.ts, src/components/ScenarioMap/{useCombatActions,useReactionActions,useOverlay}.ts, supabase/migrations/091_archer_rules.sql (new), docs/dev/changelog.md
 

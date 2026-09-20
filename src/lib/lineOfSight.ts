@@ -7,6 +7,9 @@
 import { Hex, Unit } from '@/types/gameProtocol';
 import { hexLine } from './hexLine';
 
+/** The only unit fields LoS cares about — callers may pass partial units. */
+export type LosUnit = Pick<Unit, 'id' | 'hex' | 'isDeleted' | 'hidden' | 'currentUnitHp'>;
+
 const hexKey = (h: { q: number; r: number }): string => `${h.q},${h.r}`;
 
 /**
@@ -17,9 +20,9 @@ const hexKey = (h: { q: number; r: number }): string => `${h.q},${h.r}`;
 export function unitsBlockingLine(
   from: Hex,
   to: Hex,
-  units: Unit[],
+  units: LosUnit[],
   excludeIds: ReadonlySet<string> = new Set(),
-): Unit[] {
+): LosUnit[] {
   const line = hexLine(from, to);
   if (line.length <= 2) return [];
   const between = new Set(line.slice(1, -1).map(hexKey));
@@ -37,7 +40,7 @@ export function unitsBlockingLine(
 export function hasLineOfSight(
   from: Hex,
   to: Hex,
-  units: Unit[],
+  units: LosUnit[],
   excludeIds: ReadonlySet<string> = new Set(),
 ): boolean {
   return unitsBlockingLine(from, to, units, excludeIds).length === 0;

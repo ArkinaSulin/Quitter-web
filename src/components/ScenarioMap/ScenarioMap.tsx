@@ -38,7 +38,6 @@ import { TEAM_COLORS, TEAMS, Team } from '@/components/TokenRenderer/tokenUtils'
 import { TeamChip } from '@/components/TokenRenderer/TeamChip';
 import { isUnitRouted, setHeroMoraleBoostEnabled as setHeroMoraleBoostAmbient, setZocPursuitEnabled as setZocPursuitAmbient } from '@/lib/unitMorale';
 import { canRally } from '@/lib/rally';
-import { isRangedCapableWeapon, getReactionMoveBudget, findEligibleReactionArchers } from '@/lib/archerReaction';
 import { computeVisibleHexes, computeFog, hexKey, DEFAULT_SIGHT_RADIUS, FOG_UNSEEN_GM_ALPHA, FOG_UNSEEN_PLAYER_ALPHA } from '@/lib/fogOfWar';
 import { supabase } from '@/lib/supabaseClient';
 import { getFormationMultiplier, computeEffectiveMovement } from '@/lib/unitStats';
@@ -695,6 +694,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     handleReactionAttack,
     handleReactionMove,
     performReactionFormation,
+    endReaction,
   } = useReactionActions({
     units,
     displayUnits,
@@ -2501,6 +2501,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         cancels={softCancels}
         unitMaxMP={unitMaxMP}
       />
+
+      {/* Reaction toolbar: shown while a reaction session is locked. A reaction
+          may combine a full move and a formation change, in either order, then
+          End (or Escape) closes it. A reaction shot closes it immediately. */}
+      {reactionMode && !reactionFormationPicker && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-xl border border-amber-700 bg-gray-900/95 px-4 py-2 shadow-2xl">
+          <span className="text-amber-300 text-sm font-semibold">{reactionMode.archer.unitName} — reaction</span>
+          <span className="hidden sm:inline text-[11px] text-gray-400">Drag to move/shoot · right-click to change formation</span>
+          <button
+            className="bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-lg text-xs font-semibold"
+            onClick={endReaction}
+          >
+            End reaction
+          </button>
+        </div>
+      )}
 
       {/* Reaction: formation picker (reached by right-clicking the acting archer
           in locked reaction mode). Follows the same formation-change limits as

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isRangedCapableWeapon, getReactionMoveBudget, findEligibleReactionArchers } from './archerReaction';
+import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers } from './archerReaction';
 import { Unit, Hex } from '@/types/gameProtocol';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
@@ -78,11 +78,21 @@ describe('isRangedCapableWeapon', () => {
   });
 });
 
-describe('getReactionMoveBudget', () => {
-  it('is half the max movement, floored, at least 1', () => {
-    expect(getReactionMoveBudget(6)).toBe(3);
-    expect(getReactionMoveBudget(5)).toBe(2);
-    expect(getReactionMoveBudget(1)).toBe(1);
+describe('reactionMovePool', () => {
+  const unit = (mp: number, actions: number, isHero = false) =>
+    ({ isHero, movementPointsAvailable: mp, actionsAvailable: actions });
+
+  it('grants one full action pool for a unit (not half movement)', () => {
+    expect(reactionMovePool(unit(0, 2), 5)).toBe(5); // 0 MP + an action → full pool
+    expect(reactionMovePool(unit(2, 1), 5)).toBe(2); // leftover MP on hand
+    expect(reactionMovePool(unit(0, 0), 5)).toBe(0); // no MP, no action
+  });
+
+  it('uses the prorated hero pool for heroes', () => {
+    // maxMP 3 → 0.6 MP/action: 5 actions cover exactly one 3-MP move.
+    expect(reactionMovePool(unit(0, 5, true), 3)).toBe(3);
+    // maxMP 6 → 1.2 MP/action: 2 actions = 2.4 → floored to 2.
+    expect(reactionMovePool(unit(0, 2, true), 6)).toBe(2);
   });
 });
 

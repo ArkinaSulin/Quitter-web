@@ -10,7 +10,7 @@ import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStat
 import { getSetting } from '@/lib/settingsCache';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { parseWeapons } from '@/lib/weaponParser';
-import { isRangedCapableWeapon, getReactionMoveBudget } from '@/lib/archerReaction';
+import { isRangedCapableWeapon, reactionMovePool } from '@/lib/archerReaction';
 import { determineCombatPosition } from '@/lib/unitCombat';
 import { canRangedTarget } from '@/lib/formationRules';
 import { arcOfTarget } from '@/lib/attackDirection';
@@ -85,7 +85,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       combined[`${hoveredUnit!.hex.q},${hoveredUnit!.hex.r}`] = d <= weapon.range ? 'rgba(80, 220, 120, 0.8)' : 'rgba(255, 80, 80, 0.85)';
     } else {
       const maxMP = computeEffectiveMovement(archer, getFormationMultiplier(formationsMap, archer.currentFormation, 'movement_multiplier'));
-      const budget = getReactionMoveBudget(maxMP);
+      const budget = reactionMovePool(archer, maxMP);
       const occupied = computeOccupiedHexes(units, archer.id);
       const reachable = computeReachableMap(archer, budget, occupied, new Set(), costOfHex, false, blockedEdge);
       reachable.forEach((entry, key) => {

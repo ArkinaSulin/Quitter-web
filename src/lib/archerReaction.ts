@@ -5,6 +5,7 @@ import { isUnitRouted } from '@/lib/unitMorale';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { canRangedTarget } from '@/lib/formationRules';
 import { arcOfTarget } from '@/lib/attackDirection';
+import { computeMovePool, computeHeroMovePool } from '@/lib/moveCost';
 import { hexDistance } from '@/types/gameProtocol';
 
 /** A weapon that can shoot beyond adjacency (bow, thrown, magic). */
@@ -15,9 +16,17 @@ export function isRangedCapableWeapon(w: Pick<Weapon, 'range' | 'maxRange'> | nu
   return maxRange > 1 || range > 1;
 }
 
-/** A reaction reposition is capped at 50% of the unit's max movement. */
-export function getReactionMoveBudget(maxMP: number): number {
-  return Math.max(1, Math.floor(maxMP * 0.5));
+/**
+ * Movement available to a reaction reposition: one FULL action's pool (not the
+ * old half move) — the leftover MP on hand, or a full pool when MP is exhausted
+ * and an action remains. Heroes use the prorated hero pool. Mirrors the reach of
+ * a normal single drag (`computeMovePool` / `computeHeroMovePool`).
+ */
+export function reactionMovePool(
+  unit: Pick<Unit, 'isHero' | 'movementPointsAvailable' | 'actionsAvailable'>,
+  maxMP: number,
+): number {
+  return unit.isHero ? computeHeroMovePool(unit, maxMP) : computeMovePool(unit, maxMP);
 }
 
 /**
