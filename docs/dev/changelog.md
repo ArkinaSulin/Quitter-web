@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Effect Editor: `range` + `enter_org_max` usable on units and zones (2026-09-20)
+**Files:** src/lib/{unitEffects,unitEffects.test}.ts, src/components/ScenarioMap/{ScenarioMap,useCombatActions,useReactionActions}.tsx/.ts
+
+- Both kinds were already selectable in the Effect Editor (and Structure Editor), but the apply-time allowlists skipped them. Added **`range`** to `UNIT_KINDS` and **`range` + `enter_org_max`** to `ZONE_KINDS` in `ScenarioMap`, so a template can now carry them.
+- **`range` is consumed from units**: new `unitEffects.effectRangeBonus(unit)` sums `range` modifiers on the unit's effects (direct effects AND ground-zone memberships). Added to `structureRangeBonus` at every consumption point — the attack range gate, the combat weapon bands (also shifts the long-range disadvantage band), and reaction shots (`useCombatActions` / `useReactionActions` / `findEligibleReactionArchers`). It is added to **both** `range` and `maxRange`.
+- `enter_org_max` on a dropped **zone** already blocks over-level entry (`zoneBlocksOrg`); it is now selectable from the Effect Editor's zone templates.
+- Test: `effectRangeBonus` sums direct + zone-membership range modifiers. `tsc` clean; 696 tests pass; `next build` clean.
+
 ## Map structures: range bonuses + gate open/close (2026-09-20)
 **Files:** src/lib/{effectTemplates,unitEffects,mapStructures,mapStructures.test,structureCombat,structureCombat.test,archerReaction}.ts, src/types/{gameProtocol,structure}.ts, src/components/EffectEditor/EffectModifierFields.tsx, src/components/ScenarioMap/{useCombatActions,useReactionActions,ScenarioMap,useCanvasDraw,StructurePaintPanel,LeftPanel}.tsx, src/components/MapEditor/MapCanvas.tsx, docs/dev/{18-map-structures,outstanding}.md, docs/players/player-manual.md
 

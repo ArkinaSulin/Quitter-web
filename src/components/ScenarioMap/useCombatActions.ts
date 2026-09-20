@@ -20,7 +20,7 @@ import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDista
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
-import { attackRollFlags } from '@/lib/unitEffects';
+import { attackRollFlags, effectRangeBonus } from '@/lib/unitEffects';
 import { hasLineOfSight } from '@/lib/lineOfSight';
 import { Walls } from '@/lib/walls';
 import { MapStructures, structureAuraFlags, hasAuraFlags, StructureAuraFlags, structureRangeBonus } from '@/lib/mapStructures';
@@ -255,8 +255,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const combatAttacker = withAuras(effAttacker, attackerAuras);
     const combatTarget = withAuras(effTarget, targetAuras);
     // Structure range bonus (e.g. a watch tower) extends the occupant's reach.
-    const atkRangeBonus = structureRangeBonus(effAttacker.hex, structures, structureTemplates);
-    const tgtRangeBonus = structureRangeBonus(effTarget.hex, structures, structureTemplates);
+    const atkRangeBonus = structureRangeBonus(effAttacker.hex, structures, structureTemplates) + effectRangeBonus(effAttacker);
+    const tgtRangeBonus = structureRangeBonus(effTarget.hex, structures, structureTemplates) + effectRangeBonus(effTarget);
     const combatWeapon = atkRangeBonus
       ? { ...weapon, range: (weapon.range ?? 1) + atkRangeBonus, maxRange: (weapon.maxRange ?? weapon.range ?? 1) + atkRangeBonus }
       : weapon;
@@ -1006,7 +1006,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // reach -> silently auto-switch to it. Two or more -> confirm the FIRST one
     // (a caster with many spells would flood a picker); Cancel lets the player
     // switch manually and redo the attack. None -> warn and abort.
-    const rangeBonus = structureRangeBonus(attacker.hex, structures, structureTemplates);
+    const rangeBonus = structureRangeBonus(attacker.hex, structures, structureTemplates) + effectRangeBonus(attacker);
     if (dist > weapon.maxRange + rangeBonus) {
       const reaching = weaponIndicesReaching(attackerWeapons, attacker.activeWeaponIndex ?? 0, Math.max(1, dist - rangeBonus));
       if (reaching.length === 0) {

@@ -46,6 +46,19 @@ export function isAttackRollEffect(kind: EffectKind): boolean {
   return kind === 'advantage' || kind === 'disadvantage' || kind === 'grant_advantage' || kind === 'grant_disadvantage';
 }
 
+/**
+ * Sum of `range` modifiers on a unit's active effects (direct effects AND
+ * ground-zone memberships). Added to both `range` and `maxRange` of the carrier's
+ * weapon when attacks/reactions are resolved.
+ */
+export function effectRangeBonus(unit: Unit | null | undefined): number {
+  let sum = 0;
+  for (const e of unit?.effects ?? []) {
+    if (e.kind === 'range') sum += e.delta ?? 0;
+  }
+  return sum;
+}
+
 /** The four attack-roll flag kinds present on one unit (effects + zone memberships). */
 export interface AttackRollFlags {
   advantage: boolean;

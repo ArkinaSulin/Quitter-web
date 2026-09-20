@@ -1036,8 +1036,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Armed clone: the next left-click places a copy of this zone.
   const [cloneZone, setCloneZone] = useState<GroundEffect | null>(null);
 
-  const UNIT_KINDS = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'];
-  const ZONE_KINDS = ['ac', 'morale', 'dot', 'entry', 'mp_cost', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'];
+  const UNIT_KINDS = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'range', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'];
+  const ZONE_KINDS = ['ac', 'morale', 'dot', 'entry', 'mp_cost', 'enter_org_max', 'range', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'];
 
   const applyUnitDrop = async (d: { unit: Unit; form: EffectFormValue }) => {
     for (const m of d.form.modifiers) {

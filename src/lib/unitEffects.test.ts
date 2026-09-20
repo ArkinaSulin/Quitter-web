@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags } from './unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus } from './unitEffects';
 import { parseDice } from './effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
@@ -464,5 +464,16 @@ describe('attack-roll flag effects', () => {
     // Only the collapsed effects-list change — no stat delta.
     expect(changes).toHaveLength(1);
     expect(changes[0].field).toBe('effects');
+  });
+});
+
+describe('effectRangeBonus', () => {
+  it('sums range modifiers on the unit (direct effects and zone memberships)', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [ef({ kind: 'range', delta: 1 }), ef({ key: 'z', kind: 'range', delta: -2, zoneHex: h(0, 0) }), ef({ kind: 'ac', delta: 2 })],
+    });
+    expect(effectRangeBonus(u)).toBe(-1);
+    expect(effectRangeBonus(null)).toBe(0);
+    expect(effectRangeBonus(unit('v', 'blue'))).toBe(0);
   });
 });
