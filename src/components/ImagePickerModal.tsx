@@ -124,7 +124,7 @@ export function ImagePickerModal({
 
   useEffect(() => {
     if (showRaces) {
-      supabase.from('races').select('id, name, icon_url').then(({ data }) => {
+      supabase.from('unit_races').select('id, name, icon_url').then(({ data }) => {
         if (data) setRaces((data as { id: string; name: string; icon_url: string | null }[]));
       });
     }

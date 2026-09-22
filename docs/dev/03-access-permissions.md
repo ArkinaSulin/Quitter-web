@@ -2,39 +2,41 @@
 
 There are two independent permission layers:
 
-1. **Global app access** (`profiles` role + `access_roles` matrix) — decides
-   which pages/buttons exist (Unit Library, Shipyard, Map Library, Create/Join/
-   Replay, Admin Panel, Settings).
+1. **Global app access** (`user_profile` role + `admin_role_access_rights`
+   matrix) — decides which pages/buttons exist (Unit Library, Shipyard, Map
+   Library, Create/Join/Replay, Admin Panel, Settings).
 2. **Per-scenario play control** (`scenario_participants.role` +
-   `scenario_role_capabilities` + team/alliance + turn) — decides who may
+   `scenario_role_access_rights` + team/alliance + turn) — decides who may
    move/attack/edit which units on a given battle map, and when.
 
 ## Layer 1 — Global app access
 
-- `auth.users` is reserved; the app-facing identity row is `public.profiles`
+- `auth.users` is reserved; the app-facing identity row is `public.user_profile`
   (`id` PK→`auth.users`, `display_name`, `role`). A DB trigger
   (`handle_new_user`, migration 023) auto-creates a profile on signup; the
   client upsert in `useProfile.ts` is an idempotent fallback.
-- **Role** is `profiles.role` — `admin`/`dm`/`player`/`NULL`(= pending) —
+- **Role** is `user_profile.role` — `admin`/`dm`/`player`/`NULL`(= pending) —
   changed only by the admin-only `set_player_role` RPC (never by direct
-  UPDATE). The `access_roles` **matrix** (migration 025) maps each role to
-  boolean capabilities, read by the `user_has_access(permission)` helper for
-  RLS. `useProfile` exposes `Access { canUseUnitEditor,
+  UPDATE). The `admin_role_access_rights` **matrix** (migration 025) maps each
+  role to boolean capabilities, read by the `user_has_access(permission)` helper
+  for RLS. `useProfile` exposes `Access { canUseUnitEditor,
   canCreateScenario, canJoinGame, canViewReplay, canViewShipEditor,
   canUseShipEditor, canViewMapEditor, canUseMapEditor, canUseAdminPanel }`.
 - **RLS pattern:** policies call `user_has_access('view_unit_editor')` etc.
-  (SECURITY DEFINER). Editing a row in `access_roles` changes what a role can
-  do everywhere — code (button visibility) and DB (policies) — with no code
-  change.
+  (SECURITY DEFINER). Editing a row in `admin_role_access_rights` changes what a
+  role can do everywhere — code (button visibility) and DB (policies) — with no
+  code change.
 - Unknown/no profile → `'pending'` role: may browse and watch replays only.
 - Admin panel: `set_player_role` RPC (approve pending → player/dm/admin) with
-  audit columns; admin is hard-coded (`role === 'admin'`), not a matrix cap.
+  audit columns in `admin_role_changes`; the panel reads the
+  `user_profile_last_change` view. Admin is hard-coded (`role === 'admin'`),
+  not a matrix cap.
 
 ## Layer 2 — Per-scenario play control
 
 ### The capability matrix
 
-`scenario_role_capabilities` (migration 030) rows for `Player`,
+`scenario_role_access_rights` (migration 030) rows for `Player`,
 `SuperPlayer`, `AssistGM` (GM bypasses everything). Capability flags:
 
 `move_*` (own_team / own_alliance / any_team), `adjust_*_stats`,
@@ -78,7 +80,7 @@ The GM always bypasses (via `permRef`/`canActOnUnit`).
 
 - `scenario_participants.team` defaults… teams are picked by the GM
   (`Players` tab). Unassigned player = spectator (read-only unless `any_team`).
-- Teams → alliances via `team_alliances`. Teams with no row default to
+- Teams → alliances via `scenario_team_alliance`. Teams with no row default to
   `friendly` (migration 054 seeds friendly rows for all six teams).
 - Roster/alliance changes reach players through realtime **and** a 10s +
   window-focus poll (realtime `postgres_changes` events were found unreliable

@@ -29,7 +29,7 @@ export async function routeUnit(execute: ExecuteFn, unit: Unit, reason: string, 
     payload: causeId ? { cause: causeId } : undefined,
   }], `${name} ${verb}!`, { chained: true });
   // Local fallback: tell THIS window a rout happened so the retreat modal opens
-  // even if the realtime command_log event is delayed/missed. The orchestrator
+  // even if the realtime scenario_command_log event is delayed/missed. The orchestrator
   // dedupes against the live ROUT row via its retreatPick/busy guards.
   if (typeof window !== 'undefined' && !killed) {
     setTimeout(() => {

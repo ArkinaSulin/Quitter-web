@@ -20,7 +20,7 @@ export function UndoDebugPanel({ scenarioId }: UndoDebugPanelProps) {
 
   const refresh = useCallback(async () => {
     const { data, error } = await supabase
-      .from('command_log')
+      .from('scenario_command_log')
       .select('id, scenario_id, player_id, player_name, action_type, description, sub_steps, chained, created_at, deleted_at')
       .eq('scenario_id', scenarioId)
       .order('created_at', { ascending: false })
@@ -40,12 +40,12 @@ export function UndoDebugPanel({ scenarioId }: UndoDebugPanelProps) {
       .channel(`undo-debug:${scenarioId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'command_log', filter: `scenario_id=eq.${scenarioId}` },
+        { event: 'INSERT', schema: 'public', table: 'scenario_command_log', filter: `scenario_id=eq.${scenarioId}` },
         refresh,
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'command_log', filter: `scenario_id=eq.${scenarioId}` },
+        { event: 'UPDATE', schema: 'public', table: 'scenario_command_log', filter: `scenario_id=eq.${scenarioId}` },
         refresh,
       )
       .subscribe();
@@ -79,7 +79,7 @@ export function UndoDebugPanel({ scenarioId }: UndoDebugPanelProps) {
 
   return (
     <div className="space-y-2">
-      <div className="text-[11px] text-gray-500">command_log — oldest first, highlighted = last active step</div>
+      <div className="text-[11px] text-gray-500">scenario_command_log — oldest first, highlighted = last active step</div>
       {rows.length === 0 ? (
         <div className="text-sm text-gray-500 text-center py-4">No commands yet.</div>
       ) : (

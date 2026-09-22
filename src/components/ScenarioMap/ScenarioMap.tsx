@@ -655,7 +655,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     // Expand authored per-hex effects into PERMANENT ground zones.
     let authoredZones: GroundEffect[] = [];
     if ((entity.hexEffects ?? []).length > 0) {
-      const { data } = await supabase.from('effect_templates').select('*');
+      const { data } = await supabase.from('map_effect_templates').select('*');
       const lib: Record<string, EffectLibraryTemplate> = {};
       for (const row of (data ?? []) as any[]) {
         const t = mapEffectRow(row);
@@ -1447,12 +1447,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       .channel(`command-reactions:${scenarioId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'command_log', filter: `scenario_id=eq.${scenarioId}` },
+        { event: 'INSERT', schema: 'public', table: 'scenario_command_log', filter: `scenario_id=eq.${scenarioId}` },
         handler,
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'command_log', filter: `scenario_id=eq.${scenarioId}` },
+        { event: 'UPDATE', schema: 'public', table: 'scenario_command_log', filter: `scenario_id=eq.${scenarioId}` },
         handler,
       )
       .subscribe();

@@ -10,7 +10,7 @@ that back it, and the invariants/tests that keep it honest.
 >
 > **Numbers:** settings defaults quoted here match the code fallbacks AND the
 > migration seeds (`supabase/migrations/041…060`). Formation-row numbers that
-> live only in the live DB are flagged "verify against `formations` table".
+> live only in the live DB are flagged "verify against `unit_formations` table".
 
 ---
 
@@ -46,13 +46,14 @@ that back it, and the invariants/tests that keep it honest.
 
 Two big ideas make the whole system coherent:
 
-1. **One action = one `command_log` row** carrying sub-step field deltas.
+1. **One action = one `scenario_command_log` row** carrying sub-step field deltas.
    Every mutation (move, attack, formation, effect tick, end turn…) is a row;
    the server applies the deltas and the log update **in one transaction**
    (`execute_command`). Undo/redo soft-delete/restore rows. Replay is a pure
    function of the surviving rows. See `04-command-log-undo-redo.md`.
-2. **Rules are data-driven + cached.** `formations`, `settings` (JSONB),
-   `access_roles`, `scenario_role_capabilities`, `size_categories` are all
+2. **Rules are data-driven + cached.** `unit_formations`, `admin_game_settings`
+   (JSONB), `admin_role_access_rights`, `scenario_role_access_rights`,
+   `unit_size_categories` are all
    lookup tables read through session caches; code fallbacks keep behavior
    correct before the first fetch. See `03-access-permissions.md`,
    `08-combat.md`, `14-editors.md`.
@@ -64,8 +65,8 @@ Two big ideas make the whole system coherent:
 | # | Chapter | What it explains | Key files (start here) |
 |---|---|---|---|
 | [01](01-architecture.md) | Architecture & data flow | Routes, layout, the unit/command lifecycle, optimistic apply + realtime confirm, screenshot flow | `app/page.tsx`, `src/components/ScenarioMap/ScenarioMap.tsx`, `src/hooks/useSupabaseSync.ts` |
-| [02](02-schema-and-migrations.md) | Schema & migrations | Every table; migration 001→075 with **applied / awaiting-DB** status; RLS & RPC inventory | `supabase/migrations/*`, `src/types/gameProtocol.ts` |
-| [03](03-access-permissions.md) | Access, roles & permissions | Global `profiles`/`access_roles`; per-scenario `scenario_role_capabilities` + `scenario_permissions.ts` gates | `src/lib/scenarioPermissions.ts`, `src/hooks/useProfile.ts`, migrations 016/025/030/050/059/074 |
+| [02](02-schema-and-migrations.md) | Schema & migrations | Every table + the 098 naming convention; migration 001→098 with **applied / awaiting-DB** status; RLS & RPC inventory | `supabase/migrations/*`, `src/types/gameProtocol.ts` |
+| [03](03-access-permissions.md) | Access, roles & permissions | Global `user_profile`/`admin_role_access_rights`; per-scenario `scenario_role_access_rights` + `scenario_permissions.ts` gates | `src/lib/scenarioPermissions.ts`, `src/hooks/useProfile.ts`, migrations 016/025/030/050/059/074 |
 | [04](04-command-log-undo-redo.md) | Command log, undo/redo | Sub-steps, `apply_substeps`, chains, `seq`, undo/redo RPCs, soft delete, redo invalidation | `src/lib/commandLog.ts`, `src/lib/commandHistory.ts`, migration 051 |
 | [05](05-realtime-concurrency.md) | Realtime & concurrency | Presence (lobby DM badge, `dm_heartbeat`), broadcast channels, postgres_changes, polling fallbacks, shared registries | `src/hooks/useScenarios.ts`, `useMessageSync.ts`, `useReplay.ts`, migration 052/057 |
 | [06](06-turn-system.md) | Turn system | Alliance cycle friendly→enemy→neutral, free play (turn 0), END_TURN resets, turn counter | `src/lib/turnState.ts`, `src/hooks/useGameEngine.ts` |

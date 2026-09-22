@@ -55,7 +55,7 @@ drops the shield (−2 AC, recomputed).
 Raw position from attacker hex vs defender facing (`determineCombatPosition`):
 front (kill zone) / flank / rear. That raw arc is then interpreted through the
 **defender's formation** (`resolveRetaliationPosition`, using the data-driven
-`retaliate_arcs` from `formations`): front = 'full', flank = 'rows',
+`retaliate_arcs` from `unit_formations`): front = 'full', flank = 'rows',
 rear = 'none'. Special formation overrides in code: **Hero** → all sides
 front; **Scattered** → all sides flank; **Routed** → all sides rear.
 
@@ -81,7 +81,7 @@ front; **Scattered** → all sides flank; **Routed** → all sides rear.
 - **Retaliator (unit, defending)**: `rows × weapon.numberOfAttacks` where rows
   = `ceil(currentTroopCount / visualDotsPerRow)` — retaliation comes from the
   engaged front rows.
-- Row capacity base by size (`row_capacity_by_size` band / `size_categories`):
+- Row capacity base by size (`row_capacity_by_size` band / `unit_size_categories`):
   Small/Medium 10, Large 5, Huge 2, Gargantuan 1. Tight formations multiply
   (visual `row_capacity_multiplier`, attack `attack_capacity_multiplier`:
   Phalanx ×3, Close Order/Shield Wall ×2 — verify live rows).
@@ -108,7 +108,7 @@ formation gives no AC from the REAR** (uniform for every formation; direction vi
 term is **split by attack type**: `melee_ac_modifier` (melee) vs
 `range_ac_modifier` (ranged — bows/thrown and **single-target magic weapons**,
 which roll attack rows like any weapon). Shield Wall is 3/5; every other
-formation defaults ranged to 0 until tuned (values live in the `formations` table,
+formation defaults ranged to 0 until tuned (values live in the `unit_formations` table,
 migration 085). Shields are **360°** (baked into `baselineAc`) and are NOT dropped
 from the rear. Heroes face all sides, so a hero never takes the rear penalty.
 `getShieldPenalty` drops the shield (−2) for a two-handed active weapon or while

@@ -24,7 +24,7 @@ context), so Messages state survives page switches.
 buttons, admin panel, settings. Data flows through `src/hooks/useScenarios.ts`
 (`fetchScenarios`, `createScenario`, `joinScenario`, presence subscriptions,
 `updateScenarioField`, screenshot refresh). Auth state comes from
-`useAuth` (synchronous `INITIAL_SESSION` hydration), profiles/capabilities
+`useAuth` (synchronous `INITIAL_SESSION` hydration), user_profile/capabilities
 from `useProfile`.
 
 ## Scenario Map (the big orchestrator)
@@ -46,13 +46,13 @@ UI handler ──► execute('ACTION', subSteps, description, {chained})
       │          ├──► optimistic local apply of the sub-step deltas
       │          ├──► RPC execute_command(scenario_id, …)     (server)
       │          │       └─ apply_substeps writes units + log ATOMICALLY
-      │          │          + realtime broadcast of the new command_log row
+      │          │          + realtime broadcast of the new scenario_command_log row
       │          ▼
       │     rows[0] (returned row incl. seq) ──► applyDeltas('to')
       │     refreshUnitsByIds(touched)   ← authoritative DB truth
       │     addMessage/addError; refreshUndoState
       ▼
-   other clients: command_log INSERT realtime → re-derive + refetch
+   other clients: scenario_command_log INSERT realtime → re-derive + refetch
 ```
 
 Undo/redo are the same shape via RPCs (`undo_commands`/`redo_commands`) and
@@ -66,9 +66,9 @@ Undo/redo are the same shape via RPCs (`undo_commands`/`redo_commands`) and
 | `src/hooks/useSupabaseSync.ts` | Units ↔ DB. Row↔`Unit` mapping (`mapRowToUnit`/`mapUnitToRow`), `updateUnit`, `placeUnit`, spawn from template, realtime `postgres_changes` handler, `commandSeq` ordering. |
 | `src/hooks/useScenarios.ts` | Scenario CRUD, presence (DM online), join gate (`checkDMOnline`), screenshot upload trigger. |
 | `src/hooks/useReplay.ts` | Replay timeline + co-watch (see `12-replay.md`). |
-| `src/hooks/useTeamAlliances.ts` | `team_alliances` (team → friendly/enemy/neutral) with periodic refresh. |
+| `src/hooks/useTeamAlliances.ts` | `scenario_team_alliance` (team → friendly/enemy/neutral) with periodic refresh. |
 | `src/hooks/useParticipants.ts` | `scenario_participants` roster (roles, teams) with periodic refresh. |
-| `src/hooks/useProfile.ts` | Global `profiles` row + the `access_roles` capability matrix (module-cached). |
+| `src/hooks/useProfile.ts` | Global `user_profile` row + the `admin_role_access_rights` capability matrix (module-cached). |
 | `src/hooks/useMessageSync.ts` | Bridges local `MessageContext` to the shared `messages:{scenarioId}` broadcast channel. |
 | `src/hooks/useMagicCast.ts`, `useCastActions.ts`, `useCombatActions.ts`, `useMoveActions.ts`, `useReactionActions.ts` | Split the click/drag flows into testable action hooks (cast window, attack requests, move handling, archer reaction). |
 
@@ -104,9 +104,9 @@ panel auto-scrolls; rows can be copied (copies the displayed variant).
 
 ## Concurrency model (short form)
 
-- **Command log is the timeline.** Units are a projection of `command_log`
-  plus live placements. Realtime publishes `command_log`, `scenarios`,
-  `units`?, `team_alliances`, `scenario_participants`, and a set of broadcast
+- **Command log is the timeline.** Units are a projection of `scenario_command_log`
+  plus live placements. Realtime publishes `scenario_command_log`, `scenarios`,
+  `units`?, `scenario_team_alliance`, `scenario_participants`, and a set of broadcast
   channels (`messages:`, `replay:`, magic-cast placement, ping).
 - **Soft locks:** dragging locks the unit so other clients don't fight the
   drag; DM presence (`dm_heartbeat_at`, RPC every ~5s) drives the "GM has

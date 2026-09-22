@@ -9,10 +9,10 @@ cursor), and **presence** (who's online). Plus deliberate polling fallbacks.
 | Channel | Kind | Purpose | Subscribers |
 |---|---|---|---|
 | `presence:{scenarioId}` | presence | Lobby "DM Online/Offline" badge; join gate (`checkDMOnline`) | lobby + map clients |
-| `realtime: postgres_changes` on `command_log` | postgres_changes | Every client sees executed/undone commands → reaction offers, undo-state refresh, debug panel | map clients |
+| `realtime: postgres_changes` on `scenario_command_log` | postgres_changes | Every client sees executed/undone commands → reaction offers, undo-state refresh, debug panel | map clients |
 | `realtime: postgres_changes` on `scenarios` | postgres_changes | Turn counter / current alliance / free_move / settings toggles | map clients |
-| `realtime: postgres_changes` on `units` | postgres_changes | Direct unit row changes (GM stat edit etc.); command-driven writes arrive via the command_log path + refetch | map clients |
-| `realtime: postgres_changes` on `team_alliances` / `scenario_participants` / `replay_state` | postgres_changes | Alliance/roster/replay-state changes | map clients |
+| `realtime: postgres_changes` on `units` | postgres_changes | Direct unit row changes (GM stat edit etc.); command-driven writes arrive via the scenario_command_log path + refetch | map clients |
+| `realtime: postgres_changes` on `scenario_team_alliance` / `scenario_participants` / `scenario_replay_state` | postgres_changes | Alliance/roster/replay-state changes | map clients |
 | `messages:{scenarioId}` | broadcast (`self:false`, event `game-message`) | Global game log lines (combat, rout, move, undo, errors) — see `useMessageSync` | map clients |
 | `replay:{scenarioId}` | broadcast (event `mode`) | Replay co-watch: pass-the-clicker, follow seeks, "controller is driving" | map clients |
 | Magic-cast channel | broadcast | Placed area shape + rotation synced while the caster aims | map clients |
@@ -83,7 +83,7 @@ action is resolved by the server (last `seq` wins the authoritative write).
 - **Single writer for rules**: commands go through `execute_command`; the DB is
   authoritative and the returned rows drive every client's refetch.
 - **Replay drives itself**: co-watch broadcasts the mode/cursor; the persisted
-  `replay_state` row (debounced upsert) lets late joiners land in replay too.
+  `scenario_replay_state` row (debounced upsert) lets late joiners land in replay too.
 - Avoid opening two Supabase channels with the same topic for different
   purposes — `channel()` reuses by topic and mixing `presence`/`broadcast`/
   `postgres_changes` bindings on one joined channel is the source of several

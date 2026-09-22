@@ -16,7 +16,7 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
   const [status, setStatus] = useState('');
 
   const load = useCallback(async () => {
-    const { data } = await supabase.from('weapons').select('*').order('name', { ascending: true });
+    const { data } = await supabase.from('unit_weapons').select('*').order('name', { ascending: true });
     if (data) setList(data.map(mapWeaponRow));
   }, []);
 
@@ -34,10 +34,10 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
     try {
       const row = mapWeaponToRow(draft);
       if (draft.id) {
-        const { error } = await supabase.from('weapons').update(row).eq('id', draft.id);
+        const { error } = await supabase.from('unit_weapons').update(row).eq('id', draft.id);
         if (error) throw error;
       } else {
-        const { data, error } = await supabase.from('weapons').insert(row).select('*').single();
+        const { data, error } = await supabase.from('unit_weapons').insert(row).select('*').single();
         if (error) throw error;
         setDraft(mapWeaponRow(data));
       }
@@ -55,7 +55,7 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
     if (!confirm(`Delete weapon "${draft.name}"?`)) return;
     setBusy(true);
     try {
-      await supabase.from('weapons').delete().eq('id', draft.id);
+      await supabase.from('unit_weapons').delete().eq('id', draft.id);
       setDraft(null);
       setStatus('Deleted.');
       await load();

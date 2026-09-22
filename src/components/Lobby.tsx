@@ -70,7 +70,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameInput, setRenameInput] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
-  // creator id -> live profiles.display_name (resolved once, so renames are honored)
+  // creator id -> live user_profile.display_name (resolved once, so renames are honored)
   const [creatorAliases, setCreatorAliases] = useState<Record<string, string>>({});
 
   const { displayName, role, requestNote, access, updateDisplayName, updateRequestNote, approvePlayer } = useProfile(currentUser?.id);
@@ -107,7 +107,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     const creatorIds = Array.from(new Set(scenarios.map(s => s.creatorId).filter(Boolean)));
     if (creatorIds.length === 0) return;
     supabase
-      .from('profiles')
+      .from('user_profile')
       .select('id, display_name')
       .in('id', creatorIds)
       .then(({ data, error }) => {
@@ -164,12 +164,12 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
     setAdminError(null);
     const [pendingRes, approvedRes] = await Promise.all([
       supabase
-        .from('profiles')
+        .from('user_profile')
         .select('id, display_name, request_note')
         .is('role', null)
         .order('created_at', { ascending: true }),
       supabase
-        .from('profile_access')
+        .from('user_profile_last_change')
         .select('id, display_name, role, last_active_at, last_changed_by_name, last_role_change_at')
         .not('role', 'is', null)
         .order('last_active_at', { ascending: false }),

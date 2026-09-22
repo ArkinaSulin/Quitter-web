@@ -229,7 +229,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       try {
         const [unitsRes, sizeCatRes] = await Promise.all([
           supabase.from('units').select('*').eq('scenario_id', scenarioId),
-          supabase.from('size_categories').select('*'),
+          supabase.from('unit_size_categories').select('*'),
         ]);
 
         if (unitsRes.error) throw unitsRes.error;
@@ -276,7 +276,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
           return prevUnits.map(u => {
             if (u.id !== updatedUnit.id) return u;
             // Drop stale events: every command write stamps command_seq (the
-            // monotonic command_log seq). A realtime event whose stamp is not
+            // monotonic scenario_command_log seq). A realtime event whose stamp is not
             // strictly newer than the local one reflects an older write — e.g. the
             // ATTACK row from a charge reaching the client after the CHARGE_END —
             // so applying it would regress state (the formation flicker bug).

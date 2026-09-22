@@ -52,7 +52,7 @@ export default function EffectsPanel() {
   useEffect(() => {
     let cancelled = false;
     supabase
-      .from('effect_templates')
+      .from('map_effect_templates')
       .select('*')
       .order('name', { ascending: true })
       .then(({ data }) => {

@@ -27,7 +27,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
   const [showImagePicker, setShowImagePicker] = useState(false);
 
   const load = useCallback(async () => {
-    const { data } = await supabase.from('effect_templates').select('*').order('name', { ascending: true });
+    const { data } = await supabase.from('map_effect_templates').select('*').order('name', { ascending: true });
     if (data) setList((data as any[]).map(mapEffectRow));
   }, []);
 
@@ -44,9 +44,9 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
       const row = mapEffectToRow(draft);
       let id = draft.id;
       if (id) {
-        await supabase.from('effect_templates').update(row).eq('id', id);
+        await supabase.from('map_effect_templates').update(row).eq('id', id);
       } else {
-        const { data, error } = await supabase.from('effect_templates').insert(row).select('id').single();
+        const { data, error } = await supabase.from('map_effect_templates').insert(row).select('id').single();
         if (error) throw error;
         id = data.id;
       }
@@ -56,7 +56,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
         const found = list.find(t => t.id === id);
         if (found) select(found);
         else {
-          const { data } = await supabase.from('effect_templates').select('*').eq('id', id).single();
+          const { data } = await supabase.from('map_effect_templates').select('*').eq('id', id).single();
           if (data) select(mapEffectRow(data));
         }
       }
@@ -72,7 +72,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
     if (!confirm(`Delete effect "${draft.name}"?`)) return;
     setBusy(true);
     try {
-      await supabase.from('effect_templates').delete().eq('id', draft.id);
+      await supabase.from('map_effect_templates').delete().eq('id', draft.id);
       setDraft(null);
       setStatus('Deleted.');
       await load();

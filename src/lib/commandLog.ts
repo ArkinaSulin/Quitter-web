@@ -66,7 +66,7 @@ export interface CommandEntry {
   chained: boolean;
 }
 
-/** Row shape as stored in the `command_log` table. */
+/** Row shape as stored in the `scenario_command_log` table. */
 export interface CommandLogRow {
   id: string;
   scenario_id: string;
@@ -78,7 +78,7 @@ export interface CommandLogRow {
   chained: boolean;
   created_at: string;
   deleted_at: string | null;
-  /** Monotonic command_log.seq — the authoritative ordering stamp for the units writes. */
+  /** Monotonic scenario_command_log.seq — the authoritative ordering stamp for the units writes. */
   seq: number;
 }
 

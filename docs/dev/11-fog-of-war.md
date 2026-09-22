@@ -9,8 +9,8 @@ map draw layer. Migrations: 071 (fog columns/settings), 072 (rename
 - Effective sight radius of a unit =
   `max(scenario sight_radius, unit.darkvision)` (`unitSightRadius`). Scenario
   `sight_radius` defaults 2 (`DEFAULT_SIGHT_RADIUS`). `darkvision` is authored
-  on races → templates → spawned units (the map stack keeps it at all three
-  levels so nothing is lost; races are the authored source).
+  on unit_races → templates → spawned units (the map stack keeps it at all three
+  levels so nothing is lost; unit_races are the authored source).
 - The unit's **own hex is always visible** (it stands there); the radius counts
   hexes beyond it.
 

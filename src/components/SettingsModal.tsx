@@ -1,7 +1,7 @@
 // src/components/SettingsModal.tsx
 'use client';
 
-// Admin-only editor for the game-wide `settings` table. Each value is edited as
+// Admin-only editor for the game-wide `admin_game_settings` table. Each value is edited as
 // JSON text (validated + parsed on save); after saving the in-memory settings
 // cache is invalidated and reloaded so running clients pick up new values.
 
@@ -27,7 +27,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
 
   useEffect(() => {
     supabase
-      .from('settings')
+      .from('admin_game_settings')
       .select('key, value, description')
       .order('key')
       .then(({ data }) => {
@@ -59,7 +59,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     try {
       for (const r of rows) {
         const { error } = await supabase
-          .from('settings')
+          .from('admin_game_settings')
           .update({ value: parsed[r.key] })
           .eq('key', r.key);
         if (error) throw error;

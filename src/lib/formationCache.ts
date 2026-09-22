@@ -2,9 +2,9 @@
 import { supabase } from '@/lib/supabaseClient';
 import { Formation } from '@/types/gameProtocol';
 
-// Session-scoped cache of the formations lookup table. The matrix is small and
+// Session-scoped cache of the unit_formations lookup table. The matrix is small and
 // rarely changes, so load it once and share it across all consumers (ScenarioMap,
-// UnitEditor, combat helpers). Call invalidate() if an admin edits formations.
+// UnitEditor, combat helpers). Call invalidate() if an admin edits unit_formations.
 let cache: Record<string, Formation> | null = null;
 let inflight: Promise<Record<string, Formation>> | null = null;
 
@@ -17,7 +17,7 @@ export async function getFormations(): Promise<Record<string, Formation>> {
   if (cache) return cache;
   if (!inflight) {
     const p = supabase
-      .from('formations')
+      .from('unit_formations')
       .select('*')
       .then(({ data }) => {
         const map: Record<string, Formation> = {};

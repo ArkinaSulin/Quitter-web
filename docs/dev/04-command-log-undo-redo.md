@@ -11,13 +11,13 @@ UI handler → execute(type, subSteps, description, {chained})
    → RPC execute_command(scenario_id, action_type, description, sub_steps, chained)
         server: apply_substeps (same transaction as the log row)
         server: returns the row (incl. seq) → optimistic local apply + refresh
-   → command_log INSERT broadcast → all clients refetch touched units
+   → scenario_command_log INSERT broadcast → all clients refetch touched units
 Undo/Redo → RPC undo_commands / redo_commands → inverse apply → refetch
 ```
 
 ## Vocabulary
 
-- **Command row** (`command_log`): one logical action. Columns:
+- **Command row** (`scenario_command_log`): one logical action. Columns:
   `id`, `scenario_id`, `player_id`, `player_name`, `action_type`,
   `description`, `sub_steps jsonb`, `chained bool`, `created_at`,
   `deleted_at` (soft delete = undone), `seq BIGSERIAL` (total order).
@@ -27,7 +27,7 @@ Undo/Redo → RPC undo_commands / redo_commands → inverse apply → refetch
   `DAMAGE` hp/troop deltas on both units, plus chained ROUT).
 - **`UnitChange`**: `{ field, from, to }` — a camelCase unit field delta. The
   server maps it through the `unit_field_to_column()` allowlist; SCENARIO and
-  ALLIANCE sub-steps change `scenarios`/`team_alliances` rows instead.
+  ALLIANCE sub-steps change `scenarios`/`scenario_team_alliance` rows instead.
 - **`chained`**: marks a command as a direct consequence of the previous one
   (e.g. a MOVE that routes units → each ROUT chained to the MOVE). Undo
   collects the top chain (a `chained=false` root + its consecutive
@@ -37,7 +37,7 @@ Undo/Redo → RPC undo_commands / redo_commands → inverse apply → refetch
 
 - Requires the caller to be a **participant** of the scenario.
 - `ALLIANCE` and `SCENARIO` sub-steps are **GM-only** (they write
-  `team_alliances` / `scenarios`).
+  `scenario_team_alliance` / `scenarios`).
 - `apply_substeps` writes unit deltas + the log row **in one transaction**;
   unknown fields `RAISE` (never silently dropped). Undoing replays `from`
   deltas in **reverse order**.
@@ -74,7 +74,7 @@ MOVE → MOVE → ROUT(true): 1st undo reverts ROUT+MOVE; 2nd undo reverts the
 
 - `src/hooks/useGameEngine.ts`: `execute(...)` optimistic-applies sub-step
   deltas, calls the RPC, then `refreshUnitsByIds` from the authoritative rows
-  returned/refetched; refreshes `undoState` (mount + each command_log realtime
+  returned/refetched; refreshes `undoState` (mount + each scenario_command_log realtime
   INSERT/UPDATE + after every action). `undo`/`redo` mirror this with
   `applyDeltas('from')`.
 - Command-log realtime subscription appends remote rows so every client tracks

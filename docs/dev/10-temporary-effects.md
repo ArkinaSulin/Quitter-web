@@ -164,7 +164,7 @@ The four flag kinds are also seeded into the library table by migration
 - **Stat zones apply immediately**: a `ZONE`-derived `Effect` sub-step reconciles
   membership on move (`computeZoneReconcile`), so entering a Bless/Bane/Slow hex
   applies/restores its stat at once instead of waiting for the next activation.
-- **The unit's Effects… dialog uses the library** (`effect_templates`), so
+- **The unit's Effects… dialog uses the library** (`map_effect_templates`), so
   composites (Haunted), Sleep, and zone templates are all applicable there too.
 - Effect artwork renders on the map at `layer` (below / above the unit token) and
   `imageScale` (height = 1.2 hex-radii × scale%);

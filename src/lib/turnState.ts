@@ -3,7 +3,7 @@ import { AllianceGroup } from '@/types/gameProtocol';
 export const ALLIANCE_ORDER: AllianceGroup[] = ['friendly', 'enemy', 'neutral'];
 
 /**
- * Groups with at least one team assigned via team_alliances.
+ * Groups with at least one team assigned via scenario_team_alliance.
  * Teams default to 'friendly' when no rows exist, so friendly is always active.
  */
 export function getActiveGroups(alliances: Record<string, AllianceGroup>): AllianceGroup[] {

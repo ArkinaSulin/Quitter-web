@@ -29,7 +29,7 @@ export function useTeamAlliances(scenarioId: string, isGM: boolean) {
   useEffect(() => {
     let cancelled = false;
     supabase
-      .from('team_alliances')
+      .from('scenario_team_alliance')
       .select('team, alliance_group')
       .eq('scenario_id', scenarioId)
       .then(({ data, error }) => {
@@ -44,7 +44,7 @@ export function useTeamAlliances(scenarioId: string, isGM: boolean) {
       .channel(`team-alliances:${scenarioId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'team_alliances', filter: `scenario_id=eq.${scenarioId}` },
+        { event: '*', schema: 'public', table: 'scenario_team_alliance', filter: `scenario_id=eq.${scenarioId}` },
         (payload: any) => {
           const rows = rowsRef.current;
           if (payload.eventType === 'DELETE') {
@@ -72,7 +72,7 @@ export function useTeamAlliances(scenarioId: string, isGM: boolean) {
   // quit and rejoin the scenario.
   const refreshAlliances = useCallback(async () => {
     const { data, error } = await supabase
-      .from('team_alliances')
+      .from('scenario_team_alliance')
       .select('team, alliance_group')
       .eq('scenario_id', scenarioId);
     if (error) return;
@@ -95,7 +95,7 @@ export function useTeamAlliances(scenarioId: string, isGM: boolean) {
   const setAlliance = useCallback(async (team: string, group: AllianceGroup) => {
     setAlliances(prev => ({ ...prev, [team]: group }));
     const { error } = await supabase
-      .from('team_alliances')
+      .from('scenario_team_alliance')
       .upsert({
         scenario_id: scenarioId,
         team,

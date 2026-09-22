@@ -160,7 +160,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
 
   useEffect(() => {
-    supabase.from('mounts').select('id, name').order('name').then(({ data }) => {
+    supabase.from('unit_mounts').select('id, name').order('name').then(({ data }) => {
       if (data) setMounts((data as { id: string; name: string }[]));
     });
   }, []);

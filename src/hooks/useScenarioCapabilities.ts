@@ -6,13 +6,13 @@ import { supabase } from '@/lib/supabaseClient';
 import { ScenarioRole, ScenarioRoleCapabilities } from '@/types/gameProtocol';
 import { getRoleCapabilities, emptyCapabilities } from '@/lib/scenarioPermissions';
 
-// Session cache: the scenario_role_capabilities matrix is read-only config and
+// Session cache: the scenario_role_access_rights matrix is read-only config and
 // changes with a DB edit, not at runtime — safe to fetch once per session.
 let capsCache: Record<string, ScenarioRoleCapabilities> | null = null;
 
 async function loadCapabilitiesMatrix(): Promise<Record<string, ScenarioRoleCapabilities>> {
   if (capsCache) return capsCache;
-  const { data } = await supabase.from('scenario_role_capabilities').select('*');
+  const { data } = await supabase.from('scenario_role_access_rights').select('*');
   capsCache = (data || []).reduce((acc: Record<string, ScenarioRoleCapabilities>, row: any) => {
     acc[row.role] = { ...emptyCapabilities(), ...row };
     return acc;

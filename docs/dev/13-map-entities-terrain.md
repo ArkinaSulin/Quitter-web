@@ -6,7 +6,7 @@
    Each row: `name`, `description`, `image_url` (from the `map_images`
    storage bucket), `offset_x/y`, `scale`, `grid_radius`, `terrain_costs`
    jsonb (`{"q,r": 0..9}`), `structures` jsonb (migration 094), and
-   `hex_effects` jsonb — authored per-hex effects (one `effect_templates` ref
+   `hex_effects` jsonb — authored per-hex effects (one `map_effect_templates` ref
    per hex; see "Authored map effects").
 2. **Scenario copy** (`scenarios.map_data`): a live scenario's composite board.
    It holds several layers merged together and persisted as one blob:
@@ -20,7 +20,7 @@
 
 ## Authored map effects
 
-The Map Editor's **Effects** tab paints one `effect_templates` ref per hex into
+The Map Editor's **Effects** tab paints one `map_effect_templates` ref per hex into
 `maps.hex_effects` (`MapHexEffect { q, r, effectId }`). On assign,
 `mapEffects.expandHexEffects` turns each ref into **permanent** ground zones (one
 per template modifier) snapshotted into `scenarios.map_data.groundEffects`.

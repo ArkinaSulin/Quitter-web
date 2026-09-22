@@ -57,9 +57,9 @@ describe('mapTemplate', () => {
 
   it('resolves joined relation fields when present', () => {
     const row = {
-      races: { name: 'Human', base_hd: 1, icon_url: '/human.png', can_charge: false },
-      armors: { name: 'Chain mail' },
-      mounts: { name: 'Warhorse' },
+      unit_races: { name: 'Human', base_hd: 1, icon_url: '/human.png', can_charge: false },
+      unit_armors: { name: 'Chain mail' },
+      unit_mounts: { name: 'Warhorse' },
       unit_types: { name: 'Infantry', icon_url: '/infantry.png' },
     };
 

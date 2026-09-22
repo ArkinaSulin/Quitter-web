@@ -55,7 +55,7 @@ export function useGameEngine({
   const { addMessage, addError } = useMessageSync(scenarioId);
 
   // Server-derived undo/redo state (what the RPCs consider undoable right now).
-  // Rebuilt on mount, on every command_log change, and after each action.
+  // Rebuilt on mount, on every scenario_command_log change, and after each action.
   const [undoState, setUndoState] = useState<UndoState | null>(null);
   const undoStateRef = useRef<UndoState | null>(null);
   undoStateRef.current = undoState;
@@ -71,7 +71,7 @@ export function useGameEngine({
     return state;
   }, [scenarioId]);
 
-  // Realtime command_log events can be missed, so also re-fetch the undo cache
+  // Realtime scenario_command_log events can be missed, so also re-fetch the undo cache
   // on an interval and on window focus (same belt-and-braces as UndoDebugPanel /
   // useTeamAlliances). Keeps the Undo/Redo buttons from going stale mid-session.
   useEffect(() => {
@@ -236,12 +236,12 @@ export function useGameEngine({
       .channel(`command-log-${scenarioId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'command_log', filter: `scenario_id=eq.${scenarioId}` },
+        { event: 'INSERT', schema: 'public', table: 'scenario_command_log', filter: `scenario_id=eq.${scenarioId}` },
         () => { refreshUndoState(); },
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'command_log', filter: `scenario_id=eq.${scenarioId}` },
+        { event: 'UPDATE', schema: 'public', table: 'scenario_command_log', filter: `scenario_id=eq.${scenarioId}` },
         () => { refreshUndoState(); },
       )
       .subscribe();

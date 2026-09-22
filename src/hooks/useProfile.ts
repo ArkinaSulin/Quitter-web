@@ -15,7 +15,7 @@ interface CachedProfile {
 // Session cache so Lobby -> ScenarioMap share the profile without refetching.
 const profileCache = new Map<string, CachedProfile>();
 
-// Role → capability matrix (cached per session). Lives in the `access_roles` table
+// Role → capability matrix (cached per session). Lives in the `admin_role_access_rights` table
 // so privileges can change without code edits.
 interface AccessRow {
   can_use_unit_editor: boolean;
@@ -60,7 +60,7 @@ let accessCache: Record<string, AccessRow> | null = null;
 async function loadAccessMatrix(): Promise<Record<string, AccessRow>> {
   if (accessCache) return accessCache;
   const { data } = await supabase
-    .from('access_roles')
+    .from('admin_role_access_rights')
     .select('*');
   accessCache = (data || []).reduce((acc: Record<string, AccessRow>, row: any) => {
     acc[row.role] = {
@@ -132,7 +132,7 @@ export function useProfile(userId: string | null | undefined) {
   // an effect) — fixing a stale-commit race that redirected admins out of the editor.
   const [resolvedUserId, setResolvedUserId] = useState<string | null | undefined>(undefined);
   const loading = userId !== null && resolvedUserId !== userId;
-  // True only while the access_roles matrix is still loading (first call per session).
+  // True only while the admin_role_access_rights matrix is still loading (first call per session).
   // Once loaded, access is derived synchronously from the cached matrix + role, so it
   // can never lag behind a role change (which caused a stale "pending" redirect).
   const [accessLoading, setAccessLoading] = useState(true);
@@ -175,7 +175,7 @@ export function useProfile(userId: string | null | undefined) {
         }
 
         const { data: rows } = await supabase
-          .from('profiles')
+          .from('user_profile')
           .select('id, display_name, role, request_note')
           .eq('id', userId)
           .maybeSingle();
@@ -197,7 +197,7 @@ export function useProfile(userId: string | null | undefined) {
 
         const fallback = metadataFallbackName(user);
         const { data: inserted, error: insertError } = await supabase
-          .from('profiles')
+          .from('user_profile')
           .upsert({ id: userId, display_name: fallback }, { onConflict: 'id' })
           .select('display_name, role, request_note')
           .maybeSingle();
@@ -232,7 +232,7 @@ export function useProfile(userId: string | null | undefined) {
     if (!userId) return;
     const touch = () => {
       supabase
-        .from('profiles')
+        .from('user_profile')
         .update({ last_active_at: new Date().toISOString() })
         .eq('id', userId)
         .then(({ error }) => {
@@ -250,7 +250,7 @@ export function useProfile(userId: string | null | undefined) {
       if (!trimmed || !userId) return false;
 
       const { error } = await supabase
-        .from('profiles')
+        .from('user_profile')
         .update({ display_name: trimmed, updated_at: new Date().toISOString() })
         .eq('id', userId);
 
@@ -273,7 +273,7 @@ export function useProfile(userId: string | null | undefined) {
       if (!userId) return false;
 
       const { error } = await supabase
-        .from('profiles')
+        .from('user_profile')
         .update({ request_note: note, updated_at: new Date().toISOString() })
         .eq('id', userId);
 

@@ -43,7 +43,7 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
   useEffect(() => {
     let cancelled = false;
     supabase
-      .from('weapons')
+      .from('unit_weapons')
       .select('*')
       .order('name')
       .then(({ data, error }) => {

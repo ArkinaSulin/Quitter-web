@@ -104,7 +104,7 @@ export function useReplay(scenarioId: string, { initialMode = 'play', playerId =
   const applyingRemoteRef = useRef(false);
   // Cursor to apply once the timeline finishes loading (late-joiner catch-up).
   const pendingCursorRef = useRef<number | null>(null);
-  // Set once the initial replay_state read resolves, so the persist effect never
+  // Set once the initial scenario_replay_state read resolves, so the persist effect never
   // clobbers the driver's state with a pre-read default ('play').
   const hydratedRef = useRef(false);
 
@@ -180,7 +180,7 @@ export function useReplay(scenarioId: string, { initialMode = 'play', playerId =
     setSteps([]);
     setCursor(0);
     supabase
-      .from('command_log')
+        .from('scenario_command_log')
       .select('id, scenario_id, player_id, player_name, action_type, description, sub_steps, chained, created_at, deleted_at')
       .eq('scenario_id', scenarioId)
       .order('created_at', { ascending: true })
@@ -204,12 +204,12 @@ export function useReplay(scenarioId: string, { initialMode = 'play', playerId =
     };
   }, [scenarioId, reloadKey]);
 
-  // ---- replay_state: DB-persisted co-watch state so late joiners catch up. ----
+  // ---- scenario_replay_state: DB-persisted co-watch state so late joiners catch up. ----
   // Read once on mount: auto-enter replay with the driver's cursor if replaying.
   useEffect(() => {
     let cancelled = false;
     supabase
-      .from('replay_state')
+      .from('scenario_replay_state')
       .select('mode, cursor, playing')
       .eq('scenario_id', scenarioId)
       .maybeSingle()
@@ -239,7 +239,7 @@ export function useReplay(scenarioId: string, { initialMode = 'play', playerId =
     }
     const t = setTimeout(() => {
       supabase
-        .from('replay_state')
+        .from('scenario_replay_state')
         .upsert({ scenario_id: scenarioId, mode, cursor, playing, updated_at: new Date().toISOString() })
         .then(({ error }) => {
           if (error) console.error('[Replay] Persist failed:', error);

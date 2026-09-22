@@ -4,7 +4,7 @@
 
 - One **scenario turn** is one full cycle of the active alliance groups.
 - Cycle order: **friendly → enemy → neutral**, skipping any group that has no
-  team assigned in `team_alliances` (`getActiveGroups`). Teams default to
+  team assigned in `scenario_team_alliance` (`getActiveGroups`). Teams default to
   `friendly` (migration 054 seeds friendly rows), so friendly is always active
   and a fresh scenario cycles friendly → friendly.
 - `scenarios.current_turn_alliance`: `null` = **free play** (turn 0), or one of

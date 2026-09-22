@@ -1,6 +1,6 @@
 'use client';
 // src/hooks/useCommandLogRows.ts
-// Live list of the scenario's command_log rows (including undone rows, which
+// Live list of the scenario's scenario_command_log rows (including undone rows, which
 // the consumers skip by `deleted_at`). Refreshed on mount and on every
 // realtime command-log change. Shared source for corpse piles + battle stats.
 import { useCallback, useEffect, useState } from 'react';
@@ -12,7 +12,7 @@ export function useCommandLogRows(scenarioId: string, enabled = true): CommandLo
 
   const refresh = useCallback(async () => {
     const { data } = await supabase
-      .from('command_log')
+      .from('scenario_command_log')
       .select('*')
       .eq('scenario_id', scenarioId)
       .order('seq', { ascending: true });
@@ -26,7 +26,7 @@ export function useCommandLogRows(scenarioId: string, enabled = true): CommandLo
       .channel(`cmd-rows:${scenarioId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'command_log', filter: `scenario_id=eq.${scenarioId}` },
+        { event: '*', schema: 'public', table: 'scenario_command_log', filter: `scenario_id=eq.${scenarioId}` },
         () => void refresh(),
       )
       .subscribe();

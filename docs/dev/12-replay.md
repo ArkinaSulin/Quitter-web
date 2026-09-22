@@ -26,7 +26,7 @@ baseline. Each beat stores a `ReplayState` snapshot.
 - `turnOneIndex` = first step whose state has `turn_number ≥ 1`; the overlay
   draws a small amber ▲ under the slider there.
 - Late joiners auto-enter replay: `useReplay` reads the persisted
-  `replay_state` row (mode + cursor + playing) on mount and applies the cursor
+  `scenario_replay_state` row (mode + cursor + playing) on mount and applies the cursor
   once the timeline loads.
 
 ## Co-watch (shared-registry broadcast)
@@ -38,9 +38,9 @@ sync:
 - The `mode:'replay'` broadcast handler mirrors the local setMode (resets
   cursor/playing + bumps `reloadKey`) — fixes players landing on an empty 0/0
   timeline when the DM enters replay.
-- Local mode/cursor/playing are **debounced-upserted** to `replay_state`
+- Local mode/cursor/playing are **debounced-upserted** to `scenario_replay_state`
   (skipped for broadcast-derived state to avoid self-echo). A live realtime
-  subscribe on `replay_state` was deliberately dropped — it fought an actively
+  subscribe on `scenario_replay_state` was deliberately dropped — it fought an actively
   playing local clock; the broadcast channel handles live sync.
 
 ## Read-only
@@ -48,12 +48,12 @@ sync:
 While in replay: `controlsLocked` — no drag/attack/context menu/undo/keyboard/
 modals; pan/zoom/tooltip/Exit stay. The read-only path is shared with the
 DM-gone lock (`useHexGrid.readOnly`). Pending users can replay (`canViewReplay`,
-migration 024 extended SELECT to pending profiles; the "GM has left" banner is
+migration 024 extended SELECT to pending user_profile rows; the "GM has left" banner is
 suppressed in replay because pending viewers have no live controls anyway).
 
 ## ReplayOverlay UI
 
 Amber REPLAY frame + banner; bottom playback bar: play/pause, scrubber,
 frame-step, speed, and "controller is driving / step N of M"; "Back to Play"
-+ "Exit to Lobby" buttons (top bar). Persisted via `replay_state` table
++ "Exit to Lobby" buttons (top bar). Persisted via `scenario_replay_state` table
 (migration 052).

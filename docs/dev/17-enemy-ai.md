@@ -109,7 +109,7 @@ Deterministic, pure, snapshot-in/snapshot-out:
 
 - **Default: unit-by-unit.** Every AI action is a normal command (with its
   chained rout/pursuit consequences); Ctrl+Z reverts the last one.
-- **Undo Execute macro:** records the live top `command_log` id *before* the
+- **Undo Execute macro:** records the live top `scenario_command_log` id *before* the
   batch, then loops the server-validated `undo()` while the current top id
   differs from that baseline (stops at any foreign boundary, e.g. a player's
   reaction that isn't part of the batch). No schema or RPC changes.

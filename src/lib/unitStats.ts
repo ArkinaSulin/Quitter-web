@@ -4,7 +4,7 @@ import { getBandSetting, getSetting, SettingBand } from '@/lib/settingsCache';
 import { isUnitRouted, areHexesAdjacent, isHeroMoraleBoostEnabled } from '@/lib/unitMorale';
 import { AttackDirection } from '@/lib/attackDirection';
 
-// Code fallback matches migration 042 seed — the size_categories table row wins
+// Code fallback matches migration 042 seed — the unit_size_categories table row wins
 // in getRowCapacity; this is the fallback base for unknown categories.
 const DEFAULT_ROW_CAPACITY_BANDS: SettingBand[] = [
   { min: 400, value: 1 },

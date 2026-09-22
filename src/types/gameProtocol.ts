@@ -154,7 +154,7 @@ export interface Unit {
   ignoreMoraleChecks: boolean;         // unit never routs (undead, heroes, etc.)
   isCharging: boolean;                 // mid-charge: rotate/formation locked, corridor move
   chargeDistance: number;              // hexes moved during the current charge (0 = not charged)
-  /** Monotonic command_log seq of the last command that wrote this unit (realtime ordering). */
+  /** Monotonic scenario_command_log seq of the last command that wrote this unit (realtime ordering). */
   commandSeq: number;
   organizationLevel: number;           // computed from currentFormation via ORGANIZATION_LEVEL map
   actionsAvailable: number;           // new: remaining actions for current turn
@@ -317,7 +317,7 @@ export interface Participant {
   joinedAt: string;
 }
 
-/** Row of the scenario_role_capabilities matrix (migration 030). */
+  /** Row of the scenario_role_access_rights matrix (migration 030). */
 export interface ScenarioRoleCapabilities {
   role: ScenarioRole;
   move_own_team: boolean;

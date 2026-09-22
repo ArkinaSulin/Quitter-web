@@ -1,6 +1,6 @@
 // src/lib/settingsCache.ts
 
-// Session-scoped in-memory cache of the settings table (see migration 041).
+// Session-scoped in-memory cache of the admin_game_settings table (see migration 041).
 // Values are small and rarely change, so load once and read synchronously from
 // memory thereafter. Call invalidateSettingsCache() after an edit (e.g. a future
 // Settings UI) so the next getSetting/loadSettings refetches.
@@ -23,7 +23,7 @@ export async function loadSettings(): Promise<Record<string, unknown>> {
     // stay importable in environments without the Supabase env vars (tests).
     const { supabase } = await import('@/lib/supabaseClient');
     const p = supabase
-      .from('settings')
+      .from('admin_game_settings')
       .select('key, value')
       .then(({ data }) => {
         const map: Record<string, unknown> = {};

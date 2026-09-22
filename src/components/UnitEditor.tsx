@@ -396,10 +396,10 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
           .from('unit_templates')
           .select(`
             *,
-            races(name, icon_url, base_hd, size_category, visual_scale, can_charge),
+            unit_races(name, icon_url, base_hd, size_category, visual_scale, can_charge),
             unit_types(name, icon_url),
-            armors(name),
-            mounts(name, can_charge)
+            unit_armors(name),
+            unit_mounts(name, can_charge)
           `)
           .order('unit_name');
 
@@ -415,13 +415,13 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
           mountsRes,
           sizeCatsRes,
         ] = await Promise.all([
-          supabase.from('races').select('*').order('name'),
-          supabase.from('weapons').select('*').order('name'),
-          supabase.from('armors').select('*').order('name'),
-          supabase.from('formations').select('*').order('name'),
+          supabase.from('unit_races').select('*').order('name'),
+          supabase.from('unit_weapons').select('*').order('name'),
+          supabase.from('unit_armors').select('*').order('name'),
+          supabase.from('unit_formations').select('*').order('name'),
           supabase.from('unit_types').select('*').order('name'),
-          supabase.from('mounts').select('*').order('name'),
-          supabase.from('size_categories').select('*'),
+          supabase.from('unit_mounts').select('*').order('name'),
+          supabase.from('unit_size_categories').select('*'),
         ]);
 
         if (racesRes.error) throw racesRes.error;

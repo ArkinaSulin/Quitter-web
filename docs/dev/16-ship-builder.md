@@ -76,7 +76,7 @@ per-instance pools (one hit kills one weapon, no chain).
 ## Engine hand-off (pending work)
 
 `src/lib/shipMoveCost.ts`, `shipCombat.ts`, `useShipEngine.ts`,
-`ScenarioMap/ShipPanel.tsx`, `spelljammer_ships` instances, sub-turn toggle,
+`ScenarioMap/ShipPanel.tsx`, `ship_spelljammer` instances, sub-turn toggle,
 firing arcs, board/boarding rules → all in `.scratch/spelljammer-mod/spec.md`
 (design closed, v8.1). The player manual intentionally excludes ship content
 until the engine ships.

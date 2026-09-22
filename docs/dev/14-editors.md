@@ -27,7 +27,7 @@ Parsing tolerates older strings (missing trailing fields default:
 rows (history: 11 → 13 → 14 → 15 fields with migrations 043/044/045/048).
 
 `Weapon` (parser) vs `Weapon` (legacy gameProtocol) vs `WeaponLookup`
-(weapons library table) are three different shapes — mind which one a function
+(unit_weapons library table) are three different shapes — mind which one a function
 takes.
 
 ## Unit Editor (`/unit-editor`, read-only mode for players)
@@ -40,7 +40,7 @@ Notable data rules the editor encodes:
 - **Hero toggle** forces troop count 1, Fearless on, no formation economy in
   play; **Gargantuan** forces hero, troops 1, formations disabled.
 - **Size category** snaps to 75/100/200/300/400; troop count is capped by
-  `size_categories.max_troops` / `max_troops_mounted`; derived `maxUnitHp =
+  `unit_size_categories.max_troops` / `max_troops_mounted`; derived `maxUnitHp =
   troopHp × troops` (recomputed live).
 - **Darkvision** authored per template (copied to spawned units for fog).
 - **Two-handed** weapons: a shielded unit with a 2H active drops the shield
@@ -68,7 +68,7 @@ missing — Max MP was the canonical bug).
 
 ## Size/visual constants
 
-- `size_categories`: 75 Small · 100 Medium · 200 Large · 300 Huge · 400
+- `unit_size_categories`: 75 Small · 100 Medium · 200 Large · 300 Huge · 400
   Gargantuan, with `row_capacity`, `max_troops`, `max_troops_mounted`.
 - Row-capacity base is ALSO a setting band (`row_capacity_by_size`,
   migration 042) as the code fallback; `unitStats.getRowCapacityBase` is the

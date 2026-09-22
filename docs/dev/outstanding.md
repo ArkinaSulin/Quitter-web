@@ -15,7 +15,7 @@ Statuses: 🔜 next / ⏳ later / 🚧 blocked / ✅ done-here-listed-for-contex
 - ✅ **Zones ride the command log** (migration 080 `ZONE` branch): paint/drop/edit/
   clone/order/drop + END_TURN ticks are undoable and replay. Stat-zone membership
   reconciles on move (`computeZoneReconcile`), not just at activation start.
-- ✅ **Unit Effects… dialog reads the library** (`effect_templates`), so composites
+- ✅ **Unit Effects… dialog reads the library** (`map_effect_templates`), so composites
   / Sleep / zone templates apply from the context menu too.
 - ✅ **Attack-roll flag effects** (`advantage` / `disadvantage` / `grant_advantage`
   / `grant_disadvantage`): boolean markers read at attack resolution; any advantage
@@ -93,7 +93,7 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
 `.scratch/shipyard-formula/shipyard.csv`); **builder + stats + renderer shipped**,
 **engine not started**:
 - 🔜 `src/lib/shipMoveCost.ts`, `shipCombat.ts`, `src/hooks/useShipEngine.ts`.
-- 🔜 Scenario instance table `spelljammer_ships` (schema exists in migration 066)
+- 🔜 Scenario instance table `ship_spelljammer` (schema exists in migration 066)
   + ship tokens on the scenario map.
 - 🔜 `src/components/ScenarioMap/ShipPanel.tsx` (stations, crew reserve, info war).
 - 🔜 Sub-turn toggle (5 segments / 1 action per hero), `environment`

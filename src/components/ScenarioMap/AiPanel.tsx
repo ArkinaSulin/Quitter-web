@@ -219,7 +219,7 @@ export function AiPanel({
   };  const topLiveId = async (): Promise<string | null> => {
     try {
       const { data } = await supabase
-        .from('command_log')
+        .from('scenario_command_log')
         .select('id')
         .eq('scenario_id', scenarioId)
         .is('deleted_at', null)

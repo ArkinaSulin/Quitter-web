@@ -1,6 +1,6 @@
 // src/components/ScenarioMap/AddEffectModal.tsx
 // 'use client' — the "Effects…" dialog opened from a unit's context menu.
-// Lists the effect library (effect_templates: composites, Sleep, zones), applies
+// Lists the effect library (map_effect_templates: composites, Sleep, zones), applies
 // the chosen template to the unit or drops it as a ground zone on the unit's hex,
 // edits/removes the unit's active effects, and edits/clones/drops the ground zones
 // already on its hex.
@@ -52,7 +52,7 @@ export function AddEffectModal({
   useEffect(() => {
     let cancelled = false;
     supabase
-      .from('effect_templates')
+      .from('map_effect_templates')
       .select('*')
       .order('name', { ascending: true })
       .then(({ data }) => {

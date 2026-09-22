@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Consistent table naming — subsystem prefixes (migration 098) (2026-09-21)
+**Files:** supabase/migrations/098_table_renames.sql (new), src/lib/{templateMappers,templateMappers.test,settingsCache,formationCache,weaponMappers,unitStats,mapEffects,scenarioPermissions,turnState,commandLog}.ts, src/components/{UnitEditor,WeaponEditorModal,SettingsModal,Lobby,ImagePickerModal}.tsx, src/components/EffectEditor/EffectEditor.tsx, src/components/MapEditor/MapEditor.tsx, src/components/WeaponEditor/WeaponEditor.tsx, src/components/ScenarioMap/{ScenarioMap,UnitSelector,UnitEditorModal,AiPanel,UndoDebugPanel,PlayerPanel,AddEffectModal,EffectsPanel,routeUnit}.tsx, src/hooks/{useProfile,useScenarioCapabilities,useTeamAlliances,useReplay,useCommandLogRows,useGameEngine,useSupabaseSync}.ts, src/types/gameProtocol.ts, docs/dev/{README,01,02,03,04,05,06,08,10,11,12,13,14,16,17,outstanding,changelog}.md, AGENTS.md
+
+- **Migration 098 renames tables onto a subsystem-prefixed scheme** (zero data/behaviour change): `user_*` identity, `admin_*` global access/audit/settings, `scenario_*` per-scenario runtime, `unit_*` land-unit system + lookups, `map_*` maps/effects, `ship_*` Spelljammer. The four formerly-confusing names become: `user_profile` (identity), `admin_role_access_rights` (global role→capability matrix), `admin_role_changes` (audit), `user_profile_last_change` (admin view). Full old→new mapping in `docs/dev/02`.
+- **Rebinds**: PostgreSQL stores function bodies as text, so every function bound to a renamed table is recreated with new names (`handle_new_user`, `set_player_role`, `user_has_access`, `scenario_role_has_access`, `apply_substeps`, `execute_command`, `undo_commands`, `redo_commands`, `undo_state`, `live_top_chain`, `newest_deleted_batch`, `seed_friendly_team_alliances`, `request_scenario_deletion`, `clear_scenario_deletion_request`). Views bind by OID, so `profile_access` is merely `ALTER VIEW … RENAME`. Ends with `NOTIFY pgrst, 'reload schema'`.
+- **Client sweep**: every `.from()`, realtime `table:` filter, embedded select key (`races`/`armors`/`mounts` → `unit_*`) and mapper row key updated. `templateMappers` reads `row.unit_races`/`row.unit_armors`/`row.unit_mounts`.
+- **Ordering**: apply pending migrations **081, 093, 095 before 098**, since they name old tables (`weapons`, `access_roles`, `command_log`, `team_alliances`). Noted at the top of `098`.
+- `tsc --noEmit` clean; 703 tests pass. **Apply 098 in Supabase after 081/093/095.**
+
 ## Shift inspect mode + Shift-drop structure attacks; free-move withdraw fix (2026-09-20)
 **Files:** src/components/ScenarioMap/{ScenarioMap,MapInfoTooltip(new),useCanvasDraw}.tsx, src/hooks/useHexGrid.ts, docs/players/player-manual.md, docs/dev/changelog.md
 

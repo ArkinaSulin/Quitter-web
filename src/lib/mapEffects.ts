@@ -10,7 +10,7 @@ import { GroundEffect } from '@/types/gameProtocol';
 export type MapHexEffect = {
   q: number;
   r: number;
-  /** The effect_templates row id. */
+  /** The map_effect_templates row id. */
   effectId: string;
 };
 

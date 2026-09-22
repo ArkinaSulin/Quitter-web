@@ -74,7 +74,7 @@ export function getRoleCapabilities(
  * Does a control scope include the unit's team?
  * - 'any_team': always (the capability itself carries the breadth).
  * - 'own_team': the unit's team equals the player's assigned team.
- * - 'own_alliance': the unit's alliance group (via team_alliances) equals the
+ * - 'own_alliance': the unit's alliance group (via scenario_team_alliance) equals the
  *   player's team's alliance group.
  * An unassigned player (playerTeam null) only ever gets 'any_team'.
  */

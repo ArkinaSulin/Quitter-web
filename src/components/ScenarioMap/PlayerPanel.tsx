@@ -34,7 +34,7 @@ export function PlayerPanel({
     if (ids.length === 0) return;
     let cancelled = false;
     supabase
-      .from('profiles')
+      .from('user_profile')
       .select('id, display_name')
       .in('id', ids)
       .then(({ data }) => {
