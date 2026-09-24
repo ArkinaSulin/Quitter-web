@@ -5,6 +5,7 @@ import {
   blankStructureTemplate,
   sanitizeStructureTemplate,
   structureModifiers,
+  templateDoorMax,
 } from './structureTemplates';
 
 describe('mapStructureRow', () => {
@@ -17,29 +18,26 @@ describe('mapStructureRow', () => {
       color: '#c49a58',
       image_url: 'img.png',
       battlement: true,
-      edge_a_block: true,
-      edge_a_move_cost: null,
-      edge_a_melee_ac: 2,
-      edge_a_ranged_ac: '3',
-      edge_b_block: false,
-      edge_b_move_cost: 4,
-      edge_b_melee_ac: null,
-      edge_b_ranged_ac: null,
-      hex_move_cost: null,
+      spikes: false,
+      mp_foot_in: null,
+      mp_foot_out: null,
+      mp_mounted_in: -1,
+      mp_mounted_out: 2,
       door_hp: null,
       max_hp: 30,
       dt: 15,
-      modifiers: [{ kind: 'advantage', delta: 0 }],
+      modifiers: [{ kind: 'ac', delta: 2, mode: 'melee' }],
       created_at: 'a',
       updated_at: 'b',
     });
     expect(t?.anchor).toBe('edge');
-    expect(t?.edgeAMoveCost).toBeNull();
-    expect(t?.edgeARangedAc).toBe(3); // string coerced
-    expect(t?.edgeBMoveCost).toBe(4);
+    expect(t?.mpFootIn).toBeNull();
+    expect(t?.mpMountedIn).toBe(-1); // kept (hard block)
+    expect(t?.mpMountedOut).toBe(2);
     expect(t?.doorHp).toBeNull();
     expect(t?.maxHp).toBe(30);
-    expect(t?.modifiers).toEqual([{ kind: 'advantage', delta: 0 }]);
+    expect(t?.modifiers).toEqual([{ kind: 'ac', delta: 2, mode: 'melee' }]);
+    expect(templateDoorMax(t)).toBe(30); // null door defaults to maxHp
   });
 
   it('defaults unknown anchors to edge and drops junk modifiers', () => {
@@ -53,20 +51,21 @@ describe('mapStructureToRow', () => {
   const base = blankStructureTemplate();
 
   it('writes snake_case columns, nulls pass through', () => {
-    const row = mapStructureToRow({ ...base, name: '  Gate Tower  ', anchor: 'hex', doorHp: 30, hexMoveCost: 2, maxHp: 100, dt: 15 });
+    const row = mapStructureToRow({ ...base, name: '  Gate Tower  ', anchor: 'hex', doorHp: 30, mpFootIn: 2, maxHp: 100, dt: 15 });
     expect(row.name).toBe('Gate Tower');
     expect(row.anchor).toBe('hex');
     expect(row.door_hp).toBe(30);
-    expect(row.hex_move_cost).toBe(2);
+    expect(row.mp_foot_in).toBe(2);
     expect(row.max_hp).toBe(100);
-    expect(row.edge_a_move_cost).toBeNull();
+    expect(row.mp_foot_out).toBeNull();
   });
 
-  it('rounds and clamps negatives to null', () => {
-    const row = mapStructureToRow({ ...base, edgeAMoveCost: -3 as any, edgeAMeleeAc: 2.6, maxHp: -5, dt: 15.4 });
-    expect(row.edge_a_move_cost).toBeNull();
-    expect(row.edge_a_melee_ac).toBe(3);
+  it('keeps negative movement (hard block) and clamps door to [0, maxHp]', () => {
+    const row = mapStructureToRow({ ...base, mpFootIn: -3 as any, mpMountedIn: 2.6, doorHp: 500, maxHp: -5, dt: 15.4 });
+    expect(row.mp_foot_in).toBe(-3);
+    expect(row.mp_mounted_in).toBe(3);
     expect(row.max_hp).toBe(0);
+    expect(row.door_hp).toBe(0); // clamped to maxHp 0
     expect(row.dt).toBe(15);
   });
 });
@@ -76,20 +75,22 @@ describe('blankStructureTemplate', () => {
     const t = blankStructureTemplate();
     expect(t.maxHp).toBe(30);
     expect(t.dt).toBe(15);
-    expect(t.doorHp).toBeNull();
+    expect(t.doorHp).toBe(30); // defaults to maxHp (no free passage)
     expect(t.anchor).toBe('edge');
     expect(t.modifiers).toEqual([]);
   });
 });
 
 describe('sanitizeStructureTemplate', () => {
-  it('clamps DT and drops empty modifiers', () => {
+  it('clamps DT and door, drops empty modifiers', () => {
     const t = sanitizeStructureTemplate({
       ...blankStructureTemplate(),
       dt: 1000,
+      doorHp: 999,
       modifiers: [{ kind: 'advantage', delta: 0 }, null as any, undefined as any],
     });
     expect(t.dt).toBe(999);
+    expect(t.doorHp).toBe(30); // clamped to maxHp
     expect(t.modifiers).toHaveLength(1);
   });
 });

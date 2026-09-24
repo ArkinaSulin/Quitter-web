@@ -325,11 +325,13 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const maxMP = unitMaxMP(archer);
     const budget = reactionMovePool(archer, maxMP);
     const occupied = computeOccupiedHexes(displayUnits, archer.id);
-    return computeReachableMap(archer, budget, occupied, new Set(), makeCostOfHex(terrainCosts, walls), false, makeBlockedEdge(walls, {
+    const mounted = !!archer.mountId || !!archer.mountName;
+    return computeReachableMap(archer, budget, occupied, new Set(), makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted }), false, makeBlockedEdge(walls, {
       structures,
       templates: structureTemplates,
       zones: groundZones,
       orgLevel: getOrganizationLevel(archer.currentFormation),
+      isMounted: mounted,
     }));
   }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones]);
 

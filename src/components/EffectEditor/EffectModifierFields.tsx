@@ -5,7 +5,7 @@
 // field accepts a plain number or dice "XdY±Z" (X=0 = flat Z); the flat part is
 // mirrored into `delta` for stat kinds and legacy consumers.
 import React from 'react';
-import { EffectModifier, EffectModifierKind, parseDice, isFlagModifierKind, EFFECT_MODIFIER_LABELS } from '@/lib/effectTemplates';
+import { EffectModifier, EffectModifierKind, parseDice, isFlagModifierKind, honorsMode, EFFECT_MODIFIER_LABELS } from '@/lib/effectTemplates';
 
 export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
   { value: 'ac', label: 'AC ±' },
@@ -49,22 +49,35 @@ export function EffectModifierFields({ modifier: m, onChange, readOnly = false, 
   return (
     <div className="rounded border border-gray-800 p-1.5 space-y-1">
       <div className="flex flex-wrap items-center gap-2">
-        <select className={input + ' !w-48 min-w-0'} value={m.kind} disabled={readOnly} onChange={e => patch({ kind: e.target.value as EffectModifierKind })}>
+        <select className={input + ' !w-40 min-w-0'} value={m.kind} disabled={readOnly} onChange={e => patch({ kind: e.target.value as EffectModifierKind })}>
           {KIND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
+        {honorsMode(m.kind) && (
+          <select
+            className={input + ' !w-24'}
+            value={m.mode ?? 'both'}
+            disabled={readOnly}
+            onChange={e => patch({ mode: e.target.value === 'both' ? undefined : (e.target.value as 'melee' | 'ranged') })}
+            title="Which attack distance this modifier applies to (both = melee and ranged)."
+          >
+            <option value="both">Both</option>
+            <option value="melee">Melee</option>
+            <option value="ranged">Ranged</option>
+          </select>
+        )}
         {flag ? (
-          <span className="flex-1 min-w-[8rem] text-[11px] text-gray-400 italic">
+          <span className="flex-1 min-w-[6rem] text-[11px] text-gray-400 italic">
             Flag effect — no amount or save
           </span>
         ) : (
           <>
             <input
-              className={input + ' flex-1 min-w-[8rem]'}
+              className={input + ' !w-32 flex-1 min-w-[6rem]'}
               type="text"
               value={m.dice ?? ''}
               disabled={readOnly}
               onChange={e => onChange(patchAmount(m, e.target.value))}
-              placeholder="amount — 4 or 2d6+2"
+              placeholder="amount / 2d6+2"
               title="Amount: a plain number (flat) or dice XdY±Z (X=0 = flat Z). Used for both stats and damage."
             />
             <label className="flex items-center gap-1 text-[11px] text-gray-300 whitespace-nowrap">

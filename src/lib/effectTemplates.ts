@@ -27,6 +27,17 @@ export function isFlagModifierKind(kind: EffectModifierKind): boolean {
 
 export type SaveStatName = 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha';
 
+/** Attack-distance scope for the attack-roll / AC modifier kinds. Absent = both. */
+export type EffectMode = 'melee' | 'ranged';
+
+/** Kinds whose meaning depends on whether the attack crosses at adjacency (melee)
+ *  or at range. Every other kind ignores `mode`. */
+export const MODE_MODIFIER_KINDS: EffectModifierKind[] = ['ac', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'];
+
+export function honorsMode(kind: EffectModifierKind): boolean {
+  return MODE_MODIFIER_KINDS.includes(kind);
+}
+
 export interface EffectModifier {
   kind: EffectModifierKind;
   delta: number;
@@ -38,6 +49,8 @@ export interface EffectModifier {
   savingThrow?: SaveStatName | null;
   saveDC?: number | null;
   onSaveHalfOrNeg?: boolean;
+  /** Attack-distance scope (melee vs ranged); only meaningful for MODE_MODIFIER_KINDS. */
+  mode?: EffectMode;
 }
 
 /** Parse "XdY±Z" (X=0 => flat Z). Returns null when not a valid dice/number. */
@@ -127,6 +140,7 @@ export function parseModifiers(raw: unknown): EffectModifier[] {
       if (typeof st === 'string') out2.savingThrow = st as SaveStatName;
       if (Number.isFinite((m as any).saveDC)) out2.saveDC = Number((m as any).saveDC);
       if (typeof (m as any).onSaveHalfOrNeg === 'boolean') out2.onSaveHalfOrNeg = (m as any).onSaveHalfOrNeg;
+      if ((m as any).mode === 'melee' || (m as any).mode === 'ranged') out2.mode = (m as any).mode;
       out.push(out2);
     }
   }

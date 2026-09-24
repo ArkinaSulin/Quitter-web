@@ -28,10 +28,12 @@ export const WALL_DIRS: { q: number; r: number; s: number }[] = [
 
 /** One face of an edge (the side belonging to one of the two hexes). */
 export interface WallFace {
-  /** Replaces the destination hex's terrain MP cost when crossing INTO this face.
-   *  Undefined = normal terrain. */
-  moveCost?: number;
-  /** Impassable from this side. */
+  /** Replaces the destination hex's terrain MP cost when crossing INTO this face,
+   *  for a FOOT mover. Undefined = normal terrain; NEGATIVE = hard block. */
+  moveCostFoot?: number;
+  /** As `moveCostFoot`, for a MOUNTED mover. */
+  moveCostMounted?: number;
+  /** Uniform hard block (magic walls); structures encode blocks as negative MP. */
   block?: boolean;
   /** AC granted to the unit on this face vs melee across the edge. */
   meleeAc?: number;
@@ -49,6 +51,12 @@ export interface Wall {
   maxHp?: number;
   /** Damage Threshold: a single hit at/below this does nothing; above deals full. */
   dt?: number;
+  /** Current door pool. Passage across the edge is gated while doorHp > 0. */
+  doorHp?: number;
+  /** Max door pool (for display). */
+  doorMax?: number;
+  /** The gate is deliberately open (door gate waived regardless of doorHp). */
+  open?: boolean;
   // --- Phase 3: effect-sourced (magic) walls ---
   source?: 'map' | 'effect';
   casterUnitId?: string | null;
@@ -119,20 +127,30 @@ export function wallBetween(walls: Walls | null | undefined, from: HexPoint, to:
   };
 }
 
-/** True when the edge between `from` and `to` blocks movement from `from`'s side. */
-export function isBlockedEdge(walls: Walls | null | undefined, from: HexPoint, to: HexPoint): boolean {
+/** True when the edge between `from` and `to` blocks movement from `from`'s side
+ *  for a mover of the given locomotion. A negative face cost is a hard block; a
+ *  standing door (doorHp > 0, not open) also blocks. */
+export function isBlockedEdge(walls: Walls | null | undefined, from: HexPoint, to: HexPoint, isMounted = false): boolean {
   const hit = wallBetween(walls, from, to);
-  return !!hit?.faceFrom.block;
+  if (!hit) return false;
+  if (hit.faceFrom.block) return true;
+  const cost = isMounted ? hit.faceFrom.moveCostMounted : hit.faceFrom.moveCostFoot;
+  if (cost !== undefined && cost < 0) return true;
+  if (hit.wall.doorHp !== undefined && hit.wall.doorHp > 0 && !hit.wall.open) return true;
+  return false;
 }
 
 /**
  * MP to cross into `to` from `from`, when a wall face on `to`'s side overrides the
  * terrain cost. Returns `undefined` when there is no wall (caller falls back to
- * `terrainCostOf`) or the face has no `moveCost`.
+ * `terrainCostOf`), the face has no cost for this locomotion, or it is a block.
  */
-export function crossingCost(walls: Walls | null | undefined, from: HexPoint, to: HexPoint): number | undefined {
+export function crossingCost(walls: Walls | null | undefined, from: HexPoint, to: HexPoint, isMounted = false): number | undefined {
   const hit = wallBetween(walls, from, to);
-  return hit?.faceTo.moveCost;
+  if (!hit) return undefined;
+  const cost = isMounted ? hit.faceTo.moveCostMounted : hit.faceTo.moveCostFoot;
+  if (cost === undefined || cost < 0) return undefined;
+  return cost;
 }
 
 /** Melee AC the wall grants to the defender when attacked from `attackerHex`. */
@@ -155,8 +173,8 @@ export function crossingFace(walls: Walls | null | undefined, from: HexPoint, to
 }
 
 /** True when crossing `from -> to` is blocked (movement predicate for BFS/AI). */
-export function blockedStep(walls: Walls | null | undefined, fromQ: number, fromR: number, toQ: number, toR: number): boolean {
-  return isBlockedEdge(walls, { q: fromQ, r: fromR }, { q: toQ, r: toR });
+export function blockedStep(walls: Walls | null | undefined, fromQ: number, fromR: number, toQ: number, toR: number, isMounted = false): boolean {
+  return isBlockedEdge(walls, { q: fromQ, r: fromR }, { q: toQ, r: toR }, isMounted);
 }
 
 /** True when ANY wall sits on the edge `from -> to` (used to block charges). */
@@ -185,19 +203,24 @@ export interface WallDamageResult {
   destroyed: boolean;
   /** True when the damage was ignored by the damage threshold. */
   deflected: boolean;
+  /** Door HP after the blow (undefined when the wall has no door pool). */
+  doorHpAfter?: number;
 }
 
 /**
  * Apply one attack's damage to a wall. Damage Threshold: a hit at or below `dt`
- * does nothing at all; above it the FULL damage comes off HP. Non-destructible
- * walls (no maxHp) are never damaged.
+ * does nothing at all; above it the FULL damage comes off BOTH the structure HP
+ * and the door pool. A destroyed structure (hp 0) is removed by the caller.
  */
 export function applyWallDamage(wall: Wall, damage: number): WallDamageResult {
-  if (!isDestructibleWall(wall)) return { wall, applied: 0, destroyed: false, deflected: true };
+  if (!isDestructibleWall(wall)) return { wall, applied: 0, destroyed: false, deflected: true, doorHpAfter: wall.doorHp };
   const dt = Math.max(0, wall.dt ?? 0);
-  if (damage <= dt) return { wall, applied: 0, destroyed: false, deflected: true };
+  if (damage <= dt) return { wall, applied: 0, destroyed: false, deflected: true, doorHpAfter: wall.doorHp };
   const hp = Math.max(0, wallHp(wall) - damage);
-  return { wall: { ...wall, hp }, applied: damage, destroyed: hp <= 0, deflected: false };
+  const doorHp = wall.doorHp === undefined ? undefined : Math.max(0, wall.doorHp - damage);
+  const next: Wall = { ...wall, hp };
+  if (doorHp !== undefined) next.doorHp = doorHp;
+  return { wall: next, applied: damage, destroyed: hp <= 0, deflected: false, doorHpAfter: doorHp };
 }
 
 // --- Geometry (pointy-top; matches useHexGrid.hexToPixel + MapCanvas.hexCorners) ---
@@ -274,7 +297,8 @@ const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFin
 function parseFace(raw: any): WallFace {
   const f: WallFace = {};
   if (!raw || typeof raw !== 'object') return f;
-  if (isNum(raw.moveCost)) f.moveCost = Math.max(0, Math.min(99, Math.round(raw.moveCost)));
+  if (isNum(raw.moveCostFoot)) f.moveCostFoot = Math.max(-1, Math.min(99, Math.round(raw.moveCostFoot)));
+  if (isNum(raw.moveCostMounted)) f.moveCostMounted = Math.max(-1, Math.min(99, Math.round(raw.moveCostMounted)));
   if (raw.block === true) f.block = true;
   if (isNum(raw.meleeAc)) f.meleeAc = Math.round(raw.meleeAc);
   if (isNum(raw.rangedAc)) f.rangedAc = Math.round(raw.rangedAc);
@@ -294,6 +318,9 @@ export function parseWalls(raw: any): Walls {
     // An authored maxHp with no explicit hp starts at full health.
     if (wall.maxHp !== undefined && wall.hp === undefined) wall.hp = wall.maxHp;
     if (isNum((v as any).dt)) wall.dt = Math.max(0, Math.round((v as any).dt));
+    if (isNum((v as any).doorHp)) wall.doorHp = Math.max(0, Math.round((v as any).doorHp));
+    if (isNum((v as any).doorMax)) wall.doorMax = Math.max(0, Math.round((v as any).doorMax));
+    if ((v as any).open === true) wall.open = true;
     const src = (v as any).source;
     if (src === 'map' || src === 'effect') wall.source = src;
     if (typeof (v as any).casterUnitId === 'string') wall.casterUnitId = (v as any).casterUnitId;

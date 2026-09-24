@@ -158,7 +158,8 @@ as applied in the notes — check the live DB before relying on it).
 | 095 | structure command log: `apply_substeps` `STRUCTURE` per-key branch (`scenarios.map_data.structures`) | ⏳ run in Supabase |
 | 096 | structure `spikes` flag + rename "Archer Spikes" → "Archer's Stake" | ⏳ run in Supabase |
 | 097 | `structure_images` storage bucket + policies | ⏳ run in Supabase |
-| 098 | consistent table renames + function/view rebind (see convention above) | ⏳ run in Supabase (apply 081/093/095 first) |
+| 098 | consistent table renames + function/view rebind (see convention above) | ✅ applied (2026-09-21) |
+| 099 | structure template rework: `mp_foot_in/out`+`mp_mounted_in/out` replace the A/B faces + `hex_move_cost`; `door_hp` gates passage, `max_hp` gates modifiers; one mode-scoped `modifiers` list; wipe instances + reseed 9 presets | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

@@ -1,15 +1,15 @@
 'use client';
 // src/components/StructureEditor/StructureEditor.tsx
 // Map Structure Editor (arranged like the Effect Editor): author reusable map
-// features — walls, spikes, gates, towers. A template is an anchor (edge or hex),
-// directional edge faces (A = inside, B = outside), an optional battlement, an
-// optional door, durability (HP/DT) and a list of effect modifiers (tower auras,
-// entry damage, the reusable `enter_org_max` gate).
+// features — walls, stakes, gates, towers. A template is an anchor (edge or hex),
+// direction-relative movement (mp foot/mounted in/out; negative = hard block),
+// an optional battlement/stakes decoration, two durability pools (door gates
+// passage, HP gates modifiers), a Damage Threshold and a mode-scoped modifier list.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
-import { StructurePreview, PreviewFace } from '@/components/StructureEditor/StructurePreview';
+import { StructurePreview } from '@/components/StructureEditor/StructurePreview';
 import { StructureTemplate, StructureAnchor } from '@/types/structure';
 import { EffectModifier } from '@/lib/effectTemplates';
 import {
@@ -21,7 +21,31 @@ type Draft = Omit<StructureTemplate, 'id' | 'createdAt' | 'updatedAt'> & { id?: 
 const input =
   'w-full bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700 focus:border-amber-400 outline-none disabled:opacity-50';
 
-/** Nullable integer field: blank = null (unset). */
+/** Integer field allowing negatives (movement: negative = hard block). Blank = null. */
+function MoveInput({ value, onChange, readOnly, placeholder = '—' }: {
+  value: number | null;
+  onChange: (v: number | null) => void;
+  readOnly: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <input
+      className={input + ' !w-16'}
+      type="number"
+      value={value === null ? '' : String(value)}
+      placeholder={placeholder}
+      disabled={readOnly}
+      onChange={e => {
+        const raw = e.target.value;
+        if (raw === '') return onChange(null);
+        const n = Math.round(Number(raw));
+        onChange(Number.isFinite(n) ? Math.max(-1, Math.min(99, n)) : null);
+      }}
+    />
+  );
+}
+
+/** Nullable non-negative integer field (door HP). Blank = null (no explicit door). */
 function NumInput({ value, onChange, readOnly, max = 999, placeholder = '—' }: {
   value: number | null;
   onChange: (v: number | null) => void;
@@ -48,41 +72,17 @@ function NumInput({ value, onChange, readOnly, max = 999, placeholder = '—' }:
   );
 }
 
-interface FaceFieldsProps {
-  title: string;
-  hint: string;
-  block: boolean;
-  moveCost: number | null;
-  meleeAc: number | null;
-  rangedAc: number | null;
-  readOnly: boolean;
-  onChange: (p: { block?: boolean; moveCost?: number | null; meleeAc?: number | null; rangedAc?: number | null }) => void;
-}
-
-function FaceFields({ title, hint, block, moveCost, meleeAc, rangedAc, readOnly, onChange }: FaceFieldsProps) {
-  return (
-    <div className="rounded border border-gray-700 p-2 space-y-2">
-      <p className="text-[10px] uppercase tracking-wide text-gray-500">{title}</p>
-      <p className="text-[10px] text-gray-500">{hint}</p>
-      <div className="flex flex-wrap items-center gap-3 text-[11px]">
-        <label className="flex items-center gap-1">
-          <input type="checkbox" disabled={readOnly} checked={block} onChange={e => onChange({ block: e.target.checked })} />
-          block crossing
-        </label>
-        <label className="flex items-center gap-1">Move cost
-          <NumInput value={moveCost} readOnly={readOnly} onChange={v => onChange({ moveCost: v })} max={99} />
-        </label>
-      </div>
-      <div className="flex flex-wrap items-center gap-3 text-[11px]">
-        <label className="flex items-center gap-1">Melee AC
-          <NumInput value={meleeAc} readOnly={readOnly} onChange={v => onChange({ meleeAc: v })} max={99} placeholder="0" />
-        </label>
-        <label className="flex items-center gap-1">Ranged AC
-          <NumInput value={rangedAc} readOnly={readOnly} onChange={v => onChange({ rangedAc: v })} max={99} placeholder="0" />
-        </label>
-      </div>
-    </div>
-  );
+function coverAc(mods: EffectModifier[]): { melee: number; ranged: number } {
+  let melee = 0;
+  let ranged = 0;
+  for (const m of mods) {
+    if (m.kind !== 'ac') continue;
+    const d = m.delta ?? 0;
+    if (m.mode === 'melee') melee += d;
+    else if (m.mode === 'ranged') ranged += d;
+    else { melee += d; ranged += d; }
+  }
+  return { melee, ranged };
 }
 
 export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
@@ -157,10 +157,12 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
     patch({ modifiers: draft.modifiers.map((m, idx) => (idx === i ? { ...m, ...p } : m)) });
   };
 
+  const cover = draft ? coverAc(draft.modifiers) : { melee: 0, ranged: 0 };
+
   const summary = useMemo(
     () =>
       draft
-        ? draft.modifiers.map(m => `${m.kind}: ${m.dice ?? m.delta}`).join(' · ') || '(no modifiers)'
+        ? draft.modifiers.map(m => `${m.kind}${m.mode ? ` (${m.mode})` : ''}: ${m.dice ?? m.delta}`).join(' · ') || '(no modifiers)'
         : '',
     [draft],
   );
@@ -169,13 +171,6 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
     const q = search.trim().toLowerCase();
     return q ? list.filter(t => t.name.toLowerCase().includes(q)) : list;
   }, [list, search]);
-
-  const previewFaces: { inside: PreviewFace; outside: PreviewFace } | null = draft
-    ? {
-        inside: { block: draft.edgeABlock, moveCost: draft.edgeAMoveCost, meleeAc: draft.edgeAMeleeAc, rangedAc: draft.edgeARangedAc },
-        outside: { block: draft.edgeBBlock, moveCost: draft.edgeBMoveCost, meleeAc: draft.edgeBMeleeAc, rangedAc: draft.edgeBRangedAc },
-      }
-    : null;
 
   return (
     <div className="flex flex-col w-full h-screen bg-[#0d0d1a] text-white overflow-hidden select-none">
@@ -206,10 +201,10 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
               onClick={() => select(t)}
               className={`w-full text-left text-xs px-2 py-1.5 rounded border ${draft?.id === t.id ? 'bg-yellow-700/40 border-yellow-500' : 'bg-gray-800 border-transparent hover:bg-gray-700'}`}
             >
-              <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle bg-black/80 border border-gray-500" />
+              <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ background: t.color }} />
               {t.name}
               <span className="block text-[10px] text-gray-400">
-                {t.anchor}{t.battlement ? ' · battlement' : ''}{t.doorHp !== null ? ` · door ${t.doorHp}` : ''} · {t.maxHp}hp
+                {t.anchor}{t.battlement ? ' · battlement' : ''}{t.spikes ? ' · stakes' : ''} · {t.maxHp}hp
               </span>
             </button>
           ))}
@@ -256,6 +251,9 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                       Clear
                     </button>
                   )}
+                  <label className="flex items-center gap-1 text-xs text-gray-400">Tint
+                    <input type="color" disabled={readOnly} value={draft.color} onChange={e => patch({ color: e.target.value })} className="h-7 w-10 rounded border border-gray-600 bg-transparent" />
+                  </label>
                 </div>
               </div>
 
@@ -269,50 +267,40 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                     <input type="checkbox" disabled={readOnly} checked={draft.spikes} onChange={e => patch({ spikes: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
                     Draw small stakes (triangles) facing outward (e.g. archer's stakes)
                   </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <FaceFields
-                      title="Inside face (A)"
-                      hint="The face belonging to the inside hex: governs crossing INTO it and covers the unit standing there."
-                      block={draft.edgeABlock}
-                      moveCost={draft.edgeAMoveCost}
-                      meleeAc={draft.edgeAMeleeAc}
-                      rangedAc={draft.edgeARangedAc}
-                      readOnly={readOnly}
-                      onChange={p => patch({
-                        ...(p.block !== undefined ? { edgeABlock: p.block } : {}),
-                        ...(p.moveCost !== undefined ? { edgeAMoveCost: p.moveCost } : {}),
-                        ...(p.meleeAc !== undefined ? { edgeAMeleeAc: p.meleeAc } : {}),
-                        ...(p.rangedAc !== undefined ? { edgeARangedAc: p.rangedAc } : {}),
-                      })}
-                    />
-                    <FaceFields
-                      title="Outside face (B)"
-                      hint="The face belonging to the outside hex; the battlement draws on this side."
-                      block={draft.edgeBBlock}
-                      moveCost={draft.edgeBMoveCost}
-                      meleeAc={draft.edgeBMeleeAc}
-                      rangedAc={draft.edgeBRangedAc}
-                      readOnly={readOnly}
-                      onChange={p => patch({
-                        ...(p.block !== undefined ? { edgeBBlock: p.block } : {}),
-                        ...(p.moveCost !== undefined ? { edgeBMoveCost: p.moveCost } : {}),
-                        ...(p.meleeAc !== undefined ? { edgeBMeleeAc: p.meleeAc } : {}),
-                        ...(p.rangedAc !== undefined ? { edgeBRangedAc: p.rangedAc } : {}),
-                      })}
-                    />
+                  <div className="rounded border border-gray-700 p-2 space-y-2">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Movement (MP to cross; blank = terrain; negative = block)</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+                      <div className="space-y-1">
+                        <p className="text-gray-400">Into inside (outside → inside)</p>
+                        <label className="flex items-center gap-1">Foot
+                          <MoveInput value={draft.mpFootIn} readOnly={readOnly} onChange={v => patch({ mpFootIn: v })} />
+                        </label>
+                        <label className="flex items-center gap-1">Mounted
+                          <MoveInput value={draft.mpMountedIn} readOnly={readOnly} onChange={v => patch({ mpMountedIn: v })} />
+                        </label>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-gray-400">Into outside (inside → outside)</p>
+                        <label className="flex items-center gap-1">Foot
+                          <MoveInput value={draft.mpFootOut} readOnly={readOnly} onChange={v => patch({ mpFootOut: v })} />
+                        </label>
+                        <label className="flex items-center gap-1">Mounted
+                          <MoveInput value={draft.mpMountedOut} readOnly={readOnly} onChange={v => patch({ mpMountedOut: v })} />
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded border border-gray-700 p-2 space-y-2">
-                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Hex</p>
-                    <label className="flex items-center gap-2 text-[11px]">Extra MP to enter
-                      <NumInput value={draft.hexMoveCost} readOnly={readOnly} onChange={v => patch({ hexMoveCost: v })} max={99} />
+                <div className="rounded border border-gray-700 p-2 space-y-2">
+                  <p className="text-[10px] uppercase tracking-wide text-gray-500">Hex entry MP (blank = terrain; negative = block)</p>
+                  <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                    <label className="flex items-center gap-1">Foot
+                      <MoveInput value={draft.mpFootIn} readOnly={readOnly} onChange={v => patch({ mpFootIn: v })} />
                     </label>
-                    <label className="flex items-center gap-2 text-[11px]">Door HP
-                      <NumInput value={draft.doorHp} readOnly={readOnly} onChange={v => patch({ doorHp: v })} max={999} placeholder="none" />
+                    <label className="flex items-center gap-1">Mounted
+                      <MoveInput value={draft.mpMountedIn} readOnly={readOnly} onChange={v => patch({ mpMountedIn: v })} />
                     </label>
-                    <p className="text-[10px] text-gray-500">A door shares the structure DT and resolves door-first, then the structure HP.</p>
                   </div>
                 </div>
               )}
@@ -326,11 +314,18 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                   <label className="flex items-center gap-1">DT
                     <NumInput value={draft.dt} readOnly={readOnly} onChange={v => patch({ dt: v ?? 0 })} max={999} />
                   </label>
+                  <label className="flex items-center gap-1">Door HP
+                    <NumInput value={draft.doorHp} readOnly={readOnly} onChange={v => patch({ doorHp: v })} max={9999} placeholder="= max HP" />
+                  </label>
                 </div>
+                <p className="text-[10px] text-gray-500">
+                  Door gates passage (0 = passable), HP gates modifiers (0 = destroyed). Damage hits both.
+                  Blank door defaults to max HP (no free passage).
+                </p>
               </div>
 
               <div>
-                <p className="text-xs text-gray-400 mb-1">Effect modifiers (tower auras, entry damage, `enter_org_max` gate)</p>
+                <p className="text-xs text-gray-400 mb-1">Effect modifiers (cover AC, attack-roll flags, tower auras, `enter_org_max` gate)</p>
                 <div className="space-y-1.5">
                   {draft.modifiers.map((m, i) => (
                     <EffectModifierFields
@@ -346,7 +341,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                 {!readOnly && (
                   <button
                     className="mt-2 px-3 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600"
-                    onClick={() => patch({ modifiers: [...draft.modifiers, { kind: 'advantage', delta: 0 }] })}
+                    onClick={() => patch({ modifiers: [...draft.modifiers, { kind: 'ac', delta: 1, mode: 'melee' }] })}
                   >
                     + Add modifier
                   </button>
@@ -380,20 +375,21 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold">{draft.name || '(unnamed)'}</span>
               </div>
-              {previewFaces && (
-                <StructurePreview
-                  anchor={draft.anchor}
-                  imageUrl={draft.imageUrl}
-                  battlement={draft.battlement}
-                  spikes={draft.spikes}
-                  inside={previewFaces.inside}
-                  outside={previewFaces.outside}
-                  hexMoveCost={draft.hexMoveCost}
-                  doorHp={draft.doorHp}
-                  maxHp={draft.maxHp}
-                  dt={draft.dt}
-                />
-              )}
+              <StructurePreview
+                anchor={draft.anchor}
+                imageUrl={draft.imageUrl}
+                battlement={draft.battlement}
+                spikes={draft.spikes}
+                mpFootIn={draft.mpFootIn}
+                mpFootOut={draft.mpFootOut}
+                mpMountedIn={draft.mpMountedIn}
+                mpMountedOut={draft.mpMountedOut}
+                coverMelee={cover.melee}
+                coverRanged={cover.ranged}
+                doorHp={draft.doorHp}
+                maxHp={draft.maxHp}
+                dt={draft.dt}
+              />
               <p className="text-xs text-gray-300">{summary}</p>
               <p className="text-[11px] text-gray-500">{draft.description}</p>
             </>

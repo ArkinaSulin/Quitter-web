@@ -276,7 +276,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     setSelectedStructureKey(sel => (sel === key ? null : sel));
   }, [entity, update]);
 
-  const patchSelectedStructure = useCallback((patch: { maxHp?: number; hp?: number; dt?: number; doorHp?: number; outside?: 'a' | 'b' }) => {
+  const patchSelectedStructure = useCallback((patch: { hp?: number; doorHp?: number; outside?: 'a' | 'b'; open?: boolean }) => {
     if (!entity || !selectedStructureKey) return;
     const inst = entity.structures[selectedStructureKey];
     if (!inst) return;
@@ -285,8 +285,6 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
       if (v === undefined) delete (next as any)[k];
       else (next as any)[k] = v;
     }
-    // Keep current HP from exceeding the max when authoring.
-    if (next.maxHp !== undefined && next.hp === undefined) next.hp = next.maxHp;
     update({ structures: { ...entity.structures, [selectedStructureKey]: next } });
   }, [entity, selectedStructureKey, update]);
 
@@ -532,26 +530,26 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                   <div className="space-y-2 rounded border border-gray-700 p-2">
                     <p className="text-xs text-gray-300 font-semibold">{selectedStructureTemplate.name}</p>
                     <p className="text-[10px] text-gray-500">{selectedStructureKey}</p>
-                    <div className="flex items-center gap-3 text-[11px]">
-                      <label className="flex items-center gap-1">Max HP
-                        <input type="number" min={0} max={9999} disabled={readOnly}
-                          value={selectedStructure.maxHp ?? ''} placeholder={String(selectedStructureTemplate.maxHp)}
-                          onChange={e => patchSelectedStructure({ maxHp: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })}
+                    <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                      <label className="flex items-center gap-1">HP
+                        <input type="number" min={0} max={selectedStructureTemplate.maxHp} disabled={readOnly}
+                          value={selectedStructure.hp ?? ''} placeholder={String(selectedStructureTemplate.maxHp)}
+                          onChange={e => patchSelectedStructure({ hp: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })}
                           className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
                       </label>
-                      <label className="flex items-center gap-1">DT
-                        <input type="number" min={0} max={999} disabled={readOnly}
-                          value={selectedStructure.dt ?? ''} placeholder={String(selectedStructureTemplate.dt)}
-                          onChange={e => patchSelectedStructure({ dt: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })}
-                          className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
-                      </label>
+                      {(() => { const dm = selectedStructureTemplate.doorHp ?? selectedStructureTemplate.maxHp; return dm > 0 ? (
+                        <label className="flex items-center gap-1">Door HP
+                          <input type="number" min={0} max={dm} disabled={readOnly}
+                            value={selectedStructure.doorHp ?? ''} placeholder={String(dm)}
+                            onChange={e => patchSelectedStructure({ doorHp: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })}
+                            className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
+                        </label>
+                      ) : null; })()}
                     </div>
-                    {selectedStructureTemplate.anchor === 'hex' && selectedStructureTemplate.doorHp !== null && (
-                      <label className="flex items-center gap-1 text-[11px]">Door HP
-                        <input type="number" min={0} max={999} disabled={readOnly}
-                          value={selectedStructure.doorHp ?? ''} placeholder={String(selectedStructureTemplate.doorHp)}
-                          onChange={e => patchSelectedStructure({ doorHp: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })}
-                          className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
+                    {(selectedStructureTemplate.doorHp ?? selectedStructureTemplate.maxHp) > 0 && (
+                      <label className="flex items-center gap-1 text-[11px] text-gray-300">
+                        <input type="checkbox" disabled={readOnly} checked={!!selectedStructure.open}
+                          onChange={e => patchSelectedStructure({ open: e.target.checked })} /> gate open
                       </label>
                     )}
                     {selectedStructureTemplate.anchor === 'edge' && (

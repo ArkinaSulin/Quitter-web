@@ -224,7 +224,7 @@ export function MapCanvas({
             ctx.drawImage(img, pos.x - w / 2, pos.y - h / 2, w, h);
           }
         }
-        const hp = inst.maxHp ?? t?.maxHp ?? 0;
+        const hp = t?.maxHp ?? 0;
         if (hp > 0) {
           ctx.font = `bold ${Math.max(10 / zoom, 0.5)}px ui-monospace, monospace`;
           ctx.textAlign = 'center';
@@ -235,9 +235,9 @@ export function MapCanvas({
           ctx.fillStyle = '#ffe0b2';
           ctx.fillText(`${inst.hp ?? hp}`, pos.x, pos.y - HEX_SIZE * 0.62);
         }
-        const doorMax = t?.doorHp ?? null;
-        const door = doorMax !== null ? (inst.doorHp ?? doorMax) : null;
-        const badge = inst.open ? 'open' : (door !== null && door > 0 ? `door ${door}` : null);
+        const doorMax = t ? (t.doorHp ?? t.maxHp) : 0;
+        const door = doorMax > 0 ? (inst.doorHp ?? doorMax) : 0;
+        const badge = inst.open ? 'open' : (door > 0 ? `door ${door}` : null);
         if (badge) {
           ctx.font = `bold ${Math.max(10 / zoom, 0.5)}px ui-monospace, monospace`;
           ctx.textAlign = 'center';
@@ -320,7 +320,9 @@ export function MapCanvas({
         // Move-cost labels on the edge, one per face that overrides the cost.
         const labelFor = (faceKey: 'a' | 'b') => {
           const face = faceKey === 'a' ? w?.a : w?.b;
-          if (!face || face.moveCost === undefined) return null;
+          if (!face) return null;
+          const cost = face.moveCostFoot ?? face.moveCostMounted;
+          if (cost === undefined) return null;
           const ref2 = edgeRef(q, r, d);
           const hq = faceKey === 'a' ? ref2.aq : ref2.bq;
           const hr = faceKey === 'a' ? ref2.ar : ref2.br;
@@ -329,7 +331,7 @@ export function MapCanvas({
           const my = (a.y + b.y) / 2;
           const lx = mx + (c.x - mx) * 0.3;
           const ly = my + (c.y - my) * 0.3;
-          return { text: String(face.moveCost), x: lx, y: ly };
+          return { text: cost < 0 ? '✕' : String(cost), x: lx, y: ly };
         };
         for (const lbl of [labelFor('a'), labelFor('b')]) {
           if (!lbl) continue;

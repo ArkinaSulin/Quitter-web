@@ -1,13 +1,17 @@
 // src/lib/mapStructures.ts
 // Placed map structures (instances) on the library/scenario map layers, keyed by
 // anchor: "q,r,dir" for an edge structure, "q,r" for a hex structure. Values are
-// StructureInstance (template id + optional durability/outside overrides).
+// StructureInstance (template id + optional runtime overrides).
 //
-// Edge structures are converted to the runtime `Walls` shape (the existing
-// movement/combat/render model) with the template's inside/outside faces mapped
-// onto the canonical edge sides by the instance `outside` flag.
+// Edge structures are converted to the runtime `Walls` shape (the movement/combat/
+// render model). Movement is direction-relative: the template's `_in` fields apply
+// crossing OUTSIDE->INSIDE, `_out` the reverse, mapped onto the canonical edge
+// sides by the instance `outside` flag. Durability is two pools (door gates
+// passage, HP gates modifiers). Modifiers may be overridden per instance.
 import { Walls, Wall, WallFace, edgeRef } from './walls';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
+import { EffectModifier } from '@/lib/effectTemplates';
+import { templateDoorMax } from '@/lib/structureTemplates';
 import { GroundEffect } from '@/types/gameProtocol';
 
 export type MapStructures = Record<string, StructureInstance>;
@@ -39,35 +43,60 @@ export function parseStructures(raw: any): MapStructures {
     if (typeof templateId !== 'string' || !templateId) continue;
     const inst: StructureInstance = { templateId };
     const hp = intOr((v as any).hp); if (hp !== undefined) inst.hp = hp;
-    const maxHp = intOr((v as any).maxHp); if (maxHp !== undefined) inst.maxHp = maxHp;
-    const dt = intOr((v as any).dt); if (dt !== undefined) inst.dt = dt;
     const doorHp = intOr((v as any).doorHp); if (doorHp !== undefined) inst.doorHp = doorHp;
     const outside = (v as any).outside;
     if (outside === 'a' || outside === 'b') inst.outside = outside;
     if ((v as any).open === true) inst.open = true;
+    if (Array.isArray((v as any).modifiers)) inst.modifiers = (v as any).modifiers as EffectModifier[];
     out[key] = inst;
   }
   return out;
 }
 
-/** One template face -> a runtime wall face (only defined props are set). */
-function faceFromTemplate(t: StructureTemplate, which: 'inside' | 'outside'): WallFace {
-  const block = which === 'inside' ? t.edgeABlock : t.edgeBBlock;
-  const moveCost = which === 'inside' ? t.edgeAMoveCost : t.edgeBMoveCost;
-  const meleeAc = which === 'inside' ? t.edgeAMeleeAc : t.edgeBMeleeAc;
-  const rangedAc = which === 'inside' ? t.edgeARangedAc : t.edgeBRangedAc;
+/** The modifier list a placed instance actually uses (override else template). */
+export function instanceModifiers(inst: StructureInstance | null | undefined, t: StructureTemplate | null | undefined): EffectModifier[] {
+  return inst?.modifiers ?? t?.modifiers ?? [];
+}
+
+/** Current door pool of a placed instance (null door defaults to maxHp). */
+export function instanceDoorState(inst: StructureInstance, t: StructureTemplate): { doorMax: number; doorHp: number; open: boolean; standing: boolean } {
+  const doorMax = templateDoorMax(t);
+  const doorHp = inst.doorHp ?? doorMax;
+  const open = inst.open === true;
+  return { doorMax, doorHp, open, standing: !open && doorHp > 0 };
+}
+
+/** AC (melee / ranged) a template's `ac` modifiers grant across its edge. */
+function coverAc(mods: EffectModifier[]): { melee: number; ranged: number } {
+  let melee = 0;
+  let ranged = 0;
+  for (const m of mods) {
+    if (m.kind !== 'ac') continue;
+    const d = m.delta ?? 0;
+    if (m.mode === 'melee') melee += d;
+    else if (m.mode === 'ranged') ranged += d;
+    else { melee += d; ranged += d; }
+  }
+  return { melee, ranged };
+}
+
+/** One template side -> a runtime wall face. */
+function faceFromTemplate(t: StructureTemplate, mods: EffectModifier[], which: 'inside' | 'outside'): WallFace {
+  const foot = which === 'inside' ? t.mpFootIn : t.mpFootOut;
+  const mounted = which === 'inside' ? t.mpMountedIn : t.mpMountedOut;
+  const ac = coverAc(mods);
   const f: WallFace = {};
-  if (block) f.block = true;
-  if (moveCost !== null && moveCost !== undefined) f.moveCost = moveCost;
-  if (meleeAc) f.meleeAc = meleeAc;
-  if (rangedAc) f.rangedAc = rangedAc;
+  if (foot !== null && foot !== undefined) f.moveCostFoot = foot;
+  if (mounted !== null && mounted !== undefined) f.moveCostMounted = mounted;
+  if (ac.melee) f.meleeAc = ac.melee;
+  if (ac.ranged) f.rangedAc = ac.ranged;
   return f;
 }
 
 /**
  * Derive the runtime `Walls` map from edge structures. `outside` chooses which
- * canonical side is the outside: template face A (inside) covers the inside hex,
- * face B (outside) the outside hex. Durability uses the instance overrides.
+ * canonical side is the outside: template `_in` applies crossing into the inside
+ * face, `_out` into the outside face. Durability/door come from the instance.
  */
 export function structuresToWalls(
   structures: MapStructures,
@@ -80,15 +109,24 @@ export function structuresToWalls(
     if (!t) continue;
     const [q, r, dir] = key.split(',').map(Number);
     const ref = edgeRef(q, r, dir);
+    const mods = instanceModifiers(inst, t);
     const outsideIsA = (inst.outside ?? 'a') === 'a';
-    const aFace = outsideIsA ? faceFromTemplate(t, 'outside') : faceFromTemplate(t, 'inside');
-    const bFace = outsideIsA ? faceFromTemplate(t, 'inside') : faceFromTemplate(t, 'outside');
-    const maxHp = inst.maxHp ?? t.maxHp;
+    // Face A (canonical hex): inside when outsideIsA? No — outsideIsA means the
+    // canonical face IS the outside, so its cost is the `_out` ("enter outside").
+    const aFace = outsideIsA ? faceFromTemplate(t, mods, 'outside') : faceFromTemplate(t, mods, 'inside');
+    const bFace = outsideIsA ? faceFromTemplate(t, mods, 'inside') : faceFromTemplate(t, mods, 'outside');
+    const maxHp = t.maxHp;
+    const door = instanceDoorState(inst, t);
     const wall: Wall = { a: aFace, b: bFace, source: 'map' };
     if (maxHp > 0) {
       wall.maxHp = maxHp;
       wall.hp = inst.hp ?? maxHp;
-      wall.dt = inst.dt ?? t.dt;
+      wall.dt = t.dt;
+    }
+    if (door.doorMax > 0) {
+      wall.doorHp = door.doorHp;
+      wall.doorMax = door.doorMax;
+      if (door.open) wall.open = true;
     }
     walls[ref.key] = wall;
   }
@@ -108,8 +146,8 @@ export function structureCounts(s: MapStructures): { edges: number; hexes: numbe
 
 /** True when a structure's modifiers gate entry for a unit of this org level
  *  (`enter_org_max`: only formations with org level <= value may enter). */
-export function structureBlocksOrg(t: StructureTemplate | null | undefined, orgLevel: number): boolean {
-  return !!t && t.modifiers.some(m => m.kind === 'enter_org_max' && orgLevel > (m.delta ?? 0));
+export function structureBlocksOrg(t: StructureTemplate | null | undefined, orgLevel: number, inst?: StructureInstance | null): boolean {
+  return instanceModifiers(inst, t).some(m => m.kind === 'enter_org_max' && orgLevel > (m.delta ?? 0));
 }
 
 /** True when a ground zone on (q,r) gates entry for this org level. */
@@ -146,7 +184,7 @@ export function structureAuraFlags(
   const flags: StructureAuraFlags = { advantage: false, disadvantage: false, grantAdvantage: false, grantDisadvantage: false };
   const inst = hexStructureAt(structures, hex);
   const t = inst ? templates?.[inst.templateId] : undefined;
-  for (const m of t?.modifiers ?? []) {
+  for (const m of instanceModifiers(inst, t)) {
     if (m.kind === 'advantage') flags.advantage = true;
     else if (m.kind === 'disadvantage') flags.disadvantage = true;
     else if (m.kind === 'grant_advantage') flags.grantAdvantage = true;
@@ -165,16 +203,40 @@ export function structureIsOpen(inst: StructureInstance | null | undefined): boo
   return inst?.open === true;
 }
 
-/** Extra MP to enter this hex from a hex structure (0 when open or none). */
-export function structureHexMoveCost(
+/**
+ * MP to ENTER this hex from a hex structure (replace semantics). Returns
+ * `undefined` when there is no structure or no configured cost (caller falls
+ * back to terrain). A standing door does not block here — see `structureHexBlocked`.
+ */
+export function structureHexEntryCost(
   hex: { q: number; r: number },
   structures: MapStructures | null | undefined,
   templates: Record<string, StructureTemplate> | null | undefined,
-): number {
+  isMounted: boolean,
+): number | undefined {
   const inst = hexStructureAt(structures, hex);
-  if (!inst || structureIsOpen(inst)) return 0;
-  const t = templates?.[inst.templateId];
-  return Math.max(0, t?.hexMoveCost ?? 0);
+  const t = inst ? templates?.[inst.templateId] : undefined;
+  if (!inst || !t) return undefined;
+  if (structureIsOpen(inst)) return undefined;
+  const cost = isMounted ? t.mpMountedIn : t.mpFootIn;
+  if (cost === null || cost === undefined || cost < 0) return undefined;
+  return cost;
+}
+
+/** True when a hex structure blocks entry (standing door, or a hard-block MP). */
+export function structureHexBlocked(
+  hex: { q: number; r: number },
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+  isMounted: boolean,
+): boolean {
+  const inst = hexStructureAt(structures, hex);
+  const t = inst ? templates?.[inst.templateId] : undefined;
+  if (!inst || !t) return false;
+  const cost = isMounted ? t.mpMountedIn : t.mpFootIn;
+  if (cost !== null && cost !== undefined && cost < 0) return true;
+  const door = instanceDoorState(inst, t);
+  return door.standing;
 }
 
 /** Weapon-range bonus (hexes) a unit standing on this hex gains from a structure. */
@@ -186,6 +248,6 @@ export function structureRangeBonus(
   const inst = hexStructureAt(structures, hex);
   const t = inst ? templates?.[inst.templateId] : undefined;
   let sum = 0;
-  for (const m of t?.modifiers ?? []) if (m.kind === 'range') sum += m.delta ?? 0;
+  for (const m of instanceModifiers(inst, t)) if (m.kind === 'range') sum += m.delta ?? 0;
   return sum;
 }

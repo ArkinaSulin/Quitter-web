@@ -9,9 +9,8 @@ const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => (
   id: 't', name: 'Gate Tower', description: '', anchor: 'hex', color: '#fff', imageUrl: '',
   battlement: false,
   spikes: false,
-  edgeABlock: false, edgeAMoveCost: null, edgeAMeleeAc: null, edgeARangedAc: null,
-  edgeBBlock: false, edgeBMoveCost: null, edgeBMeleeAc: null, edgeBRangedAc: null,
-  hexMoveCost: 2, doorHp: 30, maxHp: 100, dt: 15, modifiers: [], createdAt: '', updatedAt: '',
+  mpFootIn: 2, mpFootOut: null, mpMountedIn: -1, mpMountedOut: null,
+  doorHp: 30, maxHp: 100, dt: 15, modifiers: [], createdAt: '', updatedAt: '',
   ...over,
 });
 
@@ -32,12 +31,12 @@ describe('hexStructureAttackKind', () => {
 describe('isAttackableHexStructure', () => {
   it('true with a standing door or destructible HP', () => {
     expect(isAttackableHexStructure(template(), { templateId: 't' })).toBe(true); // door 30
-    expect(isAttackableHexStructure(template({ doorHp: null, maxHp: 50 }), { templateId: 't' })).toBe(true);
-    expect(isAttackableHexStructure(template({ doorHp: null, maxHp: 0 }), { templateId: 't' })).toBe(false);
+    expect(isAttackableHexStructure(template({ doorHp: 0, maxHp: 50 }), { templateId: 't' })).toBe(true);
+    expect(isAttackableHexStructure(template({ doorHp: 0, maxHp: 0 }), { templateId: 't' })).toBe(false);
   });
 });
 
-describe('resolveHexStructureAttack (door-first)', () => {
+describe('resolveHexStructureAttack (simultaneous door + HP)', () => {
   const inst = (over: Partial<StructureInstance> = {}): StructureInstance => ({ templateId: 't', ...over });
 
   it('deflects at or below the DT', () => {
@@ -45,21 +44,22 @@ describe('resolveHexStructureAttack (door-first)', () => {
     expect(r.deflected).toBe(true);
     expect(r.hitDoor).toBe(true);
     expect(r.doorHpAfter).toBe(30);
+    expect(r.hpAfter).toBe(100);
   });
 
-  it('damages the door first, leaving the structure HP untouched', () => {
+  it('damages the door AND the structure HP at the same time', () => {
     const r = resolveHexStructureAttack(template({ dt: 0 }), inst(), bow, fixed(6));
     expect(r.hitDoor).toBe(true);
     expect(r.applied).toBe(6);
     expect(r.doorHpAfter).toBe(24);
-    expect(r.hpAfter).toBe(100);
+    expect(r.hpAfter).toBe(94);
     expect(r.destroyed).toBe(false);
   });
 
-  it('destroys the door at 0, then hits the structure', () => {
+  it('once the door is at 0 it no longer counts as hitting the door', () => {
     const doorGone = resolveHexStructureAttack(template({ dt: 0 }), inst({ doorHp: 5 }), bow, fixed(6));
-    expect(doorGone.hitDoor).toBe(true);
     expect(doorGone.doorHpAfter).toBe(0);
+    expect(doorGone.hpAfter).toBe(94);
     const onStructure = resolveHexStructureAttack(template({ dt: 0 }), inst({ doorHp: 0 }), bow, fixed(6));
     expect(onStructure.hitDoor).toBe(false);
     expect(onStructure.hpAfter).toBe(94);
@@ -67,29 +67,30 @@ describe('resolveHexStructureAttack (door-first)', () => {
   });
 
   it('destroys the structure at 0 HP', () => {
-    const r = resolveHexStructureAttack(template({ dt: 0, maxHp: 5 }), inst({ doorHp: 0, maxHp: 5, hp: 5 }), bow, fixed(6));
+    const r = resolveHexStructureAttack(template({ dt: 0, maxHp: 5 }), inst({ doorHp: 0, hp: 5 }), bow, fixed(6));
     expect(r.destroyed).toBe(true);
     expect(r.hpAfter).toBe(0);
   });
 
-  it('a doorless structure takes damage directly', () => {
-    const r = resolveHexStructureAttack(template({ doorHp: null, dt: 0 }), inst(), bow, fixed(6));
+  it('a door specified as 0 is passable and takes damage on the structure directly', () => {
+    const r = resolveHexStructureAttack(template({ doorHp: 0, dt: 0 }), inst(), bow, fixed(6));
     expect(r.hitDoor).toBe(false);
-    expect(r.doorHpAfter).toBeNull();
+    expect(r.doorHpAfter).toBe(0);
     expect(r.hpAfter).toBe(94);
   });
 
   it('an OPEN gate bypasses the door and exposes the structure HP', () => {
     const r = resolveHexStructureAttack(template({ dt: 0 }), inst({ open: true }), bow, fixed(6));
     expect(r.hitDoor).toBe(false);
-    expect(r.doorHpAfter).toBeNull();
+    expect(r.doorHpAfter).toBe(0);
     expect(r.hpAfter).toBe(94);
     expect(isAttackableHexStructure(template(), inst({ open: true }))).toBe(true);
   });
 
-  it('does nothing once the door is gone and the structure is indestructible', () => {
-    const r = resolveHexStructureAttack(template({ dt: 0, maxHp: 0 }), inst({ doorHp: 0 }), bow, fixed(6));
-    expect(r.applied).toBe(0);
-    expect(r.destroyed).toBe(false);
+  it('a null door defaults to maxHp (no free passage)', () => {
+    const r = resolveHexStructureAttack(template({ doorHp: null, dt: 0 }), inst(), bow, fixed(6));
+    expect(r.hitDoor).toBe(true);
+    expect(r.doorHpAfter).toBe(94); // doorMax 100 - 6
+    expect(r.hpAfter).toBe(94);
   });
 });

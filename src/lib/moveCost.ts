@@ -316,7 +316,13 @@ export function computeReachableMap(
   allowBeyondBudget?: boolean,
   /** Optional: impassable edges (walls authored as blocks). */
   blockedEdge?: BlockedEdgeFn,
+  /** Physical hex-step cap. Defaults to `maxMP`. Option 2 of the movement
+   *  economy: pass the pooled multi-action `maxMP` as the MP budget while keeping
+   *  `hopCap` at one pool, so an expensive single step is selectable without
+   *  extending normal one-move distance. */
+  hopCap?: number,
 ): Map<string, MovePathEntry> {
+  const stepCap = hopCap ?? maxMP;
   // MP to ENTER hex (q,r). Defaults to 1; a painted 0 = free entry; clamps only
   // negative/garbage to 1. `fromQ/fromR` let a wall face REPLACE the entry cost.
   const stepCost = (q: number, r: number, fromQ: number, fromR: number): number => {
@@ -356,7 +362,7 @@ export function computeReachableMap(
     while (queue.length > 0) {
       const cur = popMin(queue);
       if (cur.d > (bestCost.get(key(cur.q, cur.r)) ?? Infinity)) continue;
-      if (cur.hops >= maxMP) continue; // reachable at the step cap, not expandable past it
+      if (cur.hops >= stepCap) continue; // reachable at the step cap, not expandable past it
       for (const dir of dirs) {
         const nq = cur.q + dir.q;
         const nr = cur.r + dir.r;
@@ -365,7 +371,7 @@ export function computeReachableMap(
         if (blockedEdge && blockedEdge(cur.q, cur.r, nq, nr)) continue;
         const nc = cur.d + stepCost(nq, nr, cur.q, cur.r);
         const nh = cur.hops + 1;
-        if ((!allowBeyondBudget && nc > maxMP) || nh > maxMP) continue;
+        if ((!allowBeyondBudget && nc > maxMP) || nh > stepCap) continue;
         if (!improves(bestCost.get(k), bestHops.get(k), nc, nh)) continue;
         bestCost.set(k, nc);
         bestHops.set(k, nh);
@@ -426,7 +432,7 @@ export function computeReachableMap(
     const curKey = `${cur.q},${cur.r},${cur.facing}`;
     const known = distMap.get(curKey);
     if (!known || cur.d !== known.cost || cur.hops !== known.hops) continue; // stale entry
-    if ((!allowBeyondBudget && cur.d >= maxMP) || cur.hops >= maxMP) continue;
+    if ((!allowBeyondBudget && cur.d >= maxMP) || cur.hops >= stepCap) continue;
     if (threatHexes.has(key(cur.q, cur.r))) continue; // can stop here, not pass through
     const cf = [(cur.facing + 4) % 6, (cur.facing + 5) % 6];
     for (const dirIdx of cf) {
@@ -436,7 +442,7 @@ export function computeReachableMap(
       if (occupied.has(key(nq, nr))) continue;
       if (blockedEdge && blockedEdge(cur.q, cur.r, nq, nr)) continue;
       const nc = cur.d + stepCost(nq, nr, cur.q, cur.r);
-      if ((allowBeyondBudget || nc <= maxMP) && cur.hops + 1 <= maxMP) {
+      if ((allowBeyondBudget || nc <= maxMP) && cur.hops + 1 <= stepCap) {
         relax(nq, nr, cur.facing, nc, cur.hops + 1);
       }
     }

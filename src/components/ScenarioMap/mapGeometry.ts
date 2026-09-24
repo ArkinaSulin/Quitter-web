@@ -6,8 +6,8 @@ import { determineCombatPosition } from '@/lib/unitCombat';
 import { canStopEnemyMovement } from '@/lib/formationRules';
 import { isUnitInteractable, isDeadCorpse } from '@/lib/unitInteractions';
 import { isUnitRouted } from '@/lib/unitMorale';
-import { Walls, crossingCost, blockedStep, hasWallEdge, edgeRef, directionBetween } from '@/lib/walls';
-import { MapStructures, structureBlocksOrg, zoneBlocksOrg } from '@/lib/mapStructures';
+import { Walls, crossingCost, blockedStep, wallBetween, edgeRef, directionBetween } from '@/lib/walls';
+import { MapStructures, structureBlocksOrg, zoneBlocksOrg, structureHexEntryCost, structureHexBlocked } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import type { CostOfHexFn, BlockedEdgeFn } from '@/lib/moveCost';
@@ -27,17 +27,30 @@ export function terrainCostOf(terrain: TerrainCosts | null | undefined, q: numbe
   return Number.isFinite(c) && c >= 0 ? c : 1;
 }
 
+export interface CostOfHexOpts {
+  structures?: MapStructures;
+  templates?: Record<string, StructureTemplate>;
+  isMounted?: boolean;
+}
+
 /**
  * Combined step-cost for movement: a wall face on the destination's side REPLACES
- * the hex's terrain entry cost when crossing that edge; otherwise terrain applies.
- * `fromQ/fromR` are supplied by the movement BFS.
+ * the hex's terrain entry cost when crossing that edge; a hex structure's entry
+ * MP REPLACES it too; otherwise terrain applies. `fromQ/fromR` are supplied by
+ * the movement BFS.
  */
-export function makeCostOfHex(terrain: TerrainCosts | null | undefined, walls: Walls | null | undefined): CostOfHexFn {
+export function makeCostOfHex(
+  terrain: TerrainCosts | null | undefined,
+  walls: Walls | null | undefined,
+  opts: CostOfHexOpts = {},
+): CostOfHexFn {
   return (q, r, fromQ, fromR) => {
     if (walls && fromQ !== undefined && fromR !== undefined) {
-      const wc = crossingCost(walls, { q: fromQ, r: fromR }, { q, r });
+      const wc = crossingCost(walls, { q: fromQ, r: fromR }, { q, r }, !!opts.isMounted);
       if (wc !== undefined) return wc;
     }
+    const hc = structureHexEntryCost({ q, r }, opts.structures, opts.templates, !!opts.isMounted);
+    if (hc !== undefined) return hc;
     return terrainCostOf(terrain, q, r);
   };
 }
@@ -51,41 +64,78 @@ export interface BlockEdgeOpts {
   zones?: GroundEffect[];
   /** The moving unit's organization level — enables the `enter_org_max` gate. */
   orgLevel?: number;
+  /** Locomotion for locomotion-specific blocks (negative MP faces / hex). */
+  isMounted?: boolean;
+  /** Free move / DM override: ignore every hard block. */
+  ignoreBlocks?: boolean;
 }
 
 /**
  * Impassable-edge predicate for the movement BFS (undefined when nothing can
- * block). Wall `block` faces always block; when `orgLevel` is provided, a
- * structure on the crossed edge / destination hex or a ground zone there with an
- * `enter_org_max` modifier blocks movers above the allowed organization level.
+ * block). Hard blocks (negative MP, standing doors, wall `block`) always block;
+ * when `orgLevel` is provided, a structure on the crossed edge / destination hex
+ * or a ground zone there with an `enter_org_max` modifier blocks movers above the
+ * allowed organization level. `ignoreBlocks` disables the whole predicate.
  */
 export function makeBlockedEdge(walls: Walls | null | undefined, opts: BlockEdgeOpts = {}): BlockedEdgeFn | undefined {
-  const { structures, templates, zones, orgLevel } = opts;
+  const { structures, templates, zones, orgLevel, isMounted, ignoreBlocks } = opts;
+  if (ignoreBlocks) return undefined;
   const hasWalls = !!walls && Object.keys(walls).length > 0;
   const hasExtra = (!!structures && Object.keys(structures).length > 0) || (!!zones && zones.length > 0);
   if (!hasWalls && !hasExtra) return undefined;
   return (fromQ, fromR, toQ, toR) => {
-    if (walls && blockedStep(walls, fromQ, fromR, toQ, toR)) return true;
+    if (walls && blockedStep(walls, fromQ, fromR, toQ, toR, !!isMounted)) return true;
+    if (structures) {
+      if (structureHexBlocked({ q: toQ, r: toR }, structures, templates, !!isMounted)) return true;
+    }
     if (orgLevel === undefined) return false;
     if (structures) {
       const dir = directionBetween({ q: fromQ, r: fromR }, { q: toQ, r: toR });
       if (dir >= 0) {
         const ref = edgeRef(fromQ, fromR, dir);
         const edgeInst = structures[ref.key];
-        if (edgeInst && structureBlocksOrg(templates?.[edgeInst.templateId], orgLevel)) return true;
+        if (edgeInst && structureBlocksOrg(templates?.[edgeInst.templateId], orgLevel, edgeInst)) return true;
       }
       const hexInst = structures[`${toQ},${toR}`];
-      if (hexInst && structureBlocksOrg(templates?.[hexInst.templateId], orgLevel)) return true;
+      if (hexInst && structureBlocksOrg(templates?.[hexInst.templateId], orgLevel, hexInst)) return true;
     }
     if (zoneBlocksOrg(zones, toQ, toR, orgLevel)) return true;
     return false;
   };
 }
 
-/** Charges are blocked by ANY wall edge (they can't climb/charge over a barrier). */
-export function makeChargeBlockedEdge(walls: Walls | null | undefined): BlockedEdgeFn | undefined {
-  if (!walls || Object.keys(walls).length === 0) return undefined;
-  return (fromQ, fromR, toQ, toR) => hasWallEdge(walls, fromQ, fromR, toQ, toR);
+export interface ChargeBlockOpts {
+  structures?: MapStructures;
+  templates?: Record<string, StructureTemplate>;
+  isMounted?: boolean;
+}
+
+/**
+ * Charges are blocked by any barrier that isn't a low (1 MP) passable structure:
+ * any wall edge whose crossing costs 2+ MP (or is a hard block / standing door),
+ * and any hex structure entered at 2+ MP. Quote: "any hex with MP cost 2+ will
+ * disable charge".
+ */
+export function makeChargeBlockedEdge(walls: Walls | null | undefined, opts: ChargeBlockOpts = {}): BlockedEdgeFn | undefined {
+  const { structures, templates, isMounted } = opts;
+  const hasWalls = !!walls && Object.keys(walls).length > 0;
+  const hasStructs = !!structures && Object.keys(structures).length > 0;
+  if (!hasWalls && !hasStructs) return undefined;
+  return (fromQ, fromR, toQ, toR) => {
+    if (walls) {
+      const hit = wallBetween(walls, { q: fromQ, r: fromR }, { q: toQ, r: toR });
+      if (hit) {
+        if (hit.wall.source === 'effect') return true; // magic walls always stop charges
+        const cost = isMounted ? hit.faceTo.moveCostMounted : hit.faceTo.moveCostFoot;
+        const doorStanding = hit.wall.doorHp !== undefined && hit.wall.doorHp > 0 && !hit.wall.open;
+        if (hit.faceFrom.block || doorStanding) return true;
+        if (cost === undefined || cost < 0 || cost >= 2) return true;
+      }
+    }
+    const hc = structureHexEntryCost({ q: toQ, r: toR }, structures, templates, !!isMounted);
+    if (hc !== undefined && hc >= 2) return true;
+    return false;
+  };
 }
 
 /**

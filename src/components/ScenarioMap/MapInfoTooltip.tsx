@@ -7,8 +7,8 @@
 import React from 'react';
 import { Hex, GroundEffect } from '@/types/gameProtocol';
 import { EdgeRef } from '@/lib/walls';
-import { MapStructures } from '@/lib/mapStructures';
-import { StructureTemplate } from '@/types/structure';
+import { MapStructures, instanceModifiers, instanceDoorState } from '@/lib/mapStructures';
+import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { useTooltipClamp } from './useTooltipClamp';
 
 interface MapInfoTooltipProps {
@@ -24,20 +24,18 @@ interface MapInfoTooltipProps {
   sideBySide: boolean;
 }
 
-function faceBits(block: boolean, moveCost: number | null, meleeAc: number | null, rangedAc: number | null): string {
-  const bits: string[] = [block ? 'block' : 'pass'];
-  if (moveCost !== null) bits.push(`MP ${moveCost}`);
-  const ac: string[] = [];
-  if (meleeAc) ac.push(`m${meleeAc}`);
-  if (rangedAc) ac.push(`r${rangedAc}`);
-  if (ac.length) bits.push(`AC ${ac.join('/')}`);
-  return bits.join(' · ');
-}
+const mpText = (v: number | null): string => (v === null ? '—' : v < 0 ? 'block' : `${v}`);
 
-function faceFromTemplate(t: StructureTemplate, which: 'inside' | 'outside') {
-  return which === 'inside'
-    ? { block: t.edgeABlock, moveCost: t.edgeAMoveCost, meleeAc: t.edgeAMeleeAc, rangedAc: t.edgeARangedAc }
-    : { block: t.edgeBBlock, moveCost: t.edgeBMoveCost, meleeAc: t.edgeBMeleeAc, rangedAc: t.edgeBRangedAc };
+function coverAc(mods: { kind: string; delta: number; mode?: string }[]): { melee: number; ranged: number } {
+  let melee = 0;
+  let ranged = 0;
+  for (const m of mods) {
+    if (m.kind !== 'ac') continue;
+    if (m.mode === 'melee') melee += m.delta;
+    else if (m.mode === 'ranged') ranged += m.delta;
+    else { melee += m.delta; ranged += m.delta; }
+  }
+  return { melee, ranged };
 }
 
 function EffectInfo({ zone }: { zone: GroundEffect }) {
@@ -54,34 +52,39 @@ function EffectInfo({ zone }: { zone: GroundEffect }) {
   );
 }
 
-function HexStructureInfo({ template, hp, maxHp, doorHp, open }: { template: StructureTemplate; hp: number; maxHp: number; doorHp: number | null; open: boolean }) {
+const modLine = (mods: { kind: string; delta: number; mode?: string }[]): string =>
+  mods.map(m => `${m.kind}${m.mode ? `(${m.mode})` : ''}`).join(', ');
+
+function HexStructureInfo({ template, inst, hp, maxHp }: { template: StructureTemplate; inst: StructureInstance; hp: number; maxHp: number }) {
+  const door = instanceDoorState(inst, template);
   return (
     <div>
       <div className="font-semibold text-amber-300">{template.name}</div>
       <div className="text-gray-300">HP {hp}/{maxHp} · DT {template.dt}</div>
-      {template.doorHp !== null && (
-        <div className="text-gray-300">Door {open ? 'open' : `${doorHp ?? template.doorHp}/${template.doorHp}`}</div>
+      {door.doorMax > 0 && (
+        <div className="text-gray-300">Door {door.open ? 'open' : `${door.doorHp}/${door.doorMax}`}</div>
       )}
-      {template.hexMoveCost !== null && <div className="text-gray-400">Enter: +{template.hexMoveCost} MP</div>}
-      {template.modifiers.length > 0 && (
-        <div className="text-gray-400">Effects: {template.modifiers.map(m => m.kind).join(', ')}</div>
-      )}
-      <div className="text-gray-500 mt-1">Shift + drop a unit here to attack</div>
+      <div className="text-gray-400">Enter: foot {mpText(template.mpFootIn)} MP · mounted {mpText(template.mpMountedIn)} MP</div>
+      {template.modifiers.length > 0 && <div className="text-gray-400">Effects: {modLine(template.modifiers)}</div>}
+      <div className="text-gray-500 mt-1">Shift + double-click to edit · Shift + drop a unit to attack</div>
     </div>
   );
 }
 
-function EdgeStructureInfo({ template, hp, maxHp, outside }: { template: StructureTemplate; hp: number; maxHp: number; outside: 'a' | 'b' }) {
-  const inside = faceFromTemplate(template, 'inside');
-  const out = faceFromTemplate(template, 'outside');
+function EdgeStructureInfo({ template, inst, hp, maxHp, outside }: { template: StructureTemplate; inst: StructureInstance; hp: number; maxHp: number; outside: 'a' | 'b' }) {
+  const mods = instanceModifiers(inst, template);
+  const ac = coverAc(mods);
+  const door = instanceDoorState(inst, template);
   return (
     <div>
       <div className="font-semibold text-amber-300">{template.name}</div>
       <div className="text-gray-300">HP {hp}/{maxHp} · DT {template.dt}</div>
-      <div className="text-gray-400">Inside: {faceBits(inside.block, inside.moveCost, inside.meleeAc, inside.rangedAc)}</div>
-      <div className="text-gray-400">Outside: {faceBits(out.block, out.moveCost, out.meleeAc, out.rangedAc)}</div>
+      {door.doorMax > 0 && <div className="text-gray-300">Door {door.open ? 'open' : `${door.doorHp}/${door.doorMax}`}</div>}
+      <div className="text-gray-400">In: foot {mpText(template.mpFootIn)} · mtd {mpText(template.mpMountedIn)} MP</div>
+      <div className="text-gray-400">Out: foot {mpText(template.mpFootOut)} · mtd {mpText(template.mpMountedOut)} MP</div>
+      {(ac.melee || ac.ranged) ? <div className="text-gray-400">Cover AC melee {ac.melee} · ranged {ac.ranged}</div> : null}
       <div className="text-gray-500">Outside side: {outside === 'a' ? 'A' : 'B'}{template.spikes ? ' · stakes' : template.battlement ? ' · battlement' : ''}</div>
-      <div className="text-gray-500 mt-1">Shift + drop a unit here to attack</div>
+      <div className="text-gray-500 mt-1">Shift + double-click to edit · Shift + drop a unit to attack</div>
     </div>
   );
 }
@@ -96,9 +99,9 @@ export function MapInfoTooltip({ kind, hex, edge, x, y, structures, templates, z
     const inst = structures[edge.key];
     const t = inst ? templates[inst.templateId] : undefined;
     if (t && inst) {
-      const maxHp = inst.maxHp ?? t.maxHp;
+      const maxHp = t.maxHp;
       title = 'Barrier';
-      body = <EdgeStructureInfo template={t} hp={inst.hp ?? maxHp} maxHp={maxHp} outside={inst.outside ?? 'a'} />;
+      body = <EdgeStructureInfo template={t} inst={inst} hp={inst.hp ?? maxHp} maxHp={maxHp} outside={inst.outside ?? 'a'} />;
     }
   } else if (kind === 'hex' && hex) {
     const key = `${hex.q},${hex.r}`;
@@ -106,7 +109,7 @@ export function MapInfoTooltip({ kind, hex, edge, x, y, structures, templates, z
     const inst = structures[key];
     const t = inst ? templates[inst.templateId] : undefined;
     const structEl = t && inst
-      ? <HexStructureInfo template={t} hp={inst.hp ?? inst.maxHp ?? t.maxHp} maxHp={inst.maxHp ?? t.maxHp} doorHp={inst.doorHp ?? null} open={!!inst.open} />
+      ? <HexStructureInfo template={t} inst={inst} hp={inst.hp ?? t.maxHp} maxHp={t.maxHp} />
       : null;
     const effectsEl = zoneList.length > 0 ? (
       <>

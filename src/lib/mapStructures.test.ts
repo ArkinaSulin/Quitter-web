@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { parseStructures, structuresToWalls, isEdgeStructureKey, isHexStructureKey, structureCounts, structureBlocksOrg, zoneBlocksOrg, structureRangeBonus, structureIsOpen, structureHexMoveCost, structureAuraFlags } from './mapStructures';
+import {
+  parseStructures, structuresToWalls, isEdgeStructureKey, isHexStructureKey, structureCounts,
+  structureBlocksOrg, zoneBlocksOrg, structureRangeBonus, structureIsOpen,
+  structureHexEntryCost, structureHexBlocked, structureAuraFlags,
+} from './mapStructures';
 import { meleeWallAc, rangedWallAc } from './walls';
 import { StructureTemplate } from '@/types/structure';
 
@@ -12,19 +16,14 @@ const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => (
   imageUrl: '',
   battlement: true,
   spikes: false,
-  edgeABlock: true,
-  edgeAMoveCost: 1,
-  edgeAMeleeAc: 2,
-  edgeARangedAc: 2,
-  edgeBBlock: false,
-  edgeBMoveCost: 3,
-  edgeBMeleeAc: 4,
-  edgeBRangedAc: null,
-  hexMoveCost: null,
-  doorHp: null,
+  mpFootIn: 1,
+  mpFootOut: 3,
+  mpMountedIn: -1,
+  mpMountedOut: null,
+  doorHp: 30,
   maxHp: 30,
   dt: 15,
-  modifiers: [],
+  modifiers: [{ kind: 'ac', delta: 2, mode: 'melee' }, { kind: 'ac', delta: 2, mode: 'ranged' }],
   createdAt: '',
   updatedAt: '',
   ...over,
@@ -43,16 +42,16 @@ describe('key predicates', () => {
 describe('parseStructures', () => {
   it('keeps valid entries and sanitizes overrides', () => {
     const s = parseStructures({
-      '0,0,0': { templateId: 't1', hp: 5.6, maxHp: 30, dt: 15, outside: 'b' },
-      '1,-1': { templateId: 't2', doorHp: 30 },
+      '0,0,0': { templateId: 't1', hp: 5.6, doorHp: 20, outside: 'b' },
+      '1,-1': { templateId: 't2', open: true },
       'bad': { templateId: 't1' },
       '2,2,9': { templateId: 't1' },
       '3,3,1': { templateId: '' },
       '4,4,1': { hp: 5 },
     });
     expect(Object.keys(s).sort()).toEqual(['0,0,0', '1,-1']);
-    expect(s['0,0,0']).toEqual({ templateId: 't1', hp: 6, maxHp: 30, dt: 15, outside: 'b' });
-    expect(s['1,-1']).toEqual({ templateId: 't2', doorHp: 30 });
+    expect(s['0,0,0']).toEqual({ templateId: 't1', hp: 6, doorHp: 20, outside: 'b' });
+    expect(s['1,-1']).toEqual({ templateId: 't2', open: true });
   });
 
   it('returns {} for non-objects', () => {
@@ -64,38 +63,39 @@ describe('parseStructures', () => {
 describe('structuresToWalls', () => {
   const templates = { t1: template() };
 
-  it('maps inside/outside faces onto the canonical sides (outside = a)', () => {
+  it('maps in/out onto the canonical sides (outside = a)', () => {
     const walls = structuresToWalls({ '0,0,0': { templateId: 't1', outside: 'a' } }, templates);
     const w = walls['0,0,0'];
-    // a = OUTSIDE (template B): no block, cost 3, melee AC 4.
-    expect(w.a).toEqual({ moveCost: 3, meleeAc: 4 });
-    // b = INSIDE (template A): block, cost 1, melee AC 2, ranged AC 2.
-    expect(w.b).toEqual({ block: true, moveCost: 1, meleeAc: 2, rangedAc: 2 });
+    // a = OUTSIDE: into-outside MP (foot 3; mounted unset), cover 2/2.
+    expect(w.a).toEqual({ moveCostFoot: 3, meleeAc: 2, rangedAc: 2 });
+    // b = INSIDE: into-inside MP (foot 1; mounted -1 = block), cover 2/2.
+    expect(w.b).toEqual({ moveCostFoot: 1, moveCostMounted: -1, meleeAc: 2, rangedAc: 2 });
     expect(w.maxHp).toBe(30);
     expect(w.hp).toBe(30);
     expect(w.dt).toBe(15);
+    expect(w.doorHp).toBe(30);
+    expect(w.doorMax).toBe(30);
     expect(w.source).toBe('map');
   });
 
   it('swaps faces when outside = b', () => {
     const walls = structuresToWalls({ '0,0,0': { templateId: 't1', outside: 'b' } }, templates);
-    expect(walls['0,0,0'].a).toEqual({ block: true, moveCost: 1, meleeAc: 2, rangedAc: 2 });
-    expect(walls['0,0,0'].b).toEqual({ moveCost: 3, meleeAc: 4 });
+    expect(walls['0,0,0'].a).toEqual({ moveCostFoot: 1, moveCostMounted: -1, meleeAc: 2, rangedAc: 2 });
+    expect(walls['0,0,0'].b).toEqual({ moveCostFoot: 3, meleeAc: 2, rangedAc: 2 });
   });
 
-  it('applies instance durability overrides and skips unknown / hex entries', () => {
+  it('applies instance HP/door/open and skips unknown / hex entries', () => {
     const walls = structuresToWalls(
       {
-        '0,0,0': { templateId: 't1', maxHp: 60, hp: 40, dt: 20 },
+        '0,0,0': { templateId: 't1', hp: 40, doorHp: 10 },
         '1,-1': { templateId: 't1' }, // hex -> ignored
         '2,0,3': { templateId: 'nope' }, // unknown template -> ignored
       },
       templates,
     );
     expect(Object.keys(walls)).toEqual(['0,0,0']);
-    expect(walls['0,0,0'].maxHp).toBe(60);
     expect(walls['0,0,0'].hp).toBe(40);
-    expect(walls['0,0,0'].dt).toBe(20);
+    expect(walls['0,0,0'].doorHp).toBe(10);
   });
 
   it('omits HP for a non-destructible template (maxHp 0)', () => {
@@ -132,8 +132,8 @@ describe('enter_org_max gates', () => {
 });
 
 describe('hex structure helpers', () => {
-  const tower = template({ id: 'tower', anchor: 'hex', hexMoveCost: 2, doorHp: null, modifiers: [{ kind: 'range', delta: 1 }] });
-  const gate = template({ id: 'gate', anchor: 'hex', hexMoveCost: 2, doorHp: 30, modifiers: [] });
+  const tower = template({ id: 'tower', anchor: 'hex', mpFootIn: 2, mpMountedIn: -1, doorHp: 0, modifiers: [{ kind: 'range', delta: 1 }] });
+  const gate = template({ id: 'gate', anchor: 'hex', mpFootIn: 2, mpMountedIn: -1, doorHp: 30, modifiers: [] });
   const templates = { tower, gate };
 
   it('structureRangeBonus sums range modifiers at the hex', () => {
@@ -142,10 +142,18 @@ describe('hex structure helpers', () => {
     expect(structureRangeBonus({ q: 1, r: 0 }, {}, templates)).toBe(0);
   });
 
-  it('structureHexMoveCost is 0 for open gates / no structure', () => {
-    expect(structureHexMoveCost({ q: 0, r: 0 }, { '0,0': { templateId: 'gate' } }, templates)).toBe(2);
-    expect(structureHexMoveCost({ q: 0, r: 0 }, { '0,0': { templateId: 'gate', open: true } }, templates)).toBe(0);
-    expect(structureHexMoveCost({ q: 0, r: 0 }, {}, templates)).toBe(0);
+  it('structureHexEntryCost replaces terrain (undefined for open / no structure)', () => {
+    expect(structureHexEntryCost({ q: 0, r: 0 }, { '0,0': { templateId: 'gate' } }, templates, false)).toBe(2);
+    expect(structureHexEntryCost({ q: 0, r: 0 }, { '0,0': { templateId: 'gate' } }, templates, true)).toBeUndefined(); // mounted blocked
+    expect(structureHexEntryCost({ q: 0, r: 0 }, { '0,0': { templateId: 'gate', open: true } }, templates, false)).toBeUndefined();
+    expect(structureHexEntryCost({ q: 0, r: 0 }, {}, templates, false)).toBeUndefined();
+  });
+
+  it('structureHexBlocked reflects a standing door or a hard-block MP', () => {
+    expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'gate' } }, templates, false)).toBe(true); // door 30
+    expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'gate', open: true } }, templates, false)).toBe(false);
+    expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'tower' } }, templates, true)).toBe(true); // mounted -1
+    expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'tower' } }, templates, false)).toBe(false);
   });
 
   it('structureIsOpen reflects the instance flag', () => {
@@ -160,15 +168,16 @@ describe('hex structure helpers', () => {
     expect(f).toEqual({ advantage: true, disadvantage: false, grantAdvantage: false, grantDisadvantage: true });
     expect(structureAuraFlags({ q: 2, r: 0 }, {}, {})).toEqual({ advantage: false, disadvantage: false, grantAdvantage: false, grantDisadvantage: false });
   });
+
+  it('instance modifier override beats the template', () => {
+    const base = template({ id: 'a', anchor: 'hex', modifiers: [{ kind: 'range', delta: 1 }] });
+    const overridden = { '0,0': { templateId: 'a', modifiers: [{ kind: 'range' as const, delta: 3 }] } };
+    expect(structureRangeBonus({ q: 0, r: 0 }, overridden, { a: base })).toBe(3);
+  });
 });
 
 describe('edge structure cover (wood wall regression)', () => {
-  // Mirrors the seeded Wood Wall: block + 2 melee / 2 ranged AC on both faces.
-  const woodWall = template({
-    id: 'wood-wall', anchor: 'edge', battlement: true,
-    edgeABlock: true, edgeAMeleeAc: 2, edgeARangedAc: 2,
-    edgeBBlock: true, edgeBMeleeAc: 2, edgeBRangedAc: 2,
-  });
+  const woodWall = template({ id: 'wood-wall', anchor: 'edge' });
   const templates = { 'wood-wall': woodWall };
 
   it('grants its melee/ranged AC to the defender across the edge (either outside)', () => {
@@ -176,7 +185,6 @@ describe('edge structure cover (wood wall regression)', () => {
       const walls = structuresToWalls({ '0,0,0': { templateId: 'wood-wall', outside } }, templates);
       expect(meleeWallAc(walls, { q: 0, r: 0 }, { q: 1, r: 0 })).toBe(2);
       expect(rangedWallAc(walls, { q: 0, r: 0 }, { q: 1, r: 0 })).toBe(2);
-      // ...and the other side likewise.
       expect(meleeWallAc(walls, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(2);
     }
   });

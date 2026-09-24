@@ -10,7 +10,7 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-/** Nullable integer column -> number | null. */
+/** Nullable integer column -> number | null. Keeps negatives (hard blocks). */
 function numOrNull(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
@@ -21,6 +21,11 @@ const clampInt = (v: unknown, min: number, max: number, fallback: number): numbe
   const n = Math.round(Number(v));
   return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
 };
+
+/** The effective door pool of a template (null door defaults to maxHp). */
+export function templateDoorMax(t: StructureTemplate): number {
+  return t.doorHp === null ? t.maxHp : t.doorHp;
+}
 
 /** Parse a map_structure_templates row (snake_case) into a template. */
 export function mapStructureRow(row: any): StructureTemplate {
@@ -33,15 +38,10 @@ export function mapStructureRow(row: any): StructureTemplate {
     imageUrl: row.image_url || '',
     battlement: !!row.battlement,
     spikes: !!row.spikes,
-    edgeABlock: !!row.edge_a_block,
-    edgeAMoveCost: numOrNull(row.edge_a_move_cost),
-    edgeAMeleeAc: numOrNull(row.edge_a_melee_ac),
-    edgeARangedAc: numOrNull(row.edge_a_ranged_ac),
-    edgeBBlock: !!row.edge_b_block,
-    edgeBMoveCost: numOrNull(row.edge_b_move_cost),
-    edgeBMeleeAc: numOrNull(row.edge_b_melee_ac),
-    edgeBRangedAc: numOrNull(row.edge_b_ranged_ac),
-    hexMoveCost: numOrNull(row.hex_move_cost),
+    mpFootIn: numOrNull(row.mp_foot_in),
+    mpFootOut: numOrNull(row.mp_foot_out),
+    mpMountedIn: numOrNull(row.mp_mounted_in),
+    mpMountedOut: numOrNull(row.mp_mounted_out),
     doorHp: numOrNull(row.door_hp),
     maxHp: Math.max(0, Math.round(num(row.max_hp))),
     dt: Math.max(0, Math.round(num(row.dt))),
@@ -54,14 +54,19 @@ export function mapStructureRow(row: any): StructureTemplate {
 /** Map a template to a snake_case map_structure_templates row (no id). */
 export function mapStructureToRow(t: Pick<StructureTemplate,
   'name' | 'description' | 'anchor' | 'color' | 'imageUrl' | 'battlement' | 'spikes' |
-  'edgeABlock' | 'edgeAMoveCost' | 'edgeAMeleeAc' | 'edgeARangedAc' |
-  'edgeBBlock' | 'edgeBMoveCost' | 'edgeBMeleeAc' | 'edgeBRangedAc' |
-  'hexMoveCost' | 'doorHp' | 'maxHp' | 'dt' | 'modifiers'>) {
-  const clean = (v: number | null | undefined): number | null => {
+  'mpFootIn' | 'mpFootOut' | 'mpMountedIn' | 'mpMountedOut' |
+  'doorHp' | 'maxHp' | 'dt' | 'modifiers'>) {
+  // A movement value may be any integer (negative = hard block); null = terrain.
+  const move = (v: number | null | undefined): number | null => {
     if (v === null || v === undefined) return null;
     const n = Math.round(v);
-    return Number.isFinite(n) && n >= 0 ? n : null;
+    return Number.isFinite(n) ? n : null;
   };
+  const maxHp = Math.max(0, Math.round(num(t.maxHp)));
+  // Door pool clamped to [0, maxHp]; null = "no explicit door".
+  const door = t.doorHp === null || t.doorHp === undefined
+    ? null
+    : Math.max(0, Math.min(maxHp, Math.round(t.doorHp)));
   return {
     name: (t.name || '').trim(),
     description: t.description || '',
@@ -70,23 +75,18 @@ export function mapStructureToRow(t: Pick<StructureTemplate,
     image_url: t.imageUrl || '',
     battlement: !!t.battlement,
     spikes: !!t.spikes,
-    edge_a_block: !!t.edgeABlock,
-    edge_a_move_cost: clean(t.edgeAMoveCost),
-    edge_a_melee_ac: clean(t.edgeAMeleeAc),
-    edge_a_ranged_ac: clean(t.edgeARangedAc),
-    edge_b_block: !!t.edgeBBlock,
-    edge_b_move_cost: clean(t.edgeBMoveCost),
-    edge_b_melee_ac: clean(t.edgeBMeleeAc),
-    edge_b_ranged_ac: clean(t.edgeBRangedAc),
-    hex_move_cost: clean(t.hexMoveCost),
-    door_hp: clean(t.doorHp),
-    max_hp: Math.max(0, Math.round(num(t.maxHp))),
+    mp_foot_in: move(t.mpFootIn),
+    mp_foot_out: move(t.mpFootOut),
+    mp_mounted_in: move(t.mpMountedIn),
+    mp_mounted_out: move(t.mpMountedOut),
+    door_hp: door,
+    max_hp: maxHp,
     dt: Math.max(0, Math.round(num(t.dt))),
     modifiers: Array.isArray(t.modifiers) ? t.modifiers : [],
   };
 }
 
-/** New-template defaults: 30 HP / DT 15, no door, no modifiers. */
+/** New-template defaults: 30 HP / DT 15, no door pass-through (door = maxHp). */
 export function blankStructureTemplate(): Omit<StructureTemplate, 'id' | 'createdAt' | 'updatedAt'> {
   return {
     name: '',
@@ -96,27 +96,25 @@ export function blankStructureTemplate(): Omit<StructureTemplate, 'id' | 'create
     imageUrl: '',
     battlement: false,
     spikes: false,
-    edgeABlock: false,
-    edgeAMoveCost: null,
-    edgeAMeleeAc: null,
-    edgeARangedAc: null,
-    edgeBBlock: false,
-    edgeBMoveCost: null,
-    edgeBMeleeAc: null,
-    edgeBRangedAc: null,
-    hexMoveCost: null,
-    doorHp: null,
+    mpFootIn: null,
+    mpFootOut: null,
+    mpMountedIn: null,
+    mpMountedOut: null,
+    doorHp: 30,
     maxHp: 30,
     dt: 15,
     modifiers: [],
   };
 }
 
-/** Sanitize a draft (clamp durations/amounts, drop blanks) before saving. */
-export function sanitizeStructureTemplate<T extends { anchor: StructureAnchor; maxHp: number; dt: number; modifiers: EffectModifier[] }>(t: T): T {
+/** Sanitize a draft before saving (clamp, keep negatives, drop blanks). */
+export function sanitizeStructureTemplate<T extends { anchor: StructureAnchor; doorHp: number | null; maxHp: number; dt: number; modifiers: EffectModifier[] }>(t: T): T {
+  const maxHp = Math.max(0, Math.round(t.maxHp));
+  const doorHp = t.doorHp === null ? null : Math.max(0, Math.min(maxHp, Math.round(t.doorHp)));
   return {
     ...t,
-    maxHp: Math.max(0, Math.round(t.maxHp)),
+    maxHp,
+    doorHp,
     dt: clampInt(t.dt, 0, 999, 15),
     modifiers: t.modifiers.filter(m => !!m && typeof m.kind === 'string'),
   };

@@ -5,7 +5,7 @@
 // the hovered-unit front-arc tint. Pure function — ScenarioMap feeds it the
 // grid state (draggingUnitId/hoveredUnit come from useHexGrid) in an effect.
 import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
-import { computeReachableMap, computeMovePool, computeHeroMovePool, computeChargeReachable } from '@/lib/moveCost';
+import { computeReachableMap, computeMovePool, computeMoveBudget, computeHeroMovePool, computeChargeReachable } from '@/lib/moveCost';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { getSetting } from '@/lib/settingsCache';
 import { isUnitRouted } from '@/lib/unitMorale';
@@ -77,9 +77,10 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     hoveredEdge,
   } = state;
 
-  const costOfHex = makeCostOfHex(terrainCosts, walls);
-  const blockedEdgeFor = (orgLevel: number) => makeBlockedEdge(walls, { structures, templates, zones, orgLevel });
-  const chargeBlockedEdge = makeChargeBlockedEdge(walls);
+  const isMountedOf = (u: Unit) => !!u.mountId || !!u.mountName;
+  const costOfHexFor = (isMounted: boolean) => makeCostOfHex(terrainCosts, walls, { structures, templates, isMounted });
+  const blockedEdgeFor = (orgLevel: number, isMounted: boolean) => makeBlockedEdge(walls, { structures, templates, zones, orgLevel, isMounted, ignoreBlocks: freeMove });
+  const chargeBlockedEdgeFor = (isMounted: boolean) => makeChargeBlockedEdge(walls, { structures, templates, isMounted });
 
   // Reaction mode drag: hovering a hostile in weapon range shows range rings;
   // otherwise the 50% reaction-move hexes.
@@ -101,7 +102,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const maxMP = computeEffectiveMovement(archer, getFormationMultiplier(formationsMap, archer.currentFormation, 'movement_multiplier'));
       const budget = reactionMovePool(archer, maxMP);
       const occupied = computeOccupiedHexes(units, archer.id);
-      const reachable = computeReachableMap(archer, budget, occupied, new Set(), costOfHex, false, blockedEdgeFor(getOrganizationLevel(archer.currentFormation)));
+      const reachable = computeReachableMap(archer, budget, occupied, new Set(), costOfHexFor(isMountedOf(archer)), false, blockedEdgeFor(getOrganizationLevel(archer.currentFormation), isMountedOf(archer)));
       reachable.forEach((entry, key) => {
         combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
       });
@@ -137,7 +138,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const combined: Record<string, string> = {};
       const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
       const effectiveMax = computeEffectiveMovement(draggedUnit, movementMult);
-      const chargeReach = computeChargeReachable(draggedUnit, occupied, effectiveMax, costOfHex, chargeBlockedEdge);
+      const chargeReach = computeChargeReachable(draggedUnit, occupied, effectiveMax, costOfHexFor(isMountedOf(draggedUnit)), chargeBlockedEdgeFor(isMountedOf(draggedUnit)));
       for (const [key, cost] of Array.from(chargeReach.entries())) {
         combined[key] = cost >= getSetting('charge_full_distance', 2) ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';
       }
@@ -153,14 +154,21 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     const effectiveMax = computeEffectiveMovement(draggedUnit, movementMult);
     // Heroes show their full conversion potential (MP + actions × maxMP/5);
     // units show one pool (or leftover MP when no actions) — matching handleUnitMove.
-    let pool = draggedUnit.isHero ? computeHeroMovePool(draggedUnit, effectiveMax) : computeMovePool(draggedUnit, effectiveMax);
+    // Option 2 movement economy: the highlight pools every remaining action as
+    // the MP budget (so an expensive single step is selectable), but the hex-step
+    // cap stays at ONE move's pool so normal reach is unchanged.
+    let budget = draggedUnit.isHero ? computeHeroMovePool(draggedUnit, effectiveMax) : computeMoveBudget(draggedUnit, effectiveMax);
+    let hopCap = draggedUnit.isHero ? budget : computeMovePool(draggedUnit, effectiveMax);
     const attachedHero = draggedUnit.attachedToUnitId ? undefined : units.find(u => u.attachedToUnitId === draggedUnit.id && !u.isDeleted);
     if (attachedHero) {
       const heroMult = getFormationMultiplier(formationsMap, attachedHero.currentFormation, 'movement_multiplier');
       const heroMax = computeEffectiveMovement(attachedHero, heroMult);
-      pool = Math.min(pool, attachedHero.isHero ? computeHeroMovePool(attachedHero, heroMax) : computeMovePool(attachedHero, heroMax));
+      const heroBudget = attachedHero.isHero ? computeHeroMovePool(attachedHero, heroMax) : computeMoveBudget(attachedHero, heroMax);
+      const heroHop = attachedHero.isHero ? heroBudget : computeMovePool(attachedHero, heroMax);
+      budget = Math.min(budget, heroBudget);
+      hopCap = Math.min(hopCap, heroHop);
     }
-    const reachableMap = computeReachableMap(draggedUnit, pool, occupied, threatHexes, costOfHex, false, blockedEdgeFor(getOrganizationLevel(draggedUnit.currentFormation)));
+    const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, costOfHexFor(isMountedOf(draggedUnit)), false, blockedEdgeFor(getOrganizationLevel(draggedUnit.currentFormation), isMountedOf(draggedUnit)), hopCap);
 
     const combined: Record<string, string> = {};
 

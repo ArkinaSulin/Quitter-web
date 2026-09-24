@@ -223,7 +223,12 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (unit.isCharging) {
       const occupied = computeOccupiedHexes(units, unitId);
       const maxMP = unitMaxMP(unit);
-      const chargeReach = computeChargeReachable(unit, occupied, maxMP, makeCostOfHex(terrainCosts, walls), makeChargeBlockedEdge(walls));
+      const mounted = !!unit.mountId || !!unit.mountName;
+      const chargeReach = computeChargeReachable(
+        unit, occupied, maxMP,
+        makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted }),
+        makeChargeBlockedEdge(walls, { structures, templates: structureTemplates, isMounted: mounted }),
+      );
       const cost = chargeReach.get(`${targetHex.q},${targetHex.r}`);
       if (!cost) {
         addMessage(`${unit.unitName} cannot move there — outside the charge route`);
@@ -256,12 +261,15 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const effectiveMax = computeEffectiveMovement(unit, movementMult);
     const occupied = computeOccupiedHexes(units, unitId);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
-    const costOfHex = makeCostOfHex(terrainCosts, walls);
+    const mounted = !!unit.mountId || !!unit.mountName;
+    const costOfHex = makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted });
     const blockedEdge = makeBlockedEdge(walls, {
       structures,
       templates: structureTemplates,
       zones: groundZones,
       orgLevel: getOrganizationLevel(unit.currentFormation),
+      isMounted: mounted,
+      ignoreBlocks: freeMove,
     });
     // The drop search is bounded by the PHYSICAL hex-hop limit (a unit can't walk
     // more hexes than its move), but NOT by MP: painted hexes are found at their

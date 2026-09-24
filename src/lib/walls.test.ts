@@ -52,25 +52,42 @@ describe('walls geometry', () => {
   });
 
   it('wallBetween exposes the face on each side', () => {
-    const w = wall({ moveCost: 2 }, { block: true });
+    const w = wall({ moveCostFoot: 2 }, { block: true });
     const hit = wallBetween(w, { q: 0, r: 0 }, { q: 1, r: 0 });
-    expect(hit?.faceFrom.moveCost).toBe(2);
+    expect(hit?.faceFrom.moveCostFoot).toBe(2);
     expect(hit?.faceTo.block).toBe(true);
   });
 
   it('crossingCost returns the destination face move cost (replacing terrain)', () => {
-    const w = wall({ moveCost: 0 }, { moveCost: 5 });
+    const w = wall({ moveCostFoot: 0 }, { moveCostFoot: 5 });
     expect(crossingCost(w, { q: 0, r: 0 }, { q: 1, r: 0 })).toBe(5); // into b
     expect(crossingCost(w, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(0); // into a
     expect(crossingCost(w, { q: 0, r: 0 }, { q: 0, r: 1 })).toBeUndefined(); // no wall there
   });
 
-  it('blockedStep / hasWallEdge reflect the from-side face', () => {
+  it('crossingCost picks the locomotion face and ignores negatives (blocks)', () => {
+    const w = wall({ moveCostFoot: 2, moveCostMounted: -1 }, {});
+    expect(crossingCost(w, { q: 1, r: 0 }, { q: 0, r: 0 }, false)).toBe(2);
+    expect(crossingCost(w, { q: 1, r: 0 }, { q: 0, r: 0 }, true)).toBeUndefined();
+  });
+
+  it('blockedStep / isBlockedEdge reflect the from-side face (and door)', () => {
     const w = wall({ block: true }, {});
     expect(isBlockedEdge(w, { q: 0, r: 0 }, { q: 1, r: 0 })).toBe(true);
     expect(isBlockedEdge(w, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(false);
     expect(hasWallEdge(w, 1, 0, 0, 0)).toBe(true);
     expect(hasWallEdge(w, 0, 0, 0, 1)).toBe(false); // no wall on that edge
+  });
+
+  it('negative MP blocks that locomotion; a standing door blocks all passing', () => {
+    const w = wall({}, { moveCostFoot: 2, moveCostMounted: -1 });
+    expect(isBlockedEdge(w, { q: 1, r: 0 }, { q: 0, r: 0 }, true)).toBe(true); // mounted blocked
+    expect(isBlockedEdge(w, { q: 1, r: 0 }, { q: 0, r: 0 }, false)).toBe(false); // foot passes
+    const door: Walls = { '0,0,0': { a: {}, b: {}, doorHp: 5 } };
+    expect(isBlockedEdge(door, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(true);
+    expect(isBlockedEdge(door, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(true);
+    const openDoor: Walls = { '0,0,0': { a: {}, b: {}, doorHp: 5, open: true } };
+    expect(isBlockedEdge(openDoor, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(false);
   });
 
   it('melee/ranged wall AC is granted to the defender side', () => {
@@ -137,13 +154,13 @@ describe('wall destructibility', () => {
 describe('parseWalls', () => {
   it('keeps valid keys and sanitizes faces', () => {
     const parsed = parseWalls({
-      '0,0,0': { a: { moveCost: 3.6, meleeAc: 2, block: true, junk: 1 }, b: { rangedAc: -4 } },
+      '0,0,0': { a: { moveCostFoot: 3.6, meleeAc: 2, block: true, junk: 1 }, b: { rangedAc: -4 } },
       '1,2,9': { a: {} }, // dir out of range
       bad: { a: {} },
       '2,2,3': 'nope',
     });
     expect(Object.keys(parsed)).toEqual(['0,0,0']);
-    expect(parsed['0,0,0'].a).toEqual({ moveCost: 4, meleeAc: 2, block: true });
+    expect(parsed['0,0,0'].a).toEqual({ moveCostFoot: 4, meleeAc: 2, block: true });
     expect(parsed['0,0,0'].b).toEqual({ rangedAc: -4 });
   });
 

@@ -2,9 +2,9 @@
 // src/components/StructureEditor/StructurePreview.tsx
 // Right-panel preview for the Structure Editor. Edge structures draw the segment
 // with its battlement (crenellation) square-wave on the OUTSIDE face plus the
-// per-face MP/AC labels; hex structures draw a 7-hex board with the artwork and
-// the movement-cost / door / durability badges. A local Flip button swaps which
-// side is shown as outside (the real side is chosen per placement).
+// inside/outside MP labels; hex structures draw a 7-hex board with the artwork and
+// the entry / door / durability badges. A local Flip swaps which side is shown as
+// outside (the real side is chosen per placement).
 import React, { useState } from 'react';
 import { StructureAnchor } from '@/types/structure';
 import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
@@ -18,41 +18,30 @@ const hexToPixel = (q: number, r: number, size: number) => ({
   y: size * 1.5 * r,
 });
 
-export interface PreviewFace {
-  block: boolean;
-  moveCost: number | null;
-  meleeAc: number | null;
-  rangedAc: number | null;
-}
-
 interface StructurePreviewProps {
   anchor: StructureAnchor;
   imageUrl: string;
   battlement: boolean;
   spikes: boolean;
-  inside: PreviewFace;
-  outside: PreviewFace;
-  hexMoveCost: number | null;
+  mpFootIn: number | null;
+  mpFootOut: number | null;
+  mpMountedIn: number | null;
+  mpMountedOut: number | null;
+  coverMelee: number;
+  coverRanged: number;
   doorHp: number | null;
   maxHp: number;
   dt: number;
 }
 
-function faceLabel(f: PreviewFace): string {
-  const bits: string[] = [];
-  bits.push(f.block ? 'block' : 'pass');
-  if (f.moveCost !== null) bits.push(`MP ${f.moveCost}`);
-  const ac: string[] = [];
-  if (f.meleeAc) ac.push(`m${f.meleeAc}`);
-  if (f.rangedAc) ac.push(`r${f.rangedAc}`);
-  if (ac.length) bits.push(`AC ${ac.join('/')}`);
-  return bits.join(' · ');
-}
+const mpLabel = (v: number | null): string => (v === null ? '—' : v < 0 ? 'block' : `${v}`);
 
 export function StructurePreview({
-  anchor, imageUrl, battlement, spikes, inside, outside, hexMoveCost, doorHp, maxHp, dt,
+  anchor, imageUrl, battlement, spikes,
+  mpFootIn, mpFootOut, mpMountedIn, mpMountedOut, coverMelee, coverRanged, doorHp, maxHp, dt,
 }: StructurePreviewProps) {
   const [flipped, setFlipped] = useState(false);
+  const doorText = doorHp === null ? 'no door' : doorHp === 0 ? 'open (no gate)' : `door ${doorHp} HP`;
 
   if (anchor === 'hex') {
     const S = 28;
@@ -99,11 +88,10 @@ export function StructurePreview({
             <span className="absolute inset-0 grid place-items-center text-[10px] text-gray-500">no image</span>
           )}
         </div>
-        <p className="text-[11px] text-gray-400">
-          Enter: {hexMoveCost === null ? 'normal MP' : `+${hexMoveCost} MP`}
-          {doorHp !== null ? ` · Door ${doorHp} HP` : ' · no door'}
-        </p>
-        <p className="text-[11px] text-gray-500">HP {maxHp} · DT {dt}{doorHp !== null ? ' (door shares DT)' : ''}</p>
+        <p className="text-[11px] text-gray-400">Enter: foot {mpLabel(mpFootIn)} MP · mounted {mpLabel(mpMountedIn)} MP</p>
+        <p className="text-[11px] text-gray-400">{doorText}</p>
+        <p className="text-[11px] text-gray-500">HP {maxHp} · DT {dt}
+          {(coverMelee || coverRanged) ? ` · cover AC m${coverMelee}/r${coverRanged}` : ''}</p>
       </div>
     );
   }
@@ -115,13 +103,16 @@ export function StructurePreview({
   const x0 = 28;
   const x1 = W - 28;
   const outsideUp = !flipped;
-  const outsideFace = flipped ? inside : outside;
-  const insideFace = flipped ? outside : inside;
   const outDir = { x: 0, y: outsideUp ? -1 : 1 };
   const tooth = battlementDepth(x1 - x0, 8);
   const decoration = spikes
     ? triangleWavePath({ x: x0, y }, { x: x1, y }, outDir, tooth, 8)
     : battlementPath({ x: x0, y }, { x: x1, y }, outDir, tooth, 8);
+  // When flipped, the labels swap which physical side is "outside".
+  const outFoot = flipped ? mpFootIn : mpFootOut;
+  const outMounted = flipped ? mpMountedIn : mpMountedOut;
+  const inFoot = flipped ? mpFootOut : mpFootIn;
+  const inMounted = flipped ? mpMountedOut : mpMountedIn;
   return (
     <div className="space-y-2">
       <div className="relative rounded border border-gray-700 bg-gray-200" style={{ width: W, height: H }}>
@@ -132,8 +123,8 @@ export function StructurePreview({
         </svg>
         <span className="absolute left-1 top-0.5 text-[9px] uppercase tracking-wide text-amber-700">Outside</span>
         <span className="absolute left-1 bottom-0.5 text-[9px] uppercase tracking-wide text-sky-700">Inside</span>
-        <span className="absolute right-1 top-0.5 text-[9px] text-gray-700">{faceLabel(outsideFace)}</span>
-        <span className="absolute right-1 bottom-0.5 text-[9px] text-gray-700">{faceLabel(insideFace)}</span>
+        <span className="absolute right-1 top-0.5 text-[9px] text-gray-700">foot {mpLabel(outFoot)} · mtd {mpLabel(outMounted)}</span>
+        <span className="absolute right-1 bottom-0.5 text-[9px] text-gray-700">foot {mpLabel(inFoot)} · mtd {mpLabel(inMounted)}</span>
       </div>
       {(battlement || spikes) && (
         <button
@@ -145,7 +136,9 @@ export function StructurePreview({
           Flip preview
         </button>
       )}
-      <p className="text-[11px] text-gray-500">HP {maxHp} · DT {dt}</p>
+      <p className="text-[11px] text-gray-400">{doorText}</p>
+      <p className="text-[11px] text-gray-500">HP {maxHp} · DT {dt}
+        {(coverMelee || coverRanged) ? ` · cover AC m${coverMelee}/r${coverRanged}` : ''}</p>
     </div>
   );
 }

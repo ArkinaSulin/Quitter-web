@@ -163,3 +163,14 @@ Effective movement = `floor(movementPoints × formation.movement_multiplier)`
 (`unitStats.computeEffectiveMovement`; Routed/Scattered ×1.5, Phalanx/Shield
 Wall ×0.5, others ×1 — verify live `formations` rows). Effects (Haste/Slow)
 adjust the `movementPoints` base (see `10`).
+
+## Structural barriers (migration 099)
+
+A structure's `mp_foot_in/out` / `mp_mounted_in/out` REPLACE the destination
+hex/edge terrain cost (`_in` = outside→inside, `_out` = inside→outside; hex uses
+`_in` only). A negative value is a hard block for that locomotion, bypassed by
+free move and the DM. **Rule of thumb: any hex with MP cost 2+ will disable
+charge** (`makeChargeBlockedEdge`). Movement evaluation pools every remaining
+action as the MP budget while the hex-step cap stays at one pool ("Option 2", the
+`hopCap` argument of `computeReachableMap`) — an expensive single step is
+selectable without extending normal one-move reach. See `18` for the barriers.

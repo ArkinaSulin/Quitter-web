@@ -276,7 +276,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
             ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
           }
         }
-        const hp = inst.hp ?? inst.maxHp ?? t?.maxHp ?? 0;
+        const hp = inst.hp ?? t?.maxHp ?? 0;
         if (hp > 0) {
           const label = `${hp}`;
           ctx.font = `bold ${Math.max(11, 12 * currentZoom)}px ui-monospace, monospace`;
@@ -289,9 +289,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           ctx.fillStyle = '#ffe0b2';
           ctx.fillText(label, cx, ly);
         }
-        const doorMax = t?.doorHp ?? null;
-        const door = doorMax !== null ? (inst.doorHp ?? doorMax) : null;
-        const badge = inst.open ? 'open' : (door !== null && door > 0 ? `door ${door}` : null);
+        const doorMax = t ? (t.doorHp ?? t.maxHp) : 0;
+        const door = doorMax > 0 ? (inst.doorHp ?? doorMax) : 0;
+        const badge = inst.open ? 'open' : (door > 0 ? `door ${door}` : null);
         if (badge) {
           ctx.font = `bold ${Math.max(10, 11 * currentZoom)}px ui-monospace, monospace`;
           ctx.textAlign = 'center';

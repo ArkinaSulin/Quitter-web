@@ -47,11 +47,12 @@ import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf, computeOccupiedHexes, computeThreatHexes } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/lib/walls';
-import { MapStructures, parseStructures, structuresToWalls, structureHexMoveCost, structureRangeBonus, isHexStructureKey } from '@/lib/mapStructures';
+import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, isHexStructureKey } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/lib/wallCombat';
-import { hexStructureAttackKind, resolveHexStructureAttack, isAttackableHexStructure } from '@/lib/structureCombat';
+import { hexStructureAttackKind, resolveHexStructureAttack, isAttackableHexStructure, structureDoorMax } from '@/lib/structureCombat';
+import { StructureEditModal, StructureInstancePatch } from './StructureEditModal';
 import { unitAttackCap } from '@/lib/attackCap';
 import { newEffectKey } from '@/lib/unitEffects';
 import { MapEntity } from '@/lib/mapEntities';
@@ -282,19 +283,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (n === 1) delete merged[k];
       else merged[k] = n;
     }
-    // Hex structures add their entry MP cost (open gates cost nothing extra).
-    for (const key of Object.keys(structures)) {
-      if (!isHexStructureKey(key)) continue;
-      const [q, r] = key.split(',').map(Number);
-      const add = structureHexMoveCost({ q, r }, structures, structureTemplates);
-      if (!add) continue;
-      const base = merged[key] ?? 1;
-      const n = Math.max(0, Math.min(9, base + add));
-      if (n === 1) delete merged[key];
-      else merged[key] = n;
-    }
     return merged;
-  }, [terrainCosts, groundZones, structures, structureTemplates]);
+  }, [terrainCosts, groundZones]);
   // GM map-edit brushes: terrain = entry-cost value (null = off); zone = template
   // armed for placement (null = off).
   const [terrainBrushCost, setTerrainBrushCost] = useState<number | null>(null);
@@ -303,6 +293,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [structureBrush, setStructureBrush] = useState(false);
   const [structurePaletteId, setStructurePaletteId] = useState<string | null>(null);
   const [selectedStructureKey, setSelectedStructureKey] = useState<string | null>(null);
+  // Shift + double-click opens the instance editor for a placed structure.
+  const [structureEditKey, setStructureEditKey] = useState<string | null>(null);
   const [zoneTemplate, setZoneTemplate] = useState<EffectTemplate | null>(null);
   // Temporary-effect modal target (context menu → "Effects…").
   const [effectMenuUnit, setEffectMenuUnit] = useState<Unit | null>(null);
@@ -605,7 +597,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     await persistStructures(next);
   }, [structures, persistStructures]);
 
-  const patchScenarioStructure = useCallback(async (patch: { maxHp?: number; hp?: number; dt?: number; doorHp?: number; outside?: 'a' | 'b'; open?: boolean }) => {
+  const patchScenarioStructure = useCallback(async (patch: { hp?: number; doorHp?: number; outside?: 'a' | 'b'; open?: boolean; modifiers?: any[] }) => {
     if (!selectedStructureKey) return;
     const inst = structures[selectedStructureKey];
     if (!inst) return;
@@ -614,9 +606,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (v === undefined) delete (next as any)[k];
       else (next as any)[k] = v;
     }
-    if (next.maxHp !== undefined && next.hp === undefined) next.hp = next.maxHp;
     await persistStructures({ ...structures, [selectedStructureKey]: next });
   }, [structures, selectedStructureKey, persistStructures]);
+
+  // Edit any placed structure instance by key (Shift + double-click modal).
+  const patchStructureAt = useCallback(async (key: string, patch: StructureInstancePatch) => {
+    const inst = structures[key];
+    if (!inst) return;
+    const next: any = { ...inst };
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) delete next[k];
+      else next[k] = v;
+    }
+    await persistStructures({ ...structures, [key]: next });
+  }, [structures, persistStructures]);
 
   // Load the structure template library (palette + walls derivation).
   useEffect(() => {
@@ -942,13 +945,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (overCap) addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
 
     const result = resolveWallAttack(wall, weapon, Math.random);
-    const to = result.destroyed ? null : { ...inst, hp: result.wall.hp };
+    const to = result.destroyed
+      ? null
+      : { ...inst, hp: result.wall.hp, ...(result.doorHpAfter !== undefined ? { doorHp: result.doorHpAfter } : {}) };
 
+    const doorNote = result.doorHpAfter !== undefined && result.doorHpAfter > 0 ? ` (door ${result.doorHpAfter}/${wall.doorMax ?? 0})` : '';
     const detail = result.deflected
       ? `${attacker.unitName} struck the barrier at ${label} — the blow is shrugged off (DT ${wall.dt ?? 0}, ${result.damage} damage)`
       : result.destroyed
         ? `${attacker.unitName} destroyed the barrier at ${label} (${result.damage} damage)`
-        : `${attacker.unitName} hit the barrier at ${label} for ${result.applied} damage (${wallHp(result.wall)}/${wall.maxHp} HP left)`;
+        : `${attacker.unitName} hit the barrier at ${label} for ${result.applied} damage (${wallHp(result.wall)}/${wall.maxHp} HP left)${doorNote}`;
     await execute('ATTACK', [
       {
         type: 'ATTACK',
@@ -1003,19 +1009,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (overCap) addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
 
     const result = resolveHexStructureAttack(template, inst, weapon, Math.random);
-    const hasDoor = template.doorHp !== null;
     const to = result.destroyed
       ? null
-      : { ...inst, hp: result.hpAfter, ...(hasDoor ? { doorHp: result.doorHpAfter ?? 0 } : {}) };
+      : { ...inst, hp: result.hpAfter, doorHp: result.doorHpAfter };
 
-    const doorNow = result.doorHpAfter ?? 0;
+    const doorNow = result.doorHpAfter;
     const detail = result.deflected
       ? `${attacker.unitName} struck the structure at ${label} — the blow is shrugged off (DT ${template.dt}, ${result.damage} damage)`
       : result.destroyed
         ? `${attacker.unitName} destroyed the structure at ${label} (${result.damage} damage)`
         : result.hitDoor
-          ? `${attacker.unitName} hit the door at ${label} for ${result.applied} damage (${doorNow}/${template.doorHp} door HP left)`
-          : `${attacker.unitName} hit the structure at ${label} for ${result.applied} damage (${result.hpAfter}/${inst.maxHp ?? template.maxHp} HP left)`;
+          ? `${attacker.unitName} hit the door at ${label} for ${result.applied} damage (${doorNow}/${structureDoorMax(template)} door HP left)`
+          : `${attacker.unitName} hit the structure at ${label} for ${result.applied} damage (${result.hpAfter}/${template.maxHp} HP left)`;
     await execute('ATTACK', [
       {
         type: 'ATTACK',
@@ -1969,13 +1974,32 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Double-click a unit you can edit opens the floating editor.
   const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (controlsLocked || reactionMode) return;
+    // Shift + double-click (map-inspect mode) edits a placed structure instance.
+    if (e.shiftKey && effectiveIsGM) {
+      const hex = getHexFromScreen(e.clientX, e.clientY);
+      if (hex) {
+        const hexKey = `${hex.q},${hex.r}`;
+        let key: string | null = structures[hexKey] ? hexKey : null;
+        if (!key) {
+          const dir = edgeDirAtClient(hex, e.clientX, e.clientY);
+          if (dir !== null) {
+            const ek = edgeRef(hex.q, hex.r, dir).key;
+            if (structures[ek]) key = ek;
+          }
+        }
+        if (key && structureTemplates[structures[key].templateId]) {
+          setStructureEditKey(key);
+          return;
+        }
+      }
+    }
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (!hex) return;
     const unit = getUnitAt(hex);
     if (!unit) return;
     if (unit.hidden && !effectiveIsGM) return;
     if (effectiveIsGM || canEditUnit(unit)) setEditUnit(unit);
-  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAt, effectiveIsGM, canEditUnit]);
+  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAt, effectiveIsGM, canEditUnit, structures, structureTemplates]);
 
   // Editor Save → one chained command entry, one sub-step per changed field.
   const handleEditorSave = useCallback(async (changes: { field: string; from: any; to: any }[], description: string) => {
@@ -3321,6 +3345,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         <div className="text-gray-500 text-xs">Scenario: {scenarioId.slice(0, 8)}…</div>
         {isGM && <div className="text-yellow-400 text-xs">{gmAsPlayer ? 'DM → Player mode' : 'DM'}</div>}
       </div>
+
+      {structureEditKey && structures[structureEditKey] && structureTemplates[structures[structureEditKey].templateId] && (
+        <StructureEditModal
+          template={structureTemplates[structures[structureEditKey].templateId]}
+          instance={structures[structureEditKey]}
+          onSave={(patch) => void patchStructureAt(structureEditKey, patch)}
+          onClose={() => setStructureEditKey(null)}
+        />
+      )}
       </div>
     </div>
   );

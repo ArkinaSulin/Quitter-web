@@ -166,3 +166,34 @@ tab in the Map Editor:
   badge); move-cost numbers are drawn on the edge per face.
 - `assignMap` snapshots structures into `map_data.structures`; the runtime derives
   `walls` continuously from structures (Slice 3).
+
+## Slice 4 — direction/locomotion movement, two-pool durability (migration 099)
+
+The template is now direction-relative and locomotion-aware; the authored A/B
+faces and `hex_move_cost` are gone:
+
+- **Movement**: `mp_foot_in/out` + `mp_mounted_in/out` REPLACE the destination
+  terrain cost (`_in` = outside→inside, `_out` = inside→outside; a hex uses `_in`
+  only). `NULL` = fall back to terrain; **negative = hard block** for that
+  locomotion (bypassed by free move and the DM). Inside/outside is chosen when the
+  structure is placed (instance `outside`), not authored.
+- **Durability is two pools damaged SIMULTANEOUSLY**: `door_hp` gates **passage**
+  (`0` = passable) and `max_hp` gates **modifiers** (`<= 0` = destroyed → the
+  instance is removed). `door_hp` defaults to `max_hp` (no free passage; a wall
+  must be destroyed). `0 <= door_hp <= max_hp`. An `open` instance waives the door
+  gate. DT still gates each blow.
+- **Modifiers are one list** with an optional `mode: 'melee' | 'ranged'` (absent =
+  both) on the attack-distance kinds (`ac`, `advantage`/`disadvantage`/`grant_*`).
+  Cover AC is expressed as `ac` modifiers. `range` (occupant aura) and
+  `enter_org_max` (pass-through gate) ignore `mode`. The shared
+  `EffectModifierFields` row shows a compact `Both / Melee / Ranged` dropdown, in
+  both the Effect Editor and the Structure Editor.
+- **Charges** are disabled by any barrier crossing at 2+ MP: *"any hex with MP
+  cost 2+ will disable charge"* (`makeChargeBlockedEdge`).
+- **In-scenario editing**: **Shift + double-click** a placed structure opens
+  `StructureEditModal` (HP, door HP, gate open, outside side, and the instance's
+  modifier override, seeded from the template).
+- **Color**: `color` is authored as a wood/stone tint (used for the palette swatch;
+  full `source-atop` texture tinting is a follow-up).
+- **Data**: migration 099 wipes every placed instance and reseeds the 9 presets in
+  the new shape.
