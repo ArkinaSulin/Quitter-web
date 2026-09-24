@@ -59,7 +59,6 @@ export function expandHexEffects(
         transparentBackground: t.transparentBackground,
         layer: t.layer,
         kind: m.kind as GroundEffect['kind'],
-        delta: m.delta,
         ...(m.dice ? { dice: m.dice } : {}),
         ...(m.healing ? { healing: true } : {}),
         ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),

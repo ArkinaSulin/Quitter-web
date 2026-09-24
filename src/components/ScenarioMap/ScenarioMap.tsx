@@ -59,7 +59,7 @@ import { MapEntity } from '@/lib/mapEntities';
 import { AddEffectModal } from './AddEffectModal';
 import { EffectFormModal, EffectFormValue } from './EffectFormModal';
 import { EffectTemplate, templateById } from '@/lib/unitEffects';
-import { EffectModifier, EffectTemplate as EffectLibraryTemplate, mapEffectRow } from '@/lib/effectTemplates';
+import { EffectModifier, EffectTemplate as EffectLibraryTemplate, mapEffectRow, modifierAmount } from '@/lib/effectTemplates';
 import { expandHexEffects } from '@/lib/mapEffects';
 import { routeUnit } from './routeUnit';
 import { ScenarioStatsModal } from './ScenarioStatsModal';
@@ -131,7 +131,6 @@ function formFromDrop(t: DroppedEffect, casterTeam: string): EffectFormValue {
     casterTeam,
     modifiers: t.modifiers.map(m => ({
       kind: m.kind as EffectModifier['kind'],
-      delta: m.delta,
       ...(m.dice ? { dice: m.dice } : {}),
       ...(m.healing ? { healing: true } : {}),
       ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
@@ -154,7 +153,6 @@ function formFromZone(z: GroundEffect): EffectFormValue {
     casterTeam: z.casterTeam ?? '',
     modifiers: [{
       kind: z.kind as EffectModifier['kind'],
-      delta: z.delta,
       ...(z.dice ? { dice: z.dice } : {}),
       ...(z.healing ? { healing: true } : {}),
       ...(z.savingThrow ? { savingThrow: z.savingThrow } : {}),
@@ -177,7 +175,6 @@ function formFromUnitEffect(e: import('@/types/gameProtocol').UnitEffect): Effec
     casterTeam: e.casterTeam ?? '',
     modifiers: [{
       kind: e.kind as EffectModifier['kind'],
-      delta: e.delta,
       ...(e.dice ? { dice: e.dice } : {}),
       ...(e.healing ? { healing: true } : {}),
       ...(e.savingThrow ? { savingThrow: e.savingThrow } : {}),
@@ -279,7 +276,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (z.kind !== 'mp_cost') continue;
       const k = `${z.q},${z.r}`;
       const base = merged[k] ?? 1;
-      const n = Math.max(0, Math.min(9, base + (z.delta || 0)));
+      const n = Math.max(0, Math.min(9, base + modifierAmount(z.dice)));
       if (n === 1) delete merged[k];
       else merged[k] = n;
     }
@@ -1080,7 +1077,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         addMessage(`${d.form.name}: '${m.kind}' applies via the effect engine — skipped`);
         continue;
       }
-      if (m.kind === 'hp_borrow' && (m.dice ? 0 : m.delta) <= 0 && !m.dice) {
+      if (m.kind === 'hp_borrow' && modifierAmount(m.dice) <= 0) {
         addMessage(`${d.form.name}: enter a borrowed HP amount to Sleep the unit`);
         continue;
       }
@@ -1092,7 +1089,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         transparentBackground: d.form.transparentBackground,
         layer: d.form.layer,
         kind: m.kind,
-        delta: m.delta,
         ...(m.dice ? { dice: m.dice } : {}),
         ...(m.healing ? { healing: true } : {}),
         ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
@@ -1121,7 +1117,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         transparentBackground: d.form.transparentBackground,
         layer: d.form.layer,
         kind: m.kind as GroundEffect['kind'],
-        delta: m.delta,
         dice: m.dice,
         healing: m.healing,
         savingThrow: m.savingThrow,
@@ -1161,7 +1156,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const saveZoneEdit = async (key: string, form: EffectFormValue) => {
     const z = groundZones.find(g => g.key === key);
     if (!z) return;
-    const m = form.modifiers[0] ?? { kind: z.kind, delta: z.delta };
+    const m = form.modifiers[0] ?? { kind: z.kind, dice: z.dice };
     const updated: GroundEffect = {
       ...z,
       name: form.name,
@@ -1171,7 +1166,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       transparentBackground: form.transparentBackground,
       layer: form.layer,
       kind: (m.kind as GroundEffect['kind']) ?? z.kind,
-      delta: m.delta,
       dice: m.dice,
       healing: m.healing,
       savingThrow: m.savingThrow,
@@ -1197,7 +1191,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       transparentBackground: form.transparentBackground,
       layer: form.layer,
       kind: m.kind as EffectKind,
-      delta: m.delta,
       ...(m.dice ? { dice: m.dice } : {}),
       ...(m.healing ? { healing: true } : {}),
       ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
@@ -1291,7 +1284,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       name: zoneTemplate.name,
       color: zoneTemplate.color,
       kind: zoneTemplate.kind,
-      delta: zoneTemplate.defaultDelta,
+      ...(zoneTemplate.defaultDelta ? { dice: String(zoneTemplate.defaultDelta) } : {}),
       duration,
       turnsLeft: duration,
       casterUnitId: null,
@@ -3197,7 +3190,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             </p>
             <p className="text-xs text-gray-400 mb-3">
               How many troops are caught? The ones behind stop at the boundary (0 = none).
-              Each takes {entryPrompt.zone.dice || entryPrompt.zone.delta}{entryPrompt.zone.healing ? ' healing' : ' damage'} (capped at troop HP).
+              Each takes {entryPrompt.zone.dice ?? ''}{entryPrompt.zone.healing ? ' healing' : ' damage'} (capped at troop HP).
             </p>
             <input
               autoFocus
@@ -3240,7 +3233,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: z.color }} />
                     <span className="flex-1 text-yellow-200">{z.name}</span>
-                    <span className="text-[10px] text-gray-400">{z.dice || z.delta}{z.healing ? ' heal' : ''}</span>
+                    <span className="text-[10px] text-gray-400">{z.dice ?? ''}{z.healing ? ' heal' : ''}</span>
                   </div>
                   <div className="flex flex-wrap gap-1 mt-1">
                     <button

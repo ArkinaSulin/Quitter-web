@@ -16,6 +16,7 @@ import { getActiveGroups, advanceTurn } from '@/lib/turnState';
 import { UnitEffect, GroundEffect } from '@/types/gameProtocol';
 import { Walls } from '@/lib/walls';
 import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, computeZoneReconcile, newEffectKey, EffectSpec, resolveEffectDamage, describeEffectDamage, EffectDamageEvent } from '@/lib/unitEffects';
+import { modifierAmount } from '@/lib/effectTemplates';
 
 interface UseGameEngineProps {
   scenarioId: string;
@@ -350,7 +351,7 @@ export function useGameEngine({
     const steps: SubStep[] = [];
     const messages: string[] = [];
     const verboseMessages: string[] = [];
-    for (const z of zones.filter(z => z.kind === 'entry' && ((z.dice && z.dice.trim()) || (z.delta || 0) > 0) && z.q === hex.q && z.r === hex.r)) {
+    for (const z of zones.filter(z => z.kind === 'entry' && modifierAmount(z.dice) !== 0 && z.q === hex.q && z.r === hex.r)) {
       // Ask how many troops are caught (troops behind may stop at the boundary).
       let affected = Math.max(0, actor.currentTroopCount ?? 0);
       if (requestEntryTroops) {
@@ -362,7 +363,6 @@ export function useGameEngine({
       }
       if (affected <= 0) continue;
       const { changes, detail } = resolveEffectDamage(actor, {
-        delta: z.delta,
         dice: z.dice,
         healing: z.healing,
         savingThrow: z.savingThrow,
@@ -371,7 +371,7 @@ export function useGameEngine({
       }, Math.random, affected);
       steps.push({
         type: 'DAMAGE',
-        description: `${actor.unitName} entered ${z.name} (${affected} troop${affected === 1 ? '' : 's'}, ${z.dice || z.delta}${z.healing ? ' healing' : ' damage'})`,
+        description: `${actor.unitName} entered ${z.name} (${affected} troop${affected === 1 ? '' : 's'}, ${z.dice ?? ''}${z.healing ? ' healing' : ' damage'})`,
         unitId: actor.id,
         changes,
       });
@@ -680,7 +680,7 @@ export function useGameEngine({
       // An active AC effect rides the switch: keep its delta, rebase its snapshot
       // onto the new weapon's no-buff AC so expiry restores the right value.
       const acEffect = (unit.effects ?? []).find(e => e.kind === 'ac' && !e.zoneHex);
-      const nextAc = acEffect ? baseAc + acEffect.delta : baseAc;
+      const nextAc = acEffect ? baseAc + modifierAmount(acEffect.dice) : baseAc;
       const acChanges = acEffect && nextAc !== fromAc
         ? [
             { field: 'currentAc', from: fromAc, to: nextAc },
@@ -984,7 +984,7 @@ export function useGameEngine({
       description: `${spec.name} applied to ${unit.unitName}`,
       unitId: unit.id,
       changes,
-    }], `${unit.unitName} gains ${spec.name}${spec.kind === 'dot' ? ` (${spec.delta}/tick, ${duration} turns)` : ` ${spec.delta > 0 ? '+' : ''}${spec.delta}, ${duration} turns`}`);
+    }], `${unit.unitName} gains ${spec.name}${spec.kind === 'dot' ? ` (${spec.dice ?? ''}/tick, ${duration} turns)` : ` ${spec.dice ?? ''}, ${duration} turns`}`);
     return { ok: true as const };
   }, [execute, addError]);
 

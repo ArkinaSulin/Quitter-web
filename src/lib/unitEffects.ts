@@ -16,7 +16,7 @@
 
 import { Unit, UnitEffect, GroundEffect, EffectKind, AllianceGroup } from '@/types/gameProtocol';
 import { SubStep, UnitChange } from '@/lib/commandLog';
-import { parseDice, rollDice } from '@/lib/effectTemplates';
+import { parseDice, rollDice, modifierAmount, isDiceAmount } from '@/lib/effectTemplates';
 
 /** The real unit field a stat kind modifies (dot/hp_borrow have none — they touch HP). */
 export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModifier' | 'movementPoints' | null {
@@ -54,7 +54,7 @@ export function isAttackRollEffect(kind: EffectKind): boolean {
 export function effectRangeBonus(unit: Unit | null | undefined): number {
   let sum = 0;
   for (const e of unit?.effects ?? []) {
-    if (e.kind === 'range') sum += e.delta ?? 0;
+    if (e.kind === 'range') sum += modifierAmount(e.dice);
   }
   return sum;
 }
@@ -118,13 +118,13 @@ export function applyEffectChanges(unit: Unit, spec: Omit<UnitEffect, 'key' | 'b
   ];
   const field = statFieldOf(spec.kind);
   if (field) {
-    const to = statValue(unit, spec.kind) + spec.delta;
+    const to = statValue(unit, spec.kind) + modifierAmount(spec.dice);
     changes.unshift({ field, from: unit[field], to });
   }
   // Sleep (hp_borrow): HP is deducted immediately (never below 1); the refund
   // happens when the effect expires (see removeEffectChanges / END_TURN).
-  if (spec.kind === 'hp_borrow' && (spec.delta || 0) > 0) {
-    changes.unshift(...hpBorrowDamageChanges(unit, spec.delta));
+  if (spec.kind === 'hp_borrow' && modifierAmount(spec.dice) > 0) {
+    changes.unshift(...hpBorrowDamageChanges(unit, modifierAmount(spec.dice)));
   }
   return { changes, effect };
 }
@@ -147,7 +147,7 @@ export function removeEffectChanges(unit: Unit, key: string): UnitChange[] {
   // Sleep refund: expiring/removing an hp_borrow gives the borrowed HP back
   // (capped) unless the unit was killed in the meantime.
   if (entry.kind === 'hp_borrow') {
-    changes.unshift(...hpBorrowRefundChanges(unit, entry.delta || 0));
+    changes.unshift(...hpBorrowRefundChanges(unit, modifierAmount(entry.dice)));
   }
   return changes;
 }
@@ -278,7 +278,6 @@ export interface EffectDamageEvent {
 export function resolveEffectDamage(
   target: Unit,
   mod: {
-    delta?: number;
     dice?: string;
     healing?: boolean;
     savingThrow?: SaveStatName | null;
@@ -291,7 +290,8 @@ export function resolveEffectDamage(
   const hpBefore = target.currentUnitHp ?? 0;
   const troopsBefore = target.currentTroopCount ?? 0;
   const healing = !!mod.healing;
-  const parsed = parseDice(mod.dice);
+  const isDice = isDiceAmount(mod.dice);
+  const parsed = isDice ? parseDice(mod.dice) : null;
 
   let changes: UnitChange[] = [];
   let affected = 0;
@@ -302,7 +302,7 @@ export function resolveEffectDamage(
   let applied: number[] | undefined;
 
   if (!parsed) {
-    const amt = mod.delta ?? 0;
+    const amt = modifierAmount(mod.dice);
     affected = Math.max(0, troopsBefore);
     if (amt > 0) changes = healing ? healChanges(target, amt) : dotDamageChanges(target, amt);
   } else {
@@ -354,7 +354,7 @@ export function resolveEffectDamage(
       failed: Math.max(0, affected - passed),
       total: Math.abs(hpAfter - hpBefore),
       healing,
-      ...(parsed ? { dice: mod.dice } : {}),
+      ...(parsed ? { dice: mod.dice ?? undefined } : {}),
       ...(rolls ? { rolls } : {}),
       ...(roll != null ? { roll } : {}),
       ...(saveRolls ? { saveDC: mod.saveDC ?? undefined, saveRolls } : {}),
@@ -371,7 +371,6 @@ export function resolveEffectDamage(
 export function effectDamageChanges(
   target: Unit,
   mod: {
-    delta?: number;
     dice?: string;
     healing?: boolean;
     savingThrow?: SaveStatName | null;
@@ -591,7 +590,7 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
         name: z.name,
         color: z.color,
         kind: z.kind,
-        delta: z.delta,
+        dice: z.dice,
         duration: z.duration,
         turnsLeft: z.turnsLeft,
         casterUnitId: z.casterUnitId,
@@ -601,7 +600,7 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
       };
       const field = statFieldOf(z.kind);
       if (field) {
-        d.changes.push({ field, from: unit[field], to: statValue(unit, z.kind) + z.delta });
+        d.changes.push({ field, from: unit[field], to: statValue(unit, z.kind) + modifierAmount(z.dice) });
       }
       d.effects.push(membership);
     }
@@ -683,7 +682,7 @@ export function computeZoneReconcile(unit: Unit, zones: GroundEffect[]): { effec
       name: z.name,
       color: z.color,
       kind: z.kind,
-      delta: z.delta,
+      dice: z.dice,
       duration: z.duration,
       turnsLeft: z.turnsLeft,
       casterUnitId: z.casterUnitId,
@@ -694,7 +693,7 @@ export function computeZoneReconcile(unit: Unit, zones: GroundEffect[]): { effec
     const field = statFieldOf(z.kind);
     if (field) {
       const from = now(field);
-      const to = from + z.delta;
+      const to = from + modifierAmount(z.dice);
       statChanges.push({ field, from, to });
       fieldNow.set(field, to);
     }

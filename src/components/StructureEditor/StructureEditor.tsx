@@ -11,7 +11,7 @@ import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
 import { StructurePreview } from '@/components/StructureEditor/StructurePreview';
 import { StructureTemplate, StructureAnchor } from '@/types/structure';
-import { EffectModifier } from '@/lib/effectTemplates';
+import { EffectModifier, modifierAmount } from '@/lib/effectTemplates';
 import {
   mapStructureRow, mapStructureToRow, blankStructureTemplate, sanitizeStructureTemplate,
 } from '@/lib/structureTemplates';
@@ -77,7 +77,7 @@ function coverAc(mods: EffectModifier[]): { melee: number; ranged: number } {
   let ranged = 0;
   for (const m of mods) {
     if (m.kind !== 'ac') continue;
-    const d = m.delta ?? 0;
+    const d = modifierAmount(m.dice);
     if (m.mode === 'melee') melee += d;
     else if (m.mode === 'ranged') ranged += d;
     else { melee += d; ranged += d; }
@@ -162,7 +162,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
   const summary = useMemo(
     () =>
       draft
-        ? draft.modifiers.map(m => `${m.kind}${m.mode ? ` (${m.mode})` : ''}: ${m.dice ?? m.delta}`).join(' · ') || '(no modifiers)'
+        ? draft.modifiers.map(m => `${m.kind}${m.mode ? ` (${m.mode})` : ''}: ${m.dice ?? ''}`.trim()).join(' · ') || '(no modifiers)'
         : '',
     [draft],
   );
@@ -341,7 +341,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                 {!readOnly && (
                   <button
                     className="mt-2 px-3 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600"
-                    onClick={() => patch({ modifiers: [...draft.modifiers, { kind: 'ac', delta: 1, mode: 'melee' }] })}
+                    onClick={() => patch({ modifiers: [...draft.modifiers, { kind: 'ac', dice: '1', mode: 'melee' }] })}
                   >
                     + Add modifier
                   </button>

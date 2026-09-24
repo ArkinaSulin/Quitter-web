@@ -23,7 +23,7 @@ const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => (
   doorHp: 30,
   maxHp: 30,
   dt: 15,
-  modifiers: [{ kind: 'ac', delta: 2, mode: 'melee' }, { kind: 'ac', delta: 2, mode: 'ranged' }],
+  modifiers: [{ kind: 'ac', dice: '2', mode: 'melee' }, { kind: 'ac', dice: '2', mode: 'ranged' }],
   createdAt: '',
   updatedAt: '',
   ...over,
@@ -112,7 +112,7 @@ describe('structureCounts', () => {
 });
 
 describe('enter_org_max gates', () => {
-  const spikes = template({ modifiers: [{ kind: 'enter_org_max', delta: 1 }] });
+  const spikes = template({ modifiers: [{ kind: 'enter_org_max', dice: '1' }] });
 
   it('structureBlocksOrg allows org <= value and blocks above', () => {
     expect(structureBlocksOrg(spikes, 0)).toBe(false);
@@ -123,7 +123,7 @@ describe('enter_org_max gates', () => {
   });
 
   it('zoneBlocksOrg blocks over-level movers only on the zone hex', () => {
-    const zones = [{ key: 'z', q: 0, r: 0, name: 'Spikes', color: '#fff', kind: 'enter_org_max' as const, delta: 1, duration: 3, turnsLeft: 3 }];
+    const zones = [{ key: 'z', q: 0, r: 0, name: 'Spikes', color: '#fff', kind: 'enter_org_max' as const, dice: '1', duration: 3, turnsLeft: 3 }];
     expect(zoneBlocksOrg(zones, 0, 0, 2)).toBe(true);
     expect(zoneBlocksOrg(zones, 0, 0, 1)).toBe(false);
     expect(zoneBlocksOrg(zones, 1, 0, 2)).toBe(false);
@@ -132,7 +132,7 @@ describe('enter_org_max gates', () => {
 });
 
 describe('hex structure helpers', () => {
-  const tower = template({ id: 'tower', anchor: 'hex', mpFootIn: 2, mpMountedIn: -1, doorHp: 0, modifiers: [{ kind: 'range', delta: 1 }] });
+  const tower = template({ id: 'tower', anchor: 'hex', mpFootIn: 2, mpMountedIn: -1, doorHp: 0, modifiers: [{ kind: 'range', dice: '1' }] });
   const gate = template({ id: 'gate', anchor: 'hex', mpFootIn: 2, mpMountedIn: -1, doorHp: 30, modifiers: [] });
   const templates = { tower, gate };
 
@@ -163,15 +163,15 @@ describe('hex structure helpers', () => {
   });
 
   it('structureAuraFlags reads tower modifiers, ignoring open/closed', () => {
-    const aura = template({ id: 'a', anchor: 'hex', modifiers: [{ kind: 'advantage', delta: 0 }, { kind: 'grant_disadvantage', delta: 0 }] });
+    const aura = template({ id: 'a', anchor: 'hex', modifiers: [{ kind: 'advantage', dice: '0' }, { kind: 'grant_disadvantage', dice: '0' }] });
     const f = structureAuraFlags({ q: 0, r: 0 }, { '0,0': { templateId: 'a' } }, { a: aura });
     expect(f).toEqual({ advantage: true, disadvantage: false, grantAdvantage: false, grantDisadvantage: true });
     expect(structureAuraFlags({ q: 2, r: 0 }, {}, {})).toEqual({ advantage: false, disadvantage: false, grantAdvantage: false, grantDisadvantage: false });
   });
 
   it('instance modifier override beats the template', () => {
-    const base = template({ id: 'a', anchor: 'hex', modifiers: [{ kind: 'range', delta: 1 }] });
-    const overridden = { '0,0': { templateId: 'a', modifiers: [{ kind: 'range' as const, delta: 3 }] } };
+    const base = template({ id: 'a', anchor: 'hex', modifiers: [{ kind: 'range', dice: '1' }] });
+    const overridden = { '0,0': { templateId: 'a', modifiers: [{ kind: 'range' as const, dice: '3' }] } };
     expect(structureRangeBonus({ q: 0, r: 0 }, overridden, { a: base })).toBe(3);
   });
 });

@@ -36,14 +36,19 @@ describe('mapStructureRow', () => {
     expect(t?.mpMountedOut).toBe(2);
     expect(t?.doorHp).toBeNull();
     expect(t?.maxHp).toBe(30);
-    expect(t?.modifiers).toEqual([{ kind: 'ac', delta: 2, mode: 'melee' }]);
+    expect(t?.modifiers).toEqual([{ kind: 'ac', dice: '2', mode: 'melee' }]);
     expect(templateDoorMax(t)).toBe(30); // null door defaults to maxHp
+  });
+
+  it('normalizes a legacy numeric `delta` into `dice`', () => {
+    const t = mapStructureRow({ modifiers: [{ kind: 'ac', delta: 2 }] });
+    expect(t.modifiers).toEqual([{ kind: 'ac', dice: '2' }]);
   });
 
   it('defaults unknown anchors to edge and drops junk modifiers', () => {
     const t = mapStructureRow({ anchor: 'triangle', modifiers: [{ kind: 'nope', delta: 3 }, { kind: 'entry', delta: 2 }] });
     expect(t.anchor).toBe('edge');
-    expect(t.modifiers).toEqual([{ kind: 'entry', delta: 2 }]);
+    expect(t.modifiers).toEqual([{ kind: 'entry', dice: '2' }]);
   });
 });
 

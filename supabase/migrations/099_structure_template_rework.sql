@@ -54,13 +54,13 @@ INSERT INTO map_structure_templates
    door_hp, max_hp, dt, modifiers)
 VALUES
   ('Archer''s Stake', 'Low stakes only loose troops can cross.', 'edge', '#a1887f', false, true,
-   2, 2, -1, -1, 0, 30, 15, '[{"kind":"enter_org_max","delta":1}]'),
+   2, 2, -1, -1, 0, 30, 15, '[{"kind":"enter_org_max","dice":"1"}]'),
   ('Wood Wall', 'Wooden barrier. Must be destroyed to pass; grants cover.', 'edge', '#c49a58', true, false,
    NULL, NULL, NULL, NULL, 30, 30, 15,
-   '[{"kind":"ac","delta":2,"mode":"melee"},{"kind":"ac","delta":2,"mode":"ranged"}]'),
+   '[{"kind":"ac","dice":"2","mode":"melee"},{"kind":"ac","dice":"2","mode":"ranged"}]'),
   ('Stone Wall', 'Stone barrier. Must be destroyed to pass; grants cover.', 'edge', '#b0bec5', true, false,
    NULL, NULL, NULL, NULL, 60, 60, 20,
-   '[{"kind":"ac","delta":3,"mode":"melee"},{"kind":"ac","delta":3,"mode":"ranged"}]'),
+   '[{"kind":"ac","dice":"3","mode":"melee"},{"kind":"ac","dice":"3","mode":"ranged"}]'),
   ('Wood Gate', 'Wooden gate. Costs extra MP to pass.', 'hex', '#c49a58', false, false,
    2, NULL, -1, NULL, 0, 30, 15, '[]'),
   ('Stone Gate', 'Stone gate. Costs extra MP to pass.', 'hex', '#b0bec5', false, false,
@@ -71,7 +71,7 @@ VALUES
    2, NULL, -1, NULL, 30, 100, 20, '[]'),
   ('Wood Watch Tower', 'Occupant shoots from above (advantage); attackers are exposed.', 'hex', '#8d6e63', false, false,
    2, NULL, -1, NULL, 0, 100, 15,
-   '[{"kind":"advantage","delta":0},{"kind":"grant_disadvantage","delta":0}]'),
+   '[{"kind":"advantage"},{"kind":"grant_disadvantage"}]'),
   ('Stone Watch Tower', 'Stone watch tower; occupant shoots from above.', 'hex', '#78909c', false, false,
    2, NULL, -1, NULL, 0, 100, 20,
-   '[{"kind":"advantage","delta":0},{"kind":"grant_disadvantage","delta":0}]');
+   '[{"kind":"advantage"},{"kind":"grant_disadvantage"}]');

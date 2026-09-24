@@ -40,10 +40,13 @@ export function honorsMode(kind: EffectModifierKind): boolean {
 
 export interface EffectModifier {
   kind: EffectModifierKind;
-  delta: number;
-  /** Dice amount for damage/heal kinds, e.g. "2d6+2" (X=0 => flat Z). Overrides delta. */
+  /**
+   * The modifier's amount as a single string: a plain number ("2", "-1") for
+   * flat stat/aura amounts, or dice ("2d6+2", "1d2") for rolled damage/heal.
+   * Absent for amount-less flag kinds (advantage/disadvantage/grant_*).
+   */
   dice?: string;
-  /** When true, the dice/delta HEALS instead of damaging. */
+  /** When true, the dice amount HEALS instead of damaging. */
   healing?: boolean;
   /** Standard save: d20 + bonus >= saveDC passes (half or negate). */
   savingThrow?: SaveStatName | null;
@@ -72,9 +75,20 @@ export function rollDice(dice: string | null | undefined, rng: () => number = Ma
   return total;
 }
 
-export function effectAmount(mod: { dice?: string; delta: number }, rng: () => number = Math.random): number {
-  const p = parseDice(mod.dice);
-  return p ? rollDice(mod.dice, rng) : mod.delta;
+/** The FLAT amount of a modifier's `dice` string (0 when absent/unparseable).
+ *  Used for stat/aura kinds (ac/morale/movement/range/enter_org_max/mp_cost). */
+export function modifierAmount(dice: string | null | undefined): number {
+  return parseDice(dice)?.bonus ?? 0;
+}
+
+/** True when `dice` is a rolled amount (has at least one die), not a flat number. */
+export function isDiceAmount(dice: string | null | undefined): boolean {
+  return (parseDice(dice)?.count ?? 0) > 0;
+}
+
+/** Roll a modifier's amount (a flat number string rolls its constant). */
+export function effectAmount(mod: { dice?: string }, rng: () => number = Math.random): number {
+  return rollDice(mod.dice, rng);
 }
 
 /** Human label for a modifier kind (flag kinds carry no amount). */
@@ -97,7 +111,7 @@ export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
 /** Short one-line label for a modifier (used in lists/tooltips). */
 export function modifierSummary(m: EffectModifier): string {
   if (isFlagModifierKind(m.kind)) return EFFECT_MODIFIER_LABELS[m.kind];
-  return `${m.kind} ${m.dice ?? (m.delta >= 0 ? '+' + m.delta : m.delta)}${m.healing ? ' heal' : ''}`;
+  return `${m.kind} ${m.dice ?? ''}${m.healing ? ' heal' : ''}`.trim();
 }
 
 export type EffectScope = 'unit' | 'zone' | 'both';
@@ -130,19 +144,24 @@ export function parseModifiers(raw: unknown): EffectModifier[] {
   for (const m of raw) {
     if (!m || typeof m !== 'object') continue;
     const kind = (m as { kind?: unknown }).kind;
-    const delta = Number((m as { delta?: unknown }).delta);
     const isKind = typeof kind === 'string' && KINDS.includes(kind as EffectModifierKind);
-    if (isKind && (Number.isFinite(delta) || FLAG_MODIFIER_KINDS.includes(kind as EffectModifierKind))) {
-      const out2: EffectModifier = { kind: kind as EffectModifierKind, delta: Number.isFinite(delta) ? delta : 0 };
-      if (typeof (m as any).dice === 'string') out2.dice = (m as any).dice;
-      if ((m as any).healing === true) out2.healing = true;
-      const st = (m as any).savingThrow;
-      if (typeof st === 'string') out2.savingThrow = st as SaveStatName;
-      if (Number.isFinite((m as any).saveDC)) out2.saveDC = Number((m as any).saveDC);
-      if (typeof (m as any).onSaveHalfOrNeg === 'boolean') out2.onSaveHalfOrNeg = (m as any).onSaveHalfOrNeg;
-      if ((m as any).mode === 'melee' || (m as any).mode === 'ranged') out2.mode = (m as any).mode;
-      out.push(out2);
+    if (!isKind) continue;
+    const out2: EffectModifier = { kind: kind as EffectModifierKind };
+    const dice = (m as any).dice;
+    if (typeof dice === 'string' && dice.trim()) {
+      out2.dice = dice;
+    } else {
+      // Backward compat: old rows stored the amount as a numeric `delta`.
+      const legacy = Number((m as any).delta);
+      if (Number.isFinite(legacy) && legacy !== 0) out2.dice = String(legacy);
     }
+    if ((m as any).healing === true) out2.healing = true;
+    const st = (m as any).savingThrow;
+    if (typeof st === 'string') out2.savingThrow = st as SaveStatName;
+    if (Number.isFinite((m as any).saveDC)) out2.saveDC = Number((m as any).saveDC);
+    if (typeof (m as any).onSaveHalfOrNeg === 'boolean') out2.onSaveHalfOrNeg = (m as any).onSaveHalfOrNeg;
+    if ((m as any).mode === 'melee' || (m as any).mode === 'ranged') out2.mode = (m as any).mode;
+    out.push(out2);
   }
   return out;
 }
@@ -193,6 +212,6 @@ export function blankEffectTemplate(): Omit<EffectTemplate, 'id' | 'createdAt' |
     layer: 'below',
     scope: 'unit',
     defaultDuration: 3,
-    modifiers: [{ kind: 'ac', delta: 1, dice: '1' }],
+    modifiers: [{ kind: 'ac', dice: '1' }],
   };
 }

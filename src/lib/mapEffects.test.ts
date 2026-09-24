@@ -13,7 +13,7 @@ const template = (over: Partial<EffectTemplate> = {}): EffectTemplate => ({
   layer: 'below',
   scope: 'zone',
   defaultDuration: 3,
-  modifiers: [{ kind: 'ac', delta: -2 }],
+  modifiers: [{ kind: 'ac', dice: '-2' }],
   createdAt: '',
   updatedAt: '',
   ...over,
@@ -48,7 +48,7 @@ describe('expandHexEffects', () => {
       r: -3,
       name: 'Haunted Marsh',
       kind: 'ac',
-      delta: -2,
+      dice: '-2',
       duration: 0,
       turnsLeft: 0,
       permanent: true,
@@ -57,7 +57,7 @@ describe('expandHexEffects', () => {
   });
 
   it('splits a composite template across modifiers', () => {
-    const composite = template({ modifiers: [{ kind: 'ac', delta: -2 }, { kind: 'morale', delta: -1 }] });
+    const composite = template({ modifiers: [{ kind: 'ac', dice: '-2' }, { kind: 'morale', dice: '-1' }] });
     const out = expandHexEffects([{ q: 0, r: 0, effectId: 'c' }], { c: composite });
     expect(out.map(z => z.kind)).toEqual(['ac', 'morale']);
     expect(out.every(z => z.permanent)).toBe(true);

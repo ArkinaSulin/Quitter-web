@@ -5,7 +5,7 @@
 // field accepts a plain number or dice "XdY±Z" (X=0 = flat Z); the flat part is
 // mirrored into `delta` for stat kinds and legacy consumers.
 import React from 'react';
-import { EffectModifier, EffectModifierKind, parseDice, isFlagModifierKind, honorsMode, EFFECT_MODIFIER_LABELS } from '@/lib/effectTemplates';
+import { EffectModifier, EffectModifierKind, isFlagModifierKind, honorsMode, EFFECT_MODIFIER_LABELS } from '@/lib/effectTemplates';
 
 export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
   { value: 'ac', label: 'AC ±' },
@@ -26,11 +26,10 @@ export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
 export const DEFAULT_INPUT_CLASS =
   'bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700 focus:border-amber-400 outline-none disabled:opacity-50';
 
-/** Apply a typed amount ("4" or "2d6+2") onto a modifier. */
+/** Apply a typed amount ("4" or "2d6+2") onto a modifier's canonical `dice`. */
 export function patchAmount(mod: EffectModifier, raw: string): EffectModifier {
   const text = raw.trim();
-  const parsed = parseDice(text);
-  return { ...mod, dice: text || undefined, delta: parsed ? parsed.bonus : 0 };
+  return { ...mod, dice: text || undefined };
 }
 
 interface EffectModifierFieldsProps {
@@ -74,7 +73,7 @@ export function EffectModifierFields({ modifier: m, onChange, readOnly = false, 
             <input
               className={input + ' !w-32 flex-1 min-w-[6rem]'}
               type="text"
-              value={m.dice ?? (m.delta ? String(m.delta) : '')}
+              value={m.dice ?? ''}
               disabled={readOnly}
               onChange={e => onChange(patchAmount(m, e.target.value))}
               placeholder="amount / 2d6+2"

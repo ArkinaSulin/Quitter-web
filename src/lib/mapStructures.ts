@@ -10,7 +10,7 @@
 // passage, HP gates modifiers). Modifiers may be overridden per instance.
 import { Walls, Wall, WallFace, edgeRef } from './walls';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
-import { EffectModifier } from '@/lib/effectTemplates';
+import { EffectModifier, modifierAmount } from '@/lib/effectTemplates';
 import { templateDoorMax } from '@/lib/structureTemplates';
 import { GroundEffect } from '@/types/gameProtocol';
 
@@ -72,7 +72,7 @@ function coverAc(mods: EffectModifier[]): { melee: number; ranged: number } {
   let ranged = 0;
   for (const m of mods) {
     if (m.kind !== 'ac') continue;
-    const d = m.delta ?? 0;
+    const d = modifierAmount(m.dice);
     if (m.mode === 'melee') melee += d;
     else if (m.mode === 'ranged') ranged += d;
     else { melee += d; ranged += d; }
@@ -147,13 +147,13 @@ export function structureCounts(s: MapStructures): { edges: number; hexes: numbe
 /** True when a structure's modifiers gate entry for a unit of this org level
  *  (`enter_org_max`: only formations with org level <= value may enter). */
 export function structureBlocksOrg(t: StructureTemplate | null | undefined, orgLevel: number, inst?: StructureInstance | null): boolean {
-  return instanceModifiers(inst, t).some(m => m.kind === 'enter_org_max' && orgLevel > (m.delta ?? 0));
+  return instanceModifiers(inst, t).some(m => m.kind === 'enter_org_max' && orgLevel > modifierAmount(m.dice));
 }
 
 /** True when a ground zone on (q,r) gates entry for this org level. */
 export function zoneBlocksOrg(zones: GroundEffect[] | null | undefined, q: number, r: number, orgLevel: number): boolean {
   if (!zones) return false;
-  return zones.some(z => z.q === q && z.r === r && z.kind === 'enter_org_max' && orgLevel > (z.delta ?? 0));
+  return zones.some(z => z.q === q && z.r === r && z.kind === 'enter_org_max' && orgLevel > modifierAmount(z.dice));
 }
 
 /** The hex structure instance at a hex (keyed "q,r"), if any. */
@@ -248,6 +248,6 @@ export function structureRangeBonus(
   const inst = hexStructureAt(structures, hex);
   const t = inst ? templates?.[inst.templateId] : undefined;
   let sum = 0;
-  for (const m of instanceModifiers(inst, t)) if (m.kind === 'range') sum += m.delta ?? 0;
+  for (const m of instanceModifiers(inst, t)) if (m.kind === 'range') sum += modifierAmount(m.dice);
   return sum;
 }

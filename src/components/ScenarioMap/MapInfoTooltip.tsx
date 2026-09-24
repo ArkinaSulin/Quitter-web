@@ -9,6 +9,7 @@ import { Hex, GroundEffect } from '@/types/gameProtocol';
 import { EdgeRef } from '@/lib/walls';
 import { MapStructures, instanceModifiers, instanceDoorState } from '@/lib/mapStructures';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
+import { modifierAmount } from '@/lib/effectTemplates';
 import { useTooltipClamp } from './useTooltipClamp';
 
 interface MapInfoTooltipProps {
@@ -26,20 +27,21 @@ interface MapInfoTooltipProps {
 
 const mpText = (v: number | null): string => (v === null ? '—' : v < 0 ? 'block' : `${v}`);
 
-function coverAc(mods: { kind: string; delta: number; mode?: string }[]): { melee: number; ranged: number } {
+function coverAc(mods: { kind: string; dice?: string; mode?: string }[]): { melee: number; ranged: number } {
   let melee = 0;
   let ranged = 0;
   for (const m of mods) {
     if (m.kind !== 'ac') continue;
-    if (m.mode === 'melee') melee += m.delta;
-    else if (m.mode === 'ranged') ranged += m.delta;
-    else { melee += m.delta; ranged += m.delta; }
+    const d = modifierAmount(m.dice);
+    if (m.mode === 'melee') melee += d;
+    else if (m.mode === 'ranged') ranged += d;
+    else { melee += d; ranged += d; }
   }
   return { melee, ranged };
 }
 
 function EffectInfo({ zone }: { zone: GroundEffect }) {
-  const amount = zone.dice ?? (zone.delta >= 0 ? `+${zone.delta}` : `${zone.delta}`);
+  const amount = zone.dice ?? '';
   return (
     <div className="mb-1 last:mb-0">
       <div className="font-semibold" style={{ color: zone.color || '#fff' }}>{zone.name}</div>
@@ -52,7 +54,7 @@ function EffectInfo({ zone }: { zone: GroundEffect }) {
   );
 }
 
-const modLine = (mods: { kind: string; delta: number; mode?: string }[]): string =>
+const modLine = (mods: { kind: string; dice?: string; mode?: string }[]): string =>
   mods.map(m => `${m.kind}${m.mode ? `(${m.mode})` : ''}`).join(', ');
 
 function HexStructureInfo({ template, inst, hp, maxHp }: { template: StructureTemplate; inst: StructureInstance; hp: number; maxHp: number }) {

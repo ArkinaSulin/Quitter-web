@@ -91,7 +91,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
   const summary = useMemo(
     () =>
       draft
-        ? draft.modifiers.map(m => `${m.kind}: ${m.dice ?? (m.delta > 0 ? `+${m.delta}` : m.delta)}`).join(' · ') || '(no modifiers)'
+        ? draft.modifiers.map(m => `${m.kind}: ${m.dice ?? ''}`.trim()).join(' · ') || '(no modifiers)'
         : '',
     [draft],
   );
@@ -219,7 +219,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
                 {!readOnly && (
                   <button
                     className="mt-2 px-3 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600"
-                    onClick={() => setDraft({ ...draft, modifiers: [...draft.modifiers, { kind: 'ac', delta: 1, dice: '1' }] })}
+                    onClick={() => setDraft({ ...draft, modifiers: [...draft.modifiers, { kind: 'ac', dice: '1' }] })}
                   >
                     + Add modifier
                   </button>

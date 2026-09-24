@@ -18,7 +18,7 @@ import { Unit, Hex, Formation, UnitEffect } from '@/types/gameProtocol';
 import type { CombatOutcome, AttackerHeroProfile } from './unitCombat';
 
 function flagEffect(kind: UnitEffect['kind']): UnitEffect {
-  return { key: `eff-${kind}`, kind, name: kind, color: '#ffffff', delta: 0, duration: 3, turnsLeft: 3 };
+  return { key: `eff-${kind}`, kind, name: kind, color: '#ffffff', dice: '0', duration: 3, turnsLeft: 3 };
 }
 
 function makeUnit(overrides: Partial<Unit> = {}): Unit {

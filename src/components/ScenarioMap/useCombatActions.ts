@@ -47,7 +47,7 @@ interface AttackStash {
  *  roll-mode reader picks them up (tower: occupant advantage / attacker cover). */
 function auraEffects(f: StructureAuraFlags, unitName: string): UnitEffect[] {
   const out: UnitEffect[] = [];
-  const add = (kind: UnitEffect['kind']) => out.push({ key: `struct-${kind}-${unitName}`, name: 'Structure', color: '#8d6e63', kind, delta: 0, duration: 1, turnsLeft: 1 });
+  const add = (kind: UnitEffect['kind']) => out.push({ key: `struct-${kind}-${unitName}`, name: 'Structure', color: '#8d6e63', kind, duration: 1, turnsLeft: 1 });
   if (f.advantage) add('advantage');
   if (f.disadvantage) add('disadvantage');
   if (f.grantAdvantage) add('grant_advantage');

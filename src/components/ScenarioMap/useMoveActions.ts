@@ -10,6 +10,7 @@ import { isFormationChangeAffordable } from '@/lib/formationCost';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { isMeleeWeapon, isInAnyHostileKillZone, computeWeaponSwitchAc } from '@/lib/meleeFallback';
+import { modifierAmount } from '@/lib/effectTemplates';
 import { areHexesAdjacent } from '@/lib/unitMorale';
 import { WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { parseWeapons } from '@/lib/weaponParser';
@@ -109,7 +110,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // An active AC effect rides the weapon return: keep its delta, rebase its
     // snapshot onto the returned weapon's no-buff AC.
     const acEffect = (unit.effects ?? []).find(e => e.kind === 'ac' && !e.zoneHex);
-    const ac = acEffect ? baseAc + acEffect.delta : baseAc;
+    const ac = acEffect ? baseAc + modifierAmount(acEffect.dice) : baseAc;
     const acChanges = ac !== unit.currentAc
       ? [
           { field: 'currentAc', from: unit.currentAc, to: ac },

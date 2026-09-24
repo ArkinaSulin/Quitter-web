@@ -9,6 +9,7 @@ import { heroMovePerAction } from '@/lib/moveCost';
 import { unitAttackCap } from '@/lib/attackCap';
 import { getSetting } from '@/lib/settingsCache';
 import { isAttackRollEffect } from '@/lib/unitEffects';
+import { modifierAmount } from '@/lib/effectTemplates';
 import { useTooltipClamp } from './useTooltipClamp';
 
 interface UnitTooltipProps {
@@ -120,8 +121,8 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
             {(unit.effects ?? []).map(e => (
               <span key={e.key} className="col-span-2 flex items-center gap-1.5">
                 <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: e.color }} />
-                <span className={isAttackRollEffect(e.kind) ? (e.kind === 'advantage' || e.kind === 'grant_advantage' ? 'text-green-400' : 'text-red-400') : e.kind === 'dot' ? 'text-orange-400' : e.delta < 0 ? 'text-red-400' : 'text-green-400'}>{e.name}</span>
-                <span className="text-gray-500">{e.zoneHex ? 'zone' : isAttackRollEffect(e.kind) ? 'attack roll' : e.kind === 'dot' ? `${Math.abs(e.delta)}/tick` : `${e.delta > 0 ? '+' : ''}${e.delta}`} · {e.turnsLeft} turn{e.turnsLeft === 1 ? '' : 's'}</span>
+          <span className={isAttackRollEffect(e.kind) ? (e.kind === 'advantage' || e.kind === 'grant_advantage' ? 'text-green-400' : 'text-red-400') : e.kind === 'dot' ? 'text-orange-400' : modifierAmount(e.dice) < 0 ? 'text-red-400' : 'text-green-400'}>{e.name}</span>
+          <span className="text-gray-500">{e.zoneHex ? 'zone' : isAttackRollEffect(e.kind) ? 'attack roll' : e.kind === 'dot' ? `${Math.abs(modifierAmount(e.dice))}/tick` : `${e.dice ?? ''}`} · {e.turnsLeft} turn{e.turnsLeft === 1 ? '' : 's'}</span>
               </span>
             ))}
           </>

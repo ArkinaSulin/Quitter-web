@@ -20,7 +20,8 @@ function parseEffects(raw: any): UnitEffect[] {
     name: e?.name || '',
     color: e?.color || '#cccccc',
     kind: e?.kind || 'ac',
-    delta: Number(e?.delta) || 0,
+    // Amount is one string: prefer `dice`; fall back to legacy numeric `delta`.
+    ...((typeof e?.dice === 'string' && e.dice.trim()) ? { dice: e.dice } : (Number.isFinite(Number(e?.delta)) && Number(e?.delta) !== 0 ? { dice: String(Number(e.delta)) } : {})),
     duration: Number(e?.duration) || 1,
     turnsLeft: Number(e?.turnsLeft) ?? 1,
     casterUnitId: e?.casterUnitId ?? null,

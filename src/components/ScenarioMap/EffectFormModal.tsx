@@ -144,7 +144,7 @@ export function EffectFormModal({
               <button
                 type="button"
                 className="mt-2 px-3 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600"
-                onClick={() => patch({ modifiers: [...value.modifiers, { kind: 'ac', delta: 1, dice: '1' }] })}
+                onClick={() => patch({ modifiers: [...value.modifiers, { kind: 'ac', dice: '1' }] })}
               >
                 + Add modifier
               </button>

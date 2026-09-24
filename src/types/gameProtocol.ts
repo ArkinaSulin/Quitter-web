@@ -215,11 +215,13 @@ export interface UnitEffect {
   transparentBackground?: boolean;
   /** Draw the artwork above or below the unit token on that hex. */
   layer?: 'above' | 'below';
-  /** Signed stat delta (ac/morale/movement) or per-tick DoT damage (dot). */
-  delta: number;
-  /** Dice amount for damage/heal kinds ("2d6+2"; X=0 => flat Z). Overrides delta. */
+  /**
+   * The amount as one string: a plain number ("2", "-1") for signed stat deltas
+   * (ac/morale/movement/range) or a per-tick DoT amount, or dice ("2d6+2") for
+   * rolled damage/heal. Absent for amount-less flag kinds.
+   */
   dice?: string;
-  /** When true, dice/delta HEALS instead of damaging. */
+  /** When true, the amount HEALS instead of damaging. */
   healing?: boolean;
   /** Saving throw stat / DC / half-or-negate (standard d20+bonus >= DC passes). */
   savingThrow?: 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha' | null;
@@ -257,7 +259,7 @@ export interface GroundEffect {
   transparentBackground?: boolean;
   /** Draw the artwork above or below the unit token on this hex. */
   layer?: 'above' | 'below';
-  delta: number;
+  /** The amount as one string (a flat number or dice). See UnitEffect.dice. */
   dice?: string;
   healing?: boolean;
   savingThrow?: 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha' | null;

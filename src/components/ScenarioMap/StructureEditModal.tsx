@@ -92,7 +92,7 @@ export function StructureEditModal({ template, instance, onSave, onClose }: Stru
             ))}
           </div>
           <button className="mt-2 px-3 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600"
-            onClick={() => setMods(list => [...list, { kind: 'ac', delta: 1, mode: 'melee' }])}>
+            onClick={() => setMods(list => [...list, { kind: 'ac', dice: '1', mode: 'melee' }])}>
             + Add modifier
           </button>
         </div>

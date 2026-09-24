@@ -13,9 +13,9 @@ import { isAttackRollEffect } from '@/lib/unitEffects';
 import { EffectFormValue } from './EffectFormModal';
 
 /** Amount label for a placed effect: flag kinds have no amount. */
-function effectAmountText(e: { kind: UnitEffect['kind']; delta: number; dice?: string; healing?: boolean }): string {
+function effectAmountText(e: { kind: UnitEffect['kind']; dice?: string; healing?: boolean }): string {
   if (isAttackRollEffect(e.kind)) return 'attack roll';
-  return e.dice ?? (e.kind === 'dot' ? `${e.delta}/tick` : `${e.delta > 0 ? '+' : ''}${e.delta}`) + (e.healing ? ' heal' : '');
+  return (e.kind === 'dot' ? `${e.dice ?? '0'}/tick` : `${e.dice ?? ''}`) + (e.healing ? ' heal' : '');
 }
 
 interface AddEffectModalProps {

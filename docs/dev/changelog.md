@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Effects/modifiers: one canonical `dice` amount (delta removed) (2026-09-21)
+**Files:** src/lib/{effectTemplates,unitEffects,mapStructures,mapEffects}.ts (+ tests), src/types/gameProtocol.ts, src/hooks/{useGameEngine,useSupabaseSync}.ts, src/components/ScenarioMap/{ScenarioMap,MapInfoTooltip,UnitTooltip,AddEffectModal,EffectFormModal,StructureEditModal,useMoveActions,useCombatActions}.tsx, src/components/EffectEditor/{EffectEditor,EffectModifierFields}.tsx, src/components/StructureEditor/StructureEditor.tsx, supabase/migrations/099_structure_template_rework.sql, docs/dev/changelog.md
+
+- **`delta` is gone.** `EffectModifier`, `UnitEffect` and `GroundEffect` now carry the amount in a single string `dice` — a plain number (`"2"`, `"-1"`) for flat stat/aura amounts or dice (`"2d6+2"`) for rolled damage/heal. Absent for amount-less flag kinds. This removes the dual `dice`/`delta` representation that left the effect/structure editor amount box blank and that `useSupabaseSync.parseEffects` silently dropped on reload (dice lost → fell back to 0).
+- **Helpers**: `modifierAmount(dice)` = the flat/signed value (stat + aura consumers), `isDiceAmount(dice)` = has ≥1 die (per-troop rolls vs a flat once), `effectAmount`/`rollDice` unchanged.
+- **Backward compatible**: `parseModifiers` and `parseEffects` normalize a legacy numeric `delta` into `dice` on read, so existing `effect_templates` rows and `units.effects`/`ground_data` jsonb keep working with no data migration.
+- **Editors**: `+ Add modifier` seeds `dice: "1"`; the shared `EffectModifierFields` amount box reads/writes `dice` (dice or a flat number). Summaries/tooltips read `dice`.
+- Migration 099 presets now store `dice` (e.g. `{"kind":"ac","dice":"2","mode":"melee"}`). `tsc` clean; 708 tests pass; `next build` clean.
+
 ## Structure template rework + movement pooling (migration 099) (2026-09-21)
 **Files:** supabase/migrations/099_structure_template_rework.sql (new), src/types/structure.ts, src/lib/{effectTemplates,structureTemplates,mapStructures,walls,wallCombat,structureCombat,moveCost}.ts (+ tests), src/components/ScenarioMap/{mapGeometry,useOverlay,useMoveActions,useReactionActions,ScenarioMap,StructurePaintPanel,StructureEditModal(new),MapInfoTooltip,LeftPanel,useCanvasDraw,useHexGrid}.ts(x), src/components/{MapEditor/MapEditor,MapEditor/MapCanvas,StructureEditor/StructureEditor,StructureEditor/StructurePreview,EffectEditor/EffectModifierFields}.tsx, docs/dev/{02,07,18,changelog}.md, AGENTS.md
 
