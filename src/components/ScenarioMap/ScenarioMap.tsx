@@ -109,7 +109,6 @@ type DroppedEffect = {
   defaultDuration: number;
   modifiers: {
     kind: string;
-    delta: number;
     dice?: string;
     healing?: boolean;
     savingThrow?: 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha' | null;

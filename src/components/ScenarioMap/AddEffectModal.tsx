@@ -81,7 +81,7 @@ export function AddEffectModal({
     duration: Math.max(1, duration),
     casterTeam: tempo === 'every-turn' ? '' : tempo,
     modifiers: (template?.modifiers ?? []).map(m =>
-      m.kind === 'hp_borrow' && borrowAmount > 0 ? { ...m, delta: borrowAmount } : m,
+      m.kind === 'hp_borrow' && borrowAmount > 0 ? { ...m, dice: String(borrowAmount) } : m,
     ),
   });
 
