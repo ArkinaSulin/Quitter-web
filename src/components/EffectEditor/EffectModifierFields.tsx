@@ -74,7 +74,7 @@ export function EffectModifierFields({ modifier: m, onChange, readOnly = false, 
             <input
               className={input + ' !w-32 flex-1 min-w-[6rem]'}
               type="text"
-              value={m.dice ?? ''}
+              value={m.dice ?? (m.delta ? String(m.delta) : '')}
               disabled={readOnly}
               onChange={e => onChange(patchAmount(m, e.target.value))}
               placeholder="amount / 2d6+2"
