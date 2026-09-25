@@ -198,6 +198,51 @@ export function hasAuraFlags(f: StructureAuraFlags): boolean {
   return f.advantage || f.disadvantage || f.grantAdvantage || f.grantDisadvantage;
 }
 
+/**
+ * Expand every HEX structure's modifiers into PERMANENT ground zones so the one
+ * ground-effect runtime engine applies them (membership auras, `range`, `ac`,
+ * `block_attacks`, `enter_org_max`, entry/dot). Edge structures have no hex-zone
+ * equivalent (their effects are per-crossing) and stay on the edge path.
+ */
+export function structureZones(
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+): import('@/types/gameProtocol').GroundEffect[] {
+  const out: import('@/types/gameProtocol').GroundEffect[] = [];
+  if (!structures) return out;
+  for (const [key, inst] of Object.entries(structures)) {
+    if (!isHexStructureKey(key)) continue;
+    const t = templates?.[inst.templateId];
+    if (!t) continue;
+    const [q, r] = key.split(',').map(Number);
+    instanceModifiers(inst, t).forEach((m, i) => {
+      out.push({
+        key: `struct-${key}-${i}`,
+        q,
+        r,
+        name: t.name,
+        color: t.color,
+        ...(t.imageUrl ? { imageUrl: t.imageUrl } : {}),
+        kind: m.kind as import('@/types/gameProtocol').GroundEffect['kind'],
+        ...(m.dice ? { dice: m.dice } : {}),
+        ...(m.healing ? { healing: true } : {}),
+        ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
+        ...(m.saveDC !== undefined ? { saveDC: m.saveDC } : {}),
+        ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
+        ...(m.mode ? { mode: m.mode } : {}),
+        ...(m.direction ? { direction: m.direction } : {}),
+        permanent: true,
+        duration: 0,
+        turnsLeft: 0,
+        casterUnitId: null,
+        casterTeam: null,
+        casterPlayerId: null,
+      });
+    });
+  }
+  return out;
+}
+
 /** Open/closed state of a hex structure (edge structures are never "open"). */
 export function structureIsOpen(inst: StructureInstance | null | undefined): boolean {
   return inst?.open === true;

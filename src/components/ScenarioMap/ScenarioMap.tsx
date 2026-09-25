@@ -47,7 +47,7 @@ import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf, computeOccupiedHexes, computeThreatHexes } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/lib/walls';
-import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, isHexStructureKey } from '@/lib/mapStructures';
+import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/lib/wallCombat';
@@ -114,6 +114,8 @@ type DroppedEffect = {
     savingThrow?: 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha' | null;
     saveDC?: number | null;
     onSaveHalfOrNeg?: boolean;
+    mode?: 'melee' | 'ranged';
+    direction?: 'in' | 'out' | 'both';
   }[];
 };
 
@@ -135,6 +137,8 @@ function formFromDrop(t: DroppedEffect, casterTeam: string): EffectFormValue {
       ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
       ...(m.saveDC != null ? { saveDC: m.saveDC } : {}),
       ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
+      ...(m.mode ? { mode: m.mode } : {}),
+      ...(m.direction ? { direction: m.direction } : {}),
     })),
   };
 }
@@ -157,6 +161,8 @@ function formFromZone(z: GroundEffect): EffectFormValue {
       ...(z.savingThrow ? { savingThrow: z.savingThrow } : {}),
       ...(z.saveDC != null ? { saveDC: z.saveDC } : {}),
       ...(z.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: z.onSaveHalfOrNeg } : {}),
+      ...(z.mode ? { mode: z.mode } : {}),
+      ...(z.direction ? { direction: z.direction } : {}),
     }],
   };
 }
@@ -179,6 +185,8 @@ function formFromUnitEffect(e: import('@/types/gameProtocol').UnitEffect): Effec
       ...(e.savingThrow ? { savingThrow: e.savingThrow } : {}),
       ...(e.saveDC != null ? { saveDC: e.saveDC } : {}),
       ...(e.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: e.onSaveHalfOrNeg } : {}),
+      ...(e.mode ? { mode: e.mode } : {}),
+      ...(e.direction ? { direction: e.direction } : {}),
     }],
   };
 }
@@ -281,6 +289,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
     return merged;
   }, [terrainCosts, groundZones]);
+
+  // Hex-structure modifiers are expanded into permanent ground zones so the ONE
+  // ground-effect engine applies them (auras/range/ac/block_attacks/enter_org_max/
+  // entry). Edge structures stay on the edge path. Painted `groundZones` remains
+  // the persisted/rendered list; `effectiveZones` is the engine view.
+  const effectiveZones = useMemo(
+    () => [...groundZones, ...structureZones(structures, structureTemplates)],
+    [groundZones, structures, structureTemplates],
+  );
   // GM map-edit brushes: terrain = entry-cost value (null = off); zone = template
   // armed for placement (null = off).
   const [terrainBrushCost, setTerrainBrushCost] = useState<number | null>(null);
@@ -760,8 +777,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   // Keep the engine's zone list in sync so landing on an 'entry' zone deals damage.
   useEffect(() => {
-    syncZoneEffects(groundZones);
-  }, [groundZones, syncZoneEffects]);
+    syncZoneEffects(effectiveZones);
+  }, [effectiveZones, syncZoneEffects]);
 
   const {
     reactionOffers,
@@ -795,7 +812,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     walls,
     structures,
     structureTemplates,
-    groundZones,
+    groundZones: effectiveZones,
   });
 
   // Wall edge under the pointer while dragging a unit (drag-to-attack hint).
@@ -907,7 +924,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     walls,
     structures,
     structureTemplates,
-    groundZones,
+    groundZones: effectiveZones,
     pursuitsRef,
   });
 
@@ -1093,6 +1110,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
         ...(m.saveDC != null ? { saveDC: m.saveDC } : {}),
         ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
+        ...(m.mode ? { mode: m.mode } : {}),
+        ...(m.direction ? { direction: m.direction } : {}),
         casterTeam: d.form.casterTeam || null,
       }, d.form.duration, playerId);
     }
@@ -1121,6 +1140,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         savingThrow: m.savingThrow,
         saveDC: m.saveDC,
         onSaveHalfOrNeg: m.onSaveHalfOrNeg,
+        mode: m.mode,
+        direction: m.direction,
         zIndex: next.length,
         duration: d.form.duration,
         turnsLeft: d.form.duration,
@@ -1170,6 +1191,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       savingThrow: m.savingThrow,
       saveDC: m.saveDC,
       onSaveHalfOrNeg: m.onSaveHalfOrNeg,
+      mode: m.mode,
+      direction: m.direction,
       duration: form.duration,
       turnsLeft: Math.min(form.duration, z.turnsLeft),
       casterTeam: form.casterTeam || null,
@@ -1195,6 +1218,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
       ...(m.saveDC != null ? { saveDC: m.saveDC } : {}),
       ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
+      ...(m.mode ? { mode: m.mode } : {}),
+      ...(m.direction ? { direction: m.direction } : {}),
       casterUnitId: orig?.casterUnitId ?? null,
       casterTeam: form.casterTeam || null,
     }, form.duration);
@@ -1321,7 +1346,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         formationsMap,
         turnNumber,
         freeMove,
-        zones: groundZones,
+        zones: effectiveZones,
       });
       // Only advance the client's turn state when the server actually committed —
       // otherwise the UI shows a turn that never happened (and units never reset).
@@ -1355,7 +1380,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     } finally {
       setIsEndingTurn(false);
     }
-  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, freeMove, isEndingTurn, groundZones, persistMapData, scenarioId]);
+  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, freeMove, isEndingTurn, effectiveZones, persistMapData, scenarioId]);
 
   const handleEndTurn = useCallback(async () => {
     if (isEndingTurn) return;
@@ -1496,6 +1521,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     playerName,
     setAttachModal,
     canAttackTarget: canAttackInFog,
+    groundZones: effectiveZones,
   });
   pursuitsRef.current = performPursuits;
 
@@ -1871,10 +1897,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
-    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: moveTerrainCosts, walls, structures, templates: structureTemplates, zones: groundZones, hoveredEdge: hoveredWallEdge });
+    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: moveTerrainCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, hoveredEdge: hoveredWallEdge });
     if (retreatHoverHex) base[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(base);
-  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, moveTerrainCosts, walls, structures, structureTemplates, groundZones, hoveredWallEdge, retreatHoverHex]);
+  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, moveTerrainCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex]);
 
   // Center map on initial load
   useEffect(() => {

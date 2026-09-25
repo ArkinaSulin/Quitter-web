@@ -724,13 +724,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                 >
                   New
                 </button>
-                <button
-                  onClick={handleClone}
-                  disabled={!formData}
-                  className="flex-1 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Clone
-                </button>
               </>
             )}
           </div>
@@ -1213,10 +1206,11 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                     Save
                   </button>
                   <button
-                    onClick={handleSaveAs}
-                    className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+                    onClick={handleClone}
+                    disabled={!formData}
+                    className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Save As
+                    Clone
                   </button>
                   <button
                     onClick={handleDelete}

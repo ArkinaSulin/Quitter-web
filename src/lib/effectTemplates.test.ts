@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapEffectRow, mapEffectToRow, blankEffectTemplate } from './effectTemplates';
+import { mapEffectRow, mapEffectToRow, blankEffectTemplate, parseModifiers } from './effectTemplates';
 
 describe('effectTemplates mappers', () => {
   it('maps a row including image scale + transparent background', () => {
@@ -25,5 +25,17 @@ describe('effectTemplates mappers', () => {
     const row = mapEffectToRow({ ...blankEffectTemplate(), imageScale: 133.7, transparentBackground: true });
     expect(row.image_scale).toBe(134);
     expect(row.transparent_background).toBe(true);
+  });
+});
+
+describe('parseModifiers — block_attacks', () => {
+  it('keeps mode and direction sub-state', () => {
+    const [m] = parseModifiers([{ kind: 'block_attacks', mode: 'ranged', direction: 'in' }]);
+    expect(m).toEqual({ kind: 'block_attacks', mode: 'ranged', direction: 'in' });
+  });
+
+  it('drops junk direction/mode', () => {
+    const [m] = parseModifiers([{ kind: 'block_attacks', direction: 'sideways', mode: 'both' }]);
+    expect(m).toEqual({ kind: 'block_attacks' });
   });
 });

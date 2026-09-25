@@ -64,6 +64,8 @@ export function expandHexEffects(
         ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
         ...(m.saveDC !== undefined ? { saveDC: m.saveDC } : {}),
         ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
+        ...(m.mode ? { mode: m.mode } : {}),
+        ...(m.direction ? { direction: m.direction } : {}),
         zIndex: i,
         duration: 0,
         turnsLeft: 0,

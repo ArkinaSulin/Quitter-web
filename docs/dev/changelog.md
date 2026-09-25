@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## block_attacks + hex-structure→zone unification; ranged-only range; editor action bar (2026-09-21)
+**Files:** src/lib/{effectTemplates,unitEffects,mapStructures,mapEffects,attackBlock(new)}.ts (+ tests), src/types/gameProtocol.ts, src/hooks/useSupabaseSync.ts, src/components/EffectEditor/{EffectEditor,EffectModifierFields}.tsx, src/components/{StructureEditor/StructureEditor,UnitEditor,ShipEditor/ShipEditor,WeaponEditor/WeaponEditor}.tsx, src/components/ScenarioMap/{ScenarioMap,useCombatActions,useReactionActions}.ts(x), docs/dev/changelog.md, AGENTS.md
+
+- **New `block_attacks` modifier** (amount-less; two sub-states `mode: melee|ranged` and `direction: in|out|both`). A **hard** block: blocked attacks can't be selected and an attempt errors; the DM lifts it by removing the effect. Blocks attacks **into and/or out of** a unit, a hex (ground zone or hex structure), and, on an **edge wall/gate, attacks *through* the edge only** (destroyed structure → block gone). Healing exempt; AoE magic casts (`useCastActions`) are **not** blocked. Gate lives in `src/lib/attackBlock.ts` (`attacksBlocked`), wired into `useCombatActions.handleAttackRequest` and `useReactionActions.handleReactionAttack` (AI not wired — it lacks structures).
+- **Hex structures now run through the one ground-effect engine**: `mapStructures.structureZones` expands every hex structure's `modifiers` into permanent `GroundEffect`s; ScenarioMap derives `effectiveZones = painted zones + structureZones` and feeds it to `syncZoneEffects`, the movement/combat/reaction hooks and the overlay. Edge structures stay on the edge path (their effects are per-crossing). The bespoke `structureRangeBonus` consumers were removed to avoid double-counting range (now via zone membership).
+- **`range` modifier applies to RANGED weapons only** (`maxRange > 1`); a melee weapon gains no reach (`useCombatActions` attack + hard-cap + hero profile).
+- **Library editors unified to Save / Clone / Delete** in a persistent bottom-of-middle action bar (`UnitEditor`, `ShipEditor`, `EffectEditor`, `StructureEditor`, `WeaponEditor`); left-panel **New** stays; `Save As`/`Cancel` removed. Map Editor out of scope.
+- `tsc` clean; 723 tests pass; `next build` clean. No DB migration (all inside existing jsonb `modifiers`).
+
 ## Effects/modifiers: one canonical `dice` amount (delta removed) (2026-09-21)
 **Files:** src/lib/{effectTemplates,unitEffects,mapStructures,mapEffects}.ts (+ tests), src/types/gameProtocol.ts, src/hooks/{useGameEngine,useSupabaseSync}.ts, src/components/ScenarioMap/{ScenarioMap,MapInfoTooltip,UnitTooltip,AddEffectModal,EffectFormModal,StructureEditModal,useMoveActions,useCombatActions}.tsx, src/components/EffectEditor/{EffectEditor,EffectModifierFields}.tsx, src/components/StructureEditor/StructureEditor.tsx, supabase/migrations/099_structure_template_rework.sql, docs/dev/changelog.md
 

@@ -6,6 +6,7 @@
 // mirrored into `delta` for stat kinds and legacy consumers.
 import React from 'react';
 import { EffectModifier, EffectModifierKind, isFlagModifierKind, honorsMode, EFFECT_MODIFIER_LABELS } from '@/lib/effectTemplates';
+import { EffectDirection } from '@/lib/effectTemplates';
 
 export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
   { value: 'ac', label: 'AC ±' },
@@ -21,6 +22,7 @@ export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
   { value: 'disadvantage', label: EFFECT_MODIFIER_LABELS.disadvantage },
   { value: 'grant_advantage', label: EFFECT_MODIFIER_LABELS.grant_advantage },
   { value: 'grant_disadvantage', label: EFFECT_MODIFIER_LABELS.grant_disadvantage },
+  { value: 'block_attacks', label: EFFECT_MODIFIER_LABELS.block_attacks },
 ];
 
 export const DEFAULT_INPUT_CLASS =
@@ -62,6 +64,19 @@ export function EffectModifierFields({ modifier: m, onChange, readOnly = false, 
             <option value="both">Both</option>
             <option value="melee">Melee</option>
             <option value="ranged">Ranged</option>
+          </select>
+        )}
+        {m.kind === 'block_attacks' && (
+          <select
+            className={input + ' !w-24'}
+            value={m.direction ?? 'both'}
+            disabled={readOnly}
+            onChange={e => patch({ direction: e.target.value === 'both' ? undefined : (e.target.value as EffectDirection) })}
+            title="Block attacks coming IN (targeting the carrier/hex), going OUT (made from it), or both. On a wall, IN/OUT is outside->inside / inside->outside."
+          >
+            <option value="both">In + Out</option>
+            <option value="in">In only</option>
+            <option value="out">Out only</option>
           </select>
         )}
         {flag ? (

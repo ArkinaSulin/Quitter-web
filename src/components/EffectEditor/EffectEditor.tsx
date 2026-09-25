@@ -35,6 +35,11 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
 
   const select = (t: EffectTemplate) => setDraft({ ...t, id: t.id });
   const fresh = () => setDraft({ ...blankEffectTemplate() });
+  const clone = () => {
+    if (!draft) return;
+    const { id, ...rest } = draft;
+    setDraft({ ...rest, name: `${draft.name} copy` });
+  };
 
   const save = async () => {
     if (!draft || !draft.name.trim()) { setStatus('Give the effect a name.'); return; }
@@ -230,6 +235,9 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
                 <div className="flex gap-2 sticky bottom-0 bg-[#0d0d1a]/95 py-2 border-t border-gray-800">
                   <button onClick={() => void save()} disabled={busy || !activeSel} className="px-4 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-sm disabled:opacity-50">
                     {draft.id ? 'Save' : 'Create'}
+                  </button>
+                  <button onClick={clone} disabled={busy} className="px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-sm disabled:opacity-50">
+                    Clone
                   </button>
                   {draft.id && (
                     <button onClick={() => void remove()} disabled={busy} className="px-4 py-1.5 rounded bg-red-900 hover:bg-red-800 text-sm disabled:opacity-50">

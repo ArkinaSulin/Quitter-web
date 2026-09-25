@@ -5,7 +5,7 @@
 // the soft 5-cap stash, morale/rout), healing weapons, and the charge
 // end/overrun helpers. Owns the attack-related soft-enforcement states.
 import { useCallback, useState } from 'react';
-import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance, UnitEffect } from '@/types/gameProtocol';
+import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance, UnitEffect, GroundEffect } from '@/types/gameProtocol';
 import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome, AttackerHeroProfile, wallCoverAgainst } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/lib/formationRules';
 import { isProtectedHero } from '@/lib/unitInteractions';
@@ -23,8 +23,9 @@ import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
 import { attackRollFlags, effectRangeBonus } from '@/lib/unitEffects';
 import { hasLineOfSight } from '@/lib/lineOfSight';
 import { Walls } from '@/lib/walls';
-import { MapStructures, structureAuraFlags, hasAuraFlags, StructureAuraFlags, structureRangeBonus } from '@/lib/mapStructures';
+import { MapStructures, structureAuraFlags, hasAuraFlags, StructureAuraFlags } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
+import { attacksBlocked } from '@/lib/attackBlock';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
@@ -64,6 +65,8 @@ interface CombatActionsDeps {
   /** Placed structures + templates (tower auras on the occupant's hex). */
   structures?: MapStructures;
   structureTemplates?: Record<string, StructureTemplate>;
+  /** Engine zone view (painted zones + hex-structure zones) for block_attacks. */
+  groundZones?: GroundEffect[];
   execute: ExecuteFn;
   addMessage: (msg: string) => void;
   addError: (msg: string) => void;
@@ -89,6 +92,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     walls,
     structures,
     structureTemplates,
+    groundZones,
     execute,
     addMessage,
     addError,
@@ -254,9 +258,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
       hasAuraFlags(f) ? { ...u, effects: [...(u.effects ?? []), ...auraEffects(f, u.unitName)] } : u;
     const combatAttacker = withAuras(effAttacker, attackerAuras);
     const combatTarget = withAuras(effTarget, targetAuras);
-    // Structure range bonus (e.g. a watch tower) extends the occupant's reach.
-    const atkRangeBonus = structureRangeBonus(effAttacker.hex, structures, structureTemplates) + effectRangeBonus(effAttacker);
-    const tgtRangeBonus = structureRangeBonus(effTarget.hex, structures, structureTemplates) + effectRangeBonus(effTarget);
+    // Range bonus (from effects and from a hex structure's zone membership — see
+    // `structureZones`) extends the occupant's reach — but ONLY for ranged
+    // weapons (maxRange > 1); a melee weapon gains no reach from a range effect.
+    const atkRangeBonusRaw = effectRangeBonus(effAttacker);
+    const tgtRangeBonusRaw = effectRangeBonus(effTarget);
+    const atkRangeBonus = (weapon.maxRange ?? 1) > 1 ? atkRangeBonusRaw : 0;
+    const tgtRangeBonus = defWeapon && (defWeapon.maxRange ?? 1) > 1 ? tgtRangeBonusRaw : 0;
     const combatWeapon = atkRangeBonus
       ? { ...weapon, range: (weapon.range ?? 1) + atkRangeBonus, maxRange: (weapon.maxRange ?? weapon.range ?? 1) + atkRangeBonus }
       : weapon;
@@ -266,8 +274,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const combatHeroProfile = attackerHeroProfile
       ? {
           ...attackerHeroProfile,
-          range: attackerHeroProfile.range + atkRangeBonus,
-          maxRange: attackerHeroProfile.maxRange + atkRangeBonus,
+          range: attackerHeroProfile.range + (attackerHeroProfile.maxRange > 1 ? atkRangeBonusRaw : 0),
+          maxRange: attackerHeroProfile.maxRange + (attackerHeroProfile.maxRange > 1 ? atkRangeBonusRaw : 0),
           advantage: !!attackerHeroProfile.advantage || attackerAuras.advantage,
           disadvantage: !!attackerHeroProfile.disadvantage || attackerAuras.disadvantage,
         }
@@ -1010,7 +1018,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // reach -> silently auto-switch to it. Two or more -> confirm the FIRST one
     // (a caster with many spells would flood a picker); Cancel lets the player
     // switch manually and redo the attack. None -> warn and abort.
-    const rangeBonus = structureRangeBonus(attacker.hex, structures, structureTemplates) + effectRangeBonus(attacker);
+    // Range effects only extend RANGED weapons (maxRange > 1).
+    const rangeBonus = (weapon.maxRange ?? 1) > 1 ? effectRangeBonus(attacker) : 0;
     if (dist > weapon.maxRange + rangeBonus) {
       const reaching = weaponIndicesReaching(attackerWeapons, attacker.activeWeaponIndex ?? 0, Math.max(1, dist - rangeBonus));
       if (reaching.length === 0) {
@@ -1071,6 +1080,14 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // is a melee attempt (a ranged primary auto-switches to a melee weapon or
     // fights with Fists); beyond adjacency is a ranged attack (thrown/shot).
     const isRangedThisAttack = weapon.magicDimension > 0 || !isAdjacent;
+
+    // block_attacks: hard-deny attacks crossing into/out of a unit, a hex (painted
+    // zone or hex structure) or a wall. AoE magic casts take the separate cast
+    // path below and are NOT blocked.
+    if (attacksBlocked(attacker, target, isRangedThisAttack, { structures, templates: structureTemplates, zones: groundZones })) {
+      addError(`${attacker.unitName} cannot attack ${target.unitName} — attacks are blocked there`);
+      return;
+    }
 
     // Area-effect weapons (magic radius > 0) open the shared magic targeting window.
     if (weapon.magicDimension > 0) {

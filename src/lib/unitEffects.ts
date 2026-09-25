@@ -33,7 +33,8 @@ export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModif
     case 'advantage':
     case 'disadvantage':
     case 'grant_advantage':
-    case 'grant_disadvantage': return null;
+    case 'grant_disadvantage':
+    case 'block_attacks': return null;
   }
 }
 

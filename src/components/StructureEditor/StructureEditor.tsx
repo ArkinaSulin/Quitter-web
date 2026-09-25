@@ -226,9 +226,6 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                     <option value="hex">Hex</option>
                   </select>
                 </label>
-                {!readOnly && draft.id && (
-                  <button type="button" onClick={clone} className="px-3 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600">Clone</button>
-                )}
               </div>
 
               <label className="block text-xs text-gray-400">Description
@@ -352,6 +349,9 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                 <div className="flex gap-2 sticky bottom-0 bg-[#0d0d1a]/95 py-2 border-t border-gray-800">
                   <button onClick={() => void save()} disabled={busy} className="px-4 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-sm disabled:opacity-50">
                     {draft.id ? 'Save' : 'Create'}
+                  </button>
+                  <button onClick={clone} disabled={busy} className="px-4 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-sm disabled:opacity-50">
+                    Clone
                   </button>
                   {draft.id && (
                     <button onClick={() => void remove()} disabled={busy} className="px-4 py-1.5 rounded bg-red-900 hover:bg-red-800 text-sm disabled:opacity-50">

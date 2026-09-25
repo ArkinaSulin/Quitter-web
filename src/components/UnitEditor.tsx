@@ -916,13 +916,6 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                 >
                   New
                 </button>
-                <button
-                  onClick={handleClone}
-                  disabled={!formData}
-                  className="flex-1 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Clone
-                </button>
               </>
             )}
           </div>
@@ -1376,19 +1369,12 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                 >
                   {isNewUnit ? 'Create' : 'Save'}
                 </button>
-                {!isNewUnit && (
-                  <button
-                    onClick={handleSaveAs}
-                    className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
-                  >
-                    Save As
-                  </button>
-                )}
                 <button
-                  onClick={handleCancel}
-                  className="px-6 py-2 bg-gray-700 border-2 border-gray-500 text-white rounded hover:bg-gray-600 transition"
+                  onClick={handleClone}
+                  disabled={!formData}
+                  className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Cancel
+                  Clone
                 </button>
                 {!isNewUnit && (
                   <button

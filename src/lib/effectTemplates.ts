@@ -16,10 +16,11 @@ export type EffectModifierKind =
   | 'advantage'    // carrier's own attacks roll 2d20 take higher
   | 'disadvantage' // carrier's own attacks roll 2d20 take lower
   | 'grant_advantage'    // attackers targeting the carrier take the higher of 2d20
-  | 'grant_disadvantage'; // attackers targeting the carrier take the lower of 2d20
+  | 'grant_disadvantage' // attackers targeting the carrier take the lower of 2d20
+  | 'block_attacks';     // hard-block attacks in and/or out (see `direction`), melee/ranged per `mode`
 
-/** Attack-roll flag kinds carry no amount/dice/save — they are boolean markers. */
-export const FLAG_MODIFIER_KINDS: EffectModifierKind[] = ['advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'];
+/** Amount-less kinds (no dice/save) — boolean markers. */
+export const FLAG_MODIFIER_KINDS: EffectModifierKind[] = ['advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'block_attacks'];
 
 export function isFlagModifierKind(kind: EffectModifierKind): boolean {
   return FLAG_MODIFIER_KINDS.includes(kind);
@@ -32,7 +33,10 @@ export type EffectMode = 'melee' | 'ranged';
 
 /** Kinds whose meaning depends on whether the attack crosses at adjacency (melee)
  *  or at range. Every other kind ignores `mode`. */
-export const MODE_MODIFIER_KINDS: EffectModifierKind[] = ['ac', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'];
+export const MODE_MODIFIER_KINDS: EffectModifierKind[] = ['ac', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'block_attacks'];
+
+/** Direction a `block_attacks` modifier applies to (absent = both). */
+export type EffectDirection = 'in' | 'out' | 'both';
 
 export function honorsMode(kind: EffectModifierKind): boolean {
   return MODE_MODIFIER_KINDS.includes(kind);
@@ -54,6 +58,8 @@ export interface EffectModifier {
   onSaveHalfOrNeg?: boolean;
   /** Attack-distance scope (melee vs ranged); only meaningful for MODE_MODIFIER_KINDS. */
   mode?: EffectMode;
+  /** Block direction (in/out/both); only meaningful for `block_attacks`. */
+  direction?: EffectDirection;
 }
 
 /** Parse "XdY±Z" (X=0 => flat Z). Returns null when not a valid dice/number. */
@@ -106,6 +112,7 @@ export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
   disadvantage: 'Disadvantage on own attacks',
   grant_advantage: 'Attackers gain advantage',
   grant_disadvantage: 'Attackers suffer disadvantage',
+  block_attacks: 'Block attacks in/out',
 };
 
 /** Short one-line label for a modifier (used in lists/tooltips). */
@@ -161,6 +168,7 @@ export function parseModifiers(raw: unknown): EffectModifier[] {
     if (Number.isFinite((m as any).saveDC)) out2.saveDC = Number((m as any).saveDC);
     if (typeof (m as any).onSaveHalfOrNeg === 'boolean') out2.onSaveHalfOrNeg = (m as any).onSaveHalfOrNeg;
     if ((m as any).mode === 'melee' || (m as any).mode === 'ranged') out2.mode = (m as any).mode;
+    if ((m as any).direction === 'in' || (m as any).direction === 'out' || (m as any).direction === 'both') out2.direction = (m as any).direction;
     out.push(out2);
   }
   return out;

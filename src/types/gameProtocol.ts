@@ -190,7 +190,8 @@ export interface Unit {
 export type EffectKind =
   | 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow' | 'entry' | 'mp_cost'
   | 'enter_org_max' | 'range'
-  | 'advantage' | 'disadvantage' | 'grant_advantage' | 'grant_disadvantage';
+  | 'advantage' | 'disadvantage' | 'grant_advantage' | 'grant_disadvantage'
+  | 'block_attacks';
 
 /**
  * A temporary effect instance. Duration counts ACTIVATIONS OF THE CASTER (not the
@@ -227,6 +228,10 @@ export interface UnitEffect {
   savingThrow?: 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha' | null;
   saveDC?: number | null;
   onSaveHalfOrNeg?: boolean;
+  /** Attack-distance scope for attack-roll / AC / block kinds (absent = both). */
+  mode?: 'melee' | 'ranged';
+  /** Block direction for `block_attacks` (absent = both). */
+  direction?: 'in' | 'out' | 'both';
   /** Full duration in caster activations (zones too). */
   duration: number;
   /** Remaining caster activations. */
@@ -265,6 +270,10 @@ export interface GroundEffect {
   savingThrow?: 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha' | null;
   saveDC?: number | null;
   onSaveHalfOrNeg?: boolean;
+  /** Attack-distance scope (melee/ranged) for attack-roll / AC / block kinds. */
+  mode?: 'melee' | 'ranged';
+  /** Block direction for `block_attacks` (absent = both). */
+  direction?: 'in' | 'out' | 'both';
   /** Stable draw order on its hex (Move up/down). */
   zIndex?: number;
   duration: number;

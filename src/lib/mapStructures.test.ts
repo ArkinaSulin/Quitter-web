@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseStructures, structuresToWalls, isEdgeStructureKey, isHexStructureKey, structureCounts,
   structureBlocksOrg, zoneBlocksOrg, structureRangeBonus, structureIsOpen,
-  structureHexEntryCost, structureHexBlocked, structureAuraFlags,
+  structureHexEntryCost, structureHexBlocked, structureAuraFlags, structureZones,
 } from './mapStructures';
 import { meleeWallAc, rangedWallAc } from './walls';
 import { StructureTemplate } from '@/types/structure';
@@ -173,6 +173,24 @@ describe('hex structure helpers', () => {
     const base = template({ id: 'a', anchor: 'hex', modifiers: [{ kind: 'range', dice: '1' }] });
     const overridden = { '0,0': { templateId: 'a', modifiers: [{ kind: 'range' as const, dice: '3' }] } };
     expect(structureRangeBonus({ q: 0, r: 0 }, overridden, { a: base })).toBe(3);
+  });
+});
+
+describe('structureZones (hex structures → ground zones)', () => {
+  it('expands a hex structure\'s modifiers into permanent zones; ignores edges', () => {
+    const tower = template({ id: 'tower', anchor: 'hex', modifiers: [{ kind: 'range', dice: '1' }, { kind: 'block_attacks', mode: 'ranged', direction: 'in' }] });
+    const zones = structureZones(
+      { '2,0': { templateId: 'tower' }, '0,0,0': { templateId: 'tower' } }, // the edge is ignored
+      { tower },
+    );
+    expect(zones).toHaveLength(2);
+    expect(zones.map(z => [z.q, z.r])).toEqual([[2, 0], [2, 0]]);
+    expect(zones[0]).toMatchObject({ kind: 'range', dice: '1', permanent: true });
+    expect(zones[1]).toMatchObject({ kind: 'block_attacks', mode: 'ranged', direction: 'in', permanent: true });
+  });
+
+  it('returns [] with no structures', () => {
+    expect(structureZones(null, {})).toEqual([]);
   });
 });
 
