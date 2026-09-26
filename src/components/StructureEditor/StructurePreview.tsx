@@ -23,6 +23,7 @@ interface StructurePreviewProps {
   imageUrl: string;
   battlement: boolean;
   spikes: boolean;
+  hexBorder: boolean;
   mpFootIn: number | null;
   mpFootOut: number | null;
   mpMountedIn: number | null;
@@ -37,7 +38,7 @@ interface StructurePreviewProps {
 const mpLabel = (v: number | null): string => (v === null ? '—' : v < 0 ? 'block' : `${v}`);
 
 export function StructurePreview({
-  anchor, imageUrl, battlement, spikes,
+  anchor, imageUrl, battlement, spikes, hexBorder,
   mpFootIn, mpFootOut, mpMountedIn, mpMountedOut, coverMelee, coverRanged, doorHp, maxHp, dt,
 }: StructurePreviewProps) {
   const [flipped, setFlipped] = useState(false);
@@ -71,7 +72,7 @@ export function StructurePreview({
                 key={i}
                 points={hexPoints(toX(p.x), toY(p.y))}
                 fill={i === 0 ? 'none' : 'rgba(0,0,0,0.03)'}
-                stroke={i === 0 ? 'rgba(0,0,0,0.95)' : 'rgba(0,0,0,0.25)'}
+                stroke={i === 0 ? (hexBorder ? 'rgba(0,0,0,0.95)' : 'none') : 'rgba(0,0,0,0.25)'}
                 strokeWidth={i === 0 ? 4 : 1}
               />
             ))}

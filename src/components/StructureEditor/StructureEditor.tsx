@@ -384,6 +384,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                 imageUrl={draft.imageUrl}
                 battlement={draft.battlement}
                 spikes={draft.spikes}
+                hexBorder={draft.hexBorder}
                 mpFootIn={draft.mpFootIn}
                 mpFootOut={draft.mpFootOut}
                 mpMountedIn={draft.mpMountedIn}

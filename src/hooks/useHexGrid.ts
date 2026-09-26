@@ -139,6 +139,9 @@ export function useHexGrid({
   /** Last reported hex/edge info-hover key (dedupes the tooltip callbacks). */
   const hoveredInfoKeyRef = useRef<string | null>(null);
   const pointerDownRef = useRef<{ unitId: string; x: number; y: number } | null>(null);
+  // True while a middle-button pan has actually moved; suppresses the hex click
+  // (which would otherwise paint the active map feature on release).
+  const panMovedRef = useRef(false);
 
   const bgImageRef = useRef<HTMLImageElement | null>(null);
   const [bgLoaded, setBgLoaded] = useState(false);
@@ -396,6 +399,7 @@ export function useHexGrid({
     if (isPanning && panStart) {
       const dx = e.clientX - panStart.x;
       const dy = e.clientY - panStart.y;
+      if (dx !== 0 || dy !== 0) panMovedRef.current = true;
       setOffsetX(prev => prev + dx);
       setOffsetY(prev => prev + dy);
       setPanStart({ x: e.clientX, y: e.clientY });
@@ -417,9 +421,12 @@ export function useHexGrid({
 
     if (e.button === 1) {
       e.preventDefault();
+      panMovedRef.current = false;
       setIsPanning(true);
       setPanStart({ x: e.clientX, y: e.clientY });
-      setMouseDownTarget('hex');
+      // 'none' so a middle press/release NEVER routes to onHexClick (which would
+      // drop the armed MP-cost pen or a structure on the map).
+      setMouseDownTarget('none');
       return;
     }
 
@@ -498,9 +505,10 @@ export function useHexGrid({
       }
     }
 
-    if (mouseDownTarget === 'hex' && !draggingUnitId) {
+    if (mouseDownTarget === 'hex' && !draggingUnitId && !panMovedRef.current) {
       if (targetHex && onHexClick) onHexClick(targetHex, getUnitAt(targetHex), e.clientX, e.clientY);
     }
+    panMovedRef.current = false;
 
     setIsPanning(false);
     setPanStart(null);

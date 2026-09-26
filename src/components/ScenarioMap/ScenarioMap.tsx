@@ -303,7 +303,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [terrainBrushCost, setTerrainBrushCost] = useState<number | null>(null);
   // Structure brush (GM live edit): armed toggle + selected template + the
   // instance selected for editing.
-  const [structureBrush, setStructureBrush] = useState(false);
   const [structurePaletteId, setStructurePaletteId] = useState<string | null>(null);
   const [selectedStructureKey, setSelectedStructureKey] = useState<string | null>(null);
   // Shift + double-click opens the instance editor for a placed structure.
@@ -1758,7 +1757,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // A clone is armed: this click places it (consumes the click).
       if (handleCloneClick(hex)) return;
       // GM structure brush: place (or select) a structure on the nearest edge / hex.
-      if (effectiveIsGM && structureBrush && structurePaletteId && clientX !== undefined && clientY !== undefined) {
+      if (effectiveIsGM && structurePaletteId && clientX !== undefined && clientY !== undefined) {
         const anchor = structureTemplates[structurePaletteId]?.anchor;
         if (anchor === 'edge') {
           const dir = edgeDirAtClient(hex, clientX, clientY);
@@ -1804,7 +1803,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (controlsLocked) return;
       if (cloneZone) { setCloneZone(null); return; }
       // GM structure brush: right-click removes the nearest structure.
-      if (effectiveIsGM && structureBrush && structurePaletteId) {
+      if (effectiveIsGM && structurePaletteId) {
         const anchor = structureTemplates[structurePaletteId]?.anchor;
         if (anchor === 'edge') {
           const dir = edgeDirAtClient(hex, clientX, clientY);
@@ -2223,10 +2222,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // Esc ends the locked reaction mode (or closes the formation picker) — as
       // if nothing happened; the reaction marker stays.
       if (e.key === 'Escape') {
-        if (terrainBrushCost !== null || zoneTemplate || structureBrush) {
+        if (terrainBrushCost !== null || zoneTemplate || structurePaletteId) {
           setTerrainBrushCost(null);
           setZoneTemplate(null);
-          setStructureBrush(false);
+          setStructurePaletteId(null);
           return;
         }
         if (reactionMode || reactionFormationPicker) {
@@ -2489,12 +2488,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             onAssignMap={(entity) => void assignMap(entity)}
             onClearMap={() => void clearMap()}
             terrainBrushCost={terrainBrushCost}
-            onSetTerrainBrushCost={setTerrainBrushCost}
-            structureBrush={structureBrush}
-            onToggleStructureBrush={() => { setStructureBrush(v => !v); setSelectedStructureKey(null); }}
+            onSetTerrainBrushCost={(v) => { setTerrainBrushCost(v); if (v !== null) setStructurePaletteId(null); }}
             structureTemplates={structureTemplates}
             structurePaletteId={structurePaletteId}
-            onSetStructurePaletteId={setStructurePaletteId}
+            onSetStructurePaletteId={(id) => { setStructurePaletteId(id); if (id !== null) setTerrainBrushCost(null); }}
             structures={structures}
             selectedStructureKey={selectedStructureKey}
             onPatchStructure={(patch) => void patchScenarioStructure(patch)}

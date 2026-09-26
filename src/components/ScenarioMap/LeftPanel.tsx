@@ -54,8 +54,6 @@ interface LeftPanelProps {
   onClearMap: () => void;
   terrainBrushCost: number | null;
   onSetTerrainBrushCost: (v: number | null) => void;
-  structureBrush: boolean;
-  onToggleStructureBrush: () => void;
   structureTemplates: Record<string, StructureTemplate>;
   structurePaletteId: string | null;
   onSetStructurePaletteId: (id: string | null) => void;
@@ -75,7 +73,7 @@ interface LeftPanelProps {
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, structureBrush, onToggleStructureBrush, structureTemplates, structurePaletteId, onSetStructurePaletteId, structures, selectedStructureKey, onPatchStructure, onRemoveStructure, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, structureTemplates, structurePaletteId, onSetStructurePaletteId, structures, selectedStructureKey, onPatchStructure, onRemoveStructure, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
   // Persist which tabs are open per scenario + user, so a rejoined session
   // restores the same panel layout.
   // Persist which tabs are open per scenario + user. The saved layout is restored
@@ -131,8 +129,8 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
       ),
     },
     {
-      id: 'movement-paint',
-      label: 'Features',
+      id: 'map-feature',
+      label: 'Map Feature',
       icon: <FootIcon />,
       requiresGM: true,
       content: (
@@ -140,8 +138,6 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
           <TerrainPaintPanel value={terrainBrushCost} onSet={onSetTerrainBrushCost} />
           <div className="pt-2 border-t border-gray-700">
             <StructurePaintPanel
-              armed={structureBrush}
-              onToggleArm={onToggleStructureBrush}
               templates={structureTemplates}
               paletteId={structurePaletteId}
               onSetPaletteId={onSetStructurePaletteId}

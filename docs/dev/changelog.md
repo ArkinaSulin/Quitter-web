@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Scenario "Map Feature" tab: no arm toggle, pan-safe, preview border (2026-09-21)
+**Files:** src/components/ScenarioMap/{LeftPanel,StructurePaintPanel,ScenarioMap}.tsx, src/hooks/useHexGrid.ts, src/components/StructureEditor/{StructurePreview,StructureEditor}.tsx, docs/dev/changelog.md
+
+- Renamed the tab **id + label to `map-feature` / "Map Feature"**.
+- **Middle-mouse pan no longer drops a feature.** `useHexGrid.handleMouseDown` set `mouseDownTarget = 'hex'` for button 1, so the release fired `onHexClick` and painted the armed MP-cost pen / structure. Button 1 now sets `'none'`, plus a `panMovedRef` guard suppresses the click after a real pan.
+- **Removed the "enable structure tools" arm.** Selecting a structure palette arms painting directly (like the terrain pen / effects); **terrain pen and structure palette are now mutually exclusive** (picking one clears the other).
+- **Structure Editor preview honours `hexBorder`**: the centre hex's thick outline is skipped in `StructurePreview` when the template has it off.
+- `tsc` clean; 725 tests pass; `next build` clean.
+
 ## Structure door-badge fix + hex-border toggle (migration 100) (2026-09-21)
 **Files:** supabase/migrations/100_structure_hex_border.sql (new), src/types/structure.ts, src/lib/structureTemplates.ts (+ test), src/components/ScenarioMap/{useCanvasDraw,MapInfoTooltip,StructureEditModal}.ts(x), src/components/MapEditor/{MapCanvas,MapEditor}.tsx, src/components/StructureEditor/StructureEditor.tsx, docs/dev/{02,changelog}.md
 

@@ -11,8 +11,6 @@ import { StructureTemplate } from '@/types/structure';
 import { modifierAmount } from '@/lib/effectTemplates';
 
 interface StructurePaintPanelProps {
-  armed: boolean;
-  onToggleArm: () => void;
   templates: Record<string, StructureTemplate>;
   paletteId: string | null;
   onSetPaletteId: (id: string | null) => void;
@@ -55,7 +53,7 @@ function StructureTooltip({ t, x, y }: { t: StructureTemplate; x: number; y: num
 }
 
 export function StructurePaintPanel({
-  armed, onToggleArm, templates, paletteId, onSetPaletteId,
+  templates, paletteId, onSetPaletteId,
 }: StructurePaintPanelProps) {
   const [hover, setHover] = useState<{ t: StructureTemplate; x: number; y: number } | null>(null);
   const list = Object.values(templates).sort((a, b) => a.name.localeCompare(b.name));
@@ -64,18 +62,10 @@ export function StructurePaintPanel({
   return (
     <div className="space-y-2">
       <p className="text-[10px] uppercase tracking-wide text-gray-500">Map structures (temporary GM edit)</p>
-      <button
-        onClick={onToggleArm}
-        className={`w-full py-1.5 rounded border text-xs font-semibold ${armed ? 'bg-yellow-600 text-black border-yellow-300' : 'bg-gray-800 text-gray-100 border-gray-600 hover:bg-gray-700'}`}
-      >
-        {armed ? 'Structure tools enabled' : 'Enable structure tools'}
-      </button>
       <p className="text-xs text-gray-500">
-        {armed
-          ? armedTemplate
-            ? `Armed: ${armedTemplate.name}. Click/drag ${armedTemplate.anchor === 'hex' ? 'a hex' : 'near a hex edge'} to place; click a placed edge again to flip its battlement. Right-click removes. Shift + double-click a placed structure to edit it.`
-            : 'Pick a structure below.'
-          : 'Enable the tools to place structures in this scenario.'}
+        {armedTemplate
+          ? `Armed: ${armedTemplate.name}. Click/drag ${armedTemplate.anchor === 'hex' ? 'a hex' : 'near a hex edge'} to place; click a placed edge again to flip its battlement. Right-click removes. Shift + double-click a placed structure to edit it.`
+          : 'Pick a structure below to arm placement.'}
       </p>
 
       <div className="space-y-1 max-h-72 overflow-y-auto">
