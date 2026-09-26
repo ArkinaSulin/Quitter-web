@@ -150,11 +150,19 @@ describe('hex structure helpers', () => {
     expect(structureHexEntryCost({ q: 0, r: 0 }, {}, templates, false)).toBeUndefined();
   });
 
-  it('structureHexBlocked reflects a standing door or a hard-block MP', () => {
-    expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'gate' } }, templates, false)).toBe(true); // door 30
-    expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'gate', open: true } }, templates, false)).toBe(false);
-    expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'tower' } }, templates, true)).toBe(true); // mounted -1
+  it('structureHexBlocked only hard-blocks on a negative MP (doors never gate hex entry)', () => {
+    // A closed distinct door (10 < 30) does NOT gate entry — you pay the structure MP.
+    const gated = template({ id: 'gated', anchor: 'hex', mpFootIn: 2, mpMountedIn: -1, doorHp: 10, maxHp: 30 });
+    expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'gated' } }, { gated }, false)).toBe(false);
+    expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'gated', open: false } }, { gated }, false)).toBe(false);
+    // The seeded gate fixture (doorHp 30 == maxHp 30) likewise does not gate.
+    expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'gate' } }, templates, false)).toBe(false);
+    // Mounted hard-block (mp_mounted_in -1) still blocks.
+    expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'tower' } }, templates, true)).toBe(true);
     expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'tower' } }, templates, false)).toBe(false);
+    // Foot negative hard-block.
+    const blockedFoot = template({ id: 'bf', anchor: 'hex', mpFootIn: -1, mpMountedIn: -1, doorHp: 0 });
+    expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'bf' } }, { bf: blockedFoot }, false)).toBe(true);
   });
 
   it('structureIsOpen reflects the instance flag', () => {

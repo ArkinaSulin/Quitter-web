@@ -268,7 +268,13 @@ export function structureHexEntryCost(
   return cost;
 }
 
-/** True when a hex structure blocks entry (standing door, or a hard-block MP). */
+/**
+ * True only when a hex structure HARD-BLOCKS entry (negative MP for the mover's
+ * locomotion). Doors never gate hex entry: "If a unit can pay the structure's MP
+ * and the hex is not occupied, it may enter — a closed door (0 < door_hp < max_hp)
+ * is NOT a gate for hex structures; passage is governed by the structure MP, not
+ * the base hex MP." Edge structures keep the door gate (see `isBlockedEdge`).
+ */
 export function structureHexBlocked(
   hex: { q: number; r: number },
   structures: MapStructures | null | undefined,
@@ -279,9 +285,7 @@ export function structureHexBlocked(
   const t = inst ? templates?.[inst.templateId] : undefined;
   if (!inst || !t) return false;
   const cost = isMounted ? t.mpMountedIn : t.mpFootIn;
-  if (cost !== null && cost !== undefined && cost < 0) return true;
-  const door = instanceDoorState(inst, t);
-  return door.standing;
+  return cost !== null && cost !== undefined && cost < 0;
 }
 
 /** Weapon-range bonus (hexes) a unit standing on this hex gains from a structure. */

@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Hex structures: doors never gate entry (2026-09-21)
+**Files:** src/lib/mapStructures.ts (+ test), docs/dev/{18,changelog}.md
+
+- A hex structure no longer blocks entry on a door. Rule: *"If a unit can pay the structure's MP and the hex is not occupied, it may enter — a closed door (`0 < door_hp < max_hp`) is NOT a gate for hex structures; passage is governed by the structure MP, not the base hex MP. Nothing blocks an enemy from climbing on/in to an unguarded structure."* `structureHexBlocked` now returns true **only** for a negative `mp_*_in` (hard block, e.g. the seeded mounted `-1`); occupancy still excludes the hex, and the entry cost is the structure's `mp_*_in` (replacing terrain; `NULL` falls back to base). Previously a blank/default door (`door_hp == max_hp`) blocked while showing no door badge — hence "can't enter an unguarded structure".
+- **Edge** structures are unchanged: their door still gates **crossing** (`structuresToWalls` → `isBlockedEdge`); walls must be destroyed, distinct doors breached.
+- `door_hp` remains a damageable pool for combat/badges. `tsc` clean; 734 tests pass; build clean. No migration.
+
 ## Range auras apply immediately + central modifier labels (2026-09-21)
 **Files:** src/lib/{effectTemplates,unitEffects}.ts (+ tests), src/components/ScenarioMap/{useCombatActions,useReactionActions,useOverlay,MapInfoTooltip,StructurePaintPanel}.ts(x), src/components/{StructureEditor/StructureEditor,EffectEditor/EffectEditor,MapEditor/MapEditor}.tsx, docs/dev/changelog.md
 
