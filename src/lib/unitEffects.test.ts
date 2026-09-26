@@ -431,6 +431,18 @@ describe('computeZoneReconcile', () => {
     expect(changes).toEqual([]);
   });
 
+  it('ac zones with different modes stack as separate memberships (mode preserved)', () => {
+    const melee = zone({ key: 'zm', mode: 'melee', dice: '2' });
+    const ranged = zone({ key: 'zr', mode: 'ranged', dice: '5' });
+    const u = unit('u', 'blue');
+    const { effects } = computeZoneReconcile(u, [melee, ranged]);
+    expect(effects).toHaveLength(2);
+    expect(effects.find(e => e.key === 'zm')?.mode).toBe('melee');
+    expect(effects.find(e => e.key === 'zr')?.mode).toBe('ranged');
+    expect(effectAcBonus({ ...u, effects } as Unit, false)).toBe(2);
+    expect(effectAcBonus({ ...u, effects } as Unit, true)).toBe(5);
+  });
+
   it('no-ops when already in sync', () => {
     const membershipped = ef({ key: 'z1', kind: 'ac', dice: '2', base: 12, zoneHex: h(0, 0) });
     const u = unit('u', 'blue', h(0, 0), { effects: [membershipped], currentAc: 14 });

@@ -69,6 +69,12 @@ export function effectRangeBonus(unit: Unit | null | undefined): number {
  * `mode:'ranged'` only ranged. Consumed by `unitStats.effectiveAc` so the AC is
  * derived per attack type + direction (melee / ranged / rear).
  */
+/** Stacking identity: same kind AND same `mode` (so `ac (melee)` and `ac (ranged)`
+ *  coexist on one carrier). Kinds without a mode compare equal as before. */
+function sameStackKey(a: { kind: string; mode?: string }, b: { kind: string; mode?: string }): boolean {
+  return a.kind === b.kind && (a.mode ?? null) === (b.mode ?? null);
+}
+
 export function effectAcBonus(unit: Unit | null | undefined, isRanged: boolean): number {
   let sum = 0;
   for (const e of unit?.effects ?? []) {
@@ -150,9 +156,10 @@ function statValue(unit: Unit, kind: EffectKind): number {
  */
 export function applyEffectChanges(unit: Unit, spec: Omit<UnitEffect, 'key' | 'base'>, key = newEffectKey()): { changes: UnitChange[]; effect: UnitEffect } {
   const effects = unit.effects ?? [];
-  // No same-kind stacking on one carrier.
-  if (effects.some(e => e.kind === spec.kind)) {
-    return { changes: [], effect: effects.find(e => e.kind === spec.kind)! };
+  // No same-kind stacking on one carrier — but `mode`-scoped kinds (ac melee vs
+  // ac ranged) are different stacks.
+  if (effects.some(e => sameStackKey(e, spec))) {
+    return { changes: [], effect: effects.find(e => sameStackKey(e, spec))! };
   }
   const effect: UnitEffect = { ...spec, key, base: isStatEffect(spec.kind) ? statValue(unit, spec.kind) : undefined };
   const changes: UnitChange[] = [
@@ -624,7 +631,7 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
     // Create membership for each stat zone underfoot (skips stacking conflicts).
     for (const z of zonesAt) {
       if (z.kind === 'dot') continue;
-      const already = d.effects.some(e => e.zoneHex && e.key === z.key) || d.effects.some(e => e.kind === z.kind);
+      const already = d.effects.some(e => e.zoneHex && e.key === z.key) || d.effects.some(e => sameStackKey(e, z));
       if (already) continue;
       const membership: UnitEffect = {
         key: z.key,
@@ -632,6 +639,8 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
         name: z.name,
         color: z.color,
         kind: z.kind,
+        ...(z.mode ? { mode: z.mode } : {}),
+        ...(z.direction ? { direction: z.direction } : {}),
         dice: z.dice,
         duration: z.duration,
         turnsLeft: z.turnsLeft,
@@ -716,7 +725,7 @@ export function computeZoneReconcile(unit: Unit, zones: GroundEffect[]): { effec
   // Add a membership for each stat zone underfoot (skips same-kind stacking).
   for (const z of zonesHere) {
     if (z.kind === 'dot') continue;
-    const already = effects.some(e => e.zoneHex && e.key === z.key) || effects.some(e => e.kind === z.kind);
+    const already = effects.some(e => e.zoneHex && e.key === z.key) || effects.some(e => sameStackKey(e, z));
     if (already) continue;
     effects.push({
       key: z.key,
@@ -724,6 +733,8 @@ export function computeZoneReconcile(unit: Unit, zones: GroundEffect[]): { effec
       name: z.name,
       color: z.color,
       kind: z.kind,
+      ...(z.mode ? { mode: z.mode } : {}),
+      ...(z.direction ? { direction: z.direction } : {}),
       dice: z.dice,
       duration: z.duration,
       turnsLeft: z.turnsLeft,

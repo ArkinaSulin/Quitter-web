@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Fix: mode-scoped `ac` modifiers stack (melee + ranged) and keep their mode (2026-09-21)
+**Files:** src/lib/unitEffects.ts (+ test), docs/dev/changelog.md
+
+- A structure with two `ac` modifiers (`mode:'melee'` +2 and `mode:'ranged'` +5) applied only the first, and the melee `+2` leaked onto ranged AC. Two causes in the zone/effect engine:
+  1. **Same-kind stacking** collapsed both `ac` entries into one membership. The stacking identity is now `kind` **AND** `mode` (`sameStackKey`), so `ac (melee)` and `ac (ranged)` coexist as separate memberships (`applyEffectChanges` + both `computeZoneReconcile`/`computeEndTurnEffects` membership paths).
+  2. **Zone memberships dropped `mode`/`direction`.** The membership now carries them, so `effectAcBonus` scopes correctly (melee `+2` → melee only, ranged `+5` → ranged only).
+- `tsc` clean; 743 tests pass; build clean. No migration.
+
 ## AC is a derived aura (melee / ranged / rear) (2026-09-21)
 **Files:** src/lib/{unitEffects,unitStats}.ts (+ tests), src/components/ScenarioMap/{useCombatActions,useMoveActions}.tsx, src/hooks/useGameEngine.ts, docs/dev/changelog.md
 

@@ -7,12 +7,17 @@
 //  - Armor eats mass capacity: armorMass = MassCap × armorFactor.
 //  - Ship mass = armor + Σ components + loaded cargo; budget = MassCap.
 //  - Accel = 18 × sails ÷ mass; laden uses mass + cargo (cargo-load slider drives it live).
-//  - MC = turn capacity per GAME TURN (band formula; spent across the 5 segments). The
-//    curve is computed against the FRAME TopSpeed and is unchanged by the environment
-//    setting — the environment only picks the active speed cap (TopSpeed vs AtmosphereSpd).
+//  - MC = hexes the ship must travel to turn 60° (integer; LOWER = tighter turn = better).
+//    TE (Turning Efficiency) = 60° turns per game turn = speed ÷ MC (1 dp; higher = better).
+//    The curve is a parabola peaking at the sweet-spot speed u* (height TE_max, width w):
+//    TE(s) = TE_max·max(0, 1−((s/T − u*)/w)²); MC(s) = max(1, round(s/max(0.5, TE(s)))).
+//    Rudder fill (R/frameMassCap) and mass place u*; TE_max shrinks with mass; w grows with
+//    rudders. Computed against the frame TopSpeed; the environment only picks the active cap
+//    (TopSpeed vs AtmosphereSpd).
 //  - Hit boxes: 1 t of MassCap = 1 box; only armor + Hull R are safe. BoxHP = ceil(5×(1+factor)).
 //    Weapon anchors S=10 / L=20, doubled when reinforced. Ship HP = frame base + hullR×25. DT = 15.
-//  - Crew quarters = ceil(totalCrew/5) whole tons.
+//  - Crew: crew_count is the complement on board (>= min crew = ceil(Σ component+accessory crew)).
+//    Crew quarters = ceil(crew_count/5) whole tons.
 
 import {
   ShipAccessory,
