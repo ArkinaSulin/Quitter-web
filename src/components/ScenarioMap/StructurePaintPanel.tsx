@@ -60,7 +60,7 @@ export function StructurePaintPanel({
   const armedTemplate = paletteId ? templates[paletteId] ?? null : null;
 
   return (
-    <div className="space-y-2">
+    <div className="h-full flex flex-col gap-2 min-h-0">
       <p className="text-[10px] uppercase tracking-wide text-gray-500">Map structures (temporary GM edit)</p>
       <p className="text-xs text-gray-500">
         {armedTemplate
@@ -68,7 +68,7 @@ export function StructurePaintPanel({
           : 'Pick a structure below to arm placement.'}
       </p>
 
-      <div className="space-y-1 max-h-72 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-1">
         {list.length === 0 && <p className="text-xs text-gray-500">No structure templates yet.</p>}
         {list.map(t => (
           <button

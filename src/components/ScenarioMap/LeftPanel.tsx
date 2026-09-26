@@ -134,9 +134,9 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
       icon: <FootIcon />,
       requiresGM: true,
       content: (
-        <div className="space-y-4">
+        <div className="h-full flex flex-col gap-4 min-h-0">
           <TerrainPaintPanel value={terrainBrushCost} onSet={onSetTerrainBrushCost} />
-          <div className="pt-2 border-t border-gray-700">
+          <div className="pt-2 border-t border-gray-700 flex-1 min-h-0 flex flex-col">
             <StructurePaintPanel
               templates={structureTemplates}
               paletteId={structurePaletteId}
