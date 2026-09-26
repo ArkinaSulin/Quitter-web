@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { blankWeapon, validateWeapon } from '@/lib/weaponParser';
 import { LibraryWeapon, mapWeaponRow, mapWeaponToRow } from '@/lib/weaponMappers';
+import { refreshAndReselect } from '@/lib/librarySelection';
 import { WeaponFields } from '@/components/WeaponEditor/WeaponFields';
 
 export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
@@ -15,9 +16,11 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<LibraryWeapon[]> => {
     const { data } = await supabase.from('unit_weapons').select('*').order('name', { ascending: true });
-    if (data) setList(data.map(mapWeaponRow));
+    const mapped = data ? data.map(mapWeaponRow) : [];
+    if (data) setList(mapped);
+    return mapped;
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -33,16 +36,18 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
     setStatus('');
     try {
       const row = mapWeaponToRow(draft);
-      if (draft.id) {
-        const { error } = await supabase.from('unit_weapons').update(row).eq('id', draft.id);
+      let id = draft.id;
+      if (id) {
+        const { error } = await supabase.from('unit_weapons').update(row).eq('id', id);
         if (error) throw error;
       } else {
-        const { data, error } = await supabase.from('unit_weapons').insert(row).select('*').single();
+        const { data, error } = await supabase.from('unit_weapons').insert(row).select('id').single();
         if (error) throw error;
-        setDraft(mapWeaponRow(data));
+        id = data.id;
       }
       setStatus('Saved.');
-      await load();
+      const { selected } = await refreshAndReselect(load, id);
+      if (selected) select(selected);
     } catch (e: any) {
       setStatus('Save failed: ' + (e?.message || 'unknown'));
     } finally {

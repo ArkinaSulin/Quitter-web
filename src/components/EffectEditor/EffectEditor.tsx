@@ -13,6 +13,7 @@ import {
   EffectTemplate, EffectModifier, EffectLayer, EffectScope,
   mapEffectRow, mapEffectToRow, blankEffectTemplate,
 } from '@/lib/effectTemplates';
+import { refreshAndReselect } from '@/lib/librarySelection';
 
 type Draft = Omit<EffectTemplate, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
 
@@ -26,9 +27,11 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
   const [status, setStatus] = useState('');
   const [showImagePicker, setShowImagePicker] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<EffectTemplate[]> => {
     const { data } = await supabase.from('map_effect_templates').select('*').order('name', { ascending: true });
-    if (data) setList((data as any[]).map(mapEffectRow));
+    const mapped = data ? (data as any[]).map(mapEffectRow) : [];
+    if (data) setList(mapped);
+    return mapped;
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -56,15 +59,9 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
         id = data.id;
       }
       setStatus('Saved.');
-      await load();
-      if (id) {
-        const found = list.find(t => t.id === id);
-        if (found) select(found);
-        else {
-          const { data } = await supabase.from('map_effect_templates').select('*').eq('id', id).single();
-          if (data) select(mapEffectRow(data));
-        }
-      }
+      // Reselect from the FRESH list, never the stale `list` closure.
+      const { selected } = await refreshAndReselect(load, id, t => t.id);
+      if (selected) select(selected);
     } catch (err: any) {
       setStatus('Save failed: ' + (err?.message || 'unknown'));
     } finally {

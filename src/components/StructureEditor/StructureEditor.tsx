@@ -15,6 +15,7 @@ import { EffectModifier, modifierAmount } from '@/lib/effectTemplates';
 import {
   mapStructureRow, mapStructureToRow, blankStructureTemplate, sanitizeStructureTemplate,
 } from '@/lib/structureTemplates';
+import { refreshAndReselect } from '@/lib/librarySelection';
 
 type Draft = Omit<StructureTemplate, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
 
@@ -93,9 +94,11 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
   const [status, setStatus] = useState('');
   const [showImagePicker, setShowImagePicker] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<StructureTemplate[]> => {
     const { data } = await supabase.from('map_structure_templates').select('*').order('name', { ascending: true });
-    if (data) setList((data as any[]).map(mapStructureRow));
+    const mapped = data ? (data as any[]).map(mapStructureRow) : [];
+    if (data) setList(mapped);
+    return mapped;
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -124,11 +127,8 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
         id = data.id;
       }
       setStatus('Saved.');
-      await load();
-      if (id) {
-        const { data } = await supabase.from('map_structure_templates').select('*').eq('id', id).single();
-        if (data) select(mapStructureRow(data));
-      }
+      const { selected } = await refreshAndReselect(load, id, t => t.id);
+      if (selected) select(selected);
     } catch (err: any) {
       setStatus('Save failed: ' + (err?.message || 'unknown'));
     } finally {

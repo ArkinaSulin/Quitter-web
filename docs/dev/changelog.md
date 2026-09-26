@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Fix: save reverted values in Effect Editor; shared refresh+reselect (2026-09-21)
+**Files:** src/lib/librarySelection.ts (new) + test, src/components/EffectEditor/EffectEditor.tsx, src/components/StructureEditor/StructureEditor.tsx, src/components/WeaponEditor/WeaponEditor.tsx, docs/dev/changelog.md
+
+- **Effect Editor save bug.** `save()` did `await load()` (which only `setList`), then `list.find(id)` — but `list` was the stale render-closure value, so `select(found)` re-selected the **pre-edit** row and reverted the draft (all fields: name/color/scope/layer/image/duration/modifiers). The DB write was correct; a second Save then persisted the reverted draft. Insert path was unaffected (id absent from the stale list → fetched fresh).
+- **Shared helper** `refreshAndReselect(load, id, idOf)` (`src/lib/librarySelection.ts`): `load()` now returns the freshly mapped list (and still sets state) and the editor reselects by id from that fresh list — never from stale state. Applied to **EffectEditor, StructureEditor, WeaponEditor**. `UnitEditor`/`ShipEditor` already reselected from the save response (`mapTemplate(result[0])` / `mapShipTemplateRow(fresh)`) so they had no stale-list bug and were left unchanged.
+- `tsc` clean; 728 tests pass; `next build` clean.
+
 ## Scenario "Map Feature" tab: no arm toggle, pan-safe, preview border (2026-09-21)
 **Files:** src/components/ScenarioMap/{LeftPanel,StructurePaintPanel,ScenarioMap}.tsx, src/hooks/useHexGrid.ts, src/components/StructureEditor/{StructurePreview,StructureEditor}.tsx, docs/dev/changelog.md
 
