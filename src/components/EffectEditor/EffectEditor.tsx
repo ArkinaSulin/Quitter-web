@@ -11,7 +11,7 @@ import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFi
 import { EffectHexPreview } from '@/components/EffectEditor/EffectHexPreview';
 import {
   EffectTemplate, EffectModifier, EffectLayer, EffectScope,
-  mapEffectRow, mapEffectToRow, blankEffectTemplate,
+  mapEffectRow, mapEffectToRow, blankEffectTemplate, modifierSummary,
 } from '@/lib/effectTemplates';
 import { refreshAndReselect } from '@/lib/librarySelection';
 
@@ -93,7 +93,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
   const summary = useMemo(
     () =>
       draft
-        ? draft.modifiers.map(m => `${m.kind}: ${m.dice ?? ''}`.trim()).join(' · ') || '(no modifiers)'
+        ? draft.modifiers.map(m => modifierSummary(m)).join(' · ') || '(no modifiers)'
         : '',
     [draft],
   );

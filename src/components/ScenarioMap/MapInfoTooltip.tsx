@@ -9,7 +9,7 @@ import { Hex, GroundEffect } from '@/types/gameProtocol';
 import { EdgeRef } from '@/lib/walls';
 import { MapStructures, instanceModifiers, instanceDoorState } from '@/lib/mapStructures';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
-import { modifierAmount } from '@/lib/effectTemplates';
+import { modifierAmount, modifierSummary } from '@/lib/effectTemplates';
 import { structureHasDoor } from '@/lib/structureTemplates';
 import { useTooltipClamp } from './useTooltipClamp';
 
@@ -42,11 +42,10 @@ function coverAc(mods: { kind: string; dice?: string; mode?: string }[]): { mele
 }
 
 function EffectInfo({ zone }: { zone: GroundEffect }) {
-  const amount = zone.dice ?? '';
   return (
     <div className="mb-1 last:mb-0">
       <div className="font-semibold" style={{ color: zone.color || '#fff' }}>{zone.name}</div>
-      <div className="text-gray-300">{zone.kind} {amount}{zone.healing ? ' heal' : ''}</div>
+      <div className="text-gray-300">{modifierSummary(zone as any)}</div>
       <div className="text-gray-500">
         {zone.permanent ? 'permanent' : `${zone.turnsLeft} turn${zone.turnsLeft === 1 ? '' : 's'} left`}
         {zone.casterTeam ? ` · ${zone.casterTeam}` : ''}
@@ -56,7 +55,7 @@ function EffectInfo({ zone }: { zone: GroundEffect }) {
 }
 
 const modLine = (mods: { kind: string; dice?: string; mode?: string }[]): string =>
-  mods.map(m => `${m.kind}${m.mode ? `(${m.mode})` : ''}`).join(', ');
+  mods.map(m => modifierSummary(m as any)).join(', ');
 
 function HexStructureInfo({ template, inst, hp, maxHp }: { template: StructureTemplate; inst: StructureInstance; hp: number; maxHp: number }) {
   const door = instanceDoorState(inst, template);

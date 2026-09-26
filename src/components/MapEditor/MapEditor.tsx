@@ -302,7 +302,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     const cover = t.modifiers.filter(m => m.kind === 'ac');
     const melee = cover.filter(m => m.mode !== 'ranged').reduce((s, m) => s + modifierAmount(m.dice), 0);
     const ranged = cover.filter(m => m.mode !== 'melee').reduce((s, m) => s + modifierAmount(m.dice), 0);
-    const rest = t.modifiers.filter(m => m.kind !== 'ac').map(m => `${m.kind}${m.mode ? `(${m.mode})` : ''}${m.direction ? `/${m.direction}` : ''}`);
+    const rest = t.modifiers.filter(m => m.kind !== 'ac').map(modifierSummary);
     const door = t.doorHp ?? t.maxHp;
     const lines = [
       `${t.anchor}${t.spikes ? ' · stakes' : t.battlement ? ' · battlement' : ''}`,

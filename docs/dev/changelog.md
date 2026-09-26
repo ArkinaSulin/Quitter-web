@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Range auras apply immediately + central modifier labels (2026-09-21)
+**Files:** src/lib/{effectTemplates,unitEffects}.ts (+ tests), src/components/ScenarioMap/{useCombatActions,useReactionActions,useOverlay,MapInfoTooltip,StructurePaintPanel}.ts(x), src/components/{StructureEditor/StructureEditor,EffectEditor/EffectEditor,MapEditor/MapEditor}.tsx, docs/dev/changelog.md
+
+- **Range auras apply before a move.** Structure `range` reaches combat via a zone membership, which is only materialized on move / END_TURN — so a unit standing on a watch tower (or a structure edited to add `range`) showed no bonus until it moved. New `unitEffects.rangeBonusAt(unit, zones)` = persisted `effectRangeBonus` **plus** any `range` zone underfoot not yet materialized (deduped by zone key, so no double-count). Used in `useCombatActions` (attacker/defender bonus + hard range cap, ranged-only), `useReactionActions` (eligibility/reach/gates), and — the visible bug — **`useOverlay`**: range rings, the hovered-target colour and the reaction-mode archer rings now include the bonus.
+- **Central `modifierSummary`** (`effectTemplates.ts`): one label implementation for every list/tooltip/summary — `(mode)` only for mode-honouring kinds (so `range` never prints `(melee)`), `/in`·`/out` for `block_attacks`, signed flat amounts (`range +2`, `ac -1`), dice strings kept as-is (`dot 1d6`), `enter_org_max ≤1`, `heal` suffix. Replaced the ad-hoc formatters in `MapInfoTooltip` (modifier line + zone `EffectInfo`), `StructurePaintPanel` hover tooltip, `MapEditor` structure tooltip, and the Structure/Effect editor summaries.
+- `tsc` clean; 734 tests pass; `next build` clean. No migration.
+
 ## Map Editor: panels fill to bottom, notes as hover tooltips, Shift+double-click structure edit (2026-09-21)
 **Files:** src/components/StructureEditModal.tsx (moved), src/components/ScenarioMap/ScenarioMap.tsx, src/components/MapEditor/{MapEditor,MapCanvas}.tsx, docs/dev/changelog.md
 

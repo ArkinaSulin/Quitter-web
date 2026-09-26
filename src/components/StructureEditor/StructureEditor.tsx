@@ -11,7 +11,7 @@ import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
 import { StructurePreview } from '@/components/StructureEditor/StructurePreview';
 import { StructureTemplate, StructureAnchor } from '@/types/structure';
-import { EffectModifier, modifierAmount } from '@/lib/effectTemplates';
+import { EffectModifier, modifierAmount, modifierSummary } from '@/lib/effectTemplates';
 import {
   mapStructureRow, mapStructureToRow, blankStructureTemplate, sanitizeStructureTemplate,
 } from '@/lib/structureTemplates';
@@ -162,7 +162,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
   const summary = useMemo(
     () =>
       draft
-        ? draft.modifiers.map(m => `${m.kind}${m.mode ? ` (${m.mode})` : ''}: ${m.dice ?? ''}`.trim()).join(' · ') || '(no modifiers)'
+        ? draft.modifiers.map(m => modifierSummary(m)).join(' · ') || '(no modifiers)'
         : '',
     [draft],
   );

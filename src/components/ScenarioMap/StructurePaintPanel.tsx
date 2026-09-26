@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { MapStructures } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
-import { modifierAmount } from '@/lib/effectTemplates';
+import { modifierAmount, modifierSummary } from '@/lib/effectTemplates';
 
 interface StructurePaintPanelProps {
   templates: Record<string, StructureTemplate>;
@@ -46,7 +46,7 @@ function StructureTooltip({ t, x, y }: { t: StructureTemplate; x: number; y: num
       )}
       <div className="text-gray-400 mt-1">HP {t.maxHp} · DT {t.dt} · door {door === 0 ? 'none' : door}</div>
       {(melee || ranged) ? <div className="text-gray-400">Cover AC melee {melee} · ranged {ranged}</div> : null}
-      {rest.length > 0 && <div className="text-gray-400">Effects: {rest.map(m => `${m.kind}${m.mode ? `(${m.mode})` : ''}${m.direction ? `/${m.direction}` : ''}`).join(', ')}</div>}
+      {rest.length > 0 && <div className="text-gray-400">Effects: {rest.map(modifierSummary).join(', ')}</div>}
       {t.description && <div className="text-gray-500 mt-1">{t.description}</div>}
     </div>
   );

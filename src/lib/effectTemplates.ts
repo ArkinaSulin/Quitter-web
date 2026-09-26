@@ -115,10 +115,33 @@ export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
   block_attacks: 'Block attacks in/out',
 };
 
-/** Short one-line label for a modifier (used in lists/tooltips). */
+/**
+ * Short one-line label for a modifier (used in every list/tooltip/summary).
+ * One central implementation so the format can never drift:
+ *   - `(mode)` shown ONLY for the mode-honouring kinds (ac, advantage,
+ *     disadvantage, the grant kinds and block_attacks) — `range` and friends
+ *     never print a bogus `(melee)`.
+ *   - `/in`·`/out` suffix for `block_attacks`.
+ *   - signed amount for stat/aura kinds: `range +2`, `ac -1`; `≤1` for the
+ *     `enter_org_max` gate; `heal` suffix preserved.
+ *   - flag kinds print just the kind.
+ */
 export function modifierSummary(m: EffectModifier): string {
-  if (isFlagModifierKind(m.kind)) return EFFECT_MODIFIER_LABELS[m.kind];
-  return `${m.kind} ${m.dice ?? ''}${m.healing ? ' heal' : ''}`.trim();
+  let s = m.kind as string;
+  if (honorsMode(m.kind) && m.mode) s += ` (${m.mode})`;
+  if (m.kind === 'block_attacks' && m.direction) s += ` /${m.direction}`;
+  if (!isFlagModifierKind(m.kind)) {
+    if (m.kind === 'enter_org_max') {
+      s += ` ≤${modifierAmount(m.dice)}`;
+    } else if (isDiceAmount(m.dice)) {
+      s += ` ${m.dice}`; // rolled amount: keep the dice string (e.g. `dot 1d6`)
+    } else {
+      const v = modifierAmount(m.dice);
+      s += ` ${v >= 0 ? '+' : ''}${v}`;
+    }
+    if (m.healing) s += ' heal';
+  }
+  return s;
 }
 
 export type EffectScope = 'unit' | 'zone' | 'both';

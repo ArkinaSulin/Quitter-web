@@ -20,7 +20,7 @@ import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDista
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
-import { attackRollFlags, effectRangeBonus } from '@/lib/unitEffects';
+import { attackRollFlags, rangeBonusAt } from '@/lib/unitEffects';
 import { hasLineOfSight } from '@/lib/lineOfSight';
 import { Walls } from '@/lib/walls';
 import { MapStructures, structureAuraFlags, hasAuraFlags, StructureAuraFlags } from '@/lib/mapStructures';
@@ -261,8 +261,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // Range bonus (from effects and from a hex structure's zone membership — see
     // `structureZones`) extends the occupant's reach — but ONLY for ranged
     // weapons (maxRange > 1); a melee weapon gains no reach from a range effect.
-    const atkRangeBonusRaw = effectRangeBonus(effAttacker);
-    const tgtRangeBonusRaw = effectRangeBonus(effTarget);
+    const atkRangeBonusRaw = rangeBonusAt(effAttacker, groundZones);
+    const tgtRangeBonusRaw = rangeBonusAt(effTarget, groundZones);
     const atkRangeBonus = (weapon.maxRange ?? 1) > 1 ? atkRangeBonusRaw : 0;
     const tgtRangeBonus = defWeapon && (defWeapon.maxRange ?? 1) > 1 ? tgtRangeBonusRaw : 0;
     const combatWeapon = atkRangeBonus
@@ -1019,7 +1019,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // (a caster with many spells would flood a picker); Cancel lets the player
     // switch manually and redo the attack. None -> warn and abort.
     // Range effects only extend RANGED weapons (maxRange > 1).
-    const rangeBonus = (weapon.maxRange ?? 1) > 1 ? effectRangeBonus(attacker) : 0;
+    const rangeBonus = (weapon.maxRange ?? 1) > 1 ? rangeBonusAt(attacker, groundZones) : 0;
     if (dist > weapon.maxRange + rangeBonus) {
       const reaching = weaponIndicesReaching(attackerWeapons, attacker.activeWeaponIndex ?? 0, Math.max(1, dist - rangeBonus));
       if (reaching.length === 0) {

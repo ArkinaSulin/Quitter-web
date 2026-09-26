@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus } from './unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, rangeBonusAt } from './unitEffects';
 import { parseDice } from './effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
@@ -488,5 +488,25 @@ describe('effectRangeBonus', () => {
     expect(effectRangeBonus(u)).toBe(-1);
     expect(effectRangeBonus(null)).toBe(0);
     expect(effectRangeBonus(unit('v', 'blue'))).toBe(0);
+  });
+});
+
+describe('rangeBonusAt', () => {
+  const rzone = (over: Partial<GroundEffect> = {}): GroundEffect => ({ key: 'z1', q: 0, r: 0, name: 'Tower', color: '#fff', kind: 'range', dice: '2', duration: 0, turnsLeft: 0, permanent: true, ...over });
+
+  it('adds an unmaterialized range zone underfoot (structure range before a move)', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [] });
+    expect(rangeBonusAt(u, [rzone()])).toBe(2);
+  });
+
+  it('does NOT double-count a zone already represented by a membership', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'z1', kind: 'range', dice: '2', zoneHex: h(0, 0) })] });
+    expect(rangeBonusAt(u, [rzone()])).toBe(2);
+  });
+
+  it('ignores zones on other hexes and null input', () => {
+    const u = unit('u', 'blue', h(5, 0), { effects: [] });
+    expect(rangeBonusAt(u, [rzone()])).toBe(0);
+    expect(rangeBonusAt(null, [rzone()])).toBe(0);
   });
 });

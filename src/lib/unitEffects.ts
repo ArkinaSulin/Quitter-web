@@ -60,6 +60,27 @@ export function effectRangeBonus(unit: Unit | null | undefined): number {
   return sum;
 }
 
+/**
+ * Range bonus for a unit at its CURRENT hex: persisted effect/zone memberships
+ * (`effectRangeBonus`) PLUS any `range` zone underfoot not yet materialized as a
+ * membership. Zone memberships are only created on move / END_TURN, so without
+ * this a unit standing on a structure with `range` (or one edited in) would show
+ * no bonus until its next move. Non-persisting — safe to call for display.
+ * A zone already represented by a membership is skipped (no double-count).
+ */
+export function rangeBonusAt(unit: Unit | null | undefined, zones: GroundEffect[] | null | undefined): number {
+  if (!unit) return 0;
+  let sum = effectRangeBonus(unit);
+  const materialized = new Set((unit.effects ?? []).filter(e => e.zoneHex).map(e => e.key));
+  for (const z of zones ?? []) {
+    if (z.kind !== 'range') continue;
+    if (z.q !== unit.hex.q || z.r !== unit.hex.r) continue;
+    if (materialized.has(z.key)) continue;
+    sum += modifierAmount(z.dice);
+  }
+  return sum;
+}
+
 /** The four attack-roll flag kinds present on one unit (effects + zone memberships). */
 export interface AttackRollFlags {
   advantage: boolean;

@@ -19,6 +19,7 @@ import { Walls, EdgeRef } from '@/lib/walls';
 import { MapStructures } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
+import { rangeBonusAt } from '@/lib/unitEffects';
 import { edgeHexes } from '@/lib/wallCombat';
 import { canWithdraw, withdrawDestinations } from '@/lib/withdraw';
 
@@ -93,7 +94,8 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       (alliances[hoveredUnit.team] || 'friendly') !== (alliances[archer.team] || 'friendly');
     if (hostileHover && weapon && isRangedCapableWeapon(weapon)) {
       const allow = (h: Hex) => canRangedTarget(formationsMap[archer.currentFormation] ?? null, arcOfTarget(archer.hex, archer.facing, h));
-      for (const h of hexRing(archer.hex, weapon.range)) {
+      const archerRange = weapon.range + rangeBonusAt(archer, zones);
+      for (const h of hexRing(archer.hex, archerRange)) {
         if (allow(h)) combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.85)';
       }
       const d = hexDistance(archer.hex, hoveredUnit!.hex);
@@ -194,18 +196,22 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
         // to the formation's allowed ranged arcs (formed units: front cone only).
         const form = formationsMap[draggedUnit.currentFormation] ?? null;
         const allow = (h: Hex) => canRangedTarget(form, arcOfTarget(draggedUnit.hex, draggedUnit.facing, h));
-        for (const h of hexRing(draggedUnit.hex, activeWeapon!.range)) {
+        // Range effects / an occupant structure `range` aura extend the rings.
+        const rangeBonus = rangeBonusAt(draggedUnit, zones);
+        const minRange = activeWeapon!.range + rangeBonus;
+        const maxRange = activeWeapon!.maxRange + rangeBonus;
+        for (const h of hexRing(draggedUnit.hex, minRange)) {
           if (allow(h)) combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.9)';
         }
-        if (activeWeapon!.maxRange > activeWeapon!.range) {
-          for (const h of hexRing(draggedUnit.hex, activeWeapon!.maxRange)) {
+        if (maxRange > minRange) {
+          for (const h of hexRing(draggedUnit.hex, maxRange)) {
             if (allow(h)) combined[`${h.q},${h.r}`] = 'rgba(255, 180, 60, 0.9)';
           }
         }
         const d = hexDistance(draggedUnit.hex, hoveredUnit!.hex);
         let color = 'rgba(80, 220, 120, 0.8)';
-        if (d > activeWeapon!.maxRange) color = 'rgba(255, 80, 80, 0.85)';
-        else if (d > activeWeapon!.range) color = 'rgba(255, 180, 60, 0.85)';
+        if (d > maxRange) color = 'rgba(255, 80, 80, 0.85)';
+        else if (d > minRange) color = 'rgba(255, 180, 60, 0.85)';
         combined[targetKey] = color;
       } else {
         // Melee target: mark it green (the drop attacks it, not a move).
