@@ -15,10 +15,15 @@ import { MapStructures } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { structureHasDoor } from '@/lib/structureTemplates';
-import { EffectTemplate, mapEffectRow } from '@/lib/effectTemplates';
+import { EffectTemplate, mapEffectRow, modifierSummary, modifierAmount } from '@/lib/effectTemplates';
+import { StructureEditModal, StructureInstancePatch } from '@/components/StructureEditModal';
 import { MapCanvas } from './MapCanvas';
 
 type Tab = 'image' | 'movement' | 'structures' | 'effects';
+
+const movementNote = 'Pick a number, then left-click / drag across hexes on the map to paint. Empty = default 1 MP. Right-click clears back to 1 MP. Painted hexes show a tan tint + cost number.';
+const structuresNote = 'Pick a structure, then click/drag a hex or near a hex edge to place it. Click a placed edge again to flip its battlement. Right-click removes. Shift + double-click a placed structure to edit it.';
+const effectsNote = 'Pick an effect, then click/drag hexes to place it (one per hex); clicking its own hex clears it. Authored effects are permanent and snapshot into the scenario on assign.';
 
 function blankMap(): MapEntity {
   return {
@@ -227,6 +232,10 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
   const [templates, setTemplates] = useState<Record<string, StructureTemplate>>({});
   const [paletteId, setPaletteId] = useState<string | null>(null);
   const [selectedStructureKey, setSelectedStructureKey] = useState<string | null>(null);
+  // Shift + double-click a placed structure opens the shared instance editor.
+  const [structureEditKey, setStructureEditKey] = useState<string | null>(null);
+  // Hover info tooltip (item info and/or the tab's instruction note).
+  const [tip, setTip] = useState<{ lines: string[]; note: string; x: number; y: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -238,9 +247,6 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
   useEffect(() => {
     if (paletteId && !templates[paletteId]) setPaletteId(null);
   }, [templates, paletteId]);
-
-  const selectedStructure = entity && selectedStructureKey ? entity.structures[selectedStructureKey] ?? null : null;
-  const selectedStructureTemplate = selectedStructure ? templates[selectedStructure.templateId] ?? null : null;
 
   /** Click an edge structure: place a new one, select an existing one, or (already
    *  selected) flip its battlement/outside to the other side. */
@@ -277,21 +283,36 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     setSelectedStructureKey(sel => (sel === key ? null : sel));
   }, [entity, update]);
 
-  const patchSelectedStructure = useCallback((patch: { hp?: number; doorHp?: number; outside?: 'a' | 'b'; open?: boolean }) => {
-    if (!entity || !selectedStructureKey) return;
-    const inst = entity.structures[selectedStructureKey];
+  /** Patch one placed structure instance by key (Shift + double-click modal). */
+  const patchStructureAt = useCallback((key: string, patch: StructureInstancePatch) => {
+    if (!entity) return;
+    const inst = entity.structures[key];
     if (!inst) return;
-    const next = { ...inst };
+    const next: any = { ...inst };
     for (const [k, v] of Object.entries(patch)) {
-      if (v === undefined) delete (next as any)[k];
-      else (next as any)[k] = v;
+      if (v === undefined) delete next[k];
+      else next[k] = v;
     }
-    update({ structures: { ...entity.structures, [selectedStructureKey]: next } });
-  }, [entity, selectedStructureKey, update]);
+    update({ structures: { ...entity.structures, [key]: next } });
+  }, [entity, update]);
 
-  const deleteSelectedStructure = useCallback(() => {
-    if (selectedStructureKey) clearStructure(selectedStructureKey);
-  }, [selectedStructureKey, clearStructure]);
+  /** Info lines for a structure template (hover tooltip). */
+  const structureLines = useCallback((t: StructureTemplate): string[] => {
+    const mp = (v: number | null) => (v === null ? '—' : v < 0 ? 'block' : `${v}`);
+    const cover = t.modifiers.filter(m => m.kind === 'ac');
+    const melee = cover.filter(m => m.mode !== 'ranged').reduce((s, m) => s + modifierAmount(m.dice), 0);
+    const ranged = cover.filter(m => m.mode !== 'melee').reduce((s, m) => s + modifierAmount(m.dice), 0);
+    const rest = t.modifiers.filter(m => m.kind !== 'ac').map(m => `${m.kind}${m.mode ? `(${m.mode})` : ''}${m.direction ? `/${m.direction}` : ''}`);
+    const door = t.doorHp ?? t.maxHp;
+    const lines = [
+      `${t.anchor}${t.spikes ? ' · stakes' : t.battlement ? ' · battlement' : ''}`,
+      t.anchor === 'edge' ? `In foot ${mp(t.mpFootIn)} / mtd ${mp(t.mpMountedIn)} MP` : `Enter foot ${mp(t.mpFootIn)} / mtd ${mp(t.mpMountedIn)} MP`,
+      `HP ${t.maxHp} · DT ${t.dt}${structureHasDoor(t) ? ` · door ${door}` : ''}`,
+    ];
+    if (melee || ranged) lines.push(`Cover AC melee ${melee} / ranged ${ranged}`);
+    if (rest.length) lines.push(`Effects: ${rest.join(', ')}`);
+    return lines;
+  }, []);
 
   const armedAnchor = paletteId ? templates[paletteId]?.anchor ?? null : null;
 
@@ -396,9 +417,9 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
             ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="flex-1 min-h-0 flex flex-col p-3 gap-3">
             {tab === 'image' && entity && (
-              <>
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-3">
                 <label className="block text-xs text-gray-400">Map name
                   <input
                     value={entity.name}
@@ -466,11 +487,16 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                 <label className="block text-xs text-gray-400">Description
                   <textarea value={entity.description} disabled={readOnly} onChange={(e) => update({ description: e.target.value })} className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm disabled:opacity-50" rows={2} />
                 </label>
-              </>
+              </div>
             )}
 
             {tab === 'movement' && entity && (
-              <>
+              <div
+                className="flex-1 min-h-0 overflow-y-auto space-y-3"
+                onMouseEnter={e => setTip({ lines: [], note: movementNote, x: e.clientX, y: e.clientY })}
+                onMouseMove={e => setTip(t => (t && t.lines.length === 0 ? { lines: [], note: movementNote, x: e.clientX, y: e.clientY } : t))}
+                onMouseLeave={() => setTip(null)}
+              >
                 <p className="text-[10px] uppercase tracking-wide text-gray-500">Movement cost to ENTER a hex</p>
                 <div className="flex flex-wrap gap-1.5">
                   {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
@@ -485,24 +511,18 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                     </button>
                   ))}
                 </div>
-                {paintValue === null ? (
-                  <p className="text-xs text-gray-500">Pick a number, then left-click / drag across hexes on the map to paint. Empty = default 1 MP. <b>Right-click</b> in paint mode clears back to 1 MP.</p>
-                ) : (
+                {paintValue !== null && (
                   <p className="text-xs text-yellow-300">
                     Pen: <b>{paintValue === 0 ? 'Free (0)' : paintValue === 1 ? 'Clear (1)' : `${paintValue} MP`}</b> — left-click or drag. Click the number again to put the pen down.
                   </p>
                 )}
-                <div className="pt-1 border-t border-gray-700">
-                  <p className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Legend</p>
-                  <p className="text-xs text-gray-400">Painted hexes show a tan tint + cost number. Unpainted hexes cost the default <b>1 MP</b>. Drag to paint multiple hexes in one stroke.</p>
-                </div>
-              </>
+              </div>
             )}
 
             {tab === 'structures' && entity && (
-              <>
+              <div className="flex-1 min-h-0 flex flex-col gap-2">
                 <p className="text-[10px] uppercase tracking-wide text-gray-500">Map structures</p>
-                <div className="space-y-1 max-h-56 overflow-y-auto">
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-1">
                   {Object.values(templates).length === 0 && (
                     <p className="text-xs text-gray-500">No structure templates yet — author them in the Structure Editor.</p>
                   )}
@@ -513,69 +533,24 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                         key={t.id}
                         disabled={readOnly}
                         onClick={() => { setPaletteId(id => (id === t.id ? null : t.id)); setSelectedStructureKey(null); }}
+                        onMouseEnter={e => setTip({ lines: structureLines(t), note: structuresNote, x: e.clientX, y: e.clientY })}
+                        onMouseMove={e => setTip(tip => (tip ? { ...tip, x: e.clientX, y: e.clientY } : tip))}
+                        onMouseLeave={() => setTip(null)}
                         className={`w-full text-left text-xs px-2 py-1.5 rounded border ${paletteId === t.id ? 'bg-yellow-700/40 border-yellow-500' : 'bg-gray-800 border-transparent hover:bg-gray-700'}`}
                       >
                         <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle bg-black/80 border border-gray-500" />
                         {t.name}
-                        <span className="block text-[10px] text-gray-400">{t.anchor}{t.battlement ? ' · battlement' : ''}{t.doorHp !== null ? ` · door ${t.doorHp}` : ''} · {t.maxHp}hp</span>
+                        <span className="block text-[10px] text-gray-400">{t.anchor}{t.battlement ? ' · battlement' : ''}{t.spikes ? ' · stakes' : ''}{structureHasDoor(t) ? ` · door ${t.doorHp}` : ''} · {t.maxHp}hp</span>
                       </button>
                     ))}
                 </div>
-                <p className="text-xs text-gray-500">
-                  {paletteId
-                    ? `Armed: ${templates[paletteId]?.name}. Click/drag ${armedAnchor === 'hex' ? 'a hex' : 'near a hex edge'} to place; click a placed one again to flip its battlement. Right-click removes.`
-                    : 'Pick a structure to enable placing.'}
-                </p>
-
-                {selectedStructure && selectedStructureTemplate ? (
-                  <div className="space-y-2 rounded border border-gray-700 p-2">
-                    <p className="text-xs text-gray-300 font-semibold">{selectedStructureTemplate.name}</p>
-                    <p className="text-[10px] text-gray-500">{selectedStructureKey}</p>
-                    <div className="flex flex-wrap items-center gap-3 text-[11px]">
-                      <label className="flex items-center gap-1">HP
-                        <input type="number" min={0} max={selectedStructureTemplate.maxHp} disabled={readOnly}
-                          value={selectedStructure.hp ?? ''} placeholder={String(selectedStructureTemplate.maxHp)}
-                          onChange={e => patchSelectedStructure({ hp: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })}
-                          className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
-                      </label>
-                      {structureHasDoor(selectedStructureTemplate) && (
-                        <label className="flex items-center gap-1">Door HP
-                          <input type="number" min={0} max={selectedStructureTemplate.maxHp} disabled={readOnly}
-                            value={selectedStructure.doorHp ?? ''} placeholder={String(selectedStructureTemplate.doorHp ?? selectedStructureTemplate.maxHp)}
-                            onChange={e => patchSelectedStructure({ doorHp: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })}
-                            className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
-                        </label>
-                      )}
-                    </div>
-                    {structureHasDoor(selectedStructureTemplate) && (
-                      <label className="flex items-center gap-1 text-[11px] text-gray-300">
-                        <input type="checkbox" disabled={readOnly} checked={!!selectedStructure.open}
-                          onChange={e => patchSelectedStructure({ open: e.target.checked })} /> gate open
-                      </label>
-                    )}
-                    {selectedStructureTemplate.anchor === 'edge' && (
-                      <div className="text-[11px] text-gray-400">
-                        Battlement side: <span className="text-amber-300">{(selectedStructure.outside ?? 'a') === 'a' ? 'A (outside)' : 'B (outside)'}</span>{' '}
-                        {!readOnly && (
-                          <button className="px-2 py-0.5 rounded bg-gray-700 hover:bg-gray-600"
-                            onClick={() => patchSelectedStructure({ outside: (selectedStructure.outside ?? 'a') === 'a' ? 'b' : 'a' })}>
-                            Flip
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {!readOnly && <button onClick={deleteSelectedStructure} className="text-xs px-2 py-1 rounded bg-red-900/60 hover:bg-red-800 text-red-100">Remove structure</button>}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-500">Click a placed structure to edit it.</p>
-                )}
-              </>
+              </div>
             )}
 
             {tab === 'effects' && entity && (
-              <>
+              <div className="flex-1 min-h-0 flex flex-col gap-2">
                 <p className="text-[10px] uppercase tracking-wide text-gray-500">Map effects (permanent)</p>
-                <div className="space-y-1 max-h-72 overflow-y-auto">
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-1">
                   {Object.values(effectTemplates).length === 0 && (
                     <p className="text-xs text-gray-500">No zone-capable effects yet — author them in the Effect Editor.</p>
                   )}
@@ -586,6 +561,9 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                         key={t.id}
                         disabled={readOnly}
                         onClick={() => setEffectTemplateId(active ? null : t.id)}
+                        onMouseEnter={e => setTip({ lines: [t.name, `${t.scope} · ${t.defaultDuration} turn${t.defaultDuration === 1 ? '' : 's'}`, t.modifiers.map(modifierSummary).join(', ') || 'no modifiers'], note: effectsNote, x: e.clientX, y: e.clientY })}
+                        onMouseMove={e => setTip(tip => (tip ? { ...tip, x: e.clientX, y: e.clientY } : tip))}
+                        onMouseLeave={() => setTip(null)}
                         className={`w-full text-left text-xs px-2 py-1.5 rounded border ${active ? 'bg-yellow-700/40 border-yellow-500' : 'bg-gray-800 border-transparent hover:bg-gray-700'}`}
                       >
                         <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ backgroundColor: t.color }} />
@@ -595,15 +573,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                     );
                   })}
                 </div>
-                <p className="text-xs text-gray-500">
-                  {effectTemplateId
-                    ? 'Effect pen armed — click/drag hexes to place (one per hex); clicking its own hex clears it. Right-click clears. Esc exits.'
-                    : 'Pick an effect to place it on hexes.'}
-                </p>
-                <p className="text-xs text-gray-400">
-                  Authored effects are <span className="text-amber-300">permanent</span> and snapshot into the scenario on assign.
-                </p>
-              </>
+              </div>
             )}
           </div>
         </div>
@@ -633,6 +603,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
             onClearStructure={clearStructure}
             onPaintEffect={paintHexEffect}
             onClearEffect={clearHexEffect}
+            onEditStructureKey={setStructureEditKey}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-500">
@@ -640,6 +611,30 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
           </div>
         )}
       </div>
+
+      {/* Hover info tooltip: item info (+ the tab's instruction note at the bottom). */}
+      {tip && (
+        <div
+          className="fixed z-[90] pointer-events-none bg-black/95 border border-gray-600 rounded shadow-xl p-2.5 text-[11px] text-white w-64"
+          style={{ left: Math.min(tip.x + 12, window.innerWidth - 280), top: Math.min(tip.y + 12, window.innerHeight - 200) }}
+        >
+          {tip.lines.map((l, i) => (
+            <div key={i} className={i === 0 ? 'font-semibold text-amber-300' : 'text-gray-300'}>{l}</div>
+          ))}
+          {tip.lines.length > 0 && <div className="my-1 border-t border-gray-700" />}
+          <div className="text-gray-400">{tip.note}</div>
+        </div>
+      )}
+
+      {/* Shift + double-click a placed structure → instance editor. */}
+      {structureEditKey && entity?.structures[structureEditKey] && templates[entity.structures[structureEditKey].templateId] && (
+        <StructureEditModal
+          template={templates[entity.structures[structureEditKey].templateId]}
+          instance={entity.structures[structureEditKey]}
+          onSave={(patch) => patchStructureAt(structureEditKey, patch)}
+          onClose={() => setStructureEditKey(null)}
+        />
+      )}
     </div>
   );
 }

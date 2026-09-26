@@ -52,7 +52,7 @@ import { StructureTemplate } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/lib/wallCombat';
 import { hexStructureAttackKind, resolveHexStructureAttack, isAttackableHexStructure, structureDoorMax } from '@/lib/structureCombat';
-import { StructureEditModal, StructureInstancePatch } from './StructureEditModal';
+import { StructureEditModal, StructureInstancePatch } from '@/components/StructureEditModal';
 import { unitAttackCap } from '@/lib/attackCap';
 import { newEffectKey } from '@/lib/unitEffects';
 import { MapEntity } from '@/lib/mapEntities';

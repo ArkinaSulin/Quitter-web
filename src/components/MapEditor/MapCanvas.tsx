@@ -46,6 +46,8 @@ export interface MapCanvasProps {
   onClearStructure?: (key: string) => void;
   onPaintEffect?: (q: number, r: number) => void;
   onClearEffect?: (q: number, r: number) => void;
+  /** Shift + double-click a placed structure: open its instance editor. */
+  onEditStructureKey?: (key: string) => void;
 }
 
 type View = { zoom: number; ox: number; oy: number };
@@ -64,7 +66,7 @@ export function MapCanvas({
   hexEffects, effectTemplates, effectArmed = false,
   paintValue, structureAnchors = null, selectedStructureKey = null, readOnly = false,
   onPaintHex, onClearHex, onPaintStructureEdge, onPaintStructureHex, onClearStructure,
-  onPaintEffect, onClearEffect,
+  onPaintEffect, onClearEffect, onEditStructureKey,
 }: MapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const view = useRef<View>({ zoom: 1, ox: 0, oy: 0 });
@@ -76,13 +78,13 @@ export function MapCanvas({
     imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, structures, templates,
     hexEffects, effectTemplates, effectArmed,
     paintValue, structureAnchors, selectedStructureKey, readOnly,
-    onPaintHex, onClearHex, onPaintStructureEdge, onPaintStructureHex, onClearStructure, onPaintEffect, onClearEffect,
+    onPaintHex, onClearHex, onPaintStructureEdge, onPaintStructureHex, onClearStructure, onPaintEffect, onClearEffect, onEditStructureKey,
   });
   propsRef.current = {
     imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, structures, templates,
     hexEffects, effectTemplates, effectArmed,
     paintValue, structureAnchors, selectedStructureKey, readOnly,
-    onPaintHex, onClearHex, onPaintStructureEdge, onPaintStructureHex, onClearStructure, onPaintEffect, onClearEffect,
+    onPaintHex, onClearHex, onPaintStructureEdge, onPaintStructureHex, onClearStructure, onPaintEffect, onClearEffect, onEditStructureKey,
   };
 
   // Cache the background image so draw is synchronous.
@@ -440,28 +442,30 @@ export function MapCanvas({
     if (!canvas) return;
     canvas.setPointerCapture(e.pointerId);
     const p = propsRef.current;
-    if (e.button === 0 && p.effectArmed && !p.readOnly && p.onPaintEffect) {
+    // Shift is the inspect/edit modifier: never paint while it is held (a
+    // Shift + double-click opens the structure editor).
+    if (e.button === 0 && !e.shiftKey && p.effectArmed && !p.readOnly && p.onPaintEffect) {
       drag.current.mode = 'effect';
       const hex = hexAtClient(e.clientX, e.clientY);
       if (hex) {
         drag.current.lastHex = `${hex.q},${hex.r}`;
         p.onPaintEffect(hex.q, hex.r);
       }
-    } else if (e.button === 0 && p.structureAnchors === 'edge' && !p.readOnly && p.onPaintStructureEdge) {
+    } else if (e.button === 0 && !e.shiftKey && p.structureAnchors === 'edge' && !p.readOnly && p.onPaintStructureEdge) {
       drag.current.mode = 'structure';
       const edge = edgeAtClient(e.clientX, e.clientY);
       if (edge) {
         drag.current.lastHex = `${edge.q},${edge.r},${edge.dir}`;
         p.onPaintStructureEdge(edge.q, edge.r, edge.dir);
       }
-    } else if (e.button === 0 && p.structureAnchors === 'hex' && !p.readOnly && p.onPaintStructureHex) {
+    } else if (e.button === 0 && !e.shiftKey && p.structureAnchors === 'hex' && !p.readOnly && p.onPaintStructureHex) {
       drag.current.mode = 'structure';
       const hex = hexAtClient(e.clientX, e.clientY);
       if (hex) {
         drag.current.lastHex = `${hex.q},${hex.r}`;
         p.onPaintStructureHex(hex.q, hex.r);
       }
-    } else if (e.button === 0 && p.paintValue !== null && !p.readOnly) {
+    } else if (e.button === 0 && !e.shiftKey && p.paintValue !== null && !p.readOnly) {
       drag.current.mode = 'paint';
       const hex = hexAtClient(e.clientX, e.clientY);
       if (hex) {
@@ -472,6 +476,21 @@ export function MapCanvas({
       drag.current.mode = 'pan';
       drag.current.sx = e.clientX;
       drag.current.sy = e.clientY;
+    }
+  };
+  /** Shift + double-click a placed structure opens its instance editor. */
+  const onDoubleClick = (e: React.MouseEvent) => {
+    if (!e.shiftKey) return;
+    const p = propsRef.current;
+    if (!p.onEditStructureKey || !p.structures) return;
+    const hex = hexAtClient(e.clientX, e.clientY);
+    if (!hex) return;
+    const hexKey = `${hex.q},${hex.r}`;
+    if (p.structures[hexKey]) { p.onEditStructureKey(hexKey); return; }
+    const edge = edgeAtClient(e.clientX, e.clientY);
+    if (edge) {
+      const key = edgeRef(edge.q, edge.r, edge.dir).key;
+      if (p.structures[key]) p.onEditStructureKey(key);
     }
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -547,6 +566,7 @@ export function MapCanvas({
         onPointerUp={endPointer}
         onPointerLeave={endPointer}
         onPointerCancel={endPointer}
+        onDoubleClick={onDoubleClick}
         onWheel={onWheel}
         onContextMenu={(e) => {
           e.preventDefault();

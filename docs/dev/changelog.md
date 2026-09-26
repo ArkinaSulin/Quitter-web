@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Map Editor: panels fill to bottom, notes as hover tooltips, Shift+double-click structure edit (2026-09-21)
+**Files:** src/components/StructureEditModal.tsx (moved), src/components/ScenarioMap/ScenarioMap.tsx, src/components/MapEditor/{MapEditor,MapCanvas}.tsx, docs/dev/changelog.md
+
+- **Moved** `StructureEditModal` from `ScenarioMap/` to the shared **`src/components/`** so the Scenario Map and Map Editor always use the same instance editor.
+- **Map Editor panels fill to the bottom**: the tab body is now `flex-1 min-h-0 flex flex-col`; the Structures and Effects lists are `flex-1 min-h-0 overflow-y-auto` (dropped `max-h-56`/`max-h-72`); Image/Movement scroll normally. Top Maps list stays capped.
+- **Notes → hover tooltips**: the static instruction/legend paragraphs are gone (movement legend, `Armed: …`, effect notes). Hovering a Structures/Effects row shows an info tooltip with the tab's **instruction note appended at the bottom**; hovering the Movement panel shows the note. Mirrors the scenario-map hover pattern.
+- **Edit placed structures via Shift + double-click** (like the scenario map): the Structures tab's lower selected-instance editor is removed; `MapCanvas` gained an `onDoubleClick` that (with Shift) resolves the hex/edge structure and opens the shared `StructureEditModal` (keyed `patchStructureAt` → autosave). Painting is suppressed while Shift is held so the gesture is purely edit/inspect.
+- `tsc` clean; 728 tests pass; `next build` clean. No migration.
+
 ## Fix: save reverted values in Effect Editor; shared refresh+reselect (2026-09-21)
 **Files:** src/lib/librarySelection.ts (new) + test, src/components/EffectEditor/EffectEditor.tsx, src/components/StructureEditor/StructureEditor.tsx, src/components/WeaponEditor/WeaponEditor.tsx, docs/dev/changelog.md
 

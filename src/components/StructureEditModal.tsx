@@ -1,9 +1,9 @@
 'use client';
-// src/components/ScenarioMap/StructureEditModal.tsx
-// In-scenario editor for a PLACED structure instance (opened with Shift +
-// double-click while the map-inspect overlay is up). Edits the instance's own
-// runtime state: HP, door HP, gate open, outside side and its modifier list
-// (inherited from the template, overridable here).
+// src/components/StructureEditModal.tsx
+// Shared editor for a PLACED structure instance (Scenario Map: Shift + double-click
+// while inspect mode is up; Map Editor: Shift + double-click a placed structure).
+// Edits the instance's own runtime state: HP, door HP, gate open, outside side and
+// its modifier list (inherited from the template, overridable here).
 import React, { useState } from 'react';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { EffectModifier } from '@/lib/effectTemplates';
