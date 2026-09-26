@@ -71,7 +71,7 @@ describe('walls geometry', () => {
     expect(crossingCost(w, { q: 1, r: 0 }, { q: 0, r: 0 }, true)).toBeUndefined();
   });
 
-  it('blockedStep / isBlockedEdge reflect the from-side face (and door)', () => {
+  it('blockedStep / isBlockedEdge reflect the from-side face', () => {
     const w = wall({ block: true }, {});
     expect(isBlockedEdge(w, { q: 0, r: 0 }, { q: 1, r: 0 })).toBe(true);
     expect(isBlockedEdge(w, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(false);
@@ -79,13 +79,13 @@ describe('walls geometry', () => {
     expect(hasWallEdge(w, 0, 0, 0, 1)).toBe(false); // no wall on that edge
   });
 
-  it('negative MP blocks that locomotion; a standing door blocks all passing', () => {
+  it('negative MP blocks that locomotion; a door NEVER gates movement', () => {
     const w = wall({}, { moveCostFoot: 2, moveCostMounted: -1 });
     expect(isBlockedEdge(w, { q: 1, r: 0 }, { q: 0, r: 0 }, true)).toBe(true); // mounted blocked
     expect(isBlockedEdge(w, { q: 1, r: 0 }, { q: 0, r: 0 }, false)).toBe(false); // foot passes
+    // A "standing door" (doorHp > 0, not open) no longer blocks — mirrors hex.
     const door: Walls = { '0,0,0': { a: {}, b: {}, doorHp: 5 } };
-    expect(isBlockedEdge(door, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(true);
-    expect(isBlockedEdge(door, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(true);
+    expect(isBlockedEdge(door, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(false);
     const openDoor: Walls = { '0,0,0': { a: {}, b: {}, doorHp: 5, open: true } };
     expect(isBlockedEdge(openDoor, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(false);
   });

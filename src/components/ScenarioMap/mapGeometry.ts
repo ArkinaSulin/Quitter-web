@@ -127,8 +127,8 @@ export function makeChargeBlockedEdge(walls: Walls | null | undefined, opts: Cha
       if (hit) {
         if (hit.wall.source === 'effect') return true; // magic walls always stop charges
         const cost = isMounted ? hit.faceTo.moveCostMounted : hit.faceTo.moveCostFoot;
-        const doorStanding = hit.wall.doorHp !== undefined && hit.wall.doorHp > 0 && !hit.wall.open;
-        if (hit.faceFrom.block || doorStanding) return true;
+        // Doors never gate (mirrors movement) — only a hard block or a 2+ MP crossing.
+        if (hit.faceFrom.block) return true;
         if (cost === undefined || cost < 0 || cost >= 2) return true;
       }
     }

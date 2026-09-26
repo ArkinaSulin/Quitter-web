@@ -127,17 +127,20 @@ export function wallBetween(walls: Walls | null | undefined, from: HexPoint, to:
   };
 }
 
-/** True when the edge between `from` and `to` blocks movement from `from`'s side
- *  for a mover of the given locomotion. A negative face cost is a hard block; a
- *  standing door (doorHp > 0, not open) also blocks. */
+/**
+ * True when the edge between `from` and `to` blocks movement from `from`'s side
+ * for a mover of the given locomotion. Mirrors the hex rule: the ONLY movement
+ * gate is a negative face cost (a hard block); a `block` face (magic walls) also
+ * blocks. Doors never gate movement on either surface — a standing door is just a
+ * damageable pool. "If a unit can pay the structure's MP and the hex is not
+ * occupied, it may enter."
+ */
 export function isBlockedEdge(walls: Walls | null | undefined, from: HexPoint, to: HexPoint, isMounted = false): boolean {
   const hit = wallBetween(walls, from, to);
   if (!hit) return false;
   if (hit.faceFrom.block) return true;
   const cost = isMounted ? hit.faceFrom.moveCostMounted : hit.faceFrom.moveCostFoot;
-  if (cost !== undefined && cost < 0) return true;
-  if (hit.wall.doorHp !== undefined && hit.wall.doorHp > 0 && !hit.wall.open) return true;
-  return false;
+  return cost !== undefined && cost < 0;
 }
 
 /**

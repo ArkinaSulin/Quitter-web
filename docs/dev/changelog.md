@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Unified passage rule: doors never gate movement (hex or edge) (2026-09-21)
+**Files:** src/lib/{walls,mapStructures}.ts (+ tests), src/components/ScenarioMap/mapGeometry.ts, docs/dev/{18,changelog}.md
+
+- **Edges now mirror hex: a door never gates movement.** `walls.isBlockedEdge` dropped the `doorHp > 0 && !open` check; `mapGeometry.makeChargeBlockedEdge` dropped the door-standing check. The unified decision tree is **a negative `mp_*` (per locomotion) is the only movement gate** (hex: `structureHexBlocked`; edge: `isBlockedEdge`), plus a `block` face (magic walls) and occupancy. A wall is crossed by paying its face MP (replace); `door_hp` is only a damageable pool. *"If a unit can pay the structure's MP and the hex is not occupied, it may enter — a closed door (`0 < door_hp < max_hp`) is NOT a gate for hex structures; passage is governed by the structure MP, not the base hex MP. Nothing blocks an enemy from climbing on/in to an unguarded structure."*
+- Fixes: a goblin in a hostile ZoC trying to cross a wall (face MP 4, `door_hp == max_hp`) was rejected as "out of reach" — the wall's standing door blocked the edge regardless of MP. It now crosses by paying 4 MP.
+- `door_hp` remains a damageable pool for combat/badges (edge door-first resolution unchanged). `tsc` clean; 734 tests pass; build clean. No migration.
+
 ## Hex structures: doors never gate entry (2026-09-21)
 **Files:** src/lib/mapStructures.ts (+ test), docs/dev/{18,changelog}.md
 

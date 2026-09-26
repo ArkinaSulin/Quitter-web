@@ -181,14 +181,15 @@ faces and `hex_move_cost` are gone:
   (`<= 0` = destroyed → the instance is removed) and `door_hp` is a second
   damageable pool. `0 <= door_hp <= max_hp`; `door_hp` defaults to `max_hp`. DT
   still gates each blow.
-- **Passage — doors never gate HEX entry.** *"If a unit can pay the structure's MP
-  and the hex is not occupied, it may enter — a closed door (`0 < door_hp < max_hp`)
-  is NOT a gate for hex structures; passage is governed by the structure MP, not
-  the base hex MP. Nothing blocks an enemy from climbing on/in to an unguarded
-  structure."* A negative `mp_*_in` is a hard block for that locomotion (mounted
-  `-1` on the seeded gates/towers); occupancy still excludes the hex. On **EDGE**
-  structures the door still gates **crossing** (a `door_hp == max_hp` wall must be
-  destroyed to pass; a distinct door is breached first) — that path is unchanged.
+- **Passage — doors NEVER gate movement, on hex OR edge.** *"If a unit can pay the
+  structure's MP and the hex is not occupied, it may enter — a closed door
+  (`0 < door_hp < max_hp`) is NOT a gate for hex structures; passage is governed by
+  the structure MP, not the base hex MP. Nothing blocks an enemy from climbing
+  on/in to an unguarded structure."* The unified decision tree = **a negative
+  `mp_*` (per locomotion) is the only movement gate** (hex: `structureHexBlocked`;
+  edge: `isBlockedEdge`), plus a `block` face for magic walls and occupancy. Doors
+  are only a second **damageable** pool (combat/badges) and no longer block cross-
+  ing, entering, or charges. Charges are gated solely by a 2+ MP crossing.
 - **Modifiers are one list** with an optional `mode: 'melee' | 'ranged'` (absent =
   both) on the attack-distance kinds (`ac`, `advantage`/`disadvantage`/`grant_*`).
   Cover AC is expressed as `ac` modifiers. `range` (occupant aura) and
