@@ -106,22 +106,11 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (isInAnyHostileKillZone(unit, displayUnits, displayAlliances)) return;
     const primary = weapons[0];
     if (!primary) return;
-    const baseAc = computeWeaponSwitchAc(unit, primary);
-    // An active AC effect rides the weapon return: keep its delta, rebase its
-    // snapshot onto the returned weapon's no-buff AC.
-    const acEffect = (unit.effects ?? []).find(e => e.kind === 'ac' && !e.zoneHex);
-    const ac = acEffect ? baseAc + modifierAmount(acEffect.dice) : baseAc;
+    // `currentAc` is only the shield-adjusted base; `ac` effects are derived
+    // auras (effectiveAc), so a weapon switch never needs to rebase them.
+    const ac = computeWeaponSwitchAc(unit, primary);
     const acChanges = ac !== unit.currentAc
-      ? [
-          { field: 'currentAc', from: unit.currentAc, to: ac },
-          ...(acEffect
-            ? [{
-                field: 'effects',
-                from: unit.effects ?? [],
-                to: (unit.effects ?? []).map(e => (e.key === acEffect.key ? { ...e, base: baseAc } : e)),
-              }]
-            : []),
-        ]
+      ? [{ field: 'currentAc', from: unit.currentAc, to: ac }]
       : [];
     await execute('WEAPON_SELECT', [{
       type: 'WEAPON_SELECT',

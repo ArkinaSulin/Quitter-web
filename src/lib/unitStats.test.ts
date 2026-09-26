@@ -39,7 +39,7 @@ describe('effectiveAc', () => {
   const oneHand = 'Longsword,5,1d8,false,1,0,0,false,false,false,false,1,true,Dex';
   const f = (melee_ac_modifier: number, range_ac_modifier = 0) => ({ name: 'X', melee_ac_modifier, range_ac_modifier } as unknown as Formation);
   const unit = (over: Partial<Parameters<typeof effectiveAc>[0]> = {}) => ({
-    baselineAc: 16, isShielded: true, weaponString: oneHand, activeWeaponIndex: 0, currentFormation: 'Close Order', isHero: false, ...over,
+    baselineAc: 16, isShielded: true, weaponString: oneHand, activeWeaponIndex: 0, currentFormation: 'Close Order', isHero: false, effects: [], ...over,
   });
 
   it('applies formation AC from the front/flank', () => {
@@ -73,6 +73,16 @@ describe('effectiveAc', () => {
     expect(effectiveAc(unit(), f(2, 4), 'front', false)).toBe(18); // melee uses the melee term
     // range defaults to 0 (data-driven) → no formation term vs ranged
     expect(effectiveAc(unit(), f(2), 'front', true)).toBe(16);
+  });
+
+  it('adds ac-effect bonuses, mode-scoped and applied at the rear', () => {
+    const flat = unit({ effects: [{ kind: 'ac', dice: '2' }] as any });
+    expect(effectiveAc(flat, f(0), 'front', false)).toBe(18); // 16 + 2
+    expect(effectiveAc(flat, f(0), 'front', true)).toBe(18);
+    expect(effectiveAc(flat, f(0), 'rear', false)).toBe(18);  // aura applies at the rear too
+    const meleeOnly = unit({ effects: [{ kind: 'ac', dice: '1', mode: 'melee' }] as any });
+    expect(effectiveAc(meleeOnly, f(0), 'front', false)).toBe(17);
+    expect(effectiveAc(meleeOnly, f(0), 'front', true)).toBe(16); // ranged ignores melee-only
   });
 });
 

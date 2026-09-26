@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, rangeBonusAt } from './unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, rangeBonusAt } from './unitEffects';
 import { parseDice } from './effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
@@ -78,13 +78,13 @@ const ef = (over: Partial<UnitEffect> = {}, overrides?: Partial<Unit>): UnitEffe
 const groups: Record<string, AllianceGroup> = { blue: 'friendly', red: 'enemy' };
 
 describe('apply / remove effect changes', () => {
-  it('ac effect: snapshots base and writes currentAc + delta', () => {
+  it('ac effect adds a membership but writes NO stat field (derived aura)', () => {
     const u = unit('u', 'blue');
     const { changes, effect } = applyEffectChanges(u, { name: 'Bless', color: '#ffd700', kind: 'ac', dice: '2', duration: 3, turnsLeft: 3, casterUnitId: 'c', casterTeam: 'blue' }, 'k1');
     const effects = changes.find(c => c.field === 'effects');
     expect((effects!.to as UnitEffect[]).length).toBe(1);
-    expect(effect.base).toBe(12);
-    expect(changes.find(c => c.field === 'currentAc')).toEqual({ field: 'currentAc', from: 12, to: 14 });
+    expect(effect.base).toBeUndefined();
+    expect(changes.some(c => c.field === 'currentAc')).toBe(false);
   });
 
   it('movement effect modifies the movementPoints base field', () => {
@@ -106,10 +106,10 @@ describe('apply / remove effect changes', () => {
     expect(effect.key).toBe('k1');
   });
 
-  it('remove restores the snapshotted base', () => {
-    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'k1', base: 12 })], currentAc: 14 });
+  it('remove restores the snapshotted stat base', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'k1', kind: 'morale', dice: '-2', base: 0 })], currentMoraleModifier: -2 });
     const changes = removeEffectChanges(u, 'k1');
-    expect(changes.find(c => c.field === 'currentAc')).toEqual({ field: 'currentAc', from: 14, to: 12 });
+    expect(changes.find(c => c.field === 'currentMoraleModifier')).toEqual({ field: 'currentMoraleModifier', from: -2, to: 0 });
     expect((changes.find(c => c.field === 'effects')!.to as UnitEffect[]).length).toBe(0);
   });
 
@@ -127,17 +127,17 @@ describe('apply / remove effect changes', () => {
 
 describe('editEffectChanges', () => {
   it('rebases a stat effect: restores the old base, then applies the new delta', () => {
-    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'k1', base: 12, dice: '2' })], currentAc: 14 });
-    const changes = editEffectChanges(u, 'k1', { name: 'Bless', color: '#ffd700', kind: 'ac', dice: '5', casterUnitId: null, casterTeam: null }, 3, 'k2');
-    expect(changes.filter(c => c.field === 'currentAc')).toEqual([
-      { field: 'currentAc', from: 14, to: 12 },
-      { field: 'currentAc', from: 12, to: 17 },
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'k1', kind: 'morale', dice: '-2', base: 0 })], currentMoraleModifier: -2 });
+    const changes = editEffectChanges(u, 'k1', { name: 'Rally', color: '#fff', kind: 'morale', dice: '3', casterUnitId: null, casterTeam: null }, 3, 'k2');
+    expect(changes.filter(c => c.field === 'currentMoraleModifier')).toEqual([
+      { field: 'currentMoraleModifier', from: -2, to: 0 },
+      { field: 'currentMoraleModifier', from: 0, to: 3 },
     ]);
     const effects = changes.filter(c => c.field === 'effects').pop()!;
     const final = effects.to as UnitEffect[];
     expect(final.length).toBe(1);
     expect(final[0].key).toBe('k2');
-    expect(final[0].dice).toBe('5');
+    expect(final[0].dice).toBe('3');
   });
 
   it('edits a dot effect (no stat field) with new dice', () => {
@@ -186,10 +186,10 @@ describe('computeEndTurnEffects', () => {
 
   it('expires at 0 on the caster tick and restores the stat', () => {
     const caster = unit('caster', 'blue');
-    const target = unit('target', 'red', h(5, 0), { effects: [ef({ key: 'a1', base: 12, turnsLeft: 1, duration: 1, casterUnitId: 'caster', casterTeam: 'blue' })], currentAc: 14 });
+    const target = unit('target', 'red', h(5, 0), { effects: [ef({ key: 'a1', kind: 'morale', dice: '-2', base: 0, turnsLeft: 1, duration: 1, casterUnitId: 'caster', casterTeam: 'blue' })], currentMoraleModifier: -2 });
     const res = computeEndTurnEffects({ units: [caster, target], zones: [], nextGroup: 'friendly', alliances: groups, makeKey });
     const step = res.subSteps.find(s => s.unitId === 'target');
-    expect(step!.changes.find(c => c.field === 'currentAc')!.to).toBe(12);
+    expect(step!.changes.find(c => c.field === 'currentMoraleModifier')!.to).toBe(0);
     expect((step!.changes.find(c => c.field === 'effects')!.to as UnitEffect[]).length).toBe(0);
   });
 
@@ -202,20 +202,20 @@ describe('computeEndTurnEffects', () => {
 
   it('expires immediately when the caster unit is deleted', () => {
     const caster = unit('caster', 'blue', h(9, 9), { isDeleted: true });
-    const target = unit('target', 'red', h(5, 0), { effects: [ef({ key: 'a1', base: 12, turnsLeft: 3, duration: 3, casterUnitId: 'caster', casterTeam: 'blue' })], currentAc: 14 });
+    const target = unit('target', 'red', h(5, 0), { effects: [ef({ key: 'a1', kind: 'morale', dice: '-2', base: 0, turnsLeft: 3, duration: 3, casterUnitId: 'caster', casterTeam: 'blue' })], currentMoraleModifier: -2 });
     const res = computeEndTurnEffects({ units: [caster, target], zones: [], nextGroup: 'enemy', alliances: groups, makeKey });
     const step = res.subSteps.find(s => s.unitId === 'target');
-    expect(step!.changes.find(c => c.field === 'currentAc')!.to).toBe(12);
+    expect(step!.changes.find(c => c.field === 'currentMoraleModifier')!.to).toBe(0);
   });
 
-  it('creates a stat zone membership at the start of a standing unit\'s activation', () => {
+  it('creates a zone membership at the start of a standing unit activation (derived ac, no field)', () => {
     const zone: GroundEffect = { key: 'z1', q: 0, r: 0, name: 'Acid Pool', color: '#88ff44', kind: 'ac', dice: '-2', duration: 4, turnsLeft: 4, casterTeam: 'blue', casterUnitId: 'caster' };
     const caster = unit('caster', 'blue', h(3, 3));
     const u = unit('u', 'blue'); // stands at (0,0) -> zone
     const res = computeEndTurnEffects({ units: [caster, u], zones: [zone], nextGroup: 'friendly', alliances: groups, makeKey });
     const step = res.subSteps.find(s => s.unitId === 'u');
     expect(step).toBeDefined();
-    expect(step!.changes.find(c => c.field === 'currentAc')!.to).toBe(10); // 12 - 2
+    expect(step!.changes.some(c => c.field === 'currentAc')).toBe(false);
     const effects = step!.changes.find(c => c.field === 'effects')!.to as UnitEffect[];
     expect(effects.find(e => e.key === 'z1' && e.zoneHex)).toBeDefined();
   });
@@ -224,12 +224,13 @@ describe('computeEndTurnEffects', () => {
     const zone: GroundEffect = { key: 'z1', q: 0, r: 0, name: 'Acid Pool', color: '#88ff44', kind: 'ac', dice: '-2', duration: 4, turnsLeft: 4, casterTeam: 'blue', casterUnitId: 'caster' };
     const caster = unit('caster', 'blue', h(3, 3));
     const u = unit('u', 'blue', h(2, 2), {
-      currentAc: 10,
-      effects: [{ key: 'z1', zoneHex: h(0, 0), name: 'Acid Pool', color: '#88ff44', kind: 'ac', dice: '-2', duration: 4, turnsLeft: 4, casterUnitId: 'caster', casterTeam: 'blue', base: 12 }],
+      effects: [{ key: 'z1', zoneHex: h(0, 0), name: 'Acid Pool', color: '#88ff44', kind: 'ac', dice: '-2', duration: 4, turnsLeft: 4, casterUnitId: 'caster', casterTeam: 'blue' }],
     });
     const res = computeEndTurnEffects({ units: [caster, u], zones: [zone], nextGroup: 'friendly', alliances: groups, makeKey });
     const step = res.subSteps.find(s => s.unitId === 'u');
-    expect(step!.changes.find(c => c.field === 'currentAc')!.to).toBe(12); // restored
+    const effects = step!.changes.find(c => c.field === 'effects')!.to as UnitEffect[];
+    expect(effects.some(e => e.key === 'z1')).toBe(false);
+    expect(step!.changes.some(c => c.field === 'currentAc')).toBe(false);
   });
 
   it('a permanent zone never ticks or expires across many turns', () => {
@@ -245,17 +246,18 @@ describe('computeEndTurnEffects', () => {
     expect(zones[0].permanent).toBe(true);
   });
 
-  it('a stat zone expires at 0 on its caster activation: removed + memberships restored', () => {
+  it('a zone expires at 0 on its caster activation: removed + memberships dropped', () => {
     const zone: GroundEffect = { key: 'z1', q: 0, r: 0, name: 'Acid Pool', color: '#88ff44', kind: 'ac', dice: '-2', duration: 1, turnsLeft: 1, casterTeam: 'blue', casterUnitId: 'caster' };
     const caster = unit('caster', 'blue', h(3, 3));
     const u = unit('u', 'blue', h(0, 0), {
-      currentAc: 10,
-      effects: [{ key: 'z1', zoneHex: h(0, 0), name: 'Acid Pool', color: '#88ff44', kind: 'ac', dice: '-2', duration: 1, turnsLeft: 1, casterUnitId: 'caster', casterTeam: 'blue', base: 12 }],
+      effects: [{ key: 'z1', zoneHex: h(0, 0), name: 'Acid Pool', color: '#88ff44', kind: 'ac', dice: '-2', duration: 1, turnsLeft: 1, casterUnitId: 'caster', casterTeam: 'blue' }],
     });
     const res = computeEndTurnEffects({ units: [caster, u], zones: [zone], nextGroup: 'friendly', alliances: groups, makeKey });
     expect(res.zonesAfter.length).toBe(0);
     const step = res.subSteps.find(s => s.unitId === 'u');
-    expect(step!.changes.find(c => c.field === 'currentAc')!.to).toBe(12);
+    const effects = step!.changes.find(c => c.field === 'effects')!.to as UnitEffect[];
+    expect(effects.some(e => e.key === 'z1')).toBe(false);
+    expect(step!.changes.some(c => c.field === 'currentAc')).toBe(false);
   });
 
   it('a dot zone deals damage to every standing unit when its caster activates', () => {
@@ -406,21 +408,21 @@ describe('computeZoneReconcile', () => {
     duration: 3, turnsLeft: 3, ...over,
   });
 
-  it('adds a stat-zone membership on enter and applies the delta', () => {
+  it('adds a zone membership on enter (derived ac, no field)', () => {
     const u = unit('u', 'blue');
     const { effects, changes } = computeZoneReconcile(u, [zone()]);
     expect(effects).toHaveLength(1);
     expect(effects[0].zoneHex).toEqual(h(0, 0));
-    expect(changes.find(c => c.field === 'currentAc')).toEqual({ field: 'currentAc', from: 12, to: 14 });
+    expect(changes.some(c => c.field === 'currentAc')).toBe(false);
     expect(changes.find(c => c.field === 'effects')).toBeDefined();
   });
 
-  it('drops the membership and restores the stat on leave', () => {
-    const membershipped = ef({ key: 'z1', kind: 'ac', dice: '2', base: 12, zoneHex: h(0, 0) });
-    const u = unit('u', 'blue', h(1, 0), { effects: [membershipped], currentAc: 14 });
+  it('drops the membership on leave (derived ac, no field)', () => {
+    const membershipped = ef({ key: 'z1', kind: 'ac', dice: '2', zoneHex: h(0, 0) });
+    const u = unit('u', 'blue', h(1, 0), { effects: [membershipped] });
     const { effects, changes } = computeZoneReconcile(u, [zone()]);
     expect(effects).toHaveLength(0);
-    expect(changes.find(c => c.field === 'currentAc')).toEqual({ field: 'currentAc', from: 14, to: 12 });
+    expect(changes.some(c => c.field === 'currentAc')).toBe(false);
   });
 
   it('ignores dot zones (no membership)', () => {
@@ -488,6 +490,22 @@ describe('effectRangeBonus', () => {
     expect(effectRangeBonus(u)).toBe(-1);
     expect(effectRangeBonus(null)).toBe(0);
     expect(effectRangeBonus(unit('v', 'blue'))).toBe(0);
+  });
+});
+
+describe('effectAcBonus', () => {
+  it('flat ac applies to melee and ranged; mode scopes it', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [
+        ef({ key: 'a', kind: 'ac', dice: '2' }),                                  // flat → both
+        ef({ key: 'b', kind: 'ac', dice: '1', mode: 'melee' }),
+        ef({ key: 'c', kind: 'ac', dice: '3', mode: 'ranged' }),
+        ef({ key: 'd', kind: 'morale', dice: '9' }),                              // ignored
+      ],
+    });
+    expect(effectAcBonus(u, false)).toBe(3); // 2 + 1 (melee)
+    expect(effectAcBonus(u, true)).toBe(5);  // 2 + 3 (ranged)
+    expect(effectAcBonus(null, false)).toBe(0);
   });
 });
 

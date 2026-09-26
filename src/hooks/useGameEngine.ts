@@ -673,24 +673,15 @@ export function useGameEngine({
         return;
       }
 
-      // Shield is unusable while a two-handed weapon is active: effective AC = baseline - 2.
+      // Shield is unusable while a two-handed weapon is active: currentAc (the
+      // shield-adjusted base) drops by 2. `ac` effects are derived auras, so no
+      // effect rebase is needed here.
       const shieldPenalty = unit.isShielded && nextWeapon.isTwoHanded ? 2 : 0;
-      const baseAc = (unit.baselineAc || 10) - shieldPenalty;
+      const nextAc = (unit.baselineAc || 10) - shieldPenalty;
       const fromAc = unit.currentAc;
-      // An active AC effect rides the switch: keep its delta, rebase its snapshot
-      // onto the new weapon's no-buff AC so expiry restores the right value.
-      const acEffect = (unit.effects ?? []).find(e => e.kind === 'ac' && !e.zoneHex);
-      const nextAc = acEffect ? baseAc + modifierAmount(acEffect.dice) : baseAc;
-      const acChanges = acEffect && nextAc !== fromAc
-        ? [
-            { field: 'currentAc', from: fromAc, to: nextAc },
-            {
-              field: 'effects',
-              from: unit.effects ?? [],
-              to: (unit.effects ?? []).map(e => (e.key === acEffect.key ? { ...e, base: baseAc } : e)),
-            },
-          ]
-        : [{ field: 'currentAc', from: fromAc, to: nextAc }];
+      const acChanges = nextAc !== fromAc
+        ? [{ field: 'currentAc', from: fromAc, to: nextAc }]
+        : [];
 
       const subSteps: SubStep[] = [
         {

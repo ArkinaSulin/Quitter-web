@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## AC is a derived aura (melee / ranged / rear) (2026-09-21)
+**Files:** src/lib/{unitEffects,unitStats}.ts (+ tests), src/components/ScenarioMap/{useCombatActions,useMoveActions}.tsx, src/hooks/useGameEngine.ts, docs/dev/changelog.md
+
+- **`ac` effects are now DERIVED, not materialized into `currentAc`.** `currentAc` stays the shield-adjusted base (`baselineAc − shieldPenalty`); `unitEffects.isStatEffect('ac')` → false and `statFieldOf('ac')` → null, so an `ac` effect/ground-zone/structure modifier creates a membership but writes no stat field.
+- **New `unitEffects.effectAcBonus(unit, isRanged)`** sums `ac` deltas from the unit's effects (incl. zone memberships): flat/no `mode` → both, `mode:'melee'` → melee only, `mode:'ranged'` → ranged only.
+- **`unitStats.effectiveAc(unit, formation, direction, isRanged)`** adds that bonus on top of `baselineAc + formationAc − shieldPenalty`. This is the single AC source used by the unit tooltip (melee/ranged/rear), combat (`unitCombat`), verbose combat, the AI planner and reaction shots — so entering a structure (or Bless/zone `ac`) now correctly raises AC **and** affects the roll. Heroes' AC paths add `effectAcBonus` too.
+- Removed the now-unneeded weapon-switch "rebase the ac effect" logic (also fixes a latent bug where a **zone** `ac` bonus was dropped from `currentAc` on weapon switch).
+- Fix: entering a wooden gate tower (or any structure with an `ac` modifier) now updates the unit's AC in tooltip inspection and combat.
+- `tsc` clean; 742 tests pass; build clean. No migration.
+
 ## Structure doors: instance-relative state, open/broken cost, control + pass-through (2026-09-21)
 **Files:** src/lib/{mapStructures,moveCost}.ts (+ tests), src/components/{StructureEditModal,MapEditor/MapCanvas,ScenarioMap/MapInfoTooltip,ScenarioMap/useCanvasDraw,ScenarioMap/useMoveActions,ScenarioMap/useOverlay,ScenarioMap/useReactionActions,ScenarioMap/ScenarioMap}.ts(x), docs/dev/{18,changelog}.md
 

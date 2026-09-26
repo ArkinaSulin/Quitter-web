@@ -20,7 +20,7 @@ import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDista
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
-import { attackRollFlags, rangeBonusAt } from '@/lib/unitEffects';
+import { attackRollFlags, rangeBonusAt, effectAcBonus } from '@/lib/unitEffects';
 import { hasLineOfSight } from '@/lib/lineOfSight';
 import { Walls } from '@/lib/walls';
 import { MapStructures, structureAuraFlags, hasAuraFlags, StructureAuraFlags } from '@/lib/mapStructures';
@@ -243,10 +243,10 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const attachedDefenderHero = (() => {
       const hero = units.find(u => u.attachedToUnitId === target.id && !u.isDeleted);
       if (!hero || hero.attachedPosition !== 'front') return null;
-      return { currentAc: hero.currentAc, troopHp: hero.troopHp };
+      return { currentAc: hero.currentAc + effectAcBonus(hero, isRanged), troopHp: hero.troopHp };
     })();
     const attachedAttackerHero = frontAttachedHero
-      ? { currentAc: frontAttachedHero.currentAc, troopHp: frontAttachedHero.troopHp }
+      ? { currentAc: frontAttachedHero.currentAc + effectAcBonus(frontAttachedHero, isRanged), troopHp: frontAttachedHero.troopHp }
       : null;
 
     // Tower auras: a unit standing on a hex structure gains its effect flags
@@ -610,7 +610,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
         outcome.strikerFirst === 'attacker'
           ? weapon.attackBonus + formationAtkMod
           : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
-        firstStrikeHeroUnit.currentAc,
+        firstStrikeHeroUnit.currentAc + effectAcBonus(firstStrikeHeroUnit, isRanged),
         outcome.strikerFirst === 'attacker' ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
         outcome.strikerFirst === 'attacker' && isChargingAttack,
         heroDamage,
@@ -716,7 +716,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
           retIsAttacker
             ? weapon.attackBonus + formationAtkMod
             : (defWeapon?.attackBonus ?? 0) + formationAtkMod,
-          retaliationHeroUnit.currentAc,
+          retaliationHeroUnit.currentAc + effectAcBonus(retaliationHeroUnit, isRanged),
           retIsAttacker ? weapon.damageDice : (defWeapon?.damageDice ?? '1d2'),
           retIsAttacker && isChargingAttack,
           heroDamage,

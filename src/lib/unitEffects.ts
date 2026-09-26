@@ -21,9 +21,9 @@ import { parseDice, rollDice, modifierAmount, isDiceAmount } from '@/lib/effectT
 /** The real unit field a stat kind modifies (dot/hp_borrow have none — they touch HP). */
 export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModifier' | 'movementPoints' | null {
   switch (kind) {
-    case 'ac': return 'currentAc';
     case 'morale': return 'currentMoraleModifier';
     case 'movement': return 'movementPoints';
+    case 'ac':
     case 'dot':
     case 'hp_borrow':
     case 'entry':
@@ -39,7 +39,10 @@ export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModif
 }
 
 export function isStatEffect(kind: EffectKind): boolean {
-  return kind === 'ac' || kind === 'morale' || kind === 'movement';
+  // `ac` is a DERIVED aura (read by `unitStats.effectiveAc`), not a materialized
+  // stat — it must stay consistent across melee/ranged/rear, which a single
+  // persisted `currentAc` cannot express.
+  return kind === 'morale' || kind === 'movement';
 }
 
 /** Attack-roll flag kinds: read at attack resolution, not materialized as stats. */
@@ -56,6 +59,23 @@ export function effectRangeBonus(unit: Unit | null | undefined): number {
   let sum = 0;
   for (const e of unit?.effects ?? []) {
     if (e.kind === 'range') sum += modifierAmount(e.dice);
+  }
+  return sum;
+}
+
+/**
+ * AC bonus from a unit's active effects (incl. zone memberships). Flat / no
+ * `mode` applies to BOTH melee and ranged; `mode:'melee'` only melee,
+ * `mode:'ranged'` only ranged. Consumed by `unitStats.effectiveAc` so the AC is
+ * derived per attack type + direction (melee / ranged / rear).
+ */
+export function effectAcBonus(unit: Unit | null | undefined, isRanged: boolean): number {
+  let sum = 0;
+  for (const e of unit?.effects ?? []) {
+    if (e.kind !== 'ac') continue;
+    if (e.mode === 'melee' && isRanged) continue;
+    if (e.mode === 'ranged' && !isRanged) continue;
+    sum += modifierAmount(e.dice);
   }
   return sum;
 }

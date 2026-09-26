@@ -10,12 +10,20 @@ expiry are all undoable and realtime-consistent.
 
 `EffectKind = 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow' | 'entry' | 'mp_cost' | 'advantage' | 'disadvantage' | 'grant_advantage' | 'grant_disadvantage'`.
 
-- Stat kinds materialize **on the real unit fields** (so combat/morale/
-  movement consumers need no edits):
-  - `ac` → `currentAc`, `morale` → `currentMoraleModifier`,
-    `movement` → `movementPoints` (base max).
-  - Applying snapshots the pre-effect value as `effect.base`; removal restores
-    it. A weapon switch that rebuilds AC rebases the AC buff.
+- `morale` and `movement` materialize **on the real unit fields** (`morale` →
+  `currentMoraleModifier`, `movement` → `movementPoints` base max). Applying
+  snapshots the pre-effect value as `effect.base`; removal restores it.
+- **`ac` is a DERIVED aura — NOT materialized.** `unit.currentAc` is only the
+  shield-adjusted base (`baselineAc − shieldPenalty`). AC effects (and a
+  structure's `ac` modifier reached via `structureZones` → zone membership) create
+  a membership but write no stat field; `isStatEffect('ac')` is false and
+  `statFieldOf('ac')` is null. Instead
+  `unitEffects.effectAcBonus(unit, isRanged)` sums the `ac` deltas (flat/`mode`-less
+  → both; `mode:'melee'`/`'ranged'` scoped) and `unitStats.effectiveAc(unit,
+  formation, direction, isRanged)` adds it on top of `baselineAc + formationAc −
+  shieldPenalty`. That single call supplies the unit tooltip's **melee / ranged /
+  rear** AC, the combat roll, verbose combat, the AI planner and reactions. (So an
+  `ac` buff is now correct in both the tooltip and the roll.)
 - `dot` damages HP (`dotDamageChanges`: HP minus delta, troops = ceil(hp/troopHp),
   clamped to `[0, maxTroopCount]`, HP ≥ 0). A negative dot delta = **Regen**
   (healing).
