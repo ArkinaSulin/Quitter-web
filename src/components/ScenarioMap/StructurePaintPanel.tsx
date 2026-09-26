@@ -1,11 +1,14 @@
 // src/components/ScenarioMap/StructurePaintPanel.tsx
 'use client';
-// Left-panel Map tab (GM): the live structure brush. Arm it, pick a template,
+// Left-panel Features tab (GM): the live structure brush. Arm it, pick a template,
 // then click near a hex edge (edge structures) or a hex (hex structures) on the
 // scenario canvas to place one; click a placed edge again to flip its battlement;
-// right-click removes. The selected instance exposes HP / door / open overrides.
-import { MapStructures, instanceDoorState } from '@/lib/mapStructures';
+// right-click removes. Hover a template for its full info (Unit-Selector style);
+// placed instances are edited with Shift + double-click on the canvas.
+import { useState } from 'react';
+import { MapStructures } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
+import { modifierAmount } from '@/lib/effectTemplates';
 
 interface StructurePaintPanelProps {
   armed: boolean;
@@ -15,32 +18,48 @@ interface StructurePaintPanelProps {
   onSetPaletteId: (id: string | null) => void;
   structures: MapStructures;
   selectedKey: string | null;
-  onPatchStructure: (patch: { hp?: number; doorHp?: number; outside?: 'a' | 'b'; open?: boolean }) => void;
+  onPatchStructure: (patch: { hp?: number; doorHp?: number; outside?: 'a' | 'b'; open?: boolean; modifiers?: any[] }) => void;
   onRemoveStructure: (key: string) => void;
 }
 
-function Num({ value, placeholder, disabled, onChange }: { value: number | undefined; placeholder: string; disabled: boolean; onChange: (v: number | undefined) => void }) {
+const mpText = (v: number | null): string => (v === null ? '—' : v < 0 ? 'block' : `${v}`);
+
+/** Hover tooltip: the structure template's movement, durability and modifiers. */
+function StructureTooltip({ t, x, y }: { t: StructureTemplate; x: number; y: number }) {
+  const cover = t.modifiers.filter(m => m.kind === 'ac');
+  const melee = cover.filter(m => m.mode !== 'ranged').reduce((s, m) => s + modifierAmount(m.dice), 0);
+  const ranged = cover.filter(m => m.mode !== 'melee').reduce((s, m) => s + modifierAmount(m.dice), 0);
+  const rest = t.modifiers.filter(m => m.kind !== 'ac');
+  const door = t.doorHp ?? t.maxHp;
   return (
-    <input
-      type="number"
-      min={0}
-      value={value ?? ''}
-      placeholder={placeholder}
-      disabled={disabled}
-      onChange={e => onChange(e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))))}
-      className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5"
-    />
+    <div
+      className="fixed z-[80] pointer-events-none bg-black/95 border border-gray-600 rounded shadow-xl p-2.5 text-[11px] text-white w-64"
+      style={{ left: Math.min(x + 12, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 280), top: Math.min(y + 12, (typeof window !== 'undefined' ? window.innerHeight : 800) - 220) }}
+    >
+      <div className="font-semibold text-amber-300 mb-1">{t.name}</div>
+      <div className="text-gray-300 capitalize">{t.anchor}{t.spikes ? ' · stakes' : t.battlement ? ' · battlement' : ''}</div>
+      {t.anchor === 'edge' ? (
+        <>
+          <div className="text-gray-400 mt-1">In: foot {mpText(t.mpFootIn)} · mtd {mpText(t.mpMountedIn)} MP</div>
+          <div className="text-gray-400">Out: foot {mpText(t.mpFootOut)} · mtd {mpText(t.mpMountedOut)} MP</div>
+        </>
+      ) : (
+        <div className="text-gray-400 mt-1">Enter: foot {mpText(t.mpFootIn)} · mtd {mpText(t.mpMountedIn)} MP</div>
+      )}
+      <div className="text-gray-400 mt-1">HP {t.maxHp} · DT {t.dt} · door {door === 0 ? 'none' : door}</div>
+      {(melee || ranged) ? <div className="text-gray-400">Cover AC melee {melee} · ranged {ranged}</div> : null}
+      {rest.length > 0 && <div className="text-gray-400">Effects: {rest.map(m => `${m.kind}${m.mode ? `(${m.mode})` : ''}${m.direction ? `/${m.direction}` : ''}`).join(', ')}</div>}
+      {t.description && <div className="text-gray-500 mt-1">{t.description}</div>}
+    </div>
   );
 }
 
 export function StructurePaintPanel({
-  armed, onToggleArm, templates, paletteId, onSetPaletteId, structures, selectedKey, onPatchStructure, onRemoveStructure,
+  armed, onToggleArm, templates, paletteId, onSetPaletteId,
 }: StructurePaintPanelProps) {
+  const [hover, setHover] = useState<{ t: StructureTemplate; x: number; y: number } | null>(null);
   const list = Object.values(templates).sort((a, b) => a.name.localeCompare(b.name));
   const armedTemplate = paletteId ? templates[paletteId] ?? null : null;
-  const instance = selectedKey ? structures[selectedKey] ?? null : null;
-  const instanceTemplate = instance ? templates[instance.templateId] ?? null : null;
-  const door = instance && instanceTemplate ? instanceDoorState(instance, instanceTemplate) : null;
 
   return (
     <div className="space-y-2">
@@ -54,17 +73,20 @@ export function StructurePaintPanel({
       <p className="text-xs text-gray-500">
         {armed
           ? armedTemplate
-            ? `Armed: ${armedTemplate.name}. Click/drag ${armedTemplate.anchor === 'hex' ? 'a hex' : 'near a hex edge'} to place; click a placed edge again to flip its battlement. Right-click removes.`
+            ? `Armed: ${armedTemplate.name}. Click/drag ${armedTemplate.anchor === 'hex' ? 'a hex' : 'near a hex edge'} to place; click a placed edge again to flip its battlement. Right-click removes. Shift + double-click a placed structure to edit it.`
             : 'Pick a structure below.'
           : 'Enable the tools to place structures in this scenario.'}
       </p>
 
-      <div className="space-y-1 max-h-48 overflow-y-auto">
+      <div className="space-y-1 max-h-72 overflow-y-auto">
         {list.length === 0 && <p className="text-xs text-gray-500">No structure templates yet.</p>}
         {list.map(t => (
           <button
             key={t.id}
             onClick={() => onSetPaletteId(paletteId === t.id ? null : t.id)}
+            onMouseEnter={e => setHover({ t, x: e.clientX, y: e.clientY })}
+            onMouseMove={e => setHover(h => (h?.t.id === t.id ? { t, x: e.clientX, y: e.clientY } : h))}
+            onMouseLeave={() => setHover(null)}
             className={`w-full text-left text-xs px-2 py-1.5 rounded border ${paletteId === t.id ? 'bg-yellow-700/40 border-yellow-500' : 'bg-gray-800 border-transparent hover:bg-gray-700'}`}
           >
             <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ background: t.color }} />
@@ -74,38 +96,7 @@ export function StructurePaintPanel({
         ))}
       </div>
 
-      {instance && instanceTemplate && selectedKey && door && (
-        <div className="rounded border border-gray-700 p-2 space-y-2">
-          <p className="text-xs text-gray-300 font-semibold">{instanceTemplate.name}</p>
-          <p className="text-[10px] text-gray-500">{selectedKey}</p>
-          <div className="flex items-center gap-3 text-[11px]">
-            <label className="flex items-center gap-1">HP
-              <Num value={instance.hp} placeholder={String(instanceTemplate.maxHp)} disabled={false} onChange={v => onPatchStructure({ hp: v })} />
-            </label>
-            <label className="flex items-center gap-1">Door
-              <Num value={instance.doorHp} placeholder={String(door.doorMax)} disabled={false} onChange={v => onPatchStructure({ doorHp: v })} />
-            </label>
-          </div>
-          {door.doorMax > 0 && (
-            <button
-              onClick={() => onPatchStructure({ open: !instance.open })}
-              className={`text-xs px-2 py-1 rounded ${instance.open ? 'bg-emerald-800 hover:bg-emerald-700 text-emerald-50' : 'bg-gray-700 hover:bg-gray-600 text-gray-100'}`}
-            >
-              {instance.open ? 'Door open — click to close' : 'Door closed — click to open'}
-            </button>
-          )}
-          {instanceTemplate.anchor === 'edge' && (
-            <div className="text-[11px] text-gray-400">
-              Battlement side: <span className="text-amber-300">{(instance.outside ?? 'a') === 'a' ? 'A (outside)' : 'B (outside)'}</span>{' '}
-              <button className="px-2 py-0.5 rounded bg-gray-700 hover:bg-gray-600"
-                onClick={() => onPatchStructure({ outside: (instance.outside ?? 'a') === 'a' ? 'b' : 'a' })}>
-                Flip
-              </button>
-            </div>
-          )}
-          <button onClick={() => onRemoveStructure(selectedKey)} className="text-xs px-2 py-1 rounded bg-red-900/60 hover:bg-red-800 text-red-100">Remove structure</button>
-        </div>
-      )}
+      {hover && <StructureTooltip t={hover.t} x={hover.x} y={hover.y} />}
     </div>
   );
 }

@@ -45,9 +45,27 @@ export function parseDragPayload(raw: string): Pick<EffectTemplate, 'id' | 'name
   }
 }
 
+/** Hover tooltip: the effect template's scope, duration and full modifier list. */
+function EffectTooltip({ t, x, y }: { t: EffectTemplate; x: number; y: number }) {
+  return (
+    <div
+      className="fixed z-[80] pointer-events-none bg-black/95 border border-gray-600 rounded shadow-xl p-2.5 text-[11px] text-white w-64"
+      style={{ left: Math.min(x + 12, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 280), top: Math.min(y + 12, (typeof window !== 'undefined' ? window.innerHeight : 800) - 220) }}
+    >
+      <div className="font-semibold" style={{ color: t.color }}>{t.name}</div>
+      <div className="text-gray-300 capitalize mt-0.5">{t.scope} · {t.defaultDuration} turn{t.defaultDuration === 1 ? '' : 's'}</div>
+      <div className="text-gray-400 mt-1">
+        {t.modifiers.length > 0 ? t.modifiers.map(modifierSummary).join(', ') : 'no modifiers'}
+      </div>
+      {t.description && <div className="text-gray-500 mt-1">{t.description}</div>}
+    </div>
+  );
+}
+
 export default function EffectsPanel() {
   const [list, setList] = useState<EffectTemplate[]>([]);
   const [hint, setHint] = useState('');
+  const [hover, setHover] = useState<{ t: EffectTemplate; x: number; y: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,19 +92,21 @@ export default function EffectsPanel() {
             setHint(`Drop "${t.name}" on an empty hex (zone) or on a unit.`);
           }}
           onDragEnd={() => setHint('')}
+          onMouseEnter={e => setHover({ t, x: e.clientX, y: e.clientY })}
+          onMouseMove={e => setHover(h => (h?.t.id === t.id ? { t, x: e.clientX, y: e.clientY } : h))}
+          onMouseLeave={() => setHover(null)}
           className="cursor-grab rounded border px-2 py-1.5 text-xs bg-gray-800 hover:bg-gray-700"
           style={{ borderColor: t.color }}
         >
           <span className="font-semibold text-gray-100">{t.name}</span>
-          <span className="block text-[10px] text-gray-400">
-            {t.scope} · {t.modifiers.map(modifierSummary).join(', ') || '—'}
-          </span>
+          <span className="block text-[10px] text-gray-400 capitalize">{t.scope}</span>
         </div>
       ))}
       <p className="text-[11px] text-gray-500">
         {hint || 'Drag an effect onto the board to place it.'}
         {' '}DoT damage begins on the effect's next tick — use a zone <b>entry</b> effect for immediate damage.
       </p>
+      {hover && <EffectTooltip t={hover.t} x={hover.x} y={hover.y} />}
     </div>
   );
 }

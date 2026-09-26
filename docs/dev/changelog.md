@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Scenario left panel: Features tab + hover tooltips (2026-09-21)
+**Files:** src/components/ScenarioMap/{LeftPanel,StructurePaintPanel,EffectsPanel}.tsx, docs/dev/changelog.md
+
+- Renamed the left-panel **"Movement" tab to "Features"** (terrain MP pen + structure brush).
+- Removed the selected-structure editor from the lower half of that tab (the only split list+editor panel, unlike the other single-list tabs). Editing a placed structure stays on the canvas via **Shift + double-click** (`StructureEditModal`); right-click removes, clicking a placed edge flips its battlement.
+- **Hover tooltips** in the Unit-Selector style now carry the info instead: structure templates show anchor, in/out foot+mounted MP (block), HP/DT/door, cover AC and other modifiers; effect cards show scope, duration and the full modifier list.
+- `tsc` clean; 723 tests pass; `next build` clean.
+
 ## block_attacks + hex-structure→zone unification; ranged-only range; editor action bar (2026-09-21)
 **Files:** src/lib/{effectTemplates,unitEffects,mapStructures,mapEffects,attackBlock(new)}.ts (+ tests), src/types/gameProtocol.ts, src/hooks/useSupabaseSync.ts, src/components/EffectEditor/{EffectEditor,EffectModifierFields}.tsx, src/components/{StructureEditor/StructureEditor,UnitEditor,ShipEditor/ShipEditor,WeaponEditor/WeaponEditor}.tsx, src/components/ScenarioMap/{ScenarioMap,useCombatActions,useReactionActions}.ts(x), docs/dev/changelog.md, AGENTS.md
 

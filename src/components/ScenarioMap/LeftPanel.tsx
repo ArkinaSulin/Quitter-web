@@ -132,7 +132,7 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
     },
     {
       id: 'movement-paint',
-      label: 'Movement',
+      label: 'Features',
       icon: <FootIcon />,
       requiresGM: true,
       content: (
