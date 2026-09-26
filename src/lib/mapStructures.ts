@@ -12,7 +12,7 @@ import { Walls, Wall, WallFace, edgeRef } from './walls';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { EffectModifier, modifierAmount } from '@/lib/effectTemplates';
 import { templateDoorMax } from '@/lib/structureTemplates';
-import { GroundEffect } from '@/types/gameProtocol';
+import { GroundEffect, Unit } from '@/types/gameProtocol';
 
 export type MapStructures = Record<string, StructureInstance>;
 
@@ -66,6 +66,100 @@ export function instanceDoorState(inst: StructureInstance, t: StructureTemplate)
   return { doorMax, doorHp, open, standing: !open && doorHp > 0 };
 }
 
+/**
+ * Instance-relative door state. Damage reduces BOTH the door pool and the
+ * structure HP together, so "no door" is `doorNow >= hpNow` (equal stays equal
+ * through equal damage) — comparing to the template max would falsely turn a
+ * no-door structure into "has a door" once damaged.
+ */
+export interface StructureDoorState {
+  hpNow: number;
+  doorNow: number;
+  noDoor: boolean;
+  hasDoor: boolean;
+  /** Toggleable: a real door with `0 < doorNow < hpNow`. */
+  intact: boolean;
+  open: boolean;
+  /** Open or broken (`doorNow <= 0`): crossable at BASE cost. */
+  openOrBroken: boolean;
+}
+
+export function structureDoorState(inst: StructureInstance, t: StructureTemplate): StructureDoorState {
+  const hpNow = inst.hp ?? t.maxHp;
+  const doorNow = inst.doorHp ?? templateDoorMax(t);
+  const open = inst.open === true;
+  const noDoor = doorNow >= hpNow;
+  return {
+    hpNow,
+    doorNow,
+    noDoor,
+    hasDoor: !noDoor,
+    intact: doorNow > 0 && doorNow < hpNow,
+    open,
+    openOrBroken: open || doorNow <= 0,
+  };
+}
+
+/** The hex a structure's DOOR belongs to: hex structure = its hex; edge = the
+ *  INSIDE hex (opposite the instance's `outside`). */
+export function structureDoorHex(key: string, inst: StructureInstance): { q: number; r: number } | null {
+  if (isHexStructureKey(key)) {
+    const [q, r] = key.split(',').map(Number);
+    return { q, r };
+  }
+  if (!isEdgeStructureKey(key)) return null;
+  const [q, r, dir] = key.split(',').map(Number);
+  const ref = edgeRef(q, r, dir);
+  const outsideIsA = (inst.outside ?? 'a') === 'a';
+  return outsideIsA ? { q: ref.bq, r: ref.br } : { q: ref.aq, r: ref.ar };
+}
+
+/**
+ * May this viewer toggle the door? Only a structure with an INTACT door, and
+ * only the DM or the owner of the unit on the door hex (on that unit's turn,
+ * via `canControlUnit`). Dynamic — lost as soon as the unit leaves.
+ */
+export function canToggleStructureDoor(
+  key: string,
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+  units: Unit[],
+  isGM: boolean,
+  canControlUnit: (u: Unit) => boolean,
+): boolean {
+  const inst = structures?.[key];
+  if (!inst) return false;
+  const t = templates?.[inst.templateId];
+  if (!t) return false;
+  if (!structureDoorState(inst, t).intact) return false;
+  if (isGM) return true;
+  const hex = structureDoorHex(key, inst);
+  if (!hex) return false;
+  const unit = units.find(u => !u.isDeleted && u.hex.q === hex.q && u.hex.r === hex.r);
+  return !!unit && canControlUnit(unit);
+}
+
+/**
+ * Occupied hexes that may be TRAVERSED (entered, not stopped on) because a hex
+ * structure there has a door that is open/broken and the structure still stands.
+ */
+export function doorPassThroughHexes(
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+  occupied: Set<string>,
+): Set<string> {
+  const out = new Set<string>();
+  if (!structures) return out;
+  for (const [key, inst] of Object.entries(structures)) {
+    if (!isHexStructureKey(key) || !occupied.has(key)) continue;
+    const t = templates?.[inst.templateId];
+    if (!t) continue;
+    const st = structureDoorState(inst, t);
+    if (st.hpNow > 0 && st.hasDoor && st.openOrBroken) out.add(key);
+  }
+  return out;
+}
+
 /** AC (melee / ranged) a template's `ac` modifiers grant across its edge. */
 function coverAc(mods: EffectModifier[]): { melee: number; ranged: number } {
   let melee = 0;
@@ -80,14 +174,17 @@ function coverAc(mods: EffectModifier[]): { melee: number; ranged: number } {
   return { melee, ranged };
 }
 
-/** One template side -> a runtime wall face. */
-function faceFromTemplate(t: StructureTemplate, mods: EffectModifier[], which: 'inside' | 'outside'): WallFace {
+/** One template side -> a runtime wall face. When the door is open/broken the
+ *  crossing cost is WAIVED (falls back to the destination hex's MP). */
+function faceFromTemplate(t: StructureTemplate, mods: EffectModifier[], which: 'inside' | 'outside', openOrBroken: boolean): WallFace {
   const foot = which === 'inside' ? t.mpFootIn : t.mpFootOut;
   const mounted = which === 'inside' ? t.mpMountedIn : t.mpMountedOut;
   const ac = coverAc(mods);
   const f: WallFace = {};
-  if (foot !== null && foot !== undefined) f.moveCostFoot = foot;
-  if (mounted !== null && mounted !== undefined) f.moveCostMounted = mounted;
+  if (!openOrBroken) {
+    if (foot !== null && foot !== undefined) f.moveCostFoot = foot;
+    if (mounted !== null && mounted !== undefined) f.moveCostMounted = mounted;
+  }
   if (ac.melee) f.meleeAc = ac.melee;
   if (ac.ranged) f.rangedAc = ac.ranged;
   return f;
@@ -111,10 +208,11 @@ export function structuresToWalls(
     const ref = edgeRef(q, r, dir);
     const mods = instanceModifiers(inst, t);
     const outsideIsA = (inst.outside ?? 'a') === 'a';
+    const st = structureDoorState(inst, t);
     // Face A (canonical hex): inside when outsideIsA? No — outsideIsA means the
     // canonical face IS the outside, so its cost is the `_out` ("enter outside").
-    const aFace = outsideIsA ? faceFromTemplate(t, mods, 'outside') : faceFromTemplate(t, mods, 'inside');
-    const bFace = outsideIsA ? faceFromTemplate(t, mods, 'inside') : faceFromTemplate(t, mods, 'outside');
+    const aFace = outsideIsA ? faceFromTemplate(t, mods, 'outside', st.openOrBroken) : faceFromTemplate(t, mods, 'inside', st.openOrBroken);
+    const bFace = outsideIsA ? faceFromTemplate(t, mods, 'inside', st.openOrBroken) : faceFromTemplate(t, mods, 'outside', st.openOrBroken);
     const maxHp = t.maxHp;
     const door = instanceDoorState(inst, t);
     const wall: Wall = { a: aFace, b: bFace, source: 'map' };
@@ -262,7 +360,8 @@ export function structureHexEntryCost(
   const inst = hexStructureAt(structures, hex);
   const t = inst ? templates?.[inst.templateId] : undefined;
   if (!inst || !t) return undefined;
-  if (structureIsOpen(inst)) return undefined;
+  // Open/broken door → BASE hex MP. No door or intact door → the structure MP.
+  if (structureDoorState(inst, t).openOrBroken) return undefined;
   const cost = isMounted ? t.mpMountedIn : t.mpFootIn;
   if (cost === null || cost === undefined || cost < 0) return undefined;
   return cost;

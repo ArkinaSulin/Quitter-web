@@ -559,3 +559,19 @@ describe('computeReachableMap - edge walls', () => {
     expect(map.get('1,-1')).toBeDefined();   // the other front-arc step is open
   });
 });
+
+describe('computeReachableMap - pass-through (open-door hex structure)', () => {
+  it('walks THROUGH an occupied pass-through hex but never returns it as a destination', () => {
+    // Formed unit (front wedge dirs 4,5) at (0,0): the only way to (0,-2) is via
+    // the occupied front hex (0,-1). With pass-through it can walk through; the
+    // occupied hex itself is never a destination.
+    const occupied = new Set(['0,-1']);
+    const pass = new Set(['0,-1']);
+    const withPass = computeReachableMap(formedUnit, 3, occupied, new Set(), undefined, false, undefined, undefined, pass);
+    expect(withPass.has('0,-1')).toBe(false); // occupied → never a destination
+    expect(withPass.has('0,-2')).toBe(true);  // reachable by walking through it
+    // Without the pass-through set the occupied front hex blocks the corridor.
+    const without = computeReachableMap(formedUnit, 3, occupied, new Set());
+    expect(without.has('0,-2')).toBe(false);
+  });
+});

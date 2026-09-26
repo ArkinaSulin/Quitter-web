@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Structure doors: instance-relative state, open/broken cost, control + pass-through (2026-09-21)
+**Files:** src/lib/{mapStructures,moveCost}.ts (+ tests), src/components/{StructureEditModal,MapEditor/MapCanvas,ScenarioMap/MapInfoTooltip,ScenarioMap/useCanvasDraw,ScenarioMap/useMoveActions,ScenarioMap/useOverlay,ScenarioMap/useReactionActions,ScenarioMap/ScenarioMap}.ts(x), docs/dev/{18,changelog}.md
+
+- **Instance-relative door state** (`mapStructures.structureDoorState`) fixes the damage loophole: damage drops `door_hp` AND `hp` together, so `noDoor = doorNow >= hpNow` (equality survives equal damage). `hasDoor`/`intact`/`openOrBroken` derive from the instance, not the template. Display badges/tooltips use it (`open` / `door N` / `broken`, no badge when `noDoor`).
+- **Crossing cost**: open/broken door → **base** (hex entry = base hex MP; edge = destination/inside hex MP, i.e. the wall face cost is omitted). No door / intact door → **structure MP** (`mp_*`; `null` → base). Doors still never *block*.
+- **Pass-through**: a hex structure with a door that is **open/broken** may be **traversed (not stopped on)** even when occupied, while `hpNow > 0` — `computeReachableMap` gained a `passThrough` set (`doorPassThroughHexes`), wired into `useMoveActions`/`useOverlay`/`useReactionActions`. No stacking otherwise. Edges unaffected.
+- **Door control** (dynamic, own-turn, command-logged): the DM always; otherwise the owner of the unit on the **door hex** (hex = the structure hex; edge = the **inside** hex), gated by `canToggleStructureDoor` + `canControlUnit`, and only for an **intact** door. The toggle is a `STRUCTURE` command sub-step (undo/realtime). Non-GM Shift + double-click opens a **restricted modal** (door Open/Close only); DM keeps the full editor. Map Editor stays DM/authoring-only.
+- `tsc` clean; 740 tests pass; build clean. No migration.
+
 ## Unified passage rule: doors never gate movement (hex or edge) (2026-09-21)
 **Files:** src/lib/{walls,mapStructures}.ts (+ tests), src/components/ScenarioMap/mapGeometry.ts, docs/dev/{18,changelog}.md
 

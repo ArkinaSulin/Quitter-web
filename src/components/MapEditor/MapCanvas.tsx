@@ -10,10 +10,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
 import { HEX_SIZE, DEFAULT_GRID_RADIUS, TerrainCosts, costShade } from '@/components/ScenarioMap/mapGeometry';
 import { edgeRef, nearestEdge, hexCorner } from '@/lib/walls';
-import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls } from '@/lib/mapStructures';
+import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls, structureDoorState } from '@/lib/mapStructures';
 import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
 import { StructureTemplate } from '@/types/structure';
-import { structureHasDoor } from '@/lib/structureTemplates';
 import { MapHexEffect } from '@/lib/mapEffects';
 import { EffectTemplate } from '@/lib/effectTemplates';
 
@@ -241,9 +240,11 @@ export function MapCanvas({
           ctx.fillStyle = '#ffe0b2';
           ctx.fillText(`${inst.hp ?? hp}`, pos.x, pos.y - HEX_SIZE * 0.62);
         }
-        const hasDoor = structureHasDoor(t);
-        const door = hasDoor ? (inst.doorHp ?? t!.doorHp ?? 0) : 0;
-        const badge = hasDoor ? (inst.open ? 'open' : (door > 0 ? `door ${door}` : null)) : null;
+        const st = t ? structureDoorState(inst, t) : null;
+        const badge = !st || st.noDoor ? null
+          : st.open ? 'open'
+          : st.doorNow <= 0 ? 'broken'
+          : `door ${st.doorNow}`;
         if (badge) {
           ctx.font = `bold ${Math.max(10 / zoom, 0.5)}px ui-monospace, monospace`;
           ctx.textAlign = 'center';

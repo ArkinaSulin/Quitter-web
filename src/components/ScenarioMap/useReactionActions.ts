@@ -22,7 +22,7 @@ import { UnitChange, SubStep } from '@/lib/commandLog';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { computeOccupiedHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
-import { MapStructures } from '@/lib/mapStructures';
+import { MapStructures, doorPassThroughHexes } from '@/lib/mapStructures';
 import { attacksBlocked } from '@/lib/attackBlock';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
@@ -327,13 +327,14 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const budget = reactionMovePool(archer, maxMP);
     const occupied = computeOccupiedHexes(displayUnits, archer.id);
     const mounted = !!archer.mountId || !!archer.mountName;
+    const passThrough = doorPassThroughHexes(structures, structureTemplates, occupied);
     return computeReachableMap(archer, budget, occupied, new Set(), makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted }), false, makeBlockedEdge(walls, {
       structures,
       templates: structureTemplates,
       zones: groundZones,
       orgLevel: getOrganizationLevel(archer.currentFormation),
       isMounted: mounted,
-    }));
+    }), undefined, passThrough);
   }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones]);
 
   const handleReactionAttack = useCallback(async (attackerId: string, targetId: string) => {

@@ -7,10 +7,9 @@
 import React from 'react';
 import { Hex, GroundEffect } from '@/types/gameProtocol';
 import { EdgeRef } from '@/lib/walls';
-import { MapStructures, instanceModifiers, instanceDoorState } from '@/lib/mapStructures';
+import { MapStructures, instanceModifiers, structureDoorState } from '@/lib/mapStructures';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { modifierAmount, modifierSummary } from '@/lib/effectTemplates';
-import { structureHasDoor } from '@/lib/structureTemplates';
 import { useTooltipClamp } from './useTooltipClamp';
 
 interface MapInfoTooltipProps {
@@ -58,14 +57,13 @@ const modLine = (mods: { kind: string; dice?: string; mode?: string }[]): string
   mods.map(m => modifierSummary(m as any)).join(', ');
 
 function HexStructureInfo({ template, inst, hp, maxHp }: { template: StructureTemplate; inst: StructureInstance; hp: number; maxHp: number }) {
-  const door = instanceDoorState(inst, template);
+  const st = structureDoorState(inst, template);
+  const doorText = st.open ? 'open' : st.doorNow <= 0 ? 'broken' : `${st.doorNow}/${st.hpNow}`;
   return (
     <div>
       <div className="font-semibold text-amber-300">{template.name}</div>
       <div className="text-gray-300">HP {hp}/{maxHp} · DT {template.dt}</div>
-      {structureHasDoor(template) && (
-        <div className="text-gray-300">Door {door.open ? 'open' : `${door.doorHp}/${door.doorMax}`}</div>
-      )}
+      {!st.noDoor && <div className="text-gray-300">Door {doorText}</div>}
       <div className="text-gray-400">Enter: foot {mpText(template.mpFootIn)} MP · mounted {mpText(template.mpMountedIn)} MP</div>
       {template.modifiers.length > 0 && <div className="text-gray-400">Effects: {modLine(template.modifiers)}</div>}
       <div className="text-gray-500 mt-1">Shift + double-click to edit · Shift + drop a unit to attack</div>
@@ -76,12 +74,12 @@ function HexStructureInfo({ template, inst, hp, maxHp }: { template: StructureTe
 function EdgeStructureInfo({ template, inst, hp, maxHp, outside }: { template: StructureTemplate; inst: StructureInstance; hp: number; maxHp: number; outside: 'a' | 'b' }) {
   const mods = instanceModifiers(inst, template);
   const ac = coverAc(mods);
-  const door = instanceDoorState(inst, template);
+  const st = structureDoorState(inst, template);
   return (
     <div>
       <div className="font-semibold text-amber-300">{template.name}</div>
       <div className="text-gray-300">HP {hp}/{maxHp} · DT {template.dt}</div>
-      {structureHasDoor(template) && <div className="text-gray-300">Door {door.open ? 'open' : `${door.doorHp}/${door.doorMax}`}</div>}
+      {!st.noDoor && <div className="text-gray-300">Door {st.open ? 'open' : st.doorNow <= 0 ? 'broken' : `${st.doorNow}/${st.hpNow}`}</div>}
       <div className="text-gray-400">In: foot {mpText(template.mpFootIn)} · mtd {mpText(template.mpMountedIn)} MP</div>
       <div className="text-gray-400">Out: foot {mpText(template.mpFootOut)} · mtd {mpText(template.mpMountedOut)} MP</div>
       {(ac.melee || ac.ranged) ? <div className="text-gray-400">Cover AC melee {ac.melee} · ranged {ac.ranged}</div> : null}

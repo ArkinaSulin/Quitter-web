@@ -17,7 +17,7 @@ import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
 import { MapStructures, isHexStructureKey } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
-import { structureHasDoor } from '@/lib/structureTemplates';
+import { structureDoorState } from '@/lib/mapStructures';
 import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
 import { AiOverlayData } from './aiTypes';
 
@@ -291,9 +291,11 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           ctx.fillStyle = '#ffe0b2';
           ctx.fillText(label, cx, ly);
         }
-        const hasDoor = structureHasDoor(t);
-        const door = hasDoor ? (inst.doorHp ?? t!.doorHp ?? 0) : 0;
-        const badge = hasDoor ? (inst.open ? 'open' : (door > 0 ? `door ${door}` : null)) : null;
+        const st = t ? structureDoorState(inst, t) : null;
+        const badge = !st || st.noDoor ? null
+          : st.open ? 'open'
+          : st.doorNow <= 0 ? 'broken'
+          : `door ${st.doorNow}`;
         if (badge) {
           ctx.font = `bold ${Math.max(10, 11 * currentZoom)}px ui-monospace, monospace`;
           ctx.textAlign = 'center';

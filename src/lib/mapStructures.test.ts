@@ -3,8 +3,9 @@ import {
   parseStructures, structuresToWalls, isEdgeStructureKey, isHexStructureKey, structureCounts,
   structureBlocksOrg, zoneBlocksOrg, structureRangeBonus, structureIsOpen,
   structureHexEntryCost, structureHexBlocked, structureAuraFlags, structureZones,
+  structureDoorState, structureDoorHex, canToggleStructureDoor, doorPassThroughHexes,
 } from './mapStructures';
-import { meleeWallAc, rangedWallAc } from './walls';
+import { meleeWallAc, rangedWallAc, edgeRef } from './walls';
 import { StructureTemplate } from '@/types/structure';
 
 const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => ({
@@ -200,6 +201,59 @@ describe('structureZones (hex structures → ground zones)', () => {
 
   it('returns [] with no structures', () => {
     expect(structureZones(null, {})).toEqual([]);
+  });
+});
+
+describe('door state & control (instance-relative)', () => {
+  it('no-door stays no-door after equal damage; a real door keeps its gap', () => {
+    const nd = template({ id: 'nd', anchor: 'hex', doorHp: null, maxHp: 100 });
+    expect(structureDoorState({ templateId: 'nd' }, nd).noDoor).toBe(true);
+    expect(structureDoorState({ templateId: 'nd', hp: 60, doorHp: 60 }, nd).noDoor).toBe(true); // damaged equally
+    const g = template({ id: 'g', anchor: 'hex', doorHp: 30, maxHp: 100 });
+    expect(structureDoorState({ templateId: 'g' }, g).hasDoor).toBe(true);
+    expect(structureDoorState({ templateId: 'g' }, g).intact).toBe(true);
+    expect(structureDoorState({ templateId: 'g', hp: 60, doorHp: 0 }, g).openOrBroken).toBe(true);
+  });
+
+  it('structureDoorHex: hex is itself; edge is the inside hex (opposite outside)', () => {
+    expect(structureDoorHex('2,3', { templateId: 'x' })).toEqual({ q: 2, r: 3 });
+    const ref = edgeRef(0, 0, 0);
+    expect(structureDoorHex(ref.key, { templateId: 'x', outside: 'a' })).toEqual({ q: ref.bq, r: ref.br });
+    expect(structureDoorHex(ref.key, { templateId: 'x', outside: 'b' })).toEqual({ q: ref.aq, r: ref.ar });
+  });
+
+  it('canToggleStructureDoor needs an intact door + the owner on the door hex', () => {
+    const t = template({ id: 'g', anchor: 'hex', doorHp: 30, maxHp: 100 });
+    const templates = { g: t };
+    const structs = { '1,0': { templateId: 'g' } };
+    const owner = { id: 'u', isDeleted: false, hex: { q: 1, r: 0, s: -1 } } as any;
+    const allow = () => true;
+    const deny = () => false;
+    expect(canToggleStructureDoor('1,0', structs, templates, [owner], false, allow)).toBe(true);
+    expect(canToggleStructureDoor('1,0', structs, templates, [owner], false, deny)).toBe(false);
+    expect(canToggleStructureDoor('1,0', structs, templates, [], false, allow)).toBe(false);
+    expect(canToggleStructureDoor('1,0', structs, templates, [], true, deny)).toBe(true); // DM
+    const nd = { nd: template({ id: 'nd', anchor: 'hex', doorHp: null, maxHp: 30 }) };
+    expect(canToggleStructureDoor('1,0', { '1,0': { templateId: 'nd' } }, nd, [owner], true, allow)).toBe(false);
+  });
+
+  it('doorPassThroughHexes: occupied hex structure with an open/broken door', () => {
+    const t = template({ id: 'g', anchor: 'hex', doorHp: 30, maxHp: 100 });
+    const t2 = template({ id: 'g2', anchor: 'hex', doorHp: 30, maxHp: 100 });
+    const occupied = new Set(['1,0', '2,0']);
+    const s = { '1,0': { templateId: 'g', open: true }, '2,0': { templateId: 'g2' } };
+    const pt = doorPassThroughHexes(s as any, { g: t, g2: t2 } as any, occupied);
+    expect(pt.has('1,0')).toBe(true); // open door
+    expect(pt.has('2,0')).toBe(false); // intact door
+  });
+
+  it('waives the edge face cost when the door is open/broken', () => {
+    const t = template({ id: 'g', anchor: 'edge', mpFootIn: 4, doorHp: 30, maxHp: 100 });
+    const open = structuresToWalls({ '0,0,0': { templateId: 'g', open: true } }, { g: t } as any);
+    expect(open['0,0,0'].a.moveCostFoot).toBeUndefined();
+    expect(open['0,0,0'].b.moveCostFoot).toBeUndefined();
+    const closed = structuresToWalls({ '0,0,0': { templateId: 'g' } }, { g: t } as any);
+    expect(closed['0,0,0'].b.moveCostFoot).toBe(4); // inside face
   });
 });
 

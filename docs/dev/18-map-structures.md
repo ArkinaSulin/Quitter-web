@@ -190,6 +190,27 @@ faces and `hex_move_cost` are gone:
   edge: `isBlockedEdge`), plus a `block` face for magic walls and occupancy. Doors
   are only a second **damageable** pool (combat/badges) and no longer block cross-
   ing, entering, or charges. Charges are gated solely by a 2+ MP crossing.
+- **Door state is INSTANCE-relative** (`structureDoorState`): damage reduces BOTH
+  `door_hp` and `hp` together, so `noDoor = doorNow >= hpNow` (equality survives
+  equal damage — comparing to the *template* max would falsely create a door once a
+  no-door structure is damaged); `hasDoor = doorNow < hpNow`; `intact = 0 < doorNow
+  < hpNow`; `openOrBroken = open || doorNow <= 0`.
+- **Crossing cost** (base when the door is open/broken, else the structure MP):
+  | Surface | no door / intact | open or broken |
+  |---|---|---|
+  | Hex entry | structure MP (`mp_*_in`; `null` → base) | base hex MP |
+  | Edge crossing | wall face MP (`mp_*`) | no wall cost → destination (inside) hex MP |
+- **Pass-through (hex structures, doors only):** while `hpNow > 0`, a unit may
+  **traverse** a hex-structure hex **even when occupied** by an enemy — without
+  stopping — **only if the structure has a door and it is open/broken**
+  (`hasDoor && openOrBroken`). Otherwise the normal occupancy rule holds (**no
+  stacking**). `computeReachableMap` takes a `passThrough` set (`doorPassThroughHexes`)
+  that may be walked but is never returned as a destination. Not applicable to edges.
+- **Door control** (dynamic, own-turn): the DM always; otherwise the owner of the
+  unit on the **door hex** (hex structure = its hex; edge = the **inside** hex,
+  opposite `outside`), via `canControlUnit`. Only an **intact** door is toggleable;
+  others are gated. The toggle rides the command log (a `STRUCTURE` sub-step), so it
+  is undoable/broadcast. Non-GM sees a restricted modal (door Open/Close only).
 - **Modifiers are one list** with an optional `mode: 'melee' | 'ranged'` (absent =
   both) on the attack-distance kinds (`ac`, `advantage`/`disadvantage`/`grant_*`).
   Cover AC is expressed as `ac` modifiers. `range` (occupant aura) and

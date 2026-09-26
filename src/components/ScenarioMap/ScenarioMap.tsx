@@ -47,7 +47,7 @@ import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf, computeOccupiedHexes, computeThreatHexes } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/lib/walls';
-import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey } from '@/lib/mapStructures';
+import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/lib/wallCombat';
@@ -758,6 +758,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setStructureLocal,
     requestEntryTroops,
   });
+
+  // Player door toggle: command-logged (undo/realtime ride the STRUCTURE sub-step).
+  const toggleStructureDoor = useCallback(async (key: string, open: boolean) => {
+    const inst = structures[key];
+    if (!inst) return;
+    const t = structureTemplates[inst.templateId];
+    const to = { ...inst, open };
+    const label = `${t?.name ?? 'Structure'} ${open ? 'opened' : 'closed'}`;
+    await execute('STRUCTURE', [{
+      type: 'STRUCTURE',
+      description: label,
+      unitId: scenarioId,
+      changes: [{ field: 'structures', key, from: inst, to }],
+    }], label);
+  }, [structures, structureTemplates, execute, scenarioId]);
 
   // "Other Action…" (hero roleplay): spend 1 action; the table resolves it by
   // hand. Zero actions -> the standard soft-enforcement confirm.
@@ -1991,8 +2006,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Double-click a unit you can edit opens the floating editor.
   const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (controlsLocked || reactionMode) return;
-    // Shift + double-click (map-inspect mode) edits a placed structure instance.
-    if (e.shiftKey && effectiveIsGM) {
+    // Shift + double-click (map-inspect mode) edits a placed structure instance:
+    // the DM always; a player only for a door they control (unit on the door hex).
+    if (e.shiftKey) {
       const hex = getHexFromScreen(e.clientX, e.clientY);
       if (hex) {
         const hexKey = `${hex.q},${hex.r}`;
@@ -2005,8 +2021,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }
         }
         if (key && structureTemplates[structures[key].templateId]) {
-          setStructureEditKey(key);
-          return;
+          if (isGM || canToggleStructureDoor(key, structures, structureTemplates, units, isGM, canControlUnit)) {
+            setStructureEditKey(key);
+            return;
+          }
         }
       }
     }
@@ -2016,7 +2034,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (!unit) return;
     if (unit.hidden && !effectiveIsGM) return;
     if (effectiveIsGM || canEditUnit(unit)) setEditUnit(unit);
-  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAt, effectiveIsGM, canEditUnit, structures, structureTemplates]);
+  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAt, effectiveIsGM, canEditUnit, structures, structureTemplates, units, isGM, canControlUnit]);
 
   // Editor Save → one chained command entry, one sub-step per changed field.
   const handleEditorSave = useCallback(async (changes: { field: string; from: any; to: any }[], description: string) => {
@@ -3365,7 +3383,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         <StructureEditModal
           template={structureTemplates[structures[structureEditKey].templateId]}
           instance={structures[structureEditKey]}
+          restricted={!isGM}
           onSave={(patch) => void patchStructureAt(structureEditKey, patch)}
+          onToggleDoor={(open) => void toggleStructureDoor(structureEditKey, open)}
           onClose={() => setStructureEditKey(null)}
         />
       )}

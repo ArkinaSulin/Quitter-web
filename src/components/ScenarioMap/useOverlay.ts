@@ -16,7 +16,7 @@ import { canRangedTarget } from '@/lib/formationRules';
 import { arcOfTarget } from '@/lib/attackDirection';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls, EdgeRef } from '@/lib/walls';
-import { MapStructures } from '@/lib/mapStructures';
+import { MapStructures, doorPassThroughHexes } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { rangeBonusAt } from '@/lib/unitEffects';
@@ -170,7 +170,8 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       budget = Math.min(budget, heroBudget);
       hopCap = Math.min(hopCap, heroHop);
     }
-    const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, costOfHexFor(isMountedOf(draggedUnit)), false, blockedEdgeFor(getOrganizationLevel(draggedUnit.currentFormation), isMountedOf(draggedUnit)), hopCap);
+    const passThrough = doorPassThroughHexes(structures, templates, occupied);
+    const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, costOfHexFor(isMountedOf(draggedUnit)), false, blockedEdgeFor(getOrganizationLevel(draggedUnit.currentFormation), isMountedOf(draggedUnit)), hopCap, passThrough);
 
     const combined: Record<string, string> = {};
 

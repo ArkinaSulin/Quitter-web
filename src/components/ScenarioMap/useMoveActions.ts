@@ -17,7 +17,7 @@ import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep } from '@/lib/commandLog';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
-import { MapStructures } from '@/lib/mapStructures';
+import { MapStructures, doorPassThroughHexes } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingHeroSwapConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
@@ -280,7 +280,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
       effectiveMax,
       attachedHero && heroMax ? heroMax : Infinity,
     ));
-    const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true, blockedEdge);
+    // Occupied hex structures whose door is open/broken may be TRAVERSED (not
+    // stopped on) — pass them to the reachability search.
+    const passThrough = doorPassThroughHexes(structures, structureTemplates, occupied);
+    const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true, blockedEdge, hopCap, passThrough);
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
       // Beyond the physical hop limit — genuinely can't walk that far.

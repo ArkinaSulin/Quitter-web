@@ -321,8 +321,12 @@ export function computeReachableMap(
    *  `hopCap` at one pool, so an expensive single step is selectable without
    *  extending normal one-move distance. */
   hopCap?: number,
+  /** Occupied hexes that may be TRAVERSED (entered for pathing, but never
+   *  returned as a result) — an open-door hex structure underfoot. */
+  passThrough?: Set<string>,
 ): Map<string, MovePathEntry> {
   const stepCap = hopCap ?? maxMP;
+  const isPass = (k: string): boolean => passThrough?.has(k) ?? false;
   // MP to ENTER hex (q,r). Defaults to 1; a painted 0 = free entry; clamps only
   // negative/garbage to 1. `fromQ/fromR` let a wall face REPLACE the entry cost.
   const stepCost = (q: number, r: number, fromQ: number, fromR: number): number => {
@@ -367,7 +371,8 @@ export function computeReachableMap(
         const nq = cur.q + dir.q;
         const nr = cur.r + dir.r;
         const k = key(nq, nr);
-        if (occupied.has(k)) continue;
+        const pass = isPass(k);
+        if (occupied.has(k) && !pass) continue;
         if (blockedEdge && blockedEdge(cur.q, cur.r, nq, nr)) continue;
         const nc = cur.d + stepCost(nq, nr, cur.q, cur.r);
         const nh = cur.hops + 1;
@@ -376,7 +381,8 @@ export function computeReachableMap(
         bestCost.set(k, nc);
         bestHops.set(k, nh);
         const path = [...cur.path, { q: nq, r: nr, s: -nq - nr }];
-        out.set(k, { cost: nc, path, finalFacing: unit.facing, needsTurn: false });
+        // A pass-through hex may be WALKED but never become a destination.
+        if (!pass) out.set(k, { cost: nc, path, finalFacing: unit.facing, needsTurn: false });
         if (!threatHexes.has(k)) queue.push({ q: nq, r: nr, d: nc, hops: nh, path });
       }
     }
@@ -439,7 +445,8 @@ export function computeReachableMap(
       const dir = HEX_DIRS[dirIdx];
       const nq = cur.q + dir.q;
       const nr = cur.r + dir.r;
-      if (occupied.has(key(nq, nr))) continue;
+      const nk = key(nq, nr);
+      if (occupied.has(nk) && !isPass(nk)) continue;
       if (blockedEdge && blockedEdge(cur.q, cur.r, nq, nr)) continue;
       const nc = cur.d + stepCost(nq, nr, cur.q, cur.r);
       if ((allowBeyondBudget || nc <= maxMP) && cur.hops + 1 <= stepCap) {
@@ -466,7 +473,7 @@ export function computeReachableMap(
   });
 
   grey.forEach((d, k) => {
-    if (white.has(k)) return;
+    if (white.has(k) || isPass(k)) return; // pass-through hexes are never destinations
     result.set(k, { cost: d, path: [], finalFacing: unit.facing, needsTurn: true });
   });
   white.forEach((entry, k) => {
