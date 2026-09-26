@@ -16,6 +16,7 @@ const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => (
   imageUrl: '',
   battlement: true,
   spikes: false,
+  hexBorder: true,
   mpFootIn: 1,
   mpFootOut: 3,
   mpMountedIn: -1,

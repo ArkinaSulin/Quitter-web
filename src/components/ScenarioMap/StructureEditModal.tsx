@@ -9,6 +9,7 @@ import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { EffectModifier } from '@/lib/effectTemplates';
 import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
 import { instanceDoorState } from '@/lib/mapStructures';
+import { structureHasDoor } from '@/lib/structureTemplates';
 
 export interface StructureInstancePatch {
   hp?: number;
@@ -30,6 +31,7 @@ const input =
 
 export function StructureEditModal({ template, instance, onSave, onClose }: StructureEditModalProps) {
   const door = instanceDoorState(instance, template);
+  const hasDoor = structureHasDoor(template);
   const [hp, setHp] = useState<number>(instance.hp ?? template.maxHp);
   const [doorHp, setDoorHp] = useState<number>(door.doorHp);
   const [open, setOpen] = useState<boolean>(!!instance.open);
@@ -57,13 +59,13 @@ export function StructureEditModal({ template, instance, onSave, onClose }: Stru
             <input type="number" min={0} max={template.maxHp} className={input + ' !w-24 block'} value={hp}
               onChange={e => setHp(Math.max(0, Math.min(template.maxHp, Math.round(Number(e.target.value) || 0))))} />
           </label>
-          {door.doorMax > 0 && (
+          {hasDoor && (
             <label className="text-gray-400">Door HP
               <input type="number" min={0} max={door.doorMax} className={input + ' !w-24 block'} value={doorHp}
                 onChange={e => setDoorHp(Math.max(0, Math.min(door.doorMax, Math.round(Number(e.target.value) || 0))))} />
             </label>
           )}
-          {door.doorMax > 0 && (
+          {hasDoor && (
             <label className="flex items-center gap-2 text-gray-300 pb-1.5">
               <input type="checkbox" checked={open} onChange={e => setOpen(e.target.checked)} /> gate open
             </label>

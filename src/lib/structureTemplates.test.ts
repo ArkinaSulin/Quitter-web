@@ -6,6 +6,7 @@ import {
   sanitizeStructureTemplate,
   structureModifiers,
   templateDoorMax,
+  structureHasDoor,
 } from './structureTemplates';
 
 describe('mapStructureRow', () => {
@@ -36,8 +37,13 @@ describe('mapStructureRow', () => {
     expect(t?.mpMountedOut).toBe(2);
     expect(t?.doorHp).toBeNull();
     expect(t?.maxHp).toBe(30);
+    expect(t?.hexBorder).toBe(true); // default when the row omits it
     expect(t?.modifiers).toEqual([{ kind: 'ac', dice: '2', mode: 'melee' }]);
     expect(templateDoorMax(t)).toBe(30); // null door defaults to maxHp
+  });
+
+  it('reads hex_border when present', () => {
+    expect(mapStructureRow({ hex_border: false }).hexBorder).toBe(false);
   });
 
   it('normalizes a legacy numeric `delta` into `dice`', () => {
@@ -97,6 +103,16 @@ describe('sanitizeStructureTemplate', () => {
     expect(t.dt).toBe(999);
     expect(t.doorHp).toBe(30); // clamped to maxHp
     expect(t.modifiers).toHaveLength(1);
+  });
+});
+
+describe('structureHasDoor', () => {
+  it('is true only for a distinct 0 < door_hp < max_hp pool', () => {
+    expect(structureHasDoor({ doorHp: 30, maxHp: 100 } as any)).toBe(true);
+    expect(structureHasDoor({ doorHp: 30, maxHp: 30 } as any)).toBe(false); // door == max -> no separate door
+    expect(structureHasDoor({ doorHp: null, maxHp: 30 } as any)).toBe(false);
+    expect(structureHasDoor({ doorHp: 0, maxHp: 30 } as any)).toBe(false);
+    expect(structureHasDoor(null)).toBe(false);
   });
 });
 

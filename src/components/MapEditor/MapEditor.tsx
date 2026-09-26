@@ -14,6 +14,7 @@ import { edgeRef } from '@/lib/walls';
 import { MapStructures } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
+import { structureHasDoor } from '@/lib/structureTemplates';
 import { EffectTemplate, mapEffectRow } from '@/lib/effectTemplates';
 import { MapCanvas } from './MapCanvas';
 
@@ -537,16 +538,16 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                           onChange={e => patchSelectedStructure({ hp: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })}
                           className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
                       </label>
-                      {(() => { const dm = selectedStructureTemplate.doorHp ?? selectedStructureTemplate.maxHp; return dm > 0 ? (
+                      {structureHasDoor(selectedStructureTemplate) && (
                         <label className="flex items-center gap-1">Door HP
-                          <input type="number" min={0} max={dm} disabled={readOnly}
-                            value={selectedStructure.doorHp ?? ''} placeholder={String(dm)}
+                          <input type="number" min={0} max={selectedStructureTemplate.maxHp} disabled={readOnly}
+                            value={selectedStructure.doorHp ?? ''} placeholder={String(selectedStructureTemplate.doorHp ?? selectedStructureTemplate.maxHp)}
                             onChange={e => patchSelectedStructure({ doorHp: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))) })}
                             className="w-14 bg-gray-800 border border-gray-600 rounded px-1 py-0.5" />
                         </label>
-                      ) : null; })()}
+                      )}
                     </div>
-                    {(selectedStructureTemplate.doorHp ?? selectedStructureTemplate.maxHp) > 0 && (
+                    {structureHasDoor(selectedStructureTemplate) && (
                       <label className="flex items-center gap-1 text-[11px] text-gray-300">
                         <input type="checkbox" disabled={readOnly} checked={!!selectedStructure.open}
                           onChange={e => patchSelectedStructure({ open: e.target.checked })} /> gate open

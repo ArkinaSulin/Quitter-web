@@ -10,6 +10,7 @@ import { EdgeRef } from '@/lib/walls';
 import { MapStructures, instanceModifiers, instanceDoorState } from '@/lib/mapStructures';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { modifierAmount } from '@/lib/effectTemplates';
+import { structureHasDoor } from '@/lib/structureTemplates';
 import { useTooltipClamp } from './useTooltipClamp';
 
 interface MapInfoTooltipProps {
@@ -63,7 +64,7 @@ function HexStructureInfo({ template, inst, hp, maxHp }: { template: StructureTe
     <div>
       <div className="font-semibold text-amber-300">{template.name}</div>
       <div className="text-gray-300">HP {hp}/{maxHp} · DT {template.dt}</div>
-      {door.doorMax > 0 && (
+      {structureHasDoor(template) && (
         <div className="text-gray-300">Door {door.open ? 'open' : `${door.doorHp}/${door.doorMax}`}</div>
       )}
       <div className="text-gray-400">Enter: foot {mpText(template.mpFootIn)} MP · mounted {mpText(template.mpMountedIn)} MP</div>
@@ -81,7 +82,7 @@ function EdgeStructureInfo({ template, inst, hp, maxHp, outside }: { template: S
     <div>
       <div className="font-semibold text-amber-300">{template.name}</div>
       <div className="text-gray-300">HP {hp}/{maxHp} · DT {template.dt}</div>
-      {door.doorMax > 0 && <div className="text-gray-300">Door {door.open ? 'open' : `${door.doorHp}/${door.doorMax}`}</div>}
+      {structureHasDoor(template) && <div className="text-gray-300">Door {door.open ? 'open' : `${door.doorHp}/${door.doorMax}`}</div>}
       <div className="text-gray-400">In: foot {mpText(template.mpFootIn)} · mtd {mpText(template.mpMountedIn)} MP</div>
       <div className="text-gray-400">Out: foot {mpText(template.mpFootOut)} · mtd {mpText(template.mpMountedOut)} MP</div>
       {(ac.melee || ac.ranged) ? <div className="text-gray-400">Cover AC melee {ac.melee} · ranged {ac.ranged}</div> : null}

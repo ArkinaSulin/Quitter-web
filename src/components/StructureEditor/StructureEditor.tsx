@@ -299,6 +299,10 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                       <MoveInput value={draft.mpMountedIn} readOnly={readOnly} onChange={v => patch({ mpMountedIn: v })} />
                     </label>
                   </div>
+                  <label className="flex items-center gap-2 text-[11px] text-gray-300">
+                    <input type="checkbox" disabled={readOnly} checked={draft.hexBorder} onChange={e => patch({ hexBorder: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
+                    Draw the thick hex outline (off for decorative hexes)
+                  </label>
                 </div>
               )}
 

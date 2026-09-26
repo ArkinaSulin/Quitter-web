@@ -27,6 +27,16 @@ export function templateDoorMax(t: StructureTemplate): number {
   return t.doorHp === null ? t.maxHp : t.doorHp;
 }
 
+/**
+ * True when the template has a DISTINCT door pool (0 < door_hp < max_hp) — the
+ * only case with a visible/meaningful "door" gate. A door equal to max_hp (or
+ * null / 0) means "no separate door": passage is governed by destroying the
+ * structure (or is already open), so no door badge/field is shown.
+ */
+export function structureHasDoor(t: StructureTemplate | null | undefined): boolean {
+  return !!t && t.doorHp !== null && t.doorHp > 0 && t.doorHp < t.maxHp;
+}
+
 /** Parse a map_structure_templates row (snake_case) into a template. */
 export function mapStructureRow(row: any): StructureTemplate {
   return {
@@ -38,6 +48,7 @@ export function mapStructureRow(row: any): StructureTemplate {
     imageUrl: row.image_url || '',
     battlement: !!row.battlement,
     spikes: !!row.spikes,
+    hexBorder: row.hex_border !== false,
     mpFootIn: numOrNull(row.mp_foot_in),
     mpFootOut: numOrNull(row.mp_foot_out),
     mpMountedIn: numOrNull(row.mp_mounted_in),
@@ -53,7 +64,7 @@ export function mapStructureRow(row: any): StructureTemplate {
 
 /** Map a template to a snake_case map_structure_templates row (no id). */
 export function mapStructureToRow(t: Pick<StructureTemplate,
-  'name' | 'description' | 'anchor' | 'color' | 'imageUrl' | 'battlement' | 'spikes' |
+  'name' | 'description' | 'anchor' | 'color' | 'imageUrl' | 'battlement' | 'spikes' | 'hexBorder' |
   'mpFootIn' | 'mpFootOut' | 'mpMountedIn' | 'mpMountedOut' |
   'doorHp' | 'maxHp' | 'dt' | 'modifiers'>) {
   // A movement value may be any integer (negative = hard block); null = terrain.
@@ -75,6 +86,7 @@ export function mapStructureToRow(t: Pick<StructureTemplate,
     image_url: t.imageUrl || '',
     battlement: !!t.battlement,
     spikes: !!t.spikes,
+    hex_border: t.hexBorder !== false,
     mp_foot_in: move(t.mpFootIn),
     mp_foot_out: move(t.mpFootOut),
     mp_mounted_in: move(t.mpMountedIn),
@@ -96,6 +108,7 @@ export function blankStructureTemplate(): Omit<StructureTemplate, 'id' | 'create
     imageUrl: '',
     battlement: false,
     spikes: false,
+    hexBorder: true,
     mpFootIn: null,
     mpFootOut: null,
     mpMountedIn: null,

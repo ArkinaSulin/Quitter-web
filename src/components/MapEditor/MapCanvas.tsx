@@ -13,6 +13,7 @@ import { edgeRef, nearestEdge, hexCorner } from '@/lib/walls';
 import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls } from '@/lib/mapStructures';
 import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
 import { StructureTemplate } from '@/types/structure';
+import { structureHasDoor } from '@/lib/structureTemplates';
 import { MapHexEffect } from '@/lib/mapEffects';
 import { EffectTemplate } from '@/lib/effectTemplates';
 
@@ -205,11 +206,14 @@ export function MapCanvas({
         if (Number.isNaN(q) || Number.isNaN(r)) continue;
         const t = p.templates?.[inst.templateId];
         const pos = hexToPixel({ q, r, s: -q - r }, HEX_SIZE);
-        // Transparent background: a thick black outline only (no colour tint).
-        hexPath(pos.x, pos.y);
-        ctx.strokeStyle = 'rgba(0,0,0,0.95)';
-        ctx.lineWidth = 5;
-        ctx.stroke();
+        // Transparent background: a thick black outline only (no colour tint),
+        // unless the template opts out (decorative hexes: `hex_border` false).
+        if (t?.hexBorder !== false) {
+          hexPath(pos.x, pos.y);
+          ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+          ctx.lineWidth = 5;
+          ctx.stroke();
+        }
         if (t?.imageUrl) {
           let img = structImgs.current.get(t.imageUrl);
           if (!img) {
@@ -235,9 +239,9 @@ export function MapCanvas({
           ctx.fillStyle = '#ffe0b2';
           ctx.fillText(`${inst.hp ?? hp}`, pos.x, pos.y - HEX_SIZE * 0.62);
         }
-        const doorMax = t ? (t.doorHp ?? t.maxHp) : 0;
-        const door = doorMax > 0 ? (inst.doorHp ?? doorMax) : 0;
-        const badge = inst.open ? 'open' : (door > 0 ? `door ${door}` : null);
+        const hasDoor = structureHasDoor(t);
+        const door = hasDoor ? (inst.doorHp ?? t!.doorHp ?? 0) : 0;
+        const badge = hasDoor ? (inst.open ? 'open' : (door > 0 ? `door ${door}` : null)) : null;
         if (badge) {
           ctx.font = `bold ${Math.max(10 / zoom, 0.5)}px ui-monospace, monospace`;
           ctx.textAlign = 'center';

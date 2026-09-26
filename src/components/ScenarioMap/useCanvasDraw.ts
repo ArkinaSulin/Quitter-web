@@ -17,6 +17,7 @@ import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
 import { MapStructures, isHexStructureKey } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
+import { structureHasDoor } from '@/lib/structureTemplates';
 import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
 import { AiOverlayData } from './aiTypes';
 
@@ -265,8 +266,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const inst = structures[key];
         const t = templates?.[inst.templateId];
         const hx = { q, r, s: -q - r };
-        // Transparent background: a thick black outline only (no colour tint).
-        strokeHex(hx, 'rgba(0,0,0,0.95)', Math.max(3, 5 * currentZoom));
+        // Transparent background: a thick black outline only (no colour tint) —
+        // unless the template opts out (decorative hexes: `hex_border` false).
+        if (t?.hexBorder !== false) strokeHex(hx, 'rgba(0,0,0,0.95)', Math.max(3, 5 * currentZoom));
         const { cx, cy } = hexCenter(hx);
         if (t?.imageUrl) {
           const img = getLoadedImage(t.imageUrl);
@@ -289,9 +291,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           ctx.fillStyle = '#ffe0b2';
           ctx.fillText(label, cx, ly);
         }
-        const doorMax = t ? (t.doorHp ?? t.maxHp) : 0;
-        const door = doorMax > 0 ? (inst.doorHp ?? doorMax) : 0;
-        const badge = inst.open ? 'open' : (door > 0 ? `door ${door}` : null);
+        const hasDoor = structureHasDoor(t);
+        const door = hasDoor ? (inst.doorHp ?? t!.doorHp ?? 0) : 0;
+        const badge = hasDoor ? (inst.open ? 'open' : (door > 0 ? `door ${door}` : null)) : null;
         if (badge) {
           ctx.font = `bold ${Math.max(10, 11 * currentZoom)}px ui-monospace, monospace`;
           ctx.textAlign = 'center';

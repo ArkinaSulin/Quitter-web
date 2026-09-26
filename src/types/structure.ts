@@ -36,6 +36,8 @@ export interface StructureTemplate {
   battlement: boolean;
   /** Draw small outward-facing triangles along the edge (e.g. archer's stakes). */
   spikes: boolean;
+  /** Hex structures: draw the thick black hex outline (off for decorative hexes). */
+  hexBorder: boolean;
   // Direction-relative movement. NULL = fall back to terrain; negative = hard block.
   mpFootIn: number | null;
   mpFootOut: number | null;

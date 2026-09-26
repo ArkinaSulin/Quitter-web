@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Structure door-badge fix + hex-border toggle (migration 100) (2026-09-21)
+**Files:** supabase/migrations/100_structure_hex_border.sql (new), src/types/structure.ts, src/lib/structureTemplates.ts (+ test), src/components/ScenarioMap/{useCanvasDraw,MapInfoTooltip,StructureEditModal}.ts(x), src/components/MapEditor/{MapCanvas,MapEditor}.tsx, src/components/StructureEditor/StructureEditor.tsx, docs/dev/{02,changelog}.md
+
+- **No "door" badge when the door isn't a distinct pool.** `structureHasDoor(t)` is true only for `0 < door_hp < max_hp`; a door equal to `max_hp` (or null) means "no separate door", so the map badge, `MapInfoTooltip`, `StructureEditModal` door field/open toggle and the Map Editor structure panel all hide it. (A wall's `door_hp == max_hp` now reads as no door on the board.)
+- **Per-template `hex_border` toggle** (migration **100**, default true): hex structures can skip the thick black hex outline for decorative hexes. Drawn in `useCanvasDraw` + `MapCanvas`, authored via a checkbox in the Structure Editor. **Apply 100 in Supabase.**
+- `tsc` clean; 725 tests pass; `next build` clean.
+
 ## Scenario left panel: Features tab + hover tooltips (2026-09-21)
 **Files:** src/components/ScenarioMap/{LeftPanel,StructurePaintPanel,EffectsPanel}.tsx, docs/dev/changelog.md
 
