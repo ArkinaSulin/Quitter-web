@@ -1157,17 +1157,16 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                       <p className="text-[10px] text-gray-500">
                         Charge: Race {selectedRace?.can_charge ? 'Yes' : 'No'} · Mount {selectedMount?.can_charge ? 'Yes' : 'No'}
                       </p>
-
-                      {/* Morale & command */}
-                      <div className="flex items-end gap-2">
-                        <Cell label="Aggress."><NumInput value={formData.aggressiveness || 3} min={1} max={10} disabled={formData.isHero} onChange={(v) => updateFormData('aggressiveness', Math.max(1, Math.min(10, v || 3)))} /></Cell>
-                        <Cell label="Base morale"><NumInput value={formData.baseMorale || 3} min={1} max={10} disabled={!!formData.ignoreMoraleChecks} onChange={(v) => updateFormData('baseMorale', Math.max(1, Math.min(10, v || 3)))} /></Cell>
-                        <div className="pb-1"><Toggle checked={formData.ignoreMoraleChecks || false} onChange={(v) => updateFormData('ignoreMoraleChecks', v)} label="Fearless" /></div>
-                        <Cell label="Morale boost"><NumInput value={formData.moraleBoost || 0} min={0} max={9} disabled={!formData.isHero} onChange={(v) => updateFormData('moraleBoost', Math.max(0, Math.min(9, v || 0)))} /></Cell>
-                        <div className="pb-1"><Toggle checked={formData.commandPursuitPermit || false} onChange={(v) => updateFormData('commandPursuitPermit', v)} label="Command: allow pursue" disabled={!formData.isHero} /></div>
-                      </div>
-                      {formData.isHero && <p className="text-[10px] text-yellow-400/80">Heroes ignore aggressiveness. Morale boost = Commanding Presence aura (0 = none). "Command: allow pursue" lets allies in the aura chase — OFF holds the line.</p>}
                     </div>
+                  </div>
+
+                  {/* Morale & command */}
+                  <div className="flex items-end gap-2">
+                    <Cell label="Aggress."><NumInput value={formData.aggressiveness || 3} min={1} max={10} disabled={formData.isHero} onChange={(v) => updateFormData('aggressiveness', Math.max(1, Math.min(10, v || 3)))} /></Cell>
+                    <Cell label="Base morale"><NumInput value={formData.baseMorale || 3} min={1} max={10} disabled={!!formData.ignoreMoraleChecks} onChange={(v) => updateFormData('baseMorale', Math.max(1, Math.min(10, v || 3)))} /></Cell>
+                    <div className="pb-1"><Toggle checked={formData.ignoreMoraleChecks || false} onChange={(v) => updateFormData('ignoreMoraleChecks', v)} label="Fearless" /></div>
+                    <Cell label="Morale boost"><NumInput value={formData.moraleBoost || 0} min={0} max={9} disabled={!formData.isHero} onChange={(v) => updateFormData('moraleBoost', Math.max(0, Math.min(9, v || 0)))} /></Cell>
+                    <div className="pb-1"><Toggle checked={formData.commandPursuitPermit || false} onChange={(v) => updateFormData('commandPursuitPermit', v)} label="Command: allow pursue" disabled={!formData.isHero} /></div>
                   </div>
 
                   {/* Saving throws */}
