@@ -8,7 +8,7 @@
 // crossing OUTSIDE->INSIDE, `_out` the reverse, mapped onto the canonical edge
 // sides by the instance `outside` flag. Durability is two pools (door gates
 // passage, HP gates modifiers). Modifiers may be overridden per instance.
-import { Walls, Wall, WallFace, edgeRef } from './walls';
+import { Walls, Wall, WallFace, edgeRef, directionBetween } from './walls';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { EffectModifier, modifierAmount } from '@/lib/effectTemplates';
 import { templateDoorMax } from '@/lib/structureTemplates';
@@ -252,6 +252,85 @@ export function structureBlocksOrg(t: StructureTemplate | null | undefined, orgL
 export function zoneBlocksOrg(zones: GroundEffect[] | null | undefined, q: number, r: number, orgLevel: number): boolean {
   if (!zones) return false;
   return zones.some(z => z.q === q && z.r === r && z.kind === 'enter_org_max' && orgLevel > modifierAmount(z.dice));
+}
+
+/** One `enter_org_max` gate governing entry into a hex, with its verdict for a
+ *  mover of a given organization level (`passes` = orgLevel <= max). */
+export interface OrgGateCheck {
+  source: 'zone' | 'hex structure' | 'edge structure';
+  name: string;
+  max: number;
+  passes: boolean;
+}
+
+/**
+ * Enumerate every `enter_org_max` gate that governs entering `toHex` from
+ * `fromHex`, mirroring `makeBlockedEdge`: an edge structure on the crossed edge
+ * (only when the two hexes are adjacent), a hex structure on the destination
+ * hex, and any ground zone there. Empty when nothing gates the entry. Used to
+ * explain a move that was rejected as unreachable.
+ */
+export function orgGatesForEntry(
+  fromHex: { q: number; r: number },
+  toHex: { q: number; r: number },
+  orgLevel: number,
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+  zones: GroundEffect[] | null | undefined,
+): OrgGateCheck[] {
+  const out: OrgGateCheck[] = [];
+  const push = (source: OrgGateCheck['source'], name: string, dice: string | undefined) => {
+    const max = modifierAmount(dice);
+    out.push({ source, name, max, passes: orgLevel <= max });
+  };
+  const dir = directionBetween(fromHex, toHex);
+  if (dir >= 0 && structures) {
+    const ref = edgeRef(fromHex.q, fromHex.r, dir);
+    const edgeInst = structures[ref.key];
+    if (edgeInst) {
+      const t = templates?.[edgeInst.templateId];
+      for (const m of instanceModifiers(edgeInst, t)) if (m.kind === 'enter_org_max') push('edge structure', t?.name ?? edgeInst.templateId, m.dice);
+    }
+  }
+  const hexInst = structures?.[`${toHex.q},${toHex.r}`];
+  if (hexInst) {
+    const t = templates?.[hexInst.templateId];
+    for (const m of instanceModifiers(hexInst, t)) if (m.kind === 'enter_org_max') push('hex structure', t?.name ?? hexInst.templateId, m.dice);
+  }
+  if (zones) {
+    for (const z of zones) if (z.q === toHex.q && z.r === toHex.r && z.kind === 'enter_org_max') push('zone', z.name, z.dice);
+  }
+  return out;
+}
+
+/**
+ * Explain a move that failed because of an `enter_org_max` gate. Returns null
+ * when no gate blocks (the caller falls back to the generic unreachable message).
+ * `plain` is the normal-mode line naming the first blocking gate; `verbose` is
+ * the per-test breakdown (lines are `✗`/`✓`-prefixed so the messages panel can
+ * tint the failing ones).
+ */
+export function describeOrgGateBlock(
+  unitName: string,
+  formation: string,
+  orgLevel: number,
+  toHex: { q: number; r: number },
+  verb: string,
+  gates: OrgGateCheck[],
+): { plain: string; verbose: string } | null {
+  const blocked = gates.filter(g => !g.passes);
+  if (blocked.length === 0) return null;
+  const first = blocked[0];
+  const label = first.name || first.source;
+  const plain = `${unitName} cannot ${verb} (${toHex.q}, ${toHex.r}) — ${formation} (org level ${orgLevel}) exceeds the ${label} gate (org ≤ ${first.max})`;
+  const verbose = [
+    `${unitName} (${formation}, org level ${orgLevel}) — ${verb} (${toHex.q}, ${toHex.r}) blocked by organization gate:`,
+    ...gates.map(g => {
+      const tag = g.source + (g.name ? ` "${g.name}"` : '');
+      return `${g.passes ? '✓' : '✗'} ${tag}: org ≤ ${g.max}${g.passes ? '' : ` (level ${orgLevel} exceeds)`}`;
+    }),
+  ].join('\n');
+  return { plain, verbose };
 }
 
 /** The hex structure instance at a hex (keyed "q,r"), if any. */

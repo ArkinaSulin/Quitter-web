@@ -22,7 +22,7 @@ import { UnitChange, SubStep } from '@/lib/commandLog';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { computeOccupiedHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
-import { MapStructures, doorPassThroughHexes } from '@/lib/mapStructures';
+import { MapStructures, doorPassThroughHexes, orgGatesForEntry, describeOrgGateBlock } from '@/lib/mapStructures';
 import { attacksBlocked } from '@/lib/attackBlock';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
@@ -37,8 +37,8 @@ interface ReactionActionsDeps {
   sizeCategories: SizeCategory[];
   archerReactionEnabled: boolean;
   execute: ExecuteFn;
-  addMessage: (msg: string) => void;
-  addError: (msg: string) => void;
+  addMessage: (msg: string, verboseText?: string) => void;
+  addError: (msg: string, verboseText?: string) => void;
   unitMaxMP: (unit: Unit) => number;
   flashRangeViolation: (hex: Hex) => void;
   /** Optional fog-of-war gate: whether the archer's own side can see the target.
@@ -388,6 +388,18 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const reachable = getReactionReachable(archer);
     const entry = reachable.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
+      // Within physical reach but dropped by a gate? Name the `enter_org_max`
+      // blocker (if any) instead of a vague "cannot reposition".
+      const orgLevel = getOrganizationLevel(archer.currentFormation);
+      const budget = reactionMovePool(archer, unitMaxMP(archer));
+      if (hexDistance(archer.hex, targetHex) <= budget) {
+        const gates = orgGatesForEntry(archer.hex, targetHex, orgLevel, structures, structureTemplates, groundZones);
+        const block = describeOrgGateBlock(archer.unitName, archer.currentFormation, orgLevel, targetHex, 'reposition into', gates);
+        if (block) {
+          addMessage(block.plain, block.verbose);
+          return;
+        }
+      }
       addMessage(`${archer.unitName} cannot reposition there — outside its reaction move`);
       return;
     }
@@ -396,7 +408,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       return;
     }
     await performReactionMove(archer, targetHex, entry.cost);
-  }, [reactionMode, units, addMessage, getReactionReachable, performReactionMove]);
+  }, [reactionMode, units, addMessage, getReactionReachable, performReactionMove, unitMaxMP, structures, structureTemplates, groundZones]);
 
   return {
     reactionOffers,

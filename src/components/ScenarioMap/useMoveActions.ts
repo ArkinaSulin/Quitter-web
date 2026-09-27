@@ -4,7 +4,7 @@
 // to the primary ranged weapon. Owns the move-related soft-enforcement states
 // (pendingMove, pendingFormation, hero attach/swap conversion + over-budget).
 import { useCallback, useState } from 'react';
-import { Unit, Hex, AllianceGroup, Formation, GroundEffect, getOrganizationLevel } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, GroundEffect, getOrganizationLevel, hexDistance } from '@/types/gameProtocol';
 import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable } from '@/lib/moveCost';
 import { isFormationChangeAffordable } from '@/lib/formationCost';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
@@ -17,7 +17,7 @@ import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep } from '@/lib/commandLog';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
-import { MapStructures, doorPassThroughHexes } from '@/lib/mapStructures';
+import { MapStructures, doorPassThroughHexes, orgGatesForEntry, describeOrgGateBlock } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingHeroSwapConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
@@ -31,8 +31,8 @@ interface MoveActionsDeps {
   freeMove: boolean;
   turnNumber: number;
   execute: ExecuteFn;
-  addMessage: (msg: string) => void;
-  addError: (msg: string) => void;
+  addMessage: (msg: string, verboseText?: string) => void;
+  addError: (msg: string, verboseText?: string) => void;
   unitMaxMP: (unit: Unit) => number;
   moveUnitRecorded: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; stopInZoc?: boolean }) => Promise<void>;
   moveUnitFree: (unit: Unit, targetHex: Hex, attachedHero?: Unit | null) => Promise<void>;
@@ -252,12 +252,13 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const occupied = computeOccupiedHexes(units, unitId);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
     const mounted = !!unit.mountId || !!unit.mountName;
+    const orgLevel = getOrganizationLevel(unit.currentFormation);
     const costOfHex = makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted });
     const blockedEdge = makeBlockedEdge(walls, {
       structures,
       templates: structureTemplates,
       zones: groundZones,
-      orgLevel: getOrganizationLevel(unit.currentFormation),
+      orgLevel,
       isMounted: mounted,
       ignoreBlocks: freeMove,
     });
@@ -275,6 +276,16 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true, blockedEdge, hopCap, passThrough);
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
+      // Within physical reach but dropped by a gate? Name the `enter_org_max`
+      // blocker (if any) instead of a vague "out of reach".
+      if (hexDistance(unit.hex, targetHex) <= hopCap) {
+        const gates = orgGatesForEntry(unit.hex, targetHex, orgLevel, structures, structureTemplates, groundZones);
+        const block = describeOrgGateBlock(unit.unitName, unit.currentFormation, orgLevel, targetHex, 'enter', gates);
+        if (block) {
+          addMessage(block.plain, block.verbose);
+          return;
+        }
+      }
       // Beyond the physical hop limit — genuinely can't walk that far.
       addMessage(`${unit.unitName} cannot make that move — (${targetHex.q}, ${targetHex.r}) is out of reach`);
       return;

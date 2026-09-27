@@ -103,9 +103,13 @@ export function MessagesPanel({ verboseCombat = false }: { verboseCombat?: boole
         <div
           key={idx}
           onContextMenu={(e) => openMenu(e, idx)}
-          className={`border-b border-gray-800 pb-1 select-none whitespace-pre-wrap break-words ${msg.tone === 'error' ? 'text-red-400 font-bold' : 'text-gray-300'}`}
+          className={`border-b border-gray-800 pb-1 select-none break-words ${msg.tone === 'error' ? 'text-red-400 font-bold' : 'text-gray-300'}`}
         >
-          {display(msg)}
+          {display(msg).split('\n').map((line, i) => (
+            <div key={i} className={line.startsWith('✗') ? 'text-yellow-300' : undefined}>
+              {line || '\u00A0'}
+            </div>
+          ))}
         </div>
       ))}
       <div ref={bottomRef} />

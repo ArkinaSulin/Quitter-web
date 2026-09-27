@@ -4,6 +4,7 @@ import {
   structureBlocksOrg, zoneBlocksOrg, structureRangeBonus, structureIsOpen,
   structureHexEntryCost, structureHexBlocked, structureAuraFlags, structureZones,
   structureDoorState, structureDoorHex, canToggleStructureDoor, doorPassThroughHexes,
+  orgGatesForEntry, describeOrgGateBlock,
 } from './mapStructures';
 import { meleeWallAc, rangedWallAc, edgeRef } from './walls';
 import { StructureTemplate } from '@/types/structure';
@@ -130,6 +131,45 @@ describe('enter_org_max gates', () => {
     expect(zoneBlocksOrg(zones, 0, 0, 1)).toBe(false);
     expect(zoneBlocksOrg(zones, 1, 0, 2)).toBe(false);
     expect(zoneBlocksOrg(null, 0, 0, 2)).toBe(false);
+  });
+
+  it('orgGatesForEntry enumerates zone, hex and edge gates with verdicts', () => {
+    const zones = [{ key: 'z', q: 1, r: 0, name: 'Spikes', color: '#fff', kind: 'enter_org_max' as const, dice: '0', duration: 3, turnsLeft: 3 }];
+    const hexGate = template({ id: 'hg', anchor: 'hex', modifiers: [{ kind: 'enter_org_max', dice: '3' }] });
+    const edgeGate = template({ id: 'eg', anchor: 'edge', modifiers: [{ kind: 'enter_org_max', dice: '1' }] });
+    const structs = {
+      '1,0': { templateId: 'hg' },
+      '0,0,0': { templateId: 'eg' }, // edge between (0,0) and (1,0)
+    };
+    const gates = orgGatesForEntry({ q: 0, r: 0 }, { q: 1, r: 0 }, 2, structs, { hg: hexGate, eg: edgeGate }, zones);
+    expect(gates.map(g => [g.source, g.max, g.passes])).toEqual([
+      ['edge structure', 1, false],
+      ['hex structure', 3, true],
+      ['zone', 0, false],
+    ]);
+  });
+
+  it('orgGatesForEntry skips the edge gate when the hexes are not adjacent', () => {
+    const edgeGate = template({ id: 'eg', anchor: 'edge', modifiers: [{ kind: 'enter_org_max', dice: '1' }] });
+    const structs = { '0,0,0': { templateId: 'eg' } };
+    const gates = orgGatesForEntry({ q: 0, r: 0 }, { q: 2, r: 0 }, 2, structs, { eg: edgeGate }, null);
+    expect(gates).toEqual([]);
+  });
+
+  it('describeOrgGateBlock names the first blocker and marks each test', () => {
+    const gates = [
+      { source: 'zone' as const, name: 'Spikes', max: 0, passes: false },
+      { source: 'hex structure' as const, name: 'Tower', max: 3, passes: true },
+    ];
+    const block = describeOrgGateBlock('Goblin Warrior C', 'Close Order', 2, { q: 1, r: 0 }, 'enter', gates);
+    expect(block?.plain).toBe('Goblin Warrior C cannot enter (1, 0) — Close Order (org level 2) exceeds the Spikes gate (org ≤ 0)');
+    expect(block?.verbose).toContain('✗ zone "Spikes": org ≤ 0 (level 2 exceeds)');
+    expect(block?.verbose).toContain('✓ hex structure "Tower": org ≤ 3');
+  });
+
+  it('describeOrgGateBlock returns null when nothing blocks', () => {
+    expect(describeOrgGateBlock('X', 'Open Order', 1, { q: 0, r: 0 }, 'enter', [{ source: 'zone', name: 'Z', max: 2, passes: true }])).toBeNull();
+    expect(describeOrgGateBlock('X', 'Open Order', 1, { q: 0, r: 0 }, 'enter', [])).toBeNull();
   });
 });
 
