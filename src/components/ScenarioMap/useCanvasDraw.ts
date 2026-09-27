@@ -51,6 +51,8 @@ interface CanvasDrawDeps {
   hideUnits?: boolean;
   keepVisibleUnitId?: string | null;
   groundZones?: GroundEffect[];
+  /** Effective zones (painted + hex-structure modifiers) for the MP-cost label. */
+  mpZones?: GroundEffect[];
   scenarioId: string;
   updateScreenshot: (scenarioId: string, file: File) => Promise<void>;
   /** Per-hex fallen-troop piles (decorative corpses), from the log. */
@@ -88,6 +90,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     hideUnits = false,
     keepVisibleUnitId = null,
     groundZones,
+    mpZones,
     scenarioId,
     updateScreenshot,
     corpseCounts,
@@ -214,7 +217,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const c = z.color || '#ff7043';
         ctx.save();
         if (!z.transparentBackground) {
-          ctx.globalAlpha = 0.3;
+          ctx.globalAlpha = 0.15;
           fillHex({ q: z.q, r: z.r, s: -z.q - z.r }, c);
         }
         ctx.globalAlpha = 0.9;
@@ -230,7 +233,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     // "higher of the two" board label. Drawn beneath the hex structures and tokens.
     const mpHexKeys = new Set<string>();
     if (structures) for (const key of Object.keys(structures)) if (isHexStructureKey(key)) mpHexKeys.add(key);
-    if (groundZones) for (const z of groundZones) if (z.kind === 'mp_cost') mpHexKeys.add(`${z.q},${z.r}`);
+    if (mpZones) for (const z of mpZones) if (z.kind === 'mp_cost') mpHexKeys.add(`${z.q},${z.r}`);
     if (mpHexKeys.size > 0) {
       ctx.save();
       // Capped at 1/3 of the hex's rendered height so the number never dwarfs a
@@ -241,7 +244,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         if (isFogHidden(key)) continue;
         const [q, r] = key.split(',').map(Number);
         if (Number.isNaN(q) || Number.isNaN(r)) continue;
-        const label = hexMpLabelAt({ q, r }, structures, templates, groundZones);
+        const label = hexMpLabelAt({ q, r }, structures, templates, mpZones);
         if (!label) continue;
         const shade = label.blocked ? 'rgba(220, 38, 38, 0.4)' : costShade(label.cost);
         const { cx, cy } = hexCenter({ q, r, s: -q - r });
@@ -730,7 +733,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hideUnits, keepVisibleUnitId, groundZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hideUnits, keepVisibleUnitId, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;

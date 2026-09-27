@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapEffectRow, mapEffectToRow, blankEffectTemplate, parseModifiers, modifierSummary } from './effectTemplates';
+import { mapEffectRow, mapEffectToRow, blankEffectTemplate, parseModifiers, modifierSummary, modifierScopeConflict } from './effectTemplates';
 
 describe('effectTemplates mappers', () => {
   it('maps a row including image scale + transparent background', () => {
@@ -50,6 +50,19 @@ describe('modifierSummary', () => {
   it('prints friendly names for movement points and terrain cost', () => {
     expect(modifierSummary({ kind: 'movement', dice: '2' })).toBe('movement points +2');
     expect(modifierSummary({ kind: 'mp_cost', dice: '4' })).toBe('terrain cost +4');
+  });
+});
+
+describe('modifierScopeConflict', () => {
+  it('flags mixing unit-only and zone-only modifiers', () => {
+    expect(modifierScopeConflict([{ kind: 'movement', dice: '2' }, { kind: 'mp_cost', dice: '4' }])).toBe(true);
+    expect(modifierScopeConflict([{ kind: 'hp_borrow', dice: '2' }, { kind: 'entry', dice: '3' }])).toBe(true);
+  });
+
+  it('allows compatible mixes', () => {
+    expect(modifierScopeConflict([{ kind: 'ac', dice: '2' }, { kind: 'movement', dice: '2' }])).toBe(false);
+    expect(modifierScopeConflict([{ kind: 'mp_cost', dice: '4' }])).toBe(false);
+    expect(modifierScopeConflict([])).toBe(false);
   });
 });
 

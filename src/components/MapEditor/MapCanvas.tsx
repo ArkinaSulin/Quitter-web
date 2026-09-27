@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
 import { HEX_SIZE, DEFAULT_GRID_RADIUS, hexMpLabelAt, costShade } from '@/components/ScenarioMap/mapGeometry';
 import { edgeRef, nearestEdge, hexCorner } from '@/lib/walls';
-import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls } from '@/lib/mapStructures';
+import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls, structureZones } from '@/lib/mapStructures';
 import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
 import { StructureTemplate } from '@/types/structure';
 import { MapHexEffect, expandHexEffects } from '@/lib/mapEffects';
@@ -156,7 +156,7 @@ export function MapCanvas({
         const c = t?.color || '#ff7043';
         ctx.save();
         if (!t?.transparentBackground) {
-          ctx.globalAlpha = 0.3;
+          ctx.globalAlpha = 0.15;
           hexPath(pos.x, pos.y);
           ctx.fillStyle = c;
           ctx.fill();
@@ -228,13 +228,13 @@ export function MapCanvas({
     }
     // MP-cost numbers (foot/mounted) from hex structures + authored mp_cost
     // effects — the "higher of the two" board label (matches the scenario map).
-    const mpZones = expandHexEffects(p.hexEffects, p.effectTemplates ?? {});
+    const mpZones = [...expandHexEffects(p.hexEffects, p.effectTemplates ?? {}), ...structureZones(p.structures, p.templates ?? {})];
     const mpHexKeys = new Set<string>();
     if (p.structures) for (const key of Object.keys(p.structures)) if (isHexStructureKey(key)) mpHexKeys.add(key);
     for (const z of mpZones) if (z.kind === 'mp_cost') mpHexKeys.add(`${z.q},${z.r}`);
     if (mpHexKeys.size > 0) {
       // Capped at 1/3 of the hex's rendered height (pointy-top height = 2 × size).
-      const mpFont = `bold ${Math.max(Math.min(33, (2 * HEX_SIZE) / 3) / zoom, 0.5)}px ui-monospace, monospace`;
+      const mpFont = `bold ${Math.max(Math.min(33, (2 * HEX_SIZE * zoom) / 3) / zoom, 0.5)}px ui-monospace, monospace`;
       for (const key of Array.from(mpHexKeys)) {
         const [q, r] = key.split(',').map(Number);
         if (Number.isNaN(q) || Number.isNaN(r)) continue;

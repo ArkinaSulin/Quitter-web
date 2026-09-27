@@ -26,6 +26,18 @@ export function isFlagModifierKind(kind: EffectModifierKind): boolean {
   return FLAG_MODIFIER_KINDS.includes(kind);
 }
 
+/** Kinds that only ever apply to a UNIT (never a zone). */
+export const UNIT_ONLY_MODIFIER_KINDS: EffectModifierKind[] = ['movement', 'hp_borrow'];
+/** Kinds that only ever apply to a ZONE / hex (never a unit). */
+export const ZONE_ONLY_MODIFIER_KINDS: EffectModifierKind[] = ['entry', 'mp_cost', 'enter_org_max'];
+
+/** True when a template mixes unit-only and zone-only modifiers, so it cannot be
+ *  applied anywhere without dropping some of its modifiers. */
+export function modifierScopeConflict(mods: EffectModifier[]): boolean {
+  return mods.some(m => UNIT_ONLY_MODIFIER_KINDS.includes(m.kind))
+    && mods.some(m => ZONE_ONLY_MODIFIER_KINDS.includes(m.kind));
+}
+
 export type SaveStatName = 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha';
 
 /** Attack-distance scope for the attack-roll / AC modifier kinds. Absent = both. */

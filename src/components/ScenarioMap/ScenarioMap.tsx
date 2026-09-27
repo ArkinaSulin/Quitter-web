@@ -276,20 +276,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Provenance of the snapshot currently loaded from a reusable map (maps.id).
   const [mapId, setMapId] = useState<string | null>(null);
 
-  // Per-hex MP cost overrides from 'mp_cost' ("Terrain cost") ground zones —
-  // a REPLACEMENT of the base 1 MP, highest wins (see `mpCostOverrides`).
-  // Movement hooks/reach use this map so zone obstacles actually cost MP. (Hex
-  // structure entry MP is applied by `makeCostOfHex` directly.)
-  const zoneMpCosts = useMemo(() => mpCostOverrides(groundZones), [groundZones]);
-
   // Hex-structure modifiers are expanded into permanent ground zones so the ONE
   // ground-effect engine applies them (auras/range/ac/block_attacks/enter_org_max/
-  // entry). Edge structures stay on the edge path. Painted `groundZones` remains
-  // the persisted/rendered list; `effectiveZones` is the engine view.
+  // entry/mp_cost). Edge structures stay on the edge path. Painted `groundZones`
+  // remains the persisted/rendered list; `effectiveZones` is the engine view.
   const effectiveZones = useMemo(
     () => [...groundZones, ...structureZones(structures, structureTemplates)],
     [groundZones, structures, structureTemplates],
   );
+
+  // Per-hex MP cost overrides from 'mp_cost' ("Terrain cost") ground zones —
+  // a REPLACEMENT of the base 1 MP, highest wins (see `mpCostOverrides`). Uses
+  // `effectiveZones` so a hex structure's own terrain-cost modifier counts too.
+  // (Hex structure ENTRY MP is applied by `makeCostOfHex` directly.)
+  const zoneMpCosts = useMemo(() => mpCostOverrides(effectiveZones), [effectiveZones]);
   // GM map-edit brushes: zone = template armed for placement (null = off).
   const [structurePaletteId, setStructurePaletteId] = useState<string | null>(null);
   const [selectedStructureKey, setSelectedStructureKey] = useState<string | null>(null);
@@ -871,6 +871,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     hoveredWallEdge,
     hideUnits: shiftHeld,
     groundZones,
+    mpZones: effectiveZones,
     scenarioId,
     updateScreenshot,
     corpseCounts,

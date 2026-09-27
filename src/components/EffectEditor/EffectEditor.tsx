@@ -11,7 +11,7 @@ import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFi
 import { EffectHexPreview } from '@/components/EffectEditor/EffectHexPreview';
 import {
   EffectTemplate, EffectModifier, EffectLayer, EffectScope,
-  mapEffectRow, mapEffectToRow, blankEffectTemplate, modifierSummary,
+  mapEffectRow, mapEffectToRow, blankEffectTemplate, modifierSummary, modifierScopeConflict,
 } from '@/lib/effectTemplates';
 import { refreshAndReselect } from '@/lib/librarySelection';
 
@@ -46,6 +46,10 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
 
   const save = async () => {
     if (!draft || !draft.name.trim()) { setStatus('Give the effect a name.'); return; }
+    if (modifierScopeConflict(draft.modifiers)) {
+      setStatus('Cannot mix unit-only and zone-only modifiers (e.g. "Movement points" + "Terrain cost").');
+      return;
+    }
     setBusy(true);
     setStatus('');
     try {

@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Fixes: MP marker cap (map editor), effect scope validation, tint strength, structure terrain-cost display (2026-09-27)
+**Files:** src/lib/effectTemplates.ts (+ test), src/components/EffectEditor/EffectEditor.tsx, src/components/ScenarioMap/{useCanvasDraw,ScenarioMap}.tsx, src/components/MapEditor/MapCanvas.tsx, docs/dev/changelog.md
+
+- **MP-cost marker cap now applies in the Map Editor** (was missing the `× zoom` term, so it stayed a constant 33 px).
+- **Effect Editor blocks mixing unit-only and zone-only modifiers** (`movement`/`hp_borrow` + `entry`/`mp_cost`/`enter_org_max`) via `modifierScopeConflict`, so a template can't be authored that errors on every drop.
+- **Ground-effect hex tint halved** (0.30 → 0.15) in both canvases so terrain stays visible underneath.
+- **Structure "Terrain cost" modifiers now show**: `zoneMpCosts` and the on-board MP label use `effectiveZones` (painted zones + hex-structure-expanded zones), and the Map Editor adds `structureZones` into its MP label, so a structure's `mp_cost`/`mp_foot_in` both render the `foot/mounted` number.
+- `tsc` clean; 768 tests pass; build clean. No migration.
+
 ## Effect scope enforcement, terrain-cost = replacement, MP-marker cap + unit effect list (2026-09-27)
 **Files:** src/lib/{effectTemplates,mapGeometry}.ts (+ tests), src/components/ScenarioMap/{ScenarioMap,EffectFormModal,AddEffectModal,UnitEditorModal,useCanvasDraw}.tsx, src/components/EffectEditor/EffectModifierFields.tsx, src/components/MapEditor/MapCanvas.tsx, docs/dev/changelog.md
 
