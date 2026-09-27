@@ -1,6 +1,7 @@
 // src/lib/templateMappers.ts
 import { UnitTemplate, getOrganizationLevel } from '@/types/gameProtocol';
 import { normalizeLocalAssetUrl, raceIconFromName } from '@/lib/imageUrls';
+import { parseModifiers } from '@/lib/effectTemplates';
 
 /**
  * Map a database row from unit_templates to a UnitTemplate object (camelCase).
@@ -53,6 +54,7 @@ export function mapTemplate(row: any): UnitTemplate {
     wis: row.wis ?? 0,
     cha: row.cha ?? 0,
     customImageUrl: normalizeLocalAssetUrl(row.custom_image_url),
+    effects: parseModifiers(row.effects),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -102,6 +104,7 @@ export function mapTemplateToRow(template: UnitTemplate) {
     cha: template.cha ?? 0,
     custom_image_url: template.customImageUrl || null,
     unit_type_icon_url: template.unitTypeIconUrl || null,
+    effects: template.effects ?? [],
     updated_at: new Date().toISOString(),
   };
 }

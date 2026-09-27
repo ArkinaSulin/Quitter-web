@@ -50,6 +50,8 @@ describe('modifierSummary', () => {
   it('prints friendly names for movement points and terrain cost', () => {
     expect(modifierSummary({ kind: 'movement', dice: '2' })).toBe('movement points +2');
     expect(modifierSummary({ kind: 'mp_cost', dice: '4' })).toBe('terrain cost +4');
+    expect(modifierSummary({ kind: 'save_advantage' })).toBe('save advantage');
+    expect(modifierSummary({ kind: 'save_disadvantage' })).toBe('save disadvantage');
   });
 });
 

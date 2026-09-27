@@ -17,10 +17,12 @@ export type EffectModifierKind =
   | 'disadvantage' // carrier's own attacks roll 2d20 take lower
   | 'grant_advantage'    // attackers targeting the carrier take the higher of 2d20
   | 'grant_disadvantage' // attackers targeting the carrier take the lower of 2d20
-  | 'block_attacks';     // hard-block attacks in and/or out (see `direction`), melee/ranged per `mode`
+  | 'block_attacks'      // hard-block attacks in and/or out (see `direction`), melee/ranged per `mode`
+  | 'save_advantage'     // carrier's own saving throws roll 2d20 take higher
+  | 'save_disadvantage'; // carrier's own saving throws roll 2d20 take lower
 
 /** Amount-less kinds (no dice/save) — boolean markers. */
-export const FLAG_MODIFIER_KINDS: EffectModifierKind[] = ['advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'block_attacks'];
+export const FLAG_MODIFIER_KINDS: EffectModifierKind[] = ['advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'block_attacks', 'save_advantage', 'save_disadvantage'];
 
 export function isFlagModifierKind(kind: EffectModifierKind): boolean {
   return FLAG_MODIFIER_KINDS.includes(kind);
@@ -125,6 +127,8 @@ export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
   grant_advantage: 'Attackers gain advantage',
   grant_disadvantage: 'Attackers suffer disadvantage',
   block_attacks: 'Block attacks in/out',
+  save_advantage: 'Advantage on saving throws',
+  save_disadvantage: 'Disadvantage on saving throws',
 };
 
 /**
@@ -142,6 +146,8 @@ export function modifierSummary(m: EffectModifier): string {
   let s = m.kind as string;
   if (m.kind === 'movement') s = 'movement points';
   else if (m.kind === 'mp_cost') s = 'terrain cost';
+  else if (m.kind === 'save_advantage') s = 'save advantage';
+  else if (m.kind === 'save_disadvantage') s = 'save disadvantage';
   if (honorsMode(m.kind) && m.mode) s += ` (${m.mode})`;
   if (m.kind === 'block_attacks' && m.direction) s += ` /${m.direction}`;
   if (!isFlagModifierKind(m.kind)) {
@@ -175,6 +181,8 @@ export interface EffectTemplate {
   layer: EffectLayer;
   scope: EffectScope;
   defaultDuration: number;
+  /** Never ticks or expires once applied (innate/board-feature effect). */
+  permanent?: boolean;
   modifiers: EffectModifier[];
   createdAt: string;
   updatedAt: string;
@@ -223,6 +231,7 @@ export function mapEffectRow(row: any): EffectTemplate {
     layer: row.layer === 'above' ? 'above' : 'below',
     scope: row.scope === 'zone' ? 'zone' : row.scope === 'both' ? 'both' : 'unit',
     defaultDuration: Number(row.default_duration) || 3,
+    permanent: !!row.permanent,
     modifiers: parseModifiers(row.modifiers),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -230,7 +239,7 @@ export function mapEffectRow(row: any): EffectTemplate {
 }
 
 export function mapEffectToRow(
-  t: Pick<EffectTemplate, 'name' | 'description' | 'color' | 'imageUrl' | 'imageScale' | 'transparentBackground' | 'layer' | 'scope' | 'defaultDuration' | 'modifiers'>,
+  t: Pick<EffectTemplate, 'name' | 'description' | 'color' | 'imageUrl' | 'imageScale' | 'transparentBackground' | 'layer' | 'scope' | 'defaultDuration' | 'permanent' | 'modifiers'>,
 ) {
   return {
     name: t.name,
@@ -242,6 +251,7 @@ export function mapEffectToRow(
     layer: t.layer,
     scope: t.scope,
     default_duration: t.defaultDuration,
+    permanent: !!t.permanent,
     modifiers: t.modifiers,
   };
 }
@@ -257,6 +267,7 @@ export function blankEffectTemplate(): Omit<EffectTemplate, 'id' | 'createdAt' |
     layer: 'below',
     scope: 'unit',
     defaultDuration: 3,
+    permanent: false,
     modifiers: [{ kind: 'ac', dice: '1' }],
   };
 }

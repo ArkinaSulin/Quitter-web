@@ -168,3 +168,34 @@ describe('resolveSpellDamage', () => {
     expect(result.totalDamage).toBeLessThanOrEqual(20);
   });
 });
+
+describe('resolveSpellDamage — save roll modes', () => {
+  const seqRng = (values: number[]) => {
+    let i = 0;
+    return () => values[Math.min(i++, values.length - 1)];
+  };
+
+  it('advantage takes the higher of two d20s', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1', saveBonus: 0, saveDC: 100, halfOnSave: true,
+      affectedCount: 1, troopHp: 100, saveMode: 'advantage', rng: seqRng([0.0, 0.9]),
+    });
+    expect(result.perTroop[0].roll).toBe(19); // max(1, 19)
+  });
+
+  it('disadvantage takes the lower of two d20s', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1', saveBonus: 0, saveDC: 0, halfOnSave: false,
+      affectedCount: 1, troopHp: 100, saveMode: 'disadvantage', rng: seqRng([0.0, 0.9]),
+    });
+    expect(result.perTroop[0].roll).toBe(1); // min(1, 19)
+  });
+
+  it('normal rolls a single d20', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1', saveBonus: 0, saveDC: 0, halfOnSave: false,
+      affectedCount: 1, troopHp: 100, rng: seqRng([0.9, 0.0]),
+    });
+    expect(result.perTroop[0].roll).toBe(19); // one roll, first value
+  });
+});

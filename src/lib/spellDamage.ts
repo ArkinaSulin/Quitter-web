@@ -27,6 +27,8 @@ export interface ResolveSpellDamageInput {
   isHealing?: boolean;
   affectedCount: number;
   troopHp: number;
+  /** Saving-throw roll mode (from the target's save advantage/disadvantage effects). */
+  saveMode?: 'advantage' | 'disadvantage' | 'normal';
   rng?: () => number;
 }
 
@@ -50,6 +52,7 @@ export function resolveSpellDamage({
   isHealing = false,
   affectedCount,
   troopHp,
+  saveMode = 'normal',
   rng = Math.random,
 }: ResolveSpellDamageInput): SpellDamageResult {
   const dmg = rollDamageDetailed(damageDice, rng);
@@ -64,7 +67,11 @@ export function resolveSpellDamage({
       perTroop.push({ roll: 0, saveResult: 0, success: true, damage: heal });
       continue;
     }
-    const roll = rollD20(rng);
+    const roll = saveMode === 'advantage'
+      ? Math.max(rollD20(rng), rollD20(rng))
+      : saveMode === 'disadvantage'
+        ? Math.min(rollD20(rng), rollD20(rng))
+        : rollD20(rng);
     const saveResult = roll + saveBonus;
     const success = saveResult >= saveDC;
     let damage = success ? (halfOnSave ? Math.floor(baseDamage / 2) : 0) : baseDamage;

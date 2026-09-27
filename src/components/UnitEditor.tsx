@@ -13,6 +13,7 @@ import { TokenPreview } from '@/components/TokenRenderer/TokenPreview';
 import { Team } from '@/components/TokenRenderer/tokenUtils';
 import { mapTemplate, mapTemplateToRow } from '@/lib/templateMappers';
 import { raceIconFromName } from '@/lib/imageUrls';
+import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
 
 const SIZE_LABELS: Record<number, string> = {
   75: 'Small',
@@ -596,6 +597,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
       wis: 0,
       cha: 0,
       customImageUrl: null,
+      effects: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -1177,6 +1179,28 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                         <Cell key={s} label={s.toUpperCase()} widthClass="w-14"><NumInput value={formData[s] ?? 0} min={-10} max={20} onChange={(v) => updateFormData(s, v)} /></Cell>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Inherited effects */}
+                  <div className="rounded border border-gray-700 p-2 space-y-2">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Inherited effects (applied to every spawned unit)</p>
+                    {(formData.effects ?? []).map((m, i) => (
+                      <EffectModifierFields
+                        key={i}
+                        modifier={m}
+                        readOnly={readOnly}
+                        onChange={next => setFormData(prev => prev ? { ...prev, effects: (prev.effects ?? []).map((x, idx) => (idx === i ? next : x)) } : null)}
+                        onRemove={() => setFormData(prev => prev ? { ...prev, effects: (prev.effects ?? []).filter((_, idx) => idx !== i) } : null)}
+                      />
+                    ))}
+                    {!readOnly && (
+                      <button
+                        onClick={() => setFormData(prev => prev ? { ...prev, effects: [...(prev.effects ?? []), { kind: 'ac' as const, dice: '1' }] } : null)}
+                        className="mt-1 px-2 py-1 rounded text-[11px] bg-gray-700 hover:bg-gray-600"
+                      >
+                        + Add modifier
+                      </button>
+                    )}
                   </div>
 
               {/* Weapons */}

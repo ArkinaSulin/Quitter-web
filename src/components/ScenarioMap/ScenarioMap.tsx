@@ -107,6 +107,7 @@ type DroppedEffect = {
   layer: 'above' | 'below';
   scope: 'unit' | 'zone' | 'both';
   defaultDuration: number;
+  permanent: boolean;
   modifiers: {
     kind: string;
     dice?: string;
@@ -131,6 +132,7 @@ function formFromDrop(t: DroppedEffect, casterTeam: string): EffectFormValue {
     duration: t.defaultDuration,
     casterTeam,
     scope: t.scope,
+    permanent: t.permanent,
     modifiers: t.modifiers.map(m => ({
       kind: m.kind as EffectModifier['kind'],
       ...(m.dice ? { dice: m.dice } : {}),
@@ -155,6 +157,7 @@ function formFromZone(z: GroundEffect): EffectFormValue {
     layer: z.layer ?? 'below',
     duration: z.turnsLeft,
     casterTeam: z.casterTeam ?? '',
+    permanent: !!z.permanent,
     modifiers: [{
       kind: z.kind as EffectModifier['kind'],
       ...(z.dice ? { dice: z.dice } : {}),
@@ -179,6 +182,7 @@ function formFromUnitEffect(e: import('@/types/gameProtocol').UnitEffect): Effec
     layer: e.layer ?? 'below',
     duration: Math.max(1, e.turnsLeft),
     casterTeam: e.casterTeam ?? '',
+    permanent: !!e.permanent,
     modifiers: [{
       kind: e.kind as EffectModifier['kind'],
       ...(e.dice ? { dice: e.dice } : {}),
@@ -1088,8 +1092,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Armed clone: the next left-click places a copy of this zone.
   const [cloneZone, setCloneZone] = useState<GroundEffect | null>(null);
 
-  const UNIT_KINDS = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'range', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'];
-  const ZONE_KINDS = ['ac', 'morale', 'dot', 'entry', 'mp_cost', 'enter_org_max', 'range', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'];
+  const UNIT_KINDS = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'range', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'save_advantage', 'save_disadvantage'];
+  const ZONE_KINDS = ['ac', 'morale', 'dot', 'entry', 'mp_cost', 'enter_org_max', 'range', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'save_advantage', 'save_disadvantage'];
 
   const applyUnitDrop = async (d: { unit: Unit; form: EffectFormValue }) => {
     if (d.form.scope === 'zone') {
@@ -1120,6 +1124,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
         ...(m.mode ? { mode: m.mode } : {}),
         ...(m.direction ? { direction: m.direction } : {}),
+        ...(d.form.permanent ? { permanent: true } : {}),
         casterTeam: d.form.casterTeam || null,
       }, d.form.duration, playerId);
     }
@@ -1157,6 +1162,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         zIndex: next.length,
         duration: d.form.duration,
         turnsLeft: d.form.duration,
+        ...(d.form.permanent ? { permanent: true } : {}),
         casterUnitId: null,
         casterTeam: d.form.casterTeam || null,
         casterPlayerId: playerId,
@@ -1234,6 +1240,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
       ...(m.mode ? { mode: m.mode } : {}),
       ...(m.direction ? { direction: m.direction } : {}),
+      ...(form.permanent ? { permanent: true } : {}),
       casterUnitId: orig?.casterUnitId ?? null,
       casterTeam: form.casterTeam || null,
     }, form.duration);

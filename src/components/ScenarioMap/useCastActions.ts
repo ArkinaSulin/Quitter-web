@@ -6,6 +6,7 @@
 import { useCallback, useState } from 'react';
 import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { resolveSpellDamage } from '@/lib/spellDamage';
+import { saveRollFlags } from '@/lib/unitEffects';
 import { computeEffectiveMoraleModifier, shouldRout } from '@/lib/unitMorale';
 import { SubStep } from '@/lib/commandLog';
 import { formatSpellRollLine } from '@/lib/verboseCombat';
@@ -111,6 +112,8 @@ export function useCastActions(deps: CastActionsDeps) {
       return;
     }
 
+    const flags = saveRollFlags(target);
+    const saveMode: 'advantage' | 'disadvantage' | 'normal' = flags.advantage && !flags.disadvantage ? 'advantage' : flags.disadvantage && !flags.advantage ? 'disadvantage' : 'normal';
     const result = resolveSpellDamage({
       damageDice: cast.weapon.damageDice,
       saveBonus: cast.targetStats[cast.saveStat.toLowerCase() as keyof typeof cast.targetStats] ?? 0,
@@ -118,6 +121,7 @@ export function useCastActions(deps: CastActionsDeps) {
       halfOnSave: cast.halfOnSave,
       affectedCount: cast.affectedCount,
       troopHp: target.troopHp,
+      saveMode,
       rng: Math.random,
     });
 

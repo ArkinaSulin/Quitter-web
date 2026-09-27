@@ -16,7 +16,7 @@
 
 import { Unit, UnitEffect, GroundEffect, EffectKind, AllianceGroup } from '@/types/gameProtocol';
 import { SubStep, UnitChange } from '@/lib/commandLog';
-import { parseDice, rollDice, modifierAmount, isDiceAmount } from '@/lib/effectTemplates';
+import { parseDice, rollDice, modifierAmount, isDiceAmount, modifierSummary, EffectModifier } from '@/lib/effectTemplates';
 
 /** The real unit field a stat kind modifies (dot/hp_borrow have none — they touch HP). */
 export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModifier' | 'movementPoints' | null {
@@ -34,7 +34,9 @@ export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModif
     case 'disadvantage':
     case 'grant_advantage':
     case 'grant_disadvantage':
-    case 'block_attacks': return null;
+    case 'block_attacks':
+    case 'save_advantage':
+    case 'save_disadvantage': return null;
   }
 }
 
@@ -125,6 +127,20 @@ export function attackRollFlags(unit: Unit | null | undefined): AttackRollFlags 
   };
 }
 
+/** Saving-throw roll flags: advantage/disadvantage from the carrier's effects. */
+export interface SaveRollFlags {
+  advantage: boolean;
+  disadvantage: boolean;
+}
+
+export function saveRollFlags(unit: Unit | null | undefined): SaveRollFlags {
+  const has = (kind: EffectKind) => (unit?.effects ?? []).some(e => e.kind === kind);
+  return {
+    advantage: has('save_advantage'),
+    disadvantage: has('save_disadvantage'),
+  };
+}
+
 /** Apply-time payload for a new effect (duration/turnsLeft filled by the engine). */
 export type EffectSpec = Omit<UnitEffect, 'key' | 'base' | 'turnsLeft' | 'duration'>;
 
@@ -176,6 +192,52 @@ export function applyEffectChanges(unit: Unit, spec: Omit<UnitEffect, 'key' | 'b
     changes.unshift(...hpBorrowDamageChanges(unit, modifierAmount(spec.dice)));
   }
   return { changes, effect };
+}
+
+/**
+ * Expand a unit template's authored modifiers into PERMANENT effects for a
+ * spawned unit (innate abilities — never tick/expire). Returns the effects plus
+ * the materialized `movement`/`morale` stat deltas so the caller can set the
+ * spawned unit's real fields. Stat effects carry their pre-delta `base` snapshot
+ * so an explicit removal still restores correctly.
+ */
+export function expandInheritedEffects(
+  mods: EffectModifier[] | null | undefined,
+  baseMovementPoints: number,
+): { effects: UnitEffect[]; movementPoints: number; currentMoraleModifier: number } {
+  const effects: UnitEffect[] = [];
+  let movementPoints = baseMovementPoints;
+  let currentMoraleModifier = 0;
+  for (const m of mods ?? []) {
+    if (!m || typeof m.kind !== 'string') continue;
+    const isMov = m.kind === 'movement';
+    const isMor = m.kind === 'morale';
+    const base = isMov ? movementPoints : isMor ? currentMoraleModifier : undefined;
+    const delta = modifierAmount(m.dice);
+    if (isMov) movementPoints += delta;
+    else if (isMor) currentMoraleModifier += delta;
+    effects.push({
+      key: newEffectKey(),
+      name: modifierSummary(m),
+      color: '#9aa0a6',
+      kind: m.kind as EffectKind,
+      ...(m.dice ? { dice: m.dice } : {}),
+      ...(m.healing ? { healing: true } : {}),
+      ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
+      ...(m.saveDC != null ? { saveDC: m.saveDC } : {}),
+      ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
+      ...(m.mode ? { mode: m.mode } : {}),
+      ...(m.direction ? { direction: m.direction } : {}),
+      duration: 1,
+      turnsLeft: 1,
+      casterUnitId: null,
+      casterTeam: null,
+      casterPlayerId: null,
+      permanent: true,
+      ...(base !== undefined ? { base } : {}),
+    });
+  }
+  return { effects, movementPoints, currentMoraleModifier };
 }
 
 /**
@@ -259,10 +321,20 @@ export function hpBorrowRefundChanges(target: Unit, x: number): UnitChange[] {
 const thOf = (t: Unit) => Math.max(1, t.troopHp ?? 1);
 type SaveStatName = 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha';
 
+/** One d20 roll for a saving throw, honouring save advantage/disadvantage
+ *  (any advantage cancels any disadvantage). */
+function saveRoll(rng: () => number, flags: SaveRollFlags): number {
+  const d = () => Math.floor(rng() * 20) + 1;
+  const a = d();
+  if (flags.advantage && !flags.disadvantage) return Math.max(a, d());
+  if (flags.disadvantage && !flags.advantage) return Math.min(a, d());
+  return a;
+}
+
 /** One troop's saving throw total: d20 + bonus (compare to the DC). */
 function troopSaveTotal(target: Unit, stat: SaveStatName, rng: () => number): number {
   const bonus = ((target as any)[stat.toLowerCase()] as number) || 0;
-  return Math.floor(rng() * 20) + 1 + bonus;
+  return saveRoll(rng, saveRollFlags(target)) + bonus;
 }
 
 function healChanges(target: Unit, amount: number): UnitChange[] {
@@ -544,6 +616,8 @@ export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffect
       // Ground-zone membership is handled by the zone + reconcile passes, never
       // ticked here (its life is the zone's).
       if (e.zoneHex) continue;
+      // Permanent effects (innate/design-time) never tick or expire.
+      if (e.permanent) continue;
       if (!alive(e.casterUnitId)) {
         // Caster destroyed -> expire now (restore stat).
         const changes = removeEffectChanges({ ...unit, effects: d.effects }, e.key);

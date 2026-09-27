@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Unit-template inherited effects + permanent effect flag + save advantage/disadvantage (2026-09-27)
+**Files:** src/types/gameProtocol.ts, src/lib/{effectTemplates,unitEffects,spellDamage,templateMappers}.ts (+ tests), src/components/{UnitEditor,EffectEditor/EffectEditor,EffectEditor/EffectModifierFields,ScenarioMap/ScenarioMap,ScenarioMap/EffectsPanel,ScenarioMap/EffectFormModal,ScenarioMap/useCastActions}.tsx, src/hooks/useSupabaseSync.ts, supabase/migrations/103_unit_template_effects.sql, docs/dev/changelog.md
+
+- **Unit templates now carry `effects`** (migration 103 adds `unit_templates.effects`). The Unit Editor gains an "Inherited effects" modifier list (shared `EffectModifierFields`); at spawn `addUnitFromTemplate` expands each modifier into a **permanent** `UnitEffect` via `expandInheritedEffects`, materializing `movement`/`morale` stat deltas onto the spawned unit.
+- **`permanent` is a first-class effect flag**: `UnitEffect.permanent` + `EffectTemplate.permanent` + a "Permanent — never ticks or expires" checkbox in the Effect Editor and the pre-apply form; `computeEndTurnEffects` skips permanent unit effects (like permanent zones). The flag round-trips through `units.effects` jsonb.
+- **`save_advantage` / `save_disadvantage` modifiers** (flag kinds): `saveRollFlags(unit)` + advantage/disadvantage handling in `unitEffects.troopSaveTotal` (effect/zone saves) and `spellDamage.resolveSpellDamage` (area spells, via a new `saveMode` param fed from `useCastActions`); available in the Effect and Structure editors and droppable as unit/zone effects.
+- `tsc` clean; 780 tests pass; build clean. **Apply 103 in Supabase.**
+
 ## Line-of-sight structures + barricade/sin-wave edge decorations (2026-09-27)
 **Files:** src/lib/{lineOfSight,structureDraw,structureTemplates}.ts (+ tests), src/types/structure.ts, src/components/ScenarioMap/{useCombatActions,useReactionActions,useCanvasDraw,MapInfoTooltip,StructurePaintPanel}.tsx, src/components/MapEditor/{MapCanvas,MapEditor}.tsx, src/components/StructureEditor/{StructureEditor,StructurePreview}.tsx, supabase/migrations/102_edge_decorations.sql, docs/dev/changelog.md
 

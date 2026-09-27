@@ -23,6 +23,8 @@ export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
   { value: 'grant_advantage', label: EFFECT_MODIFIER_LABELS.grant_advantage },
   { value: 'grant_disadvantage', label: EFFECT_MODIFIER_LABELS.grant_disadvantage },
   { value: 'block_attacks', label: EFFECT_MODIFIER_LABELS.block_attacks },
+  { value: 'save_advantage', label: EFFECT_MODIFIER_LABELS.save_advantage },
+  { value: 'save_disadvantage', label: EFFECT_MODIFIER_LABELS.save_disadvantage },
 ];
 
 export const DEFAULT_INPUT_CLASS =

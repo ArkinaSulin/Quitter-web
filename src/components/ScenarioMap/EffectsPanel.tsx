@@ -20,11 +20,12 @@ export function dragPayload(t: EffectTemplate): string {
     layer: t.layer,
     scope: t.scope,
     defaultDuration: t.defaultDuration,
+    permanent: t.permanent,
     modifiers: t.modifiers,
   });
 }
 
-export function parseDragPayload(raw: string): Pick<EffectTemplate, 'id' | 'name' | 'color' | 'imageUrl' | 'imageScale' | 'transparentBackground' | 'layer' | 'scope' | 'defaultDuration' | 'modifiers'> | null {
+export function parseDragPayload(raw: string): Pick<EffectTemplate, 'id' | 'name' | 'color' | 'imageUrl' | 'imageScale' | 'transparentBackground' | 'layer' | 'scope' | 'defaultDuration' | 'permanent' | 'modifiers'> | null {
   try {
     const o = JSON.parse(raw);
     if (!o || o.kind !== 'quitter-effect' || !o.name) return null;
@@ -38,6 +39,7 @@ export function parseDragPayload(raw: string): Pick<EffectTemplate, 'id' | 'name
       layer: o.layer === 'above' ? 'above' : 'below',
       scope: o.scope === 'zone' ? 'zone' : o.scope === 'both' ? 'both' : 'unit',
       defaultDuration: Number(o.defaultDuration) || 3,
+      permanent: !!o.permanent,
       modifiers: Array.isArray(o.modifiers) ? o.modifiers : [],
     };
   } catch {

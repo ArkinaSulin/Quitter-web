@@ -8,6 +8,7 @@ import { parseWeapons } from '@/lib/weaponParser';
 import { alphaLabel } from '@/lib/unitNaming';
 import { normalizeLocalAssetUrl, raceIconFromName } from '@/lib/imageUrls';
 import { getSetting } from '@/lib/settingsCache';
+import { expandInheritedEffects } from '@/lib/unitEffects';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // --- Converters ---
@@ -30,6 +31,7 @@ function parseEffects(raw: any): UnitEffect[] {
     casterTeam: e?.casterTeam ?? null,
     casterPlayerId: e?.casterPlayerId ?? null,
     base: e?.base == null ? undefined : Number(e.base),
+    ...(e?.permanent === true ? { permanent: true } : {}),
   })).filter(e => e.key);
 }
 
@@ -383,6 +385,9 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     // the count is monotonic and serials are never reused.
     const instanceNumber = unitsRef.current.length + 1;
 
+    // Inherited template effects (design-time, permanent) + materialized stat deltas.
+    const inherited = expandInheritedEffects(template.effects, template.movementPoints || 3);
+
     const newUnit: Unit = {
       id: crypto.randomUUID(),
       scenarioId: scenarioId,
@@ -406,15 +411,15 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       baselineAc: template.baselineAc || 10,
       currentAc: shieldDroppedAtSpawn ? (template.baselineAc || 10) - 2 : (template.baselineAc || 10),
       weaponString: template.weaponString || '',
-      movementPoints: template.movementPoints || 3,
+      movementPoints: inherited.movementPoints,
       // Units spawn at 0 MP (actions materialize pools); heroes spawn with FULL MP
       // (their whole movement up front) + their full action count.
       movementPointsAvailable: template.isHero
-        ? (template.movementPoints || 3)
+        ? inherited.movementPoints
         : getSetting('turn_start_mp', 0),
       aggressiveness: template.aggressiveness || 3,
       baseMorale: template.baseMorale || 3,
-      currentMoraleModifier: 0,
+      currentMoraleModifier: inherited.currentMoraleModifier,
       moraleBoost: template.moraleBoost || 0,
       sizeCategory: template.sizeCategory || 100,
       visualScale: template.visualScale || 100,
@@ -427,7 +432,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       customImageUrl: normalizeLocalAssetUrl(template.customImageUrl),
       canCharge: canCharge,
       darkvision: template.darkvision || 0,
-      effects: [],
+      effects: inherited.effects,
       hex: hex,
       facing: 0,
       team: team,

@@ -24,6 +24,8 @@ export interface EffectFormValue {
   modifiers: EffectModifier[];
   /** Where the effect may be applied (unit / zone / both). */
   scope?: 'unit' | 'zone' | 'both';
+  /** Never ticks or expires once applied. */
+  permanent?: boolean;
 }
 
 interface EffectFormModalProps {
@@ -117,6 +119,7 @@ export function EffectFormModal({
             <label className="text-xs text-gray-400">Duration (caster activations)
               <input
                 type="number" min={1} max={50} value={value.duration}
+                disabled={!!value.permanent}
                 onChange={e => patch({ duration: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
                 className={input + ' w-full'}
               />
@@ -128,6 +131,16 @@ export function EffectFormModal({
               </select>
             </label>
           </div>
+
+          <label className="flex items-center gap-2 text-[11px] text-gray-400">
+            <input
+              type="checkbox"
+              checked={!!value.permanent}
+              onChange={e => patch({ permanent: e.target.checked })}
+              className="h-3.5 w-3.5 accent-amber-400"
+            />
+            Permanent — never ticks or expires
+          </label>
 
           <div>
             <p className="text-xs text-gray-400 mb-1">Modifiers</p>

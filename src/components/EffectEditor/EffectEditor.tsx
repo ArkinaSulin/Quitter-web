@@ -204,9 +204,20 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
                   </select>
                 </label>
                 <label className="text-xs text-gray-400">Duration (caster activations)
-                  <input className={input} type="number" min={1} max={50} value={draft.defaultDuration} disabled={readOnly} onChange={e => setDraft({ ...draft, defaultDuration: Math.max(1, Math.floor(Number(e.target.value) || 1)) })} />
+                  <input className={input} type="number" min={1} max={50} value={draft.defaultDuration} disabled={readOnly || draft.permanent} onChange={e => setDraft({ ...draft, defaultDuration: Math.max(1, Math.floor(Number(e.target.value) || 1)) })} />
                 </label>
               </div>
+
+              <label className="flex items-center gap-2 text-[11px] text-gray-400">
+                <input
+                  type="checkbox"
+                  disabled={readOnly}
+                  checked={draft.permanent}
+                  onChange={e => setDraft({ ...draft, permanent: e.target.checked })}
+                  className="h-3.5 w-3.5 accent-amber-400"
+                />
+                Permanent — never ticks or expires (innate / board feature)
+              </label>
 
               <div>
                 <p className="text-xs text-gray-400 mb-1">Modifiers (combine freely — e.g. Haunted = AC −2 + Morale −1)</p>

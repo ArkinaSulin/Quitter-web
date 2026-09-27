@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, rangeBonusAt } from './unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, rangeBonusAt, saveRollFlags, expandInheritedEffects } from './unitEffects';
 import { parseDice } from './effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
@@ -538,5 +538,35 @@ describe('rangeBonusAt', () => {
     const u = unit('u', 'blue', h(5, 0), { effects: [] });
     expect(rangeBonusAt(u, [rzone()])).toBe(0);
     expect(rangeBonusAt(null, [rzone()])).toBe(0);
+  });
+});
+
+describe('saveRollFlags', () => {
+  it('reads save advantage/disadvantage from effects', () => {
+    expect(saveRollFlags(unit('u', 'blue', h(0, 0), { effects: [ef({ kind: 'save_advantage' })] }))).toEqual({ advantage: true, disadvantage: false });
+    expect(saveRollFlags(unit('u', 'blue', h(0, 0), { effects: [ef({ kind: 'save_disadvantage' })] }))).toEqual({ advantage: false, disadvantage: true });
+    expect(saveRollFlags(unit('u', 'blue', h(0, 0)))).toEqual({ advantage: false, disadvantage: false });
+  });
+});
+
+describe('expandInheritedEffects', () => {
+  it('expands modifiers into permanent effects and materializes stat deltas', () => {
+    const { effects, movementPoints, currentMoraleModifier } = expandInheritedEffects(
+      [{ kind: 'movement', dice: '2' }, { kind: 'morale', dice: '1' }, { kind: 'save_advantage' }],
+      3,
+    );
+    expect(movementPoints).toBe(5);
+    expect(currentMoraleModifier).toBe(1);
+    expect(effects).toHaveLength(3);
+    expect(effects.every(e => e.permanent === true)).toBe(true);
+    expect(effects.find(e => e.kind === 'movement')?.base).toBe(3);
+    expect(effects.find(e => e.kind === 'morale')?.base).toBe(0);
+  });
+
+  it('returns no effects for empty input', () => {
+    const { effects, movementPoints, currentMoraleModifier } = expandInheritedEffects(null, 3);
+    expect(effects).toEqual([]);
+    expect(movementPoints).toBe(3);
+    expect(currentMoraleModifier).toBe(0);
   });
 });

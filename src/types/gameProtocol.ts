@@ -1,5 +1,7 @@
 // src/types/gameProtocol.ts
 
+import { EffectModifier } from '@/lib/effectTemplates';
+
 export const ORGANIZATION_LEVEL: Record<string, number> = {
   'Routed': 0,
   'Scattered': 0,
@@ -99,6 +101,9 @@ export interface UnitTemplate {
   wis: number;
   cha: number;
 //  acSpecialModifier?: string;
+  /** Design-time effect modifiers, expanded into permanent effects on every
+   *  spawned unit (innate abilities). */
+  effects?: EffectModifier[];
   createdAt: string;
   updatedAt: string;
 }
@@ -191,7 +196,8 @@ export type EffectKind =
   | 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow' | 'entry' | 'mp_cost'
   | 'enter_org_max' | 'range'
   | 'advantage' | 'disadvantage' | 'grant_advantage' | 'grant_disadvantage'
-  | 'block_attacks';
+  | 'block_attacks'
+  | 'save_advantage' | 'save_disadvantage';
 
 /**
  * A temporary effect instance. Duration counts ACTIVATIONS OF THE CASTER (not the
@@ -241,6 +247,8 @@ export interface UnitEffect {
   casterPlayerId?: string | null;
   /** Snapshot of the modified field BEFORE this effect applied (restore target). */
   base?: number;
+  /** Never ticks or expires (innate/design-time ability; removed only explicitly). */
+  permanent?: boolean;
 }
 
 /**
