@@ -47,6 +47,13 @@ export function StructureEditModal({ template, instance, onSave, onClose, restri
   const patchMod = (i: number, p: Partial<EffectModifier>) => setMods(m => m.map((x, idx) => (idx === i ? { ...x, ...p } : x)));
 
   const save = () => {
+    // Edge structures are REMOVED at 0 HP (unlike hex structures, which stay and
+    // show a destroyed badge).
+    if (template.anchor === 'edge' && hp <= 0 && onRemove) {
+      onRemove();
+      onClose();
+      return;
+    }
     onSave({ hp, doorHp, open, outside, modifiers: mods });
     onClose();
   };
@@ -81,12 +88,14 @@ export function StructureEditModal({ template, instance, onSave, onClose, restri
                 <input type="number" min={0} max={template.maxHp} className={input + ' !w-24 block'} value={hp}
                   onChange={e => setHp(Math.max(0, Math.min(template.maxHp, Math.round(Number(e.target.value) || 0))))} />
               </label>
-              {st.hasDoor && (
-                <label className="text-gray-400">Door HP
-                  <input type="number" min={0} max={st.hpNow} className={input + ' !w-24 block'} value={doorHp}
-                    onChange={e => setDoorHp(Math.max(0, Math.min(st.hpNow, Math.round(Number(e.target.value) || 0))))} />
-                </label>
-              )}
+              <div className="text-gray-400 pb-1">
+                <span className="block">Max HP</span>
+                <span className="text-gray-200 font-semibold">{template.maxHp}</span>
+              </div>
+              <label className="text-gray-400">Door HP
+                <input type="number" min={0} max={st.hpNow} className={input + ' !w-24 block'} value={doorHp}
+                  onChange={e => setDoorHp(Math.max(0, Math.min(st.hpNow, Math.round(Number(e.target.value) || 0))))} />
+              </label>
               {st.hasDoor && (
                 <label className="flex items-center gap-2 text-gray-300 pb-1.5">
                   <input type="checkbox" checked={open} onChange={e => setOpen(e.target.checked)} /> gate open

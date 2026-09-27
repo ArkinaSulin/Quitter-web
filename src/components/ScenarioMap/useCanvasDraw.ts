@@ -17,7 +17,7 @@ import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
 import { MapStructures, isHexStructureKey } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
-import { structureDoorState } from '@/lib/mapStructures';
+import { strokeFillText, fillHexPath, structureBadges, MP_COST_GREY } from '@/components/shared/mapFeatureDraw';
 import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
 import { AiOverlayData } from './aiTypes';
 
@@ -233,11 +233,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     if (groundZones) for (const z of groundZones) if (z.kind === 'mp_cost') mpHexKeys.add(`${z.q},${z.r}`);
     if (mpHexKeys.size > 0) {
       ctx.save();
-      ctx.font = 'bold 13px ui-monospace, monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = 3;
+      const mpFont = 'bold 39px ui-monospace, monospace';
       for (const key of Array.from(mpHexKeys)) {
         if (isFogHidden(key)) continue;
         const [q, r] = key.split(',').map(Number);
@@ -245,12 +241,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const label = hexMpLabelAt({ q, r }, structures, templates, groundZones);
         if (!label) continue;
         const shade = label.blocked ? 'rgba(220, 38, 38, 0.4)' : costShade(label.cost);
-        if (shade) fillHex({ q, r, s: -q - r }, shade);
         const { cx, cy } = hexCenter({ q, r, s: -q - r });
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-        ctx.strokeText(label.text, cx, cy);
-        ctx.fillStyle = label.blocked ? '#fecaca' : '#ffffff';
-        ctx.fillText(label.text, cx, cy);
+        if (shade) fillHexPath(ctx, cx, cy, HEX_SIZE * currentZoom, shade);
+        strokeFillText(ctx, cx, cy, label.text, mpFont, 4, MP_COST_GREY);
       }
       ctx.restore();
     }
@@ -279,34 +272,15 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
             ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
           }
         }
-        const hp = inst.hp ?? t?.maxHp ?? 0;
-        if (hp > 0) {
-          const label = `${hp}`;
-          ctx.font = `bold ${Math.max(11, 12 * currentZoom)}px ui-monospace, monospace`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.lineWidth = Math.max(2, 3 * currentZoom);
-          ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-          const ly = cy - HEX_SIZE * currentZoom * 0.55;
-          ctx.strokeText(label, cx, ly);
-          ctx.fillStyle = '#ffe0b2';
-          ctx.fillText(label, cx, ly);
+        const badges = structureBadges(t, inst);
+        const ly = cy - HEX_SIZE * currentZoom * 0.55;
+        if (badges.destroyed) {
+          strokeFillText(ctx, cx, ly, '✕', `bold ${Math.max(11, 12 * currentZoom)}px ui-monospace, monospace`, Math.max(2, 3 * currentZoom), MP_COST_GREY);
+        } else if (badges.hpText !== null) {
+          strokeFillText(ctx, cx, ly, badges.hpText, `bold ${Math.max(11, 12 * currentZoom)}px ui-monospace, monospace`, Math.max(2, 3 * currentZoom), '#ffe0b2');
         }
-        const st = t ? structureDoorState(inst, t) : null;
-        const badge = !st || st.noDoor ? null
-          : st.open ? 'open'
-          : st.doorNow <= 0 ? 'broken'
-          : `door ${st.doorNow}`;
-        if (badge) {
-          ctx.font = `bold ${Math.max(10, 11 * currentZoom)}px ui-monospace, monospace`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.lineWidth = Math.max(2, 3 * currentZoom);
-          ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-          const ly = cy + HEX_SIZE * currentZoom * 0.55;
-          ctx.strokeText(badge, cx, ly);
-          ctx.fillStyle = inst.open ? '#a5d6a7' : '#ffd9c9';
-          ctx.fillText(badge, cx, ly);
+        if (badges.doorText) {
+          strokeFillText(ctx, cx, cy + HEX_SIZE * currentZoom * 0.55, badges.doorText, `bold ${Math.max(10, 11 * currentZoom)}px ui-monospace, monospace`, Math.max(2, 3 * currentZoom), badges.doorOpen ? '#a5d6a7' : '#ffd9c9');
         }
       }
       ctx.restore();

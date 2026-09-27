@@ -577,6 +577,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
           template={templates[entity.structures[structureEditKey].templateId]}
           instance={entity.structures[structureEditKey]}
           onSave={(patch) => patchStructureAt(structureEditKey, patch)}
+          onRemove={() => { clearStructure(structureEditKey); setStructureEditKey(null); }}
           onClose={() => setStructureEditKey(null)}
         />
       )}

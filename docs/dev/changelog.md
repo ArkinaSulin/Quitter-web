@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## MP-cost label styling, destroyed-structure badges, and shared feature rendering (2026-09-27)
+**Files:** src/components/shared/mapFeatureDraw.ts (+ test), src/components/ScenarioMap/{ScenarioMap,useCanvasDraw}.tsx, src/components/MapEditor/{MapCanvas,MapEditor}.tsx, src/components/StructureEditModal.tsx, src/lib/structureCombat.test.ts, docs/dev/changelog.md
+
+- **MP-cost number is now prominent and grey**: the scenario map prints it at `39px` in grey (`#9ca3af`); the Map Editor gained the same `foot/mounted` label (authored `hexEffects` expanded via `expandHexEffects`), sized ~1/3 of a hex.
+- **Destroyed semantics split by anchor**: an **edge** structure at `hp <= 0` is **removed** (combat already did; the edit modal now routes an edge save with HP ≤ 0 to Remove). A **hex** structure at `hp <= 0` **stays** and shows a grey `✕` badge (`performStructureAttack` no longer nulls the instance on destroy — it keeps `hp: 0`). Decorative structures (`maxHp = 0`) remain untargetable and badge-less.
+- **Shared feature-render module** (`mapFeatureDraw.ts`): `structureBadges` (HP/door/destroyed decision), `strokeFillText`, and `fillHexPath` now back both `useCanvasDraw` and `MapCanvas`, so the badge + MP label logic is written once.
+- **Edit modal always shows HP · Max HP · Door**: read-only Max HP plus an always-visible Door HP input (seeded from the effective door value); `gate open` stays door-gated.
+- `tsc` clean; 761 tests pass; build clean. No migration.
+
 ## Structure/effect editing, batch removal + command-log structures; terrain costs folded into MP (2026-09-26)
 **Files:** src/lib/{mapStructures,mapGeometry,mapEntities}.ts (+ tests), src/components/ScenarioMap/{ScenarioMap,useCanvasDraw,LeftPanel,StructurePaintPanel,EffectsPaintPanel}.tsx, src/components/{StructureEditModal,MapEditor/MapEditor,MapEditor/MapCanvas}.tsx, supabase/migrations/101_remove_terrain_costs.sql, docs/dev/{13,18,changelog}.md
 

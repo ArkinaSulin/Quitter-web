@@ -8,13 +8,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
-import { HEX_SIZE, DEFAULT_GRID_RADIUS } from '@/components/ScenarioMap/mapGeometry';
+import { HEX_SIZE, DEFAULT_GRID_RADIUS, hexMpLabelAt, costShade } from '@/components/ScenarioMap/mapGeometry';
 import { edgeRef, nearestEdge, hexCorner } from '@/lib/walls';
-import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls, structureDoorState } from '@/lib/mapStructures';
+import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls } from '@/lib/mapStructures';
 import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
 import { StructureTemplate } from '@/types/structure';
-import { MapHexEffect } from '@/lib/mapEffects';
+import { MapHexEffect, expandHexEffects } from '@/lib/mapEffects';
 import { EffectTemplate } from '@/lib/effectTemplates';
+import { strokeFillText, fillHexPath, structureBadges, MP_COST_GREY } from '@/components/shared/mapFeatureDraw';
 
 export interface MapCanvasProps {
   imageUrl: string;
@@ -212,32 +213,36 @@ export function MapCanvas({
             ctx.drawImage(img, pos.x - w / 2, pos.y - h / 2, w, h);
           }
         }
-        const hp = t?.maxHp ?? 0;
-        if (hp > 0) {
-          ctx.font = `bold ${Math.max(10 / zoom, 0.5)}px ui-monospace, monospace`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.lineWidth = 3 / zoom;
-          ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-          ctx.strokeText(`${inst.hp ?? hp}`, pos.x, pos.y - HEX_SIZE * 0.62);
-          ctx.fillStyle = '#ffe0b2';
-          ctx.fillText(`${inst.hp ?? hp}`, pos.x, pos.y - HEX_SIZE * 0.62);
+        const badges = structureBadges(t, inst);
+        const topY = pos.y - HEX_SIZE * 0.62;
+        const hpFont = `bold ${Math.max(10 / zoom, 0.5)}px ui-monospace, monospace`;
+        if (badges.destroyed) {
+          strokeFillText(ctx, pos.x, topY, '✕', hpFont, 3 / zoom, MP_COST_GREY);
+        } else if (badges.hpText !== null) {
+          strokeFillText(ctx, pos.x, topY, badges.hpText, hpFont, 3 / zoom, '#ffe0b2');
         }
-        const st = t ? structureDoorState(inst, t) : null;
-        const badge = !st || st.noDoor ? null
-          : st.open ? 'open'
-          : st.doorNow <= 0 ? 'broken'
-          : `door ${st.doorNow}`;
-        if (badge) {
-          ctx.font = `bold ${Math.max(10 / zoom, 0.5)}px ui-monospace, monospace`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.lineWidth = 3 / zoom;
-          ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-          ctx.strokeText(badge, pos.x, pos.y + HEX_SIZE * 0.62);
-          ctx.fillStyle = inst.open ? '#a5d6a7' : '#ffd9c9';
-          ctx.fillText(badge, pos.x, pos.y + HEX_SIZE * 0.62);
+        if (badges.doorText) {
+          strokeFillText(ctx, pos.x, pos.y + HEX_SIZE * 0.62, badges.doorText, hpFont, 3 / zoom, badges.doorOpen ? '#a5d6a7' : '#ffd9c9');
         }
+      }
+    }
+    // MP-cost numbers (foot/mounted) from hex structures + authored mp_cost
+    // effects — the "higher of the two" board label (matches the scenario map).
+    const mpZones = expandHexEffects(p.hexEffects, p.effectTemplates ?? {});
+    const mpHexKeys = new Set<string>();
+    if (p.structures) for (const key of Object.keys(p.structures)) if (isHexStructureKey(key)) mpHexKeys.add(key);
+    for (const z of mpZones) if (z.kind === 'mp_cost') mpHexKeys.add(`${z.q},${z.r}`);
+    if (mpHexKeys.size > 0) {
+      const mpFont = `bold ${Math.max(33 / zoom, 0.5)}px ui-monospace, monospace`;
+      for (const key of Array.from(mpHexKeys)) {
+        const [q, r] = key.split(',').map(Number);
+        if (Number.isNaN(q) || Number.isNaN(r)) continue;
+        const label = hexMpLabelAt({ q, r }, p.structures, p.templates, mpZones);
+        if (!label) continue;
+        const shade = label.blocked ? 'rgba(220, 38, 38, 0.4)' : costShade(label.cost);
+        const pos = hexToPixel({ q, r, s: -q - r }, HEX_SIZE);
+        if (shade) fillHexPath(ctx, pos.x, pos.y, HEX_SIZE, shade);
+        strokeFillText(ctx, pos.x, pos.y, label.text, mpFont, 3 / zoom, MP_COST_GREY);
       }
     }
     ctx.lineWidth = 1;

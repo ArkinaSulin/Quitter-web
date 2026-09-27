@@ -35,6 +35,13 @@ describe('isAttackableHexStructure', () => {
     expect(isAttackableHexStructure(template({ doorHp: 0, maxHp: 50 }), { templateId: 't' })).toBe(true);
     expect(isAttackableHexStructure(template({ doorHp: 0, maxHp: 0 }), { templateId: 't' })).toBe(false);
   });
+
+  it('decorative (maxHp 0) structures are never attackable', () => {
+    const deco = template({ doorHp: null, maxHp: 0 });
+    expect(isAttackableHexStructure(deco, { templateId: 't' })).toBe(false);
+    expect(isAttackableHexStructure(deco, { templateId: 't', open: true })).toBe(false);
+    expect(isAttackableHexStructure(deco, { templateId: 't', hp: 0 })).toBe(false);
+  });
 });
 
 describe('resolveHexStructureAttack (simultaneous door + HP)', () => {

@@ -1035,15 +1035,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (overCap) addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
 
     const result = resolveHexStructureAttack(template, inst, weapon, Math.random);
-    const to = result.destroyed
-      ? null
-      : { ...inst, hp: result.hpAfter, doorHp: result.doorHpAfter };
+    // Hex structures stay at 0 HP (grey ✕), unlike edge walls which are removed.
+    const to = { ...inst, hp: result.hpAfter, doorHp: result.doorHpAfter };
 
     const doorNow = result.doorHpAfter;
     const detail = result.deflected
       ? `${attacker.unitName} struck the structure at ${label} — the blow is shrugged off (DT ${template.dt}, ${result.damage} damage)`
       : result.destroyed
-        ? `${attacker.unitName} destroyed the structure at ${label} (${result.damage} damage)`
+        ? `${attacker.unitName} broke the structure at ${label} (${result.damage} damage)`
         : result.hitDoor
           ? `${attacker.unitName} hit the door at ${label} for ${result.applied} damage (${doorNow}/${structureDoorMax(template)} door HP left)`
           : `${attacker.unitName} hit the structure at ${label} for ${result.applied} damage (${result.hpAfter}/${template.maxHp} HP left)`;
@@ -1059,7 +1058,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       },
       {
         type: 'STRUCTURE',
-        description: result.destroyed ? `Structure at ${label} destroyed` : `Structure at ${label} damaged`,
+        description: result.destroyed ? `Structure at ${label} broken` : `Structure at ${label} damaged`,
         unitId: scenarioId,
         changes: [{ field: 'structures', key, from: inst, to }],
       },
