@@ -117,10 +117,10 @@ function ReadBox({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <label className="flex items-center gap-1.5 text-[11px] text-gray-300">
-      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="h-3.5 w-3.5 accent-amber-400" />
+    <label className={`flex items-center gap-1.5 text-[11px] ${disabled ? 'text-gray-600 cursor-not-allowed' : 'text-gray-300'}`}>
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)} className="h-3.5 w-3.5 accent-amber-400" />
       {label}
     </label>
   );
@@ -364,9 +364,9 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
             <Cell label="Aggress."><NumInput value={draft.aggressiveness} onChange={v => set('aggressiveness', v)} /></Cell>
             <Cell label="Current morale"><ReadBox>{effMorale}</ReadBox></Cell>
             <Cell label="Base morale"><NumInput value={draft.baseMorale} onChange={v => set('baseMorale', v)} /></Cell>
-            <Cell label="Morale boost"><NumInput value={draft.moraleBoost} min={0} onChange={v => set('moraleBoost', v)} /></Cell>
-            <div className="pb-1"><Toggle checked={!!draft.commandPursuitPermit} onChange={v => set('commandPursuitPermit', v)} label="Command: allow pursue" /></div>
             <div className="pb-1"><Toggle checked={!!draft.ignoreMoraleChecks} onChange={v => set('ignoreMoraleChecks', v)} label="Fearless" /></div>
+            <Cell label="Morale boost"><NumInput value={draft.moraleBoost} min={0} readOnly={!unit.isHero} onChange={v => set('moraleBoost', v)} /></Cell>
+            <div className="pb-1"><Toggle checked={!!draft.commandPursuitPermit} onChange={v => set('commandPursuitPermit', v)} label="Command: allow pursue" disabled={!unit.isHero} /></div>
           </div>
 
           {/* R7 Formation + Charging + Mount + Can charge */}
