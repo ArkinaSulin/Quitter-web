@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { MapStructures } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { modifierAmount, modifierSummary } from '@/lib/effectTemplates';
+import { mpPairText } from './mapGeometry';
 
 interface StructurePaintPanelProps {
   templates: Record<string, StructureTemplate>;
@@ -20,9 +21,6 @@ interface StructurePaintPanelProps {
   onRemoveStructure: (key: string) => void;
 }
 
-const mpText = (v: number | null): string => (v === null ? '—' : v < 0 ? 'block' : `${v}`);
-
-/** Hover tooltip: the structure template's movement, durability and modifiers. */
 function StructureTooltip({ t, x, y }: { t: StructureTemplate; x: number; y: number }) {
   const cover = t.modifiers.filter(m => m.kind === 'ac');
   const melee = cover.filter(m => m.mode !== 'ranged').reduce((s, m) => s + modifierAmount(m.dice), 0);
@@ -38,11 +36,11 @@ function StructureTooltip({ t, x, y }: { t: StructureTemplate; x: number; y: num
       <div className="text-gray-300 capitalize">{t.anchor}{t.spikes ? ' · stakes' : t.battlement ? ' · battlement' : ''}</div>
       {t.anchor === 'edge' ? (
         <>
-          <div className="text-gray-400 mt-1">In: foot {mpText(t.mpFootIn)} · mtd {mpText(t.mpMountedIn)} MP</div>
-          <div className="text-gray-400">Out: foot {mpText(t.mpFootOut)} · mtd {mpText(t.mpMountedOut)} MP</div>
+          <div className="text-gray-400 mt-1">In: {mpPairText(t.mpFootIn, t.mpMountedIn)} MP</div>
+          <div className="text-gray-400">Out: {mpPairText(t.mpFootOut, t.mpMountedOut)} MP</div>
         </>
       ) : (
-        <div className="text-gray-400 mt-1">Enter: foot {mpText(t.mpFootIn)} · mtd {mpText(t.mpMountedIn)} MP</div>
+        <div className="text-gray-400 mt-1">Enter: {mpPairText(t.mpFootIn, t.mpMountedIn)} MP</div>
       )}
       <div className="text-gray-400 mt-1">HP {t.maxHp} · DT {t.dt} · door {door === 0 ? 'none' : door}</div>
       {(melee || ranged) ? <div className="text-gray-400">Cover AC melee {melee} · ranged {ranged}</div> : null}

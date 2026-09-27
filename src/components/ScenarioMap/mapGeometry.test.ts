@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hexMpLabelAt, makeCostOfHex, mpCostOverrides } from './mapGeometry';
+import { hexMpLabelAt, makeCostOfHex, mpCostOverrides, mpPairText } from './mapGeometry';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 
@@ -121,5 +121,18 @@ describe('makeCostOfHex (higher of the two)', () => {
   it('returns the base 1 MP for a plain hex', () => {
     const cost = makeCostOfHex({}, null, { isMounted: false });
     expect(cost(0, 0, -1, 0)).toBe(1);
+  });
+});
+
+describe('mpPairText', () => {
+  it('collapses equal foot/mounted into one value', () => {
+    expect(mpPairText(2, 2)).toBe('2');
+    expect(mpPairText(null, null)).toBe('-');
+    expect(mpPairText(-1, -1)).toBe('block');
+  });
+
+  it('shows foot/mtd only when they differ', () => {
+    expect(mpPairText(2, 3)).toBe('foot 2 / mtd 3');
+    expect(mpPairText(2, null)).toBe('foot 2 / mtd -');
   });
 });

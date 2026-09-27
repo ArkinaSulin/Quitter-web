@@ -231,6 +231,17 @@ export function mpCostOverrides(zones: GroundEffect[] | null | undefined): Terra
   return out;
 }
 
+/**
+ * Format a foot/mounted MP pair for tooltips: `-` for null (falls back to
+ * terrain), `block` for a negative (hard block), a plain number when foot and
+ * mounted agree, and `foot X / mtd Y` only when they differ.
+ */
+export function mpPairText(foot: number | null | undefined, mounted: number | null | undefined): string {
+  const f = foot === null || foot === undefined ? '-' : foot < 0 ? 'block' : `${foot}`;
+  const m = mounted === null || mounted === undefined ? '-' : mounted < 0 ? 'block' : `${mounted}`;
+  return f === m ? f : `foot ${f} / mtd ${m}`;
+}
+
 export interface MapBackgroundConfig {
   imageUrl: string;
   offsetX: number;

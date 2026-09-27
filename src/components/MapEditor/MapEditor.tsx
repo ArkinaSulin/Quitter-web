@@ -16,6 +16,7 @@ import { StructureTemplate } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { structureHasDoor } from '@/lib/structureTemplates';
 import { EffectTemplate, mapEffectRow, modifierSummary, modifierAmount } from '@/lib/effectTemplates';
+import { mpPairText } from '@/components/ScenarioMap/mapGeometry';
 import { StructureEditModal, StructureInstancePatch } from '@/components/StructureEditModal';
 import { MapCanvas } from './MapCanvas';
 
@@ -277,7 +278,6 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
 
   /** Info lines for a structure template (hover tooltip). */
   const structureLines = useCallback((t: StructureTemplate): string[] => {
-    const mp = (v: number | null) => (v === null ? '—' : v < 0 ? 'block' : `${v}`);
     const cover = t.modifiers.filter(m => m.kind === 'ac');
     const melee = cover.filter(m => m.mode !== 'ranged').reduce((s, m) => s + modifierAmount(m.dice), 0);
     const ranged = cover.filter(m => m.mode !== 'melee').reduce((s, m) => s + modifierAmount(m.dice), 0);
@@ -285,7 +285,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     const door = t.doorHp ?? t.maxHp;
     const lines = [
       `${t.anchor}${t.spikes ? ' · stakes' : t.battlement ? ' · battlement' : ''}`,
-      t.anchor === 'edge' ? `In foot ${mp(t.mpFootIn)} / mtd ${mp(t.mpMountedIn)} MP` : `Enter foot ${mp(t.mpFootIn)} / mtd ${mp(t.mpMountedIn)} MP`,
+      t.anchor === 'edge' ? `In ${mpPairText(t.mpFootIn, t.mpMountedIn)} MP` : `Enter ${mpPairText(t.mpFootIn, t.mpMountedIn)} MP`,
       `HP ${t.maxHp} · DT ${t.dt}${structureHasDoor(t) ? ` · door ${door}` : ''}`,
     ];
     if (melee || ranged) lines.push(`Cover AC melee ${melee} / ranged ${ranged}`);
