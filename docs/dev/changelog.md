@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## "Forced stop" modifier + cleaner modifier labels (2026-09-27)
+**Files:** src/lib/effectTemplates.ts (+ test), src/types/gameProtocol.ts, src/lib/unitEffects.ts, src/hooks/useGameEngine.ts, src/components/EffectEditor/EffectModifierFields.tsx, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/changelog.md
+
+- **New `forced_stop` modifier** (flag, zone/structure only): a unit that ENTERS a hex carrying a `forced_stop` zone/structure has all remaining `actionsAvailable` and `movementPointsAvailable` consumed (`moveUnitRecorded` folds it into the MOVE sub-step; a message notes the halt). Selectable in the Effect and Structure editors; droppable as a zone effect.
+- **Modifier labels**: dropped the `Zone:` / `Zone/structure:` prefixes for consistency (`Damage on entry`, `Max org level to enter`, `Weapon range +/-`); the `entry` KIND_OPTION now uses the shared label too.
+- `tsc` clean; 780 tests pass; build clean. No migration.
+
 ## Unit-template inherited effects + permanent effect flag + save advantage/disadvantage (2026-09-27)
 **Files:** src/types/gameProtocol.ts, src/lib/{effectTemplates,unitEffects,spellDamage,templateMappers}.ts (+ tests), src/components/{UnitEditor,EffectEditor/EffectEditor,EffectEditor/EffectModifierFields,ScenarioMap/ScenarioMap,ScenarioMap/EffectsPanel,ScenarioMap/EffectFormModal,ScenarioMap/useCastActions}.tsx, src/hooks/useSupabaseSync.ts, supabase/migrations/103_unit_template_effects.sql, docs/dev/changelog.md
 

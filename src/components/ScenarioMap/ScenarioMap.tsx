@@ -1093,7 +1093,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [cloneZone, setCloneZone] = useState<GroundEffect | null>(null);
 
   const UNIT_KINDS = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'range', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'save_advantage', 'save_disadvantage'];
-  const ZONE_KINDS = ['ac', 'morale', 'dot', 'entry', 'mp_cost', 'enter_org_max', 'range', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'save_advantage', 'save_disadvantage'];
+  const ZONE_KINDS = ['ac', 'morale', 'dot', 'entry', 'mp_cost', 'enter_org_max', 'range', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'save_advantage', 'save_disadvantage', 'forced_stop'];
 
   const applyUnitDrop = async (d: { unit: Unit; form: EffectFormValue }) => {
     if (d.form.scope === 'zone') {

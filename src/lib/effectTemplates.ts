@@ -19,10 +19,11 @@ export type EffectModifierKind =
   | 'grant_disadvantage' // attackers targeting the carrier take the lower of 2d20
   | 'block_attacks'      // hard-block attacks in and/or out (see `direction`), melee/ranged per `mode`
   | 'save_advantage'     // carrier's own saving throws roll 2d20 take higher
-  | 'save_disadvantage'; // carrier's own saving throws roll 2d20 take lower
+  | 'save_disadvantage'  // carrier's own saving throws roll 2d20 take lower
+  | 'forced_stop';       // zone/structure: entering the hex consumes all remaining actions & MP
 
 /** Amount-less kinds (no dice/save) — boolean markers. */
-export const FLAG_MODIFIER_KINDS: EffectModifierKind[] = ['advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'block_attacks', 'save_advantage', 'save_disadvantage'];
+export const FLAG_MODIFIER_KINDS: EffectModifierKind[] = ['advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'block_attacks', 'save_advantage', 'save_disadvantage', 'forced_stop'];
 
 export function isFlagModifierKind(kind: EffectModifierKind): boolean {
   return FLAG_MODIFIER_KINDS.includes(kind);
@@ -31,7 +32,7 @@ export function isFlagModifierKind(kind: EffectModifierKind): boolean {
 /** Kinds that only ever apply to a UNIT (never a zone). */
 export const UNIT_ONLY_MODIFIER_KINDS: EffectModifierKind[] = ['movement', 'hp_borrow'];
 /** Kinds that only ever apply to a ZONE / hex (never a unit). */
-export const ZONE_ONLY_MODIFIER_KINDS: EffectModifierKind[] = ['entry', 'mp_cost', 'enter_org_max'];
+export const ZONE_ONLY_MODIFIER_KINDS: EffectModifierKind[] = ['entry', 'mp_cost', 'enter_org_max', 'forced_stop'];
 
 /** True when a template mixes unit-only and zone-only modifiers, so it cannot be
  *  applied anywhere without dropping some of its modifiers. */
@@ -118,10 +119,10 @@ export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
   movement: 'Movement points',
   dot: 'DoT / heal per tick',
   hp_borrow: 'Borrow HP (sleep)',
-  entry: 'Zone: damage on entry',
+  entry: 'Damage on entry',
   mp_cost: 'Terrain cost (hex)',
-  enter_org_max: 'Zone/structure: max org level to enter',
-  range: 'Zone/structure: weapon range +/-',
+  enter_org_max: 'Max org level to enter',
+  range: 'Weapon range +/-',
   advantage: 'Advantage on own attacks',
   disadvantage: 'Disadvantage on own attacks',
   grant_advantage: 'Attackers gain advantage',
@@ -129,6 +130,7 @@ export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
   block_attacks: 'Block attacks in/out',
   save_advantage: 'Advantage on saving throws',
   save_disadvantage: 'Disadvantage on saving throws',
+  forced_stop: 'Forced stop on entry',
 };
 
 /**
@@ -148,6 +150,7 @@ export function modifierSummary(m: EffectModifier): string {
   else if (m.kind === 'mp_cost') s = 'terrain cost';
   else if (m.kind === 'save_advantage') s = 'save advantage';
   else if (m.kind === 'save_disadvantage') s = 'save disadvantage';
+  else if (m.kind === 'forced_stop') s = 'forced stop';
   if (honorsMode(m.kind) && m.mode) s += ` (${m.mode})`;
   if (m.kind === 'block_attacks' && m.direction) s += ` /${m.direction}`;
   if (!isFlagModifierKind(m.kind)) {

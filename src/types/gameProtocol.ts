@@ -197,7 +197,8 @@ export type EffectKind =
   | 'enter_org_max' | 'range'
   | 'advantage' | 'disadvantage' | 'grant_advantage' | 'grant_disadvantage'
   | 'block_attacks'
-  | 'save_advantage' | 'save_disadvantage';
+  | 'save_advantage' | 'save_disadvantage'
+  | 'forced_stop';
 
 /**
  * A temporary effect instance. Duration counts ACTIVATIONS OF THE CASTER (not the

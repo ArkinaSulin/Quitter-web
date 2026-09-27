@@ -52,6 +52,7 @@ describe('modifierSummary', () => {
     expect(modifierSummary({ kind: 'mp_cost', dice: '4' })).toBe('terrain cost +4');
     expect(modifierSummary({ kind: 'save_advantage' })).toBe('save advantage');
     expect(modifierSummary({ kind: 'save_disadvantage' })).toBe('save disadvantage');
+    expect(modifierSummary({ kind: 'forced_stop' })).toBe('forced stop');
   });
 });
 

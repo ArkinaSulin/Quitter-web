@@ -18,6 +18,11 @@ import { Walls } from '@/lib/walls';
 import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, computeZoneReconcile, newEffectKey, EffectSpec, resolveEffectDamage, describeEffectDamage, EffectDamageEvent } from '@/lib/unitEffects';
 import { modifierAmount } from '@/lib/effectTemplates';
 
+/** The first `forced_stop` zone on a hex (halts a unit entering it). */
+function forcedStopZone(hex: Hex, zones: GroundEffect[]): GroundEffect | undefined {
+  return zones.find(z => z.kind === 'forced_stop' && z.q === hex.q && z.r === hex.r);
+}
+
 interface UseGameEngineProps {
   scenarioId: string;
   playerId: string;
@@ -403,9 +408,13 @@ export function useGameEngine({
       const { movementPointsAvailable, actionsAvailable } = unit.isHero
         ? applyHeroMoveCost(unit, cost, maxMP)
         : applyMoveCost(unit, cost, maxMP);
+      const zones = groundZonesRef.current;
+      const stop = forcedStopZone(targetHex, zones);
       // Entering a hostile kill zone ends the move: any leftover MP is spent
       // (the unit may still act/move with another action, but not this pool).
-      const mpTo = options?.stopInZoc ? 0 : movementPointsAvailable;
+      // A forced-stop zone additionally consumes every remaining action.
+      const mpTo = stop ? 0 : (options?.stopInZoc ? 0 : movementPointsAvailable);
+      const actionsTo = stop ? 0 : actionsAvailable;
       const subSteps: SubStep[] = [
         {
           type: 'MOVE',
@@ -414,7 +423,7 @@ export function useGameEngine({
           changes: [
             { field: 'hex', from: { ...unit.hex }, to: { ...targetHex } },
             { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: mpTo },
-            { field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsAvailable },
+            { field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsTo },
           ],
         },
       ];
@@ -431,18 +440,21 @@ export function useGameEngine({
           unitId: attachedHero.id,
           changes: [
             { field: 'hex', from: { ...attachedHero.hex }, to: { ...targetHex } },
-            { field: 'movementPointsAvailable', from: attachedHero.movementPointsAvailable, to: options?.stopInZoc ? 0 : heroCost.movementPointsAvailable },
-            { field: 'actionsAvailable', from: attachedHero.actionsAvailable, to: heroCost.actionsAvailable },
+            { field: 'movementPointsAvailable', from: attachedHero.movementPointsAvailable, to: stop ? 0 : (options?.stopInZoc ? 0 : heroCost.movementPointsAvailable) },
+            { field: 'actionsAvailable', from: attachedHero.actionsAvailable, to: stop ? 0 : heroCost.actionsAvailable },
           ],
         });
       }
 
       // Zone traps: landing on an 'entry' zone deals its damage this same command.
-      const zones = groundZonesRef.current;
       const unitEntry = await entryDamageSteps(unit, targetHex, zones);
       subSteps.push(...unitEntry.steps);
       const entryMessages = [...unitEntry.messages];
       const entryVerbose = [...unitEntry.verboseMessages];
+      if (stop) {
+        entryMessages.push(`${unit.unitName} is halted by ${stop.name} — all actions & MP spent`);
+        entryVerbose.push(`${unit.unitName} is halted by ${stop.name} — all actions & MP spent`);
+      }
       if (attachedHero) {
         const heroEntry = await entryDamageSteps(attachedHero, targetHex, zones);
         subSteps.push(...heroEntry.steps);

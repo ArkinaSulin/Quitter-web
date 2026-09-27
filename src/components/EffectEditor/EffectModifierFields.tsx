@@ -14,8 +14,8 @@ export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
   { value: 'movement', label: 'Movement points ±' },
   { value: 'dot', label: 'DoT / heal per tick' },
   { value: 'hp_borrow', label: 'Borrow HP (sleep)' },
-  { value: 'entry', label: 'Zone: damage on entry' },
-  { value: 'mp_cost', label: 'Terrain cost (hex)' },
+  { value: 'entry', label: EFFECT_MODIFIER_LABELS.entry },
+  { value: 'mp_cost', label: EFFECT_MODIFIER_LABELS.mp_cost },
   { value: 'enter_org_max', label: EFFECT_MODIFIER_LABELS.enter_org_max },
   { value: 'range', label: EFFECT_MODIFIER_LABELS.range },
   { value: 'advantage', label: EFFECT_MODIFIER_LABELS.advantage },
@@ -25,6 +25,7 @@ export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
   { value: 'block_attacks', label: EFFECT_MODIFIER_LABELS.block_attacks },
   { value: 'save_advantage', label: EFFECT_MODIFIER_LABELS.save_advantage },
   { value: 'save_disadvantage', label: EFFECT_MODIFIER_LABELS.save_disadvantage },
+  { value: 'forced_stop', label: EFFECT_MODIFIER_LABELS.forced_stop },
 ];
 
 export const DEFAULT_INPUT_CLASS =
