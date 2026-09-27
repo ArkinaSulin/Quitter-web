@@ -1,9 +1,9 @@
 // src/lib/mapEntities.ts
 // Map-entity domain types + row mappers. A map entity is an authored, reusable
-// board: background image (map_images) + placement + grid radius + per-hex MP
-// entry costs (terrain_costs). Scenarios snapshot one into scenarios.map_data.
+// board: background image (map_images) + placement + grid radius + placed
+// structures + authored per-hex effects. Scenarios snapshot one into
+// scenarios.map_data.
 
-import { TerrainCosts } from '@/components/ScenarioMap/mapGeometry';
 import { MapStructures, parseStructures } from '@/lib/mapStructures';
 import { MapHexEffect, parseHexEffects } from '@/lib/mapEffects';
 
@@ -18,7 +18,6 @@ export interface MapEntity {
   offsetY: number;
   scale: number;
   gridRadius: number;
-  terrainCosts: TerrainCosts;
   /** Placed structures keyed "q,r,dir" (edge) / "q,r" (hex) (see `mapStructures.ts`). */
   structures: MapStructures;
   hexEffects: MapHexEffect[];
@@ -42,25 +41,11 @@ export function mapMapRow(row: any): MapEntity {
     offsetY: Number(row.offset_y) || 0,
     scale: Number(row.scale) || MAP_DEFAULTS.scale,
     gridRadius: Number(row.grid_radius) || MAP_DEFAULTS.gridRadius,
-    terrainCosts: parseTerrainCosts(row.terrain_costs),
     structures: parseStructures(row.structures),
     hexEffects: parseHexEffects(row.hex_effects),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-}
-
-/** Sanitize the jsonb terrain blob into a Record<"q,r", cost 0..9>. */
-export function parseTerrainCosts(raw: any): TerrainCosts {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const out: TerrainCosts = {};
-  for (const [key, v] of Object.entries(raw)) {
-    const n = Math.round(Number(v));
-    if (Number.isFinite(n) && n >= 0 && n <= 9 && /^-?\d+,-?\d+$/.test(key)) {
-      out[key] = n;
-    }
-  }
-  return out;
 }
 
 /** Map a MapEntity to a snake_case maps row for INSERT/UPDATE. */
@@ -73,7 +58,6 @@ export function mapEntityToRow(entity: MapEntity, creatorId?: string) {
     offset_y: entity.offsetY || 0,
     scale: entity.scale || MAP_DEFAULTS.scale,
     grid_radius: entity.gridRadius || MAP_DEFAULTS.gridRadius,
-    terrain_costs: entity.terrainCosts || {},
     structures: entity.structures || {},
     hex_effects: entity.hexEffects || [],
     created_by: creatorId,

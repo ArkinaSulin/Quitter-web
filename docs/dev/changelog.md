@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Structure/effect editing, batch removal + command-log structures; terrain costs folded into MP (2026-09-26)
+**Files:** src/lib/{mapStructures,mapGeometry,mapEntities}.ts (+ tests), src/components/ScenarioMap/{ScenarioMap,useCanvasDraw,LeftPanel,StructurePaintPanel,EffectsPaintPanel}.tsx, src/components/{StructureEditModal,MapEditor/MapEditor,MapEditor/MapCanvas}.tsx, supabase/migrations/101_remove_terrain_costs.sql, docs/dev/{13,18,changelog}.md
+
+- **Structures ride the command log.** Structure placement/removal/edit (GM brush + Shift + double-click instance editor) now go through `execute('STRUCTURE', …)` (`placeStructureCommand`/`editStructureCommand`/`removeStructureCommand`) instead of a direct `map_data` write, so they are undoable and appear in replay. The door toggle and combat damage already used `STRUCTURE`; `persistMapData` no longer writes `structures` for the brush path (it still snapshots them on map assign/clear).
+- **Consistent edit gesture + easier removal.** `StructureEditModal` gains a **Remove** button and an **"Effects on this hex…"** link (DM). Editing a hex's ground effects is now **Shift + double-click** (matching structure edit; the unit editor stays double-click), opening a *persistent* per-hex list with Edit / Clone / Remove per zone plus **Remove all**, which stays open after each remove. The right-click "Effects at hex" menu keeps Move up/down + Drop Effect (no longer closes after a drop) and links into the full editor.
+- **Terrain cost removed; MP cost is structure/effect.** The standalone painted MP-cost layer (`maps.terrain_costs` / `map_data.terrainCosts`, the Map Editor "Movement cost" tab and the scenario Movement brush) is deleted (migration 101 drops the column and strips the key). A hex's MP cost now comes only from a hex structure's entry MP (`mp_foot_in`/`mp_mounted_in`) or a `mp_cost` ground zone.
+- **The rule (quoted):** *"Hex MP cost = the **higher** of every source that applies to that hex, computed **per locomotion**: a hex structure's entry MP (`mp_foot_in` / `mp_mounted_in`) and the summed `mp_cost` of any ground zones there. A **negative** value is a hard block — that locomotion may not cross (`X`). An open/broken door **waives** the structure's MP. Edge-structure faces are directional and apply per-edge (they replace the hex cost when crossed, they do not max with it). The map prints `foot/mounted` only when either differs from base (1): a number, `X` for blocked, `-` for no change."* `makeCostOfHex` implements the "higher of the two"; `mapGeometry.hexMpLabelAt` + `useCanvasDraw` render the `foot/mounted` badge.
+- `tsc` clean; 756 tests pass; build clean. **Apply 101 in Supabase.**
+
 ## Fix: mode-scoped `ac` modifiers stack (melee + ranged) and keep their mode (2026-09-21)
 **Files:** src/lib/unitEffects.ts (+ test), docs/dev/changelog.md
 

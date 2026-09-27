@@ -8,7 +8,6 @@ import { MessagesPanel } from './MessagesPanel';
 import { AlliancePanel } from './AlliancePanel';
 import { MapEditorPanel } from './MapEditorPanel';
 import { MapPickerList } from './MapPickerList';
-import { TerrainPaintPanel } from './TerrainPaintPanel';
 import { StructurePaintPanel } from './StructurePaintPanel';
 import { MapStructures } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
@@ -52,8 +51,6 @@ interface LeftPanelProps {
   currentMapId: string | null;
   onAssignMap: (entity: MapEntity) => void;
   onClearMap: () => void;
-  terrainBrushCost: number | null;
-  onSetTerrainBrushCost: (v: number | null) => void;
   structureTemplates: Record<string, StructureTemplate>;
   structurePaletteId: string | null;
   onSetStructurePaletteId: (id: string | null) => void;
@@ -73,7 +70,7 @@ interface LeftPanelProps {
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, terrainBrushCost, onSetTerrainBrushCost, structureTemplates, structurePaletteId, onSetStructurePaletteId, structures, selectedStructureKey, onPatchStructure, onRemoveStructure, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, structureTemplates, structurePaletteId, onSetStructurePaletteId, structures, selectedStructureKey, onPatchStructure, onRemoveStructure, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
   // Persist which tabs are open per scenario + user, so a rejoined session
   // restores the same panel layout.
   // Persist which tabs are open per scenario + user. The saved layout is restored
@@ -135,8 +132,7 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
       requiresGM: true,
       content: (
         <div className="h-full flex flex-col gap-4 min-h-0">
-          <TerrainPaintPanel value={terrainBrushCost} onSet={onSetTerrainBrushCost} />
-          <div className="pt-2 border-t border-gray-700 flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 flex flex-col">
             <StructurePaintPanel
               templates={structureTemplates}
               paletteId={structurePaletteId}

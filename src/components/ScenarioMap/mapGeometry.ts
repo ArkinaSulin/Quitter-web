@@ -7,9 +7,10 @@ import { canStopEnemyMovement } from '@/lib/formationRules';
 import { isUnitInteractable, isDeadCorpse } from '@/lib/unitInteractions';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { Walls, crossingCost, blockedStep, wallBetween, edgeRef, directionBetween } from '@/lib/walls';
-import { MapStructures, structureBlocksOrg, zoneBlocksOrg, structureHexEntryCost, structureHexBlocked } from '@/lib/mapStructures';
+import { MapStructures, structureBlocksOrg, zoneBlocksOrg, structureHexEntryCost, structureHexBlocked, hexStructureAt, structureDoorState } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
+import { modifierAmount } from '@/lib/effectTemplates';
 import type { CostOfHexFn, BlockedEdgeFn } from '@/lib/moveCost';
 
 export const HEX_SIZE = 100;
@@ -50,8 +51,11 @@ export function makeCostOfHex(
       if (wc !== undefined) return wc;
     }
     const hc = structureHexEntryCost({ q, r }, opts.structures, opts.templates, !!opts.isMounted);
-    if (hc !== undefined) return hc;
-    return terrainCostOf(terrain, q, r);
+    const tc = terrainCostOf(terrain, q, r);
+    // "Higher of the two": a hex structure's entry MP and the zone mp_cost both
+    // apply, the higher one wins. A hard block (negative structure MP) is
+    // handled by the blocked-edge predicate, not here.
+    return hc !== undefined ? Math.max(hc, tc) : tc;
   };
 }
 
@@ -149,6 +153,59 @@ export function costShade(cost: number): string | null {
   const c = Math.min(9, Math.max(2, cost));
   const alpha = 0.1 + ((c - 2) / 7) * 0.7; // 2 -> 0.10, 9 -> 0.80
   return `rgba(0, 0, 0, ${alpha})`;
+}
+
+/** The MP cost number painted on a hex: `foot/mounted` when either differs from
+ *  the base 1 MP, a lone `X` when both are blocked, and `null` for a plain hex. */
+export interface HexMpLabel {
+  text: string;
+  /** Representative numeric cost for the shade (2..9). */
+  cost: number;
+  /** True when either locomotion is hard-blocked (negative structure MP). */
+  blocked: boolean;
+}
+
+/**
+ * Effective hex-entry MP for display, from a hex structure's `mp_foot_in` /
+ * `mp_mounted_in` and any `mp_cost` ground zones on the hex — "higher of the
+ * two" per locomotion, with a negative structure MP as a hard block. An
+ * open/broken door waives the structure's MP. Returns null for a base (1 MP)
+ * hex.
+ */
+export function hexMpLabelAt(
+  hex: { q: number; r: number },
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+  zones: GroundEffect[] | null | undefined,
+): HexMpLabel | null {
+  let zoneDelta = 0;
+  if (zones) for (const z of zones) if (z.q === hex.q && z.r === hex.r && z.kind === 'mp_cost') zoneDelta += modifierAmount(z.dice);
+  zoneDelta = Math.max(0, zoneDelta);
+
+  const inst = hexStructureAt(structures, hex);
+  const t = inst ? templates?.[inst.templateId] : undefined;
+  const structActive = !!inst && !!t && !structureDoorState(inst, t).openOrBroken;
+
+  const loc = (structVal: number | null | undefined): number | 'block' => {
+    if (structActive && structVal !== null && structVal !== undefined && structVal < 0) return 'block';
+    const s = structActive && structVal !== null && structVal !== undefined ? structVal : 1;
+    return Math.max(s, 1, zoneDelta);
+  };
+
+  const foot = loc(t?.mpFootIn);
+  const mounted = loc(t?.mpMountedIn);
+  if (foot === 1 && mounted === 1) return null;
+
+  const fmt = (v: number | 'block') => (v === 'block' ? 'X' : v > 1 ? String(v) : '-');
+  const f = fmt(foot);
+  const m = fmt(mounted);
+  const nFoot = foot === 'block' ? 0 : foot;
+  const nMounted = mounted === 'block' ? 0 : mounted;
+  return {
+    text: f === m ? f : `${f}/${m}`,
+    cost: Math.max(2, Math.min(9, Math.max(nFoot, nMounted))),
+    blocked: foot === 'block' || mounted === 'block',
+  };
 }
 
 export interface MapBackgroundConfig {

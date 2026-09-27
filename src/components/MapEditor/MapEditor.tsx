@@ -19,9 +19,8 @@ import { EffectTemplate, mapEffectRow, modifierSummary, modifierAmount } from '@
 import { StructureEditModal, StructureInstancePatch } from '@/components/StructureEditModal';
 import { MapCanvas } from './MapCanvas';
 
-type Tab = 'image' | 'movement' | 'structures' | 'effects';
+type Tab = 'image' | 'structures' | 'effects';
 
-const movementNote = 'Pick a number, then left-click / drag across hexes on the map to paint. Empty = default 1 MP. Right-click clears back to 1 MP. Painted hexes show a tan tint + cost number.';
 const structuresNote = 'Pick a structure, then click/drag a hex or near a hex edge to place it. Click a placed edge again to flip its battlement. Right-click removes. Shift + double-click a placed structure to edit it.';
 const effectsNote = 'Pick an effect, then click/drag hexes to place it (one per hex); clicking its own hex clears it. Authored effects are permanent and snapshot into the scenario on assign.';
 
@@ -35,7 +34,6 @@ function blankMap(): MapEntity {
     offsetY: 0,
     scale: MAP_DEFAULTS.scale,
     gridRadius: 12,
-    terrainCosts: {},
     structures: {},
     hexEffects: [],
     createdAt: new Date().toISOString(),
@@ -51,8 +49,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
   const [maps, setMaps] = useState<MapEntity[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>('movement');
-  const [paintValue, setPaintValue] = useState<number | null>(null);
+  const [tab, setTab] = useState<Tab>('image');
   const [images, setImages] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   // Natural dimensions of the selected image (for offset-slider steps of ~1% of
@@ -148,7 +145,6 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     const m = blankMap();
     setMaps(prev => [...prev, m]);
     setSelectedId(m.id);
-    setPaintValue(null);
     // persist immediately so New/Clone maps are on the server.
     await new Promise(r => setTimeout(r, 0));
     entityRef.current = m;
@@ -165,24 +161,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
       const rest = maps.filter(m => m.id !== prevId);
       return rest.length > 0 ? rest[0].id : null;
     });
-    setPaintValue(null);
   }, [entity, maps]);
-
-  const handlePaint = useCallback((q: number, r: number) => {
-    if (paintValue === null || !entity) return;
-    const terrainCosts = { ...entity.terrainCosts };
-    if (paintValue === 1) delete terrainCosts[`${q},${r}`]; // 1 = default/clear
-    else terrainCosts[`${q},${r}`] = paintValue; // 0 = free entry, 2..9 = cost
-    update({ terrainCosts });
-  }, [paintValue, entity, update]);
-
-  // Right-click (paint mode): clear back to the default 1 MP.
-  const handleClearHex = useCallback((q: number, r: number) => {
-    if (!entity) return;
-    const terrainCosts = { ...entity.terrainCosts };
-    delete terrainCosts[`${q},${r}`];
-    update({ terrainCosts });
-  }, [entity, update]);
 
   // ---- effects (authored per-hex effect templates) ----
   const [effectTemplates, setEffectTemplates] = useState<Record<string, EffectTemplate>>({});
@@ -347,7 +326,6 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
 
   const panelDefs: { id: Tab; label: string }[] = [
     { id: 'image', label: 'Image' },
-    { id: 'movement', label: 'Movement cost' },
     { id: 'structures', label: 'Structures' },
     { id: 'effects', label: 'Effects' },
   ];
@@ -394,7 +372,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
               {maps.map(m => (
                 <button
                   key={m.id}
-                  onClick={() => { setSelectedId(m.id); setPaintValue(null); }}
+                  onClick={() => { setSelectedId(m.id); }}
                   className={`w-full text-left text-xs px-2 py-1 rounded ${m.id === selectedId ? 'bg-yellow-700/40 border border-yellow-500' : 'bg-gray-800 border border-transparent hover:bg-gray-700'}`}
                 >
                   {m.name}
@@ -490,35 +468,6 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
               </div>
             )}
 
-            {tab === 'movement' && entity && (
-              <div
-                className="flex-1 min-h-0 overflow-y-auto space-y-3"
-                onMouseEnter={e => setTip({ lines: [], note: movementNote, x: e.clientX, y: e.clientY })}
-                onMouseMove={e => setTip(t => (t && t.lines.length === 0 ? { lines: [], note: movementNote, x: e.clientX, y: e.clientY } : t))}
-                onMouseLeave={() => setTip(null)}
-              >
-                <p className="text-[10px] uppercase tracking-wide text-gray-500">Movement cost to ENTER a hex</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
-                    <button
-                      key={n}
-                      disabled={readOnly}
-                      title={n === 0 ? 'Free' : n === 1 ? 'Clear (default)' : `Cost ${n} MP`}
-                      onClick={() => setPaintValue(paintValue === n ? null : n)}
-                      className={`w-9 h-9 rounded border text-sm font-bold ${paintValue === n ? 'bg-yellow-600 text-black border-yellow-300' : 'bg-gray-800 text-gray-100 border-gray-600 hover:bg-gray-700'}`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-                {paintValue !== null && (
-                  <p className="text-xs text-yellow-300">
-                    Pen: <b>{paintValue === 0 ? 'Free (0)' : paintValue === 1 ? 'Clear (1)' : `${paintValue} MP`}</b> — left-click or drag. Click the number again to put the pen down.
-                  </p>
-                )}
-              </div>
-            )}
-
             {tab === 'structures' && entity && (
               <div className="flex-1 min-h-0 flex flex-col gap-2">
                 <p className="text-[10px] uppercase tracking-wide text-gray-500">Map structures</p>
@@ -586,7 +535,6 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
             offsetY={entity.offsetY}
             scale={entity.scale}
             gridRadius={entity.gridRadius}
-            terrainCosts={entity.terrainCosts}
             structures={entity.structures}
             templates={templates}
             structureAnchors={tab === 'structures' ? armedAnchor : null}
@@ -594,10 +542,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
             hexEffects={entity.hexEffects}
             effectTemplates={effectTemplates}
             effectArmed={tab === 'effects' && !!effectTemplateId}
-            paintValue={tab === 'movement' ? paintValue : null}
             readOnly={readOnly}
-            onPaintHex={handlePaint}
-            onClearHex={handleClearHex}
             onPaintStructureEdge={paintStructureEdge}
             onPaintStructureHex={paintStructureHex}
             onClearStructure={clearStructure}

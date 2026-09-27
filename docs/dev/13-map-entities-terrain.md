@@ -4,19 +4,27 @@
 
 1. **Map Library** (`maps` table, migration 074): reusable, *authored* boards.
    Each row: `name`, `description`, `image_url` (from the `map_images`
-   storage bucket), `offset_x/y`, `scale`, `grid_radius`, `terrain_costs`
-   jsonb (`{"q,r": 0..9}`), `structures` jsonb (migration 094), and
-   `hex_effects` jsonb — authored per-hex effects (one `map_effect_templates` ref
-   per hex; see "Authored map effects").
+   storage bucket), `offset_x/y`, `scale`, `grid_radius`, `structures` jsonb
+   (migration 094), and `hex_effects` jsonb — authored per-hex effects (one
+   `map_effect_templates` ref per hex; see "Authored map effects"). The standalone
+   `terrain_costs` layer was **removed** (migration 101).
 2. **Scenario copy** (`scenarios.map_data`): a live scenario's composite board.
    It holds several layers merged together and persisted as one blob:
    - `backgroundConfig` (image url + offset + scale + grid radius),
-   - `terrainCosts` (per-hex entry MP the GM painted),
    - `groundEffects` (see `10`; includes the map's authored effects, permanent),
    - `structures` (see `18`),
    - `mapId` (provenance — which Map Library board it was snapshotted from).
 
 `persistMapData` always **merges all layers** so no writer drops another.
+
+> **Hex MP cost rule.** *The MP cost to enter a hex is the **higher** of every
+> source that applies, computed **per locomotion**: a hex structure's entry MP
+> (`mp_foot_in` / `mp_mounted_in`) and the summed `mp_cost` of any ground zones
+> there. A **negative** value is a hard block — that locomotion may not cross
+> (`X`). An open/broken door **waives** the structure's MP. Edge-structure faces
+> are directional and apply per-edge (they replace the hex cost when crossed, they
+> do not max with it). The board prints `foot/mounted` when either differs from
+> base (1): a number, `X` for blocked, `-` for no change.*
 
 ## Authored map effects
 

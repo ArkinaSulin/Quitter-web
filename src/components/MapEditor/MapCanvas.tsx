@@ -1,14 +1,14 @@
 // src/components/MapEditor/MapCanvas.tsx
 'use client';
 // ScenarioMap-style canvas for the Map Editor: draws the authored map (background
-// image + hex grid + painted MP-cost shading + placed structures) and turns mouse
-// painting into terrainCosts / structures edits. 1:1 buffer math (CSS pixels) so
+// image + hex grid + placed structures + authored effects) and turns mouse
+// painting into structures / effects edits. 1:1 buffer math (CSS pixels) so
 // the pointer paints exactly where it points. Zoom/pan via wheel + drag; hovering
 // shows the hex coordinate.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
-import { HEX_SIZE, DEFAULT_GRID_RADIUS, TerrainCosts, costShade } from '@/components/ScenarioMap/mapGeometry';
+import { HEX_SIZE, DEFAULT_GRID_RADIUS } from '@/components/ScenarioMap/mapGeometry';
 import { edgeRef, nearestEdge, hexCorner } from '@/lib/walls';
 import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls, structureDoorState } from '@/lib/mapStructures';
 import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
@@ -22,7 +22,6 @@ export interface MapCanvasProps {
   offsetY: number;
   scale: number;
   gridRadius: number;
-  terrainCosts: TerrainCosts;
   structures?: MapStructures;
   templates?: Record<string, StructureTemplate>;
   /** Authored per-hex effects (one template per hex). */
@@ -30,16 +29,11 @@ export interface MapCanvasProps {
   effectTemplates?: Record<string, EffectTemplate>;
   /** Armed effect palette: clicks paint/select an effect on the hex. */
   effectArmed?: boolean;
-  /** null = view/pan; { value } = paint hex entry costs (0..9) with left-drag. */
-  paintValue: number | null;
   /** Armed structure palette anchor: clicks place/select structures of that kind. */
   structureAnchors?: 'edge' | 'hex' | null;
   /** Currently selected structure key (edge "q,r,dir" or hex "q,r"). */
   selectedStructureKey?: string | null;
   readOnly?: boolean;
-  onPaintHex: (q: number, r: number) => void;
-  /** Optional: right-click clears a hex back to the default 1 MP (paint mode). */
-  onClearHex?: (q: number, r: number) => void;
   onPaintStructureEdge?: (q: number, r: number, dir: number) => void;
   onPaintStructureHex?: (q: number, r: number) => void;
   onClearStructure?: (key: string) => void;
@@ -61,29 +55,29 @@ function hexCorners(cx: number, cy: number, size: number): { x: number; y: numbe
 }
 
 export function MapCanvas({
-  imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, structures, templates,
+  imageUrl, offsetX, offsetY, scale, gridRadius, structures, templates,
   hexEffects, effectTemplates, effectArmed = false,
-  paintValue, structureAnchors = null, selectedStructureKey = null, readOnly = false,
-  onPaintHex, onClearHex, onPaintStructureEdge, onPaintStructureHex, onClearStructure,
+  structureAnchors = null, selectedStructureKey = null, readOnly = false,
+  onPaintStructureEdge, onPaintStructureHex, onClearStructure,
   onPaintEffect, onClearEffect, onEditStructureKey,
 }: MapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const view = useRef<View>({ zoom: 1, ox: 0, oy: 0 });
   const lastBg = useRef<HTMLImageElement | null>(null);
   const structImgs = useRef<Map<string, HTMLImageElement>>(new Map());
-  const drag = useRef<{ mode: 'none' | 'paint' | 'pan' | 'structure' | 'effect'; lastHex: string; sx: number; sy: number }>({ mode: 'none', lastHex: '', sx: 0, sy: 0 });
+  const drag = useRef<{ mode: 'none' | 'pan' | 'structure' | 'effect'; lastHex: string; sx: number; sy: number }>({ mode: 'none', lastHex: '', sx: 0, sy: 0 });
   const [hover, setHover] = useState<string | null>(null);
   const propsRef = useRef({
-    imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, structures, templates,
+    imageUrl, offsetX, offsetY, scale, gridRadius, structures, templates,
     hexEffects, effectTemplates, effectArmed,
-    paintValue, structureAnchors, selectedStructureKey, readOnly,
-    onPaintHex, onClearHex, onPaintStructureEdge, onPaintStructureHex, onClearStructure, onPaintEffect, onClearEffect, onEditStructureKey,
+    structureAnchors, selectedStructureKey, readOnly,
+    onPaintStructureEdge, onPaintStructureHex, onClearStructure, onPaintEffect, onClearEffect, onEditStructureKey,
   });
   propsRef.current = {
-    imageUrl, offsetX, offsetY, scale, gridRadius, terrainCosts, structures, templates,
+    imageUrl, offsetX, offsetY, scale, gridRadius, structures, templates,
     hexEffects, effectTemplates, effectArmed,
-    paintValue, structureAnchors, selectedStructureKey, readOnly,
-    onPaintHex, onClearHex, onPaintStructureEdge, onPaintStructureHex, onClearStructure, onPaintEffect, onClearEffect, onEditStructureKey,
+    structureAnchors, selectedStructureKey, readOnly,
+    onPaintStructureEdge, onPaintStructureHex, onClearStructure, onPaintEffect, onClearEffect, onEditStructureKey,
   };
 
   // Cache the background image so draw is synchronous.
@@ -153,17 +147,6 @@ export function MapCanvas({
       ctx.closePath();
     };
 
-    // Painted terrain shading (green free / grey cost ramp), then the grid over it.
-    for (const [key, cost] of Object.entries(p.terrainCosts)) {
-      const shade = costShade(cost);
-      if (!shade) continue;
-      const [q, r] = key.split(',').map(Number);
-      if (Number.isNaN(q) || Number.isNaN(r)) continue;
-      const pos = hexToPixel({ q, r, s: -q - r }, HEX_SIZE);
-      hexPath(pos.x, pos.y);
-      ctx.fillStyle = shade;
-      ctx.fill();
-    }
     // Authored per-hex effects: tint (unless transparent) + colour dot + artwork.
     if (p.hexEffects && p.hexEffects.length > 0) {
       for (const he of p.hexEffects) {
@@ -373,23 +356,6 @@ export function MapCanvas({
       }
     }
 
-    // Cost labels: constant ~13px ON SCREEN (the ctx is zoom-scaled, so use
-    // world sizes of screen/zoom) so they stay readable at any zoom.
-    ctx.font = `bold ${Math.max(13 / zoom, 0.5)}px ui-monospace, monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 3 / zoom;
-    for (const [key, cost] of Object.entries(p.terrainCosts)) {
-      if (cost === 1) continue;
-      const [q, r] = key.split(',').map(Number);
-      if (Number.isNaN(q) || Number.isNaN(r)) continue;
-      const pos = hexToPixel({ q, r, s: -q - r }, HEX_SIZE);
-      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-      ctx.strokeText(String(cost), pos.x, pos.y);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(String(cost), pos.x, pos.y);
-    }
     ctx.restore();
   }, []);
 
@@ -402,7 +368,7 @@ export function MapCanvas({
   // Redraw on prop edits without touching the view.
   useEffect(() => {
     requestAnimationFrame(draw);
-  }, [draw, terrainCosts, structures, templates, hexEffects, effectTemplates, selectedStructureKey, imageUrl, offsetX, offsetY, scale]);
+  }, [draw, structures, templates, hexEffects, effectTemplates, selectedStructureKey, imageUrl, offsetX, offsetY, scale]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -466,13 +432,6 @@ export function MapCanvas({
         drag.current.lastHex = `${hex.q},${hex.r}`;
         p.onPaintStructureHex(hex.q, hex.r);
       }
-    } else if (e.button === 0 && !e.shiftKey && p.paintValue !== null && !p.readOnly) {
-      drag.current.mode = 'paint';
-      const hex = hexAtClient(e.clientX, e.clientY);
-      if (hex) {
-        drag.current.lastHex = `${hex.q},${hex.r}`;
-        p.onPaintHex(hex.q, hex.r);
-      }
     } else if (e.button === 0 || e.button === 1) {
       drag.current.mode = 'pan';
       drag.current.sx = e.clientX;
@@ -530,13 +489,6 @@ export function MapCanvas({
       }
       return;
     }
-    if (d.mode === 'paint') {
-      const p = propsRef.current;
-      if (hex) {
-        const k = `${hex.q},${hex.r}`;
-        if (k !== d.lastHex) { d.lastHex = k; p.onPaintHex(hex.q, hex.r); }
-      }
-    }
   };
   const endPointer = () => { drag.current.mode = 'none'; };
   const onWheel = (e: React.WheelEvent) => {
@@ -586,9 +538,6 @@ export function MapCanvas({
               if (hex) { p.onClearStructure(`${hex.q},${hex.r}`); return; }
             }
           }
-          if (p.paintValue === null || !p.onClearHex) return;
-          const hex = hexAtClient(e.clientX, e.clientY);
-          if (hex) p.onClearHex(hex.q, hex.r);
         }}
       />
       {hover && (

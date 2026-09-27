@@ -44,11 +44,11 @@ import { supabase } from '@/lib/supabaseClient';
 import { getFormationMultiplier, computeEffectiveMovement } from '@/lib/unitStats';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
-import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, terrainCostOf, computeOccupiedHexes, computeThreatHexes } from './mapGeometry';
+import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/lib/walls';
 import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor } from '@/lib/mapStructures';
-import { StructureTemplate } from '@/types/structure';
+import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/lib/wallCombat';
 import { hexStructureAttackKind, resolveHexStructureAttack, isAttackableHexStructure, structureDoorMax } from '@/lib/structureCombat';
@@ -252,9 +252,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const corpseCounts = useMemo(() => buildFallen(commandRows), [commandRows]);
   const [showStats, setShowStats] = useState(false);
   const [zoneMenu, setZoneMenu] = useState<{ hex: Hex; x: number; y: number } | null>(null);
+  // Persistent per-hex effect editor (Shift + double-click) — Edit/Clone/Remove
+  // per zone + "Remove all", staying open after each remove.
+  const [hexEffectsModal, setHexEffectsModal] = useState<Hex | null>(null);
   const [backgroundConfig, setBackgroundConfig] = useState<MapBackgroundConfig | null>(null);
-  // GM-painted map overlays (persisted in scenarios.map_data).
-  const [terrainCosts, setTerrainCosts] = useState<TerrainCosts>({});
   // Edge walls authored/snapshotted (map_data.walls).
   const [walls, setWalls] = useState<Walls>({});
   // Placed structures (map_data.structures) — the source of truth; edge structures
@@ -274,11 +275,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Provenance of the snapshot currently loaded from a reusable map (maps.id).
   const [mapId, setMapId] = useState<string | null>(null);
 
-  // Movement-cost terrain = painted costs + live zone 'mp_cost' deltas
-  // (clamped 0..9; painting still drives the visuals). Movement hooks/reach use
-  // this merged map so zone obstacles actually cost MP.
-  const moveTerrainCosts = useMemo(() => {
-    const merged: TerrainCosts = { ...terrainCosts };
+  // Per-hex MP cost overrides from live 'mp_cost' ground zones (clamped 0..9).
+  // Movement hooks/reach use this map so zone obstacles actually cost MP. (Hex
+  // structure entry MP is applied by `makeCostOfHex` directly.)
+  const zoneMpCosts = useMemo(() => {
+    const merged: TerrainCosts = {};
     for (const z of groundZones) {
       if (z.kind !== 'mp_cost') continue;
       const k = `${z.q},${z.r}`;
@@ -288,7 +289,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       else merged[k] = n;
     }
     return merged;
-  }, [terrainCosts, groundZones]);
+  }, [groundZones]);
 
   // Hex-structure modifiers are expanded into permanent ground zones so the ONE
   // ground-effect engine applies them (auras/range/ac/block_attacks/enter_org_max/
@@ -298,11 +299,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     () => [...groundZones, ...structureZones(structures, structureTemplates)],
     [groundZones, structures, structureTemplates],
   );
-  // GM map-edit brushes: terrain = entry-cost value (null = off); zone = template
-  // armed for placement (null = off).
-  const [terrainBrushCost, setTerrainBrushCost] = useState<number | null>(null);
-  // Structure brush (GM live edit): armed toggle + selected template + the
-  // instance selected for editing.
+  // GM map-edit brushes: zone = template armed for placement (null = off).
   const [structurePaletteId, setStructurePaletteId] = useState<string | null>(null);
   const [selectedStructureKey, setSelectedStructureKey] = useState<string | null>(null);
   // Shift + double-click opens the instance editor for a placed structure.
@@ -528,12 +525,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     return computeVisibleHexes(displayUnits, group, displayAlliances, sightRadius).has(hexKey(target.hex));
   }, [fogOfWar, displayUnits, displayAlliances, sightRadius]);
 
-  // ---- GM map data (background + terrain + ground zones + source map) ----
+  // ---- GM map data (background + ground zones + structures + source map) ----
   // Whole-object writer: every save merges the CURRENT local state, so no writer
-  // ever drops another layer (the old bg-only save dropped painted terrain).
+  // ever drops another layer. (Structures/ground effects also ride the command
+  // log; this writer handles the non-undoable background/mapId fields.)
   const persistMapData = useCallback(async (next: {
     backgroundConfig?: MapBackgroundConfig | null;
-    terrainCosts?: TerrainCosts;
     structures?: MapStructures;
     groundEffects?: GroundEffect[];
     mapId?: string | null;
@@ -545,93 +542,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       bgOffsetY: bg?.offsetY ?? 0,
       bgScale: bg?.scale ?? 1,
       gridRadius: bg?.gridRadius ?? DEFAULT_GRID_RADIUS,
-      terrainCosts: next.terrainCosts !== undefined ? next.terrainCosts : terrainCosts,
       structures: next.structures !== undefined ? next.structures : structures,
       groundEffects: next.groundEffects !== undefined ? next.groundEffects : groundZones,
       mapId: next.mapId !== undefined ? next.mapId : mapId,
     });
-  }, [scenarioId, updateScenarioMapData, backgroundConfig, terrainCosts, structures, groundZones, mapId]);
-
-  const paintTerrain = useCallback(async (q: number, r: number) => {
-    if (terrainBrushCost === null) return;
-    const next = { ...terrainCosts };
-    if (terrainBrushCost === 1) delete next[`${q},${r}`]; // default
-    else next[`${q},${r}`] = terrainBrushCost; // 0 = free, 2..9 = cost
-    setTerrainCosts(next);
-    await persistMapData({ terrainCosts: next });
-  }, [terrainBrushCost, terrainCosts, persistMapData]);
-
-  // Right-click in paint mode resets a hex to the default 1 MP.
-  const clearTerrainHex = useCallback(async (q: number, r: number) => {
-    const next = { ...terrainCosts };
-    delete next[`${q},${r}`];
-    setTerrainCosts(next);
-    await persistMapData({ terrainCosts: next });
-  }, [terrainCosts, persistMapData]);
-
-  // ---- Structure brush (GM live edit) ----
-  const persistStructures = useCallback(async (next: MapStructures) => {
-    setStructures(next);
-    await persistMapData({ structures: next });
-  }, [persistMapData]);
-
-  const paintStructureEdge = useCallback(async (q: number, r: number, dir: number) => {
-    if (!structurePaletteId) return;
-    const ref = edgeRef(q, r, dir);
-    const existing = structures[ref.key];
-    if (!existing) {
-      await persistStructures({ ...structures, [ref.key]: { templateId: structurePaletteId } });
-      setSelectedStructureKey(ref.key);
-      return;
-    }
-    if (selectedStructureKey === ref.key) {
-      const outside = (existing.outside ?? 'a') === 'a' ? 'b' : 'a';
-      await persistStructures({ ...structures, [ref.key]: { ...existing, outside } });
-      return;
-    }
-    setSelectedStructureKey(ref.key);
-  }, [structures, structurePaletteId, selectedStructureKey, persistStructures]);
-
-  const paintStructureHex = useCallback(async (q: number, r: number) => {
-    if (!structurePaletteId) return;
-    const key = `${q},${r}`;
-    if (!structures[key]) {
-      await persistStructures({ ...structures, [key]: { templateId: structurePaletteId } });
-    }
-    setSelectedStructureKey(key);
-  }, [structures, structurePaletteId, persistStructures]);
-
-  const clearStructureKey = useCallback(async (key: string) => {
-    if (!structures[key]) return;
-    const next = { ...structures };
-    delete next[key];
-    setSelectedStructureKey(sel => (sel === key ? null : sel));
-    await persistStructures(next);
-  }, [structures, persistStructures]);
-
-  const patchScenarioStructure = useCallback(async (patch: { hp?: number; doorHp?: number; outside?: 'a' | 'b'; open?: boolean; modifiers?: any[] }) => {
-    if (!selectedStructureKey) return;
-    const inst = structures[selectedStructureKey];
-    if (!inst) return;
-    const next = { ...inst };
-    for (const [k, v] of Object.entries(patch)) {
-      if (v === undefined) delete (next as any)[k];
-      else (next as any)[k] = v;
-    }
-    await persistStructures({ ...structures, [selectedStructureKey]: next });
-  }, [structures, selectedStructureKey, persistStructures]);
-
-  // Edit any placed structure instance by key (Shift + double-click modal).
-  const patchStructureAt = useCallback(async (key: string, patch: StructureInstancePatch) => {
-    const inst = structures[key];
-    if (!inst) return;
-    const next: any = { ...inst };
-    for (const [k, v] of Object.entries(patch)) {
-      if (v === undefined) delete next[k];
-      else next[k] = v;
-    }
-    await persistStructures({ ...structures, [key]: next });
-  }, [structures, persistStructures]);
+  }, [scenarioId, updateScenarioMapData, backgroundConfig, structures, groundZones, mapId]);
 
   // Load the structure template library (palette + walls derivation).
   useEffect(() => {
@@ -679,21 +594,19 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       authoredZones = expandHexEffects(entity.hexEffects, lib);
     }
     setBackgroundConfig(bg);
-    setTerrainCosts(entity.terrainCosts);
     setStructures(entity.structures ?? {});
     setGroundZones(authoredZones);
     setMapId(entity.id);
-    await persistMapData({ backgroundConfig: bg, terrainCosts: entity.terrainCosts, structures: entity.structures ?? {}, groundEffects: authoredZones, mapId: entity.id });
+    await persistMapData({ backgroundConfig: bg, structures: entity.structures ?? {}, groundEffects: authoredZones, mapId: entity.id });
     addMessage(`Loaded map "${entity.name}" — snapshot copied to this scenario`);
   }, [persistMapData, addMessage]);
 
   const clearMap = useCallback(async () => {
     setBackgroundConfig(null);
-    setTerrainCosts({});
     setStructures({});
     setGroundZones([]);
     setMapId(null);
-    await persistMapData({ backgroundConfig: null, terrainCosts: {}, structures: {}, groundEffects: [], mapId: null });
+    await persistMapData({ backgroundConfig: null, structures: {}, groundEffects: [], mapId: null });
     addMessage('Map cleared — plain board');
   }, [persistMapData, addMessage]);
 
@@ -774,6 +687,93 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }], label);
   }, [structures, structureTemplates, execute, scenarioId]);
 
+  // ---- Structure brush (GM live edit) ----
+  // Structure placement/removal/edit ride the STRUCTURE command (server merges
+  // { key, from, to } into scenarios.map_data.structures), so they are undoable
+  // and appear in replay. A null `to` deletes the key; null `from` places it.
+  const structureCommand = useCallback(async (key: string, from: StructureInstance | null, to: StructureInstance | null, description: string) => {
+    return execute('STRUCTURE', [{
+      type: 'STRUCTURE',
+      description,
+      unitId: scenarioId,
+      changes: [{ field: 'structures', key, from, to }],
+    }], description);
+  }, [execute, scenarioId]);
+
+  const placeStructureCommand = useCallback(async (key: string, inst: StructureInstance) => {
+    const t = structureTemplates[inst.templateId];
+    await structureCommand(key, null, inst, `${t?.name ?? 'Structure'} placed at ${key}`);
+  }, [structureTemplates, structureCommand]);
+
+  const editStructureCommand = useCallback(async (key: string, next: StructureInstance, description = 'Structure updated') => {
+    const from = structures[key];
+    if (!from) return;
+    await structureCommand(key, from, next, description);
+  }, [structures, structureCommand]);
+
+  const removeStructureCommand = useCallback(async (key: string) => {
+    const from = structures[key];
+    if (!from) return;
+    const t = structureTemplates[from.templateId];
+    await structureCommand(key, from, null, `${t?.name ?? 'Structure'} removed at ${key}`);
+  }, [structures, structureTemplates, structureCommand]);
+
+  const paintStructureEdge = useCallback(async (q: number, r: number, dir: number) => {
+    if (!structurePaletteId) return;
+    const ref = edgeRef(q, r, dir);
+    const existing = structures[ref.key];
+    if (!existing) {
+      await placeStructureCommand(ref.key, { templateId: structurePaletteId });
+      setSelectedStructureKey(ref.key);
+      return;
+    }
+    if (selectedStructureKey === ref.key) {
+      const outside = (existing.outside ?? 'a') === 'a' ? 'b' : 'a';
+      await editStructureCommand(ref.key, { ...existing, outside }, 'Battlement side flipped');
+      return;
+    }
+    setSelectedStructureKey(ref.key);
+  }, [structures, structurePaletteId, selectedStructureKey, placeStructureCommand, editStructureCommand]);
+
+  const paintStructureHex = useCallback(async (q: number, r: number) => {
+    if (!structurePaletteId) return;
+    const key = `${q},${r}`;
+    if (!structures[key]) {
+      await placeStructureCommand(key, { templateId: structurePaletteId });
+    }
+    setSelectedStructureKey(key);
+  }, [structures, structurePaletteId, placeStructureCommand]);
+
+  const clearStructureKey = useCallback(async (key: string) => {
+    if (!structures[key]) return;
+    setSelectedStructureKey(sel => (sel === key ? null : sel));
+    await removeStructureCommand(key);
+  }, [structures, removeStructureCommand]);
+
+  const patchScenarioStructure = useCallback(async (patch: { hp?: number; doorHp?: number; outside?: 'a' | 'b'; open?: boolean; modifiers?: any[] }) => {
+    if (!selectedStructureKey) return;
+    const inst = structures[selectedStructureKey];
+    if (!inst) return;
+    const next: StructureInstance = { ...inst };
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) delete (next as any)[k];
+      else (next as any)[k] = v;
+    }
+    await editStructureCommand(selectedStructureKey, next);
+  }, [structures, selectedStructureKey, editStructureCommand]);
+
+  // Edit any placed structure instance by key (Shift + double-click modal).
+  const patchStructureAt = useCallback(async (key: string, patch: StructureInstancePatch) => {
+    const inst = structures[key];
+    if (!inst) return;
+    const next: StructureInstance = { ...inst };
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) delete (next as any)[k];
+      else (next as any)[k] = v;
+    }
+    await editStructureCommand(key, next);
+  }, [structures, editStructureCommand]);
+
   // "Other Action…" (hero roleplay): spend 1 action; the table resolves it by
   // hand. Zero actions -> the standard soft-enforcement confirm.
   const [otherActionHero, setOtherActionHero] = useState<Unit | null>(null);
@@ -822,7 +822,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     unitMaxMP,
     flashRangeViolation,
     canAttackTarget: canAttackInFog,
-    terrainCosts: moveTerrainCosts,
+    terrainCosts: zoneMpCosts,
     walls,
     structures,
     structureTemplates,
@@ -874,7 +874,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     canReactToUnit,
     alliances,
     backgroundConfig,
-    terrainCosts,
     walls,
     structures,
     templates: structureTemplates,
@@ -934,7 +933,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pruneReactionOffers,
     weaponSelectedTurnRef,
     setActiveHeroId,
-    terrainCosts: moveTerrainCosts,
+    terrainCosts: zoneMpCosts,
     walls,
     structures,
     structureTemplates,
@@ -1302,6 +1301,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (!z || !canManageZone(z)) return;
     const next = groundZones.filter(g => g.key !== key);
     await applyZoneChange(groundZones, next, `Dropped effect ${z.name}`);
+  };
+
+  /** Drop every zone on one hex the viewer may manage (GM = all), as one undoable ZONE command. */
+  const dropAllZonesAt = async (hex: Hex) => {
+    const kept = groundZones.filter(z => !(z.q === hex.q && z.r === hex.r && canManageZone(z)));
+    if (kept.length === groundZones.length) return;
+    await applyZoneChange(groundZones, kept, `Cleared all effects at (${hex.q}, ${hex.r})`);
   };
 
   // GM/assigned-player zone brush: click toggles the armed template's zone on a
@@ -1782,8 +1788,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         }
         return;
       }
-      // GM map-edit brushes paint instead of selecting.
-      if (effectiveIsGM && terrainBrushCost !== null) { void paintTerrain(hex.q, hex.r); return; }
       // Effect zones: GM or any assigned player may paint.
       if (zoneTemplate && canPaintZones) { void placeOrToggleZone(hex.q, hex.r); return; }
       setSelectedHex(hex);
@@ -1826,11 +1830,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         } else if (anchor === 'hex') {
           void clearStructureKey(`${hex.q},${hex.r}`);
         }
-        return;
-      }
-      // GM paint mode: right-click clears the MP cost back to the default 1.
-      if (effectiveIsGM && hex && (terrainBrushCost !== null || zoneTemplate)) {
-        void clearTerrainHex(hex.q, hex.r);
         return;
       }
       if (reactionMode) {
@@ -1911,10 +1910,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
-    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: moveTerrainCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, hoveredEdge: hoveredWallEdge });
+    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, hoveredEdge: hoveredWallEdge });
     if (retreatHoverHex) base[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(base);
-  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, moveTerrainCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex]);
+  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex]);
 
   // Center map on initial load
   useEffect(() => {
@@ -2008,6 +2007,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (controlsLocked || reactionMode) return;
     // Shift + double-click (map-inspect mode) edits a placed structure instance:
     // the DM always; a player only for a door they control (unit on the door hex).
+    // With no structure (or alongside one) it edits the hex's ground effects.
     if (e.shiftKey) {
       const hex = getHexFromScreen(e.clientX, e.clientY);
       if (hex) {
@@ -2026,6 +2026,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             return;
           }
         }
+        // No (editable) structure: edit the hex's ground effects instead.
+        if (groundZones.some(z => z.q === hex.q && z.r === hex.r)) {
+          setHexEffectsModal(hex);
+          return;
+        }
       }
     }
     const hex = getHexFromScreen(e.clientX, e.clientY);
@@ -2034,7 +2039,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (!unit) return;
     if (unit.hidden && !effectiveIsGM) return;
     if (effectiveIsGM || canEditUnit(unit)) setEditUnit(unit);
-  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAt, effectiveIsGM, canEditUnit, structures, structureTemplates, units, isGM, canControlUnit]);
+  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAt, effectiveIsGM, canEditUnit, structures, structureTemplates, units, isGM, canControlUnit, groundZones]);
 
   // Editor Save → one chained command entry, one sub-step per changed field.
   const handleEditorSave = useCallback(async (changes: { field: string; from: any; to: any }[], description: string) => {
@@ -2138,7 +2143,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         scale: data?.bgScale ?? 1,
         gridRadius: data?.gridRadius ?? DEFAULT_GRID_RADIUS,
       });
-      setTerrainCosts(data?.terrainCosts ?? {});
       setStructures(parseStructures(data?.structures));
       setGroundZones(Array.isArray(data?.groundEffects) ? data.groundEffects : []);
       setMapId(data?.mapId ?? null);
@@ -2213,7 +2217,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }
           if (row.map_data !== undefined) {
             const md = row.map_data || {};
-            if (md.terrainCosts !== undefined) setTerrainCosts(md.terrainCosts ?? {});
             if (md.structures !== undefined) setStructures(parseStructures(md.structures));
             if (md.groundEffects !== undefined) setGroundZones(Array.isArray(md.groundEffects) ? md.groundEffects : []);
             if (md.mapId !== undefined) setMapId(md.mapId ?? null);
@@ -2240,8 +2243,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // Esc ends the locked reaction mode (or closes the formation picker) — as
       // if nothing happened; the reaction marker stays.
       if (e.key === 'Escape') {
-        if (terrainBrushCost !== null || zoneTemplate || structurePaletteId) {
-          setTerrainBrushCost(null);
+        if (zoneTemplate || structurePaletteId) {
           setZoneTemplate(null);
           setStructurePaletteId(null);
           return;
@@ -2266,7 +2268,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [controlsLocked, undo, redo, contextMenuUnit, rotateUnit, canControlUnit, reactionMode, reactionFormationPicker, terrainBrushCost, zoneTemplate]);
+  }, [controlsLocked, undo, redo, contextMenuUnit, rotateUnit, canControlUnit, reactionMode, reactionFormationPicker, zoneTemplate]);
 
   // Soft-enforcement prompts: fully-bound confirm handlers (clear state +
   // controlsLocked guard + act). The modals render from the pending states.
@@ -2432,7 +2434,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         currentTurnAlliance={currentTurnAlliance}
         fogOfWarEnabled={fogOfWar}
         sightRadius={sightRadius}
-        terrainCosts={moveTerrainCosts}
+        terrainCosts={zoneMpCosts}
         walls={walls}
         gridRadius={backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS}
         unitMaxMP={unitMaxMP}
@@ -2505,11 +2507,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             currentMapId={mapId}
             onAssignMap={(entity) => void assignMap(entity)}
             onClearMap={() => void clearMap()}
-            terrainBrushCost={terrainBrushCost}
-            onSetTerrainBrushCost={(v) => { setTerrainBrushCost(v); if (v !== null) setStructurePaletteId(null); }}
             structureTemplates={structureTemplates}
             structurePaletteId={structurePaletteId}
-            onSetStructurePaletteId={(id) => { setStructurePaletteId(id); if (id !== null) setTerrainBrushCost(null); }}
+            onSetStructurePaletteId={(id) => { setStructurePaletteId(id); }}
             structures={structures}
             selectedStructureKey={selectedStructureKey}
             onPatchStructure={(patch) => void patchScenarioStructure(patch)}
@@ -3254,7 +3254,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         </div>
       )}
 
-      {/* "Effects at hex" menu: Move up/down + Drop Effect */}
+      {/* "Effects at hex" menu: quick reorder + drop (stays open); full edit is Shift + double-click */}
       {zoneMenu && (() => {
         const zones = groundZones
           .filter(z => z.q === zoneMenu.hex.q && z.r === zoneMenu.hex.r)
@@ -3267,7 +3267,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               style={{ left: zoneMenu.x, top: zoneMenu.y }}
               onMouseDown={e => e.stopPropagation()}
             >
-              <div className="px-3 py-1 text-[11px] text-gray-400">Effects at ({zoneMenu.hex.q}, {zoneMenu.hex.r})</div>
+              <div className="px-3 py-1 text-[11px] text-gray-400 flex items-center justify-between">
+                <span>Effects at ({zoneMenu.hex.q}, {zoneMenu.hex.r})</span>
+                <button
+                  className="text-amber-300 hover:text-amber-200"
+                  onClick={() => { setHexEffectsModal(zoneMenu.hex); setZoneMenu(null); }}
+                >
+                  Manage all…
+                </button>
+              </div>
               {zones.map((z, i) => (
                 <div key={z.key} className="px-2 py-1 border-t border-gray-800">
                   <div className="flex items-center gap-2">
@@ -3291,30 +3299,58 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                       Move down
                     </button>
                     {canManageZone(z) && (
-                      <>
-                        <button
-                          className="px-1.5 py-0.5 text-[11px] rounded bg-gray-800 hover:bg-gray-700"
-                          onClick={() => { setEffectEdit({ target: 'zone', key: z.key, form: formFromZone(z) }); setZoneMenu(null); }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="px-1.5 py-0.5 text-[11px] rounded bg-gray-800 hover:bg-gray-700"
-                          onClick={() => { setCloneZone(z); setZoneMenu(null); }}
-                        >
-                          Clone
-                        </button>
-                        <button
-                          className="px-1.5 py-0.5 text-[11px] rounded bg-red-900/60 hover:bg-red-800 ml-auto"
-                          onClick={() => { void dropZone(z.key); setZoneMenu(null); }}
-                        >
-                          Drop Effect
-                        </button>
-                      </>
+                      <button
+                        className="px-1.5 py-0.5 text-[11px] rounded bg-red-900/60 hover:bg-red-800 ml-auto"
+                        onClick={() => void dropZone(z.key)}
+                      >
+                        Drop Effect
+                      </button>
                     )}
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Persistent hex-effects editor (Shift + double-click): Edit / Clone / Remove + Remove all */}
+      {hexEffectsModal && (() => {
+        const zones = groundZones
+          .filter(z => z.q === hexEffectsModal.q && z.r === hexEffectsModal.r)
+          .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+        if (zones.length === 0) return null;
+        return (
+          <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/50" onMouseDown={() => setHexEffectsModal(null)}>
+            <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-5 w-[420px] text-white space-y-2" onMouseDown={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <p className="font-semibold text-yellow-300">Effects at ({hexEffectsModal.q}, {hexEffectsModal.r})</p>
+                <button className="text-gray-400 hover:text-white" onClick={() => setHexEffectsModal(null)}>✕</button>
+              </div>
+              {zones.map(z => (
+                <div key={z.key} className="flex items-center gap-2 bg-gray-800 rounded px-2 py-1.5">
+                  <span className="inline-block w-3 h-3 rounded-full flex-none" style={{ background: z.color }} />
+                  <span className="flex-1 min-w-0 truncate">{z.name}</span>
+                  <span className="text-[11px] text-gray-400 flex-none">{z.dice ?? ''}{z.healing ? ' heal' : ''}</span>
+                  <span className="flex items-center gap-1 flex-none">
+                    {canManageZone(z) && (
+                      <>
+                        <button className="px-1.5 py-0.5 text-[11px] rounded bg-gray-700 hover:bg-gray-600" onClick={() => setEffectEdit({ target: 'zone', key: z.key, form: formFromZone(z) })}>Edit</button>
+                        <button className="px-1.5 py-0.5 text-[11px] rounded bg-gray-700 hover:bg-gray-600" onClick={() => setCloneZone(z)}>Clone</button>
+                        <button className="px-1.5 py-0.5 text-[11px] rounded bg-red-900/60 hover:bg-red-800" onClick={() => void dropZone(z.key)}>Remove</button>
+                      </>
+                    )}
+                  </span>
+                </div>
+              ))}
+              {effectiveIsGM && (
+                <button
+                  className="w-full px-3 py-1.5 rounded text-sm bg-red-900/70 hover:bg-red-800 text-red-200"
+                  onClick={() => void dropAllZonesAt(hexEffectsModal)}
+                >
+                  Remove all effects on this hex
+                </button>
+              )}
             </div>
           </div>
         );
@@ -3379,16 +3415,25 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         {isGM && <div className="text-yellow-400 text-xs">{gmAsPlayer ? 'DM → Player mode' : 'DM'}</div>}
       </div>
 
-      {structureEditKey && structures[structureEditKey] && structureTemplates[structures[structureEditKey].templateId] && (
-        <StructureEditModal
-          template={structureTemplates[structures[structureEditKey].templateId]}
-          instance={structures[structureEditKey]}
-          restricted={!isGM}
-          onSave={(patch) => void patchStructureAt(structureEditKey, patch)}
-          onToggleDoor={(open) => void toggleStructureDoor(structureEditKey, open)}
-          onClose={() => setStructureEditKey(null)}
-        />
-      )}
+      {structureEditKey && structures[structureEditKey] && structureTemplates[structures[structureEditKey].templateId] && (() => {
+        const editInst = structures[structureEditKey];
+        const editHex = isHexStructureKey(structureEditKey)
+          ? (() => { const [q, r] = structureEditKey.split(',').map(Number); return { q, r, s: -q - r } as Hex; })()
+          : null;
+        const editHasZones = !!editHex && groundZones.some(z => z.q === editHex.q && z.r === editHex.r);
+        return (
+          <StructureEditModal
+            template={structureTemplates[editInst.templateId]}
+            instance={editInst}
+            restricted={!isGM}
+            onSave={(patch) => void patchStructureAt(structureEditKey, patch)}
+            onToggleDoor={(open) => void toggleStructureDoor(structureEditKey, open)}
+            onRemove={isGM ? () => { void removeStructureCommand(structureEditKey); setStructureEditKey(null); } : undefined}
+            onEditEffects={isGM && editHasZones && editHex ? () => { setHexEffectsModal(editHex); setStructureEditKey(null); } : undefined}
+            onClose={() => setStructureEditKey(null)}
+          />
+        );
+      })()}
       </div>
     </div>
   );

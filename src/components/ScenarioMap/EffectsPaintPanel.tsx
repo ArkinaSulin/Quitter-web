@@ -2,7 +2,7 @@
 'use client';
 // Left-panel Effects tab: GM places temporary ground-effect zones (runtime,
 // ticking) by arming a template then left-clicking hexes. Left-click again on a
-// same-name zone removes it; right-click clears MP cost (see TerrainPaintPanel).
+// same-name zone removes it.
 import { useEffect } from 'react';
 import { EffectTemplate, EFFECT_TEMPLATES } from '@/lib/unitEffects';
 

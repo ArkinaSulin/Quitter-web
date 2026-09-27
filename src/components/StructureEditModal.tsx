@@ -27,12 +27,16 @@ interface StructureEditModalProps {
   restricted?: boolean;
   /** Restricted mode action (command-logged by the caller). */
   onToggleDoor?: (open: boolean) => void;
+  /** DM-only: remove this placed structure (command-logged by the caller). */
+  onRemove?: () => void;
+  /** DM-only: manage the ground effects on this hex (only when they exist). */
+  onEditEffects?: () => void;
 }
 
 const input =
   'bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700 focus:border-amber-400 outline-none';
 
-export function StructureEditModal({ template, instance, onSave, onClose, restricted = false, onToggleDoor }: StructureEditModalProps) {
+export function StructureEditModal({ template, instance, onSave, onClose, restricted = false, onToggleDoor, onRemove, onEditEffects }: StructureEditModalProps) {
   const st = structureDoorState(instance, template);
   const [hp, setHp] = useState<number>(st.hpNow);
   const [doorHp, setDoorHp] = useState<number>(st.doorNow);
@@ -118,6 +122,16 @@ export function StructureEditModal({ template, instance, onSave, onClose, restri
             </div>
 
             <div className="flex gap-2 justify-end pt-1">
+              {onEditEffects && (
+                <button onClick={onEditEffects} className="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600">
+                  Effects on this hex…
+                </button>
+              )}
+              {onRemove && (
+                <button onClick={onRemove} className="px-3 py-1.5 rounded text-sm bg-red-900/70 hover:bg-red-800 text-red-200">
+                  Remove
+                </button>
+              )}
               <button onClick={onClose} className="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600">Cancel</button>
               <button onClick={save} className="px-4 py-1.5 rounded text-sm bg-emerald-700 hover:bg-emerald-600">Save</button>
             </div>

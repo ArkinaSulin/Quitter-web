@@ -11,6 +11,15 @@ map), exactly like weapons/effects split authored vs placed.
 > rendering, hex/edge **info tooltips**, structure **range bonuses**, and gate
 > **open/close**. Only known gap: the AI planner ignores structure rules.
 
+> **Hex MP cost rule.** *The MP cost to enter a hex is the **higher** of every
+> source that applies, computed **per locomotion**: a hex structure's entry MP
+> (`mp_foot_in` / `mp_mounted_in`) and the summed `mp_cost` of any ground zones
+> there. A **negative** value is a hard block — that locomotion may not cross
+> (`X`). An open/broken door **waives** the structure's MP. Edge-structure faces
+> are directional and apply per-edge (they replace the hex cost when crossed, they
+> do not max with it). The board prints `foot/mounted` when either differs from
+> base (1): a number, `X` for blocked, `-` for no change.*
+
 ## Template vs instance
 
 | | Storage | Shape |

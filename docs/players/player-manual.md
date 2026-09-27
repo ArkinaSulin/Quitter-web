@@ -479,17 +479,25 @@ Your effective move pool is `movement × formation multiplier`:
 So a unit with **MP 4 in Phalanx** has an effective pool of **2**; in
 **Scattered** it's **6**.
 
-### Terrain
+### Terrain (hex MP cost)
 
-Hexes can carry a painted **entry cost** (0–9):
+The MP cost to enter a hex comes from **structures** and **ground effects**, not
+a painted number:
 
-- **0** = free (still counts as one step)
+> *The MP cost to enter a hex is the **higher** of every source that applies,
+> computed **per locomotion**: a hex structure's entry MP (`mp_foot_in` /
+> `mp_mounted_in`) and the summed `mp_cost` of any ground zones there. A
+> **negative** value is a hard block — that locomotion may not cross (`X`). An
+> open/broken door **waives** the structure's MP. Edge-structure faces are
+> directional and apply per-edge (they replace the hex cost when crossed, they do
+> not max with it). The board prints `foot/mounted` when either differs from base
+> (1): a number, `X` for blocked, `-` for no change.*
+
 - **1** = clear (default)
 - **2+** = difficult: entering costs that many MP
 
 A 0-cost chain can't roam forever — each hex still costs one *step* and your
-pool caps both total MP and total hexes. The GM paints costs in the
-**Movement** tab (see §12) or assigns a reusable map.
+pool caps both total MP and total hexes.
 
 ### Walls (edges)
 
@@ -498,8 +506,9 @@ Crossing **into** a walled side **replaces** that hex's entry cost with the
 wall's MP (or is impossible if the wall blocks there), and the wall can grant
 **melee / ranged AC** to whoever stands on that side — so a wall protects the
 defender behind it and is cheaper or dearer to climb from either direction.
-Charges cannot cross any wall. The GM places walls in the Map Editor's **Walls**
-tab or the scenario **Movement** tab; they show as thick edge segments.
+Charges cannot cross any wall. The GM places walls via the Map Editor's
+**Structures** tab (or the scenario's **Map Feature** tab); they show as thick
+edge segments.
 
 ### Changing formation
 

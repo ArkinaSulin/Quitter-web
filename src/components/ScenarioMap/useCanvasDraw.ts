@@ -12,7 +12,7 @@ import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
 import { isDeadCorpse } from '@/lib/unitInteractions';
 import { corpseDots, FallenMap } from '@/lib/corpseTracker';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
-import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig, TerrainCosts, costShade } from './mapGeometry';
+import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig, costShade, hexMpLabelAt } from './mapGeometry';
 import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
 import { MapStructures, isHexStructureKey } from '@/lib/mapStructures';
@@ -40,7 +40,6 @@ interface CanvasDrawDeps {
   canReactToUnit: (unit: Unit) => boolean;
   alliances: Record<string, AllianceGroup>;
   backgroundConfig: MapBackgroundConfig | null;
-  terrainCosts?: TerrainCosts;
   walls?: Walls;
   /** Placed structures + templates (hex structure rendering; battlement aura). */
   structures?: MapStructures;
@@ -82,7 +81,6 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     canReactToUnit,
     alliances,
     backgroundConfig,
-    terrainCosts,
     walls,
     structures,
     templates,
@@ -228,28 +226,31 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-    if (terrainCosts) {
+    // MP-cost numbers (foot/mounted) from hex structures + mp_cost zones — the
+    // "higher of the two" board label. Drawn beneath the hex structures and tokens.
+    const mpHexKeys = new Set<string>();
+    if (structures) for (const key of Object.keys(structures)) if (isHexStructureKey(key)) mpHexKeys.add(key);
+    if (groundZones) for (const z of groundZones) if (z.kind === 'mp_cost') mpHexKeys.add(`${z.q},${z.r}`);
+    if (mpHexKeys.size > 0) {
       ctx.save();
-      // Constant on-screen size (screen space, NOT multiplied by zoom) so the
-      // cost numbers stay readable at any zoom level.
       ctx.font = 'bold 13px ui-monospace, monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.lineJoin = 'round';
       ctx.lineWidth = 3;
-      for (const [key, cost] of Object.entries(terrainCosts)) {
-        if (cost === 1) continue;
+      for (const key of Array.from(mpHexKeys)) {
         if (isFogHidden(key)) continue;
         const [q, r] = key.split(',').map(Number);
         if (Number.isNaN(q) || Number.isNaN(r)) continue;
-        const shade = costShade(cost);
-        if (!shade) continue;
-        fillHex({ q, r, s: -q - r }, shade);
+        const label = hexMpLabelAt({ q, r }, structures, templates, groundZones);
+        if (!label) continue;
+        const shade = label.blocked ? 'rgba(220, 38, 38, 0.4)' : costShade(label.cost);
+        if (shade) fillHex({ q, r, s: -q - r }, shade);
         const { cx, cy } = hexCenter({ q, r, s: -q - r });
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-        ctx.strokeText(String(cost), cx, cy);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(String(cost), cx, cy);
+        ctx.strokeText(label.text, cx, cy);
+        ctx.fillStyle = label.blocked ? '#fecaca' : '#ffffff';
+        ctx.fillText(label.text, cx, cy);
       }
       ctx.restore();
     }
@@ -752,7 +753,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, terrainCosts, walls, structures, templates, hoveredWallEdge, hideUnits, keepVisibleUnitId, groundZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hideUnits, keepVisibleUnitId, groundZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;
