@@ -147,13 +147,6 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
       ),
     },
     {
-      id: 'effects-paint',
-      label: 'Effects',
-      icon: <WindIcon />,
-      requiresGM: false,
-      content: <EffectsPanel />,
-    },
-    {
       id: 'players',
       label: 'Players',
       icon: (
@@ -213,6 +206,13 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
       ),
       requiresGM: false,
       content: <MessagesPanel verboseCombat={verboseCombat} />,
+    },
+    {
+      id: 'effects-paint',
+      label: 'Effects',
+      icon: <WindIcon />,
+      requiresGM: false,
+      content: <EffectsPanel />,
     },
     {
       id: 'undo-debug',
