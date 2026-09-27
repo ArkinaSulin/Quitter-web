@@ -1071,10 +1071,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const teamOptions = Object.keys(alliances).length > 0 ? Object.keys(alliances) : TEAMS;
 
   const handleRemoveUnitEffect = useCallback((key: string) => {
-    const target = effectMenuUnit;
+    const target = units.find(u => u.id === effectMenuUnit?.id) ?? effectMenuUnit;
     if (!target) return;
     void removeEffect(target, key);
-  }, [effectMenuUnit, removeEffect]);
+  }, [units, effectMenuUnit, removeEffect]);
 
   // ---- Effects tab: drag & drop an effect onto the board ----
   // One editable pre-apply form (no radius; zones land on the dropped hex only).
@@ -2687,22 +2687,25 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       })()}
 
       {/* Add / remove temporary effects (context menu → Effects…) */}
-      {effectMenuUnit && (
-        <AddEffectModal
-          unit={effectMenuUnit}
-          teamOptions={teamOptions}
-          canPlaceZone={effectiveIsGM}
-          onApplyForm={handleApplyUnitForm}
-          onRemove={handleRemoveUnitEffect}
-          onPlaceZoneForm={handlePlaceZoneForm}
-          onEditEffect={e => setEffectEdit({ target: 'unit', unit: effectMenuUnit, key: e.key, form: formFromUnitEffect(e) })}
-          zones={groundZones.filter(z => z.q === effectMenuUnit.hex.q && z.r === effectMenuUnit.hex.r)}
-          onEditZone={z => setEffectEdit({ target: 'zone', key: z.key, form: formFromZone(z) })}
-          onCloneZone={z => setCloneZone(z)}
-          onDropZone={z => void dropZone(z.key)}
-          onClose={() => setEffectMenuUnit(null)}
-        />
-      )}
+      {effectMenuUnit && (() => {
+        const liveUnit = units.find(u => u.id === effectMenuUnit.id) ?? effectMenuUnit;
+        return (
+          <AddEffectModal
+            unit={liveUnit}
+            teamOptions={teamOptions}
+            canPlaceZone={effectiveIsGM}
+            onApplyForm={handleApplyUnitForm}
+            onRemove={handleRemoveUnitEffect}
+            onPlaceZoneForm={handlePlaceZoneForm}
+            onEditEffect={e => setEffectEdit({ target: 'unit', unit: liveUnit, key: e.key, form: formFromUnitEffect(e) })}
+            zones={groundZones.filter(z => z.q === liveUnit.hex.q && z.r === liveUnit.hex.r)}
+            onEditZone={z => setEffectEdit({ target: 'zone', key: z.key, form: formFromZone(z) })}
+            onCloneZone={z => setCloneZone(z)}
+            onDropZone={z => void dropZone(z.key)}
+            onClose={() => setEffectMenuUnit(null)}
+          />
+        );
+      })()}
       </div>
 
       {/* Routed retreat modal — always shown on a rout (even with no options).

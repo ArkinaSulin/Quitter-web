@@ -127,7 +127,7 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
     },
     {
       id: 'map-feature',
-      label: 'Map Feature',
+      label: 'Structure',
       icon: <FootIcon />,
       requiresGM: true,
       content: (
