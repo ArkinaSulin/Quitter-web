@@ -77,7 +77,9 @@ export function crossMarksPath(a: Pt, b: Pt, depth: number, teeth = 8): string {
   const py = ux;
   const n = Math.max(1, Math.round(teeth));
   const step = len / n;
-  const half = Math.max(1, depth);
+  // Half-size is a fraction of the step so consecutive X marks stay separated
+  // (otherwise the tilted arms touch and read as a connected diamond lattice).
+  const half = Math.max(1, Math.min(depth, step * 0.35));
   let d = '';
   for (let i = 0; i < n; i++) {
     const cx = a.x + ux * (i + 0.5) * step;
