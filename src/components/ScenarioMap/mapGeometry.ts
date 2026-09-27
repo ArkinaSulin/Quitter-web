@@ -179,8 +179,8 @@ export function hexMpLabelAt(
   zones: GroundEffect[] | null | undefined,
 ): HexMpLabel | null {
   let zoneDelta = 0;
-  if (zones) for (const z of zones) if (z.q === hex.q && z.r === hex.r && z.kind === 'mp_cost') zoneDelta += modifierAmount(z.dice);
-  zoneDelta = Math.max(0, zoneDelta);
+  if (zones) for (const z of zones) if (z.q === hex.q && z.r === hex.r && z.kind === 'mp_cost') zoneDelta = Math.max(zoneDelta, modifierAmount(z.dice));
+  zoneDelta = Math.max(0, Math.min(9, zoneDelta));
 
   const inst = hexStructureAt(structures, hex);
   const t = inst ? templates?.[inst.templateId] : undefined;
@@ -206,6 +206,29 @@ export function hexMpLabelAt(
     cost: Math.max(2, Math.min(9, Math.max(nFoot, nMounted))),
     blocked: foot === 'block' || mounted === 'block',
   };
+}
+
+/**
+ * Per-hex MP-cost overrides from `mp_cost` ("Terrain cost") ground zones. A
+ * zone's amount REPLACES the base 1 MP for that hex (clamped 0..9; 1 = default,
+ * so it is dropped); when several terrain-cost zones land on one hex the HIGHEST
+ * wins. Movement feeds this map into `makeCostOfHex` (then "higher of the two"
+ * with a hex structure's entry MP).
+ */
+export function mpCostOverrides(zones: GroundEffect[] | null | undefined): TerrainCosts {
+  const best: Record<string, number> = {};
+  for (const z of zones ?? []) {
+    if (z.kind !== 'mp_cost') continue;
+    const k = `${z.q},${z.r}`;
+    const v = Math.max(0, Math.min(9, modifierAmount(z.dice)));
+    const cur = best[k];
+    if (cur === undefined || v > cur) best[k] = v;
+  }
+  const out: TerrainCosts = {};
+  for (const [k, v] of Object.entries(best)) {
+    if (v !== 1) out[k] = v;
+  }
+  return out;
 }
 
 export interface MapBackgroundConfig {

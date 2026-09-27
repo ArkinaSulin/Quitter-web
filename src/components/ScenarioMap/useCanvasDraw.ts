@@ -233,7 +233,10 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     if (groundZones) for (const z of groundZones) if (z.kind === 'mp_cost') mpHexKeys.add(`${z.q},${z.r}`);
     if (mpHexKeys.size > 0) {
       ctx.save();
-      const mpFont = 'bold 39px ui-monospace, monospace';
+      // Capped at 1/3 of the hex's rendered height so the number never dwarfs a
+      // zoomed-out hex (pointy-top height = 2 × circumradius).
+      const hexHeightPx = 2 * HEX_SIZE * currentZoom;
+      const mpFont = `bold ${Math.min(39, hexHeightPx / 3)}px ui-monospace, monospace`;
       for (const key of Array.from(mpHexKeys)) {
         if (isFogHidden(key)) continue;
         const [q, r] = key.split(',').map(Number);

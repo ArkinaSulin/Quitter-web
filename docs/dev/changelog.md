@@ -1,5 +1,16 @@
 # QuiTTER Changelog
 
+## Effect scope enforcement, terrain-cost = replacement, MP-marker cap + unit effect list (2026-09-27)
+**Files:** src/lib/{effectTemplates,mapGeometry}.ts (+ tests), src/components/ScenarioMap/{ScenarioMap,EffectFormModal,AddEffectModal,UnitEditorModal,useCanvasDraw}.tsx, src/components/EffectEditor/EffectModifierFields.tsx, src/components/MapEditor/MapCanvas.tsx, docs/dev/changelog.md
+
+- **Effect scope is now enforced on drop/apply**: a template's `scope` (`unit`/`zone`/`both`) rides the drop form, and `applyUnitDrop` rejects `zone`-scoped effects while `applyZoneDrop` rejects `unit`-scoped ones. `handleEffectDrop` routes hex-only effects to a zone (rejecting on a unit **unless Shift is held**), and unit-only effects reject on an empty hex. `AddEffectModal` hides the irrelevant Apply/Place button by scope.
+- **"Terrain cost" is a replacement, not an offset.** `mp_cost` ("Terrain cost (hex)") now sets a hex's MP directly (`mpCostOverrides`): `4` = 4 MP, highest wins across multiple zones, clamped 0..9, `1` = default (dropped). `zoneMpCosts` uses it and `hexMpLabelAt` takes the max of multiple terrain-cost zones — so movement and the on-board number finally agree.
+- **Modifier labels disambiguated**: `movement` → "Movement points" (unit stat), `mp_cost` → "Terrain cost (hex)"; `modifierSummary` prints `movement points +N` / `terrain cost +N`.
+- **`applyZoneDrop` no longer logs a false "Placed …"** when every modifier was skipped.
+- **MP-cost marker capped** at 1/3 of the hex's rendered height (both canvases).
+- **Edit-unit modal gained an Effects list** (own, non-zone effects) with Edit / Remove, wired to the shared `EffectFormModal` and `removeEffect` (command-logged/undoable).
+- `tsc` clean; 766 tests pass; build clean. No migration.
+
 ## MP-cost label styling, destroyed-structure badges, and shared feature rendering (2026-09-27)
 **Files:** src/components/shared/mapFeatureDraw.ts (+ test), src/components/ScenarioMap/{ScenarioMap,useCanvasDraw}.tsx, src/components/MapEditor/{MapCanvas,MapEditor}.tsx, src/components/StructureEditModal.tsx, src/lib/structureCombat.test.ts, docs/dev/changelog.md
 

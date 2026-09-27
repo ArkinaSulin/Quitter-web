@@ -22,6 +22,8 @@ export interface EffectFormValue {
   /** '' = every alliance activation (tempo-free); otherwise a team name. */
   casterTeam: string;
   modifiers: EffectModifier[];
+  /** Where the effect may be applied (unit / zone / both). */
+  scope?: 'unit' | 'zone' | 'both';
 }
 
 interface EffectFormModalProps {

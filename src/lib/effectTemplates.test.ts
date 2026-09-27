@@ -46,6 +46,11 @@ describe('modifierSummary', () => {
     expect(modifierSummary({ kind: 'enter_org_max', dice: '1' })).toBe('enter_org_max ≤1');
     expect(modifierSummary({ kind: 'dot', dice: '1d6', healing: true })).toBe('dot 1d6 heal');
   });
+
+  it('prints friendly names for movement points and terrain cost', () => {
+    expect(modifierSummary({ kind: 'movement', dice: '2' })).toBe('movement points +2');
+    expect(modifierSummary({ kind: 'mp_cost', dice: '4' })).toBe('terrain cost +4');
+  });
 });
 
 describe('parseModifiers — block_attacks', () => {

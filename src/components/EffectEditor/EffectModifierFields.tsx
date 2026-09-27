@@ -11,11 +11,11 @@ import { EffectDirection } from '@/lib/effectTemplates';
 export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
   { value: 'ac', label: 'AC ±' },
   { value: 'morale', label: 'Morale ±' },
-  { value: 'movement', label: 'Movement ±' },
+  { value: 'movement', label: 'Movement points ±' },
   { value: 'dot', label: 'DoT / heal per tick' },
   { value: 'hp_borrow', label: 'Borrow HP (sleep)' },
   { value: 'entry', label: 'Zone: damage on entry' },
-  { value: 'mp_cost', label: 'Zone: hex MP cost' },
+  { value: 'mp_cost', label: 'Terrain cost (hex)' },
   { value: 'enter_org_max', label: EFFECT_MODIFIER_LABELS.enter_org_max },
   { value: 'range', label: EFFECT_MODIFIER_LABELS.range },
   { value: 'advantage', label: EFFECT_MODIFIER_LABELS.advantage },

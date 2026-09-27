@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hexMpLabelAt, makeCostOfHex } from './mapGeometry';
+import { hexMpLabelAt, makeCostOfHex, mpCostOverrides } from './mapGeometry';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 
@@ -70,10 +70,31 @@ describe('hexMpLabelAt', () => {
     expect(label?.text).toBe('5');
   });
 
+  it('takes the highest of multiple terrain-cost zones (not their sum)', () => {
+    const label = hexMpLabelAt({ q: 0, r: 0 }, null, null, [zone(0, 0, '4'), zone(0, 0, '2'), zone(0, 0, '7')]);
+    expect(label?.text).toBe('7');
+  });
+
   it('waives the structure MP when its door is open/broken', () => {
     const t = template({ mpFootIn: 3, mpMountedIn: 3, doorHp: 30, maxHp: 30 });
     const label = hexMpLabelAt({ q: 0, r: 0 }, { '0,0': { templateId: 't1', open: true } }, { t1: t }, null);
     expect(label).toBeNull();
+  });
+});
+
+describe('mpCostOverrides (terrain cost replaces the base MP)', () => {
+  it('replaces, not offsets — "4" is 4 MP, not 5', () => {
+    expect(mpCostOverrides([zone(0, 0, '4')])).toEqual({ '0,0': 4 });
+  });
+
+  it('highest wins when several terrain-cost zones land on one hex', () => {
+    expect(mpCostOverrides([zone(0, 0, '2'), zone(0, 0, '5'), zone(0, 0, '3')])).toEqual({ '0,0': 5 });
+  });
+
+  it('clamps to 0..9, drops the default 1, and treats negatives as free (0)', () => {
+    expect(mpCostOverrides([zone(0, 0, '15')])).toEqual({ '0,0': 9 });
+    expect(mpCostOverrides([zone(0, 0, '1')])).toEqual({});
+    expect(mpCostOverrides([zone(0, 0, '-2')])).toEqual({ '0,0': 0 });
   });
 });
 

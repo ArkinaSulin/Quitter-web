@@ -80,6 +80,7 @@ export function AddEffectModal({
     layer: template?.layer ?? 'below',
     duration: Math.max(1, duration),
     casterTeam: tempo === 'every-turn' ? '' : tempo,
+    scope: template?.scope ?? 'both',
     modifiers: (template?.modifiers ?? []).map(m =>
       m.kind === 'hp_borrow' && borrowAmount > 0 ? { ...m, dice: String(borrowAmount) } : m,
     ),
@@ -144,13 +145,15 @@ export function AddEffectModal({
             </label>
 
             <div className="flex gap-2 pt-1">
-              <button
-                className="flex-1 bg-yellow-600 hover:bg-yellow-500 rounded px-3 py-1.5 text-sm font-semibold"
-                onClick={() => { onApplyForm(buildForm()); onClose(); }}
-              >
-                Apply to Unit
-              </button>
-              {canPlaceZone && (
+              {template?.scope !== 'zone' && (
+                <button
+                  className="flex-1 bg-yellow-600 hover:bg-yellow-500 rounded px-3 py-1.5 text-sm font-semibold"
+                  onClick={() => { onApplyForm(buildForm()); onClose(); }}
+                >
+                  Apply to Unit
+                </button>
+              )}
+              {canPlaceZone && template?.scope !== 'unit' && (
                 <button
                   className="flex-1 bg-purple-700 hover:bg-purple-600 rounded px-3 py-1.5 text-sm font-semibold"
                   onClick={() => { onPlaceZoneForm(buildForm()); onClose(); }}

@@ -6,7 +6,7 @@
 // live from the draft.
 
 import { useEffect, useRef, useState } from 'react';
-import { Unit, Formation, AllianceGroup, getOrganizationLevel } from '@/types/gameProtocol';
+import { Unit, Formation, AllianceGroup, getOrganizationLevel, UnitEffect } from '@/types/gameProtocol';
 import { TEAM_COLORS, TEAM_SHAPES, Team } from '@/components/TokenRenderer/tokenUtils';
 import { TeamShape } from '@/components/TokenRenderer/TeamChip';
 import { computeEffectiveMovement } from '@/lib/unitStats';
@@ -77,6 +77,10 @@ interface UnitEditorModalProps {
   alliances: Record<string, AllianceGroup>;
   onClose: () => void;
   onSave: (changes: { field: string; from: any; to: any }[], description: string) => Promise<void>;
+  /** Open the shared effect editor for one of this unit's own effects. */
+  onEditEffect?: (effect: UnitEffect) => void;
+  /** Remove one of this unit's own effects (command-logged by the caller). */
+  onRemoveEffect?: (key: string) => void;
 }
 
 function Cell({ label, children, widthClass = 'w-16' }: { label: string; children: React.ReactNode; widthClass?: string }) {
@@ -134,7 +138,7 @@ function SelectInput({ value, onChange, options }: { value: string; onChange: (v
   );
 }
 
-export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose, onSave }: UnitEditorModalProps) {
+export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose, onSave, onEditEffect, onRemoveEffect }: UnitEditorModalProps) {
   const [draft, setDraft] = useState<Record<string, any>>(() => {
     const init: Record<string, any> = {};
     for (const f of FIELDS) {
@@ -464,6 +468,42 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
                     >
                       ×
                     </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Effects (own, non-zone) — edit/remove via the shared effect handlers */}
+          <div className="space-y-1.5">
+            <label className="text-xs text-gray-300">Effects</label>
+            {(unit.effects ?? []).filter(e => !e.zoneHex).length === 0 ? (
+              <p className="text-[11px] text-gray-500">No effects.</p>
+            ) : (
+              (unit.effects ?? []).filter(e => !e.zoneHex).map(e => (
+                <div key={e.key} className="flex items-center justify-between gap-2 bg-gray-800 rounded px-2 py-1">
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block w-3 h-3 rounded-full" style={{ background: e.color }} />
+                    <span className="text-[11px] text-yellow-300">{e.name}</span>
+                    <span className="text-[10px] text-gray-400">{e.turnsLeft} turn{e.turnsLeft === 1 ? '' : 's'}</span>
+                  </span>
+                  <div className="flex gap-1">
+                    {onEditEffect && (
+                      <button
+                        onClick={() => onEditEffect(e)}
+                        className="text-[10px] bg-blue-700 hover:bg-blue-600 text-white rounded px-1.5 py-0.5"
+                      >
+                        Edit
+                      </button>
+                    )}
+                    {onRemoveEffect && (
+                      <button
+                        onClick={() => onRemoveEffect(e.key)}
+                        className="text-[10px] bg-red-700 hover:bg-red-600 text-white rounded px-1.5 py-0.5"
+                      >
+                        ×
+                      </button>
+                    )}
                   </div>
                 </div>
               ))

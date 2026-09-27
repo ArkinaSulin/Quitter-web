@@ -44,7 +44,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { getFormationMultiplier, computeEffectiveMovement } from '@/lib/unitStats';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
-import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes } from './mapGeometry';
+import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes, mpCostOverrides } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/lib/walls';
 import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor } from '@/lib/mapStructures';
@@ -130,6 +130,7 @@ function formFromDrop(t: DroppedEffect, casterTeam: string): EffectFormValue {
     layer: t.layer,
     duration: t.defaultDuration,
     casterTeam,
+    scope: t.scope,
     modifiers: t.modifiers.map(m => ({
       kind: m.kind as EffectModifier['kind'],
       ...(m.dice ? { dice: m.dice } : {}),
@@ -275,21 +276,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Provenance of the snapshot currently loaded from a reusable map (maps.id).
   const [mapId, setMapId] = useState<string | null>(null);
 
-  // Per-hex MP cost overrides from live 'mp_cost' ground zones (clamped 0..9).
+  // Per-hex MP cost overrides from 'mp_cost' ("Terrain cost") ground zones —
+  // a REPLACEMENT of the base 1 MP, highest wins (see `mpCostOverrides`).
   // Movement hooks/reach use this map so zone obstacles actually cost MP. (Hex
   // structure entry MP is applied by `makeCostOfHex` directly.)
-  const zoneMpCosts = useMemo(() => {
-    const merged: TerrainCosts = {};
-    for (const z of groundZones) {
-      if (z.kind !== 'mp_cost') continue;
-      const k = `${z.q},${z.r}`;
-      const base = merged[k] ?? 1;
-      const n = Math.max(0, Math.min(9, base + modifierAmount(z.dice)));
-      if (n === 1) delete merged[k];
-      else merged[k] = n;
-    }
-    return merged;
-  }, [groundZones]);
+  const zoneMpCosts = useMemo(() => mpCostOverrides(groundZones), [groundZones]);
 
   // Hex-structure modifiers are expanded into permanent ground zones so the ONE
   // ground-effect engine applies them (auras/range/ac/block_attacks/enter_org_max/
@@ -1100,9 +1091,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const ZONE_KINDS = ['ac', 'morale', 'dot', 'entry', 'mp_cost', 'enter_org_max', 'range', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'];
 
   const applyUnitDrop = async (d: { unit: Unit; form: EffectFormValue }) => {
+    if (d.form.scope === 'zone') {
+      addMessage(`${d.form.name} is hex-only — drop it on the map (hold Shift to place under a unit)`);
+      return;
+    }
     for (const m of d.form.modifiers) {
       if (!UNIT_KINDS.includes(m.kind)) {
-        addMessage(`${d.form.name}: '${m.kind}' applies via the effect engine — skipped`);
+        addMessage(`${d.form.name}: '${m.kind}' is not unit-applicable — skipped`);
         continue;
       }
       if (m.kind === 'hp_borrow' && modifierAmount(m.dice) <= 0) {
@@ -1130,10 +1125,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   };
 
   const applyZoneDrop = async (d: { hex: Hex; form: EffectFormValue }) => {
+    if (d.form.scope === 'unit') {
+      addMessage(`${d.form.name} is unit-only — drop it on a unit`);
+      return;
+    }
     const next = [...groundZones];
     for (const m of d.form.modifiers) {
       if (!ZONE_KINDS.includes(m.kind)) {
-        addMessage(`${d.form.name}: '${m.kind}' needs the zone engine stage — skipped`);
+        addMessage(`${d.form.name}: '${m.kind}' is not zone-applicable — skipped`);
         continue;
       }
       next.push({
@@ -1162,6 +1161,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         casterPlayerId: playerId,
       });
     }
+    // Nothing actually placed (every modifier was skipped) — don't log a "Placed".
+    if (next.length === groundZones.length) return;
     await applyZoneChange(groundZones, next, `Placed ${d.form.name} at (${d.hex.q}, ${d.hex.r}) (${d.form.duration} turns)`);
   };
 
@@ -1347,7 +1348,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (!hex) return;
     const unit = getUnitAt(hex);
     const form = formFromDrop(t as DroppedEffect, currentTurnAlliance ?? 'friendly');
-    if (unit && (unit.currentUnitHp ?? 0) > 0) {
+    const unitAlive = !!unit && (unit.currentUnitHp ?? 0) > 0;
+    // Scope-aware routing: hex-only effects place a zone (reject on a unit unless
+    // Shift is held to see the map beneath); unit-only effects need a unit.
+    if (t.scope === 'zone') {
+      if (unitAlive && !e.shiftKey) {
+        addMessage(`${t.name} is hex-only — hold Shift to place it on the map under ${unit.unitName}`);
+        return;
+      }
+      setEffectDrop({ unit: null, hex, form });
+      return;
+    }
+    if (t.scope === 'unit' && !unitAlive) {
+      addMessage(`${t.name} is unit-only — drop it on a unit`);
+      return;
+    }
+    if (unitAlive) {
       setEffectDrop({ unit, hex, form });
     } else {
       setEffectDrop({ unit: null, hex, form });
@@ -3181,6 +3197,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           alliances={alliances}
           onClose={() => setEditUnit(null)}
           onSave={handleEditorSave}
+          onEditEffect={e => setEffectEdit({ target: 'unit', unit: editUnit, key: e.key, form: formFromUnitEffect(e) })}
+          onRemoveEffect={key => void removeEffect(editUnit, key)}
         />
       )}
 

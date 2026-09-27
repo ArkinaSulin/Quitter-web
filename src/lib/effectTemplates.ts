@@ -101,11 +101,11 @@ export function effectAmount(mod: { dice?: string }, rng: () => number = Math.ra
 export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
   ac: 'AC',
   morale: 'Morale',
-  movement: 'Movement',
+  movement: 'Movement points',
   dot: 'DoT / heal per tick',
   hp_borrow: 'Borrow HP (sleep)',
   entry: 'Zone: damage on entry',
-  mp_cost: 'Zone: hex MP cost',
+  mp_cost: 'Terrain cost (hex)',
   enter_org_max: 'Zone/structure: max org level to enter',
   range: 'Zone/structure: weapon range +/-',
   advantage: 'Advantage on own attacks',
@@ -128,6 +128,8 @@ export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
  */
 export function modifierSummary(m: EffectModifier): string {
   let s = m.kind as string;
+  if (m.kind === 'movement') s = 'movement points';
+  else if (m.kind === 'mp_cost') s = 'terrain cost';
   if (honorsMode(m.kind) && m.mode) s += ` (${m.mode})`;
   if (m.kind === 'block_attacks' && m.direction) s += ` /${m.direction}`;
   if (!isFlagModifierKind(m.kind)) {

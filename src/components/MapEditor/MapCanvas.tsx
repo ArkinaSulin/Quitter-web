@@ -233,7 +233,8 @@ export function MapCanvas({
     if (p.structures) for (const key of Object.keys(p.structures)) if (isHexStructureKey(key)) mpHexKeys.add(key);
     for (const z of mpZones) if (z.kind === 'mp_cost') mpHexKeys.add(`${z.q},${z.r}`);
     if (mpHexKeys.size > 0) {
-      const mpFont = `bold ${Math.max(33 / zoom, 0.5)}px ui-monospace, monospace`;
+      // Capped at 1/3 of the hex's rendered height (pointy-top height = 2 × size).
+      const mpFont = `bold ${Math.max(Math.min(33, (2 * HEX_SIZE) / 3) / zoom, 0.5)}px ui-monospace, monospace`;
       for (const key of Array.from(mpHexKeys)) {
         const [q, r] = key.split(',').map(Number);
         if (Number.isNaN(q) || Number.isNaN(r)) continue;
