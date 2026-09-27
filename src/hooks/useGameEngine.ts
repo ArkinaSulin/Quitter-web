@@ -970,14 +970,20 @@ export function useGameEngine({
       addError(`${unit.unitName} already has a ${spec.name} effect active`);
       return { ok: false as const, reason: 'stack' };
     }
+    // Applying an effect/modifier spends the unit's whole remaining turn (free
+    // during free-move, like every other action).
+    if (!freeMove) {
+      changes.push({ field: 'actionsAvailable', from: unit.actionsAvailable, to: 0 });
+      changes.push({ field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: 0 });
+    }
     await execute('EFFECT', [{
       type: 'EFFECT',
       description: `${spec.name} applied to ${unit.unitName}`,
       unitId: unit.id,
       changes,
-    }], `${unit.unitName} gains ${spec.name}${spec.kind === 'dot' ? ` (${spec.dice ?? ''}/tick, ${duration} turns)` : ` ${spec.dice ?? ''}, ${duration} turns`}`);
+    }], `${unit.unitName} gains ${spec.name}${spec.kind === 'dot' ? ` (${spec.dice ?? ''}/tick, ${duration} turns)` : ` ${spec.dice ?? ''}, ${duration} turns`}${freeMove ? '' : ' — all actions & MP spent'}`);
     return { ok: true as const };
-  }, [execute, addError]);
+  }, [execute, addError, freeMove]);
 
   const removeEffect = useCallback(async (unit: Unit, key: string, reason = '') => {
     const changes = removeEffectChanges(unit, key);
