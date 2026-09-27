@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Line-of-sight structures + barricade/sin-wave edge decorations (2026-09-27)
+**Files:** src/lib/{lineOfSight,structureDraw,structureTemplates}.ts (+ tests), src/types/structure.ts, src/components/ScenarioMap/{useCombatActions,useReactionActions,useCanvasDraw,MapInfoTooltip,StructurePaintPanel}.tsx, src/components/MapEditor/{MapCanvas,MapEditor}.tsx, src/components/StructureEditor/{StructureEditor,StructurePreview}.tsx, supabase/migrations/102_edge_decorations.sql, docs/dev/changelog.md
+
+- **Structures now block ranged line of sight.** `lineOfSight.structuresBlockingLine` treats any non-decorative structure (`maxHp > 0`) on the shot line — an edge structure on a crossed edge, or a hex structure strictly between the endpoints — as an obstacle, turning the shot into an indirect shot (disadvantage). Decorative structures (`maxHp = 0`) are ignored. Wired into normal ranged attacks, archer reaction shots and `hasLineOfSight`.
+- **Edge decorations reworked** (migration 102): the "archer's spikes" flag is renamed to **barricade** (a line of ✕ marks) and a new **sin wave** (magical) edge is added. Both are centred ON the edge (they affect both in and out) and draw no thick base segment — just the marks; the battlement keeps its outside-face crenellation and base line. New `structureDraw.crossMarksPath` / `sineWavePath`; rendering, the Structure Editor (checkboxes + preview) and all tooltip/label summaries updated. `tsc` clean; 774 tests pass; build clean. **Apply 102 in Supabase.**
+
 ## Fixes: MP marker cap (map editor), effect scope validation, tint strength, structure terrain-cost display (2026-09-27)
 **Files:** src/lib/effectTemplates.ts (+ test), src/components/EffectEditor/EffectEditor.tsx, src/components/ScenarioMap/{useCanvasDraw,ScenarioMap}.tsx, src/components/MapEditor/MapCanvas.tsx, docs/dev/changelog.md
 

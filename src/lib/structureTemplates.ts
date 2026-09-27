@@ -47,7 +47,8 @@ export function mapStructureRow(row: any): StructureTemplate {
     color: row.color || '#cccccc',
     imageUrl: row.image_url || '',
     battlement: !!row.battlement,
-    spikes: !!row.spikes,
+    barricade: !!row.barricade,
+    sinWave: !!row.sin_wave,
     hexBorder: row.hex_border !== false,
     mpFootIn: numOrNull(row.mp_foot_in),
     mpFootOut: numOrNull(row.mp_foot_out),
@@ -64,7 +65,7 @@ export function mapStructureRow(row: any): StructureTemplate {
 
 /** Map a template to a snake_case map_structure_templates row (no id). */
 export function mapStructureToRow(t: Pick<StructureTemplate,
-  'name' | 'description' | 'anchor' | 'color' | 'imageUrl' | 'battlement' | 'spikes' | 'hexBorder' |
+  'name' | 'description' | 'anchor' | 'color' | 'imageUrl' | 'battlement' | 'barricade' | 'sinWave' | 'hexBorder' |
   'mpFootIn' | 'mpFootOut' | 'mpMountedIn' | 'mpMountedOut' |
   'doorHp' | 'maxHp' | 'dt' | 'modifiers'>) {
   // A movement value may be any integer (negative = hard block); null = terrain.
@@ -85,7 +86,8 @@ export function mapStructureToRow(t: Pick<StructureTemplate,
     color: t.color || '#cccccc',
     image_url: t.imageUrl || '',
     battlement: !!t.battlement,
-    spikes: !!t.spikes,
+    barricade: !!t.barricade,
+    sin_wave: !!t.sinWave,
     hex_border: t.hexBorder !== false,
     mp_foot_in: move(t.mpFootIn),
     mp_foot_out: move(t.mpFootOut),
@@ -107,7 +109,8 @@ export function blankStructureTemplate(): Omit<StructureTemplate, 'id' | 'create
     color: '#c49a58',
     imageUrl: '',
     battlement: false,
-    spikes: false,
+    barricade: false,
+    sinWave: false,
     hexBorder: true,
     mpFootIn: null,
     mpFootOut: null,

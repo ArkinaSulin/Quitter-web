@@ -18,7 +18,7 @@ import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
 import { MapStructures, isHexStructureKey } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { strokeFillText, fillHexPath, structureBadges, MP_COST_GREY } from '@/components/shared/mapFeatureDraw';
-import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
+import { battlementPath, battlementDepth, crossMarksPath, sineWavePath } from '@/lib/structureDraw';
 import { AiOverlayData } from './aiTypes';
 
 interface CanvasDrawDeps {
@@ -310,34 +310,40 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const w = walls[key];
         const destructible = (w.maxHp ?? 0) > 0;
         const damaged = destructible && wallHp(w) < (w.maxHp ?? 0);
-        // All edge structures render as one thick black outline.
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
-        ctx.lineWidth = 6 * currentZoom;
-        const a = cornerScreen(q, r, d);
-        const b = cornerScreen(q, r, d + 1);
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
-        // Decoration on the outside side: battlements (square crenellations) or
-        // archer's-stake triangles, same colour as the wall and kept small.
         const inst = structures?.[key];
         const t = inst ? templates?.[inst.templateId] : undefined;
-        if ((t?.battlement || t?.spikes) && inst) {
-          const ref = edgeRef(q, r, d);
-          const outsideIsA = (inst.outside ?? 'a') === 'a';
-          const oc = hexCenter({ q: outsideIsA ? ref.aq : ref.bq, r: outsideIsA ? ref.ar : ref.br, s: 0 });
-          let nx = oc.cx - (a.x + b.x) / 2;
-          let ny = oc.cy - (a.y + b.y) / 2;
-          const nl = Math.hypot(nx, ny) || 1;
-          nx /= nl; ny /= nl;
-          const seg = Math.hypot(b.x - a.x, b.y - a.y);
+        const decoration = t?.sinWave ? 'sinWave' : t?.barricade ? 'barricade' : t?.battlement ? 'battlement' : 'none';
+        const a = cornerScreen(q, r, d);
+        const b = cornerScreen(q, r, d + 1);
+        const seg = Math.hypot(b.x - a.x, b.y - a.y);
+        // Battlement (and plain edges) draw the thick base line; a barricade / sin
+        // wave draws only its marks, centred on the edge.
+        if (decoration !== 'barricade' && decoration !== 'sinWave') {
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
+          ctx.lineWidth = 6 * currentZoom;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+        if (decoration !== 'none' && inst) {
           ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
           ctx.lineWidth = 2 * currentZoom;
-          ctx.beginPath();
-          const d2 = t.spikes
-            ? triangleWavePath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8), 8)
-            : battlementPath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8), 8);
+          let d2 = '';
+          if (decoration === 'battlement') {
+            const ref = edgeRef(q, r, d);
+            const outsideIsA = (inst.outside ?? 'a') === 'a';
+            const oc = hexCenter({ q: outsideIsA ? ref.aq : ref.bq, r: outsideIsA ? ref.ar : ref.br, s: 0 });
+            let nx = oc.cx - (a.x + b.x) / 2;
+            let ny = oc.cy - (a.y + b.y) / 2;
+            const nl = Math.hypot(nx, ny) || 1;
+            nx /= nl; ny /= nl;
+            d2 = battlementPath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8), 8);
+          } else if (decoration === 'barricade') {
+            d2 = crossMarksPath(a, b, battlementDepth(seg, 8), 8);
+          } else {
+            d2 = sineWavePath(a, b, battlementDepth(seg, 8), 2);
+          }
           ctx.stroke(new Path2D(d2));
         }
         // Damaged barriers show their remaining HP at the segment midpoint.

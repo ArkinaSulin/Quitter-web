@@ -204,7 +204,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
               <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ background: t.color }} />
               {t.name}
               <span className="block text-[10px] text-gray-400">
-                {t.anchor}{t.battlement ? ' · battlement' : ''}{t.spikes ? ' · stakes' : ''} · {t.maxHp}hp
+                {t.anchor}{t.battlement ? ' · battlement' : ''}{t.barricade ? ' · barricade' : ''}{t.sinWave ? ' · sin wave' : ''} · {t.maxHp}hp
               </span>
             </button>
           ))}
@@ -261,8 +261,12 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                     Draw a battlement (crenellation) on the outside face
                   </label>
                   <label className="flex items-center gap-2 text-[11px] text-gray-300">
-                    <input type="checkbox" disabled={readOnly} checked={draft.spikes} onChange={e => patch({ spikes: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
-                    Draw small stakes (triangles) facing outward (e.g. archer's stakes)
+                    <input type="checkbox" disabled={readOnly} checked={draft.barricade} onChange={e => patch({ barricade: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
+                    Barricade — a line of ✕ on the edge (affects both in and out)
+                  </label>
+                  <label className="flex items-center gap-2 text-[11px] text-gray-300">
+                    <input type="checkbox" disabled={readOnly} checked={draft.sinWave} onChange={e => patch({ sinWave: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
+                    Sin wave — a magical wave on the edge (affects both in and out)
                   </label>
                   <div className="rounded border border-gray-700 p-2 space-y-2">
                     <p className="text-[10px] uppercase tracking-wide text-gray-500">Movement (MP to cross; blank = terrain; negative = block)</p>
@@ -383,7 +387,8 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                 anchor={draft.anchor}
                 imageUrl={draft.imageUrl}
                 battlement={draft.battlement}
-                spikes={draft.spikes}
+                barricade={draft.barricade}
+                sinWave={draft.sinWave}
                 hexBorder={draft.hexBorder}
                 mpFootIn={draft.mpFootIn}
                 mpFootOut={draft.mpFootOut}

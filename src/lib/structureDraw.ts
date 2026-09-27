@@ -61,3 +61,54 @@ export function triangleWavePath(a: Pt, b: Pt, outward: Pt, depth: number, teeth
   }
   return d;
 }
+
+/**
+ * SVG/canvas path `d` for a line of X marks centred ON the edge (a barricade).
+ * Each X is two crossing diagonals, symmetric about the edge so the decoration
+ * affects both in and out. `depth` is the X's half-size.
+ */
+export function crossMarksPath(a: Pt, b: Pt, depth: number, teeth = 8): string {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const px = -uy; // perpendicular
+  const py = ux;
+  const n = Math.max(1, Math.round(teeth));
+  const step = len / n;
+  const half = Math.max(1, depth);
+  let d = '';
+  for (let i = 0; i < n; i++) {
+    const cx = a.x + ux * (i + 0.5) * step;
+    const cy = a.y + uy * (i + 0.5) * step;
+    d += ` M ${cx - px * half - ux * half} ${cy - py * half - uy * half} L ${cx + px * half + ux * half} ${cy + py * half + uy * half}`;
+    d += ` M ${cx + px * half - ux * half} ${cy + py * half - uy * half} L ${cx - px * half + ux * half} ${cy - py * half + uy * half}`;
+  }
+  return d;
+}
+
+/**
+ * SVG/canvas path `d` for a sine wave oscillating symmetrically about the edge
+ * (a magical barrier). `depth` is the amplitude; `cycles` is the number of full
+ * waves along the segment.
+ */
+export function sineWavePath(a: Pt, b: Pt, depth: number, cycles = 2): string {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const px = -uy;
+  const py = ux;
+  const n = Math.max(2, Math.round(cycles));
+  const samples = n * 12;
+  let d = `M ${a.x} ${a.y}`;
+  for (let i = 1; i <= samples; i++) {
+    const t = i / samples;
+    const along = t * len;
+    const off = Math.sin(t * Math.PI * 2 * n) * depth;
+    d += ` L ${a.x + ux * along + px * off} ${a.y + uy * along + py * off}`;
+  }
+  return d;
+}

@@ -33,7 +33,7 @@ function StructureTooltip({ t, x, y }: { t: StructureTemplate; x: number; y: num
       style={{ left: Math.min(x + 12, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 280), top: Math.min(y + 12, (typeof window !== 'undefined' ? window.innerHeight : 800) - 220) }}
     >
       <div className="font-semibold text-amber-300 mb-1">{t.name}</div>
-      <div className="text-gray-300 capitalize">{t.anchor}{t.spikes ? ' · stakes' : t.battlement ? ' · battlement' : ''}</div>
+      <div className="text-gray-300 capitalize">{t.anchor}{t.battlement ? ' · battlement' : ''}{t.barricade ? ' · barricade' : ''}{t.sinWave ? ' · sin wave' : ''}</div>
       {t.anchor === 'edge' ? (
         <>
           <div className="text-gray-400 mt-1">In: {mpPairText(t.mpFootIn, t.mpMountedIn)} MP</div>
@@ -79,7 +79,7 @@ export function StructurePaintPanel({
           >
             <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ background: t.color }} />
             {t.name}
-            <span className="block text-[10px] text-gray-400">{t.anchor}{t.battlement ? ' · battlement' : ''}{t.spikes ? ' · stakes' : ''} · {t.maxHp}hp</span>
+            <span className="block text-[10px] text-gray-400">{t.anchor}{t.battlement ? ' · battlement' : ''}{t.barricade ? ' · barricade' : ''}{t.sinWave ? ' · sin wave' : ''} · {t.maxHp}hp</span>
           </button>
         ))}
       </div>

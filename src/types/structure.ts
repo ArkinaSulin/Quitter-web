@@ -1,8 +1,9 @@
 // src/types/structure.ts
 // Map structure templates (authored) and instances (placed on a map).
 //
-// A structure is either EDGE-anchored (walls, spikes) or HEX-anchored (gates,
-// towers). Movement is direction-relative: `mpFootIn/Out` / `mpMountedIn/Out`
+// A structure is either EDGE-anchored (walls, barricades, magic barriers) or
+// HEX-anchored (gates, towers). Movement is direction-relative: `mpFootIn/Out` /
+// `mpMountedIn/Out`
 // are the MP to cross (OUTSIDE->INSIDE for `_in`, INSIDE->OUTSIDE for `_out`;
 // a hex uses only `_in`). A negative value is a hard block for that locomotion;
 // NULL falls back to the hex terrain cost. Inside/outside is decided when the
@@ -34,8 +35,10 @@ export interface StructureTemplate {
   imageUrl: string;
   /** Draw crenellations on the outside face of an edge structure. */
   battlement: boolean;
-  /** Draw small outward-facing triangles along the edge (e.g. archer's stakes). */
-  spikes: boolean;
+  /** Draw a line of X marks centred on the edge (barricade — affects both in/out). */
+  barricade: boolean;
+  /** Draw a magical sine wave centred on the edge (affects both in/out). */
+  sinWave: boolean;
   /** Hex structures: draw the thick black hex outline (off for decorative hexes). */
   hexBorder: boolean;
   // Direction-relative movement. NULL = fall back to terrain; negative = hard block.

@@ -164,8 +164,8 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const archerRowCap = getRowCapacity(sizeCategories, archer.sizeCategory);
     const moverRowCap = getRowCapacity(sizeCategories, mover.sizeCategory);
     const moverVisualDpr = getVisualDotsPerRow(formationsMap, moverRowCap, mover.currentFormation);
-    // Blocked shot line (any other unit between centres) = indirect shot at disadvantage.
-    const indirectShot = !hasLineOfSight(archer.hex, mover.hex, units, new Set([archer.id, mover.id]));
+    // Blocked shot line (any other unit or non-decorative structure between centres) = indirect shot at disadvantage.
+    const indirectShot = !hasLineOfSight(archer.hex, mover.hex, units, new Set([archer.id, mover.id]), structures, structureTemplates);
     const outcome = resolveCombatSequence(
       archer, mover,
       { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, numberOfAttacks: weapon.numberOfAttacks, range: weapon.range + rangeBonus, maxRange: weapon.maxRange + rangeBonus },

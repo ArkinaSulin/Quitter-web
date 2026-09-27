@@ -284,7 +284,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     const rest = t.modifiers.filter(m => m.kind !== 'ac').map(modifierSummary);
     const door = t.doorHp ?? t.maxHp;
     const lines = [
-      `${t.anchor}${t.spikes ? ' · stakes' : t.battlement ? ' · battlement' : ''}`,
+      `${t.anchor}${t.battlement ? ' · battlement' : ''}${t.barricade ? ' · barricade' : ''}${t.sinWave ? ' · sin wave' : ''}`,
       t.anchor === 'edge' ? `In ${mpPairText(t.mpFootIn, t.mpMountedIn)} MP` : `Enter ${mpPairText(t.mpFootIn, t.mpMountedIn)} MP`,
       `HP ${t.maxHp} · DT ${t.dt}${structureHasDoor(t) ? ` · door ${door}` : ''}`,
     ];
@@ -489,7 +489,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                       >
                         <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle bg-black/80 border border-gray-500" />
                         {t.name}
-                        <span className="block text-[10px] text-gray-400">{t.anchor}{t.battlement ? ' · battlement' : ''}{t.spikes ? ' · stakes' : ''}{structureHasDoor(t) ? ` · door ${t.doorHp}` : ''} · {t.maxHp}hp</span>
+                        <span className="block text-[10px] text-gray-400">{t.anchor}{t.battlement ? ' · battlement' : ''}{t.barricade ? ' · barricade' : ''}{t.sinWave ? ' · sin wave' : ''}{structureHasDoor(t) ? ` · door ${t.doorHp}` : ''} · {t.maxHp}hp</span>
                       </button>
                     ))}
                 </div>

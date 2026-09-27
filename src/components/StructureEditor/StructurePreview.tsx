@@ -7,7 +7,7 @@
 // outside (the real side is chosen per placement).
 import React, { useState } from 'react';
 import { StructureAnchor } from '@/types/structure';
-import { battlementPath, battlementDepth, triangleWavePath } from '@/lib/structureDraw';
+import { battlementPath, battlementDepth, crossMarksPath, sineWavePath } from '@/lib/structureDraw';
 
 const HEX_DIRS = [
   { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
@@ -22,7 +22,8 @@ interface StructurePreviewProps {
   anchor: StructureAnchor;
   imageUrl: string;
   battlement: boolean;
-  spikes: boolean;
+  barricade: boolean;
+  sinWave: boolean;
   hexBorder: boolean;
   mpFootIn: number | null;
   mpFootOut: number | null;
@@ -38,7 +39,7 @@ interface StructurePreviewProps {
 const mpLabel = (v: number | null): string => (v === null ? '—' : v < 0 ? 'block' : `${v}`);
 
 export function StructurePreview({
-  anchor, imageUrl, battlement, spikes, hexBorder,
+  anchor, imageUrl, battlement, barricade, sinWave, hexBorder,
   mpFootIn, mpFootOut, mpMountedIn, mpMountedOut, coverMelee, coverRanged, doorHp, maxHp, dt,
 }: StructurePreviewProps) {
   const [flipped, setFlipped] = useState(false);
@@ -106,9 +107,14 @@ export function StructurePreview({
   const outsideUp = !flipped;
   const outDir = { x: 0, y: outsideUp ? -1 : 1 };
   const tooth = battlementDepth(x1 - x0, 8);
-  const decoration = spikes
-    ? triangleWavePath({ x: x0, y }, { x: x1, y }, outDir, tooth, 8)
-    : battlementPath({ x: x0, y }, { x: x1, y }, outDir, tooth, 8);
+  const decoration = sinWave ? 'sinWave' : barricade ? 'barricade' : battlement ? 'battlement' : 'none';
+  const decoPath = decoration === 'battlement'
+    ? battlementPath({ x: x0, y }, { x: x1, y }, outDir, tooth, 8)
+    : decoration === 'barricade'
+      ? crossMarksPath({ x: x0, y }, { x: x1, y }, tooth, 8)
+      : decoration === 'sinWave'
+        ? sineWavePath({ x: x0, y }, { x: x1, y }, tooth, 2)
+        : '';
   // When flipped, the labels swap which physical side is "outside".
   const outFoot = flipped ? mpFootIn : mpFootOut;
   const outMounted = flipped ? mpMountedIn : mpMountedOut;
@@ -118,21 +124,26 @@ export function StructurePreview({
     <div className="space-y-2">
       <div className="relative rounded border border-gray-700 bg-gray-200" style={{ width: W, height: H }}>
         <svg width={W} height={H} className="absolute inset-0 block">
-          <line x1={x0} y1={y} x2={x1} y2={y} stroke="rgba(0,0,0,0.95)" strokeWidth={7} strokeLinecap="round" />
-          {(spikes || battlement) &&
-            <path d={decoration} fill="none" stroke="rgba(0,0,0,0.95)" strokeWidth={2.5} strokeLinejoin="round" />}
+          {decoration !== 'barricade' && decoration !== 'sinWave' && (
+            <line x1={x0} y1={y} x2={x1} y2={y} stroke="rgba(0,0,0,0.95)" strokeWidth={7} strokeLinecap="round" />
+          )}
+          {decoPath && <path d={decoPath} fill="none" stroke="rgba(0,0,0,0.95)" strokeWidth={2.5} strokeLinejoin="round" />}
         </svg>
-        <span className="absolute left-1 top-0.5 text-[9px] uppercase tracking-wide text-amber-700">Outside</span>
-        <span className="absolute left-1 bottom-0.5 text-[9px] uppercase tracking-wide text-sky-700">Inside</span>
-        <span className="absolute right-1 top-0.5 text-[9px] text-gray-700">foot {mpLabel(outFoot)} · mtd {mpLabel(outMounted)}</span>
-        <span className="absolute right-1 bottom-0.5 text-[9px] text-gray-700">foot {mpLabel(inFoot)} · mtd {mpLabel(inMounted)}</span>
+        {decoration === 'battlement' && (
+          <>
+            <span className="absolute left-1 top-0.5 text-[9px] uppercase tracking-wide text-amber-700">Outside</span>
+            <span className="absolute left-1 bottom-0.5 text-[9px] uppercase tracking-wide text-sky-700">Inside</span>
+            <span className="absolute right-1 top-0.5 text-[9px] text-gray-700">foot {mpLabel(outFoot)} · mtd {mpLabel(outMounted)}</span>
+            <span className="absolute right-1 bottom-0.5 text-[9px] text-gray-700">foot {mpLabel(inFoot)} · mtd {mpLabel(inMounted)}</span>
+          </>
+        )}
       </div>
-      {(battlement || spikes) && (
+      {decoration === 'battlement' && (
         <button
           type="button"
           onClick={() => setFlipped(f => !f)}
           className="px-2 py-1 rounded text-[11px] bg-gray-700 hover:bg-gray-600"
-          title="Preview which side the battlement/stakes sit on; placement chooses the real side."
+          title="Preview which side the battlement sits on; placement chooses the real side."
         >
           Flip preview
         </button>
