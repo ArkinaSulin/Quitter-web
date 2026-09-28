@@ -243,7 +243,7 @@ export function MapCanvas({
         const shade = label.blocked ? 'rgba(220, 38, 38, 0.4)' : costShade(label.cost);
         const pos = hexToPixel({ q, r, s: -q - r }, HEX_SIZE);
         if (shade) fillHexPath(ctx, pos.x, pos.y, HEX_SIZE, shade);
-        strokeFillText(ctx, pos.x, pos.y, label.text, mpFont, 3 / zoom, MP_COST_GREY);
+        strokeFillText(ctx, pos.x, pos.y, label.text, mpFont, 3 / zoom, MP_COST_GREY, 'rgba(0,0,0,0)');
       }
     }
     ctx.lineWidth = 1;
