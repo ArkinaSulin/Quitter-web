@@ -28,6 +28,7 @@ import { StructureTemplate } from '@/types/structure';
 import { attacksBlocked } from '@/lib/attackBlock';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
+import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { computeOccupiedHexes } from './mapGeometry';
 import { ExecuteFn, routeUnit } from './routeUnit';
@@ -873,12 +874,15 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // melee attack resolved AT the contact hex.
     const contactKey = `${originHex.q},${originHex.r}`;
     if (!computeOccupiedHexes(units, pursuer.id).has(contactKey)) {
-      await execute('MOVE', [{
+      const subSteps: SubStep[] = [{
         type: 'MOVE',
         description: `${pursuer.unitName} pursues into the vacated hex`,
         unitId: pursuer.id,
         changes: [{ field: 'hex', from: pursuer.hex, to: { ...originHex } }],
-      }], `${pursuer.unitName} pursues!`, { chained: true });
+      }];
+      const hero = findAttachedHero(pursuer, units);
+      if (hero) subSteps.push(heroRideMoveStep(hero, originHex, `${hero.unitName} pursues with ${pursuer.unitName}`));
+      await execute('MOVE', subSteps, `${pursuer.unitName} pursues!`, { chained: true });
     }
     const through = opts?.throughUnitId ? (units.find(u => u.id === opts.throughUnitId) ?? null) : null;
     const target = through ?? { ...live, hex: { ...originHex } };

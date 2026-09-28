@@ -19,6 +19,7 @@ import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout } from '@/lib/
 import { rangeBonusAt } from '@/lib/unitEffects';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { UnitChange, SubStep } from '@/lib/commandLog';
+import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { computeOccupiedHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
@@ -237,6 +238,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       { field: 'movementPointsAvailable', from: archer.movementPointsAvailable, to: movementPointsAvailable },
       ...(actionsAvailable !== archer.actionsAvailable ? [{ field: 'actionsAvailable', from: archer.actionsAvailable, to: actionsAvailable }] : []),
     ];
+    const reactionHero = findAttachedHero(archer, units);
     await execute('ARCHER_REACTION', [
       {
         type: 'ARCHER_REACTION',
@@ -250,8 +252,9 @@ export function useReactionActions(deps: ReactionActionsDeps) {
         unitId: archer.id,
         changes,
       },
+      ...(reactionHero ? [heroRideMoveStep(reactionHero, targetHex, `${reactionHero.unitName} repositions with ${archer.unitName} (reaction)`)] : []),
     ], `${archer.unitName} repositioned a full move (reaction)`);
-  }, [execute, unitMaxMP]);
+  }, [execute, unitMaxMP, units]);
 
   const performReactionFormation = useCallback(async (archer: Unit, formation: string) => {
     // Same limits as the normal formation change: no two-handed Shield Wall, and

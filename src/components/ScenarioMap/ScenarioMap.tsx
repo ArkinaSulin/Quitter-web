@@ -3,9 +3,10 @@
 
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
-import { parseSubSteps, CommandLogRow } from '@/lib/commandLog';
+import { parseSubSteps, CommandLogRow, SubStep } from '@/lib/commandLog';
 import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel, GroundEffect, EffectKind, hexDistance } from '@/types/gameProtocol';
 import { adjacentRetreatCandidates, routThroughOptions, RoutThroughOption, retreatDiagnosis } from '@/lib/routedRetreat';
+import { findAttachedHero, heroRideMoveStep, heroDetachStep } from '@/lib/heroAttachment';
 import { applyMoveCost } from '@/lib/moveCost';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { parseWeapons } from '@/lib/weaponParser';
@@ -309,7 +310,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     hexes: { q: number; r: number; s: number }[];
     through: RoutThroughOption[];
     reason: string | null;
+    hero: Unit | null;
   } | null>(null);
+  const [retreatHeroChoice, setRetreatHeroChoice] = useState<'move' | 'stay'>('move');
   const [retreatHoverHex, setRetreatHoverHex] = useState<string | null>(null);
   const [retreatCardPos, setRetreatCardPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const retreatDragRef = useRef<{ dx: number; dy: number } | null>(null);
@@ -1574,7 +1577,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     | { kind: 'through'; option: RoutThroughOption }
     | { kind: 'none' };
 
-  const applyRoutedFlow = useCallback(async (routed: Unit, move: RoutMove, attacker?: Unit | null) => {
+  const applyRoutedFlow = useCallback(async (routed: Unit, move: RoutMove, attacker?: Unit | null, heroChoice: 'move' | 'stay' = 'move') => {
     if (routBusy.current) { console.warn('[RoutFlow] busy — skipped', routed.unitName); return; }
     routBusy.current = true;
     setRetreatPick(null);
@@ -1597,12 +1600,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           const thruName = thru?.unitName ?? 'a friendly unit';
           addMessage(`${live.unitName} has no safe adjacent retreat — its only rout is through ${thruName} (${thru?.currentFormation ?? 'friendly'}), ${disruptId ? 'disrupting it to Scattered' : 'which lets it pass'}.`);
         }
-        await execute('MOVE', [{
+        const subSteps: SubStep[] = [{
           type: 'MOVE',
           description: `${live.unitName} routs to (${dest.q}, ${dest.r})`,
           unitId: live.id,
           changes: [{ field: 'hex', from: live.hex, to: dest }],
-        }], `${live.unitName} routs!`, { chained: true });
+        }];
+        const hero = findAttachedHero(live, cur);
+        if (hero) {
+          if (heroChoice === 'stay') {
+            subSteps.push(heroDetachStep(hero, `${hero.unitName} stays behind as ${live.unitName} routs`));
+          } else {
+            subSteps.push(heroRideMoveStep(hero, dest, `${hero.unitName} routs with ${live.unitName}`));
+          }
+        }
+        await execute('MOVE', subSteps, `${live.unitName} routs!`, { chained: true });
         if (disruptId) {
           const throughUnit = cur.find(u => u.id === disruptId);
           if (throughUnit) {
@@ -1696,7 +1708,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setRetreatCardPos({ x: Math.max(8, Math.round((window.innerWidth - 480) / 2)), y: Math.max(8, Math.round((window.innerHeight - 320) / 2)) });
     }
     setRetreatHoverHex(null);
-    setRetreatPick({ unit: routed, attacker, hexes: adj, through, reason });
+    setRetreatHeroChoice('move');
+    setRetreatPick({ unit: routed, attacker, hexes: adj, through, reason, hero: findAttachedHero(routed, unitsRef.current) });
   }, [unitsRef, alliances, formationsMap, participantsSync.participants, myTeam, effectiveIsGM, retreatPick, applyRoutedFlow]);
   routFlowRef.current = { handle: handleRoutRow };
 
@@ -2747,11 +2760,33 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               <p className="text-xs text-gray-400">Choose a retreat hex (unoccupied, outside any enemy kill zone). Hover an option to highlight it on the map.</p>
             )}
 
+            {retreatPick.hero && !retreatPick.reason && (
+              <div className="rounded bg-gray-800 border border-gray-700 p-2 space-y-1.5">
+                <p className="text-xs text-gray-300">
+                  Attached hero: <span className="text-amber-300 font-semibold">{retreatPick.hero.unitName}</span>
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setRetreatHeroChoice('move')}
+                    className={`flex-1 px-2 py-1.5 rounded text-xs ${retreatHeroChoice === 'move' ? 'bg-amber-700 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                  >
+                    Move together
+                  </button>
+                  <button
+                    onClick={() => setRetreatHeroChoice('stay')}
+                    className={`flex-1 px-2 py-1.5 rounded text-xs ${retreatHeroChoice === 'stay' ? 'bg-amber-700 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                  >
+                    Stay behind
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto">
               {retreatPick.hexes.map(hx => (
                 <button
                   key={`${hx.q},${hx.r}`}
-                  onClick={() => void applyRoutedFlow(retreatPick.unit, { kind: 'adjacent', hex: hx }, retreatPick.attacker)}
+                  onClick={() => void applyRoutedFlow(retreatPick.unit, { kind: 'adjacent', hex: hx }, retreatPick.attacker, retreatHeroChoice)}
                   onMouseEnter={() => setRetreatHoverHex(`${hx.q},${hx.r}`)}
                   onMouseLeave={() => setRetreatHoverHex(null)}
                   className="px-3 py-1.5 bg-yellow-700 hover:bg-yellow-600 rounded text-xs font-mono"
@@ -2762,7 +2797,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               {retreatPick.hexes.length === 0 && retreatPick.through.map(opt => (
                 <button
                   key={opt.throughUnitId}
-                  onClick={() => void applyRoutedFlow(retreatPick.unit, { kind: 'through', option: opt }, retreatPick.attacker)}
+                  onClick={() => void applyRoutedFlow(retreatPick.unit, { kind: 'through', option: opt }, retreatPick.attacker, retreatHeroChoice)}
                   onMouseEnter={() => setRetreatHoverHex(`${opt.dest.q},${opt.dest.r}`)}
                   onMouseLeave={() => setRetreatHoverHex(null)}
                   className="px-3 py-1.5 bg-purple-700 hover:bg-purple-600 rounded text-xs"
@@ -2812,7 +2847,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                         ? { kind: 'adjacent', hex: best }
                         : retreatPick.through.length > 0
                           ? { kind: 'through', option: retreatPick.through[0] }
-                          : { kind: 'none' }, retreatPick.attacker);
+                          : { kind: 'none' }, retreatPick.attacker, retreatHeroChoice);
                     }}
                     className="w-full bg-gray-700 hover:bg-gray-600 rounded px-3 py-1.5 text-xs"
                   >

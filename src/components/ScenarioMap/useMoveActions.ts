@@ -15,6 +15,7 @@ import { areHexesAdjacent } from '@/lib/unitMorale';
 import { WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep } from '@/lib/commandLog';
+import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
 import { MapStructures, doorPassThroughHexes, orgGatesForEntry, describeOrgGateBlock } from '@/lib/mapStructures';
@@ -403,10 +404,13 @@ export function useMoveActions(deps: MoveActionsDeps) {
       changes.push({ field: 'actionsAvailable', from: unit.actionsAvailable, to: unit.actionsAvailable - WITHDRAW_ACTION_COST });
     }
     const desc = `${unit.unitName} withdraws to (${destHex.q}, ${destHex.r})${freeMove ? '' : ` (${WITHDRAW_ACTION_COST} actions)`}`;
-    await execute('MOVE', [{ type: 'MOVE', description: desc, unitId: unit.id, changes }], `${unit.unitName} withdraws in good order`);
+    const subSteps: SubStep[] = [{ type: 'MOVE', description: desc, unitId: unit.id, changes }];
+    const hero = findAttachedHero(unit, units);
+    if (hero) subSteps.push(heroRideMoveStep(hero, destHex, `${hero.unitName} withdraws with ${unit.unitName}`));
+    await execute('MOVE', subSteps, `${unit.unitName} withdraws in good order`);
     if (overBudget) addError(`${unit.unitName} withdrew with only ${unit.actionsAvailable} action(s) left, over budget`);
     await maybeAutoReturnToRanged(unit);
-  }, [execute, freeMove, addError, maybeAutoReturnToRanged]);
+  }, [execute, freeMove, addError, maybeAutoReturnToRanged, units]);
 
   return {
     pendingMove,

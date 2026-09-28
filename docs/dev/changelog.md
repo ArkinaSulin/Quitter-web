@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Attached hero follows host on every hex move + rout stay/move prompt (2026-09-28)
+**Files:** src/lib/heroAttachment.ts (+ test), src/components/ScenarioMap/{useMoveActions,useCombatActions,useReactionActions,ScenarioMap}.tsx, docs/dev/changelog.md
+
+- **Fixed: attached hero could no longer detach by moving away after its host moved through a non-drag path.** The hero is drawn at the host's hex (`getAttachedHeroPos`) but grab/visibility/reachability all key off the hero's own `hex`, so any host hex change that didn't propagate left the hero un-grabbable at its rendered position. New `src/lib/heroAttachment.ts` (`findAttachedHero` / `heroRideMoveStep` / `heroDetachStep`) and the four stale paths — **withdraw**, **pursuer step**, **archer reaction move**, and the **routed retreat** — now carry the hero's hex along in the same command.
+- **Rout with an attached hero now prompts the hero owner (DM as backup).** The rout retreat card gains an "Attached hero" section with **Move together** (default) / **Stay behind**: move rides the hero to the retreat hex; stay detaches it (`attachedToUnitId`/`attachedPosition` → null) so it holds at the vacated hex. Shown to whoever already orchestrates the rout (owner primary, DM only when no non-GM participant controls the team — attachment already enforces `hero.team === host.team`).
+- `tsc` clean; 784 tests pass; build clean. No migration.
+
 ## "Forced stop" modifier + cleaner modifier labels (2026-09-27)
 **Files:** src/lib/effectTemplates.ts (+ test), src/types/gameProtocol.ts, src/lib/unitEffects.ts, src/hooks/useGameEngine.ts, src/components/EffectEditor/EffectModifierFields.tsx, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/changelog.md
 
