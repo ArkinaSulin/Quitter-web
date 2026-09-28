@@ -249,7 +249,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const shade = label.blocked ? 'rgba(220, 38, 38, 0.4)' : costShade(label.cost);
         const { cx, cy } = hexCenter({ q, r, s: -q - r });
         if (shade) fillHexPath(ctx, cx, cy, HEX_SIZE * currentZoom, shade);
-        strokeFillText(ctx, cx, cy, label.text, mpFont, 4, MP_COST_GREY);
+        strokeFillText(ctx, cx, cy, label.text, mpFont, 4, MP_COST_GREY, 'rgba(0,0,0,0)');
       }
       ctx.restore();
     }
