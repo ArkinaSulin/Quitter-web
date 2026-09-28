@@ -6,6 +6,8 @@ import {
   calcMoraleBoost,
   computeEffectiveMoraleModifier,
   computeThreatRating,
+  exertedThreatRating,
+  heroThreatAgainst,
   HERO_INSPIRATION_BONUS,
   isInKillZone,
   shouldRout,
@@ -198,6 +200,71 @@ describe('calcEnemyThreats', () => {
     const oneStrong = [enemyAt(DIR_HEXES[1], { ...threat9 })];
     expect(calcEnemyThreats(me, twoWeak, alliances)).toMatchObject({ total: 2, totalSum: 7 });
     expect(calcEnemyThreats(me, oneStrong, alliances)).toMatchObject({ total: 3 });
+  });
+
+  it('a lone hero threatens 360° at half rating', () => {
+    const me = makeUnit({ ...threat1 }); // myThreat 1
+    const heroEnemy = enemyAt(DIR_HEXES[3], { isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1, maxTroopCount: 1 });
+    expect(calcEnemyThreats(me, [heroEnemy], alliances)).toMatchObject({ total: 2, totalSum: 2 });
+  });
+});
+
+describe('exertedThreatRating', () => {
+  it('halves heroes of Large size or smaller; full for bigger heroes and units', () => {
+    const small = makeUnit({ isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1 }); // 3+1+0 = 4
+    const large = makeUnit({ isHero: true, level: 5, sizeCategory: 200, currentTroopCount: 1 }); // 3+4+0 = 7
+    const huge = makeUnit({ isHero: true, level: 5, sizeCategory: 300, currentTroopCount: 1 }); // 3+9+0 = 12
+    const unit = makeUnit({ level: 5, sizeCategory: 100, currentTroopCount: 1 }); // 3+1+0 = 4
+    expect(exertedThreatRating(small)).toBe(2);
+    expect(exertedThreatRating(large)).toBe(3.5);
+    expect(exertedThreatRating(huge)).toBe(12);
+    expect(exertedThreatRating(unit)).toBe(4);
+  });
+});
+
+describe('heroThreatAgainst', () => {
+  const me = () => makeUnit({ hex: { q: 0, r: 0, s: 0 } });
+  const hero = (over: Partial<Unit> = {}) => makeUnit({
+    id: 'hero',
+    team: 'red',
+    isHero: true,
+    level: 5,
+    sizeCategory: 100,
+    currentTroopCount: 1,
+    maxTroopCount: 1,
+    hex: { q: 0, r: 0, s: 0 },
+    ...over,
+  });
+
+  it('a lone hero threatens any adjacent hex at half rating (360°)', () => {
+    for (const d of DIR_HEXES) {
+      const h = hero({ id: `h-${d.q}-${d.r}`, hex: d });
+      expect(heroThreatAgainst(h, me(), [h])).toBe(2);
+    }
+  });
+
+  it('a lone hero two hexes away threatens nothing', () => {
+    const h = hero({ hex: { q: 2, r: 0, s: -2 } });
+    expect(heroThreatAgainst(h, me(), [h])).toBe(0);
+  });
+
+  it('a hero larger than Large exerts its full rating', () => {
+    const h = hero({ sizeCategory: 300, hex: DIR_HEXES[0] }); // 3 + 9 + 0 = 12
+    expect(heroThreatAgainst(h, me(), [h])).toBe(12);
+  });
+
+  it('a protected (back-attached) hero exerts nothing', () => {
+    const h = hero({ attachedToUnitId: 'host', attachedPosition: 'back', hex: DIR_HEXES[0] });
+    expect(heroThreatAgainst(h, me(), [h])).toBe(0);
+  });
+
+  it('a front-attached hero threatens only through its host kill zone', () => {
+    const host = makeUnit({ id: 'host', team: 'red', hex: { q: 0, r: 0, s: 0 }, facing: 0 });
+    const h = hero({ attachedToUnitId: 'host', attachedPosition: 'front' });
+    const front = makeUnit({ id: 'v', team: 'blue', hex: DIR_HEXES[4] }); // host facing 0 → front
+    const rear = makeUnit({ id: 'v2', team: 'blue', hex: DIR_HEXES[1] }); // host facing 0 → rear
+    expect(heroThreatAgainst(h, front, [host, h, front])).toBe(2);
+    expect(heroThreatAgainst(h, rear, [host, h, rear])).toBe(0);
   });
 });
 

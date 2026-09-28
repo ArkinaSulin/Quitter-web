@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Hero threat: 360°, sized, attachment-aware (2026-09-28)
+**Files:** src/lib/unitMorale.ts (+ test), src/components/ScenarioMap/UnitTooltip.tsx, docs/dev/09-morale-routing-pursuit.md, docs/players/player-manual.md, docs/dev/changelog.md
+
+- **Heroes now exert threat (they previously pressed morale only from their front kill zone, and no ZoC).** A **lone** hero threatens every adjacent hex (**360°**) — a single token has no fixed facing. A **front-attached** hero threatens only through its host's kill zone; a **protected (back-attached)** hero (`isProtectedHero`) exerts nothing. A hero of **Large size or smaller** (`sizeCategory ≤ 200`) exerts **half** its threat rating (`exertedThreatRating` + `HERO_HALF_THREAT_MAX_SIZE`), bigger heroes exert full. `calcEnemyThreats` routes heroes through the new `heroThreatAgainst`.
+- **The hero's own tooltip "Threat:" row** now shows the halved (exerted) rating via `exertedThreatRating`; the morale-factors threat formula label changed from "kill-zone" to "threat".
+- Units are unchanged (front-arc kill zone, no rear ×2 — the old directional/rear-×2 model removed in `02bc7d9` stays removed); ZoC (`computeThreatHexes`/`imposesZocOn`) still excludes heroes; the AGR threat penalty still uses the target's kill zone.
+- `tsc` clean; 784+ tests pass; build clean. No migration.
+
 ## Attached hero follows host on every hex move + rout stay/move prompt (2026-09-28)
 **Files:** src/lib/heroAttachment.ts (+ test), src/components/ScenarioMap/{useMoveActions,useCombatActions,useReactionActions,ScenarioMap}.tsx, docs/dev/changelog.md
 

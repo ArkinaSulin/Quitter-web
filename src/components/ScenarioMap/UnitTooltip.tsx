@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
-import { computeEffectiveMoraleModifier, computeThreatRating, calcWounds, calcIsolation, calcEnemyThreats, isUnitRouted, calcMoraleBoostInfo, isHeroMoraleBoostEnabled } from '@/lib/unitMorale';
+import { computeEffectiveMoraleModifier, exertedThreatRating, calcWounds, calcIsolation, calcEnemyThreats, isUnitRouted, calcMoraleBoostInfo, isHeroMoraleBoostEnabled } from '@/lib/unitMorale';
 import { computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty, effectiveAc as effectiveAcFor } from '@/lib/unitStats';
 import { parseWeapons } from '@/lib/weaponParser';
 import { heroMovePerAction } from '@/lib/moveCost';
@@ -47,7 +47,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const enemyThreats = calcEnemyThreats(unit, units, alliances);
   const heroBoost = isHeroMoraleBoostEnabled() ? calcMoraleBoostInfo(unit, units, alliances) : null;
   const heroAura = unit.isHero ? (unit.moraleBoost ?? 0) + (unit.heroicInspirationActive ? 1 : 0) : 0;
-  const threatRating = computeThreatRating(unit);
+  const threatRating = exertedThreatRating(unit);
   const morTotal = unit.baseMorale + effectiveMoraleModifier;
   const acMelee = effectiveAcFor(unit, formationMod, 'front', false);
   const acRanged = effectiveAcFor(unit, formationMod, 'front', true);
@@ -163,7 +163,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
             <span className="text-gray-400">threat</span>
             <span className={enemyThreats.total > 0 ? 'text-red-400' : 'text-green-400'}>
               {enemyThreats.total > 0
-                ? `-${enemyThreats.total} = (${enemyThreats.totalSum} kill-zone) ÷ ${enemyThreats.myThreat}`
+                ? `-${enemyThreats.total} = (${enemyThreats.totalSum} threat) ÷ ${enemyThreats.myThreat}`
                 : '0'}
             </span>
             {formationMorMod !== 0 && (

@@ -1,6 +1,6 @@
 import { Unit, AllianceGroup, Hex, Formation } from '@/types/gameProtocol';
 import { getSetting, getBandSetting, SettingBand } from './settingsCache';
-import { isDeadCorpse } from './unitInteractions';
+import { isDeadCorpse, isProtectedHero } from './unitInteractions';
 
 const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
@@ -46,6 +46,20 @@ export function computeThreatRating(unit: Unit): number {
   return levelComp + sizeComp + countComp;
 }
 
+/** Heroes of this size category and smaller exert HALF their threat rating. */
+export const HERO_HALF_THREAT_MAX_SIZE = 200; // Large (200) and under
+
+/**
+ * The threat a unit EXERTS on others. Heroes of Large size or smaller are a
+ * single token that can turn and act any direction, so they exert only half
+ * their raw rating; bigger heroes and all units exert the full rating.
+ */
+export function exertedThreatRating(unit: Unit): number {
+  const rating = computeThreatRating(unit);
+  if (unit.isHero && unit.sizeCategory <= HERO_HALF_THREAT_MAX_SIZE) return rating / 2;
+  return rating;
+}
+
 /**
  * Kill zone: the two hexes directly in front of the unit (front arc of its
  * facing). A unit imposes threat on an enemy only while that enemy stands in
@@ -86,9 +100,10 @@ export function calcIsolation(unit: Unit, units: Unit[], alliances: Record<strin
 
 /**
  * Enemy threat imposed on `unit`: the sum of the threat ratings of every enemy
- * whose kill zone (front two hexes) contains `unit`. Scattered / Routed enemies
- * never impose threat. Being merely adjacent is not enough — the enemy must be
- * facing you.
+ * whose kill zone (front two hexes) contains `unit` — plus, for heroes, a
+ * wider footprint (see `heroThreatAgainst`). Scattered / Routed enemies never
+ * impose threat. For non-heroes, being merely adjacent is not enough — the
+ * enemy must be facing you.
  */
 export function calcEnemyThreats(
   unit: Unit,
@@ -103,7 +118,9 @@ export function calcEnemyThreats(
     if (other.isDeleted || other.id === unit.id || isUnitRouted(other) || isDeadCorpse(other)) continue;
     const otherAlliance = alliances[other.team] || 'friendly';
     if (otherAlliance === unitAlliance) continue;
-    if (isInKillZone(other, unit.hex)) {
+    if (other.isHero) {
+      totalSum += heroThreatAgainst(other, unit, units);
+    } else if (isInKillZone(other, unit.hex)) {
       totalSum += computeThreatRating(other);
     }
   }
@@ -113,6 +130,23 @@ export function calcEnemyThreats(
     totalSum,
     myThreat,
   };
+}
+
+/**
+ * A hero's threat contribution against `victim` (0 = no threat):
+ * - a protected (back-attached) hero exerts nothing;
+ * - a front-attached hero threatens only through its host's kill zone;
+ * - a lone hero threatens 360° (any adjacent hex);
+ * - the rating is `exertedThreatRating` (Large-and-under heroes half).
+ */
+export function heroThreatAgainst(hero: Unit, victim: Unit, units: Unit[]): number {
+  if (isProtectedHero(hero)) return 0;
+  const rating = exertedThreatRating(hero);
+  if (hero.attachedToUnitId) {
+    const host = units.find(u => u.id === hero.attachedToUnitId && !u.isDeleted);
+    return host && isInKillZone(host, victim.hex) ? rating : 0;
+  }
+  return areHexesAdjacent(hero.hex, victim.hex) ? rating : 0;
 }
 
 // --- Hero morale aura (Commanding Presence / Heroic Inspiration) ------------

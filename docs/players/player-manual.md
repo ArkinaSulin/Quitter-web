@@ -752,14 +752,20 @@ threat = level component + size component + troop component
 ```
 
 **Examples:** L3 Medium soldiers at 20 troops → 2 + 1 + 3 = **6**. L5
-Medium at 50 → 3 + 1 + 4 = **8**. A lone L10 hero → 4 + 1 + 0 = **5**.
+Medium at 50 → 3 + 1 + 4 = **8**. A lone L10 hero → 4 + 1 + 0 = **5**
+(but see below — a hero of Large size or smaller *exerts* half).
 
 ### What pressures your morale
 
 Only enemies **facing you in their kill zone** (their front two hexes)
 pressure you — adjacency alone is nothing, and Scattered/Routed enemies and
-routing units exert none. Your morale penalty is
-`their summed threat ÷ your own threat` (rounded).
+routing units exert none. **Heroes** are the exception: a lone hero is a
+single token that threatens **every adjacent hex (360°)**, not just its front.
+A hero attached **in front** of a unit threatens only through that unit's kill
+zone, and a hero protected **behind** a unit (back) threatens nothing. A hero
+of **Large size or smaller** exerts **half** its threat rating; bigger heroes
+exert full. Your morale penalty is `their summed threat ÷ your own threat`
+(rounded).
 
 **Effective morale** on a given moment:
 

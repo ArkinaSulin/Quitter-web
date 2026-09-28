@@ -30,11 +30,18 @@ zone** — the two hexes in front of its facing (`isInKillZone`). Formations
 without a kill zone (Scattered, Routed) never impose threat. Routing units
 never impose threat. Merely adjacent ≠ threatening.
 
+Heroes are the exception: a **lone** hero is a single token with no fixed
+facing, so it threatens every adjacent hex (360°) — `heroThreatAgainst`. A
+**front-attached** hero threatens only through its host's kill zone; a
+**protected (back-attached)** hero exerts no threat at all. A hero of **Large
+size or smaller** (`sizeCategory ≤ 200`) exerts **half** its rating
+(`exertedThreatRating`); bigger heroes exert full.
+
 `calcEnemyThreats(unit, …)`: sum the threat ratings of every hostile whose
-kill zone contains you, then **normalize by your own**: `total = round(sum /
-myThreat)`. A goblin beside a dragon feels its full rating; the dragon barely
-notices the goblin. The tooltip shows the formula as
-`-N = (front/side sum + rear sum) ÷ myThreat`.
+kill zone contains you (plus hero threat as above), then **normalize by your
+own**: `total = round(sum / myThreat)`. A goblin beside a dragon feels its
+full rating; the dragon barely notices the goblin. The tooltip shows the
+formula as `-N = (sum threat) ÷ myThreat`.
 
 ## Effective morale
 
