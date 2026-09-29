@@ -16,7 +16,7 @@ export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
   { value: 'hp_borrow', label: 'Borrow HP (sleep)' },
   { value: 'entry', label: EFFECT_MODIFIER_LABELS.entry },
   { value: 'mp_cost', label: EFFECT_MODIFIER_LABELS.mp_cost },
-  { value: 'enter_org_max', label: EFFECT_MODIFIER_LABELS.enter_org_max },
+  { value: 'max_org_level_allowed', label: EFFECT_MODIFIER_LABELS.max_org_level_allowed },
   { value: 'range', label: EFFECT_MODIFIER_LABELS.range },
   { value: 'advantage', label: EFFECT_MODIFIER_LABELS.advantage },
   { value: 'disadvantage', label: EFFECT_MODIFIER_LABELS.disadvantage },

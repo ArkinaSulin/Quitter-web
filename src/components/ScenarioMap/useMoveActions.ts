@@ -277,7 +277,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true, blockedEdge, hopCap, passThrough);
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
-      // Within physical reach but dropped by a gate? Name the `enter_org_max`
+      // Within physical reach but dropped by a gate? Name the `max_org_level_allowed`
       // blocker (if any) instead of a vague "out of reach".
       if (hexDistance(unit.hex, targetHex) <= hopCap) {
         const gates = orgGatesForEntry(unit.hex, targetHex, orgLevel, structures, structureTemplates, groundZones);

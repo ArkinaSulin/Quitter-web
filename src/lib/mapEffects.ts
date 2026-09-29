@@ -2,8 +2,8 @@
 // Authored per-hex effects on a reusable map board (maps.hex_effects). Each hex
 // holds ONE effect template reference; on scenario assign the refs are expanded
 // into PERMANENT ground zones (one zone per template modifier) so the existing
-// ground-effect runtime (membership/aura/DoT/entry/mp_cost/enter_org_max) applies.
-import { EffectTemplate } from './effectTemplates';
+// ground-effect runtime (membership/aura/DoT/entry/mp_cost/max_org_level_allowed) applies.
+import { EffectTemplate, normalizeModifierKind } from './effectTemplates';
 import { GroundEffect } from '@/types/gameProtocol';
 
 /** Authored per-hex effect on a library board: one template per hex. */
@@ -32,6 +32,11 @@ export function parseHexEffects(raw: any): MapHexEffect[] {
     out.push({ q, r, effectId });
   }
   return out;
+}
+
+/** Normalize the kinds of loaded ground-effect zones (legacy `enter_org_max` alias). */
+export function normalizeGroundEffectKinds(zones: GroundEffect[]): GroundEffect[] {
+  return zones.map(z => ({ ...z, kind: normalizeModifierKind(z.kind) as GroundEffect['kind'] }));
 }
 
 /**

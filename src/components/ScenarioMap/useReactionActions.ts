@@ -391,7 +391,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const reachable = getReactionReachable(archer);
     const entry = reachable.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
-      // Within physical reach but dropped by a gate? Name the `enter_org_max`
+      // Within physical reach but dropped by a gate? Name the `max_org_level_allowed`
       // blocker (if any) instead of a vague "cannot reposition".
       const orgLevel = getOrganizationLevel(archer.currentFormation);
       const budget = reactionMovePool(archer, unitMaxMP(archer));

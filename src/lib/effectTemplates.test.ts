@@ -42,8 +42,8 @@ describe('modifierSummary', () => {
     expect(modifierSummary({ kind: 'block_attacks', mode: 'ranged', direction: 'in' })).toBe('block_attacks (ranged) /in');
   });
 
-  it('renders the enter_org_max gate as a cap and keeps heal', () => {
-    expect(modifierSummary({ kind: 'enter_org_max', dice: '1' })).toBe('enter_org_max ≤1');
+  it('renders the max_org_level_allowed cap as a cap and keeps heal', () => {
+    expect(modifierSummary({ kind: 'max_org_level_allowed', dice: '1' })).toBe('max_org_level_allowed ≤1');
     expect(modifierSummary({ kind: 'dot', dice: '1d6', healing: true })).toBe('dot 1d6 heal');
   });
 

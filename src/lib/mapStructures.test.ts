@@ -4,7 +4,7 @@ import {
   structureBlocksOrg, zoneBlocksOrg, structureRangeBonus, structureIsOpen,
   structureHexEntryCost, structureHexBlocked, structureAuraFlags, structureZones,
   structureDoorState, structureDoorHex, canToggleStructureDoor, doorPassThroughHexes,
-  orgGatesForEntry, describeOrgGateBlock,
+  orgGatesForEntry, describeOrgGateBlock, entryBreakFormation, standingMaxOrg,
 } from './mapStructures';
 import { meleeWallAc, rangedWallAc, edgeRef } from './walls';
 import { StructureTemplate } from '@/types/structure';
@@ -115,8 +115,8 @@ describe('structureCounts', () => {
   });
 });
 
-describe('enter_org_max gates', () => {
-  const spikes = template({ modifiers: [{ kind: 'enter_org_max', dice: '1' }] });
+describe('max_org_level_allowed gates', () => {
+  const spikes = template({ modifiers: [{ kind: 'max_org_level_allowed', dice: '1' }] });
 
   it('structureBlocksOrg allows org <= value and blocks above', () => {
     expect(structureBlocksOrg(spikes, 0)).toBe(false);
@@ -127,7 +127,7 @@ describe('enter_org_max gates', () => {
   });
 
   it('zoneBlocksOrg blocks over-level movers only on the zone hex', () => {
-    const zones = [{ key: 'z', q: 0, r: 0, name: 'Spikes', color: '#fff', kind: 'enter_org_max' as const, dice: '1', duration: 3, turnsLeft: 3 }];
+    const zones = [{ key: 'z', q: 0, r: 0, name: 'Spikes', color: '#fff', kind: 'max_org_level_allowed' as const, dice: '1', duration: 3, turnsLeft: 3 }];
     expect(zoneBlocksOrg(zones, 0, 0, 2)).toBe(true);
     expect(zoneBlocksOrg(zones, 0, 0, 1)).toBe(false);
     expect(zoneBlocksOrg(zones, 1, 0, 2)).toBe(false);
@@ -135,9 +135,9 @@ describe('enter_org_max gates', () => {
   });
 
   it('orgGatesForEntry enumerates zone, hex and edge gates with verdicts', () => {
-    const zones = [{ key: 'z', q: 1, r: 0, name: 'Spikes', color: '#fff', kind: 'enter_org_max' as const, dice: '0', duration: 3, turnsLeft: 3 }];
-    const hexGate = template({ id: 'hg', anchor: 'hex', modifiers: [{ kind: 'enter_org_max', dice: '3' }] });
-    const edgeGate = template({ id: 'eg', anchor: 'edge', modifiers: [{ kind: 'enter_org_max', dice: '1' }] });
+    const zones = [{ key: 'z', q: 1, r: 0, name: 'Spikes', color: '#fff', kind: 'max_org_level_allowed' as const, dice: '0', duration: 3, turnsLeft: 3 }];
+    const hexGate = template({ id: 'hg', anchor: 'hex', modifiers: [{ kind: 'max_org_level_allowed', dice: '3' }] });
+    const edgeGate = template({ id: 'eg', anchor: 'edge', modifiers: [{ kind: 'max_org_level_allowed', dice: '1' }] });
     const structs = {
       '1,0': { templateId: 'hg' },
       '0,0,0': { templateId: 'eg' }, // edge between (0,0) and (1,0)
@@ -151,7 +151,7 @@ describe('enter_org_max gates', () => {
   });
 
   it('orgGatesForEntry skips the edge gate when the hexes are not adjacent', () => {
-    const edgeGate = template({ id: 'eg', anchor: 'edge', modifiers: [{ kind: 'enter_org_max', dice: '1' }] });
+    const edgeGate = template({ id: 'eg', anchor: 'edge', modifiers: [{ kind: 'max_org_level_allowed', dice: '1' }] });
     const structs = { '0,0,0': { templateId: 'eg' } };
     const gates = orgGatesForEntry({ q: 0, r: 0 }, { q: 2, r: 0 }, 2, structs, { eg: edgeGate }, null);
     expect(gates).toEqual([]);
@@ -171,6 +171,40 @@ describe('enter_org_max gates', () => {
   it('describeOrgGateBlock returns null when nothing blocks', () => {
     expect(describeOrgGateBlock('X', 'Open Order', 1, { q: 0, r: 0 }, 'enter', [{ source: 'zone', name: 'Z', max: 2, passes: true }])).toBeNull();
     expect(describeOrgGateBlock('X', 'Open Order', 1, { q: 0, r: 0 }, 'enter', [])).toBeNull();
+  });
+});
+
+describe('entryBreakFormation / standingMaxOrg', () => {
+  const spikes = template({ modifiers: [{ kind: 'max_org_level_allowed', dice: '1' }] });
+  const tower = template({ id: 'tower', anchor: 'hex', modifiers: [{ kind: 'max_org_level_allowed', dice: '1' }] });
+  const zone = (dice: string, q = 0, r = 0) => ({ key: `z${q},${r}`, q, r, name: 'Spikes', color: '#fff', kind: 'max_org_level_allowed' as const, dice, duration: 3, turnsLeft: 3 });
+
+  it('breaks to the highest formation at or below the strictest gate', () => {
+    expect(entryBreakFormation({ q: 0, r: 0 }, { q: 1, r: 0 }, 'Shield Wall', { '0,0,0': { templateId: 't1' } }, { t1: spikes }, null)).toBe('Open Order');
+    expect(entryBreakFormation({ q: 0, r: 0 }, { q: 1, r: 0 }, 'Close Order', { '0,0,0': { templateId: 't1' } }, { t1: spikes }, null)).toBe('Open Order');
+  });
+
+  it('returns null when no gate is exceeded', () => {
+    expect(entryBreakFormation({ q: 0, r: 0 }, { q: 1, r: 0 }, 'Open Order', { '0,0,0': { templateId: 't1' } }, { t1: spikes }, null)).toBeNull();
+    expect(entryBreakFormation({ q: 0, r: 0 }, { q: 1, r: 0 }, 'Close Order', {}, {}, null)).toBeNull();
+  });
+
+  it('uses the strictest cap across zone + hex + edge gates', () => {
+    const structs = { '1,0': { templateId: 'tower' }, '0,0,0': { templateId: 't1' } };
+    const templates = { tower, t1: spikes };
+    // zone (max 0) is strictest -> Scattered
+    expect(entryBreakFormation({ q: 0, r: 0 }, { q: 1, r: 0 }, 'Phalanx', structs, templates, [zone('0', 1, 0)])).toBe('Scattered');
+    // without the zone, edge (max 1) is strictest -> Open Order
+    expect(entryBreakFormation({ q: 0, r: 0 }, { q: 1, r: 0 }, 'Phalanx', structs, templates, null)).toBe('Open Order');
+  });
+
+  it('standingMaxOrg is the strictest cap from the hex structure and zone, ignoring edges', () => {
+    expect(standingMaxOrg({ q: 0, r: 0 }, { '0,0': { templateId: 'tower' } }, { tower }, [zone('1')])).toBe(1);
+    expect(standingMaxOrg({ q: 0, r: 0 }, { '0,0': { templateId: 'tower' } }, { tower }, null)).toBe(1);
+    expect(standingMaxOrg({ q: 0, r: 0 }, {}, {}, [zone('1')])).toBe(1);
+    expect(standingMaxOrg({ q: 0, r: 0 }, {}, {}, null)).toBe(Infinity);
+    // an edge structure on the hex is not a standing cap
+    expect(standingMaxOrg({ q: 0, r: 0 }, { '0,0,0': { templateId: 't1' } }, { t1: spikes }, null)).toBe(Infinity);
   });
 });
 

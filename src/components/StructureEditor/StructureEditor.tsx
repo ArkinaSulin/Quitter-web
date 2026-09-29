@@ -330,7 +330,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
               </div>
 
               <div>
-                <p className="text-xs text-gray-400 mb-1">Effect modifiers (cover AC, attack-roll flags, tower auras, `enter_org_max` gate)</p>
+                <p className="text-xs text-gray-400 mb-1">Effect modifiers (cover AC, attack-roll flags, tower auras, `max_org_level_allowed` cap)</p>
                 <div className="space-y-1.5">
                   {draft.modifiers.map((m, i) => (
                     <EffectModifierFields

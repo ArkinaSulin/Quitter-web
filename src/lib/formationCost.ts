@@ -97,3 +97,18 @@ export function nextLowerFormation(currentFormation: string): string | null {
   if (level === 3) return 'Close Order';
   return NEXT_LOWER_BY_LEVEL[level] ?? null;
 }
+
+/**
+ * The highest formation at or below `maxOrg`, walking down the standard chain
+ * (Phalanx/Shield Wall → Close Order → Open Order → Scattered). Returns the
+ * current formation unchanged when it already satisfies the cap.
+ */
+export function formationAtOrBelow(currentFormation: string, maxOrg: number): string {
+  let f = currentFormation;
+  while (getOrganizationLevel(f) > maxOrg) {
+    const lower = nextLowerFormation(f);
+    if (!lower) break;
+    f = lower;
+  }
+  return f;
+}

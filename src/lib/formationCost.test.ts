@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyFormationChange, isFormationChangeAffordable, getFormationChangeMpCost, nextLowerFormation } from './formationCost';
+import { applyFormationChange, isFormationChangeAffordable, getFormationChangeMpCost, nextLowerFormation, formationAtOrBelow } from './formationCost';
 
 const budget = (movementPointsAvailable: number, actionsAvailable: number) => ({
   movementPointsAvailable,
@@ -112,5 +112,23 @@ describe('nextLowerFormation', () => {
   it('returns null at the floor (Scattered/Routed)', () => {
     expect(nextLowerFormation('Scattered')).toBeNull();
     expect(nextLowerFormation('Routed')).toBeNull();
+  });
+});
+
+describe('formationAtOrBelow', () => {
+  it('walks down to the highest formation at or below the cap', () => {
+    expect(formationAtOrBelow('Shield Wall', 1)).toBe('Open Order');
+    expect(formationAtOrBelow('Phalanx', 2)).toBe('Close Order');
+    expect(formationAtOrBelow('Close Order', 1)).toBe('Open Order');
+    expect(formationAtOrBelow('Open Order', 0)).toBe('Scattered');
+    expect(formationAtOrBelow('Shield Wall', 0)).toBe('Scattered');
+  });
+
+  it('returns the current formation unchanged when already at or below the cap', () => {
+    expect(formationAtOrBelow('Shield Wall', 3)).toBe('Shield Wall');
+    expect(formationAtOrBelow('Close Order', 2)).toBe('Close Order');
+    expect(formationAtOrBelow('Open Order', 3)).toBe('Open Order');
+    expect(formationAtOrBelow('Scattered', 0)).toBe('Scattered');
+    expect(formationAtOrBelow('Routed', 0)).toBe('Routed');
   });
 });

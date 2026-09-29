@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Rename `enter_org_max` → `max_org_level_allowed` + break/standing helpers (2026-09-29)
+**Files:** src/types/gameProtocol.ts, src/lib/{effectTemplates,mapEffects,unitEffects,mapStructures,formationCost}.ts (+ tests), src/components/{ScenarioMap/ScenarioMap,ScenarioMap/mapGeometry,ScenarioMap/useMoveActions,ScenarioMap/useReactionActions,EffectEditor/EffectModifierFields,StructureEditor/StructureEditor}.tsx, docs/dev/changelog.md
+
+- **Renamed the effect/modifier kind `enter_org_max` → `max_org_level_allowed`** (label "Max org level allowed"). `parseModifiers` + `normalizeGroundEffectKinds` map legacy `"enter_org_max"` data to the new identifier on read, so existing structure templates, effect templates, and scenario ground-effect zones keep working with no migration. `normalizeModifierKind` is the single alias point.
+- **New pure helpers for the upcoming break behavior** (not wired yet): `formationCost.formationAtOrBelow(current, maxOrg)` (walk down Phalanx/Shield Wall → Close Order → Open Order → Scattered to the highest formation ≤ cap), `mapStructures.entryBreakFormation(from, to, currentFormation, …)` (the formation to break to on entry across the strictest edge/hex/zone gate, or null), and `mapStructures.standingMaxOrg(hex, …)` (the persistent cap while standing — hex structure + zone, ignoring edge structures).
+- `tsc` clean; 808 tests pass; build clean. No migration.
+
 ## Fix: routed-unit tokens flicker/rotate on hover (async draw made synchronous) (2026-09-29)
 **Files:** src/components/TokenRenderer/drawToken.ts, src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/changelog.md
 

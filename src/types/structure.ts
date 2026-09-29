@@ -12,7 +12,7 @@
 // Durability is two pools, damaged simultaneously: `doorHp` gates PASSAGE
 // (0 = passable) and `maxHp` gates MODIFIERS (<= 0 = destroyed / removed).
 // One `modifiers` list carries cover AC, attack-roll flags, the occupant `range`
-// aura and the `enter_org_max` pass-through gate; per-entry `mode` scopes the
+// aura and the `max_org_level_allowed` cap; per-entry `mode` scopes the
 // attack-distance-sensitive kinds (melee vs ranged).
 //
 // Instances live on the map layers (maps.structures / scenarios.map_data.structures)

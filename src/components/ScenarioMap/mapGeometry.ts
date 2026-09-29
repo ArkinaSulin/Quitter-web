@@ -61,12 +61,12 @@ export function makeCostOfHex(
 
 /** Optional extra movement gates beyond wall `block`. */
 export interface BlockEdgeOpts {
-  /** Placed structures (edge `enter_org_max` gates + hex structure gates). */
+  /** Placed structures (edge `max_org_level_allowed` gates + hex structure gates). */
   structures?: MapStructures;
   templates?: Record<string, StructureTemplate>;
-  /** Ground zones (a `enter_org_max` zone blocks entry for over-level movers). */
+  /** Ground zones (a `max_org_level_allowed` zone blocks entry for over-level movers). */
   zones?: GroundEffect[];
-  /** The moving unit's organization level — enables the `enter_org_max` gate. */
+  /** The moving unit's organization level — enables the `max_org_level_allowed` gate. */
   orgLevel?: number;
   /** Locomotion for locomotion-specific blocks (negative MP faces / hex). */
   isMounted?: boolean;
@@ -78,7 +78,7 @@ export interface BlockEdgeOpts {
  * Impassable-edge predicate for the movement BFS (undefined when nothing can
  * block). Hard blocks (negative MP, standing doors, wall `block`) always block;
  * when `orgLevel` is provided, a structure on the crossed edge / destination hex
- * or a ground zone there with an `enter_org_max` modifier blocks movers above the
+ * or a ground zone there with an `max_org_level_allowed` modifier blocks movers above the
  * allowed organization level. `ignoreBlocks` disables the whole predicate.
  */
 export function makeBlockedEdge(walls: Walls | null | undefined, opts: BlockEdgeOpts = {}): BlockedEdgeFn | undefined {

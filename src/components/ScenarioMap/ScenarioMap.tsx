@@ -61,7 +61,7 @@ import { AddEffectModal } from './AddEffectModal';
 import { EffectFormModal, EffectFormValue } from './EffectFormModal';
 import { EffectTemplate, templateById } from '@/lib/unitEffects';
 import { EffectModifier, EffectTemplate as EffectLibraryTemplate, mapEffectRow, modifierAmount } from '@/lib/effectTemplates';
-import { expandHexEffects } from '@/lib/mapEffects';
+import { expandHexEffects, normalizeGroundEffectKinds } from '@/lib/mapEffects';
 import { routeUnit } from './routeUnit';
 import { ScenarioStatsModal } from './ScenarioStatsModal';
 import { parseDragPayload } from './EffectsPanel';
@@ -291,7 +291,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [mapId, setMapId] = useState<string | null>(null);
 
   // Hex-structure modifiers are expanded into permanent ground zones so the ONE
-  // ground-effect engine applies them (auras/range/ac/block_attacks/enter_org_max/
+  // ground-effect engine applies them (auras/range/ac/block_attacks/max_org_level_allowed/
   // entry/mp_cost). Edge structures stay on the edge path. Painted `groundZones`
   // remains the persisted/rendered list; `effectiveZones` is the engine view.
   const effectiveZones = useMemo(
@@ -1105,7 +1105,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [cloneZone, setCloneZone] = useState<GroundEffect | null>(null);
 
   const UNIT_KINDS = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'range', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'save_advantage', 'save_disadvantage'];
-  const ZONE_KINDS = ['ac', 'morale', 'dot', 'entry', 'mp_cost', 'enter_org_max', 'range', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'save_advantage', 'save_disadvantage', 'forced_stop'];
+  const ZONE_KINDS = ['ac', 'morale', 'dot', 'entry', 'mp_cost', 'max_org_level_allowed', 'range', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'save_advantage', 'save_disadvantage', 'forced_stop'];
 
   const applyUnitDrop = async (d: { unit: Unit; form: EffectFormValue }) => {
     if (d.form.scope === 'zone') {
@@ -2216,7 +2216,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         gridRadius: data?.gridRadius ?? DEFAULT_GRID_RADIUS,
       });
       setStructures(parseStructures(data?.structures));
-      setGroundZones(Array.isArray(data?.groundEffects) ? data.groundEffects : []);
+      setGroundZones(normalizeGroundEffectKinds(Array.isArray(data?.groundEffects) ? data.groundEffects : []));
       setMapId(data?.mapId ?? null);
     });
   }, [scenarioId, fetchScenarioMapData]);
@@ -2290,7 +2290,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           if (row.map_data !== undefined) {
             const md = row.map_data || {};
             if (md.structures !== undefined) setStructures(parseStructures(md.structures));
-            if (md.groundEffects !== undefined) setGroundZones(Array.isArray(md.groundEffects) ? md.groundEffects : []);
+            if (md.groundEffects !== undefined) setGroundZones(normalizeGroundEffectKinds(Array.isArray(md.groundEffects) ? md.groundEffects : []));
             if (md.mapId !== undefined) setMapId(md.mapId ?? null);
             if (md.backgroundImageUrl !== undefined) {
               setBackgroundConfig({

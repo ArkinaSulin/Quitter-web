@@ -11,7 +11,7 @@ export type EffectModifierKind =
   | 'hp_borrow'    // "Sleep": take X HP now, refund after caster activations
   | 'entry'        // zone: one-time damage when a unit enters/arrives
   | 'mp_cost'      // zone: offset to the hex entry MP cost
-  | 'enter_org_max' // zone/structure: only formations with org level <= value may enter
+  | 'max_org_level_allowed' // zone/structure: break incoming formations above this org level
   | 'range'        // zone/structure: +/- weapon range (hexes) for the occupant
   | 'advantage'    // carrier's own attacks roll 2d20 take higher
   | 'disadvantage' // carrier's own attacks roll 2d20 take lower
@@ -32,7 +32,7 @@ export function isFlagModifierKind(kind: EffectModifierKind): boolean {
 /** Kinds that only ever apply to a UNIT (never a zone). */
 export const UNIT_ONLY_MODIFIER_KINDS: EffectModifierKind[] = ['movement', 'hp_borrow'];
 /** Kinds that only ever apply to a ZONE / hex (never a unit). */
-export const ZONE_ONLY_MODIFIER_KINDS: EffectModifierKind[] = ['entry', 'mp_cost', 'enter_org_max', 'forced_stop'];
+export const ZONE_ONLY_MODIFIER_KINDS: EffectModifierKind[] = ['entry', 'mp_cost', 'max_org_level_allowed', 'forced_stop'];
 
 /** True when a template mixes unit-only and zone-only modifiers, so it cannot be
  *  applied anywhere without dropping some of its modifiers. */
@@ -97,7 +97,7 @@ export function rollDice(dice: string | null | undefined, rng: () => number = Ma
 }
 
 /** The FLAT amount of a modifier's `dice` string (0 when absent/unparseable).
- *  Used for stat/aura kinds (ac/morale/movement/range/enter_org_max/mp_cost). */
+ *  Used for stat/aura kinds (ac/morale/movement/range/max_org_level_allowed/mp_cost). */
 export function modifierAmount(dice: string | null | undefined): number {
   return parseDice(dice)?.bonus ?? 0;
 }
@@ -121,7 +121,7 @@ export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
   hp_borrow: 'Borrow HP (sleep)',
   entry: 'Damage on entry',
   mp_cost: 'Terrain cost (hex)',
-  enter_org_max: 'Max org level to enter',
+  max_org_level_allowed: 'Max org level allowed',
   range: 'Weapon range +/-',
   advantage: 'Advantage on own attacks',
   disadvantage: 'Disadvantage on own attacks',
@@ -141,7 +141,7 @@ export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
  *     never print a bogus `(melee)`.
  *   - `/in`·`/out` suffix for `block_attacks`.
  *   - signed amount for stat/aura kinds: `range +2`, `ac -1`; `≤1` for the
- *     `enter_org_max` gate; `heal` suffix preserved.
+ *     `max_org_level_allowed` cap; `heal` suffix preserved.
  *   - flag kinds print just the kind.
  */
 export function modifierSummary(m: EffectModifier): string {
@@ -154,7 +154,7 @@ export function modifierSummary(m: EffectModifier): string {
   if (honorsMode(m.kind) && m.mode) s += ` (${m.mode})`;
   if (m.kind === 'block_attacks' && m.direction) s += ` /${m.direction}`;
   if (!isFlagModifierKind(m.kind)) {
-    if (m.kind === 'enter_org_max') {
+    if (m.kind === 'max_org_level_allowed') {
       s += ` ≤${modifierAmount(m.dice)}`;
     } else if (isDiceAmount(m.dice)) {
       s += ` ${m.dice}`; // rolled amount: keep the dice string (e.g. `dot 1d6`)
@@ -191,15 +191,26 @@ export interface EffectTemplate {
   updatedAt: string;
 }
 
-const KINDS: EffectModifierKind[] = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'entry', 'mp_cost', 'enter_org_max', 'range', ...FLAG_MODIFIER_KINDS];
+const KINDS: EffectModifierKind[] = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'entry', 'mp_cost', 'max_org_level_allowed', 'range', ...FLAG_MODIFIER_KINDS];
+
+/** Legacy identifier aliases mapped to their current name on read (no migration). */
+const LEGACY_MODIFIER_KINDS: Record<string, string> = {
+  enter_org_max: 'max_org_level_allowed',
+};
+
+/** Normalize a stored modifier kind string to its current identifier. */
+export function normalizeModifierKind(kind: unknown): string {
+  if (typeof kind !== 'string') return '';
+  return LEGACY_MODIFIER_KINDS[kind] ?? kind;
+}
 
 export function parseModifiers(raw: unknown): EffectModifier[] {
   if (!Array.isArray(raw)) return [];
   const out: EffectModifier[] = [];
   for (const m of raw) {
     if (!m || typeof m !== 'object') continue;
-    const kind = (m as { kind?: unknown }).kind;
-    const isKind = typeof kind === 'string' && KINDS.includes(kind as EffectModifierKind);
+    const kind = normalizeModifierKind((m as { kind?: unknown }).kind);
+    const isKind = !!kind && KINDS.includes(kind as EffectModifierKind);
     if (!isKind) continue;
     const out2: EffectModifier = { kind: kind as EffectModifierKind };
     const dice = (m as any).dice;

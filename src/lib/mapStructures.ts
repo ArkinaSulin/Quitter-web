@@ -12,7 +12,8 @@ import { Walls, Wall, WallFace, edgeRef, directionBetween } from './walls';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { EffectModifier, modifierAmount } from '@/lib/effectTemplates';
 import { templateDoorMax } from '@/lib/structureTemplates';
-import { GroundEffect, Unit } from '@/types/gameProtocol';
+import { GroundEffect, Unit, getOrganizationLevel } from '@/types/gameProtocol';
+import { formationAtOrBelow } from '@/lib/formationCost';
 
 export type MapStructures = Record<string, StructureInstance>;
 
@@ -243,18 +244,18 @@ export function structureCounts(s: MapStructures): { edges: number; hexes: numbe
 }
 
 /** True when a structure's modifiers gate entry for a unit of this org level
- *  (`enter_org_max`: only formations with org level <= value may enter). */
+ *  (`max_org_level_allowed`: only formations with org level <= value may enter). */
 export function structureBlocksOrg(t: StructureTemplate | null | undefined, orgLevel: number, inst?: StructureInstance | null): boolean {
-  return instanceModifiers(inst, t).some(m => m.kind === 'enter_org_max' && orgLevel > modifierAmount(m.dice));
+  return instanceModifiers(inst, t).some(m => m.kind === 'max_org_level_allowed' && orgLevel > modifierAmount(m.dice));
 }
 
 /** True when a ground zone on (q,r) gates entry for this org level. */
 export function zoneBlocksOrg(zones: GroundEffect[] | null | undefined, q: number, r: number, orgLevel: number): boolean {
   if (!zones) return false;
-  return zones.some(z => z.q === q && z.r === r && z.kind === 'enter_org_max' && orgLevel > modifierAmount(z.dice));
+  return zones.some(z => z.q === q && z.r === r && z.kind === 'max_org_level_allowed' && orgLevel > modifierAmount(z.dice));
 }
 
-/** One `enter_org_max` gate governing entry into a hex, with its verdict for a
+/** One `max_org_level_allowed` gate governing entry into a hex, with its verdict for a
  *  mover of a given organization level (`passes` = orgLevel <= max). */
 export interface OrgGateCheck {
   source: 'zone' | 'hex structure' | 'edge structure';
@@ -264,7 +265,7 @@ export interface OrgGateCheck {
 }
 
 /**
- * Enumerate every `enter_org_max` gate that governs entering `toHex` from
+ * Enumerate every `max_org_level_allowed` gate that governs entering `toHex` from
  * `fromHex`, mirroring `makeBlockedEdge`: an edge structure on the crossed edge
  * (only when the two hexes are adjacent), a hex structure on the destination
  * hex, and any ground zone there. Empty when nothing gates the entry. Used to
@@ -289,22 +290,22 @@ export function orgGatesForEntry(
     const edgeInst = structures[ref.key];
     if (edgeInst) {
       const t = templates?.[edgeInst.templateId];
-      for (const m of instanceModifiers(edgeInst, t)) if (m.kind === 'enter_org_max') push('edge structure', t?.name ?? edgeInst.templateId, m.dice);
+      for (const m of instanceModifiers(edgeInst, t)) if (m.kind === 'max_org_level_allowed') push('edge structure', t?.name ?? edgeInst.templateId, m.dice);
     }
   }
   const hexInst = structures?.[`${toHex.q},${toHex.r}`];
   if (hexInst) {
     const t = templates?.[hexInst.templateId];
-    for (const m of instanceModifiers(hexInst, t)) if (m.kind === 'enter_org_max') push('hex structure', t?.name ?? hexInst.templateId, m.dice);
+    for (const m of instanceModifiers(hexInst, t)) if (m.kind === 'max_org_level_allowed') push('hex structure', t?.name ?? hexInst.templateId, m.dice);
   }
   if (zones) {
-    for (const z of zones) if (z.q === toHex.q && z.r === toHex.r && z.kind === 'enter_org_max') push('zone', z.name, z.dice);
+    for (const z of zones) if (z.q === toHex.q && z.r === toHex.r && z.kind === 'max_org_level_allowed') push('zone', z.name, z.dice);
   }
   return out;
 }
 
 /**
- * Explain a move that failed because of an `enter_org_max` gate. Returns null
+ * Explain a move that failed because of an `max_org_level_allowed` gate. Returns null
  * when no gate blocks (the caller falls back to the generic unreachable message).
  * `plain` is the normal-mode line naming the first blocking gate; `verbose` is
  * the per-test breakdown (lines are `✗`/`✓`-prefixed so the messages panel can
@@ -331,6 +332,59 @@ export function describeOrgGateBlock(
     }),
   ].join('\n');
   return { plain, verbose };
+}
+
+/**
+ * The formation to break to when entering `toHex` from `fromHex`, or null when
+ * no `max_org_level_allowed` gate is exceeded. The strictest cap across every
+ * governing gate (edge structure on the crossed edge, hex structure on the
+ * destination, and any ground zone there) wins; the unit breaks to the highest
+ * formation at or below that cap.
+ */
+export function entryBreakFormation(
+  fromHex: { q: number; r: number },
+  toHex: { q: number; r: number },
+  currentFormation: string,
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+  zones: GroundEffect[] | null | undefined,
+): string | null {
+  const orgLevel = getOrganizationLevel(currentFormation);
+  const gates = orgGatesForEntry(fromHex, toHex, orgLevel, structures, templates, zones);
+  if (gates.length === 0) return null;
+  const minMax = Math.min(...gates.map(g => g.max));
+  if (orgLevel <= minMax) return null;
+  return formationAtOrBelow(currentFormation, minMax);
+}
+
+/**
+ * The persistent org cap a unit must respect while STANDING on `hex`: the
+ * strictest `max_org_level_allowed` across the hex structure there and any
+ * ground zone there (edge structures are a one-time crossing gate, not a
+ * standing cap). Returns Infinity when nothing caps the hex.
+ */
+export function standingMaxOrg(
+  hex: { q: number; r: number },
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+  zones: GroundEffect[] | null | undefined,
+): number {
+  let cap = Infinity;
+  const hexInst = structures?.[`${hex.q},${hex.r}`];
+  if (hexInst) {
+    const t = templates?.[hexInst.templateId];
+    for (const m of instanceModifiers(hexInst, t)) {
+      if (m.kind === 'max_org_level_allowed') cap = Math.min(cap, modifierAmount(m.dice));
+    }
+  }
+  if (zones) {
+    for (const z of zones) {
+      if (z.q === hex.q && z.r === hex.r && z.kind === 'max_org_level_allowed') {
+        cap = Math.min(cap, modifierAmount(z.dice));
+      }
+    }
+  }
+  return cap;
 }
 
 /** The hex structure instance at a hex (keyed "q,r"), if any. */
@@ -378,7 +432,7 @@ export function hasAuraFlags(f: StructureAuraFlags): boolean {
 /**
  * Expand every HEX structure's modifiers into PERMANENT ground zones so the one
  * ground-effect runtime engine applies them (membership auras, `range`, `ac`,
- * `block_attacks`, `enter_org_max`, entry/dot). Edge structures have no hex-zone
+ * `block_attacks`, `max_org_level_allowed`, entry/dot). Edge structures have no hex-zone
  * equivalent (their effects are per-crossing) and stay on the edge path.
  */
 export function structureZones(
