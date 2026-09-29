@@ -66,6 +66,20 @@ describe('selectPursuer', () => {
     const b = mk('b', 'red', { movementPoints: 2, aggressiveness: 10 });
     const sel = selectPursuer([b, a], null, [a, b], GROUPS, FORMS, constRng(0.95));
     expect(sel.pursuer?.id).toBe('b');
+    expect(sel.failedAgr).toEqual([{ unit: a, roll: 10, aggr: 1 }]);
+    expect(sel.pursuerRoll).toEqual({ roll: 10, aggr: 10 });
+  });
+
+  it('records every candidate that fails AGR and no pursuer', () => {
+    const a = mk('a', 'red', { movementPoints: 6, aggressiveness: 1 });
+    const b = mk('b', 'red', { movementPoints: 2, aggressiveness: 1 });
+    const sel = selectPursuer([a, b], null, [a, b], GROUPS, FORMS, constRng(0.95));
+    expect(sel.pursuer).toBeNull();
+    expect(sel.pursuerRoll).toBeUndefined();
+    expect(sel.failedAgr).toEqual([
+      { unit: a, roll: 10, aggr: 1 },
+      { unit: b, roll: 10, aggr: 1 },
+    ]);
   });
 
   it('a hero Commanding Presence holds a candidate and reports it', () => {

@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Pursuit AGR roll now logged (2026-09-28)
+**Files:** src/lib/pursuit.ts (+ test), src/components/ScenarioMap/useCombatActions.ts, docs/dev/changelog.md
+
+- **The pursuit aggression roll is now visible in the message log.** `selectPursuer` records each candidate's `d10` vs `aggressiveness` (`failedAgr` + `pursuerRoll`), and `performPursuits` prints a plain line per outcome: `X passes AGR (3 ≤ 6) and pursues Y` / `X AGR failed (7 > 6) — does not pursue`. The existing "held in line by … Commanding Presence" line is unchanged; the cornered (no-roll) path is unchanged.
+- `tsc` clean; tests pass; build clean. No migration.
+
 ## Free Move auto-off countdown (2026-09-28)
 **Files:** src/components/ScenarioMap/{ScenarioMap,TopBar}.tsx, docs/dev/changelog.md
 

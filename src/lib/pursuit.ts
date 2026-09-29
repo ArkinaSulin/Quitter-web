@@ -42,6 +42,10 @@ export interface PursuitSelection {
   pursuer: Unit | null;
   /** Candidates that passed the aggression roll but were held in line by a hero. */
   suppressed: { unit: Unit; hero: Unit }[];
+  /** Candidates that FAILED the aggression roll (rolled above their AGR), in order. */
+  failedAgr: { unit: Unit; roll: number; aggr: number }[];
+  /** The winning candidate's roll (present when `pursuer` is set). */
+  pursuerRoll?: { roll: number; aggr: number };
 }
 
 /** Effective max MP of a unit under its own formation multiplier. */
@@ -79,12 +83,16 @@ export function selectPursuer(
   );
 
   const suppressed: { unit: Unit; hero: Unit }[] = [];
+  const failedAgr: { unit: Unit; roll: number; aggr: number }[] = [];
   for (const { u } of decorated) {
     const roll = Math.floor(rng() * 10) + 1;
-    if (roll > u.aggressiveness) continue;
+    if (roll > u.aggressiveness) {
+      failedAgr.push({ unit: u, roll, aggr: u.aggressiveness });
+      continue;
+    }
     const hero = forbiddingHero(u, units, alliances);
     if (hero) { suppressed.push({ unit: u, hero }); continue; }
-    return { pursuer: u, suppressed };
+    return { pursuer: u, suppressed, failedAgr, pursuerRoll: { roll, aggr: u.aggressiveness } };
   }
-  return { pursuer: null, suppressed };
+  return { pursuer: null, suppressed, failedAgr };
 }

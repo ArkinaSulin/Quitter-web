@@ -823,6 +823,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const candidates = pursuitCandidates(live, originHex, destHex, units, alliances, formationsMap);
     const sel = selectPursuer(candidates, opts?.attacker ?? null, units, alliances, formationsMap);
     if (!sel.pursuer) {
+      for (const f of sel.failedAgr) {
+        addMessage(`${f.unit.unitName} AGR failed (${f.roll} > ${f.aggr}) — does not pursue`);
+      }
       if (sel.suppressed.length > 0) {
         const heroes = Array.from(new Set(sel.suppressed.map(s => s.hero.unitName))).join(', ');
         addMessage(`No pursue on ${live.unitName} — held in line by ${heroes}'s Commanding Presence.`);
@@ -830,6 +833,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
     const pursuer = units.find(u => u.id === sel.pursuer!.id) ?? sel.pursuer;
+    if (sel.pursuerRoll) {
+      addMessage(`${pursuer.unitName} passes AGR (${sel.pursuerRoll.roll} ≤ ${sel.pursuerRoll.aggr}) and pursues ${live.unitName}`);
+    }
 
     // Free 1-hex step into the contact hex (only if it is empty), then a free
     // melee attack resolved AT the contact hex.
