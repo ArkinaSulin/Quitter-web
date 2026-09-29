@@ -138,7 +138,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     return m;
   }, [displayUnits, displayAlliances, formationsMap]);
 
-  const customDraw = useCallback(async (ctx: CanvasRenderingContext2D, width: number, height: number, currentZoom: number, offsetX: number, offsetY: number) => {
+  const customDraw = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, currentZoom: number, offsetX: number, offsetY: number) => {
     const tokenWidth = TOKEN_WIDTH * currentZoom;
     const tokenHeight = TOKEN_HEIGHT * currentZoom;
 
@@ -442,7 +442,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const cy = pos.y * currentZoom + offsetY;
       const unitMoraleMod = moraleMods.get(unit.id) ?? (unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, displayUnits, displayAlliances, formationMoraleMod));
       try {
-        await drawToken({
+        drawToken({
           unit: { ...unit, currentMoraleModifier: unitMoraleMod },
           ctx,
           x: cx,
@@ -478,7 +478,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.stroke();
         ctx.restore();
       } else if (!reactionMode && reactionOffers.has(unit.id) && !unit.archerReactionUsed && canReactToUnit(unit)) {
-        await drawArcherReactionButton(ctx, cx, cy, HEX_SIZE * currentZoom * 0.5, bowBlinkOn ? 0.4 : 1);
+        drawArcherReactionButton(ctx, cx, cy, HEX_SIZE * currentZoom * 0.5, bowBlinkOn ? 0.4 : 1);
       }
 
       const attachedHero = attachedByHost.get(unit.id);
@@ -489,7 +489,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const heroFormationMoraleMod = formationsMap[attachedHero.currentFormation] ?? null;
         const heroMoraleMod = moraleMods.get(attachedHero.id) ?? (attachedHero.currentMoraleModifier + computeEffectiveMoraleModifier(attachedHero, displayUnits, displayAlliances, heroFormationMoraleMod));
         try {
-          await drawToken({
+          drawToken({
             unit: { ...attachedHero, currentMoraleModifier: heroMoraleMod },
             ctx,
             x: heroCx,
@@ -908,7 +908,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const cy = pos.y * fitZoom + fitOffsetY;
 
         try {
-          await drawToken({
+          drawToken({
             unit,
             ctx,
             x: cx,
@@ -930,7 +930,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           const heroCx = heroPos.x * fitZoom + fitOffsetX;
           const heroCy = heroPos.y * fitZoom + fitOffsetY;
           try {
-            await drawToken({
+            drawToken({
               unit: attachedHero,
               ctx,
               x: heroCx,

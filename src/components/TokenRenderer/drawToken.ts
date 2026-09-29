@@ -164,7 +164,7 @@ export interface DrawTokenOptions {
   sizeCategories?: SizeCategory[];
 }
 
-export async function drawToken(options: DrawTokenOptions): Promise<void> {
+export function drawToken(options: DrawTokenOptions): void {
   const {
     unit,
     ctx,
@@ -201,7 +201,7 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
       } else if (imageCache.has(imageUrl)) {
         heroImage = imageCache.get(imageUrl);
       } else {
-        try { heroImage = await loadImage(imageUrl); } catch { /* ignore */ }
+        heroImage = getLoadedImage(imageUrl) ?? undefined;
       }
     }
   }
@@ -231,7 +231,7 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
       const heroSize = getHeroSquareSize(height, unit.sizeCategory || 100);
       const displaySize = options.isAttached ? heroSize / 2 : heroSize;
       const flagSize = displaySize * 0.5;
-      await drawRoutedFlag(ctx, x - flagSize / 2, y - displaySize / 2 - flagSize * 0.25, flagSize);
+      drawRoutedFlag(ctx, x - flagSize / 2, y - displaySize / 2 - flagSize * 0.25, flagSize);
     }
     return;
   }
@@ -379,7 +379,7 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
     const flagSize = Math.min(width, height) * 0.35;
     const flagX = x - flagSize / 2;
     const flagY = y - height * 0.667 / 2 + (height * 0.667 - flagSize) / 2;
-    await drawRoutedFlag(ctx, flagX, flagY, flagSize);
+    drawRoutedFlag(ctx, flagX, flagY, flagSize);
   }
 
   // ---- Bottom info (hidden on corpses) ----
@@ -650,23 +650,23 @@ function drawHeroSquareHpBar(ctx: CanvasRenderingContext2D, cx: number, cy: numb
  * Drawn by the map (customDraw) as a map overlay — not part of the token art —
  * so it scales with the hex, not the token. `alpha` carries the blink phase.
  */
-export async function drawArcherReactionButton(
+export function drawArcherReactionButton(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   size: number,
   alpha = 1,
-): Promise<void> {
+): void {
   ctx.save();
   ctx.globalAlpha = alpha;
-  try {
-    const img = await loadImage('/images/bow_n_arrow.png');
+  const img = getLoadedImage('/images/bow_n_arrow.png');
+  if (img) {
     const ratio = img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1;
     const w = size;
     const h = size / ratio;
     ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
-  } catch {
-    // Fallback glyph if the image can't load.
+  } else {
+    // Fallback glyph if the image hasn't loaded yet (or can't load).
     const r = size * 0.45;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, 2 * Math.PI);
@@ -694,48 +694,47 @@ export async function drawArcherReactionButton(
     ctx.lineTo(cx + r * 0.55, cy + r * 0.18);
     ctx.lineWidth = 1.1;
     ctx.stroke();
-  } finally {
-    ctx.restore();
   }
+  ctx.restore();
 }
 
 /**
  * Routed white flag drawn at the given rect. Shared by unit tokens and the hero
  * square path (which previously never rendered a rout indicator).
  */
-async function drawRoutedFlag(
+function drawRoutedFlag(
   ctx: CanvasRenderingContext2D,
   flagX: number,
   flagY: number,
   flagSize: number,
-): Promise<void> {
-  try {
-    const img = await loadImage('/images/whiteflag.png');
+): void {
+  const img = getLoadedImage('/images/whiteflag.png');
+  if (img) {
     ctx.drawImage(img, flagX, flagY, flagSize, flagSize);
-  } catch {
-    ctx.save();
-    ctx.fillStyle = '#888888';
-    ctx.fillRect(flagX + flagSize * 0.1, flagY, 2, flagSize * 0.8);
-    ctx.shadowColor = 'rgba(0,0,0,0.3)';
-    ctx.shadowBlur = 4;
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.moveTo(flagX + flagSize * 0.15, flagY);
-    ctx.lineTo(flagX + flagSize * 0.9, flagY + flagSize * 0.35);
-    ctx.lineTo(flagX + flagSize * 0.15, flagY + flagSize * 0.7);
-    ctx.closePath();
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = '#333333';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(flagX + flagSize * 0.15, flagY);
-    ctx.lineTo(flagX + flagSize * 0.9, flagY + flagSize * 0.35);
-    ctx.lineTo(flagX + flagSize * 0.15, flagY + flagSize * 0.7);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.restore();
+    return;
   }
+  ctx.save();
+  ctx.fillStyle = '#888888';
+  ctx.fillRect(flagX + flagSize * 0.1, flagY, 2, flagSize * 0.8);
+  ctx.shadowColor = 'rgba(0,0,0,0.3)';
+  ctx.shadowBlur = 4;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.moveTo(flagX + flagSize * 0.15, flagY);
+  ctx.lineTo(flagX + flagSize * 0.9, flagY + flagSize * 0.35);
+  ctx.lineTo(flagX + flagSize * 0.15, flagY + flagSize * 0.7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#333333';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(flagX + flagSize * 0.15, flagY);
+  ctx.lineTo(flagX + flagSize * 0.9, flagY + flagSize * 0.35);
+  ctx.lineTo(flagX + flagSize * 0.15, flagY + flagSize * 0.7);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawHeroSquareToken(

@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Fix: routed-unit tokens flicker/rotate on hover (async draw made synchronous) (2026-09-29)
+**Files:** src/components/TokenRenderer/drawToken.ts, src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/changelog.md
+
+- **Routed units no longer flicker/rotate to the wrong facing when hovering a unit.** The canvas draw path was async-but-un-awaited (`customDraw` awaited `drawToken`, which `await loadImage`'d inside its `ctx.save()/rotate()/restore()` scope for the routed white flag and archer button). Overlapping redraws (e.g. hover → overlay → tooltip) interleaved at those awaits, so a `ctx.restore()` popped the wrong `save()` and leaked one unit's facing rotation onto the remaining routed tokens.
+- **The whole map draw path is now synchronous**: `drawToken`, `drawRoutedFlag`, `drawArcherReactionButton`, and `customDraw` use `getLoadedImage` (+ existing fallback glyphs) instead of `await loadImage`, so every `save()/restore()` is atomic and can't interleave. Uncached images draw the fallback and appear on the next frame once decoded. This also removes the ~28 per-frame microtask yields.
+- `tsc` clean; 802 tests pass; build clean. No migration.
+
 ## Map render perf: static-layer caching + morale/troop-layout caches (2026-09-29)
 **Files:** src/hooks/useHexGrid.ts, src/components/ScenarioMap/useCanvasDraw.ts, src/components/TokenRenderer/drawToken.ts, docs/dev/changelog.md
 
