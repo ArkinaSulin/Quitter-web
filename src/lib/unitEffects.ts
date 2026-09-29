@@ -908,10 +908,10 @@ export const EFFECT_TEMPLATES: EffectTemplate[] = [
   { id: 'fear', name: 'Fear', color: '#9575cd', kind: 'morale', defaultDelta: -3, defaultDuration: 3, description: '-3 morale' },
   { id: 'burn', name: 'Burning', color: '#ff7043', kind: 'dot', defaultDelta: 4, defaultDuration: 3, description: '4 damage each tick' },
   { id: 'regen', name: 'Regen', color: '#81c784', kind: 'dot', defaultDelta: -4, defaultDuration: 3, description: 'heal 4 each tick' },
-  { id: 'advantage', name: 'Advantage', color: '#b2ff59', kind: 'advantage', defaultDelta: 0, defaultDuration: 3, description: 'advantage on own attacks' },
-  { id: 'disadvantage', name: 'Disadvantage', color: '#ff8a80', kind: 'disadvantage', defaultDelta: 0, defaultDuration: 3, description: 'disadvantage on own attacks' },
-  { id: 'grant_advantage', name: 'Grant Advantage', color: '#69f0ae', kind: 'grant_advantage', defaultDelta: 0, defaultDuration: 3, description: 'attackers targeting this unit gain advantage' },
-  { id: 'grant_disadvantage', name: 'Grant Disadvantage', color: '#ff5252', kind: 'grant_disadvantage', defaultDelta: 0, defaultDuration: 3, description: 'attackers targeting this unit suffer disadvantage' },
+  { id: 'advantage', name: 'Advantage', color: '#b2ff59', kind: 'advantage', defaultDelta: 0, defaultDuration: 3, description: 'gain advantage on own attacks' },
+  { id: 'disadvantage', name: 'Disadvantage', color: '#ff8a80', kind: 'disadvantage', defaultDelta: 0, defaultDuration: 3, description: 'suffer disadvantage on own attacks' },
+  { id: 'grant_advantage', name: 'Grant Advantage', color: '#69f0ae', kind: 'grant_advantage', defaultDelta: 0, defaultDuration: 3, description: 'grant advantage to attackers' },
+  { id: 'grant_disadvantage', name: 'Grant Disadvantage', color: '#ff5252', kind: 'grant_disadvantage', defaultDelta: 0, defaultDuration: 3, description: 'grant disadvantage to attackers' },
 ];
 
 export function templateById(id: string): EffectTemplate | undefined {

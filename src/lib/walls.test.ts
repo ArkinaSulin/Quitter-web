@@ -164,6 +164,20 @@ describe('parseWalls', () => {
     expect(parsed['0,0,0'].b).toEqual({ rangedAc: -4 });
   });
 
+  it('round-trips meleeRoll / rangedRoll flags on a face', () => {
+    const parsed = parseWalls({
+      '0,0,0': {
+        a: { meleeRoll: { advantage: true, grantDisadvantage: true } },
+        b: { rangedRoll: { disadvantage: true } },
+      },
+    });
+    expect(parsed['0,0,0'].a.meleeRoll).toEqual({ advantage: true, disadvantage: false, grantAdvantage: false, grantDisadvantage: true });
+    expect(parsed['0,0,0'].a.rangedRoll).toBeUndefined();
+    expect(parsed['0,0,0'].b.rangedRoll).toEqual({ advantage: false, disadvantage: true, grantAdvantage: false, grantDisadvantage: false });
+    // all-false flags are dropped.
+    expect(parseWalls({ '0,0,0': { a: { meleeRoll: { advantage: false } }, b: {} } })['0,0,0'].a.meleeRoll).toBeUndefined();
+  });
+
   it('parses HP/DT and fills hp from maxHp when omitted', () => {
     const parsed = parseWalls({ '0,0,0': { a: {}, b: {}, maxHp: 10, dt: 3 } });
     expect(parsed['0,0,0'].maxHp).toBe(10);

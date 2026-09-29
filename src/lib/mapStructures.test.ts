@@ -70,8 +70,8 @@ describe('structuresToWalls', () => {
   it('maps in/out onto the canonical sides (outside = a)', () => {
     const walls = structuresToWalls({ '0,0,0': { templateId: 't1', outside: 'a' } }, templates);
     const w = walls['0,0,0'];
-    // a = OUTSIDE: into-outside MP (foot 3; mounted unset), cover 2/2.
-    expect(w.a).toEqual({ moveCostFoot: 3, meleeAc: 2, rangedAc: 2 });
+    // a = OUTSIDE: into-outside MP (foot 3; mounted unset), no cover AC.
+    expect(w.a).toEqual({ moveCostFoot: 3 });
     // b = INSIDE: into-inside MP (foot 1; mounted -1 = block), cover 2/2.
     expect(w.b).toEqual({ moveCostFoot: 1, moveCostMounted: -1, meleeAc: 2, rangedAc: 2 });
     expect(w.maxHp).toBe(30);
@@ -84,8 +84,24 @@ describe('structuresToWalls', () => {
 
   it('swaps faces when outside = b', () => {
     const walls = structuresToWalls({ '0,0,0': { templateId: 't1', outside: 'b' } }, templates);
+    // outside = b: a = INSIDE (cover), b = OUTSIDE (no cover).
     expect(walls['0,0,0'].a).toEqual({ moveCostFoot: 1, moveCostMounted: -1, meleeAc: 2, rangedAc: 2 });
-    expect(walls['0,0,0'].b).toEqual({ moveCostFoot: 3, meleeAc: 2, rangedAc: 2 });
+    expect(walls['0,0,0'].b).toEqual({ moveCostFoot: 3 });
+  });
+
+  it('carries attack-roll flags on the inside face only (melee vs ranged scope)', () => {
+    const aura = template({
+      id: 'aura',
+      modifiers: [
+        { kind: 'advantage', dice: '0', mode: 'melee' },
+        { kind: 'grant_disadvantage', dice: '0' },
+      ],
+    });
+    const walls = structuresToWalls({ '0,0,0': { templateId: 'aura', outside: 'a' } }, { aura });
+    expect(walls['0,0,0'].a.meleeRoll).toBeUndefined();
+    expect(walls['0,0,0'].a.rangedRoll).toBeUndefined();
+    expect(walls['0,0,0'].b.meleeRoll).toEqual({ advantage: true, disadvantage: false, grantAdvantage: false, grantDisadvantage: true });
+    expect(walls['0,0,0'].b.rangedRoll).toEqual({ advantage: false, disadvantage: false, grantAdvantage: false, grantDisadvantage: true });
   });
 
   it('applies instance HP/door/open and skips unknown / hex entries', () => {
@@ -336,12 +352,15 @@ describe('edge structure cover (wood wall regression)', () => {
   const woodWall = template({ id: 'wood-wall', anchor: 'edge' });
   const templates = { 'wood-wall': woodWall };
 
-  it('grants its melee/ranged AC to the defender across the edge (either outside)', () => {
-    for (const outside of ['a', 'b'] as const) {
-      const walls = structuresToWalls({ '0,0,0': { templateId: 'wood-wall', outside } }, templates);
-      expect(meleeWallAc(walls, { q: 0, r: 0 }, { q: 1, r: 0 })).toBe(2);
-      expect(rangedWallAc(walls, { q: 0, r: 0 }, { q: 1, r: 0 })).toBe(2);
-      expect(meleeWallAc(walls, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(2);
-    }
+  it('grants AC only to the inside defender (never the outside)', () => {
+    // outside = a: (0,0) outside, (1,0) inside.
+    const wA = structuresToWalls({ '0,0,0': { templateId: 'wood-wall', outside: 'a' } }, templates);
+    expect(meleeWallAc(wA, { q: 0, r: 0 }, { q: 1, r: 0 })).toBe(2); // defender inside
+    expect(rangedWallAc(wA, { q: 0, r: 0 }, { q: 1, r: 0 })).toBe(2);
+    expect(meleeWallAc(wA, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(0); // defender outside
+    // outside = b: (0,0) inside, (1,0) outside.
+    const wB = structuresToWalls({ '0,0,0': { templateId: 'wood-wall', outside: 'b' } }, templates);
+    expect(meleeWallAc(wB, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(2); // defender inside
+    expect(meleeWallAc(wB, { q: 0, r: 0 }, { q: 1, r: 0 })).toBe(0); // defender outside
   });
 });

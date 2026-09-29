@@ -26,6 +26,18 @@ export const WALL_DIRS: { q: number; r: number; s: number }[] = [
   { q: 1, r: -1, s: 0 },
 ];
 
+/** Attack-roll flags granted to the unit on a face, scoped to one attack type. */
+export interface WallRollFlags {
+  /** The face's unit gains advantage on its OWN attacks across the edge. */
+  advantage: boolean;
+  /** The face's unit suffers disadvantage on its OWN attacks across the edge. */
+  disadvantage: boolean;
+  /** Attackers from the other side gain advantage targeting this face's unit. */
+  grantAdvantage: boolean;
+  /** Attackers from the other side suffer disadvantage targeting this face's unit. */
+  grantDisadvantage: boolean;
+}
+
 /** One face of an edge (the side belonging to one of the two hexes). */
 export interface WallFace {
   /** Replaces the destination hex's terrain MP cost when crossing INTO this face,
@@ -39,6 +51,10 @@ export interface WallFace {
   meleeAc?: number;
   /** AC granted to the unit on this face vs ranged across the edge. */
   rangedAc?: number;
+  /** Melee attack-roll flags for the unit on this face. */
+  meleeRoll?: WallRollFlags;
+  /** Ranged attack-roll flags for the unit on this face. */
+  rangedRoll?: WallRollFlags;
 }
 
 export interface Wall {
@@ -297,6 +313,17 @@ export function nearestWallEdge(
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
+function parseRoll(raw: any): WallRollFlags | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const f: WallRollFlags = {
+    advantage: raw.advantage === true,
+    disadvantage: raw.disadvantage === true,
+    grantAdvantage: raw.grantAdvantage === true,
+    grantDisadvantage: raw.grantDisadvantage === true,
+  };
+  return f.advantage || f.disadvantage || f.grantAdvantage || f.grantDisadvantage ? f : undefined;
+}
+
 function parseFace(raw: any): WallFace {
   const f: WallFace = {};
   if (!raw || typeof raw !== 'object') return f;
@@ -305,6 +332,10 @@ function parseFace(raw: any): WallFace {
   if (raw.block === true) f.block = true;
   if (isNum(raw.meleeAc)) f.meleeAc = Math.round(raw.meleeAc);
   if (isNum(raw.rangedAc)) f.rangedAc = Math.round(raw.rangedAc);
+  const meleeRoll = parseRoll(raw.meleeRoll);
+  if (meleeRoll) f.meleeRoll = meleeRoll;
+  const rangedRoll = parseRoll(raw.rangedRoll);
+  if (rangedRoll) f.rangedRoll = rangedRoll;
   return f;
 }
 

@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Edge-wall attack-roll flags + inside-only modifier orientation (2026-09-29)
+**Files:** src/lib/{walls,mapStructures,unitCombat}.ts (+ tests), src/lib/{effectTemplates,unitEffects}.ts, docs/dev/{18-map-structures.md,changelog.md}
+
+- **Edge structures now apply their `advantage`/`disadvantage`/`grant_advantage`/`grant_disadvantage` modifiers in combat.** `WallFace` gains `meleeRoll`/`rangedRoll` (`walls.ts`), populated by `faceFromTemplate` (`mapStructures.ts`) and merged into the attacker/defender roll flags in `resolveCombatSequence` via `wallRollFlags` (mirrors `wallCoverAgainst`: melee = shared edge, ranged = the shot's entering edge). No migration — the flags derive from the existing template `modifiers` at wall-build time.
+- **Modifiers are now oriented on the INSIDE only** (matches hex towers/zones): `ac` **and** the four roll flags attach to the inside face, never the outside. This fixes the pre-existing two-sided wall cover — the outside attacker no longer gains cover AC when the inside defender retaliates, and the outside unit gains no wall advantage/disadvantage. `wallCoverAgainst` itself is unchanged; emptying the outside face does the work.
+- **Crossing-scoped**: the flags fire only when a wall actually separates the two hexes, so an inside unit attacking a flanker on the same side gains nothing.
+- **Labels**: `advantage`/`disadvantage`/`grant_advantage`/`grant_disadvantage` → `Gain Advantage` / `Suffer Disadvantage` / `Grant Advantage` / `Grant Disadvantage` (enum unchanged), with matching catalog descriptions.
+- `tsc` clean; full test suite green; build clean. No migration.
+
 ## `max_org_level_allowed` breaks formation at the crossing point (2026-09-29)
 **Files:** src/lib/moveCost.ts (+ test), src/components/ScenarioMap/{mapGeometry,useOverlay,useMoveActions}.tsx, src/hooks/useGameEngine.ts, src/components/ScenarioMap/SoftEnforcementModals.tsx, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/changelog.md
 

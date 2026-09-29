@@ -5,7 +5,7 @@ import { getSetting } from './settingsCache';
 import { getRowCapacityBase, effectiveAc } from './unitStats';
 import { attackDirection } from './attackDirection';
 import { attackRollFlags, AttackRollFlags } from './unitEffects';
-import { Walls, meleeWallAc, wallBetween } from './walls';
+import { Walls, WallRollFlags, meleeWallAc, wallBetween } from './walls';
 import { hexEnteringFrom } from './hexLine';
 
 const HEX_DIRS = [
@@ -374,6 +374,29 @@ export function wallCoverAgainst(walls: Walls | null | undefined, attackerHex: H
   return wallBetween(walls, entering, defenderHex)?.faceTo.rangedAc ?? 0;
 }
 
+const EMPTY_ROLL: WallRollFlags = { advantage: false, disadvantage: false, grantAdvantage: false, grantDisadvantage: false };
+
+/** Attack-roll flags the DEFENDER's wall face grants when attacked from
+ *  `attackerHex`. Melee: the shared edge's defender face. Ranged: the face on
+ *  the defender's hex along the edge the shot ENTERS through. All-false when no
+ *  wall crosses the shot. */
+export function wallRollFlags(walls: Walls | null | undefined, attackerHex: Hex, defenderHex: Hex, isRanged: boolean): WallRollFlags {
+  if (!walls) return EMPTY_ROLL;
+  if (!isRanged) return wallBetween(walls, attackerHex, defenderHex)?.faceTo.meleeRoll ?? EMPTY_ROLL;
+  const entering = hexEnteringFrom(attackerHex, defenderHex) ?? attackerHex;
+  return wallBetween(walls, entering, defenderHex)?.faceTo.rangedRoll ?? EMPTY_ROLL;
+}
+
+/** OR the four booleans of a unit's effect flags with a wall face's flags. */
+function mergeRollFlags(base: AttackRollFlags, wall: WallRollFlags): AttackRollFlags {
+  return {
+    advantage: base.advantage || wall.advantage,
+    disadvantage: base.disadvantage || wall.disadvantage,
+    grantAdvantage: base.grantAdvantage || wall.grantAdvantage,
+    grantDisadvantage: base.grantDisadvantage || wall.grantDisadvantage,
+  };
+}
+
 export function resolveCombatSequence(
   attacker: Unit,
   defender: Unit,
@@ -482,8 +505,8 @@ export function resolveCombatSequence(
   // Attack-roll modes (effect-driven advantage/disadvantage + the long-range
   // band). Computed PER ATTACKER: whoever strikes rolls their own flag effects
   // against the target's grant effects. Any advantage cancels any disadvantage.
-  const attackerFlags: AttackRollFlags = attackRollFlags(attacker);
-  const defenderFlags: AttackRollFlags = attackRollFlags(defender);
+  const attackerFlags: AttackRollFlags = mergeRollFlags(attackRollFlags(attacker), wallRollFlags(walls, defender.hex, attacker.hex, isRanged));
+  const defenderFlags: AttackRollFlags = mergeRollFlags(attackRollFlags(defender), wallRollFlags(walls, attacker.hex, defender.hex, isRanged));
   const modeAgainst = (acting: AttackRollFlags, target: AttackRollFlags, rangeDis: boolean, losDis: boolean): RollModeResult =>
     combatRollMode({
       attackerAdvantage: acting.advantage,

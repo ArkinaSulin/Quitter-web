@@ -64,14 +64,31 @@ pass (today the columns are non-negative with a 30 default).
 ## Effect modifiers
 
 The template's `modifiers` list is a standard `EffectModifier[]`
-(`effectTemplates.ts`), so a structure can grant occupants things like:
+(`effectTemplates.ts`). Every modifier is **oriented on the carrier** — the
+occupant of a hex structure, the zone's hex, or the **inside** face of a wall.
+The four attack-roll flags map to the four directions, with the carrier always
+"in":
 
-- `advantage` — the occupant's own attacks take the higher of 2d20.
-- `grant_disadvantage` — attackers targeting the occupant take the lower.
+- `advantage` (in→out) — the occupant's own attacks take the higher of 2d20.
+- `disadvantage` (in→out) — the occupant's own attacks take the lower.
+- `grant_advantage` (out→in) — attacks from outside gain advantage.
+- `grant_disadvantage` (out→in) — attacks from outside suffer disadvantage.
 - `entry` — one-time damage when a unit enters (archer spikes alternative).
-- `enter_org_max` — **reusable gate**: only formations whose organization level
-  is `≤ value` may enter. The same kind can be put on a ground zone. (Consumption
-  in movement is pending; authoring works today.)
+- `max_org_level_allowed` — **reusable gate**: only formations whose organization
+  level is `≤ value` may enter. The same kind can be put on a ground zone.
+
+The same four flags (plus `ac`, `range`, `block_attacks`, etc.) are shared with
+unit effects and zones; `mode: 'melee' | 'ranged'` scopes them to one attack
+type (absent = both).
+
+### Example — inside-only, crossing-scoped
+
+A wall's `advantage` (melee) lives on its **inside** face and applies **only to
+an attack that crosses the wall**. An inside unit attacking another unit *also on
+the inside* — a flanker adjacent on the same side — gets no benefit, because no
+wall separates the two hexes. Likewise the **outside** attacker gains no flags
+from the wall's inside face; it only ever suffers the inside face's `grant_*`
+flags when it attacks across.
 
 ## Key files
 
@@ -127,6 +144,12 @@ blocked by any edge structure. The AI planner ignores it for v1.
   `grant_advantage`/`grant_disadvantage` (attackers against it). Merged into the
   combat copies in `useCombatActions` as synthetic effects so the roll-mode reader
   applies them (no persisted effect, no END_TURN bookkeeping). The AI ignores them.
+- **Edge-wall flags** (`walls.WallFace.meleeRoll/rangedRoll` + `unitCombat.wallRollFlags`):
+  an edge structure's four flag modifiers are carried on its **inside** face only
+  (`structuresToWalls`) and merged into the combat roll flags for whichever unit
+  holds that face — so the inside unit gains `advantage`/`disadvantage` on its own
+  attacks across the wall and the outside attacker gains/suffers the face's
+  `grant_*`. `ac` is likewise inside-only (the outside unit never gets wall cover).
 - **Door-first combat** (`structureCombat.ts`): **Shift + drop** a unit on a
   gate/tower hex to attack it (a plain drop moves). No to-hit roll;
   the DT gates the blow; a standing door absorbs damage until destroyed, then the

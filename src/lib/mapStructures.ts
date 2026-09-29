@@ -8,7 +8,7 @@
 // crossing OUTSIDE->INSIDE, `_out` the reverse, mapped onto the canonical edge
 // sides by the instance `outside` flag. Durability is two pools (door gates
 // passage, HP gates modifiers). Modifiers may be overridden per instance.
-import { Walls, Wall, WallFace, edgeRef, directionBetween } from './walls';
+import { Walls, Wall, WallFace, WallRollFlags, edgeRef, directionBetween } from './walls';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { EffectModifier, modifierAmount } from '@/lib/effectTemplates';
 import { templateDoorMax } from '@/lib/structureTemplates';
@@ -175,19 +175,51 @@ function coverAc(mods: EffectModifier[]): { melee: number; ranged: number } {
   return { melee, ranged };
 }
 
+/** Attack-roll flags a template's `advantage`/`disadvantage`/`grant_*` modifiers
+ *  grant, scoped melee/ranged. `advantage`/`disadvantage` affect the inside
+ *  unit's OWN attacks across the wall; `grant_*` affect attackers from outside. */
+function rollFlagsOf(mods: EffectModifier[]): { melee: WallRollFlags; ranged: WallRollFlags } {
+  const none = (): WallRollFlags => ({ advantage: false, disadvantage: false, grantAdvantage: false, grantDisadvantage: false });
+  const melee = none();
+  const ranged = none();
+  for (const m of mods) {
+    const apply = (f: WallRollFlags) => {
+      if (m.kind === 'advantage') f.advantage = true;
+      else if (m.kind === 'disadvantage') f.disadvantage = true;
+      else if (m.kind === 'grant_advantage') f.grantAdvantage = true;
+      else if (m.kind === 'grant_disadvantage') f.grantDisadvantage = true;
+    };
+    if (m.mode === 'melee') apply(melee);
+    else if (m.mode === 'ranged') apply(ranged);
+    else { apply(melee); apply(ranged); }
+  }
+  return { melee, ranged };
+}
+
+function rollFlagsEmpty(f: WallRollFlags): boolean {
+  return !f.advantage && !f.disadvantage && !f.grantAdvantage && !f.grantDisadvantage;
+}
+
 /** One template side -> a runtime wall face. When the door is open/broken the
- *  crossing cost is WAIVED (falls back to the destination hex's MP). */
+ *  crossing cost is WAIVED (falls back to the destination hex's MP). Modifiers
+ *  are oriented on the INSIDE only: the inside face carries cover AC + attack-roll
+ *  flags for the unit holding it; the outside face carries only the crossing cost. */
 function faceFromTemplate(t: StructureTemplate, mods: EffectModifier[], which: 'inside' | 'outside', openOrBroken: boolean): WallFace {
   const foot = which === 'inside' ? t.mpFootIn : t.mpFootOut;
   const mounted = which === 'inside' ? t.mpMountedIn : t.mpMountedOut;
-  const ac = coverAc(mods);
   const f: WallFace = {};
   if (!openOrBroken) {
     if (foot !== null && foot !== undefined) f.moveCostFoot = foot;
     if (mounted !== null && mounted !== undefined) f.moveCostMounted = mounted;
   }
-  if (ac.melee) f.meleeAc = ac.melee;
-  if (ac.ranged) f.rangedAc = ac.ranged;
+  if (which === 'inside') {
+    const ac = coverAc(mods);
+    if (ac.melee) f.meleeAc = ac.melee;
+    if (ac.ranged) f.rangedAc = ac.ranged;
+    const roll = rollFlagsOf(mods);
+    if (!rollFlagsEmpty(roll.melee)) f.meleeRoll = roll.melee;
+    if (!rollFlagsEmpty(roll.ranged)) f.rangedRoll = roll.ranged;
+  }
   return f;
 }
 

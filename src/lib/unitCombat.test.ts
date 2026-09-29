@@ -15,6 +15,7 @@ import {
 } from './unitCombat';
 import { canMeleeTarget } from './formationRules';
 import { Unit, Hex, Formation, UnitEffect } from '@/types/gameProtocol';
+import { Walls, WallRollFlags } from './walls';
 import type { CombatOutcome, AttackerHeroProfile } from './unitCombat';
 
 function flagEffect(kind: UnitEffect['kind']): UnitEffect {
@@ -771,6 +772,42 @@ describe('resolveCombatSequence', () => {
     const walled = resolveCombatSequence(heroAttacker, defender, meleeWeapon, null, 0, 1, 1, 10, 10, 20, false, false, null, null, rng, false, null, null, false, null, walls);
     expect(walled.firstStrikeAttacks[0].isHit).toBe(false);
     expect(walled.firstStrikeDamage).toBe(0);
+  });
+
+  const meleeWallRoll = (b: Partial<WallRollFlags>) => ({ '0,-1,1': { a: {}, b: { meleeRoll: b } } } as Walls);
+
+  it('a wall face grants advantage to the inside defender on its own retaliation (melee)', () => {
+    const walls = meleeWallRoll({ advantage: true });
+    const result = resolveCombatSequence(attacker, defender, aw, dw, 0, 1, 1, 10, 10, 20, false, false, null, null, seededRng(42), false, null, null, false, null, walls);
+    expect(result.firstStrikeRoll.mode).toBe('normal');
+    expect(result.retaliationRoll.mode).toBe('advantage');
+  });
+
+  it('a wall face grant_disadvantage disadvantages an attacker from outside (melee)', () => {
+    const walls = meleeWallRoll({ grantDisadvantage: true });
+    const result = resolveCombatSequence(attacker, defender, aw, dw, 0, 1, 1, 10, 10, 20, false, false, null, null, seededRng(42), false, null, null, false, null, walls);
+    expect(result.firstStrikeRoll.mode).toBe('disadvantage');
+    expect(result.retaliationRoll.mode).toBe('normal');
+  });
+
+  it('melee-scoped wall flags are ignored for a ranged shot', () => {
+    const walls = meleeWallRoll({ grantDisadvantage: true });
+    const result = resolveCombatSequence(attacker, defender, { ...aw, range: 4, maxRange: 8 }, dw, 0, 1, 1, 10, 10, 20, true, false, null, null, seededRng(42), false, null, null, false, null, walls);
+    expect(result.firstStrikeRoll.mode).toBe('normal');
+  });
+
+  it('the outside unit gains no flags — only the inside face carries them', () => {
+    // Flags live on the defender's face (b); the attacker's face (a) is empty, so
+    // the attacker's own first strike stays normal even though the defender gains advantage.
+    const walls = meleeWallRoll({ advantage: true });
+    const result = resolveCombatSequence(attacker, defender, aw, dw, 0, 1, 1, 10, 10, 20, false, false, null, null, seededRng(42), false, null, null, false, null, walls);
+    expect(result.firstStrikeRoll.mode).toBe('normal');
+  });
+
+  it('no wall between the units leaves roll modes unaffected', () => {
+    const result = resolveCombatSequence(attacker, defender, aw, dw, 0, 1, 1, 10, 10, 20, false, false, null, null, seededRng(42), false, null, null, false, null, null);
+    expect(result.firstStrikeRoll.mode).toBe('normal');
+    expect(result.retaliationRoll.mode).toBe('normal');
   });
 
   describe('combatRollMode', () => {
