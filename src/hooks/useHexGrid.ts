@@ -145,6 +145,10 @@ export function useHexGrid({
 
   const bgImageRef = useRef<HTMLImageElement | null>(null);
   const [bgLoaded, setBgLoaded] = useState(false);
+  // Offscreen canvas holding the STATIC layer (background image + hex grid) so
+  // the per-frame redraw only blits it instead of re-drawing ~gridRadius² hexes.
+  const staticCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const staticKeyRef = useRef('');
 
   useEffect(() => {
     if (!backgroundImage?.url) {
@@ -209,54 +213,82 @@ export function useHexGrid({
     const width = rect.width;
     const height = rect.height;
 
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fillRect(0, 0, width, height);
-
-    // Draw background image
-    if (bgImageRef.current && backgroundImage) {
-      const img = bgImageRef.current;
-      const imgW = img.naturalWidth * backgroundImage.scale * zoom;
-      const imgH = img.naturalHeight * backgroundImage.scale * zoom;
-      const imgX = backgroundImage.offsetX * zoom + offsetX - imgW / 2;
-      const imgY = backgroundImage.offsetY * zoom + offsetY - imgH / 2;
-      ctx.drawImage(img, imgX, imgY, imgW, imgH);
-    }
-
-    const hexes: Hex[] = [];
-    for (let q = -gridRadius; q <= gridRadius; q++) {
-      for (let r = -gridRadius; r <= gridRadius; r++) {
-        const s = -q - r;
-        if (Math.abs(s) <= gridRadius) hexes.push({ q, r, s });
-      }
-    }
-
-    const drawHex = (hex: Hex, fillColor?: string, strokeColor?: string) => {
+    const drawHex = (target: CanvasRenderingContext2D, hex: Hex, fillColor?: string) => {
       const pos = hexToPixel(hex, size);
       const cx = pos.x * zoom + offsetX;
       const cy = pos.y * zoom + offsetY;
-      ctx.beginPath();
+      target.beginPath();
       for (let i = 0; i < 6; i++) {
         const angle = Math.PI / 180 * (60 * i - 30);
         const px = cx + size * zoom * Math.cos(angle);
         const py = cy + size * zoom * Math.sin(angle);
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+        if (i === 0) target.moveTo(px, py);
+        else target.lineTo(px, py);
       }
-      ctx.closePath();
+      target.closePath();
       if (fillColor) {
-        ctx.fillStyle = fillColor;
-        ctx.fill();
+        target.fillStyle = fillColor;
+        target.fill();
       }
-      ctx.strokeStyle = strokeColor || '#2a2a4a';
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
+      target.strokeStyle = '#2a2a4a';
+      target.lineWidth = 0.8;
+      target.stroke();
     };
 
-    for (const hex of hexes) {
-      const key = `${hex.q},${hex.r}`;
-      const fill = overlayMap?.[key];
-      drawHex(hex, fill || undefined);
+    // Static layer (background image + hex grid) is pre-rendered to an offscreen
+    // canvas and only re-drawn when geometry/background change, so hover/overlay/
+    // unit updates just blit it instead of re-drawing ~gridRadius² hexes.
+    const staticKey = [width, height, zoom, offsetX, offsetY, gridRadius, backgroundImage?.url, backgroundImage?.offsetX, backgroundImage?.offsetY, backgroundImage?.scale, bgLoaded].join('|');
+    if (staticKey !== staticKeyRef.current) {
+      staticKeyRef.current = staticKey;
+      let sc = staticCanvasRef.current;
+      if (!sc) {
+        sc = document.createElement('canvas');
+        staticCanvasRef.current = sc;
+      }
+      sc.width = width * dpr;
+      sc.height = height * dpr;
+      const sctx = sc.getContext('2d');
+      if (sctx) {
+        sctx.scale(dpr, dpr);
+        sctx.clearRect(0, 0, width, height);
+        sctx.fillStyle = '#1a1a2e';
+        sctx.fillRect(0, 0, width, height);
+
+        if (bgImageRef.current && backgroundImage) {
+          const img = bgImageRef.current;
+          const imgW = img.naturalWidth * backgroundImage.scale * zoom;
+          const imgH = img.naturalHeight * backgroundImage.scale * zoom;
+          const imgX = backgroundImage.offsetX * zoom + offsetX - imgW / 2;
+          const imgY = backgroundImage.offsetY * zoom + offsetY - imgH / 2;
+          sctx.drawImage(img, imgX, imgY, imgW, imgH);
+        }
+
+        for (let q = -gridRadius; q <= gridRadius; q++) {
+          for (let r = -gridRadius; r <= gridRadius; r++) {
+            const s = -q - r;
+            if (Math.abs(s) <= gridRadius) drawHex(sctx, { q, r, s });
+          }
+        }
+      }
+    }
+
+    const sc = staticCanvasRef.current;
+    if (sc && sc.width > 0) {
+      ctx.drawImage(sc, 0, 0, width, height);
+    } else {
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, width, height);
+    }
+
+    // Dynamic overlay fills (threat/reach highlights) on top of the static grid.
+    if (overlayMap) {
+      for (const [key, fill] of Object.entries(overlayMap)) {
+        const [q, r] = key.split(',').map(Number);
+        if (Number.isNaN(q) || Number.isNaN(r)) continue;
+        drawHex(ctx, { q, r, s: -q - r }, fill);
+      }
     }
 
     if (customDraw) {

@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Map render perf: static-layer caching + morale/troop-layout caches (2026-09-29)
+**Files:** src/hooks/useHexGrid.ts, src/components/ScenarioMap/useCanvasDraw.ts, src/components/TokenRenderer/drawToken.ts, docs/dev/changelog.md
+
+- **Static map layer is pre-rendered to an offscreen canvas** (background image + hex grid) and only re-drawn when geometry/background change (zoom/pan/resize/grid-radius/background). Hover/overlay/unit/realtime updates now just `drawImage` that layer and redraw the dynamic overlay fills + tokens — removing the ~gridRadius² hex redraw (≈900 at radius 17) from every state change.
+- **Per-unit effective morale is memoized** (`useMemo` keyed on units/alliances/formations) and looked up in the token loop instead of recomputing `computeEffectiveMoraleModifier` (O(n²)) every frame.
+- **Troop scatter layout is cached** in `drawToken` (bounded 512-entry map keyed on seed + formation + size + zoom), so the deterministic dot layout isn't recomputed every frame.
+- `tsc` clean; 802 tests pass; build clean. No migration.
+
 ## Tooltip: pending-hex-effect note + full AGR/MOR labels (2026-09-28)
 **Files:** src/lib/{unitEffects,unitStats}.ts (+ tests), src/components/ScenarioMap/{UnitTooltip,UnitTemplateTooltip}.tsx, docs/dev/changelog.md
 

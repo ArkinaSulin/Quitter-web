@@ -6,6 +6,11 @@ import { isUnitRouted } from '@/lib/unitMorale';
 
 const imageCache = new Map<string, HTMLImageElement>();
 
+// Troop scatter layout is deterministic per (seed, formation, size, zoom) — cache
+// it so the draw loop doesn't recompute the same scatter every frame. Bounded.
+const dotPositionsCache = new Map<string, Array<{ x: number; y: number; isDead: boolean; direction?: number }>>();
+const DOT_POSITIONS_CACHE_MAX = 512;
+
 const HERO_SQUARE_RATIOS: Record<number, number> = {
   75: 0.375,
   100: 1 / 2,
@@ -286,19 +291,29 @@ export async function drawToken(options: DrawTokenOptions): Promise<void> {
   const dotsPerRow = config.dotsPerRow;
   const dotColor = getDotColor(team);
 
-  const positions = generateDotPositions(
-    troopCount,
-    maxTroopCount,
-    effectiveFormation,
-    isMounted,
-    width,
-    height,
-    dotRadius,
-    sizeCategory,
-    computeScatterSeed(unit, turnNumber),
-    visualDotsPerRow,
-    !!unit.isCharging,
-  );
+  const seed = computeScatterSeed(unit, turnNumber);
+  const posKey = `${seed}|${troopCount}|${maxTroopCount}|${effectiveFormation}|${isMounted}|${sizeCategory}|${visualDotsPerRow}|${!!unit.isCharging}|${width.toFixed(1)}|${height.toFixed(1)}|${dotRadius.toFixed(1)}`;
+  let positions = dotPositionsCache.get(posKey);
+  if (!positions) {
+    positions = generateDotPositions(
+      troopCount,
+      maxTroopCount,
+      effectiveFormation,
+      isMounted,
+      width,
+      height,
+      dotRadius,
+      sizeCategory,
+      seed,
+      visualDotsPerRow,
+      !!unit.isCharging,
+    );
+    if (dotPositionsCache.size >= DOT_POSITIONS_CACHE_MAX) {
+      const first = dotPositionsCache.keys().next().value;
+      if (first !== undefined) dotPositionsCache.delete(first);
+    }
+    dotPositionsCache.set(posKey, positions);
+  }
 
   // ---- Phalanx pikes / Shield Wall shields (drawn behind the troops) ----
   drawFormationExtras(ctx, {

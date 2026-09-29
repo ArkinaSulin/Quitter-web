@@ -125,6 +125,19 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     return () => { cancelled = true; };
   }, [effectImageUrls]);
 
+  // Per-unit effective morale modifier (incl. formation + current modifier), computed
+  // ONCE per units/alliances/formations change — not per redraw. The token loop
+  // only looks it up, removing O(n²) rule math from the draw hot path.
+  const moraleMods = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const u of displayUnits) {
+      if (u.isDeleted) continue;
+      const formation = formationsMap[u.currentFormation] ?? null;
+      m.set(u.id, u.currentMoraleModifier + computeEffectiveMoraleModifier(u, displayUnits, displayAlliances, formation));
+    }
+    return m;
+  }, [displayUnits, displayAlliances, formationsMap]);
+
   const customDraw = useCallback(async (ctx: CanvasRenderingContext2D, width: number, height: number, currentZoom: number, offsetX: number, offsetY: number) => {
     const tokenWidth = TOKEN_WIDTH * currentZoom;
     const tokenHeight = TOKEN_HEIGHT * currentZoom;
@@ -427,7 +440,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const pos = hexToPixel(unit.hex, HEX_SIZE);
       const cx = pos.x * currentZoom + offsetX;
       const cy = pos.y * currentZoom + offsetY;
-      const unitMoraleMod = unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, displayUnits, displayAlliances, formationMoraleMod);
+      const unitMoraleMod = moraleMods.get(unit.id) ?? (unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, displayUnits, displayAlliances, formationMoraleMod));
       try {
         await drawToken({
           unit: { ...unit, currentMoraleModifier: unitMoraleMod },
@@ -474,7 +487,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const heroCx = heroPos.x * currentZoom + offsetX;
         const heroCy = heroPos.y * currentZoom + offsetY;
         const heroFormationMoraleMod = formationsMap[attachedHero.currentFormation] ?? null;
-        const heroMoraleMod = attachedHero.currentMoraleModifier + computeEffectiveMoraleModifier(attachedHero, displayUnits, displayAlliances, heroFormationMoraleMod);
+        const heroMoraleMod = moraleMods.get(attachedHero.id) ?? (attachedHero.currentMoraleModifier + computeEffectiveMoraleModifier(attachedHero, displayUnits, displayAlliances, heroFormationMoraleMod));
         try {
           await drawToken({
             unit: { ...attachedHero, currentMoraleModifier: heroMoraleMod },
@@ -739,7 +752,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hideUnits, keepVisibleUnitId, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hideUnits, keepVisibleUnitId, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick, moraleMods]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;
