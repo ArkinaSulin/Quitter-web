@@ -161,9 +161,9 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
             <span className="text-gray-400">isolation</span>
             <span className={isolated ? 'text-red-400' : 'text-green-400'}>{isolated ? '-1' : '0'}</span>
             <span className="text-gray-400">threat</span>
-            <span className={enemyThreats.total > 0 ? 'text-red-400' : 'text-green-400'}>
-              {enemyThreats.total > 0
-                ? `-${enemyThreats.total} = (${enemyThreats.totalSum} threat) ÷ ${enemyThreats.myThreat}`
+            <span className={enemyThreats.totalSum > 0 ? 'text-red-400' : 'text-green-400'}>
+              {enemyThreats.totalSum > 0
+                ? `-${enemyThreats.total} = (${enemyThreats.totalSum} threat) / ${enemyThreats.myThreat}`
                 : '0'}
             </span>
             {formationMorMod !== 0 && (
