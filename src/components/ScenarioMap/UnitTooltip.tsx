@@ -8,7 +8,7 @@ import { parseWeapons } from '@/lib/weaponParser';
 import { heroMovePerAction } from '@/lib/moveCost';
 import { unitAttackCap } from '@/lib/attackCap';
 import { getSetting } from '@/lib/settingsCache';
-import { isAttackRollEffect } from '@/lib/unitEffects';
+import { isAttackRollEffect, hasPendingZoneEffect } from '@/lib/unitEffects';
 import { modifierAmount } from '@/lib/effectTemplates';
 import { useTooltipClamp } from './useTooltipClamp';
 
@@ -57,9 +57,9 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const heroAura = unit.isHero ? (unit.moraleBoost ?? 0) + (unit.heroicInspirationActive ? 1 : 0) : 0;
   const threatRating = exertedThreatRating(unit);
   const morTotal = unit.baseMorale + effectiveMoraleModifier;
-  const acMelee = effectiveAcFor(unit, formationMod, 'front', false, 0, zones);
-  const acRanged = effectiveAcFor(unit, formationMod, 'front', true, 0, zones);
-  const acRear = effectiveAcFor(unit, formationMod, 'rear', false, 0, zones);
+  const acMelee = effectiveAcFor(unit, formationMod, 'front', false);
+  const acRanged = effectiveAcFor(unit, formationMod, 'front', true);
+  const acRear = effectiveAcFor(unit, formationMod, 'rear', false);
   const shieldInfo = getShieldPenalty(unit);
   const shieldPenalty = shieldInfo.penalty;
   const effectiveMaxMovement = computeEffectiveMovement(unit, formationMovMult);
@@ -68,6 +68,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const activeWeapon = weapons[unit.activeWeaponIndex ?? 0];
   const shieldDropped = shieldPenalty > 0;
   const acBase = (unit.baselineAc || 10) - shieldPenalty;
+  const pendingZone = hasPendingZoneEffect(unit, zones);
 
   return (
     <>
@@ -95,13 +96,13 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
         <span className="text-gray-400">Attacks/rnd:</span><span>{activeWeapon?.numberOfAttacks ?? 1}</span>
         {showTroops && (
           <>
-                  <span className="text-gray-400" title="AGR (Aggressiveness): the unit's will to attack. It rolls a d10; roll ≤ AGR to attack.">AGR:</span><span>{unit.aggressiveness}</span>
+                  <span className="text-gray-400" title="Aggressiveness: the unit's will to attack. It rolls a d10; roll ≤ AGR to attack.">Aggressiveness:</span><span>{unit.aggressiveness}</span>
           </>
         )}
         {(showTroops || unit.ignoreMoraleChecks) && (
                 unit.ignoreMoraleChecks
-                  ? <><span className="text-gray-400" title="Morale: will to keep fighting; fearless units never rout.">MOR:</span><span className="text-yellow-400">fearless</span></>
-                  : <><span className="text-gray-400" title="Morale: will to keep fighting. At 0 or below after an attack the unit routs.">MOR:</span><span className="text-yellow-400">{morTotal} = {unit.baseMorale} {effectiveMoraleModifier >= 0 ? '+ ' : '- '}{Math.abs(effectiveMoraleModifier)}{formationMorMod !== 0 ? ` (incl. formation ${formationMorMod >= 0 ? '+' : ''}${formationMorMod})` : ''}</span></>
+                  ? <><span className="text-gray-400" title="Morale: will to keep fighting; fearless units never rout.">Morale:</span><span className="text-yellow-400">fearless</span></>
+                  : <><span className="text-gray-400" title="Morale: will to keep fighting. At 0 or below after an attack the unit routs.">Morale:</span><span className="text-yellow-400">{morTotal} = {unit.baseMorale} {effectiveMoraleModifier >= 0 ? '+ ' : '- '}{Math.abs(effectiveMoraleModifier)}{formationMorMod !== 0 ? ` (incl. formation ${formationMorMod >= 0 ? '+' : ''}${formationMorMod})` : ''}</span></>
         )}
         <span className="text-gray-400">Threat:</span><span>{isUnitRouted(unit) ? `0 routed, was ${threatRating.toFixed(2)}` : threatRating.toFixed(2)}</span>
       </div>
@@ -124,6 +125,9 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
           <span className={unit.attacksUsed >= unitAttackCap() ? 'text-red-400' : ''}>{unit.attacksUsed}/{unitAttackCap()} <span className="text-gray-500">(attacks + retaliations)</span></span>
         )}
         <span className="text-gray-400" title="Armor Class (AC): a d20 attack roll + bonuses must equal or beat this to hit. Cover (formation, structure, wall) never stacks — the best wins; unit effects (e.g. Haste) add on top. Formation cover does NOT apply from the REAR; the shield is 360°.">AC:</span><span>{acMelee === acRanged && acRanged === acRear ? `AC: ${acMelee}` : `melee${fmtAcDelta(acMelee - acBase)}: ${acMelee}, [Range${fmtAcDelta(acRanged - acBase)}: ${acRanged}]. [rear${fmtAcDelta(acRear - acBase)}: ${acRear}]`}</span>
+        {pendingZone && (
+          <span className="col-span-2 text-[10px] text-yellow-400">Hex effect will apply at end of turn</span>
+        )}
         {(unit.effects ?? []).length > 0 && (
           <>
             <span className="col-span-2 mt-0.5 text-[10px] uppercase tracking-wide text-gray-500">Effects</span>

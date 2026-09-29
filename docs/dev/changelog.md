@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Tooltip: pending-hex-effect note + full AGR/MOR labels (2026-09-28)
+**Files:** src/lib/{unitEffects,unitStats}.ts (+ tests), src/components/ScenarioMap/{UnitTooltip,UnitTemplateTooltip}.tsx, docs/dev/changelog.md
+
+- **Reverts the previous "show unmaterialized AC in the tooltip"** — that showed a cover number combat doesn't apply until the zone membership materializes (next move / END_TURN), i.e. false advertising. `effectiveAc` is materialized-only again.
+- **Instead the tooltip shows a plain yellow note** — `Hex effect will apply at end of turn` — whenever a unit stands on a hex effect whose membership hasn't materialized yet (`unitEffects.hasPendingZoneEffect`, any effect kind, not just AC).
+- **AGR / MOR spelled out**: `Aggressiveness:` and `Morale:` in both the map unit tooltip and the unit-library preview tooltip.
+- `tsc` clean; tests pass; build clean. No migration.
+
 ## Tooltip shows unmaterialized structure/zone AC underfoot (2026-09-28)
 **Files:** src/lib/{unitEffects,unitStats}.ts (+ tests), src/components/ScenarioMap/{UnitTooltip,ScenarioMap}.tsx, docs/dev/changelog.md
 

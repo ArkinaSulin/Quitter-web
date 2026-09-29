@@ -120,29 +120,18 @@ export function effectAcBonus(unit: { effects?: Unit['effects'] } | null | undef
 }
 
 /**
- * COVER AC at the unit's CURRENT hex: materialized zone memberships
- * (`coverAcBonus`) PLUS any `ac` zone underfoot not yet materialized (e.g. a hex
- * structure placed under a unit, before its next move / END_TURN reconcile).
- * Cover never stacks, so the highest wins across both. Non-persisting — safe to
- * call for display.
+ * True when a unit is standing on a hex effect that has NOT materialized yet
+ * (zone memberships are only created on move / END_TURN, so a placed unit or a
+ * freshly-painted structure shows no membership until then). Used to flag "this
+ * hex effect will apply at end of turn" without showing a misleading number.
  */
-export function coverAcBonusAt(
+export function hasPendingZoneEffect(
   unit: { effects?: Unit['effects']; hex?: Hex } | null | undefined,
   zones: GroundEffect[] | null | undefined,
-  isRanged: boolean,
-): number {
-  if (!unit) return 0;
-  const base = coverAcBonus(unit, isRanged);
-  if (!unit.hex || !zones) return base;
-  let best = base;
+): boolean {
+  if (!unit?.hex || !zones) return false;
   const materialized = new Set((unit.effects ?? []).filter(e => e.zoneHex).map(e => e.key));
-  for (const z of zones) {
-    if (!acApplies(z, isRanged)) continue;
-    if (z.q !== unit.hex.q || z.r !== unit.hex.r) continue;
-    if (materialized.has(z.key)) continue;
-    best = Math.max(best, modifierAmount(z.dice));
-  }
-  return best;
+  return zones.some(z => z.q === unit.hex!.q && z.r === unit.hex!.r && !materialized.has(z.key));
 }
 
 /**

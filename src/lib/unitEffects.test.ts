@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, coverAcBonus, directAcBonus, coverAcBonusAt, rangeBonusAt, saveRollFlags, expandInheritedEffects } from './unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, coverAcBonus, directAcBonus, hasPendingZoneEffect, rangeBonusAt, saveRollFlags, expandInheritedEffects } from './unitEffects';
 import { parseDice } from './effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
@@ -558,28 +558,28 @@ describe('coverAcBonus / directAcBonus', () => {
   });
 });
 
-describe('coverAcBonusAt', () => {
-  const azone = (over: Partial<GroundEffect> = {}): GroundEffect => ({ key: 'z1', q: 0, r: 0, name: 'Tower', color: '#fff', kind: 'ac', dice: '5', duration: 0, turnsLeft: 0, permanent: true, ...over });
+describe('hasPendingZoneEffect', () => {
+  const zone = (over: Partial<GroundEffect> = {}): GroundEffect => ({ key: 'z1', q: 0, r: 0, name: 'Tower', color: '#fff', kind: 'ac', dice: '5', duration: 0, turnsLeft: 0, permanent: true, ...over });
 
-  it('adds an unmaterialized ac zone underfoot (structure cover before a move)', () => {
+  it('true for an unmaterialized zone underfoot (structure/effect before a move)', () => {
     const u = unit('u', 'blue', h(0, 0), { effects: [] });
-    expect(coverAcBonusAt(u, [azone()], false)).toBe(5);
+    expect(hasPendingZoneEffect(u, [zone()])).toBe(true);
   });
 
-  it('does not double-count an already-materialized membership', () => {
+  it('false once the membership is materialized', () => {
     const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'z1', kind: 'ac', dice: '5', zoneHex: h(0, 0) })] });
-    expect(coverAcBonusAt(u, [azone()], false)).toBe(5);
+    expect(hasPendingZoneEffect(u, [zone()])).toBe(false);
   });
 
-  it('takes the highest of materialized + underfoot', () => {
-    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'm', kind: 'ac', dice: '2', zoneHex: h(0, 0) })] });
-    expect(coverAcBonusAt(u, [azone({ key: 'z9', dice: '8' })], false)).toBe(8); // max(2, 8)
-  });
-
-  it('ignores zones on other hexes and null input', () => {
+  it('false for zones on other hexes and null input', () => {
     const u = unit('u', 'blue', h(5, 0), { effects: [] });
-    expect(coverAcBonusAt(u, [azone()], false)).toBe(0);
-    expect(coverAcBonusAt(null, null, false)).toBe(0);
+    expect(hasPendingZoneEffect(u, [zone()])).toBe(false);
+    expect(hasPendingZoneEffect(null, null)).toBe(false);
+  });
+
+  it('detects non-ac zones too (any kind pending)', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [] });
+    expect(hasPendingZoneEffect(u, [zone({ kind: 'movement', dice: '2' })])).toBe(true);
   });
 });
 

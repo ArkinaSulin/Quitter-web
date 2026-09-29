@@ -1,9 +1,9 @@
-import { Unit, Formation, SizeCategory, AllianceGroup, GroundEffect } from '@/types/gameProtocol';
+import { Unit, Formation, SizeCategory, AllianceGroup } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
 import { getBandSetting, getSetting, SettingBand } from '@/lib/settingsCache';
 import { isUnitRouted, areHexesAdjacent, isHeroMoraleBoostEnabled } from '@/lib/unitMorale';
 import { AttackDirection } from '@/lib/attackDirection';
-import { coverAcBonusAt, directAcBonus } from '@/lib/unitEffects';
+import { coverAcBonus, directAcBonus } from '@/lib/unitEffects';
 
 // Code fallback matches migration 042 seed — the unit_size_categories table row wins
 // in getRowCapacity; this is the fallback base for unknown categories.
@@ -86,18 +86,17 @@ export function getShieldPenalty(
  * `range_ac_modifier`); heroes have no rear (all sides are front).
  */
 export function effectiveAc(
-  unit: Pick<Unit, 'baselineAc' | 'isShielded' | 'weaponString' | 'activeWeaponIndex' | 'currentFormation' | 'isHero'> & { effects?: Unit['effects']; hex?: Unit['hex'] },
+  unit: Pick<Unit, 'baselineAc' | 'isShielded' | 'weaponString' | 'activeWeaponIndex' | 'currentFormation' | 'isHero'> & { effects?: Unit['effects'] },
   formation: Formation | null | undefined,
   direction: AttackDirection,
   isRanged = false,
   wallCover = 0,
-  zones?: GroundEffect[] | null,
 ): number {
   const dir = unit.isHero || unit.currentFormation === 'Hero' ? 'front' : direction;
   const formationAc = dir === 'rear'
     ? 0
     : (isRanged ? (formation?.range_ac_modifier ?? 0) : (formation?.melee_ac_modifier ?? 0));
-  const cover = Math.max(formationAc, coverAcBonusAt(unit, zones, isRanged), wallCover);
+  const cover = Math.max(formationAc, coverAcBonus(unit, isRanged), wallCover);
   const buff = directAcBonus(unit, isRanged);
   return (unit.baselineAc || 10) - getShieldPenalty(unit).penalty + cover + buff;
 }
