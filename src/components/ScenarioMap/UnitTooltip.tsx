@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
+import { Unit, AllianceGroup, Formation, GroundEffect } from '@/types/gameProtocol';
 import { computeEffectiveMoraleModifier, exertedThreatRating, calcWounds, calcIsolation, calcEnemyThreats, isUnitRouted, calcMoraleBoostInfo, isHeroMoraleBoostEnabled } from '@/lib/unitMorale';
 import { computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty, effectiveAc as effectiveAcFor } from '@/lib/unitStats';
 import { parseWeapons } from '@/lib/weaponParser';
@@ -21,6 +21,8 @@ interface UnitTooltipProps {
   alliances: Record<string, AllianceGroup>;
   formation?: Formation | null;
   companionFormation?: Formation | null | undefined;
+  /** Engine zone view (painted zones + hex-structure zones) for underfoot cover AC. */
+  zones?: GroundEffect[] | null;
 }
 
 function fmtAcDelta(delta: number): string {
@@ -29,11 +31,11 @@ function fmtAcDelta(delta: number): string {
   return '';
 }
 
-function heroColumn(hero: Unit, units: Unit[], alliances: Record<string, AllianceGroup>, formation: Formation | null | undefined) {
+function heroColumn(hero: Unit, units: Unit[], alliances: Record<string, AllianceGroup>, formation: Formation | null | undefined, zones?: GroundEffect[] | null) {
   return (
     <>
       <div className="font-bold text-yellow-400 mb-1">{hero.unitName} (Hero)</div>
-      {unitInfo(hero, units, alliances, false, formation)}
+      {unitInfo(hero, units, alliances, false, formation, zones)}
       {hero.attachedPosition === 'front' && (
         <div className="text-yellow-400 text-xs mt-0.5">Front hero — host attacks ignore AGR</div>
       )}
@@ -41,7 +43,7 @@ function heroColumn(hero: Unit, units: Unit[], alliances: Record<string, Allianc
   );
 }
 
-function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>, showTroops: boolean, formation: Formation | null | undefined) {
+function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>, showTroops: boolean, formation: Formation | null | undefined, zones?: GroundEffect[] | null) {
   const formationMod = formation ?? null;
   const formationMovMult = formationMod?.movement_multiplier ?? 1;
   const formationAtkMod = formationMod?.attack_modifier ?? 0;
@@ -55,9 +57,9 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const heroAura = unit.isHero ? (unit.moraleBoost ?? 0) + (unit.heroicInspirationActive ? 1 : 0) : 0;
   const threatRating = exertedThreatRating(unit);
   const morTotal = unit.baseMorale + effectiveMoraleModifier;
-  const acMelee = effectiveAcFor(unit, formationMod, 'front', false);
-  const acRanged = effectiveAcFor(unit, formationMod, 'front', true);
-  const acRear = effectiveAcFor(unit, formationMod, 'rear', false);
+  const acMelee = effectiveAcFor(unit, formationMod, 'front', false, 0, zones);
+  const acRanged = effectiveAcFor(unit, formationMod, 'front', true, 0, zones);
+  const acRear = effectiveAcFor(unit, formationMod, 'rear', false, 0, zones);
   const shieldInfo = getShieldPenalty(unit);
   const shieldPenalty = shieldInfo.penalty;
   const effectiveMaxMovement = computeEffectiveMovement(unit, formationMovMult);
@@ -198,7 +200,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   );
 }
 
-export function UnitTooltip({ unit, x, y, companion, units, alliances, formation, companionFormation }: UnitTooltipProps) {
+export function UnitTooltip({ unit, x, y, companion, units, alliances, formation, companionFormation, zones }: UnitTooltipProps) {
   const { ref, style } = useTooltipClamp(x, y);
   return (
     <div
@@ -209,16 +211,16 @@ export function UnitTooltip({ unit, x, y, companion, units, alliances, formation
       {companion ? (
         <div className="flex gap-4">
           <div className="flex-1 min-w-0">
-            {unit.isHero && heroColumn(unit, units, alliances, formation)}
-            {!unit.isHero && unitInfo(unit, units, alliances, true, formation)}
+            {unit.isHero && heroColumn(unit, units, alliances, formation, zones)}
+            {!unit.isHero && unitInfo(unit, units, alliances, true, formation, zones)}
           </div>
           <div className="w-px bg-gray-600 flex-none" />
           <div className="flex-1 min-w-0">
-            {companion.isHero ? heroColumn(companion, units, alliances, companionFormation) : unitInfo(companion, units, alliances, true, companionFormation)}
+            {companion.isHero ? heroColumn(companion, units, alliances, companionFormation, zones) : unitInfo(companion, units, alliances, true, companionFormation, zones)}
           </div>
         </div>
       ) : (
-        unitInfo(unit, units, alliances, !unit.isHero, formation)
+        unitInfo(unit, units, alliances, !unit.isHero, formation, zones)
       )}
     </div>
   );

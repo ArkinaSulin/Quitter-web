@@ -14,7 +14,7 @@
 //  - Stat deltas materialize on the REAL unit fields (currentAc, currentMoraleModifier,
 //    movementPoints base) so combat/morale/movement consumers need no edits.
 
-import { Unit, UnitEffect, GroundEffect, EffectKind, AllianceGroup } from '@/types/gameProtocol';
+import { Unit, UnitEffect, GroundEffect, EffectKind, AllianceGroup, Hex } from '@/types/gameProtocol';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { parseDice, rollDice, modifierAmount, isDiceAmount, modifierSummary, EffectModifier } from '@/lib/effectTemplates';
 
@@ -73,7 +73,7 @@ function sameStackKey(a: { kind: string; mode?: string }, b: { kind: string; mod
 }
 
 /** Does this `ac` effect apply to the given attack type (melee vs ranged)? */
-function acApplies(e: UnitEffect, isRanged: boolean): boolean {
+function acApplies(e: { kind: EffectKind; mode?: 'melee' | 'ranged' }, isRanged: boolean): boolean {
   if (e.kind !== 'ac') return false;
   if (e.mode === 'melee' && isRanged) return false;
   if (e.mode === 'ranged' && !isRanged) return false;
@@ -85,7 +85,7 @@ function acApplies(e: UnitEffect, isRanged: boolean): boolean {
  * zones): positional cover never stacks — the HIGHEST wins. 360° (applies at
  * every direction; `unitStats.effectiveAc` maxes it against formation + wall).
  */
-export function coverAcBonus(unit: Unit | null | undefined, isRanged: boolean): number {
+export function coverAcBonus(unit: { effects?: Unit['effects'] } | null | undefined, isRanged: boolean): number {
   let best = 0;
   for (const e of unit?.effects ?? []) {
     if (!e.zoneHex) continue;
@@ -99,7 +99,7 @@ export function coverAcBonus(unit: Unit | null | undefined, isRanged: boolean): 
  * BUFF AC from direct unit `ac` effects (e.g. Haste): these STACK with cover
  * (and with each other).
  */
-export function directAcBonus(unit: Unit | null | undefined, isRanged: boolean): number {
+export function directAcBonus(unit: { effects?: Unit['effects'] } | null | undefined, isRanged: boolean): number {
   let sum = 0;
   for (const e of unit?.effects ?? []) {
     if (e.zoneHex) continue;
@@ -115,8 +115,34 @@ export function directAcBonus(unit: Unit | null | undefined, isRanged: boolean):
  * hero's split AC); `unitStats.effectiveAc` composes cover + formation + wall
  * itself.
  */
-export function effectAcBonus(unit: Unit | null | undefined, isRanged: boolean): number {
+export function effectAcBonus(unit: { effects?: Unit['effects'] } | null | undefined, isRanged: boolean): number {
   return coverAcBonus(unit, isRanged) + directAcBonus(unit, isRanged);
+}
+
+/**
+ * COVER AC at the unit's CURRENT hex: materialized zone memberships
+ * (`coverAcBonus`) PLUS any `ac` zone underfoot not yet materialized (e.g. a hex
+ * structure placed under a unit, before its next move / END_TURN reconcile).
+ * Cover never stacks, so the highest wins across both. Non-persisting — safe to
+ * call for display.
+ */
+export function coverAcBonusAt(
+  unit: { effects?: Unit['effects']; hex?: Hex } | null | undefined,
+  zones: GroundEffect[] | null | undefined,
+  isRanged: boolean,
+): number {
+  if (!unit) return 0;
+  const base = coverAcBonus(unit, isRanged);
+  if (!unit.hex || !zones) return base;
+  let best = base;
+  const materialized = new Set((unit.effects ?? []).filter(e => e.zoneHex).map(e => e.key));
+  for (const z of zones) {
+    if (!acApplies(z, isRanged)) continue;
+    if (z.q !== unit.hex.q || z.r !== unit.hex.r) continue;
+    if (materialized.has(z.key)) continue;
+    best = Math.max(best, modifierAmount(z.dice));
+  }
+  return best;
 }
 
 /**

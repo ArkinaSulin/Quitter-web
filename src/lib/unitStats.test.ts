@@ -105,6 +105,13 @@ describe('effectiveAc', () => {
     expect(effectiveAc(unit(), f(2), 'front', false, 3)).toBe(19); // max(2, 0, 3) = 3
     expect(effectiveAc(unit(), f(2), 'rear', false, 3)).toBe(19);  // max(0, 0, 3) = 3 (wall directional)
   });
+
+  it('counts an underfoot ac zone not yet materialized (structure cover)', () => {
+    const u = unit({ effects: [], hex: { q: 0, r: 0, s: 0 } });
+    const zones = [{ key: 't', q: 0, r: 0, name: 'Tower', color: '#fff', kind: 'ac', dice: '5', duration: 0, turnsLeft: 0, permanent: true }] as any;
+    expect(effectiveAc(u, f(0), 'front', false, 0, zones)).toBe(21); // 16 + 5
+    expect(effectiveAc(u, f(2), 'front', false, 0, zones)).toBe(21); // max(2 formation, 5 zone) = 5
+  });
 });
 
 describe('heroicCapacityBonus', () => {

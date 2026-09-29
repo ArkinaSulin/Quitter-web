@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Tooltip shows unmaterialized structure/zone AC underfoot (2026-09-28)
+**Files:** src/lib/{unitEffects,unitStats}.ts (+ tests), src/components/ScenarioMap/{UnitTooltip,ScenarioMap}.tsx, docs/dev/changelog.md
+
+- **A unit standing on a hex structure's `ac` zone now shows that cover in the tooltip immediately** — before this, the AC only appeared once the membership materialized (on the unit's next move / END_TURN), so a freshly placed structure (or a unit placed on one) looked like it granted nothing. New `unitEffects.coverAcBonusAt(unit, zones, isRanged)` folds the highest un-materialized underfoot `ac` zone into the cover max (mirrors `rangeBonusAt`); `unitStats.effectiveAc` takes an optional `zones` param, and `UnitTooltip`/`ScenarioMap` pass `effectiveZones` in. No double-count (a zone already represented by a membership is skipped).
+- `tsc` clean; 803 tests pass; build clean. No migration.
+
 ## Cover AC unifies (max, never stacks) + tooltip breakdown (2026-09-28)
 **Files:** src/lib/{unitEffects,unitStats,unitCombat}.ts (+ tests), src/components/ScenarioMap/{useCombatActions,useReactionActions,UnitTooltip}.tsx, docs/dev/changelog.md
 

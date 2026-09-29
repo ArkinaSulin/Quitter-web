@@ -2607,6 +2607,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             alliances={displayAlliances}
             formation={formationsMap[hoveredUnit.currentFormation] ?? null}
             companionFormation={companion ? (formationsMap[companion.currentFormation] ?? null) : undefined}
+            zones={effectiveZones}
           />
         );
       })()}
