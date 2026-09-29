@@ -81,7 +81,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
   const isMountedOf = (u: Unit) => !!u.mountId || !!u.mountName;
   const costOfHexFor = (isMounted: boolean) => makeCostOfHex(terrainCosts, walls, { structures, templates, isMounted });
   const blockedEdgeFor = (orgLevel: number, isMounted: boolean) => makeBlockedEdge(walls, { structures, templates, zones, orgLevel, isMounted, ignoreBlocks: freeMove });
-  const chargeBlockedEdgeFor = (isMounted: boolean) => makeChargeBlockedEdge(walls, { structures, templates, isMounted });
+  const chargeBlockedEdgeFor = (u: Unit) => makeChargeBlockedEdge(walls, { structures, templates, zones, orgLevel: getOrganizationLevel(u.currentFormation), isMounted: isMountedOf(u) });
   // Org-gate context: a `max_org_level_allowed` gate breaks the formation at the
   // crossing point (rescaling the movement budget) — mirrors handleUnitMove.
   const movementMultipliers: Record<string, number> = {};
@@ -147,7 +147,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const combined: Record<string, string> = {};
       const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
       const effectiveMax = computeEffectiveMovement(draggedUnit, movementMult);
-      const chargeReach = computeChargeReachable(draggedUnit, occupied, effectiveMax, costOfHexFor(isMountedOf(draggedUnit)), chargeBlockedEdgeFor(isMountedOf(draggedUnit)));
+      const chargeReach = computeChargeReachable(draggedUnit, occupied, effectiveMax, costOfHexFor(isMountedOf(draggedUnit)), chargeBlockedEdgeFor(draggedUnit));
       for (const [key, cost] of Array.from(chargeReach.entries())) {
         combined[key] = cost >= getSetting('charge_full_distance', 2) ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';
       }

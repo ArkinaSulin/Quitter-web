@@ -485,7 +485,7 @@ export function useGameEngine({
   );
 
   const moveUnitFree = useCallback(
-    async (unit: Unit, targetHex: Hex, attachedHero?: Unit | null): Promise<void> => {
+    async (unit: Unit, targetHex: Hex, attachedHero?: Unit | null, breakToFormation?: string): Promise<void> => {
       const subSteps: SubStep[] = [
         {
           type: 'MOVE',
@@ -503,6 +503,16 @@ export function useGameEngine({
           unitId: attachedHero.id,
           changes: [
             { field: 'hex', from: { ...attachedHero.hex }, to: { ...targetHex } },
+          ],
+        });
+      }
+      if (breakToFormation && breakToFormation !== unit.currentFormation) {
+        subSteps.push({
+          type: 'FORMATION',
+          description: `${unit.unitName} breaks formation to ${breakToFormation}`,
+          unitId: unit.id,
+          changes: [
+            { field: 'currentFormation', from: unit.currentFormation, to: breakToFormation },
           ],
         });
       }

@@ -6,8 +6,8 @@ import { determineCombatPosition } from '@/lib/unitCombat';
 import { canStopEnemyMovement } from '@/lib/formationRules';
 import { isUnitInteractable, isDeadCorpse } from '@/lib/unitInteractions';
 import { isUnitRouted } from '@/lib/unitMorale';
-import { Walls, crossingCost, blockedStep, wallBetween } from '@/lib/walls';
-import { MapStructures, structureHexEntryCost, structureHexBlocked, hexStructureAt, structureDoorState } from '@/lib/mapStructures';
+import { Walls, crossingCost, blockedStep, wallBetween, edgeRef, directionBetween } from '@/lib/walls';
+import { MapStructures, structureBlocksOrg, zoneBlocksOrg, structureHexEntryCost, structureHexBlocked, hexStructureAt, structureDoorState } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { modifierAmount } from '@/lib/effectTemplates';
@@ -97,20 +97,24 @@ export function makeBlockedEdge(walls: Walls | null | undefined, opts: BlockEdge
 export interface ChargeBlockOpts {
   structures?: MapStructures;
   templates?: Record<string, StructureTemplate>;
+  zones?: GroundEffect[];
+  orgLevel?: number;
   isMounted?: boolean;
 }
 
 /**
  * Charges are blocked by any barrier that isn't a low (1 MP) passable structure:
  * any wall edge whose crossing costs 2+ MP (or is a hard block / standing door),
- * and any hex structure entered at 2+ MP. Quote: "any hex with MP cost 2+ will
- * disable charge".
+ * any hex structure entered at 2+ MP, and any `max_org_level_allowed` gate (a
+ * charge can't barrel through a disorganizing barrier). "Any hex with MP cost 2+
+ * will disable charge."
  */
 export function makeChargeBlockedEdge(walls: Walls | null | undefined, opts: ChargeBlockOpts = {}): BlockedEdgeFn | undefined {
-  const { structures, templates, isMounted } = opts;
+  const { structures, templates, zones, orgLevel, isMounted } = opts;
   const hasWalls = !!walls && Object.keys(walls).length > 0;
   const hasStructs = !!structures && Object.keys(structures).length > 0;
-  if (!hasWalls && !hasStructs) return undefined;
+  const hasOrg = orgLevel !== undefined && ((!!structures && Object.keys(structures).length > 0) || (!!zones && zones.length > 0));
+  if (!hasWalls && !hasStructs && !hasOrg) return undefined;
   return (fromQ, fromR, toQ, toR) => {
     if (walls) {
       const hit = wallBetween(walls, { q: fromQ, r: fromR }, { q: toQ, r: toR });
@@ -124,6 +128,19 @@ export function makeChargeBlockedEdge(walls: Walls | null | undefined, opts: Cha
     }
     const hc = structureHexEntryCost({ q: toQ, r: toR }, structures, templates, !!isMounted);
     if (hc !== undefined && hc >= 2) return true;
+    if (orgLevel !== undefined) {
+      if (structures) {
+        const dir = directionBetween({ q: fromQ, r: fromR }, { q: toQ, r: toR });
+        if (dir >= 0) {
+          const ref = edgeRef(fromQ, fromR, dir);
+          const edgeInst = structures[ref.key];
+          if (edgeInst && structureBlocksOrg(templates?.[edgeInst.templateId], orgLevel, edgeInst)) return true;
+        }
+        const hexInst = structures[`${toQ},${toR}`];
+        if (hexInst && structureBlocksOrg(templates?.[hexInst.templateId], orgLevel, hexInst)) return true;
+      }
+      if (zoneBlocksOrg(zones, toQ, toR, orgLevel)) return true;
+    }
     return false;
   };
 }

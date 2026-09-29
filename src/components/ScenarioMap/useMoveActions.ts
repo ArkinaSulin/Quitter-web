@@ -36,7 +36,7 @@ interface MoveActionsDeps {
   addError: (msg: string, verboseText?: string) => void;
   unitMaxMP: (unit: Unit) => number;
   moveUnitRecorded: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; stopInZoc?: boolean; breakToFormation?: string }) => Promise<void>;
-  moveUnitFree: (unit: Unit, targetHex: Hex, attachedHero?: Unit | null) => Promise<void>;
+  moveUnitFree: (unit: Unit, targetHex: Hex, attachedHero?: Unit | null, breakToFormation?: string) => Promise<void>;
   changeFormation: (unit: Unit, formation: string, formationsMap: Record<string, Formation>) => Promise<void>;
   attachHero: (hero: Unit, targetUnit: Unit, position: 'front' | 'back', heroMaxMP: number) => Promise<void>;
   swapHeroPosition: (hero: Unit, heroMaxMP: number) => Promise<void>;
@@ -219,7 +219,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       const chargeReach = computeChargeReachable(
         unit, occupied, maxMP,
         makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted }),
-        makeChargeBlockedEdge(walls, { structures, templates: structureTemplates, isMounted: mounted }),
+        makeChargeBlockedEdge(walls, { structures, templates: structureTemplates, zones: groundZones, orgLevel: getOrganizationLevel(unit.currentFormation), isMounted: mounted }),
       );
       const cost = chargeReach.get(`${targetHex.q},${targetHex.r}`);
       if (!cost) {
@@ -241,7 +241,8 @@ export function useMoveActions(deps: MoveActionsDeps) {
         addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — hex occupied`);
         return;
       }
-      await moveUnitFree(unit, targetHex, attachedHero);
+      const breakToFormation = entryBreakFormation(unit.hex, targetHex, unit.currentFormation, structures, structureTemplates, groundZones) ?? undefined;
+      await moveUnitFree(unit, targetHex, attachedHero, breakToFormation);
       await maybeAutoReturnToRanged(unit);
       offerReactionsFor({ ...unit, hex: targetHex });
       pruneReactionOffers();

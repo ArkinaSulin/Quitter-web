@@ -23,7 +23,7 @@ import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { computeOccupiedHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
-import { MapStructures, doorPassThroughHexes, orgGatesForEntry, describeOrgGateBlock } from '@/lib/mapStructures';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation } from '@/lib/mapStructures';
 import { attacksBlocked } from '@/lib/attackBlock';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
@@ -228,7 +228,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     setReactionMode(null);
   }, [execute, displayUnits, displayAlliances, formationsMap, sizeCategories, addMessage, routeReactionUnit, units]);
 
-  const performReactionMove = useCallback(async (archer: Unit, targetHex: Hex, cost: number) => {
+  const performReactionMove = useCallback(async (archer: Unit, targetHex: Hex, cost: number, breakToFormation?: string) => {
     const maxMP = unitMaxMP(archer);
     const { movementPointsAvailable, actionsAvailable } = archer.isHero
       ? applyHeroMoveCost(archer, cost, maxMP)
@@ -253,6 +253,12 @@ export function useReactionActions(deps: ReactionActionsDeps) {
         changes,
       },
       ...(reactionHero ? [heroRideMoveStep(reactionHero, targetHex, `${reactionHero.unitName} repositions with ${archer.unitName} (reaction)`)] : []),
+      ...(breakToFormation && breakToFormation !== archer.currentFormation ? [{
+        type: 'FORMATION' as const,
+        description: `${archer.unitName} breaks formation to ${breakToFormation}`,
+        unitId: archer.id,
+        changes: [{ field: 'currentFormation', from: archer.currentFormation, to: breakToFormation }],
+      }] : []),
     ], `${archer.unitName} repositioned a full move (reaction)`);
   }, [execute, unitMaxMP, units]);
 
@@ -331,14 +337,17 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const occupied = computeOccupiedHexes(displayUnits, archer.id);
     const mounted = !!archer.mountId || !!archer.mountName;
     const passThrough = doorPassThroughHexes(structures, structureTemplates, occupied);
+    const movementMultipliers: Record<string, number> = {};
+    for (const [name, f] of Object.entries(formationsMap)) movementMultipliers[name] = f.movement_multiplier;
+    const breakOnEntry = (fq: number, fr: number, tq: number, tr: number, formation: string) =>
+      entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, structures, structureTemplates, groundZones);
     return computeReachableMap(archer, budget, occupied, new Set(), makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted }), false, makeBlockedEdge(walls, {
       structures,
       templates: structureTemplates,
       zones: groundZones,
-      orgLevel: getOrganizationLevel(archer.currentFormation),
       isMounted: mounted,
-    }), undefined, passThrough);
-  }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones]);
+    }), undefined, passThrough, { movementMultipliers, breakOnEntry });
+  }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones, formationsMap]);
 
   const handleReactionAttack = useCallback(async (attackerId: string, targetId: string) => {
     if (!reactionMode || attackerId !== reactionMode.archer.id) return;
@@ -391,18 +400,6 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const reachable = getReactionReachable(archer);
     const entry = reachable.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
-      // Within physical reach but dropped by a gate? Name the `max_org_level_allowed`
-      // blocker (if any) instead of a vague "cannot reposition".
-      const orgLevel = getOrganizationLevel(archer.currentFormation);
-      const budget = reactionMovePool(archer, unitMaxMP(archer));
-      if (hexDistance(archer.hex, targetHex) <= budget) {
-        const gates = orgGatesForEntry(archer.hex, targetHex, orgLevel, structures, structureTemplates, groundZones);
-        const block = describeOrgGateBlock(archer.unitName, archer.currentFormation, orgLevel, targetHex, 'reposition into', gates);
-        if (block) {
-          addMessage(block.plain, block.verbose);
-          return;
-        }
-      }
       addMessage(`${archer.unitName} cannot reposition there — outside its reaction move`);
       return;
     }
@@ -410,8 +407,8 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       addMessage(`${archer.unitName} must turn first (1 MP) to move there`);
       return;
     }
-    await performReactionMove(archer, targetHex, entry.cost);
-  }, [reactionMode, units, addMessage, getReactionReachable, performReactionMove, unitMaxMP, structures, structureTemplates, groundZones]);
+    await performReactionMove(archer, targetHex, entry.cost, entry.finalFormation);
+  }, [reactionMode, units, addMessage, getReactionReachable, performReactionMove]);
 
   return {
     reactionOffers,

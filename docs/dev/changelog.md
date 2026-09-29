@@ -6,7 +6,8 @@
 - **`max_org_level_allowed` no longer BLOCKS entry — it breaks the incoming formation at the exact crossing point.** `computeReachableMap` now tracks the formation as BFS state and, when a gate (`breakOnEntry`) is exceeded, breaks to `formationAtOrBelow` and rescales the movement budget (MP + hex-step cap) by the new `movement_multiplier` (Shield Wall/Phalanx ×0.5 → Open/Close ×1 → Scattered/Routed ×1.5). The result carries `finalFormation`; the executed move folds a chained `FORMATION` sub-step into the same command (atomic undo), and affordability uses the broken formation's maxMP.
 - **Standing cap**: `handleChangeFormation` blocks a formation change whose org level exceeds `standingMaxOrg` on the unit's hex (hex structure + zone; edge structures are a one-time crossing gate, not a standing cap).
 - `makeBlockedEdge` no longer hard-blocks on the org gate. The drag overlay (`useOverlay`) shares the same `breakOnEntry`/multiplier context as execution.
-- `tsc` clean; 811 tests pass; build clean. No migration. (Follow-ups: free-move and archer-reaction reposition breaks, and the charge-vs-gate rule, remain.)
+- **Follow-ups completed**: the break now also applies on the **free-move** path (`moveUnitFree`) and the **archer-reaction reposition** (`performReactionMove`); a **charge** is blocked by a `max_org_level_allowed` gate (`makeChargeBlockedEdge` now checks edge/hex/zone org gates).
+- `tsc` clean; 811 tests pass; build clean. No migration.
 - Note: a `max_org_level_allowed` gate only enforces while standing on a hex structure/zone, and on crossing an edge — an over-cap unit placed directly still can't *increase* formation above the cap.
 
 ## Rename `enter_org_max` → `max_org_level_allowed` + break/standing helpers (2026-09-29)
