@@ -6,7 +6,7 @@
 // states; ScenarioMap renders the picker modal and wires the grid callbacks.
 import { useCallback, useEffect, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, SizeCategory, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
-import { resolveCombatSequence } from '@/lib/unitCombat';
+import { resolveCombatSequence, wallCoverAgainst } from '@/lib/unitCombat';
 import { applyFormationChange } from '@/lib/formationCost';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
@@ -211,7 +211,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     }
     const rollNote = outcome.firstStrikeRoll.note;
     const desc = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${rollNote}, ${hits} hits, ${outcome.firstStrikeDamage} damage (${troopsKilled} troops)`;
-    const msg = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${rollNote}${formatStrikeDetail(outcome.firstStrikeAttacks, weapon.attackBonus + formationAtkMod, effectiveAc(mover, formationsMap[mover.currentFormation] ?? null, attackDirection(archer.hex, mover.hex, mover.facing), true), weapon.damageDice, false, outcome.firstStrikeDamage)} (${troopsKilled} troops)`;
+    const msg = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${rollNote}${formatStrikeDetail(outcome.firstStrikeAttacks, weapon.attackBonus + formationAtkMod, effectiveAc(mover, formationsMap[mover.currentFormation] ?? null, attackDirection(archer.hex, mover.hex, mover.facing), true, wallCoverAgainst(walls, archer.hex, mover.hex, true)), weapon.damageDice, false, outcome.firstStrikeDamage)} (${troopsKilled} troops)`;
     await execute('ARCHER_REACTION', subSteps, desc, { verboseMessage: msg });
     // A reaction hit is an attack — it can break the mover's morale into a rout.
     const moverKilled = newHp <= 0;

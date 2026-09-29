@@ -23,6 +23,12 @@ interface UnitTooltipProps {
   companionFormation?: Formation | null | undefined;
 }
 
+function fmtAcDelta(delta: number): string {
+  if (delta > 0) return `+${delta}`;
+  if (delta < 0) return String(delta);
+  return '';
+}
+
 function heroColumn(hero: Unit, units: Unit[], alliances: Record<string, AllianceGroup>, formation: Formation | null | undefined) {
   return (
     <>
@@ -59,6 +65,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const weapons = parseWeapons(unit.weaponString || '');
   const activeWeapon = weapons[unit.activeWeaponIndex ?? 0];
   const shieldDropped = shieldPenalty > 0;
+  const acBase = (unit.baselineAc || 10) - shieldPenalty;
 
   return (
     <>
@@ -114,7 +121,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
         {typeof unit.attacksUsed === 'number' && (
           <span className={unit.attacksUsed >= unitAttackCap() ? 'text-red-400' : ''}>{unit.attacksUsed}/{unitAttackCap()} <span className="text-gray-500">(attacks + retaliations)</span></span>
         )}
-        <span className="text-gray-400" title="Armor Class (AC): a d20 attack roll + bonuses must equal or beat this to hit. Melee and ranged can differ (formation range AC); formation AC does NOT apply from the REAR; the shield is 360°.">AC:</span><span>{`melee: ${acMelee}, [Range: ${acRanged}]. [rear: ${acRear}]`}</span>
+        <span className="text-gray-400" title="Armor Class (AC): a d20 attack roll + bonuses must equal or beat this to hit. Cover (formation, structure, wall) never stacks — the best wins; unit effects (e.g. Haste) add on top. Formation cover does NOT apply from the REAR; the shield is 360°.">AC:</span><span>{acMelee === acRanged && acRanged === acRear ? `AC: ${acMelee}` : `melee${fmtAcDelta(acMelee - acBase)}: ${acMelee}, [Range${fmtAcDelta(acRanged - acBase)}: ${acRanged}]. [rear${fmtAcDelta(acRear - acBase)}: ${acRear}]`}</span>
         {(unit.effects ?? []).length > 0 && (
           <>
             <span className="col-span-2 mt-0.5 text-[10px] uppercase tracking-wide text-gray-500">Effects</span>

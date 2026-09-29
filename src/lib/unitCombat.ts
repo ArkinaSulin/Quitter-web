@@ -459,8 +459,8 @@ export function resolveCombatSequence(
   // (uniform rule); shields are 360° and stay in `baselineAc`. The shield drops
   // for two-handed weapons / routing are handled inside effectiveAc. The
   // formation term is melee/ranged-aware (`isRanged`).
-  const defenderEffAc = effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing), isRanged) + wallCoverAgainst(walls, attacker.hex, defender.hex, isRanged);
-  const attackerEffAc = effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing), isRanged) + wallCoverAgainst(walls, defender.hex, attacker.hex, isRanged);
+  const defenderEffAc = effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing), isRanged, wallCoverAgainst(walls, attacker.hex, defender.hex, isRanged));
+  const attackerEffAc = effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing), isRanged, wallCoverAgainst(walls, defender.hex, attacker.hex, isRanged));
 
   // Who strikes first? A defender attacked from the rear, a routed defender, noRetaliation
   // weapons, and ranged attacks all let the attacker strike first (the defender can't react).

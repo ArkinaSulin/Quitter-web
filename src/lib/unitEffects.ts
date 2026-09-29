@@ -66,27 +66,57 @@ export function effectRangeBonus(unit: Unit | null | undefined): number {
   return sum;
 }
 
-/**
- * AC bonus from a unit's active effects (incl. zone memberships). Flat / no
- * `mode` applies to BOTH melee and ranged; `mode:'melee'` only melee,
- * `mode:'ranged'` only ranged. Consumed by `unitStats.effectiveAc` so the AC is
- * derived per attack type + direction (melee / ranged / rear).
- */
 /** Stacking identity: same kind AND same `mode` (so `ac (melee)` and `ac (ranged)`
  *  coexist on one carrier). Kinds without a mode compare equal as before. */
 function sameStackKey(a: { kind: string; mode?: string }, b: { kind: string; mode?: string }): boolean {
   return a.kind === b.kind && (a.mode ?? null) === (b.mode ?? null);
 }
 
-export function effectAcBonus(unit: Unit | null | undefined, isRanged: boolean): number {
+/** Does this `ac` effect apply to the given attack type (melee vs ranged)? */
+function acApplies(e: UnitEffect, isRanged: boolean): boolean {
+  if (e.kind !== 'ac') return false;
+  if (e.mode === 'melee' && isRanged) return false;
+  if (e.mode === 'ranged' && !isRanged) return false;
+  return true;
+}
+
+/**
+ * COVER AC from zone-sourced `ac` effects (hex structures, painted ground
+ * zones): positional cover never stacks — the HIGHEST wins. 360° (applies at
+ * every direction; `unitStats.effectiveAc` maxes it against formation + wall).
+ */
+export function coverAcBonus(unit: Unit | null | undefined, isRanged: boolean): number {
+  let best = 0;
+  for (const e of unit?.effects ?? []) {
+    if (!e.zoneHex) continue;
+    if (!acApplies(e, isRanged)) continue;
+    best = Math.max(best, modifierAmount(e.dice));
+  }
+  return best;
+}
+
+/**
+ * BUFF AC from direct unit `ac` effects (e.g. Haste): these STACK with cover
+ * (and with each other).
+ */
+export function directAcBonus(unit: Unit | null | undefined, isRanged: boolean): number {
   let sum = 0;
   for (const e of unit?.effects ?? []) {
-    if (e.kind !== 'ac') continue;
-    if (e.mode === 'melee' && isRanged) continue;
-    if (e.mode === 'ranged' && !isRanged) continue;
+    if (e.zoneHex) continue;
+    if (!acApplies(e, isRanged)) continue;
     sum += modifierAmount(e.dice);
   }
   return sum;
+}
+
+/**
+ * Total AC from effects (cover max + direct sum), without formation/wall cover.
+ * Used where a unit's own effect AC is wanted standalone (e.g. an attached
+ * hero's split AC); `unitStats.effectiveAc` composes cover + formation + wall
+ * itself.
+ */
+export function effectAcBonus(unit: Unit | null | undefined, isRanged: boolean): number {
+  return coverAcBonus(unit, isRanged) + directAcBonus(unit, isRanged);
 }
 
 /**

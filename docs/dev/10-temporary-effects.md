@@ -17,13 +17,21 @@ expiry are all undoable and realtime-consistent.
   shield-adjusted base (`baselineAc − shieldPenalty`). AC effects (and a
   structure's `ac` modifier reached via `structureZones` → zone membership) create
   a membership but write no stat field; `isStatEffect('ac')` is false and
-  `statFieldOf('ac')` is null. Instead
-  `unitEffects.effectAcBonus(unit, isRanged)` sums the `ac` deltas (flat/`mode`-less
-  → both; `mode:'melee'`/`'ranged'` scoped) and `unitStats.effectiveAc(unit,
-  formation, direction, isRanged)` adds it on top of `baselineAc + formationAc −
-  shieldPenalty`. That single call supplies the unit tooltip's **melee / ranged /
-  rear** AC, the combat roll, verbose combat, the AI planner and reactions. (So an
-  `ac` buff is now correct in both the tooltip and the roll.)
+  `statFieldOf('ac')` is null. Instead the effect AC is split by source:
+  - `coverAcBonus(unit, isRanged)` = the **MAX** of zone-sourced `ac`
+    (`zoneHex` memberships — hex structures + painted ground zones); positional
+    cover never stacks.
+  - `directAcBonus(unit, isRanged)` = the **SUM** of direct unit `ac` effects
+    (e.g. Haste); buffs stack with cover.
+  - `effectAcBonus(unit, isRanged)` = `coverAcBonus + directAcBonus` (used where
+    a standalone effect AC is wanted, e.g. an attached hero's split AC).
+  `unitStats.effectiveAc(unit, formation, direction, isRanged, wallCover = 0)` =
+  `baselineAc − shieldPenalty + max(formationAc, coverAcBonus, wallCover) +
+  directAcBonus`, with formation AC front/flank-only (rear = 0), zone cover 360°,
+  and wall cover directional (melee **and** ranged). That single call supplies the
+  unit tooltip's **melee / ranged / rear** AC, the combat roll, verbose combat,
+  the AI planner and reactions. (So an `ac` buff is now correct in both the
+  tooltip and the roll.)
 - `dot` damages HP (`dotDamageChanges`: HP minus delta, troops = ceil(hp/troopHp),
   clamped to `[0, maxTroopCount]`, HP ≥ 0). A negative dot delta = **Regen**
   (healing).

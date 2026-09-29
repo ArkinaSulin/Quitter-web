@@ -84,6 +84,27 @@ describe('effectiveAc', () => {
     expect(effectiveAc(meleeOnly, f(0), 'front', false)).toBe(17);
     expect(effectiveAc(meleeOnly, f(0), 'front', true)).toBe(16); // ranged ignores melee-only
   });
+
+  it('cover (zone ac) maxes with formation cover, never stacks, and stays 360°', () => {
+    const zoned = unit({ effects: [{ kind: 'ac', dice: '5', zoneHex: { q: 0, r: 0, s: 0 } }] as any });
+    expect(effectiveAc(zoned, f(2), 'front', false)).toBe(21); // max(2, 5) = 5 → 16 + 5
+    expect(effectiveAc(zoned, f(2), 'rear', false)).toBe(21);  // zone cover is 360°, formation rear = 0
+  });
+
+  it('direct unit ac (buff) stacks on top of cover', () => {
+    const buffed = unit({ effects: [
+      { kind: 'ac', dice: '5', zoneHex: { q: 0, r: 0, s: 0 } },
+      { kind: 'ac', dice: '2' },
+    ] as any });
+    expect(effectiveAc(buffed, f(2), 'front', false)).toBe(23); // cover max(2,5)=5 + buff 2 = 7
+  });
+
+  it('wall cover maxes with formation/zone cover instead of stacking', () => {
+    const zoned = unit({ effects: [{ kind: 'ac', dice: '5', zoneHex: { q: 0, r: 0, s: 0 } }] as any });
+    expect(effectiveAc(zoned, f(2), 'front', false, 3)).toBe(21); // max(2, 5, 3) = 5
+    expect(effectiveAc(unit(), f(2), 'front', false, 3)).toBe(19); // max(2, 0, 3) = 3
+    expect(effectiveAc(unit(), f(2), 'rear', false, 3)).toBe(19);  // max(0, 0, 3) = 3 (wall directional)
+  });
 });
 
 describe('heroicCapacityBonus', () => {

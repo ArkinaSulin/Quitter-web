@@ -526,12 +526,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // ONLY to the chat message (options.message), never to the command log.
     const defenderAcDir = attackDirection(attacker.hex, target.hex, target.facing);
     const attackerAcDir = attackDirection(target.hex, attacker.hex, attacker.facing);
-    const effTargetAc = effectiveAc(effTarget, formationsMap[effTarget.currentFormation] ?? null, defenderAcDir, isRanged);
-    const effAttackerAc = effectiveAc(effAttacker, formationsMap[effAttacker.currentFormation] ?? null, attackerAcDir, isRanged);
-    // Wall cover is a per-attack modifier (not a unit stat): the display must show
-    // the same cover-adjusted AC the roll uses, per strike direction.
-    const targetAcCovered = effTargetAc + wallCoverAgainst(walls, attacker.hex, target.hex, isRanged);
-    const attackerAcCovered = effAttackerAc + wallCoverAgainst(walls, target.hex, attacker.hex, isRanged);
+    // Wall cover is a per-attack modifier (not a unit stat): the display shows the
+    // same cover-adjusted AC the roll uses, per strike direction (cover is maxed
+    // with formation/zone cover inside effectiveAc).
+    const targetAcCovered = effectiveAc(effTarget, formationsMap[effTarget.currentFormation] ?? null, defenderAcDir, isRanged, wallCoverAgainst(walls, attacker.hex, target.hex, isRanged));
+    const attackerAcCovered = effectiveAc(effAttacker, formationsMap[effAttacker.currentFormation] ?? null, attackerAcDir, isRanged, wallCoverAgainst(walls, target.hex, attacker.hex, isRanged));
     // A formation gives no AC from the rear — call it out instead of a bare number.
     const defenderForm = formationsMap[target.currentFormation];
     const defenderFormAc = (isRanged ? defenderForm?.range_ac_modifier : defenderForm?.melee_ac_modifier) ?? 0;

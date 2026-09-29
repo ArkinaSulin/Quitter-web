@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Cover AC unifies (max, never stacks) + tooltip breakdown (2026-09-28)
+**Files:** src/lib/{unitEffects,unitStats,unitCombat}.ts (+ tests), src/components/ScenarioMap/{useCombatActions,useReactionActions,UnitTooltip}.tsx, docs/dev/changelog.md
+
+- **Cover AC now takes the HIGHEST instead of stacking.** A defender's AC is three layers: BASE (`baselineAc` shield, 360°, minus two-handed/routing drop) + COVER (the max of formation AC, zone/hex-structure AC, and edge-wall AC) + BUFF (direct unit `ac` effects like Haste, which still sum on top). A Shield Wall behind a tower behind a wall no longer produces +10 ranged — the best cover wins.
+- **`effectAcBonus` split** into `coverAcBonus` (MAX of zone-sourced `ac`, i.e. `zoneHex` memberships — hex structures + painted ground zones) and `directAcBonus` (SUM of direct `ac` effects). `unitStats.effectiveAc` now takes an optional `wallCover` param and maxes cover; `resolveCombatSequence` passes `wallCoverAgainst` into it instead of adding after. Direction rules kept: formation cover is front/flank (rear = 0), zone cover is 360°, wall cover is directional (melee **and** ranged).
+- **Tooltip AC line** now shows `melee+N: X, [Range+N: Y]. [rear+N: Z]` (the `+N` is cover+effect over the shield-adjusted base), collapsing to `AC: N` when melee/ranged/rear are equal. Wall cover is not in the tooltip (per-attack, directional) — it still appears in verbose combat/reaction messages.
+- `tsc` clean; 798 tests pass; build clean. No migration.
+
 ## Pursuit AGR roll now logged (2026-09-28)
 **Files:** src/lib/pursuit.ts (+ test), src/components/ScenarioMap/useCombatActions.ts, docs/dev/changelog.md
 

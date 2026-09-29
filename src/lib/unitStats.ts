@@ -3,7 +3,7 @@ import { parseWeapons } from '@/lib/weaponParser';
 import { getBandSetting, getSetting, SettingBand } from '@/lib/settingsCache';
 import { isUnitRouted, areHexesAdjacent, isHeroMoraleBoostEnabled } from '@/lib/unitMorale';
 import { AttackDirection } from '@/lib/attackDirection';
-import { effectAcBonus } from '@/lib/unitEffects';
+import { coverAcBonus, directAcBonus } from '@/lib/unitEffects';
 
 // Code fallback matches migration 042 seed — the unit_size_categories table row wins
 // in getRowCapacity; this is the fallback base for unknown categories.
@@ -72,27 +72,33 @@ export function getShieldPenalty(
 }
 
 /**
- * Effective AC against an attack from `direction`. The shield is 360° (baked into
- * `baselineAc`) and two-handed/routing still drop it everywhere. The formation's
- * AC term applies front/flank only — a formation gives NO AC bonus from the rear
- * (uniform rule) — and is split by attack type: `melee_ac_modifier` for melee,
- * `range_ac_modifier` for ranged (`isRanged`; bows/thrown and single-target magic
- * weapons alike). Values are data-driven; both default 0 when absent.
- * Heroes have no rear (all sides are front).
+ * Effective AC against an attack from `direction`.
+ *
+ * Three layers:
+ *  - BASE  = `baselineAc` (shield, 360°) minus the two-handed/routing drop.
+ *  - COVER = max(formation AC, zone AC, wall cover). Cover never stacks — a
+ *    shield wall behind a tower behind a wall only counts the best one.
+ *    Formation AC is front/flank only (rear = 0); zone cover is 360°; wall
+ *    cover is directional (melee or ranged, whichever the caller passes).
+ *  - BUFF  = direct unit `ac` effects (e.g. Haste) — these STACK on top.
+ *
+ * Formation terms are split by attack type (`melee_ac_modifier` /
+ * `range_ac_modifier`); heroes have no rear (all sides are front).
  */
 export function effectiveAc(
   unit: Pick<Unit, 'baselineAc' | 'isShielded' | 'weaponString' | 'activeWeaponIndex' | 'currentFormation' | 'isHero'> & { effects?: Unit['effects'] },
   formation: Formation | null | undefined,
   direction: AttackDirection,
   isRanged = false,
+  wallCover = 0,
 ): number {
   const dir = unit.isHero || unit.currentFormation === 'Hero' ? 'front' : direction;
   const formationAc = dir === 'rear'
     ? 0
     : (isRanged ? (formation?.range_ac_modifier ?? 0) : (formation?.melee_ac_modifier ?? 0));
-  // Shield is 360° (in `baselineAc`, minus the two-handed/routing drop); `ac`
-  // effects are derived auras added per attack type (flat/mode-aware).
-  return (unit.baselineAc || 10) + formationAc - getShieldPenalty(unit).penalty + effectAcBonus({ effects: unit.effects } as Unit, isRanged);
+  const cover = Math.max(formationAc, coverAcBonus({ effects: unit.effects } as Unit, isRanged), wallCover);
+  const buff = directAcBonus({ effects: unit.effects } as Unit, isRanged);
+  return (unit.baselineAc || 10) - getShieldPenalty(unit).penalty + cover + buff;
 }
 
 /**

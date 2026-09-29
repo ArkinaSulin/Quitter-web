@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, rangeBonusAt, saveRollFlags, expandInheritedEffects } from './unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, coverAcBonus, directAcBonus, rangeBonusAt, saveRollFlags, expandInheritedEffects } from './unitEffects';
 import { parseDice } from './effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
@@ -518,6 +518,43 @@ describe('effectAcBonus', () => {
     expect(effectAcBonus(u, false)).toBe(3); // 2 + 1 (melee)
     expect(effectAcBonus(u, true)).toBe(5);  // 2 + 3 (ranged)
     expect(effectAcBonus(null, false)).toBe(0);
+  });
+});
+
+describe('coverAcBonus / directAcBonus', () => {
+  it('coverAcBonus takes the HIGHEST zone ac and never stacks', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [
+        ef({ key: 'z1', kind: 'ac', dice: '2', zoneHex: h(0, 0) }),
+        ef({ key: 'z2', kind: 'ac', dice: '5', zoneHex: h(0, 0) }),
+        ef({ key: 'z3', kind: 'ac', dice: '8', mode: 'ranged', zoneHex: h(0, 0) }),
+      ],
+    });
+    expect(coverAcBonus(u, false)).toBe(5); // max(2, 5) — ranged-only skipped
+    expect(coverAcBonus(u, true)).toBe(8);  // max(2, 5, 8)
+  });
+
+  it('directAcBonus sums direct unit ac effects', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [
+        ef({ key: 'a', kind: 'ac', dice: '2' }),
+        ef({ key: 'b', kind: 'ac', dice: '1', mode: 'melee' }),
+        ef({ key: 'c', kind: 'ac', dice: '3', mode: 'ranged' }),
+      ],
+    });
+    expect(directAcBonus(u, false)).toBe(3); // 2 + 1
+    expect(directAcBonus(u, true)).toBe(5);  // 2 + 3
+  });
+
+  it('effectAcBonus = cover max + direct sum', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [
+        ef({ key: 'z1', kind: 'ac', dice: '5', zoneHex: h(0, 0) }),
+        ef({ key: 'z2', kind: 'ac', dice: '9', zoneHex: h(0, 0) }),
+        ef({ key: 'a', kind: 'ac', dice: '2' }),
+      ],
+    });
+    expect(effectAcBonus(u, false)).toBe(11); // max(5, 9) + 2
   });
 });
 
