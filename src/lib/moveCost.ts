@@ -1,6 +1,5 @@
 import { Hex, Unit } from '@/types/gameProtocol';
 import { getSetting } from '@/lib/settingsCache';
-import { isUnitRouted } from '@/lib/unitMorale';
 
 export interface MovePathEntry {
   cost: number;
@@ -12,6 +11,19 @@ export interface MovePathEntry {
    * not droppable — it's a hint that the unit must rotate first.
    */
   needsTurn?: boolean;
+  /** Formation after reaching this hex (present only when a max_org_level_allowed
+   *  gate broke the formation en route). */
+  finalFormation?: string;
+}
+
+/** Organization-gate context for `computeReachableMap`: how a `max_org_level_allowed`
+ *  gate breaks a formation and how that changes the movement budget. */
+export interface OrgMoveOpts {
+  /** formation name -> movement_multiplier (rescales the MP budget on break). */
+  movementMultipliers?: Record<string, number>;
+  /** (fromQ, fromR, toQ, toR, formation) -> formation to break to, or null when
+   *  no governing gate is exceeded. */
+  breakOnEntry?: (fromQ: number, fromR: number, toQ: number, toR: number, formation: string) => string | null;
 }
 
 type MpBudget = Pick<Unit, 'movementPointsAvailable' | 'actionsAvailable'>;
@@ -300,11 +312,16 @@ export function computeChargeReachable(
  *
  * Threat hexes are reachable but cannot be passed through. Occupied hexes are
  * never reachable. Routed / Scattered / Hero units move in any direction (no
- * facing) — always white. All three passes are min-cost Dijkstras so a cheaper
- * later path can revisit a hex (required once entry costs are non-uniform).
+ * facing) — always white.
+ *
+ * When `org` is supplied, a `max_org_level_allowed` gate (edge/hex structure or
+ * ground zone) BREAKS the formation mid-move at the exact crossing point: the
+ * state carries the formation, and the movement budget (MP and hex-step cap)
+ * rescales by the formation's movement multiplier. The result carries
+ * `finalFormation` so the caller can apply the break.
  */
 export function computeReachableMap(
-  unit: { hex: Hex; facing: number; currentFormation: string; isHero?: boolean; mountId?: string | null; mountName?: string },
+  unit: { hex: Hex; facing: number; currentFormation: string; movementPoints?: number; isHero?: boolean; mountId?: string | null; mountName?: string },
   maxMP: number,
   occupied: Set<string>,
   threatHexes: Set<string>,
@@ -324,9 +341,30 @@ export function computeReachableMap(
   /** Occupied hexes that may be TRAVERSED (entered for pathing, but never
    *  returned as a result) — an open-door hex structure underfoot. */
   passThrough?: Set<string>,
+  /** Optional org-gate context (breaks + budget rescale). */
+  org?: OrgMoveOpts,
 ): Map<string, MovePathEntry> {
   const stepCap = hopCap ?? maxMP;
   const isPass = (k: string): boolean => passThrough?.has(k) ?? false;
+  const breakOnEntry = org?.breakOnEntry;
+  const multipliers = org?.movementMultipliers;
+  const baseMove = unit.movementPoints ?? maxMP;
+
+  // The movement multiplier rescales the pool per formation (a break only ever
+  // raises the multiplier — ×0.5 → ×1 → ×1.5 — so the budget only grows).
+  const maxMpOf = (f: string): number => Math.max(1, Math.floor(baseMove * (multipliers?.[f] ?? 1)));
+  const initialMax = maxMpOf(unit.currentFormation);
+  const scaleOf = (f: string): number => (initialMax > 0 ? maxMpOf(f) / initialMax : 1);
+  const budgetOf = (f: string): number => maxMP * scaleOf(f);
+  const stepCapOf = (f: string): number => Math.ceil(stepCap * scaleOf(f));
+
+  const isLoose = (f: string): boolean => f === 'Scattered' || f === 'Routed' || f === 'Hero';
+  const isMounted = !!unit.mountId || !!unit.mountName;
+  const aboutTurnCost = isMounted
+    ? getSetting('about_turn_cost_mounted', 2)
+    : getSetting('about_turn_cost_foot', 1);
+  const aboutTurnBlocked = (f: string): boolean => isMounted && f === 'Close Order';
+
   // MP to ENTER hex (q,r). Defaults to 1; a painted 0 = free entry; clamps only
   // negative/garbage to 1. `fromQ/fromR` let a wall face REPLACE the entry cost.
   const stepCost = (q: number, r: number, fromQ: number, fromR: number): number => {
@@ -334,9 +372,6 @@ export function computeReachableMap(
     const c = Math.round(costOfHex(q, r, fromQ, fromR) ?? 1);
     return Number.isFinite(c) && c >= 0 ? c : 1;
   };
-
-  const result = new Map<string, MovePathEntry>();
-  const loose = isUnitRouted(unit) || unit.currentFormation === 'Scattered' || unit.currentFormation === 'Hero' || unit.isHero === true;
 
   // Linear pop-min over a small state space (bounded by maxMP hexes).
   const popMin = <T extends { d: number }>(list: T[]): T => {
@@ -347,137 +382,97 @@ export function computeReachableMap(
     return list.splice(best, 1)[0];
   };
 
-  // Better when strictly cheaper, or same cost with fewer hex-steps (a 0-cost
-  // chain still spends one "hop" per hex, so maxMP bounds hex COUNT not just MP).
+  // Better when strictly cheaper, or same cost with fewer hex-steps.
   const improves = (bestCost: number | undefined, bestHops: number | undefined, cost: number, hops: number): boolean =>
     bestCost === undefined || cost < bestCost || (cost === bestCost && hops < (bestHops ?? Infinity));
 
-  // Omnidirectional (loose) or forward-wedge pass: both pay entry cost + one hop
-  // per hex entered; reachable hexes are capped by maxMP MP AND maxMP hex-steps.
-  const walk = (dirs: { q: number; r: number }[]): Map<string, MovePathEntry> => {
-    const out = new Map<string, MovePathEntry>();
-    const bestCost = new Map<string, number>();
-    const bestHops = new Map<string, number>();
-    const queue: { q: number; r: number; d: number; hops: number; path: Hex[] }[] = [];
-    queue.push({ q: unit.hex.q, r: unit.hex.r, d: 0, hops: 0, path: [] });
-    const originKey = key(unit.hex.q, unit.hex.r);
-    bestCost.set(originKey, 0);
-    bestHops.set(originKey, 0);
-    while (queue.length > 0) {
-      const cur = popMin(queue);
-      if (cur.d > (bestCost.get(key(cur.q, cur.r)) ?? Infinity)) continue;
-      if (cur.hops >= stepCap) continue; // reachable at the step cap, not expandable past it
-      for (const dir of dirs) {
-        const nq = cur.q + dir.q;
-        const nr = cur.r + dir.r;
-        const k = key(nq, nr);
-        const pass = isPass(k);
-        if (occupied.has(k) && !pass) continue;
-        if (blockedEdge && blockedEdge(cur.q, cur.r, nq, nr)) continue;
-        const nc = cur.d + stepCost(nq, nr, cur.q, cur.r);
-        const nh = cur.hops + 1;
-        if ((!allowBeyondBudget && nc > maxMP) || nh > stepCap) continue;
-        if (!improves(bestCost.get(k), bestHops.get(k), nc, nh)) continue;
-        bestCost.set(k, nc);
-        bestHops.set(k, nh);
-        const path = [...cur.path, { q: nq, r: nr, s: -nq - nr }];
-        // A pass-through hex may be WALKED but never become a destination.
-        if (!pass) out.set(k, { cost: nc, path, finalFacing: unit.facing, needsTurn: false });
-        if (!threatHexes.has(k)) queue.push({ q: nq, r: nr, d: nc, hops: nh, path });
-      }
-    }
-    return out;
+  type State = {
+    q: number; r: number; facing: number; formation: string; turned: boolean; d: number; hops: number; path: Hex[];
+  };
+  const stateKeyOf = (s: State): string => `${s.q},${s.r},${s.facing},${s.formation},${s.turned ? 1 : 0}`;
+  const start: State = {
+    q: unit.hex.q, r: unit.hex.r, facing: unit.facing, formation: unit.currentFormation,
+    turned: false, d: 0, hops: 0, path: [],
   };
 
-  if (loose) {
-    return walk(HEX_DIRS);
-  }
-
-  // WHITE set: the full front wedge reachable WITHOUT turning — at each step the
-  // unit moves into either front-arc hex and keeps its facing. The wedge (not
-  // just the two edge rays) is straight-ahead reachable, so every interior hex
-  // is droppable. Cost = cheapest entry-cost path through the wedge.
-  const frontDirs = [(unit.facing + 4) % 6, (unit.facing + 5) % 6];
-  const frontHexDirs = frontDirs.map(i => HEX_DIRS[i]);
-  const white = walk(frontHexDirs);
-
-  // GREY set (hint): hexes reachable only by turning, shown as a lighter-shade
-  // cone. Steps and 60° turns each cost 1 MP; a 180° about-turn is a single
-  // maneuver charged per settings (mounted units pay more) and is BLOCKED for
-  // mounted units in Close Order. Entries are never droppable (the unit must
-  // rotate first); they exist only as a hint.
-  const isMounted = !!unit.mountId || !!unit.mountName;
-  const aboutTurnCost = isMounted
-    ? getSetting('about_turn_cost_mounted', 2)
-    : getSetting('about_turn_cost_foot', 1);
-  // Mounted units in Close Order are "unable to turn around" — they can never
-  // face directly rearward (180° from the start facing), by any turn path.
-  const aboutTurnBlocked = isMounted && unit.currentFormation === 'Close Order';
-  const blockedFacing = aboutTurnBlocked ? (unit.facing + 3) % 6 : -1;
-
-  const INF = Number.MAX_SAFE_INTEGER;
-  type GreyState = { cost: number; hops: number };
-  const distMap = new Map<string, GreyState>(); // "q,r,facing" -> min (cost, hops)
-  const startKey = `${unit.hex.q},${unit.hex.r},${unit.facing}`;
-  distMap.set(startKey, { cost: 0, hops: 0 });
-  // Small state space (hexes within maxMP × 6 facings) — plain Dijkstra.
-  const pq: { q: number; r: number; facing: number; d: number; hops: number }[] = [
-    { q: unit.hex.q, r: unit.hex.r, facing: unit.facing, d: 0, hops: 0 },
-  ];
-  const relax = (q: number, r: number, facing: number, cost: number, hops: number) => {
-    if (facing === blockedFacing) return;
-    const nk = `${q},${r},${facing}`;
-    const cur = distMap.get(nk);
-    if (improves(cur?.cost, cur?.hops, cost, hops)) {
-      distMap.set(nk, { cost, hops });
-      pq.push({ q, r, facing, d: cost, hops });
-    }
+  const best = new Map<string, { cost: number; hops: number }>();
+  const queue: State[] = [];
+  const push = (s: State): void => {
+    const k = stateKeyOf(s);
+    const cur = best.get(k);
+    if (!improves(cur?.cost, cur?.hops, s.d, s.hops)) return;
+    best.set(k, { cost: s.d, hops: s.hops });
+    queue.push(s);
   };
-  while (pq.length > 0) {
-    const cur = popMin(pq);
-    const curKey = `${cur.q},${cur.r},${cur.facing}`;
-    const known = distMap.get(curKey);
+  push(start);
+
+  // Best white (no turn) / grey (turned) entry per hex.
+  const whiteBest = new Map<string, State>();
+  const greyBest = new Map<string, State>();
+  const consider = (s: State): void => {
+    if (s.q === unit.hex.q && s.r === unit.hex.r) return;
+    const k = key(s.q, s.r);
+    if (isPass(k)) return;
+    const map = s.turned ? greyBest : whiteBest;
+    const cur = map.get(k);
+    if (improves(cur?.d, cur?.hops, s.d, s.hops)) map.set(k, s);
+  };
+
+  while (queue.length > 0) {
+    const cur = popMin(queue);
+    const k = stateKeyOf(cur);
+    const known = best.get(k);
     if (!known || cur.d !== known.cost || cur.hops !== known.hops) continue; // stale entry
-    if ((!allowBeyondBudget && cur.d >= maxMP) || cur.hops >= stepCap) continue;
+    consider(cur);
+    const looseHere = isLoose(cur.formation);
+    if ((!allowBeyondBudget && cur.d >= budgetOf(cur.formation)) || cur.hops >= stepCapOf(cur.formation)) continue;
     if (threatHexes.has(key(cur.q, cur.r))) continue; // can stop here, not pass through
-    const cf = [(cur.facing + 4) % 6, (cur.facing + 5) % 6];
-    for (const dirIdx of cf) {
-      const dir = HEX_DIRS[dirIdx];
+
+    // Forward moves (omnidirectional when loose, front wedge when formed).
+    const dirs = looseHere
+      ? HEX_DIRS
+      : [(cur.facing + 4) % 6, (cur.facing + 5) % 6].map(i => HEX_DIRS[i]);
+    for (const dir of dirs) {
       const nq = cur.q + dir.q;
       const nr = cur.r + dir.r;
       const nk = key(nq, nr);
       if (occupied.has(nk) && !isPass(nk)) continue;
       if (blockedEdge && blockedEdge(cur.q, cur.r, nq, nr)) continue;
       const nc = cur.d + stepCost(nq, nr, cur.q, cur.r);
-      if ((allowBeyondBudget || nc <= maxMP) && cur.hops + 1 <= stepCap) {
-        relax(nq, nr, cur.facing, nc, cur.hops + 1);
+      const nf = breakOnEntry ? (breakOnEntry(cur.q, cur.r, nq, nr, cur.formation) ?? cur.formation) : cur.formation;
+      const nh = cur.hops + 1;
+      if ((!allowBeyondBudget && nc > budgetOf(nf)) || nh > stepCapOf(nf)) continue;
+      push({ q: nq, r: nr, facing: cur.facing, formation: nf, turned: cur.turned, d: nc, hops: nh, path: [...cur.path, { q: nq, r: nr, s: -nq - nr }] });
+    }
+
+    // Turns: 60° ±1 (1 MP each) and a 180° about-turn (setting cost). Formed
+    // units only; loose move omnidirectionally and never turn.
+    if (!looseHere) {
+      const blockedFacing = aboutTurnBlocked(cur.formation) ? (unit.facing + 3) % 6 : -1;
+      for (const nf of [(cur.facing + 5) % 6, (cur.facing + 1) % 6]) {
+        if (nf === blockedFacing) continue;
+        push({ ...cur, facing: nf, turned: true, d: cur.d + 1 });
       }
-    }
-    // 60° turns: ±1 facing, 1 MP each (no hop spent).
-    for (const newFacing of [(cur.facing + 5) % 6, (cur.facing + 1) % 6]) {
-      relax(cur.q, cur.r, newFacing, cur.d + 1, cur.hops);
-    }
-    // 180° about-turn: single maneuver at its setting cost (blocked when mounted
-    // in Close Order). Covers both directions (±3 ≡ +3 mod 6).
-    if (!aboutTurnBlocked) {
-      relax(cur.q, cur.r, (cur.facing + 3) % 6, cur.d + aboutTurnCost, cur.hops);
+      if (!aboutTurnBlocked(cur.formation)) {
+        push({ ...cur, facing: (cur.facing + 3) % 6, turned: true, d: cur.d + aboutTurnCost });
+      }
     }
   }
 
-  const ownKey = key(unit.hex.q, unit.hex.r);
-  const grey = new Map<string, number>();
-  distMap.forEach(({ cost }, sk) => {
-    const hk = sk.split(',').slice(0, 2).join(',');
-    if (hk === ownKey) return;
-    if (cost < (grey.get(hk) ?? INF)) grey.set(hk, cost);
+  const result = new Map<string, MovePathEntry>();
+  const toEntry = (s: State, needsTurn: boolean): MovePathEntry => ({
+    cost: s.d,
+    path: needsTurn ? [] : s.path,
+    finalFacing: s.facing,
+    needsTurn,
+    ...(s.formation !== unit.currentFormation ? { finalFormation: s.formation } : {}),
   });
-
-  grey.forEach((d, k) => {
-    if (white.has(k) || isPass(k)) return; // pass-through hexes are never destinations
-    result.set(k, { cost: d, path: [], finalFacing: unit.facing, needsTurn: true });
+  greyBest.forEach((s, k) => {
+    if (whiteBest.has(k)) return;
+    result.set(k, toEntry(s, true));
   });
-  white.forEach((entry, k) => {
-    result.set(k, entry);
+  whiteBest.forEach((s, k) => {
+    result.set(k, toEntry(s, false));
   });
   return result;
 }

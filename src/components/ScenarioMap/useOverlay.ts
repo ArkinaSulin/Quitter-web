@@ -16,7 +16,7 @@ import { canRangedTarget } from '@/lib/formationRules';
 import { arcOfTarget } from '@/lib/attackDirection';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls, EdgeRef } from '@/lib/walls';
-import { MapStructures, doorPassThroughHexes } from '@/lib/mapStructures';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { rangeBonusAt } from '@/lib/unitEffects';
@@ -82,6 +82,13 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
   const costOfHexFor = (isMounted: boolean) => makeCostOfHex(terrainCosts, walls, { structures, templates, isMounted });
   const blockedEdgeFor = (orgLevel: number, isMounted: boolean) => makeBlockedEdge(walls, { structures, templates, zones, orgLevel, isMounted, ignoreBlocks: freeMove });
   const chargeBlockedEdgeFor = (isMounted: boolean) => makeChargeBlockedEdge(walls, { structures, templates, isMounted });
+  // Org-gate context: a `max_org_level_allowed` gate breaks the formation at the
+  // crossing point (rescaling the movement budget) — mirrors handleUnitMove.
+  const movementMultipliers: Record<string, number> = {};
+  for (const [name, f] of Object.entries(formationsMap)) movementMultipliers[name] = f.movement_multiplier;
+  const breakOnEntry = (fq: number, fr: number, tq: number, tr: number, formation: string) =>
+    entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, structures, templates, zones);
+  const org = { movementMultipliers, breakOnEntry };
 
   // Reaction mode drag: hovering a hostile in weapon range shows range rings;
   // otherwise the 50% reaction-move hexes.
@@ -104,7 +111,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const maxMP = computeEffectiveMovement(archer, getFormationMultiplier(formationsMap, archer.currentFormation, 'movement_multiplier'));
       const budget = reactionMovePool(archer, maxMP);
       const occupied = computeOccupiedHexes(units, archer.id);
-      const reachable = computeReachableMap(archer, budget, occupied, new Set(), costOfHexFor(isMountedOf(archer)), false, blockedEdgeFor(getOrganizationLevel(archer.currentFormation), isMountedOf(archer)));
+      const reachable = computeReachableMap(archer, budget, occupied, new Set(), costOfHexFor(isMountedOf(archer)), false, blockedEdgeFor(getOrganizationLevel(archer.currentFormation), isMountedOf(archer)), undefined, undefined, org);
       reachable.forEach((entry, key) => {
         combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
       });
@@ -171,7 +178,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       hopCap = Math.min(hopCap, heroHop);
     }
     const passThrough = doorPassThroughHexes(structures, templates, occupied);
-    const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, costOfHexFor(isMountedOf(draggedUnit)), false, blockedEdgeFor(getOrganizationLevel(draggedUnit.currentFormation), isMountedOf(draggedUnit)), hopCap, passThrough);
+    const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, costOfHexFor(isMountedOf(draggedUnit)), false, blockedEdgeFor(getOrganizationLevel(draggedUnit.currentFormation), isMountedOf(draggedUnit)), hopCap, passThrough, org);
 
     const combined: Record<string, string> = {};
 

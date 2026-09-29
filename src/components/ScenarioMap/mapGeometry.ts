@@ -6,8 +6,8 @@ import { determineCombatPosition } from '@/lib/unitCombat';
 import { canStopEnemyMovement } from '@/lib/formationRules';
 import { isUnitInteractable, isDeadCorpse } from '@/lib/unitInteractions';
 import { isUnitRouted } from '@/lib/unitMorale';
-import { Walls, crossingCost, blockedStep, wallBetween, edgeRef, directionBetween } from '@/lib/walls';
-import { MapStructures, structureBlocksOrg, zoneBlocksOrg, structureHexEntryCost, structureHexBlocked, hexStructureAt, structureDoorState } from '@/lib/mapStructures';
+import { Walls, crossingCost, blockedStep, wallBetween } from '@/lib/walls';
+import { MapStructures, structureHexEntryCost, structureHexBlocked, hexStructureAt, structureDoorState } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { modifierAmount } from '@/lib/effectTemplates';
@@ -61,12 +61,12 @@ export function makeCostOfHex(
 
 /** Optional extra movement gates beyond wall `block`. */
 export interface BlockEdgeOpts {
-  /** Placed structures (edge `max_org_level_allowed` gates + hex structure gates). */
+  /** Placed structures (edge/hex structure hard blocks — MP only, not org). */
   structures?: MapStructures;
   templates?: Record<string, StructureTemplate>;
-  /** Ground zones (a `max_org_level_allowed` zone blocks entry for over-level movers). */
+  /** Ground zones (unused for blocking — org caps break, not block). */
   zones?: GroundEffect[];
-  /** The moving unit's organization level — enables the `max_org_level_allowed` gate. */
+  /** @deprecated org caps now BREAK the formation rather than block entry. */
   orgLevel?: number;
   /** Locomotion for locomotion-specific blocks (negative MP faces / hex). */
   isMounted?: boolean;
@@ -76,34 +76,20 @@ export interface BlockEdgeOpts {
 
 /**
  * Impassable-edge predicate for the movement BFS (undefined when nothing can
- * block). Hard blocks (negative MP, standing doors, wall `block`) always block;
- * when `orgLevel` is provided, a structure on the crossed edge / destination hex
- * or a ground zone there with an `max_org_level_allowed` modifier blocks movers above the
- * allowed organization level. `ignoreBlocks` disables the whole predicate.
+ * block). Hard blocks (negative MP, standing doors, wall `block`) always block.
+ * `max_org_level_allowed` gates no longer block here — they break the formation
+ * via `computeReachableMap`'s `breakOnEntry`. `ignoreBlocks` disables the whole
+ * predicate.
  */
 export function makeBlockedEdge(walls: Walls | null | undefined, opts: BlockEdgeOpts = {}): BlockedEdgeFn | undefined {
-  const { structures, templates, zones, orgLevel, isMounted, ignoreBlocks } = opts;
+  const { structures, templates, isMounted, ignoreBlocks } = opts;
   if (ignoreBlocks) return undefined;
   const hasWalls = !!walls && Object.keys(walls).length > 0;
-  const hasExtra = (!!structures && Object.keys(structures).length > 0) || (!!zones && zones.length > 0);
-  if (!hasWalls && !hasExtra) return undefined;
+  const hasStructs = !!structures && Object.keys(structures).length > 0;
+  if (!hasWalls && !hasStructs) return undefined;
   return (fromQ, fromR, toQ, toR) => {
     if (walls && blockedStep(walls, fromQ, fromR, toQ, toR, !!isMounted)) return true;
-    if (structures) {
-      if (structureHexBlocked({ q: toQ, r: toR }, structures, templates, !!isMounted)) return true;
-    }
-    if (orgLevel === undefined) return false;
-    if (structures) {
-      const dir = directionBetween({ q: fromQ, r: fromR }, { q: toQ, r: toR });
-      if (dir >= 0) {
-        const ref = edgeRef(fromQ, fromR, dir);
-        const edgeInst = structures[ref.key];
-        if (edgeInst && structureBlocksOrg(templates?.[edgeInst.templateId], orgLevel, edgeInst)) return true;
-      }
-      const hexInst = structures[`${toQ},${toR}`];
-      if (hexInst && structureBlocksOrg(templates?.[hexInst.templateId], orgLevel, hexInst)) return true;
-    }
-    if (zoneBlocksOrg(zones, toQ, toR, orgLevel)) return true;
+    if (structures && structureHexBlocked({ q: toQ, r: toR }, structures, templates, !!isMounted)) return true;
     return false;
   };
 }

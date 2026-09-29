@@ -14,6 +14,7 @@ export interface PendingMove {
   targetHex: Hex;
   cost: number;
   attachedHero?: Unit | null;
+  breakToFormation?: string;
 }
 
 export interface PendingAttack {

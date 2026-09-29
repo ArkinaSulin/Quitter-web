@@ -575,3 +575,46 @@ describe('computeReachableMap - pass-through (open-door hex structure)', () => {
     expect(without.has('0,-2')).toBe(false);
   });
 });
+
+describe('computeReachableMap - max_org_level_allowed break (org-aware)', () => {
+  const multipliers = { Phalanx: 0.5, 'Close Order': 1, 'Open Order': 1, Scattered: 1.5 };
+  // Gate on (0,-1): entering it breaks to the formation the breakOnEntry returns.
+  const breakAt = (tq: number, tr: number, to: string) =>
+    (fq: number, fr: number, q: number, r: number) => (q === tq && r === tr ? to : null);
+
+  it('breaks formation at the crossing hex and rescales the budget (Phalanx → Open Order)', () => {
+    // Phalanx (×0.5) has maxMP floor(4×0.5)=2; after breaking to Open Order (×1)
+    // the pool doubles, so (0,-4) — 4 hexes out — becomes reachable.
+    const unit = { hex: h(0, 0), facing: 0, currentFormation: 'Phalanx', movementPoints: 4 };
+    const map = computeReachableMap(unit, 2, new Set(), new Set(), undefined, false, undefined, undefined, undefined, {
+      movementMultipliers: multipliers,
+      breakOnEntry: breakAt(0, -1, 'Open Order'),
+    });
+    expect(map.has('0,-4')).toBe(true);
+    expect(map.get('0,-4')).toMatchObject({ cost: 4, needsTurn: false, finalFormation: 'Open Order' });
+    // Without the break, a 2-MP pool reaches only 2 hexes out.
+    const plain = computeReachableMap(unit, 2, new Set(), new Set());
+    expect(plain.has('0,-4')).toBe(false);
+  });
+
+  it('does not break when the unit is already at or below the cap', () => {
+    const unit = { hex: h(0, 0), facing: 0, currentFormation: 'Open Order', movementPoints: 4 };
+    const map = computeReachableMap(unit, 4, new Set(), new Set(), undefined, false, undefined, undefined, undefined, {
+      movementMultipliers: multipliers,
+      breakOnEntry: breakAt(0, -1, 'Open Order'),
+    });
+    expect(map.get('0,-1')).toBeDefined();
+    expect(map.get('0,-1')!.finalFormation).toBeUndefined();
+  });
+
+  it('a break to Scattered makes the unit loose (omnidirectional)', () => {
+    const unit = { hex: h(0, 0), facing: 0, currentFormation: 'Close Order', movementPoints: 4 };
+    const map = computeReachableMap(unit, 2, new Set(), new Set(), undefined, false, undefined, undefined, undefined, {
+      movementMultipliers: multipliers,
+      breakOnEntry: breakAt(0, -1, 'Scattered'),
+    });
+    // After breaking to Scattered at (0,-1) the unit moves in ANY direction, so a
+    // hex that was a grey hint (e.g. (1,0)) becomes a white droppable destination.
+    expect(map.get('1,0')).toMatchObject({ needsTurn: false, finalFormation: 'Scattered' });
+  });
+});

@@ -2345,7 +2345,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Soft-enforcement prompts: fully-bound confirm handlers (clear state +
   // controlsLocked guard + act). The modals render from the pending states.
   const softActions = {
-    confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (!controlsLocked) completeMove(pm.unit, pm.targetHex, pm.cost, true, unitMaxMP(pm.unit), pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined); },
+    confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (controlsLocked) return; const max = pm.breakToFormation ? computeEffectiveMovement(pm.unit, getFormationMultiplier(formationsMap, pm.breakToFormation, 'movement_multiplier')) : unitMaxMP(pm.unit); completeMove(pm.unit, pm.targetHex, pm.cost, true, max, pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined, pm.breakToFormation); },
     confirmAttack: () => { const pa = pendingAttack!; setPendingAttack(null); if (!controlsLocked) performAttack(pa.attacker, pa.target, true); },
     confirmAttackCap: async () => {
       const pa = pendingAttackCap!;

@@ -402,7 +402,7 @@ export function useGameEngine({
   };
 
   const moveUnitRecorded = useCallback(
-    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean }): Promise<void> => {
+    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean; breakToFormation?: string }): Promise<void> => {
       // Heroes convert actions at the prorated rate (5 actions = 1 full move);
       // units keep the "1 action = 1 full MP pool" economy.
       const { movementPointsAvailable, actionsAvailable } = unit.isHero
@@ -442,6 +442,19 @@ export function useGameEngine({
             { field: 'hex', from: { ...attachedHero.hex }, to: { ...targetHex } },
             { field: 'movementPointsAvailable', from: attachedHero.movementPointsAvailable, to: stop ? 0 : (options?.stopInZoc ? 0 : heroCost.movementPointsAvailable) },
             { field: 'actionsAvailable', from: attachedHero.actionsAvailable, to: stop ? 0 : heroCost.actionsAvailable },
+          ],
+        });
+      }
+
+      // A `max_org_level_allowed` gate broke the formation mid-move — fold the
+      // break into this command so undo reverts move + break atomically.
+      if (options?.breakToFormation && options.breakToFormation !== unit.currentFormation) {
+        subSteps.push({
+          type: 'FORMATION',
+          description: `${unit.unitName} breaks formation to ${options.breakToFormation}`,
+          unitId: unit.id,
+          changes: [
+            { field: 'currentFormation', from: unit.currentFormation, to: options.breakToFormation },
           ],
         });
       }

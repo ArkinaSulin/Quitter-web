@@ -4,7 +4,7 @@
 // to the primary ranged weapon. Owns the move-related soft-enforcement states
 // (pendingMove, pendingFormation, hero attach/swap conversion + over-budget).
 import { useCallback, useState } from 'react';
-import { Unit, Hex, AllianceGroup, Formation, GroundEffect, getOrganizationLevel, hexDistance } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, GroundEffect, getOrganizationLevel } from '@/types/gameProtocol';
 import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable } from '@/lib/moveCost';
 import { isFormationChangeAffordable } from '@/lib/formationCost';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
@@ -18,7 +18,7 @@ import { SubStep } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
-import { MapStructures, doorPassThroughHexes, orgGatesForEntry, describeOrgGateBlock } from '@/lib/mapStructures';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingHeroSwapConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
@@ -35,7 +35,7 @@ interface MoveActionsDeps {
   addMessage: (msg: string, verboseText?: string) => void;
   addError: (msg: string, verboseText?: string) => void;
   unitMaxMP: (unit: Unit) => number;
-  moveUnitRecorded: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; stopInZoc?: boolean }) => Promise<void>;
+  moveUnitRecorded: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; stopInZoc?: boolean; breakToFormation?: string }) => Promise<void>;
   moveUnitFree: (unit: Unit, targetHex: Hex, attachedHero?: Unit | null) => Promise<void>;
   changeFormation: (unit: Unit, formation: string, formationsMap: Record<string, Formation>) => Promise<void>;
   attachHero: (hero: Unit, targetUnit: Unit, position: 'front' | 'back', heroMaxMP: number) => Promise<void>;
@@ -124,7 +124,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }], `${unit.unitName} returned to ${primary.name}`);
   }, [displayUnits, displayAlliances, turnNumber, execute]);
 
-  const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number) => {
+  const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, breakToFormation?: string) => {
     if (overBudget) {
       const actionNote = unit.isHero
         ? `${Math.ceil(cost / heroMovePerAction(maxMP))} action(s) at ${heroMovePerAction(maxMP)} MP/action`
@@ -138,7 +138,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // a unit's morale into a rout, even when threat drops morale to zero.
     // Entering a hostile kill zone ends the move: the leftover MP is spent.
     const stopInZoc = computeThreatHexes(units, unit.id, alliances, formationsMap).has(`${targetHex.q},${targetHex.r}`);
-    await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP, undefined, { stopInZoc });
+    await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP, undefined, { stopInZoc, breakToFormation });
     // The unit may have left every hostile kill zone — return to its primary
     // ranged weapon (only reverts a melee weapon, and never a manual pick).
     await maybeAutoReturnToRanged(unit);
@@ -181,8 +181,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     maxMP: number,
     attachedHero?: Unit | null,
     heroMaxMP?: number,
+    breakToFormation?: string,
   ): Promise<void> => {
-    await performMove(unit, targetHex, cost, overBudget, maxMP, attachedHero, heroMaxMP);
+    await performMove(unit, targetHex, cost, overBudget, maxMP, attachedHero, heroMaxMP, breakToFormation);
     // Disengagement: a move that leaves a hostile kill zone provokes one melee
     // opportunity attack from each formed enemy whose kill zone was left (routed
     // retreats and the charge-over overrun use separate paths and are exempt).
@@ -253,13 +254,11 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const occupied = computeOccupiedHexes(units, unitId);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
     const mounted = !!unit.mountId || !!unit.mountName;
-    const orgLevel = getOrganizationLevel(unit.currentFormation);
     const costOfHex = makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted });
     const blockedEdge = makeBlockedEdge(walls, {
       structures,
       templates: structureTemplates,
       zones: groundZones,
-      orgLevel,
       isMounted: mounted,
       ignoreBlocks: freeMove,
     });
@@ -274,19 +273,15 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // Occupied hex structures whose door is open/broken may be TRAVERSED (not
     // stopped on) — pass them to the reachability search.
     const passThrough = doorPassThroughHexes(structures, structureTemplates, occupied);
-    const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true, blockedEdge, hopCap, passThrough);
+    // Org-gate context: a `max_org_level_allowed` gate breaks the formation at the
+    // crossing point, rescaling the movement budget by the new multiplier.
+    const movementMultipliers: Record<string, number> = {};
+    for (const [name, f] of Object.entries(formationsMap)) movementMultipliers[name] = f.movement_multiplier;
+    const breakOnEntry = (fq: number, fr: number, tq: number, tr: number, formation: string) =>
+      entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, structures, structureTemplates, groundZones);
+    const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true, blockedEdge, hopCap, passThrough, { movementMultipliers, breakOnEntry });
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
-      // Within physical reach but dropped by a gate? Name the `max_org_level_allowed`
-      // blocker (if any) instead of a vague "out of reach".
-      if (hexDistance(unit.hex, targetHex) <= hopCap) {
-        const gates = orgGatesForEntry(unit.hex, targetHex, orgLevel, structures, structureTemplates, groundZones);
-        const block = describeOrgGateBlock(unit.unitName, unit.currentFormation, orgLevel, targetHex, 'enter', gates);
-        if (block) {
-          addMessage(block.plain, block.verbose);
-          return;
-        }
-      }
       // Beyond the physical hop limit — genuinely can't walk that far.
       addMessage(`${unit.unitName} cannot make that move — (${targetHex.q}, ${targetHex.r}) is out of reach`);
       return;
@@ -298,17 +293,29 @@ export function useMoveActions(deps: MoveActionsDeps) {
       return;
     }
 
-    const unitAffordable = unit.isHero ? isHeroMoveAffordable(unit, entry.cost, effectiveMax) : isMoveAffordable(unit, entry.cost, effectiveMax);
+    // A gate broke the formation: the move's affordability uses the NEW maxMP.
+    const breakToFormation = entry.finalFormation;
+    const finalMax = breakToFormation
+      ? computeEffectiveMovement(unit, getFormationMultiplier(formationsMap, breakToFormation, 'movement_multiplier'))
+      : effectiveMax;
+    const unitAffordable = unit.isHero ? isHeroMoveAffordable(unit, entry.cost, finalMax) : isMoveAffordable(unit, entry.cost, finalMax);
     const heroAffordable = attachedHero && heroMax ? (attachedHero.isHero ? isHeroMoveAffordable(attachedHero, entry.cost, heroMax) : isMoveAffordable(attachedHero, entry.cost, heroMax)) : true;
     const overBudget = !unitAffordable || !heroAffordable;
     if (overBudget) {
-      setPendingMove({ unit, targetHex, cost: entry.cost, attachedHero });
+      setPendingMove({ unit, targetHex, cost: entry.cost, attachedHero, breakToFormation });
       return;
     }
-    await completeMove(unit, targetHex, entry.cost, false, effectiveMax, attachedHero, heroMax);
+    await completeMove(unit, targetHex, entry.cost, false, finalMax, attachedHero, heroMax, breakToFormation);
   }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove]);
 
   const handleChangeFormation = useCallback(async (unit: Unit, formation: string) => {
+    // Standing cap: a hex structure or zone with `max_org_level_allowed` caps the
+    // formation while the unit stands on it.
+    const cap = standingMaxOrg(unit.hex, structures, structureTemplates, groundZones);
+    if (getOrganizationLevel(formation) > cap) {
+      addMessage(`${unit.unitName} cannot form ${formation} — the hex caps organization at level ${cap}`);
+      return;
+    }
     if (unit.isHero || freeMove) {
       await changeFormation(unit, formation, formationsMap);
       return;
@@ -321,7 +328,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       return;
     }
     setPendingFormation({ unit, formation });
-  }, [changeFormation, formationsMap, freeMove, isFormationChangeAffordable]);
+  }, [changeFormation, formationsMap, freeMove, isFormationChangeAffordable, structures, structureTemplates, groundZones, addMessage]);
 
   const handleMoveTeam = useCallback(async (team: string, targetGroup: AllianceGroup) => {
     const currentGroup = alliances[team] || 'friendly';
