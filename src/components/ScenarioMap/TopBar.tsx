@@ -22,6 +22,8 @@ interface TopBarProps {
   isEndingTurn: boolean;
   handleToggleFreeMove: () => void;
   freeMove: boolean;
+  /** Seconds left before Free Move auto-disables (null when no countdown is armed). */
+  freeMoveRemaining: number | null;
   onOpenSettings: () => void;
   replayMode: boolean;
   inReplay: boolean;
@@ -53,6 +55,7 @@ export function TopBar(props: TopBarProps) {
     isEndingTurn,
     handleToggleFreeMove,
     freeMove,
+    freeMoveRemaining,
     onOpenSettings,
     replayMode,
     inReplay,
@@ -153,7 +156,7 @@ export function TopBar(props: TopBarProps) {
                   : 'bg-gray-800 text-gray-500 cursor-not-allowed'
             }`}
           >
-            {`Free Move: ${freeMove ? 'ON' : 'OFF'}`}
+            {`Free Move: ${freeMove ? 'ON' : 'OFF'}${freeMove && freeMoveRemaining !== null ? ` (0:${String(freeMoveRemaining).padStart(2, '0')})` : ''}`}
           </button>
         )}
         {editMode && !controlsLocked && (

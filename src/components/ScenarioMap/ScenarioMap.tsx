@@ -197,6 +197,9 @@ function formFromUnitEffect(e: import('@/types/gameProtocol').UnitEffect): Effec
   };
 }
 
+/** Free Move auto-disables after this long once explicitly turned ON mid-session. */
+const FREE_MOVE_AUTO_OFF_MS = 60_000;
+
 export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedHex, setSelectedHex] = useState<Hex | null>(null);
@@ -222,6 +225,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // of the turn so it never overrides a deliberate choice.
   const weaponSelectedTurnRef = useRef<Record<string, number>>({});
   const [freeMove, setFreeMove] = useState(false);
+  // Free Move auto-off: when the GM explicitly turns free move ON mid-session, a
+  // countdown starts and the toggle flips itself back OFF after 1 minute (the
+  // Turn-0 default free_move stays permanent — only an explicit toggle arms it).
+  const [freeMoveRemaining, setFreeMoveRemaining] = useState<number | null>(null);
+  const freeMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const freeMoveTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isEndingTurn, setIsEndingTurn] = useState(false);
   // Defensive-archer reactions (opportunity fire), per-scenario GM toggle.
   const [archerReactionEnabled, setArcherReactionEnabled] = useState(false);
@@ -1433,13 +1442,42 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     await performEndTurn();
   }, [isEndingTurn, performEndTurn]);
 
+  const clearFreeMoveTimer = useCallback(() => {
+    if (freeMoveTimeoutRef.current) { clearTimeout(freeMoveTimeoutRef.current); freeMoveTimeoutRef.current = null; }
+    if (freeMoveTickRef.current) { clearInterval(freeMoveTickRef.current); freeMoveTickRef.current = null; }
+    setFreeMoveRemaining(null);
+  }, []);
+
+  // Whenever free move flips off (manual toggle, auto-off, or End Turn) clear the
+  // countdown. Unmount cleanup clears both timers too.
+  useEffect(() => {
+    if (!freeMove) clearFreeMoveTimer();
+  }, [freeMove, clearFreeMoveTimer]);
+  useEffect(() => () => clearFreeMoveTimer(), [clearFreeMoveTimer]);
+
   const handleToggleFreeMove = useCallback(async () => {
     if (!effectiveIsGM) return;
     const next = !freeMove;
+    if (next) {
+      // Arming the countdown on an explicit ON (the Turn-0 default is untouched).
+      clearFreeMoveTimer();
+      const endsAt = Date.now() + FREE_MOVE_AUTO_OFF_MS;
+      const tick = () => setFreeMoveRemaining(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
+      tick();
+      freeMoveTickRef.current = setInterval(tick, 500);
+      freeMoveTimeoutRef.current = setTimeout(() => {
+        clearFreeMoveTimer();
+        setFreeMove(false);
+        void updateScenarioField(scenarioId, { free_move: false });
+        addMessage(`Free Move auto-disabled after ${FREE_MOVE_AUTO_OFF_MS / 1000}s`);
+      }, FREE_MOVE_AUTO_OFF_MS);
+    } else {
+      clearFreeMoveTimer();
+    }
     setFreeMove(next);
     await updateScenarioField(scenarioId, { free_move: next });
     addMessage(`Free Move ${next ? 'enabled' : 'disabled'} — ${next ? 'all moves are free' : 'normal movement restored'}`);
-  }, [effectiveIsGM, freeMove, scenarioId, updateScenarioField, addMessage]);
+  }, [effectiveIsGM, freeMove, scenarioId, updateScenarioField, addMessage, clearFreeMoveTimer]);
 
   const handleSaveBackground = useCallback((config: MapBackgroundConfig) => {
     setBackgroundConfig(config);
@@ -2472,6 +2510,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         isEndingTurn={isEndingTurn}
         handleToggleFreeMove={handleToggleFreeMove}
         freeMove={freeMove}
+        freeMoveRemaining={freeMoveRemaining}
         onOpenSettings={() => setShowScenarioSettings(true)}
         replayMode={replayMode}
         inReplay={inReplay}

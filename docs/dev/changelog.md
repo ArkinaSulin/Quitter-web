@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Free Move auto-off countdown (2026-09-28)
+**Files:** src/components/ScenarioMap/{ScenarioMap,TopBar}.tsx, docs/dev/changelog.md
+
+- **Free Move now auto-disables 1 minute after the GM explicitly turns it ON** (`FREE_MOVE_AUTO_OFF_MS = 60_000`), fixing the recurring "forgot to turn it off" mid-session problem. Only an explicit GM toggle arms the timer — the Turn-0 `free_move: true` default stays permanent (no timer on scenario load / realtime sync). On expiry it flips `free_move` false via `updateScenarioField` and logs a message.
+- **Countdown shown in the TopBar** button: `Free Move: ON (0:42)` counts down once armed; it clears on manual OFF, auto-off, End Turn, or unmount. Toggling OFF cancels the timer.
+- `tsc` clean; 791 tests pass; build clean. No migration.
+
 ## Retaliation cap auto-suppresses instead of pausing (2026-09-28)
 **Files:** src/components/ScenarioMap/{useCombatActions,SoftEnforcementModals,ScenarioMap}.tsx, docs/dev/changelog.md
 
