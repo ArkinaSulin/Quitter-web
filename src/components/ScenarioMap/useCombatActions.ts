@@ -32,18 +32,8 @@ import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { computeOccupiedHexes } from './mapGeometry';
 import { ExecuteFn, routeUnit } from './routeUnit';
-import { PendingAttack, PendingAttackCap, PendingRetaliationCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch } from './SoftEnforcementModals';
+import { PendingAttack, PendingAttackCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch } from './SoftEnforcementModals';
 import { useMagicCast } from '@/hooks/useMagicCast';
-
-// A stashed attack resumes a previously-computed outcome (the retaliation-cap
-// prompt): the dice stay the same, only the retaliation allowance changes.
-interface AttackStash {
-  outcome: CombatOutcome;
-  retaliatorKilled: boolean;
-  retaliatorRouted: boolean;
-  reachSymmetric: boolean;
-  allowRetaliation: boolean;
-}
 
 /** Synthetic unit effects carrying a hex structure's aura flags so the combat
  *  roll-mode reader picks them up (tower: occupant advantage / attacker cover). */
@@ -110,12 +100,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
   const [pendingAttack, setPendingAttack] = useState<PendingAttack | null>(null);
   const [pendingAttackCap, setPendingAttackCap] = useState<PendingAttackCap | null>(null);
-  const [pendingRetaliationCap, setPendingRetaliationCap] = useState<PendingRetaliationCap | null>(null);
   const [pendingChargeAttack, setPendingChargeAttack] = useState<PendingChargeAttack | null>(null);
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
   const [pendingWeaponSwitch, setPendingWeaponSwitch] = useState<PendingWeaponSwitch | null>(null);
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; stashed?: AttackStash; chained?: boolean; opportunityAttack?: boolean; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean }) => {
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; chained?: boolean; opportunityAttack?: boolean; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean }) => {
     if (overBudget) {
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
@@ -125,7 +114,6 @@ export function useCombatActions(deps: CombatActionsDeps) {
       }
     }
     const isChargingAttack = options?.isCharging ?? false;
-    const stashed = options?.stashed;
 
     const formationAtkMod = getFormationModifier(formationsMap, attacker.currentFormation, 'attack_modifier');
     const attackCapMult = getFormationMultiplier(formationsMap, attacker.currentFormation, 'attack_capacity_multiplier') + heroicCapacityBonus(attacker, units, alliances);
@@ -282,32 +270,30 @@ export function useCombatActions(deps: CombatActionsDeps) {
         }
       : null;
 
-    const outcome = stashed
-      ? stashed.outcome
-      : resolveCombatSequence(
-          combatAttacker,
-          combatTarget,
-          { attackBonus: combatWeapon.attackBonus, damageDice: combatWeapon.damageDice, is_reach: combatWeapon.reach, noRetaliation: combatWeapon.noRetaliation, freeAction: combatWeapon.freeAction, numberOfAttacks: combatWeapon.numberOfAttacks, range: combatWeapon.range, maxRange: combatWeapon.maxRange },
-          combatDefWeapon ? { attackBonus: combatDefWeapon.attackBonus, damageDice: combatDefWeapon.damageDice, is_reach: combatDefWeapon.reach, numberOfAttacks: combatDefWeapon.numberOfAttacks } : null,
-          formationAtkMod,
-          attackCapMult,
-          defAttackCapMult,
-          attackerRowCap,
-          defenderRowCap,
-          defenderVisualDpr,
-          isRanged,
-          isRear,
-          attachedDefenderHero,
-          attachedAttackerHero,
-          Math.random,
-          isChargingAttack,
-          formationsMap[attacker.currentFormation],
-          formationsMap[target.currentFormation],
-          options?.opportunityAttack ?? false,
-          combatHeroProfile,
-          walls,
-          indirectShot,
-        );
+    const outcome = resolveCombatSequence(
+      combatAttacker,
+      combatTarget,
+      { attackBonus: combatWeapon.attackBonus, damageDice: combatWeapon.damageDice, is_reach: combatWeapon.reach, noRetaliation: combatWeapon.noRetaliation, freeAction: combatWeapon.freeAction, numberOfAttacks: combatWeapon.numberOfAttacks, range: combatWeapon.range, maxRange: combatWeapon.maxRange },
+      combatDefWeapon ? { attackBonus: combatDefWeapon.attackBonus, damageDice: combatDefWeapon.damageDice, is_reach: combatDefWeapon.reach, numberOfAttacks: combatDefWeapon.numberOfAttacks } : null,
+      formationAtkMod,
+      attackCapMult,
+      defAttackCapMult,
+      attackerRowCap,
+      defenderRowCap,
+      defenderVisualDpr,
+      isRanged,
+      isRear,
+      attachedDefenderHero,
+      attachedAttackerHero,
+      Math.random,
+      isChargingAttack,
+      formationsMap[attacker.currentFormation],
+      formationsMap[target.currentFormation],
+      options?.opportunityAttack ?? false,
+      combatHeroProfile,
+      walls,
+      indirectShot,
+    );
 
     const subSteps: SubStep[] = [];
 
@@ -429,50 +415,29 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
     let retaliatorKilled = false;
     let retaliatorRouted = false;
-    let effectiveOutcome: CombatOutcome;
-    if (stashed) {
-      effectiveOutcome = stashed.allowRetaliation
-        ? suppressRetaliation(stashed.outcome, stashed.retaliatorKilled, stashed.retaliatorRouted, stashed.reachSymmetric)
-        : suppressRetaliation(stashed.outcome, stashed.retaliatorKilled, stashed.retaliatorRouted, stashed.reachSymmetric, true);
-    } else {
-      // First-strike effect on the retaliator
-      const retaliatorIsAttacker = outcome.strikerFirst === 'defender';
-      const retaliatorFirstStrikeHp = Math.max(0, (retaliatorIsAttacker ? attacker.currentUnitHp : target.currentUnitHp) - outcome.firstStrikeDamage);
-      retaliatorKilled = retaliatorFirstStrikeHp <= 0;
-      const retaliatorPreMoraleUnit = retaliatorIsAttacker
-        ? { ...attacker, currentUnitHp: retaliatorFirstStrikeHp }
-        : { ...target, currentUnitHp: retaliatorFirstStrikeHp };
-      retaliatorRouted = !retaliatorKilled
-        && !retaliatorPreMoraleUnit.ignoreMoraleChecks
-        && !isUnitRouted(retaliatorPreMoraleUnit)
-        && (retaliatorPreMoraleUnit.baseMorale
-          + retaliatorPreMoraleUnit.currentMoraleModifier
-          + computeEffectiveMoraleModifier(retaliatorPreMoraleUnit, moraleUnits, alliances, formationsMap[retaliatorPreMoraleUnit.currentFormation] ?? null) <= 0);
+    // First-strike effect on the retaliator
+    const retaliatorIsAttacker = outcome.strikerFirst === 'defender';
+    const retaliatorFirstStrikeHp = Math.max(0, (retaliatorIsAttacker ? attacker.currentUnitHp : target.currentUnitHp) - outcome.firstStrikeDamage);
+    retaliatorKilled = retaliatorFirstStrikeHp <= 0;
+    const retaliatorPreMoraleUnit = retaliatorIsAttacker
+      ? { ...attacker, currentUnitHp: retaliatorFirstStrikeHp }
+      : { ...target, currentUnitHp: retaliatorFirstStrikeHp };
+    retaliatorRouted = !retaliatorKilled
+      && !retaliatorPreMoraleUnit.ignoreMoraleChecks
+      && !isUnitRouted(retaliatorPreMoraleUnit)
+      && (retaliatorPreMoraleUnit.baseMorale
+        + retaliatorPreMoraleUnit.currentMoraleModifier
+        + computeEffectiveMoraleModifier(retaliatorPreMoraleUnit, moraleUnits, alliances, formationsMap[retaliatorPreMoraleUnit.currentFormation] ?? null) <= 0);
 
-      effectiveOutcome = suppressRetaliation(outcome, retaliatorKilled, retaliatorRouted, reachSymmetric);
+    let effectiveOutcome: CombatOutcome = suppressRetaliation(outcome, retaliatorKilled, retaliatorRouted, reachSymmetric);
 
-      // Soft 5-cap: a non-hero retaliator that already made 5 attacks+retaliations
-      // this turn pauses for the player's decision — allow the counter (counts
-      // over cap, red message) or decline (suppressed like a kill/rout).
-      if (effectiveOutcome.retaliationAttacks.length > 0) {
-        const retaliator = outcome.strikerFirst === 'attacker' ? target : attacker;
-        const cap = unitAttackCap();
-        if ((retaliator.attacksUsed ?? 0) >= cap) {
-          setPendingRetaliationCap({
-            attacker,
-            target,
-            overBudget,
-            options: options ?? {},
-            outcome,
-            retaliatorKilled,
-            retaliatorRouted,
-            reachSymmetric,
-            retaliatorName: retaliator.unitName,
-            attacksUsed: retaliator.attacksUsed ?? 0,
-            cap,
-          });
-          return undefined;
-        }
+    // Soft 5-cap: a retaliator that already made 5 attacks+retaliations this
+    // turn simply forfeits its retaliation (no pause — one retaliation isn't
+    // worth stopping the game for).
+    if (effectiveOutcome.retaliationAttacks.length > 0) {
+      const retaliator = outcome.strikerFirst === 'attacker' ? target : attacker;
+      if ((retaliator.attacksUsed ?? 0) >= unitAttackCap()) {
+        effectiveOutcome = suppressRetaliation(outcome, retaliatorKilled, retaliatorRouted, reachSymmetric, true);
       }
     }
 
@@ -640,10 +605,6 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // swing missed (0 damage), so an all-miss counterattack isn't invisible.
     const retaliator = effectiveOutcome.strikerFirst === 'attacker' ? target : attacker;
     if (effectiveOutcome.retaliationAttacks.length > 0) {
-      // A retaliation over the 5-attack cap was allowed by the player — flag it red.
-      if (stashed?.allowRetaliation) {
-        addError(`${retaliator.unitName} retaliated past the ${unitAttackCap()}-attack cap (${(retaliator.attacksUsed ?? 0) + 1}/${unitAttackCap()})`);
-      }
       // Retaliation counts toward the retaliator's own 5-attack cap.
       subSteps.push({
         type: 'ATTACK',
@@ -1222,8 +1183,6 @@ export function useCombatActions(deps: CombatActionsDeps) {
     setPendingAttack,
     pendingAttackCap,
     setPendingAttackCap,
-    pendingRetaliationCap,
-    setPendingRetaliationCap,
     pendingChargeAttack,
     setPendingChargeAttack,
     pendingChargeThrough,

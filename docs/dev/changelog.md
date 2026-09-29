@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Retaliation cap auto-suppresses instead of pausing (2026-09-28)
+**Files:** src/components/ScenarioMap/{useCombatActions,SoftEnforcementModals,ScenarioMap}.tsx, docs/dev/changelog.md
+
+- **A retaliator at the 5-attack cap now simply forfeits its retaliation** — no `PendingRetaliationCap` pause/modal. When the retaliator's `attacksUsed >= unitAttackCap()`, `performAttack` directly calls `suppressRetaliation(..., atCap=true)` and continues (works symmetrically whether the retaliator is the defender or the attacker-as-retaliator, and in simultaneous-reach exchanges).
+- **Removed the dead retaliation-cap machinery**: the `AttackStash`/`stashed` resume pattern, `PendingRetaliationCap` (interface + modal + `confirmRetaliationAllow`/`confirmRetaliationSuppress`), and the over-cap "retaliated past the cap" red message.
+- Hero behavior unchanged (the defender's front hero never retaliates; the attacker's front hero still joins). The attacker's own `PendingAttackCap` ("attack past your cap?") prompt is kept.
+- `tsc` clean; 791 tests pass; build clean. No migration.
+
 ## Hero threat: 360°, sized, attachment-aware (2026-09-28)
 **Files:** src/lib/unitMorale.ts (+ test), src/components/ScenarioMap/UnitTooltip.tsx, docs/dev/09-morale-routing-pursuit.md, docs/players/player-manual.md, docs/dev/changelog.md
 

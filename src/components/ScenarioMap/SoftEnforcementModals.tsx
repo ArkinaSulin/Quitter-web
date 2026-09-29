@@ -4,7 +4,6 @@
 // ScenarioMap; the bodies are text built from the states.
 import { Unit, Hex } from '@/types/gameProtocol';
 import { EdgeRef } from '@/lib/walls';
-import { CombatOutcome } from '@/lib/unitCombat';
 import { heroMovePerAction } from '@/lib/moveCost';
 import { unitAttackCap } from '@/lib/attackCap';
 import { getFormationChangeMpCost } from '@/lib/formationCost';
@@ -26,20 +25,6 @@ export interface PendingAttackCap {
   attacker: Unit;
   target: Unit;
   isCharging?: boolean;
-}
-
-export interface PendingRetaliationCap {
-  attacker: Unit;
-  target: Unit;
-  overBudget: boolean;
-  options: { isCharging?: boolean };
-  outcome: CombatOutcome;
-  retaliatorKilled: boolean;
-  retaliatorRouted: boolean;
-  reachSymmetric: boolean;
-  retaliatorName: string;
-  attacksUsed: number;
-  cap: number;
 }
 
 export interface PendingHeroAttachConversion {
@@ -113,7 +98,6 @@ export interface SoftEnforcementModalsProps {
     move: PendingMove | null;
     attack: PendingAttack | null;
     attackCap: PendingAttackCap | null;
-    retaliationCap: PendingRetaliationCap | null;
     heroAttachConversion: PendingHeroAttachConversion | null;
     heroSwapConversion: PendingHeroSwapConversion | null;
     attachOverBudget: PendingAttachOverBudget | null;
@@ -130,8 +114,6 @@ export interface SoftEnforcementModalsProps {
     confirmMove: () => void;
     confirmAttack: () => void;
     confirmAttackCap: () => void;
-    confirmRetaliationAllow: () => void;
-    confirmRetaliationSuppress: () => void;
     confirmHeroAttachConversion: () => void;
     confirmHeroSwapConversion: () => void;
     confirmAttachOverBudget: () => void;
@@ -148,7 +130,6 @@ export interface SoftEnforcementModalsProps {
     move: () => void;
     attack: () => void;
     attackCap: () => void;
-    retaliationCap: () => void;
     heroAttachConversion: () => void;
     heroSwapConversion: () => void;
     attachOverBudget: () => void;
@@ -201,21 +182,6 @@ export function SoftEnforcementModals({ pending, actions, cancels, unitMaxMP }: 
         >
           {p.attackCap.attacker.unitName} has already attacked {p.attackCap.attacker.attacksUsed}/{unitAttackCap()} times this turn
           {p.attackCap.attacker.isCharging ? ' (charge attack)' : ''}. Attack {p.attackCap.target.unitName} anyway?
-        </ConfirmModal>
-      )}
-
-      {p.retaliationCap && (
-        <ConfirmModal
-          tone="amber"
-          title={`Retaliation past the ${p.retaliationCap.cap}-attack cap?`}
-          buttons={[
-            { label: 'Yes, allow retaliation', variant: 'red', onClick: actions.confirmRetaliationAllow },
-            { label: 'No, suppress retaliation', onClick: actions.confirmRetaliationSuppress },
-          ]}
-          onCancel={cancels.retaliationCap}
-        >
-          {p.retaliationCap.retaliatorName} has already attacked {p.retaliationCap.attacksUsed}/{p.retaliationCap.cap} times this turn.
-          Allow it to retaliate against {p.retaliationCap.target.unitName} anyway?
         </ConfirmModal>
       )}
 

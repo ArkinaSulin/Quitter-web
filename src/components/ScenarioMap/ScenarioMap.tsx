@@ -1533,8 +1533,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setPendingAttack,
     pendingAttackCap,
     setPendingAttackCap,
-    pendingRetaliationCap,
-    setPendingRetaliationCap,
     pendingChargeAttack,
     setPendingChargeAttack,
     pendingChargeThrough,
@@ -2317,46 +2315,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (controlsLocked) return;
       if (pa.isCharging) {
         const result = await performAttack(pa.attacker, pa.target, true, { isCharging: true });
-        if (!result) return; // retaliation-cap prompt reopened
+        if (!result) return; // attack aborted (no weapon / AGR fail)
         await finishChargeAfterAttack(pa.attacker, pa.target, result);
       } else {
         await performAttack(pa.attacker, pa.target, true);
-      }
-    },
-    confirmRetaliationAllow: async () => {
-      const prc = pendingRetaliationCap!;
-      setPendingRetaliationCap(null);
-      if (controlsLocked) return;
-      const result = await performAttack(prc.attacker, prc.target, prc.overBudget, {
-        ...prc.options,
-        stashed: {
-          outcome: prc.outcome,
-          retaliatorKilled: prc.retaliatorKilled,
-          retaliatorRouted: prc.retaliatorRouted,
-          reachSymmetric: prc.reachSymmetric,
-          allowRetaliation: true,
-        },
-      });
-      if (prc.options.isCharging) {
-        await finishChargeAfterAttack(prc.attacker, prc.target, result);
-      }
-    },
-    confirmRetaliationSuppress: async () => {
-      const prc = pendingRetaliationCap!;
-      setPendingRetaliationCap(null);
-      if (controlsLocked) return;
-      const result = await performAttack(prc.attacker, prc.target, prc.overBudget, {
-        ...prc.options,
-        stashed: {
-          outcome: prc.outcome,
-          retaliatorKilled: prc.retaliatorKilled,
-          retaliatorRouted: prc.retaliatorRouted,
-          reachSymmetric: prc.reachSymmetric,
-          allowRetaliation: false,
-        },
-      });
-      if (prc.options.isCharging) {
-        await finishChargeAfterAttack(prc.attacker, prc.target, result);
       }
     },
     confirmHeroAttachConversion: async () => {
@@ -2445,7 +2407,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     move: () => setPendingMove(null),
     attack: () => setPendingAttack(null),
     attackCap: () => setPendingAttackCap(null),
-    retaliationCap: () => setPendingRetaliationCap(null),
     heroAttachConversion: () => setPendingHeroAttachConversion(null),
     heroSwapConversion: () => setPendingHeroSwapConversion(null),
     attachOverBudget: () => setPendingAttachOverBudget(null),
@@ -2906,7 +2867,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           move: pendingMove,
           attack: pendingAttack,
           attackCap: pendingAttackCap,
-          retaliationCap: pendingRetaliationCap,
           heroAttachConversion: pendingHeroAttachConversion,
           heroSwapConversion: pendingHeroSwapConversion,
           attachOverBudget: pendingAttachOverBudget,
