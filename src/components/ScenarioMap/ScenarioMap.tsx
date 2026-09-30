@@ -386,6 +386,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [contextMenuUnit, setContextMenuUnit] = useState<Unit | null>(null);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
 
+  // Left-click selected token (Q/E keyboard rotation targets this; persists until
+  // an empty hex click or Escape clears it).
+  const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
+
   // The attached hero currently "in focus" (via the context-menu Switch to Hero).
   // While set, that hero is the grabbable entity at its host's hex.
   const [activeHeroId, setActiveHeroId] = useState<string | null>(null);
@@ -1817,6 +1821,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     getUnitAt,
     centerMap,
     centerOn,
+    panBy,
   } = useHexGrid({
     canvasRef,
     size: HEX_SIZE,
@@ -1863,10 +1868,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // Effect zones: GM or any assigned player may paint.
       if (zoneTemplate && canPaintZones) { void placeOrToggleZone(hex.q, hex.r); return; }
       setSelectedHex(hex);
+      setSelectedUnit(null);
     },
     onUnitClick: (unit, _clientX, _clientY) => {
       if (controlsLocked || reactionMode) return;
       if (handleCloneClick(unit.hex)) return;
+      setSelectedUnit(unit);
       // Clicking an archer's reaction button arms that archer's reaction mode.
       if (!unit.isDeleted && !unit.archerReactionUsed && reactionOffers.has(unit.id) && canReactToUnit(unit)) {
         setReactionMode({ archer: unit });
@@ -2313,8 +2320,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const handleKeyDown = (e: KeyboardEvent) => {
       if (controlsLocked) return;
       // Esc ends the locked reaction mode (or closes the formation picker) — as
-      // if nothing happened; the reaction marker stays.
+      // if nothing happened; the reaction marker stays. Also clears the token
+      // selection.
       if (e.key === 'Escape') {
+        setSelectedUnit(null);
         if (zoneTemplate || structurePaletteId) {
           setZoneTemplate(null);
           setStructurePaletteId(null);
@@ -2332,15 +2341,36 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       } else if (e.ctrlKey && e.key === 'y') {
         e.preventDefault();
         redo();
-      } else if ((e.key === 'q' || e.key === 'Q') && contextMenuUnit && !contextMenuUnit.isHero && !contextMenuUnit.isCharging && canControlUnit(contextMenuUnit)) {
-        rotateUnit(contextMenuUnit, 'left', unitMaxMP(contextMenuUnit));
-      } else if ((e.key === 'e' || e.key === 'E') && contextMenuUnit && !contextMenuUnit.isHero && !contextMenuUnit.isCharging && canControlUnit(contextMenuUnit)) {
-        rotateUnit(contextMenuUnit, 'right', unitMaxMP(contextMenuUnit));
+      } else if (e.key === 'q' || e.key === 'Q' || e.key === 'e' || e.key === 'E') {
+        // Rotate the selected token (left-click) — fall back to the right-clicked
+        // context-menu unit for backward compatibility. Resolve to the live unit.
+        const source = selectedUnit ?? contextMenuUnit;
+        const live = source ? (units.find(u => u.id === source.id && !u.isDeleted) ?? source) : null;
+        if (live && !live.isHero && !live.isCharging && canControlUnit(live)) {
+          rotateUnit(live, e.key.toLowerCase() === 'q' ? 'left' : 'right', unitMaxMP(live));
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [controlsLocked, undo, redo, contextMenuUnit, rotateUnit, canControlUnit, reactionMode, reactionFormationPicker, zoneTemplate]);
+  }, [controlsLocked, undo, redo, contextMenuUnit, selectedUnit, units, rotateUnit, canControlUnit, reactionMode, reactionFormationPicker, zoneTemplate]);
+
+  // ---- WASD map panning (always active — not gated by controlsLocked) ----
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      const step = 60;
+      const k = e.key.toLowerCase();
+      if (k === 'w') { e.preventDefault(); panBy(0, -step); }
+      else if (k === 'a') { e.preventDefault(); panBy(-step, 0); }
+      else if (k === 's') { e.preventDefault(); panBy(0, step); }
+      else if (k === 'd') { e.preventDefault(); panBy(step, 0); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [panBy]);
 
   // Soft-enforcement prompts: fully-bound confirm handlers (clear state +
   // controlsLocked guard + act). The modals render from the pending states.

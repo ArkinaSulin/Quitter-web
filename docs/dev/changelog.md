@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## WASD map panning + Q/E token rotation (2026-09-30)
+**Files:** src/hooks/useHexGrid.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/changelog.md
+
+- **WASD pans the map.** `useHexGrid` exposes `panBy(dx, dy)` (offsets `offsetX/offsetY` in screen px); a new always-on `keydown` effect in `ScenarioMap` maps `w/a/s/d` to a 60px step (key-repeat gives continuous panning), skipping when focus is in an input/textarea/select or contentEditable. Panning is not gated by `controlsLocked`, so it works in replay.
+- **Q/E rotates the selected token.** Added a persistent `selectedUnit` state: left-click selects a token (click an empty hex or press `Escape` deselects). `Q` = anticlockwise, `E` = clockwise, via the existing `rotateUnit` (`ROTATE` command, MP cost unchanged), falling back to the old right-click `contextMenuUnit` and resolving to the live unit by id. Heroes and charging units remain excluded.
+- `tsc` clean; 820 tests pass; build clean. No migration.
+
 ## Fix: max-range field in the weapon editor clobbered multi-digit edits (2026-09-30)
 **Files:** src/components/WeaponEditor/WeaponFields.tsx, src/lib/{weaponParser,weaponMappers,meleeFallback}.ts (+ tests), docs/dev/changelog.md
 

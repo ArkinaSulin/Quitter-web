@@ -169,6 +169,12 @@ export function useHexGrid({
     img.src = backgroundImage.url;
   }, [backgroundImage?.url]);
 
+  // ---- Pan by a screen-pixel delta (WASD keyboard panning) ----
+  const panBy = useCallback((dx: number, dy: number) => {
+    setOffsetX(p => p + dx);
+    setOffsetY(p => p + dy);
+  }, []);
+
   // ---- Center map ----
   const centerMap = useCallback(() => {
     const canvas = canvasRef.current;
@@ -583,5 +589,6 @@ export function useHexGrid({
     getUnitAt,
     centerMap,
     centerOn,
+    panBy,
   };
 }
