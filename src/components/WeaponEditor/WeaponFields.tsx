@@ -132,6 +132,7 @@ export function WeaponFields({ value, onChange, meta, onMetaChange, error }: Wea
       <div className="flex items-end gap-3">
         <div className="pb-1.5"><Toggle checked={value.onSaveHalfOrNeg} onChange={v => patch({ onSaveHalfOrNeg: v })} label={value.onSaveHalfOrNeg ? '1/2 damage' : 'Negate'} /></div>
         <Cell label="Saving throw"><SelectInput value={value.savingThrow} onChange={v => patch({ savingThrow: v as SaveStat })} options={SAVE_STATS.map(s => ({ value: s, label: s }))} /></Cell>
+        <Cell label="Save DC"><NumInput value={value.saveDC ?? 10} min={0} onChange={v => patch({ saveDC: Math.max(0, v) })} /></Cell>
       </div>
 
       <div className="space-y-3 border-t border-gray-700 pt-3">

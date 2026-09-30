@@ -17,6 +17,7 @@ describe('weaponMappers', () => {
     expect(w.numberOfAttacks).toBe(1);
     expect(w.onSaveHalfOrNeg).toBe(true);
     expect(w.savingThrow).toBe('Dex');
+    expect(w.saveDC).toBe(10);
     expect(w.costGp).toBe(15);
     expect(w.notes).toBe('sharp');
   });
@@ -41,6 +42,12 @@ describe('weaponMappers', () => {
     expect(row.max_range).toBe(1);
     expect(row.number_of_attacks).toBe(1);
     expect(row.cost_gp).toBe(3);
+  });
+
+  it('round-trips save_dc (defaults to 10, clamps at 0)', () => {
+    expect(mapWeaponRow({ id: 'w', name: 'X', save_dc: 15 }).saveDC).toBe(15);
+    expect(mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0, saveDC: 15 }).save_dc).toBe(15);
+    expect(mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0, saveDC: -3 }).save_dc).toBe(0);
   });
 
   it('reads snake_case only — re-mapping an already-mapped object wipes fields', () => {

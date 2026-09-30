@@ -30,6 +30,7 @@ export function mapWeaponRow(row: any): LibraryWeapon {
     numberOfAttacks: Number(row?.number_of_attacks) || 1,
     onSaveHalfOrNeg: row?.on_save_half_or_neg ?? true,
     savingThrow: SAVE_STATS.includes(savingThrow) ? savingThrow : 'Dex',
+    saveDC: Number.isFinite(Number(row?.save_dc)) ? Number(row.save_dc) : 10,
     notes: row?.notes || '',
     costGp: Number(row?.cost_gp) || 0,
   };
@@ -54,6 +55,7 @@ export function mapWeaponToRow(w: LibraryWeapon) {
     number_of_attacks: Math.max(1, w.numberOfAttacks || 1),
     on_save_half_or_neg: w.onSaveHalfOrNeg !== false,
     saving_throw: w.savingThrow || 'Dex',
+    save_dc: Math.max(0, w.saveDC ?? 10),
     notes: w.notes || '',
     cost_gp: w.costGp || 0,
   };

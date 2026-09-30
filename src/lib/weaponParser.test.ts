@@ -21,6 +21,7 @@ describe('parseWeapons', () => {
       numberOfAttacks: 1,
       onSaveHalfOrNeg: true,
       savingThrow: 'Dex',
+      saveDC: 10,
     });
   });
 
@@ -140,6 +141,14 @@ describe('parseWeapons', () => {
     expect(negateCon[0].savingThrow).toBe('Con');
   });
 
+  it('parses saveDC (field 15), defaulting to 10', () => {
+    const dc = parseWeapons('Fireball,7,8d6,false,4,8,2,false,false,false,false,2,true,Dex,circle,15');
+    const missing = parseWeapons('Fireball,7,8d6,false,4,8,2,false,false,false,false,2,true,Dex,circle');
+
+    expect(dc[0].saveDC).toBe(15);
+    expect(missing[0].saveDC).toBe(10);
+  });
+
   it('parses the area shape (field 14), defaulting to circle', () => {
     const circle = parseWeapons('Fireball,7,8d6,false,4,8,2,false,false,false,false,2,true,Dex');
     const cube = parseWeapons('Web,5,2d6,false,4,8,2,false,false,false,false,1,true,Dex,cube');
@@ -173,7 +182,7 @@ describe('stringifyWeapons', () => {
       { name: 'Spear', attackBonus: 3, damageDice: '1d6+1', isHealing: false, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' },
     ];
 
-    expect(stringifyWeapons(weapons)).toBe('Spear,3,1d6+1,false,1,0,0,false,false,false,false,1,true,Dex,circle');
+    expect(stringifyWeapons(weapons)).toBe('Spear,3,1d6+1,false,1,0,0,false,false,false,false,1,true,Dex,circle,10');
   });
 
   it('roundtrips a long-range weapon', () => {
@@ -181,7 +190,7 @@ describe('stringifyWeapons', () => {
       { name: 'Longbow', attackBonus: 3, damageDice: '1d8', isHealing: false, range: 4, maxRange: 8, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: true, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' },
     ];
 
-    expect(stringifyWeapons(weapons)).toBe('Longbow,3,1d8,false,4,8,0,false,true,false,false,1,true,Dex,circle');
+    expect(stringifyWeapons(weapons)).toBe('Longbow,3,1d8,false,4,8,0,false,true,false,false,1,true,Dex,circle,10');
   });
 
   it('roundtrips isTwoHanded', () => {
@@ -189,7 +198,7 @@ describe('stringifyWeapons', () => {
       { name: 'Greatsword', attackBonus: 5, damageDice: '2d6', isHealing: false, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: true, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' },
     ];
 
-    expect(stringifyWeapons(weapons)).toBe('Greatsword,5,2d6,false,1,0,0,false,false,false,true,1,true,Dex,circle');
+    expect(stringifyWeapons(weapons)).toBe('Greatsword,5,2d6,false,1,0,0,false,false,false,true,1,true,Dex,circle,10');
   });
 
   it('roundtrips a healing weapon', () => {
@@ -197,7 +206,7 @@ describe('stringifyWeapons', () => {
       { name: 'Cure Wounds', attackBonus: 5, damageDice: '1d8', isHealing: true, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' },
     ];
 
-    expect(stringifyWeapons(weapons)).toBe('Cure Wounds,5,1d8,true,1,0,0,false,false,false,false,1,true,Dex,circle');
+    expect(stringifyWeapons(weapons)).toBe('Cure Wounds,5,1d8,true,1,0,0,false,false,false,false,1,true,Dex,circle,10');
   });
 
   it('returns empty string for empty array', () => {
@@ -205,7 +214,7 @@ describe('stringifyWeapons', () => {
   });
 
   it('roundtrips: stringify(parse(input)) === input for canonical input', () => {
-    const input = 'Spear,3,1d6+1,false,1,1,0,false,false,false,false,1,true,Dex,circle;Longbow,3,1d8,false,4,8,0,false,true,false,false,1,false,Con,circle';
+    const input = 'Spear,3,1d6+1,false,1,1,0,false,false,false,false,1,true,Dex,circle,10;Longbow,3,1d8,false,4,8,0,false,true,false,false,1,false,Con,circle,15';
     expect(stringifyWeapons(parseWeapons(input))).toBe(input);
   });
 });

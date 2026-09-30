@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Per-weapon save DC (migration 104) (2026-09-29)
+**Files:** src/lib/{weaponParser,weaponMappers}.ts (+ tests), src/components/WeaponEditor/WeaponFields.tsx, src/hooks/useMagicCast.ts, supabase/migrations/104_weapon_save_dc.sql, docs/dev/changelog.md
+
+- **Weapons now carry a save DC** (`Weapon.saveDC`, default 10), authored alongside the existing `onSaveHalfOrNeg` (1/2 vs Negate) and `savingThrow`. Added to the shared `WeaponFields` form (so the Weapon Editor page, the Add-Weapon modal, and the in-scenario Weapon Editor modal all expose a **Save DC** input), to the `unit_weapons` library (`save_dc` column, migration **104**), and to the `weaponString` CSV as a 16th field (backward-compatible — older strings default to 10).
+- **Magic targeting now initializes its Save DC from the weapon** (`useMagicCast` reads `weapon.saveDC ?? 10` instead of the hardcoded 10); the modal's DC stepper is retained and simply starts at the weapon's value.
+- `tsc` clean; 820 tests pass; build clean. **Apply 104 in Supabase.**
+
 ## Edge-wall attack-roll flags + inside-only modifier orientation (2026-09-29)
 **Files:** src/lib/{walls,mapStructures,unitCombat}.ts (+ tests), src/lib/{effectTemplates,unitEffects}.ts, docs/dev/{18-map-structures.md,changelog.md}
 

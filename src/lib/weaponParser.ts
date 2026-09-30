@@ -25,6 +25,7 @@ export interface Weapon {
   numberOfAttacks: number; // attacks per round this weapon makes (per attack capacity / direct for heroes)
   onSaveHalfOrNeg: boolean; // area weapon: successful save takes half damage (true) or none (false)
   savingThrow: SaveStat; // area weapon: which of the 6 ability save bonuses resists it
+  saveDC?: number; // area weapon: the DC the target's saving throw must meet (default 10)
 }
 
 /** An area-effect weapon is any weapon with a magic dimension (feet). */
@@ -56,6 +57,7 @@ export function blankWeapon(): Weapon {
     numberOfAttacks: 1,
     onSaveHalfOrNeg: true,
     savingThrow: 'Dex',
+    saveDC: 10,
   };
 }
 
@@ -117,9 +119,9 @@ export function validateTargetAlliance(
 
 /**
  * Parse a weapon string into an array of Weapon objects.
- * Format: "Name,AttackBonus,DamageDice,IsHealing,Range,MaxRange,MagicDimension,Reach,NoRetaliation,FreeAction,IsTwoHanded,NumberOfAttacks,OnSaveHalfOrNeg,SavingThrow,Shape"
+ * Format: "Name,AttackBonus,DamageDice,IsHealing,Range,MaxRange,MagicDimension,Reach,NoRetaliation,FreeAction,IsTwoHanded,NumberOfAttacks,OnSaveHalfOrNeg,SavingThrow,Shape,SaveDC"
  * Older strings missing the trailing fields parse with defaults (isHealing false,
- * half-on-save true, saving throw Dex, shape circle).
+ * half-on-save true, saving throw Dex, shape circle, save DC 10).
  */
 export function parseWeapons(weaponString: string): Weapon[] {
   if (!weaponString || weaponString.trim() === '') {
@@ -152,6 +154,7 @@ export function parseWeapons(weaponString: string): Weapon[] {
         numberOfAttacks: parseInt(parts[11]) || 1,
         onSaveHalfOrNeg: parts[12] !== 'false',
         savingThrow: SAVE_STATS.includes(savingThrow) ? savingThrow : 'Dex',
+        saveDC: parseInt(parts[15]) || 10,
       };
     });
 }
@@ -165,7 +168,7 @@ export function stringifyWeapons(weapons: Weapon[]): string {
   }
   return weapons
     .map(w =>
-      `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicDimension},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'},${w.shape ?? 'circle'}`
+      `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicDimension},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'},${w.shape ?? 'circle'},${w.saveDC ?? 10}`
     )
     .join(';');
 }
