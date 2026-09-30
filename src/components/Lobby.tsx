@@ -536,7 +536,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                   color: '#f5efd2',
                 }}
               >
-                Effect Editor
+                {canUseEffectEditor ? 'Effect Editor' : 'Effect Library'}
               </button>
             )}
             {canViewWeaponEditor && (
