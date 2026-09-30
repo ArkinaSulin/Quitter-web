@@ -25,7 +25,7 @@ export interface Weapon {
   numberOfAttacks: number; // attacks per round this weapon makes (per attack capacity / direct for heroes)
   onSaveHalfOrNeg: boolean; // area weapon: successful save takes half damage (true) or none (false)
   savingThrow: SaveStat; // area weapon: which of the 6 ability save bonuses resists it
-  saveDC?: number; // area weapon: the DC the target's saving throw must meet (default 10)
+  saveDC: number; // area weapon: the save DC targets must meet (default 10)
 }
 
 /** An area-effect weapon is any weapon with a magic dimension (feet). */

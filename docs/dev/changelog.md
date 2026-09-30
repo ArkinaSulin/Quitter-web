@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Fix: max-range field in the weapon editor clobbered multi-digit edits (2026-09-30)
+**Files:** src/components/WeaponEditor/WeaponFields.tsx, src/lib/{weaponParser,weaponMappers,meleeFallback}.ts (+ tests), docs/dev/changelog.md
+
+- **Max range now edits correctly.** The field's `onChange` clamped every keystroke to `range` (`Math.max(value.range, v || value.range)`), so on a weapon with `range > 1` typing a multi-digit max range was mangled (e.g. "12" with range 4 became "42") and the field appeared to reset. It now accepts `Math.max(0, v)` while typing; the `maxRange >= range` invariant is still enforced at save time by `WeaponEditorModal.normalize` and `mapWeaponToRow`.
+- **`Weapon.saveDC` is now required** (was optional) — consistent with `maxRange`/`savingThrow`; `FISTS_WEAPON` and the weapon-string tests carry the explicit `10`.
+- `tsc` clean; 820 tests pass; build clean. No migration.
+
 ## Per-weapon save DC (migration 104) (2026-09-29)
 **Files:** src/lib/{weaponParser,weaponMappers}.ts (+ tests), src/components/WeaponEditor/WeaponFields.tsx, src/hooks/useMagicCast.ts, supabase/migrations/104_weapon_save_dc.sql, docs/dev/changelog.md
 

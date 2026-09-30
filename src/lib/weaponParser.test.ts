@@ -179,7 +179,7 @@ describe('parseWeapons', () => {
 describe('stringifyWeapons', () => {
   it('converts a weapon back to CSV string', () => {
     const weapons: Weapon[] = [
-      { name: 'Spear', attackBonus: 3, damageDice: '1d6+1', isHealing: false, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' },
+      { name: 'Spear', attackBonus: 3, damageDice: '1d6+1', isHealing: false, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 },
     ];
 
     expect(stringifyWeapons(weapons)).toBe('Spear,3,1d6+1,false,1,0,0,false,false,false,false,1,true,Dex,circle,10');
@@ -187,7 +187,7 @@ describe('stringifyWeapons', () => {
 
   it('roundtrips a long-range weapon', () => {
     const weapons: Weapon[] = [
-      { name: 'Longbow', attackBonus: 3, damageDice: '1d8', isHealing: false, range: 4, maxRange: 8, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: true, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' },
+      { name: 'Longbow', attackBonus: 3, damageDice: '1d8', isHealing: false, range: 4, maxRange: 8, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: true, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 },
     ];
 
     expect(stringifyWeapons(weapons)).toBe('Longbow,3,1d8,false,4,8,0,false,true,false,false,1,true,Dex,circle,10');
@@ -195,7 +195,7 @@ describe('stringifyWeapons', () => {
 
   it('roundtrips isTwoHanded', () => {
     const weapons: Weapon[] = [
-      { name: 'Greatsword', attackBonus: 5, damageDice: '2d6', isHealing: false, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: true, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' },
+      { name: 'Greatsword', attackBonus: 5, damageDice: '2d6', isHealing: false, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: true, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 },
     ];
 
     expect(stringifyWeapons(weapons)).toBe('Greatsword,5,2d6,false,1,0,0,false,false,false,true,1,true,Dex,circle,10');
@@ -203,7 +203,7 @@ describe('stringifyWeapons', () => {
 
   it('roundtrips a healing weapon', () => {
     const weapons: Weapon[] = [
-      { name: 'Cure Wounds', attackBonus: 5, damageDice: '1d8', isHealing: true, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' },
+      { name: 'Cure Wounds', attackBonus: 5, damageDice: '1d8', isHealing: true, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 },
     ];
 
     expect(stringifyWeapons(weapons)).toBe('Cure Wounds,5,1d8,true,1,0,0,false,false,false,false,1,true,Dex,circle,10');
@@ -221,37 +221,37 @@ describe('stringifyWeapons', () => {
 
 describe('formatWeaponDisplay', () => {
   it('formats a melee weapon', () => {
-    const weapon: Weapon = { name: 'Spear', attackBonus: 3, damageDice: '1d6+1', isHealing: false, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' };
+    const weapon: Weapon = { name: 'Spear', attackBonus: 3, damageDice: '1d6+1', isHealing: false, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 };
 
     expect(formatWeaponDisplay(weapon)).toBe('Spear 1x +3 1d6+1 1hex');
   });
 
   it('formats a ranged weapon with max range as range–maxRange', () => {
-    const weapon: Weapon = { name: 'Longbow', attackBonus: 3, damageDice: '1d8', isHealing: false, range: 4, maxRange: 8, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' };
+    const weapon: Weapon = { name: 'Longbow', attackBonus: 3, damageDice: '1d8', isHealing: false, range: 4, maxRange: 8, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 };
 
     expect(formatWeaponDisplay(weapon)).toBe('Longbow 1x +3 1d8 4–8hex');
   });
 
   it('shows a single range when maxRange equals range', () => {
-    const weapon: Weapon = { name: 'Spell', attackBonus: 5, damageDice: '8d6', isHealing: false, range: 3, maxRange: 3, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' };
+    const weapon: Weapon = { name: 'Spell', attackBonus: 5, damageDice: '8d6', isHealing: false, range: 3, maxRange: 3, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 };
 
     expect(formatWeaponDisplay(weapon)).toBe('Spell 1x +5 8d6 3hex');
   });
 
   it('formats an area weapon with radius', () => {
-    const weapon: Weapon = { name: 'Fireball', attackBonus: 7, damageDice: '8d6', isHealing: false, range: 4, maxRange: 8, magicDimension: 2, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 2, onSaveHalfOrNeg: true, savingThrow: 'Dex' };
+    const weapon: Weapon = { name: 'Fireball', attackBonus: 7, damageDice: '8d6', isHealing: false, range: 4, maxRange: 8, magicDimension: 2, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 2, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 };
 
     expect(formatWeaponDisplay(weapon)).toBe('Fireball 2x +7 8d6 4–8hex 2ft');
   });
 
   it('shows a (h) appendix for healing weapons', () => {
-    const weapon: Weapon = { name: 'Cure Wounds', attackBonus: 5, damageDice: '1d8', isHealing: true, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex' };
+    const weapon: Weapon = { name: 'Cure Wounds', attackBonus: 5, damageDice: '1d8', isHealing: true, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 };
 
     expect(formatWeaponDisplay(weapon)).toBe('Cure Wounds 1x +5 1d8(h) 1hex');
   });
 
   it('shows attacks when a weapon makes more than one per round', () => {
-    const weapon: Weapon = { name: 'Flame Blade', attackBonus: 5, damageDice: '2d6', isHealing: false, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 3, onSaveHalfOrNeg: true, savingThrow: 'Dex' };
+    const weapon: Weapon = { name: 'Flame Blade', attackBonus: 5, damageDice: '2d6', isHealing: false, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 3, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 };
 
     expect(formatWeaponDisplay(weapon)).toBe('Flame Blade 3x +5 2d6 1hex');
   });
@@ -261,7 +261,7 @@ describe('weaponIndicesReaching', () => {
   const w = (over: Partial<Weapon>): Weapon => ({
     name: 'W', attackBonus: 0, damageDice: '1d6', isHealing: false, range: 1, maxRange: 0,
     magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false,
-    isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', ...over,
+    isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10, ...over,
   });
 
   it('returns reaching offensive weapons in arsenal order, excluding the active one', () => {

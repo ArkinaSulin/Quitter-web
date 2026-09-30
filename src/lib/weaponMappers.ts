@@ -30,7 +30,7 @@ export function mapWeaponRow(row: any): LibraryWeapon {
     numberOfAttacks: Number(row?.number_of_attacks) || 1,
     onSaveHalfOrNeg: row?.on_save_half_or_neg ?? true,
     savingThrow: SAVE_STATS.includes(savingThrow) ? savingThrow : 'Dex',
-    saveDC: Number.isFinite(Number(row?.save_dc)) ? Number(row.save_dc) : 10,
+    saveDC: Number(row?.save_dc) || 10,
     notes: row?.notes || '',
     costGp: Number(row?.cost_gp) || 0,
   };

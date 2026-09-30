@@ -24,6 +24,7 @@ export const FISTS_WEAPON: Weapon = {
   numberOfAttacks: 1,
   onSaveHalfOrNeg: true,
   savingThrow: 'Dex',
+  saveDC: 10,
 };
 
 /**
