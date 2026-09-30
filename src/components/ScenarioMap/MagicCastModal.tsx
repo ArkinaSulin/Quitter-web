@@ -18,6 +18,9 @@ export const HEX_RADIUS_FRACTION = 1 / 1.6;
  */
 export const SPELL_RADIUS_SCALE = 0.70;
 
+/** Half-width of a `line` shape (5 ft) in canvas pixels. */
+const LINE_HALF_WIDTH_PX = (5 / 25) * HEX_RADIUS_FRACTION * SPELL_RADIUS_SCALE * MAGIC_CANVAS_WIDTH / 2;
+
 /** Is a dot (px,py) inside the placed area centered at (cx,cy) with size rPx? */
 function pointInArea(shape: AreaShape, rotationDeg: number, cx: number, cy: number, rPx: number, px: number, py: number): boolean {
   const rad = (-rotationDeg * Math.PI) / 180;
@@ -29,6 +32,7 @@ function pointInArea(shape: AreaShape, rotationDeg: number, cx: number, cy: numb
   const ry = dx * sin + dy * cos;
   if (shape === 'circle') return rx * rx + ry * ry <= rPx * rPx;
   if (shape === 'cube') return Math.abs(rx) <= rPx / 2 && Math.abs(ry) <= rPx / 2;
+  if (shape === 'line') return Math.abs(ry) <= rPx / 2 && Math.abs(rx) <= LINE_HALF_WIDTH_PX;
   // cone: 60° wedge; apex at north of the triangle's centroid, radius = side.
   const apexY = -rPx / Math.sqrt(3);
   const ax = rx;
@@ -48,6 +52,8 @@ function drawAreaShape(ctx: CanvasRenderingContext2D, shape: AreaShape, rotation
     ctx.arc(0, 0, rPx, 0, 2 * Math.PI);
   } else if (shape === 'cube') {
     ctx.rect(-rPx / 2, -rPx / 2, rPx, rPx);
+  } else if (shape === 'line') {
+    ctx.rect(-LINE_HALF_WIDTH_PX, -rPx / 2, LINE_HALF_WIDTH_PX * 2, rPx);
   } else {
     const apexY = -rPx / Math.sqrt(3);
     ctx.moveTo(0, apexY);
@@ -328,7 +334,7 @@ export function MagicCastModal({
             {cast.weapon.name} on {cast.targetUnitName || 'target'}
           </div>
           <div className="text-xs text-yellow-400 whitespace-nowrap ml-3">
-            radius {cast.weapon.magicDimension}ft
+            {areaShape === 'circle' ? 'radius' : areaShape === 'cube' ? 'side' : areaShape === 'line' ? 'line' : 'cone'} {cast.weapon.magicDimension}ft
           </div>
         </div>
 

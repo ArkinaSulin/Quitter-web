@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## New magic area shape: line (5 ft-wide, length = magicDimension) (2026-09-30)
+**Files:** src/lib/weaponParser.ts (+ test), src/components/ScenarioMap/MagicCastModal.tsx, src/components/WeaponEditor/WeaponFields.tsx, docs/dev/changelog.md
+
+- **Added a `line` area shape** alongside circle/cube/cone. A line is **5 ft wide** (fixed) and its length is the weapon's `magicDimension` (so a 50 ft line = `magicDimension: 50`). `pointInArea`/`drawAreaShape` in the magic targeting modal now render a rotatable rectangle (`|length| ≤ rPx/2`, `|width| ≤ 5 ft`); the title is shape-aware (`radius`/`side`/`cone`/`line`). Authored via the existing `AREA_SHAPES` dropdown + persisted in the `shape` text column (no migration).
+- `tsc` clean; tests green; build clean. No migration.
+
 ## Hidden units are fully non-interacting (2026-09-30)
 **Files:** src/lib/{unitMorale,archerReaction}.ts (+ tests), src/components/ScenarioMap/{mapGeometry,useCombatActions}.ts, src/lib/neutralAlliance.test.ts, docs/dev/changelog.md
 

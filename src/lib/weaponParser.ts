@@ -4,10 +4,10 @@ export type SaveStat = 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha';
 
 export const SAVE_STATS: SaveStat[] = ['Str', 'Dex', 'Con', 'Int', 'Wis', 'Cha'];
 
-/** Area-effect footprint: circle (radius), cube (side), cone (60° wedge). */
-export type AreaShape = 'circle' | 'cube' | 'cone';
+/** Area-effect footprint: circle (radius), cube (side), cone (60° wedge), line (5 ft-wide line). */
+export type AreaShape = 'circle' | 'cube' | 'cone' | 'line';
 
-export const AREA_SHAPES: AreaShape[] = ['circle', 'cube', 'cone'];
+export const AREA_SHAPES: AreaShape[] = ['circle', 'cube', 'cone', 'line'];
 
 export interface Weapon {
   name: string;
@@ -17,7 +17,7 @@ export interface Weapon {
   range: number; // normal range in hexes (1 = adjacent). Attacks within this distance are at no penalty.
   maxRange: number; // always >= range. Attacks between range and maxRange are at disadvantage; beyond maxRange is out of range.
   magicDimension: number; // area dimension in feet (0 = single-target; > 0 makes this an area-effect weapon)
-  shape: AreaShape; // circle = dimension is radius; cube = side; cone = 60° wedge length
+  shape: AreaShape; // circle = dimension is radius; cube = side; cone = 60° wedge length; line = 5 ft-wide line of `dimension` length
   reach: boolean;
   noRetaliation: boolean; // this attack provokes no retaliation and beats reach (fully safe)
   freeAction: boolean; // this attack does not cost an action

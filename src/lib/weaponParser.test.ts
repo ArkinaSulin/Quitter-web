@@ -153,10 +153,12 @@ describe('parseWeapons', () => {
     const circle = parseWeapons('Fireball,7,8d6,false,4,8,2,false,false,false,false,2,true,Dex');
     const cube = parseWeapons('Web,5,2d6,false,4,8,2,false,false,false,false,1,true,Dex,cube');
     const cone = parseWeapons('Cone of Cold,7,8d8,false,4,8,2,false,false,false,false,2,false,Con,cone');
+    const line = parseWeapons('Lightning Bolt,7,8d6,false,4,8,2,false,false,false,false,1,false,Dex,line');
 
     expect(circle[0].shape).toBe('circle');
     expect(cube[0].shape).toBe('cube');
     expect(cone[0].shape).toBe('cone');
+    expect(line[0].shape).toBe('line');
   });
 
   it('falls back to defaults for missing fields', () => {

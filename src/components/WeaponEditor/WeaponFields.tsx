@@ -127,7 +127,7 @@ export function WeaponFields({ value, onChange, meta, onMetaChange, error }: Wea
         <Cell label="Shape"><SelectInput value={value.shape} onChange={v => patch({ shape: v as AreaShape })} options={AREA_SHAPES.map(s => ({ value: s, label: s }))} /></Cell>
       </div>
 
-      <p className="text-xs text-gray-500 -mt-2">Shape: circle = dimension is radius · cube = side · cone = 60° wedge. Dimension &gt; 0 makes this an area-effect weapon.</p>
+      <p className="text-xs text-gray-500 -mt-2">Shape: circle = dimension is radius · cube = side · cone = 60° wedge · line = 5 ft-wide line. Dimension &gt; 0 makes this an area-effect weapon.</p>
 
       <div className="flex items-end gap-3">
         <div className="pb-1.5"><Toggle checked={value.onSaveHalfOrNeg} onChange={v => patch({ onSaveHalfOrNeg: v })} label={value.onSaveHalfOrNeg ? '1/2 damage' : 'Negate'} /></div>
