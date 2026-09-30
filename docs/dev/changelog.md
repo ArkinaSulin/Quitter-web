@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Fix: no spurious weapon-switch prompt on same-alliance targets (2026-09-30)
+**Files:** src/components/ScenarioMap/useCombatActions.ts, docs/dev/changelog.md
+
+- **Dropping a hero with a ranged magic weapon on a same-alliance unit no longer prompts "switch weapon".** The range-switch candidates are now filtered by `validateTargetAlliance`, so an offensive spell is only offered against a hostile target; against a same-alliance target the alliance gate reports "cannot attack — same alliance" directly (confirm previously switched then silently did nothing).
+- Genuine out-of-range (hostile, no reaching weapon) and the hostile auto-switch/prompt paths are unchanged.
+- `tsc` clean; build clean. No migration.
+
 ## WASD pan step is a global setting (migration 105) (2026-09-30)
 **Files:** supabase/migrations/105_map_pan_step.sql, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/changelog.md
 

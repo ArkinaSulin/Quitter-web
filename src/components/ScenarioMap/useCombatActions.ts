@@ -991,12 +991,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // Range effects only extend RANGED weapons (maxRange > 1).
     const rangeBonus = (weapon.maxRange ?? 1) > 1 ? rangeBonusAt(attacker, groundZones) : 0;
     if (dist > weapon.maxRange + rangeBonus) {
-      const reaching = weaponIndicesReaching(attackerWeapons, attacker.activeWeaponIndex ?? 0, Math.max(1, dist - rangeBonus));
-      if (reaching.length === 0) {
-        flashRangeViolation(target.hex);
-        addMessage(`${attacker.unitName} cannot reach ${target.unitName} — out of range (max ${weapon.maxRange + rangeBonus} hexes)`);
-        return;
-      }
+      const reaching = weaponIndicesReaching(attackerWeapons, attacker.activeWeaponIndex ?? 0, Math.max(1, dist - rangeBonus))
+        .filter(i => validateTargetAlliance(attackerGroup, targetGroup, attackerWeapons[i]) === 'ok');
       if (reaching.length > 1) {
         const idx = reaching[0];
         const w = attackerWeapons[idx];
@@ -1008,15 +1004,25 @@ export function useCombatActions(deps: CombatActionsDeps) {
         });
         return;
       }
-      const suggestIndex = reaching[0];
-      weapon = attackerWeapons[suggestIndex];
-      await execute('WEAPON_SELECT', [{
-        type: 'WEAPON_SELECT',
-        description: `${attacker.unitName} switches to ${weapon.name} to reach ${target.unitName}`,
-        unitId: attacker.id,
-        changes: [{ field: 'activeWeaponIndex', from: attacker.activeWeaponIndex ?? 0, to: suggestIndex }],
-      }], `${attacker.unitName} switches to ${weapon.name}`);
-      attacker = { ...attacker, activeWeaponIndex: suggestIndex };
+      if (reaching.length === 1) {
+        const suggestIndex = reaching[0];
+        weapon = attackerWeapons[suggestIndex];
+        await execute('WEAPON_SELECT', [{
+          type: 'WEAPON_SELECT',
+          description: `${attacker.unitName} switches to ${weapon.name} to reach ${target.unitName}`,
+          unitId: attacker.id,
+          changes: [{ field: 'activeWeaponIndex', from: attacker.activeWeaponIndex ?? 0, to: suggestIndex }],
+        }], `${attacker.unitName} switches to ${weapon.name}`);
+        attacker = { ...attacker, activeWeaponIndex: suggestIndex };
+      } else if (validateTargetAlliance(attackerGroup, targetGroup, weapon) === 'ok') {
+        // No legal weapon reaches and the active one is a valid match: a genuine
+        // range miss.
+        flashRangeViolation(target.hex);
+        addMessage(`${attacker.unitName} cannot reach ${target.unitName} — out of range (max ${weapon.maxRange + rangeBonus} hexes)`);
+        return;
+      }
+      // Otherwise the active weapon is illegal against this target's alliance —
+      // fall through so the alliance gate below reports the real blocker.
     }
 
     // Hard alliance gate: offensive weapons may only target a DIFFERENT
