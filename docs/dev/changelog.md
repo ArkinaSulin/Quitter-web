@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## WASD pan step is a global setting (migration 105) (2026-09-30)
+**Files:** supabase/migrations/105_map_pan_step.sql, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/changelog.md
+
+- **The WASD panning granularity is now a game-wide setting** `map_pan_step` (screen px per keypress, default 6), read via `getSetting` on each keypress so an admin edit applies immediately. Added to the `admin_game_settings` seed (migration **105**) and the generic Settings modal picks it up automatically.
+- `tsc` clean; build clean. No test change. **Apply 105 in Supabase.**
+
 ## WASD map panning + Q/E token rotation (2026-09-30)
 **Files:** src/hooks/useHexGrid.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/changelog.md
 

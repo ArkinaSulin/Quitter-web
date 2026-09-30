@@ -11,7 +11,7 @@ import { applyMoveCost } from '@/lib/moveCost';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { parseWeapons } from '@/lib/weaponParser';
 import { getFormations } from '@/lib/formationCache';
-import { loadSettings } from '@/lib/settingsCache';
+import { loadSettings, getSetting } from '@/lib/settingsCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { useScenarios, DM_HEARTBEAT_INTERVAL_MS, DM_HEARTBEAT_STALE_MS, DM_HEARTBEAT_POLL_MS } from '@/hooks/useScenarios';
 import { computeReachableMap } from '@/lib/moveCost';
@@ -2361,7 +2361,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-      const step = 6;
+      const step = getSetting('map_pan_step', 6);
       const k = e.key.toLowerCase();
       if (k === 'w') { e.preventDefault(); panBy(0, step); }
       else if (k === 'a') { e.preventDefault(); panBy(step, 0); }
