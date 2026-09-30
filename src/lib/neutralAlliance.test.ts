@@ -53,4 +53,12 @@ describe('neutral acts as a third alliance', () => {
     expect(threats.has('3,-1')).toBe(false); // neutralB's front is skipped (same group)
     expect(threats.has('4,-1')).toBe(false);
   });
+
+  it('a hidden unit exerts no threat hexes', () => {
+    const friendly = unit('f', 'blue', h(0, 0));
+    const hiddenEnemy = unit('h', 'red', h(3, 0), { hidden: true });
+    const threats = computeThreatHexes([friendly, hiddenEnemy], 'f', groups, forms);
+    expect(threats.has('3,-1')).toBe(false);
+    expect(threats.has('4,-1')).toBe(false);
+  });
 });

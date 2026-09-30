@@ -155,4 +155,10 @@ describe('findEligibleReactionArchers', () => {
     expect(findEligibleReactionArchers(mover, [front], alliances as any, forms).map(u => u.id)).toEqual(['a1']);
     expect(findEligibleReactionArchers(mover, [side], alliances as any, forms)).toHaveLength(0);
   });
+
+  it('a hidden mover triggers no reactions at all', () => {
+    const archer = makeUnit({ id: 'a1', team: 'red', hex: h(0, 0), weaponString: bow, actionsAvailable: 2 });
+    const hiddenMover = { ...mover, hidden: true };
+    expect(findEligibleReactionArchers(hiddenMover, [archer], alliances as any)).toHaveLength(0);
+  });
 });

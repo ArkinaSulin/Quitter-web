@@ -306,7 +306,7 @@ export function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alli
   const occupied = computeOccupiedHexes(allUnits);
   const threats = new Set<string>();
   for (const unit of allUnits) {
-    if (unit.isDeleted || unit.id === draggedUnitId || unit.attachedToUnitId || unit.isHero || isUnitRouted(unit) || isDeadCorpse(unit)) continue;
+    if (unit.isDeleted || unit.hidden || unit.id === draggedUnitId || unit.attachedToUnitId || unit.isHero || isUnitRouted(unit) || isDeadCorpse(unit)) continue;
     const unitGroup = alliances[unit.team] || 'friendly';
     if (unitGroup === draggedGroup) continue;
     for (const dir of HEX_DIRS) {

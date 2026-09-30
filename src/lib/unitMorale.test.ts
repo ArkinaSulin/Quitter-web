@@ -147,6 +147,12 @@ describe('isInKillZone', () => {
     const me = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0 });
     expect(isInKillZone(me, { q: 2, r: 0, s: -2 })).toBe(false);
   });
+
+  it('a hidden unit has no kill zone', () => {
+    const hidden = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, hidden: true });
+    expect(isInKillZone(hidden, DIR_HEXES[4])).toBe(false);
+    expect(isInKillZone(hidden, DIR_HEXES[5])).toBe(false);
+  });
 });
 
 describe('calcEnemyThreats', () => {
@@ -206,6 +212,13 @@ describe('calcEnemyThreats', () => {
     const me = makeUnit({ ...threat1 }); // myThreat 1
     const heroEnemy = enemyAt(DIR_HEXES[3], { isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1, maxTroopCount: 1 });
     expect(calcEnemyThreats(me, [heroEnemy], alliances)).toMatchObject({ total: 2, totalSum: 2 });
+  });
+
+  it('hidden enemies and hidden heroes impose no threat', () => {
+    const me = makeUnit({ ...threat1 });
+    const hiddenEnemy = enemyAt(DIR_HEXES[1], { ...threat1, hidden: true });
+    const hiddenHero = enemyAt(DIR_HEXES[3], { isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1, maxTroopCount: 1, hidden: true });
+    expect(calcEnemyThreats(me, [hiddenEnemy, hiddenHero], alliances)).toMatchObject({ total: 0, totalSum: 0 });
   });
 });
 

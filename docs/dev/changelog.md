@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Hidden units are fully non-interacting (2026-09-30)
+**Files:** src/lib/{unitMorale,archerReaction}.ts (+ tests), src/components/ScenarioMap/{mapGeometry,useCombatActions}.ts, src/lib/neutralAlliance.test.ts, docs/dev/changelog.md
+
+- **Hidden units no longer exert passive presence.** Added `hidden` to the central kill-zone predicate `isInKillZone`, to `calcEnemyThreats` (hidden heroes included), and to `computeThreatHexes` — so a hidden unit imposes no zone-of-control, no morale threat, and no movement block (red overlay / stop-in-ZoC / rout-retreat).
+- **Hidden movers no longer trigger reactions.** `performPursuits` returns early for a hidden mover (no scatter/pursue, incl. the cornered path), and `findEligibleReactionArchers` returns `[]` for a hidden mover (no archer reaction shots).
+- **Hidden units cannot attack.** `handleAttackRequest` rejects a hidden attacker with "is hidden — cannot attack" (placed after the attach chooser so friendly attach is unaffected).
+- `tsc` clean; 824 tests pass; build clean. No migration.
+
 ## Fix: no spurious weapon-switch prompt on same-alliance targets (2026-09-30)
 **Files:** src/components/ScenarioMap/useCombatActions.ts, docs/dev/changelog.md
 

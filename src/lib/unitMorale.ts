@@ -67,7 +67,7 @@ export function exertedThreatRating(unit: Unit): number {
  * never impose threat, but they can still be subject to it.
  */
 export function isInKillZone(unit: Unit, hex: Hex): boolean {
-  if (unit.isDeleted || isUnitRouted(unit) || isDeadCorpse(unit)) return false;
+  if (unit.isDeleted || unit.hidden || isUnitRouted(unit) || isDeadCorpse(unit)) return false;
   if (unit.currentFormation === 'Scattered' || unit.currentFormation === 'Routed') return false;
   const dq = hex.q - unit.hex.q;
   const dr = hex.r - unit.hex.r;
@@ -115,7 +115,7 @@ export function calcEnemyThreats(
   let totalSum = 0;
 
   for (const other of units) {
-    if (other.isDeleted || other.id === unit.id || isUnitRouted(other) || isDeadCorpse(other)) continue;
+    if (other.isDeleted || other.id === unit.id || other.hidden || isUnitRouted(other) || isDeadCorpse(other)) continue;
     const otherAlliance = alliances[other.team] || 'friendly';
     if (otherAlliance === unitAlliance) continue;
     if (other.isHero) {

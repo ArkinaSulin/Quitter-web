@@ -768,6 +768,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     if (!isZocPursuitEnabled()) return;
     const moverAlliance = alliances[mover.team] || 'friendly';
     let live = units.find(u => u.id === mover.id) ?? mover;
+    if (live.hidden) return; // hidden units are concealed — no scatter/pursue reaction
 
     if (opts?.cornered) {
       // No legal retreat: every eligible ZoC unit strikes the standing router.
@@ -977,6 +978,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const canAttach = !opts?.forceCast && attacker.isHero && (attacker.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !target.isHero && !target.attachedToUnitId && !target.isDeleted && !target.hidden && !targetHasHero && attacker.team === target.team && isAdjacent;
     if (canAttach) {
       setAttachModal({ hero: attacker, target, canCast: isSpellCaster });
+      return;
+    }
+
+    // Hidden units are concealed — they cannot initiate attacks until unhidden.
+    if (attacker.hidden) {
+      addMessage(`${attacker.unitName} is hidden — cannot attack`);
       return;
     }
 

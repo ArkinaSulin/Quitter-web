@@ -46,6 +46,7 @@ export function findEligibleReactionArchers(
   /** Optional per-archer weapon-range bonus (e.g. a watch tower). */
   rangeBonus?: (unit: Unit) => number,
 ): Unit[] {
+  if (mover.hidden) return []; // a hidden mover is concealed — archers never react to it
   const moverAlliance = alliances[mover.team] || 'friendly';
   return units.filter(o => {
     if (o.id === mover.id || o.isDeleted || o.hidden || isUnitRouted(o) || isProtectedHero(o)) return false;
