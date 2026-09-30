@@ -2361,12 +2361,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-      const step = 60;
+      const step = 6;
       const k = e.key.toLowerCase();
-      if (k === 'w') { e.preventDefault(); panBy(0, -step); }
-      else if (k === 'a') { e.preventDefault(); panBy(-step, 0); }
-      else if (k === 's') { e.preventDefault(); panBy(0, step); }
-      else if (k === 'd') { e.preventDefault(); panBy(step, 0); }
+      if (k === 'w') { e.preventDefault(); panBy(0, step); }
+      else if (k === 'a') { e.preventDefault(); panBy(step, 0); }
+      else if (k === 's') { e.preventDefault(); panBy(0, -step); }
+      else if (k === 'd') { e.preventDefault(); panBy(-step, 0); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
