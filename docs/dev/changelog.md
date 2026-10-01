@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Space = air-only view (Phase 2) (2026-09-30)
+**Files:** src/components/ScenarioMap/{useCanvasDraw,ScenarioMap}.tsx, docs/dev/changelog.md
+
+- **Space hides ground units** (air-only view) for air-to-air targeting, alongside the existing Shift (inspect — hide all) filter. Holding Space sets `hideGroundUnits`, which `useCanvasDraw` honors by skipping elevation-0 tokens.
+- `tsc` clean; 824 tests pass; build clean. No migration.
+
 ## Flyer line-of-sight over structures (Phase 2) (2026-09-30)
 **Files:** src/components/ScenarioMap/useCombatActions.ts, docs/dev/changelog.md
 

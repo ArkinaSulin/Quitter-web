@@ -845,6 +845,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Inspect mode: while Shift is held all unit/corpse tokens hide so the map
   // (structures/effects) reads through, and Shift+drop attacks a structure.
   const [shiftHeld, setShiftHeld] = useState(false);
+  // Air-only view: while Space is held ground units hide (only elevated units
+  // remain) for air-to-air targeting.
+  const [spaceHeld, setSpaceHeld] = useState(false);
   // Hex/edge info-hover (structure + effect tooltip), from useHexGrid.
   const [infoHover, setInfoHover] = useState<{ kind: 'hex' | 'edge'; hex?: Hex; edge?: EdgeRef; x: number; y: number } | null>(null);
 
@@ -852,6 +855,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const down = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(true); };
     const up = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(false); };
     const blur = () => setShiftHeld(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+    };
+  }, []);
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.code === 'Space') { e.preventDefault(); setSpaceHeld(true); }
+    };
+    const up = (e: KeyboardEvent) => { if (e.code === 'Space') setSpaceHeld(false); };
+    const blur = () => setSpaceHeld(false);
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     window.addEventListener('blur', blur);
@@ -890,6 +909,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     templates: structureTemplates,
     hoveredWallEdge,
     hideUnits: shiftHeld,
+    hideGroundUnits: spaceHeld,
     groundZones,
     mpZones: effectiveZones,
     scenarioId,

@@ -50,6 +50,8 @@ interface CanvasDrawDeps {
    *  except `keepVisibleUnitId` (the unit currently being dragged). */
   hideUnits?: boolean;
   keepVisibleUnitId?: string | null;
+  /** Air-only view (Space held): hide ground units (elevation 0), show flyers. */
+  hideGroundUnits?: boolean;
   groundZones?: GroundEffect[];
   /** Effective zones (painted + hex-structure modifiers) for the MP-cost label. */
   mpZones?: GroundEffect[];
@@ -89,6 +91,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     hoveredWallEdge,
     hideUnits = false,
     keepVisibleUnitId = null,
+    hideGroundUnits = false,
     groundZones,
     mpZones,
     scenarioId,
@@ -431,6 +434,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       // Inspect mode: hide every token except the unit being dragged (or a host
       // whose attached hero is being dragged).
       if (hideUnits && unit.id !== keepVisibleUnitId && attachedByHost.get(unit.id)?.id !== keepVisibleUnitId) continue;
+      // Air-only view (Space): hide ground units, keep flyers.
+      if (hideGroundUnits && (unit.elevation ?? 0) <= 0) continue;
       if (unit.hidden) {
         if (!isGM) continue;
         ctx.save();
@@ -782,7 +787,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hideUnits, keepVisibleUnitId, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick, moraleMods]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hideUnits, keepVisibleUnitId, hideGroundUnits, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick, moraleMods]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;
