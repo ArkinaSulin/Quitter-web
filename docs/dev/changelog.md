@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Dive/climb attack for flyers (Phase 2) (2026-09-30)
+**Files:** src/lib/flying.ts (+ test), src/components/ScenarioMap/{useCombatActions,ScenarioMap}.tsx, docs/dev/changelog.md
+
+- **A flyer too high/low to melee now dives/climbs into reach.** When a flyer with a melee weapon targets a unit with a >10 ft vertical gap, `handleAttackRequest` prompts a dive/climb modal (`meleeElevationFor` picks the minimal elevation change); confirming runs an `ELEVATE` command then resumes the attack.
+- `tsc` clean; 834 tests pass; build clean. No migration.
+
 ## Elevation drop-modal (Phase 2) (2026-09-30)
 **Files:** src/hooks/useGameEngine.ts, src/components/ScenarioMap/{useMoveActions,ScenarioMap}.tsx, docs/dev/changelog.md
 

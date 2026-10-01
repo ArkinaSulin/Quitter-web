@@ -17,6 +17,7 @@ import { unitAttackCap } from '@/lib/attackCap';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, isHeroMoraleBoostEnabled, isZocPursuitEnabled } from '@/lib/unitMorale';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc } from '@/lib/meleeFallback';
+import { canFly, meleeElevationFor } from '@/lib/flying';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
@@ -69,6 +70,8 @@ interface CombatActionsDeps {
   playerId: string;
   playerName: string;
   setAttachModal: (m: { hero: Unit; target: Unit; canCast?: boolean } | null) => void;
+  /** Change a flyer's elevation (command-logged). */
+  elevateUnit: (unit: Unit, newElevation: number, opts?: { chained?: boolean; attachedHero?: Unit | null }) => Promise<void>;
   /** Optional fog-of-war gate: whether the attacker's own side can see the target.
    *  Absent when fog is off. */
   canAttackTarget?: (attacker: Unit, target: Unit) => boolean;
@@ -95,6 +98,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     playerId,
     playerName,
     setAttachModal,
+    elevateUnit,
     canAttackTarget,
   } = deps;
 
@@ -104,6 +108,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
   const [pendingWeaponSwitch, setPendingWeaponSwitch] = useState<PendingWeaponSwitch | null>(null);
   const [pendingMountTarget, setPendingMountTarget] = useState<{ attacker: Unit; target: Unit; rider: Unit } | null>(null);
+  const [pendingDiveAttack, setPendingDiveAttack] = useState<{ attacker: Unit; target: Unit; elevation: number } | null>(null);
 
   const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; chained?: boolean; opportunityAttack?: boolean; mainTarget?: 'mount' | 'rider'; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean }) => {
     if (overBudget) {
@@ -1166,6 +1171,17 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
 
+    // A flyer too high (or low) to melee must dive/climb into reach first — the
+    // elevation change rides a chained ELEVATE, then the attack resumes.
+    if (canFly(attacker) && isMeleeWeapon(weapon) && verticalFeet > 10 && attacker.actionsAvailable >= 1) {
+      setPendingDiveAttack({
+        attacker,
+        target,
+        elevation: meleeElevationFor(attacker.elevation ?? 0, target.elevation ?? 0),
+      });
+      return;
+    }
+
     // A mounted pair: when the target carries a rider, ask which to strike first
     // (the chosen main target takes the larger share of the volley). Re-enter with
     // opts.mainTarget once chosen.
@@ -1243,6 +1259,17 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
   const cancelMountTarget = useCallback(() => setPendingMountTarget(null), []);
 
+  // Confirm the dive/climb, then resume the attack (now within melee reach).
+  const confirmDiveAttack = useCallback(async () => {
+    const p = pendingDiveAttack;
+    setPendingDiveAttack(null);
+    if (!p) return;
+    await elevateUnit(p.attacker, p.elevation);
+    await handleAttackRequest(p.attacker.id, p.target.id);
+  }, [pendingDiveAttack, elevateUnit, handleAttackRequest]);
+
+  const cancelDiveAttack = useCallback(() => setPendingDiveAttack(null), []);
+
   return {
     pendingAttack,
     setPendingAttack,
@@ -1258,6 +1285,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
     pendingMountTarget,
     confirmMountTarget,
     cancelMountTarget,
+    pendingDiveAttack,
+    confirmDiveAttack,
+    cancelDiveAttack,
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,

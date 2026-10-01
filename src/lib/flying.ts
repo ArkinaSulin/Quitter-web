@@ -82,3 +82,12 @@ export const FLYING_MAX_FORMATION = 'Open Order';
 export function flyingFormationCap(currentFormation: string): string {
   return formationAtOrBelow(currentFormation, getOrganizationLevel(FLYING_MAX_FORMATION));
 }
+
+/** Closest elevation that brings the attacker within 10 ft of the target (melee
+ *  reach), i.e. the MINIMAL elevation change. Returns the current elevation when
+ *  already within reach. */
+export function meleeElevationFor(attackerElevation: number, targetElevation: number): number {
+  const gap = targetElevation - attackerElevation;
+  if (Math.abs(gap) <= 10) return attackerElevation;
+  return gap > 0 ? targetElevation - 10 : targetElevation + 10;
+}

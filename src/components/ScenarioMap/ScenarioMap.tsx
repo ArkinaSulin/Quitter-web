@@ -666,7 +666,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, []);
 
   const {
-      execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, rallyUnit, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, otherAction, endTurn, applyEffect, removeEffect, editEffect, applyZoneChange, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog, syncZoneEffects,
+      execute, moveUnitRecorded, moveUnitFree, rotateUnit, changeFormation, rallyUnit, selectWeapon, assignTeam, toggleHide, setRouting, placeUnit, attachHero, swapHeroPosition, elevateUnit, otherAction, endTurn, applyEffect, removeEffect, editEffect, applyZoneChange, charge, undo, canUndo, redo, canRedo, peekUndoChainLength, refreshUndoState, subscribeToCommandLog, syncZoneEffects,
   } = useGameEngine({
     scenarioId,
     playerId,
@@ -1609,6 +1609,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingMountTarget,
     confirmMountTarget,
     cancelMountTarget,
+    pendingDiveAttack,
+    confirmDiveAttack,
+    cancelDiveAttack,
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,
@@ -1633,6 +1636,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     playerId,
     playerName,
     setAttachModal,
+    elevateUnit,
     canAttackTarget: canAttackInFog,
     groundZones: effectiveZones,
   });
@@ -3272,6 +3276,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dive attack — a flyer must change elevation to reach a melee target */}
+      {pendingDiveAttack && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[300px]">
+            <p className="text-white text-sm mb-3 text-center">
+              {pendingDiveAttack.attacker.unitName} must {pendingDiveAttack.elevation < (pendingDiveAttack.attacker.elevation ?? 0) ? 'dive to' : 'climb to'} {pendingDiveAttack.elevation} ft to melee {pendingDiveAttack.target.unitName}
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <button className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded" onClick={cancelDiveAttack}>Cancel</button>
+              <button className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded" onClick={() => void confirmDiveAttack()}>Attack</button>
             </div>
           </div>
         </div>

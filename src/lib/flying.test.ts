@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   canFly, elevationGapFeet, elevationGapHexes, elevationOffset, airOccupiedHexes,
   maxElevationAfter, elevationSliderRange, carryRule, FLYING_MAX_FORMATION, flyingFormationCap,
+  meleeElevationFor,
 } from './flying';
 import { Unit } from '@/types/gameProtocol';
 
@@ -78,5 +79,12 @@ describe('flying', () => {
     expect(flyingFormationCap('Open Order')).toBe('Open Order');
     expect(flyingFormationCap('Scattered')).toBe('Scattered');
     expect(flyingFormationCap('Hero')).toBe('Hero');
+  });
+
+  it('meleeElevationFor finds the minimal change to reach within 10 ft', () => {
+    expect(meleeElevationFor(50, 0)).toBe(10);      // dive to 10 ft over ground
+    expect(meleeElevationFor(20, 40)).toBe(30);     // climb to within 10 ft below
+    expect(meleeElevationFor(5, 15)).toBe(5);       // already within 10 ft
+    expect(meleeElevationFor(20, 20)).toBe(20);     // same elevation
   });
 });
