@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Hero mount (Phase 1, part 1): rider position + attach gates + rendering (2026-09-30)
+**Files:** .scratch/hero-mount/spec.md (new), src/types/gameProtocol.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{useMoveActions,mapGeometry,SoftEnforcementModals,ContextMenu,useCombatActions,ScenarioMap}.tsx, docs/dev/changelog.md
+
+- **`attachedPosition` widened to `'front' | 'back' | 'rider'`** — a hero can now RIDE a larger same-team hero (`sizeCategory` strictly greater, size-based; no `isMount` flag). `attachHero`/`handleAttachHero`/the soft-enforcement pending types accept `'rider'`.
+- **Attach gates relaxed**: `useCombatActions.canAttach` and `ContextMenu`'s attachable set now allow hero-on-hero when the target is larger; the inline attach modal offers **"Ride (mount)"** when the target is a hero, else Leader/Protected as before.
+- **Rendering**: `getAttachedHeroPos` returns the host hex CENTER for `'rider'` (mounted on top) instead of the front/back vertex offset.
+- `tsc` clean; 824 tests pass; build clean. No migration (text column).
+
 ## New magic area shape: line (5 ft-wide, length = magicDimension) (2026-09-30)
 **Files:** src/lib/weaponParser.ts (+ test), src/components/ScenarioMap/MagicCastModal.tsx, src/components/WeaponEditor/WeaponFields.tsx, docs/dev/changelog.md
 

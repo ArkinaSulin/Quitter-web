@@ -38,7 +38,7 @@ interface MoveActionsDeps {
   moveUnitRecorded: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; stopInZoc?: boolean; breakToFormation?: string }) => Promise<void>;
   moveUnitFree: (unit: Unit, targetHex: Hex, attachedHero?: Unit | null, breakToFormation?: string) => Promise<void>;
   changeFormation: (unit: Unit, formation: string, formationsMap: Record<string, Formation>) => Promise<void>;
-  attachHero: (hero: Unit, targetUnit: Unit, position: 'front' | 'back', heroMaxMP: number) => Promise<void>;
+  attachHero: (hero: Unit, targetUnit: Unit, position: 'front' | 'back' | 'rider', heroMaxMP: number) => Promise<void>;
   swapHeroPosition: (hero: Unit, heroMaxMP: number) => Promise<void>;
   offerReactionsFor: (mover: Unit) => void;
   pruneReactionOffers: () => void;
@@ -342,7 +342,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }], `${team} → ${targetGroup}`);
   }, [alliances, execute]);
 
-  const handleAttachHero = useCallback(async (heroId: string, targetUnitId: string, position: 'front' | 'back') => {
+  const handleAttachHero = useCallback(async (heroId: string, targetUnitId: string, position: 'front' | 'back' | 'rider') => {
     const hero = units.find(u => u.id === heroId);
     const target = units.find(u => u.id === targetUnitId);
     if (!hero || !target) return;

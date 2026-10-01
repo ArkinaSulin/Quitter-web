@@ -788,7 +788,7 @@ export function useGameEngine({
   );
 
   const attachHero = useCallback(
-    async (hero: Unit, targetUnit: Unit, position: 'front' | 'back', heroMaxMP: number): Promise<void> => {
+    async (hero: Unit, targetUnit: Unit, position: 'front' | 'back' | 'rider', heroMaxMP: number): Promise<void> => {
       const changes: { field: string; from: any; to: any }[] = [
         { field: 'attachedToUnitId', from: null, to: targetUnit.id },
         { field: 'attachedPosition', from: null, to: position },

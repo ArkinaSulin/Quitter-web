@@ -121,7 +121,7 @@ export interface Unit {
   mountName: string;                  // new: copied from template
   isHero: boolean;
   attachedToUnitId: string | null;    // new: hero attached to a unit
-  attachedPosition: 'front' | 'back' | null; // new: hero's position on the host unit
+  attachedPosition: 'front' | 'back' | 'rider' | null; // new: hero's position on the host unit ('rider' = mounted on a larger hero)
   currentTroopCount: number;          // was: bodyCount
   maxTroopCount: number;              // was: maxBodyCount
   level: number;                      // new: copied from template

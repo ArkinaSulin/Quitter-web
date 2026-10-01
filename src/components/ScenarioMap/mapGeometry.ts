@@ -254,8 +254,12 @@ export interface MapBackgroundConfig {
 }
 
 /** Pixel offset of an attached hero token around its host's hex. */
-export function getAttachedHeroPos(unitHex: { q: number; r: number; s: number }, facing: number, attachedPosition: 'front' | 'back' | null = 'front') {
+export function getAttachedHeroPos(unitHex: { q: number; r: number; s: number }, facing: number, attachedPosition: 'front' | 'back' | 'rider' | null = 'front') {
   const pos = hexToPixel(unitHex, HEX_SIZE);
+  if (attachedPosition === 'rider') {
+    // Mounted: the rider sits centered on the host's hex.
+    return { x: pos.x, y: pos.y };
+  }
   const vertexIndex = attachedPosition === 'back' ? (facing + 2) % 6 : (facing + 5) % 6;
   const angle = (60 * vertexIndex - 30) * Math.PI / 180;
   return {

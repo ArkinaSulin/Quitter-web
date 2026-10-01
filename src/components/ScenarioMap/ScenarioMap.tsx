@@ -3185,18 +3185,29 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                   Cast spell
                 </button>
               )}
-              <button
-                className="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => { handleAttachHero(attachModal.hero.id, attachModal.target.id, 'front'); setAttachModal(null); }}
-              >
-                Leader mode (Front)
-              </button>
-              <button
-                className="bg-teal-700 hover:bg-teal-600 text-white px-4 py-2 rounded-lg text-sm"
-                onClick={() => { handleAttachHero(attachModal.hero.id, attachModal.target.id, 'back'); setAttachModal(null); }}
-              >
-                Protected mode (rear)
-              </button>
+              {attachModal.target.isHero ? (
+                <button
+                  className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
+                  onClick={() => { handleAttachHero(attachModal.hero.id, attachModal.target.id, 'rider'); setAttachModal(null); }}
+                >
+                  Ride (mount)
+                </button>
+              ) : (
+                <>
+                  <button
+                    className="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"
+                    onClick={() => { handleAttachHero(attachModal.hero.id, attachModal.target.id, 'front'); setAttachModal(null); }}
+                  >
+                    Leader mode (Front)
+                  </button>
+                  <button
+                    className="bg-teal-700 hover:bg-teal-600 text-white px-4 py-2 rounded-lg text-sm"
+                    onClick={() => { handleAttachHero(attachModal.hero.id, attachModal.target.id, 'back'); setAttachModal(null); }}
+                  >
+                    Protected mode (rear)
+                  </button>
+                </>
+              )}
               <button
                 className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
                 onClick={() => setAttachModal(null)}

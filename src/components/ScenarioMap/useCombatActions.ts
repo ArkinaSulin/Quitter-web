@@ -974,8 +974,10 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
     // Attach chooser: a friendly hero adjacent to a same-team unit may attach. When
     // it also holds a spell/heal weapon, offer "Cast spell" alongside the attach.
+    // A hero may also RIDE a larger same-team hero (mount), not just non-hero units.
     const targetHasHero = units.some(u => u.attachedToUnitId === targetId && !u.isDeleted);
-    const canAttach = !opts?.forceCast && attacker.isHero && (attacker.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !target.isHero && !target.attachedToUnitId && !target.isDeleted && !target.hidden && !targetHasHero && attacker.team === target.team && isAdjacent;
+    const isMountTarget = target.isHero && (target.sizeCategory || 100) > (attacker.sizeCategory || 100);
+    const canAttach = !opts?.forceCast && attacker.isHero && (attacker.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && (!target.isHero || isMountTarget) && !target.attachedToUnitId && !target.isDeleted && !target.hidden && !targetHasHero && attacker.team === target.team && isAdjacent;
     if (canAttach) {
       setAttachModal({ hero: attacker, target, canCast: isSpellCaster });
       return;

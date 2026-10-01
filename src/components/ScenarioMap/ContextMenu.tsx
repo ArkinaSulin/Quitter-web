@@ -132,7 +132,7 @@ export function ContextMenu({
   const canAttach = unit.isHero && (unit.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !unit.attachedToUnitId && !!onAttachHero;
 
   const attachableTargets = units.filter(u =>
-    u.id !== unit.id && !u.isDeleted && !u.isHero &&
+    u.id !== unit.id && !u.isDeleted && (!u.isHero || (u.sizeCategory || 100) > (unit.sizeCategory || 100)) &&
     u.team === unit.team &&
     !units.some(h => h.attachedToUnitId === u.id && !h.isDeleted) &&
     areHexesAdjacent(unit.hex, u.hex)
@@ -140,7 +140,7 @@ export function ContextMenu({
 
   function handleAttachClick() {
     if (attachableTargets.length === 0) {
-      alert('No adjacent valid target units to attach to (must be same team, adjacent, not a hero, no attached hero)');
+      alert('No adjacent valid targets to attach to (same team, adjacent, not already hosting a hero; heroes must be larger to be ridden)');
       return;
     }
     setShowAttachSubmenu(!showAttachSubmenu);
@@ -306,7 +306,7 @@ export function ContextMenu({
       {canAttach && (
         <>
           <div className="px-3 py-1 hover:bg-gray-700 cursor-pointer flex justify-between items-center" onClick={handleAttachClick}>
-            <span>Attach to Unit...</span>
+            <span>Attach to…</span>
             <span className="text-gray-500 text-xs">{attachableTargets.length}</span>
           </div>
           {showAttachSubmenu && attachableTargets.map(target => (

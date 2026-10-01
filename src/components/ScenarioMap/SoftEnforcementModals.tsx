@@ -31,7 +31,7 @@ export interface PendingAttackCap {
 export interface PendingHeroAttachConversion {
   hero: Unit;
   target: Unit;
-  position: 'front' | 'back';
+  position: 'front' | 'back' | 'rider';
   actionsNeeded: number;
 }
 
@@ -43,7 +43,7 @@ export interface PendingHeroSwapConversion {
 export interface PendingAttachOverBudget {
   hero: Unit;
   target: Unit;
-  position: 'front' | 'back';
+  position: 'front' | 'back' | 'rider';
 }
 
 export interface PendingFormation {
