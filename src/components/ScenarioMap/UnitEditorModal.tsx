@@ -15,6 +15,7 @@ import { parseWeapons, stringifyWeapons, Weapon, formatWeaponDisplay } from '@/l
 import { WeaponEditorModal } from '@/components/WeaponEditorModal';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { supabase } from '@/lib/supabaseClient';
+import { getSetting } from '@/lib/settingsCache';
 
 const SIZE_LABELS: Record<number, string> = {
   75: 'Small',
@@ -149,6 +150,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
     init.mountId = unit.mountId ?? '';
     init.mountName = unit.mountName ?? '';
     init.customImageUrl = unit.customImageUrl ?? '';
+    init.mountSplit = unit.mountSplit ?? null;
     return init;
   });
   const [weaponsDraft, setWeaponsDraft] = useState<Weapon[]>(() => parseWeapons(unit.weaponString || ''));
@@ -242,6 +244,9 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
     const mountIdValue = draft.mountId ? String(draft.mountId) : null;
     if ((unit.mountId ?? null) !== mountIdValue) changes.push({ field: 'mountId', from: unit.mountId, to: mountIdValue });
     if ((unit.mountName ?? '') !== String(draft.mountName ?? '')) changes.push({ field: 'mountName', from: unit.mountName, to: String(draft.mountName ?? '') });
+    // Mount split (per-pair, rider only).
+    const mountSplitValue = (draft.mountSplit === null || draft.mountSplit === '') ? null : Number(draft.mountSplit);
+    if ((unit.mountSplit ?? null) !== mountSplitValue) changes.push({ field: 'mountSplit', from: unit.mountSplit ?? null, to: mountSplitValue });
     // Custom image.
     const imgValue = draft.customImageUrl ? String(draft.customImageUrl) : null;
     if ((unit.customImageUrl ?? null) !== imgValue) changes.push({ field: 'customImageUrl', from: unit.customImageUrl ?? null, to: imgValue });
@@ -330,7 +335,15 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
             </button>
           </div>
 
-          {/* R2 HP */}
+          {/* R2 Rank & Token */}
+          <div className="flex items-end gap-2">
+            <Cell label="Level"><NumInput value={draft.level} min={1} onChange={v => set('level', v)} /></Cell>
+            <Cell label="Size" widthClass="w-24"><SelectInput value={String(draft.sizeCategory)} onChange={v => set('sizeCategory', v)} options={SIZE_VALUES.map(v => ({ value: String(v), label: `${SIZE_LABELS[v]} (${v})` }))} /></Cell>
+            <Cell label="Visual scale"><NumInput value={draft.visualScale} min={50} max={149} onChange={v => set('visualScale', v)} /></Cell>
+            <div className="pb-1 ml-2"><Toggle checked={!!draft.heroicInspirationActive} onChange={v => set('heroicInspirationActive', v)} label="Heroic Inspiration" /></div>
+          </div>
+
+          {/* R3 HP */}
           <div className="flex items-end gap-2">
             <Cell label="Current HP"><NumInput value={draft.currentUnitHp} min={0} onChange={v => set('currentUnitHp', v)} /></Cell>
             <Cell label="Troop HP"><NumInput value={draft.troopHp} min={1} onChange={v => set('troopHp', v)} /></Cell>
@@ -416,14 +429,6 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
             </div>
           </div>
 
-          {/* R10 Rank & Token */}
-          <div className="flex items-end gap-2">
-            <Cell label="Level"><NumInput value={draft.level} min={1} onChange={v => set('level', v)} /></Cell>
-            <Cell label="Size" widthClass="w-24"><SelectInput value={String(draft.sizeCategory)} onChange={v => set('sizeCategory', v)} options={SIZE_VALUES.map(v => ({ value: String(v), label: `${SIZE_LABELS[v]} (${v})` }))} /></Cell>
-            <Cell label="Visual scale"><NumInput value={draft.visualScale} min={50} max={149} onChange={v => set('visualScale', v)} /></Cell>
-            <div className="pb-1 ml-2"><Toggle checked={!!draft.heroicInspirationActive} onChange={v => set('heroicInspirationActive', v)} label="Heroic Inspiration" /></div>
-          </div>
-
           {/* Weapons — edited via the shared weapon editor */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
@@ -475,6 +480,25 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
               ))
             )}
           </div>
+
+          {/* Mount split — per-pair, rider only */}
+          {unit.attachedPosition === 'rider' && (
+            <div className="rounded border border-gray-700 p-2 space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-gray-300">Mount split (main target)</label>
+                <span className="text-[11px] text-yellow-300">{Math.round((draft.mountSplit ?? getSetting('mount_main_attack_split', 0.7)) * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min={5}
+                max={95}
+                step={5}
+                value={Math.round((draft.mountSplit ?? getSetting('mount_main_attack_split', 0.7)) * 100)}
+                onChange={e => set('mountSplit', Number(e.target.value) / 100)}
+                className="w-full accent-amber-400"
+              />
+            </div>
+          )}
 
           {/* Effects (own, non-zone) — edit/remove via the shared effect handlers */}
           <div className="space-y-1.5">

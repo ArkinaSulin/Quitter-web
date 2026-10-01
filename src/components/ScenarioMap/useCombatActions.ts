@@ -239,7 +239,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
         return { currentAc: hero.currentAc + effectAcBonus(hero, isRanged), troopHp: hero.troopHp };
       }
       if (hero.attachedPosition === 'rider') {
-        const mainShare = getSetting('mount_main_attack_split', 0.7);
+        const mainShare = hero.mountSplit ?? getSetting('mount_main_attack_split', 0.7);
         const riderIsMain = options?.mainTarget === 'rider';
         return {
           currentAc: hero.currentAc + effectAcBonus(hero, isRanged),
@@ -991,7 +991,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // it also holds a spell/heal weapon, offer "Cast spell" alongside the attach.
     // A hero may also RIDE a larger same-team hero (mount), not just non-hero units.
     const targetHasHero = units.some(u => u.attachedToUnitId === targetId && !u.isDeleted);
-    const isMountTarget = target.isHero && (target.sizeCategory || 100) > (attacker.sizeCategory || 100);
+    const isMountTarget = target.isHero && !target.mountId && !target.mountName && (target.sizeCategory || 100) > (attacker.sizeCategory || 100);
     const canAttach = !opts?.forceCast && attacker.isHero && (attacker.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && (!target.isHero || isMountTarget) && !target.attachedToUnitId && !target.isDeleted && !target.hidden && !targetHasHero && attacker.team === target.team && isAdjacent;
     if (canAttach) {
       setAttachModal({ hero: attacker, target, canCast: isSpellCaster });

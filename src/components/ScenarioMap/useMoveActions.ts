@@ -365,6 +365,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
       addMessage(`${target.unitName} already has a hero attached`);
       return;
     }
+    if (target.mountId || target.mountName || target.attachedToUnitId) {
+      addMessage(`${target.unitName} is already mounted — cannot be ridden`);
+      return;
+    }
     // Attaching costs 1 hero MP — heroes convert actions at the prorated rate
     // (maxMP/5 each). When MP is insufficient, ask whether to convert the
     // [#] actions that make up 1 MP; only if even conversions can't cover it

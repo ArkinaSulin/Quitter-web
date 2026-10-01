@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Hero mount: per-pair split + mount-target gating (migration 107) (2026-09-30)
+**Files:** supabase/migrations/107_unit_mount_split.sql, src/types/gameProtocol.ts, src/hooks/useSupabaseSync.ts, src/components/ScenarioMap/{useCombatActions,useMoveActions,ContextMenu,UnitEditorModal}.tsx, docs/dev/changelog.md
+
+- **Per-pair mount split** (`units.mount_split`, nullable `real`; migration **107**): a rider's value overrides the global `mount_main_attack_split` for that pair. Editable on the scenario map via the unit editor — a **"Mount split (main target)" slider** (5% steps) shown **under Weapons, above Effects**, only when the unit is a rider. `attachedDefenderHero` reads `rider.mountSplit ?? getSetting('mount_main_attack_split', 0.7)`.
+- **Mount-target gating**: a hero that already has a cavalry mount (`mountId`/`mountName`) or is itself attached (`attachedToUnitId`) can no longer be ridden. Added to `isMountTarget`, the ContextMenu attachable set, and `handleAttachHero`.
+- **Unit editor layout**: Level / Size / Visual scale / Heroic Inspiration moved up under Name/Image (above the HP row).
+- `tsc` clean; 824 tests pass; build clean. **Apply 107 in Supabase.**
+
 ## Hero mount (Phase 1, part 3): rider movement economy (2026-09-30)
 **Files:** src/components/ScenarioMap/useMoveActions.ts, src/hooks/useGameEngine.ts, docs/dev/changelog.md
 

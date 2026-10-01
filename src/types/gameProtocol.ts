@@ -122,6 +122,7 @@ export interface Unit {
   isHero: boolean;
   attachedToUnitId: string | null;    // new: hero attached to a unit
   attachedPosition: 'front' | 'back' | 'rider' | null; // new: hero's position on the host unit ('rider' = mounted on a larger hero)
+  mountSplit?: number | null; // new: per-pair fraction of attacks to the chosen MAIN target (null = global mount_main_attack_split)
   currentTroopCount: number;          // was: bodyCount
   maxTroopCount: number;              // was: maxBodyCount
   level: number;                      // new: copied from template

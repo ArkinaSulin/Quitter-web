@@ -132,7 +132,7 @@ export function ContextMenu({
   const canAttach = unit.isHero && (unit.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !unit.attachedToUnitId && !!onAttachHero;
 
   const attachableTargets = units.filter(u =>
-    u.id !== unit.id && !u.isDeleted && (!u.isHero || (u.sizeCategory || 100) > (unit.sizeCategory || 100)) &&
+    u.id !== unit.id && !u.isDeleted && !u.mountId && !u.mountName && !u.attachedToUnitId && (!u.isHero || (u.sizeCategory || 100) > (unit.sizeCategory || 100)) &&
     u.team === unit.team &&
     !units.some(h => h.attachedToUnitId === u.id && !h.isDeleted) &&
     areHexesAdjacent(unit.hex, u.hex)
