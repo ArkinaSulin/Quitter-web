@@ -2,10 +2,11 @@
 
 import { useRef, useCallback, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { applyFormationChange } from '@/lib/formationCost';
 import { nextLowerFormation } from '@/lib/formationCost';
+import { flyingFormationCap } from '@/lib/flying';
 import { applyMoveCost, applyMpSpend, applyHeroMoveCost, applyHeroMpSpend } from '@/lib/moveCost';
 import { getSetting } from '@/lib/settingsCache';
 import { parseWeapons } from '@/lib/weaponParser';
@@ -853,6 +854,42 @@ export function useGameEngine({
     [execute, freeMove],
   );
 
+  const elevateUnit = useCallback(
+    async (unit: Unit, newElevation: number, opts?: { chained?: boolean; attachedHero?: Unit | null }): Promise<void> => {
+      const from = unit.elevation ?? 0;
+      const changes: { field: string; from: any; to: any }[] = [
+        { field: 'elevation', from, to: newElevation },
+      ];
+      // Auto-cap a formed flyer to Open Order (or lower) when it goes airborne.
+      if (newElevation > 0) {
+        const capped = flyingFormationCap(unit.currentFormation);
+        if (capped !== unit.currentFormation) {
+          changes.push({ field: 'currentFormation', from: unit.currentFormation, to: capped });
+          changes.push({ field: 'organizationLevel', from: unit.organizationLevel, to: getOrganizationLevel(capped) });
+        }
+      }
+      const subSteps: SubStep[] = [
+        {
+          type: 'ELEVATE',
+          description: `${unit.unitName} ${newElevation > from ? 'climbs to' : newElevation < from ? 'descends to' : 'holds at'} ${newElevation} ft`,
+          unitId: unit.id,
+          changes,
+        },
+      ];
+      // A rider follows its mount's elevation.
+      if (opts?.attachedHero) {
+        subSteps.push({
+          type: 'ELEVATE',
+          description: `${opts.attachedHero.unitName} follows to ${newElevation} ft`,
+          unitId: opts.attachedHero.id,
+          changes: [{ field: 'elevation', from: opts.attachedHero.elevation ?? 0, to: newElevation }],
+        });
+      }
+      await execute('ELEVATE', subSteps, subSteps[0].description, { ...(opts?.chained ? { chained: true } : {}) });
+    },
+    [execute],
+  );
+
   const charge = useCallback(
     async (unit: Unit): Promise<void> => {
       // Charge! only locks the unit into charging state. No MP/action is deducted
@@ -1115,6 +1152,7 @@ export function useGameEngine({
     placeUnit,
     attachHero,
     swapHeroPosition,
+    elevateUnit,
     otherAction,
     endTurn,
     applyEffect,

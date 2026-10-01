@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## ELEVATE command + flying formation cap (Phase 2) (2026-09-30)
+**Files:** src/lib/commandLog.ts, src/lib/flying.ts (+ test), src/hooks/useGameEngine.ts, docs/dev/changelog.md
+
+- **New `ELEVATE` command** (`elevateUnit` in `useGameEngine`): changes a unit's `elevation` (and a rider's, following its mount), command-logged/undoable. Taking off auto-caps a formed flyer to `Open Order` (`flyingFormationCap`).
+- `tsc` clean; 833 tests pass; build clean. No migration.
+
 ## Flying module: consolidated helpers (Phase 2) (2026-09-30)
 **Files:** src/lib/flying.ts (+ test), src/components/ScenarioMap/mapGeometry.ts, docs/dev/changelog.md
 

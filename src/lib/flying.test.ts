@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   canFly, elevationGapFeet, elevationGapHexes, elevationOffset, airOccupiedHexes,
-  maxElevationAfter, elevationSliderRange, carryRule, FLYING_MAX_FORMATION,
+  maxElevationAfter, elevationSliderRange, carryRule, FLYING_MAX_FORMATION, flyingFormationCap,
 } from './flying';
 import { Unit } from '@/types/gameProtocol';
 
@@ -70,5 +70,13 @@ describe('flying', () => {
 
   it('FLYING_MAX_FORMATION', () => {
     expect(FLYING_MAX_FORMATION).toBe('Open Order');
+  });
+
+  it('flyingFormationCap caps formed units to Open Order', () => {
+    expect(flyingFormationCap('Phalanx')).toBe('Open Order');
+    expect(flyingFormationCap('Close Order')).toBe('Open Order');
+    expect(flyingFormationCap('Open Order')).toBe('Open Order');
+    expect(flyingFormationCap('Scattered')).toBe('Scattered');
+    expect(flyingFormationCap('Hero')).toBe('Hero');
   });
 });

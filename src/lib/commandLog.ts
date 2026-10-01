@@ -35,7 +35,8 @@ export type ActionType =
   | 'WALL'
   | 'STRUCTURE'
   | 'ARCHER_REACTION'
-  | 'OTHER_ACTION';
+  | 'OTHER_ACTION'
+  | 'ELEVATE';
 
 export interface UnitChange {
   field: string;

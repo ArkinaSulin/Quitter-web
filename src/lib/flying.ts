@@ -2,8 +2,9 @@
 // Pure flying / elevation domain logic (Phase 2). Reused by movement, combat,
 // rendering and the AI. `canFly` is DERIVED: a unit flies when its aerial pool
 // (`flySpeed`) is > 0; `elevation > 0` means it is currently airborne.
-import { Unit } from '@/types/gameProtocol';
+import { Unit, getOrganizationLevel } from '@/types/gameProtocol';
 import { isUnitInteractable } from '@/lib/unitInteractions';
+import { formationAtOrBelow } from '@/lib/formationCost';
 
 /** Can this unit fly at all (has an aerial movement pool)? */
 export function canFly(unit: Pick<Unit, 'flySpeed'>): boolean {
@@ -75,3 +76,9 @@ export function carryRule(
 
 /** Flying units are at best Open Order while airborne (auto-capped). */
 export const FLYING_MAX_FORMATION = 'Open Order';
+
+/** The formation to auto-cap a flyer to (Open Order or lower) when it is airborne.
+ *  Returns `current` unchanged when it already satisfies the cap. */
+export function flyingFormationCap(currentFormation: string): string {
+  return formationAtOrBelow(currentFormation, getOrganizationLevel(FLYING_MAX_FORMATION));
+}
