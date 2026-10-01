@@ -272,6 +272,18 @@ export function getAttachedHeroPos(unitHex: { q: number; r: number; s: number },
 export const corpseLast = (a: Unit, b: Unit) =>
   ((a.currentUnitHp ?? 0) <= 0 ? 0 : 1) - ((b.currentUnitHp ?? 0) <= 0 ? 0 : 1);
 
+/**
+ * Screen-pixel offset of an ELEVATED token from its ground hex center, in the NE
+ * (45°) direction. Scales with elevation: half a hex radius at 10 ft, a full hex
+ * radius at 20 ft+ (capped). Returns (0,0) when grounded.
+ */
+export function elevationOffset(elevation: number | undefined, hexSize: number): { dx: number; dy: number } {
+  const feet = elevation ?? 0;
+  if (feet <= 0) return { dx: 0, dy: 0 };
+  const distance = hexSize * 0.5 * Math.min(2, feet / 10);
+  return { dx: distance * Math.SQRT1_2, dy: -distance * Math.SQRT1_2 };
+}
+
 export const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
   { q: 0, r: 1, s: -1 },

@@ -12,7 +12,7 @@ import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
 import { isDeadCorpse } from '@/lib/unitInteractions';
 import { corpseDots, FallenMap } from '@/lib/corpseTracker';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
-import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, MapBackgroundConfig, costShade, hexMpLabelAt } from './mapGeometry';
+import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, elevationOffset, MapBackgroundConfig, costShade, hexMpLabelAt } from './mapGeometry';
 import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
 import { MapStructures, isHexStructureKey } from '@/lib/mapStructures';
@@ -440,13 +440,26 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const pos = hexToPixel(unit.hex, HEX_SIZE);
       const cx = pos.x * currentZoom + offsetX;
       const cy = pos.y * currentZoom + offsetY;
+      const elev = elevationOffset(unit.elevation, HEX_SIZE);
+      const tokenCx = cx + elev.dx * currentZoom;
+      const tokenCy = cy + elev.dy * currentZoom;
       const unitMoraleMod = moraleMods.get(unit.id) ?? (unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, displayUnits, displayAlliances, formationMoraleMod));
+      // Shadow dot on the ground hex under an elevated token.
+      if ((unit.elevation ?? 0) > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, tokenWidth * 0.3, tokenHeight * 0.12, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.restore();
+      }
       try {
         drawToken({
           unit: { ...unit, currentMoraleModifier: unitMoraleMod },
           ctx,
-          x: cx,
-          y: cy,
+          x: tokenCx,
+          y: tokenCy,
           width: tokenWidth,
           height: tokenHeight,
           zoom: currentZoom,
@@ -458,6 +471,22 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         });
       } catch (err) {
         console.error('drawToken error:', err);
+      }
+      // Elevation badge (feet) in the top-left corner of an elevated token.
+      if ((unit.elevation ?? 0) > 0) {
+        ctx.save();
+        const bw = tokenWidth * 0.4;
+        const bh = Math.max(12, tokenHeight * 0.16);
+        const bx = tokenCx - tokenWidth / 2;
+        const by = tokenCy - tokenHeight / 2;
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = '#ffe08a';
+        ctx.font = `bold ${Math.max(10, 11 * currentZoom)}px ui-monospace, monospace`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`${unit.elevation}`, bx + 4, by + 2);
+        ctx.restore();
       }
       if (unit.hidden) ctx.restore();
 
@@ -484,8 +513,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const attachedHero = attachedByHost.get(unit.id);
       if (attachedHero) {
         const heroPos = getAttachedHeroPos(unit.hex, unit.facing, attachedHero.attachedPosition);
-        const heroCx = heroPos.x * currentZoom + offsetX;
-        const heroCy = heroPos.y * currentZoom + offsetY;
+        const elevOff = elevationOffset(unit.elevation, HEX_SIZE);
+        const heroCx = heroPos.x * currentZoom + offsetX + elevOff.dx * currentZoom;
+        const heroCy = heroPos.y * currentZoom + offsetY + elevOff.dy * currentZoom;
         const heroFormationMoraleMod = formationsMap[attachedHero.currentFormation] ?? null;
         const heroMoraleMod = moraleMods.get(attachedHero.id) ?? (attachedHero.currentMoraleModifier + computeEffectiveMoraleModifier(attachedHero, displayUnits, displayAlliances, heroFormationMoraleMod));
         try {

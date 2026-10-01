@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Elevation rendering: offset token + shadow + badge (Phase 2) (2026-09-30)
+**Files:** src/components/ScenarioMap/{mapGeometry,useCanvasDraw,UnitEditorModal}.tsx, docs/dev/changelog.md
+
+- **Elevated tokens render offset NE 45°** by `elevationOffset` (half a hex radius at 10 ft, full radius at 20 ft+), with a **shadow ellipse** on the ground hex and an **elevation badge** (feet) in the token's top-left. A rider follows its mount's elevation offset.
+- **Unit editor**: added **Elevation (ft)** and **Fly speed** fields (under the movement row) so a unit's aerial stats can be set in-scenario.
+- `tsc` clean; 824 tests pass; build clean. No migration.
+
 ## Elevation + fly speed fields (Phase 2, migration 108) (2026-09-30)
 **Files:** supabase/migrations/108_unit_elevation_fly.sql, src/types/gameProtocol.ts, src/hooks/useSupabaseSync.ts, docs/dev/changelog.md
 
