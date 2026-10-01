@@ -103,8 +103,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingChargeAttack, setPendingChargeAttack] = useState<PendingChargeAttack | null>(null);
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
   const [pendingWeaponSwitch, setPendingWeaponSwitch] = useState<PendingWeaponSwitch | null>(null);
+  const [pendingMountTarget, setPendingMountTarget] = useState<{ attacker: Unit; target: Unit; rider: Unit } | null>(null);
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; chained?: boolean; opportunityAttack?: boolean; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean }) => {
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; chained?: boolean; opportunityAttack?: boolean; mainTarget?: 'mount' | 'rider'; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean }) => {
     if (overBudget) {
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
@@ -228,11 +229,25 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const isRear = effectivePos === 'rear';
     // Attached heroes only share damage when attached in FRONT (Leader mode); a
     // back-attached (protected) hero is untouched. A front hero is a damage pool
-    // whether or not it joins the volley.
+    // whether or not it joins the volley. A RIDER (mounted on a larger hero) is a
+    // targetable pool too — the attacker's chosen main target takes the larger
+    // share (mount_main_attack_split, default 0.7), the other the remainder.
     const attachedDefenderHero = (() => {
       const hero = units.find(u => u.attachedToUnitId === target.id && !u.isDeleted);
-      if (!hero || hero.attachedPosition !== 'front') return null;
-      return { currentAc: hero.currentAc + effectAcBonus(hero, isRanged), troopHp: hero.troopHp };
+      if (!hero) return null;
+      if (hero.attachedPosition === 'front') {
+        return { currentAc: hero.currentAc + effectAcBonus(hero, isRanged), troopHp: hero.troopHp };
+      }
+      if (hero.attachedPosition === 'rider') {
+        const mainShare = getSetting('mount_main_attack_split', 0.7);
+        const riderIsMain = options?.mainTarget === 'rider';
+        return {
+          currentAc: hero.currentAc + effectAcBonus(hero, isRanged),
+          troopHp: hero.troopHp,
+          share: riderIsMain ? mainShare : 1 - mainShare,
+        };
+      }
+      return null;
     })();
     const attachedAttackerHero = frontAttachedHero
       ? { currentAc: frontAttachedHero.currentAc + effectAcBonus(frontAttachedHero, isRanged), troopHp: frontAttachedHero.troopHp }
@@ -944,7 +959,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     await performChargeEnd(attacker, true);
   }, [units, formationsMap, performChargeEnd]);
 
-  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; weaponIndex?: number; heroJoin?: boolean; heroOverBudget?: boolean }) => {
+  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; weaponIndex?: number; heroJoin?: boolean; heroOverBudget?: boolean; mainTarget?: 'mount' | 'rider' }) => {
     let attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return;
@@ -1142,6 +1157,17 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
 
+    // A mounted pair: when the target carries a rider, ask which to strike first
+    // (the chosen main target takes the larger share of the volley). Re-enter with
+    // opts.mainTarget once chosen.
+    const rider = opts?.mainTarget === undefined
+      ? (units.find(u => u.attachedToUnitId === targetId && !u.isDeleted && u.attachedPosition === 'rider') ?? null)
+      : null;
+    if (rider) {
+      setPendingMountTarget({ attacker, target, rider });
+      return;
+    }
+
     // A leading hero's participation is resolved inside performAttack (auto-join).
     // Charging attacker: a full charge (2 hexes moved) grants a free double-damage
     // attack; an early attack is premature and requires confirmation.
@@ -1156,7 +1182,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
         setPendingAttackCap({ attacker, target, isCharging: true });
         return;
       }
-      const result = await performAttack(attacker, target, false, { isCharging: true });
+      const result = await performAttack(attacker, target, false, { isCharging: true, mainTarget: opts?.mainTarget });
       // undefined = the retaliation-cap prompt is open — its handlers resume the
       // attack and finish the charge; don't end the charge here.
       if (!result) return;
@@ -1178,7 +1204,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       setPendingAttack({ attacker, target });
       return;
     }
-    await performAttack(attacker, target, false);
+    await performAttack(attacker, target, false, { mainTarget: opts?.mainTarget });
   }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP, setAttachModal, canAttackTarget, execute]);
 
   // Confirm the offered weapon switch, then resume the attack with that weapon.
@@ -1198,6 +1224,16 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
   const cancelWeaponSwitch = useCallback(() => setPendingWeaponSwitch(null), []);
 
+  // Confirm the mount/rider main-target choice, then resume the attack.
+  const confirmMountTarget = useCallback((mainIsMount: boolean) => {
+    const p = pendingMountTarget;
+    setPendingMountTarget(null);
+    if (!p) return;
+    void handleAttackRequest(p.attacker.id, p.target.id, { mainTarget: mainIsMount ? 'mount' : 'rider' });
+  }, [pendingMountTarget, handleAttackRequest]);
+
+  const cancelMountTarget = useCallback(() => setPendingMountTarget(null), []);
+
   return {
     pendingAttack,
     setPendingAttack,
@@ -1210,6 +1246,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
     pendingWeaponSwitch,
     confirmWeaponSwitch,
     cancelWeaponSwitch,
+    pendingMountTarget,
+    confirmMountTarget,
+    cancelMountTarget,
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,

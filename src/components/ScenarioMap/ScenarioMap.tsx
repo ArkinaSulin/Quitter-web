@@ -1582,6 +1582,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingWeaponSwitch,
     confirmWeaponSwitch,
     cancelWeaponSwitch,
+    pendingMountTarget,
+    confirmMountTarget,
+    cancelMountTarget,
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,
@@ -3211,6 +3214,37 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               <button
                 className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
                 onClick={() => setAttachModal(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mount target modal — pick the main target of a mounted pair */}
+      {pendingMountTarget && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[280px]">
+            <p className="text-white text-sm mb-4 text-center">
+              Attack {pendingMountTarget.target.unitName} (mounted pair)
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => confirmMountTarget(true)}
+              >
+                Attack {pendingMountTarget.target.unitName} (mount)
+              </button>
+              <button
+                className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={() => confirmMountTarget(false)}
+              >
+                Attack {pendingMountTarget.rider.unitName} (rider)
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+                onClick={cancelMountTarget}
               >
                 Cancel
               </button>

@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Hero mount (Phase 1, part 2): mounted-pair targeting + attack split (2026-09-30)
+**Files:** src/lib/unitCombat.ts, src/components/ScenarioMap/{useCombatActions,ScenarioMap}.tsx, supabase/migrations/106_mount_main_attack_split.sql, docs/dev/changelog.md
+
+- **Attacking a mounted pair now prompts for the main target.** `handleAttackRequest` detects a `'rider'` on the target and opens a modal (Attack mount / Attack rider); the chosen main target takes the larger share of the volley.
+- **Attack count split generalized** (`executeSplitAttacks`): the attached-hero share is now a parameter (normal `Math.round`), defaulting to the existing 30% front-hero split. A rider passes `share = riderIsMain ? mount_main_attack_split : 1 − mount_main_attack_split` (default 0.7), so the main target gets 70% and the other 30%.
+- **`mount_main_attack_split`** is a global setting (migration **106**), overridable later per pair.
+- `tsc` clean; 824 tests pass; build clean. **Apply 106 in Supabase.**
+
 ## Hero mount (Phase 1, part 1): rider position + attach gates + rendering (2026-09-30)
 **Files:** .scratch/hero-mount/spec.md (new), src/types/gameProtocol.ts, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{useMoveActions,mapGeometry,SoftEnforcementModals,ContextMenu,useCombatActions,ScenarioMap}.tsx, docs/dev/changelog.md
 
