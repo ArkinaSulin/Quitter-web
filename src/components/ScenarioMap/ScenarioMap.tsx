@@ -936,6 +936,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setPendingAttachOverBudget,
     pendingSwapOverBudget,
     setPendingSwapOverBudget,
+    pendingElevation,
+    setPendingElevation,
+    confirmElevation,
+    cancelElevation,
     maybeAutoReturnToRanged,
     completeMove,
     handleUnitMove,
@@ -3268,6 +3272,35 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Elevation picker — a flyable unit dropped on an empty hex chooses its height */}
+      {pendingElevation && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[300px]">
+            <p className="text-white text-sm mb-3 text-center">
+              {pendingElevation.unit.unitName} — elevation (ft)
+            </p>
+            <input
+              type="range"
+              min={pendingElevation.range.min}
+              max={pendingElevation.range.max}
+              step={10}
+              value={pendingElevation.range.defaultValue}
+              onChange={e => setPendingElevation({ ...pendingElevation, range: { ...pendingElevation.range, defaultValue: Number(e.target.value) } })}
+              className="w-full accent-amber-400"
+            />
+            <div className="flex justify-between text-[11px] text-gray-400 mt-1">
+              <span>{pendingElevation.range.min} ft</span>
+              <span className="text-yellow-300">{pendingElevation.range.defaultValue} ft</span>
+              <span>{pendingElevation.range.max} ft</span>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded" onClick={cancelElevation}>Cancel</button>
+              <button className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700" onClick={() => confirmElevation(pendingElevation.range.defaultValue)}>Confirm</button>
             </div>
           </div>
         </div>

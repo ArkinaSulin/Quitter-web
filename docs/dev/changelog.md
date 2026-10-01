@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Elevation drop-modal (Phase 2) (2026-09-30)
+**Files:** src/hooks/useGameEngine.ts, src/components/ScenarioMap/{useMoveActions,ScenarioMap}.tsx, docs/dev/changelog.md
+
+- **A flyable unit dropped on an empty hex now picks its destination elevation** via a slider modal (min 0, or 10 ft over a ground-occupied hex; max `current + hexes×10`; default current). The elevation change rides the MOVE command as an `ELEVATE` sub-step (one undo entry), auto-capping a formed flyer to Open Order and following a rider.
+- `tsc` clean; 833 tests pass; build clean. No migration.
+
 ## ELEVATE command + flying formation cap (Phase 2) (2026-09-30)
 **Files:** src/lib/commandLog.ts, src/lib/flying.ts (+ test), src/hooks/useGameEngine.ts, docs/dev/changelog.md
 

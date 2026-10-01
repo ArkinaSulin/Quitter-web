@@ -403,7 +403,7 @@ export function useGameEngine({
   };
 
   const moveUnitRecorded = useCallback(
-    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean; breakToFormation?: string }): Promise<void> => {
+    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean; breakToFormation?: string; elevation?: number }): Promise<void> => {
       // Heroes convert actions at the prorated rate (5 actions = 1 full move);
       // units keep the "1 action = 1 full MP pool" economy.
       const { movementPointsAvailable, actionsAvailable } = unit.isHero
@@ -469,6 +469,35 @@ export function useGameEngine({
             { field: 'currentFormation', from: unit.currentFormation, to: options.breakToFormation },
           ],
         });
+      }
+
+      // Elevation change rides the MOVE command (one undo entry): taking off
+      // auto-caps a formed flyer to Open Order, and a rider follows its mount.
+      if (options?.elevation != null && options.elevation !== (unit.elevation ?? 0)) {
+        const elevChanges: { field: string; from: any; to: any }[] = [
+          { field: 'elevation', from: unit.elevation ?? 0, to: options.elevation },
+        ];
+        if (options.elevation > 0) {
+          const capped = flyingFormationCap(unit.currentFormation);
+          if (capped !== unit.currentFormation) {
+            elevChanges.push({ field: 'currentFormation', from: unit.currentFormation, to: capped });
+            elevChanges.push({ field: 'organizationLevel', from: unit.organizationLevel, to: getOrganizationLevel(capped) });
+          }
+        }
+        subSteps.push({
+          type: 'ELEVATE',
+          description: `${unit.unitName} ${options.elevation > (unit.elevation ?? 0) ? 'climbs to' : 'descends to'} ${options.elevation} ft`,
+          unitId: unit.id,
+          changes: elevChanges,
+        });
+        if (attachedHero) {
+          subSteps.push({
+            type: 'ELEVATE',
+            description: `${attachedHero.unitName} follows to ${options.elevation} ft`,
+            unitId: attachedHero.id,
+            changes: [{ field: 'elevation', from: attachedHero.elevation ?? 0, to: options.elevation }],
+          });
+        }
       }
 
       // Zone traps: landing on an 'entry' zone deals its damage this same command.

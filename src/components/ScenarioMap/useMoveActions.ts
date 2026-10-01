@@ -17,6 +17,7 @@ import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
+import { canFly, elevationSliderRange } from '@/lib/flying';
 import { Walls } from '@/lib/walls';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
@@ -35,7 +36,7 @@ interface MoveActionsDeps {
   addMessage: (msg: string, verboseText?: string) => void;
   addError: (msg: string, verboseText?: string) => void;
   unitMaxMP: (unit: Unit) => number;
-  moveUnitRecorded: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; stopInZoc?: boolean; breakToFormation?: string }) => Promise<void>;
+  moveUnitRecorded: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean; breakToFormation?: string; elevation?: number }) => Promise<void>;
   moveUnitFree: (unit: Unit, targetHex: Hex, attachedHero?: Unit | null, breakToFormation?: string) => Promise<void>;
   changeFormation: (unit: Unit, formation: string, formationsMap: Record<string, Formation>) => Promise<void>;
   attachHero: (hero: Unit, targetUnit: Unit, position: 'front' | 'back' | 'rider', heroMaxMP: number) => Promise<void>;
@@ -90,6 +91,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
   const [pendingHeroSwapConversion, setPendingHeroSwapConversion] = useState<PendingHeroSwapConversion | null>(null);
   const [pendingAttachOverBudget, setPendingAttachOverBudget] = useState<PendingAttachOverBudget | null>(null);
   const [pendingSwapOverBudget, setPendingSwapOverBudget] = useState<Unit | null>(null);
+  const [pendingElevation, setPendingElevation] = useState<{ unit: Unit; targetHex: Hex; cost: number; maxMP: number; attachedHero: Unit | null; heroMaxMP: number | undefined; breakToFormation: string | undefined; range: { min: number; max: number; defaultValue: number } } | null>(null);
 
   /**
    * After a melee exchange (or a move that left all hostile kill zones), a unit
@@ -124,7 +126,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }], `${unit.unitName} returned to ${primary.name}`);
   }, [displayUnits, displayAlliances, turnNumber, execute]);
 
-  const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, breakToFormation?: string) => {
+  const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, breakToFormation?: string, elevation?: number) => {
     if (overBudget) {
       const actionNote = unit.isHero
         ? `${Math.ceil(cost / heroMovePerAction(maxMP))} action(s) at ${heroMovePerAction(maxMP)} MP/action`
@@ -138,7 +140,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // a unit's morale into a rout, even when threat drops morale to zero.
     // Entering a hostile kill zone ends the move: the leftover MP is spent.
     const stopInZoc = computeThreatHexes(units, unit.id, alliances, formationsMap).has(`${targetHex.q},${targetHex.r}`);
-    await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP, undefined, { stopInZoc, breakToFormation });
+    await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP, undefined, { stopInZoc, breakToFormation, elevation });
     // The unit may have left every hostile kill zone — return to its primary
     // ranged weapon (only reverts a melee weapon, and never a manual pick).
     await maybeAutoReturnToRanged(unit);
@@ -182,8 +184,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     attachedHero?: Unit | null,
     heroMaxMP?: number,
     breakToFormation?: string,
+    elevation?: number,
   ): Promise<void> => {
-    await performMove(unit, targetHex, cost, overBudget, maxMP, attachedHero, heroMaxMP, breakToFormation);
+    await performMove(unit, targetHex, cost, overBudget, maxMP, attachedHero, heroMaxMP, breakToFormation, elevation);
     // Disengagement: a move that leaves a hostile kill zone provokes one melee
     // opportunity attack from each formed enemy whose kill zone was left (routed
     // retreats and the charge-over overrun use separate paths and are exempt).
@@ -314,6 +317,14 @@ export function useMoveActions(deps: MoveActionsDeps) {
       setPendingMove({ unit, targetHex, cost: entry.cost, attachedHero, breakToFormation });
       return;
     }
+    // A flyable unit dropping on an empty hex picks its destination elevation
+    // before the move commits (climb is free, bounded to 10 ft per hex moved).
+    if (canFly(unit)) {
+      const groundOccupied = units.some(u => u.id !== unitId && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) <= 0 && u.hex.q === targetHex.q && u.hex.r === targetHex.r);
+      const range = elevationSliderRange(unit.elevation ?? 0, entry.cost, groundOccupied);
+      setPendingElevation({ unit, targetHex, cost: entry.cost, maxMP: finalMax, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation, range });
+      return;
+    }
     await completeMove(unit, targetHex, entry.cost, false, finalMax, attachedHero, heroMax, breakToFormation);
   }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove]);
 
@@ -432,6 +443,15 @@ export function useMoveActions(deps: MoveActionsDeps) {
     await maybeAutoReturnToRanged(unit);
   }, [execute, freeMove, addError, maybeAutoReturnToRanged, units]);
 
+  const confirmElevation = useCallback((newElevation: number) => {
+    const p = pendingElevation;
+    setPendingElevation(null);
+    if (!p) return;
+    void completeMove(p.unit, p.targetHex, p.cost, false, p.maxMP, p.attachedHero, p.heroMaxMP, p.breakToFormation, newElevation);
+  }, [pendingElevation, completeMove]);
+
+  const cancelElevation = useCallback(() => setPendingElevation(null), []);
+
   return {
     pendingMove,
     setPendingMove,
@@ -445,6 +465,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
     setPendingAttachOverBudget,
     pendingSwapOverBudget,
     setPendingSwapOverBudget,
+    pendingElevation,
+    setPendingElevation,
+    confirmElevation,
+    cancelElevation,
     maybeAutoReturnToRanged,
     performMove,
     completeMove,
