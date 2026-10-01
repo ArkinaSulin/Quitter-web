@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Flyer line-of-sight over structures (Phase 2) (2026-09-30)
+**Files:** src/components/ScenarioMap/useCombatActions.ts, docs/dev/changelog.md
+
+- **A flyer ignores the shoot-over-structure disadvantage**: `performAttack` skips structure blocking in `hasLineOfSight` when the attacker is at elevation > 0 (units still block the horizontal line).
+- `tsc` clean; build clean. No migration.
+
 ## Air-layer movement (Phase 2) (2026-09-30)
 **Files:** src/components/ScenarioMap/{mapGeometry,useMoveActions,useOverlay}.tsx, docs/dev/changelog.md
 
