@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Hero mount (Phase 1, part 3): rider movement economy (2026-09-30)
+**Files:** src/components/ScenarioMap/useMoveActions.ts, src/hooks/useGameEngine.ts, docs/dev/changelog.md
+
+- **A rider rides free.** `handleUnitMove` no longer treats a `'rider'` as a co-constraint: the mount's MP is the sole movement budget (`hopCap`/`heroAffordable`/charge over-budget skip the rider's MP). The rider's MP still drains proportionally to the mount's move (tracked for dismount/mount-death) but is never a limiting factor.
+- **No action conversion for the rider.** `moveUnitRecorded` drains a rider's MP by the move cost (clamped at 0) without spending any rider action; front/back attached heroes keep the existing shared-cost behavior.
+- `tsc` clean; 824 tests pass; build clean. No migration.
+
 ## Hero mount (Phase 1, part 2): mounted-pair targeting + attack split (2026-09-30)
 **Files:** src/lib/unitCombat.ts, src/components/ScenarioMap/{useCombatActions,ScenarioMap}.tsx, supabase/migrations/106_mount_main_attack_split.sql, docs/dev/changelog.md
 

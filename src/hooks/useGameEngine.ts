@@ -429,19 +429,30 @@ export function useGameEngine({
       ];
 
       // A host with an attached hero moves the combined unit: the hero shares the
-      // move cost (its own MP/actions) and its hex follows the host.
+      // move cost (its own MP/actions) and its hex follows the host. A RIDER rides
+      // free: its MP drains proportionally (tracked, clamped at 0) but it never
+      // converts an action for the mount's move.
       if (attachedHero && heroMaxMP) {
-        const heroCost = attachedHero.isHero
-          ? applyHeroMoveCost(attachedHero, cost, heroMaxMP)
-          : applyMoveCost(attachedHero, cost, heroMaxMP);
+        let heroMp: number;
+        let heroActions: number;
+        if (attachedHero.attachedPosition === 'rider') {
+          heroMp = Math.max(0, attachedHero.movementPointsAvailable - cost);
+          heroActions = attachedHero.actionsAvailable;
+        } else {
+          const heroCost = attachedHero.isHero
+            ? applyHeroMoveCost(attachedHero, cost, heroMaxMP)
+            : applyMoveCost(attachedHero, cost, heroMaxMP);
+          heroMp = heroCost.movementPointsAvailable;
+          heroActions = heroCost.actionsAvailable;
+        }
         subSteps.push({
           type: 'MOVE',
           description: `${attachedHero.unitName} moved with ${unit.unitName}`,
           unitId: attachedHero.id,
           changes: [
             { field: 'hex', from: { ...attachedHero.hex }, to: { ...targetHex } },
-            { field: 'movementPointsAvailable', from: attachedHero.movementPointsAvailable, to: stop ? 0 : (options?.stopInZoc ? 0 : heroCost.movementPointsAvailable) },
-            { field: 'actionsAvailable', from: attachedHero.actionsAvailable, to: stop ? 0 : heroCost.actionsAvailable },
+            { field: 'movementPointsAvailable', from: attachedHero.movementPointsAvailable, to: stop ? 0 : (options?.stopInZoc ? 0 : heroMp) },
+            { field: 'actionsAvailable', from: attachedHero.actionsAvailable, to: stop ? 0 : heroActions },
           ],
         });
       }

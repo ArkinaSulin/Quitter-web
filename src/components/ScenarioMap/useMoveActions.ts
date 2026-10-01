@@ -209,6 +209,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // The hero itself (attached) is a drag-away detach, not a combined move.
     const attachedHero = unit.attachedToUnitId ? undefined : units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted);
     const heroMax = attachedHero ? unitMaxMP(attachedHero) : undefined;
+    // A RIDER rides free: the mount's MP is the sole budget; the rider's MP still
+    // drains proportionally (tracked) but never limits the move.
+    const isRider = !!attachedHero && attachedHero.attachedPosition === 'rider';
 
     // Charging units may only move forward through the front-arc charge wedge,
     // and cannot enter broken terrain (painted MP cost > 1).
@@ -226,7 +229,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
         addMessage(`${unit.unitName} cannot move there — outside the charge route`);
         return;
       }
-      const overBudget = !isMoveAffordable(unit, cost, maxMP) || (attachedHero && heroMax ? (attachedHero.isHero ? !isHeroMoveAffordable(attachedHero, cost, heroMax) : !isMoveAffordable(attachedHero, cost, heroMax)) : false);
+      const overBudget = !isMoveAffordable(unit, cost, maxMP) || (attachedHero && heroMax && !isRider ? (attachedHero.isHero ? !isHeroMoveAffordable(attachedHero, cost, heroMax) : !isMoveAffordable(attachedHero, cost, heroMax)) : false);
       if (overBudget) {
         setPendingMove({ unit, targetHex, cost, attachedHero });
         return;
@@ -269,7 +272,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // the soft over-budget confirm) use the real number instead of a hard block.
     const hopCap = Math.max(1, Math.min(
       effectiveMax,
-      attachedHero && heroMax ? heroMax : Infinity,
+      attachedHero && heroMax && !isRider ? heroMax : Infinity,
     ));
     // Occupied hex structures whose door is open/broken may be TRAVERSED (not
     // stopped on) — pass them to the reachability search.
@@ -300,7 +303,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       ? computeEffectiveMovement(unit, getFormationMultiplier(formationsMap, breakToFormation, 'movement_multiplier'))
       : effectiveMax;
     const unitAffordable = unit.isHero ? isHeroMoveAffordable(unit, entry.cost, finalMax) : isMoveAffordable(unit, entry.cost, finalMax);
-    const heroAffordable = attachedHero && heroMax ? (attachedHero.isHero ? isHeroMoveAffordable(attachedHero, entry.cost, heroMax) : isMoveAffordable(attachedHero, entry.cost, heroMax)) : true;
+    const heroAffordable = isRider ? true : (attachedHero && heroMax ? (attachedHero.isHero ? isHeroMoveAffordable(attachedHero, entry.cost, heroMax) : isMoveAffordable(attachedHero, entry.cost, heroMax)) : true);
     const overBudget = !unitAffordable || !heroAffordable;
     if (overBudget) {
       setPendingMove({ unit, targetHex, cost: entry.cost, attachedHero, breakToFormation });
