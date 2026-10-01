@@ -30,7 +30,7 @@ import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
-import { computeOccupiedHexes } from './mapGeometry';
+import { computeOccupiedHexes, elevationGapHexes, elevationGapFeet } from './mapGeometry';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingAttack, PendingAttackCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch } from './SoftEnforcementModals';
 import { useMagicCast } from '@/hooks/useMagicCast';
@@ -130,7 +130,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // it owns none. Magic weapons always act at range; everything beyond adjacency
     // is a ranged attack (thrown/shot).
     const dist = hexDistance(attacker.hex, target.hex);
-    const isAdjacent = isAdjacentDistance(dist);
+    const verticalFeet = elevationGapFeet(attacker.elevation, target.elevation);
+    const isAdjacent = isAdjacentDistance(dist) && verticalFeet <= 10;
     let attackerSwitchIdx: number | null = null;
     let defenderSwitchIdx: number | null = null;
     let usedFists = false;
@@ -976,7 +977,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const attackerGroup = alliances[attacker.team] || 'friendly';
     const targetGroup = alliances[target.team] || 'friendly';
     const dist = hexDistance(attacker.hex, target.hex);
-    const isAdjacent = isAdjacentDistance(dist);
+    const verticalHex = elevationGapHexes(attacker.elevation, target.elevation);
+    const verticalFeet = elevationGapFeet(attacker.elevation, target.elevation);
+    const effDist = dist + verticalHex;
+    // Melee needs horizontal adjacency AND a vertical gap of at most 10 ft.
+    const isAdjacent = isAdjacentDistance(dist) && verticalFeet <= 10;
 
     const attackerWeapons = parseWeapons(attacker.weaponString || '');
     // A resumed attack (post weapon-switch confirm) carries the chosen index; use
@@ -1014,8 +1019,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // switch manually and redo the attack. None -> warn and abort.
     // Range effects only extend RANGED weapons (maxRange > 1).
     const rangeBonus = (weapon.maxRange ?? 1) > 1 ? rangeBonusAt(attacker, groundZones) : 0;
-    if (dist > weapon.maxRange + rangeBonus) {
-      const reaching = weaponIndicesReaching(attackerWeapons, attacker.activeWeaponIndex ?? 0, Math.max(1, dist - rangeBonus))
+    if (effDist > weapon.maxRange + rangeBonus) {
+      const reaching = weaponIndicesReaching(attackerWeapons, attacker.activeWeaponIndex ?? 0, Math.max(1, effDist - rangeBonus))
         .filter(i => validateTargetAlliance(attackerGroup, targetGroup, attackerWeapons[i]) === 'ok');
       if (reaching.length > 1) {
         const idx = reaching[0];

@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Vertical attack reach (Phase 2) (2026-09-30)
+**Files:** src/components/ScenarioMap/{mapGeometry,useCombatActions}.tsx, docs/dev/changelog.md
+
+- **Elevation now gates attacks**: each 10 ft of elevation counts as 1 hex for range (`effDist = hexDistance + |Δelevation|/10`), and **melee requires a vertical gap ≤ 10 ft** (plus horizontal adjacency). A ground unit therefore cannot melee a unit 20 ft up, and ranged reach accounts for the vertical gap.
+- Added `elevationGapFeet` / `elevationGapHexes` helpers in `mapGeometry`.
+- `tsc` clean; 824 tests pass; build clean. No migration.
+
 ## Elevation rendering: offset token + shadow + badge (Phase 2) (2026-09-30)
 **Files:** src/components/ScenarioMap/{mapGeometry,useCanvasDraw,UnitEditorModal}.tsx, docs/dev/changelog.md
 

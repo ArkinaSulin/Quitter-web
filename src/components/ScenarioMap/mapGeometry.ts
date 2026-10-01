@@ -284,6 +284,16 @@ export function elevationOffset(elevation: number | undefined, hexSize: number):
   return { dx: distance * Math.SQRT1_2, dy: -distance * Math.SQRT1_2 };
 }
 
+/** Vertical distance in feet between two elevations (0 when both grounded). */
+export function elevationGapFeet(a: number | undefined, b: number | undefined): number {
+  return Math.abs((a ?? 0) - (b ?? 0));
+}
+
+/** Vertical distance in whole hexes (each 10 ft = 1 hex). */
+export function elevationGapHexes(a: number | undefined, b: number | undefined): number {
+  return Math.floor(elevationGapFeet(a, b) / 10);
+}
+
 export const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
   { q: 0, r: 1, s: -1 },
