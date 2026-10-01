@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Elevation + fly speed fields (Phase 2, migration 108) (2026-09-30)
+**Files:** supabase/migrations/108_unit_elevation_fly.sql, src/types/gameProtocol.ts, src/hooks/useSupabaseSync.ts, docs/dev/changelog.md
+
+- **Aerial data model**: `units.elevation` (feet, 10-ft steps, 0 = ground), `units.fly_speed` (max aerial pool; `> 0` = can fly), `units.fly_speed_available` (current aerial pool). Wired through the `unit_field_to_column` command-log mapping (migration **108**), the Supabase row mappers, and spawn defaults.
+- `tsc` clean; 824 tests pass; build clean. **Apply 108 in Supabase.**
+
 ## Hero mount: per-pair split + mount-target gating (migration 107) (2026-09-30)
 **Files:** supabase/migrations/107_unit_mount_split.sql, src/types/gameProtocol.ts, src/hooks/useSupabaseSync.ts, src/components/ScenarioMap/{useCombatActions,useMoveActions,ContextMenu,UnitEditorModal}.tsx, docs/dev/changelog.md
 

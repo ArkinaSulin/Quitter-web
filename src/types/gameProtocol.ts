@@ -187,6 +187,12 @@ export interface Unit {
   int: number;
   wis: number;
   cha: number;
+  /** Current elevation in feet (10-ft steps; 0 = ground). Only set on flyers. */
+  elevation?: number;
+  /** Max aerial movement pool (hexes); > 0 = can fly (derived). */
+  flySpeed?: number;
+  /** Current aerial movement pool (hexes). */
+  flySpeedAvailable?: number;
 }
 
 // --- Temporary effects (buffs / debuffs / damage over time) ---
