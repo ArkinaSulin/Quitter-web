@@ -220,15 +220,16 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const flying = (unit.elevation ?? 0) > 0;
 
     // Charging units may only move forward through the front-arc charge wedge,
-    // and cannot enter broken terrain (painted MP cost > 1).
+    // and cannot enter broken terrain (painted MP cost > 1). A stooping flyer
+    // charges on the air layer (over terrain/walls, air-occupied only).
     if (unit.isCharging) {
-      const occupied = computeOccupiedHexes(units, unitId);
+      const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId);
       const maxMP = unitMaxMP(unit);
       const mounted = !!unit.mountId || !!unit.mountName;
       const chargeReach = computeChargeReachable(
         unit, occupied, maxMP,
-        makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted }),
-        makeChargeBlockedEdge(walls, { structures, templates: structureTemplates, zones: groundZones, orgLevel: getOrganizationLevel(unit.currentFormation), isMounted: mounted }),
+        flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted }),
+        flying ? undefined : makeChargeBlockedEdge(walls, { structures, templates: structureTemplates, zones: groundZones, orgLevel: getOrganizationLevel(unit.currentFormation), isMounted: mounted }),
       );
       const cost = chargeReach.get(`${targetHex.q},${targetHex.r}`);
       if (!cost) {

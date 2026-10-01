@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Stoop (flying charge) — first pass (Phase 2) (2026-09-30)
+**Files:** src/components/ScenarioMap/{ContextMenu,useMoveActions}.tsx, src/lib/chargeOver.ts, docs/dev/changelog.md
+
+- **Stoop!** context entry (flyers at elevation > 0) reuses the charge machinery: the charge move uses the air layer (over terrain/walls, air-occupied only), and a stooping charger only overruns another airborne target (`isChargeOverEligible` requires both at elevation > 0). Org-drop and double damage reuse `isCharging`.
+- Note: dive-during-stoop and the "horizontal + vertical (10 ft = 1 hex)" charge-distance accumulation are pending refinements.
+- `tsc` clean; 834 tests pass; build clean. No migration.
+
 ## Dive/climb attack for flyers (Phase 2) (2026-09-30)
 **Files:** src/lib/flying.ts (+ test), src/components/ScenarioMap/{useCombatActions,ScenarioMap}.tsx, docs/dev/changelog.md
 

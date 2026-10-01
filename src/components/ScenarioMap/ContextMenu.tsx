@@ -249,12 +249,20 @@ export function ContextMenu({
               Move Hero to {attachedHero.attachedPosition === 'back' ? 'Front' : 'Back'} (1 MP)
             </div>
           )}
-          {unit.canCharge && !isUnitRouted(unit) && canFormationCharge(formationsMap?.[unit.currentFormation]) && !unit.isCharging && unit.actionsAvailable >= 1 && chargeEnabled && onCharge && (
+          {unit.canCharge && (unit.elevation ?? 0) <= 0 && !isUnitRouted(unit) && canFormationCharge(formationsMap?.[unit.currentFormation]) && !unit.isCharging && unit.actionsAvailable >= 1 && chargeEnabled && onCharge && (
             <div
               className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
               onClick={() => { onCharge(); onClose(); }}
             >
               Charge!
+            </div>
+          )}
+          {(unit.flySpeed ?? 0) > 0 && (unit.elevation ?? 0) > 0 && !isUnitRouted(unit) && !unit.isCharging && unit.actionsAvailable >= 1 && chargeEnabled && onCharge && (
+            <div
+              className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
+              onClick={() => { onCharge(); onClose(); }}
+            >
+              Stoop!
             </div>
           )}
           <div className="border-t border-gray-700 my-1" />
