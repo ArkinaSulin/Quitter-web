@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Air-layer movement (Phase 2) (2026-09-30)
+**Files:** src/components/ScenarioMap/{mapGeometry,useMoveActions,useOverlay}.tsx, docs/dev/changelog.md
+
+- **Flyers move on a single air layer.** A unit at `elevation > 0` moves at flat 1 MP/hex and ignores terrain cost, walls/structures, org gates and ground-unit occupancy; it only collides with other elevated units (`airOccupiedHexes`, one flyer per hex). Wired into both the executed move (`useMoveActions.handleUnitMove`) and the drag overlay (`useOverlay`).
+- `tsc` clean; 824 tests pass; build clean. No migration.
+
 ## Elevation threat / ZoC / pursue gating (Phase 2) (2026-09-30)
 **Files:** src/components/ScenarioMap/{mapGeometry,useCombatActions}.tsx, docs/dev/changelog.md
 

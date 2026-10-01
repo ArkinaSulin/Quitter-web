@@ -16,7 +16,7 @@ import { WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
-import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
+import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls } from '@/lib/walls';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
@@ -212,6 +212,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // A RIDER rides free: the mount's MP is the sole budget; the rider's MP still
     // drains proportionally (tracked) but never limits the move.
     const isRider = !!attachedHero && attachedHero.attachedPosition === 'rider';
+    // A flying unit (elevation > 0) moves on the air layer: flat 1 MP/hex, ignores
+    // terrain/walls/structures and ground occupancy, only collides with other flyers.
+    const flying = (unit.elevation ?? 0) > 0;
 
     // Charging units may only move forward through the front-arc charge wedge,
     // and cannot enter broken terrain (painted MP cost > 1).
@@ -239,12 +242,12 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
 
     if (freeMove) {
-      const occupied = computeOccupiedHexes(units, unitId);
+      const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId);
       if (occupied.has(`${targetHex.q},${targetHex.r}`)) {
         addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — hex occupied`);
         return;
       }
-      const breakToFormation = entryBreakFormation(unit.hex, targetHex, unit.currentFormation, structures, structureTemplates, groundZones) ?? undefined;
+      const breakToFormation = flying ? undefined : (entryBreakFormation(unit.hex, targetHex, unit.currentFormation, structures, structureTemplates, groundZones) ?? undefined);
       await moveUnitFree(unit, targetHex, attachedHero, breakToFormation);
       await maybeAutoReturnToRanged(unit);
       offerReactionsFor({ ...unit, hex: targetHex });
@@ -255,11 +258,11 @@ export function useMoveActions(deps: MoveActionsDeps) {
 
     const movementMult = getFormationMultiplier(formationsMap, unit.currentFormation, 'movement_multiplier');
     const effectiveMax = computeEffectiveMovement(unit, movementMult);
-    const occupied = computeOccupiedHexes(units, unitId);
+    const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
     const mounted = !!unit.mountId || !!unit.mountName;
-    const costOfHex = makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted });
-    const blockedEdge = makeBlockedEdge(walls, {
+    const costOfHex = flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted });
+    const blockedEdge = flying ? undefined : makeBlockedEdge(walls, {
       structures,
       templates: structureTemplates,
       zones: groundZones,
@@ -276,13 +279,15 @@ export function useMoveActions(deps: MoveActionsDeps) {
     ));
     // Occupied hex structures whose door is open/broken may be TRAVERSED (not
     // stopped on) — pass them to the reachability search.
-    const passThrough = doorPassThroughHexes(structures, structureTemplates, occupied);
+    const passThrough = flying ? undefined : doorPassThroughHexes(structures, structureTemplates, occupied);
     // Org-gate context: a `max_org_level_allowed` gate breaks the formation at the
     // crossing point, rescaling the movement budget by the new multiplier.
     const movementMultipliers: Record<string, number> = {};
     for (const [name, f] of Object.entries(formationsMap)) movementMultipliers[name] = f.movement_multiplier;
-    const breakOnEntry = (fq: number, fr: number, tq: number, tr: number, formation: string) =>
-      entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, structures, structureTemplates, groundZones);
+    const breakOnEntry = flying
+      ? () => null
+      : (fq: number, fr: number, tq: number, tr: number, formation: string) =>
+          entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, structures, structureTemplates, groundZones);
     const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true, blockedEdge, hopCap, passThrough, { movementMultipliers, breakOnEntry });
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {

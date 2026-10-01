@@ -14,7 +14,7 @@ import { isRangedCapableWeapon, reactionMovePool } from '@/lib/archerReaction';
 import { determineCombatPosition } from '@/lib/unitCombat';
 import { canRangedTarget } from '@/lib/formationRules';
 import { arcOfTarget } from '@/lib/attackDirection';
-import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
+import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls, EdgeRef } from '@/lib/walls';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
@@ -125,7 +125,8 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
   if (draggingUnitId) {
     const draggedUnit = units.find(u => u.id === draggingUnitId);
     if (!draggedUnit) return {};
-    const occupied = computeOccupiedHexes(units);
+    const flying = (draggedUnit.elevation ?? 0) > 0;
+    const occupied = flying ? airOccupiedHexes(units) : computeOccupiedHexes(units);
 
     if (freeMove) {
       const combined: Record<string, string> = {};
@@ -177,8 +178,8 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       budget = Math.min(budget, heroBudget);
       hopCap = Math.min(hopCap, heroHop);
     }
-    const passThrough = doorPassThroughHexes(structures, templates, occupied);
-    const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, costOfHexFor(isMountedOf(draggedUnit)), false, blockedEdgeFor(getOrganizationLevel(draggedUnit.currentFormation), isMountedOf(draggedUnit)), hopCap, passThrough, org);
+    const passThrough = flying ? undefined : doorPassThroughHexes(structures, templates, occupied);
+    const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, flying ? undefined : costOfHexFor(isMountedOf(draggedUnit)), false, flying ? undefined : blockedEdgeFor(getOrganizationLevel(draggedUnit.currentFormation), isMountedOf(draggedUnit)), hopCap, passThrough, flying ? undefined : org);
 
     const combined: Record<string, string> = {};
 

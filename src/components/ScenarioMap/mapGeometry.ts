@@ -326,6 +326,16 @@ export function computeOccupiedHexes(allUnits: Unit[], excludeUnitId?: string): 
   );
 }
 
+/** Hexes occupied by ELEVATED units (a single air layer — one flyer per hex,
+ *  regardless of elevation). Ground units never block a flyer. */
+export function airOccupiedHexes(allUnits: Unit[], excludeUnitId?: string): Set<string> {
+  return new Set(
+    allUnits
+      .filter(u => isUnitInteractable(u) && u.id !== excludeUnitId && (u.elevation ?? 0) > 0)
+      .map(u => `${u.hex.q},${u.hex.r}`),
+  );
+}
+
 export function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alliances: Record<string, AllianceGroup>, formationsMap: Record<string, Formation>): Set<string> {
   const draggedUnit = allUnits.find(u => u.id === draggedUnitId);
   const draggedGroup = alliances[draggedUnit?.team ?? ''] || 'friendly';
