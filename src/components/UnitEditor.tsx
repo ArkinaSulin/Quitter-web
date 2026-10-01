@@ -1071,6 +1071,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                         <div className="flex items-end gap-2">
                           <Cell label="Base AC"><NumInput value={formData.baseAc || 10} min={1} max={30} onChange={(v) => updateFormData('baseAc', v || 10)} /></Cell>
                           <Cell label="Movement"><NumInput value={formData.movementPoints || 3} min={1} onChange={(v) => updateFormData('movementPoints', Math.max(1, v || 3))} /></Cell>
+                          <Cell label="Fly speed"><NumInput value={formData.flySpeed || 0} min={0} onChange={(v) => updateFormData('flySpeed', Math.max(0, Math.floor(v) || 0))} /></Cell>
                           <Cell label="Darkvision"><NumInput value={formData.darkvision || 0} min={0} max={9} onChange={(v) => updateFormData('darkvision', Math.max(0, Math.min(9, Math.floor(v) || 0)))} /></Cell>
                         </div>
                         <div className="flex items-end gap-2">

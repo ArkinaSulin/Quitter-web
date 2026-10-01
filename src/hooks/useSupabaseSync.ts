@@ -411,7 +411,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       attachedPosition: null,
       mountSplit: null,
       elevation: 0,
-      flySpeed: 0,
+      flySpeed: template.flySpeed ?? 0,
       flySpeedAvailable: 0,
       currentTroopCount: troopCount,
       maxTroopCount: troopCount,

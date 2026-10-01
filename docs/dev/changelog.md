@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Template fly speed (Phase 2, migration 109) (2026-09-30)
+**Files:** supabase/migrations/109_unit_template_fly_speed.sql, src/types/gameProtocol.ts, src/lib/templateMappers.ts, src/hooks/useSupabaseSync.ts, src/components/UnitEditor.tsx, docs/dev/changelog.md
+
+- **`flySpeed` is now authored on the template** (`unit_templates.fly_speed`, migration **109**), copied to each spawned unit (`spawn` reads `template.flySpeed ?? 0`), and editable in the **Unit Editor** next to Movement. The scenario **Unit Editor Modal** already exposes Elevation + Fly speed per placed unit.
+- `tsc` clean; 824 tests pass; build clean. **Apply 109 in Supabase.**
+
 ## Space = air-only view (Phase 2) (2026-09-30)
 **Files:** src/components/ScenarioMap/{useCanvasDraw,ScenarioMap}.tsx, docs/dev/changelog.md
 

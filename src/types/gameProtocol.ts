@@ -73,6 +73,8 @@ export interface UnitTemplate {
   mountId: string;
   mountName?: string;
   movementPoints: number;
+  /** Aerial movement pool (hexes); > 0 = the unit can fly. Copied to spawned units. */
+  flySpeed?: number;
   aggressiveness: number;
   baseMorale: number;
   /** Hero aura: same-alliance allies within 7 hexes gain Commanding Presence +N
