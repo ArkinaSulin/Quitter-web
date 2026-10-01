@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Flying module: consolidated helpers (Phase 2) (2026-09-30)
+**Files:** src/lib/flying.ts (+ test), src/components/ScenarioMap/mapGeometry.ts, docs/dev/changelog.md
+
+- **New `src/lib/flying.ts`** centralises the pure flying logic: `canFly`, `elevationGapFeet/Hexes`, `elevationOffset`, `airOccupiedHexes`, `maxElevationAfter` (free climb, 10 ft/hex), `elevationSliderRange` (min 0, or 10 ft over a ground-occupied hex), `carryRule` (fly/carry/leave), and `FLYING_MAX_FORMATION`. `mapGeometry` re-exports the moved helpers so existing importers are unchanged.
+- `tsc` clean; 832 tests pass; build clean. No migration.
+
 ## Template fly speed (Phase 2, migration 109) (2026-09-30)
 **Files:** supabase/migrations/109_unit_template_fly_speed.sql, src/types/gameProtocol.ts, src/lib/templateMappers.ts, src/hooks/useSupabaseSync.ts, src/components/UnitEditor.tsx, docs/dev/changelog.md
 

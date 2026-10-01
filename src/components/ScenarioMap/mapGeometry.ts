@@ -13,6 +13,11 @@ import { GroundEffect } from '@/types/gameProtocol';
 import { modifierAmount } from '@/lib/effectTemplates';
 import type { CostOfHexFn, BlockedEdgeFn } from '@/lib/moveCost';
 
+// Re-export the elevation/flying helpers so existing importers keep working
+// (the canonical implementations live in src/lib/flying.ts).
+import { elevationOffset, elevationGapFeet, elevationGapHexes, airOccupiedHexes, canFly } from '@/lib/flying';
+export { elevationOffset, elevationGapFeet, elevationGapHexes, airOccupiedHexes, canFly };
+
 export const HEX_SIZE = 100;
 export const TOKEN_WIDTH = HEX_SIZE * 1.6;
 export const TOKEN_HEIGHT = TOKEN_WIDTH * 0.75;
@@ -272,28 +277,6 @@ export function getAttachedHeroPos(unitHex: { q: number; r: number; s: number },
 export const corpseLast = (a: Unit, b: Unit) =>
   ((a.currentUnitHp ?? 0) <= 0 ? 0 : 1) - ((b.currentUnitHp ?? 0) <= 0 ? 0 : 1);
 
-/**
- * Screen-pixel offset of an ELEVATED token from its ground hex center, in the NE
- * (45°) direction. Scales with elevation: half a hex radius at 10 ft, a full hex
- * radius at 20 ft+ (capped). Returns (0,0) when grounded.
- */
-export function elevationOffset(elevation: number | undefined, hexSize: number): { dx: number; dy: number } {
-  const feet = elevation ?? 0;
-  if (feet <= 0) return { dx: 0, dy: 0 };
-  const distance = hexSize * 0.5 * Math.min(2, feet / 10);
-  return { dx: distance * Math.SQRT1_2, dy: -distance * Math.SQRT1_2 };
-}
-
-/** Vertical distance in feet between two elevations (0 when both grounded). */
-export function elevationGapFeet(a: number | undefined, b: number | undefined): number {
-  return Math.abs((a ?? 0) - (b ?? 0));
-}
-
-/** Vertical distance in whole hexes (each 10 ft = 1 hex). */
-export function elevationGapHexes(a: number | undefined, b: number | undefined): number {
-  return Math.floor(elevationGapFeet(a, b) / 10);
-}
-
 export const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
   { q: 0, r: 1, s: -1 },
@@ -322,16 +305,6 @@ export function computeOccupiedHexes(allUnits: Unit[], excludeUnitId?: string): 
   return new Set(
     allUnits
       .filter(u => isUnitInteractable(u) && u.id !== excludeUnitId)
-      .map(u => `${u.hex.q},${u.hex.r}`),
-  );
-}
-
-/** Hexes occupied by ELEVATED units (a single air layer — one flyer per hex,
- *  regardless of elevation). Ground units never block a flyer. */
-export function airOccupiedHexes(allUnits: Unit[], excludeUnitId?: string): Set<string> {
-  return new Set(
-    allUnits
-      .filter(u => isUnitInteractable(u) && u.id !== excludeUnitId && (u.elevation ?? 0) > 0)
       .map(u => `${u.hex.q},${u.hex.r}`),
   );
 }
