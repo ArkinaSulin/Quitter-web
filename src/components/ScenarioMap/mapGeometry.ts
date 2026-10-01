@@ -329,12 +329,16 @@ export function computeOccupiedHexes(allUnits: Unit[], excludeUnitId?: string): 
 export function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alliances: Record<string, AllianceGroup>, formationsMap: Record<string, Formation>): Set<string> {
   const draggedUnit = allUnits.find(u => u.id === draggedUnitId);
   const draggedGroup = alliances[draggedUnit?.team ?? ''] || 'friendly';
+  const draggedElevation = draggedUnit?.elevation ?? 0;
   const occupied = computeOccupiedHexes(allUnits);
   const threats = new Set<string>();
   for (const unit of allUnits) {
     if (unit.isDeleted || unit.hidden || unit.id === draggedUnitId || unit.attachedToUnitId || unit.isHero || isUnitRouted(unit) || isDeadCorpse(unit)) continue;
     const unitGroup = alliances[unit.team] || 'friendly';
     if (unitGroup === draggedGroup) continue;
+    // Kill zones only reach 10 ft vertically: a flyer ignores ground ZoC, and a
+    // flyer higher than 10 ft above the mover exerts none.
+    if (elevationGapFeet(unit.elevation, draggedElevation) > 10) continue;
     for (const dir of HEX_DIRS) {
       const nq = unit.hex.q + dir.q;
       const nr = unit.hex.r + dir.r;

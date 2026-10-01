@@ -785,6 +785,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const moverAlliance = alliances[mover.team] || 'friendly';
     let live = units.find(u => u.id === mover.id) ?? mover;
     if (live.hidden) return; // hidden units are concealed — no scatter/pursue reaction
+    if ((live.elevation ?? 0) > 0) return; // flyers are never pursued
 
     if (opts?.cornered) {
       // No legal retreat: every eligible ZoC unit strikes the standing router.

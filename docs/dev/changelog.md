@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Elevation threat / ZoC / pursue gating (Phase 2) (2026-09-30)
+**Files:** src/components/ScenarioMap/{mapGeometry,useCombatActions}.tsx, docs/dev/changelog.md
+
+- **Kill zones only reach 10 ft vertically**: `computeThreatHexes` now skips any unit whose elevation is more than 10 ft from the mover — so a flyer ignores ground ZoC, and a flyer higher than 10 ft above the mover exerts none.
+- **Flyers are never pursued**: `performPursuits` returns early for a mover at elevation > 0.
+- `tsc` clean; 824 tests pass; build clean. No migration.
+
 ## Vertical attack reach (Phase 2) (2026-09-30)
 **Files:** src/components/ScenarioMap/{mapGeometry,useCombatActions}.tsx, docs/dev/changelog.md
 
