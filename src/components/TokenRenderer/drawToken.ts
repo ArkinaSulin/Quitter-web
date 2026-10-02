@@ -739,7 +739,7 @@ function drawHeroSquareToken(
   const halfSize = displaySize / 2;
 
   ctx.beginPath();
-  ctx.arc(cx, cy, halfSize, 0, 2 * Math.PI);
+  ctx.arc(cx, cy, halfSize * 1.1, 0, 2 * Math.PI);
   ctx.fillStyle = teamColor + 'BF';
   ctx.fill();
   ctx.strokeStyle = teamColor;
