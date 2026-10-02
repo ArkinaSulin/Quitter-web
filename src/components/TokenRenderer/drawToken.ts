@@ -612,21 +612,6 @@ function getHeroSquareSize(unitTokenHeight: number, sizeCategory: number): numbe
   return unitTokenHeight * ratio;
 }
 
-function roundedSquarePath(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, radius: number) {
-  const half = size / 2;
-  ctx.beginPath();
-  ctx.moveTo(cx - half + radius, cy - half);
-  ctx.lineTo(cx + half - radius, cy - half);
-  ctx.quadraticCurveTo(cx + half, cy - half, cx + half, cy - half + radius);
-  ctx.lineTo(cx + half, cy + half - radius);
-  ctx.quadraticCurveTo(cx + half, cy + half, cx + half - radius, cy + half);
-  ctx.lineTo(cx - half + radius, cy + half);
-  ctx.quadraticCurveTo(cx - half, cy + half, cx - half, cy + half - radius);
-  ctx.lineTo(cx - half, cy - half + radius);
-  ctx.quadraticCurveTo(cx - half, cy - half, cx - half + radius, cy - half);
-  ctx.closePath();
-}
-
 function drawHeroSquareHpBar(ctx: CanvasRenderingContext2D, cx: number, cy: number, squareSize: number, hp: number, maxHp: number) {
   const hpAreaTop = cy - squareSize / 2 + squareSize * 0.75;
   const hpAreaHeight = squareSize * 0.25;
@@ -752,9 +737,9 @@ function drawHeroSquareToken(
   const heroSize = getHeroSquareSize(tokenHeight, unit.sizeCategory || 100);
   const displaySize = isAttached ? heroSize / 2 : heroSize;
   const halfSize = displaySize / 2;
-  const cornerRadius = Math.max(2, displaySize * 0.08);
 
-  roundedSquarePath(ctx, cx, cy, displaySize, cornerRadius);
+  ctx.beginPath();
+  ctx.arc(cx, cy, halfSize, 0, 2 * Math.PI);
   ctx.fillStyle = teamColor + 'BF';
   ctx.fill();
   ctx.strokeStyle = teamColor;

@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Hero tokens render as circles (2026-09-30)
+**Files:** src/components/TokenRenderer/drawToken.ts, docs/dev/changelog.md
+
+- **Hero tokens are now circles** instead of rounded squares, at the same dimension (diameter = the old square side). No content moved — team shape, hero image, HP bar, action badge, routed flag and name keep their positions. Removed the now-unused `roundedSquarePath` helper.
+- `tsc` clean; 835 tests pass; build clean. No migration.
+
 ## Structure reach + leave-hero-behind (Phase 2) (2026-09-30)
 **Files:** src/lib/flying.ts (+ test), src/components/ScenarioMap/{ScenarioMap,useMoveActions}.tsx, docs/dev/changelog.md
 
