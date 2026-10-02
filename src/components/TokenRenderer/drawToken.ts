@@ -607,7 +607,7 @@ export function drawSpellCastToken(options: DrawSpellCastTokenOptions): void {
 }
 
 // ---- Hero square helpers ----
-function getHeroSquareSize(unitTokenHeight: number, sizeCategory: number): number {
+export function getHeroSquareSize(unitTokenHeight: number, sizeCategory: number): number {
   const ratio = HERO_SQUARE_RATIOS[sizeCategory] || 0.5;
   return unitTokenHeight * ratio;
 }

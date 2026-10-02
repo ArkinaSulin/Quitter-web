@@ -12,6 +12,7 @@ import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { modifierAmount } from '@/lib/effectTemplates';
 import type { CostOfHexFn, BlockedEdgeFn } from '@/lib/moveCost';
+import { getHeroSquareSize } from '@/components/TokenRenderer/drawToken';
 
 // Re-export the elevation/flying helpers so existing importers keep working
 // (the canonical implementations live in src/lib/flying.ts).
@@ -259,12 +260,13 @@ export interface MapBackgroundConfig {
 }
 
 /** Pixel offset of an attached hero token around its host's hex. */
-export function getAttachedHeroPos(unitHex: { q: number; r: number; s: number }, facing: number, attachedPosition: 'front' | 'back' | 'rider' | null = 'front') {
+export function getAttachedHeroPos(unitHex: { q: number; r: number; s: number }, facing: number, attachedPosition: 'front' | 'back' | 'rider' | null = 'front', sizeCategory = 100) {
   const pos = hexToPixel(unitHex, HEX_SIZE);
   if (attachedPosition === 'rider') {
-    // Mounted: the rider sits right-north of the mount's center, overlapping a little.
-    const d = HEX_SIZE * 0.25;
-    return { x: pos.x + d * Math.SQRT1_2, y: pos.y - d * Math.SQRT1_2 };
+    // Mounted: the rider sits due NORTH of the mount's center, its center at 90%
+    // of the mount's circle radius (slight overlap), scaling with mount size.
+    const mountRadius = getHeroSquareSize(TOKEN_HEIGHT, sizeCategory) / 2 * 1.1;
+    return { x: pos.x, y: pos.y - 0.9 * mountRadius };
   }
   const vertexIndex = attachedPosition === 'back' ? (facing + 2) % 6 : (facing + 5) % 6;
   const angle = (60 * vertexIndex - 30) * Math.PI / 180;

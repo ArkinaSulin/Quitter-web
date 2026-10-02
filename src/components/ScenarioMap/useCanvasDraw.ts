@@ -517,7 +517,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
 
       const attachedHero = attachedByHost.get(unit.id);
       if (attachedHero) {
-        const heroPos = getAttachedHeroPos(unit.hex, unit.facing, attachedHero.attachedPosition);
+        const heroPos = getAttachedHeroPos(unit.hex, unit.facing, attachedHero.attachedPosition, unit.sizeCategory);
         const elevOff = elevationOffset(unit.elevation, HEX_SIZE);
         const heroCx = heroPos.x * currentZoom + offsetX + elevOff.dx * currentZoom;
         const heroCy = heroPos.y * currentZoom + offsetY + elevOff.dy * currentZoom;
@@ -961,7 +961,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
 
         const attachedHero = units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted);
         if (attachedHero) {
-          const heroPos = getAttachedHeroPos(unit.hex, unit.facing);
+          const heroPos = getAttachedHeroPos(unit.hex, unit.facing, attachedHero.attachedPosition, unit.sizeCategory);
           const heroCx = heroPos.x * fitZoom + fitOffsetX;
           const heroCy = heroPos.y * fitZoom + fitOffsetY;
           try {

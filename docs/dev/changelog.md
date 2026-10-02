@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Rider sits due north, size-relative offset (2026-09-30)
+**Files:** src/components/TokenRenderer/drawToken.ts, src/components/ScenarioMap/{mapGeometry,useCanvasDraw}.tsx, docs/dev/changelog.md
+
+- **The rider now renders due north of its mount**, its center at **90% of the mount's circle radius** (slight overlap), scaling with the mount's `sizeCategory` instead of a fixed pixel offset. Exported `getHeroSquareSize`; also fixed the screenshot path to pass the hero's `attachedPosition`.
+- `tsc` clean; 835 tests pass; build clean. No migration.
+
 ## Hero tokens render as circles (2026-09-30)
 **Files:** src/components/TokenRenderer/drawToken.ts, docs/dev/changelog.md
 
