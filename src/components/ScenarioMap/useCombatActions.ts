@@ -1117,6 +1117,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
         sizeCategory: target.sizeCategory,
         visualScale: target.visualScale,
         mountId: target.mountId,
+        flySpeed: target.flySpeed ?? 0,
       };
       magicCast.openCast({
         casterId: playerId,

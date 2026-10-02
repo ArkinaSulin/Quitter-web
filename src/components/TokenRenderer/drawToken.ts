@@ -273,6 +273,7 @@ export function drawToken(options: DrawTokenOptions): void {
   const isRouted = isUnitRouted(unit);
   const isCorpse = (unit.currentUnitHp ?? 0) <= 0;
   const isMounted = !!unit.mountId;
+  const isFlyable = (unit.flySpeed ?? 0) > 0;
 
   // Determine effective formation for rendering decisions
   let effectiveFormation = formation;
@@ -336,7 +337,36 @@ export function drawToken(options: DrawTokenOptions): void {
     const px = x - width/2 + dx;
     const py = y - height/2 + dy;
 
-    if (isMounted) {
+    if (isFlyable) {
+      // Flyable units render their troops as stars (same height as mounted triangles).
+      const triHeight = dotRadius * config.triangleHeightMultiplier;
+      const outerR = triHeight / 2;
+      const innerR = outerR * 0.5;
+      ctx.save();
+      ctx.translate(px, py);
+      if (direction !== undefined) ctx.rotate(direction);
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const r = i % 2 === 0 ? outerR : innerR;
+        const angle = (Math.PI / 5) * i - Math.PI / 2;
+        const sx = r * Math.cos(angle);
+        const sy = r * Math.sin(angle);
+        if (i === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+      }
+      ctx.closePath();
+      if (isDead) {
+        ctx.strokeStyle = dotColor;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([1, 2]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        ctx.fillStyle = dotColor;
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (isMounted) {
       const baseWidth = dotRadius * config.triangleWidthMultiplier;
       const triHeight = dotRadius * config.triangleHeightMultiplier;
       ctx.save();
@@ -430,6 +460,7 @@ export interface SpellCastTokenSnapshot {
   sizeCategory: number;
   visualScale: number;
   mountId: string | null;
+  flySpeed: number;
 }
 
 export interface DrawSpellCastTokenOptions {
@@ -449,6 +480,7 @@ export interface SpellCastLayout {
   positions: Array<{ x: number; y: number; isDead: boolean; direction?: number }>;
   dotRadius: number;
   isMounted: boolean;
+  isFlyable: boolean;
   config: FormationConfig;
   dotColor: string;
 }
@@ -474,6 +506,7 @@ export function computeSpellCastLayout(
   const sizeCategory = snapshot.sizeCategory || 100;
   const formation = snapshot.currentFormation || 'Close Order';
   const isMounted = !!snapshot.mountId;
+  const isFlyable = (snapshot.flySpeed ?? 0) > 0;
 
   let effectiveFormation = formation;
   if (isMounted && (formation === 'Phalanx' || formation === 'Shield Wall')) {
@@ -505,7 +538,7 @@ export function computeSpellCastLayout(
     { fitVertical: false, top: 0.05, bottom: 0.95 },
   );
 
-  return { positions, dotRadius, isMounted, config, dotColor };
+  return { positions, dotRadius, isMounted, isFlyable, config, dotColor };
 }
 
 /**
@@ -543,7 +576,7 @@ export function drawSpellCastToken(options: DrawSpellCastTokenOptions): void {
   ctx.stroke();
   ctx.restore();
 
-  const { positions, dotRadius, isMounted, config, dotColor } = computeSpellCastLayout(snapshot, width, height, seed, sizeCategories, formationsMap);
+  const { positions, dotRadius, isMounted, isFlyable, config, dotColor } = computeSpellCastLayout(snapshot, width, height, seed, sizeCategories, formationsMap);
   const isRouted = snapshot.currentFormation === 'Routed';
 
   // ---- Phalanx pikes / Shield Wall shields (drawn behind the troops) ----
@@ -567,7 +600,35 @@ export function drawSpellCastToken(options: DrawSpellCastTokenOptions): void {
     const px = x - width / 2 + dx;
     const py = y - height / 2 + dy;
 
-    if (isMounted) {
+    if (isFlyable) {
+      const triHeight = dotRadius * config.triangleHeightMultiplier;
+      const outerR = triHeight / 2;
+      const innerR = outerR * 0.5;
+      ctx.save();
+      ctx.translate(px, py);
+      if (direction !== undefined) ctx.rotate(direction);
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const r = i % 2 === 0 ? outerR : innerR;
+        const angle = (Math.PI / 5) * i - Math.PI / 2;
+        const sx = r * Math.cos(angle);
+        const sy = r * Math.sin(angle);
+        if (i === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+      }
+      ctx.closePath();
+      if (isDead) {
+        ctx.strokeStyle = dotColor;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([1, 2]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        ctx.fillStyle = dotColor;
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (isMounted) {
       const baseWidth = dotRadius * config.triangleWidthMultiplier;
       const triHeight = dotRadius * config.triangleHeightMultiplier;
       ctx.save();

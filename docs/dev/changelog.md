@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Flyable units render troops as stars (2026-09-30)
+**Files:** src/components/TokenRenderer/drawToken.ts, src/components/ScenarioMap/useCombatActions.ts, docs/dev/changelog.md
+
+- **Flyable units (`flySpeed > 0`) now render their troops as 5-point stars** instead of circles/triangles, sized to the same height as mounted triangles (`dotRadius × triangleHeightMultiplier`). Applies to both the map token and the spell-cast targeting preview (`SpellCastTokenSnapshot.flySpeed`).
+- `tsc` clean; 835 tests pass; build clean. No migration.
+
 ## Rider sits due north, size-relative offset (2026-09-30)
 **Files:** src/components/TokenRenderer/drawToken.ts, src/components/ScenarioMap/{mapGeometry,useCanvasDraw}.tsx, docs/dev/changelog.md
 
