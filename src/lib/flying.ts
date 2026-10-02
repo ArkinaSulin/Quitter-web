@@ -91,3 +91,13 @@ export function meleeElevationFor(attackerElevation: number, targetElevation: nu
   if (Math.abs(gap) <= 10) return attackerElevation;
   return gap > 0 ? targetElevation - 10 : targetElevation + 10;
 }
+
+/** Structures are considered 10 ft tall (ground-level). A unit must be within
+ *  10 ft of this height to attack one. (Pending: real per-structure height.) */
+export const STRUCTURE_HEIGHT_FT = 10;
+
+/** True when a unit at `elevation` can reach a ground-level structure (≤ 10 ft
+ *  vertical gap from the structure's 10 ft height). */
+export function canReachStructure(elevation: number | undefined): boolean {
+  return Math.abs((elevation ?? 0) - STRUCTURE_HEIGHT_FT) <= 10;
+}

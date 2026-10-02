@@ -47,6 +47,7 @@ import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes, mpCostOverrides } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
+import { canReachStructure } from '@/lib/flying';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/lib/walls';
 import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor } from '@/lib/mapStructures';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
@@ -940,6 +941,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setPendingElevation,
     confirmElevation,
     cancelElevation,
+    pendingLeaveHero,
+    confirmLeaveHero,
+    cancelLeaveHero,
     maybeAutoReturnToRanged,
     completeMove,
     handleUnitMove,
@@ -1041,6 +1045,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const canAttackWallEdge = useCallback((unitId: string, edge: EdgeRef): boolean => {
     const unit = units.find(u => u.id === unitId);
     if (!unit || !canControlUnit(unit)) return false;
+    if (!canReachStructure(unit.elevation)) return false;
     const wall = walls[edge.key];
     if (!wall || !isDestructibleWall(wall)) return false;
     const weapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
@@ -1104,6 +1109,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const canAttackStructure = useCallback((unitId: string, hex: Hex): boolean => {
     const unit = units.find(u => u.id === unitId);
     if (!unit || !canControlUnit(unit)) return false;
+    // Structures stand 10 ft tall — a flyer more than 10 ft away vertically can't reach.
+    if (!canReachStructure(unit.elevation)) return false;
     const inst = structures[`${hex.q},${hex.r}`];
     const template = inst ? structureTemplates[inst.templateId] : undefined;
     if (!inst || !template || !isAttackableHexStructure(template, inst)) return false;
@@ -3320,6 +3327,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             <div className="flex justify-end gap-2 mt-4">
               <button className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded" onClick={cancelElevation}>Cancel</button>
               <button className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700" onClick={() => confirmElevation(pendingElevation.range.defaultValue)}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Leave hero behind — a non-flying attached hero too large to carry */}
+      {pendingLeaveHero && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[300px]">
+            <p className="text-white text-sm mb-3 text-center">
+              {pendingLeaveHero.hero.unitName} can't fly and is too large for {pendingLeaveHero.unit.unitName} to carry. Leave it behind?
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <button className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded" onClick={cancelLeaveHero}>Cancel</button>
+              <button className="px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded" onClick={() => void confirmLeaveHero()}>Leave behind</button>
             </div>
           </div>
         </div>

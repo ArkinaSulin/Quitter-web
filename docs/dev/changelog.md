@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Structure reach + leave-hero-behind (Phase 2) (2026-09-30)
+**Files:** src/lib/flying.ts (+ test), src/components/ScenarioMap/{ScenarioMap,useMoveActions}.tsx, docs/dev/changelog.md
+
+- **Structures reachable within 10 ft**: `canAttackStructure` / `canAttackWallEdge` now require the attacker within 10 ft of the structure's 10 ft height (`canReachStructure`), so a high flyer can't strike a ground structure.
+- **Leave-hero-behind prompt**: on take-off, a non-flying attached hero too large to carry (`carryRule === 'leave'`) prompts "Leave it behind?" — confirming detaches the hero at the origin and the host takes off alone.
+- `tsc` clean; 835 tests pass; build clean. No migration.
+
 ## Stoop (flying charge) — first pass (Phase 2) (2026-09-30)
 **Files:** src/components/ScenarioMap/{ContextMenu,useMoveActions}.tsx, src/lib/chargeOver.ts, docs/dev/changelog.md
 

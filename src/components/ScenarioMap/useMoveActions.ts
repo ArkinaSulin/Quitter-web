@@ -17,7 +17,7 @@ import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
-import { canFly, elevationSliderRange } from '@/lib/flying';
+import { canFly, elevationSliderRange, carryRule } from '@/lib/flying';
 import { Walls } from '@/lib/walls';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
@@ -92,6 +92,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
   const [pendingAttachOverBudget, setPendingAttachOverBudget] = useState<PendingAttachOverBudget | null>(null);
   const [pendingSwapOverBudget, setPendingSwapOverBudget] = useState<Unit | null>(null);
   const [pendingElevation, setPendingElevation] = useState<{ unit: Unit; targetHex: Hex; cost: number; maxMP: number; attachedHero: Unit | null; heroMaxMP: number | undefined; breakToFormation: string | undefined; range: { min: number; max: number; defaultValue: number } } | null>(null);
+  const [pendingLeaveHero, setPendingLeaveHero] = useState<{ unit: Unit; targetHex: Hex; cost: number; maxMP: number; hero: Unit; heroMaxMP: number | undefined; breakToFormation: string | undefined; elevation: number } | null>(null);
 
   /**
    * After a melee exchange (or a move that left all hostile kill zones), a unit
@@ -448,8 +449,32 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const p = pendingElevation;
     setPendingElevation(null);
     if (!p) return;
+    // A non-flying attached hero too large to carry must be left behind on take-off.
+    if (p.attachedHero && newElevation > 0 && carryRule(p.unit, p.attachedHero) === 'leave') {
+      setPendingLeaveHero({ unit: p.unit, targetHex: p.targetHex, cost: p.cost, maxMP: p.maxMP, hero: p.attachedHero, heroMaxMP: p.heroMaxMP, breakToFormation: p.breakToFormation, elevation: newElevation });
+      return;
+    }
     void completeMove(p.unit, p.targetHex, p.cost, false, p.maxMP, p.attachedHero, p.heroMaxMP, p.breakToFormation, newElevation);
   }, [pendingElevation, completeMove]);
+
+  const confirmLeaveHero = useCallback(async () => {
+    const p = pendingLeaveHero;
+    setPendingLeaveHero(null);
+    if (!p) return;
+    // Detach the hero at the origin, then the host takes off alone.
+    await execute('DETACH_HERO', [{
+      type: 'DETACH_HERO',
+      description: `${p.hero.unitName} is left behind as ${p.unit.unitName} takes off`,
+      unitId: p.hero.id,
+      changes: [
+        { field: 'attachedToUnitId', from: p.hero.attachedToUnitId, to: null },
+        { field: 'attachedPosition', from: p.hero.attachedPosition, to: null },
+      ],
+    }], `${p.hero.unitName} is left behind`, { chained: true });
+    await completeMove(p.unit, p.targetHex, p.cost, false, p.maxMP, null, p.heroMaxMP, p.breakToFormation, p.elevation);
+  }, [pendingLeaveHero, execute, completeMove]);
+
+  const cancelLeaveHero = useCallback(() => setPendingLeaveHero(null), []);
 
   const cancelElevation = useCallback(() => setPendingElevation(null), []);
 
@@ -470,6 +495,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     setPendingElevation,
     confirmElevation,
     cancelElevation,
+    pendingLeaveHero,
+    confirmLeaveHero,
+    cancelLeaveHero,
     maybeAutoReturnToRanged,
     performMove,
     completeMove,

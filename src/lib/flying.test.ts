@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   canFly, elevationGapFeet, elevationGapHexes, elevationOffset, airOccupiedHexes,
   maxElevationAfter, elevationSliderRange, carryRule, FLYING_MAX_FORMATION, flyingFormationCap,
-  meleeElevationFor,
+  meleeElevationFor, canReachStructure, STRUCTURE_HEIGHT_FT,
 } from './flying';
 import { Unit } from '@/types/gameProtocol';
 
@@ -86,5 +86,14 @@ describe('flying', () => {
     expect(meleeElevationFor(20, 40)).toBe(30);     // climb to within 10 ft below
     expect(meleeElevationFor(5, 15)).toBe(5);       // already within 10 ft
     expect(meleeElevationFor(20, 20)).toBe(20);     // same elevation
+  });
+
+  it('canReachStructure: within 10 ft of the 10 ft structure height', () => {
+    expect(STRUCTURE_HEIGHT_FT).toBe(10);
+    expect(canReachStructure(0)).toBe(true);
+    expect(canReachStructure(10)).toBe(true);
+    expect(canReachStructure(20)).toBe(true);
+    expect(canReachStructure(30)).toBe(false);
+    expect(canReachStructure(undefined)).toBe(true);
   });
 });
