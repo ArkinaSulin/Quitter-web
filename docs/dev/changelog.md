@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Fix: rider no longer caps the mount's movement preview (2026-09-30)
+**Files:** src/components/ScenarioMap/useOverlay.ts, docs/dev/changelog.md
+
+- **The drag overlay now lets a rider "ride free"**, matching the executed move: `useOverlay` skips the attached-hero co-constraint when the hero is a `'rider'`, so a mount (e.g. dragon, 8 MP) previews its full 8-hex reach instead of being clamped to the rider's smaller pool.
+- `tsc` clean; 835 tests pass; build clean. No migration.
+
 ## Flyable units render troops as stars (2026-09-30)
 **Files:** src/components/TokenRenderer/drawToken.ts, src/components/ScenarioMap/useCombatActions.ts, docs/dev/changelog.md
 

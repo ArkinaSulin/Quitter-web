@@ -170,7 +170,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     let budget = draggedUnit.isHero ? computeHeroMovePool(draggedUnit, effectiveMax) : computeMoveBudget(draggedUnit, effectiveMax);
     let hopCap = draggedUnit.isHero ? budget : computeMovePool(draggedUnit, effectiveMax);
     const attachedHero = draggedUnit.attachedToUnitId ? undefined : units.find(u => u.attachedToUnitId === draggedUnit.id && !u.isDeleted);
-    if (attachedHero) {
+    if (attachedHero && attachedHero.attachedPosition !== 'rider') {
       const heroMult = getFormationMultiplier(formationsMap, attachedHero.currentFormation, 'movement_multiplier');
       const heroMax = computeEffectiveMovement(attachedHero, heroMult);
       const heroBudget = attachedHero.isHero ? computeHeroMovePool(attachedHero, heroMax) : computeMoveBudget(attachedHero, heroMax);
