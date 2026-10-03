@@ -41,17 +41,22 @@ containers, or positioning — those are owned by `PanelsContainer`/
 **Render every tooltip and pop-up menu through `Floating`** (`Floating.tsx`).
 It portals to `document.body` and positions with `position: fixed`, so it is
 always clamped to the **browser** viewport. It owns portal + measured clamp +
-optional flip + z-index; callers supply only the visual `className` and content.
+z-index; callers supply only the visual `className` and content.
 
 ```tsx
 <Floating x={clientX} y={clientY} z={80}>{/* tooltip body */}</Floating>
-<Floating x={clientX} y={clientY} flip z={50} interactive className="…menu…">…</Floating>
+<Floating x={clientX} y={clientY} z={50} interactive className="…menu…">…</Floating>
 ```
 
-Props: `x`, `y` (viewport coords), `offset` (default 12), `flip` (push **above**
-the anchor when there is no room below — use for menus), `z`, `interactive`
+Props: `x`, `y` (viewport coords), `offset` (default 12), `z`, `interactive`
 (`true` for menus that take clicks; `false`/omitted for hover tooltips), and
 `className` (background/border/padding/width only).
+
+**The single positioning rule** (context menus included — there is no separate
+behavior): the panel opens at `anchor + offset`, and slides up/left **only as far
+as needed** so its bottom/right edge stays inside the viewport
+(`innerHeight/Width − size − 8`). It **never flips above the anchor** — a tall
+menu near the bottom just bottom-aligns; it is not thrown to the top.
 
 ### Why a portal (the trap to avoid)
 
@@ -70,24 +75,28 @@ tooltip/menu as a plain child of a tab.
    `offsetWidth/offsetHeight`.
 2. Pass **viewport (client) coordinates**. Map-canvas hover handlers already pass
    `e.clientX/e.clientY` (`useHexGrid`), not canvas-local offsets.
-3. Tooltips: omit `interactive`. Menus: set `interactive` and `flip`.
+3. Tooltips: omit `interactive`. Menus / context menus: set `interactive`.
 4. Don't put `fixed`/`z-*`/`pointer-events-*` in `className` — `Floating` adds
-   them (use `z` prop for stacking).
+   them (use `z` prop for stacking). Don't add flip/clamp logic of your own; the
+   shared rule already keeps the bottom/right edge on-screen.
 5. A menu that needs outside-click detection (e.g. `data-msg-menu`) puts the
    attribute on an inner wrapper **inside** `Floating`; `closest()` still walks
    up through the menu contents.
 
 ### Current floating consumers (all use `Floating`)
 
-| UI | `z` | flip | interactive |
-|---|---|---|---|
-| `UnitTooltip` (map unit) | 50 | no | no |
-| `MapInfoTooltip` (hex/edge) | 50 | no | no |
-| `UnitTemplateTooltip` (Unit Selector tab) | 50 | no | no |
-| `StructureTooltip` (Structure tab) | 80 | no | no |
-| `EffectTooltip` (Effects tab) | 80 | no | no |
-| `ContextMenu` (unit right-click) | 50 | yes | yes |
-| `MessagesPanel` menu | 100 | yes | yes |
+| UI | `z` | interactive |
+|---|---|---|
+| `UnitTooltip` (map unit) | 50 | no |
+| `MapInfoTooltip` (hex/edge) | 50 | no |
+| `UnitTemplateTooltip` (Unit Selector tab) | 50 | no |
+| `StructureTooltip` (Structure tab) | 80 | no |
+| `EffectTooltip` (Effects tab) | 80 | no |
+| `ContextMenu` (unit right-click) | 50 | yes |
+| `MessagesPanel` menu | 100 | yes |
+
+Every context menu (existing or new) opens at the pointer and bottom-aligns when
+it would overflow — no flip, no per-menu clamp. Register it in this table.
 
 ## 3. Draggable modals
 

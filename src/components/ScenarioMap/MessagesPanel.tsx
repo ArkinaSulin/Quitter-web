@@ -115,7 +115,6 @@ export function MessagesPanel({ verboseCombat = false }: { verboseCombat?: boole
         <Floating
           x={menu.x}
           y={menu.y}
-          flip
           z={100}
           interactive
           className="bg-gray-800 border border-gray-600 rounded shadow-lg py-1 w-[130px]"

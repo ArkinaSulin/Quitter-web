@@ -6,11 +6,15 @@
 // tooltips). It PORTALS to document.body and positions with `position: fixed`,
 // so it is always bound to the BROWSER viewport — never clipped or re-anchored
 // by a panel's `overflow-hidden` or `backdrop-blur` (which creates a containing
-// block for fixed descendants). Sizing is measured, never estimated, and `flip`
-// pushes a panel above its anchor when there is no room below.
+// block for fixed descendants). Sizing is measured, never estimated.
 //
-// Follow this for any future left-panel tab tooltip/pop-up: callers only supply
-// the visual `className` and content; this owns portal + clamp + flip + z-index.
+// Positioning is the single shared rule (see `useFloatingPosition`): open below/
+// right of the anchor, and slide up/left ONLY enough to keep the panel inside the
+// viewport (bottom/right edge flush with the margin). Never flip above the anchor.
+//
+// Follow this for any future left-panel tab tooltip/pop-up (and any new context
+// menu): callers only supply the visual `className` and content; this owns
+// portal + measured clamp + z-index + pointer-events.
 import React, { forwardRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useFloatingPosition } from './useTooltipClamp';
@@ -22,8 +26,6 @@ interface FloatingProps {
   y: number;
   /** Gap between anchor and panel (default 12). */
   offset?: number;
-  /** Push above the anchor when there isn't room below. */
-  flip?: boolean;
   /** Stacking order (relative to body). */
   z?: number;
   /** Interactive menus receive pointer events; tooltips do not. */
@@ -34,10 +36,10 @@ interface FloatingProps {
 }
 
 export const Floating = forwardRef<HTMLDivElement, FloatingProps>(function Floating(
-  { x, y, offset = 12, flip = false, z = 50, interactive = false, className = '', children },
+  { x, y, offset = 12, z = 50, interactive = false, className = '', children },
   forwardedRef,
 ) {
-  const { ref, style } = useFloatingPosition(x, y, { offset, flip });
+  const { ref, style } = useFloatingPosition(x, y, { offset });
 
   if (typeof document === 'undefined') return null;
 

@@ -152,7 +152,6 @@ export function ContextMenu({
       ref={menuRef}
       x={x}
       y={y}
-      flip
       z={50}
       interactive
       className="bg-gray-900 border border-gray-700 rounded shadow-xl py-1 min-w-[180px] max-h-[calc(100vh-16px)] overflow-y-auto text-sm text-white"
