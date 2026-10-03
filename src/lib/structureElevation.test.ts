@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { climbCostMp, structureSurfaceAt, structureClimbCostBetween, flightBlockedHexes } from './mapStructures';
+import { climbCostMp, structureSurfaceAt, structureClimbCostBetween, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from './mapStructures';
 import { blankStructureTemplate } from './structureTemplates';
 import { directionBetween, edgeRef } from './walls';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
@@ -12,6 +12,17 @@ describe('structure elevation (2b)', () => {
     expect(climbCostMp(10)).toBe(4);
     expect(climbCostMp(20)).toBe(8);
     expect(climbCostMp(0)).toBe(0);
+    expect(CLIMB_MP_PER_STEP).toBe(4);
+  });
+
+  it('climbPlan: rises as far as MP allows; completes only when affordable AND free', () => {
+    expect(climbPlan(20, 8, 0, false)).toMatchObject({ steps: 2, cost: 8, complete: true, atTop: false });
+    expect(climbPlan(20, 6, 0, false)).toMatchObject({ steps: 1, cost: 4, complete: false });
+    expect(climbPlan(20, 8, 0, true)).toMatchObject({ steps: 2, complete: false });
+    expect(climbPlan(20, 8, 2, false).atTop).toBe(true);
+    expect(climbPlan(10, 3, 0, false).steps).toBe(0);
+    // Continuing a partway climb (1 step done) with enough budget finishes it.
+    expect(climbPlan(20, 4, 1, false)).toMatchObject({ steps: 1, complete: true });
   });
 
   it('structureSurfaceAt: a hex structure defines its surface, else 0', () => {

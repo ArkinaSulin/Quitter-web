@@ -5,7 +5,7 @@
 // (pendingMove, pendingFormation, hero attach/swap conversion + over-budget).
 import { useCallback, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, GroundEffect, getOrganizationLevel } from '@/types/gameProtocol';
-import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable, computeMoveBudget, computeMovePool, computeHeroMoveBudget, computeHeroMovePool } from '@/lib/moveCost';
+import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable, computeMoveBudget, computeMovePool, computeHeroMoveBudget, computeHeroMovePool, applyMoveCost, applyHeroMoveCost } from '@/lib/moveCost';
 import { isFormationChangeAffordable } from '@/lib/formationCost';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { isUnitRouted } from '@/lib/unitMorale';
@@ -14,12 +14,12 @@ import { modifierAmount } from '@/lib/effectTemplates';
 import { areHexesAdjacent } from '@/lib/unitMorale';
 import { WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { parseWeapons } from '@/lib/weaponParser';
-import { SubStep } from '@/lib/commandLog';
+import { SubStep, UnitChange } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
-import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode } from '@/lib/flying';
+import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo } from '@/lib/flying';
 import { Walls } from '@/lib/walls';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes } from '@/lib/mapStructures';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingHeroSwapConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
@@ -227,6 +227,82 @@ export function useMoveActions(deps: MoveActionsDeps) {
     await finishHeroMove(unit);
   }, [performMove, execute, finishHeroMove, pursuitsRef]);
 
+  /**
+   * Climb / hang movement. A climbing unit stays in its pre-climb hex; only its
+   * elevation changes. Up = drop on the target hex (`climbTo`); down = drop on the
+   * bottom of its own hex. Costs 4 MP per 10 ft; when the climb can't finish (out
+   * of MP) or the target is occupied, the unit HANGS at the height reached.
+   */
+  const handleClimbMove = useCallback(async (unit: Unit, targetHex: Hex, originSurface: number) => {
+    const maxMP = unitMaxMP(unit);
+    const budgetUnit = moveBudgetUnit(unit, 'ground');
+    const budget = freeMove ? Number.POSITIVE_INFINITY
+      : (unit.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP));
+    const spendMp = (cost: number): { movementPointsAvailable: number; actionsAvailable: number } =>
+      freeMove
+        ? { movementPointsAvailable: unit.movementPointsAvailable, actionsAvailable: unit.actionsAvailable }
+        : (unit.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP));
+    const attachedHero = units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted) ?? null;
+    const curElev = unit.elevation ?? originSurface;
+    const climbTarget = parseClimbTo(unit.climbTo);
+
+    const run = async (changes: UnitChange[], desc: string) => {
+      const subSteps: SubStep[] = [{ type: 'MOVE', description: desc, unitId: unit.id, changes }];
+      const elevChange = changes.find(c => c.field === 'elevation');
+      if (attachedHero && elevChange) {
+        const heroChanges: UnitChange[] = [];
+        if (changes.some(c => c.field === 'hex')) heroChanges.push({ field: 'hex', from: { ...attachedHero.hex }, to: { ...targetHex } });
+        heroChanges.push({ field: 'elevation', from: attachedHero.elevation ?? 0, to: elevChange.to });
+        subSteps.push({ type: 'MOVE', description: `${attachedHero.unitName} climbs with ${unit.unitName}`, unitId: attachedHero.id, changes: heroChanges });
+      }
+      await execute('MOVE', subSteps, desc);
+    };
+
+    // DESCEND: drop on the unit's own hex.
+    if (climbTarget && targetHex.q === unit.hex.q && targetHex.r === unit.hex.r) {
+      const down = curElev - originSurface;
+      if (down <= 0) { addMessage(`${unit.unitName} is already on the ground`); return; }
+      const steps = Math.min(Math.round(down / 10), Math.floor(budget / CLIMB_MP_PER_STEP));
+      if (steps <= 0) { addMessage(`${unit.unitName} has no movement to climb down`); return; }
+      const spend = spendMp(steps * CLIMB_MP_PER_STEP);
+      let newElev = curElev - steps * 10;
+      let climbTo = unit.climbTo ?? null;
+      if (newElev <= originSurface) {
+        const occupied = units.some(u => u.id !== unit.id && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) === originSurface && u.hex.q === unit.hex.q && u.hex.r === unit.hex.r);
+        if (occupied) newElev = originSurface + 10; // hover above an occupied ground
+        else climbTo = null;
+      }
+      await run([
+        { field: 'elevation', from: curElev, to: newElev },
+        { field: 'climbTo', from: unit.climbTo ?? null, to: climbTo },
+        { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: spend.movementPointsAvailable },
+        ...(spend.actionsAvailable !== unit.actionsAvailable ? [{ field: 'actionsAvailable', from: unit.actionsAvailable, to: spend.actionsAvailable }] : []),
+      ], `${unit.unitName} climbs down ${steps * 10} ft`);
+      return;
+    }
+
+    // UP: start or continue toward the target hex.
+    const tHex = climbTarget ?? targetHex;
+    const endSurface = structureSurfaceAt(tHex, structures, structureTemplates);
+    const diff = endSurface - originSurface;
+    if (diff <= 0) { addMessage(`${unit.unitName} cannot climb there`); return; }
+    const doneSteps = Math.max(0, Math.round((curElev - originSurface) / 10));
+    const targetOccupied = units.some(u => u.id !== unit.id && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) === endSurface && u.hex.q === tHex.q && u.hex.r === tHex.r);
+    const plan = climbPlan(diff, budget, doneSteps, targetOccupied);
+    if (plan.atTop) { addMessage(`${unit.unitName} is already at the top`); return; }
+    if (plan.steps <= 0) { addMessage(`${unit.unitName} has no movement to climb`); return; }
+    const spend = spendMp(plan.cost);
+    const newElev = originSurface + plan.newElevSteps * 10;
+    const complete = plan.complete;
+    await run([
+      ...(complete ? [{ field: 'hex', from: { ...unit.hex }, to: { ...tHex } }] : []),
+      { field: 'elevation', from: curElev, to: complete ? endSurface : newElev },
+      { field: 'climbTo', from: unit.climbTo ?? null, to: complete ? null : `${tHex.q},${tHex.r}` },
+      { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: spend.movementPointsAvailable },
+      ...(spend.actionsAvailable !== unit.actionsAvailable ? [{ field: 'actionsAvailable', from: unit.actionsAvailable, to: spend.actionsAvailable }] : []),
+    ], complete ? `${unit.unitName} climbs over onto (${tHex.q}, ${tHex.r})` : `${unit.unitName} climbs to ${newElev} ft`);
+  }, [units, structures, structureTemplates, unitMaxMP, execute, addMessage, freeMove]);
+
   const handleUnitMove = useCallback(async (unitId: string, targetHex: Hex) => {
     const unit = units.find(u => u.id === unitId);
     if (!unit) return;
@@ -270,6 +346,23 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // on confirm); blocked intermediate hexes are avoided.
     const flyOccupied = airOccupiedHexes(units, unitId);
     for (const k of Array.from(flightBlockedHexes(structures, structureTemplates, unit.elevation ?? 0, `${targetHex.q},${targetHex.r}`))) flyOccupied.add(k);
+
+    // Climb / hang movement (mounted units cannot climb). A climbing unit moves
+    // linearly: up toward `climbTo`, or down (its own hex). A grounded non-mounted
+    // unit dropped on an adjacent HIGHER-surface hex climbs instead of moving.
+    if (unit.climbTo) {
+      if (unit.mountId || unit.mountName) { addMessage(`${unit.unitName} (mounted) cannot climb`); return; }
+      const t = parseClimbTo(unit.climbTo);
+      const up = !!t && targetHex.q === t.q && targetHex.r === t.r;
+      const down = targetHex.q === unit.hex.q && targetHex.r === unit.hex.r;
+      if (up || down) { await handleClimbMove(unit, targetHex, originSurface); return; }
+      addMessage(`${unit.unitName} is climbing — it can only climb up toward (${t?.q}, ${t?.r}) or down`);
+      return;
+    }
+    if (!flying && !unit.isCharging && !unit.mountId && !unit.mountName && !unit.attachedToUnitId && endSurface > originSurface && areHexesAdjacent(unit.hex, targetHex)) {
+      await handleClimbMove(unit, targetHex, originSurface);
+      return;
+    }
 
     // Charging units may only move forward through the front-arc charge wedge,
     // and cannot enter broken terrain (painted MP cost > 1). A stooping flyer

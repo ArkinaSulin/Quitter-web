@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Structure elevation — Phase 2b slice 7b: climb/hang movement (2026-10-02)
+**Files:** src/lib/mapStructures.ts (+ test), src/components/ScenarioMap/{useMoveActions,useOverlay,ScenarioMap,mapGeometry}.tsx, src/hooks/useHexGrid.ts, docs/dev/changelog.md
+
+- **Climb movement:** a grounded non-mounted unit dropped on an **adjacent higher-surface** hex climbs — `CLIMB_MP_PER_STEP` (4 MP / 10 ft) from the full move budget. Reaching the top with the target **free** → move onto it (`elevation` = surface); otherwise **hang** in the origin hex at the height reached (`climbTo` = target). **Mounted units cannot climb** (blocked in `makeBlockedEdge` + the routing).
+- **Descend:** drop on the bottom of the unit's own hex → climb down at the same cost (no damage); landing on the origin surface is blocked when it's occupied → **hover at +10 ft** (still climbing). Linear movement (only up toward `climbTo` or down).
+- **Routing:** `handleUnitMove` intercepts climbs; the overlay paints the up/down options; `useHexGrid` allows the same-hex "descend" drop; the `onAttack` wrapper turns a climb-below-top drop on the target's occupant into a climb (at/above the top it's a normal attack).
+- Pure `climbPlan()` helper + tests. **851 tests pass; `tsc` clean; build clean.** No migration.
+
 ## Structure elevation — Phase 2b slice 7a: climb/hang data + offsets (2026-10-02)
 **Files:** supabase/migrations/112_unit_climb_to.sql, src/types/gameProtocol.ts, src/hooks/useSupabaseSync.ts, src/lib/flying.ts (+ test), src/components/ScenarioMap/useCanvasDraw.ts, src/hooks/useHexGrid.ts, docs/dev/changelog.md
 

@@ -569,7 +569,9 @@ export function useHexGrid({
           // Shift-dropped onto a hex with an attackable structure (gate/tower).
           onAttackStructure(draggingUnitId, targetHex);
         } else if (!targetUnit) {
-          if (unit.hex.q !== targetHex.q || unit.hex.r !== targetHex.r) {
+          // A climbing unit may also "move" within its own hex — that drop means
+          // climb DOWN (any other hex is up toward its target).
+          if (unit.hex.q !== targetHex.q || unit.hex.r !== targetHex.r || unit.climbTo) {
             onUnitMove(draggingUnitId, targetHex);
           }
         }

@@ -107,6 +107,8 @@ export function makeBlockedEdge(walls: Walls | null | undefined, opts: BlockEdge
   return (fromQ, fromR, toQ, toR) => {
     if (walls && blockedStep(walls, fromQ, fromR, toQ, toR, !!isMounted)) return true;
     if (structures && structureHexBlocked({ q: toQ, r: toR }, structures, templates, !!isMounted)) return true;
+    // Mounted units cannot climb: block entering a higher-surface hex.
+    if (isMounted && structures && structureClimbCostBetween({ q: fromQ, r: fromR }, { q: toQ, r: toR }, structures, templates) > 0) return true;
     return false;
   };
 }

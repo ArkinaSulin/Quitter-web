@@ -69,6 +69,41 @@ export function climbCostMp(feet: number): number {
   return feet > 0 ? Math.round(feet / 2.5) : 0;
 }
 
+/** MP per 10-ft climb step (up or down). */
+export const CLIMB_MP_PER_STEP = 4;
+
+export interface ClimbPlan {
+  /** 10-ft steps this move can afford (0 = none). */
+  steps: number;
+  cost: number;
+  /** Total steps after this move (done + paid). */
+  newElevSteps: number;
+  /** Reached the top with the target hex free → move onto it. */
+  complete: boolean;
+  /** Already at the top (no steps remain). */
+  atTop: boolean;
+}
+
+/**
+ * Resolve one climb move: rise as far as the MP budget allows toward a target
+ * surface `diffFeet` above the origin (in 10-ft steps @ `CLIMB_MP_PER_STEP`), up
+ * to the target. `complete` only when the top is reached AND the target is free.
+ */
+export function climbPlan(diffFeet: number, budgetMp: number, doneSteps: number, targetOccupied: boolean): ClimbPlan {
+  const totalSteps = Math.max(1, Math.round(diffFeet / 10));
+  const remaining = totalSteps - doneSteps;
+  if (remaining <= 0) return { steps: 0, cost: 0, newElevSteps: doneSteps, complete: false, atTop: true };
+  const steps = Math.min(remaining, Math.max(0, Math.floor(budgetMp / CLIMB_MP_PER_STEP)));
+  const cost = steps * CLIMB_MP_PER_STEP;
+  return {
+    steps,
+    cost,
+    newElevSteps: doneSteps + steps,
+    complete: doneSteps + steps >= totalSteps && !targetOccupied,
+    atTop: false,
+  };
+}
+
 /**
  * Climb MP to move between two ADJACENT hexes (0 = no climb / waived). Two sources:
  *   - a rise in the hex SURFACE (climbing onto a hex structure top);

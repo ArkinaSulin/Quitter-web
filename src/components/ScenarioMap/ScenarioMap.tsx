@@ -47,7 +47,7 @@ import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes, mpCostOverrides } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
-import { canReachStructure, canFly } from '@/lib/flying';
+import { canReachStructure, canFly, parseClimbTo } from '@/lib/flying';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/lib/walls';
 import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt } from '@/lib/mapStructures';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
@@ -2013,6 +2013,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (reactionMode) { handleReactionAttack(attackerId, targetId); return; }
       const attacker = units.find(u => u.id === attackerId);
       const target = units.find(u => u.id === targetId);
+      // A CLIMBING unit dropped on its target occupant, while still below the wall
+      // top, continues climbing (it only stops at the top). At/above the top it
+      // falls through to a normal attack (gated to the wall top in combat).
+      if (attacker && target && attacker.climbTo) {
+        const t = parseClimbTo(attacker.climbTo);
+        if (t && target.hex.q === t.q && target.hex.r === t.r) {
+          const topSurf = structureSurfaceAt(target.hex, structures, structureTemplates);
+          if ((attacker.elevation ?? 0) < topSurf) { void handleUnitMove(attackerId, target.hex); return; }
+        }
+      }
       // A fly-capable unit dropped on a GROUND-occupied hex opens the unified flyer
       // modal (Move / Stoop attack / Range attack) when the hex is a legal fly
       // destination. An air-occupied hex is not a destination → plain attack.
