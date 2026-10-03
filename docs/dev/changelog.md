@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Structure elevation — Phase 2b slice 7c: climbing combat + rout (2026-10-02)
+**Files:** src/components/ScenarioMap/{routeUnit,useCombatActions}.ts(x), docs/dev/changelog.md
+
+- **A climbing unit cannot retaliate** (both hands on the ladder/rope): `performAttack` suppresses the defender's retaliation when `target.climbTo`.
+- **Attacks gated to the wall top:** `handleAttackRequest` rejects a climbing attacker unless it has reached the wall-top elevation AND the target is its `climbTo` occupant (the only wall attack). ZoC already needed same elevation (2b-6).
+- **Rout while climbing:** `routeUnit` free-falls first (d6 per 10 ft down to `climbFallTo`, clearing `climbTo` + `elevation`), then the standard Routed-retreat picker runs. Combat passes the origin surface; magic defaults to ground.
+- **Phase 2b complete** (7a–7c). `tsc` clean; 851 tests pass; build clean. No migration.
+
 ## Structure elevation — Phase 2b slice 7b: climb/hang movement (2026-10-02)
 **Files:** src/lib/mapStructures.ts (+ test), src/components/ScenarioMap/{useMoveActions,useOverlay,ScenarioMap,mapGeometry}.tsx, src/hooks/useHexGrid.ts, docs/dev/changelog.md
 

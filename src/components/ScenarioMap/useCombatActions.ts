@@ -17,7 +17,7 @@ import { unitAttackCap } from '@/lib/attackCap';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, isHeroMoraleBoostEnabled, isZocPursuitEnabled } from '@/lib/unitMorale';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc } from '@/lib/meleeFallback';
-import { canFly, meleeElevationFor, isStooping, flyingFormationCap, flyMax, moveBudgetUnit } from '@/lib/flying';
+import { canFly, meleeElevationFor, isStooping, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo } from '@/lib/flying';
 import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable } from '@/lib/moveCost';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
@@ -477,6 +477,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
     let effectiveOutcome: CombatOutcome = suppressRetaliation(outcome, retaliatorKilled, retaliatorRouted, reachSymmetric);
 
+    // A CLIMBING defender cannot retaliate (both hands on the ladder/rope).
+    if (target.climbTo) {
+      effectiveOutcome = suppressRetaliation(outcome, retaliatorKilled, retaliatorRouted, reachSymmetric, true);
+    }
+
     // Soft 5-cap: a retaliator that already made 5 attacks+retaliations this
     // turn simply forfeits its retaliation (no pause — one retaliation isn't
     // worth stopping the game for).
@@ -773,11 +778,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // remaining attackers.
     if (!options?.deferRouting) {
       if (defenderRouted || defenderKilled) {
-        await routeUnit(execute, target, defenderKilled ? 'slain in combat' : `morale ${defModUnit.baseMorale + defEffectiveMod} after combat`, defenderKilled, attacker.id);
+        await routeUnit(execute, target, defenderKilled ? 'slain in combat' : `morale ${defModUnit.baseMorale + defEffectiveMod} after combat`, defenderKilled, attacker.id, structureSurfaceAt(target.hex, structures, structureTemplates));
       }
 
       if (attackerRouted || attackerKilled) {
-        await routeUnit(execute, attacker, attackerKilled ? 'slain in combat' : `morale ${attMoraleBreak} after combat`, attackerKilled, target.id);
+        await routeUnit(execute, attacker, attackerKilled ? 'slain in combat' : `morale ${attMoraleBreak} after combat`, attackerKilled, target.id, structureSurfaceAt(attacker.hex, structures, structureTemplates));
       }
     }
 
@@ -1110,6 +1115,19 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
     if (!canControlUnit(attacker)) return;
+
+    // A climbing unit may only attack the defender at the TOP of the wall it is
+    // climbing (and only once it has reached that elevation).
+    if (attacker.climbTo) {
+      const ct = parseClimbTo(attacker.climbTo);
+      const top = ct ? structureSurfaceAt(ct, structures, structureTemplates) : 0;
+      const atTop = (attacker.elevation ?? 0) >= top;
+      const isTopOccupant = !!ct && target.hex.q === ct.q && target.hex.r === ct.r;
+      if (!atTop || !isTopOccupant) {
+        addMessage(`${attacker.unitName} is climbing — it can only attack the defender at the top of the wall`);
+        return;
+      }
+    }
 
     const attackerGroup = alliances[attacker.team] || 'friendly';
     const targetGroup = alliances[target.team] || 'friendly';

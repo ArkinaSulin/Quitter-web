@@ -17,17 +17,67 @@ export type ExecuteFn = (
  * the rout, when known) is carried in the sub-step `payload` so the retreat
  * orchestrator can prefer the attacker as pursuer. The server never applies
  * payloads — they are metadata only.
+ *
+ * A unit that routes WHILE CLIMBING free-falls off the wall first (d6 per 10 ft,
+ * down to `climbFallTo`, default 0 = ground) — clearing its climb state — before
+ * the normal rout / retreat picker runs.
  */
-export async function routeUnit(execute: ExecuteFn, unit: Unit, reason: string, killed: boolean, causeId?: string | null): Promise<void> {
+export async function routeUnit(
+  execute: ExecuteFn,
+  unit: Unit,
+  reason: string,
+  killed: boolean,
+  causeId?: string | null,
+  climbFallTo = 0,
+): Promise<void> {
   const name = unit.unitName;
   const verb = !killed ? 'routed' : unit.isHero ? 'down' : 'annihilated';
-  await execute('ROUT', [{
+  const subSteps: SubStep[] = [];
+
+  if (unit.climbTo) {
+    const to = Math.max(0, Math.round(climbFallTo));
+    const feet = Math.max(0, (unit.elevation ?? 0) - to);
+    const n = Math.floor(feet / 10);
+    let total = 0;
+    const faces: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const r = 1 + Math.floor(Math.random() * 6);
+      faces.push(r);
+      total += r;
+    }
+    subSteps.push({
+      type: 'ELEVATE',
+      description: `${name} falls off the wall`,
+      unitId: unit.id,
+      changes: [
+        { field: 'elevation', from: unit.elevation ?? 0, to },
+        { field: 'climbTo', from: unit.climbTo, to: null },
+      ],
+    });
+    if (total > 0) {
+      const newHp = Math.max(0, (unit.currentUnitHp ?? 0) - total);
+      const newTroops = Math.max(0, Math.ceil(newHp / Math.max(1, unit.troopHp)));
+      subSteps.push({
+        type: 'DAMAGE',
+        description: `${name} took ${total} falling damage`,
+        unitId: unit.id,
+        changes: [
+          { field: 'currentUnitHp', from: unit.currentUnitHp, to: newHp },
+          { field: 'currentTroopCount', from: unit.currentTroopCount, to: newTroops },
+        ],
+      });
+    }
+  }
+
+  subSteps.push({
     type: 'ROUT',
     description: `${name} ${verb} (${reason})`,
     unitId: unit.id,
     changes: [{ field: 'currentFormation', from: unit.currentFormation, to: 'Routed' }],
     payload: causeId ? { cause: causeId } : undefined,
-  }], `${name} ${verb}!`, { chained: true });
+  });
+
+  await execute('ROUT', subSteps, `${name} ${verb}!`, { chained: true });
   // Local fallback: tell THIS window a rout happened so the retreat modal opens
   // even if the realtime scenario_command_log event is delayed/missed. The orchestrator
   // dedupes against the live ROUT row via its retreatPick/busy guards.
