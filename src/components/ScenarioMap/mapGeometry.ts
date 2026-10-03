@@ -6,7 +6,7 @@ import { canStopEnemyMovement } from '@/lib/formationRules';
 import { isUnitInteractable, isDeadCorpse } from '@/lib/unitInteractions';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { Walls, crossingCost, blockedStep, wallBetween, edgeRef, directionBetween } from '@/lib/walls';
-import { MapStructures, structureBlocksOrg, zoneBlocksOrg, structureHexEntryCost, structureHexBlocked, hexStructureAt, structureDoorState } from '@/lib/mapStructures';
+import { MapStructures, structureBlocksOrg, zoneBlocksOrg, structureHexEntryCost, structureHexBlocked, structureClimbCostBetween, hexStructureAt, structureDoorState } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { modifierAmount } from '@/lib/effectTemplates';
@@ -52,16 +52,27 @@ export function makeCostOfHex(
   opts: CostOfHexOpts = {},
 ): CostOfHexFn {
   return (q, r, fromQ, fromR) => {
+    let base: number | undefined;
     if (walls && fromQ !== undefined && fromR !== undefined) {
       const wc = crossingCost(walls, { q: fromQ, r: fromR }, { q, r }, !!opts.isMounted);
-      if (wc !== undefined) return wc;
+      if (wc !== undefined) base = wc;
     }
-    const hc = structureHexEntryCost({ q, r }, opts.structures, opts.templates, !!opts.isMounted);
-    const tc = terrainCostOf(terrain, q, r);
-    // "Higher of the two": a hex structure's entry MP and the zone mp_cost both
-    // apply, the higher one wins. A hard block (negative structure MP) is
-    // handled by the blocked-edge predicate, not here.
-    return hc !== undefined ? Math.max(hc, tc) : tc;
+    if (base === undefined) {
+      const hc = structureHexEntryCost({ q, r }, opts.structures, opts.templates, !!opts.isMounted);
+      const tc = terrainCostOf(terrain, q, r);
+      // "Higher of the two": a hex structure's entry MP and terrain both apply.
+      // A hard block (negative structure MP) is handled by the blocked-edge
+      // predicate, not here.
+      base = hc !== undefined ? Math.max(hc, tc) : tc;
+    }
+    // Climb (dynamic ground + edge-structure height): entering a higher surface or
+    // crossing a tall wall costs MP; `stairs` (or a passable door) waives it. The
+    // base step cost still applies — the higher of the two wins.
+    if (fromQ !== undefined && fromR !== undefined) {
+      const climb = structureClimbCostBetween({ q: fromQ, r: fromR }, { q, r }, opts.structures, opts.templates);
+      if (climb > base) base = climb;
+    }
+    return base;
   };
 }
 

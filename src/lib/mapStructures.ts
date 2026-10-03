@@ -11,7 +11,7 @@
 import { Walls, Wall, WallFace, WallRollFlags, edgeRef, directionBetween } from './walls';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { EffectModifier, modifierAmount } from '@/lib/effectTemplates';
-import { templateDoorMax, structureElevation } from '@/lib/structureTemplates';
+import { templateDoorMax, structureElevation, structureIsStairs } from '@/lib/structureTemplates';
 import { GroundEffect, Unit, getOrganizationLevel } from '@/types/gameProtocol';
 import { formationAtOrBelow } from '@/lib/formationCost';
 
@@ -43,6 +43,49 @@ export function structureSurfaceAt(
   const inst = structures[`${hex.q},${hex.r}`];
   if (!inst) return 0;
   return structureElevation(templates?.[inst.templateId], inst);
+}
+
+/** MP to climb a height in feet: 10 ft = 4 MP (height / 2.5), rounded. */
+export function climbCostMp(feet: number): number {
+  return feet > 0 ? Math.round(feet / 2.5) : 0;
+}
+
+/**
+ * Climb MP to move between two ADJACENT hexes (0 = no climb / waived). Two sources:
+ *   - a rise in the hex SURFACE (climbing onto a hex structure top);
+ *   - an EDGE structure's HEIGHT (a solid wall must be climbed).
+ * `stairs` on the shared edge waives the whole climb; a passable (open/broken)
+ * door lets the unit pass at ground level, waiving that source too.
+ */
+export function structureClimbCostBetween(
+  from: { q: number; r: number },
+  to: { q: number; r: number },
+  structures: MapStructures | undefined,
+  templates: Record<string, StructureTemplate> | undefined,
+): number {
+  if (!structures) return 0;
+  const dir = directionBetween(from, to);
+  const edgeKey = dir >= 0 ? edgeRef(from.q, from.r, dir).key : null;
+  const edgeInst = edgeKey ? structures[edgeKey] : undefined;
+  const edgeT = edgeInst ? templates?.[edgeInst.templateId] : undefined;
+  if (edgeInst && edgeT && structureIsStairs(edgeT, edgeInst)) return 0;
+
+  let climb = 0;
+  // Hex surface rise (onto the top) — waived when the hex can be entered at ground.
+  const fromSurf = structureSurfaceAt(from, structures, templates);
+  const toSurf = structureSurfaceAt(to, structures, templates);
+  if (toSurf > fromSurf) {
+    const toInst = structures[`${to.q},${to.r}`];
+    const toT = toInst ? templates?.[toInst.templateId] : undefined;
+    const groundPass = !!(toInst && toT && structureDoorState(toInst, toT).openOrBroken);
+    if (!groundPass) climb = Math.max(climb, climbCostMp(toSurf - fromSurf));
+  }
+  // Edge wall height — a solid (door-less) wall is climbed; a door handles passage.
+  if (edgeInst && edgeT) {
+    const st = structureDoorState(edgeInst, edgeT);
+    if (st.noDoor) climb = Math.max(climb, climbCostMp(structureElevation(edgeT, edgeInst)));
+  }
+  return climb;
 }
 
 const intOr = (v: unknown): number | undefined => {

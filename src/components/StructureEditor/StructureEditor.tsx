@@ -86,9 +86,10 @@ function StairVariant({ kind }: { kind: 'B' | 'C' }) {
       <line x1={30} y1={edgeY} x2={90} y2={edgeY} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
       <line x1={20} y1={edgeY + 10} x2={100} y2={edgeY + 10} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
       {kind === 'C' && <>
-        {/* rails leaning against the rung ends → trapezoid ladder */}
-        <line x1={40} y1={edgeY - 10} x2={20} y2={edgeY + 10} stroke="#c49a58" strokeWidth="2" strokeLinecap="round" />
-        <line x1={80} y1={edgeY - 10} x2={100} y2={edgeY + 10} stroke="#c49a58" strokeWidth="2" strokeLinecap="round" />
+        {/* rails leaning against the rung ends, extruded past the outer rungs →
+            a trapezoid ladder with protruding handrails */}
+        <line x1={46} y1={edgeY - 16} x2={14} y2={edgeY + 16} stroke="#c49a58" strokeWidth="2" strokeLinecap="round" />
+        <line x1={74} y1={edgeY - 16} x2={106} y2={edgeY + 16} stroke="#c49a58" strokeWidth="2" strokeLinecap="round" />
       </>}
     </svg>
   );

@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Structure elevation — Phase 2b slice 3: climb cost + stairs (2026-10-02)
+**Files:** src/lib/{mapStructures,structureElevation.test}.ts, src/components/ScenarioMap/mapGeometry.ts, src/components/StructureEditor/StructureEditor.tsx, docs/dev/changelog.md
+
+- **Climb cost = `height / 2.5` MP** (10 ft = 4, 20 ft = 8). `structureClimbCostBetween(from, to)` adds it in `makeCostOfHex`: a rise in the hex surface (climbing onto a hex structure top) and/or a **solid (door-less) edge wall's height**. Same-surface movement is unchanged (flat step); a passable (open/broken) door waives the surface climb; **`stairs` on the shared edge waives the whole climb** (both sides).
+- Tests: `structureElevation.test.ts` (6) — climb amount, surface lookup, same-surface, stairs waiver, solid-wall climb. 846 tests pass.
+- Stair preview: **C** is now a trapezoid ladder with the rails **extruded past the outer rungs**. `tsc` clean; build clean.
+
 ## Structure elevation — Phase 2b slice 2: dynamic ground + per-surface occupancy (2026-10-02)
 **Files:** src/lib/{mapStructures,flying}.ts, src/components/ScenarioMap/{mapGeometry,useMoveActions,useOverlay,ScenarioMap}.tsx, src/hooks/useGameEngine.ts, docs/dev/changelog.md
 
