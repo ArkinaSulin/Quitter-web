@@ -49,7 +49,7 @@ import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackground
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { canReachStructure, canFly } from '@/lib/flying';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/lib/walls';
-import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor } from '@/lib/mapStructures';
+import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt } from '@/lib/mapStructures';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/lib/wallCombat';
@@ -2453,7 +2453,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Soft-enforcement prompts: fully-bound confirm handlers (clear state +
   // controlsLocked guard + act). The modals render from the pending states.
   const softActions = {
-    confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (controlsLocked) return; const airborne = (pm.unit.elevation ?? 0) > 0; const max = airborne ? (pm.unit.flySpeed ?? 0) : (pm.breakToFormation ? computeEffectiveMovement(pm.unit, getFormationMultiplier(formationsMap, pm.breakToFormation, 'movement_multiplier')) : unitMaxMP(pm.unit)); completeMove(pm.unit, pm.targetHex, pm.cost, true, max, pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined, pm.breakToFormation); },
+    confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (controlsLocked) return; const surface = structureSurfaceAt(pm.unit.hex, structures, structureTemplates); const airborne = (pm.unit.elevation ?? 0) > surface; const max = airborne ? (pm.unit.flySpeed ?? 0) : (pm.breakToFormation ? computeEffectiveMovement(pm.unit, getFormationMultiplier(formationsMap, pm.breakToFormation, 'movement_multiplier')) : unitMaxMP(pm.unit)); completeMove(pm.unit, pm.targetHex, pm.cost, true, max, pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined, pm.breakToFormation, undefined, surface); },
     confirmAttack: () => { const pa = pendingAttack!; setPendingAttack(null); if (!controlsLocked) performAttack(pa.attacker, pa.target, true); },
     confirmAttackCap: async () => {
       const pa = pendingAttackCap!;

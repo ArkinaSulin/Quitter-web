@@ -292,14 +292,14 @@ export function hexRing(center: Hex, radius: number): Hex[] {
   return results;
 }
 
-/** Hexes occupied on the GROUND layer: interactable units standing on the ground
- *  (elevation 0). Airborne units (elevation > 0) occupy the AIR layer instead
- *  (`airOccupiedHexes`) and never block a ground move — a ground unit may enter a
- *  hex beneath a flyer. */
-export function computeOccupiedHexes(allUnits: Unit[], excludeUnitId?: string): Set<string> {
+/** Hexes occupied at a given SURFACE (dynamic ground). A move on surface `S` is
+ *  blocked only by units standing at exactly `S` (default 0 = bare ground). Airborne
+ *  units (higher than the surface) live on the air layer (`airOccupiedHexes`), so a
+ *  ground unit may enter a hex beneath a flyer / under a platform garrison. */
+export function computeOccupiedHexes(allUnits: Unit[], excludeUnitId?: string, surface = 0): Set<string> {
   return new Set(
     allUnits
-      .filter(u => isUnitInteractable(u) && u.id !== excludeUnitId && (u.elevation ?? 0) <= 0)
+      .filter(u => isUnitInteractable(u) && u.id !== excludeUnitId && (u.elevation ?? 0) === surface)
       .map(u => `${u.hex.q},${u.hex.r}`),
   );
 }

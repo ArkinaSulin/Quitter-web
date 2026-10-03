@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Structure elevation — Phase 2b slice 2: dynamic ground + per-surface occupancy (2026-10-02)
+**Files:** src/lib/{mapStructures,flying}.ts, src/components/ScenarioMap/{mapGeometry,useMoveActions,useOverlay,ScenarioMap}.tsx, src/hooks/useGameEngine.ts, docs/dev/changelog.md
+
+- **`structureSurfaceAt(hex, structures, templates)`**: the walkable top-surface elevation at a hex (0 = bare ground). A garrison whose `elevation` equals the surface is **landed** (dynamic ground).
+- **`movePoolMode(unit, endElevation, surface)`**: a move is a FLY move only when the origin or end elevation exceeds the surface; otherwise ground. `moveUnitRecorded` gains an `options.surface`; `handleUnitMove`/`useOverlay`/`confirmMove` compute the origin/destination surface and pass it. `pendingElevation` records `originSurface`/`endSurface`.
+- **Per-surface occupancy**: `computeOccupiedHexes(units, excludeId, surface = 0)` now blocks only units at exactly that surface, so a platform garrison no longer blocks the ground beneath and garrisons block each other on their own surface. Default 0 preserves the bare-ground behaviour.
+- Stair preview: dropped variant A; **C is now a trapezoid ladder** (rails leaning against the 3 bar ends), still shown beside B for the pick. `tsc` clean; 840 tests pass; build clean.
+
 ## Structure + effect elevation — Phase 2b slice 1: data, editors, badges (2026-10-02)
 **Files:** supabase/migrations/111_structure_effect_elevation.sql, src/types/{structure,gameProtocol}.ts, src/lib/{structureTemplates,effectTemplates}.ts, src/components/{StructureEditor/StructureEditor,StructureEditModal,EffectEditor/EffectEditor}.tsx, src/components/ScenarioMap/{EffectFormModal,AddEffectModal,ScenarioMap,useCanvasDraw}.tsx, docs/dev/changelog.md
 

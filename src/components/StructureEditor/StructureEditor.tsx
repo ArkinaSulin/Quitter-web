@@ -76,25 +76,19 @@ function NumInput({ value, onChange, readOnly, max = 999, placeholder = '—' }:
 /** TEMPORARY: previews the three candidate edge-stair graphics (A/B/C) so the
  *  designer can pick one; the other two will be deleted once decided. Edge shown
  *  as a dashed line (lower hex above, higher hex below). */
-function StairVariant({ kind }: { kind: 'A' | 'B' | 'C' }) {
+function StairVariant({ kind }: { kind: 'B' | 'C' }) {
   const edgeY = 30;
   return (
     <svg viewBox="0 0 120 60" className="w-[120px] h-[60px]">
       <line x1="0" y1={edgeY} x2="120" y2={edgeY} stroke="#6b7280" strokeWidth="2" strokeDasharray="4 3" />
-      {kind === 'A' && [30, 50, 70, 90].map(x => (
-        <line key={x} x1={x} y1={edgeY - 12} x2={x} y2={edgeY + 12} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
-      ))}
-      {kind === 'B' && <>
-        <line x1={40} y1={edgeY - 10} x2={80} y2={edgeY - 10} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
-        <line x1={30} y1={edgeY} x2={90} y2={edgeY} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
-        <line x1={20} y1={edgeY + 10} x2={100} y2={edgeY + 10} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
-      </>}
+      {/* 3 tapered rungs: short on the lower side, long on the higher side */}
+      <line x1={40} y1={edgeY - 10} x2={80} y2={edgeY - 10} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
+      <line x1={30} y1={edgeY} x2={90} y2={edgeY} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
+      <line x1={20} y1={edgeY + 10} x2={100} y2={edgeY + 10} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
       {kind === 'C' && <>
-        <line x1={20} y1={edgeY - 16} x2={20} y2={edgeY + 16} stroke="#c49a58" strokeWidth="2" strokeLinecap="round" />
-        <line x1={100} y1={edgeY - 16} x2={100} y2={edgeY + 16} stroke="#c49a58" strokeWidth="2" strokeLinecap="round" />
-        <line x1={40} y1={edgeY - 10} x2={80} y2={edgeY - 10} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
-        <line x1={30} y1={edgeY} x2={90} y2={edgeY} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
-        <line x1={20} y1={edgeY + 10} x2={100} y2={edgeY + 10} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
+        {/* rails leaning against the rung ends → trapezoid ladder */}
+        <line x1={40} y1={edgeY - 10} x2={20} y2={edgeY + 10} stroke="#c49a58" strokeWidth="2" strokeLinecap="round" />
+        <line x1={80} y1={edgeY - 10} x2={100} y2={edgeY + 10} stroke="#c49a58" strokeWidth="2" strokeLinecap="round" />
       </>}
     </svg>
   );
@@ -105,11 +99,11 @@ function StairPreview() {
     <div className="rounded border border-dashed border-amber-700/60 p-2">
       <p className="text-[10px] uppercase tracking-wide text-amber-400/80 mb-1">Stair graphic — pick one (temporary preview)</p>
       <div className="flex flex-wrap gap-4">
-        {(['A', 'B', 'C'] as const).map(k => (
+        {(['B', 'C'] as const).map(k => (
           <div key={k} className="text-center">
             <StairVariant kind={k} />
             <span className="text-[10px] text-gray-400">
-              {k === 'A' ? 'A — perpendicular treads' : k === 'B' ? 'B — 3 tapered bars' : 'C — ladder'}
+              {k === 'B' ? 'B — 3 tapered bars' : 'C — trapezoid ladder'}
             </span>
           </div>
         ))}

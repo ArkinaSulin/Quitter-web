@@ -112,10 +112,12 @@ export type MovePoolMode = 'ground' | 'fly';
  * airborne (a takeoff/landing is a fly move), else GROUND. `endElevation` omitted
  * defaults to the origin (a rotation / no-elevation-change move).
  */
-export function movePoolMode(unit: Pick<Unit, 'elevation'>, endElevation?: number): MovePoolMode {
+export function movePoolMode(unit: Pick<Unit, 'elevation'>, endElevation?: number, surface = 0): MovePoolMode {
   const origin = unit.elevation ?? 0;
   const end = endElevation ?? origin;
-  return origin > 0 || end > 0 ? 'fly' : 'ground';
+  // Relative to the local surface (dynamic ground): a unit whose elevation equals
+  // the surface it stands on is LANDED (ground pool) even when surface > 0.
+  return origin > surface || end > surface ? 'fly' : 'ground';
 }
 
 /** The FLY movement pool's max (raw flySpeed — formations never scale it). */

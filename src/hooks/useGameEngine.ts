@@ -403,12 +403,12 @@ export function useGameEngine({
   };
 
   const moveUnitRecorded = useCallback(
-    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean; breakToFormation?: string; elevation?: number }): Promise<void> => {
-      // The pool is chosen by origin/end elevation: an airborne start or an
-      // airborne end is a FLY move (air layer, fly points); otherwise ground.
-      // Heroes convert actions at the prorated rate (5 actions = 1 full move);
-      // units keep the "1 action = 1 full MP pool" economy — both per pool.
-      const mode = movePoolMode(unit, options?.elevation);
+    async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean; breakToFormation?: string; elevation?: number; surface?: number }): Promise<void> => {
+      // The pool is chosen by origin/end elevation RELATIVE TO THE SURFACE (dynamic
+      // ground): an airborne start or end is a FLY move; otherwise ground. Heroes
+      // convert actions at the prorated rate (5 actions = 1 full move); units keep
+      // the "1 action = 1 full MP pool" economy — both per pool.
+      const mode = movePoolMode(unit, options?.elevation, options?.surface ?? 0);
       const poolMax = mode === 'fly' ? flyMax(unit) : maxMP;
       const budget = moveBudgetUnit(unit, mode);
       const { movementPointsAvailable, actionsAvailable } = unit.isHero

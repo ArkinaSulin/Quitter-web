@@ -19,7 +19,7 @@ import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode } from '@/lib/flying';
 import { Walls } from '@/lib/walls';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg } from '@/lib/mapStructures';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingHeroSwapConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
@@ -36,7 +36,7 @@ interface MoveActionsDeps {
   addMessage: (msg: string, verboseText?: string) => void;
   addError: (msg: string, verboseText?: string) => void;
   unitMaxMP: (unit: Unit) => number;
-  moveUnitRecorded: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean; breakToFormation?: string; elevation?: number }) => Promise<void>;
+  moveUnitRecorded: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean; breakToFormation?: string; elevation?: number; surface?: number }) => Promise<void>;
   moveUnitFree: (unit: Unit, targetHex: Hex, attachedHero?: Unit | null, breakToFormation?: string) => Promise<void>;
   changeFormation: (unit: Unit, formation: string, formationsMap: Record<string, Formation>) => Promise<void>;
   attachHero: (hero: Unit, targetUnit: Unit, position: 'front' | 'back' | 'rider', heroMaxMP: number) => Promise<void>;
@@ -102,6 +102,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     range: { min: number; max: number; defaultValue: number };
     /** Origin was airborne (a grounded origin taking off still pays fly points). */
     originAir: boolean;
+    /** Walkable surface at the origin / destination hex (dynamic ground). */
+    originSurface: number;
+    endSurface: number;
     /** A ground unit already occupying the target hex (a flyer may hover above it). */
     occupant: Unit | null;
     /** The occupant is a hostile stoop target (the unified modal offers Stoop). */
@@ -146,7 +149,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }], `${unit.unitName} returned to ${primary.name}`);
   }, [displayUnits, displayAlliances, turnNumber, execute]);
 
-  const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, breakToFormation?: string, elevation?: number) => {
+  const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, breakToFormation?: string, elevation?: number, surface?: number) => {
     if (overBudget) {
       const actionNote = unit.isHero
         ? `${Math.ceil(cost / heroMovePerAction(maxMP))} action(s) at ${heroMovePerAction(maxMP)} MP/action`
@@ -160,7 +163,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // a unit's morale into a rout, even when threat drops morale to zero.
     // Entering a hostile kill zone ends the move: the leftover MP is spent.
     const stopInZoc = computeThreatHexes(units, unit.id, alliances, formationsMap).has(`${targetHex.q},${targetHex.r}`);
-    await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP, undefined, { stopInZoc, breakToFormation, elevation });
+    await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP, undefined, { stopInZoc, breakToFormation, elevation, surface });
     // The unit may have left every hostile kill zone — return to its primary
     // ranged weapon (only reverts a melee weapon, and never a manual pick).
     await maybeAutoReturnToRanged(unit);
@@ -205,8 +208,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     heroMaxMP?: number,
     breakToFormation?: string,
     elevation?: number,
+    surface?: number,
   ): Promise<void> => {
-    await performMove(unit, targetHex, cost, overBudget, maxMP, attachedHero, heroMaxMP, breakToFormation, elevation);
+    await performMove(unit, targetHex, cost, overBudget, maxMP, attachedHero, heroMaxMP, breakToFormation, elevation, surface);
     // Disengagement: a move that leaves a hostile kill zone provokes one melee
     // opportunity attack from each formed enemy whose kill zone was left (routed
     // retreats and the charge-over overrun use separate paths and are exempt).
@@ -251,11 +255,13 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // A RIDER rides free: the mount's MP is the sole budget; the rider's MP still
     // drains proportionally (tracked) but never limits the move.
     const isRider = !!attachedHero && attachedHero.attachedPosition === 'rider';
-    // A flying unit (elevation > 0) moves on the air layer: flat 1 MP/hex, ignores
-    // terrain/walls/structures and ground occupancy, only collides with other flyers.
-    const flying = (unit.elevation ?? 0) > 0;
-    // The move draws from the FLY pool while airborne (raw flySpeed), else the
-    // ground pool. The preview/budget is chosen by ORIGIN elevation.
+    // Dynamic ground: a unit is FLYING when its elevation exceeds the surface it
+    // stands on (a garrison at elevation == a platform's surface moves on the
+    // ground). The move draws from the FLY pool while airborne, else the ground
+    // pool; the preview/budget is chosen by ORIGIN surface.
+    const originSurface = structureSurfaceAt(unit.hex, structures, structureTemplates);
+    const endSurface = structureSurfaceAt(targetHex, structures, structureTemplates);
+    const flying = (unit.elevation ?? 0) > originSurface;
     const originMax = flying ? (unit.flySpeed ?? 0) : unitMaxMP(unit);
     const unitBudget = moveBudgetUnit(unit, flying ? 'fly' : 'ground');
 
@@ -263,7 +269,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // and cannot enter broken terrain (painted MP cost > 1). A stooping flyer
     // charges on the air layer (over terrain/walls, air-occupied only).
     if (unit.isCharging) {
-      const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId);
+      const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId, originSurface);
       const maxMP = originMax;
       const mounted = !!unit.mountId || !!unit.mountName;
       const chargeReach = computeChargeReachable(
@@ -281,12 +287,12 @@ export function useMoveActions(deps: MoveActionsDeps) {
         setPendingMove({ unit, targetHex, cost, attachedHero });
         return;
       }
-      await completeMove(unit, targetHex, cost, false, maxMP, attachedHero, heroMax);
+      await completeMove(unit, targetHex, cost, false, maxMP, attachedHero, heroMax, undefined, undefined, originSurface);
       return;
     }
 
     if (freeMove) {
-      const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId);
+      const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId, originSurface);
       if (occupied.has(`${targetHex.q},${targetHex.r}`)) {
         addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — hex occupied`);
         return;
@@ -302,7 +308,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
 
     const movementMult = getFormationMultiplier(formationsMap, unit.currentFormation, 'movement_multiplier');
     const effectiveMax = flying ? originMax : computeEffectiveMovement(unit, movementMult);
-    const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId);
+    const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId, originSurface);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
     const mounted = !!unit.mountId || !!unit.mountName;
     const costOfHex = flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted });
@@ -365,10 +371,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (canFly(unit)) {
       const groundOccupied = units.some(u => u.id !== unitId && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) <= 0 && u.hex.q === targetHex.q && u.hex.r === targetHex.r);
       const range = elevationSliderRange(unit.elevation ?? 0, entry.cost, groundOccupied);
-      setPendingElevation({ unit, targetHex, cost: entry.cost, maxMP: finalMax, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation, range, originAir: flying, occupant: null, canStoop: false, isHostile: false });
+      setPendingElevation({ unit, targetHex, cost: entry.cost, maxMP: finalMax, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation, range, originAir: flying, originSurface, endSurface, occupant: null, canStoop: false, isHostile: false });
       return;
     }
-    await completeMove(unit, targetHex, entry.cost, false, finalMax, attachedHero, heroMax, breakToFormation);
+    await completeMove(unit, targetHex, entry.cost, false, finalMax, attachedHero, heroMax, breakToFormation, undefined, originSurface);
   }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove]);
 
   const handleChangeFormation = useCallback(async (unit: Unit, formation: string) => {
@@ -535,35 +541,38 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
     if (reach.kind === 'blocked') return false;
     const range = elevationSliderRange(unit.elevation ?? 0, reach.cost, true);
+    const originSurface = structureSurfaceAt(unit.hex, structures, structureTemplates);
+    const endSurface = structureSurfaceAt(occupant.hex, structures, structureTemplates);
     setPendingElevation({
       unit, targetHex: occupant.hex, cost: reach.cost, maxMP: reach.maxMP,
       attachedHero: reach.attachedHero, heroMaxMP: reach.heroMaxMP, breakToFormation: undefined,
-      range, originAir: (unit.elevation ?? 0) > 0, occupant,
+      range, originAir: (unit.elevation ?? 0) > originSurface, originSurface, endSurface, occupant,
       canStoop: opts.canStoop, isHostile: opts.isHostile,
     });
     return true;
-  }, [flyerOccupyReach, addMessage]);
+  }, [flyerOccupyReach, addMessage, structures, structureTemplates]);
 
   const confirmElevation = useCallback((newElevation: number) => {
     const p = pendingElevation;
     setPendingElevation(null);
     if (!p) return;
     // A grounded origin taking off pays fly points; an airborne origin always does.
-    const finalAir = p.originAir || newElevation > 0;
+    // Relative to the destination SURFACE (dynamic ground).
+    const finalAir = p.originAir || newElevation > p.endSurface;
     const finalMax = finalAir ? (p.unit.flySpeed ?? 0) : p.maxMP;
     // A non-flying attached hero too large to carry must be left behind on take-off.
-    if (p.attachedHero && newElevation > 0 && carryRule(p.unit, p.attachedHero) === 'leave') {
+    if (p.attachedHero && newElevation > p.endSurface && carryRule(p.unit, p.attachedHero) === 'leave') {
       setPendingLeaveHero({ unit: p.unit, targetHex: p.targetHex, cost: p.cost, maxMP: finalMax, hero: p.attachedHero, heroMaxMP: p.heroMaxMP, breakToFormation: p.breakToFormation, elevation: newElevation });
       return;
     }
     if (p.occupant) {
       // Fly move onto the occupied hex (passenger drains passively, never limits).
-      void completeMove(p.unit, p.targetHex, p.cost, false, finalMax, p.attachedHero, p.heroMaxMP, undefined, newElevation);
+      void completeMove(p.unit, p.targetHex, p.cost, false, finalMax, p.attachedHero, p.heroMaxMP, undefined, newElevation, p.endSurface);
       return;
     }
     const budgetUnit = moveBudgetUnit(p.unit, finalAir ? 'fly' : 'ground');
     const affordable = p.unit.isHero ? isHeroMoveAffordable(budgetUnit, p.cost, finalMax) : isMoveAffordable(budgetUnit, p.cost, finalMax);
-    void completeMove(p.unit, p.targetHex, p.cost, !affordable, finalMax, p.attachedHero, p.heroMaxMP, p.breakToFormation, newElevation);
+    void completeMove(p.unit, p.targetHex, p.cost, !affordable, finalMax, p.attachedHero, p.heroMaxMP, p.breakToFormation, newElevation, p.endSurface);
   }, [pendingElevation, completeMove]);
 
   const confirmLeaveHero = useCallback(async () => {

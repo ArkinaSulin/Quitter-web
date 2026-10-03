@@ -16,7 +16,7 @@ import { canRangedTarget } from '@/lib/formationRules';
 import { arcOfTarget } from '@/lib/attackDirection';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls, EdgeRef } from '@/lib/walls';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation } from '@/lib/mapStructures';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, structureSurfaceAt } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { rangeBonusAt } from '@/lib/unitEffects';
@@ -126,8 +126,9 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
   if (draggingUnitId) {
     const draggedUnit = units.find(u => u.id === draggingUnitId);
     if (!draggedUnit) return {};
-    const flying = (draggedUnit.elevation ?? 0) > 0;
-    const occupied = flying ? airOccupiedHexes(units) : computeOccupiedHexes(units);
+    const surface = structureSurfaceAt(draggedUnit.hex, structures, templates);
+    const flying = (draggedUnit.elevation ?? 0) > surface;
+    const occupied = flying ? airOccupiedHexes(units) : computeOccupiedHexes(units, undefined, surface);
 
     if (freeMove) {
       const combined: Record<string, string> = {};
@@ -253,7 +254,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     // in a threat zone (no face change) — shown white/droppable like a move.
     // Not offered while airborne.
     if (!flying && canWithdraw(draggedUnit)) {
-      const occupied = computeOccupiedHexes(units, draggedUnit.id);
+      const occupied = computeOccupiedHexes(units, draggedUnit.id, surface);
       const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
       for (const hx of withdrawDestinations(draggedUnit, occupied, radius, threatHexes)) {
         combined[`${hx.q},${hx.r}`] = 'rgba(255, 255, 255, 0.5)';

@@ -11,7 +11,7 @@
 import { Walls, Wall, WallFace, WallRollFlags, edgeRef, directionBetween } from './walls';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { EffectModifier, modifierAmount } from '@/lib/effectTemplates';
-import { templateDoorMax } from '@/lib/structureTemplates';
+import { templateDoorMax, structureElevation } from '@/lib/structureTemplates';
 import { GroundEffect, Unit, getOrganizationLevel } from '@/types/gameProtocol';
 import { formationAtOrBelow } from '@/lib/formationCost';
 
@@ -26,6 +26,23 @@ export function isEdgeStructureKey(key: string): boolean {
 
 export function isHexStructureKey(key: string): boolean {
   return !isEdgeStructureKey(key) && HEX_KEY.test(key);
+}
+
+/**
+ * The walkable top-surface elevation at a hex (0 = bare ground). A HEX structure
+ * defines its surface; edge-only walls do not (they only add a climb cost). Used
+ * for the dynamic-ground model: a unit whose elevation equals its hex surface is
+ * LANDED (moves on the ground pool); higher = flying.
+ */
+export function structureSurfaceAt(
+  hex: { q: number; r: number },
+  structures: MapStructures | undefined,
+  templates: Record<string, StructureTemplate> | undefined,
+): number {
+  if (!structures) return 0;
+  const inst = structures[`${hex.q},${hex.r}`];
+  if (!inst) return 0;
+  return structureElevation(templates?.[inst.templateId], inst);
 }
 
 const intOr = (v: unknown): number | undefined => {
