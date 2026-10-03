@@ -57,6 +57,33 @@ Template library + editor shipped (Slice 1). See `18-map-structures.md`.
   entry MP, door bypassed).
 - ⏳ Only gap: the AI planner ignores structure auras / range / gates (v1).
 
+## Structure elevation (Phase 2b, migrations 111–112)
+Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`.
+- ✅ **Data**: `map_structure_templates.elevation` (default 10; 0 = decorative) +
+  `stairs`; `map_effect_templates.elevation`; `units.climb_to`. Editors (Structure
+  Editor, placed `StructureEditModal`, Effect Editor/modal) expose elevation/stairs.
+- ✅ **Dynamic ground + occupancy**: `structureSurfaceAt`; `movePoolMode`/`moveBudgetUnit`
+  take a surface; `computeOccupiedHexes(units, excludeId, surface=0)` is per-surface.
+- ✅ **Climb / hang**: `climbPlan` (10 ft @ 4 MP, `height/2.5`), `climb_to`; stairs
+  waive climb; mounted can't climb; linear movement (up = target / down = own hex);
+  hover +10 ft if the origin ground is occupied; no retaliation; attack/ZoC only at
+  the wall top; rout = free-fall (d6/10 ft) + standard rout picker.
+- ✅ **Flight blocking / ranged vertical / offsets / badges / stair graphic**.
+- ⏳ **Follow-ups**:
+  - The charge-disable gate (`makeChargeBlockedEdge`) does not fold in the climb
+    cost — a climb of 2+ MP should disable charge per the "any 2+ MP crossing"
+    rule.
+  - `useCastActions` magic-rout of a climbing unit defaults the free-fall to
+    **ground** (it lacks `structures`); pass the origin surface so a platform-origin
+    climber falls to the platform, not 0.
+  - No **voluntary free-fall** UI (only the rout descent offers it). Decide whether
+    a non-rout "drop (damage)" option belongs on the climbing-unit context menu.
+  - **ZoC "only at the wall top"**: currently a climbing unit exerts ZoC only
+    against movers at its exact elevation (the 2b-6 rule); the explicit
+    wall-top gate wasn't added separately — verify in play it reads correctly.
+  - **Enemy AI** ignores elevation / climb / flight-blocking entirely (v1), same as
+    structure auras.
+
 ## Edge walls (migration 089) — unified into map structures
 - ✅ **Edge walls are authored as structures** (see "Map structures"): the runtime
   `Walls` map is derived from edge structure instances, `map_data.walls` is no
@@ -127,8 +154,11 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
   **090** (ZoC pursue + Withdraw), **091** (front-only ranged arc), **092** (wall
   command-log branch), **093–095** (map structures) — owner-confirmed. The former
   hand-applied `apply_substeps` array-write fix is folded into migration **080**.
+- ✅ Applied (owner-confirmed, Phase 2 aerial/elevation): **108** (elevation/fly),
+  **109** (template fly speed), **110** (`fly_speed_available` numeric), **111**
+  (structure/effect elevation).
 - 🔜 **Awaiting apply**: **096** (structure `spikes` + "Archer's Stake" rename),
-  **097** (`structure_images` bucket).
+  **097** (`structure_images` bucket), **112** (`units.climb_to` — Phase 2b-7).
 
 ## Uncommitted working tree (owner's, left untouched)
 - `.scratch/ship-builder/spec.md`, `.scratch/shipyard-formula/{FINDINGS.md,shipyard.csv}`,
