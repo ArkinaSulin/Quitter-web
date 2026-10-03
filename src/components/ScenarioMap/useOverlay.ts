@@ -22,6 +22,7 @@ import { GroundEffect } from '@/types/gameProtocol';
 import { rangeBonusAt } from '@/lib/unitEffects';
 import { edgeHexes } from '@/lib/wallCombat';
 import { canWithdraw, withdrawDestinations } from '@/lib/withdraw';
+import { isStooping, moveBudgetUnit } from '@/lib/flying';
 
 /** Hovered unit's front-arc threat tint (non-loose units only). */
 function getOverlayForUnit(unit: Unit): Record<string, string> {
@@ -147,8 +148,12 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     if (draggedUnit.isCharging) {
       const combined: Record<string, string> = {};
       const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
-      const effectiveMax = computeEffectiveMovement(draggedUnit, movementMult);
-      const chargeReach = computeChargeReachable(draggedUnit, occupied, effectiveMax, costOfHexFor(isMountedOf(draggedUnit)), chargeBlockedEdgeFor(draggedUnit));
+      const effectiveMax = flying ? (draggedUnit.flySpeed ?? 0) : computeEffectiveMovement(draggedUnit, movementMult);
+      const chargeReach = computeChargeReachable(
+        draggedUnit, occupied, effectiveMax,
+        flying ? undefined : costOfHexFor(isMountedOf(draggedUnit)),
+        flying ? undefined : chargeBlockedEdgeFor(draggedUnit),
+      );
       for (const [key, cost] of Array.from(chargeReach.entries())) {
         combined[key] = cost >= getSetting('charge_full_distance', 2) ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';
       }
@@ -161,16 +166,19 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     // converts to MP on move), or leftover MP only when 0 actions. A host with
     // an attached hero is capped by the hero's pool too (combined unit).
     const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
-    const effectiveMax = computeEffectiveMovement(draggedUnit, movementMult);
+    // Origin-mode pool: airborne units preview the fly pool (raw flySpeed), grounded
+    // units the ground pool. A passenger on a fly move is passive (never caps it).
+    const effectiveMax = flying ? (draggedUnit.flySpeed ?? 0) : computeEffectiveMovement(draggedUnit, movementMult);
+    const budgetUnit = moveBudgetUnit(draggedUnit, flying ? 'fly' : 'ground');
     // Heroes show their full conversion potential (MP + actions × maxMP/5);
     // units show one pool (or leftover MP when no actions) — matching handleUnitMove.
     // Option 2 movement economy: the highlight pools every remaining action as
     // the MP budget (so an expensive single step is selectable), but the hex-step
     // cap stays at ONE move's pool so normal reach is unchanged.
-    let budget = draggedUnit.isHero ? computeHeroMovePool(draggedUnit, effectiveMax) : computeMoveBudget(draggedUnit, effectiveMax);
-    let hopCap = draggedUnit.isHero ? budget : computeMovePool(draggedUnit, effectiveMax);
+    let budget = draggedUnit.isHero ? computeHeroMovePool(budgetUnit, effectiveMax) : computeMoveBudget(budgetUnit, effectiveMax);
+    let hopCap = draggedUnit.isHero ? budget : computeMovePool(budgetUnit, effectiveMax);
     const attachedHero = draggedUnit.attachedToUnitId ? undefined : units.find(u => u.attachedToUnitId === draggedUnit.id && !u.isDeleted);
-    if (attachedHero && attachedHero.attachedPosition !== 'rider') {
+    if (!flying && attachedHero && attachedHero.attachedPosition !== 'rider') {
       const heroMult = getFormationMultiplier(formationsMap, attachedHero.currentFormation, 'movement_multiplier');
       const heroMax = computeEffectiveMovement(attachedHero, heroMult);
       const heroBudget = attachedHero.isHero ? computeHeroMovePool(attachedHero, heroMax) : computeMoveBudget(attachedHero, heroMax);
@@ -198,6 +206,12 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       if (!isValidTarget) {
         // Ally — cross-alliance attacks are hard-blocked; show it as invalid.
         combined[targetKey] = 'rgba(255, 80, 80, 0.7)';
+        return combined;
+      }
+      // A stooping flyer hovering a GROUND enemy: the drop offers the charge-drop
+      // (move onto the hex + free melee). Amber distinguishes it from a plain shot.
+      if (isStooping(draggedUnit) && (hoveredUnit!.elevation ?? 0) <= 0) {
+        combined[targetKey] = 'rgba(255, 140, 60, 0.85)';
         return combined;
       }
       if (isRanged) {
@@ -237,7 +251,8 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     });
     // Withdraw: a formed unit may step one hex into an empty rear hex that is NOT
     // in a threat zone (no face change) — shown white/droppable like a move.
-    if (canWithdraw(draggedUnit)) {
+    // Not offered while airborne.
+    if (!flying && canWithdraw(draggedUnit)) {
       const occupied = computeOccupiedHexes(units, draggedUnit.id);
       const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
       for (const hx of withdrawDestinations(draggedUnit, occupied, radius, threatHexes)) {

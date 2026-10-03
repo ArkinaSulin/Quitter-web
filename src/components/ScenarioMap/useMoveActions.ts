@@ -5,7 +5,7 @@
 // (pendingMove, pendingFormation, hero attach/swap conversion + over-budget).
 import { useCallback, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, GroundEffect, getOrganizationLevel } from '@/types/gameProtocol';
-import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable } from '@/lib/moveCost';
+import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable, computeMoveBudget, computeMovePool, computeHeroMoveBudget, computeHeroMovePool } from '@/lib/moveCost';
 import { isFormationChangeAffordable } from '@/lib/formationCost';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { isUnitRouted } from '@/lib/unitMorale';
@@ -17,7 +17,7 @@ import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
-import { canFly, elevationSliderRange, carryRule } from '@/lib/flying';
+import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode } from '@/lib/flying';
 import { Walls } from '@/lib/walls';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
@@ -91,7 +91,24 @@ export function useMoveActions(deps: MoveActionsDeps) {
   const [pendingHeroSwapConversion, setPendingHeroSwapConversion] = useState<PendingHeroSwapConversion | null>(null);
   const [pendingAttachOverBudget, setPendingAttachOverBudget] = useState<PendingAttachOverBudget | null>(null);
   const [pendingSwapOverBudget, setPendingSwapOverBudget] = useState<Unit | null>(null);
-  const [pendingElevation, setPendingElevation] = useState<{ unit: Unit; targetHex: Hex; cost: number; maxMP: number; attachedHero: Unit | null; heroMaxMP: number | undefined; breakToFormation: string | undefined; range: { min: number; max: number; defaultValue: number } } | null>(null);
+  const [pendingElevation, setPendingElevation] = useState<{
+    unit: Unit;
+    targetHex: Hex;
+    cost: number;
+    maxMP: number;
+    attachedHero: Unit | null;
+    heroMaxMP: number | undefined;
+    breakToFormation: string | undefined;
+    range: { min: number; max: number; defaultValue: number };
+    /** Origin was airborne (a grounded origin taking off still pays fly points). */
+    originAir: boolean;
+    /** A ground unit already occupying the target hex (a flyer may hover above it). */
+    occupant: Unit | null;
+    /** The occupant is a hostile stoop target (the unified modal offers Stoop). */
+    canStoop: boolean;
+    /** The occupant is hostile (the unified modal offers Range attack). */
+    isHostile: boolean;
+  } | null>(null);
   const [pendingLeaveHero, setPendingLeaveHero] = useState<{ unit: Unit; targetHex: Hex; cost: number; maxMP: number; hero: Unit; heroMaxMP: number | undefined; breakToFormation: string | undefined; elevation: number } | null>(null);
 
   /**
@@ -219,13 +236,17 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // A flying unit (elevation > 0) moves on the air layer: flat 1 MP/hex, ignores
     // terrain/walls/structures and ground occupancy, only collides with other flyers.
     const flying = (unit.elevation ?? 0) > 0;
+    // The move draws from the FLY pool while airborne (raw flySpeed), else the
+    // ground pool. The preview/budget is chosen by ORIGIN elevation.
+    const originMax = flying ? (unit.flySpeed ?? 0) : unitMaxMP(unit);
+    const unitBudget = moveBudgetUnit(unit, flying ? 'fly' : 'ground');
 
     // Charging units may only move forward through the front-arc charge wedge,
     // and cannot enter broken terrain (painted MP cost > 1). A stooping flyer
     // charges on the air layer (over terrain/walls, air-occupied only).
     if (unit.isCharging) {
       const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId);
-      const maxMP = unitMaxMP(unit);
+      const maxMP = originMax;
       const mounted = !!unit.mountId || !!unit.mountName;
       const chargeReach = computeChargeReachable(
         unit, occupied, maxMP,
@@ -237,7 +258,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
         addMessage(`${unit.unitName} cannot move there — outside the charge route`);
         return;
       }
-      const overBudget = !isMoveAffordable(unit, cost, maxMP) || (attachedHero && heroMax && !isRider ? (attachedHero.isHero ? !isHeroMoveAffordable(attachedHero, cost, heroMax) : !isMoveAffordable(attachedHero, cost, heroMax)) : false);
+      const overBudget = !isMoveAffordable(unitBudget, cost, maxMP) || (attachedHero && heroMax && !isRider ? (attachedHero.isHero ? !isHeroMoveAffordable(attachedHero, cost, heroMax) : !isMoveAffordable(attachedHero, cost, heroMax)) : false);
       if (overBudget) {
         setPendingMove({ unit, targetHex, cost, attachedHero });
         return;
@@ -262,7 +283,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
 
     const movementMult = getFormationMultiplier(formationsMap, unit.currentFormation, 'movement_multiplier');
-    const effectiveMax = computeEffectiveMovement(unit, movementMult);
+    const effectiveMax = flying ? originMax : computeEffectiveMovement(unit, movementMult);
     const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
     const mounted = !!unit.mountId || !!unit.mountName;
@@ -278,10 +299,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // more hexes than its move), but NOT by MP: painted hexes are found at their
     // TRUE entry cost even when that cost exceeds the pool, so affordability (and
     // the soft over-budget confirm) use the real number instead of a hard block.
-    const hopCap = Math.max(1, Math.min(
-      effectiveMax,
-      attachedHero && heroMax && !isRider ? heroMax : Infinity,
-    ));
+    // A fly move's passenger is passive (never caps the host's reach).
+    const hopCap = flying
+      ? Math.max(1, effectiveMax)
+      : Math.max(1, Math.min(effectiveMax, attachedHero && heroMax && !isRider ? heroMax : Infinity));
     // Occupied hex structures whose door is open/broken may be TRAVERSED (not
     // stopped on) — pass them to the reachability search.
     const passThrough = flying ? undefined : doorPassThroughHexes(structures, structureTemplates, occupied);
@@ -312,8 +333,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const finalMax = breakToFormation
       ? computeEffectiveMovement(unit, getFormationMultiplier(formationsMap, breakToFormation, 'movement_multiplier'))
       : effectiveMax;
-    const unitAffordable = unit.isHero ? isHeroMoveAffordable(unit, entry.cost, finalMax) : isMoveAffordable(unit, entry.cost, finalMax);
-    const heroAffordable = isRider ? true : (attachedHero && heroMax ? (attachedHero.isHero ? isHeroMoveAffordable(attachedHero, entry.cost, heroMax) : isMoveAffordable(attachedHero, entry.cost, heroMax)) : true);
+    const unitAffordable = unit.isHero ? isHeroMoveAffordable(unitBudget, entry.cost, finalMax) : isMoveAffordable(unitBudget, entry.cost, finalMax);
+    // A fly move never lets the passenger's pool limit it (passive drain), so the
+    // combined-cap check only applies to ground moves.
+    const heroAffordable = flying || isRider ? true : (attachedHero && heroMax ? (attachedHero.isHero ? isHeroMoveAffordable(attachedHero, entry.cost, heroMax) : isMoveAffordable(attachedHero, entry.cost, heroMax)) : true);
     const overBudget = !unitAffordable || !heroAffordable;
     if (overBudget) {
       setPendingMove({ unit, targetHex, cost: entry.cost, attachedHero, breakToFormation });
@@ -324,7 +347,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (canFly(unit)) {
       const groundOccupied = units.some(u => u.id !== unitId && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) <= 0 && u.hex.q === targetHex.q && u.hex.r === targetHex.r);
       const range = elevationSliderRange(unit.elevation ?? 0, entry.cost, groundOccupied);
-      setPendingElevation({ unit, targetHex, cost: entry.cost, maxMP: finalMax, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation, range });
+      setPendingElevation({ unit, targetHex, cost: entry.cost, maxMP: finalMax, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation, range, originAir: flying, occupant: null, canStoop: false, isHostile: false });
       return;
     }
     await completeMove(unit, targetHex, entry.cost, false, finalMax, attachedHero, heroMax, breakToFormation);
@@ -391,10 +414,12 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // (maxMP/5 each). When MP is insufficient, ask whether to convert the
     // [#] actions that make up 1 MP; only if even conversions can't cover it
     // (no actions left) fall back to the over-budget confirm.
-    const maxMP = unitMaxMP(hero);
-    if (!freeMove && hero.movementPointsAvailable < 1) {
+    const fly = (hero.elevation ?? 0) > 0;
+    const maxMP = fly ? (hero.flySpeed ?? 0) : unitMaxMP(hero);
+    const avail = fly ? (hero.flySpeedAvailable ?? 0) : hero.movementPointsAvailable;
+    if (!freeMove && avail < 1) {
       const per = heroMovePerAction(maxMP);
-      const actionsNeeded = Math.ceil((1 - Math.max(0, hero.movementPointsAvailable)) / per);
+      const actionsNeeded = Math.ceil((1 - Math.max(0, avail)) / per);
       if (hero.actionsAvailable >= actionsNeeded) {
         setPendingHeroAttachConversion({ hero, target, position, actionsNeeded });
         return;
@@ -409,10 +434,12 @@ export function useMoveActions(deps: MoveActionsDeps) {
   const handleSwapHeroPosition = useCallback(async (hero: Unit) => {
     // Swapping front/back costs 1 hero MP (free during free-move) — ask before
     // converting actions when MP is insufficient, over-budget confirm otherwise.
-    const maxMP = unitMaxMP(hero);
-    if (!freeMove && hero.movementPointsAvailable < 1) {
+    const fly = (hero.elevation ?? 0) > 0;
+    const maxMP = fly ? (hero.flySpeed ?? 0) : unitMaxMP(hero);
+    const avail = fly ? (hero.flySpeedAvailable ?? 0) : hero.movementPointsAvailable;
+    if (!freeMove && avail < 1) {
       const per = heroMovePerAction(maxMP);
-      const actionsNeeded = Math.ceil((1 - Math.max(0, hero.movementPointsAvailable)) / per);
+      const actionsNeeded = Math.ceil((1 - Math.max(0, avail)) / per);
       if (hero.actionsAvailable >= actionsNeeded) {
         setPendingHeroSwapConversion({ hero, actionsNeeded });
         return;
@@ -430,6 +457,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
    * `overBudget` only controls the red warning (the actions may go negative).
    */
   const performWithdraw = useCallback(async (unit: Unit, destHex: Hex, overBudget = false) => {
+    if ((unit.elevation ?? 0) > 0) { addError('Cannot withdraw during flight.'); return; }
     const changes: { field: string; from: any; to: any }[] = [
       { field: 'hex', from: unit.hex, to: { ...destHex } },
     ];
@@ -445,16 +473,60 @@ export function useMoveActions(deps: MoveActionsDeps) {
     await maybeAutoReturnToRanged(unit);
   }, [execute, freeMove, addError, maybeAutoReturnToRanged, units]);
 
+  /**
+   * Fly-move reach onto a hex (used for the occupied-hex drop): air layer, no
+   * terrain/walls, only other airborne units block. Returns the cost + the mover's
+   * fly budget context, or null when the hex is not a legal destination.
+   */
+  const flyerOccupyReach = useCallback((unit: Unit, targetHex: Hex): { cost: number; maxMP: number; attachedHero: Unit | null; heroMaxMP: number | undefined } | null => {
+    const attachedHero = unit.attachedToUnitId ? null : (units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted) ?? null);
+    const maxMP = unit.flySpeed ?? 0;
+    const budgetUnit = moveBudgetUnit(unit, 'fly');
+    const occupied = airOccupiedHexes(units, unit.id);
+    const threatHexes = computeThreatHexes(units, unit.id, alliances, formationsMap);
+    const hopCap = unit.isHero ? computeHeroMovePool(budgetUnit, maxMP) : computeMovePool(budgetUnit, maxMP);
+    const budget = unit.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP);
+    const reachable = computeReachableMap(unit, budget, occupied, threatHexes, undefined, false, undefined, hopCap, undefined, undefined);
+    const entry = reachable.get(`${targetHex.q},${targetHex.r}`);
+    if (!entry || entry.needsTurn) return null;
+    return { cost: entry.cost, maxMP, attachedHero, heroMaxMP: attachedHero ? unitMaxMP(attachedHero) : undefined };
+  }, [units, alliances, formationsMap, unitMaxMP]);
+
+  /** Open the unified flyer-drop modal for a hex occupied by a ground unit.
+   *  Returns false when the hex is not a legal fly destination (falls back to attack). */
+  const beginFlyerDrop = useCallback((unit: Unit, occupant: Unit, opts: { canStoop: boolean; isHostile: boolean }): boolean => {
+    const reach = flyerOccupyReach(unit, occupant.hex);
+    if (!reach) return false;
+    const range = elevationSliderRange(unit.elevation ?? 0, reach.cost, true);
+    setPendingElevation({
+      unit, targetHex: occupant.hex, cost: reach.cost, maxMP: reach.maxMP,
+      attachedHero: reach.attachedHero, heroMaxMP: reach.heroMaxMP, breakToFormation: undefined,
+      range, originAir: (unit.elevation ?? 0) > 0, occupant,
+      canStoop: opts.canStoop, isHostile: opts.isHostile,
+    });
+    return true;
+  }, [flyerOccupyReach]);
+
   const confirmElevation = useCallback((newElevation: number) => {
     const p = pendingElevation;
     setPendingElevation(null);
     if (!p) return;
+    // A grounded origin taking off pays fly points; an airborne origin always does.
+    const finalAir = p.originAir || newElevation > 0;
+    const finalMax = finalAir ? (p.unit.flySpeed ?? 0) : p.maxMP;
     // A non-flying attached hero too large to carry must be left behind on take-off.
     if (p.attachedHero && newElevation > 0 && carryRule(p.unit, p.attachedHero) === 'leave') {
-      setPendingLeaveHero({ unit: p.unit, targetHex: p.targetHex, cost: p.cost, maxMP: p.maxMP, hero: p.attachedHero, heroMaxMP: p.heroMaxMP, breakToFormation: p.breakToFormation, elevation: newElevation });
+      setPendingLeaveHero({ unit: p.unit, targetHex: p.targetHex, cost: p.cost, maxMP: finalMax, hero: p.attachedHero, heroMaxMP: p.heroMaxMP, breakToFormation: p.breakToFormation, elevation: newElevation });
       return;
     }
-    void completeMove(p.unit, p.targetHex, p.cost, false, p.maxMP, p.attachedHero, p.heroMaxMP, p.breakToFormation, newElevation);
+    if (p.occupant) {
+      // Fly move onto the occupied hex (passenger drains passively, never limits).
+      void completeMove(p.unit, p.targetHex, p.cost, false, finalMax, p.attachedHero, p.heroMaxMP, undefined, newElevation);
+      return;
+    }
+    const budgetUnit = moveBudgetUnit(p.unit, finalAir ? 'fly' : 'ground');
+    const affordable = p.unit.isHero ? isHeroMoveAffordable(budgetUnit, p.cost, finalMax) : isMoveAffordable(budgetUnit, p.cost, finalMax);
+    void completeMove(p.unit, p.targetHex, p.cost, !affordable, finalMax, p.attachedHero, p.heroMaxMP, p.breakToFormation, newElevation);
   }, [pendingElevation, completeMove]);
 
   const confirmLeaveHero = useCallback(async () => {
@@ -494,6 +566,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     pendingElevation,
     setPendingElevation,
     confirmElevation,
+    beginFlyerDrop,
     cancelElevation,
     pendingLeaveHero,
     confirmLeaveHero,

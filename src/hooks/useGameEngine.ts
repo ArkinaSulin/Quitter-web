@@ -6,7 +6,7 @@ import { Unit, Hex, AllianceGroup, Formation, getOrganizationLevel } from '@/typ
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { applyFormationChange } from '@/lib/formationCost';
 import { nextLowerFormation } from '@/lib/formationCost';
-import { flyingFormationCap } from '@/lib/flying';
+import { flyingFormationCap, movePoolMode, flyMax, moveBudgetUnit, passengerDrain } from '@/lib/flying';
 import { applyMoveCost, applyMpSpend, applyHeroMoveCost, applyHeroMpSpend } from '@/lib/moveCost';
 import { getSetting } from '@/lib/settingsCache';
 import { parseWeapons } from '@/lib/weaponParser';
@@ -404,11 +404,18 @@ export function useGameEngine({
 
   const moveUnitRecorded = useCallback(
     async (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean; breakToFormation?: string; elevation?: number }): Promise<void> => {
+      // The pool is chosen by origin/end elevation: an airborne start or an
+      // airborne end is a FLY move (air layer, fly points); otherwise ground.
       // Heroes convert actions at the prorated rate (5 actions = 1 full move);
-      // units keep the "1 action = 1 full MP pool" economy.
+      // units keep the "1 action = 1 full MP pool" economy — both per pool.
+      const mode = movePoolMode(unit, options?.elevation);
+      const poolMax = mode === 'fly' ? flyMax(unit) : maxMP;
+      const budget = moveBudgetUnit(unit, mode);
       const { movementPointsAvailable, actionsAvailable } = unit.isHero
-        ? applyHeroMoveCost(unit, cost, maxMP)
-        : applyMoveCost(unit, cost, maxMP);
+        ? applyHeroMoveCost(budget, cost, poolMax)
+        : applyMoveCost(budget, cost, poolMax);
+      const mpField = mode === 'fly' ? 'flySpeedAvailable' : 'movementPointsAvailable';
+      const mpFrom = mode === 'fly' ? (unit.flySpeedAvailable ?? 0) : unit.movementPointsAvailable;
       const zones = groundZonesRef.current;
       const stop = forcedStopZone(targetHex, zones);
       // Entering a hostile kill zone ends the move: any leftover MP is spent
@@ -423,38 +430,47 @@ export function useGameEngine({
           unitId: unit.id,
           changes: [
             { field: 'hex', from: { ...unit.hex }, to: { ...targetHex } },
-            { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: mpTo },
+            { field: mpField, from: mpFrom, to: mpTo },
             { field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsTo },
           ],
         },
       ];
 
-      // A host with an attached hero moves the combined unit: the hero shares the
-      // move cost (its own MP/actions) and its hex follows the host. A RIDER rides
-      // free: its MP drains proportionally (tracked, clamped at 0) but it never
-      // converts an action for the mount's move.
+      // A host with an attached hero moves the combined unit. GROUND moves share
+      // the cost (the hero's own MP/actions); a RIDER rides free (MP drains
+      // proportionally, never converts an action). FLY moves drain the passenger
+      // PASSIVELY (proportional to the host's spent fly pool) and never limit it.
       if (attachedHero && heroMaxMP) {
-        let heroMp: number;
-        let heroActions: number;
-        if (attachedHero.attachedPosition === 'rider') {
-          heroMp = Math.max(0, attachedHero.movementPointsAvailable - cost);
-          heroActions = attachedHero.actionsAvailable;
+        const heroChanges: { field: string; from: any; to: any }[] = [
+          { field: 'hex', from: { ...attachedHero.hex }, to: { ...targetHex } },
+        ];
+        if (mode === 'fly') {
+          const drain = passengerDrain(cost, flyMax(unit), attachedHero, heroMaxMP);
+          heroChanges.push({ field: 'movementPointsAvailable', from: attachedHero.movementPointsAvailable, to: drain.movementPointsAvailable });
+          if ((attachedHero.flySpeed ?? 0) > 0 || (attachedHero.flySpeedAvailable ?? 0) !== drain.flySpeedAvailable) {
+            heroChanges.push({ field: 'flySpeedAvailable', from: attachedHero.flySpeedAvailable ?? 0, to: drain.flySpeedAvailable });
+          }
         } else {
-          const heroCost = attachedHero.isHero
-            ? applyHeroMoveCost(attachedHero, cost, heroMaxMP)
-            : applyMoveCost(attachedHero, cost, heroMaxMP);
-          heroMp = heroCost.movementPointsAvailable;
-          heroActions = heroCost.actionsAvailable;
+          let heroMp: number;
+          let heroActions: number;
+          if (attachedHero.attachedPosition === 'rider') {
+            heroMp = Math.max(0, attachedHero.movementPointsAvailable - cost);
+            heroActions = attachedHero.actionsAvailable;
+          } else {
+            const heroCost = attachedHero.isHero
+              ? applyHeroMoveCost(attachedHero, cost, heroMaxMP)
+              : applyMoveCost(attachedHero, cost, heroMaxMP);
+            heroMp = heroCost.movementPointsAvailable;
+            heroActions = heroCost.actionsAvailable;
+          }
+          heroChanges.push({ field: 'movementPointsAvailable', from: attachedHero.movementPointsAvailable, to: stop ? 0 : (options?.stopInZoc ? 0 : heroMp) });
+          heroChanges.push({ field: 'actionsAvailable', from: attachedHero.actionsAvailable, to: stop ? 0 : heroActions });
         }
         subSteps.push({
           type: 'MOVE',
           description: `${attachedHero.unitName} moved with ${unit.unitName}`,
           unitId: attachedHero.id,
-          changes: [
-            { field: 'hex', from: { ...attachedHero.hex }, to: { ...targetHex } },
-            { field: 'movementPointsAvailable', from: attachedHero.movementPointsAvailable, to: stop ? 0 : (options?.stopInZoc ? 0 : heroMp) },
-            { field: 'actionsAvailable', from: attachedHero.actionsAvailable, to: stop ? 0 : heroActions },
-          ],
+          changes: heroChanges,
         });
       }
 
@@ -605,8 +621,16 @@ export function useGameEngine({
               ? getSetting('about_turn_cost_mounted', 2)
               : getSetting('about_turn_cost_foot', 1))
           : 1;
-        const { movementPointsAvailable, actionsAvailable } = applyMpSpend(unit, cost, maxMP);
-        changes.push({ field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: movementPointsAvailable });
+        // Airborne units turn on the fly pool; grounded on ground MP.
+        const fly = (unit.elevation ?? 0) > 0;
+        const poolMax = fly ? flyMax(unit) : maxMP;
+        const budget = moveBudgetUnit(unit, fly ? 'fly' : 'ground');
+        const { movementPointsAvailable, actionsAvailable } = applyMpSpend(budget, cost, poolMax);
+        changes.push({
+          field: fly ? 'flySpeedAvailable' : 'movementPointsAvailable',
+          from: fly ? (unit.flySpeedAvailable ?? 0) : unit.movementPointsAvailable,
+          to: movementPointsAvailable,
+        });
         if (actionsAvailable !== unit.actionsAvailable) {
           changes.push({ field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsAvailable });
         }
@@ -659,10 +683,14 @@ export function useGameEngine({
       const newForm = formationsMap[formation];
       const oldMult = oldForm?.movement_multiplier ?? 1;
       const newMult = newForm?.movement_multiplier ?? 1;
-      const oldEffectiveMax = computeEffectiveMovement(unit, oldMult);
-      const newEffectiveMax = computeEffectiveMovement(unit, newMult);
+      // Airborne formation changes pay from the fly pool (raw flySpeed); grounded
+      // ones from ground MP, as before.
+      const fly = (unit.elevation ?? 0) > 0;
+      const oldEffectiveMax = fly ? flyMax(unit) : computeEffectiveMovement(unit, oldMult);
+      const newEffectiveMax = fly ? flyMax(unit) : computeEffectiveMovement(unit, newMult);
+      const budget = moveBudgetUnit(unit, fly ? 'fly' : 'ground');
       const { movementPointsAvailable: newAvailable, actionsAvailable: newActions } = applyFormationChange(
-        unit,
+        budget,
         oldEffectiveMax,
         newEffectiveMax,
       );
@@ -672,7 +700,11 @@ export function useGameEngine({
       ];
 
       if (!unit.isHero && !freeMove) {
-        changes.push({ field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: newAvailable });
+        changes.push({
+          field: fly ? 'flySpeedAvailable' : 'movementPointsAvailable',
+          from: fly ? (unit.flySpeedAvailable ?? 0) : unit.movementPointsAvailable,
+          to: newAvailable,
+        });
         if (newActions !== unit.actionsAvailable) {
           changes.push({ field: 'actionsAvailable', from: unit.actionsAvailable, to: newActions });
         }
@@ -835,10 +867,17 @@ export function useGameEngine({
         { field: 'attachedPosition', from: null, to: position },
         { field: 'hex', from: { ...hero.hex }, to: { ...targetUnit.hex } },
       ];
-      // Attaching costs 1 hero MP (free during free-move).
+      // Attaching costs 1 hero MP (free during free-move). An airborne hero pays
+      // from its fly pool.
       if (!freeMove) {
-        const { movementPointsAvailable, actionsAvailable } = applyHeroMpSpend(hero, 1, heroMaxMP);
-        changes.push({ field: 'movementPointsAvailable', from: hero.movementPointsAvailable, to: movementPointsAvailable });
+        const fly = (hero.elevation ?? 0) > 0;
+        const budget = moveBudgetUnit(hero, fly ? 'fly' : 'ground');
+        const { movementPointsAvailable, actionsAvailable } = applyHeroMpSpend(budget, 1, fly ? flyMax(hero) : heroMaxMP);
+        changes.push({
+          field: fly ? 'flySpeedAvailable' : 'movementPointsAvailable',
+          from: fly ? (hero.flySpeedAvailable ?? 0) : hero.movementPointsAvailable,
+          to: movementPointsAvailable,
+        });
         if (actionsAvailable !== hero.actionsAvailable) {
           changes.push({ field: 'actionsAvailable', from: hero.actionsAvailable, to: actionsAvailable });
         }
@@ -864,8 +903,14 @@ export function useGameEngine({
         { field: 'attachedPosition', from: hero.attachedPosition, to: newPosition },
       ];
       if (!freeMove) {
-        const { movementPointsAvailable, actionsAvailable } = applyHeroMpSpend(hero, 1, heroMaxMP);
-        changes.push({ field: 'movementPointsAvailable', from: hero.movementPointsAvailable, to: movementPointsAvailable });
+        const fly = (hero.elevation ?? 0) > 0;
+        const budget = moveBudgetUnit(hero, fly ? 'fly' : 'ground');
+        const { movementPointsAvailable, actionsAvailable } = applyHeroMpSpend(budget, 1, fly ? flyMax(hero) : heroMaxMP);
+        changes.push({
+          field: fly ? 'flySpeedAvailable' : 'movementPointsAvailable',
+          from: fly ? (hero.flySpeedAvailable ?? 0) : hero.movementPointsAvailable,
+          to: movementPointsAvailable,
+        });
         if (actionsAvailable !== hero.actionsAvailable) {
           changes.push({ field: 'actionsAvailable', from: hero.actionsAvailable, to: actionsAvailable });
         }
@@ -1048,8 +1093,11 @@ export function useGameEngine({
           ? computeEffectiveMovement(unit, getFormationMultiplier(args.formationsMap, unit.currentFormation, 'movement_multiplier'))
           : turnStartMp;
         const actionsTo = hero ? heroActionsPerTurn : actionsPerTurn;
+        // The fly pool mirrors ground: heroes refresh to full flySpeed, units to 0.
+        const flyTo = hero ? (unit.flySpeed ?? 0) : 0;
         const changes: { field: string; from: any; to: any }[] = [
           { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: mpTo },
+          { field: 'flySpeedAvailable', from: unit.flySpeedAvailable ?? 0, to: flyTo },
           { field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsTo },
           { field: 'attacksUsed', from: unit.attacksUsed ?? 0, to: 0 },
         ];

@@ -11,6 +11,15 @@ export function canFly(unit: Pick<Unit, 'flySpeed'>): boolean {
   return (unit.flySpeed ?? 0) > 0;
 }
 
+/**
+ * A STOOP is an airborne unit that has declared a charge ("Stoop!" in the
+ * context menu). Only a stooping flyer may drop-onto a ground unit to deliver
+ * the free melee charge attack onto its hex.
+ */
+export function isStooping(unit: Pick<Unit, 'flySpeed' | 'elevation' | 'isCharging'>): boolean {
+  return canFly(unit) && !!unit.isCharging && (unit.elevation ?? 0) > 0;
+}
+
 /** Vertical distance in feet between two elevations (0 when both grounded). */
 export function elevationGapFeet(a: number | undefined, b: number | undefined): number {
   return Math.abs((a ?? 0) - (b ?? 0));
@@ -90,6 +99,67 @@ export function meleeElevationFor(attackerElevation: number, targetElevation: nu
   const gap = targetElevation - attackerElevation;
   if (Math.abs(gap) <= 10) return attackerElevation;
   return gap > 0 ? targetElevation - 10 : targetElevation + 10;
+}
+
+// ---------------------------------------------------------------------------
+// Movement pool (ground vs fly)
+// ---------------------------------------------------------------------------
+
+export type MovePoolMode = 'ground' | 'fly';
+
+/**
+ * Which MP pool a move draws from: FLY when the unit starts airborne or ends
+ * airborne (a takeoff/landing is a fly move), else GROUND. `endElevation` omitted
+ * defaults to the origin (a rotation / no-elevation-change move).
+ */
+export function movePoolMode(unit: Pick<Unit, 'elevation'>, endElevation?: number): MovePoolMode {
+  const origin = unit.elevation ?? 0;
+  const end = endElevation ?? origin;
+  return origin > 0 || end > 0 ? 'fly' : 'ground';
+}
+
+/** The FLY movement pool's max (raw flySpeed — formations never scale it). */
+export function flyMax(unit: Pick<Unit, 'flySpeed'>): number {
+  return unit.flySpeed ?? 0;
+}
+
+/**
+ * The MP budget a mode reads from: a synthetic `{ movementPointsAvailable,
+ * actionsAvailable }` where the active pool's current value is presented as
+ * `movementPointsAvailable`, so the shared moveCost math (`computeMoveBudget`,
+ * `applyMoveCost`, `computeMovePool`, …) is reused unchanged for both pools.
+ */
+export function moveBudgetUnit(
+  unit: Pick<Unit, 'movementPointsAvailable' | 'flySpeedAvailable' | 'actionsAvailable'>,
+  mode: MovePoolMode,
+): { movementPointsAvailable: number; actionsAvailable: number } {
+  return {
+    movementPointsAvailable: mode === 'fly' ? (unit.flySpeedAvailable ?? 0) : unit.movementPointsAvailable,
+    actionsAvailable: unit.actionsAvailable,
+  };
+}
+
+const roundMp = (x: number): number => Math.round(x * 10) / 10;
+
+/**
+ * Passive drain on an attached/rider hero carried by a flying host. Ground MP
+ * (and, when the passenger has its own fly pool, fly points) are reduced in
+ * proportion to the host's fly pool spent (`used / hostFlyMax`). It never limits
+ * the move (clamped at 0) — the host's pool is the only budget.
+ */
+export function passengerDrain(
+  used: number,
+  hostFlyMax: number,
+  passenger: Pick<Unit, 'movementPointsAvailable' | 'flySpeedAvailable' | 'flySpeed'>,
+  passengerGroundMax: number,
+): { movementPointsAvailable: number; flySpeedAvailable: number } {
+  const frac = hostFlyMax > 0 ? Math.min(1, Math.max(0, used) / hostFlyMax) : 0;
+  const ground = Math.max(0, roundMp(passenger.movementPointsAvailable - frac * passengerGroundMax));
+  const passengerFlyMax = passenger.flySpeed ?? 0;
+  const fly = passengerFlyMax > 0
+    ? Math.max(0, roundMp((passenger.flySpeedAvailable ?? 0) - frac * passengerFlyMax))
+    : (passenger.flySpeedAvailable ?? 0);
+  return { movementPointsAvailable: ground, flySpeedAvailable: fly };
 }
 
 /** Structures are considered 10 ft tall (ground-level). A unit must be within

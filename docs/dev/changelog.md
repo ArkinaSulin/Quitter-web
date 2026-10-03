@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## Fly movement pool + unified flyer drop (2026-10-02)
+**Files:** src/lib/flying.ts (+ test), src/hooks/useGameEngine.ts, src/components/ScenarioMap/{useMoveActions,useCombatActions,useOverlay,ScenarioMap,UnitTooltip}.tsx, docs/dev/changelog.md
+
+- **A real Fly pool** (`flySpeed` / `flySpeedAvailable`) now drives aerial movement, mirroring the ground economy (**1 action = 1 full fly pool**; fly max is raw `flySpeed`). The pool is chosen by origin/end elevation (`movePoolMode`): an airborne start or end is a FLY move, else GROUND. End-turn refreshes flyable **heroes to full**, **units to 0**. New pure helpers `movePoolMode`/`flyMax`/`moveBudgetUnit`/`passengerDrain` (+ tests).
+- **Engine spends switch pools**: `moveUnitRecorded` writes `flySpeedAvailable` for fly moves and applies a **passive passenger drain** (`frac = used/hostFlyMax`; attached/rider ground MP ↓ `frac×passengerGroundMax`, plus the passenger's own fly pool ↓ `frac×passengerFlyMax`; never limits). `rotateUnit`, `changeFormation`, `attachHero`, `swapHeroPosition` spend from the fly pool while airborne. `endTurn` resets `flySpeedAvailable`.
+- **Tooltip**: flyable units show **"Ground Move"** + **"Fly Move: flySpeedAvailable/flySpeed"**; others keep the single **"Move"** row.
+- **Unified flyer drop modal**: dropping a fly-capable unit on a ground-occupied hex offers **Move** (hover above it, min 10 ft; friendly = Move only) plus **Stoop attack** (a declared Stoop on an enemy, now fly-pool funded) and **Range attack** (hostile, from the current hex). Empty-hex drops keep Move + elevation. Preview/budget follows the **origin** pool (`useOverlay`).
+- **Withdraw while airborne is disabled** (no overlay hexes; a would-be withdraw drop shows "Cannot withdraw during flight.").
+- `tsc` clean; 840 tests pass; build clean. No migration (`flySpeedAvailable` already mapped in 108).
+
+## Stoop drop attack + melee-only free charge (2026-10-02)
+**Files:** src/lib/flying.ts (+ test), src/components/ScenarioMap/{useCombatActions,ScenarioMap,useOverlay}.tsx, docs/dev/changelog.md
+
+- **Stoop drop**: dropping an already-declared **Stoop** (`isCharging && elevation > 0`, new `isStooping`) onto an **enemy ground** unit now offers a prompt — **Attack** = one atomic `ATTACK` command carrying the charge `MOVE` (hex + MP/action spend) + `ELEVATE` (dive to melee 10 ft) + `CHARGE` distance tick + the **free melee charge attack** (so undo never sees a half-moved state); **Cancel** = the normal attack from the current hex. The prompt only appears when the target hex is a legal forward-charge destination (charge wedge, no other flyer), the target is a different alliance and visible, and the total charge distance reaches a full charge. Attached heroes are excluded (the flyer drops alone). Over-budget/cap are soft-gated.
+- **Charge free attack is MELEE-only** (land + stoop): `handleAttackRequest` only takes the free charge branch when `!isRangedThisAttack`; a charging unit's ranged attack rides the normal paid path and the charge stays active.
+- **Same-hex melee allowed**: the attacker front-arc gate is skipped at `dist === 0`, so a stooping flyer hovering its target can strike (position/arc already resolve to `front`).
+- `performAttack` gained a `prependSubSteps` option; `planStoopDrop`/`performStoopDrop` exported. Overlay paints the stoop-drop target amber. `tsc` clean; 836 tests pass; build clean. No migration.
+
 ## Fix: rider no longer caps the mount's movement preview (2026-09-30)
 **Files:** src/components/ScenarioMap/useOverlay.ts, docs/dev/changelog.md
 

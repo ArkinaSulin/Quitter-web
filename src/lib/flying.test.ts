@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   canFly, elevationGapFeet, elevationGapHexes, elevationOffset, airOccupiedHexes,
   maxElevationAfter, elevationSliderRange, carryRule, FLYING_MAX_FORMATION, flyingFormationCap,
-  meleeElevationFor, canReachStructure, STRUCTURE_HEIGHT_FT,
+  meleeElevationFor, canReachStructure, STRUCTURE_HEIGHT_FT, isStooping,
+  movePoolMode, flyMax, moveBudgetUnit, passengerDrain,
 } from './flying';
 import { Unit } from '@/types/gameProtocol';
 
@@ -86,6 +87,48 @@ describe('flying', () => {
     expect(meleeElevationFor(20, 40)).toBe(30);     // climb to within 10 ft below
     expect(meleeElevationFor(5, 15)).toBe(5);       // already within 10 ft
     expect(meleeElevationFor(20, 20)).toBe(20);     // same elevation
+  });
+
+  it('movePoolMode: fly when origin or end is airborne', () => {
+    expect(movePoolMode({ elevation: 0 }, 0)).toBe('ground');
+    expect(movePoolMode({ elevation: 0 })).toBe('ground');
+    expect(movePoolMode({ elevation: 0 }, 10)).toBe('fly');   // takeoff
+    expect(movePoolMode({ elevation: 20 }, 0)).toBe('fly');   // landing
+    expect(movePoolMode({ elevation: 20 })).toBe('fly');
+    expect(movePoolMode({ elevation: undefined }, undefined)).toBe('ground');
+  });
+
+  it('flyMax is raw flySpeed', () => {
+    expect(flyMax({ flySpeed: 6 })).toBe(6);
+    expect(flyMax({})).toBe(0);
+  });
+
+  it('moveBudgetUnit presents the active pool as movementPointsAvailable', () => {
+    const unit = { movementPointsAvailable: 2, flySpeedAvailable: 5, actionsAvailable: 3 };
+    expect(moveBudgetUnit(unit, 'ground')).toEqual({ movementPointsAvailable: 2, actionsAvailable: 3 });
+    expect(moveBudgetUnit(unit, 'fly')).toEqual({ movementPointsAvailable: 5, actionsAvailable: 3 });
+  });
+
+  it('passengerDrain: fraction of host fly pool, clamped, never limits', () => {
+    // Host used 3 of 6 = 0.5. Passenger ground 4/max 8 -> 0 (4 - 0.5*8). Fly 5/max 10 -> 0.
+    expect(passengerDrain(3, 6, { movementPointsAvailable: 4, flySpeedAvailable: 5, flySpeed: 10 }, 8))
+      .toEqual({ movementPointsAvailable: 0, flySpeedAvailable: 0 });
+    // Host used 1 of 8 = 0.125. Ground 4/max 8 -> 3 (4 - 1 = 3). Fly 5/max 10 -> round(5-1.25)=3.8.
+    expect(passengerDrain(1, 8, { movementPointsAvailable: 4, flySpeedAvailable: 5, flySpeed: 10 }, 8))
+      .toEqual({ movementPointsAvailable: 3, flySpeedAvailable: 3.8 });
+    // No passenger fly pool: fly value passes through, ground drains by fraction.
+    expect(passengerDrain(3, 6, { movementPointsAvailable: 4, flySpeedAvailable: 0, flySpeed: 0 }, 8))
+      .toEqual({ movementPointsAvailable: 0, flySpeedAvailable: 0 });
+    // Host pool 0 -> no drain.
+    expect(passengerDrain(3, 0, { movementPointsAvailable: 4, flySpeedAvailable: 0, flySpeed: 0 }, 8))
+      .toEqual({ movementPointsAvailable: 4, flySpeedAvailable: 0 });
+  });
+
+  it('isStooping: charging + airborne only', () => {
+    expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: true })).toBe(true);
+    expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: false })).toBe(false);
+    expect(isStooping({ flySpeed: 4, elevation: 0, isCharging: true })).toBe(false);
+    expect(isStooping({ flySpeed: 0, elevation: 20, isCharging: true })).toBe(false);
   });
 
   it('canReachStructure: within 10 ft of the 10 ft structure height', () => {

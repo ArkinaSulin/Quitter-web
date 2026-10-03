@@ -5,7 +5,7 @@
 // the soft 5-cap stash, morale/rout), healing weapons, and the charge
 // end/overrun helpers. Owns the attack-related soft-enforcement states.
 import { useCallback, useState } from 'react';
-import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance, UnitEffect, GroundEffect } from '@/types/gameProtocol';
+import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance, UnitEffect, GroundEffect, getOrganizationLevel } from '@/types/gameProtocol';
 import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome, AttackerHeroProfile, wallCoverAgainst } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/lib/formationRules';
 import { isProtectedHero } from '@/lib/unitInteractions';
@@ -17,7 +17,8 @@ import { unitAttackCap } from '@/lib/attackCap';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, isHeroMoraleBoostEnabled, isZocPursuitEnabled } from '@/lib/unitMorale';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc } from '@/lib/meleeFallback';
-import { canFly, meleeElevationFor } from '@/lib/flying';
+import { canFly, meleeElevationFor, isStooping, flyingFormationCap, flyMax, moveBudgetUnit } from '@/lib/flying';
+import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable } from '@/lib/moveCost';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
@@ -31,7 +32,7 @@ import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
-import { computeOccupiedHexes, elevationGapHexes, elevationGapFeet } from './mapGeometry';
+import { computeOccupiedHexes, airOccupiedHexes, elevationGapHexes, elevationGapFeet } from './mapGeometry';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingAttack, PendingAttackCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch } from './SoftEnforcementModals';
 import { useMagicCast } from '@/hooks/useMagicCast';
@@ -46,6 +47,16 @@ function auraEffects(f: StructureAuraFlags, unitName: string): UnitEffect[] {
   if (f.grantAdvantage) add('grant_advantage');
   if (f.grantDisadvantage) add('grant_disadvantage');
   return out;
+}
+
+/** A resolved stoop drop: the flyer charge-moves onto the ground target's hex,
+ *  dives to melee range, and delivers the free melee charge attack atomically. */
+export interface StoopDropPlan {
+  landHex: Hex;
+  elevation: number;
+  cost: number;
+  maxMP: number;
+  overBudget: boolean;
 }
 
 interface CombatActionsDeps {
@@ -110,7 +121,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingMountTarget, setPendingMountTarget] = useState<{ attacker: Unit; target: Unit; rider: Unit } | null>(null);
   const [pendingDiveAttack, setPendingDiveAttack] = useState<{ attacker: Unit; target: Unit; elevation: number } | null>(null);
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; chained?: boolean; opportunityAttack?: boolean; mainTarget?: 'mount' | 'rider'; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean }) => {
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; chained?: boolean; opportunityAttack?: boolean; mainTarget?: 'mount' | 'rider'; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean; prependSubSteps?: SubStep[] }) => {
     if (overBudget) {
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
@@ -320,6 +331,10 @@ export function useCombatActions(deps: CombatActionsDeps) {
     );
 
     const subSteps: SubStep[] = [];
+
+    // A stoop drop rides its charge MOVE/ELEVATE inside this same ATTACK command
+    // (one undo entry): the attacker snapshot above is already at the landing hex.
+    if (options?.prependSubSteps) subSteps.push(...options.prependSubSteps);
 
     // Auto-draw: ranged/thrown primaries switch to a melee weapon at adjacency,
     // before the exchange resolves. Undoable with the attack (same command).
@@ -969,6 +984,109 @@ export function useCombatActions(deps: CombatActionsDeps) {
     await performChargeEnd(attacker, true);
   }, [units, formationsMap, performChargeEnd]);
 
+  /**
+   * Resolve the stoop drop for `attacker` onto `target`, or null when it does not
+   * apply: attacker must be an already-declared STOOP (airborne + charging), the
+   * target a GROUND unit, the target hex a legal forward-charge destination (in
+   * the charge wedge, no other flyer there), the total charge distance at least a
+   * full charge, and no attached hero (the flyer drops alone — v1).
+   */
+  const buildStoopDropPlan = useCallback((attacker: Unit, target: Unit): StoopDropPlan | null => {
+    if (!isStooping(attacker) || (target.elevation ?? 0) > 0) return null;
+    if (target.isDeleted || target.id === attacker.id) return null;
+    // v1: the flyer drops alone (an attached hero would need its own MOVE/ELEVATE
+    // sub-steps and a mid-command state snapshot).
+    if (units.some(u => u.attachedToUnitId === attacker.id && !u.isDeleted)) return null;
+    // A stoop is an airborne charge: it draws from the fly pool (raw flySpeed).
+    const maxMP = flyMax(attacker);
+    const budgetUnit = moveBudgetUnit(attacker, 'fly');
+    const occupied = airOccupiedHexes(units, attacker.id);
+    const reach = computeChargeReachable(attacker, occupied, maxMP);
+    const cost = reach.get(`${target.hex.q},${target.hex.r}`);
+    if (cost == null) return null;
+    if ((attacker.chargeDistance ?? 0) + cost < getSetting('charge_full_distance', 2)) return null;
+    const affordable = attacker.isHero
+      ? isHeroMoveAffordable(budgetUnit, cost, maxMP)
+      : isMoveAffordable(budgetUnit, cost, maxMP);
+    return {
+      landHex: { ...target.hex },
+      elevation: meleeElevationFor(attacker.elevation ?? 0, target.elevation ?? 0),
+      cost,
+      maxMP,
+      overBudget: !affordable,
+    };
+  }, [units]);
+
+  /** The plan if a stoop drop applies to this pair, else null (used by the UI to
+   *  decide whether to prompt). */
+  const planStoopDrop = useCallback((attackerId: string, targetId: string): StoopDropPlan | null => {
+    const attacker = units.find(u => u.id === attackerId);
+    const target = units.find(u => u.id === targetId);
+    if (!attacker || !target) return null;
+    return buildStoopDropPlan(attacker, target);
+  }, [units, buildStoopDropPlan]);
+
+  /**
+   * Execute the stoop drop as ONE command: charge MOVE (hex + MP/action spend),
+   * ELEVATE (dive to melee), CHARGE distance tick, then the free melee attack —
+   * all applied atomically so undo never sees a half-moved state.
+   */
+  const performStoopDrop = useCallback(async (attackerId: string, targetId: string) => {
+    const attacker = units.find(u => u.id === attackerId);
+    const target = units.find(u => u.id === targetId);
+    if (!attacker || !target) return;
+    const plan = buildStoopDropPlan(attacker, target);
+    if (!plan) return;
+    const flyBudget = moveBudgetUnit(attacker, 'fly');
+    const spend = attacker.isHero
+      ? applyHeroMoveCost(flyBudget, plan.cost, plan.maxMP)
+      : applyMoveCost(flyBudget, plan.cost, plan.maxMP);
+    const currentElev = attacker.elevation ?? 0;
+    const prepend: SubStep[] = [{
+      type: 'MOVE',
+      description: `${attacker.unitName} stoops onto ${target.unitName}`,
+      unitId: attacker.id,
+      changes: [
+        { field: 'hex', from: { ...attacker.hex }, to: { ...plan.landHex } },
+        { field: 'flySpeedAvailable', from: attacker.flySpeedAvailable ?? 0, to: spend.movementPointsAvailable },
+        { field: 'actionsAvailable', from: attacker.actionsAvailable, to: spend.actionsAvailable },
+      ],
+    }];
+    if (plan.elevation !== currentElev) {
+      const elevChanges: UnitChange[] = [{ field: 'elevation', from: currentElev, to: plan.elevation }];
+      if (plan.elevation > 0) {
+        const capped = flyingFormationCap(attacker.currentFormation);
+        if (capped !== attacker.currentFormation) {
+          elevChanges.push({ field: 'currentFormation', from: attacker.currentFormation, to: capped });
+          elevChanges.push({ field: 'organizationLevel', from: attacker.organizationLevel, to: getOrganizationLevel(capped) });
+        }
+      }
+      prepend.push({
+        type: 'ELEVATE',
+        description: `${attacker.unitName} dives to ${plan.elevation} ft`,
+        unitId: attacker.id,
+        changes: elevChanges,
+      });
+    }
+    prepend.push({
+      type: 'CHARGE',
+      description: `${attacker.unitName} advanced ${plan.cost} hex(es) in its stoop`,
+      unitId: attacker.id,
+      changes: [{ field: 'chargeDistance', from: attacker.chargeDistance, to: (attacker.chargeDistance ?? 0) + plan.cost }],
+    });
+    const adjusted: Unit = {
+      ...attacker,
+      hex: { ...plan.landHex },
+      elevation: plan.elevation,
+      flySpeedAvailable: spend.movementPointsAvailable,
+      actionsAvailable: spend.actionsAvailable,
+      chargeDistance: (attacker.chargeDistance ?? 0) + plan.cost,
+    };
+    const result = await performAttack(adjusted, target, plan.overBudget, { isCharging: true, prependSubSteps: prepend });
+    if (!result) return;
+    await finishChargeAfterAttack(adjusted, target, result);
+  }, [units, buildStoopDropPlan, performAttack, finishChargeAfterAttack]);
+
   const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; weaponIndex?: number; heroJoin?: boolean; heroOverBudget?: boolean; mainTarget?: 'mount' | 'rider' }) => {
     let attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
@@ -1163,7 +1281,10 @@ export function useCombatActions(deps: CombatActionsDeps) {
         addMessage(`${attacker.unitName} (${attacker.currentFormation}) cannot melee target in that direction`);
         return;
       }
-      if (!attacker.isHero && !isInFrontArc(attacker.hex, attacker.facing, target.hex)) {
+      // Same-hex melee (a stooping flyer hovering over its target) has no bearing —
+      // treat it as a front-arc attack. determineCombatPosition/arcOfTarget already
+      // resolve the zero delta to 'front'.
+      if (!attacker.isHero && dist > 0 && !isInFrontArc(attacker.hex, attacker.facing, target.hex)) {
         addMessage(`${attacker.unitName} cannot attack ${target.unitName}: target not in front arc`);
         return;
       }
@@ -1195,9 +1316,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
     }
 
     // A leading hero's participation is resolved inside performAttack (auto-join).
-    // Charging attacker: a full charge (2 hexes moved) grants a free double-damage
-    // attack; an early attack is premature and requires confirmation.
-    if (attacker.isCharging) {
+    // Charging attacker: a full MELEE charge (2 hexes moved) grants a free
+    // double-damage attack; an early attack is premature and requires confirmation.
+    // A RANGED attack never qualifies for the free charge attack (it rides the
+    // normal paid path below), and the charge stays active for a later melee.
+    if (attacker.isCharging && !isRangedThisAttack) {
       if (attacker.chargeDistance < getSetting('charge_full_distance', 2)) {
         setPendingChargeAttack({ attacker, target });
         return;
@@ -1294,5 +1417,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     finishChargeAfterAttack,
     performPursuits,
     handleAttackRequest,
+    planStoopDrop,
+    performStoopDrop,
   };
 }

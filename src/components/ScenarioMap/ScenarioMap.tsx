@@ -47,7 +47,7 @@ import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes, mpCostOverrides } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
-import { canReachStructure } from '@/lib/flying';
+import { canReachStructure, canFly } from '@/lib/flying';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/lib/walls';
 import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor } from '@/lib/mapStructures';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
@@ -940,6 +940,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingElevation,
     setPendingElevation,
     confirmElevation,
+    beginFlyerDrop,
     cancelElevation,
     pendingLeaveHero,
     confirmLeaveHero,
@@ -983,6 +984,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   // ---- Withdraw (drag one hex into a rear hex; always warns the action cost) ----
   const [withdrawConfirm, setWithdrawConfirm] = useState<{ unit: Unit; dest: Hex } | null>(null);
+
+
 
   // ---- Barrier attacks (drag a unit onto a destructible wall edge) ----
   // No to-hit roll: reaching the edge is the hit; the wall's DT gates the blow.
@@ -1624,6 +1627,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     finishChargeAfterAttack,
     performPursuits,
     handleAttackRequest,
+    planStoopDrop,
+    performStoopDrop,
   } = useCombatActions({
     units,
     alliances,
@@ -1872,6 +1877,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         : (unitId, targetHex) => {
             const u = units.find(x => x.id === unitId);
             if (!u || !canControlUnit(u)) return;
+            // Withdraw is disabled while airborne: a drop onto a would-be withdraw
+            // hex reports the error instead of moving.
+            if ((u.elevation ?? 0) > 0 && !freeMove && canWithdraw(u) && !u.isCharging) {
+              const occupied = computeOccupiedHexes(units, unitId);
+              const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
+              const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
+              const dests = withdrawDestinations(u, occupied, radius, threatHexes);
+              if (dests.some(hx => hx.q === targetHex.q && hx.r === targetHex.r)) {
+                addError('Cannot withdraw during flight.');
+                return;
+              }
+            }
             // A drag one hex into a rear hex is a WITHDRAW (2 actions, no face
             // change, no scatter/pursue) — not a normal move. Confirm the cost.
             // Under free-move there is no cost, so it is just a free move.
@@ -1984,7 +2001,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setHoveredUnit(null);
       setTooltipPos(null);
     },
-    onAttack: controlsLocked ? undefined : (reactionMode ? handleReactionAttack : handleAttackRequest),
+    onAttack: controlsLocked ? undefined : (attackerId, targetId) => {
+      if (reactionMode) { handleReactionAttack(attackerId, targetId); return; }
+      const attacker = units.find(u => u.id === attackerId);
+      const target = units.find(u => u.id === targetId);
+      // A fly-capable unit dropped on a GROUND-occupied hex opens the unified flyer
+      // modal (Move / Stoop attack / Range attack) when the hex is a legal fly
+      // destination. An air-occupied hex is not a destination → plain attack.
+      if (attacker && target && canFly(attacker) && (target.elevation ?? 0) <= 0) {
+        const isHostile = (alliances[attacker.team] || 'friendly') !== (alliances[target.team] || 'friendly');
+        const hostileVisible = isHostile && canAttackInFog(attacker, target);
+        const canStoop = hostileVisible && !!planStoopDrop(attackerId, targetId);
+        if ((hostileVisible || !isHostile) && beginFlyerDrop(attacker, target, { canStoop, isHostile: hostileVisible })) return;
+      }
+      void handleAttackRequest(attackerId, targetId);
+    },
     walls,
     canAttackWallEdge: (unitId, edge) => (reactionMode ? false : canAttackWallEdge(unitId, edge)),
     onAttackWall: (unitId, edge) => {
@@ -2413,7 +2444,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Soft-enforcement prompts: fully-bound confirm handlers (clear state +
   // controlsLocked guard + act). The modals render from the pending states.
   const softActions = {
-    confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (controlsLocked) return; const max = pm.breakToFormation ? computeEffectiveMovement(pm.unit, getFormationMultiplier(formationsMap, pm.breakToFormation, 'movement_multiplier')) : unitMaxMP(pm.unit); completeMove(pm.unit, pm.targetHex, pm.cost, true, max, pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined, pm.breakToFormation); },
+    confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (controlsLocked) return; const airborne = (pm.unit.elevation ?? 0) > 0; const max = airborne ? (pm.unit.flySpeed ?? 0) : (pm.breakToFormation ? computeEffectiveMovement(pm.unit, getFormationMultiplier(formationsMap, pm.breakToFormation, 'movement_multiplier')) : unitMaxMP(pm.unit)); completeMove(pm.unit, pm.targetHex, pm.cost, true, max, pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined, pm.breakToFormation); },
     confirmAttack: () => { const pa = pendingAttack!; setPendingAttack(null); if (!controlsLocked) performAttack(pa.attacker, pa.target, true); },
     confirmAttackCap: async () => {
       const pa = pendingAttackCap!;
@@ -3303,13 +3334,19 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         </div>
       )}
 
-      {/* Elevation picker — a flyable unit dropped on an empty hex chooses its height */}
+      {/* Flyer drop — a flyable unit chooses its destination elevation. On an
+          occupied hex it also offers Stoop (stooping flyer) / Range attack. */}
       {pendingElevation && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[300px]">
-            <p className="text-white text-sm mb-3 text-center">
-              {pendingElevation.unit.unitName} — elevation (ft)
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
+            <p className="text-white text-sm mb-1 text-center">
+              {pendingElevation.unit.unitName}{pendingElevation.occupant ? ` → ${pendingElevation.occupant.unitName}` : ''} — elevation (ft)
             </p>
+            {pendingElevation.occupant && (
+              <p className="text-gray-400 text-xs mb-3 text-center">
+                Hover above {pendingElevation.occupant.unitName}'s hex (min {pendingElevation.range.min} ft) or choose an action.
+              </p>
+            )}
             <input
               type="range"
               min={pendingElevation.range.min}
@@ -3324,9 +3361,35 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               <span className="text-yellow-300">{pendingElevation.range.defaultValue} ft</span>
               <span>{pendingElevation.range.max} ft</span>
             </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <button className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded" onClick={cancelElevation}>Cancel</button>
-              <button className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700" onClick={() => confirmElevation(pendingElevation.range.defaultValue)}>Confirm</button>
+            {pendingElevation.canStoop && (pendingElevation.unit.attacksUsed ?? 0) >= unitAttackCap() && (
+              <p className="text-red-400 text-xs mt-2 text-center">
+                Past the {unitAttackCap()}-attack cap ({pendingElevation.unit.attacksUsed}/{unitAttackCap()}).
+              </p>
+            )}
+            <div className="flex flex-col gap-2 mt-4">
+              <button
+                className="bg-green-800 border-2 border-yellow-400 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700"
+                onClick={() => confirmElevation(pendingElevation.range.defaultValue)}
+              >
+                Move
+              </button>
+              {pendingElevation.canStoop && pendingElevation.occupant && (
+                <button
+                  className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
+                  onClick={() => { const p = pendingElevation; setPendingElevation(null); if (!controlsLocked && p.occupant) void performStoopDrop(p.unit.id, p.occupant.id); }}
+                >
+                  Stoop attack (move + free melee)
+                </button>
+              )}
+              {pendingElevation.isHostile && pendingElevation.occupant && (
+                <button
+                  className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
+                  onClick={() => { const p = pendingElevation; setPendingElevation(null); if (!controlsLocked && p.occupant) void handleAttackRequest(p.unit.id, p.occupant.id); }}
+                >
+                  Range attack
+                </button>
+              )}
+              <button className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm" onClick={cancelElevation}>Cancel</button>
             </div>
           </div>
         </div>

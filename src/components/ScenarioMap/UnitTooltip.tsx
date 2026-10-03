@@ -63,6 +63,8 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const shieldInfo = getShieldPenalty(unit);
   const shieldPenalty = shieldInfo.penalty;
   const effectiveMaxMovement = computeEffectiveMovement(unit, formationMovMult);
+  const flyable = (unit.flySpeed ?? 0) > 0;
+  const moveSuffix = <>{unit.isHero ? ` (${heroMovePerAction(effectiveMaxMovement)} MP/action)` : ''}{showTroops && formationMovMult !== 1 ? ` (base ${unit.movementPoints} × ${formationMovMult})` : ''}</>;
 
   const weapons = parseWeapons(unit.weaponString || '');
   const activeWeapon = weapons[unit.activeWeaponIndex ?? 0];
@@ -116,7 +118,19 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
           </>
         )}
         <span className="text-gray-400" title="Hit Points (HP): unit health. Non-hero damage is spread across troops.">HP:</span><span>{unit.currentUnitHp}/{unit.maxUnitHp}</span>
-        <span className="text-gray-400" title="Movement points (MP): how far it can move now; one action converts to a full pool.">Move:</span><span>{Math.floor(unit.movementPointsAvailable)}/{effectiveMaxMovement}{unit.isHero ? ` (${heroMovePerAction(effectiveMaxMovement)} MP/action)` : ''}{showTroops && formationMovMult !== 1 ? ` (base ${unit.movementPoints} × ${formationMovMult})` : ''}</span>
+        {flyable ? (
+          <>
+            <span className="text-gray-400" title="Ground movement points (MP): how far it can move on the ground; one action converts to a full pool.">Ground Move:</span>
+            <span>{Math.floor(unit.movementPointsAvailable)}/{effectiveMaxMovement}{moveSuffix}</span>
+            <span className="text-gray-400" title="Fly movement points (FP): how far it can move while airborne; one action converts to a full pool.">Fly Move:</span>
+            <span>{Math.floor(unit.flySpeedAvailable ?? 0)}/{unit.flySpeed ?? 0}</span>
+          </>
+        ) : (
+          <>
+            <span className="text-gray-400" title="Movement points (MP): how far it can move now; one action converts to a full pool.">Move:</span>
+            <span>{Math.floor(unit.movementPointsAvailable)}/{effectiveMaxMovement}{moveSuffix}</span>
+          </>
+        )}
         <span className="text-gray-400" title="Actions: what significant deeds cost. Attacking takes 1; units start each turn with 2, heroes 5.">Actions:</span><span className={unit.actionsAvailable <= 0 ? 'text-red-400' : ''}>{unit.actionsAvailable}/{unit.isHero ? getSetting('hero_actions_per_turn', 5) : getSetting('actions_per_turn', 2)} <span className="text-gray-500">{unit.isHero ? '(convert to MP)' : '(1 = full move)'}</span></span>
         {typeof unit.attacksUsed === 'number' && (
           <span className="text-gray-400" title="Attacks used this turn toward the 5-attack cap (attacks + retaliations).">Attacks used:</span>
