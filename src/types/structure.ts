@@ -41,6 +41,11 @@ export interface StructureTemplate {
   sinWave: boolean;
   /** Hex structures: draw the thick black hex outline (off for decorative hexes). */
   hexBorder: boolean;
+  /** Top surface height in feet where troops stand (0 = decorative / no height).
+   *  A wall spans the ground up to this surface. Defaults to 10 when absent. */
+  elevation?: number;
+  /** Edge stair: waives the climb cost for both sides crossing this edge. */
+  stairs?: boolean;
   // Direction-relative movement. NULL = fall back to terrain; negative = hard block.
   mpFootIn: number | null;
   mpFootOut: number | null;
@@ -68,6 +73,10 @@ export interface StructureInstance {
   outside?: StructureOutside;
   /** Hex structures with a door: the gate is deliberately open (no door gate). */
   open?: boolean;
+  /** Per-instance elevation override (inherited from the template when absent). */
+  elevation?: number;
+  /** Per-instance stairs override (edge structures). */
+  stairs?: boolean;
   /** Per-instance modifier override (inherited from the template when absent). */
   modifiers?: EffectModifier[];
 }

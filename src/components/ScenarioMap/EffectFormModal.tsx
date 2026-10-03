@@ -19,6 +19,8 @@ export interface EffectFormValue {
   transparentBackground: boolean;
   layer: EffectLayer;
   duration: number;
+  /** Elevation band this zone/effect sits at (0 = ground). */
+  elevation: number;
   /** '' = every alliance activation (tempo-free); otherwise a team name. */
   casterTeam: string;
   modifiers: EffectModifier[];
@@ -113,6 +115,14 @@ export function EffectFormModal({
               className="h-3.5 w-3.5 accent-amber-400"
             />
             Transparent background (no zone hex tint)
+          </label>
+
+          <label className="block text-xs text-gray-400">Elevation (ft) — 0 = ground
+            <input
+              type="number" min={0} step={10} value={value.elevation}
+              onChange={e => patch({ elevation: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
+              className={input + ' w-32'}
+            />
           </label>
 
           <div className="grid grid-cols-2 gap-3">

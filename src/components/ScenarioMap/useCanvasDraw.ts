@@ -389,6 +389,67 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       ctx.restore();
     }
 
+    // Structure + effect elevation badges (DISPLAY only): the feet value just
+    // under the hex's north vertex. The effect badge sits slightly lower and is
+    // hidden when its elevation equals the structure's. 0 = no height = no badge.
+    {
+      const structureTop = new Map<string, number>();
+      if (structures) {
+        for (const key of Object.keys(structures)) {
+          if (!isHexStructureKey(key)) continue; // edge walls don't define a hex surface
+          const [q, r] = key.split(',').map(Number);
+          if (!Number.isFinite(q) || !Number.isFinite(r)) continue;
+          const inst = structures[key];
+          const t = templates?.[inst.templateId];
+          const top = Math.max(0, Math.round(inst.elevation ?? t?.elevation ?? 0));
+          if (top > 0) structureTop.set(`${q},${r}`, top);
+        }
+      }
+      const effectTop = new Map<string, number>();
+      for (const z of groundZones ?? []) {
+        const e = Math.max(0, Math.round(z.elevation ?? 0));
+        if (e <= 0) continue;
+        const key = `${z.q},${z.r}`;
+        const cur = effectTop.get(key);
+        if (cur === undefined || e > cur) effectTop.set(key, e);
+      }
+      const badgeKeys = Array.from(structureTop.keys()).concat(Array.from(effectTop.keys()));
+      if (badgeKeys.length > 0) {
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const sFont = `bold ${Math.max(10, 12 * currentZoom)}px ui-monospace, monospace`;
+        const eFont = `bold ${Math.max(9, 11 * currentZoom)}px ui-monospace, monospace`;
+        for (const key of badgeKeys) {
+          if (isFogHidden(key)) continue;
+          const [q, r] = key.split(',').map(Number);
+          if (Number.isNaN(q) || Number.isNaN(r)) continue;
+          const top = structureTop.get(key) ?? 0;
+          const eff = effectTop.get(key) ?? 0;
+          const { cx, cy } = hexCenter({ q, r, s: -q - r });
+          const baseY = cy - HEX_SIZE * currentZoom * 0.72;
+          if (top > 0) {
+            ctx.font = sFont;
+            ctx.lineWidth = Math.max(2, 3 * currentZoom);
+            ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+            ctx.strokeText(`${top}`, cx, baseY);
+            ctx.fillStyle = '#ffe0b2';
+            ctx.fillText(`${top}`, cx, baseY);
+          }
+          if (eff > 0 && eff !== top) {
+            const y = baseY + HEX_SIZE * currentZoom * 0.17;
+            ctx.font = eFont;
+            ctx.lineWidth = Math.max(2, 3 * currentZoom);
+            ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+            ctx.strokeText(`${eff}`, cx, y);
+            ctx.fillStyle = '#b2e0ff';
+            ctx.fillText(`${eff}`, cx, y);
+          }
+        }
+        ctx.restore();
+      }
+    }
+
     // Decorative fallen-troop piles: dots per hex with deaths (positions seeded
     // by q+r so the scatter is stable as piles grow). Each dot mirrors its dead
     // unit: team colour, mounted = triangle vs foot = circle, radius from size.

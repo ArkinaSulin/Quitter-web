@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Structure + effect elevation — Phase 2b slice 1: data, editors, badges (2026-10-02)
+**Files:** supabase/migrations/111_structure_effect_elevation.sql, src/types/{structure,gameProtocol}.ts, src/lib/{structureTemplates,effectTemplates}.ts, src/components/{StructureEditor/StructureEditor,StructureEditModal,EffectEditor/EffectEditor}.tsx, src/components/ScenarioMap/{EffectFormModal,AddEffectModal,ScenarioMap,useCanvasDraw}.tsx, docs/dev/changelog.md
+
+- **Migration 111** (rules pending): `map_structure_templates.elevation` (default 10) + `stairs` (edge, default false); `map_effect_templates.elevation` (default 0). Instances override per-key in the existing jsonb. **Apply 111 in Supabase.**
+- **Types/mappers:** `StructureTemplate`/`Instance` carry `elevation`/`stairs`; `EffectTemplate`/`GroundEffect` carry `elevation`; `structureElevation(template, instance)`/`structureIsStairs` helpers; row↔object mappers updated.
+- **Editors:** Structure Editor gains a **Surface elevation** block (height + edge `stairs`, with a **temporary A/B/C stair graphic preview**), the in-scenario `StructureEditModal` gains instance elevation/stairs, and the Effect editors (`EffectEditor`, `EffectFormModal`, `AddEffectModal`) expose effect elevation.
+- **Display:** `useCanvasDraw` draws the structure elevation badge just under the hex's north vertex (0 = none) and a slightly-lower effect badge, hidden when it equals the structure's. No rule changes yet.
+- `tsc` clean; 840 tests pass; build clean.
+
 ## Ground units can enter a hex beneath a flyer (2026-10-02)
 **Files:** src/components/ScenarioMap/mapGeometry.ts, docs/dev/changelog.md
 

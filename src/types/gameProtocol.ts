@@ -292,6 +292,8 @@ export interface GroundEffect {
   mode?: 'melee' | 'ranged';
   /** Block direction for `block_attacks` (absent = both). */
   direction?: 'in' | 'out' | 'both';
+  /** Elevation band this zone/effect sits at (0/absent = ground). */
+  elevation?: number;
   /** Stable draw order on its hex (Move up/down). */
   zIndex?: number;
   duration: number;

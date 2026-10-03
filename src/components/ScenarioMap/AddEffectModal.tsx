@@ -79,6 +79,7 @@ export function AddEffectModal({
     transparentBackground: template?.transparentBackground ?? false,
     layer: template?.layer ?? 'below',
     duration: Math.max(1, duration),
+    elevation: template?.elevation ?? 0,
     casterTeam: tempo === 'every-turn' ? '' : tempo,
     scope: template?.scope ?? 'both',
     modifiers: (template?.modifiers ?? []).map(m =>

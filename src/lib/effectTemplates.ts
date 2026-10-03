@@ -184,6 +184,8 @@ export interface EffectTemplate {
   layer: EffectLayer;
   scope: EffectScope;
   defaultDuration: number;
+  /** Elevation band the effect's artwork/label sits at (0 = ground). */
+  elevation?: number;
   /** Never ticks or expires once applied (innate/board-feature effect). */
   permanent?: boolean;
   modifiers: EffectModifier[];
@@ -245,6 +247,7 @@ export function mapEffectRow(row: any): EffectTemplate {
     layer: row.layer === 'above' ? 'above' : 'below',
     scope: row.scope === 'zone' ? 'zone' : row.scope === 'both' ? 'both' : 'unit',
     defaultDuration: Number(row.default_duration) || 3,
+    elevation: Math.max(0, Math.round(Number(row.elevation) || 0)),
     permanent: !!row.permanent,
     modifiers: parseModifiers(row.modifiers),
     createdAt: row.created_at,
@@ -253,7 +256,7 @@ export function mapEffectRow(row: any): EffectTemplate {
 }
 
 export function mapEffectToRow(
-  t: Pick<EffectTemplate, 'name' | 'description' | 'color' | 'imageUrl' | 'imageScale' | 'transparentBackground' | 'layer' | 'scope' | 'defaultDuration' | 'permanent' | 'modifiers'>,
+  t: Pick<EffectTemplate, 'name' | 'description' | 'color' | 'imageUrl' | 'imageScale' | 'transparentBackground' | 'layer' | 'scope' | 'defaultDuration' | 'elevation' | 'permanent' | 'modifiers'>,
 ) {
   return {
     name: t.name,
@@ -265,6 +268,7 @@ export function mapEffectToRow(
     layer: t.layer,
     scope: t.scope,
     default_duration: t.defaultDuration,
+    elevation: Math.max(0, Math.round(t.elevation || 0)),
     permanent: !!t.permanent,
     modifiers: t.modifiers,
   };
@@ -281,6 +285,7 @@ export function blankEffectTemplate(): Omit<EffectTemplate, 'id' | 'createdAt' |
     layer: 'below',
     scope: 'unit',
     defaultDuration: 3,
+    elevation: 0,
     permanent: false,
     modifiers: [{ kind: 'ac', dice: '1' }],
   };

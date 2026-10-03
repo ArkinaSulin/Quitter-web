@@ -206,6 +206,9 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
                 <label className="text-xs text-gray-400">Duration (caster activations)
                   <input className={input} type="number" min={1} max={50} value={draft.defaultDuration} disabled={readOnly || draft.permanent} onChange={e => setDraft({ ...draft, defaultDuration: Math.max(1, Math.floor(Number(e.target.value) || 1)) })} />
                 </label>
+                <label className="text-xs text-gray-400">Elevation (ft) — 0 = ground
+                  <input className={input} type="number" min={0} step={10} value={draft.elevation} disabled={readOnly} onChange={e => setDraft({ ...draft, elevation: Math.max(0, Math.round(Number(e.target.value) || 0)) })} />
+                </label>
               </div>
 
               <label className="flex items-center gap-2 text-[11px] text-gray-400">

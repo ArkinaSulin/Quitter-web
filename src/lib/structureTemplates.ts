@@ -2,7 +2,7 @@
 // Map-structure template domain types + row mappers. Templates are authored in
 // the Structure Editor and applied on map layers; placed instances reference the
 // template id (see src/types/structure.ts).
-import { StructureTemplate, StructureAnchor } from '@/types/structure';
+import { StructureTemplate, StructureInstance, StructureAnchor } from '@/types/structure';
 import { EffectModifier, parseModifiers } from '@/lib/effectTemplates';
 
 const num = (v: unknown): number => {
@@ -25,6 +25,16 @@ const clampInt = (v: unknown, min: number, max: number, fallback: number): numbe
 /** The effective door pool of a template (null door defaults to maxHp). */
 export function templateDoorMax(t: StructureTemplate): number {
   return t.doorHp === null ? t.maxHp : t.doorHp;
+}
+
+/** The effective top-surface elevation of a structure (instance override wins). */
+export function structureElevation(t: StructureTemplate | null | undefined, inst?: StructureInstance | null): number {
+  return Math.max(0, Math.round(inst?.elevation ?? t?.elevation ?? 0));
+}
+
+/** Whether a placed edge structure is a stair (instance override wins). */
+export function structureIsStairs(t: StructureTemplate | null | undefined, inst?: StructureInstance | null): boolean {
+  return !!(inst?.stairs ?? t?.stairs);
 }
 
 /**
@@ -50,6 +60,8 @@ export function mapStructureRow(row: any): StructureTemplate {
     barricade: !!row.barricade,
     sinWave: !!row.sin_wave,
     hexBorder: row.hex_border !== false,
+    elevation: Math.max(0, Math.round(num(row.elevation))),
+    stairs: !!row.stairs,
     mpFootIn: numOrNull(row.mp_foot_in),
     mpFootOut: numOrNull(row.mp_foot_out),
     mpMountedIn: numOrNull(row.mp_mounted_in),
@@ -66,6 +78,7 @@ export function mapStructureRow(row: any): StructureTemplate {
 /** Map a template to a snake_case map_structure_templates row (no id). */
 export function mapStructureToRow(t: Pick<StructureTemplate,
   'name' | 'description' | 'anchor' | 'color' | 'imageUrl' | 'battlement' | 'barricade' | 'sinWave' | 'hexBorder' |
+  'elevation' | 'stairs' |
   'mpFootIn' | 'mpFootOut' | 'mpMountedIn' | 'mpMountedOut' |
   'doorHp' | 'maxHp' | 'dt' | 'modifiers'>) {
   // A movement value may be any integer (negative = hard block); null = terrain.
@@ -89,6 +102,8 @@ export function mapStructureToRow(t: Pick<StructureTemplate,
     barricade: !!t.barricade,
     sin_wave: !!t.sinWave,
     hex_border: t.hexBorder !== false,
+    elevation: Math.max(0, Math.round(num(t.elevation))),
+    stairs: !!t.stairs,
     mp_foot_in: move(t.mpFootIn),
     mp_foot_out: move(t.mpFootOut),
     mp_mounted_in: move(t.mpMountedIn),
@@ -112,6 +127,8 @@ export function blankStructureTemplate(): Omit<StructureTemplate, 'id' | 'create
     barricade: false,
     sinWave: false,
     hexBorder: true,
+    elevation: 10,
+    stairs: false,
     mpFootIn: null,
     mpFootOut: null,
     mpMountedIn: null,
@@ -131,6 +148,7 @@ export function sanitizeStructureTemplate<T extends { anchor: StructureAnchor; d
     ...t,
     maxHp,
     doorHp,
+    elevation: clampInt((t as any).elevation, 0, 9990, 0),
     dt: clampInt(t.dt, 0, 999, 15),
     modifiers: t.modifiers.filter(m => !!m && typeof m.kind === 'string'),
   };

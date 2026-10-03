@@ -73,6 +73,51 @@ function NumInput({ value, onChange, readOnly, max = 999, placeholder = '—' }:
   );
 }
 
+/** TEMPORARY: previews the three candidate edge-stair graphics (A/B/C) so the
+ *  designer can pick one; the other two will be deleted once decided. Edge shown
+ *  as a dashed line (lower hex above, higher hex below). */
+function StairVariant({ kind }: { kind: 'A' | 'B' | 'C' }) {
+  const edgeY = 30;
+  return (
+    <svg viewBox="0 0 120 60" className="w-[120px] h-[60px]">
+      <line x1="0" y1={edgeY} x2="120" y2={edgeY} stroke="#6b7280" strokeWidth="2" strokeDasharray="4 3" />
+      {kind === 'A' && [30, 50, 70, 90].map(x => (
+        <line key={x} x1={x} y1={edgeY - 12} x2={x} y2={edgeY + 12} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
+      ))}
+      {kind === 'B' && <>
+        <line x1={40} y1={edgeY - 10} x2={80} y2={edgeY - 10} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
+        <line x1={30} y1={edgeY} x2={90} y2={edgeY} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
+        <line x1={20} y1={edgeY + 10} x2={100} y2={edgeY + 10} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
+      </>}
+      {kind === 'C' && <>
+        <line x1={20} y1={edgeY - 16} x2={20} y2={edgeY + 16} stroke="#c49a58" strokeWidth="2" strokeLinecap="round" />
+        <line x1={100} y1={edgeY - 16} x2={100} y2={edgeY + 16} stroke="#c49a58" strokeWidth="2" strokeLinecap="round" />
+        <line x1={40} y1={edgeY - 10} x2={80} y2={edgeY - 10} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
+        <line x1={30} y1={edgeY} x2={90} y2={edgeY} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
+        <line x1={20} y1={edgeY + 10} x2={100} y2={edgeY + 10} stroke="#c49a58" strokeWidth="3" strokeLinecap="round" />
+      </>}
+    </svg>
+  );
+}
+
+function StairPreview() {
+  return (
+    <div className="rounded border border-dashed border-amber-700/60 p-2">
+      <p className="text-[10px] uppercase tracking-wide text-amber-400/80 mb-1">Stair graphic — pick one (temporary preview)</p>
+      <div className="flex flex-wrap gap-4">
+        {(['A', 'B', 'C'] as const).map(k => (
+          <div key={k} className="text-center">
+            <StairVariant kind={k} />
+            <span className="text-[10px] text-gray-400">
+              {k === 'A' ? 'A — perpendicular treads' : k === 'B' ? 'B — 3 tapered bars' : 'C — ladder'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function coverAc(mods: EffectModifier[]): { melee: number; ranged: number } {
   let melee = 0;
   let ranged = 0;
@@ -309,6 +354,23 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                   </label>
                 </div>
               )}
+
+              <div className="rounded border border-gray-700 p-2 space-y-2">
+                <p className="text-[10px] uppercase tracking-wide text-gray-500">Surface elevation</p>
+                <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                  <label className="flex items-center gap-1">Height (ft)
+                    <NumInput value={draft.elevation ?? 0} readOnly={readOnly} onChange={v => patch({ elevation: Math.max(0, v ?? 0) })} max={9990} />
+                  </label>
+                  <span className="text-gray-500">0 = decorative (ground level, no height/blocking)</span>
+                </div>
+                {draft.anchor === 'edge' && (
+                  <label className="flex items-center gap-2 text-[11px] text-gray-300">
+                    <input type="checkbox" disabled={readOnly} checked={draft.stairs} onChange={e => patch({ stairs: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
+                    Stairs — waives the climb cost for both sides (edge only)
+                  </label>
+                )}
+                {draft.anchor === 'edge' && draft.stairs && <StairPreview />}
+              </div>
 
               <div className="rounded border border-gray-700 p-2 space-y-2">
                 <p className="text-[10px] uppercase tracking-wide text-gray-500">Durability</p>
