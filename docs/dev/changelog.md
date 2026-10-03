@@ -1,5 +1,10 @@
 # QuiTTER Changelog
 
+## Ground units can enter a hex beneath a flyer (2026-10-02)
+**Files:** src/components/ScenarioMap/mapGeometry.ts, docs/dev/changelog.md
+
+- `computeOccupiedHexes` now counts only **ground** units (`elevation <= 0`); airborne units occupy the air layer (`airOccupiedHexes`) and no longer block a ground move. Fixes a ground unit being told a hex beneath a flying unit was "out of reach". `tsc` clean; 840 tests pass; build clean. No migration.
+
 ## Hero attach requires equal elevation (2026-10-02)
 **Files:** src/components/ScenarioMap/{ContextMenu,useMoveActions,useCombatActions}.tsx, docs/dev/changelog.md
 
