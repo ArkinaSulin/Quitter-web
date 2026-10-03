@@ -4,6 +4,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Hex, Unit } from '@/types/gameProtocol';
 import { isUnitInteractable } from '@/lib/unitInteractions';
+import { elevationOffset } from '@/lib/flying';
 import { EdgeRef, Walls, nearestWallEdge } from '@/lib/walls';
 
 // ---- Hex math (pointy-top) ----
@@ -64,6 +65,9 @@ export interface UseHexGridProps {
   onHoverWallEdge?: (edge: EdgeRef | null) => void;
   /** Inspect mode (Shift held): unit hover is suppressed and hex/edge info hover fires. */
   shiftHeld?: boolean;
+  /** Air-only view (Space held): tokens/wireframe show only airborne units, so
+   *  ground units are skipped by hit-testing (hover/drag/click). */
+  airOnly?: boolean;
   /** Hover on a hex with no unit under the cursor (hex info tooltip). */
   onHexHover?: (hex: Hex, x: number, y: number) => void;
   onHexLeave?: () => void;
@@ -108,6 +112,7 @@ export function useHexGrid({
   canAttackStructure,
   onHoverWallEdge,
   shiftHeld = false,
+  airOnly = false,
   onHexHover,
   onHexLeave,
   onEdgeHover,
@@ -392,11 +397,52 @@ export function useHexGrid({
     return units.find(u => isUnitInteractable(u) && u.hex.q === hex.q && u.hex.r === hex.r && u.hex.s === hex.s);
   }, [units, activeHeroId]);
 
+  /**
+   * Point-based hit test: the token's ACTUAL drawn location (hex centre plus its
+   * elevation offset, NE 45°), not just its hex. This is what lets an elevated
+   * token be grabbed/hovered where it is rendered, and lets a flyer stacked with a
+   * ground unit be selected (the nearest token centre wins; `airOnly` skips ground
+   * so the Space-held air view still targets the flyer).
+   */
+  const getUnitAtScreen = useCallback((screenX: number, screenY: number, opts?: { airOnly?: boolean }): Unit | undefined => {
+    const airOnlyMode = opts?.airOnly ?? airOnly;
+    const world = getWorldFromScreen(screenX, screenY);
+    const hex = getHexFromScreen(screenX, screenY);
+    const halfW = size * 0.8;  // TOKEN_WIDTH / 2  (HEX_SIZE * 1.6 / 2)
+    const halfH = size * 0.6;  // TOKEN_HEIGHT / 2 (HEX_SIZE * 1.2 / 2)
+    // The context-menu-switched active hero remains grabbable across its hex.
+    if (activeHeroId && hex) {
+      const hero = units.find(u => u.id === activeHeroId && !u.isDeleted && u.hex.q === hex.q && u.hex.r === hex.r && u.hex.s === hex.s);
+      if (hero && (!airOnlyMode || (hero.elevation ?? 0) > 0)) return hero;
+    }
+    let best: Unit | undefined;
+    let bestD = Infinity;
+    for (const u of units) {
+      if (!isUnitInteractable(u)) continue;
+      if (airOnlyMode && (u.elevation ?? 0) <= 0) continue;
+      const pos = hexToPixel(u.hex, size);
+      const off = elevationOffset(u.elevation, size);
+      const dx = world.x - (pos.x + off.dx);
+      const dy = world.y - (pos.y + off.dy);
+      if (Math.abs(dx) <= halfW && Math.abs(dy) <= halfH) {
+        const d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = u; }
+      }
+    }
+    if (best) return best;
+    // Fallback keeps the broad whole-hex hit for GROUND units; flyers stay
+    // token-only (their hex hit box is intentionally tight).
+    if (!airOnlyMode && hex) {
+      return units.find(u => isUnitInteractable(u) && (u.elevation ?? 0) <= 0 && u.hex.q === hex.q && u.hex.r === hex.r && u.hex.s === hex.s);
+    }
+    return undefined;
+  }, [units, activeHeroId, size, airOnly, getWorldFromScreen, getHexFromScreen]);
+
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (hex) setHoveredHex(hex);
 
-    const unit = hex ? getUnitAt(hex) : undefined;
+    const unit = getUnitAtScreen(e.clientX, e.clientY, { airOnly });
     // Inspect mode (Shift) suppresses unit hover so the map info tooltip shows.
     const hoverUnit = shiftHeld ? undefined : unit;
     if (hoverUnit && hoverUnit !== lastHoveredUnit) {
@@ -451,7 +497,7 @@ export function useHexGrid({
       hoveredEdgeKeyRef.current = nextEdge?.key ?? null;
       onHoverWallEdge?.(nextEdge);
     }
-  }, [getHexFromScreen, getUnitAt, isPanning, panStart, lastHoveredUnit, onUnitHover, onUnitLeave, draggingUnitId, canAttackWallEdge, getWallEdgeAt, onHoverWallEdge, shiftHeld, onHexHover, onHexLeave, onEdgeHover, onEdgeLeave]);
+  }, [getHexFromScreen, getUnitAtScreen, airOnly, isPanning, panStart, lastHoveredUnit, onUnitHover, onUnitLeave, draggingUnitId, canAttackWallEdge, getWallEdgeAt, onHoverWallEdge, shiftHeld, onHexHover, onHexLeave, onEdgeHover, onEdgeLeave]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const hex = getHexFromScreen(e.clientX, e.clientY);
@@ -482,7 +528,7 @@ export function useHexGrid({
       return;
     }
 
-    const unit = getUnitAt(hex);
+    const unit = getUnitAtScreen(e.clientX, e.clientY, { airOnly });
     // Record which unit (if any) the press started on, regardless of whether it
     // can be grabbed — lets clicks on tokens (e.g. the archer-reaction button)
     // be detected even for units the turn gate won't let you drag.
@@ -495,7 +541,7 @@ export function useHexGrid({
       return;
     }
     setMouseDownTarget('hex');
-  }, [getHexFromScreen, getUnitAt, readOnly, canGrabUnit, onGrabUnit, onPing]);
+  }, [getHexFromScreen, getUnitAtScreen, airOnly, readOnly, canGrabUnit, onGrabUnit, onPing]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const targetHex = getHexFromScreen(e.clientX, e.clientY);
@@ -503,7 +549,7 @@ export function useHexGrid({
     // from a drag. Route it to onUnitClick — but keep the rest of the flow so a
     // click on a non-grabbable unit still selects its hex exactly as before.
     const pd = pointerDownRef.current;
-    const upUnit = targetHex ? getUnitAt(targetHex) : undefined;
+    const upUnit = getUnitAtScreen(e.clientX, e.clientY, { airOnly });
     const clickedToken =
       !!pd && !!upUnit && upUnit.id === pd.unitId &&
       Math.abs(e.clientX - pd.x) <= 4 && Math.abs(e.clientY - pd.y) <= 4;
@@ -515,7 +561,7 @@ export function useHexGrid({
     if (draggingUnitId && dragStartPos && targetHex) {
       const unit = units.find(u => u.id === draggingUnitId);
       if (unit) {
-        const targetUnit = getUnitAt(targetHex);
+        const targetUnit = getUnitAtScreen(e.clientX, e.clientY, { airOnly });
         const wallEdge = getWallEdgeAt(e.clientX, e.clientY);
         const canHitWall = !!wallEdge && (!canAttackWallEdge || canAttackWallEdge(draggingUnitId, wallEdge));
         // Structure attacks require Shift at drop (plain drop = move). This is
@@ -544,14 +590,14 @@ export function useHexGrid({
     }
 
     if (mouseDownTarget === 'hex' && !draggingUnitId && !panMovedRef.current) {
-      if (targetHex && onHexClick) onHexClick(targetHex, getUnitAt(targetHex), e.clientX, e.clientY);
+      if (targetHex && onHexClick) onHexClick(targetHex, getUnitAtScreen(e.clientX, e.clientY, { airOnly }), e.clientX, e.clientY);
     }
     panMovedRef.current = false;
 
     setIsPanning(false);
     setPanStart(null);
     setMouseDownTarget('none');
-  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAt, onAttack, onAttackWall, canAttackWallEdge, onAttackStructure, canAttackStructure, getWallEdgeAt, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
+  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAtScreen, airOnly, onAttack, onAttackWall, canAttackWallEdge, onAttackStructure, canAttackStructure, getWallEdgeAt, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
 
   const handleRightClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
@@ -560,10 +606,10 @@ export function useHexGrid({
     if (e.ctrlKey || e.metaKey) return;
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (hex) {
-      const unit = getUnitAt(hex);
+      const unit = getUnitAtScreen(e.clientX, e.clientY, { airOnly });
       if (onHexRightClick) onHexRightClick(hex, unit, e.clientX, e.clientY);
     }
-  }, [getHexFromScreen, getUnitAt, onHexRightClick, readOnly]);
+  }, [getHexFromScreen, getUnitAtScreen, airOnly, onHexRightClick, readOnly]);
 
   const centerOn = useCallback((hex: { q: number; r: number }) => {
     const canvas = canvasRef.current;

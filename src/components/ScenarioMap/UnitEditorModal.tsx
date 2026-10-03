@@ -44,6 +44,7 @@ const FIELDS: FieldDef[] = [
   { key: 'baselineAc', label: 'Baseline AC', type: 'number' },
   { key: 'movementPoints', label: 'Movement (max MP)', type: 'number', min: 0 },
   { key: 'elevation', label: 'Elevation (ft)', type: 'number', min: 0 },
+  { key: 'flySpeedAvailable', label: 'Fly points available', type: 'number', min: 0 },
   { key: 'flySpeed', label: 'Fly speed (FP)', type: 'number', min: 0 },
   { key: 'aggressiveness', label: 'Aggressiveness', type: 'number' },
   { key: 'baseMorale', label: 'Base Morale', type: 'number' },
@@ -371,6 +372,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
           {/* Elevation & fly */}
           <div className="flex items-end gap-2">
             <Cell label="Elevation (ft)"><NumInput value={draft.elevation} min={0} onChange={v => set('elevation', v)} /></Cell>
+            <Cell label="Fly pts left"><NumInput value={draft.flySpeedAvailable} min={0} onChange={v => set('flySpeedAvailable', v)} /></Cell>
             <Cell label="Fly speed"><NumInput value={draft.flySpeed} min={0} onChange={v => set('flySpeed', v)} /></Cell>
           </div>
 

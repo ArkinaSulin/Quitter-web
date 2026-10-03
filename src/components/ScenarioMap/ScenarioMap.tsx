@@ -2029,6 +2029,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     },
     onHoverWallEdge: setHoveredWallEdge,
     shiftHeld,
+    airOnly: spaceHeld,
     onHexHover: (hex, x, y) => setInfoHover({ kind: 'hex', hex, x, y }),
     onEdgeHover: (edge, x, y) => setInfoHover({ kind: 'edge', edge, x, y }),
     onHexLeave: () => setInfoHover(null),
