@@ -25,7 +25,7 @@ import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
 import { attackRollFlags, rangeBonusAt, effectAcBonus } from '@/lib/unitEffects';
 import { hasLineOfSight } from '@/lib/lineOfSight';
 import { Walls } from '@/lib/walls';
-import { MapStructures, structureAuraFlags, hasAuraFlags, StructureAuraFlags } from '@/lib/mapStructures';
+import { MapStructures, structureAuraFlags, hasAuraFlags, StructureAuraFlags, structureSurfaceAt } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { attacksBlocked } from '@/lib/attackBlock';
 import { formatStrikeDetail } from '@/lib/verboseCombat';
@@ -816,6 +816,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
     let live = units.find(u => u.id === mover.id) ?? mover;
     if (live.hidden) return; // hidden units are concealed — no scatter/pursue reaction
     if ((live.elevation ?? 0) > 0) return; // flyers are never pursued
+    // No pursuit off a RAISED surface (a garrison on a wall/worktop): the vacated
+    // hex's entry cost is > 1.
+    if (structureSurfaceAt(originHex, structures, structureTemplates) > 0) return;
 
     if (opts?.cornered) {
       // No legal retreat: every eligible ZoC unit strikes the standing router.

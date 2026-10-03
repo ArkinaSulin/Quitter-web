@@ -12,7 +12,7 @@ import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
 import { isDeadCorpse } from '@/lib/unitInteractions';
 import { corpseDots, FallenMap } from '@/lib/corpseTracker';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
-import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, MapBackgroundConfig, costShade, hexMpLabelAt } from './mapGeometry';
+import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, canFly, MapBackgroundConfig, costShade, hexMpLabelAt } from './mapGeometry';
 import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
 import { MapStructures, isHexStructureKey, structureSurfaceAt } from '@/lib/mapStructures';
@@ -194,26 +194,41 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     // Effect artwork on hexes. "below" draws under corpses/tokens (here);
     // "above" draws after the token loop. A hex whose unit is hovered skips its
     // "above" artwork so the token stays inspectable.
-    const drawEffectImage = (hex: Hex, url: string, scale: number) => {
+    const drawEffectImage = (hex: Hex, url: string, scale: number, elevation: number, structTop: number) => {
       const img = getLoadedImage(url);
       if (!img) return;
       const { cx, cy } = hexCenter(hex);
       const ratio = img.naturalWidth / Math.max(1, img.naturalHeight);
       const h = tokenHeight * ((scale || 100) / 100);
       const w = h * ratio;
+      // Elevated effects offset like tokens: level 1 (half) when the effect sits at
+      // the structure top, level 2 (full) + a ground shadow when above it.
+      const level = elevation > 0 ? (elevation > structTop ? 2 : 1) : 0;
+      const dist = HEX_SIZE * currentZoom * 0.5 * level * Math.SQRT1_2;
+      const dx = dist, dy = -dist;
+      if (level === 2) {
+        ctx.save();
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, w * 0.32, w * 0.13, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.restore();
+      }
       ctx.save();
       ctx.globalAlpha = 0.95;
-      ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+      ctx.drawImage(img, cx - w / 2 + dx, cy - h / 2 + dy, w, h);
       ctx.restore();
     };
-    const belowImages: { hex: Hex; url: string; z: number; scale: number }[] = [];
-    const aboveImages: { hex: Hex; url: string; z: number; scale: number }[] = [];
-    const pushEffectImage = (hex: Hex, url: string, layer: 'above' | 'below', z: number, scale: number) => {
+    const belowImages: { hex: Hex; url: string; z: number; scale: number; elevation: number; structTop: number }[] = [];
+    const aboveImages: { hex: Hex; url: string; z: number; scale: number; elevation: number; structTop: number }[] = [];
+    const pushEffectImage = (hex: Hex, url: string, layer: 'above' | 'below', z: number, scale: number, elevation = 0) => {
       if (!url || isFogHidden(`${hex.q},${hex.r}`)) return;
-      (layer === 'above' ? aboveImages : belowImages).push({ hex, url, z, scale });
+      const structTop = structureSurfaceAt(hex, structures, templates);
+      (layer === 'above' ? aboveImages : belowImages).push({ hex, url, z, scale, elevation, structTop });
     };
     for (const z of groundZones ?? []) {
-      if (z.imageUrl) pushEffectImage({ q: z.q, r: z.r, s: -z.q - z.r }, z.imageUrl, z.layer ?? 'below', z.zIndex ?? 0, z.imageScale ?? 100);
+      if (z.imageUrl) pushEffectImage({ q: z.q, r: z.r, s: -z.q - z.r }, z.imageUrl, z.layer ?? 'below', z.zIndex ?? 0, z.imageScale ?? 100, z.elevation ?? 0);
     }
     for (const u of displayUnits) {
       if (u.isDeleted || u.attachedToUnitId) continue;
@@ -221,7 +236,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         if (e.imageUrl && !e.zoneHex) pushEffectImage(u.hex, e.imageUrl, e.layer ?? 'below', 0, e.imageScale ?? 100);
       }
     }
-    for (const im of belowImages) drawEffectImage(im.hex, im.url, im.scale);
+    for (const im of belowImages) drawEffectImage(im.hex, im.url, im.scale, im.elevation, im.structTop);
     const hoveredHexKey = (() => {
       const hu = displayUnits.find(u => u.id === aiHoveredUnitId);
       return hu ? `${hu.hex.q},${hu.hex.r}` : null;
@@ -556,7 +571,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const pos = hexToPixel(unit.hex, HEX_SIZE);
       const cx = pos.x * currentZoom + offsetX;
       const cy = pos.y * currentZoom + offsetY;
-      const elev = elevationOffset(unit.elevation, HEX_SIZE);
+      const elev = elevationOffset(unit.elevation, HEX_SIZE, canFly(unit));
       const tokenCx = cx + elev.dx * currentZoom;
       const tokenCy = cy + elev.dy * currentZoom;
       const unitMoraleMod = moraleMods.get(unit.id) ?? (unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, displayUnits, displayAlliances, formationMoraleMod));
@@ -629,7 +644,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const attachedHero = attachedByHost.get(unit.id);
       if (attachedHero) {
         const heroPos = getAttachedHeroPos(unit.hex, unit.facing, attachedHero.attachedPosition, unit.sizeCategory);
-        const elevOff = elevationOffset(unit.elevation, HEX_SIZE);
+        const elevOff = elevationOffset(unit.elevation, HEX_SIZE, canFly(unit));
         const heroCx = heroPos.x * currentZoom + offsetX + elevOff.dx * currentZoom;
         const heroCy = heroPos.y * currentZoom + offsetY + elevOff.dy * currentZoom;
         const heroFormationMoraleMod = formationsMap[attachedHero.currentFormation] ?? null;
@@ -669,7 +684,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     // "Above unit" effect artwork (hides while the unit on its hex is hovered).
     for (const im of aboveImages.sort((a, b) => a.z - b.z)) {
       if (hoveredHexKey && `${im.hex.q},${im.hex.r}` === hoveredHexKey) continue;
-      drawEffectImage(im.hex, im.url, im.scale);
+      drawEffectImage(im.hex, im.url, im.scale, im.elevation, im.structTop);
     }
 
     // Active-effect pips: one colored dot per effect under the token (small, cheap).

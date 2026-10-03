@@ -4,7 +4,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Hex, Unit } from '@/types/gameProtocol';
 import { isUnitInteractable } from '@/lib/unitInteractions';
-import { elevationOffset } from '@/lib/flying';
+import { elevationOffset, canFly } from '@/lib/flying';
 import { hexToPixel, pixelToHex } from '@/lib/hexGeometry';
 import { getAttachedHeroPos, getHeroSquareSize, TOKEN_HEIGHT } from '@/lib/heroLayout';
 import { EdgeRef, Walls, nearestWallEdge } from '@/lib/walls';
@@ -397,7 +397,7 @@ export function useHexGrid({
           const hostFacing = host?.facing ?? hero.facing;
           const hostSize = host?.sizeCategory ?? hero.sizeCategory;
           const hostPos = hexToPixel(hostHex, size);
-          const off = elevationOffset(hostElev, size);
+          const off = elevationOffset(hostElev, size, host ? canFly(host) : false);
           const hostCx = hostPos.x + off.dx;
           const hostCy = hostPos.y + off.dy;
           // Host token box (the combined pair is the hero's grabbable entity)…
@@ -415,7 +415,7 @@ export function useHexGrid({
       if (!isUnitInteractable(u)) continue;
       if (airOnlyMode && (u.elevation ?? 0) <= 0) continue;
       const pos = hexToPixel(u.hex, size);
-      const off = elevationOffset(u.elevation, size);
+      const off = elevationOffset(u.elevation, size, canFly(u));
       const dx = world.x - (pos.x + off.dx);
       const dy = world.y - (pos.y + off.dy);
       if (Math.abs(dx) <= halfW && Math.abs(dy) <= halfH) {

@@ -325,9 +325,10 @@ export function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alli
     if (unit.isDeleted || unit.hidden || unit.id === draggedUnitId || unit.attachedToUnitId || unit.isHero || isUnitRouted(unit) || isDeadCorpse(unit)) continue;
     const unitGroup = alliances[unit.team] || 'friendly';
     if (unitGroup === draggedGroup) continue;
-    // Kill zones only reach 10 ft vertically: a flyer ignores ground ZoC, and a
-    // flyer higher than 10 ft above the mover exerts none.
-    if (elevationGapFeet(unit.elevation, draggedElevation) > 10) continue;
+    // Kill zones do NOT cross elevation: only hostiles at the mover's exact
+    // elevation exert a zone of control (a flyer ignores ground ZoC, and a
+    // garrison ignores the ground below).
+    if ((unit.elevation ?? 0) !== draggedElevation) continue;
     for (const dir of HEX_DIRS) {
       const nq = unit.hex.q + dir.q;
       const nr = unit.hex.r + dir.r;

@@ -118,4 +118,12 @@ describe('hostilesLeftZoc', () => {
     const out = hostilesLeftZoc(mover, h(0, -1), h(0, -2), [mover, rangedUsed], ALLIANCES, FORMS);
     expect(out.map(u => u.id)).toEqual(['e']);
   });
+
+  it('ignores hostiles at a DIFFERENT elevation (ZoC does not cross elevation)', () => {
+    const airMover = { ...mover, elevation: 10 };
+    const ground = unit({ id: 'g', team: 'red', hex: h(0, 0), facing: 0, weaponString: '', elevation: 0 });
+    expect(hostilesLeftZoc(airMover, h(0, -1), h(0, -2), [airMover, ground], ALLIANCES, FORMS)).toEqual([]);
+    const air = unit({ id: 'a', team: 'red', hex: h(0, 0), facing: 0, weaponString: '', elevation: 10 });
+    expect(hostilesLeftZoc(airMover, h(0, -1), h(0, -2), [airMover, air], ALLIANCES, FORMS).map(u => u.id)).toEqual(['a']);
+  });
 });

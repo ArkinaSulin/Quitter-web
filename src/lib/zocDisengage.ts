@@ -52,6 +52,8 @@ export function hostilesLeftZoc(
     e.id !== mover.id &&
     !e.isDeleted &&
     (alliances[e.team] || 'friendly') !== moverAlliance &&
+    // Kill zones do not cross elevation: only same-elevation hostiles.
+    (e.elevation ?? 0) === (mover.elevation ?? 0) &&
     imposesZocOn(e, originHex, formationsMap) &&
     !imposesZocOn(e, destHex, formationsMap),
   );

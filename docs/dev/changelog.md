@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Structure elevation — Phase 2b slice 6: ZoC/pursue elevation, offsets, effect elevation (2026-10-02)
+**Files:** src/components/ScenarioMap/{mapGeometry,useCombatActions,useCanvasDraw}.tsx, src/lib/{flying,zocDisengage}.ts (+ tests), src/hooks/useHexGrid.ts, docs/dev/changelog.md
+
+- **ZoC does not cross elevation:** `computeThreatHexes` and `hostilesLeftZoc` now require the hostile at the mover's exact elevation, so a garrison ignores the ground below and a flyer ignores ground ZoC.
+- **Pursue suppressed off a raised surface:** `performPursuits` skips when the vacated hex's surface > 0 (a garrison on a wall/worktop), since its entry cost is > 1.
+- **Offsets:** `elevationOffset(elevation, hexSize, flyer)` — a **non-flyer** elevated token always uses the **10-ft (half-hex)** offset; a **flyer** uses half at 10 ft and the full offset at 20 ft+. Rendering (`useCanvasDraw`) and hit-testing (`useHexGrid`) pass `canFly`.
+- **Effect elevation rendering:** effect artwork offsets like a token — level 1 (half) when the effect sits at the structure top, level 2 (full) + a ground shadow when above (= structure's badge hidden; already handled). The structure/effect badge is unchanged.
+- Tests: ZoC-elevation (+ offset). 850 tests pass; `tsc` clean; build clean.
+
 ## Structure elevation — Phase 2b slice 5: ranged vertical rule (2026-10-02)
 **Files:** src/components/ScenarioMap/useCombatActions.ts, src/lib/unitCombat.ts (+ test), docs/dev/changelog.md
 

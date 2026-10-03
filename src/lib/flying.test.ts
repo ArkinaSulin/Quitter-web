@@ -37,13 +37,15 @@ describe('flying', () => {
     expect(elevationGapFeet(undefined, undefined)).toBe(0);
   });
 
-  it('elevationOffset: NE 45°, scales with elevation, capped', () => {
+  it('elevationOffset: NE 45°; flyer scales (half→full), non-flyer always half', () => {
     expect(elevationOffset(0, 100)).toEqual({ dx: 0, dy: 0 });
-    const half = elevationOffset(10, 100);
+    const half = elevationOffset(10, 100, true);
     expect(half.dx).toBeCloseTo(100 * 0.5 * Math.SQRT1_2, 5);
     expect(half.dy).toBeCloseTo(-100 * 0.5 * Math.SQRT1_2, 5);
-    const full = elevationOffset(30, 100);
+    const full = elevationOffset(30, 100, true);
     expect(full.dx).toBeCloseTo(100 * Math.SQRT1_2, 5);
+    // A non-flyer (standing on a surface) uses the half offset at any height.
+    expect(elevationOffset(30, 100, false).dx).toBeCloseTo(100 * 0.5 * Math.SQRT1_2, 5);
   });
 
   it('airOccupiedHexes only counts elevated units', () => {

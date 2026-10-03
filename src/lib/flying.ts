@@ -35,10 +35,14 @@ export function elevationGapHexes(a: number | undefined, b: number | undefined):
  * (45°) direction. Scales with elevation: half a hex radius at 10 ft, a full hex
  * radius at 20 ft+ (capped). Returns (0,0) when grounded.
  */
-export function elevationOffset(elevation: number | undefined, hexSize: number): { dx: number; dy: number } {
+export function elevationOffset(elevation: number | undefined, hexSize: number, flyer = false): { dx: number; dy: number } {
   const feet = elevation ?? 0;
   if (feet <= 0) return { dx: 0, dy: 0 };
-  const distance = hexSize * 0.5 * Math.min(2, feet / 10);
+  // Two visual levels so an elevated non-flyer (standing on a surface) reads
+  // differently from a flyer: a NON-flyer always uses the 10-ft offset (half a
+  // hex); a FLYER uses half at 10 ft and the full offset at 20 ft+.
+  const level = flyer ? Math.min(2, feet / 10) : 1;
+  const distance = hexSize * 0.5 * level;
   return { dx: distance * Math.SQRT1_2, dy: -distance * Math.SQRT1_2 };
 }
 
