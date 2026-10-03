@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { climbCostMp, structureSurfaceAt, structureClimbCostBetween } from './mapStructures';
+import { climbCostMp, structureSurfaceAt, structureClimbCostBetween, flightBlockedHexes } from './mapStructures';
 import { blankStructureTemplate } from './structureTemplates';
 import { directionBetween, edgeRef } from './walls';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
@@ -42,6 +42,16 @@ describe('structure elevation (2b)', () => {
     const key = edgeRef(0, 0, dir).key;
     const structures = { [key]: inst('stair'), '1,0': inst('tower') };
     expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(0);
+  });
+
+  it('flightBlockedHexes: structure tops above the flyer block it', () => {
+    const templates = { low: tmpl({ anchor: 'hex', elevation: 10 }), high: tmpl({ anchor: 'hex', elevation: 30 }) };
+    const structures = { '1,0': inst('low'), '2,0': inst('high') };
+    const blocked = flightBlockedHexes(structures, templates, 20);
+    expect(blocked.has('2,0')).toBe(true);
+    expect(blocked.has('1,0')).toBe(false);
+    // The drop destination may be excluded so the elevation modal can clear it.
+    expect(Array.from(flightBlockedHexes(structures, templates, 20, '2,0')).length).toBe(0);
   });
 
   it('a solid (door-less) edge wall is climbed by its height', () => {

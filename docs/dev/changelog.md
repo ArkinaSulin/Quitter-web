@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Structure elevation — Phase 2b slice 4: flight blocking + stair graphic (2026-10-02)
+**Files:** src/lib/{mapStructures,structureElevation.test}.ts, src/components/ScenarioMap/{useMoveActions,useOverlay,useCanvasDraw}.tsx, src/components/StructureEditor/StructureEditor.tsx, docs/dev/changelog.md
+
+- **Flight blocking:** a structure hex whose TOP is above a flyer's height blocks it. `flightBlockedHexes(structures, templates, elevation, excludeKey?)` is folded into the fly occupancy for `handleUnitMove`, the drag overlay, and `flyerOccupyReach`, so the preview omits those hexes and the flyer routes around (or raises elevation). The **drop destination is excluded** so the elevation modal can clear it; `confirmElevation` then errors **"structure blocked flight passage"** if the chosen end elevation is still below the structure top.
+- **Stair graphic (variant C finalized):** the temporary A/B/C preview is removed; a `stairs` edge now draws the **trapezoid ladder** (3 rungs short→long toward the higher hex, rails leaning against the rung ends and extruded past them), auto-oriented from the two adjacent surfaces, in `useCanvasDraw`.
+- Tests: `flightBlockedHexes` (+ excludeKey). 847 tests pass; `tsc` clean; build clean.
+
 ## Structure elevation — Phase 2b slice 3: climb cost + stairs (2026-10-02)
 **Files:** src/lib/{mapStructures,structureElevation.test}.ts, src/components/ScenarioMap/mapGeometry.ts, src/components/StructureEditor/StructureEditor.tsx, docs/dev/changelog.md
 

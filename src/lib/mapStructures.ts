@@ -45,6 +45,25 @@ export function structureSurfaceAt(
   return structureElevation(templates?.[inst.templateId], inst);
 }
 
+/** Hex keys whose structure TOP is above `elevation` — these block a flyer at that
+ *  height (it must climb above the top to pass). `excludeKey` keeps a drop
+ *  destination reachable so the elevation modal can clear it. */
+export function flightBlockedHexes(
+  structures: MapStructures | undefined,
+  templates: Record<string, StructureTemplate> | undefined,
+  elevation: number,
+  excludeKey?: string,
+): Set<string> {
+  const out = new Set<string>();
+  if (!structures) return out;
+  for (const key of Object.keys(structures)) {
+    if (!isHexStructureKey(key) || key === excludeKey) continue;
+    const [q, r] = key.split(',').map(Number);
+    if (structureSurfaceAt({ q, r }, structures, templates) > elevation) out.add(key);
+  }
+  return out;
+}
+
 /** MP to climb a height in feet: 10 ft = 4 MP (height / 2.5), rounded. */
 export function climbCostMp(feet: number): number {
   return feet > 0 ? Math.round(feet / 2.5) : 0;

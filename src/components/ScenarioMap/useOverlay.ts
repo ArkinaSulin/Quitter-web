@@ -16,7 +16,7 @@ import { canRangedTarget } from '@/lib/formationRules';
 import { arcOfTarget } from '@/lib/attackDirection';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { Walls, EdgeRef } from '@/lib/walls';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation, structureSurfaceAt } from '@/lib/mapStructures';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, structureSurfaceAt, flightBlockedHexes } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { rangeBonusAt } from '@/lib/unitEffects';
@@ -128,7 +128,13 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     if (!draggedUnit) return {};
     const surface = structureSurfaceAt(draggedUnit.hex, structures, templates);
     const flying = (draggedUnit.elevation ?? 0) > surface;
-    const occupied = flying ? airOccupiedHexes(units) : computeOccupiedHexes(units, undefined, surface);
+    let occupied: Set<string>;
+    if (flying) {
+      occupied = airOccupiedHexes(units);
+      for (const k of Array.from(flightBlockedHexes(structures, templates, draggedUnit.elevation ?? 0))) occupied.add(k);
+    } else {
+      occupied = computeOccupiedHexes(units, undefined, surface);
+    }
 
     if (freeMove) {
       const combined: Record<string, string> = {};

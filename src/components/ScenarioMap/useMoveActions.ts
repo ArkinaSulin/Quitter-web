@@ -19,7 +19,7 @@ import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode } from '@/lib/flying';
 import { Walls } from '@/lib/walls';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt } from '@/lib/mapStructures';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingHeroSwapConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
@@ -264,12 +264,18 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const flying = (unit.elevation ?? 0) > originSurface;
     const originMax = flying ? (unit.flySpeed ?? 0) : unitMaxMP(unit);
     const unitBudget = moveBudgetUnit(unit, flying ? 'fly' : 'ground');
+    // Air occupancy for a fly move: other flyers + structure hexes whose TOP is
+    // above the flyer's height (it can't pass them at this elevation). The drop
+    // DESTINATION is kept reachable so the elevation modal can clear it (checked
+    // on confirm); blocked intermediate hexes are avoided.
+    const flyOccupied = airOccupiedHexes(units, unitId);
+    for (const k of Array.from(flightBlockedHexes(structures, structureTemplates, unit.elevation ?? 0, `${targetHex.q},${targetHex.r}`))) flyOccupied.add(k);
 
     // Charging units may only move forward through the front-arc charge wedge,
     // and cannot enter broken terrain (painted MP cost > 1). A stooping flyer
     // charges on the air layer (over terrain/walls, air-occupied only).
     if (unit.isCharging) {
-      const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId, originSurface);
+      const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
       const maxMP = originMax;
       const mounted = !!unit.mountId || !!unit.mountName;
       const chargeReach = computeChargeReachable(
@@ -292,7 +298,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
 
     if (freeMove) {
-      const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId, originSurface);
+      const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
       if (occupied.has(`${targetHex.q},${targetHex.r}`)) {
         addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — hex occupied`);
         return;
@@ -308,7 +314,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
 
     const movementMult = getFormationMultiplier(formationsMap, unit.currentFormation, 'movement_multiplier');
     const effectiveMax = flying ? originMax : computeEffectiveMovement(unit, movementMult);
-    const occupied = flying ? airOccupiedHexes(units, unitId) : computeOccupiedHexes(units, unitId, originSurface);
+    const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
     const mounted = !!unit.mountId || !!unit.mountName;
     const costOfHex = flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted });
@@ -520,6 +526,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const maxMP = unit.flySpeed ?? 0;
     const budgetUnit = moveBudgetUnit(unit, 'fly');
     const occupied = airOccupiedHexes(units, unit.id);
+    for (const k of Array.from(flightBlockedHexes(structures, structureTemplates, unit.elevation ?? 0, `${targetHex.q},${targetHex.r}`))) occupied.add(k);
     const threatHexes = computeThreatHexes(units, unit.id, alliances, formationsMap);
     const hopCap = unit.isHero ? computeHeroMovePool(budgetUnit, maxMP) : computeMovePool(budgetUnit, maxMP);
     const budget = unit.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP);
@@ -528,7 +535,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (!entry) return { kind: 'blocked' };
     if (entry.needsTurn) return { kind: 'needsTurn' };
     return { kind: 'ok', cost: entry.cost, maxMP, attachedHero, heroMaxMP: attachedHero ? unitMaxMP(attachedHero) : undefined };
-  }, [units, alliances, formationsMap, unitMaxMP]);
+  }, [units, alliances, formationsMap, unitMaxMP, structures, structureTemplates]);
 
   /** Open the unified flyer-drop modal for a hex occupied by a ground unit.
    *  A turn-required destination reports the move error (a move intent, not an
@@ -560,6 +567,12 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // Relative to the destination SURFACE (dynamic ground).
     const finalAir = p.originAir || newElevation > p.endSurface;
     const finalMax = finalAir ? (p.unit.flySpeed ?? 0) : p.maxMP;
+    // A flying unit landing on/over a structure must clear its top, else it is
+    // blocked ("structure blocked flight passage").
+    if (p.originAir && newElevation < structureSurfaceAt(p.targetHex, structures, structureTemplates)) {
+      addError(`structure blocked flight passage`);
+      return;
+    }
     // A non-flying attached hero too large to carry must be left behind on take-off.
     if (p.attachedHero && newElevation > p.endSurface && carryRule(p.unit, p.attachedHero) === 'leave') {
       setPendingLeaveHero({ unit: p.unit, targetHex: p.targetHex, cost: p.cost, maxMP: finalMax, hero: p.attachedHero, heroMaxMP: p.heroMaxMP, breakToFormation: p.breakToFormation, elevation: newElevation });
@@ -573,7 +586,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const budgetUnit = moveBudgetUnit(p.unit, finalAir ? 'fly' : 'ground');
     const affordable = p.unit.isHero ? isHeroMoveAffordable(budgetUnit, p.cost, finalMax) : isMoveAffordable(budgetUnit, p.cost, finalMax);
     void completeMove(p.unit, p.targetHex, p.cost, !affordable, finalMax, p.attachedHero, p.heroMaxMP, p.breakToFormation, newElevation, p.endSurface);
-  }, [pendingElevation, completeMove]);
+  }, [pendingElevation, completeMove, structures, structureTemplates, addError]);
 
   const confirmLeaveHero = useCallback(async () => {
     const p = pendingLeaveHero;

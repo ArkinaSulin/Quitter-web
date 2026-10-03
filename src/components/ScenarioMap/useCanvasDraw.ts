@@ -15,7 +15,7 @@ import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, MapBackgroundConfig, costShade, hexMpLabelAt } from './mapGeometry';
 import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
-import { MapStructures, isHexStructureKey } from '@/lib/mapStructures';
+import { MapStructures, isHexStructureKey, structureSurfaceAt } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { strokeFillText, fillHexPath, structureBadges, MP_COST_GREY } from '@/components/shared/mapFeatureDraw';
 import { battlementPath, battlementDepth, crossMarksPath, sineWavePath } from '@/lib/structureDraw';
@@ -332,6 +332,56 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const a = cornerScreen(q, r, d);
         const b = cornerScreen(q, r, d + 1);
         const seg = Math.hypot(b.x - a.x, b.y - a.y);
+        // Stairs (variant C): a trapezoid ladder — 3 rungs parallel to the edge
+        // (short on the lower hex side, long on the higher), rails leaning against
+        // the rung ends and extruded past them. Auto-oriented from the surfaces.
+        if (t?.stairs) {
+          const ref = edgeRef(q, r, d);
+          const sA = structureSurfaceAt({ q: ref.aq, r: ref.ar }, structures, templates);
+          const sB = structureSurfaceAt({ q: ref.bq, r: ref.br }, structures, templates);
+          const ca = hexCenter({ q: ref.aq, r: ref.ar, s: -ref.aq - ref.ar });
+          const cb = hexCenter({ q: ref.bq, r: ref.br, s: -ref.bq - ref.br });
+          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+          const hi = sB >= sA ? cb : ca;
+          let px = hi.cx - mx, py = hi.cy - my;
+          const pl = Math.hypot(px, py) || 1; px /= pl; py /= pl;
+          const ex = (b.x - a.x) / seg, ey = (b.y - a.y) / seg;
+          const offs = [-seg * 0.14, 0, seg * 0.14];
+          const lens = [seg * 0.42, seg * 0.64, seg * 0.86];
+          const ends: { x: number; y: number }[][] = [];
+          ctx.save();
+          ctx.strokeStyle = '#c49a58';
+          ctx.lineWidth = Math.max(2, 3 * currentZoom);
+          ctx.lineCap = 'round';
+          for (let i = 0; i < 3; i++) {
+            const ccx = mx + px * offs[i], ccy = my + py * offs[i];
+            const h = lens[i] / 2;
+            const p1 = { x: ccx - ex * h, y: ccy - ey * h };
+            const p2 = { x: ccx + ex * h, y: ccy + ey * h };
+            ends.push([p1, p2]);
+            ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+          }
+          ctx.lineWidth = Math.max(1.5, 2 * currentZoom);
+          const ext = seg * 0.12;
+          for (const side of [0, 1] as const) {
+            const top = ends[0][side], bottom = ends[2][side];
+            let dx = bottom.x - top.x, dy = bottom.y - top.y;
+            const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+            ctx.beginPath();
+            ctx.moveTo(top.x - dx * ext, top.y - dy * ext);
+            ctx.lineTo(bottom.x + dx * ext, bottom.y + dy * ext);
+            ctx.stroke();
+          }
+          ctx.restore();
+          if (hoveredWallEdge && hoveredWallEdge.key === key) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 140, 60, 0.95)';
+            ctx.lineWidth = 11 * currentZoom;
+            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+            ctx.restore();
+          }
+          continue;
+        }
         // Battlement (and plain edges) draw the thick base line; a barricade / sin
         // wave draws only its marks, centred on the edge.
         if (decoration !== 'barricade' && decoration !== 'sinWave') {
