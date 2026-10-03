@@ -5,7 +5,7 @@
 // footer pinned (no scrolling to save). Derived read-only values ({...}) recompute
 // live from the draft.
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Unit, Formation, AllianceGroup, getOrganizationLevel, UnitEffect } from '@/types/gameProtocol';
 import { TEAM_COLORS, TEAM_SHAPES, Team } from '@/components/TokenRenderer/tokenUtils';
 import { TeamShape } from '@/components/TokenRenderer/TeamChip';
@@ -167,6 +167,26 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
     y: typeof window !== 'undefined' ? Math.max(20, (window.innerHeight - 640) / 2) : 40,
   }));
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Clamp a proposed position using the modal's REAL measured size (never a
+  // hard-coded estimate) so the modal is never cropped by the browser edges.
+  const clampPos = useCallback((p: { x: number; y: number }) => {
+    const el = modalRef.current;
+    const w = el?.offsetWidth ?? 460;
+    const h = el?.offsetHeight ?? 640;
+    const maxX = Math.max(8, window.innerWidth - w - 8);
+    const maxY = Math.max(8, window.innerHeight - h - 8);
+    return { x: Math.min(Math.max(8, p.x), maxX), y: Math.min(Math.max(8, p.y), maxY) };
+  }, []);
+
+  // Re-center/clamp once the real size is known, and keep it in view on resize.
+  useLayoutEffect(() => {
+    setPos(p => clampPos(p));
+    const onResize = () => setPos(p => clampPos(p));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [clampPos]);
 
   useEffect(() => {
     supabase.from('unit_mounts').select('id, name').order('name').then(({ data }) => {
@@ -203,10 +223,10 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
     dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y };
     const onMove = (ev: MouseEvent) => {
       if (!dragRef.current) return;
-      setPos({
+      setPos(clampPos({
         x: dragRef.current.origX + (ev.clientX - dragRef.current.startX),
         y: dragRef.current.origY + (ev.clientY - dragRef.current.startY),
-      });
+      }));
     };
     const onUp = () => {
       dragRef.current = null;
@@ -301,6 +321,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 pointer-events-auto">
       <div
+        ref={modalRef}
         className="bg-gray-900 border border-gray-600 rounded-xl shadow-2xl w-[460px] max-h-[92vh] flex flex-col"
         style={{ left: pos.x, top: pos.y, position: 'absolute' }}
       >

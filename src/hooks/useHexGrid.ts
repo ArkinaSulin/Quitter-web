@@ -447,10 +447,8 @@ export function useHexGrid({
     const hoverUnit = shiftHeld ? undefined : unit;
     if (hoverUnit && hoverUnit !== lastHoveredUnit) {
       setLastHoveredUnit(hoverUnit);
-      if (onUnitHover) {
-        const rect = canvasRef.current!.getBoundingClientRect();
-        onUnitHover(hoverUnit, e.clientX - rect.left, e.clientY - rect.top);
-      }
+      // Viewport (client) coords — the tooltips are portal/fixed, browser-bound.
+      if (onUnitHover) onUnitHover(hoverUnit, e.clientX, e.clientY);
     } else if (!hoverUnit && lastHoveredUnit) {
       setLastHoveredUnit(null);
       if (onUnitLeave) onUnitLeave();
@@ -469,13 +467,12 @@ export function useHexGrid({
       onHexLeave?.();
       onEdgeLeave?.();
       if (infoKey && hex && rect) {
-        const sx = e.clientX - rect.left;
-        const sy = e.clientY - rect.top;
+        // Viewport (client) coords — the info tooltip is portal/fixed.
         if (infoKey.startsWith('e:')) {
           const edge = getWallEdgeAt(e.clientX, e.clientY, shiftHeld ? 0.6 : 0.38);
-          if (edge) onEdgeHover?.(edge, sx, sy);
+          if (edge) onEdgeHover?.(edge, e.clientX, e.clientY);
         } else {
-          onHexHover?.(hex, sx, sy);
+          onHexHover?.(hex, e.clientX, e.clientY);
         }
       }
     }

@@ -10,6 +10,7 @@ import { MapStructures } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { modifierAmount, modifierSummary } from '@/lib/effectTemplates';
 import { mpPairText } from './mapGeometry';
+import { Floating } from './Floating';
 
 interface StructurePaintPanelProps {
   templates: Record<string, StructureTemplate>;
@@ -28,10 +29,7 @@ function StructureTooltip({ t, x, y }: { t: StructureTemplate; x: number; y: num
   const rest = t.modifiers.filter(m => m.kind !== 'ac');
   const door = t.doorHp ?? t.maxHp;
   return (
-    <div
-      className="fixed z-[80] pointer-events-none bg-black/95 border border-gray-600 rounded shadow-xl p-2.5 text-[11px] text-white w-64"
-      style={{ left: Math.min(x + 12, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 280), top: Math.min(y + 12, (typeof window !== 'undefined' ? window.innerHeight : 800) - 220) }}
-    >
+    <Floating x={x} y={y} z={80} className="bg-black/95 border border-gray-600 rounded shadow-xl p-2.5 text-[11px] text-white w-64">
       <div className="font-semibold text-amber-300 mb-1">{t.name}</div>
       <div className="text-gray-300 capitalize">{t.anchor}{t.battlement ? ' · battlement' : ''}{t.barricade ? ' · barricade' : ''}{t.sinWave ? ' · sin wave' : ''}</div>
       {t.anchor === 'edge' ? (
@@ -46,7 +44,7 @@ function StructureTooltip({ t, x, y }: { t: StructureTemplate; x: number; y: num
       {(melee || ranged) ? <div className="text-gray-400">Cover AC melee {melee} · ranged {ranged}</div> : null}
       {rest.length > 0 && <div className="text-gray-400">Effects: {rest.map(modifierSummary).join(', ')}</div>}
       {t.description && <div className="text-gray-500 mt-1">{t.description}</div>}
-    </div>
+    </Floating>
   );
 }
 

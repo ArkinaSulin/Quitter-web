@@ -11,7 +11,7 @@ import { MapStructures, instanceModifiers, structureDoorState } from '@/lib/mapS
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { modifierAmount, modifierSummary } from '@/lib/effectTemplates';
 import { mpPairText } from './mapGeometry';
-import { useTooltipClamp } from './useTooltipClamp';
+import { Floating } from './Floating';
 
 interface MapInfoTooltipProps {
   kind: 'hex' | 'edge';
@@ -89,8 +89,6 @@ function EdgeStructureInfo({ template, inst, hp, maxHp, outside }: { template: S
 }
 
 export function MapInfoTooltip({ kind, hex, edge, x, y, structures, templates, zones, sideBySide }: MapInfoTooltipProps) {
-  const { ref, style } = useTooltipClamp(x, y);
-
   let body: React.ReactNode = null;
   let title = 'Hex info';
 
@@ -133,13 +131,9 @@ export function MapInfoTooltip({ kind, hex, edge, x, y, structures, templates, z
   if (!body) return null;
 
   return (
-    <div
-      ref={ref}
-      className={`absolute z-50 pointer-events-none bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white ${sideBySide ? 'max-w-[min(560px,calc(100vw-16px))]' : 'max-w-[min(360px,calc(100vw-16px))]'}`}
-      style={style}
-    >
+    <Floating x={x} y={y} z={50} className={`bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white ${sideBySide ? 'max-w-[min(560px,calc(100vw-16px))]' : 'max-w-[min(360px,calc(100vw-16px))]'}`}>
       <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">{title}</div>
       {body}
-    </div>
+    </Floating>
   );
 }

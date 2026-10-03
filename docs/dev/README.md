@@ -82,6 +82,7 @@ Two big ideas make the whole system coherent:
 | [16](16-ship-builder.md) | Ship builder (Shipyard) | Ship stats engine (v8.1 FINAL) + editor/renderer — **engine pending**, devs only | `src/lib/shipStats.ts`, `src/types/ship.ts`, `src/components/ShipEditor/*`, migrations 059/066–070 |
 | [17](17-enemy-ai.md) | AI assist (enemy AI) | GM plotting tool: planner gates, preview routes, execute-through-action-path, undo macro | `src/lib/enemyAI/*`, `src/components/ScenarioMap/{AiPanel,aiTypes,useCanvasDraw}.ts(x)`, migration 076 |
 | [18](18-map-structures.md) | Map structures | Structure templates (walls/spikes/gates/towers) + instances, door-first combat, tower auras, `range`/`enter_org_max`, gates, Shift-drop attacks + inspect tooltips | `src/types/structure.ts`, `src/lib/{structureTemplates,mapStructures,structureCombat}.ts`, `src/components/StructureEditor/*`, migrations 093–095 |
+| [19](19-ui-panels-and-floating.md) | Left-panel tabs & floating UI | Tab registry standard; the portal-based `Floating` primitive every tooltip/menu must use (viewport-bound, measured, flip); draggable-modal clamping | `src/components/ScenarioMap/{LeftPanel,PanelsContainer,PanelSection,Floating,useTooltipClamp,UnitEditorModal}.tsx` |
 | — | [changelog](changelog.md) | Session history (newest first) | append-only |
 | — | [outstanding](outstanding.md) | Forward-looking backlog / roadmap for next sessions | statuses: next / later / blocked |
 | — | [legacy/HANDBOOK.md](legacy/HANDBOOK.md) | Archived pre-reorg technical doc | read for history only |

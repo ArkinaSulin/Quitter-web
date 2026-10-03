@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Viewport-bound floating UI (portal `Floating`) + draggable-modal clamp (2026-10-02)
+**Files:** src/components/ScenarioMap/{Floating.tsx,useTooltipClamp.ts,ContextMenu,MessagesPanel,EffectsPanel,StructurePaintPanel,UnitTemplateTooltip,MapInfoTooltip,UnitTooltip,UnitEditorModal}.tsx, src/hooks/useHexGrid.ts, docs/dev/19-ui-panels-and-floating.md, docs/dev/README.md
+
+- **New `Floating` primitive** (portal to `document.body`, `position: fixed`, measured viewport clamp, optional `flip` above the anchor, z-index): the single way tooltips/menus are positioned. Fixes the left-panel tooltips being trapped by `PanelsContainer`'s `backdrop-blur` (a `backdrop-filter` creates a containing block for `fixed` descendants) and clipped by its `overflow-hidden`.
+- **Migrated every floating tooltip/menu** to it: map `UnitTooltip`/`MapInfoTooltip`, Unit-Selector `UnitTemplateTooltip`, Structure + Effect tab tooltips, the unit `ContextMenu` (now measured + flips up when there's no room below + scroll cap), and the Messages menu. Removed all hand-rolled `Math.min(x, innerWidth − …)` clamps and hard-coded size constants; hover handlers now pass viewport (client) coords.
+- **UnitEditorModal** stays draggable but is now clamped by its **measured** size on mount, on every drag move, and on resize (no more hard-coded 640px centering → no cropped bottom).
+- **Docs:** new `docs/dev/19-ui-panels-and-floating.md` documents the tab registry standard + the "always render floating UI through `Floating`" rule for future tabs. `tsc` clean; 840 tests pass; build clean. No migration.
+
 ## Fly movement pool + unified flyer drop (2026-10-02)
 **Files:** src/lib/flying.ts (+ test), src/hooks/useGameEngine.ts, src/components/ScenarioMap/{useMoveActions,useCombatActions,useOverlay,ScenarioMap,UnitTooltip}.tsx, docs/dev/changelog.md
 

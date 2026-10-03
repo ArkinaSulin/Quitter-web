@@ -4,7 +4,7 @@
 import React from 'react';
 import { UnitTemplate } from '@/types/gameProtocol';
 import { parseWeapons } from '@/lib/weaponParser';
-import { useTooltipClamp } from './useTooltipClamp';
+import { Floating } from './Floating';
 
 interface UnitTemplateTooltipProps {
   template: UnitTemplate;
@@ -36,14 +36,9 @@ function signed(n: number): string {
 export function UnitTemplateTooltip({ template, x, y }: UnitTemplateTooltipProps) {
   const weapons = parseWeapons(template.weaponString || '');
   const sizeLabel = SIZE_LABELS[template.sizeCategory] || 'Medium';
-  const { ref, style } = useTooltipClamp(x, y);
 
   return (
-    <div
-      ref={ref}
-      className="fixed z-50 pointer-events-none bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white max-w-[min(420px,calc(100vw-16px))]"
-      style={style}
-    >
+    <Floating x={x} y={y} z={50} className="bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white max-w-[min(420px,calc(100vw-16px))]">
       <div className="font-bold mb-1">
         {template.raceName && <span className="capitalize text-gray-400">{template.raceName}</span>}{' '}
         {template.unitName}
@@ -104,6 +99,6 @@ export function UnitTemplateTooltip({ template, x, y }: UnitTemplateTooltipProps
           </span>
         ))}
       </div>
-    </div>
+    </Floating>
   );
 }

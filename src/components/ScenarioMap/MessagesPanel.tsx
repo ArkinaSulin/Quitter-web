@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { useMessages } from '@/contexts/MessageContext';
+import { Floating } from './Floating';
 
 /** Copy text to the system clipboard (navigator.clipboard with a fallback for
  *  non-secure contexts — the messages panel is select-none, so the context menu
@@ -36,9 +36,6 @@ interface MenuState {
   /** Index of the right-clicked message, or null when right-clicking empty space. */
   messageIndex: number | null;
 }
-
-const MENU_WIDTH = 130;
-const MENU_HEIGHT = 80;
 
 export function MessagesPanel({ verboseCombat = false }: { verboseCombat?: boolean }) {
   const { messages } = useMessages();
@@ -114,33 +111,32 @@ export function MessagesPanel({ verboseCombat = false }: { verboseCombat?: boole
       ))}
       <div ref={bottomRef} />
 
-      {menu && createPortal(
-        <div
-          data-msg-menu
-          className="fixed z-[100] bg-gray-800 border border-gray-600 rounded shadow-lg py-1"
-          style={{
-            left: Math.min(menu.x, window.innerWidth - MENU_WIDTH),
-            top: Math.min(menu.y, window.innerHeight - MENU_HEIGHT),
-            width: MENU_WIDTH,
-          }}
-          onContextMenu={(e) => e.preventDefault()}
+      {menu && (
+        <Floating
+          x={menu.x}
+          y={menu.y}
+          flip
+          z={100}
+          interactive
+          className="bg-gray-800 border border-gray-600 rounded shadow-lg py-1 w-[130px]"
         >
-          {menu.messageIndex !== null && messages[menu.messageIndex] && (
+          <div data-msg-menu onContextMenu={(e) => e.preventDefault()}>
+            {menu.messageIndex !== null && messages[menu.messageIndex] && (
+              <button
+                onClick={() => { copyText(display(messages[menu.messageIndex!])); closeMenu(); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-700"
+              >
+                Copy
+              </button>
+            )}
             <button
-              onClick={() => { copyText(display(messages[menu.messageIndex!])); closeMenu(); }}
+              onClick={() => { copyAll(); closeMenu(); }}
               className="w-full text-left px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-700"
             >
-              Copy
+              Copy all
             </button>
-          )}
-          <button
-            onClick={() => { copyAll(); closeMenu(); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-700"
-          >
-            Copy all
-          </button>
-        </div>,
-        document.body,
+          </div>
+        </Floating>
       )}
     </div>
   );

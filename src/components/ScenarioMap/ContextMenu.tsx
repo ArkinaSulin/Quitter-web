@@ -8,6 +8,7 @@ import { parseWeapons, formatWeaponDisplay } from '@/lib/weaponParser';
 import { canFormationCharge } from '@/lib/formationRules';
 import { getSetting } from '@/lib/settingsCache';
 import { TEAM_COLORS } from '@/components/TokenRenderer/tokenUtils';
+import { Floating } from './Floating';
 
 interface ContextMenuProps {
   unit: Unit;
@@ -147,10 +148,14 @@ export function ContextMenu({
   }
 
   return (
-    <div
+    <Floating
       ref={menuRef}
-      className="absolute z-50 bg-gray-900 border border-gray-700 rounded shadow-xl py-1 min-w-[180px] text-sm text-white"
-      style={{ left: x, top: y }}
+      x={x}
+      y={y}
+      flip
+      z={50}
+      interactive
+      className="bg-gray-900 border border-gray-700 rounded shadow-xl py-1 min-w-[180px] max-h-[calc(100vh-16px)] overflow-y-auto text-sm text-white"
     >
       {/* Temporary effects (kept until the Effects-tab drag/drop apply engine lands) */}
       {onAddEffect && (
@@ -394,6 +399,6 @@ export function ContextMenu({
           </div>
         </>
       )}
-    </div>
+    </Floating>
   );
 }

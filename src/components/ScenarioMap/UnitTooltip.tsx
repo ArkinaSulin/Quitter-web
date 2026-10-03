@@ -10,7 +10,7 @@ import { unitAttackCap } from '@/lib/attackCap';
 import { getSetting } from '@/lib/settingsCache';
 import { isAttackRollEffect, hasPendingZoneEffect } from '@/lib/unitEffects';
 import { modifierAmount } from '@/lib/effectTemplates';
-import { useTooltipClamp } from './useTooltipClamp';
+import { Floating } from './Floating';
 
 interface UnitTooltipProps {
   unit: Unit;
@@ -219,13 +219,8 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
 }
 
 export function UnitTooltip({ unit, x, y, companion, units, alliances, formation, companionFormation, zones }: UnitTooltipProps) {
-  const { ref, style } = useTooltipClamp(x, y);
   return (
-    <div
-      ref={ref}
-      className={`absolute z-50 pointer-events-none bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white ${companion ? 'max-w-[min(820px,calc(100vw-16px))]' : 'max-w-[min(420px,calc(100vw-16px))]'}`}
-      style={style}
-    >
+    <Floating x={x} y={y} z={50} className={`bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white ${companion ? 'max-w-[min(820px,calc(100vw-16px))]' : 'max-w-[min(420px,calc(100vw-16px))]'}`}>
       {companion ? (
         <div className="flex gap-4">
           <div className="flex-1 min-w-0">
@@ -240,6 +235,6 @@ export function UnitTooltip({ unit, x, y, companion, units, alliances, formation
       ) : (
         unitInfo(unit, units, alliances, !unit.isHero, formation, zones)
       )}
-    </div>
+    </Floating>
   );
 }

@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { EffectTemplate, mapEffectRow, modifierSummary } from '@/lib/effectTemplates';
+import { Floating } from './Floating';
 
 export function dragPayload(t: EffectTemplate): string {
   return JSON.stringify({
@@ -50,17 +51,14 @@ export function parseDragPayload(raw: string): Pick<EffectTemplate, 'id' | 'name
 /** Hover tooltip: the effect template's scope, duration and full modifier list. */
 function EffectTooltip({ t, x, y }: { t: EffectTemplate; x: number; y: number }) {
   return (
-    <div
-      className="fixed z-[80] pointer-events-none bg-black/95 border border-gray-600 rounded shadow-xl p-2.5 text-[11px] text-white w-64"
-      style={{ left: Math.min(x + 12, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 280), top: Math.min(y + 12, (typeof window !== 'undefined' ? window.innerHeight : 800) - 220) }}
-    >
+    <Floating x={x} y={y} z={80} className="bg-black/95 border border-gray-600 rounded shadow-xl p-2.5 text-[11px] text-white w-64">
       <div className="font-semibold" style={{ color: t.color }}>{t.name}</div>
       <div className="text-gray-300 capitalize mt-0.5">{t.scope} · {t.defaultDuration} turn{t.defaultDuration === 1 ? '' : 's'}</div>
       <div className="text-gray-400 mt-1">
         {t.modifiers.length > 0 ? t.modifiers.map(modifierSummary).join(', ') : 'no modifiers'}
       </div>
       {t.description && <div className="text-gray-500 mt-1">{t.description}</div>}
-    </div>
+    </Floating>
   );
 }
 
