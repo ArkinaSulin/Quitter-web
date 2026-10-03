@@ -3,6 +3,7 @@ import { Unit, Formation, SizeCategory } from '@/types/gameProtocol';
 import { Team, TEAM_COLORS, TEAM_SHAPES, getDotColor, generateDotPositions, getFormationConfig, FormationConfig } from './tokenUtils';
 import { ALLIANCE_COLORS, AllianceGroup } from '@/types/gameProtocol';
 import { isUnitRouted } from '@/lib/unitMorale';
+import { getHeroSquareSize } from '@/lib/heroLayout';
 
 const imageCache = new Map<string, HTMLImageElement>();
 
@@ -10,14 +11,6 @@ const imageCache = new Map<string, HTMLImageElement>();
 // it so the draw loop doesn't recompute the same scatter every frame. Bounded.
 const dotPositionsCache = new Map<string, Array<{ x: number; y: number; isDead: boolean; direction?: number }>>();
 const DOT_POSITIONS_CACHE_MAX = 512;
-
-const HERO_SQUARE_RATIOS: Record<number, number> = {
-  75: 0.375,
-  100: 1 / 2,
-  200: 4 / 6,
-  300: 5 / 6,
-  400: 1,
-};
 
 export function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -668,11 +661,6 @@ export function drawSpellCastToken(options: DrawSpellCastTokenOptions): void {
 }
 
 // ---- Hero square helpers ----
-export function getHeroSquareSize(unitTokenHeight: number, sizeCategory: number): number {
-  const ratio = HERO_SQUARE_RATIOS[sizeCategory] || 0.5;
-  return unitTokenHeight * ratio;
-}
-
 function drawHeroSquareHpBar(ctx: CanvasRenderingContext2D, cx: number, cy: number, squareSize: number, hp: number, maxHp: number) {
   const hpAreaTop = cy - squareSize / 2 + squareSize * 0.75;
   const hpAreaHeight = squareSize * 0.25;

@@ -406,8 +406,14 @@ export function useMoveActions(deps: MoveActionsDeps) {
       addMessage(`${target.unitName} already has a hero attached`);
       return;
     }
-    if (target.mountId || target.mountName || target.attachedToUnitId) {
-      addMessage(`${target.unitName} is already mounted — cannot be ridden`);
+    // Rider (hero-on-hero mount): neither the mount nor the rider may already be
+    // mounted. Front/back attach (hero on a unit) has no mount requirement.
+    if (position === 'rider' && (hero.mountId || hero.mountName || target.mountId || target.mountName || target.attachedToUnitId)) {
+      addMessage(`${hero.unitName} cannot ride ${target.unitName} — neither the mount nor the rider may already be mounted`);
+      return;
+    }
+    if (target.attachedToUnitId) {
+      addMessage(`${target.unitName} is already part of a mounted pair`);
       return;
     }
     // Attaching costs 1 hero MP — heroes convert actions at the prorated rate
@@ -478,7 +484,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
    * terrain/walls, only other airborne units block. Returns the cost + the mover's
    * fly budget context, or null when the hex is not a legal destination.
    */
-  const flyerOccupyReach = useCallback((unit: Unit, targetHex: Hex): { cost: number; maxMP: number; attachedHero: Unit | null; heroMaxMP: number | undefined } | null => {
+  const flyerOccupyReach = useCallback((unit: Unit, targetHex: Hex):
+    | { kind: 'ok'; cost: number; maxMP: number; attachedHero: Unit | null; heroMaxMP: number | undefined }
+    | { kind: 'needsTurn' }
+    | { kind: 'blocked' } => {
     const attachedHero = unit.attachedToUnitId ? null : (units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted) ?? null);
     const maxMP = unit.flySpeed ?? 0;
     const budgetUnit = moveBudgetUnit(unit, 'fly');
@@ -488,15 +497,21 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const budget = unit.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP);
     const reachable = computeReachableMap(unit, budget, occupied, threatHexes, undefined, false, undefined, hopCap, undefined, undefined);
     const entry = reachable.get(`${targetHex.q},${targetHex.r}`);
-    if (!entry || entry.needsTurn) return null;
-    return { cost: entry.cost, maxMP, attachedHero, heroMaxMP: attachedHero ? unitMaxMP(attachedHero) : undefined };
+    if (!entry) return { kind: 'blocked' };
+    if (entry.needsTurn) return { kind: 'needsTurn' };
+    return { kind: 'ok', cost: entry.cost, maxMP, attachedHero, heroMaxMP: attachedHero ? unitMaxMP(attachedHero) : undefined };
   }, [units, alliances, formationsMap, unitMaxMP]);
 
   /** Open the unified flyer-drop modal for a hex occupied by a ground unit.
-   *  Returns false when the hex is not a legal fly destination (falls back to attack). */
+   *  A turn-required destination reports the move error (a move intent, not an
+   *  attack); a truly unreachable hex returns false (falls back to attack). */
   const beginFlyerDrop = useCallback((unit: Unit, occupant: Unit, opts: { canStoop: boolean; isHostile: boolean }): boolean => {
     const reach = flyerOccupyReach(unit, occupant.hex);
-    if (!reach) return false;
+    if (reach.kind === 'needsTurn') {
+      addMessage(`${unit.unitName} must turn first (1 MP) to move to (${occupant.hex.q}, ${occupant.hex.r})`);
+      return true;
+    }
+    if (reach.kind === 'blocked') return false;
     const range = elevationSliderRange(unit.elevation ?? 0, reach.cost, true);
     setPendingElevation({
       unit, targetHex: occupant.hex, cost: reach.cost, maxMP: reach.maxMP,
@@ -505,7 +520,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       canStoop: opts.canStoop, isHostile: opts.isHostile,
     });
     return true;
-  }, [flyerOccupyReach]);
+  }, [flyerOccupyReach, addMessage]);
 
   const confirmElevation = useCallback((newElevation: number) => {
     const p = pendingElevation;

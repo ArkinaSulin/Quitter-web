@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## Flying/air bug fixes: hero hitbox, attach rules, turn message, air draw order (2026-10-02)
+**Files:** src/lib/hexGeometry.ts, src/lib/heroLayout.ts (new), src/hooks/useHexGrid.ts, src/components/ScenarioMap/{mapGeometry,useCanvasDraw,useMoveActions,useCombatActions}.tsx, src/components/TokenRenderer/drawToken.ts, docs/dev/changelog.md
+
+- **Shared geometry refactor:** extracted pure `src/lib/hexGeometry.ts` (`HEX_SIZE`/`hexToPixel`/`pixelToHex`) and `src/lib/heroLayout.ts` (`TOKEN_WIDTH/HEIGHT`, `getHeroSquareSize`, `getAttachedHeroPos`). `mapGeometry`/`drawToken`/`useHexGrid` now share one source (and `mapGeometry` no longer imports `useHexGrid`, removing the cycle); existing importers keep working via re-exports.
+- **Attached/rider hero hitbox follows the drawn token** (bug 1): the "Switch to hero" branch of `useHexGrid.getUnitAtScreen` now hit-tests the hero's displayed square (`getAttachedHeroPos` + the host's elevation offset) and the host token box — so a rider/front/back hero of a flying host is grabbed where it's rendered, not at the hex.
+- **Attach rules** (bug 2): hero→unit front/back attach no longer blocked by the target being mounted; only the hero-on-hero **Ride** position requires that neither mount nor rider is already mounted (`isMountTarget` + `handleAttachHero`).
+- **Flyer dropped on a turn-required hex** (bug 3) now reports `"<unit> must turn first (1 MP) to move to (q, r)"` (a move intent) instead of the melee out-of-range message; `flyerOccupyReach` returns `ok | needsTurn | blocked`.
+- **Air draw order** (bug 7): `tokenDrawOrder` sorts tokens corpses-first then by **elevation ascending**, so an airborne unit stacked on a ground unit paints above it (live + screenshot passes).
+- `tsc` clean; 840 tests pass; build clean. No migration.
+
 ## Viewport-bound floating UI (portal `Floating`) + draggable-modal clamp (2026-10-02)
 **Files:** src/components/ScenarioMap/{Floating.tsx,useTooltipClamp.ts,ContextMenu,MessagesPanel,EffectsPanel,StructurePaintPanel,UnitTemplateTooltip,MapInfoTooltip,UnitTooltip,UnitEditorModal}.tsx, src/hooks/useHexGrid.ts, docs/dev/19-ui-panels-and-floating.md, docs/dev/README.md
 

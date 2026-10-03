@@ -12,7 +12,7 @@ import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
 import { isDeadCorpse } from '@/lib/unitInteractions';
 import { corpseDots, FallenMap } from '@/lib/corpseTracker';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
-import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, corpseLast, getAttachedHeroPos, elevationOffset, MapBackgroundConfig, costShade, hexMpLabelAt } from './mapGeometry';
+import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, MapBackgroundConfig, costShade, hexMpLabelAt } from './mapGeometry';
 import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
 import { MapStructures, isHexStructureKey } from '@/lib/mapStructures';
@@ -152,7 +152,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     }
 
     // Corpses (HP <= 0) draw first so live tokens stacked on their hex render on top.
-    const drawOrder = [...displayUnits].sort(corpseLast);
+    const drawOrder = [...displayUnits].sort(tokenDrawOrder);
 
     // Ground effects + painted terrain tints (drawn beneath tokens; fog drawn last
     // covers the unseen). Visible only where the viewer can see when fog is on.
@@ -930,7 +930,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const tokenWidth = TOKEN_WIDTH * fitZoom;
       const tokenHeight = TOKEN_HEIGHT * fitZoom;
 
-      const screenshotDrawOrder = [...units].sort(corpseLast);
+      const screenshotDrawOrder = [...units].sort(tokenDrawOrder);
 
       for (const unit of screenshotDrawOrder) {
         if (unit.isDeleted || unit.attachedToUnitId) continue;

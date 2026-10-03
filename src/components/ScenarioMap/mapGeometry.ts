@@ -1,7 +1,6 @@
 // src/components/ScenarioMap/mapGeometry.ts
 // Map constants + hex/token geometry shared by the canvas draw hook and the map.
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
-import { hexToPixel } from '@/hooks/useHexGrid';
 import { determineCombatPosition } from '@/lib/unitCombat';
 import { canStopEnemyMovement } from '@/lib/formationRules';
 import { isUnitInteractable, isDeadCorpse } from '@/lib/unitInteractions';
@@ -12,16 +11,17 @@ import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { modifierAmount } from '@/lib/effectTemplates';
 import type { CostOfHexFn, BlockedEdgeFn } from '@/lib/moveCost';
-import { getHeroSquareSize } from '@/components/TokenRenderer/drawToken';
 
 // Re-export the elevation/flying helpers so existing importers keep working
 // (the canonical implementations live in src/lib/flying.ts).
 import { elevationOffset, elevationGapFeet, elevationGapHexes, airOccupiedHexes, canFly } from '@/lib/flying';
 export { elevationOffset, elevationGapFeet, elevationGapHexes, airOccupiedHexes, canFly };
 
-export const HEX_SIZE = 100;
-export const TOKEN_WIDTH = HEX_SIZE * 1.6;
-export const TOKEN_HEIGHT = TOKEN_WIDTH * 0.75;
+// Re-export the shared hex/token geometry (canonical: src/lib/hexGeometry.ts and
+// src/lib/heroLayout.ts) so existing map importers keep working.
+export { HEX_SIZE } from '@/lib/hexGeometry';
+export { TOKEN_WIDTH, TOKEN_HEIGHT, getAttachedHeroPos, getHeroSquareSize } from '@/lib/heroLayout';
+
 export const DEFAULT_GRID_RADIUS = 12;
 
 /** Painted per-hex terrain entry costs: "q,r" -> MP cost to ENTER (0 free, 1 default, 2..9 costly). */
@@ -259,26 +259,14 @@ export interface MapBackgroundConfig {
   gridRadius: number;
 }
 
-/** Pixel offset of an attached hero token around its host's hex. */
-export function getAttachedHeroPos(unitHex: { q: number; r: number; s: number }, facing: number, attachedPosition: 'front' | 'back' | 'rider' | null = 'front', sizeCategory = 100) {
-  const pos = hexToPixel(unitHex, HEX_SIZE);
-  if (attachedPosition === 'rider') {
-    // Mounted: the rider sits due NORTH of the mount's center, its center at 90%
-    // of the mount's circle radius (slight overlap), scaling with mount size.
-    const mountRadius = getHeroSquareSize(TOKEN_HEIGHT, sizeCategory) / 2 * 1.1;
-    return { x: pos.x, y: pos.y - 0.9 * mountRadius };
-  }
-  const vertexIndex = attachedPosition === 'back' ? (facing + 2) % 6 : (facing + 5) % 6;
-  const angle = (60 * vertexIndex - 30) * Math.PI / 180;
-  return {
-    x: pos.x + HEX_SIZE * 0.75 * Math.cos(angle),
-    y: pos.y + HEX_SIZE * 0.75 * Math.sin(angle),
-  };
-}
-
 /** Corpses (HP <= 0) sort first so live tokens stacked on their hex render on top. */
 export const corpseLast = (a: Unit, b: Unit) =>
   ((a.currentUnitHp ?? 0) <= 0 ? 0 : 1) - ((b.currentUnitHp ?? 0) <= 0 ? 0 : 1);
+
+/** Token draw order: corpses first, then live tokens by ELEVATION ascending, so an
+ *  airborne unit stacked on a ground unit paints above it. */
+export const tokenDrawOrder = (a: Unit, b: Unit) =>
+  corpseLast(a, b) || ((a.elevation ?? 0) - (b.elevation ?? 0));
 
 export const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },

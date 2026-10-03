@@ -5,38 +5,12 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { Hex, Unit } from '@/types/gameProtocol';
 import { isUnitInteractable } from '@/lib/unitInteractions';
 import { elevationOffset } from '@/lib/flying';
+import { hexToPixel, pixelToHex } from '@/lib/hexGeometry';
+import { getAttachedHeroPos, getHeroSquareSize, TOKEN_HEIGHT } from '@/lib/heroLayout';
 import { EdgeRef, Walls, nearestWallEdge } from '@/lib/walls';
 
-// ---- Hex math (pointy-top) ----
-export function hexToPixel(hex: Hex, size: number): { x: number; y: number } {
-  const x = size * (Math.sqrt(3) * hex.q + Math.sqrt(3) / 2 * hex.r);
-  const y = size * (1.5 * hex.r);
-  return { x, y };
-}
-
-export function pixelToHex(point: { x: number; y: number }, size: number): Hex {
-  const q = (Math.sqrt(3) / 3 * point.x - 1 / 3 * point.y) / size;
-  const r = (2 / 3 * point.y) / size;
-  return hexRound(q, r);
-}
-
-function hexRound(q: number, r: number): Hex {
-  const s = -q - r;
-  let rq = Math.round(q);
-  let rr = Math.round(r);
-  let rs = Math.round(s);
-  const qDiff = Math.abs(rq - q);
-  const rDiff = Math.abs(rr - r);
-  const sDiff = Math.abs(rs - s);
-  if (qDiff > rDiff && qDiff > sDiff) {
-    rq = -rr - rs;
-  } else if (rDiff > sDiff) {
-    rr = -rq - rs;
-  } else {
-    rs = -rq - rr;
-  }
-  return { q: rq, r: rr, s: rs };
-}
+// Re-export the pure hex math so existing importers keep working.
+export { hexToPixel, pixelToHex } from '@/lib/hexGeometry';
 
 export interface UseHexGridProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -410,10 +384,30 @@ export function useHexGrid({
     const hex = getHexFromScreen(screenX, screenY);
     const halfW = size * 0.8;  // TOKEN_WIDTH / 2  (HEX_SIZE * 1.6 / 2)
     const halfH = size * 0.6;  // TOKEN_HEIGHT / 2 (HEX_SIZE * 1.2 / 2)
-    // The context-menu-switched active hero remains grabbable across its hex.
-    if (activeHeroId && hex) {
-      const hero = units.find(u => u.id === activeHeroId && !u.isDeleted && u.hex.q === hex.q && u.hex.r === hex.r && u.hex.s === hex.s);
-      if (hero && (!airOnlyMode || (hero.elevation ?? 0) > 0)) return hero;
+    // The context-menu-switched active hero is grabbable at its DISPLAYED token
+    // (attached offset + the host's elevation offset), not the whole hex — so a
+    // rider / front / back hero of a flying host can be grabbed where it's drawn.
+    if (activeHeroId) {
+      const hero = units.find(u => u.id === activeHeroId && !u.isDeleted);
+      if (hero) {
+        const host = units.find(u => u.id === hero.attachedToUnitId);
+        const hostElev = host?.elevation ?? hero.elevation ?? 0;
+        if (!airOnlyMode || hostElev > 0) {
+          const hostHex = host?.hex ?? hero.hex;
+          const hostFacing = host?.facing ?? hero.facing;
+          const hostSize = host?.sizeCategory ?? hero.sizeCategory;
+          const hostPos = hexToPixel(hostHex, size);
+          const off = elevationOffset(hostElev, size);
+          const hostCx = hostPos.x + off.dx;
+          const hostCy = hostPos.y + off.dy;
+          // Host token box (the combined pair is the hero's grabbable entity)…
+          if (Math.abs(world.x - hostCx) <= halfW && Math.abs(world.y - hostCy) <= halfH) return hero;
+          // …or the hero's own square at its attached position.
+          const hPos = getAttachedHeroPos(hostHex, hostFacing, hero.attachedPosition, hostSize);
+          const heroHalf = getHeroSquareSize(TOKEN_HEIGHT, hero.sizeCategory) / 2;
+          if (Math.abs(world.x - (hPos.x + off.dx)) <= heroHalf && Math.abs(world.y - (hPos.y + off.dy)) <= heroHalf) return hero;
+        }
+      }
     }
     let best: Unit | undefined;
     let bestD = Infinity;
