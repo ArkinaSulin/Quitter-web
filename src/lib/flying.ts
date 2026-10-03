@@ -5,6 +5,7 @@
 import { Unit, getOrganizationLevel } from '@/types/gameProtocol';
 import { isUnitInteractable } from '@/lib/unitInteractions';
 import { formationAtOrBelow } from '@/lib/formationCost';
+import { hexToPixel } from '@/lib/hexGeometry';
 
 /** Can this unit fly at all (has an aerial movement pool)? */
 export function canFly(unit: Pick<Unit, 'flySpeed'>): boolean {
@@ -35,15 +36,43 @@ export function elevationGapHexes(a: number | undefined, b: number | undefined):
  * (45°) direction. Scales with elevation: half a hex radius at 10 ft, a full hex
  * radius at 20 ft+ (capped). Returns (0,0) when grounded.
  */
-export function elevationOffset(elevation: number | undefined, hexSize: number, flyer = false): { dx: number; dy: number } {
+export function elevationOffset(
+  elevation: number | undefined,
+  hexSize: number,
+  flyer = false,
+  /** Optional unit direction; defaults to NE 45°. A climber points it at the
+   *  target hex. */
+  dir?: { dx: number; dy: number },
+): { dx: number; dy: number } {
   const feet = elevation ?? 0;
   if (feet <= 0) return { dx: 0, dy: 0 };
-  // Two visual levels so an elevated non-flyer (standing on a surface) reads
-  // differently from a flyer: a NON-flyer always uses the 10-ft offset (half a
-  // hex); a FLYER uses half at 10 ft and the full offset at 20 ft+.
-  const level = flyer ? Math.min(2, feet / 10) : 1;
+  // Two CONSTANT visual levels (independent of height): a NON-flyer (an elevated
+  // ground unit, incl. a climber) = stage 1 (half a hex); a FLYER = stage 2 (full).
+  const level = flyer ? 2 : 1;
   const distance = hexSize * 0.5 * level;
-  return { dx: distance * Math.SQRT1_2, dy: -distance * Math.SQRT1_2 };
+  const d = dir ?? { dx: Math.SQRT1_2, dy: -Math.SQRT1_2 };
+  return { dx: distance * d.dx, dy: distance * d.dy };
+}
+
+/** Unit direction from `from` hex center to `to` hex center (world space). */
+export function hexDirection(
+  from: { q: number; r: number },
+  to: { q: number; r: number },
+  size: number,
+): { dx: number; dy: number } {
+  const a = hexToPixel({ q: from.q, r: from.r, s: -from.q - from.r }, size);
+  const b = hexToPixel({ q: to.q, r: to.r, s: -to.q - to.r }, size);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const l = Math.hypot(dx, dy) || 1;
+  return { dx: dx / l, dy: dy / l };
+}
+
+/** Parse a `climbTo` target key "q,r" into a hex, or null. */
+export function parseClimbTo(climbTo: string | null | undefined): { q: number; r: number } | null {
+  if (!climbTo) return null;
+  const [q, r] = climbTo.split(',').map(Number);
+  return Number.isFinite(q) && Number.isFinite(r) ? { q, r } : null;
 }
 
 /** Hexes occupied by ELEVATED units (single air layer — one flyer per hex,

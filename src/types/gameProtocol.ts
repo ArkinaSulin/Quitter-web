@@ -195,6 +195,10 @@ export interface Unit {
   flySpeed?: number;
   /** Current aerial movement pool (hexes). */
   flySpeedAvailable?: number;
+  /** Climb/hang state: the target hex key "q,r" being climbed toward (NULL = not
+   *  climbing). While set the unit stays in its pre-climb hex; only `elevation`
+   *  rises. */
+  climbTo?: string | null;
 }
 
 // --- Temporary effects (buffs / debuffs / damage over time) ---

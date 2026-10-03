@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Structure elevation — Phase 2b slice 7a: climb/hang data + offsets (2026-10-02)
+**Files:** supabase/migrations/112_unit_climb_to.sql, src/types/gameProtocol.ts, src/hooks/useSupabaseSync.ts, src/lib/flying.ts (+ test), src/components/ScenarioMap/useCanvasDraw.ts, src/hooks/useHexGrid.ts, docs/dev/changelog.md
+
+- **Migration 112** (data only): `units.climb_to` text (target hex `"q,r"` being climbed toward; NULL = not climbing) + `unit_field_to_column('climbTo' -> 'climb_to')`. Unit type + `useSupabaseSync` row↔unit mapping. **Apply 112 in Supabase.**
+- **Offset amendment:** `elevationOffset(elevation, hexSize, flyer, dir?)` now uses **constant** levels — a **non-flyer** (elevated ground unit / climber) = stage 1 (half hex), a **flyer** = stage 2 (full); no height scaling. `dir` overrides the NE default; new `hexDirection()`/`parseClimbTo()` helpers.
+- **Climb rendering + hit-test:** a unit with `climbTo` offsets **toward its target hex** at stage-1 magnitude (instead of NE), in both `useCanvasDraw` and `useHexGrid`. No movement rules yet (7b).
+- `tsc` clean; 850 tests pass; build clean.
+
 ## Structure elevation — Phase 2b slice 6: ZoC/pursue elevation, offsets, effect elevation (2026-10-02)
 **Files:** src/components/ScenarioMap/{mapGeometry,useCombatActions,useCanvasDraw}.tsx, src/lib/{flying,zocDisengage}.ts (+ tests), src/hooks/useHexGrid.ts, docs/dev/changelog.md
 

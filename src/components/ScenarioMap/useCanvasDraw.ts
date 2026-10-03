@@ -13,6 +13,7 @@ import { isDeadCorpse } from '@/lib/unitInteractions';
 import { corpseDots, FallenMap } from '@/lib/corpseTracker';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, canFly, MapBackgroundConfig, costShade, hexMpLabelAt } from './mapGeometry';
+import { parseClimbTo, hexDirection } from '@/lib/flying';
 import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
 import { MapStructures, isHexStructureKey, structureSurfaceAt } from '@/lib/mapStructures';
@@ -571,7 +572,14 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const pos = hexToPixel(unit.hex, HEX_SIZE);
       const cx = pos.x * currentZoom + offsetX;
       const cy = pos.y * currentZoom + offsetY;
-      const elev = elevationOffset(unit.elevation, HEX_SIZE, canFly(unit));
+      // A climber offsets TOWARD its target hex (stage-1 magnitude); a normal
+      // elevated unit uses the NE default (flyer = full, ground = half).
+      const climbTarget = parseClimbTo(unit.climbTo);
+      const elev = elevationOffset(
+        unit.elevation, HEX_SIZE,
+        canFly(unit) && !climbTarget,
+        climbTarget ? hexDirection(unit.hex, climbTarget, HEX_SIZE) : undefined,
+      );
       const tokenCx = cx + elev.dx * currentZoom;
       const tokenCy = cy + elev.dy * currentZoom;
       const unitMoraleMod = moraleMods.get(unit.id) ?? (unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, displayUnits, displayAlliances, formationMoraleMod));
@@ -644,7 +652,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const attachedHero = attachedByHost.get(unit.id);
       if (attachedHero) {
         const heroPos = getAttachedHeroPos(unit.hex, unit.facing, attachedHero.attachedPosition, unit.sizeCategory);
-        const elevOff = elevationOffset(unit.elevation, HEX_SIZE, canFly(unit));
+        const hostClimb = parseClimbTo(unit.climbTo);
+        const elevOff = elevationOffset(unit.elevation, HEX_SIZE, canFly(unit) && !hostClimb, hostClimb ? hexDirection(unit.hex, hostClimb, HEX_SIZE) : undefined);
         const heroCx = heroPos.x * currentZoom + offsetX + elevOff.dx * currentZoom;
         const heroCy = heroPos.y * currentZoom + offsetY + elevOff.dy * currentZoom;
         const heroFormationMoraleMod = formationsMap[attachedHero.currentFormation] ?? null;
