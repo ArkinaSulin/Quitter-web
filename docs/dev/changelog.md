@@ -1,5 +1,11 @@
 # QuiTTER Changelog
 
+## Non-flying hero falls when dismounting an airborne host (2026-10-02)
+**Files:** src/components/ScenarioMap/{useMoveActions,ScenarioMap}.tsx, docs/dev/changelog.md
+
+- Detaching a **non-flying** hero from an **airborne** host now prompts a fall: `"<hero> can't fly — dismounting from N ft … N×d6?"` (**Fall**/**Cancel**). On confirm the hero drops on its own (host's) hex to elevation 0, detaches, and takes `floor(feet/10)`d6 falling damage; if the hex below is occupied by a ground unit the dismount is refused. A **flying** hero is exempt and keeps the normal elevation modal. `pendingHeroFall`/`confirmHeroFall`/`cancelHeroFall` in `useMoveActions`; modal in `ScenarioMap`.
+- `tsc` clean; 840 tests pass; build clean. No migration.
+
 ## Flying/air bug fixes: hero hitbox, attach rules, turn message, air draw order (2026-10-02)
 **Files:** src/lib/hexGeometry.ts, src/lib/heroLayout.ts (new), src/hooks/useHexGrid.ts, src/components/ScenarioMap/{mapGeometry,useCanvasDraw,useMoveActions,useCombatActions}.tsx, src/components/TokenRenderer/drawToken.ts, docs/dev/changelog.md
 

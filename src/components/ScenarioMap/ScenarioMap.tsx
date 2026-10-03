@@ -945,6 +945,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingLeaveHero,
     confirmLeaveHero,
     cancelLeaveHero,
+    pendingHeroFall,
+    confirmHeroFall,
+    cancelHeroFall,
     maybeAutoReturnToRanged,
     completeMove,
     handleUnitMove,
@@ -3391,6 +3394,24 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 </button>
               )}
               <button className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm" onClick={cancelElevation}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fall — a non-flying hero detaching from an airborne host drops } */}
+      {pendingHeroFall && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
+            <p className="text-white text-sm mb-1 text-center">
+              {pendingHeroFall.hero.unitName} can't fly — dismounting from {pendingHeroFall.elevation} ft.
+            </p>
+            <p className="text-gray-400 text-xs mb-3 text-center">
+              Falls {Math.max(0, Math.floor(pendingHeroFall.elevation / 10))}d6 falling damage to the hex below.
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <button className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded" onClick={cancelHeroFall}>Cancel</button>
+              <button className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded" onClick={() => void confirmHeroFall()}>Fall</button>
             </div>
           </div>
         </div>

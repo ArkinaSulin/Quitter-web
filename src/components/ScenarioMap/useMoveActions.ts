@@ -21,7 +21,7 @@ import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode }
 import { Walls } from '@/lib/walls';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
-import { ExecuteFn } from './routeUnit';
+import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingHeroSwapConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
 
 interface MoveActionsDeps {
@@ -110,6 +110,8 @@ export function useMoveActions(deps: MoveActionsDeps) {
     isHostile: boolean;
   } | null>(null);
   const [pendingLeaveHero, setPendingLeaveHero] = useState<{ unit: Unit; targetHex: Hex; cost: number; maxMP: number; hero: Unit; heroMaxMP: number | undefined; breakToFormation: string | undefined; elevation: number } | null>(null);
+  /** A non-flying hero detaching from an airborne host must fall (d6 per 10 ft). */
+  const [pendingHeroFall, setPendingHeroFall] = useState<{ hero: Unit; elevation: number } | null>(null);
 
   /**
    * After a melee exchange (or a move that left all hostile kill zones), a unit
@@ -224,6 +226,22 @@ export function useMoveActions(deps: MoveActionsDeps) {
   const handleUnitMove = useCallback(async (unitId: string, targetHex: Hex) => {
     const unit = units.find(u => u.id === unitId);
     if (!unit) return;
+
+    // A non-flying hero detaching from an AIRBORNE host cannot glide: it simply
+    // falls. It drops on its own (host's) hex — if a ground unit already occupies
+    // that hex it cannot land. A flying hero is exempt (normal elevation modal).
+    if (unit.attachedToUnitId && (unit.elevation ?? 0) > 0 && !canFly(unit)) {
+      const below = units.find(u =>
+        u.id !== unit.id && !u.isDeleted && !u.attachedToUnitId &&
+        (u.elevation ?? 0) <= 0 && u.hex.q === unit.hex.q && u.hex.r === unit.hex.r && u.hex.s === unit.hex.s,
+      );
+      if (below) {
+        addError(`${unit.unitName} cannot dismount — ${below.unitName} occupies the hex below`);
+        return;
+      }
+      setPendingHeroFall({ hero: unit, elevation: unit.elevation ?? 0 });
+      return;
+    }
 
     // A host dragging with an attached hero moves the combined unit: the hero
     // shares the move cost (its own MP/actions) and its hex follows the host.
@@ -565,6 +583,59 @@ export function useMoveActions(deps: MoveActionsDeps) {
 
   const cancelElevation = useCallback(() => setPendingElevation(null), []);
 
+  /** Confirm a non-flying hero's fall off an airborne host: drop to the host's
+   *  hex at elevation 0, detach, and take `N`d6 (N = feet/10) falling damage. */
+  const confirmHeroFall = useCallback(async () => {
+    const p = pendingHeroFall;
+    setPendingHeroFall(null);
+    if (!p) return;
+    const hero = p.hero;
+    const n = Math.max(0, Math.floor(p.elevation / 10));
+    let total = 0;
+    const faces: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const r = 1 + Math.floor(Math.random() * 6);
+      faces.push(r);
+      total += r;
+    }
+    const newHp = Math.max(0, (hero.currentUnitHp ?? 0) - total);
+    const newTroops = Math.max(0, Math.ceil(newHp / Math.max(1, hero.troopHp)));
+    const subSteps: SubStep[] = [
+      {
+        type: 'ELEVATE',
+        description: `${hero.unitName} falls to the ground`,
+        unitId: hero.id,
+        changes: [{ field: 'elevation', from: p.elevation, to: 0 }],
+      },
+      {
+        type: 'DETACH_HERO',
+        description: `${hero.unitName} dismounts and falls`,
+        unitId: hero.id,
+        changes: [
+          { field: 'attachedToUnitId', from: hero.attachedToUnitId, to: null },
+          { field: 'attachedPosition', from: hero.attachedPosition, to: null },
+        ],
+      },
+    ];
+    if (total > 0) {
+      subSteps.push({
+        type: 'DAMAGE',
+        description: `${hero.unitName} took ${total} falling damage`,
+        unitId: hero.id,
+        changes: [
+          { field: 'currentUnitHp', from: hero.currentUnitHp, to: newHp },
+          { field: 'currentTroopCount', from: hero.currentTroopCount, to: newTroops },
+        ],
+      });
+    }
+    const roll = n > 0 ? ` (${n}d6: ${[...faces].sort((a, b) => a - b).join(',')})` : '';
+    await execute('DETACH_HERO', subSteps, `${hero.unitName} fell ${p.elevation} ft${total > 0 ? ` — ${total} damage` : ''}${roll}`);
+    if (newHp <= 0) await routeUnit(execute, { ...hero, currentUnitHp: newHp }, 'fell', true, null);
+    setActiveHeroId(null);
+  }, [pendingHeroFall, execute, setActiveHeroId]);
+
+  const cancelHeroFall = useCallback(() => setPendingHeroFall(null), []);
+
   return {
     pendingMove,
     setPendingMove,
@@ -586,6 +657,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     pendingLeaveHero,
     confirmLeaveHero,
     cancelLeaveHero,
+    pendingHeroFall,
+    confirmHeroFall,
+    cancelHeroFall,
     maybeAutoReturnToRanged,
     performMove,
     completeMove,
