@@ -420,6 +420,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
       addError(`Can't attach: ${hero.unitName} must be adjacent to ${target.unitName}`);
       return;
     }
+    if ((hero.elevation ?? 0) !== (target.elevation ?? 0)) {
+      addError(`Can't attach: ${hero.unitName} and ${target.unitName} are at different elevations`);
+      return;
+    }
     if (units.some(u => u.attachedToUnitId === targetUnitId && !u.isDeleted)) {
       addMessage(`${target.unitName} already has a hero attached`);
       return;

@@ -136,6 +136,7 @@ export function ContextMenu({
     u.id !== unit.id && !u.isDeleted && !u.mountId && !u.mountName && !u.attachedToUnitId && (!u.isHero || (u.sizeCategory || 100) > (unit.sizeCategory || 100)) &&
     u.team === unit.team &&
     !units.some(h => h.attachedToUnitId === u.id && !h.isDeleted) &&
+    (u.elevation ?? 0) === (unit.elevation ?? 0) &&
     areHexesAdjacent(unit.hex, u.hex)
   );
 

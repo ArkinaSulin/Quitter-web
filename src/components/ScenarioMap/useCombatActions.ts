@@ -1125,7 +1125,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const targetHasHero = units.some(u => u.attachedToUnitId === targetId && !u.isDeleted);
     // Rider (hero-on-hero): neither may already be mounted.
     const isMountTarget = target.isHero && !attacker.mountId && !attacker.mountName && !target.mountId && !target.mountName && (target.sizeCategory || 100) > (attacker.sizeCategory || 100);
-    const canAttach = !opts?.forceCast && attacker.isHero && (attacker.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && (!target.isHero || isMountTarget) && !target.attachedToUnitId && !target.isDeleted && !target.hidden && !targetHasHero && attacker.team === target.team && isAdjacent;
+    const canAttach = !opts?.forceCast && attacker.isHero && (attacker.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && (!target.isHero || isMountTarget) && !target.attachedToUnitId && !target.isDeleted && !target.hidden && !targetHasHero && attacker.team === target.team && isAdjacent && (attacker.elevation ?? 0) === (target.elevation ?? 0);
     if (canAttach) {
       setAttachModal({ hero: attacker, target, canCast: isSpellCaster });
       return;

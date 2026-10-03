@@ -1,5 +1,10 @@
 # QuiTTER Changelog
 
+## Hero attach requires equal elevation (2026-10-02)
+**Files:** src/components/ScenarioMap/{ContextMenu,useMoveActions,useCombatActions}.tsx, docs/dev/changelog.md
+
+- A hero can no longer attach to a unit at a **different elevation**: the drag-attach modal (`canAttach`), the context-menu target list, and the authoritative `handleAttachHero` gate all require `hero.elevation === target.elevation` (adjacency alone is not enough once within the old 10 ft tolerance). `tsc` clean; 840 tests pass; build clean. No migration.
+
 ## Non-flying hero falls when dismounting an airborne host (2026-10-02)
 **Files:** src/components/ScenarioMap/{useMoveActions,ScenarioMap}.tsx, docs/dev/changelog.md
 
