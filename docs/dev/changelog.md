@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Structure elevation — Phase 2b slice 5: ranged vertical rule (2026-10-02)
+**Files:** src/components/ScenarioMap/useCombatActions.ts, src/lib/unitCombat.ts (+ test), docs/dev/changelog.md
+
+- **Ranged vertical rule** (distance-side, weapons with `maxRange > 1`): each **10 ft of climb = +1 hex** of effective range; **shooting down never extends the horizontal cap**. Reach cap = `dist + upHex > maxRange + rangeBonus`.
+- **Long-range band** uses the vertical-adjusted distance `max(1, dist + upHex − downHex)` vs `weapon.range` (`resolveCombatSequence` gains `rangedEffectiveDist`), so climbing can push a shot into disadvantage and shooting down can remove it. Weapon `range`/`maxRange` stats are never modified.
+- **Melee** unchanged: horizontal adjacency with a vertical gap ≤ 10 ft (same-hex included; stacking makes it moot).
+- Tests: climb→disadvantage and downhill→normal (2). 849 tests pass; `tsc` clean; build clean.
+
 ## Structure elevation — Phase 2b slice 4: flight blocking + stair graphic (2026-10-02)
 **Files:** src/lib/{mapStructures,structureElevation.test}.ts, src/components/ScenarioMap/{useMoveActions,useOverlay,useCanvasDraw}.tsx, src/components/StructureEditor/StructureEditor.tsx, docs/dev/changelog.md
 

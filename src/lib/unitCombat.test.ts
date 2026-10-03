@@ -649,6 +649,30 @@ describe('resolveCombatSequence', () => {
     expect(result.firstStrikeAttacks[0].dicePair).toBeUndefined(); // no disadvantage pair
   });
 
+  it('a climb (vertical-adjusted distance) pushes a shot into the long-range band', () => {
+    // Horizontal 1 (within range 2) but a climb makes the effective distance 4.
+    const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 } };
+    const nearDefender = { ...defender, hex: { q: 0, r: -1, s: 1 }, currentAc: 10 };
+    const rangedWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1, range: 2, maxRange: 6 };
+    const seq = [0.7, 0.3]; // roll1 = 15, roll2 = 7 → taken 7
+    const rng = () => seq.shift() ?? 0.5;
+    const result = resolveCombatSequence(heroAttacker, nearDefender, rangedWeapon, null, 0, 1, 1, 10, 10, 20, true, false, null, null, rng, false, null, null, false, null, null, false, 4);
+    expect(result.firstStrikeAttacks[0].roll).toBe(7); // disadvantaged
+    expect(result.firstStrikeAttacks[0].dicePair).toEqual([7, 15]);
+  });
+
+  it('shooting down (shorter vertical-adjusted distance) removes the long-range band', () => {
+    // Horizontal 4 (beyond range 2, within maxRange 6) but downhill effective 1.
+    const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 } };
+    const farDefender = { ...defender, hex: { q: 0, r: -4, s: 4 }, currentAc: 10 };
+    const rangedWeapon = { attackBonus: 0, damageDice: '1d6', is_reach: false, numberOfAttacks: 1, range: 2, maxRange: 6 };
+    const seq = [0.7, 0.5];
+    const rng = () => seq.shift() ?? 0.5;
+    const result = resolveCombatSequence(heroAttacker, farDefender, rangedWeapon, null, 0, 1, 1, 10, 10, 20, true, false, null, null, rng, false, null, null, false, null, null, false, 1);
+    expect(result.firstStrikeAttacks[0].roll).toBe(15); // normal roll
+    expect(result.firstStrikeAttacks[0].dicePair).toBeUndefined();
+  });
+
   it('a melee-range weapon thrown beyond reach (range 1, maxRange 3) is disadvantaged', () => {
     // Distance 2 > range 1, ≤ maxRange 3 → disadvantage (two rolls, take lower).
     const heroAttacker = { ...attacker, isHero: true, hex: { q: 0, r: 0, s: 0 } };

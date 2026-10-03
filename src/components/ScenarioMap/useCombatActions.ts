@@ -32,7 +32,7 @@ import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
-import { computeOccupiedHexes, airOccupiedHexes, elevationGapHexes, elevationGapFeet } from './mapGeometry';
+import { computeOccupiedHexes, airOccupiedHexes, elevationGapFeet } from './mapGeometry';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingAttack, PendingAttackCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch } from './SoftEnforcementModals';
 import { useMagicCast } from '@/hooks/useMagicCast';
@@ -305,6 +305,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
         }
       : null;
 
+    // Vertical-adjusted effective distance for the long-range band: each 10 ft of
+    // climb = +1 hex; shooting down subtracts (min 1).
+    const atkUpHex = Math.max(0, Math.floor((((target.elevation ?? 0) - (attacker.elevation ?? 0))) / 10));
+    const atkDownHex = Math.max(0, Math.floor((((attacker.elevation ?? 0) - (target.elevation ?? 0))) / 10));
+    const rangedBandDist = Math.max(1, dist + atkUpHex - atkDownHex);
+
     const outcome = resolveCombatSequence(
       combatAttacker,
       combatTarget,
@@ -328,6 +334,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       combatHeroProfile,
       walls,
       indirectShot,
+      rangedBandDist,
     );
 
     const subSteps: SubStep[] = [];
@@ -1104,9 +1111,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const attackerGroup = alliances[attacker.team] || 'friendly';
     const targetGroup = alliances[target.team] || 'friendly';
     const dist = hexDistance(attacker.hex, target.hex);
-    const verticalHex = elevationGapHexes(attacker.elevation, target.elevation);
     const verticalFeet = elevationGapFeet(attacker.elevation, target.elevation);
-    const effDist = dist + verticalHex;
+    // Ranged vertical rule (distance-side): each 10 ft of CLIMB adds 1 hex of
+    // effective range; shooting DOWN never extends the horizontal cap. So the
+    // reach cap uses horizontal + climb only.
+    const upHex = Math.max(0, Math.floor((((target.elevation ?? 0) - (attacker.elevation ?? 0))) / 10));
+    const reachDist = dist + upHex;
     // Melee needs horizontal adjacency AND a vertical gap of at most 10 ft.
     const isAdjacent = isAdjacentDistance(dist) && verticalFeet <= 10;
 
@@ -1147,8 +1157,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // switch manually and redo the attack. None -> warn and abort.
     // Range effects only extend RANGED weapons (maxRange > 1).
     const rangeBonus = (weapon.maxRange ?? 1) > 1 ? rangeBonusAt(attacker, groundZones) : 0;
-    if (effDist > weapon.maxRange + rangeBonus) {
-      const reaching = weaponIndicesReaching(attackerWeapons, attacker.activeWeaponIndex ?? 0, Math.max(1, effDist - rangeBonus))
+    if (reachDist > weapon.maxRange + rangeBonus) {
+      const reaching = weaponIndicesReaching(attackerWeapons, attacker.activeWeaponIndex ?? 0, Math.max(1, reachDist - rangeBonus))
         .filter(i => validateTargetAlliance(attackerGroup, targetGroup, attackerWeapons[i]) === 'ok');
       if (reaching.length > 1) {
         const idx = reaching[0];

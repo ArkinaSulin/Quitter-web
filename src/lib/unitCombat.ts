@@ -429,6 +429,9 @@ export function resolveCombatSequence(
    *  and rolls at disadvantage (see lineOfSight.ts). Never applied to the
    *  defender's counter-blow. */
   indirectShot = false,
+  /** Vertical-adjusted effective distance for the long-range band (each 10 ft of
+   *  climb = +1 hex; shooting down subtracts). Defaults to the horizontal distance. */
+  rangedEffectiveDist?: number,
 ): CombatOutcome {
   // AGR check: skip if hero, ranged, target routed, rear attack, a free/no-retaliation
   // weapon, when the attacker has a front-attached hero (the hero's presence
@@ -477,7 +480,10 @@ export function resolveCombatSequence(
   const attackDist = hexDistance(attacker.hex, defender.hex);
   const attackRange = attackerWeapon.range ?? 1;
   const attackMaxRange = attackerWeapon.maxRange ?? attackRange;
-  const rangeDisadvantage = attackDist > attackRange && attackDist <= attackMaxRange;
+  // The band uses the vertical-adjusted distance (climb extends it; downhill
+  // shortens it), while the reach cap is enforced by the caller.
+  const bandDist = rangedEffectiveDist ?? attackDist;
+  const rangeDisadvantage = bandDist > attackRange && attackDist <= attackMaxRange;
 
   // Directional formation AC: a formation gives no AC bonus from the REAR
   // (uniform rule); shields are 360° and stay in `baselineAc`. The shield drops
