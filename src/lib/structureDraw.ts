@@ -91,6 +91,54 @@ export function crossMarksPath(a: Pt, b: Pt, depth: number, teeth = 8): string {
 }
 
 /**
+ * SVG/canvas paths for a trapezoid LADDER along segment a→b, leaning toward
+ * `higher` (the higher surface / hex centre): 3 rungs parallel to the edge
+ * (short → long as they climb away from the edge) plus two rails connecting the
+ * rung ends, extruded past them. Split into rungs and rails so callers can stroke
+ * them at different widths (as the live canvas does).
+ */
+export function ladderPaths(a: Pt, b: Pt, higher: Pt): { rungs: string; rails: string } {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const seg = Math.hypot(dx, dy) || 1;
+  const ex = dx / seg;
+  const ey = dy / seg;
+  const mx = (a.x + b.x) / 2;
+  const my = (a.y + b.y) / 2;
+  let px = higher.x - mx;
+  let py = higher.y - my;
+  const pl = Math.hypot(px, py) || 1;
+  px /= pl;
+  py /= pl;
+  const offs = [-seg * 0.14, 0, seg * 0.14];
+  const lens = [seg * 0.42, seg * 0.64, seg * 0.86];
+  const ends: Pt[][] = [];
+  let rungs = '';
+  for (let i = 0; i < 3; i++) {
+    const ccx = mx + px * offs[i];
+    const ccy = my + py * offs[i];
+    const h = lens[i] / 2;
+    const p1 = { x: ccx - ex * h, y: ccy - ey * h };
+    const p2 = { x: ccx + ex * h, y: ccy + ey * h };
+    ends.push([p1, p2]);
+    rungs += ` M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+  }
+  const ext = seg * 0.12;
+  let rails = '';
+  for (const side of [0, 1] as const) {
+    const top = ends[0][side];
+    const bottom = ends[2][side];
+    let rx = bottom.x - top.x;
+    let ry = bottom.y - top.y;
+    const l = Math.hypot(rx, ry) || 1;
+    rx /= l;
+    ry /= l;
+    rails += ` M ${top.x - rx * ext} ${top.y - ry * ext} L ${bottom.x + rx * ext} ${bottom.y + ry * ext}`;
+  }
+  return { rungs, rails };
+}
+
+/**
  * SVG/canvas path `d` for a sine wave oscillating symmetrically about the edge
  * (a magical barrier). `depth` is the amplitude; `cycles` is the number of full
  * waves along the segment.

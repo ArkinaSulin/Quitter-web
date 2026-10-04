@@ -39,6 +39,9 @@ export interface StructureTemplate {
   barricade: boolean;
   /** Draw a magical sine wave centred on the edge (affects both in/out). */
   sinWave: boolean;
+  /** Draw a trapezoid ladder decoration on the edge (pure visual — the climb
+   *  waiver is the separate `ignore_climb` effect modifier). */
+  ladder: boolean;
   /** Hex structures: draw the thick black hex outline (off for decorative hexes). */
   hexBorder: boolean;
   /** Top surface height in feet where troops stand (0 = decorative / no height).
@@ -73,6 +76,8 @@ export interface StructureInstance {
   open?: boolean;
   /** Per-instance elevation override (inherited from the template when absent). */
   elevation?: number;
+  /** Per-instance ladder-decoration override (edge structures). */
+  ladder?: boolean;
   /** Per-instance modifier override (inherited from the template when absent). */
   modifiers?: EffectModifier[];
 }

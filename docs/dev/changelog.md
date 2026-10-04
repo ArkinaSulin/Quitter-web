@@ -1,5 +1,21 @@
 # QuiTTER Changelog
 
+## Edge `ladder` decoration restored (migration 114) (2026-10-03)
+**Files:** supabase/migrations/114_structure_ladder.sql, src/types/structure.ts, src/lib/{structureDraw,structureTemplates,mapStructures}.ts (+ tests), src/components/ScenarioMap/{useCanvasDraw,StructurePaintPanel,MapInfoTooltip}.tsx, src/components/StructureEditor/{StructureEditor,StructurePreview}.tsx, src/components/StructureEditModal.tsx, src/components/MapEditor/{MapEditor,MapCanvas}.tsx, docs/dev/{18-map-structures,changelog}.md
+
+- The trapezoid-ladder graphic (formerly the `stairs` boolean, retired in 113)
+  is back as a standalone **`ladder` edge decoration** (pure visual, like
+  battlement/barricade/sin wave). Authored in the Structure Editor + placed
+  instance modal; drawn on the live map, the Structure Editor preview and the Map
+  Editor. The live draw stays auto-oriented toward the higher surface and still
+  fires for a structure carrying the `ignore_climb` effect, so migrated stairs
+  keep their graphic.
+- Geometry is shared via new `structureDraw.ladderPaths(a, b, higher)` returning
+  `{ rungs, rails }` (SVG/canvas path strings). **Migration 114** adds
+  `map_structure_templates.ladder` (default false) and backfills `true` where the
+  modifiers already carry `ignore_climb`. **Apply 114 in Supabase.**
+- `tsc` clean, 873 tests pass. No engine changes.
+
 ## Damage Threshold is `>=` (a hit AT the DT lands) (2026-10-03)
 **Files:** src/lib/{walls,wallCombat,structureCombat,verboseCombat}.ts (+ tests), docs/dev/{18-map-structures,13-map-entities-terrain,changelog}.md, docs/players/player-manual.md
 

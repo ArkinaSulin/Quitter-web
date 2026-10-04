@@ -7,7 +7,7 @@
 // outside (the real side is chosen per placement).
 import React, { useState } from 'react';
 import { StructureAnchor } from '@/types/structure';
-import { battlementPath, battlementDepth, crossMarksPath, sineWavePath } from '@/lib/structureDraw';
+import { battlementPath, battlementDepth, crossMarksPath, sineWavePath, ladderPaths } from '@/lib/structureDraw';
 
 const HEX_DIRS = [
   { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
@@ -24,6 +24,7 @@ interface StructurePreviewProps {
   battlement: boolean;
   barricade: boolean;
   sinWave: boolean;
+  ladder: boolean;
   hexBorder: boolean;
   mpFootIn: number | null;
   mpFootOut: number | null;
@@ -39,7 +40,7 @@ interface StructurePreviewProps {
 const mpLabel = (v: number | null): string => (v === null ? '—' : v < 0 ? 'block' : `${v}`);
 
 export function StructurePreview({
-  anchor, imageUrl, battlement, barricade, sinWave, hexBorder,
+  anchor, imageUrl, battlement, barricade, sinWave, ladder, hexBorder,
   mpFootIn, mpFootOut, mpMountedIn, mpMountedOut, coverMelee, coverRanged, doorHp, maxHp, dt,
 }: StructurePreviewProps) {
   const [flipped, setFlipped] = useState(false);
@@ -115,6 +116,9 @@ export function StructurePreview({
       : decoration === 'sinWave'
         ? sineWavePath({ x: x0, y }, { x: x1, y }, tooth, 2)
         : '';
+  const ladderDeco = ladder
+    ? ladderPaths({ x: x0, y }, { x: x1, y }, { x: (x0 + x1) / 2, y: y - 100 })
+    : null;
   // When flipped, the labels swap which physical side is "outside".
   const outFoot = flipped ? mpFootIn : mpFootOut;
   const outMounted = flipped ? mpMountedIn : mpMountedOut;
@@ -128,6 +132,12 @@ export function StructurePreview({
             <line x1={x0} y1={y} x2={x1} y2={y} stroke="rgba(0,0,0,0.95)" strokeWidth={7} strokeLinecap="round" />
           )}
           {decoPath && <path d={decoPath} fill="none" stroke="rgba(0,0,0,0.95)" strokeWidth={2.5} strokeLinejoin="round" />}
+          {ladderDeco && (
+            <>
+              <path d={ladderDeco.rungs} fill="none" stroke="#8a6a3a" strokeWidth={3.5} strokeLinecap="round" />
+              <path d={ladderDeco.rails} fill="none" stroke="#8a6a3a" strokeWidth={2} strokeLinecap="round" />
+            </>
+          )}
         </svg>
         {decoration === 'battlement' && (
           <>

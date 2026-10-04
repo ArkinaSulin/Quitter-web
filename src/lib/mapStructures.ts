@@ -168,6 +168,8 @@ export function parseStructures(raw: any): MapStructures {
     const outside = (v as any).outside;
     if (outside === 'a' || outside === 'b') inst.outside = outside;
     if ((v as any).open === true) inst.open = true;
+    if ((v as any).ladder === true) inst.ladder = true;
+    if ((v as any).ladder === false) inst.ladder = false;
     if (Array.isArray((v as any).modifiers)) inst.modifiers = (v as any).modifiers as EffectModifier[];
     out[key] = inst;
   }

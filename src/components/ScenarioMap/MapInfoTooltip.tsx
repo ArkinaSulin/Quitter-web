@@ -82,7 +82,7 @@ function EdgeStructureInfo({ template, inst, hp, maxHp, outside }: { template: S
       <div className="text-gray-400">In: {mpPairText(template.mpFootIn, template.mpMountedIn)} MP</div>
       <div className="text-gray-400">Out: {mpPairText(template.mpFootOut, template.mpMountedOut)} MP</div>
       {(ac.melee || ac.ranged) ? <div className="text-gray-400">Cover AC melee {ac.melee} · ranged {ac.ranged}</div> : null}
-      <div className="text-gray-500">Outside side: {outside === 'a' ? 'A' : 'B'}{template.battlement ? ' · battlement' : template.barricade ? ' · barricade' : template.sinWave ? ' · sin wave' : ''}</div>
+      <div className="text-gray-500">Outside side: {outside === 'a' ? 'A' : 'B'}{template.battlement ? ' · battlement' : template.barricade ? ' · barricade' : template.sinWave ? ' · sin wave' : ''}{template.ladder ? ' · ladder' : ''}</div>
       <div className="text-gray-500 mt-1">Shift + double-click to edit · Shift + drop a unit to attack</div>
     </div>
   );

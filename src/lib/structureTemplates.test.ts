@@ -7,6 +7,7 @@ import {
   structureModifiers,
   templateDoorMax,
   structureHasDoor,
+  structureHasLadder,
 } from './structureTemplates';
 
 describe('mapStructureRow', () => {
@@ -47,6 +48,11 @@ describe('mapStructureRow', () => {
     expect(mapStructureRow({ hex_border: false }).hexBorder).toBe(false);
   });
 
+  it('reads the ladder decoration flag', () => {
+    expect(mapStructureRow({ ladder: true }).ladder).toBe(true);
+    expect(mapStructureRow({}).ladder).toBe(false);
+  });
+
   it('normalizes a legacy numeric `delta` into `dice`', () => {
     const t = mapStructureRow({ modifiers: [{ kind: 'ac', delta: 2 }] });
     expect(t.modifiers).toEqual([{ kind: 'ac', dice: '2' }]);
@@ -70,6 +76,11 @@ describe('mapStructureToRow', () => {
     expect(row.mp_foot_in).toBe(2);
     expect(row.max_hp).toBe(100);
     expect(row.mp_foot_out).toBeNull();
+  });
+
+  it('writes the ladder decoration flag', () => {
+    expect(mapStructureToRow({ ...base, ladder: true }).ladder).toBe(true);
+    expect(mapStructureToRow({ ...base }).ladder).toBe(false);
   });
 
   it('keeps negative movement (hard block) and clamps door to [0, maxHp]', () => {
@@ -114,6 +125,16 @@ describe('structureHasDoor', () => {
     expect(structureHasDoor({ doorHp: null, maxHp: 30 } as any)).toBe(false);
     expect(structureHasDoor({ doorHp: 0, maxHp: 30 } as any)).toBe(false);
     expect(structureHasDoor(null)).toBe(false);
+  });
+});
+
+describe('structureHasLadder', () => {
+  it('reads the template flag, instance override wins', () => {
+    expect(structureHasLadder({ ladder: true } as any)).toBe(true);
+    expect(structureHasLadder({ ladder: false } as any)).toBe(false);
+    expect(structureHasLadder({ ladder: false } as any, { templateId: 't', ladder: true })).toBe(true);
+    expect(structureHasLadder({ ladder: true } as any, { templateId: 't', ladder: false })).toBe(false);
+    expect(structureHasLadder(null)).toBe(false);
   });
 });
 

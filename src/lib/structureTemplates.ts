@@ -27,6 +27,11 @@ export function templateDoorMax(t: StructureTemplate): number {
   return t.doorHp === null ? t.maxHp : t.doorHp;
 }
 
+/** Whether a placed edge structure draws the ladder decoration (instance override wins). */
+export function structureHasLadder(t: StructureTemplate | null | undefined, inst?: StructureInstance | null): boolean {
+  return !!(inst?.ladder ?? t?.ladder);
+}
+
 /** The effective top-surface elevation of a structure (instance override wins). */
 export function structureElevation(t: StructureTemplate | null | undefined, inst?: StructureInstance | null): number {
   return Math.max(0, Math.round(inst?.elevation ?? t?.elevation ?? 0));
@@ -54,6 +59,7 @@ export function mapStructureRow(row: any): StructureTemplate {
     battlement: !!row.battlement,
     barricade: !!row.barricade,
     sinWave: !!row.sin_wave,
+    ladder: !!row.ladder,
     hexBorder: row.hex_border !== false,
     elevation: Math.max(0, Math.round(num(row.elevation))),
     mpFootIn: numOrNull(row.mp_foot_in),
@@ -71,7 +77,7 @@ export function mapStructureRow(row: any): StructureTemplate {
 
 /** Map a template to a snake_case map_structure_templates row (no id). */
 export function mapStructureToRow(t: Pick<StructureTemplate,
-  'name' | 'description' | 'anchor' | 'color' | 'imageUrl' | 'battlement' | 'barricade' | 'sinWave' | 'hexBorder' |
+  'name' | 'description' | 'anchor' | 'color' | 'imageUrl' | 'battlement' | 'barricade' | 'sinWave' | 'ladder' | 'hexBorder' |
   'elevation' |
   'mpFootIn' | 'mpFootOut' | 'mpMountedIn' | 'mpMountedOut' |
   'doorHp' | 'maxHp' | 'dt' | 'modifiers'>) {
@@ -95,6 +101,7 @@ export function mapStructureToRow(t: Pick<StructureTemplate,
     battlement: !!t.battlement,
     barricade: !!t.barricade,
     sin_wave: !!t.sinWave,
+    ladder: !!t.ladder,
     hex_border: t.hexBorder !== false,
     elevation: Math.max(0, Math.round(num(t.elevation))),
     mp_foot_in: move(t.mpFootIn),
@@ -119,6 +126,7 @@ export function blankStructureTemplate(): Omit<StructureTemplate, 'id' | 'create
     battlement: false,
     barricade: false,
     sinWave: false,
+    ladder: false,
     hexBorder: true,
     elevation: 10,
     mpFootIn: null,

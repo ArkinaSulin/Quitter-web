@@ -46,6 +46,11 @@ scenario is migrated (Slice 3).
     amplitude is tied to the tooth width so the teeth read as squares.
   - `spikes` draws a triangle (sawtooth) wave — minima on the edge, peaks
     outward, at the battlement amplitude — e.g. **Archer's Stake**.
+  - `barricade` (X marks), `sinWave` (magical wave) and **`ladder`** (a trapezoid
+    ladder) are further edge decorations. `ladder` is **pure visual** — the climb
+    waiver is the separate `ignore_climb` effect modifier; the ladder is still
+    auto-drawn for a structure that carries `ignore_climb` so migrated stairs keep
+    their graphic.
   - A placement's `outside` flip maps the template's inside/outside onto the
     canonical `a`/`b` sides — one control that swaps the directional stats and
     moves the battlement.

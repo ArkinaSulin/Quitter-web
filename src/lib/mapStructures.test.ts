@@ -19,6 +19,7 @@ const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => (
   battlement: true,
   barricade: false,
   sinWave: false,
+  ladder: false,
   hexBorder: true,
   mpFootIn: 1,
   mpFootOut: 3,

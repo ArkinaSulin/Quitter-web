@@ -11,7 +11,8 @@ import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
 import { HEX_SIZE, DEFAULT_GRID_RADIUS, hexMpLabelAt, costShade } from '@/components/ScenarioMap/mapGeometry';
 import { edgeRef, nearestEdge, hexCorner } from '@/lib/walls';
 import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls, structureZones } from '@/lib/mapStructures';
-import { battlementPath, battlementDepth, crossMarksPath, sineWavePath } from '@/lib/structureDraw';
+import { battlementPath, battlementDepth, crossMarksPath, sineWavePath, ladderPaths } from '@/lib/structureDraw';
+import { structureHasLadder } from '@/lib/structureTemplates';
 import { StructureTemplate } from '@/types/structure';
 import { MapHexEffect, expandHexEffects } from '@/lib/mapEffects';
 import { EffectTemplate } from '@/lib/effectTemplates';
@@ -318,6 +319,20 @@ export function MapCanvas({
             d2 = sineWavePath(a, b, battlementDepth(seg, 8), 2);
           }
           ctx.stroke(new Path2D(d2));
+        }
+        // Ladder decoration (pure visual; independent of battlement/sin wave).
+        if (inst && t && structureHasLadder(t, inst)) {
+          const ref = edgeRef(q, r, d);
+          const hi = hexToPixel({ q: ref.bq, r: ref.br, s: -ref.bq - ref.br }, HEX_SIZE);
+          const { rungs, rails } = ladderPaths(a, b, { x: hi.x, y: hi.y });
+          ctx.save();
+          ctx.strokeStyle = '#c49a58';
+          ctx.lineCap = 'round';
+          ctx.lineWidth = 3;
+          ctx.stroke(new Path2D(rungs));
+          ctx.lineWidth = 2;
+          ctx.stroke(new Path2D(rails));
+          ctx.restore();
         }
         // Move-cost labels on the edge, one per face that overrides the cost.
         const labelFor = (faceKey: 'a' | 'b') => {
