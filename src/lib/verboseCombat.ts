@@ -85,13 +85,15 @@ export function formatSpellRollLine(result: SpellDamageResult, saveDC: number): 
  * Verbose roll line for a STRUCTURE attack (edge wall or hex gate/tower). There
  * is no to-hit roll — each attack is a damage roll, and the structure's Damage
  * Threshold gate is applied per hit (a roll BELOW DT is shrugged; at/above lands).
- * e.g. `{1d8 vs DT 5: 3,5,7 → 2 over DT, 12 damage}`.
+ * Leads with the attack count, mirroring the unit-vs-unit `N attacks {…}` shape.
+ * e.g. `4 attacks {1d8 vs DT 5: 3,5,7,6 → 3 over DT, 12 damage}`.
  */
 export function formatStructureAttackRolls(rolls: number[], dt: number, damageDice: string): string {
   const sortedRolls = sorted(rolls);
   const over = rolls.filter(r => r >= dt);
   const total = over.reduce((a, b) => a + b, 0);
-  return `{${damageDice} vs DT ${dt}: ${sortedRolls.join(',')} → ${over.length} over DT, ${total} damage}`;
+  const n = rolls.length;
+  return `${n} attack${n === 1 ? '' : 's'} {${damageDice} vs DT ${dt}: ${sortedRolls.join(',')} → ${over.length} over DT, ${total} damage}`;
 }
 
 /**

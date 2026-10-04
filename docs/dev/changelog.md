@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## Structure-attack verbose line shows the attack count (2026-10-03)
+**Files:** src/lib/verboseCombat.ts (+ test), docs/dev/{13-map-entities-terrain,changelog}.md
+
+- The verbose unit/hero-vs-structure line now leads with the number of attacks,
+  mirroring the unit-vs-unit `N attacks {…}` shape:
+  `… · 4 attacks {1d8 vs DT 5: 3,5,7,6 → 3 over DT, 12 damage}`.
+  `formatStructureAttackRolls` derives the count from `rolls.length` (the same
+  `structureAttackCount` value passed to the resolver), so both edge-wall and hex
+  attacks get it. `tsc` clean, tests pass. No migration.
+
 ## Kill-zone attack type + unified flyer/ground attack picker; auto-dive removed (2026-10-03)
 **Files:** src/lib/meleeFallback.ts (+ test), src/components/ScenarioMap/{useCombatActions,useMoveActions,ScenarioMap}.tsx, src/components/ScenarioMap/{WeaponSelect,MountTargetChoice}.tsx, docs/dev/{18-map-structures,changelog}.md
 
