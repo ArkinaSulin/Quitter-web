@@ -105,6 +105,14 @@ A grounded unit's elevation changes **only across an adjacent edge**:
   ("move onto/off the edge first"). `rollFallDamage` (`flying.ts`) is the shared
   d6/10 ft formula.
 
+**Both climbs are SOFT-gated**, exactly like a move: a climb that needs more
+MP/actions than the unit has raises the shared over-budget confirm
+(`pendingMove.climb` → `handleClimbMove(..., overBudget = true)`, red warning,
+`isMoveAffordable`/`isHeroMoveAffordable`); confirming lets MP/actions go negative,
+cancelling does nothing. A **partly** affordable climb (≥1 step within MP +
+remaining actions) is NOT over budget — it just climbs the affordable steps and
+**hangs** (no prompt). The climb never hard-blocks.
+
 The same four flags (plus `ac`, `range`, `block_attacks`, etc.) are shared with
 unit effects and zones; `mode: 'melee' | 'ranged'` scopes them to one attack
 type (absent = both).

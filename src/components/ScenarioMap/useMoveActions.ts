@@ -245,7 +245,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
    * bottom of its own hex. Costs 4 MP per 10 ft; when the climb can't finish (out
    * of MP) or the target is occupied, the unit HANGS at the height reached.
    */
-  const handleClimbMove = useCallback(async (unit: Unit, targetHex: Hex, originSurface: number) => {
+  const handleClimbMove = useCallback(async (unit: Unit, targetHex: Hex, originSurface: number, overBudget = false) => {
     const maxMP = unitMaxMP(unit);
     const budgetUnit = moveBudgetUnit(unit, 'ground');
     const curElev = unit.elevation ?? originSurface;
@@ -269,6 +269,21 @@ export function useMoveActions(deps: MoveActionsDeps) {
       freeClimb
         ? { movementPointsAvailable: unit.movementPointsAvailable, actionsAvailable: unit.actionsAvailable }
         : (unit.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP));
+    // Soft gate — the SAME as a normal move: a climb that needs more MP/actions
+    // than the unit has asks first (the shared over-budget confirm) rather than
+    // hard-blocking. Returns false when affordable (partial climbs just hang).
+    const unaffordable = (cost: number): boolean =>
+      !freeClimb && cost > 0 &&
+      (unit.isHero ? !isHeroMoveAffordable(budgetUnit, cost, maxMP) : !isMoveAffordable(budgetUnit, cost, maxMP));
+    const gateClimb = (cost: number): boolean => {
+      if (!unaffordable(cost)) return false;
+      if (!overBudget) {
+        setPendingMove({ unit, targetHex, cost, climb: { originSurface } });
+        return true;
+      }
+      addError(`${unit.unitName} climbed over budget — MP/actions may go negative`);
+      return false;
+    };
     const attachedHero = units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted) ?? null;
 
     const run = async (changes: UnitChange[], desc: string) => {
@@ -294,6 +309,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       const ascending = delta > 0;
       const steps = Math.min(totalSteps, Math.floor(budget / CLIMB_MP_PER_STEP));
       if (steps <= 0) { addMessage(`${unit.unitName} has no movement to ${ascending ? 'climb up' : 'climb down'}`); return; }
+      if (gateClimb(steps * CLIMB_MP_PER_STEP)) return;
       const spend = spendMp(steps * CLIMB_MP_PER_STEP);
       const dir = ascending ? 1 : -1;
       let newElev = curElev + dir * steps * 10;
@@ -333,6 +349,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const plan = climbPlan(Math.abs(diff), budget, doneSteps, targetOccupied);
     if (plan.atTop) { addMessage(`${unit.unitName} is already ${ascending ? 'at the top' : 'down'}`); return; }
     if (plan.steps <= 0) { addMessage(`${unit.unitName} has no movement to ${ascending ? 'climb' : 'climb down'}`); return; }
+    if (gateClimb(plan.cost)) return;
     const spend = spendMp(plan.cost);
     const newElev = ascending
       ? originSurface + plan.newElevSteps * 10
@@ -355,7 +372,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       pruneReactionOffers();
       await pursuitsRef.current?.(unit, unit.hex, tHex);
     }
-  }, [units, structures, structureTemplates, unitMaxMP, execute, addMessage, freeMove, groundZones, offerReactionsFor, pruneReactionOffers, pursuitsRef]);
+  }, [units, structures, structureTemplates, unitMaxMP, execute, addMessage, freeMove, groundZones, offerReactionsFor, pruneReactionOffers, pursuitsRef, setPendingMove]);
 
   const handleUnitMove = useCallback(async (unitId: string, targetHex: Hex) => {
     const unit = units.find(u => u.id === unitId);
@@ -913,6 +930,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     maybeAutoReturnToRanged,
     performMove,
     completeMove,
+    handleClimbMove,
     handleUnitMove,
     handleChangeFormation,
     handleMoveTeam,

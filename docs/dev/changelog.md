@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## Climb now honours the action/MP soft gate (2026-10-03)
+**Files:** src/components/ScenarioMap/{useMoveActions,ScenarioMap,SoftEnforcementModals}.tsx, docs/dev/{18-map-structures,changelog}.md
+
+- The climb action (`handleClimbMove`, up and down) used `computeMoveBudget`'s
+  phantom pool as spendable budget with **no affordability check** — so a unit with
+  0 actions could climb and silently drive `actionsAvailable` negative. It now runs
+  the **same over-budget soft gate as a move**: `isMoveAffordable` /
+  `isHeroMoveAffordable`; when unaffordable it raises the shared confirm
+  (`pendingMove.climb` → `handleClimbMove(..., overBudget = true)`) with the red
+  warning on confirm (MP/actions may go negative), cancel does nothing. A **partly**
+  affordable climb (≥1 step within MP + remaining actions) is not over budget — it
+  climbs the affordable steps and **hangs**, no prompt. The climb never hard-blocks.
+- `PendingMove` gained an optional `climb: { originSurface }` tag; the modal title
+  reads "Climb over budget?"; `handleClimbMove` is exposed and `confirmMove` resumes
+  it. Reused the existing soft-enforcement machinery (no new budget helper).
+- `tsc` clean, build clean. No migration.
+
 ## Descent off a height: Climb down / Drop / Cancel (2026-10-03)
 **Files:** src/lib/flying.ts (+ test), src/components/ScenarioMap/{useMoveActions,ScenarioMap}.tsx, docs/{dev/{18-map-structures,outstanding,changelog},players/player-manual}.md
 

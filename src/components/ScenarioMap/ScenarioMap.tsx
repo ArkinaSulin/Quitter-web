@@ -956,6 +956,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     maybeAutoReturnToRanged,
     completeMove,
     handleUnitMove,
+    handleClimbMove,
     handleChangeFormation,
     handleMoveTeam,
     handleAttachHero,
@@ -2537,7 +2538,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Soft-enforcement prompts: fully-bound confirm handlers (clear state +
   // controlsLocked guard + act). The modals render from the pending states.
   const softActions = {
-    confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (controlsLocked) return; const surface = structureSurfaceAt(pm.unit.hex, structures, structureTemplates); const targetSurface = structureSurfaceAt(pm.targetHex, structures, structureTemplates); const airborne = (pm.unit.elevation ?? 0) > surface; const max = airborne ? (pm.unit.flySpeed ?? 0) : (pm.breakToFormation ? computeEffectiveMovement(pm.unit, getFormationMultiplier(formationsMap, pm.breakToFormation, 'movement_multiplier')) : unitMaxMP(pm.unit)); const descendElev = !airborne && targetSurface <= surface ? targetSurface : undefined; completeMove(pm.unit, pm.targetHex, pm.cost, true, max, pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined, pm.breakToFormation, descendElev, surface); },
+    confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (controlsLocked) return; if (pm.climb) { void handleClimbMove(pm.unit, pm.targetHex, pm.climb.originSurface, true); return; } const surface = structureSurfaceAt(pm.unit.hex, structures, structureTemplates); const targetSurface = structureSurfaceAt(pm.targetHex, structures, structureTemplates); const airborne = (pm.unit.elevation ?? 0) > surface; const max = airborne ? (pm.unit.flySpeed ?? 0) : (pm.breakToFormation ? computeEffectiveMovement(pm.unit, getFormationMultiplier(formationsMap, pm.breakToFormation, 'movement_multiplier')) : unitMaxMP(pm.unit)); const descendElev = !airborne && targetSurface <= surface ? targetSurface : undefined; completeMove(pm.unit, pm.targetHex, pm.cost, true, max, pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined, pm.breakToFormation, descendElev, surface); },
     confirmAttack: () => { const pa = pendingAttack!; setPendingAttack(null); if (!controlsLocked) performAttack(pa.attacker, pa.target, true); },
     confirmAttackCap: async () => {
       const pa = pendingAttackCap!;

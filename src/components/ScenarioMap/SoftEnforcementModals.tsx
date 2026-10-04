@@ -15,6 +15,9 @@ export interface PendingMove {
   cost: number;
   attachedHero?: Unit | null;
   breakToFormation?: string;
+  /** Set when the over-budget move is a CLIMB (up/down a structure edge): the
+   *  confirm resumes `handleClimbMove` from this origin surface. */
+  climb?: { originSurface: number };
 }
 
 export interface PendingAttack {
@@ -144,8 +147,8 @@ export function SoftEnforcementModals({ pending, actions, cancels, unitMaxMP }: 
       {p.move && (
         <ConfirmModal
           tone="red"
-          title="Move over budget?"
-          buttons={[{ label: 'Yes, move anyway', variant: 'red', onClick: actions.confirmMove }]}
+          title={p.move.climb ? 'Climb over budget?' : 'Move over budget?'}
+          buttons={[{ label: p.move.climb ? 'Yes, climb anyway' : 'Yes, move anyway', variant: 'red', onClick: actions.confirmMove }]}
           onCancel={cancels.move}
         >
           {p.move.attachedHero
