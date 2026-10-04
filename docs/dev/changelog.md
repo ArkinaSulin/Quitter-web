@@ -1,5 +1,18 @@
 # QuiTTER Changelog
 
+## Fix: stepping off a raised surface lowers the unit's elevation (2026-10-03)
+**Files:** src/components/ScenarioMap/{useMoveActions,ScenarioMap}.tsx, src/hooks/useGameEngine.ts, docs/dev/changelog.md
+
+- A grounded unit moving onto a same-or-lower surface kept its old `elevation`,
+  so a unit stepping off a wall/tower stayed at the higher height — a non-flyer
+  "floating" at 20 ft with no fly points (and the move was then misread as
+  airborne). The ground move now carries the destination surface as the unit's
+  new elevation (`descendElev` = destination surface when it is ≤ the origin
+  surface; ascending moves still route through the climb action, a flyer keeps
+  its chosen altitude). Applied to the normal move, charge, free move, and the
+  over-budget confirm; the attached hero follows. Descending is a normal paid
+  step (no fall). No migration.
+
 ## Fix: climb-onto-hex wrote a hex without `s` (hex_s NOT NULL violation) (2026-10-03)
 **Files:** src/components/ScenarioMap/useMoveActions.ts, docs/dev/changelog.md
 

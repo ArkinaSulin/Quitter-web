@@ -542,25 +542,34 @@ export function useGameEngine({
   );
 
   const moveUnitFree = useCallback(
-    async (unit: Unit, targetHex: Hex, attachedHero?: Unit | null, breakToFormation?: string): Promise<void> => {
+    async (unit: Unit, targetHex: Hex, attachedHero?: Unit | null, breakToFormation?: string, elevation?: number): Promise<void> => {
+      const unitChanges: { field: string; from: any; to: any }[] = [
+        { field: 'hex', from: { ...unit.hex }, to: { ...targetHex } },
+      ];
+      // A grounded free move steps the unit down to the destination surface.
+      if (elevation != null && elevation !== (unit.elevation ?? 0)) {
+        unitChanges.push({ field: 'elevation', from: unit.elevation ?? 0, to: elevation });
+      }
       const subSteps: SubStep[] = [
         {
           type: 'MOVE',
           description: `${unit.unitName} moved freely to (${targetHex.q}, ${targetHex.r})`,
           unitId: unit.id,
-          changes: [
-            { field: 'hex', from: { ...unit.hex }, to: { ...targetHex } },
-          ],
+          changes: unitChanges,
         },
       ];
       if (attachedHero) {
+        const heroChanges: { field: string; from: any; to: any }[] = [
+          { field: 'hex', from: { ...attachedHero.hex }, to: { ...targetHex } },
+        ];
+        if (elevation != null && elevation !== (attachedHero.elevation ?? 0)) {
+          heroChanges.push({ field: 'elevation', from: attachedHero.elevation ?? 0, to: elevation });
+        }
         subSteps.push({
           type: 'MOVE',
           description: `${attachedHero.unitName} moved with ${unit.unitName}`,
           unitId: attachedHero.id,
-          changes: [
-            { field: 'hex', from: { ...attachedHero.hex }, to: { ...targetHex } },
-          ],
+          changes: heroChanges,
         });
       }
       if (breakToFormation && breakToFormation !== unit.currentFormation) {

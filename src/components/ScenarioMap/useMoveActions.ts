@@ -38,7 +38,7 @@ interface MoveActionsDeps {
   addError: (msg: string, verboseText?: string) => void;
   unitMaxMP: (unit: Unit) => number;
   moveUnitRecorded: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean; breakToFormation?: string; elevation?: number; surface?: number }) => Promise<void>;
-  moveUnitFree: (unit: Unit, targetHex: Hex, attachedHero?: Unit | null, breakToFormation?: string) => Promise<void>;
+  moveUnitFree: (unit: Unit, targetHex: Hex, attachedHero?: Unit | null, breakToFormation?: string, elevation?: number) => Promise<void>;
   changeFormation: (unit: Unit, formation: string, formationsMap: Record<string, Formation>) => Promise<void>;
   attachHero: (hero: Unit, targetUnit: Unit, position: 'front' | 'back' | 'rider', heroMaxMP: number, cost?: number) => Promise<void>;
   swapHeroPosition: (hero: Unit) => Promise<void>;
@@ -355,6 +355,11 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const originSurface = structureSurfaceAt(unit.hex, structures, structureTemplates);
     const endSurface = structureSurfaceAt(targetHex, structures, structureTemplates);
     const flying = (unit.elevation ?? 0) > originSurface;
+    // A GROUNDED move onto a same-or-lower surface steps the unit down to that
+    // surface (stepping off a wall/tower lowers its elevation instead of leaving
+    // it floating at the old height). Ascending moves are handled by the climb
+    // action; a flyer keeps its chosen altitude.
+    const descendElev = !flying && endSurface <= originSurface ? endSurface : undefined;
     const originMax = flying ? (unit.flySpeed ?? 0) : unitMaxMP(unit);
     const unitBudget = moveBudgetUnit(unit, flying ? 'fly' : 'ground');
     // Air occupancy for a fly move: other flyers + structure hexes whose TOP is
@@ -404,7 +409,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
         setPendingMove({ unit, targetHex, cost, attachedHero });
         return;
       }
-      await completeMove(unit, targetHex, cost, false, maxMP, attachedHero, heroMax, undefined, undefined, originSurface);
+      await completeMove(unit, targetHex, cost, false, maxMP, attachedHero, heroMax, undefined, descendElev, originSurface);
       return;
     }
 
@@ -415,7 +420,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
         return;
       }
       const breakToFormation = flying ? undefined : (entryBreakFormation(unit.hex, targetHex, unit.currentFormation, structures, structureTemplates, groundZones) ?? undefined);
-      await moveUnitFree(unit, targetHex, attachedHero, breakToFormation);
+      await moveUnitFree(unit, targetHex, attachedHero, breakToFormation, descendElev);
       await maybeAutoReturnToRanged(unit);
       offerReactionsFor({ ...unit, hex: targetHex });
       pruneReactionOffers();
@@ -492,7 +497,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       setPendingElevation({ unit, targetHex, cost: entry.cost, maxMP: finalMax, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation, range, originAir: flying, originSurface, endSurface, occupant: null, canStoop: false, isHostile: false });
       return;
     }
-    await completeMove(unit, targetHex, entry.cost, false, finalMax, attachedHero, heroMax, breakToFormation, undefined, originSurface);
+    await completeMove(unit, targetHex, entry.cost, false, finalMax, attachedHero, heroMax, breakToFormation, descendElev, originSurface);
   }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove]);
 
   const handleChangeFormation = useCallback(async (unit: Unit, formation: string) => {
