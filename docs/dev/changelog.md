@@ -14,6 +14,10 @@
   `{ rungs, rails }` (SVG/canvas path strings). **Migration 114** adds
   `map_structure_templates.ladder` (default false) and backfills `true` where the
   modifiers already carry `ignore_climb`. **Apply 114 in Supabase.**
+- The Structure Editor save is resilient to a pre-114 database: if the write
+  reports a missing `ladder` column it retries without it and shows "apply
+  migration 114", instead of hard-failing. The update path now also surfaces
+  errors (previously swallowed).
 - `tsc` clean, 873 tests pass. No engine changes.
 
 ## Damage Threshold is `>=` (a hit AT the DT lands) (2026-10-03)

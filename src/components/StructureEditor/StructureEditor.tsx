@@ -117,18 +117,40 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
     setBusy(true);
     setStatus('');
     try {
-      const row = mapStructureToRow(sanitizeStructureTemplate(draft));
+      const base = sanitizeStructureTemplate(draft);
+      let row: Record<string, unknown> = mapStructureToRow(base);
       let id = draft.id;
-      if (id) {
-        await supabase.from('map_structure_templates').update(row).eq('id', id);
-      } else {
-        const { data, error } = await supabase.from('map_structure_templates').insert(row).select('id').single();
-        if (error) throw error;
-        id = data.id;
+      // Attempt the write, returning the insert's new id (update returns none).
+      const write = async (r: Record<string, unknown>): Promise<{ error: any; newId?: string }> => {
+        if (id) {
+          const { error } = await supabase.from('map_structure_templates').update(r).eq('id', id);
+          return { error };
+        }
+        const { data, error } = await supabase.from('map_structure_templates').insert(r).select('id').single();
+        return { error, newId: data?.id };
+      };
+      const missingColumn = (err: any, col: string): boolean => {
+        const msg = `${err?.message ?? ''} ${err?.details ?? ''} ${err?.hint ?? ''}`.toLowerCase();
+        return err?.code === '42703' || msg.includes(col.toLowerCase());
+      };
+      let res = await write(row);
+      let droppedLadder = false;
+      // Pre-migration-114 databases lack the `ladder` column: retry without it so
+      // the save still succeeds (the decoration just isn't persisted until 114).
+      if (res.error && missingColumn(res.error, 'ladder')) {
+        const rest = { ...row };
+        delete rest.ladder;
+        row = rest;
+        res = await write(row);
+        droppedLadder = !res.error;
       }
-      setStatus('Saved.');
-      const { selected } = await refreshAndReselect(load, id, t => t.id);
-      if (selected) select(selected);
+      if (res.error) throw res.error;
+      id = id ?? res.newId;
+      setStatus(droppedLadder ? 'Saved — apply migration 114 in Supabase to store the ladder decoration.' : 'Saved.');
+      if (id) {
+        const { selected } = await refreshAndReselect(load, id, t => t.id);
+        if (selected) select(selected);
+      }
     } catch (err: any) {
       setStatus('Save failed: ' + (err?.message || 'unknown'));
     } finally {
