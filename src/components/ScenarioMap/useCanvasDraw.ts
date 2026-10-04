@@ -365,9 +365,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           ctx.save();
           ctx.strokeStyle = '#c49a58';
           ctx.lineCap = 'round';
-          ctx.lineWidth = Math.max(2, 3 * currentZoom);
+          ctx.lineWidth = Math.max(1, 1.5 * currentZoom);
           ctx.stroke(new Path2D(rungs));
-          ctx.lineWidth = Math.max(1.5, 2 * currentZoom);
+          ctx.lineWidth = Math.max(0.75, 1 * currentZoom);
           ctx.stroke(new Path2D(rails));
           ctx.restore();
           if (hoveredWallEdge && hoveredWallEdge.key === key) {

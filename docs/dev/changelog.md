@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Ladder (edge `ignore_climb`) drawn at 50% scale (2026-10-03)
+**Files:** src/lib/structureDraw.ts, src/components/ScenarioMap/useCanvasDraw.ts, src/components/MapEditor/MapCanvas.tsx, src/components/StructureEditor/StructurePreview.tsx, docs/dev/changelog.md
+
+- The trapezoid ladder was too wide/tall: `ladderPaths` now halves the
+  perpendicular spread (height), rung lengths (width), and rail extensions, and
+  the three renderers (live canvas, Map Editor, Structure preview) halve their
+  stroke widths to match. No migration; tests pass.
+
 ## Structure-attack verbose line shows the attack count (2026-10-03)
 **Files:** src/lib/verboseCombat.ts (+ test), docs/dev/{13-map-entities-terrain,changelog}.md
 

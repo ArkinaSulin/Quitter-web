@@ -328,9 +328,9 @@ export function MapCanvas({
           ctx.save();
           ctx.strokeStyle = '#c49a58';
           ctx.lineCap = 'round';
-          ctx.lineWidth = 3;
+          ctx.lineWidth = 1.5;
           ctx.stroke(new Path2D(rungs));
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 1;
           ctx.stroke(new Path2D(rails));
           ctx.restore();
         }

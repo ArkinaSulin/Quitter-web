@@ -134,8 +134,8 @@ export function StructurePreview({
           {decoPath && <path d={decoPath} fill="none" stroke="rgba(0,0,0,0.95)" strokeWidth={2.5} strokeLinejoin="round" />}
           {ladderDeco && (
             <>
-              <path d={ladderDeco.rungs} fill="none" stroke="#8a6a3a" strokeWidth={3.5} strokeLinecap="round" />
-              <path d={ladderDeco.rails} fill="none" stroke="#8a6a3a" strokeWidth={2} strokeLinecap="round" />
+              <path d={ladderDeco.rungs} fill="none" stroke="#8a6a3a" strokeWidth={1.75} strokeLinecap="round" />
+              <path d={ladderDeco.rails} fill="none" stroke="#8a6a3a" strokeWidth={1} strokeLinecap="round" />
             </>
           )}
         </svg>

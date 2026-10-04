@@ -110,8 +110,9 @@ export function ladderPaths(a: Pt, b: Pt, higher: Pt): { rungs: string; rails: s
   const pl = Math.hypot(px, py) || 1;
   px /= pl;
   py /= pl;
-  const offs = [-seg * 0.14, 0, seg * 0.14];
-  const lens = [seg * 0.42, seg * 0.64, seg * 0.86];
+  // 50% scale: half the perpendicular spread (height) and rung lengths (width).
+  const offs = [-seg * 0.07, 0, seg * 0.07];
+  const lens = [seg * 0.21, seg * 0.32, seg * 0.43];
   const ends: Pt[][] = [];
   let rungs = '';
   for (let i = 0; i < 3; i++) {
@@ -123,7 +124,7 @@ export function ladderPaths(a: Pt, b: Pt, higher: Pt): { rungs: string; rails: s
     ends.push([p1, p2]);
     rungs += ` M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
   }
-  const ext = seg * 0.12;
+  const ext = seg * 0.06;
   let rails = '';
   for (const side of [0, 1] as const) {
     const top = ends[0][side];
