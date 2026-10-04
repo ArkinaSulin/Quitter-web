@@ -225,7 +225,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       }
       // A stooping flyer hovering a GROUND enemy: the drop offers the charge-drop
       // (move onto the hex + free melee). Amber distinguishes it from a plain shot.
-      if (isStooping(draggedUnit) && (hoveredUnit!.elevation ?? 0) <= 0) {
+      if (isStooping(draggedUnit, structureSurfaceAt(draggedUnit.hex, structures, templates)) && (hoveredUnit!.elevation ?? 0) <= 0) {
         combined[targetKey] = 'rgba(255, 140, 60, 0.85)';
         return combined;
       }

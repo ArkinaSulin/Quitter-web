@@ -62,7 +62,8 @@ UPDATE).
 `scenarios` columns toggled live (each an `updateScenarioField` + SCENARIO or
 direct scenario update — see `useScenarios.updateScenarioField`):
 - `archer_reaction_enabled` — opportunity fire on/off (see `08`).
-- `mounted_charge_enabled` — Charge! availability for mounted (see `08`).
+- `mounted_charge_enabled` — Charge!/Stoop! availability (shown as
+  "Mounted charge and airborne stoop"; see `08`).
 - `verbose_combat` — per-scenario roll detail in messages (`verboseCombat.ts`).
 - `fog_of_war` + `sight_radius` — see `11-fog-of-war.md`.
 

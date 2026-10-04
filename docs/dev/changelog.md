@@ -1,5 +1,27 @@
 # QuiTTER Changelog
 
+## Unified Charge!/Stoop! context entry; airborne detection fixed (2026-10-04)
+**Files:** src/lib/{chargeStance.ts (+ test),flying.ts (+ test)}, src/components/ScenarioMap/{ContextMenu,ScenarioMap,useCombatActions,useOverlay}.tsx, docs/dev/{06-turn-system,08-combat,changelog}.md, docs/players/player-manual.md
+
+- **Stoop! is now offered to flying units AND heroes in the air.** The two
+  duplicated Charge!/Stoop! context-menu blocks are replaced by one entry whose
+  stance comes from the new pure `chargeStanceFor({ unit, airborne, form,
+  chargeEnabled })`: airborne flyer → `Stoop!`, grounded charge-capable unit →
+  `Charge!`, otherwise nothing. Both call the same `charge` handler (they only
+  set `isCharging`), so charge and stoop genuinely share code. The entry is no
+  longer inside the `!unit.isHero` group, so flying heroes qualify.
+- **Airborne means `elevation > surfaceAt(hex)`, not `elevation > 0`.** `ContextMenu`
+  takes a new `isAirborne` prop (computed in `ScenarioMap` via
+  `structureSurfaceAt`), so a flyer **standing on a structure** no longer shows
+  Stoop! (and now correctly shows Charge! instead — the inverse `<= 0` gate is
+  fixed). The same fix lands in `isStooping(unit, surface = 0)`, threaded through
+  `buildStoopDropPlan` and the drag overlay, so a grounded flyer on a wall can't
+  be treated as stooping.
+- **Scenario setting renamed** (UI only; column stays `mounted_charge_enabled`):
+  **"Mounted charge and airborne stoop"** — "When on, charge-capable units may
+  use Charge! and airborne flyers may use Stoop!."
+- `tsc` clean, tests pass, build clean. No migration.
+
 ## Universal attack-arc rule; structure arc gating; vertical flyer ZoC; rear threat ×2 (2026-10-04)
 **Files:** src/lib/{wallCombat,structureCombat}.ts (+ tests), src/components/ScenarioMap/{ScenarioMap,useCombatActions}.tsx, src/lib/{unitMorale,zocDisengage,meleeFallback}.ts (+ tests), src/components/ScenarioMap/{mapGeometry,UnitTooltip}.tsx, docs/dev/{08-combat,09-morale-routing-pursuit,07-movement-economy,13-map-entities-terrain,changelog}.md, docs/players/player-manual.md
 

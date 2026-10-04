@@ -1020,7 +1020,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
    * full charge, and no attached hero (the flyer drops alone — v1).
    */
   const buildStoopDropPlan = useCallback((attacker: Unit, target: Unit): StoopDropPlan | null => {
-    if (!isStooping(attacker) || (target.elevation ?? 0) > 0) return null;
+    if (!isStooping(attacker, structureSurfaceAt(attacker.hex, structures, structureTemplates)) || (target.elevation ?? 0) > 0) return null;
     if (target.isDeleted || target.id === attacker.id) return null;
     // v1: the flyer drops alone (an attached hero would need its own MOVE/ELEVATE
     // sub-steps and a mid-command state snapshot).
@@ -1043,7 +1043,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       maxMP,
       overBudget: !affordable,
     };
-  }, [units]);
+  }, [units, structures, structureTemplates]);
 
   /** The plan if a stoop drop applies to this pair, else null (used by the UI to
    *  decide whether to prompt). */

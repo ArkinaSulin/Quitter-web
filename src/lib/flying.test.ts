@@ -129,11 +129,15 @@ describe('flying', () => {
       .toEqual({ movementPointsAvailable: 4, flySpeedAvailable: 0 });
   });
 
-  it('isStooping: charging + airborne only', () => {
+  it('isStooping: charging + actually airborne only', () => {
     expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: true })).toBe(true);
     expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: false })).toBe(false);
     expect(isStooping({ flySpeed: 4, elevation: 0, isCharging: true })).toBe(false);
     expect(isStooping({ flySpeed: 0, elevation: 20, isCharging: true })).toBe(false);
+    // Grounded on a 10-ft structure (elevation == surface): not airborne, not stooping.
+    expect(isStooping({ flySpeed: 4, elevation: 10, isCharging: true }, 10)).toBe(false);
+    // Hovering above that surface: stooping.
+    expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: true }, 10)).toBe(true);
   });
 
   it('canReachStructure: within 10 ft of the 10 ft structure height', () => {

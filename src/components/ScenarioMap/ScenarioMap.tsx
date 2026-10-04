@@ -2838,6 +2838,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onChangeFormation={(formation) => handleChangeFormation(contextMenuUnit, formation)}
           onCharge={() => charge(contextMenuUnit)}
           chargeEnabled={mountedChargeEnabled}
+          isAirborne={!contextMenuUnit.attachedToUnitId && (contextMenuUnit.elevation ?? 0) > structureSurfaceAt(contextMenuUnit.hex, structures, structureTemplates)}
           onSwapHeroPosition={(hero) => handleSwapHeroPosition(hero)}
           onSelectWeapon={(idx) => { weaponSelectedTurnRef.current[contextMenuUnit.id] = turnNumber; selectWeapon(contextMenuUnit, idx); }}
           onAssignTeam={(team) => assignTeam(contextMenuUnit, team)}
@@ -3208,9 +3209,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 className="h-4 w-4 accent-amber-400 mt-0.5"
               />
               <span>
-                <span className="font-medium text-amber-300">Mounted charge</span>
+                <span className="font-medium text-amber-300">Mounted charge and airborne stoop</span>
                 <span className="block text-gray-400 text-[11px]">
-                  When on, charge-capable units may use the Charge! action.
+                  When on, charge-capable units may use Charge! and airborne flyers may use Stoop!.
                 </span>
               </span>
             </label>

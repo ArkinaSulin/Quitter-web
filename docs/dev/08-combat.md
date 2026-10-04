@@ -211,11 +211,20 @@ pause; allowing records over cap, **declining suppresses the counter**
 (`suppressRetaliation(..., atCap)`). The count resets on the unit's own turn
 start. Heroes also respect the cap in practice via their 5-action budget.
 
-## Charge! (mounted/eligible formations)
+## Charge! / Stoop! (one shared command)
 
-- Context menu "Charge!" (shown via `canFormationCharge`; gated for mounted by
-  the `mounted_charge_enabled` scenario setting). Lock rotate/formation, mark
-  `isCharging`, `chargeDistance = 0`.
+The context menu offers a single charge entry, computed by `chargeStanceFor`
+(`src/lib/chargeStance.ts`) from the unit's **actual** state (airborne =
+`elevation > surfaceAt(hex)`, not merely `elevation > 0`):
+
+- **Grounded**, non-hero, with `canCharge` + `canFormationCharge` → **Charge!**;
+- **Airborne** fly-capable → **Stoop!** (offered to units *and* heroes);
+- a hanging climber is airborne but can't fly → nothing.
+
+Both merely mark `isCharging` + `chargeDistance = 0` and lock rotate/formation;
+the following move/drop decides ground-charge vs stoop, so they share the engine
+handler. The entry is gated by the scenario `mounted_charge_enabled` setting
+(shown as **"Mounted charge and airborne stoop"**).
 - Moves only through the charge wedge (`07`); distance accumulates.
 - Attack at distance ≥ `charge_full_distance` (2) → **free double-damage
   attack**, then drop one organization level (`CHARGE_END`). Attack < 2 →

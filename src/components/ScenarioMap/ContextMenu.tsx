@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Unit, getOrganizationLevel, Formation } from '@/types/gameProtocol';
 import { areHexesAdjacent, isUnitRouted } from '@/lib/unitMorale';
 import { parseWeapons, formatWeaponDisplay } from '@/lib/weaponParser';
-import { canFormationCharge } from '@/lib/formationRules';
+import { chargeStanceFor } from '@/lib/chargeStance';
 import { getSetting } from '@/lib/settingsCache';
 import { TEAM_COLORS } from '@/components/TokenRenderer/tokenUtils';
 import { Floating } from './Floating';
@@ -31,8 +31,10 @@ interface ContextMenuProps {
   onSetRouting?: () => void;
   onDeleteUnit: () => void;
   onCharge?: () => void;
-  /** Scenario toggle: when false, the Charge! action is hidden. */
+  /** Scenario toggle: when false, the Charge!/Stoop! action is hidden. */
   chargeEnabled?: boolean;
+  /** True when the unit hovers above its hex surface (elevation > surface). */
+  isAirborne?: boolean;
   onAttachHero?: (heroId: string, targetUnitId: string) => void;
   /** Swap an attached hero between front/back position (costs 1 hero MP). */
   onSwapHeroPosition?: (hero: Unit) => void;
@@ -72,6 +74,7 @@ export function ContextMenu({
   onDeleteUnit,
   onCharge,
   chargeEnabled = true,
+  isAirborne = false,
   onAttachHero,
   onSwapHeroPosition,
   attachedHero,
@@ -254,25 +257,28 @@ export function ContextMenu({
               Move Hero to {attachedHero.attachedPosition === 'back' ? 'Front' : 'Back'} (1 MP)
             </div>
           )}
-          {unit.canCharge && (unit.elevation ?? 0) <= 0 && !isUnitRouted(unit) && canFormationCharge(formationsMap?.[unit.currentFormation]) && !unit.isCharging && unit.actionsAvailable >= 1 && chargeEnabled && onCharge && (
-            <div
-              className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
-              onClick={() => { onCharge(); onClose(); }}
-            >
-              Charge!
-            </div>
-          )}
-          {(unit.flySpeed ?? 0) > 0 && (unit.elevation ?? 0) > 0 && !isUnitRouted(unit) && !unit.isCharging && unit.actionsAvailable >= 1 && chargeEnabled && onCharge && (
-            <div
-              className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
-              onClick={() => { onCharge(); onClose(); }}
-            >
-              Stoop!
-            </div>
-          )}
           <div className="border-t border-gray-700 my-1" />
         </>
       )}
+
+      {/* Charge! (grounded, charge-capable formation) / Stoop! (airborne flyer):
+          ONE shared command offered to units and heroes. Both just set
+          `isCharging`; the following move/drop decides ground-charge vs stoop. */}
+      {!unit.attachedToUnitId && (() => {
+        const stance = chargeStanceFor({ unit, airborne: isAirborne, form: formationsMap?.[unit.currentFormation], chargeEnabled });
+        if (!stance || !onCharge) return null;
+        return (
+          <>
+            <div
+              className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
+              onClick={() => { onCharge(); onClose(); }}
+            >
+              {stance === 'stoop' ? 'Stoop!' : 'Charge!'}
+            </div>
+            <div className="border-t border-gray-700 my-1" />
+          </>
+        );
+      })()}
 
       {/* Formation group — the unit's formations (hidden while Routed), then
           Rally directly under Scattered. Heroes have no formations, so Rally only.
