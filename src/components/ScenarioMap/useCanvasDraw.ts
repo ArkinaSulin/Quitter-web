@@ -479,18 +479,18 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
             ctx.font = sFont;
             ctx.lineWidth = Math.max(2, 3 * currentZoom);
             ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-            ctx.strokeText(`${top}`, cx, baseY);
+            ctx.strokeText(`${top} ft`, cx, baseY);
             ctx.fillStyle = '#ffe0b2';
-            ctx.fillText(`${top}`, cx, baseY);
+            ctx.fillText(`${top} ft`, cx, baseY);
           }
           if (eff > 0 && eff !== top) {
             const y = baseY + HEX_SIZE * currentZoom * 0.17;
             ctx.font = eFont;
             ctx.lineWidth = Math.max(2, 3 * currentZoom);
             ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-            ctx.strokeText(`${eff}`, cx, y);
+            ctx.strokeText(`${eff} ft`, cx, y);
             ctx.fillStyle = '#b2e0ff';
-            ctx.fillText(`${eff}`, cx, y);
+            ctx.fillText(`${eff} ft`, cx, y);
           }
         }
         ctx.restore();
@@ -592,22 +592,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       } catch (err) {
         console.error('drawToken error:', err);
       }
-      // Elevation badge (feet) in the top-left corner of an elevated token.
-      if ((unit.elevation ?? 0) > 0) {
-        ctx.save();
-        const bw = tokenWidth * 0.4;
-        const bh = Math.max(12, tokenHeight * 0.16);
-        const bx = tokenCx - tokenWidth / 2;
-        const by = tokenCy - tokenHeight / 2;
-        ctx.fillStyle = 'rgba(0,0,0,0.7)';
-        ctx.fillRect(bx, by, bw, bh);
-        ctx.fillStyle = '#ffe08a';
-        ctx.font = `bold ${Math.max(10, 11 * currentZoom)}px ui-monospace, monospace`;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(`${unit.elevation}`, bx + 4, by + 2);
-        ctx.restore();
-      }
+      // The elevation badge is drawn inside `drawToken` (top-left, rotated with
+      // the token) so every renderer — live canvas, screenshot, preview — agrees.
       if (unit.hidden) ctx.restore();
 
       // Reaction overlay: the acting archer gets a highlight ring; every unit with

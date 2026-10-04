@@ -31,7 +31,7 @@ describe('structureBadges', () => {
   it('shows the HP number for an intact structure', () => {
     const b = structureBadges(template(), { templateId: 't' });
     expect(b.destroyed).toBe(false);
-    expect(b.hpText).toBe('30');
+    expect(b.hpText).toBe('HP: 30');
   });
 
   it('shows a destroyed badge (not HP) for maxHp > 0 and hp <= 0', () => {

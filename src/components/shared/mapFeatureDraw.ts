@@ -71,7 +71,7 @@ export function structureBadges(t: StructureTemplate | null | undefined, inst: S
   const maxHp = t?.maxHp ?? 0;
   const hp = inst?.hp ?? maxHp;
   const destroyed = maxHp > 0 && hp <= 0;
-  const hpText = destroyed || hp <= 0 ? null : String(hp);
+  const hpText = destroyed || hp <= 0 ? null : `HP: ${hp}`;
   const st = t && inst ? structureDoorState(inst, t) : null;
   const doorText = !st || st.noDoor ? null
     : st.open ? 'open'

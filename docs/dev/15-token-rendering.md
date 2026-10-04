@@ -43,6 +43,11 @@ Name runs flush along the bottom in white with a dark shadow.
   the info band; hero: above the HP bar, bottom-right) showing remaining
   actions — white ≥2, gold 1, red 0. Skips attached heroes and units without
   the field.
+- **Elevation badge** (`drawElevationBadge`): a small box in the token's
+  top-left showing `${elevation} ft` for an elevated unit. Drawn **inside the
+  facing rotation** (so it turns with the token) and in `drawToken` itself, so
+  the live canvas, the screenshot renderer, and the preview all agree. Skipped
+  for attached heroes (`isAttached`).
 - **Facing rotation**: the whole token rotates `facing × π/3` about its
   center. The rotation scope is `ctx.save()` → translate/rotate → draw →
   `restore()`, guaranteed synchronous: every `await`/image load happens before

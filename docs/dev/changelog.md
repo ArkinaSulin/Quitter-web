@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## Elevation badge moved into `drawToken`; ft suffixes + structure HP label (2026-10-03)
+**Files:** src/components/TokenRenderer/drawToken.ts, src/components/ScenarioMap/useCanvasDraw.ts, src/components/shared/mapFeatureDraw.ts (+ test), docs/dev/{15-token-rendering,changelog}.md
+
+- The unit elevation badge is now drawn **inside `drawToken`** (`drawElevationBadge`),
+  in the token's facing-rotation scope (hero + unit branches), instead of
+  axis-aligned in `useCanvasDraw` — so it **rotates with the token** and renders
+  consistently across the live canvas, the screenshot renderer (which previously
+  omitted it) and the preview. Skipped for attached heroes.
+- Badge box **40% narrower** (`0.4 → 0.24` of the token width) and the text now
+  reads `${elevation} ft`.
+- Structure + ground-effect elevation badges also append `" ft"`.
+- `structureBadges.hpText` is `HP: <hp>` (Scenario canvas + Map Editor badge).
+- `tsc` clean, 880 tests pass, build clean. No migration.
+
 ## Ladder (edge `ignore_climb`) drawn at 50% scale (2026-10-03)
 **Files:** src/lib/structureDraw.ts, src/components/ScenarioMap/useCanvasDraw.ts, src/components/MapEditor/MapCanvas.tsx, src/components/StructureEditor/StructurePreview.tsx, docs/dev/changelog.md
 

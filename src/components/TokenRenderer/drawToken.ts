@@ -226,6 +226,9 @@ export function drawToken(options: DrawTokenOptions): void {
       const flagSize = displaySize * 0.5;
       drawRoutedFlag(ctx, x - flagSize / 2, y - displaySize / 2 - flagSize * 0.25, flagSize);
     }
+    if ((unit.elevation ?? 0) > 0 && !options.isAttached) {
+      drawElevationBadge(ctx, unit.elevation ?? 0, x, y, width, height, zoom);
+    }
     return;
   }
 
@@ -438,6 +441,11 @@ export function drawToken(options: DrawTokenOptions): void {
   // ---- Name (hidden on corpses) ----
   if (!isCorpse) {
     drawName(ctx, unit.unitName, x, y, width, height, team, false);
+  }
+
+  // ---- Elevation badge (top-left, rotates with the token) ----
+  if ((unit.elevation ?? 0) > 0 && !options.isAttached) {
+    drawElevationBadge(ctx, unit.elevation ?? 0, x, y, width, height, zoom);
   }
 
   } finally {
@@ -975,6 +983,32 @@ function drawActionBadge(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(String(actions), box.left + box.width / 2, box.top + box.height / 2);
+}
+
+/**
+ * Elevation badge in the token's top-left corner (drawn inside the token's
+ * rotation, so it turns with the unit). `width`/`height` are the token box.
+ */
+function drawElevationBadge(
+  ctx: CanvasRenderingContext2D,
+  elevation: number,
+  x: number, y: number,
+  width: number, height: number,
+  zoom: number,
+) {
+  const bw = width * 0.24; // 40% narrower than the old 0.4 box
+  const bh = Math.max(12, height * 0.16);
+  const bx = x - width / 2;
+  const by = y - height / 2;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = '#ffe08a';
+  ctx.font = `bold ${Math.max(10, 11 * zoom)}px ui-monospace, monospace`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`${elevation} ft`, bx + 4, by + 2);
+  ctx.restore();
 }
 
 function drawBottomInfo(
