@@ -130,7 +130,9 @@ weapon `numberOfAttacks`, plus a front-attached hero's volley) — DT gates **ea
 hit**, surviving hits are summed, and `applyWallDamage` / `resolveHexStructureAttack`
 apply the total to the HP (and door) pool(s). Attacking costs **1 action** and
 counts toward the attack cap (soft-confirmed when over), with no AGR/retaliation.
-`hp <= 0` removes the segment.
+Under **verbose combat** the message appends the per-attack damage rolls and DT
+outcome (`formatStructureAttackRolls`, e.g. `{1d8 vs DT 5: 3,5,7 → 2 over DT, 15
+damage}`). `hp <= 0` removes the segment.
 
 Persistence rides the command log: the command is `ATTACK` with a **`STRUCTURE`**
 sub-step (`{ field: 'structures', key, from, to }`), applied by `apply_substeps`

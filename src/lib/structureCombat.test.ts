@@ -107,6 +107,7 @@ describe('resolveHexStructureAttack (simultaneous door + HP)', () => {
     const r = resolveHexStructureAttack(template({ dt: 0 }), inst(), bow, fixed(6), 3);
     expect(r.damage).toBe(18);
     expect(r.applied).toBe(18);
+    expect(r.rolls).toEqual([6, 6, 6]);
     expect(r.doorHpAfter).toBe(12);
     expect(r.hpAfter).toBe(82);
   });
@@ -127,6 +128,7 @@ describe('resolveHexStructureAttack (simultaneous door + HP)', () => {
     const r = resolveHexStructureAttack(template({ dt: 5 }), inst(), bow, rng, 3);
     expect(r.damage).toBe(16);
     expect(r.applied).toBe(12);
+    expect(r.rolls).toEqual([6, 6, 4]);
     expect(r.hpAfter).toBe(88);
   });
 });

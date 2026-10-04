@@ -50,6 +50,8 @@ export function wallAttackKind(
 export interface WallAttackResult extends WallDamageResult {
   /** The rolled weapon damage (before the DT gate). */
   damage: number;
+  /** Each attack's raw damage roll (before the DT gate), in engine order. */
+  rolls: number[];
 }
 
 /**
@@ -65,15 +67,17 @@ export function resolveWallAttack(
   attacks = 1,
 ): WallAttackResult {
   if (!isDestructibleWall(wall)) {
-    return { wall, applied: 0, destroyed: false, deflected: true, damage: 0 };
+    return { wall, applied: 0, destroyed: false, deflected: true, damage: 0, rolls: [] };
   }
   const dt = Math.max(0, wall.dt ?? 0);
   let damage = 0;
   let surmount = 0;
+  const rolls: number[] = [];
   for (let i = 0; i < Math.max(1, attacks); i++) {
     const r = Math.max(0, rollDamage(weapon.damageDice, rng));
+    rolls.push(r);
     damage += r;
     if (r > dt) surmount += r;
   }
-  return { ...applyWallDamage(wall, surmount), damage };
+  return { ...applyWallDamage(wall, surmount), damage, rolls };
 }

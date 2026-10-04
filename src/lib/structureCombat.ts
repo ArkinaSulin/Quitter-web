@@ -55,6 +55,8 @@ export interface HexStructureAttackResult {
   damage: number;
   /** Damage actually applied (0 when deflected). */
   applied: number;
+  /** Each attack's raw damage roll (before the DT gate), in engine order. */
+  rolls: number[];
   deflected: boolean;
   /** The blow landed while a door still stood. */
   hitDoor: boolean;
@@ -86,20 +88,23 @@ export function resolveHexStructureAttack(
   const dt = template.dt ?? 0;
   let damage = 0;
   let applied = 0;
+  const rolls: number[] = [];
   for (let i = 0; i < Math.max(1, attacks); i++) {
     const r = Math.max(0, rollDamage(weapon.damageDice, rng));
+    rolls.push(r);
     damage += r;
     if (r > dt) applied += r;
   }
 
   if (applied <= 0) {
-    return { damage, applied: 0, deflected: true, hitDoor: doorStanding, doorHpAfter: doorCur, hpAfter: hp, destroyed: false };
+    return { damage, applied: 0, rolls, deflected: true, hitDoor: doorStanding, doorHpAfter: doorCur, hpAfter: hp, destroyed: false };
   }
   const hpAfter = Math.max(0, hp - applied);
   const doorHpAfter = instance.open ? 0 : Math.max(0, doorCur - applied);
   return {
     damage,
     applied,
+    rolls,
     deflected: false,
     hitDoor: doorStanding,
     doorHpAfter,

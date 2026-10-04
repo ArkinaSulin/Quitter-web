@@ -55,6 +55,7 @@ import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { getStructureTemplates } from '@/lib/structureTemplateCache';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/lib/wallCombat';
 import { hexStructureAttackKind, resolveHexStructureAttack, isAttackableHexStructure, structureDoorMax } from '@/lib/structureCombat';
+import { formatStructureAttackRolls } from '@/lib/verboseCombat';
 import { StructureEditModal, StructureInstancePatch } from '@/components/StructureEditModal';
 import { unitAttackCap } from '@/lib/attackCap';
 import { newEffectKey } from '@/lib/unitEffects';
@@ -1051,6 +1052,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       : result.destroyed
         ? `${attacker.unitName} destroyed the barrier at ${label} (${result.damage} damage)`
         : `${attacker.unitName} hit the barrier at ${label} for ${result.applied} damage (${wallHp(result.wall)}/${wall.maxHp} HP left)${doorNote}`;
+    const verbose = `${detail} · ${formatStructureAttackRolls(result.rolls, wall.dt ?? 0, weapon.damageDice)}`;
     await execute('ATTACK', [
       {
         type: 'ATTACK',
@@ -1067,7 +1069,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         unitId: scenarioId,
         changes: [{ field: 'structures', key: ref.key, from: inst, to }],
       },
-    ], `${attacker.unitName} attacked the barrier at ${label}`, { message: detail, verboseMessage: detail });
+    ], `${attacker.unitName} attacked the barrier at ${label}`, { message: detail, verboseMessage: verbose });
   }, [walls, structures, execute, addError, addMessage, scenarioId, structureAttackCount]);
 
   // Drag-gate handed to useHexGrid: only a wall edge the dragged unit can reach
@@ -1135,6 +1137,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         : result.hitDoor
           ? `${attacker.unitName} hit the door at ${label} for ${result.applied} damage (${doorNow}/${structureDoorMax(template)} door HP left)`
           : `${attacker.unitName} hit the structure at ${label} for ${result.applied} damage (${result.hpAfter}/${template.maxHp} HP left)`;
+    const verbose = `${detail} · ${formatStructureAttackRolls(result.rolls, template.dt ?? 0, weapon.damageDice)}`;
     await execute('ATTACK', [
       {
         type: 'ATTACK',
@@ -1151,7 +1154,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         unitId: scenarioId,
         changes: [{ field: 'structures', key, from: inst, to }],
       },
-    ], `${attacker.unitName} attacked the structure at ${label}`, { message: detail, verboseMessage: detail });
+    ], `${attacker.unitName} attacked the structure at ${label}`, { message: detail, verboseMessage: verbose });
   }, [structures, structureTemplates, execute, addError, addMessage, scenarioId, structureAttackCount]);
 
   // Identity gate for the Shift-drop router: an attackable structure EXISTS on

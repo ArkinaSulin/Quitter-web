@@ -1,5 +1,17 @@
 # QuiTTER Changelog
 
+## Verbose structure-attack damage rolls (2026-10-03)
+**Files:** src/lib/{structureCombat,wallCombat,verboseCombat}.ts (+ tests), src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{13-map-entities-terrain,changelog}.md
+
+- Structure attacks (edge walls + hex gates/towers) previously passed the plain
+  summary as the verbose text, so verbose combat showed no dice. The resolvers
+  now return each attack's raw damage roll (`rolls: number[]`), and the two
+  `perform*Attack` paths build a separate verbose line via
+  `formatStructureAttackRolls` — e.g. `{1d8 vs DT 5: 3,5,7 → 2 over DT, 15
+  damage}` (sorted rolls, count beating the DT, surviving total). Roll detail
+  shows only under verbose combat; normal mode is unchanged.
+- `tsc` clean, 864 tests pass. No migration.
+
 ## Seven playtest bug fixes: fly spawn, fearless rout, hit-test/tooltip, structure attacks, hero attach (2026-10-03)
 **Files:** src/hooks/{useSupabaseSync,useGameEngine,useHexGrid}.ts, src/components/ScenarioMap/{routeUnit,ScenarioMap,ContextMenu,UnitEditorModal,SoftEnforcementModals,useMoveActions}.tsx, src/lib/{wallCombat,structureCombat}.ts (+ tests), docs/dev/{07-movement-economy,09-morale-routing-pursuit,13-map-entities-terrain,changelog}.md
 

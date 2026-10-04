@@ -5,6 +5,7 @@ import {
   formatDamageFaces,
   formatSpellRollLine,
   formatStrikeDetail,
+  formatStructureAttackRolls,
 } from './verboseCombat';
 import type { SingleAttackResult } from './unitCombat';
 import type { SpellDamageResult } from './spellDamage';
@@ -148,6 +149,18 @@ describe('verboseCombat', () => {
       const attacks = [atk({ roll: 7 }), atk({ roll: 9 })];
       expect(formatStrikeDetail(attacks, 2, 15, '1d6', false, 0))
         .toBe(', {D20+2 vs 15: 7,9}. 0 damage');
+    });
+  });
+
+  describe('formatStructureAttackRolls', () => {
+    it('lists sorted rolls, the count over DT, and the surviving total', () => {
+      expect(formatStructureAttackRolls([7, 3, 5], 4, '1d8'))
+        .toBe('{1d8 vs DT 4: 3,5,7 → 2 over DT, 12 damage}');
+    });
+
+    it('all deflected reads as 0 over DT', () => {
+      expect(formatStructureAttackRolls([3, 4], 5, '1d6'))
+        .toBe('{1d6 vs DT 5: 3,4 → 0 over DT, 0 damage}');
     });
   });
 });
