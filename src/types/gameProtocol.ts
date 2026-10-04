@@ -211,7 +211,8 @@ export type EffectKind =
   | 'advantage' | 'disadvantage' | 'grant_advantage' | 'grant_disadvantage'
   | 'block_attacks'
   | 'save_advantage' | 'save_disadvantage'
-  | 'forced_stop';
+  | 'forced_stop'
+  | 'ignore_climb' | 'feather_fall';
 
 /**
  * A temporary effect instance. Duration counts ACTIVATIONS OF THE CASTER (not the

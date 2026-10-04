@@ -11,7 +11,7 @@
 import { Walls, Wall, WallFace, WallRollFlags, edgeRef, directionBetween } from './walls';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { EffectModifier, modifierAmount } from '@/lib/effectTemplates';
-import { templateDoorMax, structureElevation, structureIsStairs } from '@/lib/structureTemplates';
+import { templateDoorMax, structureElevation } from '@/lib/structureTemplates';
 import { GroundEffect, Unit, getOrganizationLevel } from '@/types/gameProtocol';
 import { formationAtOrBelow } from '@/lib/formationCost';
 
@@ -108,21 +108,27 @@ export function climbPlan(diffFeet: number, budgetMp: number, doneSteps: number,
  * Climb MP to move between two ADJACENT hexes (0 = no climb / waived). Two sources:
  *   - a rise in the hex SURFACE (climbing onto a hex structure top);
  *   - an EDGE structure's HEIGHT (a solid wall must be climbed).
- * `stairs` on the shared edge waives the whole climb; a passable (open/broken)
- * door lets the unit pass at ground level, waiving that source too.
+ * An `ignore_climb` modifier on the shared edge (or a `waiveClimb` mover)
+ * waives the whole climb; a passable (open/broken) door lets the unit pass at
+ * ground level, waiving that source too.
  */
 export function structureClimbCostBetween(
   from: { q: number; r: number },
   to: { q: number; r: number },
   structures: MapStructures | undefined,
   templates: Record<string, StructureTemplate> | undefined,
+  /** The mover ignores climb cost entirely (`ignore_climb` effect). */
+  waiveClimb = false,
 ): number {
+  if (waiveClimb) return 0;
   if (!structures) return 0;
   const dir = directionBetween(from, to);
   const edgeKey = dir >= 0 ? edgeRef(from.q, from.r, dir).key : null;
   const edgeInst = edgeKey ? structures[edgeKey] : undefined;
   const edgeT = edgeInst ? templates?.[edgeInst.templateId] : undefined;
-  if (edgeInst && edgeT && structureIsStairs(edgeT, edgeInst)) return 0;
+  // An `ignore_climb` modifier on the crossed edge waives the climb for anyone
+  // (the effect-based replacement for the old `stairs` boolean).
+  if (edgeInst && edgeT && structureWaivesClimb(edgeInst, edgeT)) return 0;
 
   let climb = 0;
   // Hex surface rise (onto the top) — waived when the hex can be entered at ground.
@@ -171,6 +177,11 @@ export function parseStructures(raw: any): MapStructures {
 /** The modifier list a placed instance actually uses (override else template). */
 export function instanceModifiers(inst: StructureInstance | null | undefined, t: StructureTemplate | null | undefined): EffectModifier[] {
   return inst?.modifiers ?? t?.modifiers ?? [];
+}
+
+/** True when the structure carries an `ignore_climb` modifier (waives climb). */
+export function structureWaivesClimb(inst: StructureInstance | null | undefined, t: StructureTemplate | null | undefined): boolean {
+  return instanceModifiers(inst, t).some(m => m.kind === 'ignore_climb');
 }
 
 /** Current door pool of a placed instance (null door defaults to maxHp). */

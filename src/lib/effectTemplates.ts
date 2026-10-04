@@ -20,10 +20,12 @@ export type EffectModifierKind =
   | 'block_attacks'      // hard-block attacks in and/or out (see `direction`), melee/ranged per `mode`
   | 'save_advantage'     // carrier's own saving throws roll 2d20 take higher
   | 'save_disadvantage'  // carrier's own saving throws roll 2d20 take lower
-  | 'forced_stop';       // zone/structure: entering the hex consumes all remaining actions & MP
+  | 'forced_stop'        // zone/structure: entering the hex consumes all remaining actions & MP
+  | 'ignore_climb'       // unit/zone/edge: waive the climb cost (acts like stairs)
+  | 'feather_fall';      // carrier ignores falling damage
 
 /** Amount-less kinds (no dice/save) — boolean markers. */
-export const FLAG_MODIFIER_KINDS: EffectModifierKind[] = ['advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'block_attacks', 'save_advantage', 'save_disadvantage', 'forced_stop'];
+export const FLAG_MODIFIER_KINDS: EffectModifierKind[] = ['advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'block_attacks', 'save_advantage', 'save_disadvantage', 'forced_stop', 'ignore_climb', 'feather_fall'];
 
 export function isFlagModifierKind(kind: EffectModifierKind): boolean {
   return FLAG_MODIFIER_KINDS.includes(kind);
@@ -131,6 +133,8 @@ export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
   save_advantage: 'Advantage on saving throws',
   save_disadvantage: 'Disadvantage on saving throws',
   forced_stop: 'Forced stop on entry',
+  ignore_climb: 'Ignore climb cost (stairs)',
+  feather_fall: 'Ignore falling damage',
 };
 
 /**

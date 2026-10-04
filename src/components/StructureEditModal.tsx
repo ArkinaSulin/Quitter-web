@@ -16,7 +16,6 @@ export interface StructureInstancePatch {
   open?: boolean;
   outside?: 'a' | 'b';
   elevation?: number;
-  stairs?: boolean;
   modifiers?: EffectModifier[];
 }
 
@@ -45,7 +44,6 @@ export function StructureEditModal({ template, instance, onSave, onClose, restri
   const [open, setOpen] = useState<boolean>(!!instance.open);
   const [outside, setOutside] = useState<'a' | 'b'>(instance.outside ?? 'a');
   const [elev, setElev] = useState<number>(Math.max(0, Math.round(instance.elevation ?? template.elevation ?? 0)));
-  const [stairs, setStairs] = useState<boolean>(!!(instance.stairs ?? template.stairs));
   const [mods, setMods] = useState<EffectModifier[]>(instance.modifiers ?? template.modifiers);
 
   const patchMod = (i: number, p: Partial<EffectModifier>) => setMods(m => m.map((x, idx) => (idx === i ? { ...x, ...p } : x)));
@@ -58,7 +56,7 @@ export function StructureEditModal({ template, instance, onSave, onClose, restri
       onClose();
       return;
     }
-    onSave({ hp, doorHp, open, outside, elevation: elev, stairs, modifiers: mods });
+    onSave({ hp, doorHp, open, outside, elevation: elev, modifiers: mods });
     onClose();
   };
 
@@ -117,11 +115,6 @@ export function StructureEditModal({ template, instance, onSave, onClose, restri
                 <input type="number" min={0} step={10} className={input + ' !w-24 block'} value={elev}
                   onChange={e => setElev(Math.max(0, Math.round(Number(e.target.value) || 0)))} />
               </label>
-              {template.anchor === 'edge' && (
-                <label className="flex items-center gap-2 text-gray-300 pb-1.5">
-                  <input type="checkbox" checked={stairs} onChange={e => setStairs(e.target.checked)} /> stairs
-                </label>
-              )}
             </div>
 
             <div>

@@ -38,6 +38,8 @@ export interface CostOfHexOpts {
   structures?: MapStructures;
   templates?: Record<string, StructureTemplate>;
   isMounted?: boolean;
+  /** The mover ignores climb cost (`ignore_climb` effect). */
+  waiveClimb?: boolean;
 }
 
 /**
@@ -66,10 +68,10 @@ export function makeCostOfHex(
       base = hc !== undefined ? Math.max(hc, tc) : tc;
     }
     // Climb (dynamic ground + edge-structure height): entering a higher surface or
-    // crossing a tall wall costs MP; `stairs` (or a passable door) waives it. The
-    // base step cost still applies — the higher of the two wins.
+    // crossing a tall wall costs MP; an `ignore_climb` effect (or a passable door)
+    // waives it. The base step cost still applies — the higher of the two wins.
     if (fromQ !== undefined && fromR !== undefined) {
-      const climb = structureClimbCostBetween({ q: fromQ, r: fromR }, { q, r }, opts.structures, opts.templates);
+      const climb = structureClimbCostBetween({ q: fromQ, r: fromR }, { q, r }, opts.structures, opts.templates, !!opts.waiveClimb);
       if (climb > base) base = climb;
     }
     return base;
@@ -87,6 +89,8 @@ export interface BlockEdgeOpts {
   orgLevel?: number;
   /** Locomotion for locomotion-specific blocks (negative MP faces / hex). */
   isMounted?: boolean;
+  /** The mover ignores climb cost (`ignore_climb` effect) — lifts the mounted climb block. */
+  waiveClimb?: boolean;
   /** Free move / DM override: ignore every hard block. */
   ignoreBlocks?: boolean;
 }
@@ -99,7 +103,7 @@ export interface BlockEdgeOpts {
  * predicate.
  */
 export function makeBlockedEdge(walls: Walls | null | undefined, opts: BlockEdgeOpts = {}): BlockedEdgeFn | undefined {
-  const { structures, templates, isMounted, ignoreBlocks } = opts;
+  const { structures, templates, isMounted, waiveClimb, ignoreBlocks } = opts;
   if (ignoreBlocks) return undefined;
   const hasWalls = !!walls && Object.keys(walls).length > 0;
   const hasStructs = !!structures && Object.keys(structures).length > 0;
@@ -108,7 +112,7 @@ export function makeBlockedEdge(walls: Walls | null | undefined, opts: BlockEdge
     if (walls && blockedStep(walls, fromQ, fromR, toQ, toR, !!isMounted)) return true;
     if (structures && structureHexBlocked({ q: toQ, r: toR }, structures, templates, !!isMounted)) return true;
     // Mounted units cannot climb: block entering a higher-surface hex.
-    if (isMounted && structures && structureClimbCostBetween({ q: fromQ, r: fromR }, { q: toQ, r: toR }, structures, templates) > 0) return true;
+    if (isMounted && structures && structureClimbCostBetween({ q: fromQ, r: fromR }, { q: toQ, r: toR }, structures, templates, !!waiveClimb) > 0) return true;
     return false;
   };
 }

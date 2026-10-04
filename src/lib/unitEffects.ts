@@ -37,7 +37,9 @@ export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModif
     case 'block_attacks':
     case 'save_advantage':
     case 'save_disadvantage':
-    case 'forced_stop': return null;
+    case 'forced_stop':
+    case 'ignore_climb':
+    case 'feather_fall': return null;
   }
 }
 
@@ -201,6 +203,28 @@ export function effectAt(unit: Unit | null | undefined, kind: EffectKind): UnitE
 
 export function effectByKey(unit: Unit | null | undefined, key: string): UnitEffect | undefined {
   return (unit?.effects ?? []).find(e => e.key === key);
+}
+
+/** True when the unit carries an effect of `kind` (direct or zone membership). */
+export function hasEffectKind(unit: Unit | null | undefined, kind: EffectKind): boolean {
+  return (unit?.effects ?? []).some(e => e.kind === kind);
+}
+
+/**
+ * True when the carrier ignores climb/elevation cost: a direct `ignore_climb`
+ * effect, OR an underfoot `ignore_climb` zone not yet materialized as a
+ * membership (zone memberships are only created on move / END_TURN).
+ */
+export function unitIgnoresClimb(unit: Unit | null | undefined, zones?: GroundEffect[] | null): boolean {
+  if (hasEffectKind(unit, 'ignore_climb')) return true;
+  if (!unit?.hex || !zones) return false;
+  const materialized = new Set((unit.effects ?? []).filter(e => e.zoneHex).map(e => e.key));
+  return zones.some(z => z.kind === 'ignore_climb' && z.q === unit.hex!.q && z.r === unit.hex!.r && !materialized.has(z.key));
+}
+
+/** True when the carrier ignores falling damage. */
+export function unitHasFeatherFall(unit: Unit | null | undefined): boolean {
+  return hasEffectKind(unit, 'feather_fall');
 }
 
 /** Field value a stat effect snapshots/restores on the carrier. */

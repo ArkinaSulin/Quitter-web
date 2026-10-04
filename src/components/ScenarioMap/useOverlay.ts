@@ -19,7 +19,7 @@ import { Walls, EdgeRef } from '@/lib/walls';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, structureSurfaceAt, flightBlockedHexes } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
-import { rangeBonusAt } from '@/lib/unitEffects';
+import { rangeBonusAt, unitIgnoresClimb } from '@/lib/unitEffects';
 import { edgeHexes } from '@/lib/wallCombat';
 import { canWithdraw, withdrawDestinations } from '@/lib/withdraw';
 import { isStooping, moveBudgetUnit, parseClimbTo } from '@/lib/flying';
@@ -80,8 +80,8 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
   } = state;
 
   const isMountedOf = (u: Unit) => !!u.mountId || !!u.mountName;
-  const costOfHexFor = (isMounted: boolean) => makeCostOfHex(terrainCosts, walls, { structures, templates, isMounted });
-  const blockedEdgeFor = (orgLevel: number, isMounted: boolean) => makeBlockedEdge(walls, { structures, templates, zones, orgLevel, isMounted, ignoreBlocks: freeMove });
+  const costOfHexFor = (u: Unit) => makeCostOfHex(terrainCosts, walls, { structures, templates, isMounted: isMountedOf(u), waiveClimb: unitIgnoresClimb(u, zones) });
+  const blockedEdgeFor = (u: Unit) => makeBlockedEdge(walls, { structures, templates, zones, orgLevel: getOrganizationLevel(u.currentFormation), isMounted: isMountedOf(u), waiveClimb: unitIgnoresClimb(u, zones), ignoreBlocks: freeMove });
   const chargeBlockedEdgeFor = (u: Unit) => makeChargeBlockedEdge(walls, { structures, templates, zones, orgLevel: getOrganizationLevel(u.currentFormation), isMounted: isMountedOf(u) });
   // Org-gate context: a `max_org_level_allowed` gate breaks the formation at the
   // crossing point (rescaling the movement budget) — mirrors handleUnitMove.
@@ -112,7 +112,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const maxMP = computeEffectiveMovement(archer, getFormationMultiplier(formationsMap, archer.currentFormation, 'movement_multiplier'));
       const budget = reactionMovePool(archer, maxMP);
       const occupied = computeOccupiedHexes(units, archer.id);
-      const reachable = computeReachableMap(archer, budget, occupied, new Set(), costOfHexFor(isMountedOf(archer)), false, blockedEdgeFor(getOrganizationLevel(archer.currentFormation), isMountedOf(archer)), undefined, undefined, org);
+      const reachable = computeReachableMap(archer, budget, occupied, new Set(), costOfHexFor(archer), false, blockedEdgeFor(archer), undefined, undefined, org);
       reachable.forEach((entry, key) => {
         combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
       });
@@ -166,7 +166,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const effectiveMax = flying ? (draggedUnit.flySpeed ?? 0) : computeEffectiveMovement(draggedUnit, movementMult);
       const chargeReach = computeChargeReachable(
         draggedUnit, occupied, effectiveMax,
-        flying ? undefined : costOfHexFor(isMountedOf(draggedUnit)),
+        flying ? undefined : costOfHexFor(draggedUnit),
         flying ? undefined : chargeBlockedEdgeFor(draggedUnit),
       );
       for (const [key, cost] of Array.from(chargeReach.entries())) {
@@ -202,7 +202,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       hopCap = Math.min(hopCap, heroHop);
     }
     const passThrough = flying ? undefined : doorPassThroughHexes(structures, templates, occupied);
-    const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, flying ? undefined : costOfHexFor(isMountedOf(draggedUnit)), false, flying ? undefined : blockedEdgeFor(getOrganizationLevel(draggedUnit.currentFormation), isMountedOf(draggedUnit)), hopCap, passThrough, flying ? undefined : org);
+    const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, flying ? undefined : costOfHexFor(draggedUnit), false, flying ? undefined : blockedEdgeFor(draggedUnit), hopCap, passThrough, flying ? undefined : org);
 
     const combined: Record<string, string> = {};
 

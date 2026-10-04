@@ -2,6 +2,7 @@
 // Shared chained ROUT command builder (combat, magic, reactions).
 import { Unit } from '@/types/gameProtocol';
 import { ActionType, SubStep, CommandLogRow } from '@/lib/commandLog';
+import { unitHasFeatherFall } from '@/lib/unitEffects';
 
 export type ExecuteFn = (
   actionType: ActionType,
@@ -40,10 +41,12 @@ export async function routeUnit(
     const n = Math.floor(feet / 10);
     let total = 0;
     const faces: number[] = [];
-    for (let i = 0; i < n; i++) {
-      const r = 1 + Math.floor(Math.random() * 6);
-      faces.push(r);
-      total += r;
+    if (!unitHasFeatherFall(unit)) {
+      for (let i = 0; i < n; i++) {
+        const r = 1 + Math.floor(Math.random() * 6);
+        faces.push(r);
+        total += r;
+      }
     }
     subSteps.push({
       type: 'ELEVATE',

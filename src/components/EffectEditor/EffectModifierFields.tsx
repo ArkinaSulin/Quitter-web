@@ -26,6 +26,8 @@ export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
   { value: 'save_advantage', label: EFFECT_MODIFIER_LABELS.save_advantage },
   { value: 'save_disadvantage', label: EFFECT_MODIFIER_LABELS.save_disadvantage },
   { value: 'forced_stop', label: EFFECT_MODIFIER_LABELS.forced_stop },
+  { value: 'ignore_climb', label: EFFECT_MODIFIER_LABELS.ignore_climb },
+  { value: 'feather_fall', label: EFFECT_MODIFIER_LABELS.feather_fall },
 ];
 
 export const DEFAULT_INPUT_CLASS =

@@ -44,15 +44,22 @@ describe('structure elevation (2b)', () => {
     expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(0);
   });
 
-  it('stairs on the shared edge waive the climb', () => {
+  it('an ignore_climb edge modifier waives the climb', () => {
     const templates = {
-      stair: tmpl({ anchor: 'edge', stairs: true, elevation: 10 }),
+      stair: tmpl({ anchor: 'edge', elevation: 10, modifiers: [{ kind: 'ignore_climb' }] }),
       tower: tmpl({ anchor: 'hex', elevation: 10 }),
     };
     const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
     const key = edgeRef(0, 0, dir).key;
     const structures = { [key]: inst('stair'), '1,0': inst('tower') };
     expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(0);
+  });
+
+  it('a waiveClimb mover ignores any climb', () => {
+    const templates = { tower: tmpl({ anchor: 'hex', elevation: 10 }) };
+    const structures = { '1,0': inst('tower') };
+    expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(4);
+    expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates, true)).toBe(0);
   });
 
   it('flightBlockedHexes: structure tops above the flyer block it', () => {

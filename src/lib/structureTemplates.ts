@@ -32,11 +32,6 @@ export function structureElevation(t: StructureTemplate | null | undefined, inst
   return Math.max(0, Math.round(inst?.elevation ?? t?.elevation ?? 0));
 }
 
-/** Whether a placed edge structure is a stair (instance override wins). */
-export function structureIsStairs(t: StructureTemplate | null | undefined, inst?: StructureInstance | null): boolean {
-  return !!(inst?.stairs ?? t?.stairs);
-}
-
 /**
  * True when the template has a DISTINCT door pool (0 < door_hp < max_hp) — the
  * only case with a visible/meaningful "door" gate. A door equal to max_hp (or
@@ -61,7 +56,6 @@ export function mapStructureRow(row: any): StructureTemplate {
     sinWave: !!row.sin_wave,
     hexBorder: row.hex_border !== false,
     elevation: Math.max(0, Math.round(num(row.elevation))),
-    stairs: !!row.stairs,
     mpFootIn: numOrNull(row.mp_foot_in),
     mpFootOut: numOrNull(row.mp_foot_out),
     mpMountedIn: numOrNull(row.mp_mounted_in),
@@ -78,7 +72,7 @@ export function mapStructureRow(row: any): StructureTemplate {
 /** Map a template to a snake_case map_structure_templates row (no id). */
 export function mapStructureToRow(t: Pick<StructureTemplate,
   'name' | 'description' | 'anchor' | 'color' | 'imageUrl' | 'battlement' | 'barricade' | 'sinWave' | 'hexBorder' |
-  'elevation' | 'stairs' |
+  'elevation' |
   'mpFootIn' | 'mpFootOut' | 'mpMountedIn' | 'mpMountedOut' |
   'doorHp' | 'maxHp' | 'dt' | 'modifiers'>) {
   // A movement value may be any integer (negative = hard block); null = terrain.
@@ -103,7 +97,6 @@ export function mapStructureToRow(t: Pick<StructureTemplate,
     sin_wave: !!t.sinWave,
     hex_border: t.hexBorder !== false,
     elevation: Math.max(0, Math.round(num(t.elevation))),
-    stairs: !!t.stairs,
     mp_foot_in: move(t.mpFootIn),
     mp_foot_out: move(t.mpFootOut),
     mp_mounted_in: move(t.mpMountedIn),
@@ -128,7 +121,6 @@ export function blankStructureTemplate(): Omit<StructureTemplate, 'id' | 'create
     sinWave: false,
     hexBorder: true,
     elevation: 10,
-    stairs: false,
     mpFootIn: null,
     mpFootOut: null,
     mpMountedIn: null,

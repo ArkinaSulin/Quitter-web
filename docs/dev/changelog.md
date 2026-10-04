@@ -1,5 +1,28 @@
 # QuiTTER Changelog
 
+## `ignore_climb` + `feather_fall` effects; `stairs` retired (migration 113) (2026-10-03)
+**Files:** src/lib/{effectTemplates,unitEffects,mapStructures,structureTemplates}.ts (+ tests), src/types/{gameProtocol,structure}.ts, src/components/ScenarioMap/{mapGeometry,useMoveActions,useOverlay,useReactionActions,routeUnit,useCanvasDraw,MapInfoTooltip,StructurePaintPanel}.tsx, src/components/EffectEditor/EffectModifierFields.tsx, src/components/StructureEditor/StructureEditor.tsx, src/components/StructureEditModal.tsx, src/components/MapEditor/MapEditor.tsx, supabase/migrations/113_retire_stairs.sql, docs/dev/{changelog,outstanding,18-map-structures}.md
+
+- **Two new amount-less effect kinds** (no migration, jsonb): **`ignore_climb`**
+  (unit / edge structure / ground zone — waives elevation/climb cost) and
+  **`feather_fall`** (unit — ignores falling damage). Authorable wherever the
+  shared `EffectModifierFields` appears (Effect/Unit/Structure editors, drop and
+  instance modals); helpers `hasEffectKind` / `unitIgnoresClimb` / `unitHasFeatherFall`.
+- **Climb wiring:** `structureClimbCostBetween` gains a `waiveClimb` mover flag and
+  returns 0 when the crossed edge carries an `ignore_climb` modifier
+  (`structureWaivesClimb`). `makeCostOfHex`/`makeBlockedEdge` thread `waiveClimb`
+  from every mover call site (move, charge, reactions, overlay); `handleClimbMove`
+  makes an ignoring unit's climb free (elevation bookkeeping intact).
+- **Fall damage:** `routeUnit` (rout off a wall) and `confirmHeroFall` skip the
+  damage when the faller has `feather_fall` (still lands/detaches).
+- **`stairs` retired:** removed `stairs` from `StructureTemplate`/`StructureInstance`,
+  the Structure Editor / placed-instance UI, the label lists, and
+  `structureIsStairs`; the **trapezoid-ladder graphic is now drawn for any edge
+  structure carrying `ignore_climb`**. Migration 113 backfills `stairs = true` →
+  `{"kind":"ignore_climb"}` (templates + placed instances) and drops the column.
+  **Apply 113 in Supabase.**
+- `tsc` clean; 856 tests pass.
+
 ## Structure elevation — Phase 2b slice 7c: climbing combat + rout (2026-10-02)
 **Files:** src/components/ScenarioMap/{routeUnit,useCombatActions}.ts(x), docs/dev/changelog.md
 

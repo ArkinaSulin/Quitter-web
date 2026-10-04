@@ -59,13 +59,16 @@ Template library + editor shipped (Slice 1). See `18-map-structures.md`.
 
 ## Structure elevation (Phase 2b, migrations 111–112)
 Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`.
-- ✅ **Data**: `map_structure_templates.elevation` (default 10; 0 = decorative) +
-  `stairs`; `map_effect_templates.elevation`; `units.climb_to`. Editors (Structure
-  Editor, placed `StructureEditModal`, Effect Editor/modal) expose elevation/stairs.
+- ✅ **Data**: `map_structure_templates.elevation` (default 10; 0 = decorative);
+  `map_effect_templates.elevation`; `units.climb_to`. Editors (Structure Editor,
+  placed `StructureEditModal`, Effect Editor/modal) expose elevation. The
+  `ignore_climb` effect modifier (unit/zone/edge) replaces the old `stairs`
+  boolean (retired in migration 113).
 - ✅ **Dynamic ground + occupancy**: `structureSurfaceAt`; `movePoolMode`/`moveBudgetUnit`
   take a surface; `computeOccupiedHexes(units, excludeId, surface=0)` is per-surface.
-- ✅ **Climb / hang**: `climbPlan` (10 ft @ 4 MP, `height/2.5`), `climb_to`; stairs
-  waive climb; mounted can't climb; linear movement (up = target / down = own hex);
+- ✅ **Climb / hang**: `climbPlan` (10 ft @ 4 MP, `height/2.5`), `climb_to`;
+  `ignore_climb` waives climb; `feather_fall` ignores fall damage; mounted can't
+  climb; linear movement (up = target / down = own hex);
   hover +10 ft if the origin ground is occupied; no retaliation; attack/ZoC only at
   the wall top; rout = free-fall (d6/10 ft) + standard rout picker.
 - ✅ **Flight blocking / ranged vertical / offsets / badges / stair graphic**.

@@ -44,8 +44,6 @@ export interface StructureTemplate {
   /** Top surface height in feet where troops stand (0 = decorative / no height).
    *  A wall spans the ground up to this surface. Defaults to 10 when absent. */
   elevation?: number;
-  /** Edge stair: waives the climb cost for both sides crossing this edge. */
-  stairs?: boolean;
   // Direction-relative movement. NULL = fall back to terrain; negative = hard block.
   mpFootIn: number | null;
   mpFootOut: number | null;
@@ -75,8 +73,6 @@ export interface StructureInstance {
   open?: boolean;
   /** Per-instance elevation override (inherited from the template when absent). */
   elevation?: number;
-  /** Per-instance stairs override (edge structures). */
-  stairs?: boolean;
   /** Per-instance modifier override (inherited from the template when absent). */
   modifiers?: EffectModifier[];
 }

@@ -76,6 +76,10 @@ The four attack-roll flags map to the four directions, with the carrier always
 - `entry` — one-time damage when a unit enters (archer spikes alternative).
 - `max_org_level_allowed` — **reusable gate**: only formations whose organization
   level is `≤ value` may enter. The same kind can be put on a ground zone.
+- `ignore_climb` — waive the climb cost of the crossed edge (the effect-based
+  replacement for the old `stairs` boolean). On an edge structure it waives the
+  climb for anyone crossing; on a unit effect or ground zone the carrier/mover
+  ignores elevation cost (`structureWaivesClimb` / `unitIgnoresClimb`).
 
 The same four flags (plus `ac`, `range`, `block_attacks`, etc.) are shared with
 unit effects and zones; `mode: 'melee' | 'ranged'` scopes them to one attack

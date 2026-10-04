@@ -318,12 +318,6 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                   </label>
                   <span className="text-gray-500">0 = decorative (ground level, no height/blocking)</span>
                 </div>
-                {draft.anchor === 'edge' && (
-                  <label className="flex items-center gap-2 text-[11px] text-gray-300">
-                    <input type="checkbox" disabled={readOnly} checked={draft.stairs} onChange={e => patch({ stairs: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
-                    Stairs — waives the climb cost for both sides (edge only)
-                  </label>
-                )}
               </div>
 
               <div className="rounded border border-gray-700 p-2 space-y-2">

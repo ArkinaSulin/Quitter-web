@@ -11,6 +11,7 @@ import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStat
 import { isUnitRouted } from '@/lib/unitMorale';
 import { isMeleeWeapon, isInAnyHostileKillZone, computeWeaponSwitchAc } from '@/lib/meleeFallback';
 import { modifierAmount } from '@/lib/effectTemplates';
+import { unitIgnoresClimb, unitHasFeatherFall } from '@/lib/unitEffects';
 import { areHexesAdjacent } from '@/lib/unitMorale';
 import { WITHDRAW_ACTION_COST } from '@/lib/withdraw';
 import { parseWeapons } from '@/lib/weaponParser';
@@ -236,10 +237,14 @@ export function useMoveActions(deps: MoveActionsDeps) {
   const handleClimbMove = useCallback(async (unit: Unit, targetHex: Hex, originSurface: number) => {
     const maxMP = unitMaxMP(unit);
     const budgetUnit = moveBudgetUnit(unit, 'ground');
-    const budget = freeMove ? Number.POSITIVE_INFINITY
+    // An `ignore_climb` effect (or free move) makes the whole climb free — the
+    // unit still climbs (elevation bookkeeping intact) but pays no MP.
+    const waiveClimb = unitIgnoresClimb(unit, groundZones);
+    const freeClimb = freeMove || waiveClimb;
+    const budget = freeClimb ? Number.POSITIVE_INFINITY
       : (unit.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP));
     const spendMp = (cost: number): { movementPointsAvailable: number; actionsAvailable: number } =>
-      freeMove
+      freeClimb
         ? { movementPointsAvailable: unit.movementPointsAvailable, actionsAvailable: unit.actionsAvailable }
         : (unit.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP));
     const attachedHero = units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted) ?? null;
@@ -301,7 +306,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: spend.movementPointsAvailable },
       ...(spend.actionsAvailable !== unit.actionsAvailable ? [{ field: 'actionsAvailable', from: unit.actionsAvailable, to: spend.actionsAvailable }] : []),
     ], complete ? `${unit.unitName} climbs over onto (${tHex.q}, ${tHex.r})` : `${unit.unitName} climbs to ${newElev} ft`);
-  }, [units, structures, structureTemplates, unitMaxMP, execute, addMessage, freeMove]);
+  }, [units, structures, structureTemplates, unitMaxMP, execute, addMessage, freeMove, groundZones]);
 
   const handleUnitMove = useCallback(async (unitId: string, targetHex: Hex) => {
     const unit = units.find(u => u.id === unitId);
@@ -367,13 +372,14 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // Charging units may only move forward through the front-arc charge wedge,
     // and cannot enter broken terrain (painted MP cost > 1). A stooping flyer
     // charges on the air layer (over terrain/walls, air-occupied only).
+    const waiveClimb = unitIgnoresClimb(unit, groundZones);
     if (unit.isCharging) {
       const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
       const maxMP = originMax;
       const mounted = !!unit.mountId || !!unit.mountName;
       const chargeReach = computeChargeReachable(
         unit, occupied, maxMP,
-        flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted }),
+        flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted, waiveClimb }),
         flying ? undefined : makeChargeBlockedEdge(walls, { structures, templates: structureTemplates, zones: groundZones, orgLevel: getOrganizationLevel(unit.currentFormation), isMounted: mounted }),
       );
       const cost = chargeReach.get(`${targetHex.q},${targetHex.r}`);
@@ -410,12 +416,13 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
     const mounted = !!unit.mountId || !!unit.mountName;
-    const costOfHex = flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted });
+    const costOfHex = flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted, waiveClimb });
     const blockedEdge = flying ? undefined : makeBlockedEdge(walls, {
       structures,
       templates: structureTemplates,
       zones: groundZones,
       isMounted: mounted,
+      waiveClimb,
       ignoreBlocks: freeMove,
     });
     // The drop search is bounded by the PHYSICAL hex-hop limit (a unit can't walk
@@ -710,12 +717,15 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (!p) return;
     const hero = p.hero;
     const n = Math.max(0, Math.floor(p.elevation / 10));
+    const feather = unitHasFeatherFall(hero);
     let total = 0;
     const faces: number[] = [];
-    for (let i = 0; i < n; i++) {
-      const r = 1 + Math.floor(Math.random() * 6);
-      faces.push(r);
-      total += r;
+    if (!feather) {
+      for (let i = 0; i < n; i++) {
+        const r = 1 + Math.floor(Math.random() * 6);
+        faces.push(r);
+        total += r;
+      }
     }
     const newHp = Math.max(0, (hero.currentUnitHp ?? 0) - total);
     const newTroops = Math.max(0, Math.ceil(newHp / Math.max(1, hero.troopHp)));

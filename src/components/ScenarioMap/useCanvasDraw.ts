@@ -16,7 +16,7 @@ import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrde
 import { parseClimbTo, hexDirection } from '@/lib/flying';
 import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
-import { MapStructures, isHexStructureKey, structureSurfaceAt } from '@/lib/mapStructures';
+import { MapStructures, isHexStructureKey, structureSurfaceAt, structureWaivesClimb } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { strokeFillText, fillHexPath, structureBadges, MP_COST_GREY } from '@/components/shared/mapFeatureDraw';
 import { battlementPath, battlementDepth, crossMarksPath, sineWavePath } from '@/lib/structureDraw';
@@ -351,7 +351,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         // Stairs (variant C): a trapezoid ladder — 3 rungs parallel to the edge
         // (short on the lower hex side, long on the higher), rails leaning against
         // the rung ends and extruded past them. Auto-oriented from the surfaces.
-        if (t?.stairs) {
+        // Drawn for an edge structure carrying an `ignore_climb` modifier (the
+        // effect-based replacement for the old `stairs` boolean).
+        if (inst && t && structureWaivesClimb(inst, t)) {
           const ref = edgeRef(q, r, d);
           const sA = structureSurfaceAt({ q: ref.aq, r: ref.ar }, structures, templates);
           const sB = structureSurfaceAt({ q: ref.bq, r: ref.br }, structures, templates);

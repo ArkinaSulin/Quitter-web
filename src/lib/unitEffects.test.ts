@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, coverAcBonus, directAcBonus, hasPendingZoneEffect, rangeBonusAt, saveRollFlags, expandInheritedEffects } from './unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, coverAcBonus, directAcBonus, hasPendingZoneEffect, rangeBonusAt, saveRollFlags, expandInheritedEffects, hasEffectKind, unitIgnoresClimb, unitHasFeatherFall } from './unitEffects';
 import { parseDice } from './effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
@@ -630,5 +630,31 @@ describe('expandInheritedEffects', () => {
     expect(effects).toEqual([]);
     expect(movementPoints).toBe(3);
     expect(currentMoraleModifier).toBe(0);
+  });
+});
+
+describe('ignore_climb / feather_fall helpers', () => {
+  it('hasEffectKind reads a kind from effects', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ kind: 'ignore_climb' })] });
+    expect(hasEffectKind(u, 'ignore_climb')).toBe(true);
+    expect(hasEffectKind(u, 'feather_fall')).toBe(false);
+  });
+
+  it('unitIgnoresClimb from a direct effect', () => {
+    expect(unitIgnoresClimb(unit('u', 'blue', h(0, 0), { effects: [ef({ kind: 'ignore_climb' })] }))).toBe(true);
+    expect(unitIgnoresClimb(unit('u', 'blue', h(0, 0)))).toBe(false);
+  });
+
+  it('unitIgnoresClimb from an underfoot zone not yet materialized', () => {
+    const zone: GroundEffect = { key: 'z1', q: 0, r: 0, name: 'Ramp', color: '#fff', kind: 'ignore_climb', duration: 0, turnsLeft: 0, permanent: true, casterUnitId: null, casterTeam: null, casterPlayerId: null };
+    const onZone = unit('u', 'blue', h(0, 0), { effects: [] });
+    expect(unitIgnoresClimb(onZone, [zone])).toBe(true);
+    const elsewhere = unit('u', 'blue', h(3, 0), { effects: [] });
+    expect(unitIgnoresClimb(elsewhere, [zone])).toBe(false);
+  });
+
+  it('unitHasFeatherFall', () => {
+    expect(unitHasFeatherFall(unit('u', 'blue', h(0, 0), { effects: [ef({ kind: 'feather_fall' })] }))).toBe(true);
+    expect(unitHasFeatherFall(unit('u', 'blue', h(0, 0)))).toBe(false);
   });
 });

@@ -16,7 +16,7 @@ import { hasLineOfSight } from '@/lib/lineOfSight';
 import { parseWeapons } from '@/lib/weaponParser';
 import { applyHeroMoveCost, applyMoveCost, computeReachableMap, MovePathEntry } from '@/lib/moveCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout } from '@/lib/unitMorale';
-import { rangeBonusAt } from '@/lib/unitEffects';
+import { rangeBonusAt, unitIgnoresClimb } from '@/lib/unitEffects';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { UnitChange, SubStep } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
@@ -336,16 +336,18 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const budget = reactionMovePool(archer, maxMP);
     const occupied = computeOccupiedHexes(displayUnits, archer.id);
     const mounted = !!archer.mountId || !!archer.mountName;
+    const waiveClimb = unitIgnoresClimb(archer, groundZones);
     const passThrough = doorPassThroughHexes(structures, structureTemplates, occupied);
     const movementMultipliers: Record<string, number> = {};
     for (const [name, f] of Object.entries(formationsMap)) movementMultipliers[name] = f.movement_multiplier;
     const breakOnEntry = (fq: number, fr: number, tq: number, tr: number, formation: string) =>
       entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, structures, structureTemplates, groundZones);
-    return computeReachableMap(archer, budget, occupied, new Set(), makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted }), false, makeBlockedEdge(walls, {
+    return computeReachableMap(archer, budget, occupied, new Set(), makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted, waiveClimb }), false, makeBlockedEdge(walls, {
       structures,
       templates: structureTemplates,
       zones: groundZones,
       isMounted: mounted,
+      waiveClimb,
     }), undefined, passThrough, { movementMultipliers, breakOnEntry });
   }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones, formationsMap]);
 
