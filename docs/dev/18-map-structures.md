@@ -83,8 +83,11 @@ The four attack-roll flags map to the four directions, with the carrier always
   level is `≤ value` may enter. The same kind can be put on a ground zone.
 - `ignore_climb` — waive the climb cost of the crossed edge (the effect-based
   replacement for the old `stairs` boolean). On an edge structure it waives the
-  climb for anyone crossing; on a unit effect or ground zone the carrier/mover
-  ignores elevation cost (`structureWaivesClimb` / `unitIgnoresClimb`).
+  climb for anyone crossing (a normal step via `structureClimbCostBetween`, **and**
+  the dedicated climb action `handleClimbMove`, so climbing a stair-edged
+  tower/hex structure is free too); on a unit effect or ground zone the
+  carrier/mover ignores elevation cost (`structureWaivesClimb` /
+  `unitIgnoresClimb`).
 
 The same four flags (plus `ac`, `range`, `block_attacks`, etc.) are shared with
 unit effects and zones; `mode: 'melee' | 'ranged'` scopes them to one attack

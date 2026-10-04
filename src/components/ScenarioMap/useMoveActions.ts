@@ -19,8 +19,8 @@ import { SubStep, UnitChange } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
 import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo } from '@/lib/flying';
-import { Walls } from '@/lib/walls';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/lib/mapStructures';
+import { Walls, directionBetween, edgeRef } from '@/lib/walls';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, structureWaivesClimb, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
@@ -235,10 +235,21 @@ export function useMoveActions(deps: MoveActionsDeps) {
   const handleClimbMove = useCallback(async (unit: Unit, targetHex: Hex, originSurface: number) => {
     const maxMP = unitMaxMP(unit);
     const budgetUnit = moveBudgetUnit(unit, 'ground');
-    // An `ignore_climb` effect (or free move) makes the whole climb free — the
-    // unit still climbs (elevation bookkeeping intact) but pays no MP.
-    const waiveClimb = unitIgnoresClimb(unit, groundZones);
-    const freeClimb = freeMove || waiveClimb;
+    const curElev = unit.elevation ?? originSurface;
+    const climbTarget = parseClimbTo(unit.climbTo);
+    const descend = !!climbTarget && targetHex.q === unit.hex.q && targetHex.r === unit.hex.r;
+    const ascendTarget = climbTarget ?? targetHex;
+    // An `ignore_climb` effect on the MOVER or on the CROSSED edge (stairs/ramp)
+    // waives the whole climb — the mover still climbs (elevation bookkeeping
+    // intact) but pays no MP. The edge case matters because the dedicated climb
+    // action bypasses `makeCostOfHex`, so the edge's waiver must be applied here
+    // too (a normal crossing gets it via `structureClimbCostBetween`).
+    const climbDir = directionBetween(unit.hex, ascendTarget);
+    const climbEdgeKey = !descend && climbDir >= 0 ? edgeRef(unit.hex.q, unit.hex.r, climbDir).key : null;
+    const climbEdgeInst = climbEdgeKey ? structures?.[climbEdgeKey] : undefined;
+    const climbEdgeT = climbEdgeInst ? structureTemplates?.[climbEdgeInst.templateId] : undefined;
+    const edgeWaivesClimb = !!(climbEdgeInst && climbEdgeT && structureWaivesClimb(climbEdgeInst, climbEdgeT));
+    const freeClimb = freeMove || unitIgnoresClimb(unit, groundZones) || edgeWaivesClimb;
     const budget = freeClimb ? Number.POSITIVE_INFINITY
       : (unit.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP));
     const spendMp = (cost: number): { movementPointsAvailable: number; actionsAvailable: number } =>
@@ -246,8 +257,6 @@ export function useMoveActions(deps: MoveActionsDeps) {
         ? { movementPointsAvailable: unit.movementPointsAvailable, actionsAvailable: unit.actionsAvailable }
         : (unit.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP));
     const attachedHero = units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted) ?? null;
-    const curElev = unit.elevation ?? originSurface;
-    const climbTarget = parseClimbTo(unit.climbTo);
 
     const run = async (changes: UnitChange[], desc: string) => {
       const subSteps: SubStep[] = [{ type: 'MOVE', description: desc, unitId: unit.id, changes }];

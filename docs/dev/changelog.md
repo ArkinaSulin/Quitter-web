@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## Fix: edge `ignore_climb` (stairs) waives the dedicated climb action (2026-10-03)
+**Files:** src/components/ScenarioMap/useMoveActions.ts, docs/dev/{18-map-structures,changelog}.md
+
+- A structure edge carrying an `ignore_climb` modifier (stairs/ramp) already
+  waived the climb cost for a normal crossing (`makeCostOfHex` →
+  `structureClimbCostBetween`), but the **dedicated climb action**
+  (`handleClimbMove`, used when a unit climbs onto an adjacent higher-surface hex
+  such as a tower) bypassed that check and only honoured the mover's own
+  `ignore_climb` effect — so a hero (or unit) still paid MP to climb a
+  stair-edged tower. `handleClimbMove` now also checks the crossed edge's
+  modifier (`structureWaivesClimb`) and makes the climb free. Descending (on the
+  unit's own hex) is unaffected.
+- `tsc` clean, 873 tests pass, build clean. No migration.
+
 ## Edge `ladder` decoration restored (migration 114) (2026-10-03)
 **Files:** supabase/migrations/114_structure_ladder.sql, src/types/structure.ts, src/lib/{structureDraw,structureTemplates,mapStructures}.ts (+ tests), src/components/ScenarioMap/{useCanvasDraw,StructurePaintPanel,MapInfoTooltip}.tsx, src/components/StructureEditor/{StructureEditor,StructurePreview}.tsx, src/components/StructureEditModal.tsx, src/components/MapEditor/{MapEditor,MapCanvas}.tsx, docs/dev/{18-map-structures,changelog}.md
 
