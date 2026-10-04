@@ -261,9 +261,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const run = async (changes: UnitChange[], desc: string) => {
       const subSteps: SubStep[] = [{ type: 'MOVE', description: desc, unitId: unit.id, changes }];
       const elevChange = changes.find(c => c.field === 'elevation');
+      const hexChange = changes.find(c => c.field === 'hex');
       if (attachedHero && elevChange) {
         const heroChanges: UnitChange[] = [];
-        if (changes.some(c => c.field === 'hex')) heroChanges.push({ field: 'hex', from: { ...attachedHero.hex }, to: { ...targetHex } });
+        if (hexChange) heroChanges.push({ field: 'hex', from: { ...attachedHero.hex }, to: { ...(hexChange.to as Hex) } });
         heroChanges.push({ field: 'elevation', from: attachedHero.elevation ?? 0, to: elevChange.to });
         subSteps.push({ type: 'MOVE', description: `${attachedHero.unitName} climbs with ${unit.unitName}`, unitId: attachedHero.id, changes: heroChanges });
       }
@@ -293,8 +294,12 @@ export function useMoveActions(deps: MoveActionsDeps) {
       return;
     }
 
-    // UP: start or continue toward the target hex.
-    const tHex = climbTarget ?? targetHex;
+    // UP: start or continue toward the target hex. `parseClimbTo` yields only
+    // {q,r}, so rebuild the full hex (with `s`) before it is written to the
+    // units table (hex_s is NOT NULL).
+    const tHex: Hex = climbTarget
+      ? { q: climbTarget.q, r: climbTarget.r, s: -climbTarget.q - climbTarget.r }
+      : targetHex;
     const endSurface = structureSurfaceAt(tHex, structures, structureTemplates);
     const diff = endSurface - originSurface;
     if (diff <= 0) { addMessage(`${unit.unitName} cannot climb there`); return; }

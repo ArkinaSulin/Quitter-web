@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Fix: climb-onto-hex wrote a hex without `s` (hex_s NOT NULL violation) (2026-10-03)
+**Files:** src/components/ScenarioMap/useMoveActions.ts, docs/dev/changelog.md
+
+- Completing/continuing a climb wrote the unit's `hex` from `parseClimbTo`, which
+  returns only `{q,r}` — so the server mapped a NULL `hex_s` and the command was
+  rejected (`null value in column "hex_s" of relation "units"`). `handleClimbMove`
+  now rebuilds the full hex (with `s`) before the write, and the attached-hero
+  follow step uses the unit's exact destination hex. No migration.
+
 ## Fix: edge `ignore_climb` (stairs) waives the dedicated climb action (2026-10-03)
 **Files:** src/components/ScenarioMap/useMoveActions.ts, docs/dev/{18-map-structures,changelog}.md
 
