@@ -57,8 +57,8 @@ export interface WallAttackResult extends WallDamageResult {
 /**
  * Roll `attacks` damage rolls against a wall (the unit-combat attack count: row
  * capacity × capacity multiplier × weapon attacks, plus a hero volley) and apply
- * HP/DT. DT gates EACH hit (a blow at/below DT is shrugged); the surviving hits
- * are summed and applied once.
+ * HP/DT. DT gates EACH hit (a blow BELOW DT is shrugged; at/above DT deals full);
+ * the surviving hits are summed and applied once.
  */
 export function resolveWallAttack(
   wall: Wall,
@@ -77,7 +77,7 @@ export function resolveWallAttack(
     const r = Math.max(0, rollDamage(weapon.damageDice, rng));
     rolls.push(r);
     damage += r;
-    if (r > dt) surmount += r;
+    if (r >= dt) surmount += r;
   }
   return { ...applyWallDamage(wall, surmount), damage, rolls };
 }

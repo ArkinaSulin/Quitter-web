@@ -48,12 +48,20 @@ describe('isAttackableHexStructure', () => {
 describe('resolveHexStructureAttack (simultaneous door + HP)', () => {
   const inst = (over: Partial<StructureInstance> = {}): StructureInstance => ({ templateId: 't', ...over });
 
-  it('deflects at or below the DT', () => {
-    const r = resolveHexStructureAttack(template({ dt: 6 }), inst(), bow, fixed(6)); // 6 damage
+  it('deflects a hit below the DT', () => {
+    const r = resolveHexStructureAttack(template({ dt: 7 }), inst(), bow, fixed(6)); // 6 damage < DT 7
     expect(r.deflected).toBe(true);
     expect(r.hitDoor).toBe(true);
     expect(r.doorHpAfter).toBe(30);
     expect(r.hpAfter).toBe(100);
+  });
+
+  it('lands a hit at exactly the DT', () => {
+    const r = resolveHexStructureAttack(template({ dt: 6 }), inst(), bow, fixed(6)); // 6 damage == DT 6
+    expect(r.deflected).toBe(false);
+    expect(r.applied).toBe(6);
+    expect(r.doorHpAfter).toBe(24);
+    expect(r.hpAfter).toBe(94);
   });
 
   it('damages the door AND the structure HP at the same time', () => {
@@ -112,17 +120,17 @@ describe('resolveHexStructureAttack (simultaneous door + HP)', () => {
     expect(r.hpAfter).toBe(82);
   });
 
-  it('multi-attack: each hit at/below DT is shrugged (all deflected)', () => {
-    const r = resolveHexStructureAttack(template({ dt: 6 }), inst(), bow, fixed(6), 3);
+  it('multi-attack: each hit below DT is shrugged (all deflected)', () => {
+    const r = resolveHexStructureAttack(template({ dt: 7 }), inst(), bow, fixed(6), 3);
     expect(r.damage).toBe(18);
     expect(r.applied).toBe(0);
     expect(r.deflected).toBe(true);
     expect(r.hpAfter).toBe(100);
   });
 
-  it('multi-attack still lands one hit if only one clears the DT', () => {
-    // Sequence 6, 6, then 4: with dt 5 only nothing clears; use dt 6 vs rolls
-    // 6,6,4 -> first two clear (12 survived). A deterministic sequence rng.
+  it('multi-attack sums only the rolls that meet the DT', () => {
+    // Rolling 6, 6, then 4 against DT 5: the two 6s land, the 4 is shrugged
+    // (≥ DT lands), so 12 survives. A deterministic sequence rng.
     let i = 0; const seq = [6, 6, 4];
     const rng = () => (seq[i++] - 1) / 6;
     const r = resolveHexStructureAttack(template({ dt: 5 }), inst(), bow, rng, 3);

@@ -670,8 +670,8 @@ wall editor. Structures are neutral scenery — to attack one, hold **Shift** an
   (**melee**), or if your weapon's **max range** covers the nearer of those two
   hexes (**ranged**).
 - There is **no to-hit roll** — reaching the edge is the hit. Roll weapon
-  damage: a hit at or **below the DT does nothing**, above it deals its **full
-  damage** to the wall.
+  damage: a hit below the DT does nothing; a hit **at or above the DT deals its
+  full damage** to the wall.
 - Costs **1 action**, counts toward your **5-attack limit**; no AGR, no
   retaliation. At **0 HP** the segment is destroyed and the way opens.
 - Walls without HP are scenery and cannot be attacked.

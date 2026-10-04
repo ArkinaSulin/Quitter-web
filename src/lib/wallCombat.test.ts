@@ -40,13 +40,21 @@ describe('wallAttackKind', () => {
 describe('resolveWallAttack', () => {
   const wall = (over: Partial<Wall> = {}): Wall => ({ a: {}, b: {}, maxHp: 10, hp: 10, dt: 3, ...over });
 
-  it('ignores damage at or below the DT (deflected)', () => {
+  it('ignores damage below the DT (deflected)', () => {
     const rng = () => 0.5; // 1d6 → 4
-    const deflected = resolveWallAttack(wall({ dt: 4 }), bow, rng);
+    const deflected = resolveWallAttack(wall({ dt: 5 }), bow, rng);
     expect(deflected.damage).toBe(4);
     expect(deflected.deflected).toBe(true);
     expect(deflected.applied).toBe(0);
     expect(deflected.wall.hp).toBe(10);
+  });
+
+  it('lands a hit at exactly the DT', () => {
+    const rng = () => 0.5; // 1d6 → 4
+    const atThreshold = resolveWallAttack(wall({ dt: 4 }), bow, rng);
+    expect(atThreshold.deflected).toBe(false);
+    expect(atThreshold.applied).toBe(4);
+    expect(atThreshold.wall.hp).toBe(6);
   });
 
   it('applies full damage when above the DT', () => {

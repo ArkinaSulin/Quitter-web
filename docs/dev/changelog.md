@@ -1,5 +1,16 @@
 # QuiTTER Changelog
 
+## Damage Threshold is `>=` (a hit AT the DT lands) (2026-10-03)
+**Files:** src/lib/{walls,wallCombat,structureCombat,verboseCombat}.ts (+ tests), docs/dev/{18-map-structures,13-map-entities-terrain,changelog}.md, docs/players/player-manual.md
+
+- The Damage Threshold rule was `>` (a hit strictly above DT dealt damage; a hit
+  **at** the DT was shrugged). Corrected to **`>=`**: a hit **at or above** `dt`
+  deals full damage; only a hit **below** `dt` is deflected. Updated
+  `applyWallDamage` (`damage < dt` deflects), the per-hit gates in
+  `resolveWallAttack` / `resolveHexStructureAttack` (`r >= dt`), and the verbose
+  formatter's "over DT" count. Tests + docs updated.
+- `tsc` clean, tests pass. No migration.
+
 ## Verbose structure-attack damage rolls (2026-10-03)
 **Files:** src/lib/{structureCombat,wallCombat,verboseCombat}.ts (+ tests), src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{13-map-entities-terrain,changelog}.md
 
@@ -7,8 +18,8 @@
   summary as the verbose text, so verbose combat showed no dice. The resolvers
   now return each attack's raw damage roll (`rolls: number[]`), and the two
   `perform*Attack` paths build a separate verbose line via
-  `formatStructureAttackRolls` — e.g. `{1d8 vs DT 5: 3,5,7 → 2 over DT, 15
-  damage}` (sorted rolls, count beating the DT, surviving total). Roll detail
+  `formatStructureAttackRolls` — e.g. `{1d8 vs DT 5: 3,5,7 → 2 over DT, 12
+  damage}` (sorted rolls, count meeting the DT, surviving total). Roll detail
   shows only under verbose combat; normal mode is unchanged.
 - `tsc` clean, 864 tests pass. No migration.
 

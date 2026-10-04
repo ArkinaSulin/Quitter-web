@@ -65,7 +65,7 @@ export interface Wall {
   // --- Phase 2: destructibility (per segment) ---
   hp?: number;
   maxHp?: number;
-  /** Damage Threshold: a single hit at/below this does nothing; above deals full. */
+  /** Damage Threshold: a single hit below this does nothing; at/above deals full. */
   dt?: number;
   /** Current door pool. Passage across the edge is gated while doorHp > 0. */
   doorHp?: number;
@@ -227,14 +227,14 @@ export interface WallDamageResult {
 }
 
 /**
- * Apply one attack's damage to a wall. Damage Threshold: a hit at or below `dt`
- * does nothing at all; above it the FULL damage comes off BOTH the structure HP
+ * Apply one attack's damage to a wall. Damage Threshold: a hit below `dt` does
+ * nothing at all; at or above it the FULL damage comes off BOTH the structure HP
  * and the door pool. A destroyed structure (hp 0) is removed by the caller.
  */
 export function applyWallDamage(wall: Wall, damage: number): WallDamageResult {
   if (!isDestructibleWall(wall)) return { wall, applied: 0, destroyed: false, deflected: true, doorHpAfter: wall.doorHp };
   const dt = Math.max(0, wall.dt ?? 0);
-  if (damage <= dt) return { wall, applied: 0, destroyed: false, deflected: true, doorHpAfter: wall.doorHp };
+  if (damage <= 0 || damage < dt) return { wall, applied: 0, destroyed: false, deflected: true, doorHpAfter: wall.doorHp };
   const hp = Math.max(0, wallHp(wall) - damage);
   const doorHp = wall.doorHp === undefined ? undefined : Math.max(0, wall.doorHp - damage);
   const next: Wall = { ...wall, hp };

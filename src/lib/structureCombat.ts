@@ -71,8 +71,8 @@ export interface HexStructureAttackResult {
 /**
  * Roll `attacks` damage rolls against a hex structure (the unit-combat attack
  * count: row capacity × capacity multiplier × weapon attacks, plus a hero volley)
- * and apply DT + simultaneous door/HP damage. DT gates EACH hit; the surviving
- * hits are summed and applied once.
+ * and apply DT + simultaneous door/HP damage. DT gates EACH hit (a hit BELOW DT
+ * is shrugged; at/above DT deals full); the surviving hits are summed and applied once.
  */
 export function resolveHexStructureAttack(
   template: StructureTemplate,
@@ -93,7 +93,7 @@ export function resolveHexStructureAttack(
     const r = Math.max(0, rollDamage(weapon.damageDice, rng));
     rolls.push(r);
     damage += r;
-    if (r > dt) applied += r;
+    if (r >= dt) applied += r;
   }
 
   if (applied <= 0) {

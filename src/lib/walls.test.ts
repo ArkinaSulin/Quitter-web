@@ -127,12 +127,16 @@ describe('wall destructibility', () => {
     expect(wallHp({ a: {}, b: {}, maxHp: 10, hp: 4 })).toBe(4);
   });
 
-  it('ignores damage at or below the DT and applies full damage above it', () => {
+  it('ignores damage below the DT and applies full damage at or above it', () => {
     const w = { a: {}, b: {}, maxHp: 12, hp: 12, dt: 4 };
-    const deflected = applyWallDamage(w, 4);
+    const deflected = applyWallDamage(w, 3); // below DT
     expect(deflected.deflected).toBe(true);
     expect(deflected.applied).toBe(0);
     expect(deflected.wall.hp).toBe(12);
+    const atThreshold = applyWallDamage(w, 4); // == DT lands
+    expect(atThreshold.deflected).toBe(false);
+    expect(atThreshold.applied).toBe(4);
+    expect(atThreshold.wall.hp).toBe(8);
     const hit = applyWallDamage(w, 7);
     expect(hit.deflected).toBe(false);
     expect(hit.applied).toBe(7);

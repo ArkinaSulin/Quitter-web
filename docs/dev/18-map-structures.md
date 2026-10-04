@@ -57,9 +57,9 @@ scenario is migrated (Slice 3).
 ## Durability
 
 `maxHp` (default **30**) and `dt` (damage threshold, default **15**): a single
-hit at or below `dt` does nothing; above it deals full damage. Wood templates use
-`dt` 15, stone 20. Non-destructible scenery is expressed as `maxHp 0` in a future
-pass (today the columns are non-negative with a 30 default).
+hit **below** `dt` does nothing; **at or above** `dt` it deals full damage. Wood
+templates use `dt` 15, stone 20. Non-destructible scenery is expressed as
+`maxHp 0` in a future pass (today the columns are non-negative with a 30 default).
 
 ## Effect modifiers
 

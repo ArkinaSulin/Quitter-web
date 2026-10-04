@@ -162,5 +162,10 @@ describe('verboseCombat', () => {
       expect(formatStructureAttackRolls([3, 4], 5, '1d6'))
         .toBe('{1d6 vs DT 5: 3,4 → 0 over DT, 0 damage}');
     });
+
+    it('counts a roll equal to the DT as landing (>= DT)', () => {
+      expect(formatStructureAttackRolls([5], 5, '1d8'))
+        .toBe('{1d8 vs DT 5: 5 → 1 over DT, 5 damage}');
+    });
   });
 });

@@ -127,11 +127,12 @@ weapon's `maxRange` covers the nearer edge hex. There is **no to-hit roll** —
 reaching the target is the hit; the attack lands the unit-combat **attack count**
 (eligible attackers = row capacity × capacity multiplier, capped by troops, ×
 weapon `numberOfAttacks`, plus a front-attached hero's volley) — DT gates **each
-hit**, surviving hits are summed, and `applyWallDamage` / `resolveHexStructureAttack`
+hit** (a roll **below** DT is shrugged; **at or above** deals full), surviving hits
+are summed, and `applyWallDamage` / `resolveHexStructureAttack`
 apply the total to the HP (and door) pool(s). Attacking costs **1 action** and
 counts toward the attack cap (soft-confirmed when over), with no AGR/retaliation.
 Under **verbose combat** the message appends the per-attack damage rolls and DT
-outcome (`formatStructureAttackRolls`, e.g. `{1d8 vs DT 5: 3,5,7 → 2 over DT, 15
+outcome (`formatStructureAttackRolls`, e.g. `{1d8 vs DT 5: 3,5,7 → 2 over DT, 12
 damage}`). `hp <= 0` removes the segment.
 
 Persistence rides the command log: the command is `ATTACK` with a **`STRUCTURE`**
