@@ -1031,9 +1031,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return;
     }
     const weapon = parseWeapons(attacker.weaponString || '')[attacker.activeWeaponIndex ?? 0];
-    const kind = wallAttackKind(attacker, ref, weapon);
+    const kind = wallAttackKind(attacker, ref, weapon, formationsMap[attacker.currentFormation]);
     if (!weapon || !kind) {
-      addMessage(`${attacker.unitName} cannot reach that barrier`);
+      addMessage(`${attacker.unitName} cannot reach or face that barrier`);
       return;
     }
     const cap = unitAttackCap();
@@ -1078,7 +1078,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         changes: [{ field: 'structures', key: ref.key, from: inst, to }],
       },
     ], `${attacker.unitName} attacked the barrier at ${label}`, { message: detail, verboseMessage: verbose });
-  }, [walls, structures, execute, addError, addMessage, scenarioId, structureAttackCount]);
+  }, [walls, structures, execute, addError, addMessage, scenarioId, structureAttackCount, formationsMap]);
 
   // Drag-gate handed to useHexGrid: only a wall edge the dragged unit can reach
   // is hinted as an attack target (overlay highlight).
@@ -1089,8 +1089,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const wall = walls[edge.key];
     if (!wall || !isDestructibleWall(wall)) return false;
     const weapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
-    return !!weapon && wallAttackKind(unit, edge, weapon) !== null;
-  }, [units, walls, canControlUnit]);
+    return !!weapon && wallAttackKind(unit, edge, weapon, formationsMap[unit.currentFormation]) !== null;
+  }, [units, walls, canControlUnit, formationsMap]);
 
   // Identity gate for the Shift-drop router: a destructible wall edge EXISTS here
   // (no reach/range/vertical check — the attack command reports "cannot reach").
@@ -1116,9 +1116,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return;
     }
     const weapon = parseWeapons(attacker.weaponString || '')[attacker.activeWeaponIndex ?? 0];
-    const kind = hexStructureAttackKind(attacker, hex, weapon);
+    const kind = hexStructureAttackKind(attacker, hex, weapon, formationsMap[attacker.currentFormation]);
     if (!weapon || !kind) {
-      addMessage(`${attacker.unitName} cannot reach that structure`);
+      addMessage(`${attacker.unitName} cannot reach or face that structure`);
       return;
     }
     const cap = unitAttackCap();
@@ -1163,7 +1163,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         changes: [{ field: 'structures', key, from: inst, to }],
       },
     ], `${attacker.unitName} attacked the structure at ${label}`, { message: detail, verboseMessage: verbose });
-  }, [structures, structureTemplates, execute, addError, addMessage, scenarioId, structureAttackCount]);
+  }, [structures, structureTemplates, execute, addError, addMessage, scenarioId, structureAttackCount, formationsMap]);
 
   // Identity gate for the Shift-drop router: an attackable structure EXISTS on
   // this hex (no reach/range/vertical check — the attack reports "cannot reach").

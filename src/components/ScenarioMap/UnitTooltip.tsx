@@ -52,7 +52,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const effectiveMoraleModifier = unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, units, alliances, formationMod);
   const wounds = calcWounds(unit);
   const isolated = calcIsolation(unit, units, alliances);
-  const enemyThreats = calcEnemyThreats(unit, units, alliances);
+  const enemyThreats = calcEnemyThreats(unit, units, alliances, formationMod);
   const heroBoost = isHeroMoraleBoostEnabled() ? calcMoraleBoostInfo(unit, units, alliances) : null;
   const heroAura = unit.isHero ? (unit.moraleBoost ?? 0) + (unit.heroicInspirationActive ? 1 : 0) : 0;
   const threatRating = exertedThreatRating(unit);

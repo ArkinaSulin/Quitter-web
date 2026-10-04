@@ -17,14 +17,21 @@ import { findFirstMeleeWeaponIndex } from '@/lib/meleeFallback';
 /** Does `enemy` impose a kill zone on `hex`? Formed hostiles only — hidden,
  *  attached, heroes, Scattered and Routed are excluded (routed/dead/scattered
  *  are handled inside `isInKillZone`; the matrix gate covers custom formations
- *  that do not stop movement). */
+ *  that do not stop movement). A flying enemy's vertical kill zone (same column,
+ *  ≤10 ft above `targetElevation`) is facing-independent ("always").
+ *  Horizontal kill zones do not cross elevation. */
 export function imposesZocOn(
   enemy: Unit,
   hex: Hex,
   formationsMap: Record<string, Formation>,
+  targetElevation = 0,
 ): boolean {
   if (enemy.isDeleted || enemy.hidden || enemy.attachedToUnitId || enemy.isHero) return false;
-  if (!isInKillZone(enemy, hex)) return false;
+  if (hex.q === enemy.hex.q && hex.r === enemy.hex.r) {
+    return isInKillZone(enemy, hex, targetElevation); // vertical (facing-free)
+  }
+  if ((enemy.elevation ?? 0) !== targetElevation) return false; // ZoC does not cross elevation
+  if (!isInKillZone(enemy, hex, targetElevation)) return false;
   return canStopEnemyMovement(formationsMap[enemy.currentFormation], 'front');
 }
 
@@ -48,14 +55,15 @@ export function hostilesLeftZoc(
   formationsMap: Record<string, Formation>,
 ): Unit[] {
   const moverAlliance = alliances[mover.team] || 'friendly';
+  const moverElev = mover.elevation ?? 0;
   return units.filter(e =>
     e.id !== mover.id &&
     !e.isDeleted &&
     (alliances[e.team] || 'friendly') !== moverAlliance &&
-    // Kill zones do not cross elevation: only same-elevation hostiles.
-    (e.elevation ?? 0) === (mover.elevation ?? 0) &&
-    imposesZocOn(e, originHex, formationsMap) &&
-    !imposesZocOn(e, destHex, formationsMap),
+    // Elevation gating lives in imposesZocOn: horizontal ZoC needs exact
+    // elevation, but a flyer directly above still imposes a vertical ZoC.
+    imposesZocOn(e, originHex, formationsMap, moverElev) &&
+    !imposesZocOn(e, destHex, formationsMap, moverElev),
   );
 }
 

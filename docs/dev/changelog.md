@@ -1,5 +1,37 @@
 # QuiTTER Changelog
 
+## Universal attack-arc rule; structure arc gating; vertical flyer ZoC; rear threat ×2 (2026-10-04)
+**Files:** src/lib/{wallCombat,structureCombat}.ts (+ tests), src/components/ScenarioMap/{ScenarioMap,useCombatActions}.tsx, src/lib/{unitMorale,zocDisengage,meleeFallback}.ts (+ tests), src/components/ScenarioMap/{mapGeometry,UnitTooltip}.tsx, docs/dev/{08-combat,09-morale-routing-pursuit,07-movement-economy,13-map-entities-terrain,changelog}.md, docs/players/player-manual.md
+
+- **Structure melee is now arc-gated (the reported bug).** `wallAttackKind` /
+  `hexStructureAttackKind` take the attacker's `facing`/formation and apply the
+  universal rule: a unit on either side of a wall must **face it** (toward the
+  opposite hex); a hex structure must lie in the attacker's permitted arc. Normal
+  formations reach the **front ZoC** only; **Scattered/Hero** reach all around;
+  **Routed** cannot strike. Ranged structure attacks are gated by `canRangedTarget`
+  (`arcOfTarget`). `ScenarioMap` passes `formationsMap[...]` at `performWallAttack`
+  /`performStructureAttack`/`canAttackWallEdge` (drag hint). Out-of-arc Shift-drops
+  still route (identity gates unchanged) and report "cannot reach or face".
+- **Unit melee unified with the rule.** Removed the redundant hard `isInFrontArc`
+  check in `useCombatActions` that wrongly blocked Scattered units from
+  all-around melee — the formation `melee_target_arcs` matrix (`canMeleeTarget`)
+  is now the single gate, matching the AI planner.
+- **Vertical flyer kill zone.** `isInKillZone(unit, hex, targetElevation)` gains a
+  same-column clause: a flying unit/hero dominates the hex **1–10 ft directly
+  below** it, facing-independent. Same-hex ground units (gap 0) are not a ZoC.
+  Threaded through `calcEnemyThreats`, `heroThreatAgainst`, `canWeaponAttack`,
+  `isInAnyHostileKillZone`, `imposesZocOn` (bypasses the front gate) /
+  `hostilesLeftZoc`, `computeThreatHexes` (mover-elevation aware), and the combat
+  kill-zone checks.
+- **Rear threat ×2 restored (data-driven).** `calcEnemyThreats(..., form)` now
+  scales each contributing threat by the subject's arc of the hostile via
+  `getThreatMode(form, arc)` — `double_threat_arcs` (the two rear hexes) ×2,
+  `threat_arcs` ×1. Applies to hero threat too. `computeEffectiveMoraleModifier`
+  threads the formation; `UnitTooltip` passes it. The dormant
+  `threat_arcs`/`double_threat_arcs` columns are live again.
+- Tests updated/added (arc gating, vertical ZoC, rear doubling); `tsc` clean, 886
+  tests pass, build clean. No migration.
+
 ## Elevation badge moved into `drawToken`; ft suffixes + structure HP label (2026-10-03)
 **Files:** src/components/TokenRenderer/drawToken.ts, src/components/ScenarioMap/useCanvasDraw.ts, src/components/shared/mapFeatureDraw.ts (+ test), docs/dev/{15-token-rendering,changelog}.md
 

@@ -6,7 +6,7 @@
 // end/overrun helpers. Owns the attack-related soft-enforcement states.
 import { useCallback, useState } from 'react';
 import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance, UnitEffect, GroundEffect, getOrganizationLevel } from '@/types/gameProtocol';
-import { resolveCombatSequence, determineCombatPosition, isInFrontArc, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome, AttackerHeroProfile, wallCoverAgainst } from '@/lib/unitCombat';
+import { resolveCombatSequence, determineCombatPosition, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome, AttackerHeroProfile, wallCoverAgainst } from '@/lib/unitCombat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/lib/formationRules';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/lib/chargeOver';
@@ -161,8 +161,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // Adjacency forces a MELEE weapon only when the combatant stands in the
     // opponent's kill zone (engaged frontally). Outside it, a ranged weapon may
     // fire at point-blank; magic always acts at range.
-    const inTargetKillZone = isInKillZone(target, attacker.hex);
-    const inAttackerKillZone = isInKillZone(attacker, target.hex);
+    const inTargetKillZone = isInKillZone(target, attacker.hex, attacker.elevation);
+    const inAttackerKillZone = isInKillZone(attacker, target.hex, target.elevation);
     if (isAdjacent && weapon.magicDimension <= 0 && inTargetKillZone && !isMeleeWeapon(weapon)) {
       const attackerWeapons = parseWeapons(attacker.weaponString || '');
       const meleeIdx = findFirstMeleeWeaponIndex(attackerWeapons);
@@ -453,7 +453,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       // Threat penalty only applies while the attacker stands in the target's
       // kill zone (front two hexes) — otherwise the target's rating doesn't
       // pressure the attacker's nerve.
-      const threatPenalty = isInKillZone(target, attacker.hex)
+      const threatPenalty = isInKillZone(target, attacker.hex, attacker.elevation)
         ? Math.max(0, Math.round(computeThreatRating(target) / computeThreatRating(attacker)) - 1)
         : 0;
       // Plain: just the outcome. The dice/bonus breakdown is verbose-only.
@@ -845,7 +845,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
         (alliances[e.team] || 'friendly') !== moverAlliance &&
         !(e.pursuitUsed ?? false) &&
         canMeleeAttack(e) &&
-        imposesZocOn(e, live.hex, formationsMap),
+        imposesZocOn(e, live.hex, formationsMap, live.elevation ?? 0),
       );
       if (zoc.length === 0) return;
       let killed = false;
@@ -1257,7 +1257,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // used only when the attacker is NOT in the target's kill zone (point-blank);
     // in the kill zone the melee fallback runs (in `performAttack`). A melee
     // weapon beyond adjacency cannot reach.
-    const inTargetKillZone = isInKillZone(target, attacker.hex);
+    const inTargetKillZone = isInKillZone(target, attacker.hex, attacker.elevation);
     const attackType = attackKind(weapon, isAdjacent, inTargetKillZone);
     if (attackType === 'none') {
       addMessage(`${attacker.unitName} cannot reach ${target.unitName} — get within 10 ft to melee`);
@@ -1329,15 +1329,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
         addMessage(`${attacker.unitName} (Routed) cannot initiate attacks`);
         return;
       }
+      // The formation's melee-target arcs are the single gate (universal rule):
+      // normal formations reach only the front ZoC; Scattered/Hero reach all
+      // around. Same-hex (a stooping flyer hovering) resolves to 'front', so any
+      // formation may strike it.
       if (!canMeleeTarget(attackerForm, targetPos)) {
         addMessage(`${attacker.unitName} (${attacker.currentFormation}) cannot melee target in that direction`);
-        return;
-      }
-      // Same-hex melee (a stooping flyer hovering over its target) has no bearing —
-      // treat it as a front-arc attack. determineCombatPosition/arcOfTarget already
-      // resolve the zero delta to 'front'.
-      if (!attacker.isHero && dist > 0 && !isInFrontArc(attacker.hex, attacker.facing, target.hex)) {
-        addMessage(`${attacker.unitName} cannot attack ${target.unitName}: target not in front arc`);
         return;
       }
     } else if (!canRangedTarget(attackerForm, arcOfTarget(attacker.hex, attacker.facing, target.hex))) {

@@ -105,7 +105,10 @@ allowBeyondBudget?)` — min-cost Dijkstra over `(hex, facing)` state:
 
 Enemy **threat hexes** (ZOC) come from `computeThreatHexes` (mapGeometry) via
 the formations matrix `stop_enemy_movement_arcs` — Scattered/Routed/heroes
-never block. **Movement never routs.**
+never block. A **flying** hostile 1–10 ft directly above a hex also threatens it
+(its own column, facing-independent — see `08-combat` "Attack arcs"). To disengage
+past a flyer overhead, `imposesZocOn` enforces the same vertical kill zone.
+**Movement never routs.**
 
 **Entering a kill zone ends the move.** When a drop's destination is a hostile
 threat hex, the MOVE zeroes any leftover `movementPointsAvailable` (the mover

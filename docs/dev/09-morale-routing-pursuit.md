@@ -30,6 +30,12 @@ zone** — the two hexes in front of its facing (`isInKillZone`). Formations
 without a kill zone (Scattered, Routed) never impose threat. Routing units
 never impose threat. Merely adjacent ≠ threatening.
 
+**Vertical clause (universal rule):** a **flying** unit/hero also dominates the
+hex directly below it in its own column — a target 1–10 ft lower (pass
+`targetElevation` to `isInKillZone`) is in its kill zone **regardless of
+facing**, and imposes a ZoC on disengage. Same-hex ground units (gap 0) are not
+a kill zone. Horizontal kill zones still do not cross elevation.
+
 Heroes are the exception: a **lone** hero is a single token with no fixed
 facing, so it threatens every adjacent hex (360°) — `heroThreatAgainst`. A
 **front-attached** hero threatens only through its host's kill zone; a
@@ -37,11 +43,19 @@ facing, so it threatens every adjacent hex (360°) — `heroThreatAgainst`. A
 size or smaller** (`sizeCategory ≤ 200`) exerts **half** its rating
 (`exertedThreatRating`); bigger heroes exert full.
 
-`calcEnemyThreats(unit, …)`: sum the threat ratings of every hostile whose
-kill zone contains you (plus hero threat as above), then **normalize by your
-own**: `total = round(sum / myThreat)`. A goblin beside a dragon feels its
+`calcEnemyThreats(unit, …, formation)`: sum the threat ratings of every hostile
+whose kill zone contains you (plus hero threat as above), then **normalize by
+your own**: `total = round(sum / myThreat)`. A goblin beside a dragon feels its
 full rating; the dragon barely notices the goblin. The tooltip shows the
 formula as `-N = (sum threat) ÷ myThreat`.
+
+**Directional multiplier (rear ×2):** each contributing threat is scaled by the
+arc the hostile occupies relative to **your** facing, read from your formation's
+`threat_arcs` (×1) / `double_threat_arcs` (×2) via `getThreatMode`. Normal
+formations therefore double threat coming from the **two rear hexes**; Scattered
+/Hero are uniform (all arcs ×1), Routed doubles everywhere. The same multiplier
+applies to hero threat. The `threat_arcs` / `double_threat_arcs` columns are
+data-driven, so custom formation rows can differ.
 
 ## Effective morale
 

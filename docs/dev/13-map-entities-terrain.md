@@ -122,8 +122,10 @@ therefore still routes to the attack, which reports `cannot reach that
 structure/barrier` (rather than silently falling through to a move); the
 reach-gated `canAttackWallEdge` is used only for the drag-overlay hint. Shift also
 hides unit/corpse tokens ("inspect mode"). Reach (`wallCombat.wallAttackKind`) is
-**melee** when the attacker stands on either edge hex, else **ranged** when its
-weapon's `maxRange` covers the nearer edge hex. There is **no to-hit roll** —
+**melee** when the attacker stands on either edge hex **and faces the wall** within
+its formation's attack arcs (see `08-combat` "Attack arcs"; normal formations must
+face the wall, Scattered/Hero strike any side), else **ranged** when its weapon's
+`maxRange` covers the nearer edge hex (ranged arcs apply). There is **no to-hit roll** —
 reaching the target is the hit; the attack lands the unit-combat **attack count**
 (eligible attackers = row capacity × capacity multiplier, capped by troops, ×
 weapon `numberOfAttacks`, plus a front-attached hero's volley) — DT gates **each

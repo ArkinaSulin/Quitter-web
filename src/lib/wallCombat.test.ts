@@ -1,9 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from './wallCombat';
 import { edgeRef, Wall } from './walls';
-import { Hex } from '@/types/gameProtocol';
+import { Hex, Unit, Formation } from '@/types/gameProtocol';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
+
+// Attacker fixture: defaults to a non-routed formed unit facing 0.
+const at = (hex: Hex, over: Partial<Pick<Unit, 'facing' | 'currentFormation' | 'isHero'>> = {}) =>
+  ({ hex, facing: 0, currentFormation: 'Open Order', isHero: false, ...over });
+
+const form = (meleeArcs: string[]): Formation =>
+  ({ melee_target_arcs: meleeArcs, ranged_target_arcs: ['front', 'flank', 'rear'] } as unknown as Formation);
 
 // The canonical edge between (0,0) and (1,0).
 const ref = edgeRef(0, 0, 0);
@@ -20,20 +27,30 @@ describe('edgeHexes', () => {
 
 describe('wallAttackKind', () => {
   it('melee when the attacker stands on either edge hex', () => {
-    expect(wallAttackKind({ hex: h(0, 0) }, ref, sword)).toBe('melee');
-    expect(wallAttackKind({ hex: h(1, 0) }, ref, sword)).toBe('melee');
-    expect(wallAttackKind({ hex: h(1, 0) }, ref, bow)).toBe('melee'); // still an adjacent blow
+    expect(wallAttackKind(at(h(0, 0)), ref, sword)).toBe('melee');
+    expect(wallAttackKind(at(h(1, 0)), ref, sword)).toBe('melee');
+    expect(wallAttackKind(at(h(1, 0)), ref, bow)).toBe('melee'); // still an adjacent blow
+  });
+
+  it('melee is gated by the universal attack arc (normal = front only)', () => {
+    // From (0,0) the wall lies toward (1,0) (direction index 0); front at facing 2.
+    expect(wallAttackKind(at(h(0, 0), { facing: 2 }), ref, sword, form(['front']))).toBe('melee');
+    expect(wallAttackKind(at(h(0, 0), { facing: 5 }), ref, sword, form(['front']))).toBeNull(); // back to the wall
+    // Scattered / Hero reach all around.
+    expect(wallAttackKind(at(h(0, 0), { facing: 5, currentFormation: 'Scattered' }), ref, sword, form(['front', 'flank', 'rear']))).toBe('melee');
+    // Routed cannot strike at all.
+    expect(wallAttackKind(at(h(0, 0), { facing: 2, currentFormation: 'Routed' }), ref, sword, form(['front', 'flank', 'rear']))).toBeNull();
   });
 
   it('ranged when a ranged weapon reaches the nearer edge hex', () => {
-    expect(wallAttackKind({ hex: h(2, 0) }, ref, bow)).toBe('ranged');
-    expect(wallAttackKind({ hex: h(0, 5) }, ref, bow)).toBe('ranged'); // dist 5 <= maxRange 8
+    expect(wallAttackKind(at(h(2, 0)), ref, bow)).toBe('ranged');
+    expect(wallAttackKind(at(h(0, 5)), ref, bow)).toBe('ranged'); // dist 5 <= maxRange 8
   });
 
   it('null when out of range or the weapon cannot shoot', () => {
-    expect(wallAttackKind({ hex: h(2, 0) }, ref, sword)).toBeNull(); // melee weapon, not adjacent
-    expect(wallAttackKind({ hex: h(5, 0) }, ref, thrown)).toBeNull(); // dist 4 > maxRange 3
-    expect(wallAttackKind({ hex: h(2, 0) }, ref, null)).toBeNull();
+    expect(wallAttackKind(at(h(2, 0)), ref, sword)).toBeNull(); // melee weapon, not adjacent
+    expect(wallAttackKind(at(h(5, 0)), ref, thrown)).toBeNull(); // dist 4 > maxRange 3
+    expect(wallAttackKind(at(h(2, 0)), ref, null)).toBeNull();
   });
 });
 

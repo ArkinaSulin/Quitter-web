@@ -1,9 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { hexStructureAttackKind, resolveHexStructureAttack, isAttackableHexStructure } from './structureCombat';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
-import { Hex } from '@/types/gameProtocol';
+import { Hex, Unit, Formation } from '@/types/gameProtocol';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
+
+const at = (hex: Hex, over: Partial<Pick<Unit, 'facing' | 'currentFormation' | 'isHero'>> = {}) =>
+  ({ hex, facing: 0, currentFormation: 'Open Order', isHero: false, ...over });
+
+const form = (meleeArcs: string[]): Formation =>
+  ({ melee_target_arcs: meleeArcs, ranged_target_arcs: ['front', 'flank', 'rear'] } as unknown as Formation);
 
 const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => ({
   id: 't', name: 'Gate Tower', description: '', anchor: 'hex', color: '#fff', imageUrl: '',
@@ -24,10 +30,20 @@ const fixed = (v: number) => () => Math.min(0.999, (v - 1) / 6); // 1d6 -> v (fo
 describe('hexStructureAttackKind', () => {
   it('melee at adjacency, ranged within weapon band, null otherwise', () => {
     const t = h(3, 0);
-    expect(hexStructureAttackKind({ hex: h(2, 0) }, t, sword)).toBe('melee');
-    expect(hexStructureAttackKind({ hex: h(1, 0) }, t, bow)).toBe('ranged'); // dist 2
-    expect(hexStructureAttackKind({ hex: h(1, 0) }, t, sword)).toBeNull(); // melee weapon out of reach
-    expect(hexStructureAttackKind({ hex: h(-6, 0) }, t, bow)).toBeNull(); // dist 9 > maxRange 8
+    expect(hexStructureAttackKind(at(h(2, 0)), t, sword)).toBe('melee');
+    expect(hexStructureAttackKind(at(h(1, 0)), t, bow)).toBe('ranged'); // dist 2
+    expect(hexStructureAttackKind(at(h(1, 0)), t, sword)).toBeNull(); // melee weapon out of reach
+    expect(hexStructureAttackKind(at(h(-6, 0)), t, bow)).toBeNull(); // dist 9 > maxRange 8
+  });
+
+  it('melee is gated by the universal attack arc (normal = front only)', () => {
+    const t = h(3, 0);
+    // From (2,0) the structure lies toward (3,0) (direction index 0); front at facing 2.
+    expect(hexStructureAttackKind(at(h(2, 0), { facing: 2 }), t, sword, form(['front']))).toBe('melee');
+    expect(hexStructureAttackKind(at(h(2, 0), { facing: 5 }), t, sword, form(['front']))).toBeNull(); // back to it
+    // Scattered reaches all around; Routed cannot strike.
+    expect(hexStructureAttackKind(at(h(2, 0), { facing: 5, currentFormation: 'Scattered' }), t, sword, form(['front', 'flank', 'rear']))).toBe('melee');
+    expect(hexStructureAttackKind(at(h(2, 0), { facing: 2, currentFormation: 'Routed' }), t, sword, form(['front', 'flank', 'rear']))).toBeNull();
   });
 });
 

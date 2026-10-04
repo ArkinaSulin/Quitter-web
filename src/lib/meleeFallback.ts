@@ -84,7 +84,7 @@ export function canWeaponAttack(
   const dist = hexDistance(attacker.hex, target.hex);
   const verticalFeet = Math.abs((attacker.elevation ?? 0) - (target.elevation ?? 0));
   const isAdjacent = isAdjacentDistance(dist) && verticalFeet <= 10;
-  const kind = attackKind(weapon, isAdjacent, isInKillZone(target, attacker.hex));
+  const kind = attackKind(weapon, isAdjacent, isInKillZone(target, attacker.hex, attacker.elevation));
   if (kind === 'none') return false;
   if (kind === 'ranged' && (weapon.magicDimension ?? 0) <= 0) {
     const upHex = Math.max(0, Math.floor(((target.elevation ?? 0) - (attacker.elevation ?? 0)) / 10));
@@ -111,7 +111,7 @@ export function isInAnyHostileKillZone(
     other.id !== unit.id &&
     !isUnitRouted(other) &&
     (alliances[other.team] || 'friendly') !== unitAlliance &&
-    isInKillZone(other, unit.hex),
+    isInKillZone(other, unit.hex, unit.elevation),
   );
 }
 

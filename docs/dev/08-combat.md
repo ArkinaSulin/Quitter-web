@@ -21,9 +21,10 @@ command-log sub-steps.
    - **none** reach → hard block + red flash.
 4. Magic (`magicDimension > 0`) → cast window (Routed can't cast). Healing
    (`isHealing`) → heal resolution (no combat).
-5. Melee gates: attacker in the defender's permitted arc for its formation
-   (`canMeleeTarget`, formation `melee_target_arcs`); ranged gates
-   `canRangedTarget`.
+5. Melee gates: the target must lie in an arc the attacker's formation may
+   melee into (`canMeleeTarget`, formation `melee_target_arcs`) — front only for
+   normal formations, all around for Scattered/Hero (see **Attack arcs** below);
+   ranged gates `canRangedTarget`.
 6. Charges, no-actions, at-cap → the soft-enforcement pause modals
    (`pendingChargeAttack`, `pendingAttack`, `pendingAttackCap`).
 7. `performAttack(...)` → `resolveCombatSequence(...)` → apply deltas, morale
@@ -33,6 +34,31 @@ command-log sub-steps.
 sub-step) or falls back to **Fists** when the active weapon is ranged and no
 melee weapon exists (`meleeFallback.ts`). Switching to a two-handed weapon
 drops the shield (−2 AC, recomputed).
+
+## Attack arcs (universal rule)
+
+The same arc rule governs **every** melee target — a unit, a unit on a
+structure, an edge wall, or a hex gate/tower:
+
+- **Normal formations** may melee only into their **front ZoC** (the two front
+  hexes). The gate is `canMeleeTarget(form, arc)` where `arc` is the target's
+  position relative to the attacker's facing (`determineCombatPosition`).
+- **Scattered and Hero** reach **all around** (their `melee_target_arcs` are
+  all three arcs). `Routed` has no melee arcs at all (and its own explicit
+  no-attack gate).
+- **Same hex ±≤10 ft vertical** (a stooping flyer hovering over its target) is
+  attackable by **any** formation — the zero horizontal delta resolves to
+  `front` — but is **not** a kill zone/ZoC.
+- Ranged attacks use the formation's `ranged_target_arcs` (`arcOfTarget`).
+
+Structure attacks follow the rule too (`wallCombat.wallAttackKind`,
+`structureCombat.hexStructureAttackKind`): a unit on either side of a wall must
+face it (toward the opposite hex); a hex structure must lie in the attacker's
+permitted arc. Ranged structure attacks are gated by `canRangedTarget`.
+
+Unit melee previously added a redundant hard `isInFrontArc` check on top of the
+formation matrix; that check wrongly blocked Scattered units from attacking
+all-around and has been removed — the formation matrix is the single gate.
 
 ## AGR (will to attack)
 

@@ -153,6 +153,18 @@ describe('isInKillZone', () => {
     expect(isInKillZone(hidden, DIR_HEXES[4])).toBe(false);
     expect(isInKillZone(hidden, DIR_HEXES[5])).toBe(false);
   });
+
+  it('a flying unit dominates its own column up to 10 ft below (vertical ZoC)', () => {
+    const flyer = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, elevation: 10, flySpeed: 60 });
+    expect(isInKillZone(flyer, { q: 0, r: 0, s: 0 }, 0)).toBe(true); // ground below
+    expect(isInKillZone(flyer, { q: 0, r: 0, s: 0 }, 10)).toBe(false); // same level, no gap
+    const high = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, elevation: 20, flySpeed: 60 });
+    expect(isInKillZone(high, { q: 0, r: 0, s: 0 }, 0)).toBe(false); // > 10 ft
+    const grounded = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, elevation: 0, flySpeed: 60 });
+    expect(isInKillZone(grounded, { q: 0, r: 0, s: 0 }, 0)).toBe(false); // same-hex ground is not a ZoC
+    const garrison = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, elevation: 10 }); // no fly speed
+    expect(isInKillZone(garrison, { q: 0, r: 0, s: 0 }, 0)).toBe(false); // grounded on a wall
+  });
 });
 
 describe('calcEnemyThreats', () => {
@@ -219,6 +231,30 @@ describe('calcEnemyThreats', () => {
     const hiddenEnemy = enemyAt(DIR_HEXES[1], { ...threat1, hidden: true });
     const hiddenHero = enemyAt(DIR_HEXES[3], { isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1, maxTroopCount: 1, hidden: true });
     expect(calcEnemyThreats(me, [hiddenEnemy, hiddenHero], alliances)).toMatchObject({ total: 0, totalSum: 0 });
+  });
+
+  it('a flying enemy directly above contributes vertical kill-zone threat', () => {
+    const me = makeUnit({ ...threat1, elevation: 0 });
+    const flyer = enemyAt({ q: 0, r: 0, s: 0 }, { ...threat3, elevation: 10, flySpeed: 60 });
+    expect(calcEnemyThreats(me, [flyer], alliances)).toMatchObject({ totalSum: 3, total: 3 });
+  });
+
+  it('doubles threat from the subject\'s rear hexes via the formation threat arcs', () => {
+    const formed = { threat_arcs: ['front', 'flank'], double_threat_arcs: ['rear'] } as unknown as Formation;
+    const me = makeUnit({ ...threat1, facing: 0 }); // myThreat 1
+    // Rear arc: enemy behind me must face me to pressure (facing 0 covers it).
+    const rear = enemyAt(DIR_HEXES[1], { ...threat3, facing: 0 }); // rating 3 → ×2 = 6
+    // Front arc: enemy in front facing me (facing 2 → its front dirs [0,1] include my bearing).
+    const front = enemyAt(DIR_HEXES[4], { ...threat3, facing: 2 }); // rating 3 → ×1 = 3
+    expect(calcEnemyThreats(me, [rear], alliances, formed)).toMatchObject({ totalSum: 6, total: 6 });
+    expect(calcEnemyThreats(me, [front], alliances, formed)).toMatchObject({ totalSum: 3, total: 3 });
+  });
+
+  it('doubles a hero\'s threat from the subject\'s rear', () => {
+    const formed = { threat_arcs: ['front', 'flank'], double_threat_arcs: ['rear'] } as unknown as Formation;
+    const me = makeUnit({ ...threat1, facing: 0 }); // myThreat 1
+    const heroRear = enemyAt(DIR_HEXES[1], { isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1, maxTroopCount: 1 }); // half 4 = 2 → ×2 = 4
+    expect(calcEnemyThreats(me, [heroRear], alliances, formed)).toMatchObject({ totalSum: 4, total: 4 });
   });
 });
 

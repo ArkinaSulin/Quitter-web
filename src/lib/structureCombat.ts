@@ -1,11 +1,15 @@
 // src/lib/structureCombat.ts
 // Attacking a HEX structure (gate / tower). No to-hit roll (like walls): reaching
-// the hex is the hit, then the Damage Threshold gates the blow. Durability is two
-// pools damaged SIMULTANEOUSLY: `doorHp` gates passage, `maxHp` gates modifiers
-// (<= 0 destroys the structure, removing the instance).
-import { Unit, Hex, hexDistance } from '@/types/gameProtocol';
+// the hex AND facing it within the formation's attack arcs is the hit, then the
+// Damage Threshold gates the blow. Durability is two pools damaged
+// SIMULTANEOUSLY: `doorHp` gates passage, `maxHp` gates modifiers (<= 0 destroys
+// the structure, removing the instance).
+import { Unit, Hex, Formation, hexDistance } from '@/types/gameProtocol';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
-import { rollDamage } from './unitCombat';
+import { rollDamage, determineCombatPosition } from './unitCombat';
+import { arcOfTarget } from './attackDirection';
+import { canMeleeTarget, canRangedTarget } from './formationRules';
+import { isUnitRouted } from './unitMorale';
 import { isRangedCapableWeapon } from './archerReaction';
 import { templateDoorMax } from './structureTemplates';
 
@@ -17,18 +21,31 @@ export interface HexStructureWeapon {
   maxRange?: number;
 }
 
-/** How (if at all) `attacker` can strike the structure on `target`. */
+/**
+ * How (if at all) `attacker` can strike the structure on `target`. Melee is
+ * gated by the universal attack-arc rule: same hex (dist 0, resolved to 'front')
+ * or an adjacent hex the attacker faces within its formation's melee arcs
+ * (normal = front only; Scattered/Hero = all around). Ranged is gated by the
+ * formation's ranged arcs.
+ */
 export function hexStructureAttackKind(
-  attacker: Pick<Unit, 'hex'>,
+  attacker: Pick<Unit, 'hex' | 'facing' | 'currentFormation' | 'isHero'>,
   target: Hex,
   weapon: HexStructureWeapon | null | undefined,
+  form?: Formation | null,
 ): HexStructureAttackKind {
   if (!weapon) return null;
   const dist = hexDistance(attacker.hex, target);
-  if (dist <= 1) return 'melee';
+  if (dist <= 1) {
+    if (isUnitRouted(attacker)) return null;
+    const arc = determineCombatPosition(target, attacker.hex, attacker.facing);
+    if (!canMeleeTarget(form, arc)) return null;
+    return 'melee';
+  }
   const range = weapon.range ?? 1;
   const maxRange = Math.max(range, weapon.maxRange ?? range);
   if (!isRangedCapableWeapon({ range, maxRange })) return null;
+  if (!canRangedTarget(form, arcOfTarget(attacker.hex, attacker.facing, target))) return null;
   return dist <= maxRange ? 'ranged' : null;
 }
 

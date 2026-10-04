@@ -433,6 +433,12 @@ Units face a **vertex** (corner), not a flat side. Their arcs:
 - **Rear**: the two hexes at the opposite vertex.
 - **Flanks**: the two in between.
 
+**Melee reach:** a normal formation may only melee into its **front** two
+hexes; **Scattered** and **Heroes** strike in **any** adjacent arc. Any unit may
+also strike a target in its **own hex** up to 10 ft above/below it (not a kill
+zone). A **flying** unit/hero additionally controls the hex directly **beneath**
+it (≤10 ft down, same column) regardless of facing.
+
 **Heroes, Scattered, and Routed units have no facing** — they can move in any
 direction, and attacks against them are treated as front/side/rear per their
 formation (Appendix C).
@@ -807,6 +813,12 @@ zone, and a hero protected **behind** a unit (back) threatens nothing. A hero
 of **Large size or smaller** exerts **half** its threat rating; bigger heroes
 exert full. Your morale penalty is `their summed threat ÷ your own threat`
 (rounded).
+
+**Rear threat ×2.** Threat that comes from one of **your two rear hexes**
+counts **double** (normal formations; Scattered/Hero units don't double, a
+Routed unit doubles from every side). A **flying** enemy/hero hovering
+**directly above** you (≤10 ft, same hex) also pressures you regardless of its
+facing.
 
 **Effective morale** on a given moment:
 

@@ -1,6 +1,7 @@
 import { Unit, AllianceGroup, Hex, Formation } from '@/types/gameProtocol';
 import { getSetting, getBandSetting, SettingBand } from './settingsCache';
 import { isDeadCorpse, isProtectedHero } from './unitInteractions';
+import { getThreatMode, Arc } from './formationRules';
 
 const HEX_DIRS = [
   { q: 1, r: 0, s: -1 },
@@ -60,15 +61,38 @@ export function exertedThreatRating(unit: Unit): number {
   return rating;
 }
 
+/** Arc of `targetHex` relative to a unit at `originHex` facing `facing`. */
+export function facingArc(originHex: Hex, facing: number, targetHex: Hex): Arc {
+  const dq = targetHex.q - originHex.q;
+  const dr = targetHex.r - originHex.r;
+  const ds = targetHex.s - originHex.s;
+  const dirIdx = HEX_DIRS.findIndex(d => d.q === dq && d.r === dr && d.s === ds);
+  if (dirIdx === -1) return 'front'; // same hex (or off-grid): no bearing
+  if ([(facing + 4) % 6, (facing + 5) % 6].includes(dirIdx)) return 'front';
+  if ([(facing + 1) % 6, (facing + 2) % 6].includes(dirIdx)) return 'rear';
+  return 'flank';
+}
+
 /**
  * Kill zone: the two hexes directly in front of the unit (front arc of its
  * facing). A unit imposes threat on an enemy only while that enemy stands in
  * this kill zone. Scattered and Routed formations have no kill zone — they
  * never impose threat, but they can still be subject to it.
+ *
+ * Vertical clause (universal rule): a FLYING unit/hero also dominates the hex
+ * directly below it in its own column — a target 1..10 ft lower (pass
+ * `targetElevation`) is in its kill zone regardless of facing. Same-hex ground
+ * units (gap 0) are NOT a kill zone.
  */
-export function isInKillZone(unit: Unit, hex: Hex): boolean {
+export function isInKillZone(unit: Unit, hex: Hex, targetElevation = 0): boolean {
   if (unit.isDeleted || unit.hidden || isUnitRouted(unit) || isDeadCorpse(unit)) return false;
   if (unit.currentFormation === 'Scattered' || unit.currentFormation === 'Routed') return false;
+  if (hex.q === unit.hex.q && hex.r === unit.hex.r) {
+    // Only a FLYER dominates the hex below (a garrison on a 10-ft wall is not
+    // airborne); airborne = has a fly speed and hovers above the hex.
+    const gap = (unit.elevation ?? 0) - targetElevation;
+    return (unit.flySpeed ?? 0) > 0 && gap > 0 && gap <= 10;
+  }
   const dq = hex.q - unit.hex.q;
   const dr = hex.r - unit.hex.r;
   const ds = hex.s - unit.hex.s;
@@ -100,15 +124,21 @@ export function calcIsolation(unit: Unit, units: Unit[], alliances: Record<strin
 
 /**
  * Enemy threat imposed on `unit`: the sum of the threat ratings of every enemy
- * whose kill zone (front two hexes) contains `unit` — plus, for heroes, a
- * wider footprint (see `heroThreatAgainst`). Scattered / Routed enemies never
- * impose threat. For non-heroes, being merely adjacent is not enough — the
- * enemy must be facing you.
+ * whose kill zone contains `unit` — plus, for heroes, a wider footprint (see
+ * `heroThreatAgainst`). Scattered / Routed enemies never impose threat. For
+ * non-heroes, being merely adjacent is not enough — the enemy must be facing you.
+ *
+ * Directional multiplier: the subject's formation `threat_arcs` /
+ * `double_threat_arcs` (via `getThreatMode`) scale each threat by the arc the
+ * enemy occupies relative to the subject's facing — normal formations double
+ * threat from the **two rear hexes** (×2), front/flank ×1. Scattered/Hero are
+ * uniform (×1); this is data-driven so custom rows can differ.
  */
 export function calcEnemyThreats(
   unit: Unit,
   units: Unit[],
   alliances: Record<string, AllianceGroup>,
+  form: Formation | null | undefined = null,
 ): { total: number; totalSum: number; myThreat: number } {
   const unitAlliance = alliances[unit.team] || 'friendly';
   const myThreat = computeThreatRating(unit);
@@ -118,10 +148,13 @@ export function calcEnemyThreats(
     if (other.isDeleted || other.id === unit.id || other.hidden || isUnitRouted(other) || isDeadCorpse(other)) continue;
     const otherAlliance = alliances[other.team] || 'friendly';
     if (otherAlliance === unitAlliance) continue;
+    const mode = getThreatMode(form, facingArc(unit.hex, unit.facing, other.hex));
+    if (mode === 'none') continue;
+    const mult = mode === 'double' ? 2 : 1;
     if (other.isHero) {
-      totalSum += heroThreatAgainst(other, unit, units);
-    } else if (isInKillZone(other, unit.hex)) {
-      totalSum += computeThreatRating(other);
+      totalSum += heroThreatAgainst(other, unit, units) * mult;
+    } else if (isInKillZone(other, unit.hex, unit.elevation)) {
+      totalSum += computeThreatRating(other) * mult;
     }
   }
 
@@ -144,7 +177,7 @@ export function heroThreatAgainst(hero: Unit, victim: Unit, units: Unit[]): numb
   const rating = exertedThreatRating(hero);
   if (hero.attachedToUnitId) {
     const host = units.find(u => u.id === hero.attachedToUnitId && !u.isDeleted);
-    return host && isInKillZone(host, victim.hex) ? rating : 0;
+    return host && isInKillZone(host, victim.hex, victim.elevation) ? rating : 0;
   }
   return areHexesAdjacent(hero.hex, victim.hex) ? rating : 0;
 }
@@ -199,9 +232,10 @@ export function calcMoraleBoostInfo(unit: Unit, units: Unit[], alliances: Record
 /**
  * Total morale modifier for a unit: wounds + isolation + kill-zone threats +
  * the formation's morale bonus + the hero aura (`heroBoost`). `formation` is the
- * unit's formation row or null (used only for its morale bonus — threat is
- * source-centric now). `heroBoostEnabled` defaults to the ambient scenario flag
- * (set by ScenarioMap from `scenarios.hero_morale_boost_enabled`).
+ * unit's formation row or null — used for its morale bonus AND its
+ * `threat_arcs`/`double_threat_arcs` (rear threat doubles).
+ * `heroBoostEnabled` defaults to the ambient scenario flag (set by ScenarioMap
+ * from `scenarios.hero_morale_boost_enabled`).
  */
 export function computeEffectiveMoraleModifier(
   unit: Unit,
@@ -212,7 +246,7 @@ export function computeEffectiveMoraleModifier(
 ): number {
   const wounds = calcWounds(unit);
   const isolated = calcIsolation(unit, units, alliances);
-  const threats = calcEnemyThreats(unit, units, alliances);
+  const threats = calcEnemyThreats(unit, units, alliances, formation);
   const formationMorMod = formation?.morale_modifier ?? 0;
   const heroBoost = heroBoostEnabled ? calcMoraleBoost(unit, units, alliances) : 0;
   return wounds + (isolated ? -getSetting('isolation_penalty', 1) : 0) - threats.total + formationMorMod + heroBoost;
