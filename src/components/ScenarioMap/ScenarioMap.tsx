@@ -932,6 +932,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const {
     pendingMove,
     setPendingMove,
+    pendingDescent,
+    confirmDescentClimb,
+    confirmDescentDrop,
+    cancelDescent,
     pendingFormation,
     setPendingFormation,
     pendingHeroAttachConversion,
@@ -2127,6 +2131,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingLeaveHero || showGmTeamPick || magicCast.cast || editUnit || effectDrop ||
     effectEdit || entryPrompt || zoneMenu || hexEffectsModal || showStats ||
     otherActionHero || structureEditKey ||
+    pendingDescent ||
     pendingMove || pendingAttack || pendingAttackCap || pendingHeroAttachConversion ||
     pendingAttachOverBudget ||
     pendingFormation || pendingCastOverBudget || pendingChargeAttack ||
@@ -3401,6 +3406,36 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             <div className="flex justify-end gap-2 mt-4">
               <button className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded" onClick={cancelDiveAttack}>Cancel</button>
               <button className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded" onClick={() => void confirmDiveAttack()}>Attack</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Descent drop — a grounded unit stepping off an adjacent lower surface
+          chooses Climb down (pay MP; hang midway if short) / Drop (fall damage) /
+          Cancel. Mounted units cannot climb down. */}
+      {pendingDescent && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[340px] max-w-[90vw]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Drop off the structure?</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              {pendingDescent.unit.unitName} is {pendingDescent.feet} ft up ({Math.floor(pendingDescent.feet / 10)}d6 fall).
+              {pendingDescent.canClimb
+                ? ` Climb down for ${Math.round(pendingDescent.feet / 2.5)} MP (may hang midway), or drop and take the fall damage.`
+                : ' Mounted — cannot climb down; drop to take the fall damage.'}
+            </p>
+            <div className="flex flex-col gap-2">
+              {pendingDescent.canClimb && (
+                <button className="px-4 py-2 bg-green-800 hover:bg-green-700 text-white rounded-lg text-sm" onClick={() => void confirmDescentClimb()}>
+                  Climb down ({Math.round(pendingDescent.feet / 2.5)} MP)
+                </button>
+              )}
+              <button className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg text-sm" onClick={() => void confirmDescentDrop()}>
+                Drop ({Math.floor(pendingDescent.feet / 10)}d6)
+              </button>
+              <button className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm" onClick={cancelDescent}>
+                Cancel
+              </button>
             </div>
           </div>
         </div>

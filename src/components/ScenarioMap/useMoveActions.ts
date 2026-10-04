@@ -18,12 +18,24 @@ import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
-import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo } from '@/lib/flying';
+import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage } from '@/lib/flying';
 import { Walls, directionBetween, edgeRef } from '@/lib/walls';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, structureWaivesClimb, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
+
+/** A grounded drop off an adjacent lower surface: Climb down / Drop / Cancel. */
+export interface PendingDescent {
+  unit: Unit;
+  targetHex: Hex;
+  /** The unit's hex before the drop (for the pursue/reaction origin). */
+  originHex: Hex;
+  /** Fall height in feet (`originSurface − endSurface`). */
+  feet: number;
+  /** False for mounted units — they may only Drop or Cancel. */
+  canClimb: boolean;
+}
 
 interface MoveActionsDeps {
   units: Unit[];
@@ -87,6 +99,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
   } = deps;
 
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  const [pendingDescent, setPendingDescent] = useState<PendingDescent | null>(null);
   const [pendingFormation, setPendingFormation] = useState<PendingFormation | null>(null);
   const [pendingHeroAttachConversion, setPendingHeroAttachConversion] = useState<PendingHeroAttachConversion | null>(null);
   const [pendingAttachOverBudget, setPendingAttachOverBudget] = useState<PendingAttachOverBudget | null>(null);
@@ -271,18 +284,25 @@ export function useMoveActions(deps: MoveActionsDeps) {
       await execute('MOVE', subSteps, desc);
     };
 
-    // DESCEND: drop on the unit's own hex.
+    // IN-PLACE: drop on the unit's own hex while climbing → return to the origin
+    // surface (cancel an ascent by climbing back down, or a descent by climbing
+    // back up). 4 MP / 10 ft either direction.
     if (climbTarget && targetHex.q === unit.hex.q && targetHex.r === unit.hex.r) {
-      const down = curElev - originSurface;
-      if (down <= 0) { addMessage(`${unit.unitName} is already on the ground`); return; }
-      const steps = Math.min(Math.round(down / 10), Math.floor(budget / CLIMB_MP_PER_STEP));
-      if (steps <= 0) { addMessage(`${unit.unitName} has no movement to climb down`); return; }
+      const delta = originSurface - curElev;
+      const totalSteps = Math.round(Math.abs(delta) / 10);
+      if (totalSteps <= 0) { addMessage(`${unit.unitName} is already there`); return; }
+      const ascending = delta > 0;
+      const steps = Math.min(totalSteps, Math.floor(budget / CLIMB_MP_PER_STEP));
+      if (steps <= 0) { addMessage(`${unit.unitName} has no movement to ${ascending ? 'climb up' : 'climb down'}`); return; }
       const spend = spendMp(steps * CLIMB_MP_PER_STEP);
-      let newElev = curElev - steps * 10;
+      const dir = ascending ? 1 : -1;
+      let newElev = curElev + dir * steps * 10;
       let climbTo = unit.climbTo ?? null;
-      if (newElev <= originSurface) {
+      if (newElev === originSurface) {
         const occupied = units.some(u => u.id !== unit.id && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) === originSurface && u.hex.q === unit.hex.q && u.hex.r === unit.hex.r);
-        if (occupied) newElev = originSurface + 10; // hover above an occupied ground
+        // Hover one step SHORT of the occupied surface (below when climbing up,
+        // above when climbing down).
+        if (occupied) newElev = originSurface - dir * 10;
         else climbTo = null;
       }
       await run([
@@ -290,26 +310,33 @@ export function useMoveActions(deps: MoveActionsDeps) {
         { field: 'climbTo', from: unit.climbTo ?? null, to: climbTo },
         { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: spend.movementPointsAvailable },
         ...(spend.actionsAvailable !== unit.actionsAvailable ? [{ field: 'actionsAvailable', from: unit.actionsAvailable, to: spend.actionsAvailable }] : []),
-      ], `${unit.unitName} climbs down ${steps * 10} ft`);
+      ], `${unit.unitName} climbs ${ascending ? 'up' : 'down'} ${steps * 10} ft`);
       return;
     }
 
-    // UP: start or continue toward the target hex. `parseClimbTo` yields only
-    // {q,r}, so rebuild the full hex (with `s`) before it is written to the
-    // units table (hex_s is NOT NULL).
+    // TARGET: climb toward `tHex` (the drop target, or the in-progress target).
+    // `parseClimbTo` yields only {q,r}, so rebuild the full hex (with `s`) before
+    // it is written to the units table (hex_s is NOT NULL). `diff` may be + (up
+    // onto a higher surface) or − (DOWN off a higher surface onto this one).
     const tHex: Hex = climbTarget
       ? { q: climbTarget.q, r: climbTarget.r, s: -climbTarget.q - climbTarget.r }
       : targetHex;
     const endSurface = structureSurfaceAt(tHex, structures, structureTemplates);
     const diff = endSurface - originSurface;
-    if (diff <= 0) { addMessage(`${unit.unitName} cannot climb there`); return; }
-    const doneSteps = Math.max(0, Math.round((curElev - originSurface) / 10));
+    if (diff === 0) { addMessage(`${unit.unitName} cannot climb there`); return; }
+    const ascending = diff > 0;
+    // Steps are anchored at `originSurface` (the climb's top or bottom).
+    const doneSteps = ascending
+      ? Math.max(0, Math.round((curElev - originSurface) / 10))
+      : Math.max(0, Math.round((originSurface - curElev) / 10));
     const targetOccupied = units.some(u => u.id !== unit.id && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) === endSurface && u.hex.q === tHex.q && u.hex.r === tHex.r);
-    const plan = climbPlan(diff, budget, doneSteps, targetOccupied);
-    if (plan.atTop) { addMessage(`${unit.unitName} is already at the top`); return; }
-    if (plan.steps <= 0) { addMessage(`${unit.unitName} has no movement to climb`); return; }
+    const plan = climbPlan(Math.abs(diff), budget, doneSteps, targetOccupied);
+    if (plan.atTop) { addMessage(`${unit.unitName} is already ${ascending ? 'at the top' : 'down'}`); return; }
+    if (plan.steps <= 0) { addMessage(`${unit.unitName} has no movement to ${ascending ? 'climb' : 'climb down'}`); return; }
     const spend = spendMp(plan.cost);
-    const newElev = originSurface + plan.newElevSteps * 10;
+    const newElev = ascending
+      ? originSurface + plan.newElevSteps * 10
+      : originSurface - plan.newElevSteps * 10;
     const complete = plan.complete;
     await run([
       ...(complete ? [{ field: 'hex', from: { ...unit.hex }, to: { ...tHex } }] : []),
@@ -317,8 +344,18 @@ export function useMoveActions(deps: MoveActionsDeps) {
       { field: 'climbTo', from: unit.climbTo ?? null, to: complete ? null : `${tHex.q},${tHex.r}` },
       { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: spend.movementPointsAvailable },
       ...(spend.actionsAvailable !== unit.actionsAvailable ? [{ field: 'actionsAvailable', from: unit.actionsAvailable, to: spend.actionsAvailable }] : []),
-    ], complete ? `${unit.unitName} climbs over onto (${tHex.q}, ${tHex.r})` : `${unit.unitName} climbs to ${newElev} ft`);
-  }, [units, structures, structureTemplates, unitMaxMP, execute, addMessage, freeMove, groundZones]);
+    ], complete
+      ? (ascending ? `${unit.unitName} climbs over onto (${tHex.q}, ${tHex.r})` : `${unit.unitName} climbs down onto (${tHex.q}, ${tHex.r})`)
+      : `${unit.unitName} climbs ${ascending ? 'to' : 'down to'} ${newElev} ft`);
+    // A COMPLETED DESCENT moves the unit off the structure onto the target hex —
+    // provoke archer reactions (and the pursue gate, which skips a raised origin)
+    // exactly like a move. Ascents keep their existing (reaction-free) behavior.
+    if (complete && !ascending) {
+      offerReactionsFor({ ...unit, hex: { ...tHex } });
+      pruneReactionOffers();
+      await pursuitsRef.current?.(unit, unit.hex, tHex);
+    }
+  }, [units, structures, structureTemplates, unitMaxMP, execute, addMessage, freeMove, groundZones, offerReactionsFor, pruneReactionOffers, pursuitsRef]);
 
   const handleUnitMove = useCallback(async (unitId: string, targetHex: Hex) => {
     const unit = units.find(u => u.id === unitId);
@@ -383,6 +420,25 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
     if (!flying && !unit.isCharging && !unit.mountId && !unit.mountName && !unit.attachedToUnitId && endSurface > originSurface && areHexesAdjacent(unit.hex, targetHex)) {
       await handleClimbMove(unit, targetHex, originSurface);
+      return;
+    }
+    // A grounded, non-flyable unit dropped on an ADJACENT LOWER surface steps off
+    // the edge: prompt Climb down / Drop / Cancel (elevation only ever changes
+    // across an adjacent edge).
+    if (!flying && !freeMove && !unit.isCharging && !unit.attachedToUnitId && !canFly(unit)
+        && endSurface < originSurface && areHexesAdjacent(unit.hex, targetHex)) {
+      setPendingDescent({
+        unit, targetHex,
+        originHex: { ...unit.hex },
+        feet: originSurface - endSurface,
+        canClimb: !unit.mountId && !unit.mountName,
+      });
+      return;
+    }
+    // A move may not end on a different surface without the adjacent edge
+    // transition — you must move on/off the edge first, then continue.
+    if (!flying && !freeMove && !unit.climbTo && !canFly(unit) && !unit.attachedToUnitId && endSurface !== originSurface) {
+      addMessage(`${unit.unitName} must move onto/off the structure edge first — (${targetHex.q}, ${targetHex.r}) is at a different height`);
       return;
     }
 
@@ -597,6 +653,63 @@ export function useMoveActions(deps: MoveActionsDeps) {
     await swapHeroPosition(hero);
   }, [swapHeroPosition]);
 
+  // ---- Descent drop: Climb down / Drop (fall) / Cancel ----------------------
+  const confirmDescentClimb = useCallback(async () => {
+    const p = pendingDescent;
+    setPendingDescent(null);
+    if (!p) return;
+    const originSurface = structureSurfaceAt(p.unit.hex, structures, structureTemplates);
+    await handleClimbMove(p.unit, p.targetHex, originSurface);
+  }, [pendingDescent, handleClimbMove, structures, structureTemplates]);
+
+  const confirmDescentDrop = useCallback(async () => {
+    const p = pendingDescent;
+    setPendingDescent(null);
+    if (!p) return;
+    const endSurface = structureSurfaceAt(p.targetHex, structures, structureTemplates);
+    const occupied = units.some(u =>
+      u.id !== p.unit.id && !u.isDeleted && !u.attachedToUnitId &&
+      (u.elevation ?? 0) === endSurface && u.hex.q === p.targetHex.q && u.hex.r === p.targetHex.r,
+    );
+    if (occupied) { addMessage(`${p.unit.unitName} cannot drop there — the hex is occupied`); return; }
+    const feather = unitHasFeatherFall(p.unit);
+    const { total, faces } = feather ? { total: 0, faces: [] as number[] } : rollFallDamage(p.feet);
+    const newHp = Math.max(0, (p.unit.currentUnitHp ?? 0) - total);
+    const newTroops = total > 0 ? Math.max(0, Math.ceil(newHp / Math.max(1, p.unit.troopHp))) : p.unit.currentTroopCount;
+    const subSteps: SubStep[] = [
+      {
+        type: 'MOVE',
+        description: `${p.unit.unitName} dropped ${p.feet} ft onto (${p.targetHex.q}, ${p.targetHex.r})`,
+        unitId: p.unit.id,
+        changes: [
+          { field: 'hex', from: { ...p.unit.hex }, to: { ...p.targetHex } },
+          { field: 'elevation', from: p.unit.elevation ?? 0, to: endSurface },
+        ],
+      },
+    ];
+    if (total > 0) {
+      subSteps.push({
+        type: 'DAMAGE',
+        description: `${p.unit.unitName} took ${total} falling damage`,
+        unitId: p.unit.id,
+        changes: [
+          { field: 'currentUnitHp', from: p.unit.currentUnitHp, to: newHp },
+          { field: 'currentTroopCount', from: p.unit.currentTroopCount, to: newTroops },
+        ],
+      });
+    }
+    const roll = faces.length ? ` (${faces.length}d6: ${faces.join(',')})` : (feather ? ' (feather fall)' : '');
+    await execute('MOVE', subSteps, `${p.unit.unitName} dropped ${p.feet} ft${total > 0 ? ` — ${total} damage` : ''}${roll}`);
+    // A fall is still a move: archer reactions fire; the pursue gate skips it (a
+    // descent always starts on a raised surface).
+    offerReactionsFor({ ...p.unit, hex: { ...p.targetHex } });
+    pruneReactionOffers();
+    await pursuitsRef.current?.(p.unit, p.originHex, p.targetHex);
+    if (newHp <= 0) await routeUnit(execute, { ...p.unit, currentUnitHp: newHp }, 'fell', true, null);
+  }, [pendingDescent, structures, structureTemplates, units, execute, addMessage, offerReactionsFor, pruneReactionOffers, pursuitsRef]);
+
+  const cancelDescent = useCallback(() => setPendingDescent(null), []);
+
   /**
    * Execute a Withdraw: step one hex into a rear-arc hex, keeping facing, for
    * `WITHDRAW_ACTION_COST` actions (free under free-move). Never scatters and
@@ -775,6 +888,11 @@ export function useMoveActions(deps: MoveActionsDeps) {
   return {
     pendingMove,
     setPendingMove,
+    pendingDescent,
+    setPendingDescent,
+    confirmDescentClimb,
+    confirmDescentDrop,
+    cancelDescent,
     pendingFormation,
     setPendingFormation,
     pendingHeroAttachConversion,

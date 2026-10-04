@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## Descent off a height: Climb down / Drop / Cancel (2026-10-03)
+**Files:** src/lib/flying.ts (+ test), src/components/ScenarioMap/{useMoveActions,ScenarioMap}.tsx, docs/{dev/{18-map-structures,outstanding,changelog},players/player-manual}.md
+
+- Dropping a grounded unit onto an **adjacent lower** surface now opens a
+  **Climb down / Drop / Cancel** modal (`pendingDescent`):
+  - **Climb down** — `handleClimbMove` gains a descend branch (4 MP/10 ft, anchored
+    at the origin surface; **hangs midway** if MP runs short and continues next
+    action; stairs/`ignore_climb` → free; **mounted barred**).
+  - **Drop** — a fall: `rollFallDamage` (`floor(ft/10)`d6, new pure helper;
+    `feather_fall` → 0), refused on an occupied hex.
+  - Both **provoke archer reactions** on completion and run the pursue gate (a
+    raised origin never provokes).
+- **Elevation changes are edge-only**: a non-adjacent move whose destination
+  surface differs from the origin is refused ("move onto/off the edge first"). The
+  in-place climb branch (`handleClimbMove`) is now bidirectional, so an in-progress
+  descent can be cancelled by climbing back up.
+- `tsc` clean, 874 tests pass. No migration.
+
 ## Fix: stepping off a raised surface lowers the unit's elevation (2026-10-03)
 **Files:** src/components/ScenarioMap/{useMoveActions,ScenarioMap}.tsx, src/hooks/useGameEngine.ts, docs/dev/changelog.md
 

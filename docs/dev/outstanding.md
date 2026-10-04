@@ -79,8 +79,13 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   - `useCastActions` magic-rout of a climbing unit defaults the free-fall to
     **ground** (it lacks `structures`); pass the origin surface so a platform-origin
     climber falls to the platform, not 0.
-  - No **voluntary free-fall** UI (only the rout descent offers it). Decide whether
-    a non-rout "drop (damage)" option belongs on the climbing-unit context menu.
+  - ✅ **Voluntary descent UI shipped**: dropping a unit on an **adjacent lower**
+    surface opens a **Climb down / Drop / Cancel** modal (`pendingDescent`,
+    `confirmDescentClimb`/`confirmDescentDrop`). Climb down = 4 MP/10 ft (hangs
+    midway if short; stairs free; mounted barred); Drop = `floor(ft/10)`d6 fall
+    (`feather_fall` negates; refused on an occupied hex); both provoke archer
+    reactions, pursue self-gated on a raised origin. Elevation changes only across
+    an adjacent edge — a non-adjacent move ending on a different surface is refused.
   - **ZoC "only at the wall top"**: currently a climbing unit exerts ZoC only
     against movers at its exact elevation (the 2b-6 rule); the explicit
     wall-top gate wasn't added separately — verify in play it reads correctly.

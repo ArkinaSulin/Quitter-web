@@ -3,7 +3,7 @@ import {
   canFly, elevationGapFeet, elevationGapHexes, elevationOffset, airOccupiedHexes,
   maxElevationAfter, elevationSliderRange, carryRule, FLYING_MAX_FORMATION, flyingFormationCap,
   meleeElevationFor, canReachStructure, STRUCTURE_HEIGHT_FT, isStooping,
-  movePoolMode, flyMax, moveBudgetUnit, passengerDrain,
+  movePoolMode, flyMax, moveBudgetUnit, passengerDrain, rollFallDamage,
 } from './flying';
 import { Unit } from '@/types/gameProtocol';
 
@@ -143,5 +143,17 @@ describe('flying', () => {
     expect(canReachStructure(20)).toBe(true);
     expect(canReachStructure(30)).toBe(false);
     expect(canReachStructure(undefined)).toBe(true);
+  });
+
+  it('rollFallDamage: one d6 per 10 ft fallen', () => {
+    // All-6 rng → every die is 6.
+    const six = () => 0.999;
+    expect(rollFallDamage(20, six)).toEqual({ total: 12, faces: [6, 6] });
+    expect(rollFallDamage(15, six)).toEqual({ total: 6, faces: [6] }); // floor(15/10) = 1
+    expect(rollFallDamage(9, six)).toEqual({ total: 0, faces: [] });
+    expect(rollFallDamage(0, six)).toEqual({ total: 0, faces: [] });
+    // All-1 rng → every die is 1.
+    const one = () => 0;
+    expect(rollFallDamage(30, one)).toEqual({ total: 3, faces: [1, 1, 1] });
   });
 });

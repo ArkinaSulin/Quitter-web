@@ -689,6 +689,31 @@ wall editor. Structures are neutral scenery — to attack one, hold **Shift** an
   limit. An **open** gate (GM toggle) costs no extra movement and exposes the
   structure directly — the door is bypassed.
 
+### Climbing down & dropping
+
+Heights change only across an **adjacent edge** — you can't end a multi-hex move
+on a different surface; move onto/off the edge first, then spend the rest of your
+movement.
+
+To get **up** onto a higher adjacent hex, drop your unit on it (a climb; 4 MP per
+10 ft; if you run out of MP the unit **hangs** partway and continues next action).
+
+To get **down** off an adjacent lower hex, drop your unit on the hex below and
+choose:
+
+- **Climb down** — pay **4 MP per 10 ft** (`height ÷ 2.5`). If you can't afford
+  the whole descent the unit **hangs** partway and finishes next action. **Stairs**
+  (an `ignore_climb` edge) make the descent free. **Mounted** units cannot climb
+  down.
+- **Drop** — fall instead: take **1d6 per 10 ft** (a `Feather Fall` effect negates
+  it) and land on the hex below. No MP. You can't drop onto a hex that is already
+  occupied.
+- **Cancel** — stay put.
+
+A completed climb-down or drop is a move: enemy archers may react to it, and it
+provokes a pursue only if you vacate a normal (non-raised) kill zone — stepping
+off a raised structure never provokes one.
+
 **Inspecting the map:** holding **Shift** hides every unit (and corpse pile) so
 the board reads through — the map's structures and effects stay visible. While
 Shift is held, hovering a **hex** shows its effects and hex structure (side by

@@ -89,6 +89,22 @@ The four attack-roll flags map to the four directions, with the carrier always
   carrier/mover ignores elevation cost (`structureWaivesClimb` /
   `unitIgnoresClimb`).
 
+## Elevation changes are edge-only
+
+A grounded unit's elevation changes **only across an adjacent edge**:
+
+- **Up** onto an adjacent higher surface → the climb action (`handleClimbMove`,
+  4 MP/10 ft, may hang midway).
+- **Down** onto an adjacent lower surface → the **descent modal**
+  (`pendingDescent`: Climb down / Drop / Cancel). Climb down costs 4 MP/10 ft and
+  may hang midway; Drop is a fall (`floor(ft/10)`d6, `feather_fall` negates,
+  refused on an occupied hex). Both provoke archer reactions on completion and run
+  the pursue gate (a raised origin never provokes). Mounted units can't climb down
+  (Drop/Cancel only).
+- A multi-hex move whose destination surface differs from the origin is **refused**
+  ("move onto/off the edge first"). `rollFallDamage` (`flying.ts`) is the shared
+  d6/10 ft formula.
+
 The same four flags (plus `ac`, `range`, `block_attacks`, etc.) are shared with
 unit effects and zones; `mode: 'melee' | 'ranged'` scopes them to one attack
 type (absent = both).

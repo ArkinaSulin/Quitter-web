@@ -197,6 +197,23 @@ export function passengerDrain(
   return { movementPointsAvailable: ground, flySpeedAvailable: fly };
 }
 
+/**
+ * Fall damage: one d6 per 10 ft fallen (`floor(feet/10)`), returning the
+ * individual die faces plus their sum. A `feather_fall` carrier ignores this
+ * (the caller checks `unitHasFeatherFall` and skips the roll).
+ */
+export function rollFallDamage(feet: number, rng: () => number = Math.random): { total: number; faces: number[] } {
+  const n = Math.max(0, Math.floor(feet / 10));
+  const faces: number[] = [];
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    const r = 1 + Math.floor(rng() * 6);
+    faces.push(r);
+    total += r;
+  }
+  return { total, faces };
+}
+
 /** Structures are considered 10 ft tall (ground-level). A unit must be within
  *  10 ft of this height to attack one. (Pending: real per-structure height.) */
 export const STRUCTURE_HEIGHT_FT = 10;
