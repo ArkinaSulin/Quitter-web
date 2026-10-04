@@ -1,5 +1,30 @@
 # QuiTTER Changelog
 
+## Kill-zone attack type + unified flyer/ground attack picker; auto-dive removed (2026-10-03)
+**Files:** src/lib/meleeFallback.ts (+ test), src/components/ScenarioMap/{useCombatActions,useMoveActions,ScenarioMap}.tsx, src/components/ScenarioMap/{WeaponSelect,MountTargetChoice}.tsx, docs/dev/{18-map-structures,changelog}.md
+
+- **Attack type is kill-zone-aware** (`attackKind`, new pure helper): at adjacency a
+  RANGED weapon is used at point-blank unless the attacker stands in the target's
+  kill zone (`isInKillZone(target, attacker.hex)`), where it falls back to melee
+  (melee weapon / Fists). Symmetric for the defender (in the attacker's kill zone).
+  A melee weapon beyond adjacency cannot reach. `handleAttackRequest` uses `attackKind`
+  (errors "get within 10 ft to melee"); `performAttack`'s melee fallback is gated on
+  the kill zone. Point-blank ranged still doesn't provoke retaliation (the engine's
+  single `isRanged`; accepted).
+- **The flyer auto-dive/climb prompt is removed** entirely — positioning into melee
+  range is the player's job.
+- **Unified drop-attack choice** (shared `WeaponSelect` + `MountTargetChoice`):
+  - the flyer's `pendingElevation` modal always shows a weapon dropdown (all weapons,
+    unreachable ones disabled) plus a mount/rider chooser (default **rider**) when the
+    occupant rides one;
+  - a hostile GROUND/airborne drop opens a `pendingAttackChoice` picker when >1 weapon
+    can reach **or** the target carries a rider — otherwise it attacks directly.
+  - Attack → `handleAttackRequest(id, targetId, { weaponIndex, mainTarget })`, so the
+    mount/rider choice is folded into the same modal (no second prompt).
+  - `canWeaponAttack` (new) drives the disabled state; `attackKind` + the ranged reach
+    rule.
+- `tsc` clean, 880 tests pass, build clean. No migration.
+
 ## Climb now honours the action/MP soft gate (2026-10-03)
 **Files:** src/components/ScenarioMap/{useMoveActions,ScenarioMap,SoftEnforcementModals}.tsx, docs/dev/{18-map-structures,changelog}.md
 

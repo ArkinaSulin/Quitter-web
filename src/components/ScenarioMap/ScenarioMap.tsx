@@ -31,6 +31,8 @@ import { AiPanel } from './AiPanel';
 import { AiOverlayData } from './aiTypes';
 import { isAiControllable } from '@/lib/enemyAI';
 import { ContextMenu } from './ContextMenu';
+import { WeaponSelect } from './WeaponSelect';
+import { MountTargetChoice } from './MountTargetChoice';
 import { UnitTooltip } from './UnitTooltip';
 import { MapInfoTooltip } from './MapInfoTooltip';
 import { ReplayOverlay } from './ReplayOverlay';
@@ -58,7 +60,8 @@ import { hexStructureAttackKind, resolveHexStructureAttack, isAttackableHexStruc
 import { formatStructureAttackRolls } from '@/lib/verboseCombat';
 import { StructureEditModal, StructureInstancePatch } from '@/components/StructureEditModal';
 import { unitAttackCap } from '@/lib/attackCap';
-import { newEffectKey } from '@/lib/unitEffects';
+import { newEffectKey, rangeBonusAt } from '@/lib/unitEffects';
+import { canWeaponAttack } from '@/lib/meleeFallback';
 import { MapEntity } from '@/lib/mapEntities';
 import { AddEffectModal } from './AddEffectModal';
 import { EffectFormModal, EffectFormValue } from './EffectFormModal';
@@ -1672,9 +1675,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingMountTarget,
     confirmMountTarget,
     cancelMountTarget,
-    pendingDiveAttack,
-    confirmDiveAttack,
-    cancelDiveAttack,
+    pendingAttackChoice,
+    setPendingAttackChoice,
+    offerAttackChoice,
+    confirmAttackChoice,
+    cancelAttackChoice,
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,
@@ -2079,6 +2084,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         const canStoop = hostileVisible && !!planStoopDrop(attackerId, targetId);
         if ((hostileVisible || !isHostile) && beginFlyerDrop(attacker, target, { canStoop, isHostile: hostileVisible })) return;
       }
+      // Ground / airborne drop: offer the combined weapon + mount/rider picker
+      // when there is a real choice (>1 weapon can attack, or the target rides a
+      // rider); otherwise attack directly.
+      if (offerAttackChoice(attackerId, targetId)) return;
       void handleAttackRequest(attackerId, targetId);
     },
     walls,
@@ -2128,7 +2137,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const anyModalOpen = !!(
     contextMenuUnit || withdrawConfirm || effectMenuUnit || retreatPick ||
     reactionFormationPicker || showScenarioSettings || attachModal ||
-    pendingMountTarget || pendingDiveAttack || pendingElevation || pendingHeroFall ||
+    pendingMountTarget || pendingAttackChoice || pendingElevation || pendingHeroFall ||
     pendingLeaveHero || showGmTeamPick || magicCast.cast || editUnit || effectDrop ||
     effectEdit || entryPrompt || zoneMenu || hexEffectsModal || showStats ||
     otherActionHero || structureEditKey ||
@@ -3397,20 +3406,44 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         </div>
       )}
 
-      {/* Dive attack — a flyer must change elevation to reach a melee target */}
-      {pendingDiveAttack && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[300px]">
-            <p className="text-white text-sm mb-3 text-center">
-              {pendingDiveAttack.attacker.unitName} must {pendingDiveAttack.elevation < (pendingDiveAttack.attacker.elevation ?? 0) ? 'dive to' : 'climb to'} {pendingDiveAttack.elevation} ft to melee {pendingDiveAttack.target.unitName}
-            </p>
-            <div className="flex justify-end gap-2 mt-4">
-              <button className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded" onClick={cancelDiveAttack}>Cancel</button>
-              <button className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded" onClick={() => void confirmDiveAttack()}>Attack</button>
+      {/* Ground attack picker — a hostile drop-attack where >1 weapon can reach (or
+          the target carries a rider) offers the combined weapon + main-target choice
+          before attacking. */}
+      {pendingAttackChoice && (() => {
+        const p = pendingAttackChoice;
+        const weapons = parseWeapons(p.attacker.weaponString || '');
+        const rangeBonus = rangeBonusAt(p.attacker, groundZones);
+        const showWeapons = weapons.filter(w => canWeaponAttack(w, p.attacker, p.target, rangeBonus)).length > 1;
+        return (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[320px] space-y-4">
+              <p className="text-white text-sm text-center">Attack {p.target.unitName}</p>
+              {showWeapons && (
+                <WeaponSelect
+                  attacker={p.attacker}
+                  target={p.target}
+                  weapons={weapons}
+                  value={p.weaponIndex}
+                  rangeBonus={rangeBonus}
+                  onChange={i => setPendingAttackChoice({ ...p, weaponIndex: i })}
+                />
+              )}
+              {p.rider && (
+                <MountTargetChoice
+                  target={p.target}
+                  rider={p.rider}
+                  value={p.mainTarget}
+                  onChange={v => setPendingAttackChoice({ ...p, mainTarget: v })}
+                />
+              )}
+              <div className="flex justify-end gap-2">
+                <button className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm" onClick={cancelAttackChoice}>Cancel</button>
+                <button className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg text-sm" onClick={confirmAttackChoice}>Attack</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Descent drop — a grounded unit stepping off an adjacent lower surface
           chooses Climb down (pay MP; hang midway if short) / Drop (fall damage) /
@@ -3489,14 +3522,39 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                   Stoop attack (move + free melee)
                 </button>
               )}
-              {pendingElevation.isHostile && pendingElevation.occupant && (
-                <button
-                  className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
-                  onClick={() => { const p = pendingElevation; setPendingElevation(null); if (!controlsLocked && p.occupant) void handleAttackRequest(p.unit.id, p.occupant.id); }}
-                >
-                  Range attack
-                </button>
-              )}
+              {pendingElevation.isHostile && pendingElevation.occupant && (() => {
+                const p = pendingElevation;
+                const occ = p.occupant!;
+                const weapons = parseWeapons(p.unit.weaponString || '');
+                const rangeBonus = rangeBonusAt(p.unit, groundZones);
+                const rider = units.find(u => u.attachedToUnitId === occ.id && !u.isDeleted && u.attachedPosition === 'rider') ?? null;
+                return (
+                  <>
+                    <WeaponSelect
+                      attacker={p.unit}
+                      target={occ}
+                      weapons={weapons}
+                      value={p.weaponIndex}
+                      rangeBonus={rangeBonus}
+                      onChange={i => setPendingElevation({ ...p, weaponIndex: i })}
+                    />
+                    {rider && (
+                      <MountTargetChoice
+                        target={occ}
+                        rider={rider}
+                        value={p.mainTarget}
+                        onChange={v => setPendingElevation({ ...p, mainTarget: v })}
+                      />
+                    )}
+                    <button
+                      className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
+                      onClick={() => { setPendingElevation(null); if (!controlsLocked) void handleAttackRequest(p.unit.id, occ.id, { weaponIndex: p.weaponIndex, ...(rider ? { mainTarget: p.mainTarget } : {}) }); }}
+                    >
+                      Attack{weapons[p.weaponIndex] ? ` with ${weapons[p.weaponIndex].name}` : ''}
+                    </button>
+                  </>
+                );
+              })()}
               <button className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm" onClick={cancelElevation}>Cancel</button>
             </div>
           </div>

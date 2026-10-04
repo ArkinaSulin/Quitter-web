@@ -1,5 +1,5 @@
 ﻿import { describe, it, expect } from 'vitest';
-import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, isInAnyHostileKillZone, computeWeaponSwitchAc } from './meleeFallback';
+import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, isInAnyHostileKillZone, computeWeaponSwitchAc, attackKind, canWeaponAttack } from './meleeFallback';
 import { Unit, Hex } from '@/types/gameProtocol';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
@@ -161,5 +161,69 @@ describe('computeWeaponSwitchAc', () => {
     const unit = makeUnit({ isShielded: true, baselineAc: 14, currentAc: 14 });
     const twoHanded = { ...FISTS_WEAPON, isTwoHanded: true };
     expect(computeWeaponSwitchAc(unit, twoHanded)).toBe(12);
+  });
+});
+
+describe('attackKind', () => {
+  const melee = { range: 1, maxRange: 1, magicDimension: 0 };
+  const bow = { range: 6, maxRange: 8, magicDimension: 0 };
+  const spell = { range: 6, maxRange: 6, magicDimension: 2 };
+
+  it('a melee weapon is melee at adjacency (engaged or not) and cannot reach beyond', () => {
+    expect(attackKind(melee, true, true)).toBe('melee');
+    expect(attackKind(melee, true, false)).toBe('melee');
+    expect(attackKind(melee, false, false)).toBe('none');
+  });
+
+  it('a ranged weapon is melee only when engaged in the opponent kill zone, else ranged', () => {
+    expect(attackKind(bow, true, true)).toBe('melee');
+    expect(attackKind(bow, true, false)).toBe('ranged');
+    expect(attackKind(bow, false, true)).toBe('ranged');
+    expect(attackKind(bow, false, false)).toBe('ranged');
+  });
+
+  it('a magic weapon always acts at range', () => {
+    expect(attackKind(spell, true, true)).toBe('ranged');
+    expect(attackKind(spell, false, false)).toBe('ranged');
+  });
+});
+
+describe('canWeaponAttack', () => {
+  const melee = { range: 1, maxRange: 1, magicDimension: 0, isHealing: false };
+  const bow = { range: 6, maxRange: 8, magicDimension: 0, isHealing: false };
+  const heal = { range: 1, maxRange: 1, magicDimension: 0, isHealing: true };
+  // Facing 0 → edge 0 is the front; the two kill-zone hexes behind the target's
+  // facing are (1,0)-ish. Use an explicit "attacker in front" geometry:
+  // target at (0,0) facing 0 → its kill zone contains (1,0)? Just assert via the
+  // helper's own adjacency/reach behaviour instead of hard-coding the arc.
+
+  it('melee reaches only at horizontal adjacency within 10 ft', () => {
+    const attacker = makeUnit({ hex: h(1, 0), elevation: 0 });
+    const target = makeUnit({ hex: h(0, 0), elevation: 0 });
+    expect(canWeaponAttack(melee, attacker, target)).toBe(true);
+    const high = makeUnit({ hex: h(1, 0), elevation: 20 });
+    expect(canWeaponAttack(melee, high, target)).toBe(false); // >10 ft vertical
+    const far = makeUnit({ hex: h(3, 0), elevation: 0 });
+    expect(canWeaponAttack(melee, far, target)).toBe(false);
+  });
+
+  it('ranged reaches within maxRange; climbing adds reach, shooting down does not', () => {
+    const attacker = makeUnit({ hex: h(0, 0), elevation: 0 });
+    const target = makeUnit({ hex: h(3, 0), elevation: 0 });
+    expect(canWeaponAttack(bow, attacker, target)).toBe(true); // dist 3 ≤ 8
+    const far = makeUnit({ hex: h(9, 0), elevation: 0 });
+    expect(canWeaponAttack(bow, attacker, far)).toBe(false); // dist 9 > 8
+    // Target 20 ft ABOVE at dist 9 → reach 9 + 2 = 11 > 8 → no.
+    const high = makeUnit({ hex: h(9, 0), elevation: 20 });
+    expect(canWeaponAttack(bow, attacker, high)).toBe(false);
+    // Attacker 20 ft above a dist-3 target → shooting down adds nothing → 3 ≤ 8.
+    const above = makeUnit({ hex: h(0, 0), elevation: 20 });
+    expect(canWeaponAttack(bow, above, target)).toBe(true);
+  });
+
+  it('healing weapons are never usable offensively', () => {
+    const attacker = makeUnit({ hex: h(1, 0) });
+    const target = makeUnit({ hex: h(0, 0) });
+    expect(canWeaponAttack(heal, attacker, target)).toBe(false);
   });
 });

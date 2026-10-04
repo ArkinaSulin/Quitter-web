@@ -568,6 +568,20 @@ over an enemy to see its range rings). The game shows range before you commit:
   (roll two D20, take the lower);
 - beyond **max range**: blocked.
 
+When the drop gives you a real choice the game opens an **Attack** picker first:
+a **flying** unit dropping on a ground enemy always shows its elevation slider and
+a **weapon** menu (unreachable weapons are greyed out) plus, if the target carries
+a rider, a **mount / rider** choice; a **ground** unit shows the weapon menu only
+when more than one of its weapons can reach (or the target carries a rider).
+You can pick the weapon and confirm without cancelling out to switch.
+
+**Shooting at point-blank:** adjacent to an enemy you are normally forced to melee
+with a melee weapon. But if you are **outside that enemy's kill zone** (its two
+front hexes) you may fire a **ranged** weapon even at adjacency; if you stand in
+its kill zone the ranged weapon is disabled and you fall back to melee. A melee
+weapon can never reach beyond adjacency — close the distance yourself (there is no
+auto-dive).
+
 ![S-19 Range rings](screenshots/s-19-ranged-drag.png)
 
 Attacking costs **1 action** — and it is spent even if your AGR roll fails.

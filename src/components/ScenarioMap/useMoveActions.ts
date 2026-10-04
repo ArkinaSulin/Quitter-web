@@ -121,8 +121,12 @@ export function useMoveActions(deps: MoveActionsDeps) {
     occupant: Unit | null;
     /** The occupant is a hostile stoop target (the unified modal offers Stoop). */
     canStoop: boolean;
-    /** The occupant is hostile (the unified modal offers Range attack). */
+    /** The occupant is hostile (the unified modal offers the attack choice). */
     isHostile: boolean;
+    /** Selected weapon index for the occupant attack (defaults to the active one). */
+    weaponIndex: number;
+    /** Main target of a mounted pair (defaults to the rider). */
+    mainTarget: 'mount' | 'rider';
   } | null>(null);
   const [pendingLeaveHero, setPendingLeaveHero] = useState<{ unit: Unit; targetHex: Hex; cost: number; maxMP: number; hero: Unit; heroMaxMP: number | undefined; breakToFormation: string | undefined; elevation: number } | null>(null);
   /** A non-flying hero detaching from an airborne host must fall (d6 per 10 ft). */
@@ -567,7 +571,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (canFly(unit)) {
       const groundOccupied = units.some(u => u.id !== unitId && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) <= 0 && u.hex.q === targetHex.q && u.hex.r === targetHex.r);
       const range = elevationSliderRange(unit.elevation ?? 0, entry.cost, groundOccupied);
-      setPendingElevation({ unit, targetHex, cost: entry.cost, maxMP: finalMax, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation, range, originAir: flying, originSurface, endSurface, occupant: null, canStoop: false, isHostile: false });
+      setPendingElevation({ unit, targetHex, cost: entry.cost, maxMP: finalMax, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation, range, originAir: flying, originSurface, endSurface, occupant: null, canStoop: false, isHostile: false, weaponIndex: unit.activeWeaponIndex ?? 0, mainTarget: 'rider' });
       return;
     }
     await completeMove(unit, targetHex, entry.cost, false, finalMax, attachedHero, heroMax, breakToFormation, descendElev, originSurface);
@@ -792,6 +796,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       attachedHero: reach.attachedHero, heroMaxMP: reach.heroMaxMP, breakToFormation: undefined,
       range, originAir: (unit.elevation ?? 0) > originSurface, originSurface, endSurface, occupant,
       canStoop: opts.canStoop, isHostile: opts.isHostile,
+      weaponIndex: unit.activeWeaponIndex ?? 0, mainTarget: 'rider',
     });
     return true;
   }, [flyerOccupyReach, addMessage, structures, structureTemplates]);

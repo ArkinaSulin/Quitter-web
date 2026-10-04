@@ -16,8 +16,8 @@ import { getSetting } from '@/lib/settingsCache';
 import { unitAttackCap } from '@/lib/attackCap';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, isHeroMoraleBoostEnabled, isZocPursuitEnabled } from '@/lib/unitMorale';
-import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc } from '@/lib/meleeFallback';
-import { canFly, meleeElevationFor, isStooping, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo } from '@/lib/flying';
+import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc, attackKind, canWeaponAttack } from '@/lib/meleeFallback';
+import { meleeElevationFor, isStooping, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo } from '@/lib/flying';
 import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable } from '@/lib/moveCost';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
@@ -109,7 +109,6 @@ export function useCombatActions(deps: CombatActionsDeps) {
     playerId,
     playerName,
     setAttachModal,
-    elevateUnit,
     canAttackTarget,
   } = deps;
 
@@ -119,7 +118,15 @@ export function useCombatActions(deps: CombatActionsDeps) {
   const [pendingChargeThrough, setPendingChargeThrough] = useState<PendingChargeThrough | null>(null);
   const [pendingWeaponSwitch, setPendingWeaponSwitch] = useState<PendingWeaponSwitch | null>(null);
   const [pendingMountTarget, setPendingMountTarget] = useState<{ attacker: Unit; target: Unit; rider: Unit } | null>(null);
-  const [pendingDiveAttack, setPendingDiveAttack] = useState<{ attacker: Unit; target: Unit; elevation: number } | null>(null);
+  /** A hostile drop-attack where >1 weapon (or a mounted pair) needs a choice from
+   *  the player — the combined weapon + mount/rider picker. */
+  const [pendingAttackChoice, setPendingAttackChoice] = useState<{
+    attacker: Unit;
+    target: Unit;
+    rider: Unit | null;
+    weaponIndex: number;
+    mainTarget: 'mount' | 'rider';
+  } | null>(null);
 
   const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; chained?: boolean; opportunityAttack?: boolean; mainTarget?: 'mount' | 'rider'; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean; prependSubSteps?: SubStep[] }) => {
     if (overBudget) {
@@ -151,30 +158,36 @@ export function useCombatActions(deps: CombatActionsDeps) {
     let attackerSwitchIdx: number | null = null;
     let defenderSwitchIdx: number | null = null;
     let usedFists = false;
-    if (isAdjacent && weapon.magicDimension <= 0) {
-      if (!isMeleeWeapon(weapon)) {
-        const attackerWeapons = parseWeapons(attacker.weaponString || '');
-        const meleeIdx = findFirstMeleeWeaponIndex(attackerWeapons);
-        if (meleeIdx !== -1) {
-          weapon = attackerWeapons[meleeIdx];
-          attackerSwitchIdx = meleeIdx;
-        } else {
-          weapon = FISTS_WEAPON;
-          usedFists = true;
-        }
-      }
-      if (defWeapon && defWeapon.magicDimension <= 0 && !isMeleeWeapon(defWeapon)) {
-        const defenderWeapons = parseWeapons(target.weaponString || '');
-        const dMeleeIdx = findFirstMeleeWeaponIndex(defenderWeapons);
-        if (dMeleeIdx !== -1) {
-          defWeapon = defenderWeapons[dMeleeIdx];
-          defenderSwitchIdx = dMeleeIdx;
-        } else {
-          defWeapon = FISTS_WEAPON;
-        }
+    // Adjacency forces a MELEE weapon only when the combatant stands in the
+    // opponent's kill zone (engaged frontally). Outside it, a ranged weapon may
+    // fire at point-blank; magic always acts at range.
+    const inTargetKillZone = isInKillZone(target, attacker.hex);
+    const inAttackerKillZone = isInKillZone(attacker, target.hex);
+    if (isAdjacent && weapon.magicDimension <= 0 && inTargetKillZone && !isMeleeWeapon(weapon)) {
+      const attackerWeapons = parseWeapons(attacker.weaponString || '');
+      const meleeIdx = findFirstMeleeWeaponIndex(attackerWeapons);
+      if (meleeIdx !== -1) {
+        weapon = attackerWeapons[meleeIdx];
+        attackerSwitchIdx = meleeIdx;
+      } else {
+        weapon = FISTS_WEAPON;
+        usedFists = true;
       }
     }
-    const isRanged = weapon.magicDimension > 0 || !isAdjacent;
+    const isRanged = weapon.magicDimension > 0 || !isAdjacent
+      || (isAdjacent && !inTargetKillZone && !isMeleeWeapon(weapon));
+    // A MELEE exchange also forces the defender's melee weapon when the defender
+    // is engaged frontally by the attacker.
+    if (!isRanged && isAdjacent && defWeapon && defWeapon.magicDimension <= 0 && inAttackerKillZone && !isMeleeWeapon(defWeapon)) {
+      const defenderWeapons = parseWeapons(target.weaponString || '');
+      const dMeleeIdx = findFirstMeleeWeaponIndex(defenderWeapons);
+      if (dMeleeIdx !== -1) {
+        defWeapon = defenderWeapons[dMeleeIdx];
+        defenderSwitchIdx = dMeleeIdx;
+      } else {
+        defWeapon = FISTS_WEAPON;
+      }
+    }
     // Line of sight: any other unit (friendly or hostile) between the two hex
     // centres turns a ranged shot into an "indirect shot" (disadvantage). Melee
     // is not LoS-gated; the auto-draw already resolved adjacent weapons above.
@@ -1240,10 +1253,17 @@ export function useCombatActions(deps: CombatActionsDeps) {
       addError(`${attacker.unitName} cannot see ${target.unitName} — it is hidden in the dark beyond the side's sight`);
       return;
     }
-    // Magic (area) weapons always act at range. Every other attack at adjacency
-    // is a melee attempt (a ranged primary auto-switches to a melee weapon or
-    // fights with Fists); beyond adjacency is a ranged attack (thrown/shot).
-    const isRangedThisAttack = weapon.magicDimension > 0 || !isAdjacent;
+    // Magic (area) weapons always act at range. At adjacency a ranged weapon is
+    // used only when the attacker is NOT in the target's kill zone (point-blank);
+    // in the kill zone the melee fallback runs (in `performAttack`). A melee
+    // weapon beyond adjacency cannot reach.
+    const inTargetKillZone = isInKillZone(target, attacker.hex);
+    const attackType = attackKind(weapon, isAdjacent, inTargetKillZone);
+    if (attackType === 'none') {
+      addMessage(`${attacker.unitName} cannot reach ${target.unitName} — get within 10 ft to melee`);
+      return;
+    }
+    const isRangedThisAttack = attackType === 'ranged';
 
     // block_attacks: hard-deny attacks crossing into/out of a unit, a hex (painted
     // zone or hex structure) or a wall. AoE magic casts take the separate cast
@@ -1322,17 +1342,6 @@ export function useCombatActions(deps: CombatActionsDeps) {
       }
     } else if (!canRangedTarget(attackerForm, arcOfTarget(attacker.hex, attacker.facing, target.hex))) {
       addMessage(`${attacker.unitName} (${attacker.currentFormation}) cannot ranged-attack target in that direction`);
-      return;
-    }
-
-    // A flyer too high (or low) to melee must dive/climb into reach first — the
-    // elevation change rides a chained ELEVATE, then the attack resumes.
-    if (canFly(attacker) && isMeleeWeapon(weapon) && verticalFeet > 10 && attacker.actionsAvailable >= 1) {
-      setPendingDiveAttack({
-        attacker,
-        target,
-        elevation: meleeElevationFor(attacker.elevation ?? 0, target.elevation ?? 0),
-      });
       return;
     }
 
@@ -1415,16 +1424,43 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
   const cancelMountTarget = useCallback(() => setPendingMountTarget(null), []);
 
-  // Confirm the dive/climb, then resume the attack (now within melee reach).
-  const confirmDiveAttack = useCallback(async () => {
-    const p = pendingDiveAttack;
-    setPendingDiveAttack(null);
-    if (!p) return;
-    await elevateUnit(p.attacker, p.elevation);
-    await handleAttackRequest(p.attacker.id, p.target.id);
-  }, [pendingDiveAttack, elevateUnit, handleAttackRequest]);
+  /**
+   * Open the combined weapon + mount/rider picker for a hostile drop-attack when
+   * the player has a real choice: MORE THAN ONE weapon can attack the target, or
+   * the target carries a rider. Returns whether the picker was opened (the caller
+   * then skips the direct `handleAttackRequest`).
+   */
+  const offerAttackChoice = useCallback((attackerId: string, targetId: string): boolean => {
+    const attacker = units.find(u => u.id === attackerId);
+    const target = units.find(u => u.id === targetId);
+    if (!attacker || !target) return false;
+    if ((alliances[attacker.team] || 'friendly') === (alliances[target.team] || 'friendly')) return false;
+    const weapons = parseWeapons(attacker.weaponString || '');
+    const bonus = rangeBonusAt(attacker, groundZones);
+    const usable = weapons.map((w, i) => ({ w, i })).filter(({ w }) => canWeaponAttack(w, attacker, target, bonus));
+    const rider = units.find(u => u.attachedToUnitId === targetId && !u.isDeleted && u.attachedPosition === 'rider') ?? null;
+    if (usable.length <= 1 && !rider) return false;
+    setPendingAttackChoice({
+      attacker,
+      target,
+      rider,
+      weaponIndex: usable[0]?.i ?? (attacker.activeWeaponIndex ?? 0),
+      mainTarget: 'rider',
+    });
+    return true;
+  }, [units, alliances, groundZones]);
 
-  const cancelDiveAttack = useCallback(() => setPendingDiveAttack(null), []);
+  const confirmAttackChoice = useCallback(() => {
+    const p = pendingAttackChoice;
+    setPendingAttackChoice(null);
+    if (!p) return;
+    void handleAttackRequest(p.attacker.id, p.target.id, {
+      weaponIndex: p.weaponIndex,
+      ...(p.rider ? { mainTarget: p.mainTarget } : {}),
+    });
+  }, [pendingAttackChoice, handleAttackRequest]);
+
+  const cancelAttackChoice = useCallback(() => setPendingAttackChoice(null), []);
 
   return {
     pendingAttack,
@@ -1441,9 +1477,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
     pendingMountTarget,
     confirmMountTarget,
     cancelMountTarget,
-    pendingDiveAttack,
-    confirmDiveAttack,
-    cancelDiveAttack,
+    pendingAttackChoice,
+    setPendingAttackChoice,
+    offerAttackChoice,
+    confirmAttackChoice,
+    cancelAttackChoice,
     performAttack,
     performChargeEnd,
     finishChargeAfterAttack,

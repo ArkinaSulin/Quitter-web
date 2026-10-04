@@ -1,5 +1,5 @@
 // src/lib/meleeFallback.ts
-import { Unit, AllianceGroup } from '@/types/gameProtocol';
+import { Unit, AllianceGroup, hexDistance } from '@/types/gameProtocol';
 import { Weapon } from '@/lib/weaponParser';
 import { isInKillZone, isUnitRouted } from '@/lib/unitMorale';
 
@@ -47,6 +47,51 @@ export function findFirstMeleeWeaponIndex(weapons: Weapon[]): number {
 /** A melee exchange happens at adjacency; everything further is ranged. */
 export function isAdjacentDistance(dist: number): boolean {
   return dist <= 1;
+}
+
+/**
+ * Which kind of attack a weapon makes against a target, by geometry + kill zone:
+ *  - a MAGIC weapon always acts at range;
+ *  - at adjacency, a melee weapon is melee, and a RANGED weapon is melee only when
+ *    the attacker stands in the target's kill zone (engaged frontally) — otherwise
+ *    it fires at point-blank;
+ *  - beyond adjacency, a ranged/thrown weapon is ranged; a melee weapon cannot
+ *    reach (`none`).
+ */
+export function attackKind(
+  weapon: Pick<Weapon, 'range' | 'maxRange' | 'magicDimension'> | null | undefined,
+  isAdjacent: boolean,
+  inOpponentKillZone: boolean,
+): 'melee' | 'ranged' | 'none' {
+  if (!weapon) return 'none';
+  if ((weapon.magicDimension ?? 0) > 0) return 'ranged';
+  if (isAdjacent) return (isMeleeWeapon(weapon) || inOpponentKillZone) ? 'melee' : 'ranged';
+  return isMeleeWeapon(weapon) ? 'none' : 'ranged';
+}
+
+/**
+ * Can `attacker` use `weapon` against `target` from its CURRENT hex? Combines
+ * `attackKind` with the ranged reach rule (each 10 ft climbed adds 1 hex; shooting
+ * DOWN never extends reach). Healing weapons are never usable offensively.
+ */
+export function canWeaponAttack(
+  weapon: Pick<Weapon, 'range' | 'maxRange' | 'magicDimension' | 'isHealing'> | null | undefined,
+  attacker: Unit,
+  target: Unit,
+  rangeBonus = 0,
+): boolean {
+  if (!weapon || weapon.isHealing) return false;
+  const dist = hexDistance(attacker.hex, target.hex);
+  const verticalFeet = Math.abs((attacker.elevation ?? 0) - (target.elevation ?? 0));
+  const isAdjacent = isAdjacentDistance(dist) && verticalFeet <= 10;
+  const kind = attackKind(weapon, isAdjacent, isInKillZone(target, attacker.hex));
+  if (kind === 'none') return false;
+  if (kind === 'ranged' && (weapon.magicDimension ?? 0) <= 0) {
+    const upHex = Math.max(0, Math.floor(((target.elevation ?? 0) - (attacker.elevation ?? 0)) / 10));
+    const bonus = (weapon.maxRange ?? 1) > 1 ? rangeBonus : 0;
+    return dist + upHex <= (weapon.maxRange ?? 1) + bonus;
+  }
+  return true;
 }
 
 /**

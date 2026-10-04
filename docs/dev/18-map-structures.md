@@ -105,6 +105,23 @@ A grounded unit's elevation changes **only across an adjacent edge**:
   ("move onto/off the edge first"). `rollFallDamage` (`flying.ts`) is the shared
   d6/10 ft formula.
 
+## Attack type is kill-zone-aware
+
+At adjacency (`dist ≤ 1`, vertical gap ≤ 10 ft) the weapon used depends on the
+attacker standing in the **target's kill zone** (`isInKillZone(target, attacker.hex)`,
+the target's front two hexes — Scattered/Routed have none):
+
+- a **melee** weapon is melee (always);
+- a **ranged** weapon fires at **point-blank unless in the kill zone**, where the
+  melee fallback (draw melee weapon / Fists) runs;
+- a **melee** weapon beyond adjacency cannot reach (`none`).
+
+Symmetric for the defender (in the attacker's kill zone). `attackKind(...)` +
+`canWeaponAttack(...)` (`meleeFallback.ts`) are the shared source; the flyer/ground
+drop pickers use them to enable/disable weapons. There is **no auto-dive** — a
+combatant must position into range itself. Point-blank ranged still doesn't provoke
+retaliation (the engine resolves one `isRanged` per exchange).
+
 **Both climbs are SOFT-gated**, exactly like a move: a climb that needs more
 MP/actions than the unit has raises the shared over-budget confirm
 (`pendingMove.climb` → `handleClimbMove(..., overBudget = true)`, red warning,
