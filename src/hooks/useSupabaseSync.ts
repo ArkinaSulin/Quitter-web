@@ -414,7 +414,9 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       mountSplit: null,
       elevation: 0,
       flySpeed: template.flySpeed ?? 0,
-      flySpeedAvailable: 0,
+      // Heroes spawn with their whole movement up front (ground AND fly pools),
+      // mirroring `movementPointsAvailable`; units materialize pools from actions.
+      flySpeedAvailable: template.isHero ? (template.flySpeed ?? 0) : 0,
       climbTo: null,
       currentTroopCount: troopCount,
       maxTroopCount: troopCount,

@@ -217,6 +217,9 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
   // Formations sorted by organization level (highest first), then name.
   const formationOptions = Object.values(formationsMap)
     .map(f => f.name)
+    // Fearless units can never enter Routed (a fearless hero stays in its own
+    // formation while down) — hide it from the picker and availability chips.
+    .filter(name => !(draft.ignoreMoraleChecks && name === 'Routed'))
     .sort((a, b) => getOrganizationLevel(b) - getOrganizationLevel(a) || a.localeCompare(b));
 
   const startDrag = (e: React.MouseEvent) => {

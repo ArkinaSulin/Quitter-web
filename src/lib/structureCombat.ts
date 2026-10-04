@@ -66,28 +66,40 @@ export interface HexStructureAttackResult {
   destroyed: boolean;
 }
 
-/** Roll one attack against a hex structure and apply DT + simultaneous door/HP damage. */
+/**
+ * Roll `attacks` damage rolls against a hex structure (the unit-combat attack
+ * count: row capacity × capacity multiplier × weapon attacks, plus a hero volley)
+ * and apply DT + simultaneous door/HP damage. DT gates EACH hit; the surviving
+ * hits are summed and applied once.
+ */
 export function resolveHexStructureAttack(
   template: StructureTemplate,
   instance: StructureInstance,
   weapon: HexStructureWeapon,
   rng: () => number,
+  attacks = 1,
 ): HexStructureAttackResult {
   const doorCur = structureDoorCurrent(template, instance);
   const doorStanding = !instance.open && doorCur > 0;
   const maxHp = template.maxHp;
   const hp = instance.hp ?? maxHp;
   const dt = template.dt ?? 0;
-  const damage = Math.max(0, rollDamage(weapon.damageDice, rng));
+  let damage = 0;
+  let applied = 0;
+  for (let i = 0; i < Math.max(1, attacks); i++) {
+    const r = Math.max(0, rollDamage(weapon.damageDice, rng));
+    damage += r;
+    if (r > dt) applied += r;
+  }
 
-  if (damage <= dt) {
+  if (applied <= 0) {
     return { damage, applied: 0, deflected: true, hitDoor: doorStanding, doorHpAfter: doorCur, hpAfter: hp, destroyed: false };
   }
-  const hpAfter = Math.max(0, hp - damage);
-  const doorHpAfter = instance.open ? 0 : Math.max(0, doorCur - damage);
+  const hpAfter = Math.max(0, hp - applied);
+  const doorHpAfter = instance.open ? 0 : Math.max(0, doorCur - applied);
   return {
     damage,
-    applied: damage,
+    applied,
     deflected: false,
     hitDoor: doorStanding,
     doorHpAfter,

@@ -7,7 +7,7 @@ import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStat
 import { applyFormationChange } from '@/lib/formationCost';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { flyingFormationCap, movePoolMode, flyMax, moveBudgetUnit, passengerDrain } from '@/lib/flying';
-import { applyMoveCost, applyMpSpend, applyHeroMoveCost, applyHeroMpSpend } from '@/lib/moveCost';
+import { applyMoveCost, applyMpSpend, applyHeroMoveCost } from '@/lib/moveCost';
 import { getSetting } from '@/lib/settingsCache';
 import { parseWeapons } from '@/lib/weaponParser';
 import { isUnitRouted } from '@/lib/unitMorale';
@@ -826,7 +826,7 @@ export function useGameEngine({
   /** GM-only: manually set a unit to rout (no un-rout). Undoable via the log. */
   const setRouting = useCallback(
     async (unit: Unit): Promise<void> => {
-      if (isUnitRouted(unit)) return;
+      if (isUnitRouted(unit) || unit.ignoreMoraleChecks) return;
       const subSteps: SubStep[] = [
         {
           type: 'ROUT',
@@ -861,21 +861,20 @@ export function useGameEngine({
   );
 
   const attachHero = useCallback(
-    async (hero: Unit, targetUnit: Unit, position: 'front' | 'back' | 'rider', heroMaxMP: number): Promise<void> => {
+    async (hero: Unit, targetUnit: Unit, position: 'front' | 'back' | 'rider', heroMaxMP: number, cost = 1): Promise<void> => {
       const changes: { field: string; from: any; to: any }[] = [
         { field: 'attachedToUnitId', from: null, to: targetUnit.id },
         { field: 'attachedPosition', from: null, to: position },
         { field: 'hex', from: { ...hero.hex }, to: { ...targetUnit.hex } },
       ];
-      // Attaching costs 1 hero MP (free during free-move). An airborne hero pays
-      // from its fly pool.
+      // Attaching pays the host hex's ENTRY cost from the hero's GROUND pool
+      // (a same-level step, never flight); actions convert at the prorated rate.
       if (!freeMove) {
-        const fly = (hero.elevation ?? 0) > 0;
-        const budget = moveBudgetUnit(hero, fly ? 'fly' : 'ground');
-        const { movementPointsAvailable, actionsAvailable } = applyHeroMpSpend(budget, 1, fly ? flyMax(hero) : heroMaxMP);
+        const budget = moveBudgetUnit(hero, 'ground');
+        const { movementPointsAvailable, actionsAvailable } = applyHeroMoveCost(budget, cost, heroMaxMP);
         changes.push({
-          field: fly ? 'flySpeedAvailable' : 'movementPointsAvailable',
-          from: fly ? (hero.flySpeedAvailable ?? 0) : hero.movementPointsAvailable,
+          field: 'movementPointsAvailable',
+          from: hero.movementPointsAvailable,
           to: movementPointsAvailable,
         });
         if (actionsAvailable !== hero.actionsAvailable) {
@@ -896,25 +895,13 @@ export function useGameEngine({
   );
 
   const swapHeroPosition = useCallback(
-    async (hero: Unit, heroMaxMP: number): Promise<void> => {
+    async (hero: Unit): Promise<void> => {
       if (!hero.attachedToUnitId) return;
       const newPosition = hero.attachedPosition === 'back' ? 'front' : 'back';
+      // A front/back swap is a reposition WITHIN the same hex — free.
       const changes: { field: string; from: any; to: any }[] = [
         { field: 'attachedPosition', from: hero.attachedPosition, to: newPosition },
       ];
-      if (!freeMove) {
-        const fly = (hero.elevation ?? 0) > 0;
-        const budget = moveBudgetUnit(hero, fly ? 'fly' : 'ground');
-        const { movementPointsAvailable, actionsAvailable } = applyHeroMpSpend(budget, 1, fly ? flyMax(hero) : heroMaxMP);
-        changes.push({
-          field: fly ? 'flySpeedAvailable' : 'movementPointsAvailable',
-          from: fly ? (hero.flySpeedAvailable ?? 0) : hero.movementPointsAvailable,
-          to: movementPointsAvailable,
-        });
-        if (actionsAvailable !== hero.actionsAvailable) {
-          changes.push({ field: 'actionsAvailable', from: hero.actionsAvailable, to: actionsAvailable });
-        }
-      }
       const subSteps: SubStep[] = [
         {
           type: 'SWAP_HERO_POSITION',
@@ -925,7 +912,7 @@ export function useGameEngine({
       ];
       await execute('SWAP_HERO_POSITION', subSteps, subSteps[0].description);
     },
-    [execute, freeMove],
+    [execute],
   );
 
   const elevateUnit = useCallback(

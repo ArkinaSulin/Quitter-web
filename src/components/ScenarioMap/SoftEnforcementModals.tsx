@@ -32,11 +32,8 @@ export interface PendingHeroAttachConversion {
   hero: Unit;
   target: Unit;
   position: 'front' | 'back' | 'rider';
-  actionsNeeded: number;
-}
-
-export interface PendingHeroSwapConversion {
-  hero: Unit;
+  /** The host hex's entry cost (MP) the hero must pay to attach. */
+  cost: number;
   actionsNeeded: number;
 }
 
@@ -44,6 +41,8 @@ export interface PendingAttachOverBudget {
   hero: Unit;
   target: Unit;
   position: 'front' | 'back' | 'rider';
+  /** The host hex's entry cost (MP) the hero could not afford. */
+  cost: number;
 }
 
 export interface PendingFormation {
@@ -100,9 +99,7 @@ export interface SoftEnforcementModalsProps {
     attack: PendingAttack | null;
     attackCap: PendingAttackCap | null;
     heroAttachConversion: PendingHeroAttachConversion | null;
-    heroSwapConversion: PendingHeroSwapConversion | null;
     attachOverBudget: PendingAttachOverBudget | null;
-    swapOverBudget: Unit | null;
     formation: PendingFormation | null;
     castOverBudget: boolean;
     chargeAttack: PendingChargeAttack | null;
@@ -116,9 +113,7 @@ export interface SoftEnforcementModalsProps {
     confirmAttack: () => void;
     confirmAttackCap: () => void;
     confirmHeroAttachConversion: () => void;
-    confirmHeroSwapConversion: () => void;
     confirmAttachOverBudget: () => void;
-    confirmSwapOverBudget: () => void;
     confirmFormation: () => void;
     confirmCast: () => void;
     confirmChargeAttack: () => void;
@@ -132,9 +127,7 @@ export interface SoftEnforcementModalsProps {
     attack: () => void;
     attackCap: () => void;
     heroAttachConversion: () => void;
-    heroSwapConversion: () => void;
     attachOverBudget: () => void;
-    swapOverBudget: () => void;
     formation: () => void;
     castOverBudget: () => void;
     chargeAttack: () => void;
@@ -193,44 +186,21 @@ export function SoftEnforcementModals({ pending, actions, cancels, unitMaxMP }: 
           buttons={[{ label: 'Convert and attach', variant: 'green', onClick: actions.confirmHeroAttachConversion }]}
           onCancel={cancels.heroAttachConversion}
         >
-          {p.heroAttachConversion.hero.unitName} has {Math.floor(Math.max(0, p.heroAttachConversion.hero.movementPointsAvailable))} MP but attaching costs 1 MP.
+          {p.heroAttachConversion.hero.unitName} has {Math.floor(Math.max(0, p.heroAttachConversion.hero.movementPointsAvailable))} MP but attaching costs {p.heroAttachConversion.cost} MP.
           Convert {p.heroAttachConversion.actionsNeeded} action{p.heroAttachConversion.actionsNeeded > 1 ? 's' : ''}
           {p.heroAttachConversion.actionsNeeded > 1 ? ` (+${Math.round(heroMovePerAction(unitMaxMP(p.heroAttachConversion.hero)) * p.heroAttachConversion.actionsNeeded * 10) / 10} MP)` : ''}
           to attach to {p.heroAttachConversion.target.unitName} ({p.heroAttachConversion.position})?
         </ConfirmModal>
       )}
 
-      {p.heroSwapConversion && (
-        <ConfirmModal
-          tone="amber"
-          title="Convert actions to 1 MP?"
-          buttons={[{ label: 'Convert and swap', variant: 'green', onClick: actions.confirmHeroSwapConversion }]}
-          onCancel={cancels.heroSwapConversion}
-        >
-          {p.heroSwapConversion.hero.unitName} has {Math.floor(Math.max(0, p.heroSwapConversion.hero.movementPointsAvailable))} MP but swapping position costs 1 MP.
-          Convert {p.heroSwapConversion.actionsNeeded} action{p.heroSwapConversion.actionsNeeded > 1 ? 's' : ''} to swap to the {p.heroSwapConversion.hero.attachedPosition === 'back' ? 'front' : 'back'}?
-        </ConfirmModal>
-      )}
-
       {p.attachOverBudget && (
         <ConfirmModal
           tone="red"
-          title="Attach with no MP?"
+          title="Attach over budget?"
           buttons={[{ label: 'Yes, attach anyway', variant: 'red', onClick: actions.confirmAttachOverBudget }]}
           onCancel={cancels.attachOverBudget}
         >
-          {p.attachOverBudget.hero.unitName} has no MP or actions left, but can still attach to {p.attachOverBudget.target.unitName} ({p.attachOverBudget.position}).
-        </ConfirmModal>
-      )}
-
-      {p.swapOverBudget && (
-        <ConfirmModal
-          tone="red"
-          title="Swap position with no MP?"
-          buttons={[{ label: 'Yes, swap anyway', variant: 'red', onClick: actions.confirmSwapOverBudget }]}
-          onCancel={cancels.swapOverBudget}
-        >
-          {p.swapOverBudget.unitName} has no MP or actions left, but can still move to the {p.swapOverBudget.attachedPosition === 'back' ? 'front' : 'back'}.
+          {p.attachOverBudget.hero.unitName} cannot afford the {p.attachOverBudget.cost} MP to enter {p.attachOverBudget.target.unitName}'s hex, but can still attach to {p.attachOverBudget.target.unitName} ({p.attachOverBudget.position}).
         </ConfirmModal>
       )}
 

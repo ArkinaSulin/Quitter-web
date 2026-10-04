@@ -29,12 +29,16 @@ export interface UseHexGridProps {
   walls?: Walls;
   /** Dropped onto a wall edge: attack that barrier instead of moving. */
   onAttackWall?: (unitId: string, edge: EdgeRef) => void;
-  /** Whether the dragged unit may attack this wall edge (reach gate). */
+  /** Whether the dragged unit may attack this wall edge (reach gate, overlay hint). */
   canAttackWallEdge?: (unitId: string, edge: EdgeRef) => boolean;
+  /** Whether a wall edge EXISTS here for a Shift-drop to attempt (no reach gate —
+   *  the attack itself reports "cannot reach"). */
+  canAttemptWallEdge?: (unitId: string, edge: EdgeRef) => boolean;
   /** Dropped onto a hex with an attackable structure (gate/tower): attack it. */
   onAttackStructure?: (unitId: string, hex: Hex) => void;
-  /** Whether the dragged unit may attack the structure on this hex. */
-  canAttackStructure?: (unitId: string, hex: Hex) => boolean;
+  /** Whether a structure EXISTS on this hex for a Shift-drop to attempt (no reach
+   *  gate — the attack itself reports "cannot reach"). */
+  canAttemptStructure?: (unitId: string, hex: Hex) => boolean;
   /** Wall edge under the pointer while dragging (for the overlay hint). */
   onHoverWallEdge?: (edge: EdgeRef | null) => void;
   /** Inspect mode (Shift held): unit hover is suppressed and hex/edge info hover fires. */
@@ -82,8 +86,9 @@ export function useHexGrid({
   walls,
   onAttackWall,
   canAttackWallEdge,
+  canAttemptWallEdge,
   onAttackStructure,
-  canAttackStructure,
+  canAttemptStructure,
   onHoverWallEdge,
   shiftHeld = false,
   airOnly = false,
@@ -492,6 +497,20 @@ export function useHexGrid({
     }
   }, [getHexFromScreen, getUnitAtScreen, airOnly, isPanning, panStart, lastHoveredUnit, onUnitHover, onUnitLeave, draggingUnitId, canAttackWallEdge, getWallEdgeAt, onHoverWallEdge, shiftHeld, onHexHover, onHexLeave, onEdgeHover, onEdgeLeave]);
 
+  // Pointer leaves the canvas (e.g. onto a modal overlay): drop all hover state so
+  // tooltips disappear and a re-entry re-fires the hover callbacks.
+  const handleMouseLeave = useCallback(() => {
+    if (lastHoveredUnit) {
+      setLastHoveredUnit(null);
+      onUnitLeave?.();
+    }
+    hoveredEdgeKeyRef.current = null;
+    onHoverWallEdge?.(null);
+    hoveredInfoKeyRef.current = null;
+    onHexLeave?.();
+    onEdgeLeave?.();
+  }, [lastHoveredUnit, onUnitLeave, onHoverWallEdge, onHexLeave, onEdgeLeave]);
+
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (!hex) return;
@@ -556,17 +575,20 @@ export function useHexGrid({
       if (unit) {
         const targetUnit = getUnitAtScreen(e.clientX, e.clientY, { airOnly });
         const wallEdge = getWallEdgeAt(e.clientX, e.clientY);
-        const canHitWall = !!wallEdge && (!canAttackWallEdge || canAttackWallEdge(draggingUnitId, wallEdge));
+        // Identity gate (a wall/structure EXISTS here), NOT a reach gate: an
+        // out-of-range Shift-drop must still route to the attack so it can report
+        // "cannot reach" instead of silently falling through to a move.
+        const canHitWall = !!wallEdge && (!canAttemptWallEdge || canAttemptWallEdge(draggingUnitId, wallEdge));
         // Structure attacks require Shift at drop (plain drop = move). This is
         // the same gesture for edge (walls/spikes) and hex (gates/towers).
         const shift = e.shiftKey;
         if (targetUnit && targetUnit.id !== draggingUnitId) {
           if (onAttack) onAttack(draggingUnitId, targetUnit.id);
         } else if (!targetUnit && shift && canHitWall && onAttackWall) {
-          // Shift-dropped onto a wall segment the unit can reach: attack it.
+          // Shift-dropped onto a wall segment: attack it (reach reported there).
           onAttackWall(draggingUnitId, wallEdge!);
-        } else if (!targetUnit && shift && onAttackStructure && canAttackStructure?.(draggingUnitId, targetHex)) {
-          // Shift-dropped onto a hex with an attackable structure (gate/tower).
+        } else if (!targetUnit && shift && onAttackStructure && canAttemptStructure?.(draggingUnitId, targetHex)) {
+          // Shift-dropped onto a hex with a structure (gate/tower): attack it.
           onAttackStructure(draggingUnitId, targetHex);
         } else if (!targetUnit) {
           // A climbing unit may also "move" within its own hex — that drop means
@@ -592,7 +614,7 @@ export function useHexGrid({
     setIsPanning(false);
     setPanStart(null);
     setMouseDownTarget('none');
-  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAtScreen, airOnly, onAttack, onAttackWall, canAttackWallEdge, onAttackStructure, canAttackStructure, getWallEdgeAt, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
+  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAtScreen, airOnly, onAttack, onAttackWall, canAttemptWallEdge, onAttackStructure, canAttemptStructure, getWallEdgeAt, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
 
   const handleRightClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
@@ -617,6 +639,7 @@ export function useHexGrid({
 
   return {
     handleMouseMove,
+    handleMouseLeave,
     handleMouseDown,
     handleMouseUp,
     handleRightClick,
@@ -628,6 +651,7 @@ export function useHexGrid({
     zoom,
     getHexFromScreen,
     getUnitAt,
+    getUnitAtScreen,
     centerMap,
     centerOn,
     panBy,

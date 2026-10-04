@@ -72,6 +72,12 @@ effectiveMorale = baseMorale + currentMoraleModifier
 or spell). It routs when `effectiveMorale ≤ 0` — subject to `ignoreMoraleChecks`
 (fearless/undead) which never rout. **Movement never routs by itself.**
 
+A fearless unit can **never enter the `Routed` formation** at all (not just via
+morale): `routeUnit` omits the formation change for fearless carriers (a downed
+fearless hero keeps its own formation and renders as down from 0 HP), and the GM
+paths refuse it too (`setRouting`, the context-menu "Rout Unit", and the unit
+editor's formation picker).
+
 ## Rout & cascade
 
 - The attacker's / spell's damage lands → each damaged unit runs

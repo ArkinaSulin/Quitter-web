@@ -23,7 +23,7 @@ import { Walls } from '@/lib/walls';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn, routeUnit } from './routeUnit';
-import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingHeroSwapConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
+import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
 
 interface MoveActionsDeps {
   units: Unit[];
@@ -40,8 +40,8 @@ interface MoveActionsDeps {
   moveUnitRecorded: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean; breakToFormation?: string; elevation?: number; surface?: number }) => Promise<void>;
   moveUnitFree: (unit: Unit, targetHex: Hex, attachedHero?: Unit | null, breakToFormation?: string) => Promise<void>;
   changeFormation: (unit: Unit, formation: string, formationsMap: Record<string, Formation>) => Promise<void>;
-  attachHero: (hero: Unit, targetUnit: Unit, position: 'front' | 'back' | 'rider', heroMaxMP: number) => Promise<void>;
-  swapHeroPosition: (hero: Unit, heroMaxMP: number) => Promise<void>;
+  attachHero: (hero: Unit, targetUnit: Unit, position: 'front' | 'back' | 'rider', heroMaxMP: number, cost?: number) => Promise<void>;
+  swapHeroPosition: (hero: Unit) => Promise<void>;
   offerReactionsFor: (mover: Unit) => void;
   pruneReactionOffers: () => void;
   weaponSelectedTurnRef: { current: Record<string, number> };
@@ -89,9 +89,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const [pendingFormation, setPendingFormation] = useState<PendingFormation | null>(null);
   const [pendingHeroAttachConversion, setPendingHeroAttachConversion] = useState<PendingHeroAttachConversion | null>(null);
-  const [pendingHeroSwapConversion, setPendingHeroSwapConversion] = useState<PendingHeroSwapConversion | null>(null);
   const [pendingAttachOverBudget, setPendingAttachOverBudget] = useState<PendingAttachOverBudget | null>(null);
-  const [pendingSwapOverBudget, setPendingSwapOverBudget] = useState<Unit | null>(null);
   const [pendingElevation, setPendingElevation] = useState<{
     unit: Unit;
     targetHex: Hex;
@@ -550,45 +548,35 @@ export function useMoveActions(deps: MoveActionsDeps) {
       addMessage(`${target.unitName} is already part of a mounted pair`);
       return;
     }
-    // Attaching costs 1 hero MP — heroes convert actions at the prorated rate
-    // (maxMP/5 each). When MP is insufficient, ask whether to convert the
-    // [#] actions that make up 1 MP; only if even conversions can't cover it
-    // (no actions left) fall back to the over-budget confirm.
-    const fly = (hero.elevation ?? 0) > 0;
-    const maxMP = fly ? (hero.flySpeed ?? 0) : unitMaxMP(hero);
-    const avail = fly ? (hero.flySpeedAvailable ?? 0) : hero.movementPointsAvailable;
-    if (!freeMove && avail < 1) {
-      const per = heroMovePerAction(maxMP);
-      const actionsNeeded = Math.ceil((1 - Math.max(0, avail)) / per);
-      if (hero.actionsAvailable >= actionsNeeded) {
-        setPendingHeroAttachConversion({ hero, target, position, actionsNeeded });
+    // Attaching moves the hero into the host's hex, so it pays that hex's ENTRY
+    // cost (terrain/structure — same `makeCostOfHex` as a move), always from the
+    // hero's GROUND pool (attach is a same-level step, not flight). When the MP
+    // is short, ask to convert actions at the prorated rate; only if even that
+    // can't cover it, fall back to the over-budget confirm.
+    const mounted = !!hero.mountId || !!hero.mountName;
+    const cost = makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted })(target.hex.q, target.hex.r, hero.hex.q, hero.hex.r);
+    const maxMP = unitMaxMP(hero);
+    if (!freeMove) {
+      const after = applyHeroMoveCost({ movementPointsAvailable: hero.movementPointsAvailable, actionsAvailable: hero.actionsAvailable }, cost, maxMP);
+      if (after.actionsAvailable < 0) {
+        setPendingAttachOverBudget({ hero, target, position, cost });
         return;
       }
-      setPendingAttachOverBudget({ hero, target, position });
-      return;
+      if (hero.movementPointsAvailable < cost) {
+        const actionsNeeded = hero.actionsAvailable - after.actionsAvailable;
+        setPendingHeroAttachConversion({ hero, target, position, cost, actionsNeeded });
+        return;
+      }
     }
-    await attachHero(hero, target, position, maxMP);
+    await attachHero(hero, target, position, maxMP, cost);
     addMessage(`${hero.unitName} attached to ${target.unitName} (${position})`);
-  }, [units, attachHero, addMessage, unitMaxMP, heroMovePerAction, freeMove]);
+  }, [units, attachHero, addMessage, unitMaxMP, freeMove, terrainCosts, walls, structures, structureTemplates]);
 
   const handleSwapHeroPosition = useCallback(async (hero: Unit) => {
-    // Swapping front/back costs 1 hero MP (free during free-move) — ask before
-    // converting actions when MP is insufficient, over-budget confirm otherwise.
-    const fly = (hero.elevation ?? 0) > 0;
-    const maxMP = fly ? (hero.flySpeed ?? 0) : unitMaxMP(hero);
-    const avail = fly ? (hero.flySpeedAvailable ?? 0) : hero.movementPointsAvailable;
-    if (!freeMove && avail < 1) {
-      const per = heroMovePerAction(maxMP);
-      const actionsNeeded = Math.ceil((1 - Math.max(0, avail)) / per);
-      if (hero.actionsAvailable >= actionsNeeded) {
-        setPendingHeroSwapConversion({ hero, actionsNeeded });
-        return;
-      }
-      setPendingSwapOverBudget(hero);
-      return;
-    }
-    await swapHeroPosition(hero, maxMP);
-  }, [swapHeroPosition, freeMove, unitMaxMP, heroMovePerAction]);
+    // Swapping front/back is a reposition WITHIN the same hex — free (ground or
+    // air), no MP/action cost.
+    await swapHeroPosition(hero);
+  }, [swapHeroPosition]);
 
   /**
    * Execute a Withdraw: step one hex into a rear-arc hex, keeping facing, for
@@ -772,12 +760,8 @@ export function useMoveActions(deps: MoveActionsDeps) {
     setPendingFormation,
     pendingHeroAttachConversion,
     setPendingHeroAttachConversion,
-    pendingHeroSwapConversion,
-    setPendingHeroSwapConversion,
     pendingAttachOverBudget,
     setPendingAttachOverBudget,
-    pendingSwapOverBudget,
-    setPendingSwapOverBudget,
     pendingElevation,
     setPendingElevation,
     confirmElevation,

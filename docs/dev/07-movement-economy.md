@@ -42,10 +42,16 @@ actions = −1, red message. End Turn resets.
   **carry** (0.6 → 1.2 → 1.8 …); display floors, storage keeps the decimal.
 - `computeHeroMoveBudget` = `MP + max(0, actions) × per`.
   `applyHeroMoveCost(cost)`: spend materialized MP first, then convert
-  `ceil(shortfall/per)` actions. `applyHeroMpSpend` = same for 1-MP spends
-  (attach/detach/swap). `computeHeroMovePool` drives the overlay (floors to
-  payable whole hexes, capped at one full move; a <1 MP fraction with no
-  actions pays nothing).
+  `ceil(shortfall/per)` actions. `applyHeroMpSpend` = the same for single-MP
+  spends. `computeHeroMovePool` drives the overlay (floors to payable whole
+  hexes, capped at one full move; a <1 MP fraction with no actions pays nothing).
+- **Hero attach** moves the hero into the host's hex, so it pays that hex's
+  **entry cost** (`makeCostOfHex`: terrain/structure + climb — same as a move),
+  always from the hero's **ground** pool (a same-level step, never flight). A
+  shortfall converts actions at the ground rate; over-budget soft-confirms.
+  **Detach** via drag-away is a normal move paying the destination hex (the
+  leave-behind/fall paths enter no hex and stay free). **Swap** (front↔back on
+  the host) is a reposition *within the same hex* — **free**, ground or air.
 
 **Worked example (hero, maxMP 3, turn start = 3 MP + 5 actions):**
 full 3-MP move → MP 0, actions 5. A further 1-MP step converts

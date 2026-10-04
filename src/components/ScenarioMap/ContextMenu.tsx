@@ -378,7 +378,7 @@ export function ContextMenu({
           <div className="px-3 py-1 hover:bg-gray-700 cursor-pointer" onClick={() => { onToggleHide(); onClose(); }}>
             {unit.hidden ? 'Unhide' : 'Hide'}
           </div>
-          {onSetRouting && !isUnitRouted(unit) && (
+          {onSetRouting && !isUnitRouted(unit) && !unit.ignoreMoraleChecks && (
             <div
               className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300"
               onClick={() => { onSetRouting(); onClose(); }}

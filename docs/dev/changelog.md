@@ -1,5 +1,41 @@
 # QuiTTER Changelog
 
+## Seven playtest bug fixes: fly spawn, fearless rout, hit-test/tooltip, structure attacks, hero attach (2026-10-03)
+**Files:** src/hooks/{useSupabaseSync,useGameEngine,useHexGrid}.ts, src/components/ScenarioMap/{routeUnit,ScenarioMap,ContextMenu,UnitEditorModal,SoftEnforcementModals,useMoveActions}.tsx, src/lib/{wallCombat,structureCombat}.ts (+ tests), docs/dev/{07-movement-economy,09-morale-routing-pursuit,13-map-entities-terrain,changelog}.md
+
+- **Hero fly pool full at spawn:** `addUnitFromTemplate` now seeds
+  `flySpeedAvailable` to `flySpeed` for heroes (0 for units), mirroring
+  `movementPointsAvailable`, so a flying hero has its full aerial pool at turn 0
+  (END_TURN already refreshed it).
+- **Fearless never enters `Routed`:** `routeUnit` omits the formation change for
+  `ignoreMoraleChecks` units (a downed fearless hero keeps its own formation, 0 HP
+  still renders it as down); the GM paths refuse it too (`setRouting`, the
+  context-menu "Rout Unit", and the unit editor's formation picker filters
+  `Routed` for fearless units).
+- **Double-click hit-test matches hover:** `useHexGrid` exposes `getUnitAtScreen`
+  and `ScenarioMap.handleDoubleClick` now uses it (elevation/attachment-offset
+  aware) instead of the hex-based `getUnitAt`, so the token under the cursor opens.
+- **Tooltips close under any modal:** `ScenarioMap` clears
+  `hoveredUnit`/`tooltipPos`/`infoHover` whenever any modal/dialog is open
+  (`anyModalOpen` effect), and the canvas gained `onMouseLeave` (wired to a new
+  `useHexGrid.handleMouseLeave`) so leaving the canvas also clears hover.
+- **Out-of-range Shift-drop on a structure now reports:** the drop router uses
+  identity-only gates (`canAttemptWallEdge`/`canAttemptStructure`) so an
+  out-of-range Shift-drop reaches the attack and emits `cannot reach that
+  structure/barrier` (or "wrong elevation") instead of silently moving. The
+  reach-gated predicate is kept for the drag-overlay hint.
+- **Structure attacks mirror unit combat:** `resolveWallAttack` /
+  `resolveHexStructureAttack` take an `attacks` count (eligible attackers × weapon
+  `numberOfAttacks`, plus a front-attached hero volley); DT gates **each hit** and
+  the surviving hits are summed once. Still 1 action / 1 `attacksUsed` per command.
+- **Hero attach / detach / swap:** attach now pays the host hex's **entry cost**
+  (`makeCostOfHex`, ground pool; shortfall converts actions, over-budget
+  soft-confirms) instead of a flat 1 MP — fixing the "5 action for a 1 MP attach"
+  bug caused by the airborne pool being chosen from `elevation > 0`. Detach via
+  drag-away already pays the destination hex. **Swap** (front↔back on a host) is
+  now **free** (within-hex reposition); its conversion/over-budget prompts removed.
+- `tsc` clean, 862 tests pass, build clean. No migration.
+
 ## `ignore_climb` + `feather_fall` effects; `stairs` retired (migration 113) (2026-10-03)
 **Files:** src/lib/{effectTemplates,unitEffects,mapStructures,structureTemplates}.ts (+ tests), src/types/{gameProtocol,structure}.ts, src/components/ScenarioMap/{mapGeometry,useMoveActions,useOverlay,useReactionActions,routeUnit,useCanvasDraw,MapInfoTooltip,StructurePaintPanel}.tsx, src/components/EffectEditor/EffectModifierFields.tsx, src/components/StructureEditor/StructureEditor.tsx, src/components/StructureEditModal.tsx, src/components/MapEditor/MapEditor.tsx, supabase/migrations/113_retire_stairs.sql, docs/dev/{changelog,outstanding,18-map-structures}.md
 

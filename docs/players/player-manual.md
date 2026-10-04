@@ -372,7 +372,9 @@ gives 1.2 (shows 1)… so the hero can keep moving well past its first 3 MP.
 | Rotate 60° | 0 | **−1** MP (units only; heroes & loose free) |
 | About-turn 180° | 0 | 1 MP foot / 2 MP mounted + **drop 1 org level** |
 | Change formation | 0 | **half your current pool**, rescaled (§5) |
-| Attach / detach / swap hero | converts as needed | **−1 hero MP** (§8) |
+| Attach hero | converts as needed | **host hex entry cost** from hero ground MP (§8) |
+| Detach hero (drag away) | converts as needed | **destination hex entry cost** (§8) |
+| Swap front/back | 0 | **free** (§8) |
 | Cast a spell | −1 (unless `F`) | 0 |
 | Place / team / hide (GM) | 0 | 0 |
 
@@ -906,10 +908,13 @@ and choose:
 
 ![S-17 Attach modal](screenshots/s-17-attach-hero.png)
 
-Attaching, detaching, or swapping front/back costs **1 hero MP** (the game
-converts hero actions to cover it when MP is short — it asks first if you want
-to convert `#` actions for 1 MP). Detaching via drag-away costs nothing extra
-(the move already paid).
+**Attaching** moves the hero into the host's hex, so it costs that hex's
+**entry cost** (terrain/structure, exactly like a normal step) from the hero's
+**ground** MP — a same-level move, not flight. When MP is short the game asks to
+convert hero actions to cover it (ground rate), and over-budget attaches still
+confirm. **Detaching** by dragging the hero away is a normal move that pays the
+destination hex. **Swapping** front/back is a reposition within the same hex and
+is **free** (ground or air).
 
 ### Hero + host movement
 

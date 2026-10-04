@@ -72,11 +72,15 @@ export async function routeUnit(
     }
   }
 
+  // Fearless units never enter the Routed formation — a downed fearless hero
+  // stays in its own formation (0 HP already renders it as down).
   subSteps.push({
     type: 'ROUT',
     description: `${name} ${verb} (${reason})`,
     unitId: unit.id,
-    changes: [{ field: 'currentFormation', from: unit.currentFormation, to: 'Routed' }],
+    changes: unit.ignoreMoraleChecks
+      ? []
+      : [{ field: 'currentFormation', from: unit.currentFormation, to: 'Routed' }],
     payload: causeId ? { cause: causeId } : undefined,
   });
 

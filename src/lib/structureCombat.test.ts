@@ -102,4 +102,31 @@ describe('resolveHexStructureAttack (simultaneous door + HP)', () => {
     expect(r.doorHpAfter).toBe(94); // doorMax 100 - 6
     expect(r.hpAfter).toBe(94);
   });
+
+  it('multi-attack: sums the surviving hits of N attacks (DT per hit)', () => {
+    const r = resolveHexStructureAttack(template({ dt: 0 }), inst(), bow, fixed(6), 3);
+    expect(r.damage).toBe(18);
+    expect(r.applied).toBe(18);
+    expect(r.doorHpAfter).toBe(12);
+    expect(r.hpAfter).toBe(82);
+  });
+
+  it('multi-attack: each hit at/below DT is shrugged (all deflected)', () => {
+    const r = resolveHexStructureAttack(template({ dt: 6 }), inst(), bow, fixed(6), 3);
+    expect(r.damage).toBe(18);
+    expect(r.applied).toBe(0);
+    expect(r.deflected).toBe(true);
+    expect(r.hpAfter).toBe(100);
+  });
+
+  it('multi-attack still lands one hit if only one clears the DT', () => {
+    // Sequence 6, 6, then 4: with dt 5 only nothing clears; use dt 6 vs rolls
+    // 6,6,4 -> first two clear (12 survived). A deterministic sequence rng.
+    let i = 0; const seq = [6, 6, 4];
+    const rng = () => (seq[i++] - 1) / 6;
+    const r = resolveHexStructureAttack(template({ dt: 5 }), inst(), bow, rng, 3);
+    expect(r.damage).toBe(16);
+    expect(r.applied).toBe(12);
+    expect(r.hpAfter).toBe(88);
+  });
 });

@@ -42,7 +42,8 @@ import { isUnitRouted, setHeroMoraleBoostEnabled as setHeroMoraleBoostAmbient, s
 import { canRally } from '@/lib/rally';
 import { computeVisibleHexes, computeFog, hexKey, DEFAULT_SIGHT_RADIUS, FOG_UNSEEN_GM_ALPHA, FOG_UNSEEN_PLAYER_ALPHA } from '@/lib/fogOfWar';
 import { supabase } from '@/lib/supabaseClient';
-import { getFormationMultiplier, computeEffectiveMovement } from '@/lib/unitStats';
+import { getFormationMultiplier, computeEffectiveMovement, getRowCapacity, heroicCapacityBonus } from '@/lib/unitStats';
+import { computeAttackCount } from '@/lib/unitCombat';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes, mpCostOverrides } from './mapGeometry';
@@ -934,12 +935,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setPendingFormation,
     pendingHeroAttachConversion,
     setPendingHeroAttachConversion,
-    pendingHeroSwapConversion,
-    setPendingHeroSwapConversion,
     pendingAttachOverBudget,
     setPendingAttachOverBudget,
-    pendingSwapOverBudget,
-    setPendingSwapOverBudget,
     pendingElevation,
     setPendingElevation,
     confirmElevation,
@@ -993,6 +990,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
 
 
+  // Number of damage rolls a structure attack lands, mirroring unit combat:
+  // eligible attackers (row capacity × capacity multiplier, capped by troops) ×
+  // weapon attacks, plus a front-attached hero's own volley. DT gates each roll.
+  const structureAttackCount = useCallback((attacker: Unit, weaponAttacks: number): number => {
+    const capMult = getFormationMultiplier(formationsMap, attacker.currentFormation, 'attack_capacity_multiplier') + heroicCapacityBonus(attacker, units, alliances);
+    const rowCap = getRowCapacity(sizeCategories, attacker.sizeCategory);
+    let count = computeAttackCount(attacker, rowCap, capMult, 0, false, Math.max(1, weaponAttacks || 1));
+    const hero = findAttachedHero(attacker, units);
+    if (hero) {
+      const hw = parseWeapons(hero.weaponString || '')[hero.activeWeaponIndex ?? 0];
+      if (hw) count += Math.max(1, hw.numberOfAttacks || 1);
+    }
+    return Math.max(1, count);
+  }, [formationsMap, units, alliances, sizeCategories]);
+
   // ---- Barrier attacks (drag a unit onto a destructible wall edge) ----
   // No to-hit roll: reaching the edge is the hit; the wall's DT gates the blow.
   // Costs 1 action and counts toward the attack cap (soft-enforced).
@@ -1000,7 +1012,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const performWallAttack = useCallback(async (attacker: Unit, ref: EdgeRef, force = false) => {
     const wall = walls[ref.key];
     const inst = structures[ref.key];
-    if (!wall || !inst || !isDestructibleWall(wall)) return;
+    if (!wall || !inst || !isDestructibleWall(wall)) {
+      addMessage(`${attacker.unitName} has no barrier to attack there`);
+      return;
+    }
+    // Structures stand 10 ft tall — a flyer more than 10 ft away vertically can't reach.
+    if (!canReachStructure(attacker.elevation)) {
+      addMessage(`${attacker.unitName} cannot reach that barrier — wrong elevation`);
+      return;
+    }
     const weapon = parseWeapons(attacker.weaponString || '')[attacker.activeWeaponIndex ?? 0];
     const kind = wallAttackKind(attacker, ref, weapon);
     if (!weapon || !kind) {
@@ -1019,7 +1039,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (overBudget) addError(`${attacker.unitName} attacked a barrier with no actions left — over budget`);
     if (overCap) addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
 
-    const result = resolveWallAttack(wall, weapon, Math.random);
+    const attacks = structureAttackCount(attacker, weapon.numberOfAttacks ?? 1);
+    const result = resolveWallAttack(wall, weapon, Math.random, attacks);
     const to = result.destroyed
       ? null
       : { ...inst, hp: result.wall.hp, ...(result.doorHpAfter !== undefined ? { doorHp: result.doorHpAfter } : {}) };
@@ -1047,10 +1068,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         changes: [{ field: 'structures', key: ref.key, from: inst, to }],
       },
     ], `${attacker.unitName} attacked the barrier at ${label}`, { message: detail, verboseMessage: detail });
-  }, [walls, structures, execute, addError, addMessage, scenarioId]);
+  }, [walls, structures, execute, addError, addMessage, scenarioId, structureAttackCount]);
 
   // Drag-gate handed to useHexGrid: only a wall edge the dragged unit can reach
-  // routes the drop to a barrier attack (otherwise the drop stays a move).
+  // is hinted as an attack target (overlay highlight).
   const canAttackWallEdge = useCallback((unitId: string, edge: EdgeRef): boolean => {
     const unit = units.find(u => u.id === unitId);
     if (!unit || !canControlUnit(unit)) return false;
@@ -1061,12 +1082,29 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     return !!weapon && wallAttackKind(unit, edge, weapon) !== null;
   }, [units, walls, canControlUnit]);
 
+  // Identity gate for the Shift-drop router: a destructible wall edge EXISTS here
+  // (no reach/range/vertical check — the attack command reports "cannot reach").
+  const canAttemptWallEdge = useCallback((unitId: string, edge: EdgeRef): boolean => {
+    const unit = units.find(u => u.id === unitId);
+    if (!unit || !canControlUnit(unit)) return false;
+    const wall = walls[edge.key];
+    return !!wall && isDestructibleWall(wall);
+  }, [units, walls, canControlUnit]);
+
   // ---- Hex structure attacks (drag a unit onto a gate/tower hex) ----
   const performStructureAttack = useCallback(async (attacker: Unit, hex: Hex, force = false) => {
     const key = `${hex.q},${hex.r}`;
     const inst = structures[key];
     const template = inst ? structureTemplates[inst.templateId] : undefined;
-    if (!inst || !template || !isAttackableHexStructure(template, inst)) return;
+    if (!inst || !template || !isAttackableHexStructure(template, inst)) {
+      addMessage(`${attacker.unitName} has no structure to attack there`);
+      return;
+    }
+    // Structures stand 10 ft tall — a flyer more than 10 ft away vertically can't reach.
+    if (!canReachStructure(attacker.elevation)) {
+      addMessage(`${attacker.unitName} cannot reach that structure — wrong elevation`);
+      return;
+    }
     const weapon = parseWeapons(attacker.weaponString || '')[attacker.activeWeaponIndex ?? 0];
     const kind = hexStructureAttackKind(attacker, hex, weapon);
     if (!weapon || !kind) {
@@ -1084,7 +1122,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (overBudget) addError(`${attacker.unitName} attacked a structure with no actions left — over budget`);
     if (overCap) addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
 
-    const result = resolveHexStructureAttack(template, inst, weapon, Math.random);
+    const attacks = structureAttackCount(attacker, weapon.numberOfAttacks ?? 1);
+    const result = resolveHexStructureAttack(template, inst, weapon, Math.random, attacks);
     // Hex structures stay at 0 HP (grey ✕), unlike edge walls which are removed.
     const to = { ...inst, hp: result.hpAfter, doorHp: result.doorHpAfter };
 
@@ -1113,18 +1152,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         changes: [{ field: 'structures', key, from: inst, to }],
       },
     ], `${attacker.unitName} attacked the structure at ${label}`, { message: detail, verboseMessage: detail });
-  }, [structures, structureTemplates, execute, addError, addMessage, scenarioId]);
+  }, [structures, structureTemplates, execute, addError, addMessage, scenarioId, structureAttackCount]);
 
-  const canAttackStructure = useCallback((unitId: string, hex: Hex): boolean => {
+  // Identity gate for the Shift-drop router: an attackable structure EXISTS on
+  // this hex (no reach/range/vertical check — the attack reports "cannot reach").
+  const canAttemptStructure = useCallback((unitId: string, hex: Hex): boolean => {
     const unit = units.find(u => u.id === unitId);
     if (!unit || !canControlUnit(unit)) return false;
-    // Structures stand 10 ft tall — a flyer more than 10 ft away vertically can't reach.
-    if (!canReachStructure(unit.elevation)) return false;
     const inst = structures[`${hex.q},${hex.r}`];
     const template = inst ? structureTemplates[inst.templateId] : undefined;
-    if (!inst || !template || !isAttackableHexStructure(template, inst)) return false;
-    const weapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
-    return !!weapon && hexStructureAttackKind(unit, hex, weapon) !== null;
+    return !!inst && !!template && isAttackableHexStructure(template, inst);
   }, [units, structures, structureTemplates, canControlUnit]);
 
   // ---- Temporary-effect apply/remove handlers (opened from the context menu) ----
@@ -1860,6 +1897,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   const {
     handleMouseMove,
+    handleMouseLeave,
     handleMouseDown,
     handleMouseUp,
     handleRightClick,
@@ -1870,6 +1908,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     zoom,
     getHexFromScreen,
     getUnitAt,
+    getUnitAtScreen,
     centerMap,
     centerOn,
     panBy,
@@ -2036,11 +2075,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     },
     walls,
     canAttackWallEdge: (unitId, edge) => (reactionMode ? false : canAttackWallEdge(unitId, edge)),
+    canAttemptWallEdge: (unitId, edge) => (reactionMode ? false : canAttemptWallEdge(unitId, edge)),
     onAttackWall: (unitId, edge) => {
       const unit = units.find(u => u.id === unitId);
       if (unit) void performWallAttack(unit, edge);
     },
-    canAttackStructure: (unitId, hex) => (reactionMode ? false : canAttackStructure(unitId, hex)),
+    canAttemptStructure: (unitId, hex) => (reactionMode ? false : canAttemptStructure(unitId, hex)),
     onAttackStructure: (unitId, hex) => {
       const unit = units.find(u => u.id === unitId);
       if (unit) void performStructureAttack(unit, hex);
@@ -2073,6 +2113,29 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       centerOn(retreatPick.unit.hex);
     }
   }, [retreatPick, centerOn]);
+
+  // Any modal/dialog opened over the canvas must hide the hover tooltips so they
+  // never cover (or float above) the dialog. The canvas has no reliable leave
+  // event while an overlay is under the cursor, so clear on the open edge too.
+  const anyModalOpen = !!(
+    contextMenuUnit || withdrawConfirm || effectMenuUnit || retreatPick ||
+    reactionFormationPicker || showScenarioSettings || attachModal ||
+    pendingMountTarget || pendingDiveAttack || pendingElevation || pendingHeroFall ||
+    pendingLeaveHero || showGmTeamPick || magicCast.cast || editUnit || effectDrop ||
+    effectEdit || entryPrompt || zoneMenu || hexEffectsModal || showStats ||
+    otherActionHero || structureEditKey ||
+    pendingMove || pendingAttack || pendingAttackCap || pendingHeroAttachConversion ||
+    pendingAttachOverBudget ||
+    pendingFormation || pendingCastOverBudget || pendingChargeAttack ||
+    pendingChargeThrough || pendingWeaponSwitch || pendingWallAttack
+  );
+  useEffect(() => {
+    if (anyModalOpen) {
+      setHoveredUnit(null);
+      setTooltipPos(null);
+      setInfoHover(null);
+    }
+  }, [anyModalOpen]);
 
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
@@ -2202,11 +2265,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (!hex) return;
-    const unit = getUnitAt(hex);
+    // Point-based hit test — the SAME resolver as hover (elevation/attachment
+    // offset aware), so a double-click opens the unit under the cursor even when
+    // its token is drawn off its logical hex centre.
+    const unit = getUnitAtScreen(e.clientX, e.clientY, { airOnly: false });
     if (!unit) return;
     if (unit.hidden && !effectiveIsGM) return;
     if (effectiveIsGM || canEditUnit(unit)) setEditUnit(unit);
-  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAt, effectiveIsGM, canEditUnit, structures, structureTemplates, units, isGM, canControlUnit, groundZones]);
+  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAtScreen, effectiveIsGM, canEditUnit, structures, structureTemplates, units, isGM, canControlUnit, groundZones]);
 
   // Editor Save → one chained command entry, one sub-step per changed field.
   const handleEditorSave = useCallback(async (changes: { field: string; from: any; to: any }[], description: string) => {
@@ -2481,28 +2547,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const phc = pendingHeroAttachConversion!;
       setPendingHeroAttachConversion(null);
       if (controlsLocked) return;
-      await attachHero(phc.hero, phc.target, phc.position, unitMaxMP(phc.hero));
+      await attachHero(phc.hero, phc.target, phc.position, unitMaxMP(phc.hero), phc.cost);
       addMessage(`${phc.hero.unitName} attached to ${phc.target.unitName} (${phc.position})`);
-    },
-    confirmHeroSwapConversion: async () => {
-      const phs = pendingHeroSwapConversion!;
-      setPendingHeroSwapConversion(null);
-      if (controlsLocked) return;
-      await swapHeroPosition(phs.hero, unitMaxMP(phs.hero));
     },
     confirmAttachOverBudget: async () => {
       const pa = pendingAttachOverBudget!;
       setPendingAttachOverBudget(null);
       if (controlsLocked) return;
-      addError(`${pa.hero.unitName} attached over budget — no MP/actions left`);
-      await attachHero(pa.hero, pa.target, pa.position, unitMaxMP(pa.hero));
-    },
-    confirmSwapOverBudget: async () => {
-      const hero = pendingSwapOverBudget!;
-      setPendingSwapOverBudget(null);
-      if (controlsLocked) return;
-      addError(`${hero.unitName} swapped position over budget — no MP/actions left`);
-      await swapHeroPosition(hero, unitMaxMP(hero));
+      addError(`${pa.hero.unitName} attached over budget — could not afford the ${pa.cost} MP entry cost`);
+      await attachHero(pa.hero, pa.target, pa.position, unitMaxMP(pa.hero), pa.cost);
     },
     confirmFormation: async () => {
       const pf = pendingFormation!;
@@ -2564,9 +2617,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     attack: () => setPendingAttack(null),
     attackCap: () => setPendingAttackCap(null),
     heroAttachConversion: () => setPendingHeroAttachConversion(null),
-    heroSwapConversion: () => setPendingHeroSwapConversion(null),
     attachOverBudget: () => setPendingAttachOverBudget(null),
-    swapOverBudget: () => setPendingSwapOverBudget(null),
     formation: () => setPendingFormation(null),
     castOverBudget: () => setPendingCastOverBudget(false),
     chargeAttack: () => setPendingChargeAttack(null),
@@ -2684,6 +2735,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         ref={canvasRef}
         className="w-full h-full block cursor-default"
         onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onDoubleClick={handleDoubleClick}
@@ -3026,9 +3078,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           attack: pendingAttack,
           attackCap: pendingAttackCap,
           heroAttachConversion: pendingHeroAttachConversion,
-          heroSwapConversion: pendingHeroSwapConversion,
           attachOverBudget: pendingAttachOverBudget,
-          swapOverBudget: pendingSwapOverBudget,
           formation: pendingFormation,
           castOverBudget: pendingCastOverBudget,
           chargeAttack: pendingChargeAttack,

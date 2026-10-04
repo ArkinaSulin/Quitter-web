@@ -71,4 +71,12 @@ describe('resolveWallAttack', () => {
     expect(solid.applied).toBe(0);
     expect(solid.destroyed).toBe(false);
   });
+
+  it('multi-attack sums the surviving hits (DT gate per hit)', () => {
+    const rng = () => 0.5; // each 1d6 → 4
+    const r = resolveWallAttack(wall({ dt: 3, maxHp: 30, hp: 30 }), bow, rng, 3);
+    expect(r.damage).toBe(12);
+    expect(r.applied).toBe(12);
+    expect(r.wall.hp).toBe(18);
+  });
 });

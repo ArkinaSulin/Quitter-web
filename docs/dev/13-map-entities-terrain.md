@@ -115,16 +115,22 @@ no `hp` starts at full health. A segment with no `maxHp` is indestructible scene
 
 **Attacking a structure is Shift + drop** (a plain drop just moves). The gesture is
 the same for **edge** (walls/spikes) and **hex** (gates/towers) structures:
-`useHexGrid.handleMouseUp` routes to `onAttackWall` / `onAttackStructure` only when
-`event.shiftKey`; `canAttackWallEdge` / `canAttackStructure` gate reach (destructible
-target + unit in range) so dropping onto a legal move hex otherwise moves. Shift
-also hides unit/corpse tokens ("inspect mode"). Reach (`wallCombat.wallAttackKind`)
-is **melee** when the attacker stands on either edge hex, else **ranged** when its
+`useHexGrid.handleMouseUp` routes to `onAttackWall` / `onAttackStructure` when
+`event.shiftKey` **and a destructible structure EXISTS there** (`canAttemptWallEdge`
+/ `canAttemptStructure` — identity only, no range gate). An out-of-range Shift-drop
+therefore still routes to the attack, which reports `cannot reach that
+structure/barrier` (rather than silently falling through to a move); the
+reach-gated `canAttackWallEdge` is used only for the drag-overlay hint. Shift also
+hides unit/corpse tokens ("inspect mode"). Reach (`wallCombat.wallAttackKind`) is
+**melee** when the attacker stands on either edge hex, else **ranged** when its
 weapon's `maxRange` covers the nearer edge hex. There is **no to-hit roll** —
-reaching the target is the hit; the attacker rolls weapon damage and
-`applyWallDamage` compares it to `dt` (at or below = no effect, above = full damage
-off HP). Attacking costs **1 action** and counts toward the attack cap
-(soft-confirmed when over), with no AGR/retaliation. `hp <= 0` removes the segment.
+reaching the target is the hit; the attack lands the unit-combat **attack count**
+(eligible attackers = row capacity × capacity multiplier, capped by troops, ×
+weapon `numberOfAttacks`, plus a front-attached hero's volley) — DT gates **each
+hit**, surviving hits are summed, and `applyWallDamage` / `resolveHexStructureAttack`
+apply the total to the HP (and door) pool(s). Attacking costs **1 action** and
+counts toward the attack cap (soft-confirmed when over), with no AGR/retaliation.
+`hp <= 0` removes the segment.
 
 Persistence rides the command log: the command is `ATTACK` with a **`STRUCTURE`**
 sub-step (`{ field: 'structures', key, from, to }`), applied by `apply_substeps`
