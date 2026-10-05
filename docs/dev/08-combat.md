@@ -313,3 +313,28 @@ An ATTACK command usually carries: optional WEAPON_SELECT sub-steps (auto-draw
 sub-steps for both units + any hero damage, and chained ROUT entries for any
 units that break (see `09`). Undo reverts the whole exchange. Verbose-combat
 messages format the dice (see `verboseCombat.ts`).
+
+## Scenario statistics
+
+`src/lib/battleStats.ts` derives the Scenario Statistics modal
+(`ScenarioStatsModal.tsx`) purely from the surviving command log + the live unit
+list, so undo stays correct (no counters stored). Kill attribution comes from
+the damage sub-steps' `{ killerUnitId, victimLevel }` payload: each dead troop is
+1 kill plus `victimLevel` kill-levels to the killer (DoT ticks and GM edits award
+nothing).
+
+The modal groups by **alliance** (Friendly → Enemy → Neutral, Neutral hidden when
+empty) then by **team** (color chip; teams with no units hidden):
+
+- **Alliance summary** — `deployed · survived` (survived = status *Effective*
+  only), `Σ troops`, `Σ levels = Σ(introTroops × Lv)`, `Σ troop lost`,
+  `Σ levels lost`, `Σ kills`, `Σ kill levels`.
+- **Per unit** — name, status, `introTroops`, `Lv`, `troop lost`, `levels lost`
+  (= `troopLost × Lv`), `kills`, `kill levels`.
+
+`introTroopCount` is the unit's troop count at the **end of its own alliance
+turn** (a mid-game reinforcement snapshots on its alliance's next turn end;
+fallback to the count at PLACE, then `maxTroopCount`) — not a global Turn-1
+snapshot. `troopLost` / `levelsLost` are **gross** cumulative losses from the
+log (healing never reduces them). `formatStatsText` mirrors the grouped layout
+for the "Share to all players" post.

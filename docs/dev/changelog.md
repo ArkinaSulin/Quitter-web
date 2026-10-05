@@ -1,5 +1,24 @@
 # QuiTTER Changelog
 
+## Grouped Scenario Statistics (alliance/team breakdown) (2026-10-04)
+**Files:** src/lib/battleStats.ts (+ test), src/components/ScenarioMap/ScenarioStatsModal.tsx, docs/dev/{08-combat,changelog}.md
+
+- The Scenario Statistics modal now groups by **alliance** (Friendly → Enemy →
+  Neutral) with a summary row — `deployed · survived`, `Σtroops`,
+  `Σlevels = Σ(introTroops × Lv)`, `ΣtroopLost`, `ΣlevelsLost`, `Σkills`,
+  `ΣkillLevels` — and, within each alliance, by **team** (color chip; empty teams
+  and an empty Neutral alliance are hidden).
+- Per-unit columns: name, status, **troops at introduction**, Lv, **troop lost**,
+  **levels lost** (= `troopLost × Lv`), **kills**, **kill levels**. `survived`
+  counts only **Effective** units; losses are **gross** (from the log, healing does
+  not reduce them).
+- **`introTroopCount`** now snapshots each unit at the **end of its own alliance
+  turn** (a mid-game reinforcement snapshots on its alliance's next turn end;
+  fallback to the PLACE count, then max) — replacing the global Turn-1-start
+  snapshot.
+- `formatStatsText` (Share) mirrors the grouped layout. `tsc` clean, tests pass,
+  build clean. No migration.
+
 ## Unified Charge!/Stoop! context entry; airborne detection fixed (2026-10-04)
 **Files:** src/lib/{chargeStance.ts (+ test),flying.ts (+ test)}, src/components/ScenarioMap/{ContextMenu,ScenarioMap,useCombatActions,useOverlay}.tsx, docs/dev/{06-turn-system,08-combat,changelog}.md, docs/players/player-manual.md
 
