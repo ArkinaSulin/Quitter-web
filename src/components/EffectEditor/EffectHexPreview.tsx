@@ -4,12 +4,9 @@
 // centre hex at the same relative size the map uses: image height = 1.2 hex-radii
 // × imageScale%. Lets the author size the image against real hexes.
 import React from 'react';
+// The one canonical HEX_DIRS (dependency-free home — no map/combat modules).
+import { HEX_DIRS } from '@/lib/hexGeometry';
 
-// Axial geometry (kept local so the editor doesn't pull in map/combat modules).
-const HEX_DIRS = [
-  { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
-  { q: -1, r: 0 }, { q: 0, r: -1 }, { q: 1, r: -1 },
-];
 const hexToPixel = (q: number, r: number, size: number) => ({
   x: size * (Math.sqrt(3) * q + (Math.sqrt(3) / 2) * r),
   y: size * 1.5 * r,

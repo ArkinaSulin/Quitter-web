@@ -1,5 +1,5 @@
 ﻿import { describe, it, expect } from 'vitest';
-import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, isInAnyHostileKillZone, computeWeaponSwitchAc, attackKind, canWeaponAttack } from './meleeFallback';
+import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, isMeleeReachable, isInAnyHostileKillZone, computeWeaponSwitchAc, attackKind, canWeaponAttack } from './meleeFallback';
 import { Unit, Hex } from '@/types/gameProtocol';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
@@ -112,6 +112,16 @@ describe('isAdjacentDistance', () => {
     expect(isAdjacentDistance(0)).toBe(true);
     expect(isAdjacentDistance(1)).toBe(true);
     expect(isAdjacentDistance(2)).toBe(false);
+  });
+});
+
+describe('isMeleeReachable', () => {
+  const at = (hex: Hex, elevation = 0) => ({ hex, elevation });
+  it('horizontal adjacency AND ≤10 ft vertical', () => {
+    expect(isMeleeReachable(at(h(0, 0)), at(h(1, 0)))).toBe(true);
+    expect(isMeleeReachable(at(h(0, 0)), at(h(0, 0), 10))).toBe(true); // same hex, 10 ft up
+    expect(isMeleeReachable(at(h(0, 0)), at(h(2, 0)))).toBe(false); // too far
+    expect(isMeleeReachable(at(h(0, 0)), at(h(1, 0), 20))).toBe(false); // too high
   });
 });
 

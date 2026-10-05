@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { AllianceGroup } from '@/types/gameProtocol';
+import { allianceOf } from '@/lib/alliances';
 import { TEAMS } from '@/components/TokenRenderer/tokenUtils';
 
 function buildMap(rows: { team: string; alliance_group: string }[]): Record<string, AllianceGroup> {
@@ -112,7 +113,7 @@ export function useTeamAlliances(scenarioId: string, isGM: boolean) {
   }, []);
 
   const cycleAlliance = useCallback((team: string) => {
-    const current = alliances[team] || 'friendly';
+    const current = allianceOf(team, alliances);
     const next: Record<AllianceGroup, AllianceGroup> = {
       friendly: 'enemy',
       enemy: 'neutral',

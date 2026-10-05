@@ -51,6 +51,12 @@ export function isAdjacentDistance(dist: number): boolean {
   return dist <= 1;
 }
 
+/** Can these units have a MELEE exchange: horizontal adjacency (≤1 hex) AND a
+ *  vertical gap of at most 10 ft. */
+export function isMeleeReachable(attacker: Pick<Unit, 'hex' | 'elevation'>, target: Pick<Unit, 'hex' | 'elevation'>): boolean {
+  return isAdjacentDistance(hexDistance(attacker.hex, target.hex)) && withinVerticalGap(attacker.elevation, target.elevation);
+}
+
 /**
  * Which kind of attack a weapon makes against a target, by geometry + kill zone:
  *  - a MAGIC weapon always acts at range;
@@ -84,7 +90,7 @@ export function canWeaponAttack(
 ): boolean {
   if (!weapon || weapon.isHealing) return false;
   const dist = hexDistance(attacker.hex, target.hex);
-  const isAdjacent = isAdjacentDistance(dist) && withinVerticalGap(attacker.elevation, target.elevation);
+  const isAdjacent = isMeleeReachable(attacker, target);
   const kind = attackKind(weapon, isAdjacent, isInKillZone(target, attacker.hex, attacker.elevation));
   if (kind === 'none') return false;
   if (kind === 'ranged' && (weapon.magicDimension ?? 0) <= 0) {

@@ -6,7 +6,7 @@ import { Unit, Hex, AllianceGroup, Formation, getOrganizationLevel } from '@/typ
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { applyFormationChange } from '@/lib/formationCost';
 import { nextLowerFormation } from '@/lib/formationCost';
-import { flyingFormationCap, movePoolMode, flyMax, moveBudgetUnit, passengerDrain } from '@/lib/flying';
+import { flyingFormationCap, movePoolMode, flyMax, moveBudgetUnit, passengerDrain, isAirborne } from '@/lib/flying';
 import { applyMoveCost, applyMpSpend, applyHeroMoveCost } from '@/lib/moveCost';
 import { getSetting } from '@/lib/settingsCache';
 import { parseWeapons } from '@/lib/weaponParser';
@@ -605,7 +605,7 @@ export function useGameEngine({
   );
 
   const rotateUnit = useCallback(
-    async (unit: Unit, direction: 'left' | 'right', maxMP: number, steps = 1): Promise<void> => {
+    async (unit: Unit, direction: 'left' | 'right', maxMP: number, steps = 1, surface = 0): Promise<void> => {
       const delta = direction === 'left' ? -steps : steps;
       const newFacing = ((unit.facing + delta) % 6 + 6) % 6;
       const changes: { field: string; from: any; to: any }[] = [
@@ -631,7 +631,7 @@ export function useGameEngine({
               : getSetting('about_turn_cost_foot', 1))
           : 1;
         // Airborne units turn on the fly pool; grounded on ground MP.
-        const fly = (unit.elevation ?? 0) > 0;
+        const fly = isAirborne(unit.elevation, surface);
         const poolMax = fly ? flyMax(unit) : maxMP;
         const budget = moveBudgetUnit(unit, fly ? 'fly' : 'ground');
         const { movementPointsAvailable, actionsAvailable } = applyMpSpend(budget, cost, poolMax);
@@ -675,7 +675,7 @@ export function useGameEngine({
   );
 
   const changeFormation = useCallback(
-    async (unit: Unit, formation: string, formationsMap: Record<string, Formation>): Promise<void> => {
+    async (unit: Unit, formation: string, formationsMap: Record<string, Formation>, surface = 0): Promise<void> => {
       // Shield Wall requires a shield in hand — a two-handed weapon blocks it too.
       if (formation === 'Shield Wall') {
         if (!unit.isShielded) {
@@ -694,7 +694,7 @@ export function useGameEngine({
       const newMult = newForm?.movement_multiplier ?? 1;
       // Airborne formation changes pay from the fly pool (raw flySpeed); grounded
       // ones from ground MP, as before.
-      const fly = (unit.elevation ?? 0) > 0;
+      const fly = isAirborne(unit.elevation, surface);
       const oldEffectiveMax = fly ? flyMax(unit) : computeEffectiveMovement(unit, oldMult);
       const newEffectiveMax = fly ? flyMax(unit) : computeEffectiveMovement(unit, newMult);
       const budget = moveBudgetUnit(unit, fly ? 'fly' : 'ground');

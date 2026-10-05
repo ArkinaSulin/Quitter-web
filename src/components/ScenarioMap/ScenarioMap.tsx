@@ -41,7 +41,7 @@ import { PingLayer } from './PingLayer';
 import { TEAM_COLORS, TEAMS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { TeamChip } from '@/components/TokenRenderer/TeamChip';
 import { isUnitRouted, setHeroMoraleBoostEnabled as setHeroMoraleBoostAmbient, setZocPursuitEnabled as setZocPursuitAmbient } from '@/lib/unitMorale';
-import { isHostile } from '@/lib/alliances';
+import { isHostile, allianceOf } from '@/lib/alliances';
 import { canRally } from '@/lib/rally';
 import { computeVisibleHexes, computeFog, hexKey, DEFAULT_SIGHT_RADIUS, FOG_UNSEEN_GM_ALPHA, FOG_UNSEEN_PLAYER_ALPHA } from '@/lib/fogOfWar';
 import { supabase } from '@/lib/supabaseClient';
@@ -1940,7 +1940,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             if (!u || !canControlUnit(u)) return;
             // Withdraw is disabled while airborne: a drop onto a would-be withdraw
             // hex reports the error instead of moving.
-            if ((u.elevation ?? 0) > 0 && !freeMove && canWithdraw(u) && !u.isCharging) {
+            if (isAirborne(u.elevation, structureSurfaceAt(u.hex, structures, structureTemplates)) && !freeMove && canWithdraw(u) && !u.isCharging) {
               const occupied = computeOccupiedHexes(units, unitId);
               const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates);
               const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
@@ -2520,7 +2520,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         const source = selectedUnit ?? contextMenuUnit;
         const live = source ? (units.find(u => u.id === source.id && !u.isDeleted) ?? source) : null;
         if (live && !live.isHero && !live.isCharging && canControlUnit(live)) {
-          rotateUnit(live, e.key.toLowerCase() === 'q' ? 'left' : 'right', unitMaxMP(live));
+          rotateUnit(live, e.key.toLowerCase() === 'q' ? 'left' : 'right', unitMaxMP(live), 1, structureSurfaceAt(live.hex, structures, structureTemplates));
         }
       }
     };
@@ -2581,7 +2581,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setPendingFormation(null);
       if (!controlsLocked) {
         addError(`${pf.unit.unitName} changed formation over budget — ${getFormationChangeMpCost(unitMaxMP(pf.unit))} MP needed, ${pf.unit.actionsAvailable} action(s) left`);
-        await changeFormation(pf.unit, pf.formation, formationsMap);
+        await changeFormation(pf.unit, pf.formation, formationsMap, structureSurfaceAt(pf.unit.hex, structures, structureTemplates));
       }
     },
     confirmCast: () => { setPendingCastOverBudget(false); if (!controlsLocked) handleResolveCast(true); },
@@ -2833,8 +2833,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onSwitchToUnit={(host) => { setContextMenuUnit(host); setActiveHeroId(null); }}
           onOtherAction={(hero) => handleOtherAction(hero)}
           onClose={() => { setContextMenuUnit(null); setContextMenuPos(null); }}
-          onRotate={(dir) => rotateUnit(contextMenuUnit, dir, unitMaxMP(contextMenuUnit))}
-          onRotate180={() => rotateUnit(contextMenuUnit, 'left', unitMaxMP(contextMenuUnit), 3)}
+          onRotate={(dir) => rotateUnit(contextMenuUnit, dir, unitMaxMP(contextMenuUnit), 1, structureSurfaceAt(contextMenuUnit.hex, structures, structureTemplates))}
+          onRotate180={() => rotateUnit(contextMenuUnit, 'left', unitMaxMP(contextMenuUnit), 3, structureSurfaceAt(contextMenuUnit.hex, structures, structureTemplates))}
           freeMove={freeMove}
           onChangeFormation={(formation) => handleChangeFormation(contextMenuUnit, formation)}
           onCharge={() => charge(contextMenuUnit)}
@@ -3621,7 +3621,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               ))}
             </div>
             <div className="text-[11px] text-gray-500 text-center mb-4">
-              {TEAMS.map(team => `${team} → ${alliances[team] || 'friendly'}`).join(' · ')}
+              {TEAMS.map(team => `${team} → ${allianceOf(team, alliances)}`).join(' · ')}
             </div>
             <div className="flex justify-center">
               <button

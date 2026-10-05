@@ -15,12 +15,15 @@ instead of re-deriving it.
 |---|---|---|
 | Cube neighbour directions (`HEX_DIRS`) | `src/lib/hexGeometry.ts` | The one array; `mapGeometry` re-exports it. |
 | Direction index / front & rear hex-arc | `src/lib/hexGeometry.ts` → `hexDirIndex`, `frontArcIndices`, `rearArcIndices` | `(facing+4)%6, (facing+5)%6` lives here only. |
+| Facing vertex + rotation | `src/lib/hexGeometry.ts` → `frontVertex`, `rearVertex`, `rotateLeft`, `rotateRight` | Hero layout, turn generation, AI. |
 | Arc of a target (adjacency) `front/flank/rear` | `src/lib/hexGeometry.ts` → `arcOf` | `unitCombat.determineCombatPosition` and the old `unitMorale.facingArc` are thin wrappers over it. |
 | Arc of a target (bearing, any range) | `src/lib/attackDirection.ts` → `arcOfTarget` | Ranged counterpart; equals `arcOf` for adjacency. |
 | Team → alliance group | `src/lib/alliances.ts` → `allianceOf(team, alliances)` | Defaults to `'friendly'`. |
 | Hostility between two teams | `src/lib/alliances.ts` → `isHostile` / `sameAlliance` | Every cross-group pair is hostile; same-group (incl. neutral↔neutral) is not. |
-| Actually airborne | `src/lib/flying.ts` → `isAirborne(elevation, surface)` | `elevation > surfaceAt(hex)` — a fly-capable garrison on a structure is grounded. |
+| Looseness | `src/lib/formationRules.ts` → `isLooseFormation`, `isLooseUnit` | Scattered/Routed/Hero — move any direction, no org. |
+| Actually airborne | `src/lib/flying.ts` → `isAirborne(elevation, surface)` | `elevation > surfaceAt(hex)` — a fly-capable garrison on a structure is grounded. Consumers pass `structureSurfaceAt(hex)` (move/rotate/formation pool, kill zone, overlay). |
 | Vertical gap ≤ 10 ft | `src/lib/flying.ts` → `withinVerticalGap`, `verticalGapDown` | Melee reach / same-column domination. |
+| Melee reach | `src/lib/meleeFallback.ts` → `isMeleeReachable` | Horizontal adjacency AND ≤10 ft vertical. |
 
 ## Rules (canonical predicate + consumers)
 

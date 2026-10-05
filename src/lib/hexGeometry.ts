@@ -37,6 +37,26 @@ export function rearArcIndices(facing: number): [number, number] {
   return [(facing + 1) % 6, (facing + 2) % 6];
 }
 
+/** The facing VERTEX direction index the front wedge points at. */
+export function frontVertex(facing: number): number {
+  return (facing + 5) % 6;
+}
+
+/** The facing VERTEX direction index at the unit's back. */
+export function rearVertex(facing: number): number {
+  return (facing + 2) % 6;
+}
+
+/** Rotate a facing 60° left (one `HEX_DIRS` step). */
+export function rotateLeft(facing: number): number {
+  return (facing + 5) % 6;
+}
+
+/** Rotate a facing 60° right (one `HEX_DIRS` step). */
+export function rotateRight(facing: number): number {
+  return (facing + 1) % 6;
+}
+
 /**
  * Arc of `target` relative to a unit at `origin` facing `facing` (adjacency only).
  * Same hex / off-grid resolves to `'front'` (no bearing), matching the historical

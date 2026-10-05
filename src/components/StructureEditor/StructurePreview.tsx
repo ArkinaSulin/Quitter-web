@@ -8,11 +8,8 @@
 import React, { useState } from 'react';
 import { StructureAnchor } from '@/types/structure';
 import { battlementPath, battlementDepth, crossMarksPath, sineWavePath, ladderPaths } from '@/lib/structureDraw';
+import { HEX_DIRS } from '@/lib/hexGeometry';
 
-const HEX_DIRS = [
-  { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
-  { q: -1, r: 0 }, { q: 0, r: -1 }, { q: 1, r: -1 },
-];
 const hexToPixel = (q: number, r: number, size: number) => ({
   x: size * (Math.sqrt(3) * q + (Math.sqrt(3) / 2) * r),
   y: size * 1.5 * r,

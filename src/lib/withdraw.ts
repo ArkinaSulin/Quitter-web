@@ -4,18 +4,15 @@
 // to a normal disengagement (which scatters + provokes pursuit): the withdraw
 // never scatters and never provokes, but it costs a whole turn's actions.
 import { Hex, Unit, getOrganizationLevel } from '@/types/gameProtocol';
+import { HEX_DIRS, rearArcIndices } from '@/lib/hexGeometry';
 
 /** Actions a normal (non-hero, non-free-move) Withdraw costs. */
 export const WITHDRAW_ACTION_COST = 2;
 
 /** The two rear-arc hexes for a unit's facing (dirs facing+1 and facing+2). */
 export function rearHexes(unit: Pick<Unit, 'hex' | 'facing'>): Hex[] {
-  const dirs = [
-    { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
-    { q: -1, r: 0 }, { q: 0, r: -1 }, { q: 1, r: -1 },
-  ];
-  return [(unit.facing + 1) % 6, (unit.facing + 2) % 6].map(i => {
-    const d = dirs[i];
+  return rearArcIndices(unit.facing).map(i => {
+    const d = HEX_DIRS[i];
     const q = unit.hex.q + d.q;
     const r = unit.hex.r + d.r;
     return { q, r, s: -q - r };

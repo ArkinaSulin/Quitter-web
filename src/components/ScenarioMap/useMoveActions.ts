@@ -9,6 +9,7 @@ import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePe
 import { isFormationChangeAffordable } from '@/lib/formationCost';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { isUnitRouted } from '@/lib/unitMorale';
+import { allianceOf } from '@/lib/alliances';
 import { isMeleeWeapon, isInAnyHostileKillZone, computeWeaponSwitchAc } from '@/lib/meleeFallback';
 import { modifierAmount } from '@/lib/effectTemplates';
 import { unitIgnoresClimb, unitHasFeatherFall } from '@/lib/unitEffects';
@@ -18,7 +19,7 @@ import { parseWeapons } from '@/lib/weaponParser';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
-import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage } from '@/lib/flying';
+import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne } from '@/lib/flying';
 import { Walls, directionBetween, edgeRef } from '@/lib/walls';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, structureWaivesClimb, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
@@ -51,7 +52,7 @@ interface MoveActionsDeps {
   unitMaxMP: (unit: Unit) => number;
   moveUnitRecorded: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean; breakToFormation?: string; elevation?: number; surface?: number }) => Promise<void>;
   moveUnitFree: (unit: Unit, targetHex: Hex, attachedHero?: Unit | null, breakToFormation?: string, elevation?: number) => Promise<void>;
-  changeFormation: (unit: Unit, formation: string, formationsMap: Record<string, Formation>) => Promise<void>;
+  changeFormation: (unit: Unit, formation: string, formationsMap: Record<string, Formation>, surface?: number) => Promise<void>;
   attachHero: (hero: Unit, targetUnit: Unit, position: 'front' | 'back' | 'rider', heroMaxMP: number, cost?: number) => Promise<void>;
   swapHeroPosition: (hero: Unit) => Promise<void>;
   offerReactionsFor: (mover: Unit) => void;
@@ -412,7 +413,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // pool; the preview/budget is chosen by ORIGIN surface.
     const originSurface = structureSurfaceAt(unit.hex, structures, structureTemplates);
     const endSurface = structureSurfaceAt(targetHex, structures, structureTemplates);
-    const flying = (unit.elevation ?? 0) > originSurface;
+    const flying = isAirborne(unit.elevation, originSurface);
     // A GROUNDED move onto a same-or-lower surface steps the unit down to that
     // surface (stepping off a wall/tower lowers its elevation instead of leaving
     // it floating at the old height). Ascending moves are handled by the climb
@@ -586,21 +587,21 @@ export function useMoveActions(deps: MoveActionsDeps) {
       return;
     }
     if (unit.isHero || freeMove) {
-      await changeFormation(unit, formation, formationsMap);
+      await changeFormation(unit, formation, formationsMap, structureSurfaceAt(unit.hex, structures, structureTemplates));
       return;
     }
     const oldForm = formationsMap[unit.currentFormation];
     const oldMult = oldForm?.movement_multiplier ?? 1;
     const oldEffectiveMax = computeEffectiveMovement(unit, oldMult);
     if (isFormationChangeAffordable(unit, oldEffectiveMax)) {
-      await changeFormation(unit, formation, formationsMap);
+      await changeFormation(unit, formation, formationsMap, structureSurfaceAt(unit.hex, structures, structureTemplates));
       return;
     }
     setPendingFormation({ unit, formation });
   }, [changeFormation, formationsMap, freeMove, isFormationChangeAffordable, structures, structureTemplates, groundZones, addMessage]);
 
   const handleMoveTeam = useCallback(async (team: string, targetGroup: AllianceGroup) => {
-    const currentGroup = alliances[team] || 'friendly';
+    const currentGroup = allianceOf(team, alliances);
     if (currentGroup === targetGroup) return;
     await execute('ALLIANCE', [{
       type: 'ALLIANCE',
@@ -738,7 +739,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
    * `overBudget` only controls the red warning (the actions may go negative).
    */
   const performWithdraw = useCallback(async (unit: Unit, destHex: Hex, overBudget = false) => {
-    if ((unit.elevation ?? 0) > 0) { addError('Cannot withdraw during flight.'); return; }
+    if (isAirborne(unit.elevation, structureSurfaceAt(unit.hex, structures, structureTemplates))) { addError('Cannot withdraw during flight.'); return; }
     const changes: { field: string; from: any; to: any }[] = [
       { field: 'hex', from: unit.hex, to: { ...destHex } },
     ];
@@ -794,7 +795,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     setPendingElevation({
       unit, targetHex: occupant.hex, cost: reach.cost, maxMP: reach.maxMP,
       attachedHero: reach.attachedHero, heroMaxMP: reach.heroMaxMP, breakToFormation: undefined,
-      range, originAir: (unit.elevation ?? 0) > originSurface, originSurface, endSurface, occupant,
+      range, originAir: isAirborne(unit.elevation, originSurface), originSurface, endSurface, occupant,
       canStoop: opts.canStoop, isHostile: opts.isHostile,
       weaponIndex: unit.activeWeaponIndex ?? 0, mainTarget: 'rider',
     });

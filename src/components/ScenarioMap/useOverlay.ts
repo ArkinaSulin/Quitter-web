@@ -23,7 +23,7 @@ import { GroundEffect } from '@/types/gameProtocol';
 import { rangeBonusAt, unitIgnoresClimb } from '@/lib/unitEffects';
 import { edgeHexes } from '@/lib/wallCombat';
 import { canWithdraw, withdrawDestinations } from '@/lib/withdraw';
-import { moveBudgetUnit, parseClimbTo } from '@/lib/flying';
+import { moveBudgetUnit, parseClimbTo, isAirborne } from '@/lib/flying';
 import { isStooping } from '@/lib/chargeStance';
 
 /** Hovered unit's front-arc threat tint (non-loose units only). */
@@ -137,7 +137,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       return combined;
     }
     const surface = structureSurfaceAt(draggedUnit.hex, structures, templates);
-    const flying = (draggedUnit.elevation ?? 0) > surface;
+    const flying = isAirborne(draggedUnit.elevation, surface);
     let occupied: Set<string>;
     if (flying) {
       occupied = airOccupiedHexes(units);

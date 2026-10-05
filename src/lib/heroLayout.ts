@@ -2,7 +2,7 @@
 // Token footprint + attached-hero layout, shared by the renderer (drawToken /
 // useCanvasDraw) and the hit-tester (useHexGrid) so the drawn token and its
 // grabbable box always agree. Pure — depends only on hex geometry.
-import { HEX_SIZE, hexToPixel } from './hexGeometry';
+import { HEX_SIZE, hexToPixel, frontVertex, rearVertex } from './hexGeometry';
 
 export const TOKEN_WIDTH = HEX_SIZE * 1.6;
 export const TOKEN_HEIGHT = TOKEN_WIDTH * 0.75;
@@ -35,7 +35,7 @@ export function getAttachedHeroPos(
     const mountRadius = getHeroSquareSize(TOKEN_HEIGHT, sizeCategory) / 2 * 1.1;
     return { x: pos.x, y: pos.y - 0.9 * mountRadius };
   }
-  const vertexIndex = attachedPosition === 'back' ? (facing + 2) % 6 : (facing + 5) % 6;
+  const vertexIndex = attachedPosition === 'back' ? rearVertex(facing) : frontVertex(facing);
   const angle = (60 * vertexIndex - 30) * Math.PI / 180;
   return {
     x: pos.x + HEX_SIZE * 0.75 * Math.cos(angle),

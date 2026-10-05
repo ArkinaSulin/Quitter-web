@@ -1,7 +1,17 @@
 // src/lib/formationRules.ts
 // Pure helpers over the data-driven formations matrix. Replaces hard-coded
 // formation branches in combat / morale / movement / UI.
-import { Formation } from '@/types/gameProtocol';
+import { Formation, Unit } from '@/types/gameProtocol';
+
+/** Formations with no facing: they move any direction at 1 MP/hex and have no org. */
+export function isLooseFormation(name: string): boolean {
+  return name === 'Scattered' || name === 'Routed' || name === 'Hero';
+}
+
+/** A loose UNIT: a hero, or a unit in a loose formation. */
+export function isLooseUnit(unit: Pick<Unit, 'isHero' | 'currentFormation'>): boolean {
+  return unit.isHero || isLooseFormation(unit.currentFormation);
+}
 
 export type Arc = 'front' | 'flank' | 'rear';
 export type RetaliationMode = 'full' | 'rows' | 'none';

@@ -1,5 +1,29 @@
 # QuiTTER Changelog
 
+## Consolidate remaining primitives: vertices/rotation, looseness, melee reach, airborne surfaces (2026-10-04)
+**Files:** src/lib/{hexGeometry(+test),withdraw,heroLayout,moveCost,formationRules(+test),meleeFallback(+test),enemyAI/planner}.ts, src/components/ScenarioMap/{useOverlay,useMoveActions,useCombatActions,ScenarioMap,AlliancePanel,TopBar}.tsx, src/hooks/{useGameEngine,useTeamAlliances}.ts, src/components/{EffectEditor/EffectHexPreview,StructureEditor/StructurePreview}.tsx, docs/dev/{00-universal-rules,changelog}.md
+
+- **Facing vertex / rotation** now live in `hexGeometry` (`frontVertex`,
+  `rearVertex`, `rotateLeft`, `rotateRight`); `withdraw.rearHexes` uses
+  `rearArcIndices` + `HEX_DIRS`; `heroLayout`, `moveCost` and `enemyAI/planner`
+  use the helpers (no more inline `(facing+5)%6` arithmetic).
+- **Looseness** (`isLooseFormation`/`isLooseUnit`) centralized in
+  `formationRules`; `moveCost` and `planner` consume it.
+- **Melee reach** (`meleeFallback.isMeleeReachable` = horizontal adjacency ∧
+  ≤10 ft vertical) replaces the repeated `isAdjacentDistance && ≤10` inline
+  checks; fixed the last `verticalFeet <= 10` miss in `useCombatActions`.
+- **Airborne is surface-relative everywhere** it matters: `useOverlay`,
+  `useMoveActions` (move + withdraw + flyer drop), `ScenarioMap` (withdraw
+  guard), `useCombatActions` (flyer LoS, pursue skip, stoop target) all call
+  `isAirborne(elevation, structureSurfaceAt(hex))`. `rotateUnit` /
+  `changeFormation` gain an optional `surface` param so a garrison on a
+  structure turns/reforms on the ground pool; `ScenarioMap` passes it.
+- **Last alliance lookups** (`AlliancePanel`, `useTeamAlliances`, `useMoveActions`,
+  `ScenarioMap`, `TopBar`) use `allianceOf`; the two editor previews import the
+  canonical `HEX_DIRS`.
+- Behavior preserved (except the intended airborne-surface fixes). `tsc` clean,
+  923 tests pass, build clean. No migration.
+
 ## Fold ZoC/kill-zone + Charge/Stoop into single predicates (2026-10-04)
 **Files:** src/lib/{unitMorale(+test),zocDisengage,chargeStance(+test),flying(+test)}.ts, src/components/ScenarioMap/{mapGeometry,threatHexes.test,useCombatActions,useOverlay}.ts(x), docs/dev/{00-universal-rules,changelog}.md
 

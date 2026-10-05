@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { AllianceGroup, ALLIANCE_COLORS } from '@/types/gameProtocol';
+import { allianceOf } from '@/lib/alliances';
 import { TEAMS, TEAM_COLORS, getDotColor } from '@/components/TokenRenderer/tokenUtils';
 
 interface AlliancePanelProps {
@@ -30,7 +31,7 @@ export function AlliancePanel({ alliances, onMoveTeam, onClose }: AlliancePanelP
       </div>
       <div className="flex-1 overflow-y-auto space-y-2">
         {GROUP_ORDER.map(group => {
-          const teamsInGroup = TEAMS.filter(t => (alliances[t] || 'friendly') === group);
+          const teamsInGroup = TEAMS.filter(t => allianceOf(t, alliances) === group);
           const isOver = dragOverGroup === group;
           return (
             <div
@@ -47,7 +48,7 @@ export function AlliancePanel({ alliances, onMoveTeam, onClose }: AlliancePanelP
                 e.preventDefault();
                 setDragOverGroup(null);
                 const team = e.dataTransfer.getData('text/plain');
-                if (team && (alliances[team] || 'friendly') !== group) {
+                if (team && allianceOf(team, alliances) !== group) {
                   onMoveTeam(team, group);
                 }
               }}

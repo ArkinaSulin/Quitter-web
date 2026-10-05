@@ -10,6 +10,8 @@ import {
   beAttackedModifier,
   beAttackedModifierNote,
   getEffectivePosition,
+  isLooseFormation,
+  isLooseUnit,
 } from './formationRules';
 import { Formation } from '@/types/gameProtocol';
 
@@ -118,5 +120,15 @@ describe('formationRules', () => {
     expect(getEffectivePosition(scattered, 'rear')).toBe('flank');
     expect(getEffectivePosition(routed, 'front')).toBe('rear');
     expect(getEffectivePosition(formed, 'rear')).toBe('rear');
+  });
+
+  it('isLooseFormation / isLooseUnit', () => {
+    expect(isLooseFormation('Scattered')).toBe(true);
+    expect(isLooseFormation('Routed')).toBe(true);
+    expect(isLooseFormation('Hero')).toBe(true);
+    expect(isLooseFormation('Open Order')).toBe(false);
+    expect(isLooseUnit({ isHero: true, currentFormation: 'Open Order' })).toBe(true);
+    expect(isLooseUnit({ isHero: false, currentFormation: 'Routed' })).toBe(true);
+    expect(isLooseUnit({ isHero: false, currentFormation: 'Phalanx' })).toBe(false);
   });
 });

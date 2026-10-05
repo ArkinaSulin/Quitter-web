@@ -1,6 +1,7 @@
 import { Hex, Unit } from '@/types/gameProtocol';
 import { getSetting } from '@/lib/settingsCache';
-import { HEX_DIRS, frontArcIndices } from '@/lib/hexGeometry';
+import { isLooseFormation } from '@/lib/formationRules';
+import { HEX_DIRS, frontArcIndices, rotateLeft, rotateRight } from '@/lib/hexGeometry';
 
 export interface MovePathEntry {
   cost: number;
@@ -350,7 +351,7 @@ export function computeReachableMap(
   const budgetOf = (f: string): number => maxMP * scaleOf(f);
   const stepCapOf = (f: string): number => Math.ceil(stepCap * scaleOf(f));
 
-  const isLoose = (f: string): boolean => f === 'Scattered' || f === 'Routed' || f === 'Hero';
+  const isLoose = isLooseFormation;
   const isMounted = !!unit.mountId || !!unit.mountName;
   const aboutTurnCost = isMounted
     ? getSetting('about_turn_cost_mounted', 2)
@@ -441,7 +442,7 @@ export function computeReachableMap(
     // units only; loose move omnidirectionally and never turn.
     if (!looseHere) {
       const blockedFacing = aboutTurnBlocked(cur.formation) ? (unit.facing + 3) % 6 : -1;
-      for (const nf of [(cur.facing + 5) % 6, (cur.facing + 1) % 6]) {
+      for (const nf of [rotateLeft(cur.facing), rotateRight(cur.facing)]) {
         if (nf === blockedFacing) continue;
         push({ ...cur, facing: nf, turned: true, d: cur.d + 1 });
       }

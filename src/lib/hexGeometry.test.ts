@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { HEX_DIRS, hexDirIndex, frontArcIndices, rearArcIndices, arcOf } from './hexGeometry';
+import { HEX_DIRS, hexDirIndex, frontArcIndices, rearArcIndices, arcOf, frontVertex, rearVertex, rotateLeft, rotateRight } from './hexGeometry';
 import { Hex } from '@/types/gameProtocol';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
@@ -22,6 +22,14 @@ describe('hexGeometry arcs', () => {
     expect(frontArcIndices(0)).toEqual([4, 5]);
     expect(rearArcIndices(0)).toEqual([1, 2]);
     expect(frontArcIndices(2)).toEqual([0, 1]);
+  });
+
+  it('vertices + rotations', () => {
+    expect(frontVertex(0)).toBe(5);
+    expect(rearVertex(0)).toBe(2);
+    expect(rotateLeft(0)).toBe(5);
+    expect(rotateRight(0)).toBe(1);
+    expect(rotateLeft(rotateRight(3))).toBe(3);
   });
 
   it('arcOf: front/flank/rear; same hex & off-grid resolve to front', () => {

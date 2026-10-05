@@ -26,9 +26,10 @@
 import { Unit, Hex, AllianceGroup, Formation, hexDistance } from '@/types/gameProtocol';
 import { parseWeapons, isAreaWeapon } from '@/lib/weaponParser';
 import { isUnitRouted } from '@/lib/unitMorale';
+import { rotateLeft, rotateRight } from '@/lib/hexGeometry';
 import { allianceOf as teamAllianceOf } from '@/lib/alliances';
 import { isProtectedHero } from '@/lib/unitInteractions';
-import { arcsContain, beAttackedModifier } from '@/lib/formationRules';
+import { arcsContain, beAttackedModifier, isLooseUnit } from '@/lib/formationRules';
 import { getRowCapacityBase, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
 import { unitAttackCap } from '@/lib/attackCap';
@@ -262,7 +263,7 @@ function unitDoctrine(u: Unit): Doctrine {
 }
 
 function isLoose(u: Unit): boolean {
-  return u.isHero || u.currentFormation === 'Scattered' || u.currentFormation === 'Routed';
+  return isLooseUnit(u);
 }
 
 function freeTurn(u: Unit): boolean {
@@ -378,7 +379,7 @@ function maneuverOptions(
     if (!freeTurn(unitState) && !canPayMp(unitState, 1)) return;
     for (const dir of ['left', 'right'] as const) {
       let next = unitState;
-      const nf = dir === 'left' ? ((unitState.facing + 5) % 6) : ((unitState.facing + 1) % 6);
+      const nf = dir === 'left' ? rotateLeft(unitState.facing) : rotateRight(unitState.facing);
       if (freeTurn(unitState)) {
         next = { ...unitState, facing: nf };
       } else {
@@ -570,10 +571,10 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       // Replay the simulated turns/move onto the real accounting.
       for (const t of best.turns) {
         if (freeTurn(u)) {
-          u = { ...u, facing: t.dir === 'left' ? (u.facing + 5) % 6 : (u.facing + 1) % 6 };
+          u = { ...u, facing: t.dir === 'left' ? rotateLeft(u.facing) : rotateRight(u.facing) };
         } else {
           const { movementPointsAvailable, actionsAvailable } = applyMpSpend(u, 1, effMax(u, ctx.formations));
-          u = { ...u, facing: t.dir === 'left' ? (u.facing + 5) % 6 : (u.facing + 1) % 6, movementPointsAvailable, actionsAvailable };
+          u = { ...u, facing: t.dir === 'left' ? rotateLeft(u.facing) : rotateRight(u.facing), movementPointsAvailable, actionsAvailable };
         }
         commit(u, u, u.id);
         plan.steps.push({ kind: 'turn', unitId: u.id, from: u.hex, dir: t.dir });

@@ -17,8 +17,8 @@ import { unitAttackCap } from '@/lib/attackCap';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, isHeroMoraleBoostEnabled, isZocPursuitEnabled } from '@/lib/unitMorale';
 import { isHostile, sameAlliance, allianceOf } from '@/lib/alliances';
-import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc, attackKind, canWeaponAttack } from '@/lib/meleeFallback';
-import { meleeElevationFor, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo, withinVerticalGap } from '@/lib/flying';
+import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isMeleeReachable, computeWeaponSwitchAc, attackKind, canWeaponAttack } from '@/lib/meleeFallback';
+import { meleeElevationFor, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo, isAirborne } from '@/lib/flying';
 import { isStooping } from '@/lib/chargeStance';
 import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable } from '@/lib/moveCost';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
@@ -34,7 +34,7 @@ import { formatStrikeDetail } from '@/lib/verboseCombat';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
-import { computeOccupiedHexes, airOccupiedHexes, elevationGapFeet } from './mapGeometry';
+import { computeOccupiedHexes, airOccupiedHexes } from './mapGeometry';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingAttack, PendingAttackCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch } from './SoftEnforcementModals';
 import { useMagicCast } from '@/hooks/useMagicCast';
@@ -155,7 +155,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // it owns none. Magic weapons always act at range; everything beyond adjacency
     // is a ranged attack (thrown/shot).
     const dist = hexDistance(attacker.hex, target.hex);
-    const isAdjacent = isAdjacentDistance(dist) && withinVerticalGap(attacker.elevation, target.elevation);
+    const isAdjacent = isMeleeReachable(attacker, target);
     let attackerSwitchIdx: number | null = null;
     let defenderSwitchIdx: number | null = null;
     let usedFists = false;
@@ -194,7 +194,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // is not LoS-gated; the auto-draw already resolved adjacent weapons above.
     // A flyer shoots OVER structures: it ignores the shoot-over-structure penalty
     // (units still block the horizontal line).
-    const flyingAttacker = (attacker.elevation ?? 0) > 0;
+    const flyingAttacker = isAirborne(attacker.elevation, structureSurfaceAt(attacker.hex, structures, structureTemplates));
     const indirectShot = isRanged && !hasLineOfSight(attacker.hex, target.hex, units, new Set([attacker.id, target.id]), flyingAttacker ? null : structures, structureTemplates);
     const hostileTarget = isHostile(attacker.team, target.team, alliances);
 
@@ -833,7 +833,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     if (!isZocPursuitEnabled()) return;
     let live = units.find(u => u.id === mover.id) ?? mover;
     if (live.hidden) return; // hidden units are concealed — no scatter/pursue reaction
-    if ((live.elevation ?? 0) > 0) return; // flyers are never pursued
+    if (isAirborne(live.elevation, structureSurfaceAt(live.hex, structures, structureTemplates))) return; // flyers are never pursued
     // No pursuit off a RAISED surface (a garrison on a wall/worktop): the vacated
     // hex's entry cost is > 1.
     if (structureSurfaceAt(originHex, structures, structureTemplates) > 0) return;
@@ -1020,7 +1020,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
    * full charge, and no attached hero (the flyer drops alone — v1).
    */
   const buildStoopDropPlan = useCallback((attacker: Unit, target: Unit): StoopDropPlan | null => {
-    if (!isStooping(attacker, structureSurfaceAt(attacker.hex, structures, structureTemplates)) || (target.elevation ?? 0) > 0) return null;
+    if (!isStooping(attacker, structureSurfaceAt(attacker.hex, structures, structureTemplates)) || isAirborne(target.elevation, structureSurfaceAt(target.hex, structures, structureTemplates))) return null;
     if (target.isDeleted || target.id === attacker.id) return null;
     // v1: the flyer drops alone (an attached hero would need its own MOVE/ELEVATE
     // sub-steps and a mid-command state snapshot).
@@ -1145,14 +1145,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const attackerGroup = allianceOf(attacker.team, alliances);
     const targetGroup = allianceOf(target.team, alliances);
     const dist = hexDistance(attacker.hex, target.hex);
-    const verticalFeet = elevationGapFeet(attacker.elevation, target.elevation);
     // Ranged vertical rule (distance-side): each 10 ft of CLIMB adds 1 hex of
     // effective range; shooting DOWN never extends the horizontal cap. So the
     // reach cap uses horizontal + climb only.
     const upHex = Math.max(0, Math.floor((((target.elevation ?? 0) - (attacker.elevation ?? 0))) / 10));
     const reachDist = dist + upHex;
     // Melee needs horizontal adjacency AND a vertical gap of at most 10 ft.
-    const isAdjacent = isAdjacentDistance(dist) && verticalFeet <= 10;
+    const isAdjacent = isMeleeReachable(attacker, target);
 
     const attackerWeapons = parseWeapons(attacker.weaponString || '');
     // A resumed attack (post weapon-switch confirm) carries the chosen index; use

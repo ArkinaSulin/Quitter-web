@@ -2,6 +2,7 @@
 // Scenario header: role label, Undo, turn counter, End Turn, Free Move toggle,
 // GM settings/replay buttons, and Exit to Lobby.
 import { AllianceGroup } from '@/types/gameProtocol';
+import { allianceOf } from '@/lib/alliances';
 
 interface TopBarProps {
   roleLabel: string;
@@ -121,7 +122,7 @@ export function TopBar(props: TopBarProps) {
           // the turn may advance it; free play (null alliance) stays GM-only. A
           // player needs an assigned team — the server's END_TURN gate requires
           // sp.team IS NOT NULL, so don't show the button to teamless players.
-          const canEndTurn = isGM || (!!myTeam && currentTurnAlliance !== null && (alliances[myTeam] || 'friendly') === currentTurnAlliance);
+          const canEndTurn = isGM || (!!myTeam && currentTurnAlliance !== null && allianceOf(myTeam, alliances) === currentTurnAlliance);
           return (
             <button
               onClick={canEndTurn ? handleEndTurn : undefined}
