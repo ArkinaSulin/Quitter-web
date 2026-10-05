@@ -2,6 +2,8 @@
 import { Unit, AllianceGroup, hexDistance } from '@/types/gameProtocol';
 import { Weapon } from '@/lib/weaponParser';
 import { isInKillZone, isUnitRouted } from '@/lib/unitMorale';
+import { isHostile } from '@/lib/alliances';
+import { withinVerticalGap } from '@/lib/flying';
 
 /**
  * Fists: the last-resort melee weapon used by a unit whose active weapon is
@@ -82,8 +84,7 @@ export function canWeaponAttack(
 ): boolean {
   if (!weapon || weapon.isHealing) return false;
   const dist = hexDistance(attacker.hex, target.hex);
-  const verticalFeet = Math.abs((attacker.elevation ?? 0) - (target.elevation ?? 0));
-  const isAdjacent = isAdjacentDistance(dist) && verticalFeet <= 10;
+  const isAdjacent = isAdjacentDistance(dist) && withinVerticalGap(attacker.elevation, target.elevation);
   const kind = attackKind(weapon, isAdjacent, isInKillZone(target, attacker.hex, attacker.elevation));
   if (kind === 'none') return false;
   if (kind === 'ranged' && (weapon.magicDimension ?? 0) <= 0) {
@@ -104,13 +105,12 @@ export function isInAnyHostileKillZone(
   units: Unit[],
   alliances: Record<string, AllianceGroup>,
 ): boolean {
-  const unitAlliance = alliances[unit.team] || 'friendly';
   return units.some(other =>
     !other.isDeleted &&
     !other.hidden &&
     other.id !== unit.id &&
     !isUnitRouted(other) &&
-    (alliances[other.team] || 'friendly') !== unitAlliance &&
+    isHostile(other.team, unit.team, alliances) &&
     isInKillZone(other, unit.hex, unit.elevation),
   );
 }

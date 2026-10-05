@@ -1,5 +1,6 @@
 import { Hex, Unit } from '@/types/gameProtocol';
 import { getSetting } from '@/lib/settingsCache';
+import { HEX_DIRS, frontArcIndices } from '@/lib/hexGeometry';
 
 export interface MovePathEntry {
   cost: number;
@@ -240,15 +241,6 @@ export function computeMoveCapacity(unit: MpBudget, maxMP: number): number {
   return Math.max(0, Math.floor(unit.movementPointsAvailable)) + Math.max(0, unit.actionsAvailable) * pool;
 }
 
-const HEX_DIRS = [
-  { q: 1, r: 0 },
-  { q: 0, r: 1 },
-  { q: -1, r: 1 },
-  { q: -1, r: 0 },
-  { q: 0, r: -1 },
-  { q: 1, r: -1 },
-];
-
 function key(q: number, r: number): string {
   return `${q},${r}`;
 }
@@ -271,7 +263,7 @@ export function computeChargeReachable(
   blockedEdge?: BlockedEdgeFn,
 ): Map<string, number> {
   const result = new Map<string, number>();
-  const frontDirs = [(unit.facing + 4) % 6, (unit.facing + 5) % 6];
+  const frontDirs = frontArcIndices(unit.facing);
 
   const visited = new Set<string>([key(unit.hex.q, unit.hex.r)]);
   const queue: { q: number; r: number; cost: number }[] = [
@@ -431,7 +423,7 @@ export function computeReachableMap(
     // Forward moves (omnidirectional when loose, front wedge when formed).
     const dirs = looseHere
       ? HEX_DIRS
-      : [(cur.facing + 4) % 6, (cur.facing + 5) % 6].map(i => HEX_DIRS[i]);
+      : frontArcIndices(cur.facing).map(i => HEX_DIRS[i]);
     for (const dir of dirs) {
       const nq = cur.q + dir.q;
       const nr = cur.r + dir.r;

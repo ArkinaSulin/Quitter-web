@@ -10,6 +10,7 @@
 // leaves one.
 import { Unit, Hex, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { isInKillZone } from '@/lib/unitMorale';
+import { isHostile } from '@/lib/alliances';
 import { canStopEnemyMovement } from '@/lib/formationRules';
 import { MapStructures, structureSurfaceAt } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
@@ -62,13 +63,12 @@ export function hostilesLeftZoc(
   structures?: MapStructures,
   templates?: Record<string, StructureTemplate>,
 ): Unit[] {
-  const moverAlliance = alliances[mover.team] || 'friendly';
   const moverElev = mover.elevation ?? 0;
   const surfaceOf = (h: Hex) => (structures ? structureSurfaceAt(h, structures, templates ?? {}) : 0);
   return units.filter(e =>
     e.id !== mover.id &&
     !e.isDeleted &&
-    (alliances[e.team] || 'friendly') !== moverAlliance &&
+    isHostile(e.team, mover.team, alliances) &&
     // Elevation gating lives in imposesZocOn: horizontal ZoC needs exact
     // elevation, but a flyer directly above still imposes a vertical ZoC.
     imposesZocOn(e, originHex, formationsMap, moverElev, surfaceOf(e.hex)) &&

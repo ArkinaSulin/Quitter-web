@@ -9,6 +9,7 @@ import { computeReachableMap, computeMovePool, computeMoveBudget, computeHeroMov
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { getSetting } from '@/lib/settingsCache';
 import { isUnitRouted } from '@/lib/unitMorale';
+import { isHostile } from '@/lib/alliances';
 import { parseWeapons } from '@/lib/weaponParser';
 import { isRangedCapableWeapon, reactionMovePool } from '@/lib/archerReaction';
 import { determineCombatPosition } from '@/lib/unitCombat';
@@ -99,7 +100,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     const combined: Record<string, string> = {};
     const hostileHover =
       !!hoveredUnit && hoveredUnit.id !== archer.id && !hoveredUnit.isDeleted &&
-      (alliances[hoveredUnit.team] || 'friendly') !== (alliances[archer.team] || 'friendly');
+      isHostile(hoveredUnit.team, archer.team, alliances);
     if (hostileHover && weapon && isRangedCapableWeapon(weapon)) {
       const allow = (h: Hex) => canRangedTarget(formationsMap[archer.currentFormation] ?? null, arcOfTarget(archer.hex, archer.facing, h));
       const archerRange = weapon.range + rangeBonusAt(archer, zones);
@@ -214,7 +215,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     // A valid target: a hovered unit from a different alliance than the drag.
     const isValidTarget =
       hoveredIsUnit &&
-      (alliances[hoveredUnit!.team] || 'friendly') !== (alliances[draggedUnit.team] || 'friendly');
+      isHostile(hoveredUnit!.team, draggedUnit.team, alliances);
 
     if (hoveredIsUnit) {
       const targetKey = `${hoveredUnit!.hex.q},${hoveredUnit!.hex.r}`;

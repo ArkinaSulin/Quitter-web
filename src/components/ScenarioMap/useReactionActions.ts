@@ -16,6 +16,7 @@ import { hasLineOfSight } from '@/lib/lineOfSight';
 import { parseWeapons } from '@/lib/weaponParser';
 import { applyHeroMoveCost, applyMoveCost, computeReachableMap, MovePathEntry } from '@/lib/moveCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout } from '@/lib/unitMorale';
+import { isHostile } from '@/lib/alliances';
 import { rangeBonusAt, unitIgnoresClimb } from '@/lib/unitEffects';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { UnitChange, SubStep } from '@/lib/commandLog';
@@ -371,7 +372,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       addError(`${archer.unitName} is protected behind ${host?.unitName ?? 'its unit'} (no line of sight) — cannot reaction-shoot`);
       return;
     }
-    if ((alliances[target.team] || 'friendly') === (alliances[archer.team] || 'friendly')) {
+    if (!isHostile(target.team, archer.team, alliances)) {
       addMessage(`${target.unitName} is not hostile — cannot reaction-shoot`);
       return;
     }

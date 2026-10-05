@@ -1,5 +1,6 @@
 // src/lib/scenarioPermissions.ts
 import { AllianceGroup, ScenarioRole, ScenarioRoleCapabilities } from '@/types/gameProtocol';
+import { allianceOf, sameAlliance } from '@/lib/alliances';
 
 export type Scope = 'own_team' | 'own_alliance' | 'any_team';
 
@@ -87,7 +88,7 @@ export function scopeContainsTeam(
   if (scope === 'any_team') return true;
   if (!playerTeam) return false;
   if (scope === 'own_team') return unitTeam === playerTeam;
-  return (alliances[unitTeam] || 'friendly') === (alliances[playerTeam] || 'friendly');
+  return sameAlliance(unitTeam, playerTeam, alliances);
 }
 
 /** Move capability implies attack capability — one check covers both. */
@@ -125,9 +126,8 @@ export function canActOnUnit(
   if (isGM) return true;
   if (!canMoveUnit(caps, playerTeam, unitTeam, alliances)) return false;
   if (freeMove || turn === null) return true;
-  const myAlliance = alliances[playerTeam ?? ''] || 'friendly';
-  if (myAlliance !== turn) return false;
-  return (alliances[unitTeam] || 'friendly') === turn;
+  if (allianceOf(playerTeam, alliances) !== turn) return false;
+  return allianceOf(unitTeam, alliances) === turn;
 }
 
 export function canAdjustUnit(

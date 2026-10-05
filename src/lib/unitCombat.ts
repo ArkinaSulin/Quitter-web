@@ -4,28 +4,15 @@ import { getRetaliationMode, getEffectivePosition, beAttackedModifier, beAttacke
 import { getSetting } from './settingsCache';
 import { getRowCapacityBase, effectiveAc } from './unitStats';
 import { attackDirection } from './attackDirection';
+import { arcOf, frontArcIndices, hexDirIndex } from './hexGeometry';
 import { attackRollFlags, AttackRollFlags } from './unitEffects';
 import { Walls, WallRollFlags, meleeWallAc, wallBetween } from './walls';
 import { hexEnteringFrom } from './hexLine';
 
-const HEX_DIRS = [
-  { q: 1, r: 0, s: -1 },
-  { q: 0, r: 1, s: -1 },
-  { q: -1, r: 1, s: 0 },
-  { q: -1, r: 0, s: 1 },
-  { q: 0, r: -1, s: 1 },
-  { q: 1, r: -1, s: 0 },
-];
-
 export function isInFrontArc(unitHex: Hex, unitFacing: number, targetHex: Hex): boolean {
-  const dirIdx = HEX_DIRS.findIndex(d =>
-    d.q === targetHex.q - unitHex.q &&
-    d.r === targetHex.r - unitHex.r &&
-    d.s === targetHex.s - unitHex.s
-  );
+  const dirIdx = hexDirIndex(unitHex, targetHex);
   if (dirIdx === -1) return false;
-  const frontDirs = [(unitFacing + 4) % 6, (unitFacing + 5) % 6];
-  return frontDirs.includes(dirIdx);
+  return frontArcIndices(unitFacing).includes(dirIdx);
 }
 
 export function computeRowCapacity(sizeCategory: number, rowCapMultiplier: number): number {
@@ -43,16 +30,7 @@ export function determineCombatPosition(
   defenderHex: Hex,
   defenderFacing: number,
 ): 'front' | 'flank' | 'rear' {
-  const dq = attackerHex.q - defenderHex.q;
-  const dr = attackerHex.r - defenderHex.r;
-  const ds = attackerHex.s - defenderHex.s;
-  const dirIdx = HEX_DIRS.findIndex(d => d.q === dq && d.r === dr && d.s === ds);
-  if (dirIdx === -1) return 'front';
-  const frontDirs = [(defenderFacing + 4) % 6, (defenderFacing + 5) % 6];
-  const rearDirs = [(defenderFacing + 1) % 6, (defenderFacing + 2) % 6];
-  if (frontDirs.includes(dirIdx)) return 'front';
-  if (rearDirs.includes(dirIdx)) return 'rear';
-  return 'flank';
+  return arcOf(defenderHex, defenderFacing, attackerHex);
 }
 
 /**

@@ -8,6 +8,7 @@ import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { resolveSpellDamage } from '@/lib/spellDamage';
 import { saveRollFlags } from '@/lib/unitEffects';
 import { computeEffectiveMoraleModifier, shouldRout } from '@/lib/unitMorale';
+import { allianceOf } from '@/lib/alliances';
 import { SubStep } from '@/lib/commandLog';
 import { formatSpellRollLine } from '@/lib/verboseCombat';
 import { useMagicCast } from '@/hooks/useMagicCast';
@@ -60,8 +61,8 @@ export function useCastActions(deps: CastActionsDeps) {
 
     // Hard alliance gate (defense in depth — handleAttackRequest gates cast-open):
     // healing may only affect the SAME alliance, damage only a DIFFERENT alliance.
-    const casterGroup = alliances[caster.team] || 'friendly';
-    const targetGroup = alliances[target.team] || 'friendly';
+    const casterGroup = allianceOf(caster.team, alliances);
+    const targetGroup = allianceOf(target.team, alliances);
     if (cast.weapon.isHealing ? casterGroup !== targetGroup : casterGroup === targetGroup) {
       addError(`${caster.unitName} cannot ${cast.weapon.isHealing ? 'heal' : 'target'} ${target.unitName} — ${cast.weapon.isHealing ? 'different' : 'same'} alliance`);
       magicCast.cancelCast();

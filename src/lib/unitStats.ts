@@ -2,6 +2,7 @@ import { Unit, Formation, SizeCategory, AllianceGroup } from '@/types/gameProtoc
 import { parseWeapons } from '@/lib/weaponParser';
 import { getBandSetting, getSetting, SettingBand } from '@/lib/settingsCache';
 import { isUnitRouted, areHexesAdjacent, isHeroMoraleBoostEnabled } from '@/lib/unitMorale';
+import { sameAlliance } from '@/lib/alliances';
 import { AttackDirection } from '@/lib/attackDirection';
 import { coverAcBonus, directAcBonus } from '@/lib/unitEffects';
 
@@ -118,10 +119,9 @@ export function heroicCapacityBonus(
   if (!isHeroMoraleBoostEnabled()) return 0;
   const bonus = getSetting('heroic_capacity_multiplier', 1);
   if (!bonus) return 0;
-  const unitAlliance = alliances[unit.team] || 'friendly';
   for (const src of units) {
     if (!src.isHero || src.isDeleted || src.hidden || (src.currentUnitHp ?? 0) <= 0) continue;
-    if ((alliances[src.team] || 'friendly') !== unitAlliance) continue;
+    if (!sameAlliance(src.team, unit.team, alliances)) continue;
     const leading = !!src.attachedToUnitId && src.attachedPosition === 'front';
     if (!leading && !src.heroicInspirationActive) continue;
     const sameHex = src.hex.q === unit.hex.q && src.hex.r === unit.hex.r;

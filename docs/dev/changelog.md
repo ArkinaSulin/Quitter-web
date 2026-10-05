@@ -1,5 +1,26 @@
 # QuiTTER Changelog
 
+## Consolidate universal primitives: arcs, alliances, airborne (2026-10-04)
+**Files:** src/lib/{hexGeometry(+test),alliances(+test),flying,unitCombat,unitMorale,moveCost,routedRetreat,archerReaction,fogOfWar,unitStats,rally,pursuit,scenarioPermissions,battleStats,meleeFallback}.ts (+ tests), src/lib/enemyAI/planner.ts, src/components/ScenarioMap/{mapGeometry,useOverlay,useMoveActions,useCombatActions,useCastActions,useReactionActions,ScenarioMap,useCanvasDraw}.tsx, docs/dev/{00-universal-rules,README,changelog}.md
+
+- **One front-arc home** (`src/lib/hexGeometry.ts`): `HEX_DIRS`, `hexDirIndex`,
+  `frontArcIndices`/`rearArcIndices`, `arcOf`. `unitCombat.isInFrontArc` /
+  `determineCombatPosition` and the old `unitMorale.facingArc` are thin wrappers;
+  `moveCost`, `mapGeometry` (re-exports `HEX_DIRS`), `routedRetreat` import it.
+  Removed 3 duplicate `HEX_DIRS` arrays + `routedRetreat.DIRS`.
+- **One alliance home** (`src/lib/alliances.ts`): `allianceOf` / `isHostile` /
+  `sameAlliance`. Replaced the inline `(alliances[x] || 'friendly')` comparisons
+  across morale, fog, archers, rally, pursuit, retreat, unitStats,
+  battleStats, permissions and the combat/cast/reaction/move/overlay hooks.
+  `enemyAI.planner.allianceOf` is now a unit-taking wrapper over it.
+- **One elevation home** (`src/lib/flying.ts`): `isAirborne(elevation, surface)`,
+  `withinVerticalGap`, `verticalGapDown`. Replaced the inlined
+  `elevation > surface`, `Math.abs(..) <= 10` and `gap > 0 && gap <= 10` checks
+  in kill zone, threat hexes, melee/point-blank, `isStooping`, `canReachStructure`,
+  the move confirm and the effect-elevation badge.
+- Behavior-preserving. New docs chapter `00-universal-rules.md` (rule → home map)
+  indexed from the README. `tsc` clean, 916 tests pass, build clean. No migration.
+
 ## Universal ZoC / kill-zone rule: same-elevation, airborne-flyer vertical, hero reach (2026-10-04)
 **Files:** src/lib/{unitMorale,zocDisengage,routedRetreat}.ts (+ tests), src/components/ScenarioMap/{mapGeometry,useOverlay,useMoveActions,useCombatActions,ScenarioMap}.tsx, src/components/ScenarioMap/threatHexes.test.ts (new), docs/dev/{07-movement-economy,08-combat,09-morale-routing-pursuit,changelog}.md, docs/players/player-manual.md
 

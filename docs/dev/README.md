@@ -64,6 +64,7 @@ Two big ideas make the whole system coherent:
 
 | # | Chapter | What it explains | Key files (start here) |
 |---|---|---|---|
+| [00](00-universal-rules.md) | Universal rules & canonical homes | Where each cross-cutting rule/primitive lives (arcs, airborne, hostility, kill zone, charge); the anti-duplication map | `src/lib/{hexGeometry,alliances,flying,formationRules,unitMorale,chargeStance}.ts` |
 | [01](01-architecture.md) | Architecture & data flow | Routes, layout, the unit/command lifecycle, optimistic apply + realtime confirm, screenshot flow | `app/page.tsx`, `src/components/ScenarioMap/ScenarioMap.tsx`, `src/hooks/useSupabaseSync.ts` |
 | [02](02-schema-and-migrations.md) | Schema & migrations | Every table + the 098 naming convention; migration 001→098 with **applied / awaiting-DB** status; RLS & RPC inventory | `supabase/migrations/*`, `src/types/gameProtocol.ts` |
 | [03](03-access-permissions.md) | Access, roles & permissions | Global `user_profile`/`admin_role_access_rights`; per-scenario `scenario_role_access_rights` + `scenario_permissions.ts` gates | `src/lib/scenarioPermissions.ts`, `src/hooks/useProfile.ts`, migrations 016/025/030/050/059/074 |

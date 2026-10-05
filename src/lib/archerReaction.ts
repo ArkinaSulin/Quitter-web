@@ -2,6 +2,7 @@
 import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { Weapon, parseWeapons } from '@/lib/weaponParser';
 import { isUnitRouted } from '@/lib/unitMorale';
+import { isHostile } from '@/lib/alliances';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { canRangedTarget } from '@/lib/formationRules';
 import { arcOfTarget } from '@/lib/attackDirection';
@@ -47,11 +48,10 @@ export function findEligibleReactionArchers(
   rangeBonus?: (unit: Unit) => number,
 ): Unit[] {
   if (mover.hidden) return []; // a hidden mover is concealed — archers never react to it
-  const moverAlliance = alliances[mover.team] || 'friendly';
   return units.filter(o => {
     if (o.id === mover.id || o.isDeleted || o.hidden || isUnitRouted(o) || isProtectedHero(o)) return false;
     if ((o.currentUnitHp ?? 0) <= 0) return false; // corpses never react
-    if ((alliances[o.team] || 'friendly') === moverAlliance) return false;
+    if (!isHostile(o.team, mover.team, alliances)) return false;
     if ((o.actionsAvailable ?? 0) < 1 || o.archerReactionUsed) return false;
     const weapon = parseWeapons(o.weaponString || '')[o.activeWeaponIndex ?? 0];
     if (!weapon || !isRangedCapableWeapon(weapon)) return false;

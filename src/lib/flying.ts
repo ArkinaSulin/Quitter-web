@@ -20,7 +20,7 @@ export function canFly(unit: Pick<Unit, 'flySpeed'>): boolean {
  * `elevation > 0` but is grounded, so it is NOT stooping.
  */
 export function isStooping(unit: Pick<Unit, 'flySpeed' | 'elevation' | 'isCharging'>, surface = 0): boolean {
-  return canFly(unit) && !!unit.isCharging && (unit.elevation ?? 0) > surface;
+  return canFly(unit) && !!unit.isCharging && isAirborne(unit.elevation, surface);
 }
 
 /** Vertical distance in feet between two elevations (0 when both grounded). */
@@ -31,6 +31,27 @@ export function elevationGapFeet(a: number | undefined, b: number | undefined): 
 /** Vertical distance in whole hexes (each 10 ft = 1 hex). */
 export function elevationGapHexes(a: number | undefined, b: number | undefined): number {
   return Math.floor(elevationGapFeet(a, b) / 10);
+}
+
+/**
+ * Is a unit at `elevation` actually AIRBORNE over a hex whose walkable surface
+ * is `surface` (pass `structureSurfaceAt(hex)`)? The ONE definition — an
+ * air-capable garrison standing on a structure (`elevation === surface`) is
+ * grounded, not flying.
+ */
+export function isAirborne(elevation: number | undefined, surface: number): boolean {
+  return (elevation ?? 0) > surface;
+}
+
+/** Are two elevations within `ft` of each other (default 10 ft, melee reach)? */
+export function withinVerticalGap(a: number | undefined, b: number | undefined, ft = 10): boolean {
+  return Math.abs((a ?? 0) - (b ?? 0)) <= ft;
+}
+
+/** Is `targetElevation` 1..ft strictly BELOW `upperElevation` (same-column domination)? */
+export function verticalGapDown(upperElevation: number | undefined, targetElevation: number | undefined, ft = 10): boolean {
+  const gap = (upperElevation ?? 0) - (targetElevation ?? 0);
+  return gap > 0 && gap <= ft;
 }
 
 /**
@@ -132,7 +153,7 @@ export function flyingFormationCap(currentFormation: string): string {
  *  already within reach. */
 export function meleeElevationFor(attackerElevation: number, targetElevation: number): number {
   const gap = targetElevation - attackerElevation;
-  if (Math.abs(gap) <= 10) return attackerElevation;
+  if (withinVerticalGap(attackerElevation, targetElevation)) return attackerElevation;
   return gap > 0 ? targetElevation - 10 : targetElevation + 10;
 }
 
@@ -223,5 +244,5 @@ export const STRUCTURE_HEIGHT_FT = 10;
 /** True when a unit at `elevation` can reach a ground-level structure (≤ 10 ft
  *  vertical gap from the structure's 10 ft height). */
 export function canReachStructure(elevation: number | undefined): boolean {
-  return Math.abs((elevation ?? 0) - STRUCTURE_HEIGHT_FT) <= 10;
+  return withinVerticalGap(elevation, STRUCTURE_HEIGHT_FT);
 }

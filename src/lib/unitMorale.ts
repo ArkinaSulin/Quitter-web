@@ -2,15 +2,9 @@ import { Unit, AllianceGroup, Hex, Formation } from '@/types/gameProtocol';
 import { getSetting, getBandSetting, SettingBand } from './settingsCache';
 import { isDeadCorpse, isProtectedHero } from './unitInteractions';
 import { getThreatMode, Arc } from './formationRules';
-
-const HEX_DIRS = [
-  { q: 1, r: 0, s: -1 },
-  { q: 0, r: 1, s: -1 },
-  { q: -1, r: 1, s: 0 },
-  { q: -1, r: 0, s: 1 },
-  { q: 0, r: -1, s: 1 },
-  { q: 1, r: -1, s: 0 },
-];
+import { arcOf, frontArcIndices, hexDirIndex } from './hexGeometry';
+import { isHostile, sameAlliance } from './alliances';
+import { isAirborne, verticalGapDown, withinVerticalGap } from './flying';
 
 // Code fallbacks match migration 042 seeds — correct until the cache is loaded.
 const DEFAULT_LEVEL_BANDS: SettingBand[] = [
@@ -61,18 +55,6 @@ export function exertedThreatRating(unit: Unit): number {
   return rating;
 }
 
-/** Arc of `targetHex` relative to a unit at `originHex` facing `facing`. */
-export function facingArc(originHex: Hex, facing: number, targetHex: Hex): Arc {
-  const dq = targetHex.q - originHex.q;
-  const dr = targetHex.r - originHex.r;
-  const ds = targetHex.s - originHex.s;
-  const dirIdx = HEX_DIRS.findIndex(d => d.q === dq && d.r === dr && d.s === ds);
-  if (dirIdx === -1) return 'front'; // same hex (or off-grid): no bearing
-  if ([(facing + 4) % 6, (facing + 5) % 6].includes(dirIdx)) return 'front';
-  if ([(facing + 1) % 6, (facing + 2) % 6].includes(dirIdx)) return 'rear';
-  return 'flank';
-}
-
 /**
  * Kill zone / zone of control (one unified shape for units): the two hexes
  * directly in front of the unit at the **same elevation**, plus — for an
@@ -92,18 +74,13 @@ export function isInKillZone(unit: Unit, hex: Hex, targetElevation = 0, ownSurfa
   if (unit.currentFormation === 'Scattered' || unit.currentFormation === 'Routed') return false;
   const unitElev = unit.elevation ?? 0;
   if (hex.q === unit.hex.q && hex.r === unit.hex.r) {
-    const gap = unitElev - targetElevation;
-    return (unit.flySpeed ?? 0) > 0 && unitElev > ownSurface && gap > 0 && gap <= 10;
+    return (unit.flySpeed ?? 0) > 0 && isAirborne(unitElev, ownSurface) && verticalGapDown(unitElev, targetElevation);
   }
   // Horizontal kill zone: same elevation only (kill zone and ZoC are one system).
   if (unitElev !== targetElevation) return false;
-  const dq = hex.q - unit.hex.q;
-  const dr = hex.r - unit.hex.r;
-  const ds = hex.s - unit.hex.s;
-  const dirIdx = HEX_DIRS.findIndex(d => d.q === dq && d.r === dr && d.s === ds);
+  const dirIdx = hexDirIndex(unit.hex, hex);
   if (dirIdx === -1) return false;
-  const frontDirs = [(unit.facing + 4) % 6, (unit.facing + 5) % 6];
-  return frontDirs.includes(dirIdx);
+  return frontArcIndices(unit.facing).includes(dirIdx);
 }
 
 export function calcWounds(unit: Unit): number {
@@ -112,16 +89,15 @@ export function calcWounds(unit: Unit): number {
 }
 
 export function areHexesAdjacent(a: Hex, b: Hex): boolean {
-  return HEX_DIRS.some(d => a.q + d.q === b.q && a.r + d.r === b.r && a.s + d.s === b.s);
+  return hexDirIndex(a, b) !== -1;
 }
 
 export function calcIsolation(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>): boolean {
-  const unitAlliance = alliances[unit.team] || 'friendly';
   return !units.some(u =>
     !u.isDeleted &&
     (u.currentUnitHp ?? 0) > 0 &&
     u.id !== unit.id &&
-    (alliances[u.team] || 'friendly') === unitAlliance &&
+    sameAlliance(u.team, unit.team, alliances) &&
     areHexesAdjacent(unit.hex, u.hex)
   );
 }
@@ -144,15 +120,13 @@ export function calcEnemyThreats(
   alliances: Record<string, AllianceGroup>,
   form: Formation | null | undefined = null,
 ): { total: number; totalSum: number; myThreat: number } {
-  const unitAlliance = alliances[unit.team] || 'friendly';
   const myThreat = computeThreatRating(unit);
   let totalSum = 0;
 
   for (const other of units) {
     if (other.isDeleted || other.id === unit.id || other.hidden || isUnitRouted(other) || isDeadCorpse(other)) continue;
-    const otherAlliance = alliances[other.team] || 'friendly';
-    if (otherAlliance === unitAlliance) continue;
-    const mode = getThreatMode(form, facingArc(unit.hex, unit.facing, other.hex));
+    if (!isHostile(other.team, unit.team, alliances)) continue;
+    const mode = getThreatMode(form, arcOf(unit.hex, unit.facing, other.hex));
     if (mode === 'none') continue;
     const mult = mode === 'double' ? 2 : 1;
     if (other.isHero) {
@@ -186,7 +160,7 @@ export function heroThreatAgainst(hero: Unit, victim: Unit, units: Unit[]): numb
   }
   // Lone hero: 360° — any adjacent hex, or the same hex within 10 ft (up/down).
   if (hero.hex.q === victim.hex.q && hero.hex.r === victim.hex.r) {
-    return Math.abs((hero.elevation ?? 0) - (victim.elevation ?? 0)) <= 10 ? rating : 0;
+    return withinVerticalGap(hero.elevation, victim.elevation) ? rating : 0;
   }
   return areHexesAdjacent(hero.hex, victim.hex) ? rating : 0;
 }
@@ -224,12 +198,11 @@ export function calcMoraleBoost(unit: Unit, units: Unit[], alliances: Record<str
 /** The best single hero aura on `unit` (value + whether that hero is inspired),
  *  or null when none applies. */
 export function calcMoraleBoostInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceGroup>): { value: number; inspired: boolean } | null {
-  const unitAlliance = alliances[unit.team] || 'friendly';
   let best: { value: number; inspired: boolean } | null = null;
   for (const src of units) {
     if (src.id === unit.id) continue; // a hero does not inspire itself
     if (!src.isHero || src.isDeleted || src.hidden || (src.currentUnitHp ?? 0) <= 0) continue;
-    if ((alliances[src.team] || 'friendly') !== unitAlliance) continue;
+    if (!sameAlliance(src.team, unit.team, alliances)) continue;
     const sameHex = src.hex.q === unit.hex.q && src.hex.r === unit.hex.r;
     if (!sameHex && !areHexesAdjacent(src.hex, unit.hex)) continue;
     const aura = (src.moraleBoost ?? 0) + (src.heroicInspirationActive ? HERO_INSPIRATION_BONUS : 0);

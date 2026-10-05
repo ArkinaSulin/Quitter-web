@@ -12,7 +12,7 @@ import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
 import { isDeadCorpse } from '@/lib/unitInteractions';
 import { corpseDots, FallenMap } from '@/lib/corpseTracker';
 import { TEAM_COLORS, Team } from '@/components/TokenRenderer/tokenUtils';
-import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, canFly, MapBackgroundConfig, costShade, hexMpLabelAt } from './mapGeometry';
+import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, canFly, isAirborne, MapBackgroundConfig, costShade, hexMpLabelAt } from './mapGeometry';
 import { parseClimbTo, hexDirection } from '@/lib/flying';
 import { FOG_RGB } from '@/lib/fogOfWar';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/lib/walls';
@@ -205,7 +205,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const w = h * ratio;
       // Elevated effects offset like tokens: level 1 (half) when the effect sits at
       // the structure top, level 2 (full) + a ground shadow when above it.
-      const level = elevation > 0 ? (elevation > structTop ? 2 : 1) : 0;
+      const level = elevation <= 0 ? 0 : (isAirborne(elevation, structTop) ? 2 : 1);
       const dist = HEX_SIZE * currentZoom * 0.5 * level * Math.SQRT1_2;
       const dx = dist, dy = -dist;
       if (level === 2) {

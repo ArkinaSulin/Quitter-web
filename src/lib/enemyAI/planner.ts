@@ -26,6 +26,7 @@
 import { Unit, Hex, AllianceGroup, Formation, hexDistance } from '@/types/gameProtocol';
 import { parseWeapons, isAreaWeapon } from '@/lib/weaponParser';
 import { isUnitRouted } from '@/lib/unitMorale';
+import { allianceOf as teamAllianceOf } from '@/lib/alliances';
 import { isProtectedHero } from '@/lib/unitInteractions';
 import { arcsContain, beAttackedModifier } from '@/lib/formationRules';
 import { getRowCapacityBase, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
@@ -79,8 +80,9 @@ export function hexKeyOf(hex: { q: number; r: number }): string {
   return `${hex.q},${hex.r}`;
 }
 
+/** Team -> alliance group (unit-taking convenience over `alliances.allianceOf`). */
 export function allianceOf(unit: Pick<Unit, 'team'>, alliances: Record<string, AllianceGroup>): AllianceGroup {
-  return alliances[unit.team] || 'friendly';
+  return teamAllianceOf(unit.team, alliances);
 }
 
 /** Which alliances a given alliance treats as adversarial. Neutral is never attacked. */

@@ -11,6 +11,7 @@
 
 import { Unit, AllianceGroup, Formation, getOrganizationLevel, hexDistance } from '@/types/gameProtocol';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
+import { sameAlliance } from '@/lib/alliances';
 
 /** A formed, non-hero unit drops to Scattered when it leaves a hostile ZoC. */
 export function pursuitScatters(unit: Unit): boolean {
@@ -28,10 +29,9 @@ export function forbiddingHero(
   units: Unit[],
   alliances: Record<string, AllianceGroup>,
 ): Unit | null {
-  const group = alliances[unit.team] || 'friendly';
   for (const h of units) {
     if (!h.isHero || h.isDeleted || h.id === unit.id) continue;
-    if ((alliances[h.team] || 'friendly') !== group) continue;
+    if (!sameAlliance(h.team, unit.team, alliances)) continue;
     if (hexDistance(h.hex, unit.hex) > 1) continue;
     if (h.commandPursuitPermit === false) return h;
   }

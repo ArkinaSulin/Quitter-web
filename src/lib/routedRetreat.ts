@@ -8,12 +8,9 @@
 import { Unit, AllianceGroup, Formation, Hex } from '@/types/gameProtocol';
 import { MapStructures } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
+import { HEX_DIRS } from '@/lib/hexGeometry';
+import { sameAlliance } from '@/lib/alliances';
 import { computeThreatHexes } from '@/components/ScenarioMap/mapGeometry';
-
-const DIRS = [
-  { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 },
-  { q: -1, r: 0 }, { q: 0, r: -1 }, { q: 1, r: -1 },
-];
 
 const key = (q: number, r: number) => `${q},${r}`;
 
@@ -29,7 +26,7 @@ export interface RoutContext {
 }
 
 export function neighborsOf(hex: Hex): Hex[] {
-  return DIRS.map(d => ({ q: hex.q + d.q, r: hex.r + d.r, s: -hex.q - hex.r - d.q - d.r }));
+  return HEX_DIRS.map(d => ({ q: hex.q + d.q, r: hex.r + d.r, s: -hex.q - hex.r - d.q - d.r }));
 }
 
 /** Enemy zone-of-control hexes for the routed unit (units that can stop movement). */
@@ -72,10 +69,9 @@ export interface RoutThroughOption {
 export function routThroughOptions(ctx: RoutContext): RoutThroughOption[] {
   const occ = occupiedExcept(ctx);
   const kill = enemyKillZone(ctx);
-  const group = ctx.alliances[ctx.routed.team] || 'friendly';
   const out: RoutThroughOption[] = [];
   for (const n of neighborsOf(ctx.routed.hex)) {
-    const through = ctx.units.find(u => !u.isDeleted && !u.isHero && u.id !== ctx.routed.id && u.hex.q === n.q && u.hex.r === n.r && (ctx.alliances[u.team] || 'friendly') === group);
+    const through = ctx.units.find(u => !u.isDeleted && !u.isHero && u.id !== ctx.routed.id && u.hex.q === n.q && u.hex.r === n.r && sameAlliance(u.team, ctx.routed.team, ctx.alliances));
     if (!through) continue;
     const formed = through.currentFormation;
     if (formed !== 'Open Order' && formed !== 'Scattered') continue;
@@ -134,9 +130,8 @@ export interface RetreatDiagnosis {
 export function retreatDiagnosis(ctx: RoutContext): RetreatDiagnosis {
   const adjacentLegal = adjacentRetreatCandidates(ctx).length;
   const throughLegal = routThroughOptions(ctx).length;
-  const group = ctx.alliances[ctx.routed.team] || 'friendly';
   const adjacentFriendly = neighborsOf(ctx.routed.hex)
-    .map(n => ctx.units.find(u => !u.isDeleted && u.id !== ctx.routed.id && u.hex.q === n.q && u.hex.r === n.r && (ctx.alliances[u.team] || 'friendly') === group))
+    .map(n => ctx.units.find(u => !u.isDeleted && u.id !== ctx.routed.id && u.hex.q === n.q && u.hex.r === n.r && sameAlliance(u.team, ctx.routed.team, ctx.alliances)))
     .filter(Boolean) as Unit[];
   const allAdjacentRouting = adjacentFriendly.length > 0 && adjacentFriendly.every(u => u.currentFormation === 'Routed');
   const allAdjacentOrdered = adjacentFriendly.length > 0 && adjacentFriendly.every(u => ORDERED_FORMATIONS.has(u.currentFormation));

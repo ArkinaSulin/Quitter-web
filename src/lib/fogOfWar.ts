@@ -15,6 +15,7 @@
 // one for the DM/replay (0.8) so they can see through the boundary.
 
 import { Unit, AllianceGroup, hexDistance } from '@/types/gameProtocol';
+import { allianceOf } from '@/lib/alliances';
 
 export const DEFAULT_SIGHT_RADIUS = 2;
 
@@ -46,7 +47,7 @@ type SightUnit = Pick<Unit, 'team' | 'hex' | 'isDeleted' | 'hidden' | 'currentUn
  *  non-hero corpses are scenery and reveal nothing. */
 function revealsSight(unit: SightUnit, group: AllianceGroup, alliances: Record<string, AllianceGroup>): boolean {
   if (unit.isDeleted || unit.hidden || (unit.currentUnitHp ?? 0) <= 0) return false;
-  return (alliances[unit.team] || 'friendly') === group;
+  return allianceOf(unit.team, alliances) === group;
 }
 
 /** The set of hex keys a group can currently see: every hex within `sight` hexes

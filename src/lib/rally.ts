@@ -6,6 +6,7 @@
 // spends the rest of the turn (0 actions, 0 MP).
 import { Unit, AllianceGroup, Formation, hexDistance } from '@/types/gameProtocol';
 import { isUnitRouted, computeEffectiveMoraleModifier } from '@/lib/unitMorale';
+import { isHostile } from '@/lib/alliances';
 
 export interface RallyCheck {
   ok: boolean;
@@ -30,13 +31,12 @@ export function canRally(
     unit.baseMorale + (unit.currentMoraleModifier ?? 0) + computeEffectiveMoraleModifier(unit, units, alliances, formation);
   if (effectiveMorale <= 0) return { ok: false, reason: `morale ${effectiveMorale}` };
 
-  const unitAlliance = alliances[unit.team] || 'friendly';
   const enemyAdjacent = units.some(o =>
     !o.isDeleted &&
     !o.hidden && // hidden hostiles are concealed and do not block a rally
     o.id !== unit.id &&
     (o.currentUnitHp ?? 0) > 0 &&
-    (alliances[o.team] || 'friendly') !== unitAlliance &&
+    isHostile(o.team, unit.team, alliances) &&
     hexDistance(o.hex, unit.hex) <= 1,
   );
   if (enemyAdjacent) return { ok: false, reason: 'enemy adjacent' };

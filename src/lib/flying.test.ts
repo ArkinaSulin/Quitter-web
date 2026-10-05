@@ -4,6 +4,7 @@ import {
   maxElevationAfter, elevationSliderRange, carryRule, FLYING_MAX_FORMATION, flyingFormationCap,
   meleeElevationFor, canReachStructure, STRUCTURE_HEIGHT_FT, isStooping,
   movePoolMode, flyMax, moveBudgetUnit, passengerDrain, rollFallDamage,
+  isAirborne, withinVerticalGap, verticalGapDown,
 } from './flying';
 import { Unit } from '@/types/gameProtocol';
 
@@ -35,6 +36,21 @@ describe('flying', () => {
     expect(elevationGapHexes(20, 0)).toBe(2);
     expect(elevationGapHexes(25, 0)).toBe(2); // floor
     expect(elevationGapFeet(undefined, undefined)).toBe(0);
+  });
+
+  it('isAirborne: elevation strictly above the hex surface', () => {
+    expect(isAirborne(10, 0)).toBe(true);
+    expect(isAirborne(10, 10)).toBe(false); // grounded on a 10-ft structure
+    expect(isAirborne(0, 0)).toBe(false);
+    expect(isAirborne(undefined, 0)).toBe(false);
+  });
+
+  it('withinVerticalGap / verticalGapDown', () => {
+    expect(withinVerticalGap(10, 0)).toBe(true);
+    expect(withinVerticalGap(20, 0)).toBe(false);
+    expect(verticalGapDown(10, 0)).toBe(true);
+    expect(verticalGapDown(10, 10)).toBe(false); // no downward gap
+    expect(verticalGapDown(0, 10)).toBe(false); // target above
   });
 
   it('elevationOffset: NE 45°; flyer = full, non-flyer = half, constant by height', () => {

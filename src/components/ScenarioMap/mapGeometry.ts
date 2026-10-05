@@ -5,17 +5,20 @@ import { determineCombatPosition } from '@/lib/unitCombat';
 import { canStopEnemyMovement } from '@/lib/formationRules';
 import { isUnitInteractable, isDeadCorpse } from '@/lib/unitInteractions';
 import { isUnitRouted } from '@/lib/unitMorale';
+import { isHostile } from '@/lib/alliances';
 import { Walls, crossingCost, blockedStep, wallBetween, edgeRef, directionBetween } from '@/lib/walls';
 import { MapStructures, structureBlocksOrg, zoneBlocksOrg, structureHexEntryCost, structureHexBlocked, structureClimbCostBetween, hexStructureAt, structureDoorState, structureSurfaceAt } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
+import { HEX_DIRS } from '@/lib/hexGeometry';
+export { HEX_DIRS };
 import { modifierAmount } from '@/lib/effectTemplates';
 import type { CostOfHexFn, BlockedEdgeFn } from '@/lib/moveCost';
 
 // Re-export the elevation/flying helpers so existing importers keep working
 // (the canonical implementations live in src/lib/flying.ts).
-import { elevationOffset, elevationGapFeet, elevationGapHexes, airOccupiedHexes, canFly } from '@/lib/flying';
-export { elevationOffset, elevationGapFeet, elevationGapHexes, airOccupiedHexes, canFly };
+import { elevationOffset, elevationGapFeet, elevationGapHexes, airOccupiedHexes, canFly, isAirborne, verticalGapDown } from '@/lib/flying';
+export { elevationOffset, elevationGapFeet, elevationGapHexes, airOccupiedHexes, canFly, isAirborne, verticalGapDown };
 
 // Re-export the shared hex/token geometry (canonical: src/lib/hexGeometry.ts and
 // src/lib/heroLayout.ts) so existing map importers keep working.
@@ -285,15 +288,6 @@ export const corpseLast = (a: Unit, b: Unit) =>
 export const tokenDrawOrder = (a: Unit, b: Unit) =>
   corpseLast(a, b) || ((a.elevation ?? 0) - (b.elevation ?? 0));
 
-export const HEX_DIRS = [
-  { q: 1, r: 0, s: -1 },
-  { q: 0, r: 1, s: -1 },
-  { q: -1, r: 1, s: 0 },
-  { q: -1, r: 0, s: 1 },
-  { q: 0, r: -1, s: 1 },
-  { q: 1, r: -1, s: 0 },
-];
-
 /** All hexes exactly at `radius` hexes from `center` (a hexagonal ring). */
 export function hexRing(center: Hex, radius: number): Hex[] {
   const results: Hex[] = [];
@@ -330,13 +324,12 @@ export function computeThreatHexes(
   templates?: Record<string, StructureTemplate>,
 ): Set<string> {
   const draggedUnit = allUnits.find(u => u.id === draggedUnitId);
-  const draggedGroup = alliances[draggedUnit?.team ?? ''] || 'friendly';
   const moverElev = draggedUnit?.elevation ?? 0;
   // Walkable surface of a hex (0 without structures). Used to evaluate each
   // DESTINATION at its own elevation (a grounded unit stepping onto a structure
   // is threatened by hostiles up there, not at its origin elevation).
   const surfaceOf = (h: Hex) => (structures ? structureSurfaceAt(h, structures, templates ?? {}) : 0);
-  const moverAirborne = !!draggedUnit && moverElev > surfaceOf(draggedUnit.hex);
+  const moverAirborne = !!draggedUnit && isAirborne(moverElev, surfaceOf(draggedUnit.hex));
   // Elevation a unit standing on `h` would occupy: an airborne mover keeps its
   // flight altitude; a grounded mover stands on the hex's surface (falling back
   // to its own elevation when no structures are provided).
@@ -344,22 +337,19 @@ export function computeThreatHexes(
 
   // A flyer's vertical ZoC is only drawn when a hostile unit is actually under it.
   const hostileUnder = (flyer: Unit): boolean => {
-    const flyerGroup = alliances[flyer.team] || 'friendly';
     const fe = flyer.elevation ?? 0;
     return allUnits.some(v => {
       if (v.id === flyer.id || v.isDeleted || isDeadCorpse(v)) return false;
       if (v.hex.q !== flyer.hex.q || v.hex.r !== flyer.hex.r) return false;
-      if ((alliances[v.team] || 'friendly') === flyerGroup) return false;
-      const gap = fe - (v.elevation ?? 0);
-      return gap > 0 && gap <= 10;
+      if (!isHostile(v.team, flyer.team, alliances)) return false;
+      return verticalGapDown(fe, v.elevation);
     });
   };
 
   const threats = new Set<string>();
   for (const unit of allUnits) {
     if (unit.isDeleted || unit.hidden || unit.id === draggedUnitId || unit.attachedToUnitId || unit.isHero || isUnitRouted(unit) || isDeadCorpse(unit)) continue;
-    const unitGroup = alliances[unit.team] || 'friendly';
-    if (unitGroup === draggedGroup) continue;
+    if (!draggedUnit || !isHostile(unit.team, draggedUnit.team, alliances)) continue;
     const unitElev = unit.elevation ?? 0;
 
     // Horizontal ZoC: the two front hexes, at the destination's elevation.
@@ -378,10 +368,9 @@ export function computeThreatHexes(
 
     // Vertical ZoC: an actually-airborne FORMED flyer dominates its own hex 1..10
     // ft below — facing-independent — but only when a hostile is actually under.
-    if ((unit.flySpeed ?? 0) > 0 && unitElev > surfaceOf(unit.hex) && getOrganizationLevel(unit.currentFormation) > 0) {
+    if ((unit.flySpeed ?? 0) > 0 && isAirborne(unitElev, surfaceOf(unit.hex)) && getOrganizationLevel(unit.currentFormation) > 0) {
       const H = unit.hex;
-      const gap = unitElev - destElevOf(H);
-      if (gap > 0 && gap <= 10 && hostileUnder(unit)) threats.add(`${H.q},${H.r}`);
+      if (verticalGapDown(unitElev, destElevOf(H)) && hostileUnder(unit)) threats.add(`${H.q},${H.r}`);
     }
   }
   return threats;

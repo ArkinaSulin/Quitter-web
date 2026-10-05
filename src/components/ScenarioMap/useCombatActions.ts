@@ -16,8 +16,9 @@ import { getSetting } from '@/lib/settingsCache';
 import { unitAttackCap } from '@/lib/attackCap';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, isHeroMoraleBoostEnabled, isZocPursuitEnabled } from '@/lib/unitMorale';
+import { isHostile, sameAlliance, allianceOf } from '@/lib/alliances';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, computeWeaponSwitchAc, attackKind, canWeaponAttack } from '@/lib/meleeFallback';
-import { meleeElevationFor, isStooping, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo } from '@/lib/flying';
+import { meleeElevationFor, isStooping, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo, withinVerticalGap } from '@/lib/flying';
 import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable } from '@/lib/moveCost';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
@@ -153,8 +154,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // it owns none. Magic weapons always act at range; everything beyond adjacency
     // is a ranged attack (thrown/shot).
     const dist = hexDistance(attacker.hex, target.hex);
-    const verticalFeet = elevationGapFeet(attacker.elevation, target.elevation);
-    const isAdjacent = isAdjacentDistance(dist) && verticalFeet <= 10;
+    const isAdjacent = isAdjacentDistance(dist) && withinVerticalGap(attacker.elevation, target.elevation);
     let attackerSwitchIdx: number | null = null;
     let defenderSwitchIdx: number | null = null;
     let usedFists = false;
@@ -195,7 +195,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // (units still block the horizontal line).
     const flyingAttacker = (attacker.elevation ?? 0) > 0;
     const indirectShot = isRanged && !hasLineOfSight(attacker.hex, target.hex, units, new Set([attacker.id, target.id]), flyingAttacker ? null : structures, structureTemplates);
-    const hostileTarget = (alliances[attacker.team] || 'friendly') !== (alliances[target.team] || 'friendly');
+    const hostileTarget = isHostile(attacker.team, target.team, alliances);
 
     // A leading (front-attached) hero AUTO-joins the host's attack — melee OR
     // ranged — when it has an action and a weapon that reaches, spending that
@@ -830,7 +830,6 @@ export function useCombatActions(deps: CombatActionsDeps) {
     opts?: { attacker?: Unit | null; cornered?: boolean; throughUnitId?: string | null; deferRouting?: boolean },
   ) => {
     if (!isZocPursuitEnabled()) return;
-    const moverAlliance = alliances[mover.team] || 'friendly';
     let live = units.find(u => u.id === mover.id) ?? mover;
     if (live.hidden) return; // hidden units are concealed — no scatter/pursue reaction
     if ((live.elevation ?? 0) > 0) return; // flyers are never pursued
@@ -842,7 +841,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       // No legal retreat: every eligible ZoC unit strikes the standing router.
       const zoc = units.filter(e =>
         e.id !== live.id && !e.isDeleted &&
-        (alliances[e.team] || 'friendly') !== moverAlliance &&
+        isHostile(e.team, live.team, alliances) &&
         !(e.pursuitUsed ?? false) &&
         canMeleeAttack(e) &&
         imposesZocOn(e, live.hex, formationsMap, live.elevation ?? 0, structureSurfaceAt(e.hex, structures, structureTemplates)),
@@ -1142,8 +1141,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
       }
     }
 
-    const attackerGroup = alliances[attacker.team] || 'friendly';
-    const targetGroup = alliances[target.team] || 'friendly';
+    const attackerGroup = allianceOf(attacker.team, alliances);
+    const targetGroup = allianceOf(target.team, alliances);
     const dist = hexDistance(attacker.hex, target.hex);
     const verticalFeet = elevationGapFeet(attacker.elevation, target.elevation);
     // Ranged vertical rule (distance-side): each 10 ft of CLIMB adds 1 hex of
@@ -1431,7 +1430,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return false;
-    if ((alliances[attacker.team] || 'friendly') === (alliances[target.team] || 'friendly')) return false;
+    if (sameAlliance(attacker.team, target.team, alliances)) return false;
     const weapons = parseWeapons(attacker.weaponString || '');
     const bonus = rangeBonusAt(attacker, groundZones);
     const usable = weapons.map((w, i) => ({ w, i })).filter(({ w }) => canWeaponAttack(w, attacker, target, bonus));

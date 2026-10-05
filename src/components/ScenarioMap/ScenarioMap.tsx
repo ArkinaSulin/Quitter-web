@@ -41,6 +41,7 @@ import { PingLayer } from './PingLayer';
 import { TEAM_COLORS, TEAMS, Team } from '@/components/TokenRenderer/tokenUtils';
 import { TeamChip } from '@/components/TokenRenderer/TeamChip';
 import { isUnitRouted, setHeroMoraleBoostEnabled as setHeroMoraleBoostAmbient, setZocPursuitEnabled as setZocPursuitAmbient } from '@/lib/unitMorale';
+import { isHostile } from '@/lib/alliances';
 import { canRally } from '@/lib/rally';
 import { computeVisibleHexes, computeFog, hexKey, DEFAULT_SIGHT_RADIUS, FOG_UNSEEN_GM_ALPHA, FOG_UNSEEN_PLAYER_ALPHA } from '@/lib/fogOfWar';
 import { supabase } from '@/lib/supabaseClient';
@@ -50,7 +51,7 @@ import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes, mpCostOverrides } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
-import { canReachStructure, canFly, parseClimbTo } from '@/lib/flying';
+import { canReachStructure, canFly, parseClimbTo, isAirborne } from '@/lib/flying';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/lib/walls';
 import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt } from '@/lib/mapStructures';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
@@ -2079,10 +2080,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // modal (Move / Stoop attack / Range attack) when the hex is a legal fly
       // destination. An air-occupied hex is not a destination → plain attack.
       if (attacker && target && canFly(attacker) && (target.elevation ?? 0) <= 0) {
-        const isHostile = (alliances[attacker.team] || 'friendly') !== (alliances[target.team] || 'friendly');
-        const hostileVisible = isHostile && canAttackInFog(attacker, target);
+        const hostile = isHostile(attacker.team, target.team, alliances);
+        const hostileVisible = hostile && canAttackInFog(attacker, target);
         const canStoop = hostileVisible && !!planStoopDrop(attackerId, targetId);
-        if ((hostileVisible || !isHostile) && beginFlyerDrop(attacker, target, { canStoop, isHostile: hostileVisible })) return;
+        if ((hostileVisible || !hostile) && beginFlyerDrop(attacker, target, { canStoop, isHostile: hostileVisible })) return;
       }
       // Ground / airborne drop: offer the combined weapon + mount/rider picker
       // when there is a real choice (>1 weapon can attack, or the target rides a
@@ -2547,7 +2548,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Soft-enforcement prompts: fully-bound confirm handlers (clear state +
   // controlsLocked guard + act). The modals render from the pending states.
   const softActions = {
-    confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (controlsLocked) return; if (pm.climb) { void handleClimbMove(pm.unit, pm.targetHex, pm.climb.originSurface, true); return; } const surface = structureSurfaceAt(pm.unit.hex, structures, structureTemplates); const targetSurface = structureSurfaceAt(pm.targetHex, structures, structureTemplates); const airborne = (pm.unit.elevation ?? 0) > surface; const max = airborne ? (pm.unit.flySpeed ?? 0) : (pm.breakToFormation ? computeEffectiveMovement(pm.unit, getFormationMultiplier(formationsMap, pm.breakToFormation, 'movement_multiplier')) : unitMaxMP(pm.unit)); const descendElev = !airborne && targetSurface <= surface ? targetSurface : undefined; completeMove(pm.unit, pm.targetHex, pm.cost, true, max, pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined, pm.breakToFormation, descendElev, surface); },
+    confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (controlsLocked) return; if (pm.climb) { void handleClimbMove(pm.unit, pm.targetHex, pm.climb.originSurface, true); return; } const surface = structureSurfaceAt(pm.unit.hex, structures, structureTemplates); const targetSurface = structureSurfaceAt(pm.targetHex, structures, structureTemplates); const airborne = isAirborne(pm.unit.elevation, surface); const max = airborne ? (pm.unit.flySpeed ?? 0) : (pm.breakToFormation ? computeEffectiveMovement(pm.unit, getFormationMultiplier(formationsMap, pm.breakToFormation, 'movement_multiplier')) : unitMaxMP(pm.unit)); const descendElev = !airborne && targetSurface <= surface ? targetSurface : undefined; completeMove(pm.unit, pm.targetHex, pm.cost, true, max, pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined, pm.breakToFormation, descendElev, surface); },
     confirmAttack: () => { const pa = pendingAttack!; setPendingAttack(null); if (!controlsLocked) performAttack(pa.attacker, pa.target, true); },
     confirmAttackCap: async () => {
       const pa = pendingAttackCap!;
@@ -2838,7 +2839,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onChangeFormation={(formation) => handleChangeFormation(contextMenuUnit, formation)}
           onCharge={() => charge(contextMenuUnit)}
           chargeEnabled={mountedChargeEnabled}
-          isAirborne={!contextMenuUnit.attachedToUnitId && (contextMenuUnit.elevation ?? 0) > structureSurfaceAt(contextMenuUnit.hex, structures, structureTemplates)}
+          isAirborne={!contextMenuUnit.attachedToUnitId && isAirborne(contextMenuUnit.elevation, structureSurfaceAt(contextMenuUnit.hex, structures, structureTemplates))}
           onSwapHeroPosition={(hero) => handleSwapHeroPosition(hero)}
           onSelectWeapon={(idx) => { weaponSelectedTurnRef.current[contextMenuUnit.id] = turnNumber; selectWeapon(contextMenuUnit, idx); }}
           onAssignTeam={(team) => assignTeam(contextMenuUnit, team)}

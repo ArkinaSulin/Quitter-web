@@ -16,6 +16,7 @@
 // does not reduce them), matching the corpse piles and kill counts.
 import { Unit, AllianceGroup } from '@/types/gameProtocol';
 import { CommandLogRow, parseSubSteps } from '@/lib/commandLog';
+import { allianceOf as teamAllianceOf } from '@/lib/alliances';
 import { TEAMS } from '@/components/TokenRenderer/tokenUtils';
 
 export type UnitStatus = 'Effective' | 'Routed' | 'Killed';
@@ -101,7 +102,7 @@ export function buildStats(rows: CommandLogRow[], units: Unit[], alliances: Reco
           const t = p.currentTroopCount ?? 0;
           troops.set(p.id, t);
           placedTroops.set(p.id, t);
-          allianceOf.set(p.id, alliances[p.team ?? ''] || 'friendly');
+          allianceOf.set(p.id, teamAllianceOf(p.team, alliances));
         }
         continue;
       }
@@ -120,7 +121,7 @@ export function buildStats(rows: CommandLogRow[], units: Unit[], alliances: Reco
           }
           troops.set(step.unitId, to);
         } else if (change.field === 'team' && typeof change.to === 'string') {
-          allianceOf.set(step.unitId, alliances[change.to] || 'friendly');
+          allianceOf.set(step.unitId, teamAllianceOf(change.to, alliances));
         } else if (change.field === 'current_turn_alliance') {
           // End of an alliance turn: snapshot every un-snapped unit of the ENDING
           // alliance (a unit added mid-game snapshots at the end of ITS turn).
@@ -147,7 +148,7 @@ export function buildStats(rows: CommandLogRow[], units: Unit[], alliances: Reco
       unitId: u.id,
       unitName: u.unitName,
       team: u.team,
-      alliance: alliances[u.team] || 'friendly',
+      alliance: teamAllianceOf(u.team, alliances),
       hidden: u.hidden,
       isHero: u.isHero,
       level: u.level,
