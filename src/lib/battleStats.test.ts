@@ -209,6 +209,7 @@ describe('battleStats', () => {
     const stats = buildStats(rows, [a, b], ALLIANCES);
     const ra = allRows(stats).find(r => r.unitId === 'a')!;
     expect(ra.introTroopCount).toBe(20);
+    expect(ra.introLevels).toBe(80); // 20 x Lv 4
     expect(ra.troopLost).toBe(6);
     expect(ra.levelsLost).toBe(24); // 6 x Lv 4
     const friendly = stats.alliances.find(x => x.alliance === 'friendly')!;

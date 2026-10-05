@@ -31,6 +31,8 @@ export interface UnitStatRow {
   maxTroopCount: number;
   /** Troops at the end of the unit's own alliance turn (fallback: at PLACE / max). */
   introTroopCount: number;
+  /** introTroopCount × this unit's level (starting level-points). */
+  introLevels: number;
   currentTroopCount: number;
   /** Gross troops this unit lost (from the log). */
   troopLost: number;
@@ -140,6 +142,7 @@ export function buildStats(rows: CommandLogRow[], units: Unit[], alliances: Reco
   const live = units.filter(u => !u.isDeleted);
   const rowsOut: UnitStatRow[] = live.map(u => {
     const tl = troopLost.get(u.id) ?? 0;
+    const intro = introTroops.get(u.id) ?? placedTroops.get(u.id) ?? u.maxTroopCount;
     return {
       unitId: u.id,
       unitName: u.unitName,
@@ -149,7 +152,8 @@ export function buildStats(rows: CommandLogRow[], units: Unit[], alliances: Reco
       isHero: u.isHero,
       level: u.level,
       maxTroopCount: u.maxTroopCount,
-      introTroopCount: introTroops.get(u.id) ?? placedTroops.get(u.id) ?? u.maxTroopCount,
+      introTroopCount: intro,
+      introLevels: intro * u.level,
       currentTroopCount: u.currentTroopCount,
       troopLost: tl,
       levelsLost: tl * u.level,
@@ -212,7 +216,7 @@ export function formatStatsText(stats: BattleStats): string {
   const lines: string[] = ['— Scenario Statistics —'];
   for (const a of stats.alliances) {
     lines.push(
-      `${ALLIANCE_LABEL[a.alliance].toUpperCase()} — deployed ${a.deployed} · survived ${a.survived} | troops ${a.totalTroops} | levels ${a.totalLevels} | lost ${a.totalTroopLost} troops (${a.totalLevelsLost} lv) | kills ${a.totalKills} (${a.totalKillLevels} lv)`,
+      `${ALLIANCE_LABEL[a.alliance].toUpperCase()} — deployed ${a.deployed} · survived ${a.survived} | starting ${a.totalTroops} troops / ${a.totalLevels} lv | lost ${a.totalTroopLost} troops / ${a.totalLevelsLost} lv | kills ${a.totalKills} troops / ${a.totalKillLevels} lv`,
     );
     for (const t of a.teams) {
       lines.push(`  ${t.team}`);
@@ -220,13 +224,13 @@ export function formatStatsText(stats: BattleStats): string {
         const tag = r.status === 'Killed' ? '✝' : r.status === 'Routed' ? '⚠' : '';
         const hidden = r.hidden ? ' (hidden)' : '';
         lines.push(
-          `    ${r.isHero ? '★ ' : ''}${r.unitName}${hidden}: ${r.status}${tag} — troops ${r.currentTroopCount} (intro ${r.introTroopCount}, max ${r.maxTroopCount}) Lv ${r.level} · lost ${r.troopLost} (${r.levelsLost} lv) · kills ${r.kills} (${r.killLevels} lv)`,
+          `    ${r.isHero ? '★ ' : ''}${r.unitName}${hidden}: ${r.status}${tag} — starting ${r.introTroopCount} troops / ${r.introLevels} lv (now ${r.currentTroopCount}) · lost ${r.troopLost} troops / ${r.levelsLost} lv · kills ${r.kills} troops / ${r.killLevels} lv`,
         );
       }
     }
   }
   lines.push(
-    `Totals: ${stats.totals.kills} troops killed (${stats.totals.killLevels} lv) · ${stats.totals.troopLost} troops lost (${stats.totals.levelsLost} lv)`,
+    `Totals: starting ${stats.alliances.reduce((n, a) => n + a.totalTroops, 0)} troops · lost ${stats.totals.troopLost} troops / ${stats.totals.levelsLost} lv · kills ${stats.totals.kills} troops / ${stats.totals.killLevels} lv`,
   );
   return lines.join('\n');
 }

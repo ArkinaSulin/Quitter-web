@@ -1,5 +1,16 @@
 # QuiTTER Changelog
 
+## Scenario Statistics laid out in three troop/lv groups (2026-10-04)
+**Files:** src/lib/battleStats.ts (+ test), src/components/ScenarioMap/ScenarioStatsModal.tsx, docs/dev/{08-combat,changelog}.md
+
+- The statistics columns are now grouped into **Starting**, **Lost**, and
+  **Kills**, each a troop/lv pair. Per unit: `introTroops / introLevels`
+  (new `introLevels = introTroops × Lv`), `troopLost / levelsLost`, `kills /
+  killLevels`; the alliance summary uses the matching `Σ` totals. The standalone
+  `Lv` column is gone (level-points are folded into each pair). Group header +
+  column separators added; `formatStatsText` mirrors it. `tsc` clean, tests pass,
+  build clean. No migration.
+
 ## Grouped Scenario Statistics (alliance/team breakdown) (2026-10-04)
 **Files:** src/lib/battleStats.ts (+ test), src/components/ScenarioMap/ScenarioStatsModal.tsx, docs/dev/{08-combat,changelog}.md
 

@@ -50,15 +50,21 @@ export function ScenarioStatsModal({ rows, units, alliances, onClose, onShare }:
         <div className="overflow-y-auto flex-1 text-xs text-gray-200">
           <table className="w-full border-collapse">
             <thead>
+              <tr className="text-gray-500">
+                <th className="py-1 pr-2" colSpan={2} />
+                <th className="py-1 pr-2 text-center font-semibold text-gray-300 border-l border-gray-800" colSpan={2}>Starting</th>
+                <th className="py-1 pr-2 text-center font-semibold text-gray-300 border-l border-gray-800" colSpan={2}>Lost</th>
+                <th className="py-1 text-center font-semibold text-gray-300 border-l border-gray-800" colSpan={2}>Kills</th>
+              </tr>
               <tr className="text-left text-gray-400 border-b border-gray-700">
                 <th className="py-1 pr-2">Unit</th>
                 <th className="py-1 pr-2">Status</th>
-                <th className="py-1 pr-2 text-right">Troops</th>
+                <th className="py-1 pr-2 text-right border-l border-gray-800">Troop</th>
                 <th className="py-1 pr-2 text-right">Lv</th>
-                <th className="py-1 pr-2 text-right">Troop lost</th>
-                <th className="py-1 pr-2 text-right">Levels lost</th>
-                <th className="py-1 pr-2 text-right">Kills</th>
-                <th className="py-1 text-right">Kill levels</th>
+                <th className="py-1 pr-2 text-right border-l border-gray-800">Troop</th>
+                <th className="py-1 pr-2 text-right">Lv</th>
+                <th className="py-1 pr-2 text-right border-l border-gray-800">Troop</th>
+                <th className="py-1 text-right">Lv</th>
               </tr>
             </thead>
             <tbody>
@@ -71,11 +77,11 @@ export function ScenarioStatsModal({ rows, units, alliances, onClose, onShare }:
                     <td className="py-1 pr-2 text-gray-300">
                       {a.deployed} deployed · {a.survived} survived
                     </td>
-                    <td className={`${num} font-semibold`}>{a.totalTroops}</td>
+                    <td className={`${num} font-semibold border-l border-gray-800`}>{a.totalTroops}</td>
                     <td className={`${num} font-semibold`}>{a.totalLevels}</td>
-                    <td className={`${num} font-semibold`}>{a.totalTroopLost}</td>
+                    <td className={`${num} font-semibold border-l border-gray-800`}>{a.totalTroopLost}</td>
                     <td className={`${num} font-semibold`}>{a.totalLevelsLost}</td>
-                    <td className={`${num} font-semibold`}>{a.totalKills}</td>
+                    <td className={`${num} font-semibold border-l border-gray-800`}>{a.totalKills}</td>
                     <td className={`${num} font-semibold`}>{a.totalKillLevels}</td>
                   </tr>
                   {a.teams.map(t => (
@@ -104,11 +110,11 @@ export function ScenarioStatsModal({ rows, units, alliances, onClose, onShare }:
                               {r.status}
                             </span>
                           </td>
-                          <td className={num}>{r.introTroopCount}</td>
-                          <td className={num}>{r.level}</td>
-                          <td className={num}>{r.troopLost}</td>
+                          <td className={`${num} border-l border-gray-800`}>{r.introTroopCount}</td>
+                          <td className={num}>{r.introLevels}</td>
+                          <td className={`${num} border-l border-gray-800`}>{r.troopLost}</td>
                           <td className={num}>{r.levelsLost}</td>
-                          <td className={num}>{r.kills}</td>
+                          <td className={`${num} border-l border-gray-800`}>{r.kills}</td>
                           <td className={num}>{r.killLevels}</td>
                         </tr>
                       ))}

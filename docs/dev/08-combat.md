@@ -324,13 +324,15 @@ the damage sub-steps' `{ killerUnitId, victimLevel }` payload: each dead troop i
 nothing).
 
 The modal groups by **alliance** (Friendly → Enemy → Neutral, Neutral hidden when
-empty) then by **team** (color chip; teams with no units hidden):
+empty) then by **team** (color chip; teams with no units hidden). The numbers are
+laid out in **three troop/lv groups** — **Starting**, **Lost**, **Kills**:
 
 - **Alliance summary** — `deployed · survived` (survived = status *Effective*
-  only), `Σ troops`, `Σ levels = Σ(introTroops × Lv)`, `Σ troop lost`,
-  `Σ levels lost`, `Σ kills`, `Σ kill levels`.
-- **Per unit** — name, status, `introTroops`, `Lv`, `troop lost`, `levels lost`
-  (= `troopLost × Lv`), `kills`, `kill levels`.
+  only), then `Σ starting troops / Σ starting lv` (`Σ introTroops / Σ
+  (introTroops × Lv)`), `Σ lost troops / Σ lost lv`, `Σ kill troops / Σ kill lv`.
+- **Per unit** — name, status, then the same three pairs: **starting**
+  (`introTroops` / `introLevels = introTroops × Lv`), **lost** (`troopLost` /
+  `levelsLost = troopLost × Lv`), **kills** (`kills` / `killLevels`).
 
 `introTroopCount` is the unit's troop count at the **end of its own alliance
 turn** (a mid-game reinforcement snapshots on its alliance's next turn end;
