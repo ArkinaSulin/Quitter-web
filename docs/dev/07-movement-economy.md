@@ -128,18 +128,27 @@ candidate hex at that hex's surface (a grounded mover stepping onto a 10-ft
 structure is threatened by hostiles up there), or at the mover's flight
 elevation when airborne. Occupied hexes are skipped at the destination surface.
 
+**Movement rule — stop, not pass-through.** A threat hex is a destination a
+unit may *stop* on but never move *through*; entering one ends the move. The
+hex a unit is already on is not an entry, so a unit that begins inside a ZoC
+(e.g. standing under a flyer) may **always leave** it — leaving scatters/pursues
+as normal. (`computeReachableMap` gates the pass-through on `hops > 0`, i.e. a
+move that has stepped onto a threat hex — the origin, and same-hex turns, stay
+free.)
+
 Every **alliance is hostile to every other** (friendly↔enemy, friendly↔neutral,
 enemy↔neutral); same-alliance pairs (including neutral↔neutral) are not.
 
 To disengage past a flyer overhead, `imposesZocOn` enforces the same vertical ZoC
 (a formed, actually-airborne flyer only). **Movement never routs.**
 
-**Entering a kill zone ends the move.** When a drop's destination is a hostile
-threat hex, the MOVE zeroes any leftover `movementPointsAvailable` (the mover
-may still act with another action, but this pool is spent). A unit may not pass
-through a threat hex — it stops on entry. The **START hex is exempt**: a unit
-that *begins* inside a ZoC (e.g. standing under a flyer) can still move and turn
-freely — leaving scatters/pursues as normal.
+**Threat hexes stop *entry*, not occupancy** (`07` rule): entering a hostile
+threat hex ends the move — a unit may stop on one but never pass through it.
+The unit's **own starting hex is not an entry**, so a unit that begins inside a
+ZoC (e.g. standing under a flyer) can always move and turn out of it; leaving
+scatters/pursues as normal. When a drop's destination is a threat hex, the MOVE
+zeroes any leftover `movementPointsAvailable` (the mover may still act with
+another action, but this pool is spent).
 
 ## Disengaging — scatter + pursue
 

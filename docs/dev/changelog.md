@@ -3,12 +3,14 @@
 ## Fix: leave a ZoC you start in; hover vertical ZoC; unified tooltip dismissal (2026-10-05)
 **Files:** src/lib/moveCost.ts (+test), src/components/ScenarioMap/{useOverlay.ts (+test),ScenarioMap.tsx}, src/hooks/useHexGrid.ts, docs/dev/{07-movement-economy,19-ui-panels-and-floating,changelog}.md
 
-- **A unit that starts inside a ZoC can move out.** `computeReachableMap`
-  blocked expansion from *any* threat hex, including the start — only the
-  vertical ZoC (a flyer directly overhead) can put the mover's own hex there, so
-  a ground unit under a flyer lost every non-Withdraw move. The **start hex is
-  now exempt** from the pass-through block; threat hexes *ahead* still stop
-  passage. Leaving then scatters/pursues as normal.
+- **"Stop, not pass-through" honoured for the origin.** `computeReachableMap`
+  applied its threat pass-through block to the mover's **own** hex too — only
+  the vertical ZoC (a flyer directly overhead) can put the mover's own hex in the
+  threat set, so a ground unit under a flyer couldn't move. Threat hexes stop
+  **entry**, so the gate is now `hops > 0` (a hex actually entered); the origin
+  and same-hex turns stay free, while threat hexes *ahead* still stop passage.
+  Leaving then scatters/pursues as normal — this is the existing rule, not a new
+  exception.
 - **Hover ZoC tint includes the airborne vertical hex.** `getOverlayForUnit`
   used a front-2-only `determineCombatPosition`; it now calls the unified
   `imposesKillZone` (front-2 same-elevation **+** an airborne formed flyer's own

@@ -419,11 +419,11 @@ export function computeReachableMap(
     consider(cur);
     const looseHere = isLoose(cur.formation);
     if ((!allowBeyondBudget && cur.d >= budgetOf(cur.formation)) || cur.hops >= stepCapOf(cur.formation)) continue;
-    // Threat hexes are reachable destinations but never passed through. The
-    // START hex is exempt: a unit that begins inside a ZoC (e.g. standing under a
-    // flyer) must always be able to leave — leaving scatters/pursues as normal.
-    const atStart = cur.q === unit.hex.q && cur.r === unit.hex.r;
-    if (!atStart && threatHexes.has(key(cur.q, cur.r))) continue;
+    // Threat (= ZoC/kill-zone) hexes stop ENTRY, not occupancy: a move that steps
+    // onto one ends (no pass-through), but the mover's own hex is not an entry, so
+    // it may always leave it (leaving scatters/pursues as normal). `hops > 0` ==
+    // "has stepped onto a hex"; turns keep hops unchanged (origin stays exempt).
+    if (cur.hops > 0 && threatHexes.has(key(cur.q, cur.r))) continue;
 
     // Forward moves (omnidirectional when loose, front wedge when formed).
     const dirs = looseHere

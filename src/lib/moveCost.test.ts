@@ -12,12 +12,13 @@ const formedUnit = {
 
 // Facing 0 front dirs are HEX_DIRS[4]=(0,-1) and HEX_DIRS[5]=(1,-1).
 
-describe('computeReachableMap — starting inside a threat hex (e.g. under a flyer)', () => {
-  it('can still leave its own ZoC hex (forward steps + turns reachable)', () => {
+describe('computeReachableMap — threat hexes: stop, not pass-through', () => {
+  it('the origin is not an entry: a unit may always leave a ZoC it starts in', () => {
     const map = computeReachableMap(formedUnit, 3, new Set(), new Set(['0,0']));
     expect(map.get('0,-1')).toMatchObject({ cost: 1, needsTurn: false });
     expect(map.get('0,-2')?.cost).toBe(2);
     expect(map.get('1,0')).toBeDefined(); // turn in the hex, then step off
+    expect(map.get('0,0')).toBeUndefined(); // the origin is never a result
   });
 
   it('a threat hex ahead is a destination but never passed through', () => {
