@@ -10,6 +10,7 @@ import {
   heroThreatAgainst,
   HERO_INSPIRATION_BONUS,
   isInKillZone,
+  imposesKillZone,
   shouldRout,
 } from './unitMorale';
 import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
@@ -178,6 +179,35 @@ describe('isInKillZone', () => {
     expect(isInKillZone(garrison, { q: 0, r: 0, s: 0 }, 0, 10)).toBe(false);
     // Same unit over bare ground (ownSurface 0) is airborne and does.
     expect(isInKillZone(garrison, { q: 0, r: 0, s: 0 }, 0, 0)).toBe(true);
+  });
+});
+
+describe('imposesKillZone (single shared predicate)', () => {
+  const base = { hex: { q: 0, r: 0, s: 0 }, facing: 0 } as const;
+
+  it('front-2 at the same elevation (no formation gate)', () => {
+    const u = makeUnit(base);
+    expect(imposesKillZone(u, DIR_HEXES[4], { targetElevation: 0 })).toBe(true);
+    expect(imposesKillZone(u, DIR_HEXES[0], { targetElevation: 0 })).toBe(false);
+    expect(imposesKillZone(u, DIR_HEXES[4], { targetElevation: 10 })).toBe(false); // cross-elevation
+  });
+
+  it('same hex vertical only for an actually-airborne flyer; requireFormed gates it', () => {
+    const fly = makeUnit({ ...base, elevation: 10, flySpeed: 60, currentFormation: 'Open Order' });
+    expect(imposesKillZone(fly, fly.hex, { targetElevation: 0 })).toBe(true);
+    expect(imposesKillZone(fly, fly.hex, { targetElevation: 0, requireFormed: true })).toBe(true);
+    expect(imposesKillZone(fly, fly.hex, { targetElevation: 0, ownSurface: 10 })).toBe(false); // grounded
+    const scattered = { ...fly, currentFormation: 'Scattered' };
+    expect(imposesKillZone(scattered, fly.hex, { targetElevation: 0, requireFormed: true })).toBe(false);
+  });
+
+  it('exclude option (heroes/attached) and base exclusions', () => {
+    const hero = makeUnit({ ...base, isHero: true });
+    expect(imposesKillZone(hero, DIR_HEXES[4], { targetElevation: 0 })).toBe(true);
+    expect(imposesKillZone(hero, DIR_HEXES[4], { targetElevation: 0, exclude: x => x.isHero })).toBe(false);
+    expect(imposesKillZone(makeUnit({ ...base, currentFormation: 'Scattered' }), DIR_HEXES[4], { targetElevation: 0 })).toBe(false);
+    expect(imposesKillZone(makeUnit({ ...base, currentFormation: 'Routed' }), DIR_HEXES[4], { targetElevation: 0 })).toBe(false);
+    expect(imposesKillZone(makeUnit({ ...base, hidden: true }), DIR_HEXES[4], { targetElevation: 0 })).toBe(false);
   });
 });
 

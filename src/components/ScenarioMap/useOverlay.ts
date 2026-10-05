@@ -23,7 +23,8 @@ import { GroundEffect } from '@/types/gameProtocol';
 import { rangeBonusAt, unitIgnoresClimb } from '@/lib/unitEffects';
 import { edgeHexes } from '@/lib/wallCombat';
 import { canWithdraw, withdrawDestinations } from '@/lib/withdraw';
-import { isStooping, moveBudgetUnit, parseClimbTo } from '@/lib/flying';
+import { moveBudgetUnit, parseClimbTo } from '@/lib/flying';
+import { isStooping } from '@/lib/chargeStance';
 
 /** Hovered unit's front-arc threat tint (non-loose units only). */
 function getOverlayForUnit(unit: Unit): Record<string, string> {

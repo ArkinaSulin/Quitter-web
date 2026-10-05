@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## Fold ZoC/kill-zone + Charge/Stoop into single predicates (2026-10-04)
+**Files:** src/lib/{unitMorale(+test),zocDisengage,chargeStance(+test),flying(+test)}.ts, src/components/ScenarioMap/{mapGeometry,threatHexes.test,useCombatActions,useOverlay}.ts(x), docs/dev/{00-universal-rules,changelog}.md
+
+- **One kill-zone/ZoC predicate** — `unitMorale.imposesKillZone(unit, hex, {
+  targetElevation, ownSurface?, exclude?, requireFormed? })` owns the shape
+  (front-2 same-elevation + airborne-flyer same-column vertical) and the
+  Scattered/Routed/hidden/dead exclusions. `isInKillZone` is a thin wrapper;
+  `computeThreatHexes` and `imposesZocOn` call it (passing `exclude` for
+  hero/attached and `requireFormed`/`canStopEnemyMovement` for movement ZoC), so
+  the front-2/vertical/exclusion logic is no longer assembled in three places.
+  `mapGeometry` drops its `determineCombatPosition`/`getOrganizationLevel`/
+  `isUnitRouted` imports.
+- **Charge/Stoop unified** — `isStooping` moves into `chargeStance.ts` (beside
+  `chargeStanceFor`) and builds on `flying.isAirborne`; `flying.ts` no longer
+  exports it, and `useCombatActions`/`useOverlay` import it from `chargeStance`.
+- Behavior-preserving. `docs/dev/00-universal-rules.md` status updated. `tsc`
+  clean, 920 tests pass, build clean. No migration.
+
 ## Consolidate universal primitives: arcs, alliances, airborne (2026-10-04)
 **Files:** src/lib/{hexGeometry(+test),alliances(+test),flying,unitCombat,unitMorale,moveCost,routedRetreat,archerReaction,fogOfWar,unitStats,rally,pursuit,scenarioPermissions,battleStats,meleeFallback}.ts (+ tests), src/lib/enemyAI/planner.ts, src/components/ScenarioMap/{mapGeometry,useOverlay,useMoveActions,useCombatActions,useCastActions,useReactionActions,ScenarioMap,useCanvasDraw}.tsx, docs/dev/{00-universal-rules,README,changelog}.md
 

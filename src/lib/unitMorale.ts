@@ -1,4 +1,4 @@
-import { Unit, AllianceGroup, Hex, Formation } from '@/types/gameProtocol';
+import { Unit, AllianceGroup, Hex, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { getSetting, getBandSetting, SettingBand } from './settingsCache';
 import { isDeadCorpse, isProtectedHero } from './unitInteractions';
 import { getThreatMode, Arc } from './formationRules';
@@ -55,32 +55,48 @@ export function exertedThreatRating(unit: Unit): number {
   return rating;
 }
 
+export interface KillZoneQuery {
+  /** Elevation the target stands at (same-elevation rule + vertical gap). */
+  targetElevation: number;
+  /** The unit's own hex surface (`structureSurfaceAt`) — airborne gate. Default 0. */
+  ownSurface?: number;
+  /** Extra per-unit exclusion (e.g. heroes / attached units for movement ZoC). */
+  exclude?: (unit: Unit) => boolean;
+  /** Gate the vertical (same-column) clause on a formed unit (movement ZoC). */
+  requireFormed?: boolean;
+}
+
 /**
- * Kill zone / zone of control (one unified shape for units): the two hexes
- * directly in front of the unit at the **same elevation**, plus — for an
- * actually-airborne, formed, non-hero flyer — its own hex 1..10 ft below it.
- * A unit imposes threat (morale) AND stops enemy movement only in these hexes.
- * Scattered and Routed formations have no kill zone; heroes are handled
- * separately (`heroThreatAgainst`) and never impose a ZoC.
+ * The ONE kill-zone / zone-of-control predicate — does `unit` dominate `hex`
+ * for a target at `targetElevation`? The shape: the **two front hexes at the
+ * same elevation**, plus — for an actually-airborne flyer — its **own hex
+ * 1..10 ft below**. Scattered/Routed/hidden/dead units impose nothing; heroes
+ * are handled separately (`heroThreatAgainst`).
  *
- * Vertical clause (universal rule): only an ACTUALLY-AIRBORNE flyer dominates
- * the hex below — pass the flyer's own hex surface as `ownSurface`
- * (`structureSurfaceAt`) so a fly-capable garrison standing on a structure
- * (elevation === surface) is NOT treated as airborne. Same-hex ground units
- * (gap 0) are never a kill zone.
+ * Shared by `isInKillZone` (morale/point-blank/AGR), `computeThreatHexes`
+ * (movement overlay) and `imposesZocOn` (disengage) — the last two pass
+ * `exclude`/`requireFormed` for the movement-ZoC gates. `ownSurface` is the
+ * unit's own hex surface so a fly-capable garrison on a structure is grounded.
  */
-export function isInKillZone(unit: Unit, hex: Hex, targetElevation = 0, ownSurface = 0): boolean {
+export function imposesKillZone(unit: Unit, hex: Hex, q: KillZoneQuery): boolean {
   if (unit.isDeleted || unit.hidden || isUnitRouted(unit) || isDeadCorpse(unit)) return false;
   if (unit.currentFormation === 'Scattered' || unit.currentFormation === 'Routed') return false;
+  if (q.exclude?.(unit)) return false;
   const unitElev = unit.elevation ?? 0;
   if (hex.q === unit.hex.q && hex.r === unit.hex.r) {
-    return (unit.flySpeed ?? 0) > 0 && isAirborne(unitElev, ownSurface) && verticalGapDown(unitElev, targetElevation);
+    if (q.requireFormed && getOrganizationLevel(unit.currentFormation) <= 0) return false;
+    return (unit.flySpeed ?? 0) > 0 && isAirborne(unitElev, q.ownSurface ?? 0) && verticalGapDown(unitElev, q.targetElevation);
   }
-  // Horizontal kill zone: same elevation only (kill zone and ZoC are one system).
-  if (unitElev !== targetElevation) return false;
+  // Horizontal: same elevation only (kill zone and ZoC are one system).
+  if (unitElev !== q.targetElevation) return false;
   const dirIdx = hexDirIndex(unit.hex, hex);
   if (dirIdx === -1) return false;
   return frontArcIndices(unit.facing).includes(dirIdx);
+}
+
+/** Kill zone for morale/point-blank/AGR (no formation/hero gate). */
+export function isInKillZone(unit: Unit, hex: Hex, targetElevation = 0, ownSurface = 0): boolean {
+  return imposesKillZone(unit, hex, { targetElevation, ownSurface });
 }
 
 export function calcWounds(unit: Unit): number {

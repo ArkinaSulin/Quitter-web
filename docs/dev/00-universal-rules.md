@@ -28,21 +28,24 @@ instead of re-deriving it.
 |---|---|---|
 | Formation matrix (melee/ranged/threat/stop/retaliate/charge arcs, modifiers) | `src/lib/formationRules.ts` (backed by `unit_formations` rows) | combat, morale, movement, AI, editors. |
 | Attack arcs (melee front-2 / all-around; ranged; structure) | `canMeleeTarget`/`canRangedTarget` (`formationRules`) + `unitCombat`/`wallCombat`/`structureCombat` | `useCombatActions`, overlay. |
-| Kill zone / ZoC (unified) | `src/lib/unitMorale.ts` → `isInKillZone` | `computeThreatHexes` (mapGeometry), `imposesZocOn` (zocDisengage), `meleeFallback`, `useCombatActions`. |
+| Kill zone / ZoC (unified) | `src/lib/unitMorale.ts` → `imposesKillZone` (the one predicate) | `isInKillZone` (morale/point-blank/AGR), `computeThreatHexes` (overlay), `imposesZocOn` (disengage), `meleeFallback`, `useCombatActions`. |
 | Threat reach (heroes) | `src/lib/unitMorale.ts` → `heroThreatAgainst` | `calcEnemyThreats`. |
 | Rear-threat ×2 | `getThreatMode` (`formationRules`) via `calcEnemyThreats` | tooltip, morale checks. |
-| Charge / Stoop stance | `src/lib/chargeStance.ts` → `chargeStanceFor` | `ContextMenu`. |
-| Vertical flyer dominance | `isInKillZone` + `computeThreatHexes` (with `isAirborne`/`verticalGapDown`) | overlay, pursue, retreat, combat. |
+| Charge / Stoop | `src/lib/chargeStance.ts` → `chargeStanceFor` (declare) + `isStooping` (declared) | `ContextMenu`, `useCombatActions`, `useOverlay`. |
+| Vertical flyer dominance | `imposesKillZone` + `computeThreatHexes` (with `isAirborne`/`verticalGapDown`) | overlay, pursue, retreat, combat. |
 
-## Known remaining duplication (backlog)
+## Consolidation status
 
-- **ZoC shape (slice 4)**: `isInKillZone` (unitMorale), `computeThreatHexes`
-  (mapGeometry) and `imposesZocOn` (zocDisengage) still each assemble the
-  front-2 + vertical + exclusion set. Goal: one `killZoneHexes(unit, opts)` the
-  other two consume.
-- **Charge/Stoop (slice 5)**: `chargeStanceFor` and `isStooping` overlap on the
-  airborne check; fold `isStooping` onto the shared `isAirborne`.
-- **`enemyAI/planner.allianceOf`** is now a wrapper over `alliances.allianceOf`.
+The primitives and rules above are single-source. The previously duplicated
+shapes have been folded in:
+
+- **ZoC/kill zone** — `imposesKillZone` (`KillZoneQuery` with `ownSurface`,
+  `exclude`, `requireFormed`) is the one predicate; `isInKillZone`,
+  `computeThreatHexes` and `imposesZocOn` all call it (no more per-caller
+  front-2/vertical/exclusion assembly).
+- **Charge/Stoop** — both halves live in `chargeStance.ts`;
+  `isStooping` builds on the shared `isAirborne`.
+- **`enemyAI/planner.allianceOf`** is a wrapper over `alliances.allianceOf`.
 
 ## Adding a universal rule
 

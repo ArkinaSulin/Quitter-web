@@ -8,8 +8,8 @@
 // Scattered / Routed / Heroes impose no kill zone — they never pursue — but a
 // mover of ANY formation (including Scattered or a Hero) can be pursued when it
 // leaves one.
-import { Unit, Hex, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
-import { isInKillZone } from '@/lib/unitMorale';
+import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
+import { imposesKillZone } from '@/lib/unitMorale';
 import { isHostile } from '@/lib/alliances';
 import { canStopEnemyMovement } from '@/lib/formationRules';
 import { MapStructures, structureSurfaceAt } from '@/lib/mapStructures';
@@ -32,14 +32,18 @@ export function imposesZocOn(
   targetElevation = 0,
   ownSurface = 0,
 ): boolean {
-  if (enemy.isDeleted || enemy.hidden || enemy.attachedToUnitId || enemy.isHero) return false;
-  if (hex.q === enemy.hex.q && hex.r === enemy.hex.r) {
-    if (getOrganizationLevel(enemy.currentFormation) <= 0) return false; // vertical needs a formed unit
-    return isInKillZone(enemy, hex, targetElevation, ownSurface); // vertical (facing-free)
+  const sameHex = hex.q === enemy.hex.q && hex.r === enemy.hex.r;
+  if (!imposesKillZone(enemy, hex, {
+    targetElevation,
+    ownSurface,
+    exclude: (u: Unit) => u.isHero || !!u.attachedToUnitId,
+    requireFormed: true,
+  })) {
+    return false;
   }
-  if ((enemy.elevation ?? 0) !== targetElevation) return false; // ZoC does not cross elevation
-  if (!isInKillZone(enemy, hex, targetElevation, ownSurface)) return false;
-  return canStopEnemyMovement(formationsMap[enemy.currentFormation], 'front');
+  // Horizontal ZoC additionally needs the formation to stop enemy movement (the
+  // vertical same-column clause is facing-independent).
+  return sameHex || canStopEnemyMovement(formationsMap[enemy.currentFormation], 'front');
 }
 
 /** Can this unit make a MELEE attack? (a melee weapon in its list, not just Fists). */

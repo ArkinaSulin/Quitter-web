@@ -12,17 +12,6 @@ export function canFly(unit: Pick<Unit, 'flySpeed'>): boolean {
   return (unit.flySpeed ?? 0) > 0;
 }
 
-/**
- * A STOOP is an airborne unit that has declared a charge ("Stoop!" in the
- * context menu). Only a stooping flyer may drop-onto a ground unit to deliver
- * the free melee charge attack onto its hex. `surface` is the walkable top of
- * the unit's hex (`structureSurfaceAt`) — a flyer standing on a structure has
- * `elevation > 0` but is grounded, so it is NOT stooping.
- */
-export function isStooping(unit: Pick<Unit, 'flySpeed' | 'elevation' | 'isCharging'>, surface = 0): boolean {
-  return canFly(unit) && !!unit.isCharging && isAirborne(unit.elevation, surface);
-}
-
 /** Vertical distance in feet between two elevations (0 when both grounded). */
 export function elevationGapFeet(a: number | undefined, b: number | undefined): number {
   return Math.abs((a ?? 0) - (b ?? 0));

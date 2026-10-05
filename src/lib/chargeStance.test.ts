@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chargeStanceFor, ChargeStanceInput } from './chargeStance';
+import { chargeStanceFor, isStooping, ChargeStanceInput } from './chargeStance';
 import { Formation } from '@/types/gameProtocol';
 
 const form = (canCharge: boolean): Formation => ({ can_charge: canCharge } as unknown as Formation);
@@ -52,5 +52,17 @@ describe('chargeStanceFor', () => {
     expect(chargeStanceFor(base({ unit: unit({ isCharging: true }) }))).toBeNull();
     expect(chargeStanceFor(base({ unit: unit({ currentFormation: 'Routed' }) }))).toBeNull();
     expect(chargeStanceFor(base({ unit: unit({ actionsAvailable: 0 }) }))).toBeNull();
+  });
+});
+
+describe('isStooping (already-declared)', () => {
+  it('charging + actually airborne (own surface) only', () => {
+    expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: true })).toBe(true);
+    expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: false })).toBe(false);
+    expect(isStooping({ flySpeed: 4, elevation: 0, isCharging: true })).toBe(false);
+    expect(isStooping({ flySpeed: 0, elevation: 20, isCharging: true })).toBe(false);
+    // Grounded on a 10-ft structure (elevation == surface) → not stooping.
+    expect(isStooping({ flySpeed: 4, elevation: 10, isCharging: true }, 10)).toBe(false);
+    expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: true }, 10)).toBe(true);
   });
 });

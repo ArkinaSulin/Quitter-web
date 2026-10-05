@@ -5,11 +5,21 @@
 // they share eligibility here and the same `charge` handler in the engine. The
 // only differences are the state (grounded vs airborne) and the label.
 import { Unit, Formation } from '@/types/gameProtocol';
-import { canFly } from './flying';
+import { canFly, isAirborne } from './flying';
 import { canFormationCharge } from './formationRules';
 import { isUnitRouted } from './unitMorale';
 
 export type ChargeStance = 'charge' | 'stoop';
+
+/**
+ * An already-declared STOOP: a fly-capable unit charging while actually airborne
+ * (pass its own hex surface — `structureSurfaceAt`). The post-declaration half of
+ * the charge/stoop rule; `chargeStanceFor` is the pre-declaration half, so both
+ * live here.
+ */
+export function isStooping(unit: Pick<Unit, 'flySpeed' | 'elevation' | 'isCharging'>, surface = 0): boolean {
+  return canFly(unit) && !!unit.isCharging && isAirborne(unit.elevation, surface);
+}
 
 export interface ChargeStanceInput {
   unit: Pick<Unit, 'isHero' | 'canCharge' | 'currentFormation' | 'isCharging' | 'actionsAvailable' | 'flySpeed' | 'elevation'>;

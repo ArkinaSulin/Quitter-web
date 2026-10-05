@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   canFly, elevationGapFeet, elevationGapHexes, elevationOffset, airOccupiedHexes,
   maxElevationAfter, elevationSliderRange, carryRule, FLYING_MAX_FORMATION, flyingFormationCap,
-  meleeElevationFor, canReachStructure, STRUCTURE_HEIGHT_FT, isStooping,
+  meleeElevationFor, canReachStructure, STRUCTURE_HEIGHT_FT,
   movePoolMode, flyMax, moveBudgetUnit, passengerDrain, rollFallDamage,
   isAirborne, withinVerticalGap, verticalGapDown,
 } from './flying';
@@ -143,17 +143,6 @@ describe('flying', () => {
     // Host pool 0 -> no drain.
     expect(passengerDrain(3, 0, { movementPointsAvailable: 4, flySpeedAvailable: 0, flySpeed: 0 }, 8))
       .toEqual({ movementPointsAvailable: 4, flySpeedAvailable: 0 });
-  });
-
-  it('isStooping: charging + actually airborne only', () => {
-    expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: true })).toBe(true);
-    expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: false })).toBe(false);
-    expect(isStooping({ flySpeed: 4, elevation: 0, isCharging: true })).toBe(false);
-    expect(isStooping({ flySpeed: 0, elevation: 20, isCharging: true })).toBe(false);
-    // Grounded on a 10-ft structure (elevation == surface): not airborne, not stooping.
-    expect(isStooping({ flySpeed: 4, elevation: 10, isCharging: true }, 10)).toBe(false);
-    // Hovering above that surface: stooping.
-    expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: true }, 10)).toBe(true);
   });
 
   it('canReachStructure: within 10 ft of the 10 ft structure height', () => {

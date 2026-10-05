@@ -56,6 +56,15 @@ describe('computeThreatHexes — destination-space ZoC', () => {
     expect(computeThreatHexes([f, under, fly], 'f', groups, forms).has('3,0')).toBe(true);
   });
 
+  it('a Scattered or hero flyer imposes no vertical ZoC', () => {
+    const f = unit('f', 'blue', h(0, 0));
+    const under = unit('u', 'blue', h(3, 0), { elevation: 0 });
+    const scatteredFly = unit('sf', 'red', h(3, 0), { elevation: 10, flySpeed: 60, currentFormation: 'Scattered' });
+    expect(computeThreatHexes([f, under, scatteredFly], 'f', groups, forms).has('3,0')).toBe(false);
+    const heroFly = unit('hf', 'red', h(3, 0), { elevation: 10, flySpeed: 60, isHero: true });
+    expect(computeThreatHexes([f, under, heroFly], 'f', groups, forms).has('3,0')).toBe(false);
+  });
+
   it('a grounded garrison on a structure does not dominate the hex below', () => {
     const f = unit('f', 'blue', h(0, 0));
     const under = unit('u', 'blue', h(2, 0), { elevation: 0 });
