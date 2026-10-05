@@ -175,7 +175,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       return combined;
     }
 
-    const threatHexes = computeThreatHexes(units, draggingUnitId, alliances, formationsMap);
+    const threatHexes = computeThreatHexes(units, draggingUnitId, alliances, formationsMap, structures, templates);
 
     // White reachable hexes for the dragged unit — one full pool (an action
     // converts to MP on move), or leftover MP only when 0 actions. A host with

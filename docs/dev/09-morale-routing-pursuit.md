@@ -25,20 +25,19 @@ A lone hero (troop 1) gets its level + size² + 0.
 
 ## Who pressures you: kill zones, not adjacency
 
-A unit imposes threat on an enemy **only while that enemy stands in its kill
-zone** — the two hexes in front of its facing (`isInKillZone`). Formations
-without a kill zone (Scattered, Routed) never impose threat. Routing units
-never impose threat. Merely adjacent ≠ threatening.
-
-**Vertical clause (universal rule):** a **flying** unit/hero also dominates the
-hex directly below it in its own column — a target 1–10 ft lower (pass
-`targetElevation` to `isInKillZone`) is in its kill zone **regardless of
-facing**, and imposes a ZoC on disengage. Same-hex ground units (gap 0) are not
-a kill zone. Horizontal kill zones still do not cross elevation.
+A unit imposes threat on an enemy **only while that enemy stands in its
+kill zone** (one unified predicate with the movement ZoC, `isInKillZone`): the
+**two front hexes at the same elevation**, plus — for an **actually-airborne,
+formed flyer** — its **own hex 1–10 ft below** (facing-independent, and only
+while a hostile is under it). Formations without a kill zone (Scattered, Routed)
+never impose threat; neither do hidden/attached/dead units. Cross-elevation
+never applies for the front-2. Merely adjacent ≠ threatening. Full rule:
+`07` "Zone of control (universal rule)".
 
 Heroes are the exception: a **lone** hero is a single token with no fixed
-facing, so it threatens every adjacent hex (360°) — `heroThreatAgainst`. A
-**front-attached** hero threatens only through its host's kill zone; a
+facing, so it threatens **all six adjacent hexes AND its own hex within 10 ft
+(up or down)** — `heroThreatAgainst`. (Threat only: heroes never impose a ZoC.)
+A **front-attached** hero threatens only through its host's kill zone; a
 **protected (back-attached)** hero exerts no threat at all. A hero of **Large
 size or smaller** (`sizeCategory ≤ 200`) exerts **half** its rating
 (`exertedThreatRating`); bigger heroes exert full.

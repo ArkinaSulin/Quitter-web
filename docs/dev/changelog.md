@@ -1,5 +1,35 @@
 # QuiTTER Changelog
 
+## Universal ZoC / kill-zone rule: same-elevation, airborne-flyer vertical, hero reach (2026-10-04)
+**Files:** src/lib/{unitMorale,zocDisengage,routedRetreat}.ts (+ tests), src/components/ScenarioMap/{mapGeometry,useOverlay,useMoveActions,useCombatActions,ScenarioMap}.tsx, src/components/ScenarioMap/threatHexes.test.ts (new), docs/dev/{07-movement-economy,08-combat,09-morale-routing-pursuit,changelog}.md, docs/players/player-manual.md
+
+- **ZoC and kill zone are one system for units** (`isInKillZone`): the two front
+  hexes **at the same elevation**, plus — for an **actually-airborne, formed,
+  non-hero flyer** — its **own hex 1–10 ft below** (facing-independent). This one
+  predicate now drives movement ZoC, morale threat, the AGR penalty and the
+  point-blank melee decision. Hero/Scattered/Routed/hidden/attached/dead and
+  cross-elevation are always excluded.
+- **Actually airborne, not just elevated.** The vertical clause requires
+  `elevation > surfaceAt(hex)` (pass `ownSurface`), so a fly-capable garrison
+  standing on a 10-ft structure no longer "dominates" the ground below. It also
+  requires a formed unit (`getOrganizationLevel > 0`).
+- **Destination-space threat** (`computeThreatHexes` now takes
+  `structures`/`templates`): each candidate hex is evaluated at **that hex's
+  surface** (a grounded mover stepping onto a structure is threatened by
+  hostiles up there) or at the mover's **flight elevation** when airborne;
+  occupied hexes are skipped at the destination surface. `useOverlay`,
+  `useMoveActions`, `ScenarioMap` (withdraw) and `routedRetreat` thread
+  structures/templates.
+- **Bullet-3 highlight:** a flyer's hex is drawn as a threat hex only when a
+  unit hostile to the flyer is actually 1–10 ft under it (`hostileUnder`).
+- **Heroes (threat only, no ZoC):** `heroThreatAgainst` now also reaches the
+  **same hex ±10 ft** (up or down), in addition to the 6 adjacent hexes.
+- **Alliances:** every alliance is hostile to every other (friendly↔neutral,
+  enemy↔neutral, enemy↔friendly); same-alliance (incl. neutral↔neutral) is not.
+- Docs: new `07` "Zone of control (universal rule)"; `08`/`09` aligned; player
+  manual wording. Tests: `unitMorale`, `zocDisengage`, new `threatHexes.test.ts`.
+  `tsc` clean, 907 tests pass, build clean. No migration.
+
 ## Record `map_effect_templates.permanent` (migration 115) + docs 101–114 backfill (2026-10-04)
 **Files:** supabase/migrations/115_map_effect_template_permanent.sql (new), docs/dev/{02-schema-and-migrations,changelog}.md
 

@@ -1,12 +1,12 @@
 // src/components/ScenarioMap/mapGeometry.ts
 // Map constants + hex/token geometry shared by the canvas draw hook and the map.
-import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { determineCombatPosition } from '@/lib/unitCombat';
 import { canStopEnemyMovement } from '@/lib/formationRules';
 import { isUnitInteractable, isDeadCorpse } from '@/lib/unitInteractions';
 import { isUnitRouted } from '@/lib/unitMorale';
 import { Walls, crossingCost, blockedStep, wallBetween, edgeRef, directionBetween } from '@/lib/walls';
-import { MapStructures, structureBlocksOrg, zoneBlocksOrg, structureHexEntryCost, structureHexBlocked, structureClimbCostBetween, hexStructureAt, structureDoorState } from '@/lib/mapStructures';
+import { MapStructures, structureBlocksOrg, zoneBlocksOrg, structureHexEntryCost, structureHexBlocked, structureClimbCostBetween, hexStructureAt, structureDoorState, structureSurfaceAt } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { modifierAmount } from '@/lib/effectTemplates';
@@ -321,34 +321,67 @@ export function computeOccupiedHexes(allUnits: Unit[], excludeUnitId?: string, s
   );
 }
 
-export function computeThreatHexes(allUnits: Unit[], draggedUnitId: string, alliances: Record<string, AllianceGroup>, formationsMap: Record<string, Formation>): Set<string> {
+export function computeThreatHexes(
+  allUnits: Unit[],
+  draggedUnitId: string,
+  alliances: Record<string, AllianceGroup>,
+  formationsMap: Record<string, Formation>,
+  structures?: MapStructures,
+  templates?: Record<string, StructureTemplate>,
+): Set<string> {
   const draggedUnit = allUnits.find(u => u.id === draggedUnitId);
   const draggedGroup = alliances[draggedUnit?.team ?? ''] || 'friendly';
-  const draggedElevation = draggedUnit?.elevation ?? 0;
-  const occupied = computeOccupiedHexes(allUnits);
+  const moverElev = draggedUnit?.elevation ?? 0;
+  // Walkable surface of a hex (0 without structures). Used to evaluate each
+  // DESTINATION at its own elevation (a grounded unit stepping onto a structure
+  // is threatened by hostiles up there, not at its origin elevation).
+  const surfaceOf = (h: Hex) => (structures ? structureSurfaceAt(h, structures, templates ?? {}) : 0);
+  const moverAirborne = !!draggedUnit && moverElev > surfaceOf(draggedUnit.hex);
+  // Elevation a unit standing on `h` would occupy: an airborne mover keeps its
+  // flight altitude; a grounded mover stands on the hex's surface (falling back
+  // to its own elevation when no structures are provided).
+  const destElevOf = (h: Hex) => (moverAirborne ? moverElev : structures ? surfaceOf(h) : moverElev);
+
+  // A flyer's vertical ZoC is only drawn when a hostile unit is actually under it.
+  const hostileUnder = (flyer: Unit): boolean => {
+    const flyerGroup = alliances[flyer.team] || 'friendly';
+    const fe = flyer.elevation ?? 0;
+    return allUnits.some(v => {
+      if (v.id === flyer.id || v.isDeleted || isDeadCorpse(v)) return false;
+      if (v.hex.q !== flyer.hex.q || v.hex.r !== flyer.hex.r) return false;
+      if ((alliances[v.team] || 'friendly') === flyerGroup) return false;
+      const gap = fe - (v.elevation ?? 0);
+      return gap > 0 && gap <= 10;
+    });
+  };
+
   const threats = new Set<string>();
   for (const unit of allUnits) {
     if (unit.isDeleted || unit.hidden || unit.id === draggedUnitId || unit.attachedToUnitId || unit.isHero || isUnitRouted(unit) || isDeadCorpse(unit)) continue;
     const unitGroup = alliances[unit.team] || 'friendly';
     if (unitGroup === draggedGroup) continue;
-    const unitElevation = unit.elevation ?? 0;
-    // Vertical kill zone: a FLYER 1..10 ft above the mover threatens its own hex
-    // (facing-independent). Same-hex ground units (gap 0) never impose one.
-    if ((unit.flySpeed ?? 0) > 0 && unitElevation - draggedElevation > 0 && unitElevation - draggedElevation <= 10) {
-      threats.add(`${unit.hex.q},${unit.hex.r}`);
-    }
-    // Horizontal kill zones do NOT cross elevation: only hostiles at the mover's
-    // exact elevation exert a zone of control (a flyer ignores ground ZoC, and a
-    // garrison ignores the ground below).
-    if (unitElevation !== draggedElevation) continue;
+    const unitElev = unit.elevation ?? 0;
+
+    // Horizontal ZoC: the two front hexes, at the destination's elevation.
     for (const dir of HEX_DIRS) {
-      const nq = unit.hex.q + dir.q;
-      const nr = unit.hex.r + dir.r;
-      const key = `${nq},${nr}`;
-      if (occupied.has(key)) continue;
-      const pos = determineCombatPosition({ q: nq, r: nr, s: -nq - nr }, unit.hex, unit.facing);
-      // Only formations with a zone of control in this arc stop enemy movement.
-      if (canStopEnemyMovement(formationsMap[unit.currentFormation], pos)) threats.add(key);
+      const H = { q: unit.hex.q + dir.q, r: unit.hex.r + dir.r, s: 0 };
+      H.s = -H.q - H.r;
+      const pos = determineCombatPosition(H, unit.hex, unit.facing);
+      if (pos !== 'front') continue;
+      if (!canStopEnemyMovement(formationsMap[unit.currentFormation], pos)) continue;
+      const destElev = destElevOf(H);
+      if (unitElev !== destElev) continue;
+      const key = `${H.q},${H.r}`;
+      if (computeOccupiedHexes(allUnits, draggedUnitId, destElev).has(key)) continue;
+      threats.add(key);
+    }
+
+    // Vertical ZoC: an actually-airborne FORMED flyer dominates its own hex 1..10
+    // ft below — facing-independent — but only when a hostile is actually under.
+    if ((unit.flySpeed ?? 0) > 0 && unitElev > surfaceOf(unit.hex) && getOrganizationLevel(unit.currentFormation) > 0) {
+      const H = unit.hex;
+      const gap = unitElev - destElevOf(H);
+      if (gap > 0 && gap <= 10 && hostileUnder(unit)) threats.add(`${H.q},${H.r}`);
     }
   }
   return threats;

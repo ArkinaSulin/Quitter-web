@@ -165,6 +165,20 @@ describe('isInKillZone', () => {
     const garrison = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, elevation: 10 }); // no fly speed
     expect(isInKillZone(garrison, { q: 0, r: 0, s: 0 }, 0)).toBe(false); // grounded on a wall
   });
+
+  it('horizontal kill zone requires the same elevation (unified with ZoC)', () => {
+    const flyer = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, elevation: 20, flySpeed: 60 });
+    expect(isInKillZone(flyer, DIR_HEXES[4], 0)).toBe(false); // ground unit 20 ft below
+    expect(isInKillZone(flyer, DIR_HEXES[4], 20)).toBe(true); // same air layer
+  });
+
+  it('the vertical clause needs an actually-airborne flyer (ownSurface)', () => {
+    const garrison = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, elevation: 10, flySpeed: 60 });
+    // A fly-capable garrison standing on a 10-ft structure (ownSurface 10) does not dominate below.
+    expect(isInKillZone(garrison, { q: 0, r: 0, s: 0 }, 0, 10)).toBe(false);
+    // Same unit over bare ground (ownSurface 0) is airborne and does.
+    expect(isInKillZone(garrison, { q: 0, r: 0, s: 0 }, 0, 0)).toBe(true);
+  });
 });
 
 describe('calcEnemyThreats', () => {
@@ -295,6 +309,16 @@ describe('heroThreatAgainst', () => {
   it('a lone hero two hexes away threatens nothing', () => {
     const h = hero({ hex: { q: 2, r: 0, s: -2 } });
     expect(heroThreatAgainst(h, me(), [h])).toBe(0);
+  });
+
+  it('a lone hero also threatens its own hex within 10 ft (up or down)', () => {
+    const h = hero({ hex: { q: 0, r: 0, s: 0 }, elevation: 0 });
+    const above = makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: 10 });
+    expect(heroThreatAgainst(h, above, [h, above])).toBe(2); // 10 ft above
+    const below = makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: -0 });
+    expect(heroThreatAgainst(h, below, [h, below])).toBe(2); // same level, same hex
+    const far = makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: 20 });
+    expect(heroThreatAgainst(h, far, [h, far])).toBe(0); // 20 ft > 10
   });
 
   it('a hero larger than Large exerts its full rating', () => {

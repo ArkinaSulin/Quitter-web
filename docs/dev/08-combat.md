@@ -48,8 +48,15 @@ structure, an edge wall, or a hex gate/tower:
   no-attack gate).
 - **Same hex ±≤10 ft vertical** (a stooping flyer hovering over its target) is
   attackable by **any** formation — the zero horizontal delta resolves to
-  `front` — but is **not** a kill zone/ZoC.
+  `front`. It *is* a kill zone/ZoC when the upper unit is an actually-airborne
+  formed flyer (≤10 ft down); see `07` "Zone of control (universal rule)".
 - Ranged attacks use the formation's `ranged_target_arcs` (`arcOfTarget`).
+
+The **kill zone** (used by morale threat, the AGR penalty and the adjacent
+point-blank melee decision) is the *same* shape as the ZoC — front-2 at the
+**same elevation**, plus the airborne-flyer vertical — **except heroes**, which
+threaten all **6 adjacent hexes + the same hex ±10 ft** (360°, threat only;
+heroes still impose no ZoC). See `07` and `09`.
 
 Structure attacks follow the rule too (`wallCombat.wallAttackKind`,
 `structureCombat.hexStructureAttackKind`): a unit on either side of a wall must

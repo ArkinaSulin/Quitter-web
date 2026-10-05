@@ -6,6 +6,8 @@
 // map layer; this file stays testable.
 
 import { Unit, AllianceGroup, Formation, Hex } from '@/types/gameProtocol';
+import { MapStructures } from '@/lib/mapStructures';
+import { StructureTemplate } from '@/types/structure';
 import { computeThreatHexes } from '@/components/ScenarioMap/mapGeometry';
 
 const DIRS = [
@@ -20,6 +22,8 @@ export interface RoutContext {
   units: Unit[];
   alliances: Record<string, AllianceGroup>;
   formationsMap: Record<string, Formation>;
+  structures?: MapStructures;
+  templates?: Record<string, StructureTemplate>;
   /** Optional injected RNG for the final pursuer tie-break (tests). */
   rnd?: () => number;
 }
@@ -30,7 +34,7 @@ export function neighborsOf(hex: Hex): Hex[] {
 
 /** Enemy zone-of-control hexes for the routed unit (units that can stop movement). */
 export function enemyKillZone(ctx: RoutContext): Set<string> {
-  return computeThreatHexes(ctx.units, ctx.routed.id, ctx.alliances, ctx.formationsMap);
+  return computeThreatHexes(ctx.units, ctx.routed.id, ctx.alliances, ctx.formationsMap, ctx.structures, ctx.templates);
 }
 
 /** Hexes currently occupied, excluding the routed unit itself. */

@@ -1770,7 +1770,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         addMessage(`${live.unitName} routed to (${dest.q}, ${dest.r})`);
       } else {
         // No legal retreat — explain precisely why (routing crowds / ordered ranks).
-        const diag = retreatDiagnosis({ routed: live, units: cur, alliances, formationsMap });
+        const diag = retreatDiagnosis({ routed: live, units: cur, alliances, formationsMap, structures, templates: structureTemplates });
         if (diag.allAdjacentRouting) {
           addMessage(`${live.unitName} has no retreat: every adjacent friendly unit is also routing and will not yield, so it cannot rout through them. It stands, routed.`);
         } else if (diag.allAdjacentOrdered) {
@@ -1822,7 +1822,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const isOwner = !effectiveIsGM && myTeam === routed.team;
     const dmActs = effectiveIsGM && ownerPeers.length === 0;
     if (!isOwner && !dmActs) { console.warn('[RoutFlow] not owner/dm', myTeam, routed.team, ownerPeers.length); return; }
-    const ctx = { routed, units: unitsRef.current, alliances, formationsMap };
+    const ctx = { routed, units: unitsRef.current, alliances, formationsMap, structures, templates: structureTemplates };
     let adj: { q: number; r: number; s: number }[] = [];
     let through: RoutThroughOption[] = [];
     let reason: string | null = null;
@@ -1941,7 +1941,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             // hex reports the error instead of moving.
             if ((u.elevation ?? 0) > 0 && !freeMove && canWithdraw(u) && !u.isCharging) {
               const occupied = computeOccupiedHexes(units, unitId);
-              const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
+              const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates);
               const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
               const dests = withdrawDestinations(u, occupied, radius, threatHexes);
               if (dests.some(hx => hx.q === targetHex.q && hx.r === targetHex.r)) {
@@ -1954,7 +1954,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             // Under free-move there is no cost, so it is just a free move.
             if (!freeMove && canWithdraw(u) && !u.isCharging) {
               const occupied = computeOccupiedHexes(units, unitId);
-              const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
+              const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates);
               const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
               const dests = withdrawDestinations(u, occupied, radius, threatHexes);
               if (dests.some(hx => hx.q === targetHex.q && hx.r === targetHex.r)) {

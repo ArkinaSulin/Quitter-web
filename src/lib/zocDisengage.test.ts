@@ -60,6 +60,18 @@ describe('imposesZocOn', () => {
     expect(imposesZocOn({ ...enemy, hidden: true }, h(0, -1), FORMS)).toBe(false);
     expect(imposesZocOn({ ...enemy, attachedToUnitId: 'host' }, h(0, -1), FORMS)).toBe(false);
   });
+
+  it('vertical: a formed, actually-airborne flyer dominates its own hex ≤10 ft below', () => {
+    const flyer = unit({ id: 'fly', team: 'red', hex: h(0, 0), facing: 0, elevation: 10, flySpeed: 60 });
+    expect(imposesZocOn(flyer, h(0, 0), FORMS, 0, 0)).toBe(true);
+    // Grounded on a 10-ft structure (ownSurface 10) → not airborne.
+    expect(imposesZocOn(flyer, h(0, 0), FORMS, 0, 10)).toBe(false);
+    // Target above the flyer → no vertical ZoC.
+    expect(imposesZocOn(flyer, h(0, 0), FORMS, 20, 0)).toBe(false);
+    // Scattered / hero flyers impose none.
+    expect(imposesZocOn({ ...flyer, currentFormation: 'Scattered' }, h(0, 0), FORMS, 0, 0)).toBe(false);
+    expect(imposesZocOn({ ...flyer, isHero: true, currentFormation: 'Hero' }, h(0, 0), FORMS, 0, 0)).toBe(false);
+  });
 });
 
 describe('pursuitCandidates', () => {

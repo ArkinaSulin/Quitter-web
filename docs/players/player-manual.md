@@ -435,9 +435,14 @@ Units face a **vertex** (corner), not a flat side. Their arcs:
 
 **Melee reach:** a normal formation may only melee into its **front** two
 hexes; **Scattered** and **Heroes** strike in **any** adjacent arc. Any unit may
-also strike a target in its **own hex** up to 10 ft above/below it (not a kill
-zone). A **flying** unit/hero additionally controls the hex directly **beneath**
-it (≤10 ft down, same column) regardless of facing.
+also strike a target in its **own hex** up to 10 ft above/below it.
+
+**Zone of control (kill zone — the same thing).** A **formed** unit (not
+Hero / Scattered / Routed) controls its **two front hexes at the same
+elevation**; an **airborne flyer** additionally controls the single hex
+**directly beneath it** (≤10 ft down, same column) regardless of facing, but
+only while a hostile is actually under it. Cross-elevation never applies.
+Heroes exert **no ZoC** (they only threaten morale — see below).
 
 **Heroes, Scattered, and Routed units have no facing** — they can move in any
 direction, and attacks against them are treated as front/side/rear per their
@@ -804,21 +809,22 @@ Medium at 50 → 3 + 1 + 4 = **8**. A lone L10 hero → 4 + 1 + 0 = **5**
 
 ### What pressures your morale
 
-Only enemies **facing you in their kill zone** (their front two hexes)
-pressure you — adjacency alone is nothing, and Scattered/Routed enemies and
-routing units exert none. **Heroes** are the exception: a lone hero is a
-single token that threatens **every adjacent hex (360°)**, not just its front.
-A hero attached **in front** of a unit threatens only through that unit's kill
-zone, and a hero protected **behind** a unit (back) threatens nothing. A hero
-of **Large size or smaller** exerts **half** its threat rating; bigger heroes
-exert full. Your morale penalty is `their summed threat ÷ your own threat`
-(rounded).
+Only enemies whose **kill zone** contains you pressure you — the two front
+hexes at the **same elevation**, plus an actually-airborne flyer's own hex
+≤10 ft below. Adjacency alone is nothing; Scattered/Routed enemies, hidden units
+and routing units exert none. **Heroes** are the exception: a lone hero is a
+single token that threatens **every adjacent hex (360°) plus its own hex up to
+10 ft above or below** — threat only (heroes impose no ZoC). A hero attached
+**in front** of a unit threatens only through that unit's kill zone, and a hero
+protected **behind** a unit (back) threatens nothing. A hero of **Large size or
+smaller** exerts **half** its threat rating; bigger heroes exert full. Your
+morale penalty is `their summed threat ÷ your own threat` (rounded).
 
 **Rear threat ×2.** Threat that comes from one of **your two rear hexes**
 counts **double** (normal formations; Scattered/Hero units don't double, a
-Routed unit doubles from every side). A **flying** enemy/hero hovering
+Routed unit doubles from every side). An **airborne flyer** hovering
 **directly above** you (≤10 ft, same hex) also pressures you regardless of its
-facing.
+facing; a hero in your hex pressures you within 10 ft (up or down).
 
 **Effective morale** on a given moment:
 

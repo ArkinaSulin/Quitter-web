@@ -8,30 +8,36 @@
 // Scattered / Routed / Heroes impose no kill zone — they never pursue — but a
 // mover of ANY formation (including Scattered or a Hero) can be pursued when it
 // leaves one.
-import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { isInKillZone } from '@/lib/unitMorale';
 import { canStopEnemyMovement } from '@/lib/formationRules';
+import { MapStructures, structureSurfaceAt } from '@/lib/mapStructures';
+import { StructureTemplate } from '@/types/structure';
 import { parseWeapons } from '@/lib/weaponParser';
 import { findFirstMeleeWeaponIndex } from '@/lib/meleeFallback';
 
-/** Does `enemy` impose a kill zone on `hex`? Formed hostiles only — hidden,
- *  attached, heroes, Scattered and Routed are excluded (routed/dead/scattered
- *  are handled inside `isInKillZone`; the matrix gate covers custom formations
- *  that do not stop movement). A flying enemy's vertical kill zone (same column,
- *  ≤10 ft above `targetElevation`) is facing-independent ("always").
- *  Horizontal kill zones do not cross elevation. */
+/** Does `enemy` impose a kill zone / ZoC on `hex`? Formed hostiles only —
+ *  hidden, attached, heroes, Scattered and Routed are excluded (routed/dead/
+ *  scattered are handled inside `isInKillZone`; the matrix gate covers custom
+ *  formations that do not stop movement). A formed, actually-airborne flyer's
+ *  vertical ZoC (same column, ≤10 ft above `targetElevation`) is
+ *  facing-independent. Horizontal ZoC does not cross elevation. `ownSurface` is
+ *  the enemy's own hex surface (`structureSurfaceAt`) so a grounded garrison on
+ *  a structure is not treated as airborne. */
 export function imposesZocOn(
   enemy: Unit,
   hex: Hex,
   formationsMap: Record<string, Formation>,
   targetElevation = 0,
+  ownSurface = 0,
 ): boolean {
   if (enemy.isDeleted || enemy.hidden || enemy.attachedToUnitId || enemy.isHero) return false;
   if (hex.q === enemy.hex.q && hex.r === enemy.hex.r) {
-    return isInKillZone(enemy, hex, targetElevation); // vertical (facing-free)
+    if (getOrganizationLevel(enemy.currentFormation) <= 0) return false; // vertical needs a formed unit
+    return isInKillZone(enemy, hex, targetElevation, ownSurface); // vertical (facing-free)
   }
   if ((enemy.elevation ?? 0) !== targetElevation) return false; // ZoC does not cross elevation
-  if (!isInKillZone(enemy, hex, targetElevation)) return false;
+  if (!isInKillZone(enemy, hex, targetElevation, ownSurface)) return false;
   return canStopEnemyMovement(formationsMap[enemy.currentFormation], 'front');
 }
 
@@ -53,17 +59,20 @@ export function hostilesLeftZoc(
   units: Unit[],
   alliances: Record<string, AllianceGroup>,
   formationsMap: Record<string, Formation>,
+  structures?: MapStructures,
+  templates?: Record<string, StructureTemplate>,
 ): Unit[] {
   const moverAlliance = alliances[mover.team] || 'friendly';
   const moverElev = mover.elevation ?? 0;
+  const surfaceOf = (h: Hex) => (structures ? structureSurfaceAt(h, structures, templates ?? {}) : 0);
   return units.filter(e =>
     e.id !== mover.id &&
     !e.isDeleted &&
     (alliances[e.team] || 'friendly') !== moverAlliance &&
     // Elevation gating lives in imposesZocOn: horizontal ZoC needs exact
     // elevation, but a flyer directly above still imposes a vertical ZoC.
-    imposesZocOn(e, originHex, formationsMap, moverElev) &&
-    !imposesZocOn(e, destHex, formationsMap, moverElev),
+    imposesZocOn(e, originHex, formationsMap, moverElev, surfaceOf(e.hex)) &&
+    !imposesZocOn(e, destHex, formationsMap, moverElev, surfaceOf(e.hex)),
   );
 }
 
@@ -79,7 +88,9 @@ export function pursuitCandidates(
   units: Unit[],
   alliances: Record<string, AllianceGroup>,
   formationsMap: Record<string, Formation>,
+  structures?: MapStructures,
+  templates?: Record<string, StructureTemplate>,
 ): Unit[] {
-  return hostilesLeftZoc(mover, originHex, destHex, units, alliances, formationsMap)
+  return hostilesLeftZoc(mover, originHex, destHex, units, alliances, formationsMap, structures, templates)
     .filter(e => !(e.pursuitUsed ?? false) && canMeleeAttack(e));
 }

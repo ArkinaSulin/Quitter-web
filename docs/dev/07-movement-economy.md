@@ -103,12 +103,36 @@ allowBeyondBudget?)` — min-cost Dijkstra over `(hex, facing)` state:
 - `allowBeyondBudget` keeps hexes whose *cost* exceeds `maxMP` (still bounded
   by hops) — the executed move accepts them so soft enforcement can confirm.
 
-Enemy **threat hexes** (ZOC) come from `computeThreatHexes` (mapGeometry) via
-the formations matrix `stop_enemy_movement_arcs` — Scattered/Routed/heroes
-never block. A **flying** hostile 1–10 ft directly above a hex also threatens it
-(its own column, facing-independent — see `08-combat` "Attack arcs"). To disengage
-past a flyer overhead, `imposesZocOn` enforces the same vertical kill zone.
-**Movement never routs.**
+### Zone of control (universal rule)
+
+**ZoC and kill zone are the same thing.** Enemy **threat hexes** come from
+`computeThreatHexes` (mapGeometry). For a **unit** the zone is:
+
+- the **two front hexes** of its facing (matrix `stop_enemy_movement_arcs`),
+  **same elevation only**; **and**
+- for an **actually-airborne, formed, non-hero flyer**, its **own hex 1–10 ft
+  below** (facing-independent) — but only while a hostile is *actually under it*
+  (the overlay draws no empty flyer hex).
+
+So the full exclusion set: **Hero, Scattered and Routed** never impose a ZoC
+(nor does a hidden/attached/dead unit). Cross-elevation never applies —
+`elevation === targetElevation` for the front-2. A fly-capable unit **standing
+on a structure** (`elevation === surfaceAt(hex)`) is **grounded**, not airborne,
+so it imposes no vertical ZoC. An **airborne flyer also projects the front-2 on
+its own elevation** (air layer vs other flyers) in addition to the hex below.
+Climbers/hangers (elevation > 0 but not flying) impose no vertical ZoC and their
+front-2 only at their exact elevation (the wall top).
+
+Threat is evaluated **per destination**: `computeThreatHexes` computes each
+candidate hex at that hex's surface (a grounded mover stepping onto a 10-ft
+structure is threatened by hostiles up there), or at the mover's flight
+elevation when airborne. Occupied hexes are skipped at the destination surface.
+
+Every **alliance is hostile to every other** (friendly↔enemy, friendly↔neutral,
+enemy↔neutral); same-alliance pairs (including neutral↔neutral) are not.
+
+To disengage past a flyer overhead, `imposesZocOn` enforces the same vertical ZoC
+(a formed, actually-airborne flyer only). **Movement never routs.**
 
 **Entering a kill zone ends the move.** When a drop's destination is a hostile
 threat hex, the MOVE zeroes any leftover `movementPointsAvailable` (the mover

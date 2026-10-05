@@ -161,8 +161,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // Adjacency forces a MELEE weapon only when the combatant stands in the
     // opponent's kill zone (engaged frontally). Outside it, a ranged weapon may
     // fire at point-blank; magic always acts at range.
-    const inTargetKillZone = isInKillZone(target, attacker.hex, attacker.elevation);
-    const inAttackerKillZone = isInKillZone(attacker, target.hex, target.elevation);
+    const inTargetKillZone = isInKillZone(target, attacker.hex, attacker.elevation, structureSurfaceAt(target.hex, structures, structureTemplates));
+    const inAttackerKillZone = isInKillZone(attacker, target.hex, target.elevation, structureSurfaceAt(attacker.hex, structures, structureTemplates));
     if (isAdjacent && weapon.magicDimension <= 0 && inTargetKillZone && !isMeleeWeapon(weapon)) {
       const attackerWeapons = parseWeapons(attacker.weaponString || '');
       const meleeIdx = findFirstMeleeWeaponIndex(attackerWeapons);
@@ -453,7 +453,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       // Threat penalty only applies while the attacker stands in the target's
       // kill zone (front two hexes) — otherwise the target's rating doesn't
       // pressure the attacker's nerve.
-      const threatPenalty = isInKillZone(target, attacker.hex, attacker.elevation)
+      const threatPenalty = isInKillZone(target, attacker.hex, attacker.elevation, structureSurfaceAt(target.hex, structures, structureTemplates))
         ? Math.max(0, Math.round(computeThreatRating(target) / computeThreatRating(attacker)) - 1)
         : 0;
       // Plain: just the outcome. The dice/bonus breakdown is verbose-only.
@@ -845,7 +845,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
         (alliances[e.team] || 'friendly') !== moverAlliance &&
         !(e.pursuitUsed ?? false) &&
         canMeleeAttack(e) &&
-        imposesZocOn(e, live.hex, formationsMap, live.elevation ?? 0),
+        imposesZocOn(e, live.hex, formationsMap, live.elevation ?? 0, structureSurfaceAt(e.hex, structures, structureTemplates)),
       );
       if (zoc.length === 0) return;
       let killed = false;
@@ -875,7 +875,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // Nothing to do unless a hostile kill zone was actually LEFT. This gates the
     // WHOLE reaction (scatter included): entering a ZoC, or moving in open ground,
     // must NOT scatter the mover — only disengaging does.
-    const leftZoc = hostilesLeftZoc(live, originHex, destHex, units, alliances, formationsMap);
+    const leftZoc = hostilesLeftZoc(live, originHex, destHex, units, alliances, formationsMap, structures, structureTemplates);
     if (leftZoc.length === 0) return;
 
     // A formed non-hero mover breaks formation to disengage.
@@ -888,7 +888,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       }], `${live.unitName} breaks formation to disengage — Scattered!`, { chained: true });
     }
 
-    const candidates = pursuitCandidates(live, originHex, destHex, units, alliances, formationsMap);
+    const candidates = pursuitCandidates(live, originHex, destHex, units, alliances, formationsMap, structures, structureTemplates);
     const sel = selectPursuer(candidates, opts?.attacker ?? null, units, alliances, formationsMap);
     if (!sel.pursuer) {
       for (const f of sel.failedAgr) {
@@ -1257,7 +1257,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // used only when the attacker is NOT in the target's kill zone (point-blank);
     // in the kill zone the melee fallback runs (in `performAttack`). A melee
     // weapon beyond adjacency cannot reach.
-    const inTargetKillZone = isInKillZone(target, attacker.hex, attacker.elevation);
+    const inTargetKillZone = isInKillZone(target, attacker.hex, attacker.elevation, structureSurfaceAt(target.hex, structures, structureTemplates));
     const attackType = attackKind(weapon, isAdjacent, inTargetKillZone);
     if (attackType === 'none') {
       addMessage(`${attacker.unitName} cannot reach ${target.unitName} — get within 10 ft to melee`);

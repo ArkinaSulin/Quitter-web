@@ -74,25 +74,29 @@ export function facingArc(originHex: Hex, facing: number, targetHex: Hex): Arc {
 }
 
 /**
- * Kill zone: the two hexes directly in front of the unit (front arc of its
- * facing). A unit imposes threat on an enemy only while that enemy stands in
- * this kill zone. Scattered and Routed formations have no kill zone — they
- * never impose threat, but they can still be subject to it.
+ * Kill zone / zone of control (one unified shape for units): the two hexes
+ * directly in front of the unit at the **same elevation**, plus — for an
+ * actually-airborne, formed, non-hero flyer — its own hex 1..10 ft below it.
+ * A unit imposes threat (morale) AND stops enemy movement only in these hexes.
+ * Scattered and Routed formations have no kill zone; heroes are handled
+ * separately (`heroThreatAgainst`) and never impose a ZoC.
  *
- * Vertical clause (universal rule): a FLYING unit/hero also dominates the hex
- * directly below it in its own column — a target 1..10 ft lower (pass
- * `targetElevation`) is in its kill zone regardless of facing. Same-hex ground
- * units (gap 0) are NOT a kill zone.
+ * Vertical clause (universal rule): only an ACTUALLY-AIRBORNE flyer dominates
+ * the hex below — pass the flyer's own hex surface as `ownSurface`
+ * (`structureSurfaceAt`) so a fly-capable garrison standing on a structure
+ * (elevation === surface) is NOT treated as airborne. Same-hex ground units
+ * (gap 0) are never a kill zone.
  */
-export function isInKillZone(unit: Unit, hex: Hex, targetElevation = 0): boolean {
+export function isInKillZone(unit: Unit, hex: Hex, targetElevation = 0, ownSurface = 0): boolean {
   if (unit.isDeleted || unit.hidden || isUnitRouted(unit) || isDeadCorpse(unit)) return false;
   if (unit.currentFormation === 'Scattered' || unit.currentFormation === 'Routed') return false;
+  const unitElev = unit.elevation ?? 0;
   if (hex.q === unit.hex.q && hex.r === unit.hex.r) {
-    // Only a FLYER dominates the hex below (a garrison on a 10-ft wall is not
-    // airborne); airborne = has a fly speed and hovers above the hex.
-    const gap = (unit.elevation ?? 0) - targetElevation;
-    return (unit.flySpeed ?? 0) > 0 && gap > 0 && gap <= 10;
+    const gap = unitElev - targetElevation;
+    return (unit.flySpeed ?? 0) > 0 && unitElev > ownSurface && gap > 0 && gap <= 10;
   }
+  // Horizontal kill zone: same elevation only (kill zone and ZoC are one system).
+  if (unitElev !== targetElevation) return false;
   const dq = hex.q - unit.hex.q;
   const dr = hex.r - unit.hex.r;
   const ds = hex.s - unit.hex.s;
@@ -169,7 +173,8 @@ export function calcEnemyThreats(
  * A hero's threat contribution against `victim` (0 = no threat):
  * - a protected (back-attached) hero exerts nothing;
  * - a front-attached hero threatens only through its host's kill zone;
- * - a lone hero threatens 360° (any adjacent hex);
+ * - a lone hero threatens 360°: all six adjacent hexes plus the same hex within
+ *   10 ft vertically (up OR down) — threat only, a hero never imposes a ZoC;
  * - the rating is `exertedThreatRating` (Large-and-under heroes half).
  */
 export function heroThreatAgainst(hero: Unit, victim: Unit, units: Unit[]): number {
@@ -178,6 +183,10 @@ export function heroThreatAgainst(hero: Unit, victim: Unit, units: Unit[]): numb
   if (hero.attachedToUnitId) {
     const host = units.find(u => u.id === hero.attachedToUnitId && !u.isDeleted);
     return host && isInKillZone(host, victim.hex, victim.elevation) ? rating : 0;
+  }
+  // Lone hero: 360° — any adjacent hex, or the same hex within 10 ft (up/down).
+  if (hero.hex.q === victim.hex.q && hero.hex.r === victim.hex.r) {
+    return Math.abs((hero.elevation ?? 0) - (victim.elevation ?? 0)) <= 10 ? rating : 0;
   }
   return areHexesAdjacent(hero.hex, victim.hex) ? rating : 0;
 }

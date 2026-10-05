@@ -178,7 +178,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // Movement alone never routs — only an attack (combat or a spell) can break
     // a unit's morale into a rout, even when threat drops morale to zero.
     // Entering a hostile kill zone ends the move: the leftover MP is spent.
-    const stopInZoc = computeThreatHexes(units, unit.id, alliances, formationsMap).has(`${targetHex.q},${targetHex.r}`);
+    const stopInZoc = computeThreatHexes(units, unit.id, alliances, formationsMap, structures, structureTemplates).has(`${targetHex.q},${targetHex.r}`);
     await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP, undefined, { stopInZoc, breakToFormation, elevation, surface });
     // The unit may have left every hostile kill zone — return to its primary
     // ranged weapon (only reverts a melee weapon, and never a manual pick).
@@ -508,7 +508,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const movementMult = getFormationMultiplier(formationsMap, unit.currentFormation, 'movement_multiplier');
     const effectiveMax = flying ? originMax : computeEffectiveMovement(unit, movementMult);
     const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
-    const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap);
+    const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates);
     const mounted = !!unit.mountId || !!unit.mountName;
     const costOfHex = flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted, waiveClimb });
     const blockedEdge = flying ? undefined : makeBlockedEdge(walls, {
@@ -768,7 +768,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const budgetUnit = moveBudgetUnit(unit, 'fly');
     const occupied = airOccupiedHexes(units, unit.id);
     for (const k of Array.from(flightBlockedHexes(structures, structureTemplates, unit.elevation ?? 0, `${targetHex.q},${targetHex.r}`))) occupied.add(k);
-    const threatHexes = computeThreatHexes(units, unit.id, alliances, formationsMap);
+    const threatHexes = computeThreatHexes(units, unit.id, alliances, formationsMap, structures, structureTemplates);
     const hopCap = unit.isHero ? computeHeroMovePool(budgetUnit, maxMP) : computeMovePool(budgetUnit, maxMP);
     const budget = unit.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP);
     const reachable = computeReachableMap(unit, budget, occupied, threatHexes, undefined, false, undefined, hopCap, undefined, undefined);
