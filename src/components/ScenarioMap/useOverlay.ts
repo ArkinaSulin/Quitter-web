@@ -8,11 +8,11 @@ import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel 
 import { computeReachableMap, computeMovePool, computeMoveBudget, computeHeroMovePool, computeChargeReachable } from '@/lib/moveCost';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { getSetting } from '@/lib/settingsCache';
-import { isUnitRouted } from '@/lib/unitMorale';
+import { imposesKillZone } from '@/lib/unitMorale';
 import { isHostile } from '@/lib/alliances';
+import { frontArcIndices } from '@/lib/hexGeometry';
 import { parseWeapons } from '@/lib/weaponParser';
 import { isRangedCapableWeapon, reactionMovePool } from '@/lib/archerReaction';
-import { determineCombatPosition } from '@/lib/unitCombat';
 import { canRangedTarget } from '@/lib/formationRules';
 import { arcOfTarget } from '@/lib/attackDirection';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
@@ -26,18 +26,24 @@ import { canWithdraw, withdrawDestinations } from '@/lib/withdraw';
 import { moveBudgetUnit, parseClimbTo, isAirborne } from '@/lib/flying';
 import { isStooping } from '@/lib/chargeStance';
 
-/** Hovered unit's front-arc threat tint (non-loose units only). */
-function getOverlayForUnit(unit: Unit): Record<string, string> {
+/** Hovered unit's imposed kill-zone/ZoC tint: its two front hexes at the same
+ *  elevation PLUS the hex directly below it when it is an actually-airborne
+ *  formed flyer (the same unified rule as the drag threat overlay). */
+function getOverlayForUnit(unit: Unit, structures?: MapStructures, templates?: Record<string, StructureTemplate>): Record<string, string> {
   const result: Record<string, string> = {};
-  if (unit.isHero || isUnitRouted(unit) || unit.currentFormation === 'Scattered') return result;
-  for (const dir of HEX_DIRS) {
-    const nq = unit.hex.q + dir.q;
-    const nr = unit.hex.r + dir.r;
-    const key = `${nq},${nr}`;
-    const pos = determineCombatPosition({ q: nq, r: nr, s: -nq - nr }, unit.hex, unit.facing);
-    if (pos === 'front') {
-      result[key] = 'rgba(255, 100, 100, 0.5)';
+  const ownSurface = structureSurfaceAt(unit.hex, structures, templates);
+  const exclude = (u: Unit) => u.isHero || !!u.attachedToUnitId;
+  const targetElevation = unit.elevation ?? 0;
+  for (const dirIdx of frontArcIndices(unit.facing)) {
+    const dir = HEX_DIRS[dirIdx];
+    const H: Hex = { q: unit.hex.q + dir.q, r: unit.hex.r + dir.r, s: -unit.hex.q - dir.q - unit.hex.r - dir.r };
+    if (imposesKillZone(unit, H, { targetElevation, ownSurface, exclude })) {
+      result[`${H.q},${H.r}`] = 'rgba(255, 100, 100, 0.5)';
     }
+  }
+  // Vertical: an airborne formed flyer dominates its own hex ≤10 ft below.
+  if (imposesKillZone(unit, unit.hex, { targetElevation: targetElevation - 1, ownSurface, exclude, requireFormed: true })) {
+    result[`${unit.hex.q},${unit.hex.r}`] = 'rgba(255, 100, 100, 0.5)';
   }
   return result;
 }
@@ -288,7 +294,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     return combined;
   }
   if (hoveredUnit) {
-    return getOverlayForUnit(hoveredUnit);
+    return getOverlayForUnit(hoveredUnit, structures, templates);
   }
   return {};
 }

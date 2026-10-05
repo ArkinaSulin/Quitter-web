@@ -1,5 +1,25 @@
 # QuiTTER Changelog
 
+## Fix: leave a ZoC you start in; hover vertical ZoC; unified tooltip dismissal (2026-10-05)
+**Files:** src/lib/moveCost.ts (+test), src/components/ScenarioMap/{useOverlay.ts (+test),ScenarioMap.tsx}, src/hooks/useHexGrid.ts, docs/dev/{07-movement-economy,19-ui-panels-and-floating,changelog}.md
+
+- **A unit that starts inside a ZoC can move out.** `computeReachableMap`
+  blocked expansion from *any* threat hex, including the start — only the
+  vertical ZoC (a flyer directly overhead) can put the mover's own hex there, so
+  a ground unit under a flyer lost every non-Withdraw move. The **start hex is
+  now exempt** from the pass-through block; threat hexes *ahead* still stop
+  passage. Leaving then scatters/pursues as normal.
+- **Hover ZoC tint includes the airborne vertical hex.** `getOverlayForUnit`
+  used a front-2-only `determineCombatPosition`; it now calls the unified
+  `imposesKillZone` (front-2 same-elevation **+** an airborne formed flyer's own
+  hex ≤10 ft below), so hovering a flyer reddens the hex beneath it.
+- **Tooltip dismissal unified (design rule).** `ScenarioMap.dismissTooltips()`
+  is the one clear, called on mouse-leave, on any modal open, and from global
+  `keydown`/`pointerdown` listeners; `useHexGrid` suppresses unit hover while
+  dragging. A tooltip now shows only on idle hover and disappears the moment any
+  key or mouse button is pressed. Documented in `docs/dev/19`.
+- `tsc` clean, 927 tests pass, build clean. No migration.
+
 ## Consolidate remaining primitives: vertices/rotation, looseness, melee reach, airborne surfaces (2026-10-04)
 **Files:** src/lib/{hexGeometry(+test),withdraw,heroLayout,moveCost,formationRules(+test),meleeFallback(+test),enemyAI/planner}.ts, src/components/ScenarioMap/{useOverlay,useMoveActions,useCombatActions,ScenarioMap,AlliancePanel,TopBar}.tsx, src/hooks/{useGameEngine,useTeamAlliances}.ts, src/components/{EffectEditor/EffectHexPreview,StructureEditor/StructurePreview}.tsx, docs/dev/{00-universal-rules,changelog}.md
 

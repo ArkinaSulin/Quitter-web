@@ -861,6 +861,30 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Hex/edge info-hover (structure + effect tooltip), from useHexGrid.
   const [infoHover, setInfoHover] = useState<{ kind: 'hex' | 'edge'; hex?: Hex; edge?: EdgeRef; x: number; y: number } | null>(null);
 
+  // --- Tooltip lifecycle (design rule) --------------------------------------
+  // A tooltip shows ONLY on idle hover. Any key press, pointer-down, drag,
+  // shift-inspect or opened modal dismisses it — it must never linger over a
+  // drag or another window. `dismissTooltips` is the single clear used by every
+  // suppression point (mouse-leave, modals, and the global key/pointer listeners).
+  const dismissTooltips = useCallback(() => {
+    setHoveredUnit(null);
+    setTooltipPos(null);
+    setInfoHover(null);
+  }, []);
+  const dismissUnitTooltip = useCallback(() => {
+    setHoveredUnit(null);
+    setTooltipPos(null);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('keydown', dismissTooltips);
+    window.addEventListener('pointerdown', dismissTooltips);
+    return () => {
+      window.removeEventListener('keydown', dismissTooltips);
+      window.removeEventListener('pointerdown', dismissTooltips);
+    };
+  }, [dismissTooltips]);
+
   useEffect(() => {
     const down = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(true); };
     const up = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(false); };
@@ -2059,8 +2083,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setTooltipPos({ x: screenX, y: screenY });
     },
     onUnitLeave: () => {
-      setHoveredUnit(null);
-      setTooltipPos(null);
+      dismissUnitTooltip();
     },
     onAttack: controlsLocked ? undefined : (attackerId, targetId) => {
       if (reactionMode) { handleReactionAttack(attackerId, targetId); return; }
@@ -2125,12 +2148,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // so the tooltip never covers it.
   useEffect(() => {
     if (retreatPick) {
-      setHoveredUnit(null);
-      setTooltipPos(null);
+      dismissTooltips();
       setRetreatHoverHex(null);
       centerOn(retreatPick.unit.hex);
     }
-  }, [retreatPick, centerOn]);
+  }, [retreatPick, centerOn, dismissTooltips]);
 
   // Any modal/dialog opened over the canvas must hide the hover tooltips so they
   // never cover (or float above) the dialog. The canvas has no reliable leave
@@ -2149,12 +2171,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingChargeThrough || pendingWeaponSwitch || pendingWallAttack
   );
   useEffect(() => {
-    if (anyModalOpen) {
-      setHoveredUnit(null);
-      setTooltipPos(null);
-      setInfoHover(null);
-    }
-  }, [anyModalOpen]);
+    if (anyModalOpen) dismissTooltips();
+  }, [anyModalOpen, dismissTooltips]);
 
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).

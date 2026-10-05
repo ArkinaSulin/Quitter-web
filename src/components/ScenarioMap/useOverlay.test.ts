@@ -26,6 +26,23 @@ function mk(over: Partial<Unit> = {}): Unit {
 
 const ALLIANCES: Record<string, AllianceGroup> = { blue: 'friendly', red: 'enemy' };
 const WHITE = 'rgba(255, 255, 255, 0.5)';
+const RED = 'rgba(255, 100, 100, 0.5)';
+
+function hoverOverlay(unit: Unit, units: Unit[] = [unit]) {
+  return computeOverlayMap({
+    reactionMode: null,
+    draggingUnitId: null,
+    hoveredUnit: unit,
+    units,
+    alliances: ALLIANCES,
+    formationsMap: FORMATIONS,
+    freeMove: false,
+    backgroundConfig: { imageUrl: '', offsetX: 0, offsetY: 0, scale: 1, gridRadius: 12 },
+    rangeViolationHex: null,
+    terrainCosts: {},
+    walls: {},
+  });
+}
 
 function overlayFor(units: Unit[], formationsMap = FORMATIONS) {
   return computeOverlayMap({
@@ -62,5 +79,21 @@ describe('computeOverlayMap — withdraw rear hexes', () => {
   it('a rear hex occupied by another unit is never white', () => {
     const map = overlayFor([mk({ id: 'u', hex: h(0, 0), facing: 0 }), mk({ id: 'b', hex: h(0, 1), team: 'blue' })]);
     expect(map['0,1']).not.toBe(WHITE);
+  });
+});
+
+describe('computeOverlayMap — hovered-unit ZoC tint', () => {
+  it('a hovered airborne flyer tints its front-2 AND its own hex (vertical ZoC)', () => {
+    const map = hoverOverlay(mk({ id: 'f', hex: h(0, 0), facing: 0, elevation: 10, flySpeed: 60 }));
+    expect(map['0,-1']).toBe(RED);
+    expect(map['1,-1']).toBe(RED);
+    expect(map['0,0']).toBe(RED);
+  });
+
+  it('a hovered grounded unit tints only its front-2', () => {
+    const map = hoverOverlay(mk({ id: 'f', hex: h(0, 0), facing: 0 }));
+    expect(map['0,-1']).toBe(RED);
+    expect(map['1,-1']).toBe(RED);
+    expect(map['0,0']).toBeUndefined();
   });
 });

@@ -12,6 +12,21 @@ const formedUnit = {
 
 // Facing 0 front dirs are HEX_DIRS[4]=(0,-1) and HEX_DIRS[5]=(1,-1).
 
+describe('computeReachableMap — starting inside a threat hex (e.g. under a flyer)', () => {
+  it('can still leave its own ZoC hex (forward steps + turns reachable)', () => {
+    const map = computeReachableMap(formedUnit, 3, new Set(), new Set(['0,0']));
+    expect(map.get('0,-1')).toMatchObject({ cost: 1, needsTurn: false });
+    expect(map.get('0,-2')?.cost).toBe(2);
+    expect(map.get('1,0')).toBeDefined(); // turn in the hex, then step off
+  });
+
+  it('a threat hex ahead is a destination but never passed through', () => {
+    const map = computeReachableMap(formedUnit, 3, new Set(), new Set(['0,-1']));
+    expect(map.get('0,-1')?.cost).toBe(1); // may stop on it
+    expect(map.get('0,-2')).toBeUndefined(); // may not continue through it
+  });
+});
+
 describe('computeReachableMap — formed units', () => {
   it('costs 1 MP per front-arc step, straight ahead (no turn)', () => {
     const map = computeReachableMap(formedUnit, 3, new Set(), new Set());

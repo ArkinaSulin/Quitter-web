@@ -444,8 +444,9 @@ export function useHexGrid({
     if (hex) setHoveredHex(hex);
 
     const unit = getUnitAtScreen(e.clientX, e.clientY, { airOnly });
-    // Inspect mode (Shift) suppresses unit hover so the map info tooltip shows.
-    const hoverUnit = shiftHeld ? undefined : unit;
+    // Inspect mode (Shift) suppresses unit hover so the map info tooltip shows;
+    // while dragging a unit the tooltip is suppressed too (never blocks a drag).
+    const hoverUnit = (shiftHeld || draggingUnitId) ? undefined : unit;
     if (hoverUnit && hoverUnit !== lastHoveredUnit) {
       setLastHoveredUnit(hoverUnit);
       // Viewport (client) coords — the tooltips are portal/fixed, browser-bound.

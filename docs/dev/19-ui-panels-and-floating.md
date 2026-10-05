@@ -98,7 +98,23 @@ tooltip/menu as a plain child of a tab.
 Every context menu (existing or new) opens at the pointer and bottom-aligns when
 it would overflow — no flip, no per-menu clamp. Register it in this table.
 
-## 3. Draggable modals
+## 3. Tooltip lifecycle (the other one rule)
+
+A hover tooltip is shown **only on idle hover** and must never linger over a
+drag or another window:
+
+- It is driven by **hover events alone** (`onUnitHover`/`onUnitLeave`,
+  `onHexHover`/`onEdgeHover`/… in `useHexGrid`). `useHexGrid` suppresses unit
+  hover while **Shift-inspect** or while **dragging** a unit.
+- Every suppression point funnels through one clear: `ScenarioMap`'s
+  `dismissTooltips()` (clears the unit + hex/edge tooltips). It is called on
+  **mouse-leave**, whenever a **modal opens**, and from global **`keydown`** and
+  **`pointerdown`** listeners — so any key press or mouse-down drops the tooltip.
+- In short: **idle hover shows; any key, pointer-down, drag, Shift-inspect, or
+  open modal dismisses.** Add new tooltips under this rule rather than bespoke
+  timers.
+
+## 4. Draggable modals
 
 The unit editor (`UnitEditorModal.tsx`) is a draggable `position: absolute`
 panel inside a full-screen overlay. Its position must be **clamped using the

@@ -137,7 +137,9 @@ To disengage past a flyer overhead, `imposesZocOn` enforces the same vertical Zo
 **Entering a kill zone ends the move.** When a drop's destination is a hostile
 threat hex, the MOVE zeroes any leftover `movementPointsAvailable` (the mover
 may still act with another action, but this pool is spent). A unit may not pass
-through a threat hex — it stops on entry.
+through a threat hex — it stops on entry. The **START hex is exempt**: a unit
+that *begins* inside a ZoC (e.g. standing under a flyer) can still move and turn
+freely — leaving scatters/pursues as normal.
 
 ## Disengaging — scatter + pursue
 
