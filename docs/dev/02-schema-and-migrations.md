@@ -160,7 +160,22 @@ as applied in the notes — check the live DB before relying on it).
 | 097 | `structure_images` storage bucket + policies | ⏳ run in Supabase |
 | 098 | consistent table renames + function/view rebind (see convention above) | ✅ applied (2026-09-21) |
 | 099 | structure template rework: `mp_foot_in/out`+`mp_mounted_in/out` replace the A/B faces + `hex_move_cost`; `door_hp` gates passage, `max_hp` gates modifiers; one mode-scoped `modifiers` list; wipe instances + reseed 9 presets | ✅ applied |
-| 100 | structure `hex_border` toggle (draw the thick hex outline or not) | ⏳ run in Supabase |
+| 100 | structure `hex_border` toggle (draw the thick hex outline or not) | ✅ applied |
+| 101 | remove standalone terrain-cost layer (`maps.terrain_costs` + `map_data.terrainCosts`); MP folds into structures/zones | ✅ applied |
+| 102 | edge decorations: `spikes`→`barricade`, add `sin_wave`; rename "Archer's Stake"→"Barricade" | ✅ applied |
+| 103 | `unit_templates.effects` (design-time inherited effects) | ✅ applied |
+| 104 | `unit_weapons.save_dc` (area-weapon save DC, default 10) | ✅ applied |
+| 105 | seed `map_pan_step` setting | ✅ applied |
+| 106 | seed `mount_main_attack_split` setting | ✅ applied |
+| 107 | `units.mount_split` (per-pair mount volley split) + `unit_field_to_column` | ✅ applied |
+| 108 | `units.elevation` / `fly_speed` / `fly_speed_available` + `unit_field_to_column` | ✅ applied |
+| 109 | `unit_templates.fly_speed` (authored source) | ✅ applied |
+| 110 | `units.fly_speed_available` → NUMERIC (fractional hero fly MP) | ✅ applied |
+| 111 | structure `elevation`+`stairs`; `map_effect_templates.elevation` | ✅ applied |
+| 112 | `units.climb_to` + `unit_field_to_column` | ✅ applied |
+| 113 | retire `stairs` → `ignore_climb` modifier; drop `map_structure_templates.stairs` | ✅ applied |
+| 114 | edge structure `ladder` decoration + backfill from `ignore_climb` | ✅ applied |
+| 115 | `map_effect_templates.permanent` (effect-template never-ticks flag) | ✅ applied (2026-10-04) |
 
 ### Verify what's actually applied
 
@@ -168,6 +183,11 @@ as applied in the notes — check the live DB before relying on it).
 -- column present?
 SELECT column_name FROM information_schema.columns
 WHERE table_name='units' AND column_name IN ('attacks_used','effects','darkvision');
+-- Phase-2 aerial/effect columns (108, 110–112, 115)?
+SELECT table_name, column_name FROM information_schema.columns
+WHERE table_name IN ('units','map_effect_templates')
+  AND column_name IN ('elevation','fly_speed','fly_speed_available','climb_to','permanent')
+ORDER BY table_name, column_name;
 -- table present?
 SELECT to_regclass('public.maps'), to_regclass('public.ship_templates');
 -- realtime publish?

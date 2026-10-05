@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Record `map_effect_templates.permanent` (migration 115) + docs 101–114 backfill (2026-10-04)
+**Files:** supabase/migrations/115_map_effect_template_permanent.sql (new), docs/dev/{02-schema-and-migrations,changelog}.md
+
+- `EffectTemplate.permanent` (`mapEffectRow`/`mapEffectToRow`) was introduced in code
+  (commit `a3e9253`, alongside migration 103 which only added `unit_templates.effects`)
+  **without a migration** for its column — writes included `permanent` but no migration
+  defined it. New idempotent **migration 115** adds
+  `map_effect_templates.permanent boolean NOT NULL DEFAULT false`
+  (`ADD COLUMN IF NOT EXISTS`), matching the code's default-false semantics.
+  Applied to the live DB. No `apply_substeps` allowlist change (template-library
+  column, not a unit field).
+- `docs/dev/02`: the migration inventory stopped at 100; backfilled **101–114**
+  (all confirmed applied) plus **115**, and extended the "verify applied" SQL to
+  check the Phase-2 aerial/effect columns. Schema/docs-only — no code change.
+
 ## Scenario Statistics laid out in three troop/lv groups (2026-10-04)
 **Files:** src/lib/battleStats.ts (+ test), src/components/ScenarioMap/ScenarioStatsModal.tsx, docs/dev/{08-combat,changelog}.md
 
