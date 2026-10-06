@@ -44,7 +44,7 @@ zone, while a **rider on a hero mount** uses the mount's 360° footprint, so the
 hero exerts no threat at all. A hero of **Large size or smaller**
 (`sizeCategory ≤ 200`) exerts **half** its rating (`exertedThreatRating`);
 bigger heroes exert full. The tooltip Threat row notes this as
-`halved - hero ≤ Large`.
+`halved; ≤ Large`.
 
 `calcEnemyThreats(unit, …, formation)`: sum the threat ratings of every hostile
 whose kill zone contains you (plus hero threat as above), then **normalize by
