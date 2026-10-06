@@ -199,14 +199,14 @@ export function ContextMenu({
           Other Action… (1 action)
         </div>
       )}
-      {/* Attached hero swaps front/back position (costs 1 hero MP). Shown on the
-          hero's own menu when attached. */}
+      {/* Attached hero swaps front/back position (free — a reposition within the
+          same hex). Shown on the hero's own menu when attached. */}
       {unit.isHero && unit.attachedToUnitId && onSwapHeroPosition && (
         <div
           className="px-3 py-1 hover:bg-gray-700 cursor-pointer"
           onClick={() => { onSwapHeroPosition(unit); onClose(); }}
         >
-          Move to {unit.attachedPosition === 'back' ? 'Front' : 'Back'} (1 MP)
+          Move to {unit.attachedPosition === 'back' ? 'Front' : 'Back'} (free)
         </div>
       )}
       {(attachedHero || hostUnit) && <div className="border-t border-gray-700 my-1" />}
@@ -247,14 +247,15 @@ export function ContextMenu({
               </div>
             );
           })()}
-          {/* Attached hero swaps front/back position (costs 1 hero MP). Shown on
-              the host's menu, right under rotate, above charge. */}
+          {/* Attached hero swaps front/back position (free — a reposition within
+              the same hex). Shown on the host's menu, right under rotate, above
+              charge. */}
           {attachedHero && onSwapHeroPosition && (
             <div
               className="px-3 py-1 hover:bg-gray-700 cursor-pointer"
               onClick={() => { onSwapHeroPosition(attachedHero); onClose(); }}
             >
-              Move Hero to {attachedHero.attachedPosition === 'back' ? 'Front' : 'Back'} (1 MP)
+              Move Hero to {attachedHero.attachedPosition === 'back' ? 'Front' : 'Back'} (free)
             </div>
           )}
           <div className="border-t border-gray-700 my-1" />
