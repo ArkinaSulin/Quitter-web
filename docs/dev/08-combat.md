@@ -134,6 +134,15 @@ hit, roll the damage dice; damage per hit is capped at `troopHp` (one troop).
 doubles dice (both = ×4). Damage pools into the unit HP; troop count =
 `ceil(hp / troopHp)`.
 
+**Universal damage rule (`src/lib/damage.ts`).** Every damage path — weapon
+attacks, area magic, edge walls, hex structures, temporary effects, entry traps,
+fall damage — routes through one parser (`rollDamageDetailed` + `clampDamage` /
+`rollAppliedDamage`): a **landed** amount is **never below 1** and never above its
+cap (one troop's HP for melee/ranged/effects; the wall/structure DT is separate).
+A full saving-throw **negate** is the only 0 — a successful **half-save still lands
+at least 1**. The clamp is applied where damage is *dealt*, so `rollDamageDetailed`
+stays raw (a no-die string rolls 0).
+
 **Effective AC** (`unitStats.effectiveAc`) = `baselineAc + formation AC term
 − shieldPenalty`, but the **formation term applies front/flank only — a
 formation gives no AC from the REAR** (uniform for every formation; direction via
@@ -316,9 +325,9 @@ feet). The cast window places/rotates the shape on the map; the caster picks
 the number of affected troops and the save. Resolution rolls the damage dice
 **once** (base), then per affected troop rolls `D20 + saveBonus` against the
 Save DC (`str/dex/con/int/wis/cha`):
-- success → **half damage (floored)** if `onSaveHalfOrNeg`, else **0**
+- success → **half damage (floored, min 1)** if `onSaveHalfOrNeg`, else **0**
 - failure → full base damage
-- per-troop damage capped at `troopHp`.
+- per-troop damage capped at `troopHp` and floored at 1 (universal rule).
 
 **Healing** (weapon `isHealing`): no save; each affected troop recovers the
 base roll (capped at troopHp); single-target healing rolls and heals up to

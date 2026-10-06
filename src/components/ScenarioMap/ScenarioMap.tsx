@@ -1483,6 +1483,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       color: zoneTemplate.color,
       kind: zoneTemplate.kind,
       ...(zoneTemplate.defaultDelta ? { dice: String(zoneTemplate.defaultDelta) } : {}),
+      ...(zoneTemplate.healing ? { healing: true } : {}),
       duration,
       turnsLeft: duration,
       casterUnitId: null,

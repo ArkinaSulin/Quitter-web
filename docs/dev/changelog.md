@@ -1,5 +1,29 @@
 # QuiTTER Changelog
 
+## Universal damage rule (≥1) + one damage parser; effect damage per troop (2026-10-06)
+**Files:** src/lib/{damage.ts (new), damage.test.ts (new), unitCombat(+test), spellDamage(+test), wallCombat(+test), structureCombat, unitEffects(+test), effectTemplates(+test), enemyAI/planner}.ts, src/hooks/useSupabaseSync.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{08-combat,10-temporary-effects,changelog}.md, docs/players/player-manual.md
+
+- **One damage parser.** New `src/lib/damage.ts` owns `rollDamageDetailed` /
+  `rollDamage` (moved out of `unitCombat`, re-exported for compat) plus
+  `MIN_DAMAGE`, `clampDamage(raw, cap?)` and `rollAppliedDamage(dice, {rng,
+  multiplier, cap})`. Every damage path now clamps through it, so a **landed**
+  amount is **never below 1** (and never above its cap): weapon attacks
+  (`executeAttacks` — a `1d6-4` hit that rolls low still deals 1 instead of
+  healing the target), area magic, edge walls, hex structures, temporary effects,
+  entry traps and the AI estimate. `rollDamageDetailed` stays **raw**.
+- **Saves.** A full saving-throw **negate** is the only 0; a successful
+  **half-save still lands ≥1** (halves the RAW roll, then clamps). Healing
+  amounts are floored at 1 too.
+- **Effect damage is per troop.** `resolveEffectDamage` now applies **flat and
+  dice** amounts identically: once **per affected troop**, capped at `troopHp`,
+  floored at 1, honouring `affectedOverride` (entry traps) and per-troop saves.
+  Removed the dead `dotDamageChanges` (no more whole-unit lump).
+- **Regen = the `healing` flag.** A negative flat `dot` is normalized to
+  `healing:true` + positive dice on read (`parseModifiers`, `parseEffects`); the
+  in-code catalog `regen` carries `healing`. Also fixed `parseEffects`
+  (`useSupabaseSync`) dropping `healing`/`savingThrow`/`saveDC`/`onSaveHalfOrNeg`
+  on reload. `tsc` clean, 954 tests, build clean. No migration.
+
 ## Airborne formation changes use the fly pool; move cost labels (2026-10-05)
 **Files:** src/components/ScenarioMap/{useMoveActions,SoftEnforcementModals,ScenarioMap,ContextMenu}.tsx, src/hooks/useGameEngine.ts, src/lib/{flying(+test),formationCost.test}.ts, docs/dev/{07-movement-economy,changelog}.md
 

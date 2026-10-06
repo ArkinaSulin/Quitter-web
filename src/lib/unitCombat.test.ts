@@ -394,6 +394,20 @@ describe('dice-only doubling', () => {
   });
 });
 
+describe('universal damage floor (>=1)', () => {
+  it('a hit with a negative-bonus weapon deals at least 1 (raw stays negative)', () => {
+    const weapon = { attackBonus: 0, damageDice: '1d6-4', is_reach: false, noRetaliation: true, numberOfAttacks: 1 };
+    const att = makeUnit({ id: 'a', currentAc: 10, troopHp: 100, currentTroopCount: 80, maxTroopCount: 80, hex: { q: 0, r: -1, s: 1 } });
+    const def = makeUnit({ id: 'd', baselineAc: 5, currentAc: 5, troopHp: 100, currentTroopCount: 80, maxTroopCount: 80, hex: { q: 0, r: 0, s: 0 } });
+    let call = 0;
+    const rng = () => (call++ === 0 ? 0.5 : 0); // d20 = 11 (hit); damage d6 = 1 -> raw -3
+    const result = resolveCombatSequence(att, def, weapon, null, 0, 1, 1, 1, 1, 20, false, false, null, null, rng);
+    expect(result.firstStrikeDamage).toBe(1);
+    expect(result.firstStrikeAttacks[0].rawDamage).toBe(-3);
+    expect(result.firstStrikeAttacks[0].actualDamage).toBe(1);
+  });
+});
+
 describe('resolveCombatSequence', () => {
   // Minimal formation that CAN retaliate vs ranged (allows testing the hero-cap
   // ranged-retaliation path in isolation).

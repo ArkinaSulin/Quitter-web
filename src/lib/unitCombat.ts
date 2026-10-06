@@ -8,6 +8,13 @@ import { arcOf, frontArcIndices, hexDirIndex } from './hexGeometry';
 import { attackRollFlags, AttackRollFlags } from './unitEffects';
 import { Walls, WallRollFlags, meleeWallAc, wallBetween } from './walls';
 import { hexEnteringFrom } from './hexLine';
+import { clampDamage, rollAppliedDamage, rollDamageDetailed, rollDamage } from './damage';
+import type { DamageRoll } from './damage';
+
+// The damage parser now lives in `damage.ts`; re-exported here so existing
+// imports/tests keep working.
+export { clampDamage, rollAppliedDamage, rollDamageDetailed, rollDamage };
+export type { DamageRoll };
 
 export function isInFrontArc(unitHex: Hex, unitFacing: number, targetHex: Hex): boolean {
   const dirIdx = hexDirIndex(unitHex, targetHex);
@@ -73,56 +80,6 @@ export function resolveRetaliationPosition(
 
 export function rollD20(rng: () => number): number {
   return Math.floor(rng() * 20) + 1;
-}
-
-export interface DamageRoll {
-  /** Sum of the dice faces plus the flat bonus. */
-  total: number;
-  /** Individual die faces (before any doubling). */
-  faces: number[];
-  /** Flat bonus from the dice notation (e.g. "+2" in "1d8+2"). */
-  bonus: number;
-}
-
-/**
- * Roll a dice string and return the individual faces plus the total. Supports
- * single- and MULTI-segment notation ("1d8", "2d6+2", "1d4+2d6+3"): every `NdM`
- * segment contributes its faces, every flat `±X` adds to `bonus`. Doubling is
- * intentionally NOT applied here — callers multiply only the dice faces (never
- * the bonus) when crits/charges double damage. A string with no die (e.g. "1")
- * or invalid notation rolls 0.
- */
-export function rollDamageDetailed(diceStr: string, rng: () => number): DamageRoll {
-  const s = (diceStr || '').trim();
-  const faces: number[] = [];
-  let bonus = 0;
-  let sawDie = false;
-  // Tokenize into signed segments: `[+-]?NdM` (a dice segment) or `[+-]?X` (a
-  // flat). The join check rejects anything with gaps/garbage.
-  const tokens = s.match(/[+-]?\s*(?:\d*d\d+|\d+)/g);
-  if (!tokens || tokens.map(t => t.replace(/\s+/g, '')).join('') !== s.replace(/\s+/g, '')) {
-    return { total: 0, faces: [], bonus: 0 };
-  }
-  for (const raw of tokens) {
-    const tok = raw.replace(/\s+/g, '');
-    const dm = tok.match(/^([+-]?)(\d*)d(\d+)$/);
-    if (dm) {
-      sawDie = true;
-      const count = parseInt(dm[2] || '1');
-      const sides = parseInt(dm[3]);
-      for (let k = 0; k < count; k++) faces.push(Math.floor(rng() * sides) + 1);
-    } else {
-      const fm = tok.match(/^([+-]?)(\d+)$/);
-      if (!fm) return { total: 0, faces: [], bonus: 0 };
-      bonus += (fm[1] === '-' ? -1 : 1) * parseInt(fm[2]);
-    }
-  }
-  if (!sawDie) return { total: 0, faces: [], bonus: 0 };
-  return { total: faces.reduce((a, b) => a + b, 0) + bonus, faces, bonus };
-}
-
-export function rollDamage(diceStr: string, rng: () => number): number {
-  return rollDamageDetailed(diceStr, rng).total;
 }
 
 /**
@@ -285,18 +242,20 @@ function executeAttacks(
     const attackValue = roll + attackBonus;
     const isHit = roll === 1 ? false : isCrit ? true : attackValue >= targetAc;
     let rawDamage = 0;
+    let actualDamage = 0;
     let damageFaces: number[] = [];
     if (isHit) {
-      const dmg = rollDamageDetailed(damageDice, rng);
-      damageFaces = dmg.faces;
       // Doubling applies to the DICE ONLY, never the bonus: crit ×2, charge ×2,
-      // both ×4. rawDamage = diceFacesSum × multiplier + bonus.
+      // both ×4. The universal clamp floors a landed hit at 1 and caps it at one
+      // troop's HP (a `1d6-4` that rolls low still deals 1).
       let multiplier = 1;
       if (isCrit) multiplier *= 2;
       if (isCharging) multiplier *= 2;
-      rawDamage = dmg.faces.reduce((a, b) => a + b, 0) * multiplier + dmg.bonus;
+      const rolled = rollAppliedDamage(damageDice, { rng, multiplier, cap: targetTroopHp });
+      rawDamage = rolled.raw;
+      actualDamage = rolled.applied;
+      damageFaces = rolled.faces;
     }
-    const actualDamage = Math.min(rawDamage, targetTroopHp);
     totalDamage += actualDamage;
     attacks.push({
       roll,

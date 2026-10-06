@@ -199,3 +199,34 @@ describe('resolveSpellDamage — save roll modes', () => {
     expect(result.perTroop[0].roll).toBe(19); // one roll, first value
   });
 });
+
+describe('resolveSpellDamage — universal damage floor (>=1)', () => {
+  it('a negative-bonus base is floored to 1', () => {
+    // 1d6-4 rolling a 1 => raw -3, base clamped to 1.
+    const result = resolveSpellDamage({
+      damageDice: '1d6-4', saveBonus: -100, saveDC: 99, halfOnSave: true,
+      affectedCount: 3, troopHp: 100, rng: () => 0,
+    });
+    expect(result.baseDamage).toBe(1);
+    for (const t of result.perTroop) expect(t.damage).toBe(1);
+  });
+
+  it('a half-save on a 1-damage spell still lands 1 (not 0)', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1', saveBonus: 100, saveDC: 5, halfOnSave: true,
+      affectedCount: 2, troopHp: 100, rng: () => 0.5,
+    });
+    for (const t of result.perTroop) {
+      expect(t.success).toBe(true);
+      expect(t.damage).toBe(1);
+    }
+  });
+
+  it('a negate save still deals 0', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1', saveBonus: 100, saveDC: 5, halfOnSave: false,
+      affectedCount: 2, troopHp: 100, rng: () => 0.5,
+    });
+    for (const t of result.perTroop) expect(t.damage).toBe(0);
+  });
+});

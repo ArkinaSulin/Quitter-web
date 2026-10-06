@@ -39,6 +39,7 @@ import { terrainCostOf, TerrainCosts, computeThreatHexes, makeCostOfHex, makeBlo
 import { Walls } from '@/lib/walls';
 import type { BlockedEdgeFn } from '@/lib/moveCost';
 import { determineCombatPosition, combatRollMode, RollMode } from '@/lib/unitCombat';
+import { clampDamage } from '@/lib/damage';
 import { attackRollFlags } from '@/lib/unitEffects';
 import { applyFormationChange, isFormationChangeAffordable } from '@/lib/formationCost';
 import { hasLineOfSight } from '@/lib/lineOfSight';
@@ -224,7 +225,7 @@ export function expectedDamage(
   const mod = beAttackedModifier(targetForm, isRanged) ?? 1;
   const count = Math.round(expectedAttackerCount(attacker, ctx) * mod);
   const heroCap = !isRanged && !attacker.isHero && target.isHero ? 0.5 : 1;
-  const perHit = Math.min(diceMean(weapon.damageDice), target.troopHp);
+  const perHit = clampDamage(diceMean(weapon.damageDice), target.troopHp);
   return Math.max(0, Math.round(count * heroCap) * hitChance(effBonus, targetAc, rollMode.mode) * perHit);
 }
 

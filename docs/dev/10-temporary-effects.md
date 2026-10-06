@@ -32,9 +32,11 @@ expiry are all undoable and realtime-consistent.
   unit tooltip's **melee / ranged / rear** AC, the combat roll, verbose combat,
   the AI planner and reactions. (So an `ac` buff is now correct in both the
   tooltip and the roll.)
-- `dot` damages HP (`dotDamageChanges`: HP minus delta, troops = ceil(hp/troopHp),
-  clamped to `[0, maxTroopCount]`, HP ≥ 0). A negative dot delta = **Regen**
-  (healing).
+- `dot` deals damage **once per affected troop** (flat or dice), each capped at
+  that troop's HP and **floored at 1** (the universal damage rule, `damage.ts`),
+  then summed into the pool (`HP − total`, troops = `ceil(hp/troopHp)`). Healing
+  is the **`healing` flag** (e.g. Regen), not a negative amount — a legacy
+  negative flat `dot` is normalized to `healing` on read.
 - **Attack-roll flags** (`advantage` / `disadvantage` / `grant_advantage` /
   `grant_disadvantage`) carry no stat or amount — they are boolean markers read at
   attack resolution by `attackRollFlags(unit)`:
@@ -114,13 +116,15 @@ counts) that the engine turns into a chat line — **who**, how many **troops
 affected**, and the **damage taken**; `verbose_combat` adds every roll
 (`UnitEffects.resolveEffectDamage` / `describeEffectDamage`).
 
-Effect damage rolls **once per affected troop** (each capped at that troop's
-HP), then — when the effect has a save — each troop rolls its own save. The
-verbose line pairs the damage roll with its save: `1d2 per troop DC 16 →
-2(18→1), 1(13→1), 2(3→2), 1(20→0) (Σ 6)` (`damageRoll(saveTotal→applied)`).
-Magic (`spellDamage.ts`) keeps a **single shared damage roll** but the same
-display: `verboseCombat.formatSpellRollLine` prints
-`21 (1,1,1,2,3,4,4,5) per troop DC 16 → 18→10, 13→21, 3→21, 20→10`.
+Effect damage follows the **universal damage rule** (`src/lib/damage.ts`): every
+amount — flat or dice — lands **once per affected troop**, capped at that troop's
+HP and **never below 1** (`clampDamage`). A full saving-throw negate is the only
+0; a **half-save still lands at least 1**. Healing (the `healing` flag) is floored
+at 1 and capped at the troop's HP too. The verbose line pairs the damage roll with
+its save: `1d2 per troop DC 16 → 2(18→1), 1(13→1), 2(3→2), 1(20→0) (Σ 6)`
+(`damageRoll(saveTotal→applied)`). Magic (`spellDamage.ts`) keeps a **single
+shared damage roll** but the same display: `verboseCombat.formatSpellRollLine`
+prints `21 (1,1,1,2,3,4,4,5) per troop DC 16 → 18→10, 13→21, 3→21, 20→10`.
 
 ## Catalog (apply UI offers; magnitude/duration overridable)
 

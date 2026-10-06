@@ -6,7 +6,8 @@
 // the structure, removing the instance).
 import { Unit, Hex, Formation, hexDistance } from '@/types/gameProtocol';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
-import { rollDamage, determineCombatPosition } from './unitCombat';
+import { determineCombatPosition } from './unitCombat';
+import { clampDamage, rollDamage } from './damage';
 import { arcOfTarget } from './attackDirection';
 import { canMeleeTarget, canRangedTarget } from './formationRules';
 import { isUnitRouted } from './unitMorale';
@@ -107,7 +108,7 @@ export function resolveHexStructureAttack(
   let applied = 0;
   const rolls: number[] = [];
   for (let i = 0; i < Math.max(1, attacks); i++) {
-    const r = Math.max(0, rollDamage(weapon.damageDice, rng));
+    const r = clampDamage(rollDamage(weapon.damageDice, rng));
     rolls.push(r);
     damage += r;
     if (r >= dt) applied += r;

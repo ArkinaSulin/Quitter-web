@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, dotDamageChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, coverAcBonus, directAcBonus, hasPendingZoneEffect, rangeBonusAt, saveRollFlags, expandInheritedEffects, hasEffectKind, unitIgnoresClimb, unitHasFeatherFall } from './unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, coverAcBonus, directAcBonus, hasPendingZoneEffect, rangeBonusAt, saveRollFlags, expandInheritedEffects, hasEffectKind, unitIgnoresClimb, unitHasFeatherFall } from './unitEffects';
 import { parseDice } from './effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
@@ -154,19 +154,38 @@ describe('editEffectChanges', () => {
   });
 });
 
-describe('dotDamageChanges', () => {
-  it('reduces hp and keeps troops synced to hp', () => {
-    const u = unit('u', 'blue', h(0, 0), { troopHp: 2, maxTroopCount: 5, currentTroopCount: 5, maxUnitHp: 10, currentUnitHp: 10 });
-    const changes = dotDamageChanges(u, 3);
-    expect(changes.find(c => c.field === 'currentUnitHp')!.to).toBe(7);
-    expect(changes.find(c => c.field === 'currentTroopCount')!.to).toBe(4); // ceil(7/2)
+describe('flat effect damage (per troop, universal min 1)', () => {
+  const mk = (over: Partial<Unit> = {}) => unit('u', 'blue', h(0, 0), { troopHp: 5, maxTroopCount: 4, currentTroopCount: 4, maxUnitHp: 20, currentUnitHp: 20, ...over });
+
+  it('a flat amount lands on EACH affected troop, capped at troopHp', () => {
+    const { detail } = resolveEffectDamage(mk(), { dice: '3' });
+    expect(detail.affected).toBe(4);
+    expect(detail.total).toBe(12); // 3 x 4 troops
+    expect(detail.hpAfter).toBe(8); // 20 - 12
+    expect(detail.troopsAfter).toBe(2); // ceil(8/5)
   });
 
-  it('clamps at zero hp / troops', () => {
-    const u = unit('u', 'blue', h(0, 0), { troopHp: 5, currentUnitHp: 4, currentTroopCount: 1, maxTroopCount: 2 });
-    const changes = dotDamageChanges(u, 10);
-    expect(changes.find(c => c.field === 'currentUnitHp')!.to).toBe(0);
-    expect(changes.find(c => c.field === 'currentTroopCount')!.to).toBe(0);
+  it('a negative flat amount is damage floored at 1 (never heals)', () => {
+    const { detail } = resolveEffectDamage(mk(), { dice: '-4' });
+    expect(detail.total).toBe(4); // max(1, -4) x 4 troops
+    expect(detail.healing).toBe(false);
+  });
+
+  it('honours the affected override (entry traps)', () => {
+    const { detail } = resolveEffectDamage(mk(), { dice: '3' }, () => 0.5, 2);
+    expect(detail.affected).toBe(2);
+    expect(detail.total).toBe(6);
+  });
+
+  it('a half-save still lands at least 1; the healing flag heals per troop', () => {
+    // 1 troop, huge save bonus: raw 1 halved/floor = 0 -> clamped to 1.
+    const { detail: saved } = resolveEffectDamage(mk(), { dice: '1', savingThrow: 'Dex', saveDC: 1000, onSaveHalfOrNeg: true } as any);
+    expect(saved.total).toBe(4); // max(1, floor(1/2)) x 4 troops
+    // Healing flag: +3 per troop (from a hurt unit so the heal is visible).
+    const hurt = mk({ currentUnitHp: 4 });
+    const { detail: heal } = resolveEffectDamage(hurt, { dice: '3', healing: true });
+    expect(heal.healing).toBe(true);
+    expect(heal.total).toBe(12);
   });
 });
 
@@ -175,11 +194,11 @@ describe('computeEndTurnEffects', () => {
 
   it('ticks a DoT on the caster activation and decrements turnsLeft', () => {
     const caster = unit('caster', 'blue');
-    const target = unit('target', 'red', h(5, 0), { effects: [ef({ key: 'd1', kind: 'dot', dice: '4', turnsLeft: 2, duration: 2, casterUnitId: 'caster', casterTeam: 'blue' })] });
+    const target = unit('target', 'red', h(5, 0), { troopHp: 5, currentTroopCount: 1, maxTroopCount: 1, effects: [ef({ key: 'd1', kind: 'dot', dice: '4', turnsLeft: 2, duration: 2, casterUnitId: 'caster', casterTeam: 'blue' })] });
     const res = computeEndTurnEffects({ units: [caster, target], zones: [], nextGroup: 'friendly', alliances: groups, makeKey });
     const step = res.subSteps.find(s => s.unitId === 'target');
     expect(step).toBeDefined();
-    expect(step!.changes.find(c => c.field === 'currentUnitHp')!.to).toBe(6); // 10 - 4
+    expect(step!.changes.find(c => c.field === 'currentUnitHp')!.to).toBe(6); // 10 - 4 (1 troop)
     const effects = step!.changes.find(c => c.field === 'effects')!.to as UnitEffect[];
     expect(effects[0].turnsLeft).toBe(1);
   });
@@ -263,7 +282,7 @@ describe('computeEndTurnEffects', () => {
   it('a dot zone deals damage to every standing unit when its caster activates', () => {
     const zone: GroundEffect = { key: 'z9', q: 0, r: 0, name: 'Burning Field', color: '#ff8844', kind: 'dot', dice: '3', duration: 3, turnsLeft: 3, casterTeam: 'blue', casterUnitId: 'caster' };
     const caster = unit('caster', 'blue', h(3, 3));
-    const u = unit('u', 'red', h(0, 0));
+    const u = unit('u', 'red', h(0, 0), { troopHp: 5, currentTroopCount: 1, maxTroopCount: 1 });
     const res = computeEndTurnEffects({ units: [caster, u], zones: [zone], nextGroup: 'friendly', alliances: groups, makeKey });
     const step = res.subSteps.find(s => s.unitId === 'u');
     expect(step).toBeDefined();
@@ -338,10 +357,10 @@ describe('effect dice + saves', () => {
     expect(changes.find(c => c.field === 'currentUnitHp')!.to).toBe(8); // +1 x 3 troops
   });
 
-  it('saves halve or negate per troop; DC 1 auto-passes, huge DC auto-fails', () => {
-    // 1d1, half on save, DC 1 => every troop saves => 0 damage.
+  it('saves halve or negate per troop; a half-save still lands 1', () => {
+    // 1d1 (roll 1), half on save, DC 1 => every troop saves => floor(1/2)=0 → clamped to 1/troop.
     const passed = effectDamageChanges(mk(), { dice: '1d1', savingThrow: 'Dex', saveDC: 1, onSaveHalfOrNeg: true }, () => 0.5);
-    expect(passed.find(c => c.field === 'currentUnitHp')!.to).toBe(10);
+    expect(passed.find(c => c.field === 'currentUnitHp')!.to).toBe(5); // 1 x 5 troops
     // huge DC => all fail => full 1 x 5 = 5.
     const failed = effectDamageChanges(mk(), { dice: '1d1', savingThrow: 'Dex', saveDC: 100, onSaveHalfOrNeg: true }, () => 0.5);
     expect(failed.find(c => c.field === 'currentUnitHp')!.to).toBe(5);

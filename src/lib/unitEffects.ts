@@ -17,6 +17,7 @@
 import { Unit, UnitEffect, GroundEffect, EffectKind, AllianceGroup, Hex } from '@/types/gameProtocol';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { parseDice, rollDice, modifierAmount, isDiceAmount, modifierSummary, EffectModifier } from '@/lib/effectTemplates';
+import { clampDamage } from '@/lib/damage';
 
 /** The real unit field a stat kind modifies (dot/hp_borrow have none — they touch HP). */
 export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModifier' | 'movementPoints' | null {
@@ -353,16 +354,6 @@ export function editEffectChanges(
   return [...remove, ...apply];
 }
 
-/** DoT damage: a unit's damage over time landing on `target` (flat per tick). */
-export function dotDamageChanges(target: Unit, damage: number): UnitChange[] {
-  if (damage <= 0) return [];
-  const newHp = Math.max(0, (target.currentUnitHp ?? 0) - damage);
-  const newTroops = Math.min(target.maxTroopCount ?? 0, Math.max(0, Math.ceil(newHp / Math.max(1, target.troopHp ?? 1))));
-  return [
-    { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
-    { field: 'currentTroopCount', from: target.currentTroopCount, to: newTroops },
-  ];
-}
 
 function troopFromHp(target: Unit, hp: number): number {
   return Math.min(target.maxTroopCount ?? hp, Math.max(1, Math.ceil(hp / Math.max(1, target.troopHp ?? 1))));
@@ -483,6 +474,7 @@ export function resolveEffectDamage(
   const healing = !!mod.healing;
   const isDice = isDiceAmount(mod.dice);
   const parsed = isDice ? parseDice(mod.dice) : null;
+  const flatAmt = parsed ? 0 : modifierAmount(mod.dice);
 
   let changes: UnitChange[] = [];
   let affected = 0;
@@ -492,46 +484,44 @@ export function resolveEffectDamage(
   let saveRolls: number[] | undefined;
   let applied: number[] | undefined;
 
-  if (!parsed) {
-    const amt = modifierAmount(mod.dice);
-    affected = Math.max(0, troopsBefore);
-    if (amt > 0) changes = healing ? healChanges(target, amt) : dotDamageChanges(target, amt);
-  } else {
-    const currentTroops = Math.max(0, troopsBefore);
-    affected = Math.max(0, Math.min(affectedOverride ?? currentTroops, currentTroops));
-    if (affected > 0) {
-      const th = thOf(target);
-      const halfOnSave = mod.onSaveHalfOrNeg !== false;
-      const hasSave = !!(mod.savingThrow && mod.saveDC != null);
-      rolls = [];
-      if (hasSave) saveRolls = [];
-      applied = [];
-      let total = 0;
-      for (let i = 0; i < affected; i++) {
-        const r = Math.max(0, rollDice(mod.dice, rng));
-        rolls.push(r);
-        let per = Math.min(r, th);
-        if (hasSave) {
-          const saveTotal = troopSaveTotal(target, mod.savingThrow!, rng);
-          saveRolls!.push(saveTotal);
-          if (saveTotal >= mod.saveDC!) {
-            passed++;
-            per = halfOnSave ? Math.min(Math.floor(r / 2), th) : 0;
-          }
+  // Universal per-troop model: EVERY effect amount (flat or dice) lands on each
+  // affected troop, clamped to [1, troopHp] (`1d6-4` → at least 1). A full
+  // saving-throw negate is the only 0; a half-save still lands at least 1.
+  const currentTroops = Math.max(0, troopsBefore);
+  affected = Math.max(0, Math.min(affectedOverride ?? currentTroops, currentTroops));
+  if (affected > 0 && (isDice || flatAmt !== 0)) {
+    const th = thOf(target);
+    const halfOnSave = mod.onSaveHalfOrNeg !== false;
+    const hasSave = !!(mod.savingThrow && mod.saveDC != null);
+    rolls = [];
+    if (hasSave) saveRolls = [];
+    applied = [];
+    let total = 0;
+    for (let i = 0; i < affected; i++) {
+      const r = isDice ? rollDice(mod.dice, rng) : flatAmt;
+      rolls.push(r);
+      let per = clampDamage(r, th);
+      if (hasSave) {
+        const saveTotal = troopSaveTotal(target, mod.savingThrow!, rng);
+        saveRolls!.push(saveTotal);
+        if (saveTotal >= mod.saveDC!) {
+          passed++;
+          // Half the RAW roll, then cap (a half-save still lands ≥1); negate = 0.
+          per = halfOnSave ? clampDamage(Math.floor(r / 2), th) : 0;
         }
-        applied.push(per);
-        total += per;
       }
-      roll = rolls.reduce((a, b) => a + b, 0);
-      if (healing) {
-        changes = healChanges(target, total);
-      } else {
-        const newHp = Math.max(0, hpBefore - total);
-        changes = [
-          { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
-          { field: 'currentTroopCount', from: target.currentTroopCount, to: Math.max(0, Math.ceil(newHp / th)) },
-        ];
-      }
+      applied.push(per);
+      total += per;
+    }
+    roll = rolls.reduce((a, b) => a + b, 0);
+    if (healing) {
+      changes = healChanges(target, total);
+    } else {
+      const newHp = Math.max(0, hpBefore - total);
+      changes = [
+        { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+        { field: 'currentTroopCount', from: target.currentTroopCount, to: Math.max(0, Math.ceil(newHp / th)) },
+      ];
     }
   }
 
@@ -545,7 +535,7 @@ export function resolveEffectDamage(
       failed: Math.max(0, affected - passed),
       total: Math.abs(hpAfter - hpBefore),
       healing,
-      ...(parsed ? { dice: mod.dice ?? undefined } : {}),
+      ...(mod.dice ? { dice: mod.dice } : {}),
       ...(rolls ? { rolls } : {}),
       ...(roll != null ? { roll } : {}),
       ...(saveRolls ? { saveDC: mod.saveDC ?? undefined, saveRolls } : {}),
@@ -921,6 +911,8 @@ export interface EffectTemplate {
   defaultDelta: number;
   defaultDuration: number;
   description: string;
+  /** The amount heals instead of damaging (Regen). */
+  healing?: boolean;
 }
 
 export const EFFECT_TEMPLATES: EffectTemplate[] = [
@@ -930,8 +922,8 @@ export const EFFECT_TEMPLATES: EffectTemplate[] = [
   { id: 'slow', name: 'Slow', color: '#9e9d24', kind: 'movement', defaultDelta: -2, defaultDuration: 3, description: '-2 movement hexes' },
   { id: 'rally', name: 'Rally', color: '#4fc3f7', kind: 'morale', defaultDelta: 3, defaultDuration: 3, description: '+3 morale' },
   { id: 'fear', name: 'Fear', color: '#9575cd', kind: 'morale', defaultDelta: -3, defaultDuration: 3, description: '-3 morale' },
-  { id: 'burn', name: 'Burning', color: '#ff7043', kind: 'dot', defaultDelta: 4, defaultDuration: 3, description: '4 damage each tick' },
-  { id: 'regen', name: 'Regen', color: '#81c784', kind: 'dot', defaultDelta: -4, defaultDuration: 3, description: 'heal 4 each tick' },
+  { id: 'burn', name: 'Burning', color: '#ff7043', kind: 'dot', defaultDelta: 4, defaultDuration: 3, description: '4 damage per troop each tick' },
+  { id: 'regen', name: 'Regen', color: '#81c784', kind: 'dot', defaultDelta: 4, healing: true, defaultDuration: 3, description: 'heal 4 per troop each tick' },
   { id: 'advantage', name: 'Advantage', color: '#b2ff59', kind: 'advantage', defaultDelta: 0, defaultDuration: 3, description: 'gain advantage on own attacks' },
   { id: 'disadvantage', name: 'Disadvantage', color: '#ff8a80', kind: 'disadvantage', defaultDelta: 0, defaultDuration: 3, description: 'suffer disadvantage on own attacks' },
   { id: 'grant_advantage', name: 'Grant Advantage', color: '#69f0ae', kind: 'grant_advantage', defaultDelta: 0, defaultDuration: 3, description: 'grant advantage to attackers' },

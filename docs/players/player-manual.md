@@ -635,7 +635,9 @@ multiplier)`. Heroes always make their weapon's attacks directly. A defender
 that survives retaliates with its engaged **front rows** (Appendix B).
 
 Damage per hit is capped at one troop's HP (a single swing kills at most one
-soldier). Damage pools into the unit; troop count drops as `HP ÷ troop HP`.
+soldier) and is **never below 1** — a landed blow always chips at least 1, even a
+negative-bonus weapon like `1d6-4`. Damage pools into the unit; troop count drops
+as `HP ÷ troop HP`.
 
 **Example — a full melee exchange (attacker has reach, 10 troops, spear +3
 1d8; defender 10 troops, shortsword +2 1d6, AC 13; both base morale 6):**
@@ -761,7 +763,8 @@ Resolution:
    **Save DC** (the caster sets the DC and which of the six saves resists).
 3. On a successful save the troop takes **half** (floored) or **nothing** —
    the weapon decides "half or negate".
-4. Damage per troop is capped at its HP; casualties and morale are applied.
+4. Damage per troop is capped at its HP and **never below 1** (a half-save still
+   lands 1); casualties and morale are applied.
 
 **Healing** (`(h)` weapons) recovers HP instead: single target heals up to max
 unit HP; an area heal restores each affected troop up to its HP — no save.
@@ -1003,8 +1006,8 @@ temporary, undoable, and synced to everyone.
 | **Slow** | Movement | −2 · 3 | −2 movement |
 | **Rally** | Morale | +3 · 3 | +3 morale |
 | **Fear** | Morale | −3 · 3 | −3 morale |
-| **Burning** | Damage | 4 · 3 | 4 damage every tick |
-| **Regen** | Damage | −4 · 3 | heal 4 every tick |
+| **Burning** | Damage | 4 · 3 | 4 damage **per troop** every tick |
+| **Regen** | Heal | 4 · 3 | heal 4 **per troop** every tick |
 | **Advantage** | Attack roll | · 3 | advantage on that unit's own attacks |
 | **Disadvantage** | Attack roll | · 3 | disadvantage on that unit's own attacks |
 | **Grant Advantage** | Attack roll | · 3 | anyone **attacking** the carrier gains advantage |

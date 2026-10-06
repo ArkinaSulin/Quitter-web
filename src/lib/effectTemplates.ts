@@ -228,6 +228,12 @@ export function parseModifiers(raw: unknown): EffectModifier[] {
       if (Number.isFinite(legacy) && legacy !== 0) out2.dice = String(legacy);
     }
     if ((m as any).healing === true) out2.healing = true;
+    // Legacy Regen: a NEGATIVE flat `dot` amount meant healing. Normalize on read
+    // (amount is now always positive damage; healing is the `healing` flag).
+    if (out2.kind === 'dot' && !out2.healing && out2.dice && /^-\d+$/.test(out2.dice.trim())) {
+      out2.dice = String(Math.abs(parseInt(out2.dice, 10)));
+      out2.healing = true;
+    }
     const st = (m as any).savingThrow;
     if (typeof st === 'string') out2.savingThrow = st as SaveStatName;
     if (Number.isFinite((m as any).saveDC)) out2.saveDC = Number((m as any).saveDC);

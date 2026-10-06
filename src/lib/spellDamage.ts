@@ -1,5 +1,6 @@
 // src/lib/spellDamage.ts
-import { rollD20, rollDamageDetailed } from './unitCombat';
+import { rollD20 } from './unitCombat';
+import { clampDamage, rollDamageDetailed } from './damage';
 
 export interface PerTroopSave {
   roll: number;
@@ -56,13 +57,15 @@ export function resolveSpellDamage({
   rng = Math.random,
 }: ResolveSpellDamageInput): SpellDamageResult {
   const dmg = rollDamageDetailed(damageDice, rng);
-  const baseDamage = dmg.total;
+  // Universal rule: a landed amount is never below 1 (crit/dice bonus can go
+  // negative; the base is clamped once, then capped per troop below).
+  const baseDamage = clampDamage(dmg.total);
   const baseFaces = dmg.faces;
   const perTroop: PerTroopSave[] = [];
   let totalDamage = 0;
   for (let i = 0; i < affectedCount; i++) {
     if (isHealing) {
-      const heal = Math.min(baseDamage, troopHp);
+      const heal = clampDamage(baseDamage, troopHp);
       totalDamage += heal;
       perTroop.push({ roll: 0, saveResult: 0, success: true, damage: heal });
       continue;
@@ -74,8 +77,8 @@ export function resolveSpellDamage({
         : rollD20(rng);
     const saveResult = roll + saveBonus;
     const success = saveResult >= saveDC;
-    let damage = success ? (halfOnSave ? Math.floor(baseDamage / 2) : 0) : baseDamage;
-    damage = Math.min(damage, troopHp);
+    // Fail → full; half-save → half (floored) but still a LANDED ≥1; negate → 0.
+    let damage = success ? (halfOnSave ? clampDamage(Math.floor(baseDamage / 2), troopHp) : 0) : clampDamage(baseDamage, troopHp);
     totalDamage += damage;
     perTroop.push({ roll, saveResult, success, damage });
   }

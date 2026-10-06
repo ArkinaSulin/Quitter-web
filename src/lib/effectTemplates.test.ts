@@ -28,6 +28,23 @@ describe('effectTemplates mappers', () => {
   });
 });
 
+describe('parseModifiers', () => {
+  it('normalizes a legacy numeric `delta` to `dice`', () => {
+    const [m] = parseModifiers([{ kind: 'ac', delta: 3 }]);
+    expect(m).toEqual({ kind: 'ac', dice: '3' });
+  });
+
+  it('turns a NEGATIVE flat dot into a positive healing amount (legacy Regen)', () => {
+    const [m] = parseModifiers([{ kind: 'dot', delta: -4 }]);
+    expect(m).toEqual({ kind: 'dot', dice: '4', healing: true });
+  });
+
+  it('leaves a positive dot and an explicit healing flag untouched', () => {
+    expect(parseModifiers([{ kind: 'dot', delta: 4 }])[0]).toEqual({ kind: 'dot', dice: '4' });
+    expect(parseModifiers([{ kind: 'dot', dice: '3', healing: true }])[0]).toEqual({ kind: 'dot', dice: '3', healing: true });
+  });
+});
+
 describe('modifierSummary', () => {
   it('signs amounts and never prints a bogus mode for range', () => {
     expect(modifierSummary({ kind: 'range', dice: '2' })).toBe('range +2');

@@ -105,4 +105,12 @@ describe('resolveWallAttack', () => {
     expect(r.rolls).toEqual([4, 4, 4]);
     expect(r.wall.hp).toBe(18);
   });
+
+  it('floors each roll at 1 (a negative-bonus weapon still chips the wall)', () => {
+    const weak = { damageDice: '1d6-4', range: 1, maxRange: 1 };
+    const r = resolveWallAttack(wall({ dt: 0 }), weak, () => 0, 1); // 1d6 → 1, raw -3 → 1
+    expect(r.rolls).toEqual([1]);
+    expect(r.damage).toBe(1);
+    expect(r.applied).toBe(1);
+  });
 });

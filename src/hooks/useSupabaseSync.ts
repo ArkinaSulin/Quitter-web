@@ -15,24 +15,36 @@ import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 /** Sanitize a units.effects jsonb array into UnitEffect[] (defensive parsing). */
 function parseEffects(raw: any): UnitEffect[] {
   if (!Array.isArray(raw)) return [];
-  return raw.map((e: any) => ({
-    key: String(e?.key ?? ''),
-    zoneHex: e?.zoneHex ? { q: Number(e.zoneHex.q) || 0, r: Number(e.zoneHex.r) || 0, s: Number(e.zoneHex.s) || 0 } : undefined,
-    name: e?.name || '',
-    color: e?.color || '#cccccc',
-    kind: e?.kind || 'ac',
+  return raw.map((e: any) => {
     // Amount is one string: prefer `dice`; fall back to legacy numeric `delta`.
-    ...((typeof e?.dice === 'string' && e.dice.trim()) ? { dice: e.dice } : (Number.isFinite(Number(e?.delta)) && Number(e?.delta) !== 0 ? { dice: String(Number(e.delta)) } : {})),
-    ...(e?.mode === 'melee' || e?.mode === 'ranged' ? { mode: e.mode } : {}),
-    ...(e?.direction === 'in' || e?.direction === 'out' || e?.direction === 'both' ? { direction: e.direction } : {}),
-    duration: Number(e?.duration) || 1,
-    turnsLeft: Number(e?.turnsLeft) ?? 1,
-    casterUnitId: e?.casterUnitId ?? null,
-    casterTeam: e?.casterTeam ?? null,
-    casterPlayerId: e?.casterPlayerId ?? null,
-    base: e?.base == null ? undefined : Number(e.base),
-    ...(e?.permanent === true ? { permanent: true } : {}),
-  })).filter(e => e.key);
+    const dice = (typeof e?.dice === 'string' && e.dice.trim())
+      ? e.dice
+      : (Number.isFinite(Number(e?.delta)) && Number(e?.delta) !== 0 ? String(Number(e.delta)) : undefined);
+    const kind = e?.kind || 'ac';
+    // Legacy Regen: a NEGATIVE flat `dot` amount meant healing — normalize on read.
+    const negativeDotHeal = kind === 'dot' && !e?.healing && !!dice && /^-\d+$/.test(String(dice).trim());
+    return {
+      key: String(e?.key ?? ''),
+      zoneHex: e?.zoneHex ? { q: Number(e.zoneHex.q) || 0, r: Number(e.zoneHex.r) || 0, s: Number(e.zoneHex.s) || 0 } : undefined,
+      name: e?.name || '',
+      color: e?.color || '#cccccc',
+      kind,
+      ...(dice ? { dice: negativeDotHeal ? String(Math.abs(parseInt(dice, 10))) : dice } : {}),
+      ...(e?.healing === true || negativeDotHeal ? { healing: true } : {}),
+      ...(typeof e?.savingThrow === 'string' ? { savingThrow: e.savingThrow } : {}),
+      ...(Number.isFinite(Number(e?.saveDC)) ? { saveDC: Number(e.saveDC) } : {}),
+      ...(typeof e?.onSaveHalfOrNeg === 'boolean' ? { onSaveHalfOrNeg: e.onSaveHalfOrNeg } : {}),
+      ...(e?.mode === 'melee' || e?.mode === 'ranged' ? { mode: e.mode } : {}),
+      ...(e?.direction === 'in' || e?.direction === 'out' || e?.direction === 'both' ? { direction: e.direction } : {}),
+      duration: Number(e?.duration) || 1,
+      turnsLeft: Number(e?.turnsLeft) ?? 1,
+      casterUnitId: e?.casterUnitId ?? null,
+      casterTeam: e?.casterTeam ?? null,
+      casterPlayerId: e?.casterPlayerId ?? null,
+      base: e?.base == null ? undefined : Number(e.base),
+      ...(e?.permanent === true ? { permanent: true } : {}),
+    };
+  }).filter(e => e.key);
 }
 
 function mapRowToUnit(row: any): Unit {
