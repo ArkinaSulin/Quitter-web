@@ -12,7 +12,7 @@
   tests the host's hero footprint (`heroThreatAgainst(host, …) > 0`) instead of
   the host's kill zone, so a **hero mount + rider count together** (each once) at
   360°. A front-attached hero on a normal unit still uses that host's kill zone.
-- **Tooltip note.** The Threat row appends ` (halved - hero <= Large)` when the
+- **Tooltip note.** The Threat row appends ` (halved - hero ≤ Large)` when the
   unit is a Large-or-smaller hero. `tsc` clean, tests pass, build clean. No
   migration.
 

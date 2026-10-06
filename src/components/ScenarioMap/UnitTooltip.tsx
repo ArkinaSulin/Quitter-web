@@ -106,7 +106,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
                   ? <><span className="text-gray-400" title="Morale: will to keep fighting; fearless units never rout.">Morale:</span><span className="text-yellow-400">fearless</span></>
                   : <><span className="text-gray-400" title="Morale: will to keep fighting. At 0 or below after an attack the unit routs.">Morale:</span><span className="text-yellow-400">{morTotal} = {unit.baseMorale} {effectiveMoraleModifier >= 0 ? '+ ' : '- '}{Math.abs(effectiveMoraleModifier)}{formationMorMod !== 0 ? ` (incl. formation ${formationMorMod >= 0 ? '+' : ''}${formationMorMod})` : ''}</span></>
         )}
-        <span className="text-gray-400" title="Threat this unit exerts on others (force strength of its kill zone / 360° reach).">Threat:</span><span>{isUnitRouted(unit) ? `0 routed, was ${threatRating.toFixed(2)}` : `${threatRating.toFixed(2)}${unit.isHero && (unit.sizeCategory ?? 0) <= HERO_HALF_THREAT_MAX_SIZE ? ' (halved - hero <= Large)' : ''}`}</span>
+        <span className="text-gray-400" title="Threat this unit exerts on others (force strength of its kill zone / 360° reach).">Threat:</span><span>{isUnitRouted(unit) ? `0 routed, was ${threatRating.toFixed(2)}` : `${threatRating.toFixed(2)}${unit.isHero && (unit.sizeCategory ?? 0) <= HERO_HALF_THREAT_MAX_SIZE ? ' (halved - hero ≤ Large)' : ''}`}</span>
       </div>
 
       <div className="border-t border-gray-600 my-1.5" />
