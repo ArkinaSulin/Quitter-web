@@ -162,9 +162,12 @@ export function calcEnemyThreats(
 /**
  * A hero's threat contribution against `victim` (0 = no threat):
  * - a protected (back-attached) hero exerts nothing;
- * - a front-attached hero threatens only through its host's kill zone;
- * - a lone hero threatens 360°: all six adjacent hexes plus the same hex within
- *   10 ft vertically (up OR down) — threat only, a hero never imposes a ZoC;
+ * - an attached hero uses its HOST's footprint — a hero-on-hero MOUNT therefore
+ *   sums mount + rider (both counted once); a front-attached hero on a normal
+ *   unit threatens only through that host's kill zone;
+ * - a lone hero threatens 360°: all six adjacent hexes **at the same elevation**,
+ *   plus its own hex within 10 ft vertically (up OR down) — threat only, a hero
+ *   never imposes a ZoC;
  * - the rating is `exertedThreatRating` (Large-and-under heroes half).
  */
 export function heroThreatAgainst(hero: Unit, victim: Unit, units: Unit[]): number {
@@ -172,13 +175,20 @@ export function heroThreatAgainst(hero: Unit, victim: Unit, units: Unit[]): numb
   const rating = exertedThreatRating(hero);
   if (hero.attachedToUnitId) {
     const host = units.find(u => u.id === hero.attachedToUnitId && !u.isDeleted);
-    return host && isInKillZone(host, victim.hex, victim.elevation) ? rating : 0;
+    if (!host) return 0;
+    // A hero HOST (hero-on-hero mount) uses its own hero footprint, so the pair
+    // sums mount + rider; a non-hero host uses its kill zone.
+    const applies = host.isHero
+      ? heroThreatAgainst(host, victim, units) > 0
+      : isInKillZone(host, victim.hex, victim.elevation);
+    return applies ? rating : 0;
   }
-  // Lone hero: 360° — any adjacent hex, or the same hex within 10 ft (up/down).
+  // Lone hero: 360° — any adjacent hex AT THE SAME ELEVATION, or the own hex
+  // within 10 ft vertically (up/down).
   if (hero.hex.q === victim.hex.q && hero.hex.r === victim.hex.r) {
     return withinVerticalGap(hero.elevation, victim.elevation) ? rating : 0;
   }
-  return areHexesAdjacent(hero.hex, victim.hex) ? rating : 0;
+  return areHexesAdjacent(hero.hex, victim.hex) && (hero.elevation ?? 0) === (victim.elevation ?? 0) ? rating : 0;
 }
 
 // --- Hero morale aura (Commanding Presence / Heroic Inspiration) ------------

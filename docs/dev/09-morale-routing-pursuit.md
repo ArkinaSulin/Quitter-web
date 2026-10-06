@@ -35,12 +35,16 @@ never applies for the front-2. Merely adjacent ≠ threatening. Full rule:
 `07` "Zone of control (universal rule)".
 
 Heroes are the exception: a **lone** hero is a single token with no fixed
-facing, so it threatens **all six adjacent hexes AND its own hex within 10 ft
-(up or down)** — `heroThreatAgainst`. (Threat only: heroes never impose a ZoC.)
-A **front-attached** hero threatens only through its host's kill zone; a
-**protected (back-attached)** hero exerts no threat at all. A hero of **Large
-size or smaller** (`sizeCategory ≤ 200`) exerts **half** its rating
-(`exertedThreatRating`); bigger heroes exert full.
+facing, so it threatens **all six adjacent hexes at the same elevation AND its
+own hex within 10 ft (up or down)** — `heroThreatAgainst`. (Threat only: heroes
+never impose a ZoC.) An **attached** hero uses its **host's footprint**: a
+front-attached hero on a normal unit threatens only through that host's kill
+zone, while a **rider on a hero mount** uses the mount's 360° footprint, so the
+**mount + rider count together** (each once). A **protected (back-attached)**
+hero exerts no threat at all. A hero of **Large size or smaller**
+(`sizeCategory ≤ 200`) exerts **half** its rating (`exertedThreatRating`);
+bigger heroes exert full. The tooltip Threat row notes this as
+`halved - hero <= Large`.
 
 `calcEnemyThreats(unit, …, formation)`: sum the threat ratings of every hostile
 whose kill zone contains you (plus hero threat as above), then **normalize by

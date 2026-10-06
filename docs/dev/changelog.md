@@ -1,5 +1,21 @@
 # QuiTTER Changelog
 
+## Hero threat: same-elevation adjacency; rider+mount combined; tooltip note (2026-10-05)
+**Files:** src/lib/unitMorale.ts (+ test), src/components/ScenarioMap/UnitTooltip.tsx, docs/dev/{08-combat,09-morale-routing-pursuit,changelog}.md, .scratch/hero-mount/spec.md
+
+- **Hero adjacency is now same-elevation.** `heroThreatAgainst`'s lone-hero
+  branch gates the six adjacent hexes on `(hero.elevation ?? 0) ===
+  (victim.elevation ?? 0)` (the own-hex ±10 ft clause is unchanged). A dragon at
+  10 ft no longer threatens an adjacent ground unit — matching the non-hero
+  front-2 rule.
+- **Rider uses its mount's footprint.** An attached hero on a **hero** host now
+  tests the host's hero footprint (`heroThreatAgainst(host, …) > 0`) instead of
+  the host's kill zone, so a **hero mount + rider count together** (each once) at
+  360°. A front-attached hero on a normal unit still uses that host's kill zone.
+- **Tooltip note.** The Threat row appends ` (halved - hero <= Large)` when the
+  unit is a Large-or-smaller hero. `tsc` clean, tests pass, build clean. No
+  migration.
+
 ## Reaction mover X marker; hover own-hex; halved non-flyer elevation offset (2026-10-05)
 **Files:** src/components/TokenRenderer/drawToken.ts, src/components/ScenarioMap/{useCanvasDraw,useOverlay}.tsx (+ test), src/lib/flying.ts (+ test), docs/dev/{15-token-rendering,changelog}.md
 

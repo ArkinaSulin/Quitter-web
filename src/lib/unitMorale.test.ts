@@ -283,6 +283,14 @@ describe('calcEnemyThreats', () => {
     expect(calcEnemyThreats(me, [flyer], alliances)).toMatchObject({ totalSum: 3, total: 3 });
   });
 
+  it('a hero mount + rider contribute their threat TOGETHER', () => {
+    const me = makeUnit({ ...threat1 }); // myThreat 1
+    const mount = enemyAt(DIR_HEXES[1], { isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1, maxTroopCount: 1 });
+    const rider = enemyAt(DIR_HEXES[1], { isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1, maxTroopCount: 1, attachedToUnitId: mount.id, attachedPosition: 'rider' });
+    // Lone mount hero 2 + rider via mount footprint 2 = 4.
+    expect(calcEnemyThreats(me, [mount, rider], alliances)).toMatchObject({ totalSum: 4, total: 4 });
+  });
+
   it('doubles threat from the subject\'s rear hexes via the formation threat arcs', () => {
     const formed = { threat_arcs: ['front', 'flank'], double_threat_arcs: ['rear'] } as unknown as Formation;
     const me = makeUnit({ ...threat1, facing: 0 }); // myThreat 1
@@ -336,6 +344,15 @@ describe('heroThreatAgainst', () => {
     }
   });
 
+  it('an adjacent hero threatens only at the SAME elevation (no cross-layer)', () => {
+    const airborneHero = hero({ hex: DIR_HEXES[0], elevation: 20 });
+    expect(heroThreatAgainst(airborneHero, makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: 0 }), [airborneHero])).toBe(0);
+    expect(heroThreatAgainst(airborneHero, makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: 20 }), [airborneHero])).toBe(2);
+    const groundHero = hero({ hex: DIR_HEXES[0], elevation: 0 });
+    expect(heroThreatAgainst(groundHero, makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: 0 }), [groundHero])).toBe(2);
+    expect(heroThreatAgainst(groundHero, makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: 10 }), [groundHero])).toBe(0);
+  });
+
   it('a lone hero two hexes away threatens nothing', () => {
     const h = hero({ hex: { q: 2, r: 0, s: -2 } });
     expect(heroThreatAgainst(h, me(), [h])).toBe(0);
@@ -368,6 +385,18 @@ describe('heroThreatAgainst', () => {
     const rear = makeUnit({ id: 'v2', team: 'blue', hex: DIR_HEXES[1] }); // host facing 0 → rear
     expect(heroThreatAgainst(h, front, [host, h, front])).toBe(2);
     expect(heroThreatAgainst(h, rear, [host, h, rear])).toBe(0);
+  });
+
+  it('a rider on a hero mount uses the mount\'s 360° footprint', () => {
+    const mount = makeUnit({ id: 'mount', team: 'red', isHero: true, level: 5, sizeCategory: 300, currentTroopCount: 1, maxTroopCount: 1, hex: { q: 0, r: 0, s: 0 }, facing: 0 });
+    const rider = hero({ id: 'rider', attachedToUnitId: 'mount', attachedPosition: 'rider' });
+    // Mount hero's footprint covers every adjacent hex (not just the mount's front).
+    const side = makeUnit({ id: 'v-side', team: 'blue', hex: DIR_HEXES[1] });
+    const front = makeUnit({ id: 'v-front', team: 'blue', hex: DIR_HEXES[4] });
+    const far = makeUnit({ id: 'v-far', team: 'blue', hex: { q: 2, r: 0, s: -2 } });
+    expect(heroThreatAgainst(rider, side, [mount, rider, side])).toBe(2);
+    expect(heroThreatAgainst(rider, front, [mount, rider, front])).toBe(2);
+    expect(heroThreatAgainst(rider, far, [mount, rider, far])).toBe(0);
   });
 });
 

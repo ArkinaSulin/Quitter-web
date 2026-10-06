@@ -55,8 +55,8 @@ structure, an edge wall, or a hex gate/tower:
 The **kill zone** (used by morale threat, the AGR penalty and the adjacent
 point-blank melee decision) is the *same* shape as the ZoC — front-2 at the
 **same elevation**, plus the airborne-flyer vertical — **except heroes**, which
-threaten all **6 adjacent hexes + the same hex ±10 ft** (360°, threat only;
-heroes still impose no ZoC). See `07` and `09`.
+threaten all **6 adjacent hexes at the same elevation + the same hex ±10 ft**
+(360°, threat only; heroes still impose no ZoC). See `07` and `09`.
 
 Structure attacks follow the rule too (`wallCombat.wallAttackKind`,
 `structureCombat.hexStructureAttackKind`): a unit on either side of a wall must

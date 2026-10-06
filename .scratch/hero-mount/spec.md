@@ -75,8 +75,9 @@ value. Phase 2 adds the elevation/flying layer.
    token itself (clicks/hovers on it resolve back to the underlying ground hex).
 6. **LoS** — a flyer ignores the "shoot over structure" disadvantage penalty.
 7. **Threat/ZoC/pursue** — ground kill-zones never affect air units, and air
-   units are never pursued; an air unit within 10 ft DOES impose threat, rated as
-   rider+mount combined.
+   units are never pursued; a hero's adjacency is now **same-elevation** (the old
+   "air unit within 10 ft imposes threat" applies only to its own column ±10 ft),
+   and a rider uses its mount's footprint so threat is **rider+mount combined**.
 8. **Rout** — a routed flyer keeps its facing and flies up as far as possible.
 9. **Mount death / dismount airborne** — rider resets to `elevation 0` (unless it
    can also fly); a DM modal decides "fly" vs "drop" (D6 per 10 ft); fall damage
