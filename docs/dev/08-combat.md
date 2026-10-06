@@ -292,7 +292,8 @@ hostile is refused. A reaction is one of:
   the session immediately. Fired by dragging onto the mover or the toolbar
   **Fire at `<mover>`**. When **>1 ranged weapon can reach**, the shared
   `WeaponSelect` picker opens (choose the weapon + **upcast** the leading damage
-  die) before it fires. A **magic/area weapon** instead opens the full
+  die) before it fires — the reaction picker greys any weapon outside reaction
+  **range** (`canReactWithWeapon`), not just beyond `maxRange`. A **magic/area weapon** instead opens the full
   `magicCast` window mid-reaction (seeded on the mover, `reaction: true`): its
   resolve folds `archerReactionUsed` + `attacksUsed` into the CAST command. A
   reaction may also **heal** (same-alliance) with a healing weapon,

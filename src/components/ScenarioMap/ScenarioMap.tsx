@@ -10,6 +10,7 @@ import { findAttachedHero, heroRideMoveStep, heroDetachStep } from '@/lib/heroAt
 import { applyMoveCost } from '@/lib/moveCost';
 import { nextLowerFormation } from '@/lib/formationCost';
 import { parseWeapons, damageDiceCount, withDamageDiceCount } from '@/lib/weaponParser';
+import { canReactWithWeapon } from '@/lib/archerReaction';
 import { getFormations } from '@/lib/formationCache';
 import { loadSettings, getSetting } from '@/lib/settingsCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
@@ -3521,6 +3522,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 diceCount={p.damageDiceCount}
                 onDiceCountChange={n => setPendingReactionChoice({ ...p, damageDiceCount: n })}
                 onChange={i => setPendingReactionChoice({ ...p, weaponIndex: i, damageDiceCount: damageDiceCount(weapons[i]?.damageDice ?? '') })}
+                isUsable={w => canReactWithWeapon(p.archer, p.mover, w, rangeBonus, formationsMap[p.archer.currentFormation] ?? null)}
               />
               <div className="flex justify-end gap-2">
                 <button className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm" onClick={cancelReactionChoice}>Cancel</button>

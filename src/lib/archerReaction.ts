@@ -18,6 +18,23 @@ export function isRangedCapableWeapon(w: Pick<Weapon, 'range' | 'maxRange'> | nu
 }
 
 /**
+ * Can `archer` react at `mover` with `weapon`? Requires a ranged-capable weapon
+ * whose **range** (not maxRange — a reaction is a snap shot, no long-range
+ * band) covers the mover, and the mover inside the archer's ranged arc.
+ */
+export function canReactWithWeapon(
+  archer: Pick<Unit, 'hex' | 'facing' | 'currentFormation'>,
+  mover: Pick<Unit, 'hex'>,
+  weapon: Pick<Weapon, 'range' | 'maxRange'> | null | undefined,
+  rangeBonus = 0,
+  form?: Formation | null,
+): boolean {
+  if (!weapon || !isRangedCapableWeapon(weapon)) return false;
+  if (hexDistance(archer.hex, mover.hex) > (weapon.range ?? 1) + rangeBonus) return false;
+  return canRangedTarget(form, arcOfTarget(archer.hex, archer.facing, mover.hex));
+}
+
+/**
  * Movement available to a reaction reposition: one FULL action's pool (not the
  * old half move) — the leftover MP on hand, or a full pool when MP is exhausted
  * and an action remains. Heroes use the prorated hero pool. Mirrors the reach of
@@ -54,10 +71,6 @@ export function findEligibleReactionArchers(
     if (!isHostile(o.team, mover.team, alliances)) return false;
     if ((o.actionsAvailable ?? 0) < 1 || o.archerReactionUsed) return false;
     const weapon = parseWeapons(o.weaponString || '')[o.activeWeaponIndex ?? 0];
-    if (!weapon || !isRangedCapableWeapon(weapon)) return false;
-    const reach = weapon.range + (rangeBonus?.(o) ?? 0);
-    if (hexDistance(o.hex, mover.hex) > reach) return false;
-    const form = formationsMap?.[o.currentFormation] ?? null;
-    return canRangedTarget(form, arcOfTarget(o.hex, o.facing, mover.hex));
+    return canReactWithWeapon(o, mover, weapon, rangeBonus?.(o) ?? 0, formationsMap?.[o.currentFormation] ?? null);
   });
 }

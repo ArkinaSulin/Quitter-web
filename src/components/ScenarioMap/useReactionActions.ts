@@ -10,7 +10,7 @@ import { resolveCombatSequence, wallCoverAgainst } from '@/lib/unitCombat';
 import { applyFormationChange } from '@/lib/formationCost';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
-import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers } from '@/lib/archerReaction';
+import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers, canReactWithWeapon } from '@/lib/archerReaction';
 import { canRangedTarget } from '@/lib/formationRules';
 import { hasLineOfSight } from '@/lib/lineOfSight';
 import { parseWeapons, damageDiceCount, withDamageDiceCount, Weapon } from '@/lib/weaponParser';
@@ -488,11 +488,9 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     }
     const weapons = parseWeapons(archer.weaponString || '');
     const rangeBonus = rangeBonusAt(archer, groundZones);
-    const dist = hexDistance(archer.hex, mover.hex);
-    const inArc = canRangedTarget(formationsMap[archer.currentFormation] ?? null, arcOfTarget(archer.hex, archer.facing, mover.hex));
     const usable = weapons
       .map((w, i) => ({ w, i }))
-      .filter(({ w }) => isRangedCapableWeapon(w) && dist <= (w.range ?? 1) + rangeBonus && inArc);
+      .filter(({ w }) => canReactWithWeapon(archer, mover, w, rangeBonus, formationsMap[archer.currentFormation] ?? null));
     if (usable.length === 0) {
       addMessage(`${archer.unitName} has no ranged weapon that can react to ${mover.unitName}`);
       return;

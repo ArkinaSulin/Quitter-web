@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers } from './archerReaction';
+import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers, canReactWithWeapon } from './archerReaction';
 import { Unit, Hex } from '@/types/gameProtocol';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
@@ -93,6 +93,28 @@ describe('reactionMovePool', () => {
     expect(reactionMovePool(unit(0, 5, true), 3)).toBe(3);
     // maxMP 6 → 1.2 MP/action: 2 actions = 2.4 → floored to 2.
     expect(reactionMovePool(unit(0, 2, true), 6)).toBe(2);
+  });
+});
+
+describe('canReactWithWeapon', () => {
+  const archer = makeUnit({ hex: h(0, 0), facing: 0 });
+  const mover = makeUnit({ id: 'm', team: 'blue', hex: h(2, 0) });
+  const shortbow = { range: 2, maxRange: 6 };
+
+  it('true when the mover is within weapon RANGE (not just maxRange)', () => {
+    expect(canReactWithWeapon(archer, mover, shortbow)).toBe(true); // dist 2 <= range 2
+  });
+
+  it('false when only maxRange could reach (beyond range)', () => {
+    const far = makeUnit({ id: 'm', team: 'blue', hex: h(3, 0) }); // dist 3 > range 2
+    expect(canReactWithWeapon(archer, far, shortbow)).toBe(false);
+  });
+
+  it('false for a melee weapon or when the mover is outside the ranged arc', () => {
+    expect(canReactWithWeapon(archer, mover, { range: 1, maxRange: 1 })).toBe(false);
+    const openOrder = { name: 'Open Order', ranged_target_arcs: ['front'] } as any;
+    // Mover due east from facing 0 = flank (arc blocks it).
+    expect(canReactWithWeapon(archer, mover, shortbow, 0, openOrder)).toBe(false);
   });
 });
 

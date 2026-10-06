@@ -10,7 +10,7 @@ import { Unit } from '@/types/gameProtocol';
 import { Weapon, withDamageDiceCount } from '@/lib/weaponParser';
 import { canWeaponAttack } from '@/lib/meleeFallback';
 
-export function WeaponSelect({ attacker, target, weapons, value, rangeBonus, onChange, diceCount, onDiceCountChange }: {
+export function WeaponSelect({ attacker, target, weapons, value, rangeBonus, onChange, diceCount, onDiceCountChange, isUsable }: {
   attacker: Unit;
   target: Unit;
   weapons: Weapon[];
@@ -21,6 +21,9 @@ export function WeaponSelect({ attacker, target, weapons, value, rangeBonus, onC
   /** Leading damage-die count `[x]` for the selected weapon (upcast). */
   diceCount: number;
   onDiceCountChange: (count: number) => void;
+  /** Optional override for which weapons are selectable (default: normal attack
+   *  reach). A reaction passes its own range-based predicate. */
+  isUsable?: (weapon: Weapon, index: number) => boolean;
 }) {
   if (weapons.length === 0) return <p className="text-xs text-gray-400 italic">No weapons</p>;
   const selected = weapons[value];
@@ -35,7 +38,7 @@ export function WeaponSelect({ attacker, target, weapons, value, rangeBonus, onC
           onChange={e => onChange(Number(e.target.value))}
         >
           {weapons.map((w, i) => {
-            const usable = canWeaponAttack(w, attacker, target, rangeBonus);
+            const usable = isUsable ? isUsable(w, i) : canWeaponAttack(w, attacker, target, rangeBonus);
             return (
               <option key={i} value={i} disabled={!usable}>
                 {w.name}{usable ? '' : ' — cannot reach'}

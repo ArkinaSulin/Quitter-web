@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## Reaction picker greys weapons outside reaction range (2026-10-05)
+**Files:** src/lib/archerReaction.ts (+ test), src/components/ScenarioMap/{WeaponSelect,useReactionActions,ScenarioMap}.tsx, docs/dev/{08-combat,changelog}.md
+
+- New `archerReaction.canReactWithWeapon(archer, mover, weapon, rangeBonus, form)`
+  — ranged-capable AND within the weapon's **range** (not maxRange) AND in the
+  ranged arc. `findEligibleReactionArchers` and `requestReactionAttack` now use
+  it, and `WeaponSelect` gains an optional `isUsable` predicate so the reaction
+  picker **greys out** any weapon beyond reaction range (the normal pickers keep
+  `canWeaponAttack`/maxRange). `tsc` clean, 934 tests, build clean. No migration.
+
 ## Reaction magic: cast window mid-reaction (incl. healing) (2026-10-05)
 **Files:** src/hooks/useMagicCast.ts, src/components/ScenarioMap/{useCastActions,useReactionActions,ScenarioMap}.tsx, docs/dev/{08-combat,changelog}.md
 
