@@ -36,7 +36,7 @@ interface ContextMenuProps {
   /** True when the unit hovers above its hex surface (elevation > surface). */
   isAirborne?: boolean;
   onAttachHero?: (heroId: string, targetUnitId: string) => void;
-  /** Swap an attached hero between front/back position (costs 1 hero MP). */
+  /** Swap an attached hero between front/back position (free — same-hex reposition). */
   onSwapHeroPosition?: (hero: Unit) => void;
   /** Hero attached to `unit` (when the menu is showing the host) → "Switch to Hero". */
   attachedHero?: Unit;
@@ -135,6 +135,14 @@ export function ContextMenu({
 
   const canAttach = unit.isHero && (unit.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !unit.attachedToUnitId && !!onAttachHero;
 
+  // Cost labels: a unit turns on MP (fly pool while airborne); free for heroes,
+  // Scattered, Routed and free-move. Formation changes are a fraction (50%) of the
+  // pool that action converts to — shown as a share of the max.
+  const poolLabel = isAirborne ? 'FP' : 'MP';
+  const rotateFree = freeMove || unit.currentFormation === 'Scattered' || isUnitRouted(unit);
+  const rotateCostLabel = rotateFree ? 'free' : `1 ${poolLabel}`;
+  const formationCostLabel = freeMove ? 'free' : `50% Max ${poolLabel}`;
+
   const attachableTargets = units.filter(u =>
     u.id !== unit.id && !u.isDeleted && !u.mountId && !u.mountName && !u.attachedToUnitId && (!u.isHero || (u.sizeCategory || 100) > (unit.sizeCategory || 100)) &&
     u.team === unit.team &&
@@ -217,13 +225,13 @@ export function ContextMenu({
             className={`px-3 py-1 ${unit.isCharging ? 'text-gray-600 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}`}
             onClick={() => { if (unit.isCharging) return; onRotate('left'); onClose(); }}
           >
-            Rotate Left
+            Rotate Left ({rotateCostLabel})
           </div>
           <div
             className={`px-3 py-1 ${unit.isCharging ? 'text-gray-600 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}`}
             onClick={() => { if (unit.isCharging) return; onRotate('right'); onClose(); }}
           >
-            Rotate Right
+            Rotate Right ({rotateCostLabel})
           </div>
           {onRotate180 && (() => {
             const isMounted = !!unit.mountId || !!unit.mountName;
@@ -237,7 +245,7 @@ export function ContextMenu({
               ? 'Cannot about-turn (mounted, close formation)'
               : aboutTurnFree
                 ? 'Rotate 180° (free)'
-                : `Rotate 180° (${aboutTurnCost} MP, −${aboutTurnOrg} org)`;
+                : `Rotate 180° (${aboutTurnCost} ${poolLabel}, −${aboutTurnOrg} org)`;
             return (
               <div
                 className={`px-3 py-1 ${unit.isCharging || aboutTurnBlocked ? 'text-gray-600 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}`}
@@ -300,6 +308,7 @@ export function ContextMenu({
                     onClick={() => { if (opt.disabled || unit.isCharging) return; onChangeFormation(opt.value); onClose(); }}
                   >
                     {isCurrent ? `>${opt.value}<` : opt.value}
+                    {!isCurrent && <span className="text-gray-500 text-xs"> ({formationCostLabel})</span>}
                   </div>
                 );
               })}

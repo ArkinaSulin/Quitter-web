@@ -19,7 +19,7 @@ import { parseWeapons, damageDiceCount } from '@/lib/weaponParser';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
-import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne } from '@/lib/flying';
+import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax } from '@/lib/flying';
 import { Walls, directionBetween, edgeRef } from '@/lib/walls';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, structureWaivesClimb, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
@@ -592,14 +592,19 @@ export function useMoveActions(deps: MoveActionsDeps) {
       await changeFormation(unit, formation, formationsMap, structureSurfaceAt(unit.hex, structures, structureTemplates));
       return;
     }
+    const surface = structureSurfaceAt(unit.hex, structures, structureTemplates);
+    // Airborne units pay the formation change from the fly pool (raw flySpeed);
+    // grounded ones from ground MP — mirrors useGameEngine.changeFormation.
+    const fly = isAirborne(unit.elevation, surface);
     const oldForm = formationsMap[unit.currentFormation];
     const oldMult = oldForm?.movement_multiplier ?? 1;
-    const oldEffectiveMax = computeEffectiveMovement(unit, oldMult);
-    if (isFormationChangeAffordable(unit, oldEffectiveMax)) {
-      await changeFormation(unit, formation, formationsMap, structureSurfaceAt(unit.hex, structures, structureTemplates));
+    const oldEffectiveMax = fly ? flyMax(unit) : computeEffectiveMovement(unit, oldMult);
+    const budget = moveBudgetUnit(unit, fly ? 'fly' : 'ground');
+    if (isFormationChangeAffordable(budget, oldEffectiveMax)) {
+      await changeFormation(unit, formation, formationsMap, surface);
       return;
     }
-    setPendingFormation({ unit, formation });
+    setPendingFormation({ unit, formation, mode: fly ? 'fly' : 'ground' });
   }, [changeFormation, formationsMap, freeMove, isFormationChangeAffordable, structures, structureTemplates, groundZones, addMessage]);
 
   const handleMoveTeam = useCallback(async (team: string, targetGroup: AllianceGroup) => {

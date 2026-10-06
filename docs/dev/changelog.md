@@ -1,5 +1,21 @@
 # QuiTTER Changelog
 
+## Airborne formation changes use the fly pool; move cost labels (2026-10-05)
+**Files:** src/components/ScenarioMap/{useMoveActions,SoftEnforcementModals,ScenarioMap,ContextMenu}.tsx, src/lib/formationCost.test.ts, docs/dev/{07-movement-economy,changelog}.md
+
+- **Bug: airborne formation change wrongly demanded ground MP/actions.**
+  `useMoveActions.handleChangeFormation` checked affordability against the ground
+  pool only, so a flyer at 0 MP / 0 actions (Griffon, 5/8 FP) got the over-budget
+  modal even though the engine's `changeFormation` already pays from the fly pool.
+  The gate now mirrors the engine (`isAirborne` → `flyMax` + `moveBudgetUnit(unit,
+  'fly')`). `PendingFormation` gained `mode: 'ground' | 'fly'`, and the modal +
+  `confirmFormation` error show `FP`/the fly max when airborne.
+- **Context-menu cost labels.** Rotate Left/Right now read `(1 MP)` (`(1 FP)`
+  airborne; `(free)` for free-move/Scattered/Routed); Rotate 180° swaps `MP`→`FP`
+  airborne; formation entries show `(50% Max MP)` / `(50% Max FP)` (`(free)` under
+  free-move). Hero front/back swaps stay `(free)`. `tsc` clean, tests pass, build
+  clean. No migration.
+
 ## Hero threat: same-elevation adjacency; rider+mount combined; tooltip note (2026-10-05)
 **Files:** src/lib/unitMorale.ts (+ test), src/components/ScenarioMap/UnitTooltip.tsx, docs/dev/{08-combat,09-morale-routing-pursuit,changelog}.md, .scratch/hero-mount/spec.md
 

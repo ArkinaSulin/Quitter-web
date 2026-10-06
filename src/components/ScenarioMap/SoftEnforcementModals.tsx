@@ -7,6 +7,7 @@ import { EdgeRef } from '@/lib/walls';
 import { heroMovePerAction } from '@/lib/moveCost';
 import { unitAttackCap } from '@/lib/attackCap';
 import { getFormationChangeMpCost } from '@/lib/formationCost';
+import { flyMax } from '@/lib/flying';
 import { ConfirmModal } from './ConfirmModal';
 
 export interface PendingMove {
@@ -51,6 +52,8 @@ export interface PendingAttachOverBudget {
 export interface PendingFormation {
   unit: Unit;
   formation: string;
+  /** Which pool the change draws from — airborne units pay from the fly pool. */
+  mode: 'ground' | 'fly';
 }
 
 export interface PendingChargeAttack {
@@ -214,7 +217,7 @@ export function SoftEnforcementModals({ pending, actions, cancels, unitMaxMP }: 
           buttons={[{ label: 'Yes, change anyway', variant: 'red', onClick: actions.confirmFormation }]}
           onCancel={cancels.formation}
         >
-          {p.formation.unit.unitName} needs {getFormationChangeMpCost(unitMaxMP(p.formation.unit))} MP (1 action) to form {p.formation.formation}, but has {p.formation.unit.actionsAvailable} action(s) left.
+          {p.formation.unit.unitName} needs {getFormationChangeMpCost(p.formation.mode === 'fly' ? flyMax(p.formation.unit) : unitMaxMP(p.formation.unit))} {p.formation.mode === 'fly' ? 'FP' : 'MP'} (1 action) to form {p.formation.formation}, but has {p.formation.unit.actionsAvailable} action(s) left.
         </ConfirmModal>
       )}
 

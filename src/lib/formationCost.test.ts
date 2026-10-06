@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyFormationChange, isFormationChangeAffordable, getFormationChangeMpCost, nextLowerFormation, formationAtOrBelow } from './formationCost';
+import { moveBudgetUnit, flyMax } from './flying';
 
 const budget = (movementPointsAvailable: number, actionsAvailable: number) => ({
   movementPointsAvailable,
@@ -98,6 +99,15 @@ describe('isFormationChangeAffordable', () => {
   it('is false when MP + action pools fall short', () => {
     expect(isFormationChangeAffordable(budget(0, 0), 4)).toBe(false);
     expect(isFormationChangeAffordable(budget(1, 0), 4)).toBe(false);
+  });
+
+  it('an airborne flyer pays from the fly pool (griffon: 0 MP, 5/8 FP, 0 actions)', () => {
+    // moveBudgetUnit maps the active pool into `movementPointsAvailable`.
+    const unit = { movementPointsAvailable: 0, flySpeedAvailable: 5, flySpeed: 8, actionsAvailable: 0 };
+    const flyBudget = moveBudgetUnit(unit, 'fly'); // { movementPointsAvailable: 5, actionsAvailable: 0 }
+    expect(isFormationChangeAffordable(flyBudget, flyMax(unit))).toBe(true); // 5 ≥ cost 4
+    // The ground pool alone would (wrongly) say unaffordable.
+    expect(isFormationChangeAffordable(moveBudgetUnit(unit, 'ground'), 0)).toBe(false);
   });
 });
 

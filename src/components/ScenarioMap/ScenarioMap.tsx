@@ -52,7 +52,7 @@ import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes, mpCostOverrides } from './mapGeometry';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/lib/withdraw';
-import { canReachStructure, canFly, parseClimbTo, isAirborne } from '@/lib/flying';
+import { canReachStructure, canFly, parseClimbTo, isAirborne, flyMax } from '@/lib/flying';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/lib/walls';
 import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt } from '@/lib/mapStructures';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
@@ -2622,7 +2622,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const pf = pendingFormation!;
       setPendingFormation(null);
       if (!controlsLocked) {
-        addError(`${pf.unit.unitName} changed formation over budget — ${getFormationChangeMpCost(unitMaxMP(pf.unit))} MP needed, ${pf.unit.actionsAvailable} action(s) left`);
+        addError(`${pf.unit.unitName} changed formation over budget — ${getFormationChangeMpCost(pf.mode === 'fly' ? flyMax(pf.unit) : unitMaxMP(pf.unit))} ${pf.mode === 'fly' ? 'FP' : 'MP'} needed, ${pf.unit.actionsAvailable} action(s) left`);
         await changeFormation(pf.unit, pf.formation, formationsMap, structureSurfaceAt(pf.unit.hex, structures, structureTemplates));
       }
     },
