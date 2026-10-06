@@ -53,18 +53,18 @@ describe('flying', () => {
     expect(verticalGapDown(0, 10)).toBe(false); // target above
   });
 
-  it('elevationOffset: NE 45°; flyer = full, non-flyer = half, constant by height', () => {
+  it('elevationOffset: NE 45°; flyer = full, non-flyer = quarter, constant by height', () => {
     expect(elevationOffset(0, 100)).toEqual({ dx: 0, dy: 0 });
-    // Flyer = stage 2 (full) at any height.
+    // Flyer = full hex radius at any height.
     const flyer = elevationOffset(10, 100, true);
     expect(flyer.dx).toBeCloseTo(100 * Math.SQRT1_2, 5);
     expect(flyer.dy).toBeCloseTo(-100 * Math.SQRT1_2, 5);
-    // Non-flyer (elevated ground unit / climber) = stage 1 (half) at any height.
-    expect(elevationOffset(30, 100, false).dx).toBeCloseTo(100 * 0.5 * Math.SQRT1_2, 5);
+    // Non-flyer (elevated ground unit / climber) = quarter hex radius.
+    expect(elevationOffset(30, 100, false).dx).toBeCloseTo(100 * 0.25 * Math.SQRT1_2, 5);
     // A direction override points the offset (e.g. a climber toward its target).
     const dir = elevationOffset(10, 100, false, { dx: 0, dy: -1 });
     expect(dir.dx).toBeCloseTo(0, 5);
-    expect(dir.dy).toBeCloseTo(-50, 5);
+    expect(dir.dy).toBeCloseTo(-25, 5);
   });
 
   it('airOccupiedHexes only counts elevated units', () => {

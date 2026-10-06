@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Reaction mover X marker; hover own-hex; halved non-flyer elevation offset (2026-10-05)
+**Files:** src/components/TokenRenderer/drawToken.ts, src/components/ScenarioMap/{useCanvasDraw,useOverlay}.tsx (+ test), src/lib/flying.ts (+ test), docs/dev/{15-token-rendering,changelog}.md
+
+- **Reaction target marker.** The unit that moved (the reaction target) now gets a
+  bold amber **X** (`drawTargetMarker`, `#f59e0b` — same as the reactor's halo)
+  on its token, instead of only the faint hex tint.
+- **Hover shows the unit's own hex.** `getOverlayForUnit` fills the hovered
+  unit's own hex **cyan** (`rgba(120,200,255,0.4)`) in addition to its red ZoC
+  front-2, so an offset/elevated token's home hex is obvious. (Set first, so a
+  flyer's vertical-ZoC red still wins on its own hex.)
+- **Halved non-flyer elevation offset.** `elevationOffset` now uses a **quarter**
+  hex radius for a non-flyer (elevated ground unit / climber); flyers keep the
+  full radius. Rendering + hit-testing stay in sync (one helper). `tsc` clean,
+  934 tests, build clean. No migration.
+
 ## Reaction picker greys weapons outside reaction range (2026-10-05)
 **Files:** src/lib/archerReaction.ts (+ test), src/components/ScenarioMap/{WeaponSelect,useReactionActions,ScenarioMap}.tsx, docs/dev/{08-combat,changelog}.md
 

@@ -45,8 +45,9 @@ export function verticalGapDown(upperElevation: number | undefined, targetElevat
 
 /**
  * Screen-pixel offset of an ELEVATED token from its ground hex center, in the NE
- * (45°) direction. Scales with elevation: half a hex radius at 10 ft, a full hex
- * radius at 20 ft+ (capped). Returns (0,0) when grounded.
+ * (45°) direction. Two CONSTANT visual magnitudes (independent of height): a
+ * **flyer** = a full hex radius; a **non-flyer** (an elevated ground unit, incl.
+ * a climber) = a QUARTER hex radius. Returns (0,0) when grounded.
  */
 export function elevationOffset(
   elevation: number | undefined,
@@ -58,10 +59,7 @@ export function elevationOffset(
 ): { dx: number; dy: number } {
   const feet = elevation ?? 0;
   if (feet <= 0) return { dx: 0, dy: 0 };
-  // Two CONSTANT visual levels (independent of height): a NON-flyer (an elevated
-  // ground unit, incl. a climber) = stage 1 (half a hex); a FLYER = stage 2 (full).
-  const level = flyer ? 2 : 1;
-  const distance = hexSize * 0.5 * level;
+  const distance = hexSize * (flyer ? 1.0 : 0.25);
   const d = dir ?? { dx: Math.SQRT1_2, dy: -Math.SQRT1_2 };
   return { dx: distance * d.dx, dy: distance * d.dy };
 }

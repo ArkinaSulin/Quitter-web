@@ -27,6 +27,7 @@ function mk(over: Partial<Unit> = {}): Unit {
 const ALLIANCES: Record<string, AllianceGroup> = { blue: 'friendly', red: 'enemy' };
 const WHITE = 'rgba(255, 255, 255, 0.5)';
 const RED = 'rgba(255, 100, 100, 0.5)';
+const CYAN = 'rgba(120, 200, 255, 0.4)';
 
 function hoverOverlay(unit: Unit, units: Unit[] = [unit]) {
   return computeOverlayMap({
@@ -90,10 +91,10 @@ describe('computeOverlayMap — hovered-unit ZoC tint', () => {
     expect(map['0,0']).toBe(RED);
   });
 
-  it('a hovered grounded unit tints only its front-2', () => {
+  it('a hovered grounded unit tints its front-2 and marks its own hex cyan', () => {
     const map = hoverOverlay(mk({ id: 'f', hex: h(0, 0), facing: 0 }));
     expect(map['0,-1']).toBe(RED);
     expect(map['1,-1']).toBe(RED);
-    expect(map['0,0']).toBeUndefined();
+    expect(map['0,0']).toBe(CYAN); // own hex
   });
 });

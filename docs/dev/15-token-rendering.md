@@ -57,6 +57,14 @@ Name runs flush along the bottom in white with a dark shadow.
 - **Attached heroes** draw half-size at the host's front/back hex vertex
   (`mapGeometry.getAttachedHeroPos`), with a highlight box on the currently
   active hero.
+- **Elevated token offset** (`flying.elevationOffset`, also used by hit-testing):
+  NE 45°, constant by height — a **flyer** = a full hex radius; a **non-flyer**
+  (an elevated ground unit or a climber) = a **quarter** hex radius. A climber
+  points the offset toward its target hex.
+- **Reaction markers**: the acting archer gets an amber halo (`#f59e0b`); the
+  mover it reacts to (the reaction **target**) gets a bold amber **X**
+  (`drawTargetMarker`) on its token; hovering a unit tints its **own hex cyan**
+  in addition to its red ZoC front-2.
 - **Effect pips** render under tokens (buffs/debuffs present, `10`); corpse
   (HP ≤ 0, non-hero) = grayscaled; downed **hero** (HP ≤ 0) grayscales but
   stays interactable.

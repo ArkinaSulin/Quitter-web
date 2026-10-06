@@ -34,6 +34,9 @@ function getOverlayForUnit(unit: Unit, structures?: MapStructures, templates?: R
   const ownSurface = structureSurfaceAt(unit.hex, structures, templates);
   const exclude = (u: Unit) => u.isHero || !!u.attachedToUnitId;
   const targetElevation = unit.elevation ?? 0;
+  // The unit's OWN hex (cyan) so an offset/elevated token's home hex is obvious.
+  // Set first: a flyer's vertical-ZoC red still overrides its own hex.
+  result[`${unit.hex.q},${unit.hex.r}`] = 'rgba(120, 200, 255, 0.4)';
   for (const dirIdx of frontArcIndices(unit.facing)) {
     const dir = HEX_DIRS[dirIdx];
     const H: Hex = { q: unit.hex.q + dir.q, r: unit.hex.r + dir.r, s: -unit.hex.q - dir.q - unit.hex.r - dir.r };

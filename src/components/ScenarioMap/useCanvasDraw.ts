@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
 import { hexToPixel } from '@/hooks/useHexGrid';
 import { Unit, Hex, AllianceGroup, Formation, SizeCategory, GroundEffect } from '@/types/gameProtocol';
-import { drawToken, loadImage, getLoadedImage, drawArcherReactionButton } from '@/components/TokenRenderer/drawToken';
+import { drawToken, loadImage, getLoadedImage, drawArcherReactionButton, drawTargetMarker } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
 import { isDeadCorpse } from '@/lib/unitInteractions';
 import { corpseDots, FallenMap } from '@/lib/corpseTracker';
@@ -614,6 +614,10 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       } else if (!reactionMode && reactionOffers.has(unit.id) && !unit.archerReactionUsed && canReactToUnit(unit)) {
         drawArcherReactionButton(ctx, cx, cy, HEX_SIZE * currentZoom * 0.5, bowBlinkOn ? 0.4 : 1);
+      }
+      // The reaction TARGET (the unit that moved) gets a bold amber X on its token.
+      if (reactionMode && unit.id === reactionMode.moverId) {
+        drawTargetMarker(ctx, tokenCx, tokenCy, HEX_SIZE * currentZoom * 0.5);
       }
 
       const attachedHero = attachedByHost.get(unit.id);

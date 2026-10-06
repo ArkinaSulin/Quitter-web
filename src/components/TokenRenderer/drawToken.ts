@@ -741,6 +741,37 @@ export function drawArcherReactionButton(
 }
 
 /**
+ * A bold amber X marker centered at (cx,cy) — the reaction TARGET indicator
+ * (drawn on the unit that moved, in the same `#f59e0b` as the reactor's halo).
+ * Same map-overlay family as `drawArcherReactionButton` (scales with the hex).
+ */
+export function drawTargetMarker(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  color = '#f59e0b',
+): void {
+  ctx.save();
+  const r = size * 0.5;
+  ctx.lineCap = 'round';
+  // Dark outline underneath for contrast on busy tokens, then the amber X.
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+  ctx.lineWidth = Math.max(4, size * 0.24);
+  ctx.beginPath();
+  ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r);
+  ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r);
+  ctx.stroke();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(3, size * 0.16);
+  ctx.beginPath();
+  ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r);
+  ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
  * Routed white flag drawn at the given rect. Shared by unit tokens and the hero
  * square path (which previously never rendered a rout indicator).
  */
