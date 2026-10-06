@@ -4,7 +4,7 @@ import {
   maxElevationAfter, elevationSliderRange, carryRule, FLYING_MAX_FORMATION, flyingFormationCap,
   meleeElevationFor, canReachStructure, STRUCTURE_HEIGHT_FT,
   movePoolMode, flyMax, moveBudgetUnit, passengerDrain, rollFallDamage,
-  isAirborne, withinVerticalGap, verticalGapDown,
+  isAirborne, withinVerticalGap, verticalGapDown, usesFlyPool,
 } from './flying';
 import { Unit } from '@/types/gameProtocol';
 
@@ -43,6 +43,14 @@ describe('flying', () => {
     expect(isAirborne(10, 10)).toBe(false); // grounded on a 10-ft structure
     expect(isAirborne(0, 0)).toBe(false);
     expect(isAirborne(undefined, 0)).toBe(false);
+  });
+
+  it('usesFlyPool: airborne AND fly-capable (a non-flyer climber spends ground MP)', () => {
+    expect(usesFlyPool({ elevation: 20, flySpeed: 6 })).toBe(true);
+    expect(usesFlyPool({ elevation: 0, flySpeed: 6 })).toBe(false); // grounded
+    expect(usesFlyPool({ elevation: 20, flySpeed: 0 })).toBe(false); // elevated non-flyer (climber)
+    expect(usesFlyPool({ elevation: 20, flySpeed: 0 }, 0)).toBe(false);
+    expect(usesFlyPool({ elevation: 0, flySpeed: 0 })).toBe(false);
   });
 
   it('withinVerticalGap / verticalGapDown', () => {

@@ -6,6 +6,7 @@ import { Unit, getOrganizationLevel, Formation } from '@/types/gameProtocol';
 import { areHexesAdjacent, isUnitRouted } from '@/lib/unitMorale';
 import { parseWeapons, formatWeaponDisplay } from '@/lib/weaponParser';
 import { chargeStanceFor } from '@/lib/chargeStance';
+import { canFly } from '@/lib/flying';
 import { getSetting } from '@/lib/settingsCache';
 import { TEAM_COLORS } from '@/components/TokenRenderer/tokenUtils';
 import { Floating } from './Floating';
@@ -135,10 +136,12 @@ export function ContextMenu({
 
   const canAttach = unit.isHero && (unit.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !unit.attachedToUnitId && !!onAttachHero;
 
-  // Cost labels: a unit turns on MP (fly pool while airborne); free for heroes,
-  // Scattered, Routed and free-move. Formation changes are a fraction (50%) of the
-  // pool that action converts to — shown as a share of the max.
-  const poolLabel = isAirborne ? 'FP' : 'MP';
+  // Cost labels: a unit turns on MP (fly pool while airborne). A unit without
+  // fly points (e.g. a non-flyer climbing a wall) is elevated but still spends
+  // ground MP, so it shows MP. Free for heroes, Scattered, Routed and free-move.
+  // Formation changes are a fraction (50%) of the pool that action converts to —
+  // shown as a share of the max.
+  const poolLabel = isAirborne && canFly(unit) ? 'FP' : 'MP';
   const rotateFree = freeMove || unit.currentFormation === 'Scattered' || isUnitRouted(unit);
   const rotateCostLabel = rotateFree ? 'free' : `1 ${poolLabel}`;
   const formationCostLabel = freeMove ? 'free' : `50% Max ${poolLabel}`;

@@ -32,6 +32,15 @@ export function isAirborne(elevation: number | undefined, surface: number): bool
   return (elevation ?? 0) > surface;
 }
 
+/**
+ * True when a unit spends its FLY pool rather than ground MP: it must be able to
+ * fly (`canFly`) AND actually be airborne. An elevated NON-flyer (a climber
+ * hanging above its hex) is airborne by elevation but still spends ground MP.
+ */
+export function usesFlyPool(unit: Pick<Unit, 'elevation' | 'flySpeed'>, surface = 0): boolean {
+  return isAirborne(unit.elevation, surface) && canFly(unit);
+}
+
 /** Are two elevations within `ft` of each other (default 10 ft, melee reach)? */
 export function withinVerticalGap(a: number | undefined, b: number | undefined, ft = 10): boolean {
   return Math.abs((a ?? 0) - (b ?? 0)) <= ft;

@@ -83,10 +83,12 @@ Worked example (base move 3): Scattered (eff 4) → Open Order costs
 Phalanx (eff 1) → Scattered (any steps down) = 1. Free for heroes and under
 free move; a Shield-Wall change is blocked while wielding a two-handed weapon.
 
-An **airborne** unit pays the change from its **fly pool** (`flyMax` = raw
+An **airborne flyer** pays the change from its **fly pool** (`flyMax` = raw
 `flySpeed`, and the pool is `flySpeedAvailable`) instead of ground MP — e.g. a
-flyer at 5/8 FP with 0 ground MP can still change formation for 4 FP. The
-context-menu cost labels follow suit (`50% Max FP` / `1 FP` while airborne).
+flyer at 5/8 FP with 0 ground MP can still change formation for 4 FP. An elevated
+**non-flyer** (a unit climbing a wall) is airborne by elevation but still spends
+**ground MP** (`usesFlyPool` = `isAirborne && canFly`). The context-menu cost
+labels follow suit (`50% Max FP` / `1 FP` only for actual flyers).
 
 ## Reachable map (what you may drop on)
 

@@ -19,7 +19,7 @@ import { parseWeapons, damageDiceCount } from '@/lib/weaponParser';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
-import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax } from '@/lib/flying';
+import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool } from '@/lib/flying';
 import { Walls, directionBetween, edgeRef } from '@/lib/walls';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, structureWaivesClimb, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/lib/mapStructures';
 import { StructureTemplate } from '@/types/structure';
@@ -593,9 +593,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
       return;
     }
     const surface = structureSurfaceAt(unit.hex, structures, structureTemplates);
-    // Airborne units pay the formation change from the fly pool (raw flySpeed);
-    // grounded ones from ground MP — mirrors useGameEngine.changeFormation.
-    const fly = isAirborne(unit.elevation, surface);
+    // Airborne FLYERS pay the formation change from the fly pool (raw flySpeed);
+    // grounded units — and elevated non-flyers (a climber) — from ground MP.
+    // Mirrors useGameEngine.changeFormation.
+    const fly = usesFlyPool(unit, surface);
     const oldForm = formationsMap[unit.currentFormation];
     const oldMult = oldForm?.movement_multiplier ?? 1;
     const oldEffectiveMax = fly ? flyMax(unit) : computeEffectiveMovement(unit, oldMult);

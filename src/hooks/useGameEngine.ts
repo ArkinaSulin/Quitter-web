@@ -6,7 +6,7 @@ import { Unit, Hex, AllianceGroup, Formation, getOrganizationLevel } from '@/typ
 import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
 import { applyFormationChange } from '@/lib/formationCost';
 import { nextLowerFormation } from '@/lib/formationCost';
-import { flyingFormationCap, movePoolMode, flyMax, moveBudgetUnit, passengerDrain, isAirborne } from '@/lib/flying';
+import { flyingFormationCap, movePoolMode, flyMax, moveBudgetUnit, passengerDrain, usesFlyPool } from '@/lib/flying';
 import { applyMoveCost, applyMpSpend, applyHeroMoveCost } from '@/lib/moveCost';
 import { getSetting } from '@/lib/settingsCache';
 import { parseWeapons } from '@/lib/weaponParser';
@@ -630,8 +630,9 @@ export function useGameEngine({
               ? getSetting('about_turn_cost_mounted', 2)
               : getSetting('about_turn_cost_foot', 1))
           : 1;
-        // Airborne units turn on the fly pool; grounded on ground MP.
-        const fly = isAirborne(unit.elevation, surface);
+        // Airborne FLYERS turn on the fly pool; grounded units (and elevated
+        // non-flyers, e.g. a climber) on ground MP.
+        const fly = usesFlyPool(unit, surface);
         const poolMax = fly ? flyMax(unit) : maxMP;
         const budget = moveBudgetUnit(unit, fly ? 'fly' : 'ground');
         const { movementPointsAvailable, actionsAvailable } = applyMpSpend(budget, cost, poolMax);
@@ -692,9 +693,9 @@ export function useGameEngine({
       const newForm = formationsMap[formation];
       const oldMult = oldForm?.movement_multiplier ?? 1;
       const newMult = newForm?.movement_multiplier ?? 1;
-      // Airborne formation changes pay from the fly pool (raw flySpeed); grounded
-      // ones from ground MP, as before.
-      const fly = isAirborne(unit.elevation, surface);
+      // Airborne FLYERS pay formation changes from the fly pool (raw flySpeed);
+      // grounded units — and elevated non-flyers (a climber) — from ground MP.
+      const fly = usesFlyPool(unit, surface);
       const oldEffectiveMax = fly ? flyMax(unit) : computeEffectiveMovement(unit, oldMult);
       const newEffectiveMax = fly ? flyMax(unit) : computeEffectiveMovement(unit, newMult);
       const budget = moveBudgetUnit(unit, fly ? 'fly' : 'ground');
