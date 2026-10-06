@@ -15,7 +15,7 @@ import { modifierAmount } from '@/lib/effectTemplates';
 import { unitIgnoresClimb, unitHasFeatherFall } from '@/lib/unitEffects';
 import { areHexesAdjacent } from '@/lib/unitMorale';
 import { WITHDRAW_ACTION_COST } from '@/lib/withdraw';
-import { parseWeapons } from '@/lib/weaponParser';
+import { parseWeapons, damageDiceCount } from '@/lib/weaponParser';
 import { SubStep, UnitChange } from '@/lib/commandLog';
 import { findAttachedHero, heroRideMoveStep } from '@/lib/heroAttachment';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
@@ -126,6 +126,8 @@ export function useMoveActions(deps: MoveActionsDeps) {
     isHostile: boolean;
     /** Selected weapon index for the occupant attack (defaults to the active one). */
     weaponIndex: number;
+    /** Upcast: leading damage-die count for the chosen weapon. */
+    damageDiceCount: number;
     /** Main target of a mounted pair (defaults to the rider). */
     mainTarget: 'mount' | 'rider';
   } | null>(null);
@@ -572,7 +574,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (canFly(unit)) {
       const groundOccupied = units.some(u => u.id !== unitId && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) <= 0 && u.hex.q === targetHex.q && u.hex.r === targetHex.r);
       const range = elevationSliderRange(unit.elevation ?? 0, entry.cost, groundOccupied);
-      setPendingElevation({ unit, targetHex, cost: entry.cost, maxMP: finalMax, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation, range, originAir: flying, originSurface, endSurface, occupant: null, canStoop: false, isHostile: false, weaponIndex: unit.activeWeaponIndex ?? 0, mainTarget: 'rider' });
+      setPendingElevation({ unit, targetHex, cost: entry.cost, maxMP: finalMax, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation, range, originAir: flying, originSurface, endSurface, occupant: null, canStoop: false, isHostile: false, weaponIndex: unit.activeWeaponIndex ?? 0, damageDiceCount: damageDiceCount(parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0]?.damageDice ?? ''), mainTarget: 'rider' });
       return;
     }
     await completeMove(unit, targetHex, entry.cost, false, finalMax, attachedHero, heroMax, breakToFormation, descendElev, originSurface);
@@ -797,7 +799,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
       attachedHero: reach.attachedHero, heroMaxMP: reach.heroMaxMP, breakToFormation: undefined,
       range, originAir: isAirborne(unit.elevation, originSurface), originSurface, endSurface, occupant,
       canStoop: opts.canStoop, isHostile: opts.isHostile,
-      weaponIndex: unit.activeWeaponIndex ?? 0, mainTarget: 'rider',
+      weaponIndex: unit.activeWeaponIndex ?? 0,
+      damageDiceCount: damageDiceCount(parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0]?.damageDice ?? ''),
+      mainTarget: 'rider',
     });
     return true;
   }, [flyerOccupyReach, addMessage, structures, structureTemplates]);

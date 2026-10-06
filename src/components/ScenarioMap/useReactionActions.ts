@@ -13,7 +13,7 @@ import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
 import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers } from '@/lib/archerReaction';
 import { canRangedTarget } from '@/lib/formationRules';
 import { hasLineOfSight } from '@/lib/lineOfSight';
-import { parseWeapons } from '@/lib/weaponParser';
+import { parseWeapons, damageDiceCount, withDamageDiceCount } from '@/lib/weaponParser';
 import { applyHeroMoveCost, applyMoveCost, computeReachableMap, MovePathEntry } from '@/lib/moveCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout } from '@/lib/unitMorale';
 import { isHostile } from '@/lib/alliances';
@@ -77,8 +77,17 @@ export function useReactionActions(deps: ReactionActionsDeps) {
 
   const [reactionOffers, setReactionOffers] = useState<Map<string, string>>(new Map()); // archerId -> moverId
   // Locked reaction mode: only the reacting archer can act (drag-shoot / drag-move /
-  // right-click formation). Ends on completion or Escape.
-  const [reactionMode, setReactionMode] = useState<{ archer: Unit } | null>(null);
+  // right-click formation). A reaction only ever targets the unit that MOVED
+  // (`moverId`) — never any other hostile. Ends on completion or Escape.
+  const [reactionMode, setReactionMode] = useState<{ archer: Unit; moverId: string } | null>(null);
+  // Reaction attack picker: shown on a reaction drop/“Fire” when >1 ranged
+  // weapon can reach the mover — pick the weapon + upcast the damage die.
+  const [pendingReactionChoice, setPendingReactionChoice] = useState<{
+    archer: Unit;
+    mover: Unit;
+    weaponIndex: number;
+    damageDiceCount: number;
+  } | null>(null);
   const [reactionFormationPicker, setReactionFormationPicker] = useState<Unit | null>(null);
   // Slow pulse for the reaction buttons while any marker is visible.
   const [bowBlinkOn, setBowBlinkOn] = useState(false);
@@ -103,7 +112,9 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     if (eligible.length === 0) return;
     setReactionOffers(prev => {
       const next = new Map(prev);
-      for (const a of eligible) if (!next.has(a.id)) next.set(a.id, mover.id);
+      // Refresh to the LATEST mover: the archer's one reaction targets the most
+      // recent unit that provoked it.
+      for (const a of eligible) next.set(a.id, mover.id);
       return next;
     });
   }, [archerReactionEnabled, units, alliances, formationsMap]);
@@ -140,14 +151,16 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     pruneReactionOffers();
   }, [pruneReactionOffers]);
 
-  const performReactionShot = useCallback(async (archer: Unit, mover: Unit) => {
+  const performReactionShot = useCallback(async (archer: Unit, mover: Unit, opts?: { weaponIndex?: number; damageDice?: string }) => {
     const liveArcher = units.find(u => u.id === archer.id) ?? archer;
     if (liveArcher.archerReactionUsed) {
       addMessage(`${archer.unitName} already reacted this turn`);
       setReactionMode(null);
       return;
     }
-    const weapon = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0];
+    const baseWeapon = parseWeapons(archer.weaponString || '')[opts?.weaponIndex ?? archer.activeWeaponIndex ?? 0];
+    // The picker may upcast the leading damage die (same as a normal attack).
+    const weapon = baseWeapon && opts?.damageDice ? { ...baseWeapon, damageDice: opts.damageDice } : baseWeapon;
     if (!weapon || !isRangedCapableWeapon(weapon)) {
       addMessage(`${archer.unitName} no longer holds a ranged weapon — reaction shot unavailable`);
       setReactionMode(null);
@@ -352,9 +365,18 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     }), undefined, passThrough, { movementMultipliers, breakOnEntry });
   }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones, formationsMap]);
 
-  const handleReactionAttack = useCallback(async (attackerId: string, targetId: string) => {
+  const handleReactionAttack = useCallback(async (
+    attackerId: string,
+    targetId: string,
+    opts?: { weaponIndex?: number; damageDice?: string },
+  ) => {
     if (!reactionMode || attackerId !== reactionMode.archer.id) return;
     const archer = units.find(u => u.id === attackerId) ?? reactionMode.archer;
+    // A reaction only ever fires at the unit that MOVED — never another hostile.
+    if (targetId !== reactionMode.moverId) {
+      addMessage(`${archer.unitName}'s reaction can only target the unit that moved`);
+      return;
+    }
     const target = units.find(u => u.id === targetId);
     if (!target || target.isDeleted || target.currentUnitHp <= 0) {
       addMessage('That target is no longer available');
@@ -394,8 +416,62 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       addError(`${archer.unitName} cannot shoot ${target.unitName} — attacks are blocked there`);
       return;
     }
-    await performReactionShot(archer, target);
+    await performReactionShot(archer, target, opts);
   }, [reactionMode, units, alliances, addMessage, addError, performReactionShot, canAttackTarget, structures, structureTemplates, groundZones]);
+
+  /**
+   * Fire the reaction at the mover. Only the mover is a legal target; when more
+   * than one ranged weapon can reach it, open the weapon/damage picker instead.
+   */
+  const requestReactionAttack = useCallback((archerId: string, targetId: string) => {
+    if (!reactionMode || archerId !== reactionMode.archer.id) return;
+    const archer = units.find(u => u.id === archerId) ?? reactionMode.archer;
+    const mover = units.find(u => u.id === targetId);
+    if (!mover || mover.isDeleted || mover.currentUnitHp <= 0) {
+      addMessage('That target is no longer available');
+      return;
+    }
+    if (targetId !== reactionMode.moverId) {
+      addMessage(`${archer.unitName}'s reaction can only target the unit that moved`);
+      return;
+    }
+    const weapons = parseWeapons(archer.weaponString || '');
+    const rangeBonus = rangeBonusAt(archer, groundZones);
+    const dist = hexDistance(archer.hex, mover.hex);
+    const inArc = canRangedTarget(formationsMap[archer.currentFormation] ?? null, arcOfTarget(archer.hex, archer.facing, mover.hex));
+    const usable = weapons
+      .map((w, i) => ({ w, i }))
+      .filter(({ w }) => isRangedCapableWeapon(w) && dist <= (w.range ?? 1) + rangeBonus && inArc);
+    if (usable.length === 0) {
+      addMessage(`${archer.unitName} has no ranged weapon that can react to ${mover.unitName}`);
+      return;
+    }
+    if (usable.length === 1) {
+      const { w, i } = usable[0];
+      void handleReactionAttack(archerId, targetId, { weaponIndex: i, damageDice: w.damageDice });
+      return;
+    }
+    const first = usable[0];
+    setPendingReactionChoice({
+      archer,
+      mover,
+      weaponIndex: first.i,
+      damageDiceCount: damageDiceCount(weapons[first.i]?.damageDice ?? ''),
+    });
+  }, [reactionMode, units, addMessage, groundZones, formationsMap, handleReactionAttack]);
+
+  const confirmReactionChoice = useCallback(() => {
+    const p = pendingReactionChoice;
+    setPendingReactionChoice(null);
+    if (!p) return;
+    const chosen = parseWeapons(p.archer.weaponString || '')[p.weaponIndex];
+    void handleReactionAttack(p.archer.id, p.mover.id, {
+      weaponIndex: p.weaponIndex,
+      ...(chosen ? { damageDice: withDamageDiceCount(chosen.damageDice, p.damageDiceCount) } : {}),
+    });
+  }, [pendingReactionChoice, handleReactionAttack]);
+
+  const cancelReactionChoice = useCallback(() => setPendingReactionChoice(null), []);
 
   const handleReactionMove = useCallback(async (unitId: string, targetHex: Hex) => {
     if (!reactionMode || unitId !== reactionMode.archer.id) return;
@@ -418,6 +494,11 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     setReactionOffers,
     reactionMode,
     setReactionMode,
+    pendingReactionChoice,
+    setPendingReactionChoice,
+    requestReactionAttack,
+    confirmReactionChoice,
+    cancelReactionChoice,
     reactionFormationPicker,
     setReactionFormationPicker,
     bowBlinkOn,

@@ -1,5 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { parseWeapons, stringifyWeapons, formatWeaponDisplay, isAreaWeapon, isOffensiveWeapon, validateTargetAlliance, weaponIndicesReaching, Weapon } from './weaponParser';
+import { parseWeapons, stringifyWeapons, formatWeaponDisplay, isAreaWeapon, isOffensiveWeapon, validateTargetAlliance, weaponIndicesReaching, damageDiceCount, withDamageDiceCount, Weapon } from './weaponParser';
+
+describe('damageDiceCount / withDamageDiceCount', () => {
+  it('reads the leading die count (default 1)', () => {
+    expect(damageDiceCount('1d8')).toBe(1);
+    expect(damageDiceCount('3d6+2')).toBe(3);
+    expect(damageDiceCount('d6')).toBe(1);
+    expect(damageDiceCount('1d4+2d6+5')).toBe(1);
+    expect(damageDiceCount('')).toBe(1);
+  });
+
+  it('replaces ONLY the leading count, preserving every trailing segment', () => {
+    expect(withDamageDiceCount('1d6', 3)).toBe('3d6');
+    expect(withDamageDiceCount('1d6+2', 4)).toBe('4d6+2');
+    expect(withDamageDiceCount('d6+2', 2)).toBe('2d6+2');
+    expect(withDamageDiceCount('1d4+2d6+5', 3)).toBe('3d4+2d6+5');
+    expect(withDamageDiceCount('2d8', 0)).toBe('1d8'); // clamped to min 1
+  });
+});
 
 describe('parseWeapons', () => {
   it('parses a single weapon from CSV string', () => {

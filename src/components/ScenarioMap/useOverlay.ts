@@ -49,7 +49,7 @@ function getOverlayForUnit(unit: Unit, structures?: MapStructures, templates?: R
 }
 
 export interface OverlayState {
-  reactionMode: { archer: Unit } | null;
+  reactionMode: { archer: Unit; moverId: string } | null;
   draggingUnitId: string | null;
   hoveredUnit: Unit | null;
   units: Unit[];
@@ -99,31 +99,35 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, structures, templates, zones);
   const org = { movementMultipliers, breakOnEntry };
 
-  // Reaction mode drag: hovering a hostile in weapon range shows range rings;
-  // otherwise the 50% reaction-move hexes.
-  if (reactionMode && draggingUnitId === reactionMode.archer.id) {
+  // Reaction mode: the target is ALWAYS the unit that moved (persistently
+  // highlighted). While dragging the reacting archer, hovering that mover shows
+  // the shot rings; otherwise the full-action reposition hexes.
+  if (reactionMode) {
     const archer = units.find(u => u.id === reactionMode.archer.id) ?? reactionMode.archer;
-    const weapon = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0];
+    const mover = units.find(u => u.id === reactionMode.moverId && !u.isDeleted) ?? null;
     const combined: Record<string, string> = {};
-    const hostileHover =
-      !!hoveredUnit && hoveredUnit.id !== archer.id && !hoveredUnit.isDeleted &&
-      isHostile(hoveredUnit.team, archer.team, alliances);
-    if (hostileHover && weapon && isRangedCapableWeapon(weapon)) {
-      const allow = (h: Hex) => canRangedTarget(formationsMap[archer.currentFormation] ?? null, arcOfTarget(archer.hex, archer.facing, h));
-      const archerRange = weapon.range + rangeBonusAt(archer, zones);
-      for (const h of hexRing(archer.hex, archerRange)) {
-        if (allow(h)) combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.85)';
+    const moverKey = mover ? `${mover.hex.q},${mover.hex.r}` : null;
+    if (moverKey) combined[moverKey] = 'rgba(255, 80, 80, 0.55)'; // persistent target
+    if (draggingUnitId === archer.id) {
+      const weapon = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0];
+      const moverHover = !!hoveredUnit && hoveredUnit.id === reactionMode.moverId;
+      if (moverHover && weapon && isRangedCapableWeapon(weapon)) {
+        const allow = (h: Hex) => canRangedTarget(formationsMap[archer.currentFormation] ?? null, arcOfTarget(archer.hex, archer.facing, h));
+        const archerRange = weapon.range + rangeBonusAt(archer, zones);
+        for (const h of hexRing(archer.hex, archerRange)) {
+          if (allow(h)) combined[`${h.q},${h.r}`] = 'rgba(255, 255, 255, 0.85)';
+        }
+        const d = hexDistance(archer.hex, mover!.hex);
+        combined[moverKey!] = d <= weapon.range ? 'rgba(80, 220, 120, 0.8)' : 'rgba(255, 80, 80, 0.85)';
+      } else {
+        const maxMP = computeEffectiveMovement(archer, getFormationMultiplier(formationsMap, archer.currentFormation, 'movement_multiplier'));
+        const budget = reactionMovePool(archer, maxMP);
+        const occupied = computeOccupiedHexes(units, archer.id);
+        const reachable = computeReachableMap(archer, budget, occupied, new Set(), costOfHexFor(archer), false, blockedEdgeFor(archer), undefined, undefined, org);
+        reachable.forEach((entry, key) => {
+          combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
+        });
       }
-      const d = hexDistance(archer.hex, hoveredUnit!.hex);
-      combined[`${hoveredUnit!.hex.q},${hoveredUnit!.hex.r}`] = d <= weapon.range ? 'rgba(80, 220, 120, 0.8)' : 'rgba(255, 80, 80, 0.85)';
-    } else {
-      const maxMP = computeEffectiveMovement(archer, getFormationMultiplier(formationsMap, archer.currentFormation, 'movement_multiplier'));
-      const budget = reactionMovePool(archer, maxMP);
-      const occupied = computeOccupiedHexes(units, archer.id);
-      const reachable = computeReachableMap(archer, budget, occupied, new Set(), costOfHexFor(archer), false, blockedEdgeFor(archer), undefined, undefined, org);
-      reachable.forEach((entry, key) => {
-        combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
-      });
     }
     return combined;
   }

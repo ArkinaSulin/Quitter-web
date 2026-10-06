@@ -85,24 +85,40 @@ export interface DamageRoll {
 }
 
 /**
- * Roll a dice string ("1d8", "2d6+2") and return the individual faces plus the
- * total. Doubling is intentionally NOT applied here — callers multiply only the
- * dice faces (never the bonus) when crits/charges double damage.
+ * Roll a dice string and return the individual faces plus the total. Supports
+ * single- and MULTI-segment notation ("1d8", "2d6+2", "1d4+2d6+3"): every `NdM`
+ * segment contributes its faces, every flat `±X` adds to `bonus`. Doubling is
+ * intentionally NOT applied here — callers multiply only the dice faces (never
+ * the bonus) when crits/charges double damage. A string with no die (e.g. "1")
+ * or invalid notation rolls 0.
  */
 export function rollDamageDetailed(diceStr: string, rng: () => number): DamageRoll {
-  const match = diceStr.match(/^(\d*)d(\d+)(?:\+(\d+))?$/i);
-  if (!match) return { total: 0, faces: [], bonus: 0 };
-  const count = parseInt(match[1] || '1');
-  const sides = parseInt(match[2]);
-  const bonus = parseInt(match[3] || '0');
+  const s = (diceStr || '').trim();
   const faces: number[] = [];
-  let diceTotal = 0;
-  for (let i = 0; i < count; i++) {
-    const face = Math.floor(rng() * sides) + 1;
-    faces.push(face);
-    diceTotal += face;
+  let bonus = 0;
+  let sawDie = false;
+  // Tokenize into signed segments: `[+-]?NdM` (a dice segment) or `[+-]?X` (a
+  // flat). The join check rejects anything with gaps/garbage.
+  const tokens = s.match(/[+-]?\s*(?:\d*d\d+|\d+)/g);
+  if (!tokens || tokens.map(t => t.replace(/\s+/g, '')).join('') !== s.replace(/\s+/g, '')) {
+    return { total: 0, faces: [], bonus: 0 };
   }
-  return { total: diceTotal + bonus, faces, bonus };
+  for (const raw of tokens) {
+    const tok = raw.replace(/\s+/g, '');
+    const dm = tok.match(/^([+-]?)(\d*)d(\d+)$/);
+    if (dm) {
+      sawDie = true;
+      const count = parseInt(dm[2] || '1');
+      const sides = parseInt(dm[3]);
+      for (let k = 0; k < count; k++) faces.push(Math.floor(rng() * sides) + 1);
+    } else {
+      const fm = tok.match(/^([+-]?)(\d+)$/);
+      if (!fm) return { total: 0, faces: [], bonus: 0 };
+      bonus += (fm[1] === '-' ? -1 : 1) * parseInt(fm[2]);
+    }
+  }
+  if (!sawDie) return { total: 0, faces: [], bonus: 0 };
+  return { total: faces.reduce((a, b) => a + b, 0) + bonus, faces, bonus };
 }
 
 export function rollDamage(diceStr: string, rng: () => number): number {

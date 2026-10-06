@@ -347,6 +347,18 @@ describe('rollDamageDetailed', () => {
     const rng = seededRng(42);
     expect(rollDamageDetailed('invalid', rng)).toEqual({ total: 0, faces: [], bonus: 0 });
   });
+
+  it('sums every segment of multi-segment dice (1d4+2d6+3)', () => {
+    const { faces, bonus, total } = rollDamageDetailed('1d4+2d6+3', () => 0.5);
+    expect(faces).toHaveLength(3); // 1d4 + 2d6
+    expect(faces).toEqual([3, 4, 4]); // d4 → 3; d6 → 4, 4
+    expect(bonus).toBe(3);
+    expect(total).toBe(14);
+  });
+
+  it('a flat-only string (no die) rolls 0', () => {
+    expect(rollDamageDetailed('1', () => 0.5)).toEqual({ total: 0, faces: [], bonus: 0 });
+  });
 });
 
 describe('dice-only doubling', () => {

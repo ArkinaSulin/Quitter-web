@@ -9,7 +9,7 @@ import { adjacentRetreatCandidates, routThroughOptions, RoutThroughOption, retre
 import { findAttachedHero, heroRideMoveStep, heroDetachStep } from '@/lib/heroAttachment';
 import { applyMoveCost } from '@/lib/moveCost';
 import { nextLowerFormation } from '@/lib/formationCost';
-import { parseWeapons } from '@/lib/weaponParser';
+import { parseWeapons, damageDiceCount, withDamageDiceCount } from '@/lib/weaponParser';
 import { getFormations } from '@/lib/formationCache';
 import { loadSettings, getSetting } from '@/lib/settingsCache';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
@@ -820,12 +820,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setReactionOffers,
     reactionMode,
     setReactionMode,
+    pendingReactionChoice,
+    setPendingReactionChoice,
+    requestReactionAttack,
+    confirmReactionChoice,
+    cancelReactionChoice,
     reactionFormationPicker,
     setReactionFormationPicker,
     bowBlinkOn,
     offerReactionsFor,
     pruneReactionOffers,
-    handleReactionAttack,
     handleReactionMove,
     performReactionFormation,
     endReaction,
@@ -2016,7 +2020,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setSelectedUnit(unit);
       // Clicking an archer's reaction button arms that archer's reaction mode.
       if (!unit.isDeleted && !unit.archerReactionUsed && reactionOffers.has(unit.id) && canReactToUnit(unit)) {
-        setReactionMode({ archer: unit });
+        setReactionMode({ archer: unit, moverId: reactionOffers.get(unit.id)! });
+        return;
+      }
+      // A front-attached hero reacts from its host's click when the host itself
+      // has no offer (its bow is drawn on the hero's sub-token).
+      const reactingHero = units.find(u =>
+        u.attachedToUnitId === unit.id && u.attachedPosition === 'front' && !u.isDeleted &&
+        !u.archerReactionUsed && reactionOffers.has(u.id) && canReactToUnit(u));
+      if (reactingHero) {
+        setReactionMode({ archer: reactingHero, moverId: reactionOffers.get(reactingHero.id)! });
         return;
       }
       // AI assist: a plain click on an AI-eligible token toggles its opt-out
@@ -2086,7 +2099,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       dismissUnitTooltip();
     },
     onAttack: controlsLocked ? undefined : (attackerId, targetId) => {
-      if (reactionMode) { handleReactionAttack(attackerId, targetId); return; }
+      if (reactionMode) { requestReactionAttack(attackerId, targetId); return; }
       const attacker = units.find(u => u.id === attackerId);
       const target = units.find(u => u.id === targetId);
       // A CLIMBING unit dropped on its target occupant, while still below the wall
@@ -2160,7 +2173,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const anyModalOpen = !!(
     contextMenuUnit || withdrawConfirm || effectMenuUnit || retreatPick ||
     reactionFormationPicker || showScenarioSettings || attachModal ||
-    pendingMountTarget || pendingAttackChoice || pendingElevation || pendingHeroFall ||
+    pendingMountTarget || pendingAttackChoice || pendingReactionChoice || pendingElevation || pendingHeroFall ||
     pendingLeaveHero || showGmTeamPick || magicCast.cast || editUnit || effectDrop ||
     effectEdit || entryPrompt || zoneMenu || hexEffectsModal || showStats ||
     otherActionHero || structureEditKey ||
@@ -3132,18 +3145,29 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       {/* Reaction toolbar: shown while a reaction session is locked. A reaction
           may combine a full move and a formation change, in either order, then
           End (or Escape) closes it. A reaction shot closes it immediately. */}
-      {reactionMode && !reactionFormationPicker && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-xl border border-amber-700 bg-gray-900/95 px-4 py-2 shadow-2xl">
-          <span className="text-amber-300 text-sm font-semibold">{reactionMode.archer.unitName} — reaction</span>
-          <span className="hidden sm:inline text-[11px] text-gray-400">Drag to move/shoot · right-click to change formation</span>
-          <button
-            className="bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-lg text-xs font-semibold"
-            onClick={endReaction}
-          >
-            End reaction
-          </button>
-        </div>
-      )}
+      {reactionMode && !reactionFormationPicker && (() => {
+        const mover = units.find(u => u.id === reactionMode.moverId);
+        return (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-xl border border-amber-700 bg-gray-900/95 px-4 py-2 shadow-2xl">
+            <span className="text-amber-300 text-sm font-semibold">{reactionMode.archer.unitName} — reaction</span>
+            <span className="hidden sm:inline text-[11px] text-gray-400">Drag onto the unit that moved to shoot it · right-click to change formation</span>
+            {mover && (
+              <button
+                className="bg-red-700 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-xs font-semibold"
+                onClick={() => requestReactionAttack(reactionMode.archer.id, reactionMode.moverId)}
+              >
+                Fire at {mover.unitName}
+              </button>
+            )}
+            <button
+              className="bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-lg text-xs font-semibold"
+              onClick={endReaction}
+            >
+              End reaction
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Reaction: formation picker (reached by right-clicking the acting archer
           in locked reaction mode). Follows the same formation-change limits as
@@ -3445,7 +3469,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                   weapons={weapons}
                   value={p.weaponIndex}
                   rangeBonus={rangeBonus}
-                  onChange={i => setPendingAttackChoice({ ...p, weaponIndex: i })}
+                  diceCount={p.damageDiceCount}
+                  onDiceCountChange={n => setPendingAttackChoice({ ...p, damageDiceCount: n })}
+                  onChange={i => setPendingAttackChoice({ ...p, weaponIndex: i, damageDiceCount: damageDiceCount(weapons[i]?.damageDice ?? '') })}
                 />
               )}
               {p.rider && (
@@ -3459,6 +3485,36 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               <div className="flex justify-end gap-2">
                 <button className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm" onClick={cancelAttackChoice}>Cancel</button>
                 <button className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg text-sm" onClick={confirmAttackChoice}>Attack</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Reaction attack picker — a reaction drop/“Fire” where >1 ranged weapon
+          reaches the mover offers the weapon + upcast-damage choice. The target is
+          always the mover; confirm fires the reaction. */}
+      {pendingReactionChoice && (() => {
+        const p = pendingReactionChoice;
+        const weapons = parseWeapons(p.archer.weaponString || '');
+        const rangeBonus = rangeBonusAt(p.archer, groundZones);
+        return (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[320px] space-y-4">
+              <p className="text-white text-sm text-center">Reaction shot at {p.mover.unitName}</p>
+              <WeaponSelect
+                attacker={p.archer}
+                target={p.mover}
+                weapons={weapons}
+                value={p.weaponIndex}
+                rangeBonus={rangeBonus}
+                diceCount={p.damageDiceCount}
+                onDiceCountChange={n => setPendingReactionChoice({ ...p, damageDiceCount: n })}
+                onChange={i => setPendingReactionChoice({ ...p, weaponIndex: i, damageDiceCount: damageDiceCount(weapons[i]?.damageDice ?? '') })}
+              />
+              <div className="flex justify-end gap-2">
+                <button className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm" onClick={cancelReactionChoice}>Cancel</button>
+                <button className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg text-sm" onClick={confirmReactionChoice}>Fire</button>
               </div>
             </div>
           </div>
@@ -3556,7 +3612,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                       weapons={weapons}
                       value={p.weaponIndex}
                       rangeBonus={rangeBonus}
-                      onChange={i => setPendingElevation({ ...p, weaponIndex: i })}
+                      diceCount={p.damageDiceCount}
+                      onDiceCountChange={n => setPendingElevation({ ...p, damageDiceCount: n })}
+                      onChange={i => setPendingElevation({ ...p, weaponIndex: i, damageDiceCount: damageDiceCount(weapons[i]?.damageDice ?? '') })}
                     />
                     {rider && (
                       <MountTargetChoice
@@ -3568,7 +3626,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                     )}
                     <button
                       className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
-                      onClick={() => { setPendingElevation(null); if (!controlsLocked) void handleAttackRequest(p.unit.id, occ.id, { weaponIndex: p.weaponIndex, ...(rider ? { mainTarget: p.mainTarget } : {}) }); }}
+                      onClick={() => { setPendingElevation(null); if (!controlsLocked) void handleAttackRequest(p.unit.id, occ.id, { weaponIndex: p.weaponIndex, ...(weapons[p.weaponIndex] ? { damageDice: withDamageDiceCount(weapons[p.weaponIndex].damageDice, p.damageDiceCount) } : {}), ...(rider ? { mainTarget: p.mainTarget } : {}) }); }}
                     >
                       Attack{weapons[p.weaponIndex] ? ` with ${weapons[p.weaponIndex].name}` : ''}
                     </button>

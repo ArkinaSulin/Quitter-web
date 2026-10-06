@@ -37,7 +37,7 @@ interface CanvasDrawDeps {
   sizeCategories: SizeCategory[];
   activeHeroId: string | null;
   reactionOffers: Map<string, string>;
-  reactionMode: { archer: Unit } | null;
+  reactionMode: { archer: Unit; moverId: string } | null;
   bowBlinkOn: boolean;
   canReactToUnit: (unit: Unit) => boolean;
   alliances: Record<string, AllianceGroup>;
@@ -653,6 +653,17 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           ctx.lineWidth = 3;
           ctx.strokeRect(heroCx - tokenWidth / 2 - 2, heroCy - tokenHeight / 2 - 2, tokenWidth + 4, tokenHeight + 4);
           ctx.restore();
+        }
+        // A front-attached hero with an available reaction shows its own bow on
+        // its sub-token (attached heroes aren't in the draw order themselves).
+        if (
+          attachedHero.attachedPosition === 'front' &&
+          !reactionMode &&
+          reactionOffers.has(attachedHero.id) &&
+          !attachedHero.archerReactionUsed &&
+          canReactToUnit(attachedHero)
+        ) {
+          drawArcherReactionButton(ctx, heroCx, heroCy, HEX_SIZE * currentZoom * 0.5, bowBlinkOn ? 0.4 : 1);
         }
       }
     }

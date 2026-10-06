@@ -39,6 +39,28 @@ export function isValidDamageDice(dice: string): boolean {
   return pattern.test((dice || '').trim());
 }
 
+/** The die COUNT of the leading `NdM` segment (default 1). */
+export function damageDiceCount(dice: string): number {
+  const m = (dice || '').trim().match(/^[+-]?(\d*)d(\d+)/i);
+  if (!m) return 1;
+  return Math.max(1, parseInt(m[1] || '1'));
+}
+
+/**
+ * Replace ONLY the leading `NdM` die count, preserving every trailing segment
+ * (extra dice AND the flat `+[z]`):
+ *   withDamageDiceCount('1d4+2d6+5', 3) === '3d4+2d6+5'
+ *   withDamageDiceCount('d6+2', 2)       === '2d6+2'
+ * A string with no parseable die is returned unchanged.
+ */
+export function withDamageDiceCount(dice: string, count: number): string {
+  const n = Math.max(1, Math.floor(count));
+  const s = (dice || '').trim();
+  const m = s.match(/^([+-]?)(\d*)d(\d+)(.*)$/i);
+  if (!m) return s;
+  return `${m[1]}${n}d${m[3]}${m[4]}`;
+}
+
 /** A fresh, valid weapon for the editor's "New" action. */
 export function blankWeapon(): Weapon {
   return {

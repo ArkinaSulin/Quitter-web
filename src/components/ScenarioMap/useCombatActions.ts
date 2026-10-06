@@ -21,7 +21,7 @@ import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isMeleeReachabl
 import { meleeElevationFor, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo, isAirborne } from '@/lib/flying';
 import { isStooping } from '@/lib/chargeStance';
 import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable } from '@/lib/moveCost';
-import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay } from '@/lib/weaponParser';
+import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay, damageDiceCount, withDamageDiceCount } from '@/lib/weaponParser';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/lib/unitStats';
 import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
 import { attackRollFlags, rangeBonusAt, effectAcBonus } from '@/lib/unitEffects';
@@ -127,10 +127,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
     target: Unit;
     rider: Unit | null;
     weaponIndex: number;
+    /** Upcast: leading damage-die count for the chosen weapon. */
+    damageDiceCount: number;
     mainTarget: 'mount' | 'rider';
   } | null>(null);
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; chained?: boolean; opportunityAttack?: boolean; mainTarget?: 'mount' | 'rider'; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean; prependSubSteps?: SubStep[] }) => {
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; chained?: boolean; opportunityAttack?: boolean; mainTarget?: 'mount' | 'rider'; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean; prependSubSteps?: SubStep[]; damageDice?: string }) => {
     if (overBudget) {
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
@@ -296,6 +298,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
       hasAuraFlags(f) ? { ...u, effects: [...(u.effects ?? []), ...auraEffects(f, u.unitName)] } : u;
     const combatAttacker = withAuras(effAttacker, attackerAuras);
     const combatTarget = withAuras(effTarget, targetAuras);
+    // Upcast: the attack picker may override the resolved weapon's damage dice.
+    // Ignored if the engine auto-drew a different melee weapon at adjacency (the
+    // chosen weapon isn't the one being used).
+    if (options?.damageDice && attackerSwitchIdx === null) {
+      weapon = { ...weapon, damageDice: options.damageDice };
+    }
     // Range bonus (from effects and from a hex structure's zone membership — see
     // `structureZones`) extends the occupant's reach — but ONLY for ranged
     // weapons (maxRange > 1); a melee weapon gains no reach from a range effect.
@@ -1115,7 +1123,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     await finishChargeAfterAttack(adjusted, target, result);
   }, [units, buildStoopDropPlan, performAttack, finishChargeAfterAttack]);
 
-  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; weaponIndex?: number; heroJoin?: boolean; heroOverBudget?: boolean; mainTarget?: 'mount' | 'rider' }) => {
+  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; weaponIndex?: number; heroJoin?: boolean; heroOverBudget?: boolean; mainTarget?: 'mount' | 'rider'; damageDice?: string }) => {
     let attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return;
@@ -1368,7 +1376,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
         setPendingAttackCap({ attacker, target, isCharging: true });
         return;
       }
-      const result = await performAttack(attacker, target, false, { isCharging: true, mainTarget: opts?.mainTarget });
+      const result = await performAttack(attacker, target, false, { isCharging: true, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
       // undefined = the retaliation-cap prompt is open — its handlers resume the
       // attack and finish the charge; don't end the charge here.
       if (!result) return;
@@ -1390,7 +1398,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       setPendingAttack({ attacker, target });
       return;
     }
-    await performAttack(attacker, target, false, { mainTarget: opts?.mainTarget });
+    await performAttack(attacker, target, false, { mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
   }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP, setAttachModal, canAttackTarget, execute]);
 
   // Confirm the offered weapon switch, then resume the attack with that weapon.
@@ -1436,11 +1444,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const usable = weapons.map((w, i) => ({ w, i })).filter(({ w }) => canWeaponAttack(w, attacker, target, bonus));
     const rider = units.find(u => u.attachedToUnitId === targetId && !u.isDeleted && u.attachedPosition === 'rider') ?? null;
     if (usable.length <= 1 && !rider) return false;
+    const weaponIndex = usable[0]?.i ?? (attacker.activeWeaponIndex ?? 0);
     setPendingAttackChoice({
       attacker,
       target,
       rider,
-      weaponIndex: usable[0]?.i ?? (attacker.activeWeaponIndex ?? 0),
+      weaponIndex,
+      damageDiceCount: damageDiceCount(weapons[weaponIndex]?.damageDice ?? ''),
       mainTarget: 'rider',
     });
     return true;
@@ -1450,8 +1460,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const p = pendingAttackChoice;
     setPendingAttackChoice(null);
     if (!p) return;
+    const weapons = parseWeapons(p.attacker.weaponString || '');
+    const chosen = weapons[p.weaponIndex];
     void handleAttackRequest(p.attacker.id, p.target.id, {
       weaponIndex: p.weaponIndex,
+      ...(chosen ? { damageDice: withDamageDiceCount(chosen.damageDice, p.damageDiceCount) } : {}),
       ...(p.rider ? { mainTarget: p.mainTarget } : {}),
     });
   }, [pendingAttackChoice, handleAttackRequest]);

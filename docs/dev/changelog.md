@@ -1,5 +1,28 @@
 # QuiTTER Changelog
 
+## Reaction targets the mover; weapon/upcast picker; attached-hero bow + multi-segment dice (2026-10-05)
+**Files:** src/lib/{unitCombat,weaponParser}(+ tests).ts, src/components/ScenarioMap/{WeaponSelect,useReactionActions,useMoveActions,useCombatActions,ScenarioMap,useOverlay,useCanvasDraw}.tsx, docs/dev/{08-combat,changelog}.md
+
+- **A reaction only targets the unit that moved.** `reactionMode` now carries
+  `moverId` (from `reactionOffers`, refreshed to the **latest** mover);
+  `handleReactionAttack` refuses any other target; the overlay rings only the
+  mover and persistently highlights it; the reaction toolbar gains a **Fire at
+  `<mover>`** button. Previously any hostile in range could be shot.
+- **Reaction attack picker.** On a reaction drop (or **Fire at …**), when >1
+  ranged weapon reaches the mover, the shared `WeaponSelect` opens to choose the
+  weapon + upcast the damage die; else it fires straight. (`handleReactionAttack`
+  /`performReactionShot` take `{ weaponIndex, damageDice }`.)
+- **Upcast damage field (all pickers).** `WeaponSelect` shows `[x]d[y]+[z]` with
+  up/down arrows editing only the leading die count; `weaponParser.damageDiceCount`
+  /`withDamageDiceCount` preserve trailing segments (+[z]); the ground/elevation
+  pickers pass `damageDice` → `handleAttackRequest` → `performAttack` overrides
+  the resolved weapon. **`rollDamageDetailed` now sums multi-segment dice**
+  (`1d4+2d6+3`) instead of rolling 0.
+- **Front-attached hero bow.** A front-attached hero's reaction bow is drawn on
+  its host's token (offset to the hero) and starts the hero's reaction on click.
+- Tests: weaponParser helpers, multi-segment roller. `tsc` clean, 931 tests, build
+  clean. No migration. (Phase 3 — magic/reaction cast window — follows.)
+
 ## Fix: leave a ZoC you start in; hover vertical ZoC; unified tooltip dismissal (2026-10-05)
 **Files:** src/lib/moveCost.ts (+test), src/components/ScenarioMap/{useOverlay.ts (+test),ScenarioMap.tsx}, src/hooks/useHexGrid.ts, docs/dev/{07-movement-economy,19-ui-panels-and-floating,changelog}.md
 

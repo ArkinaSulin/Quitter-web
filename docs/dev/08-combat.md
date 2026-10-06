@@ -198,7 +198,8 @@ target (otherwise it can't join). The hero rolls at **its own** range bands
 
 A **back-attached (protected)** hero never joins. A front hero **with no action
 left sits out** (no prompt, no negative). A **defending** hero stays a damage
-pool and reaction shots never include a hero.
+pool and a hero's volley never joins a *reaction shot*. (A hero **can** itself be
+the reacting archer — lone or front-attached — see **Reactions** below.)
 
 ## Retaliation
 
@@ -278,11 +279,20 @@ with an unused reaction and a ranged weapon may fire:
 `findEligibleReactionArchers` (archer reaction logic in `archerReaction.ts`).
 Archer within `range` of the mover's landing hex (and, for formed formations, in
 the archer's **front cone** — `arcOfTarget`); mover hidden/deleted/routed
-excluded; protected (back-attached) heroes never react. Owner of the archer
-clicks the blinking bow → reaction mode locks the actor. A reaction is one of:
+excluded; protected (back-attached) heroes never react — but **lone and
+front-attached heroes can** (a front hero's bow is drawn on its host's token and
+clicked there). Owner of the archer clicks the blinking bow → reaction mode
+locks the actor, which **persistently highlights the mover**.
+
+A reaction **only ever targets the unit that moved** (`reactionMode.moverId`,
+refreshed to the *latest* mover on each eligible move) — dragging onto any other
+hostile is refused. A reaction is one of:
 
 - **Reaction shot** — the mover (‑1 action, counts to the cap, can rout); closes
-  the session immediately,
+  the session immediately. Fired by dragging onto the mover or the toolbar
+  **Fire at `<mover>`**. When **>1 ranged weapon can reach**, the shared
+  `WeaponSelect` picker opens (choose the weapon + **upcast** the leading damage
+  die) before it fires,
 - **Reposition** — move up to **one full action's movement**
   (`reactionMovePool` = leftover MP, or a full pool when MP is 0; heroes use the
   prorated hero pool), and/or **change formation** (right-click). Move and
@@ -320,6 +330,17 @@ An ATTACK command usually carries: optional WEAPON_SELECT sub-steps (auto-draw
 sub-steps for both units + any hero damage, and chained ROUT entries for any
 units that break (see `09`). Undo reverts the whole exchange. Verbose-combat
 messages format the dice (see `verboseCombat.ts`).
+
+## Upcast (damage-die count)
+
+The ground-attack, elevation and reaction pickers (`WeaponSelect`) show the
+selected weapon's damage `[x]d[y]+[z]` with up/down arrows that change **only
+the leading die count `[x]`** (min 1, uncapped) — `withDamageDiceCount` preserves
+every trailing segment incl. the flat `+[z]`. The chosen string rides
+`handleAttackRequest → performAttack`, which overrides the resolved weapon's
+`damageDice` (skipped if the engine auto-drew a different melee weapon). The
+roller `rollDamageDetailed` sums every `NdM` segment and flat, so multi-segment
+notation (`1d4+2d6+3`) works; a string with no die rolls 0.
 
 ## Scenario statistics
 
