@@ -852,7 +852,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     structures,
     structureTemplates,
     groundZones: effectiveZones,
+    magicCast,
+    playerId,
+    playerName,
   });
+
+  // A reaction that opened the spell window ends the locked reaction session once
+  // the cast resolves.
+  useEffect(() => {
+    const c = magicCast.cast;
+    if (reactionMode && c?.reaction && c.resolved) endReaction();
+  }, [magicCast.cast, reactionMode, endReaction]);
 
   // Wall edge under the pointer while dragging a unit (drag-to-attack hint).
   const [hoveredWallEdge, setHoveredWallEdge] = useState<EdgeRef | null>(null);

@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Reaction magic: cast window mid-reaction (incl. healing) (2026-10-05)
+**Files:** src/hooks/useMagicCast.ts, src/components/ScenarioMap/{useCastActions,useReactionActions,ScenarioMap}.tsx, docs/dev/{08-combat,changelog}.md
+
+- The reaction attack picker can now cast: when the chosen reaction weapon is a
+  **magic/area** weapon (`magicDimension > 0`), `useReactionActions` opens the
+  full `magicCast` window seeded on the mover with a new `reaction: true` flag
+  (the upcast damage die rides the weapon). Non-magic weapons fire the direct
+  reaction shot as before.
+- `useMagicCast` carries `reaction` on the open event/state.
+  `useCastActions.handleResolveCast` folds `archerReactionUsed: true` and
+  `attacksUsed + 1` into the caster's CAST sub-step (undoable); ScenarioMap ends
+  the locked reaction session once the cast resolves.
+- **Healing reactions are allowed** (same-alliance), via the same cast path.
+- `tsc` clean, 931 tests, build clean. No migration.
+
 ## Reaction targets the mover; weapon/upcast picker; attached-hero bow + multi-segment dice (2026-10-05)
 **Files:** src/lib/{unitCombat,weaponParser}(+ tests).ts, src/components/ScenarioMap/{WeaponSelect,useReactionActions,useMoveActions,useCombatActions,ScenarioMap,useOverlay,useCanvasDraw}.tsx, docs/dev/{08-combat,changelog}.md
 
@@ -21,7 +36,7 @@
 - **Front-attached hero bow.** A front-attached hero's reaction bow is drawn on
   its host's token (offset to the hero) and starts the hero's reaction on click.
 - Tests: weaponParser helpers, multi-segment roller. `tsc` clean, 931 tests, build
-  clean. No migration. (Phase 3 — magic/reaction cast window — follows.)
+  clean. No migration.
 
 ## Fix: leave a ZoC you start in; hover vertical ZoC; unified tooltip dismissal (2026-10-05)
 **Files:** src/lib/moveCost.ts (+test), src/components/ScenarioMap/{useOverlay.ts (+test),ScenarioMap.tsx}, src/hooks/useHexGrid.ts, docs/dev/{07-movement-economy,19-ui-panels-and-floating,changelog}.md

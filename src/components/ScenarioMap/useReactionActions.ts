@@ -13,7 +13,9 @@ import { attackDirection, arcOfTarget } from '@/lib/attackDirection';
 import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers } from '@/lib/archerReaction';
 import { canRangedTarget } from '@/lib/formationRules';
 import { hasLineOfSight } from '@/lib/lineOfSight';
-import { parseWeapons, damageDiceCount, withDamageDiceCount } from '@/lib/weaponParser';
+import { parseWeapons, damageDiceCount, withDamageDiceCount, Weapon } from '@/lib/weaponParser';
+import { useMagicCast } from '@/hooks/useMagicCast';
+import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { applyHeroMoveCost, applyMoveCost, computeReachableMap, MovePathEntry } from '@/lib/moveCost';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout } from '@/lib/unitMorale';
 import { isHostile } from '@/lib/alliances';
@@ -51,6 +53,10 @@ interface ReactionActionsDeps {
   structures?: MapStructures;
   structureTemplates?: Record<string, StructureTemplate>;
   groundZones?: GroundEffect[];
+  /** Area-spell window (a reaction may cast a magic weapon). */
+  magicCast: ReturnType<typeof useMagicCast>;
+  playerId: string;
+  playerName: string;
 }
 
 export function useReactionActions(deps: ReactionActionsDeps) {
@@ -73,6 +79,9 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     structures,
     structureTemplates,
     groundZones,
+    magicCast,
+    playerId,
+    playerName,
   } = deps;
 
   const [reactionOffers, setReactionOffers] = useState<Map<string, string>>(new Map()); // archerId -> moverId
@@ -419,6 +428,48 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     await performReactionShot(archer, target, opts);
   }, [reactionMode, units, alliances, addMessage, addError, performReactionShot, canAttackTarget, structures, structureTemplates, groundZones]);
 
+  /** Open the area-spell window for a reacting caster (seeded on the mover). */
+  const openReactionCast = useCallback((archer: Unit, mover: Unit, weapon: Weapon) => {
+    const snapshot: SpellCastTokenSnapshot = {
+      team: mover.team,
+      currentFormation: mover.currentFormation,
+      currentTroopCount: mover.currentTroopCount,
+      maxTroopCount: mover.maxTroopCount,
+      sizeCategory: mover.sizeCategory,
+      visualScale: mover.visualScale,
+      mountId: mover.mountId,
+      flySpeed: mover.flySpeed ?? 0,
+    };
+    magicCast.openCast({
+      casterId: playerId,
+      casterName: playerName,
+      casterUnitId: archer.id,
+      targetUnitId: mover.id,
+      targetUnitName: mover.unitName,
+      weapon,
+      snapshot,
+      targetStats: {
+        str: mover.str ?? 0,
+        dex: mover.dex ?? 0,
+        con: mover.con ?? 0,
+        int: mover.int ?? 0,
+        wis: mover.wis ?? 0,
+        cha: mover.cha ?? 0,
+      },
+      reaction: true,
+    });
+  }, [magicCast, playerId, playerName]);
+
+  /** Fire a chosen reaction weapon: a magic weapon opens the cast window (with
+   *  the upcast dice), anything else is a direct reaction shot. */
+  const fireReactionWeapon = useCallback((archer: Unit, mover: Unit, weaponIndex: number, weapon: Weapon, damageDice: string) => {
+    if ((weapon.magicDimension ?? 0) > 0) {
+      openReactionCast(archer, mover, { ...weapon, damageDice });
+      return;
+    }
+    void handleReactionAttack(archer.id, mover.id, { weaponIndex, damageDice });
+  }, [openReactionCast, handleReactionAttack]);
+
   /**
    * Fire the reaction at the mover. Only the mover is a legal target; when more
    * than one ranged weapon can reach it, open the weapon/damage picker instead.
@@ -448,7 +499,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     }
     if (usable.length === 1) {
       const { w, i } = usable[0];
-      void handleReactionAttack(archerId, targetId, { weaponIndex: i, damageDice: w.damageDice });
+      fireReactionWeapon(archer, mover, i, w, w.damageDice);
       return;
     }
     const first = usable[0];
@@ -458,18 +509,16 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       weaponIndex: first.i,
       damageDiceCount: damageDiceCount(weapons[first.i]?.damageDice ?? ''),
     });
-  }, [reactionMode, units, addMessage, groundZones, formationsMap, handleReactionAttack]);
+  }, [reactionMode, units, addMessage, groundZones, formationsMap, fireReactionWeapon]);
 
   const confirmReactionChoice = useCallback(() => {
     const p = pendingReactionChoice;
     setPendingReactionChoice(null);
     if (!p) return;
     const chosen = parseWeapons(p.archer.weaponString || '')[p.weaponIndex];
-    void handleReactionAttack(p.archer.id, p.mover.id, {
-      weaponIndex: p.weaponIndex,
-      ...(chosen ? { damageDice: withDamageDiceCount(chosen.damageDice, p.damageDiceCount) } : {}),
-    });
-  }, [pendingReactionChoice, handleReactionAttack]);
+    if (!chosen) return;
+    fireReactionWeapon(p.archer, p.mover, p.weaponIndex, chosen, withDamageDiceCount(chosen.damageDice, p.damageDiceCount));
+  }, [pendingReactionChoice, fireReactionWeapon]);
 
   const cancelReactionChoice = useCallback(() => setPendingReactionChoice(null), []);
 

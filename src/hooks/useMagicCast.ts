@@ -63,10 +63,12 @@ export interface MagicCastState {
   halfOnSave: boolean;
   resolved: boolean;
   result: MagicCastResult | null;
+  /** This cast is an archer REACTION (spends the reaction + counts to the cap). */
+  reaction?: boolean;
 }
 
 type MagicCastEvent =
-  | { type: 'open'; id: string; casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats }
+  | { type: 'open'; id: string; casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; reaction?: boolean }
   | { type: 'cancel'; id: string }
   | { type: 'place'; id: string; circle: MagicCircle; affectedCount: number }
   | { type: 'rotate'; id: string; rotation: number }
@@ -162,6 +164,7 @@ export function useMagicCast(scenarioId: string) {
               halfOnSave: event.weapon.onSaveHalfOrNeg ?? true,
               resolved: false,
               result: null,
+              reaction: !!event.reaction,
             };
           }
           return prev;
@@ -215,7 +218,7 @@ export function useMagicCast(scenarioId: string) {
     }
   }, []);
 
-  const openCast = useCallback((opts: { casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats }) => {
+  const openCast = useCallback((opts: { casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; reaction?: boolean }) => {
     const id = crypto.randomUUID();
     const event: MagicCastEvent = {
       type: 'open',
@@ -228,6 +231,7 @@ export function useMagicCast(scenarioId: string) {
       weapon: opts.weapon,
       snapshot: opts.snapshot,
       targetStats: opts.targetStats,
+      reaction: opts.reaction,
     };
     setCast({
       id,
@@ -249,6 +253,7 @@ export function useMagicCast(scenarioId: string) {
       halfOnSave: opts.weapon.onSaveHalfOrNeg ?? true,
       resolved: false,
       result: null,
+      reaction: !!opts.reaction,
     });
     send(event);
   }, [send]);

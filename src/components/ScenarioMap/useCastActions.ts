@@ -9,7 +9,7 @@ import { resolveSpellDamage } from '@/lib/spellDamage';
 import { saveRollFlags } from '@/lib/unitEffects';
 import { computeEffectiveMoraleModifier, shouldRout } from '@/lib/unitMorale';
 import { allianceOf } from '@/lib/alliances';
-import { SubStep } from '@/lib/commandLog';
+import { SubStep, UnitChange } from '@/lib/commandLog';
 import { formatSpellRollLine } from '@/lib/verboseCombat';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { ExecuteFn, routeUnit } from './routeUnit';
@@ -87,12 +87,18 @@ export function useCastActions(deps: CastActionsDeps) {
       const troopsRecovered = newTroops - target.currentTroopCount;
 
       const healSteps: SubStep[] = [];
-      if (!cast.weapon.freeAction) {
+      const healCasterChanges: UnitChange[] = [];
+      if (!cast.weapon.freeAction) healCasterChanges.push({ field: 'actionsAvailable', from: caster.actionsAvailable, to: caster.actionsAvailable - 1 });
+      if (cast.reaction) {
+        healCasterChanges.push({ field: 'archerReactionUsed', from: caster.archerReactionUsed ?? false, to: true });
+        healCasterChanges.push({ field: 'attacksUsed', from: caster.attacksUsed ?? 0, to: (caster.attacksUsed ?? 0) + 1 });
+      }
+      if (healCasterChanges.length > 0) {
         healSteps.push({
           type: 'CAST',
-          description: `${caster.unitName} spent an action casting ${cast.weapon.name}`,
+          description: `${caster.unitName} ${cast.reaction ? 'reacted with' : 'spent an action casting'} ${cast.weapon.name}`,
           unitId: caster.id,
-          changes: [{ field: 'actionsAvailable', from: caster.actionsAvailable, to: caster.actionsAvailable - 1 }],
+          changes: healCasterChanges,
         });
       }
       if (healResult.totalDamage > 0) {
@@ -131,12 +137,18 @@ export function useCastActions(deps: CastActionsDeps) {
     const troopsKilled = target.currentTroopCount - newTroops;
 
     const subSteps: SubStep[] = [];
-    if (!cast.weapon.freeAction) {
+    const casterChanges: UnitChange[] = [];
+    if (!cast.weapon.freeAction) casterChanges.push({ field: 'actionsAvailable', from: caster.actionsAvailable, to: caster.actionsAvailable - 1 });
+    if (cast.reaction) {
+      casterChanges.push({ field: 'archerReactionUsed', from: caster.archerReactionUsed ?? false, to: true });
+      casterChanges.push({ field: 'attacksUsed', from: caster.attacksUsed ?? 0, to: (caster.attacksUsed ?? 0) + 1 });
+    }
+    if (casterChanges.length > 0) {
       subSteps.push({
         type: 'CAST',
-        description: `${caster.unitName} spent an action casting ${cast.weapon.name}`,
+        description: `${caster.unitName} ${cast.reaction ? 'reacted with' : 'spent an action casting'} ${cast.weapon.name}`,
         unitId: caster.id,
-        changes: [{ field: 'actionsAvailable', from: caster.actionsAvailable, to: caster.actionsAvailable - 1 }],
+        changes: casterChanges,
       });
     }
     if (result.totalDamage > 0) {
