@@ -27,7 +27,7 @@ never auto-acts.
 
 | Concern | File |
 |---|---|
-| Pure planner + gates | `src/lib/enemyAI/planner.ts` (+ `planner.test.ts`, `index.ts`) |
+| Pure planner + gates | `src/packages/ai/lib/planner.ts` (+ `ai/planner.test.ts`, `index.ts`) |
 | Panel (UI + Execute driver + undo macro) | `src/components/ScenarioMap/AiPanel.tsx` |
 | Overlay types (canvas) | `src/components/ScenarioMap/aiTypes.ts` |
 | Overlay drawing (✓, routes, ghosts) | `useCanvasDraw.ts` (optional `aiOverlay`/`aiHoveredUnitId`) |

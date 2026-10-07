@@ -30,9 +30,9 @@
 
 The Map Editor's **Effects** tab paints one `map_effect_templates` ref per hex into
 `maps.hex_effects` (`MapHexEffect { q, r, effectId }`). On assign,
-`mapEffects.expandHexEffects` turns each ref into **permanent** ground zones (one
+`effects/mapEffects.expandHexEffects` turns each ref into **permanent** ground zones (one
 per template modifier) snapshotted into `scenarios.map_data.groundEffects`.
-`GroundEffect.permanent` zones never tick or expire (`unitEffects.computeEndTurnEffects`
+`GroundEffect.permanent` zones never tick or expire (`effects/unitEffects.computeEndTurnEffects`
 skips them), so the whole ground-effect runtime — stat/flag memberships, `range`,
 `mp_cost`, `enter_org_max`, DoT/entry — applies to authored board effects.
 
@@ -49,10 +49,10 @@ unbounded (`07`). Charges cannot enter/pass cost > 1 hexes (they stay flat).
 
 ## Edge walls & barriers
 
-A wall sits on the shared **edge** between two hexes (`src/lib/walls.ts`). Each
+A wall sits on the shared **edge** between two hexes (`src/packages/movement/lib/walls.ts`). Each
 edge has two **faces** — one belongs to each of the two hexes — and a face can:
 - **replace** the destination hex's terrain MP cost when crossing INTO that side
-  (`moveCost`), or be **impassable** (`block`);
+  (`movement/moveCost`), or be **impassable** (`block`);
 - grant **melee AC** / **ranged AC** to the unit standing on that side when
   attacked across the edge.
 
@@ -63,12 +63,12 @@ corners `dir` and `dir+1`.
 
 - **Movement**: `computeReachableMap` / `computeChargeReachable` pass the
   *from*-hex to `costOfHex` (a wall face replaces terrain) and take an optional
-  `blockedEdge` predicate. `mapGeometry.makeCostOfHex` / `makeBlockedEdge` /
+  `blockedEdge` predicate. `world/mapGeometry.makeCostOfHex` / `makeBlockedEdge` /
   `makeChargeBlockedEdge` build these from the scenario's terrain + walls.
   Charges cannot cross ANY wall edge.
 - **AC**: `resolveCombatSequence` takes an optional `walls`; the crossed face's
   melee/ranged AC is added to the defender. Adjacent edges are exact; ranged uses
-  `hexLine` (`src/lib/hexLine.ts`) to find the edge the shot enters through.
+  `primitives/hexLine` (`src/packages/primitives/lib/hexLine.ts`) to find the edge the shot enters through.
 - **A wall is alive between attacks that cross it** — it is not a LoS blocker (yet).
 
 ## Editors
@@ -121,7 +121,7 @@ the same for **edge** (walls/spikes) and **hex** (gates/towers) structures:
 therefore still routes to the attack, which reports `cannot reach that
 structure/barrier` (rather than silently falling through to a move); the
 reach-gated `canAttackWallEdge` is used only for the drag-overlay hint. Shift also
-hides unit/corpse tokens ("inspect mode"). Reach (`wallCombat.wallAttackKind`) is
+hides unit/corpse tokens ("inspect mode"). Reach (`combat/wallCombat.wallAttackKind`) is
 **melee** when the attacker stands on either edge hex **and faces the wall** within
 its formation's attack arcs (see `08-combat` "Attack arcs"; normal formations must
 face the wall, Scattered/Hero strike any side), else **ranged** when its weapon's

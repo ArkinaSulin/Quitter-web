@@ -17,13 +17,13 @@ stats + optional nullable cost; capped at `crew_count`. Access caps (059):
 `can_view_ship_editor` / `can_use_ship_editor` — both admin-only; Lobby's
 Archfar's Shipyard button routes to `/ship-editor`.
 
-## The stats engine (`src/lib/shipStats.ts`, v8.1 FINAL)
+## The stats engine (`src/packages/ships/lib/shipStats.ts`, v8.1 FINAL)
 
 Ships are **hero-like**: no retaliation/morale/rout, no ground 5-attack cap
 (rate of fire = weapons × Fire Cycle × crew). Builder readouts (empty and
 laden) and the editor chart come from pure functions — code is canonical;
 `.scratch/shipyard-formula/shipyard.csv` + `FINDINGS.md` are the design
-record, and `shipStats.test.ts` (27 tests) pins the formulas.
+record, and `ships/shipStats.test.ts` (27 tests) pins the formulas.
 
 **Mass & budgets:** `MassCap` per frame (Tiny 35 · Small 55 · Medium 80 ·
 Large 100). `armorMass = MassCap × armorFactor` (Wood 0, Plated 0.2, Metal
@@ -75,7 +75,7 @@ per-instance pools (one hit kills one weapon, no chain).
 
 ## Engine hand-off (pending work)
 
-`src/lib/shipMoveCost.ts`, `shipCombat.ts`, `useShipEngine.ts`,
+`src/packages/ships/lib/shipMoveCost.ts`, `shipCombat.ts`, `useShipEngine.ts`,
 `ScenarioMap/ShipPanel.tsx`, `ship_spelljammer` instances, sub-turn toggle,
 firing arcs, board/boarding rules → all in `.scratch/spelljammer-mod/spec.md`
 (design closed, v8.1). The player manual intentionally excludes ship content

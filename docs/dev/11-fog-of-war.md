@@ -1,6 +1,6 @@
 # 11 — Fog of War & Visibility
 
-Pure logic in `src/lib/fogOfWar.ts`; the graded veil + unseen fill live in the
+Pure logic in `src/packages/world/lib/fogOfWar.ts`; the graded veil + unseen fill live in the
 map draw layer. Migrations: 071 (fog columns/settings), 072 (rename
 `night_vision` → `darkvision`).
 

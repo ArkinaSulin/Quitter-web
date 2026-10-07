@@ -23,12 +23,12 @@ This tree is the single home for all documentation. It has two audiences:
 - **Continuing work:** skim the top entries of the
   [changelog](dev/changelog.md) for the most recent state, then the relevant
   technical chapter. The code is always canonical — a doc that disagrees with
-  `src/lib` is wrong.
+  `src/packages` is wrong.
 
 ## How this documentation is maintained
 
 - **Rules chapters must match code.** Every numeric rule in these docs was
-  verified against `src/lib` (and its unit tests). If you change a rule, change
+  verified against `src/packages` (and its unit tests). If you change a rule, change
   the tests, then update the chapter that cites it. `.scratch/game-logic-map.md`
   is the dense one-page logic reference and is promoted into `dev/` chapters.
 - **Screenshots.** Player-manual screenshot placeholders point at

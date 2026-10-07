@@ -21,7 +21,7 @@ Undo/Redo → RPC undo_commands / redo_commands → inverse apply → refetch
   `id`, `scenario_id`, `player_id`, `player_name`, `action_type`,
   `description`, `sub_steps jsonb`, `chained bool`, `created_at`,
   `deleted_at` (soft delete = undone), `seq BIGSERIAL` (total order).
-- **Sub-step** (`SubStep` in `src/lib/commandLog.ts`): `{ type, description,
+- **Sub-step** (`SubStep` in `src/packages/infra/lib/commandLog.ts`): `{ type, description,
   unitId, changes: UnitChange[], payload? }`. A command usually has 1–N
   sub-steps (e.g. ATTACK may carry `ATTACK` action/attack-cap deltas,
   `DAMAGE` hp/troop deltas on both units, plus chained ROUT).
@@ -91,7 +91,7 @@ baseline/template lookup is needed.
 
 ## Action types (the vocabulary)
 
-`ActionType` in `src/lib/commandLog.ts`: MOVE · ROTATE · FORMATION · TEAM ·
+`ActionType` in `src/packages/infra/lib/commandLog.ts`: MOVE · ROTATE · FORMATION · TEAM ·
 HIDE · TOGGLE_HIDE · PLACE · ATTACK · DAMAGE · HEAL · ROUT · DELETE · ALLIANCE
 · ATTACH_HERO · DETACH_HERO · SWAP_HERO_POSITION · END_TURN · SCENARIO ·
 CHARGE · CHARGE_END · WEAPON_SELECT · CAST · EDIT_UNIT · EFFECT ·

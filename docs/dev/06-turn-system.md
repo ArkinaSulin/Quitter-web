@@ -10,8 +10,8 @@
 - `scenarios.current_turn_alliance`: `null` = **free play** (turn 0), or one of
   the three groups. `scenarios.turn_number`: increments **only** when a full
   cycle wraps, or when leaving free play into Turn 1.
-- Pure helpers: `src/lib/turnState.ts` (`ALLIANCE_ORDER`, `getActiveGroups`,
-  `advanceTurn` → `{ next, wrapped }`), 11 cases tested in `turnState.test.ts`.
+- Pure helpers: `src/packages/world/lib/turnState.ts` (`ALLIANCE_ORDER`, `getActiveGroups`,
+  `advanceTurn` → `{ next, wrapped }`), 11 cases tested in `world/turnState.test.ts`.
 
 ## Free play (turn 0)
 
@@ -64,7 +64,7 @@ direct scenario update — see `useScenarios.updateScenarioField`):
 - `archer_reaction_enabled` — opportunity fire on/off (see `08`).
 - `mounted_charge_enabled` — Charge!/Stoop! availability (shown as
   "Mounted charge and airborne stoop"; see `08`).
-- `verbose_combat` — per-scenario roll detail in messages (`verboseCombat.ts`).
+- `verbose_combat` — per-scenario roll detail in messages (`units/verboseCombat.ts`).
 - `fog_of_war` + `sight_radius` — see `11-fog-of-war.md`.
 
 ## Permission gates recap (turn-aware)

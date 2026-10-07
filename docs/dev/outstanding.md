@@ -49,7 +49,7 @@ Template library + editor shipped (Slice 1). See `18-map-structures.md`.
   wired through drag-move, the drag overlay and reaction repositioning. AI ignores
   it for v1.
 - ✅ **Slice 4**: hex structures — tower auras (occupancy flags merged into combat),
-  door-first attacks via **Shift + drop** (`structureCombat.ts`), scenario
+  door-first attacks via **Shift + drop** (`combat/structureCombat.ts`), scenario
   hex rendering (black outline/art/HP/door badges), and hex/edge **info tooltips**
   + Shift-held inspect mode (`MapInfoTooltip`).
 - ✅ **Range + gates**: reusable `range` effect modifier (watch-tower / zone reach
@@ -97,7 +97,7 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   `Walls` map is derived from edge structure instances, `map_data.walls` is no
   longer written, and destruction rides a per-key `STRUCTURE` command sub-step.
 - ✅ **Movement + combat**: a face replaces terrain / blocks
-  (`computeReachableMap`) and grants melee/ranged AC (`hexLine` entering edge).
+  (`computeReachableMap`) and grants melee/ranged AC (`primitives/hexLine` entering edge).
 - ✅ **Destructible segments**: `maxHp`/`hp`/`dt`; **Shift + drop** a unit on the
   edge to attack it (no to-hit roll, DT gates; 1 action + attack cap).
 
@@ -106,7 +106,7 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   provokes **one** aggression-gated pursue; moves that don't leave a ZoC do
   nothing. Pursuer order attacker → most MaxMP → most avail MP → random; a failed
   `d10 ≤ AGR` does not move and yields to the next candidate; the selected
-  pursuer always attacks (single AGR — no combat re-roll). `src/lib/pursuit.ts`.
+  pursuer always attacks (single AGR — no combat re-roll). `src/packages/morale/lib/pursuit.ts`.
 - ✅ **Hero Command-Presence leash** (`command_pursuit_permit`, default **hold**;
   template + placed-unit editable) and the scenario toggle `zoc_pursuit_enabled`.
 - ✅ **Withdraw**: drag a formed unit one hex into a rear hex (2 actions, keeps
@@ -127,7 +127,7 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
 Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.md`,
 `.scratch/shipyard-formula/shipyard.csv`); **builder + stats + renderer shipped**,
 **engine not started**:
-- 🔜 `src/lib/shipMoveCost.ts`, `shipCombat.ts`, `src/hooks/useShipEngine.ts`.
+- 🔜 `src/packages/ships/lib/shipMoveCost.ts`, `shipCombat.ts`, `src/hooks/useShipEngine.ts`.
 - 🔜 Scenario instance table `ship_spelljammer` (schema exists in migration 066)
   + ship tokens on the scenario map.
 - 🔜 `src/components/ScenarioMap/ShipPanel.tsx` (stations, crew reserve, info war).
@@ -170,5 +170,5 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
 
 ## Uncommitted working tree (owner's, left untouched)
 - `.scratch/ship-builder/spec.md`, `.scratch/shipyard-formula/{FINDINGS.md,shipyard.csv}`,
-  `.scratch/spelljammer-mod/spec.md`, `src/lib/shipStats.ts`,
+  `.scratch/spelljammer-mod/spec.md`, `src/packages/ships/lib/shipStats.ts`,
   `supabase/migrations/067_ship_seed.sql`.

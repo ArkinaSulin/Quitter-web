@@ -2,7 +2,7 @@
 
 Effects are **data on the unit row** (`units.effects jsonb`, migration 073) —
 not separate tables — and ground zones live in
-`scenarios.map_data.groundEffects`. Pure logic: `src/lib/unitEffects.ts`.
+`scenarios.map_data.groundEffects`. Pure logic: `src/packages/effects/lib/unitEffects.ts`.
 Effect changes ride the command log as `EFFECT` sub-steps, so apply/remove/
 expiry are all undoable and realtime-consistent.
 
@@ -25,7 +25,7 @@ expiry are all undoable and realtime-consistent.
     (e.g. Haste); buffs stack with cover.
   - `effectAcBonus(unit, isRanged)` = `coverAcBonus + directAcBonus` (used where
     a standalone effect AC is wanted, e.g. an attached hero's split AC).
-  `unitStats.effectiveAc(unit, formation, direction, isRanged, wallCover = 0)` =
+  `units/unitStats.effectiveAc(unit, formation, direction, isRanged, wallCover = 0)` =
   `baselineAc − shieldPenalty + max(formationAc, coverAcBonus, wallCover) +
   directAcBonus`, with formation AC front/flank-only (rear = 0), zone cover 360°,
   and wall cover directional (melee **and** ranged). That single call supplies the
@@ -33,7 +33,7 @@ expiry are all undoable and realtime-consistent.
   the AI planner and reactions. (So an `ac` buff is now correct in both the
   tooltip and the roll.)
 - `dot` deals damage **once per affected troop** (flat or dice), each capped at
-  that troop's HP and **floored at 1** (the universal damage rule, `damage.ts`),
+  that troop's HP and **floored at 1** (the universal damage rule, `primitives/damage.ts`),
   then summed into the pool (`HP − total`, troops = `ceil(hp/troopHp)`). Healing
   is the **`healing` flag** (e.g. Regen), not a negative amount — a legacy
   negative flat `dot` is normalized to `healing` on read.
@@ -52,7 +52,7 @@ expiry are all undoable and realtime-consistent.
 
 ## Attack-roll modes (advantage / disadvantage)
 
-`unitCombat.combatRollMode` combines, for one attack, the acting unit's own
+`combat/unitCombat.combatRollMode` combines, for one attack, the acting unit's own
 `advantage`/`disadvantage` with the target's `grant_*` and the long-range band
 (beyond the weapon's `range`, within `maxRange`). **Any advantage cancels any
 disadvantage regardless of source count** (D&D 5e) → a normal roll; the result
@@ -70,7 +70,7 @@ disadvantage — normal roll`).
   uses the hero's own flags + the target's `grant_*` (its own `advantage` /
   `disadvantage` ride `AttackerHeroProfile`).
 - The chat message states the cause on the volley line; verbose adds the
-  `[adv]`/`[dis]` tag and the two-die pair (`verboseCombat.formatAttackRolls`).
+  `[adv]`/`[dis]` tag and the two-die pair (`units/verboseCombat.formatAttackRolls`).
 - The AI planner's `hitChance` applies the same mode so expected damage tracks
   the effects.
 
@@ -94,7 +94,7 @@ Expired zones are removed and memberships restored.
 A zone may be flagged **`permanent: true`** — it **never ticks or expires**
 (`computeEndTurnEffects` skips it entirely; membership enter/leave still
 reconciles). Map-authored board effects (`maps.hex_effects`, expanded on assign
-via `mapEffects.expandHexEffects`) are permanent; see `13`.
+via `effects/mapEffects.expandHexEffects`) are permanent; see `13`.
 
 ## The END_TURN sweep
 
@@ -116,14 +116,14 @@ counts) that the engine turns into a chat line — **who**, how many **troops
 affected**, and the **damage taken**; `verbose_combat` adds every roll
 (`UnitEffects.resolveEffectDamage` / `describeEffectDamage`).
 
-Effect damage follows the **universal damage rule** (`src/lib/damage.ts`): every
+Effect damage follows the **universal damage rule** (`src/packages/primitives/lib/damage.ts`): every
 amount — flat or dice — lands **once per affected troop**, capped at that troop's
 HP and **never below 1** (`clampDamage`). A full saving-throw negate is the only
 0; a **half-save still lands at least 1**. Healing (the `healing` flag) is floored
 at 1 and capped at the troop's HP too. The verbose line pairs the damage roll with
 its save: `1d2 per troop DC 16 → 2(18→1), 1(13→1), 2(3→2), 1(20→0) (Σ 6)`
-(`damageRoll(saveTotal→applied)`). Magic (`spellDamage.ts`) keeps a **single
-shared damage roll** but the same display: `verboseCombat.formatSpellRollLine`
+(`damageRoll(saveTotal→applied)`). Magic (`combat/spellDamage.ts`) keeps a **single
+shared damage roll** but the same display: `units/verboseCombat.formatSpellRollLine`
 prints `21 (1,1,1,2,3,4,4,5) per troop DC 16 → 18→10, 13→21, 3→21, 20→10`.
 
 ## Catalog (apply UI offers; magnitude/duration overridable)

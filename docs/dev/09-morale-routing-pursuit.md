@@ -1,7 +1,7 @@
 # 09 — Morale, Routing & Pursuit
 
 Morale decides when a unit breaks; routing + pursuit decide what happens then.
-Pure logic: `src/lib/unitMorale.ts`, `src/lib/routedRetreat.ts`. The rout flow
+Pure logic: `src/packages/morale/lib/unitMorale.ts`, `src/packages/morale/lib/routedRetreat.ts`. The rout flow
 (modal, retreat, pursuit commands) is orchestrated in the ScenarioMap layer.
 
 ## The rout flag
@@ -107,13 +107,13 @@ editor's formation picker).
   positive effective morale and no *visible* hostile adjacent, the unit returns
   to **Scattered** (heroes: **Hero**) and spends the rest of its turn (0 actions,
   0 MP). The normal formation picker is hidden while Routed, so Rally is the only
-  way out. Prereqs live in `src/lib/rally.ts` (`canRally`); the command is
+  way out. Prereqs live in `src/packages/morale/lib/rally.ts` (`canRally`); the command is
   `useGameEngine.rallyUnit`.
 
 ## Retreat (owner-decided)
 
 When a unit routs the owner is shown the retreat card (draggable; hexes
-highlight on hover). Logic in `routedRetreat.ts`:
+highlight on hover). Logic in `morale/routedRetreat.ts`:
 
 - Legal single-hex retreat candidates: **empty** hexes **outside any enemy kill
   zone**.
@@ -139,7 +139,7 @@ hostile kill zone** — a rout retreat, a voluntary move, anything — is punish
   (`pursuitCandidates`): ordered **attacker who caused the rout → most MaxMP →
   most available MP → random**, each rolling **`d10 <= AGR`** until one passes. A
   candidate inside a hero's Commanding Presence is held unless that hero's
-  `command_pursuit_permit` is true. `src/lib/pursuit.ts`. A failed candidate
+  `command_pursuit_permit` is true. `src/packages/morale/lib/pursuit.ts`. A failed candidate
   **does not move** — it yields the chance to the next in order; the one that
   passes **always** attacks (the strike does not re-roll AGR — see `08`). Each
   roll is logged: `X passes AGR (3 ≤ 6) and pursues Y` / `X AGR failed (7 > 6) —

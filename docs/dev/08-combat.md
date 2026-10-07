@@ -1,8 +1,8 @@
 # 08 — Combat Resolution
 
-Combat is a pure computation in `src/lib/unitCombat.ts` + helpers
-(`unitStats.ts`, `formationRules.ts`, `spellDamage.ts`, `attackCap.ts`,
-`meleeFallback.ts`, `archerReaction.ts`). The ScenarioMap orchestrates the
+Combat is a pure computation in `src/packages/combat/lib/unitCombat.ts` + helpers
+(`units/unitStats.ts`, `movement/formationRules.ts`, `combat/spellDamage.ts`, `combat/attackCap.ts`,
+`combat/meleeFallback.ts`, `combat/archerReaction.ts`). The ScenarioMap orchestrates the
 flow (`useCombatActions.ts` → `performAttack`) and turns outcomes into
 command-log sub-steps.
 
@@ -32,7 +32,7 @@ command-log sub-steps.
 
 `performAttack` auto-draws a melee weapon for adjacency (WEAPON_SELECT
 sub-step) or falls back to **Fists** when the active weapon is ranged and no
-melee weapon exists (`meleeFallback.ts`). Switching to a two-handed weapon
+melee weapon exists (`combat/meleeFallback.ts`). Switching to a two-handed weapon
 drops the shield (−2 AC, recomputed).
 
 ## Attack arcs (universal rule)
@@ -58,8 +58,8 @@ point-blank melee decision) is the *same* shape as the ZoC — front-2 at the
 threaten all **6 adjacent hexes at the same elevation + the same hex ±10 ft**
 (360°, threat only; heroes still impose no ZoC). See `07` and `09`.
 
-Structure attacks follow the rule too (`wallCombat.wallAttackKind`,
-`structureCombat.hexStructureAttackKind`): a unit on either side of a wall must
+Structure attacks follow the rule too (`combat/wallCombat.wallAttackKind`,
+`combat/structureCombat.hexStructureAttackKind`): a unit on either side of a wall must
 face it (toward the opposite hex); a hex structure must lie in the attacker's
 permitted arc. Ranged structure attacks are gated by `canRangedTarget`.
 
@@ -134,7 +134,7 @@ hit, roll the damage dice; damage per hit is capped at `troopHp` (one troop).
 doubles dice (both = ×4). Damage pools into the unit HP; troop count =
 `ceil(hp / troopHp)`.
 
-**Universal damage rule (`src/lib/damage.ts`).** Every damage path — weapon
+**Universal damage rule (`src/packages/primitives/lib/damage.ts`).** Every damage path — weapon
 attacks, area magic, edge walls, hex structures, temporary effects, entry traps,
 fall damage — routes through one parser (`rollDamageDetailed` + `clampDamage` /
 `rollAppliedDamage`): a **landed** amount is **never below 1** and never above its
@@ -143,10 +143,10 @@ A full saving-throw **negate** is the only 0 — a successful **half-save still 
 at least 1**. The clamp is applied where damage is *dealt*, so `rollDamageDetailed`
 stays raw (a no-die string rolls 0).
 
-**Effective AC** (`unitStats.effectiveAc`) = `baselineAc + formation AC term
+**Effective AC** (`units/unitStats.effectiveAc`) = `baselineAc + formation AC term
 − shieldPenalty`, but the **formation term applies front/flank only — a
 formation gives no AC from the REAR** (uniform for every formation; direction via
-`attackDirection` — bearing-based so it works for melee and ranged). The formation
+`primitives/attackDirection` — bearing-based so it works for melee and ranged). The formation
 term is **split by attack type**: `melee_ac_modifier` (melee) vs
 `range_ac_modifier` (ranged — bows/thrown and **single-target magic weapons**,
 which roll attack rows like any weapon). Shield Wall is 3/5; every other
@@ -159,7 +159,7 @@ routing.
 **Edge walls** add a separate AC term: `resolveCombatSequence` takes an optional
 `walls` set and adds the **crossed edge's face** AC (`meleeAc`/`rangedAc`, melee
 vs ranged) to the defender — melee uses the shared edge, ranged uses the edge the
-shot enters through (cube-lerp `hexLine`). See `13`.
+shot enters through (cube-lerp `primitives/hexLine`). See `13`.
 
 **Shield Wall** additionally **requires a shield** to form (two-handed weapons
 still block it). Its rear is where the wall is weakest — the formation AC goes to
@@ -231,7 +231,7 @@ start. Heroes also respect the cap in practice via their 5-action budget.
 ## Charge! / Stoop! (one shared command)
 
 The context menu offers a single charge entry, computed by `chargeStanceFor`
-(`src/lib/chargeStance.ts`) from the unit's **actual** state (airborne =
+(`src/packages/combat/lib/chargeStance.ts`) from the unit's **actual** state (airborne =
 `elevation > surfaceAt(hex)`, not merely `elevation > 0`):
 
 - **Grounded**, non-hero, with `canCharge` + `canFormationCharge` → **Charge!**;
@@ -247,7 +247,7 @@ handler. The entry is gated by the scenario `mounted_charge_enabled` setting
   attack**, then drop one organization level (`CHARGE_END`). Attack < 2 →
   premature confirm (normal attack, still drops org).
 - After a full-charge attack that didn't break/kill the charger, **charge-over**
-  may be offered (`chargeOver.ts`): target charge-through-able from the
+  may be offered (`combat/chargeOver.ts`): target charge-through-able from the
   approach arc, in front arc, landing hex empty, 2 MP affordable → ride over
   and land behind (a chained MOVE).
 - Still charging at your own End Turn → forfeit (clear charge + org drop).
@@ -255,7 +255,7 @@ handler. The entry is gated by the scenario `mounted_charge_enabled` setting
 ## Pursue (disengaging a kill zone)
 
 Gated by `scenarios.zoc_pursuit_enabled` (default ON). When a unit **leaves a
-hostile kill zone** (`zocDisengage.ts` → `pursuitCandidates`):
+hostile kill zone** (`morale/zocDisengage.ts` → `pursuitCandidates`):
 
 - the formed non-hero mover **drops to Scattered** (`pursuitScatters`);
 - **one** melee-capable hostile whose kill zone was left **pursues**
@@ -285,7 +285,7 @@ place. A pursuit's own move never provokes. Setting OFF disables all of it.
 
 When any unit finishes a MOVE, eligible **archers of the opposing alliance**
 with an unused reaction and a ranged weapon may fire:
-`findEligibleReactionArchers` (archer reaction logic in `archerReaction.ts`).
+`findEligibleReactionArchers` (archer reaction logic in `combat/archerReaction.ts`).
 Archer within `range` of the mover's landing hex (and, for formed formations, in
 the archer's **front cone** — `arcOfTarget`); mover hidden/deleted/routed
 excluded; protected (back-attached) heroes never react — but **lone and
@@ -319,7 +319,7 @@ own turn start). Gated by `archer_reaction_enabled`. Reaction shots ride
 
 ## Magic & area effects
 
-`spellDamage.ts`: area weapons (`magicDimension > 0`) with a **shape**
+`combat/spellDamage.ts`: area weapons (`magicDimension > 0`) with a **shape**
 (`circle` = radius · `cube` = side · `cone` = 60° wedge; `magicDimension` in
 feet). The cast window places/rotates the shape on the map; the caster picks
 the number of affected troops and the save. Resolution rolls the damage dice
@@ -342,7 +342,7 @@ An ATTACK command usually carries: optional WEAPON_SELECT sub-steps (auto-draw
 + AC change), the ATTACK sub-step (−1 action, +1 attacksUsed), DAMAGE
 sub-steps for both units + any hero damage, and chained ROUT entries for any
 units that break (see `09`). Undo reverts the whole exchange. Verbose-combat
-messages format the dice (see `verboseCombat.ts`).
+messages format the dice (see `units/verboseCombat.ts`).
 
 ## Upcast (damage-die count)
 
@@ -357,7 +357,7 @@ notation (`1d4+2d6+3`) works; a string with no die rolls 0.
 
 ## Scenario statistics
 
-`src/lib/battleStats.ts` derives the Scenario Statistics modal
+`src/packages/battle/lib/battleStats.ts` derives the Scenario Statistics modal
 (`ScenarioStatsModal.tsx`) purely from the surviving command log + the live unit
 list, so undo stays correct (no counters stored). Kill attribution comes from
 the damage sub-steps' `{ killerUnitId, victimLevel }` payload: each dead troop is

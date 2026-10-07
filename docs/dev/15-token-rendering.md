@@ -2,7 +2,7 @@
 
 Canvas rendering shared between the Scenario Map and editor previews.
 Core: `src/components/TokenRenderer/drawToken.ts` (pure draw function),
-`tokenUtils.ts` (layout math + colors), `TokenRenderer.tsx`/`TokenPreview.tsx`
+`units/tokenUtils.ts` (layout math + colors), `TokenRenderer.tsx`/`TokenPreview.tsx`
 (editor wrappers). The map draws tokens through `useCanvasDraw.customDraw`.
 
 ## Geometry & palette
@@ -55,9 +55,9 @@ Name runs flush along the bottom in white with a dark shadow.
   `.then()` inside the scope). `customDraw` awaits each `drawToken()` before
   the next unit so scopes never leak.
 - **Attached heroes** draw half-size at the host's front/back hex vertex
-  (`mapGeometry.getAttachedHeroPos`), with a highlight box on the currently
+  (`world/mapGeometry.getAttachedHeroPos`), with a highlight box on the currently
   active hero.
-- **Elevated token offset** (`flying.elevationOffset`, also used by hit-testing):
+- **Elevated token offset** (`movement/flying.elevationOffset`, also used by hit-testing):
   NE 45°, constant by height — a **flyer** = a full hex radius; a **non-flyer**
   (an elevated ground unit or a climber) = a **quarter** hex radius. A climber
   points the offset toward its target hex.
@@ -69,7 +69,7 @@ Name runs flush along the bottom in white with a dark shadow.
   (HP ≤ 0, non-hero) = grayscaled; downed **hero** (HP ≤ 0) grayscales but
   stays interactable.
 - **Fallen piles** (decorative, drawn under tokens): per-hex dots derived from
-  the command log (`corpseTracker.buildFallen`). Each dot matches the dead unit —
+  the command log (`battle/corpseTracker.buildFallen`). Each dot matches the dead unit —
   team colour, **mounted = triangle / foot = circle**, radius from
   `sizeCategory`×`visualScale`. Scatter is deterministic and stable as the pile
   grows (random direction, radial density linear in distance out to `0.704` of

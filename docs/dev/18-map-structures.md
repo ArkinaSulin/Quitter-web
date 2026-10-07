@@ -28,7 +28,7 @@ map), exactly like weapons/effects split authored vs placed.
 | **Instance** | `maps.structures` jsonb (library); `scenarios.map_data.structures` snapshot | `{ templateId, hp?, maxHp?, dt?, doorHp?, outside? }` |
 
 Instances are keyed by anchor: `"q,r,dir"` for edges, `"q,r"` for hexes
-(`src/lib/mapStructures.ts`). A placed instance may override the template's
+(`src/packages/movement/lib/mapStructures.ts`). A placed instance may override the template's
 durability (maxHp / hp / dt / doorHp) so the GM can drop a reinforced gate
 without authoring a new template. On assign, edge structures are converted to the
 runtime `Walls` shape via `structuresToWalls` (inside/outside mapped by
@@ -40,7 +40,7 @@ scenario is migrated (Slice 3).
 - **Edge** (`anchor='edge'`) — sits on the shared edge between two hexes.
   Directional, one face per side:
   - **Inside face (A)** / **Outside face (B)** — each has `block`,
-    `moveCost` (replaces the entered hex's terrain when crossing INTO that face),
+    `movement/moveCost` (replaces the entered hex's terrain when crossing INTO that face),
     `meleeAc` / `rangedAc` (cover for the unit standing on that side).
   - `battlement` draws a crenellation (square wave) on the **outside** face; the
     amplitude is tied to the tooth width so the teeth read as squares.
@@ -69,7 +69,7 @@ templates use `dt` 15, stone 20. Non-destructible scenery is expressed as
 ## Effect modifiers
 
 The template's `modifiers` list is a standard `EffectModifier[]`
-(`effectTemplates.ts`). Every modifier is **oriented on the carrier** — the
+(`effects/effectTemplates.ts`). Every modifier is **oriented on the carrier** — the
 occupant of a hex structure, the zone's hex, or the **inside** face of a wall.
 The four attack-roll flags map to the four directions, with the carrier always
 "in":
@@ -102,7 +102,7 @@ A grounded unit's elevation changes **only across an adjacent edge**:
   the pursue gate (a raised origin never provokes). Mounted units can't climb down
   (Drop/Cancel only).
 - A multi-hex move whose destination surface differs from the origin is **refused**
-  ("move onto/off the edge first"). `rollFallDamage` (`flying.ts`) is the shared
+  ("move onto/off the edge first"). `rollFallDamage` (`movement/flying.ts`) is the shared
   d6/10 ft formula.
 
 ## Attack type is kill-zone-aware
@@ -117,7 +117,7 @@ the target's front two hexes — Scattered/Routed have none):
 - a **melee** weapon beyond adjacency cannot reach (`none`).
 
 Symmetric for the defender (in the attacker's kill zone). `attackKind(...)` +
-`canWeaponAttack(...)` (`meleeFallback.ts`) are the shared source; the flyer/ground
+`canWeaponAttack(...)` (`combat/meleeFallback.ts`) are the shared source; the flyer/ground
 drop pickers use them to enable/disable weapons. There is **no auto-dive** — a
 combatant must position into range itself. Point-blank ranged still doesn't provoke
 retaliation (the engine resolves one `isRanged` per exchange).
@@ -149,10 +149,10 @@ flags when it attacks across.
 - `supabase/migrations/094_map_structures.sql` — `maps.structures` (drops `maps.walls`).
 - `supabase/migrations/095_structure_command_log.sql` — `STRUCTURE` per-key substep.
 - `src/types/structure.ts` — `StructureTemplate` / `StructureInstance`.
-- `src/lib/structureTemplates.ts` (+ test) — row mappers, sanitizers, defaults.
-- `src/lib/mapStructures.ts` (+ test) — parse placed instances, `structuresToWalls`, auras, org gates.
-- `src/lib/structureCombat.ts` (+ test) — hex reach + door-first resolution.
-- `src/lib/structureTemplateCache.ts` — session cache of the template library.
+- `src/packages/movement/lib/structureTemplates.ts` (+ test) — row mappers, sanitizers, defaults.
+- `src/packages/movement/lib/mapStructures.ts` (+ test) — parse placed instances, `structuresToWalls`, auras, org gates.
+- `src/packages/combat/lib/structureCombat.ts` (+ test) — hex reach + door-first resolution.
+- `src/packages/infra/lib/structureTemplateCache.ts` — session cache of the template library.
 - `src/components/StructureEditor/StructureEditor.tsx` — the editor page body.
 - `src/components/StructureEditor/StructurePreview.tsx` — edge/hex preview with
   the battlement square-wave and a preview flip.
@@ -160,8 +160,8 @@ flags when it attacks across.
 - `src/components/ScenarioMap/StructurePaintPanel.tsx` — in-scenario GM structure brush.
 - `app/structure-editor/page.tsx` — route gated on
   `can_view_structure_editor` / `can_use_structure_editor`.
-- `src/lib/effectTemplates.ts`, `src/components/EffectEditor/EffectModifierFields.tsx`,
-  `src/lib/unitEffects.ts` — the `enter_org_max` modifier kind.
+- `src/packages/effects/lib/effectTemplates.ts`, `src/components/EffectEditor/EffectModifierFields.tsx`,
+  `src/packages/effects/lib/unitEffects.ts` — the `enter_org_max` modifier kind.
 
 ## Slice 3 — scenario-native structures (shipped)
 
@@ -183,7 +183,7 @@ runtime `Walls` (`structuresToWalls`) so movement/combat/render are unchanged.
 
 ## Slice 3b — `enter_org_max` movement gate (shipped)
 
-Movement now honours `enter_org_max`: `mapGeometry.makeBlockedEdge` takes
+Movement now honours `enter_org_max`: `world/mapGeometry.makeBlockedEdge` takes
 `{ structures, templates, zones, orgLevel }` and blocks a step when the crossed
 edge / destination hex carries a structure (or a ground zone on the destination)
 whose `enter_org_max` is below the mover's organization level. Wired through the
@@ -192,18 +192,18 @@ blocked by any edge structure. The AI planner ignores it for v1.
 
 ## Slice 4 — hex structures (shipped)
 
-- **Tower auras** (occupancy, `mapStructures.structureAuraFlags`): a unit on a
+- **Tower auras** (occupancy, `movement/mapStructures.structureAuraFlags`): a unit on a
   hex structure gains `advantage`/`disadvantage` (its own attacks) and
   `grant_advantage`/`grant_disadvantage` (attackers against it). Merged into the
   combat copies in `useCombatActions` as synthetic effects so the roll-mode reader
   applies them (no persisted effect, no END_TURN bookkeeping). The AI ignores them.
-- **Edge-wall flags** (`walls.WallFace.meleeRoll/rangedRoll` + `unitCombat.wallRollFlags`):
+- **Edge-wall flags** (`movement/walls.WallFace.meleeRoll/rangedRoll` + `combat/unitCombat.wallRollFlags`):
   an edge structure's four flag modifiers are carried on its **inside** face only
   (`structuresToWalls`) and merged into the combat roll flags for whichever unit
   holds that face — so the inside unit gains `advantage`/`disadvantage` on its own
   attacks across the wall and the outside attacker gains/suffers the face's
   `grant_*`. `ac` is likewise inside-only (the outside unit never gets wall cover).
-- **Door-first combat** (`structureCombat.ts`): **Shift + drop** a unit on a
+- **Door-first combat** (`combat/structureCombat.ts`): **Shift + drop** a unit on a
   gate/tower hex to attack it (a plain drop moves). No to-hit roll;
   the DT gates the blow; a standing door absorbs damage until destroyed, then the
   structure HP is exposed; 0 HP deletes the instance. 1 action + attack cap.

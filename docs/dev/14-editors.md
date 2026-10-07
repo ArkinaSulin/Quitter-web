@@ -2,7 +2,7 @@
 
 ## The shared mapper
 
-`src/lib/templateMappers.ts` — `mapTemplate(row): UnitTemplate` and
+`src/packages/infra/lib/templateMappers.ts` — `mapTemplate(row): UnitTemplate` and
 `mapTemplateToRow(template)` convert between `unit_templates` rows
 (snake_case) and the camelCase `UnitTemplate`. The same mapping is shared by
 the Unit Editor, the Unit Selector, and template→unit spawns
@@ -12,7 +12,7 @@ a third parallel map lives in `useSupabaseSync` for live `units` rows.
 ## Weapon string format (canonical, on units AND templates)
 
 Weapons are **not** stored as JSON — they are a CSV string; weapons separated
-by `;`, fields by `,` (`src/lib/weaponParser.ts`):
+by `;`, fields by `,` (`src/packages/units/lib/weaponParser.ts`):
 
 ```
 Name,AttackBonus,DamageDice,IsHealing,Range,MaxRange,MagicDimension,Reach,NoRetaliation,FreeAction,IsTwoHanded,NumberOfAttacks,OnSaveHalfOrNeg,SavingThrow,Shape
@@ -71,7 +71,7 @@ missing — Max MP was the canonical bug).
 - `unit_size_categories`: 75 Small · 100 Medium · 200 Large · 300 Huge · 400
   Gargantuan, with `row_capacity`, `max_troops`, `max_troops_mounted`.
 - Row-capacity base is ALSO a setting band (`row_capacity_by_size`,
-  migration 042) as the code fallback; `unitStats.getRowCapacityBase` is the
+  migration 042) as the code fallback; `units/unitStats.getRowCapacityBase` is the
   single source, `getRowCapacity` prefers the table row.
 
 ## Ship / map editors

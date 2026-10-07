@@ -43,7 +43,7 @@ There are two independent permission layers:
 `view_*` (same three scopes), `assign_unit_team`, `change_unit_visibility`,
 `add_unit`, `choose_map`, `change_user_role`, `kick_player`, `close_room`.
 
-Type + helpers: `src/types/gameProtocol.ts`, `src/lib/scenarioPermissions.ts`.
+Type + helpers: `src/types/gameProtocol.ts`, `src/packages/world/lib/scenarioPermissions.ts`.
 
 ### Scope resolution
 
@@ -57,7 +57,7 @@ Type + helpers: `src/types/gameProtocol.ts`, `src/lib/scenarioPermissions.ts`.
 
 | Gate | Rule (implemented) | Where |
 |---|---|---|
-| `canControlUnit(u)` | GM bypass · else role move-scope contains team · else if `freeMove || turn===null` allow · else require `turn === myAlliance` AND unit alliance === turn | `canActOnUnit` in `scenarioPermissions.ts`, plus team/turn wiring in `ScenarioMap.tsx` |
+| `canControlUnit(u)` | GM bypass · else role move-scope contains team · else if `freeMove || turn===null` allow · else require `turn === myAlliance` AND unit alliance === turn | `canActOnUnit` in `world/scenarioPermissions.ts`, plus team/turn wiring in `ScenarioMap.tsx` |
 | `canEditUnit(u)` | GM · else capability `adjust_*` scope contains the unit's team | `canAdjustUnit` |
 | `canViewDetail` | GM · else `view_*` scope | `canViewDetail` |
 | `canReactToUnit` | `isGM ∨ same team` — **no turn gate** (an archer reacts to hostile movement even off-turn) | ScenarioMap reaction logic + `useReactionActions` |

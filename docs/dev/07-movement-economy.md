@@ -12,7 +12,7 @@ the drag overlay, the executed move, tooltips, and tests.
   *materialized* when a move converts an action; a move's cost is spent from
   already-materialized MP first, and an action converts to a fresh full pool
   only when MP is exhausted (so leftover MP is never wasted).
-- Functions in `src/lib/moveCost.ts` (all take `{movementPointsAvailable,
+- Functions in `src/packages/movement/lib/moveCost.ts` (all take `{movementPointsAvailable,
   actionsAvailable}` + `maxMP`):
 
   | Function | Meaning |
@@ -71,7 +71,7 @@ soft confirm.
 
 ## Formation changes
 
-`src/lib/formationCost.ts`: a change costs a **flat fraction of the unit's
+`src/packages/movement/lib/formationCost.ts`: a change costs a **flat fraction of the unit's
 current effective movement pool** — `max(1, ceil(oldMax × 0.5))` (setting
 `formation_change_cost_per_step`, default 0.5). Because the fraction ≤ 1 it
 never costs more than one action and never less than 1 MP. The leftover MP then
@@ -160,7 +160,7 @@ another action, but this pool is spent).
 ## Disengaging — scatter + pursue
 
 The whole ZoC-danger layer is gated by `scenarios.zoc_pursuit_enabled` (default
-ON). With it ON, leaving a hostile kill zone (`src/lib/zocDisengage.ts` →
+ON). With it ON, leaving a hostile kill zone (`src/packages/morale/lib/zocDisengage.ts` →
 `pursuitCandidates`; resolved by `performPursuits` in `useCombatActions`):
 
 - The mover **drops to Scattered** if it is a formed, non-hero unit
@@ -187,7 +187,7 @@ ON). With it ON, leaving a hostile kill zone (`src/lib/zocDisengage.ts` →
 ## Withdraw (ordered disengagement)
 
 **Dragging a formed, non-hero unit one hex into either rear-arc hex is the
-Withdraw** (`src/lib/withdraw.ts`): it keeps its facing for **2 actions** — the
+Withdraw** (`src/packages/movement/lib/withdraw.ts`): it keeps its facing for **2 actions** — the
 ordered alternative to a scattering rout. The overlay paints legal rear hexes
 **white/droppable** (`useOverlay`; just like a normal move) since no face change
 is needed; on drop an **always-on confirm** states the cost before applying —
@@ -211,7 +211,7 @@ attack; distance < 2 → premature confirm. See `08-combat.md`.
 ## Who provides `maxMP`
 
 Effective movement = `floor(movementPoints × formation.movement_multiplier)`
-(`unitStats.computeEffectiveMovement`; Routed/Scattered ×1.5, Phalanx/Shield
+(`units/unitStats.computeEffectiveMovement`; Routed/Scattered ×1.5, Phalanx/Shield
 Wall ×0.5, others ×1 — verify live `formations` rows). Effects (Haste/Slow)
 adjust the `movementPoints` base (see `10`).
 

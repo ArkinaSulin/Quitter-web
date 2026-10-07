@@ -1,7 +1,7 @@
 # 12 — Replay (Read-Only Playback)
 
 Replay is a **pure function of the command log**: `buildReplayTimeline(rows)`
-(`src/lib/commandHistory.ts`) skips soft-deleted (undone) rows, sorts by
+(`src/packages/infra/lib/commandHistory.ts`) skips soft-deleted (undone) rows, sorts by
 timestamp, groups each root command with its `chained` followers into a
 "beat", and folds the sub-step deltas into per-unit / per-alliance /
 per-scenario state. PLACE sub-steps carry a full unit snapshot in `payload`,
