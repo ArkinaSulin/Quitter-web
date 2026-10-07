@@ -2,7 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 
 export type ProfileRole = 'admin' | 'dm' | 'player' | null;
 

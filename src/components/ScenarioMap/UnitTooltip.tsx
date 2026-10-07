@@ -2,14 +2,14 @@
 
 import React from 'react';
 import { Unit, AllianceGroup, Formation, GroundEffect } from '@/types/gameProtocol';
-import { computeEffectiveMoraleModifier, exertedThreatRating, calcWounds, calcIsolation, calcEnemyThreats, isUnitRouted, calcMoraleBoostInfo, isHeroMoraleBoostEnabled, HERO_HALF_THREAT_MAX_SIZE } from '@/lib/unitMorale';
-import { computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty, effectiveAc as effectiveAcFor } from '@/lib/unitStats';
-import { parseWeapons } from '@/lib/weaponParser';
-import { heroMovePerAction } from '@/lib/moveCost';
-import { unitAttackCap } from '@/lib/attackCap';
-import { getSetting } from '@/lib/settingsCache';
-import { isAttackRollEffect, hasPendingZoneEffect } from '@/lib/unitEffects';
-import { modifierAmount } from '@/lib/effectTemplates';
+import { computeEffectiveMoraleModifier, exertedThreatRating, calcWounds, calcIsolation, calcEnemyThreats, isUnitRouted, calcMoraleBoostInfo, isHeroMoraleBoostEnabled, HERO_HALF_THREAT_MAX_SIZE } from '@/packages/morale';
+import { computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty, effectiveAc as effectiveAcFor } from '@/packages/units';
+import { parseWeapons } from '@/packages/units';
+import { heroMovePerAction } from '@/packages/movement';
+import { unitAttackCap } from '@/packages/combat';
+import { getSetting } from '@/packages/infra';
+import { isAttackRollEffect, hasPendingZoneEffect } from '@/packages/effects';
+import { modifierAmount } from '@/packages/effects';
 import { Floating } from './Floating';
 
 interface UnitTooltipProps {

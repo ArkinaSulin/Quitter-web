@@ -8,14 +8,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
-import { HEX_SIZE, DEFAULT_GRID_RADIUS, hexMpLabelAt, costShade } from '@/components/ScenarioMap/mapGeometry';
-import { edgeRef, nearestEdge, hexCorner } from '@/lib/walls';
-import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls, structureZones } from '@/lib/mapStructures';
-import { battlementPath, battlementDepth, crossMarksPath, sineWavePath, ladderPaths } from '@/lib/structureDraw';
-import { structureHasLadder } from '@/lib/structureTemplates';
+import { HEX_SIZE, DEFAULT_GRID_RADIUS, hexMpLabelAt, costShade } from '@/packages/world';
+import { edgeRef, nearestEdge, hexCorner } from '@/packages/movement';
+import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls, structureZones } from '@/packages/movement';
+import { battlementPath, battlementDepth, crossMarksPath, sineWavePath, ladderPaths } from '@/packages/movement';
+import { structureHasLadder } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
-import { MapHexEffect, expandHexEffects } from '@/lib/mapEffects';
-import { EffectTemplate } from '@/lib/effectTemplates';
+import { MapHexEffect, expandHexEffects } from '@/packages/effects';
+import { EffectTemplate } from '@/packages/effects';
 import { strokeFillText, fillHexPath, structureBadges, MP_COST_GREY } from '@/components/shared/mapFeatureDraw';
 
 export interface MapCanvasProps {

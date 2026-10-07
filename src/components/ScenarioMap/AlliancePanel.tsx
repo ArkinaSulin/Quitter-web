@@ -2,8 +2,8 @@
 
 import React, { useState } from 'react';
 import { AllianceGroup, ALLIANCE_COLORS } from '@/types/gameProtocol';
-import { allianceOf } from '@/lib/alliances';
-import { TEAMS, TEAM_COLORS, getDotColor } from '@/components/TokenRenderer/tokenUtils';
+import { allianceOf } from '@/packages/primitives';
+import { TEAMS, TEAM_COLORS, getDotColor } from '@/packages/units';
 
 interface AlliancePanelProps {
   alliances: Record<string, AllianceGroup>;

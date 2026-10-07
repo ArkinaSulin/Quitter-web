@@ -7,9 +7,9 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { Unit, UnitEffect, GroundEffect } from '@/types/gameProtocol';
-import { supabase } from '@/lib/supabaseClient';
-import { EffectTemplate, mapEffectRow, modifierSummary } from '@/lib/effectTemplates';
-import { isAttackRollEffect } from '@/lib/unitEffects';
+import { supabase } from '@/packages/infra/supabase';
+import { EffectTemplate, mapEffectRow, modifierSummary } from '@/packages/effects';
+import { isAttackRollEffect } from '@/packages/effects';
 import { EffectFormValue } from './EffectFormModal';
 
 /** Amount label for a placed effect: flag kinds have no amount. */

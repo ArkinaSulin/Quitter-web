@@ -18,7 +18,7 @@
 // Instances live on the map layers (maps.structures / scenarios.map_data.structures)
 // keyed by anchor: "q,r,dir" for edges, "q,r" for hexes. They reference a template
 // and may override its runtime state (HP / door HP / outside / open / modifiers).
-import { EffectModifier } from '@/lib/effectTemplates';
+import { EffectModifier } from '@/types/effects';
 
 export type StructureAnchor = 'edge' | 'hex';
 

@@ -1,0 +1,511 @@
+import { describe, it, expect } from 'vitest';
+import {
+  areHexesAdjacent,
+  calcEnemyThreats,
+  calcIsolation,
+  calcMoraleBoost,
+  computeEffectiveMoraleModifier,
+  computeThreatRating,
+  exertedThreatRating,
+  heroThreatAgainst,
+  HERO_INSPIRATION_BONUS,
+  isInKillZone,
+  imposesKillZone,
+  shouldRout,
+} from '@/packages/morale/lib/unitMorale';
+import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
+
+function makeUnit(overrides: Partial<Unit> = {}): Unit {
+  return {
+    id: 'u1',
+    scenarioId: 's1',
+    templateId: null,
+    unitName: 'Test Unit',
+    raceId: '',
+    raceName: '',
+    armorName: '',
+    mountId: null,
+    mountName: '',
+    isHero: false,
+    attachedToUnitId: null,
+    attachedPosition: null,
+    currentTroopCount: 20,
+    maxTroopCount: 20,
+    level: 5,
+    troopHp: 10,
+    maxUnitHp: 200,
+    currentUnitHp: 200,
+    isShielded: false,
+    baselineAc: 14,
+    currentAc: 14,
+    weaponString: '',
+    movementPoints: 3,
+    movementPointsAvailable: 3,
+    aggressiveness: 7,
+    baseMorale: 7,
+    currentMoraleModifier: 0,
+    moraleBoost: 0,
+    sizeCategory: 100,
+    visualScale: 100,
+    currentFormation: 'Open Order',
+    formationAvailability: [],
+    equipCostGp: 0,
+    raceIconUrl: '',
+    unitTypeIconUrl: '',
+    customImageUrl: '',
+    canCharge: false,
+    ignoreMoraleChecks: false,
+    hex: { q: 0, r: 0, s: 0 },
+    facing: 0,
+    team: 'blue',
+    hidden: false,
+    isDeleted: false,
+    isCharging: false,
+    chargeDistance: 0,
+    commandSeq: 0,
+    organizationLevel: 1,
+    actionsAvailable: 1,
+    attacksUsed: 0,
+    archerReactionUsed: false,
+    pursuitUsed: false,
+    heroicInspirationActive: false,
+    activeWeaponIndex: 0,
+    str: 0,
+    dex: 0,
+    con: 0,
+    int: 0,
+    wis: 0,
+    cha: 0,
+    ...overrides,
+  };
+}
+
+// computeThreatRating: levelComp + (sizeCategory/100)^2 + countComp
+const threat1 = { level: 1, sizeCategory: 100, currentTroopCount: 1 }; // 0 + 1 + 0
+const threat3 = { level: 3, sizeCategory: 100, currentTroopCount: 1 }; // 2 + 1 + 0
+const threat4 = { level: 3, sizeCategory: 100, currentTroopCount: 5 }; // 2 + 1 + 1
+const threat9 = { level: 13, sizeCategory: 100, currentTroopCount: 20 }; // 5 + 1 + 3
+
+// HEX_DIRS index -> hex offset from unit.hex
+const DIR_HEXES = [
+  { q: 1, r: 0, s: -1 },
+  { q: 0, r: 1, s: -1 },
+  { q: -1, r: 1, s: 0 },
+  { q: -1, r: 0, s: 1 },
+  { q: 0, r: -1, s: 1 },
+  { q: 1, r: -1, s: 0 },
+];
+
+const alliances: Record<string, AllianceGroup> = { blue: 'friendly', red: 'enemy' };
+
+function enemyAt(hex: { q: number; r: number; s: number }, overrides: Partial<Unit> = {}): Unit {
+  return makeUnit({
+    id: `e-${hex.q}-${hex.r}-${hex.s}`,
+    team: 'red',
+    hex,
+    ...overrides,
+  });
+}
+
+describe('computeThreatRating', () => {
+  it('computes from level, size, and troop count', () => {
+    expect(computeThreatRating(makeUnit({ ...threat1 }))).toBe(1);
+    expect(computeThreatRating(makeUnit({ ...threat3 }))).toBe(3);
+    expect(computeThreatRating(makeUnit({ ...threat9 }))).toBe(9);
+  });
+
+  it('charging no longer multiplies threat (×2 removed)', () => {
+    expect(computeThreatRating(makeUnit({ ...threat3, isCharging: true }))).toBe(3);
+    expect(computeThreatRating(makeUnit({ ...threat9, isCharging: true }))).toBe(9);
+  });
+});
+
+describe('isInKillZone', () => {
+  it('covers the two front hexes of the unit\'s facing', () => {
+    const me = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0 });
+    // Facing 0 front dirs = HEX_DIRS[4] and HEX_DIRS[5].
+    expect(isInKillZone(me, DIR_HEXES[4])).toBe(true);
+    expect(isInKillZone(me, DIR_HEXES[5])).toBe(true);
+    expect(isInKillZone(me, DIR_HEXES[0])).toBe(false);
+    expect(isInKillZone(me, DIR_HEXES[1])).toBe(false);
+  });
+
+  it('tracks facing: a different facing covers different hexes', () => {
+    const me = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 3 });
+    expect(isInKillZone(me, DIR_HEXES[1])).toBe(true);
+    expect(isInKillZone(me, DIR_HEXES[2])).toBe(true);
+    expect(isInKillZone(me, DIR_HEXES[4])).toBe(false);
+  });
+
+  it('Scattered and Routed formations have no kill zone', () => {
+    const scattered = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, currentFormation: 'Scattered' });
+    const routed = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, currentFormation: 'Routed' });
+    expect(isInKillZone(scattered, DIR_HEXES[4])).toBe(false);
+    expect(isInKillZone(routed, DIR_HEXES[4])).toBe(false);
+  });
+
+  it('false for non-adjacent hexes', () => {
+    const me = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0 });
+    expect(isInKillZone(me, { q: 2, r: 0, s: -2 })).toBe(false);
+  });
+
+  it('a hidden unit has no kill zone', () => {
+    const hidden = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, hidden: true });
+    expect(isInKillZone(hidden, DIR_HEXES[4])).toBe(false);
+    expect(isInKillZone(hidden, DIR_HEXES[5])).toBe(false);
+  });
+
+  it('a flying unit dominates its own column up to 10 ft below (vertical ZoC)', () => {
+    const flyer = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, elevation: 10, flySpeed: 60 });
+    expect(isInKillZone(flyer, { q: 0, r: 0, s: 0 }, 0)).toBe(true); // ground below
+    expect(isInKillZone(flyer, { q: 0, r: 0, s: 0 }, 10)).toBe(false); // same level, no gap
+    const high = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, elevation: 20, flySpeed: 60 });
+    expect(isInKillZone(high, { q: 0, r: 0, s: 0 }, 0)).toBe(false); // > 10 ft
+    const grounded = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, elevation: 0, flySpeed: 60 });
+    expect(isInKillZone(grounded, { q: 0, r: 0, s: 0 }, 0)).toBe(false); // same-hex ground is not a ZoC
+    const garrison = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, elevation: 10 }); // no fly speed
+    expect(isInKillZone(garrison, { q: 0, r: 0, s: 0 }, 0)).toBe(false); // grounded on a wall
+  });
+
+  it('horizontal kill zone requires the same elevation (unified with ZoC)', () => {
+    const flyer = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, elevation: 20, flySpeed: 60 });
+    expect(isInKillZone(flyer, DIR_HEXES[4], 0)).toBe(false); // ground unit 20 ft below
+    expect(isInKillZone(flyer, DIR_HEXES[4], 20)).toBe(true); // same air layer
+  });
+
+  it('the vertical clause needs an actually-airborne flyer (ownSurface)', () => {
+    const garrison = makeUnit({ hex: { q: 0, r: 0, s: 0 }, facing: 0, elevation: 10, flySpeed: 60 });
+    // A fly-capable garrison standing on a 10-ft structure (ownSurface 10) does not dominate below.
+    expect(isInKillZone(garrison, { q: 0, r: 0, s: 0 }, 0, 10)).toBe(false);
+    // Same unit over bare ground (ownSurface 0) is airborne and does.
+    expect(isInKillZone(garrison, { q: 0, r: 0, s: 0 }, 0, 0)).toBe(true);
+  });
+});
+
+describe('imposesKillZone (single shared predicate)', () => {
+  const base = { hex: { q: 0, r: 0, s: 0 }, facing: 0 } as const;
+
+  it('front-2 at the same elevation (no formation gate)', () => {
+    const u = makeUnit(base);
+    expect(imposesKillZone(u, DIR_HEXES[4], { targetElevation: 0 })).toBe(true);
+    expect(imposesKillZone(u, DIR_HEXES[0], { targetElevation: 0 })).toBe(false);
+    expect(imposesKillZone(u, DIR_HEXES[4], { targetElevation: 10 })).toBe(false); // cross-elevation
+  });
+
+  it('same hex vertical only for an actually-airborne flyer; requireFormed gates it', () => {
+    const fly = makeUnit({ ...base, elevation: 10, flySpeed: 60, currentFormation: 'Open Order' });
+    expect(imposesKillZone(fly, fly.hex, { targetElevation: 0 })).toBe(true);
+    expect(imposesKillZone(fly, fly.hex, { targetElevation: 0, requireFormed: true })).toBe(true);
+    expect(imposesKillZone(fly, fly.hex, { targetElevation: 0, ownSurface: 10 })).toBe(false); // grounded
+    const scattered = { ...fly, currentFormation: 'Scattered' };
+    expect(imposesKillZone(scattered, fly.hex, { targetElevation: 0, requireFormed: true })).toBe(false);
+  });
+
+  it('exclude option (heroes/attached) and base exclusions', () => {
+    const hero = makeUnit({ ...base, isHero: true });
+    expect(imposesKillZone(hero, DIR_HEXES[4], { targetElevation: 0 })).toBe(true);
+    expect(imposesKillZone(hero, DIR_HEXES[4], { targetElevation: 0, exclude: x => x.isHero })).toBe(false);
+    expect(imposesKillZone(makeUnit({ ...base, currentFormation: 'Scattered' }), DIR_HEXES[4], { targetElevation: 0 })).toBe(false);
+    expect(imposesKillZone(makeUnit({ ...base, currentFormation: 'Routed' }), DIR_HEXES[4], { targetElevation: 0 })).toBe(false);
+    expect(imposesKillZone(makeUnit({ ...base, hidden: true }), DIR_HEXES[4], { targetElevation: 0 })).toBe(false);
+  });
+});
+
+describe('calcEnemyThreats', () => {
+  it('returns zero when no enemies are adjacent', () => {
+    const me = makeUnit({ ...threat1 });
+    const far = enemyAt({ q: 2, r: 0, s: -2 }, { ...threat1 });
+    expect(calcEnemyThreats(me, [far], alliances)).toMatchObject({ total: 0, totalSum: 0, myThreat: 1 });
+  });
+
+  it('ignores friendly and deleted units', () => {
+    const me = makeUnit({ ...threat1 });
+    const friendly = makeUnit({ id: 'f1', team: 'blue', hex: DIR_HEXES[1], ...threat1 });
+    const deleted = enemyAt(DIR_HEXES[2], { ...threat1, isDeleted: true });
+    expect(calcEnemyThreats(me, [friendly, deleted], alliances)).toMatchObject({ total: 0 });
+  });
+
+  it('ignores routing enemies — a routing unit exerts no threat', () => {
+    const me = makeUnit({ ...threat1 });
+    const routed = enemyAt(DIR_HEXES[2], { ...threat9, currentFormation: 'Routed' });
+    expect(calcEnemyThreats(me, [routed], alliances)).toMatchObject({ total: 0 });
+  });
+
+  it('an enemy threatens only while I stand in its kill zone (front two hexes)', () => {
+    const me = makeUnit({ ...threat1 });
+    // Enemy at facing 0 covers me only when I am at its DIR_HEXES[1] or [2].
+    const covering = enemyAt(DIR_HEXES[1], { ...threat1 });
+    const notCovering = enemyAt(DIR_HEXES[0], { ...threat1 });
+    expect(calcEnemyThreats(me, [covering], alliances)).toMatchObject({ total: 1, totalSum: 1 });
+    expect(calcEnemyThreats(me, [notCovering], alliances)).toMatchObject({ total: 0 });
+  });
+
+  it('an enemy\'s facing decides whether it covers me', () => {
+    const me = makeUnit({ ...threat1 });
+    // Enemy east of me (DIR_HEXES[0]) covers me when facing 5, not when facing 0.
+    const facingAway = enemyAt(DIR_HEXES[0], { ...threat1, facing: 0 });
+    const facingAtMe = enemyAt(DIR_HEXES[0], { ...threat1, facing: 5 });
+    expect(calcEnemyThreats(me, [facingAway], alliances)).toMatchObject({ total: 0 });
+    expect(calcEnemyThreats(me, [facingAtMe], alliances)).toMatchObject({ total: 1 });
+  });
+
+  it('Scattered / Routed enemies never impose threat', () => {
+    const me = makeUnit({ ...threat1 });
+    const scattered = enemyAt(DIR_HEXES[1], { ...threat1, currentFormation: 'Scattered' });
+    const routed = enemyAt(DIR_HEXES[2], { ...threat1, currentFormation: 'Routed' });
+    expect(calcEnemyThreats(me, [scattered, routed], alliances)).toMatchObject({ total: 0 });
+  });
+
+  it('sums multiple covering enemies and divides by my threat', () => {
+    const me = makeUnit({ ...threat3 });
+    const twoWeak = [enemyAt(DIR_HEXES[1], { ...threat3 }), enemyAt(DIR_HEXES[2], { ...threat4 })];
+    const oneStrong = [enemyAt(DIR_HEXES[1], { ...threat9 })];
+    expect(calcEnemyThreats(me, twoWeak, alliances)).toMatchObject({ total: 2, totalSum: 7 });
+    expect(calcEnemyThreats(me, oneStrong, alliances)).toMatchObject({ total: 3 });
+  });
+
+  it('a lone hero threatens 360° at half rating', () => {
+    const me = makeUnit({ ...threat1 }); // myThreat 1
+    const heroEnemy = enemyAt(DIR_HEXES[3], { isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1, maxTroopCount: 1 });
+    expect(calcEnemyThreats(me, [heroEnemy], alliances)).toMatchObject({ total: 2, totalSum: 2 });
+  });
+
+  it('hidden enemies and hidden heroes impose no threat', () => {
+    const me = makeUnit({ ...threat1 });
+    const hiddenEnemy = enemyAt(DIR_HEXES[1], { ...threat1, hidden: true });
+    const hiddenHero = enemyAt(DIR_HEXES[3], { isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1, maxTroopCount: 1, hidden: true });
+    expect(calcEnemyThreats(me, [hiddenEnemy, hiddenHero], alliances)).toMatchObject({ total: 0, totalSum: 0 });
+  });
+
+  it('a flying enemy directly above contributes vertical kill-zone threat', () => {
+    const me = makeUnit({ ...threat1, elevation: 0 });
+    const flyer = enemyAt({ q: 0, r: 0, s: 0 }, { ...threat3, elevation: 10, flySpeed: 60 });
+    expect(calcEnemyThreats(me, [flyer], alliances)).toMatchObject({ totalSum: 3, total: 3 });
+  });
+
+  it('a hero mount + rider contribute their threat TOGETHER', () => {
+    const me = makeUnit({ ...threat1 }); // myThreat 1
+    const mount = enemyAt(DIR_HEXES[1], { isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1, maxTroopCount: 1 });
+    const rider = enemyAt(DIR_HEXES[1], { isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1, maxTroopCount: 1, attachedToUnitId: mount.id, attachedPosition: 'rider' });
+    // Lone mount hero 2 + rider via mount footprint 2 = 4.
+    expect(calcEnemyThreats(me, [mount, rider], alliances)).toMatchObject({ totalSum: 4, total: 4 });
+  });
+
+  it('doubles threat from the subject\'s rear hexes via the formation threat arcs', () => {
+    const formed = { threat_arcs: ['front', 'flank'], double_threat_arcs: ['rear'] } as unknown as Formation;
+    const me = makeUnit({ ...threat1, facing: 0 }); // myThreat 1
+    // Rear arc: enemy behind me must face me to pressure (facing 0 covers it).
+    const rear = enemyAt(DIR_HEXES[1], { ...threat3, facing: 0 }); // rating 3 → ×2 = 6
+    // Front arc: enemy in front facing me (facing 2 → its front dirs [0,1] include my bearing).
+    const front = enemyAt(DIR_HEXES[4], { ...threat3, facing: 2 }); // rating 3 → ×1 = 3
+    expect(calcEnemyThreats(me, [rear], alliances, formed)).toMatchObject({ totalSum: 6, total: 6 });
+    expect(calcEnemyThreats(me, [front], alliances, formed)).toMatchObject({ totalSum: 3, total: 3 });
+  });
+
+  it('doubles a hero\'s threat from the subject\'s rear', () => {
+    const formed = { threat_arcs: ['front', 'flank'], double_threat_arcs: ['rear'] } as unknown as Formation;
+    const me = makeUnit({ ...threat1, facing: 0 }); // myThreat 1
+    const heroRear = enemyAt(DIR_HEXES[1], { isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1, maxTroopCount: 1 }); // half 4 = 2 → ×2 = 4
+    expect(calcEnemyThreats(me, [heroRear], alliances, formed)).toMatchObject({ totalSum: 4, total: 4 });
+  });
+});
+
+describe('exertedThreatRating', () => {
+  it('halves heroes of Large size or smaller; full for bigger heroes and units', () => {
+    const small = makeUnit({ isHero: true, level: 5, sizeCategory: 100, currentTroopCount: 1 }); // 3+1+0 = 4
+    const large = makeUnit({ isHero: true, level: 5, sizeCategory: 200, currentTroopCount: 1 }); // 3+4+0 = 7
+    const huge = makeUnit({ isHero: true, level: 5, sizeCategory: 300, currentTroopCount: 1 }); // 3+9+0 = 12
+    const unit = makeUnit({ level: 5, sizeCategory: 100, currentTroopCount: 1 }); // 3+1+0 = 4
+    expect(exertedThreatRating(small)).toBe(2);
+    expect(exertedThreatRating(large)).toBe(3.5);
+    expect(exertedThreatRating(huge)).toBe(12);
+    expect(exertedThreatRating(unit)).toBe(4);
+  });
+});
+
+describe('heroThreatAgainst', () => {
+  const me = () => makeUnit({ hex: { q: 0, r: 0, s: 0 } });
+  const hero = (over: Partial<Unit> = {}) => makeUnit({
+    id: 'hero',
+    team: 'red',
+    isHero: true,
+    level: 5,
+    sizeCategory: 100,
+    currentTroopCount: 1,
+    maxTroopCount: 1,
+    hex: { q: 0, r: 0, s: 0 },
+    ...over,
+  });
+
+  it('a lone hero threatens any adjacent hex at half rating (360°)', () => {
+    for (const d of DIR_HEXES) {
+      const h = hero({ id: `h-${d.q}-${d.r}`, hex: d });
+      expect(heroThreatAgainst(h, me(), [h])).toBe(2);
+    }
+  });
+
+  it('an adjacent hero threatens only at the SAME elevation (no cross-layer)', () => {
+    const airborneHero = hero({ hex: DIR_HEXES[0], elevation: 20 });
+    expect(heroThreatAgainst(airborneHero, makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: 0 }), [airborneHero])).toBe(0);
+    expect(heroThreatAgainst(airborneHero, makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: 20 }), [airborneHero])).toBe(2);
+    const groundHero = hero({ hex: DIR_HEXES[0], elevation: 0 });
+    expect(heroThreatAgainst(groundHero, makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: 0 }), [groundHero])).toBe(2);
+    expect(heroThreatAgainst(groundHero, makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: 10 }), [groundHero])).toBe(0);
+  });
+
+  it('a lone hero two hexes away threatens nothing', () => {
+    const h = hero({ hex: { q: 2, r: 0, s: -2 } });
+    expect(heroThreatAgainst(h, me(), [h])).toBe(0);
+  });
+
+  it('a lone hero also threatens its own hex within 10 ft (up or down)', () => {
+    const h = hero({ hex: { q: 0, r: 0, s: 0 }, elevation: 0 });
+    const above = makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: 10 });
+    expect(heroThreatAgainst(h, above, [h, above])).toBe(2); // 10 ft above
+    const below = makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: -0 });
+    expect(heroThreatAgainst(h, below, [h, below])).toBe(2); // same level, same hex
+    const far = makeUnit({ hex: { q: 0, r: 0, s: 0 }, elevation: 20 });
+    expect(heroThreatAgainst(h, far, [h, far])).toBe(0); // 20 ft > 10
+  });
+
+  it('a hero larger than Large exerts its full rating', () => {
+    const h = hero({ sizeCategory: 300, hex: DIR_HEXES[0] }); // 3 + 9 + 0 = 12
+    expect(heroThreatAgainst(h, me(), [h])).toBe(12);
+  });
+
+  it('a protected (back-attached) hero exerts nothing', () => {
+    const h = hero({ attachedToUnitId: 'host', attachedPosition: 'back', hex: DIR_HEXES[0] });
+    expect(heroThreatAgainst(h, me(), [h])).toBe(0);
+  });
+
+  it('a front-attached hero threatens only through its host kill zone', () => {
+    const host = makeUnit({ id: 'host', team: 'red', hex: { q: 0, r: 0, s: 0 }, facing: 0 });
+    const h = hero({ attachedToUnitId: 'host', attachedPosition: 'front' });
+    const front = makeUnit({ id: 'v', team: 'blue', hex: DIR_HEXES[4] }); // host facing 0 → front
+    const rear = makeUnit({ id: 'v2', team: 'blue', hex: DIR_HEXES[1] }); // host facing 0 → rear
+    expect(heroThreatAgainst(h, front, [host, h, front])).toBe(2);
+    expect(heroThreatAgainst(h, rear, [host, h, rear])).toBe(0);
+  });
+
+  it('a rider on a hero mount uses the mount\'s 360° footprint', () => {
+    const mount = makeUnit({ id: 'mount', team: 'red', isHero: true, level: 5, sizeCategory: 300, currentTroopCount: 1, maxTroopCount: 1, hex: { q: 0, r: 0, s: 0 }, facing: 0 });
+    const rider = hero({ id: 'rider', attachedToUnitId: 'mount', attachedPosition: 'rider' });
+    // Mount hero's footprint covers every adjacent hex (not just the mount's front).
+    const side = makeUnit({ id: 'v-side', team: 'blue', hex: DIR_HEXES[1] });
+    const front = makeUnit({ id: 'v-front', team: 'blue', hex: DIR_HEXES[4] });
+    const far = makeUnit({ id: 'v-far', team: 'blue', hex: { q: 2, r: 0, s: -2 } });
+    expect(heroThreatAgainst(rider, side, [mount, rider, side])).toBe(2);
+    expect(heroThreatAgainst(rider, front, [mount, rider, front])).toBe(2);
+    expect(heroThreatAgainst(rider, far, [mount, rider, far])).toBe(0);
+  });
+});
+
+describe('areHexesAdjacent', () => {
+  it('is true for each adjacent hex', () => {
+    for (const d of DIR_HEXES) {
+      expect(areHexesAdjacent({ q: 0, r: 0, s: 0 }, d)).toBe(true);
+    }
+  });
+
+  it('is false for the same hex, distance 2, and diagonals', () => {
+    expect(areHexesAdjacent({ q: 0, r: 0, s: 0 }, { q: 0, r: 0, s: 0 })).toBe(false);
+    expect(areHexesAdjacent({ q: 0, r: 0, s: 0 }, { q: 2, r: 0, s: -2 })).toBe(false);
+    expect(areHexesAdjacent({ q: 0, r: 0, s: 0 }, { q: 2, r: -1, s: -1 })).toBe(false);
+  });
+});
+
+describe('calcIsolation', () => {
+  it('isolated when no friendly unit is adjacent', () => {
+    const me = makeUnit({ ...threat1 });
+    expect(calcIsolation(me, [enemyAt(DIR_HEXES[0], { ...threat1 })], alliances)).toBe(true);
+  });
+
+  it('not isolated when a friendly unit is adjacent', () => {
+    const me = makeUnit({ ...threat1 });
+    const buddy = makeUnit({ id: 'b1', team: 'blue', hex: DIR_HEXES[0], ...threat1 });
+    expect(calcIsolation(me, [buddy], alliances)).toBe(false);
+  });
+});
+
+describe('computeEffectiveMoraleModifier', () => {
+  it('sums wounds, isolation, and kill-zone threat penalties', () => {
+    const me = makeUnit({ ...threat1, currentUnitHp: 100, maxUnitHp: 200 }); // wounds -5
+    // Only the two enemies whose kill zone covers me (DIR_HEXES[1], [2]) impose
+    // threat (each rating 1 → total 2); the other four don't.
+    const ring = DIR_HEXES.map(h => enemyAt(h, { ...threat1 }));
+    expect(computeEffectiveMoraleModifier(me, ring, alliances)).toBe(-5 - 1 - 2);
+  });
+
+  it('applies the formation morale modifier', () => {
+    const me = makeUnit({ ...threat1, currentUnitHp: 100, maxUnitHp: 200 });
+    expect(computeEffectiveMoraleModifier(me, [], alliances, { morale_modifier: 3 } as Formation)).toBe(-5 - 1 + 3);
+  });
+
+  it('Scattered / Routed enemies impose no threat (receiver threat arcs removed)', () => {
+    const me = makeUnit({ ...threat1, currentUnitHp: 100, maxUnitHp: 200 });
+    const scattered = enemyAt(DIR_HEXES[1], { ...threat1, currentFormation: 'Scattered' });
+    const routed = enemyAt(DIR_HEXES[2], { ...threat1, currentFormation: 'Routed' });
+    expect(computeEffectiveMoraleModifier(me, [scattered, routed], alliances)).toBe(-5 - 1);
+  });
+});
+
+describe('shouldRout', () => {
+  it('breaks morale when effective morale hits zero', () => {
+    const me = makeUnit({ ...threat1, baseMorale: 3 });
+    const ring = DIR_HEXES.map(h => enemyAt(h, { ...threat1 }));
+    expect(shouldRout(me, ring, alliances)).toBe(true);
+  });
+
+  it('false when morale stays positive', () => {
+    const me = makeUnit({ ...threat1, baseMorale: 10 });
+    const few = DIR_HEXES.slice(0, 2).map(h => enemyAt(h, { ...threat1 }));
+    expect(shouldRout(me, few, alliances)).toBe(false);
+  });
+
+  it('false for fearless or already-routing units', () => {
+    const fearless = makeUnit({ ...threat1, baseMorale: 1, ignoreMoraleChecks: true });
+    expect(shouldRout(fearless, DIR_HEXES.map(h => enemyAt(h, { ...threat1 })), alliances)).toBe(false);
+    const routed = makeUnit({ ...threat1, baseMorale: 1, currentFormation: 'Routed' });
+    expect(shouldRout(routed, DIR_HEXES.map(h => enemyAt(h, { ...threat1 })), alliances)).toBe(false);
+  });
+});
+
+describe('calcMoraleBoost (hero aura)', () => {
+  it('is 0 with no hero', () => {
+    const me = makeUnit({ hex: { q: 0, r: 0, s: 0 }, team: 'blue' });
+    expect(calcMoraleBoost(me, [me], alliances)).toBe(0);
+  });
+
+  it('gives Commanding Presence +n to allies within 7 hexes, never itself', () => {
+    const hero = makeUnit({ id: 'h', team: 'blue', isHero: true, moraleBoost: 1, hex: { q: 0, r: 0, s: 0 } });
+    const ally = makeUnit({ id: 'a', team: 'blue', hex: DIR_HEXES[0] });
+    const far = makeUnit({ id: 'f', team: 'blue', hex: { q: 2, r: 0, s: -2 } });
+    expect(calcMoraleBoost(ally, [hero, ally, far], alliances)).toBe(1);
+    expect(calcMoraleBoost(far, [hero, ally, far], alliances)).toBe(0);
+    expect(calcMoraleBoost(hero, [hero, ally, far], alliances)).toBe(0);
+  });
+
+  it('Heroic Inspiration upgrades the aura by +1', () => {
+    const hero = makeUnit({ id: 'h', team: 'blue', isHero: true, moraleBoost: 1, heroicInspirationActive: true, hex: { q: 0, r: 0, s: 0 } });
+    const ally = makeUnit({ id: 'a', team: 'blue', hex: DIR_HEXES[0] });
+    expect(calcMoraleBoost(ally, [hero, ally], alliances)).toBe(1 + HERO_INSPIRATION_BONUS);
+  });
+
+  it('a 0-boost hero gives nothing unless inspired', () => {
+    const hero = makeUnit({ id: 'h', team: 'blue', isHero: true, moraleBoost: 0, hex: { q: 0, r: 0, s: 0 } });
+    const ally = makeUnit({ id: 'a', team: 'blue', hex: DIR_HEXES[0] });
+    expect(calcMoraleBoost(ally, [hero, ally], alliances)).toBe(0);
+    expect(calcMoraleBoost(ally, [{ ...hero, heroicInspirationActive: true }, ally], alliances)).toBe(HERO_INSPIRATION_BONUS);
+  });
+
+  it('non-heroes are inert, enemies excluded, heroes do not stack (max)', () => {
+    const ally = makeUnit({ id: 'a', team: 'blue', hex: DIR_HEXES[0] });
+    const fake = makeUnit({ id: 'x', team: 'blue', isHero: false, moraleBoost: 5, hex: { q: 0, r: 0, s: 0 } });
+    expect(calcMoraleBoost(ally, [fake, ally], alliances)).toBe(0);
+    const enemyHero = makeUnit({ id: 'eh', team: 'red', isHero: true, moraleBoost: 3, hex: { q: 0, r: 0, s: 0 } });
+    expect(calcMoraleBoost(ally, [enemyHero, ally], alliances)).toBe(0);
+    const h1 = makeUnit({ id: 'h1', team: 'blue', isHero: true, moraleBoost: 1, hex: { q: 0, r: 0, s: 0 } });
+    const h2 = makeUnit({ id: 'h2', team: 'blue', isHero: true, moraleBoost: 2, hex: DIR_HEXES[1] });
+    expect(calcMoraleBoost(ally, [h1, h2, ally], alliances)).toBe(2);
+  });
+});

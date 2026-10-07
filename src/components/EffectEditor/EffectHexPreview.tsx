@@ -5,7 +5,7 @@
 // × imageScale%. Lets the author size the image against real hexes.
 import React from 'react';
 // The one canonical HEX_DIRS (dependency-free home — no map/combat modules).
-import { HEX_DIRS } from '@/lib/hexGeometry';
+import { HEX_DIRS } from '@/packages/primitives';
 
 const hexToPixel = (q: number, r: number, size: number) => ({
   x: size * (Math.sqrt(3) * q + (Math.sqrt(3) / 2) * r),

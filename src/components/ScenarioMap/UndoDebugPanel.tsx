@@ -7,8 +7,8 @@
 // The most recent active (not-undone) step is highlighted. Visible to everyone.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { CommandLogRow } from '@/lib/commandHistory';
+import { supabase } from '@/packages/infra/supabase';
+import { CommandLogRow } from '@/packages/infra';
 
 interface UndoDebugPanelProps {
   scenarioId: string;

@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { UnitTemplate } from '@/types/gameProtocol';
-import { parseWeapons } from '@/lib/weaponParser';
+import { parseWeapons } from '@/packages/units';
 import { Floating } from './Floating';
 
 interface UnitTemplateTooltipProps {

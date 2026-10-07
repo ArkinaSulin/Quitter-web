@@ -7,15 +7,15 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Unit, Formation, AllianceGroup, getOrganizationLevel, UnitEffect } from '@/types/gameProtocol';
-import { TEAM_COLORS, TEAM_SHAPES, Team } from '@/components/TokenRenderer/tokenUtils';
+import { TEAM_COLORS, TEAM_SHAPES, Team } from '@/packages/units';
 import { TeamShape } from '@/components/TokenRenderer/TeamChip';
-import { computeEffectiveMovement } from '@/lib/unitStats';
-import { computeEffectiveMoraleModifier } from '@/lib/unitMorale';
-import { parseWeapons, stringifyWeapons, Weapon, formatWeaponDisplay } from '@/lib/weaponParser';
+import { computeEffectiveMovement } from '@/packages/units';
+import { computeEffectiveMoraleModifier } from '@/packages/morale';
+import { parseWeapons, stringifyWeapons, Weapon, formatWeaponDisplay } from '@/packages/units';
 import { WeaponEditorModal } from '@/components/WeaponEditorModal';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
-import { supabase } from '@/lib/supabaseClient';
-import { getSetting } from '@/lib/settingsCache';
+import { supabase } from '@/packages/infra/supabase';
+import { getSetting } from '@/packages/infra';
 
 const SIZE_LABELS: Record<number, string> = {
   75: 'Small',

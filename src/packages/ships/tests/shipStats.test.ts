@@ -1,0 +1,411 @@
+// src/lib/shipStats.test.ts
+// Oracle: .scratch/shipyard-formula/shipyard.csv (v8.1 FINAL) + migration 067 seeds.
+// Fixtures replicate the 067 catalog rows; expected values are hand-derived from the
+// CSV formulas (Wasp/Damselfly/Scorpion/Lamprey/Bombard cross-checked).
+
+import { describe, expect, it } from 'vitest';
+import {
+  ShipAccessory,
+  ShipArmor,
+  ShipComponent,
+  ShipFrame,
+  ShipTemplateAccessory,
+  ShipWeapon,
+} from '@/types/ship';
+import {
+  computeAccel,
+  computeActiveTopSpeed,
+  computeAvailableSpace,
+  computeBoxHp,
+  computeBuildCost,
+  computeCrew,
+  computeCrewQuartersTons,
+  computeDeckUsed,
+  computeEmptyMass,
+  computeFill,
+  computeGearMass,
+  computeMC,
+  computeMCBand,
+  computeMCParts,
+  computeMinCrew,
+  computeOfficerActions,
+  computePools,
+  computeShipBuild,
+  computeShipHp,
+  computeTEMax,
+  computeTurningEfficiency,
+  computeUnclaimedSpace,
+  computeUStar,
+  computeWidth,
+  SAIL_THRUST,
+  SHIP_DT,
+  ShipBuild,
+} from '@/packages/ships/lib/shipStats';
+
+// --- 067 seed fixtures ------------------------------------------------------
+
+const FRAMES: ShipFrame[] = [
+  { id: 'tiny', massCap: 35, baseHp: 200, deckSpace: 10, topSpeed: 12, maxRudders: 2, baseCost: 5000, hullSpaces: 8 },
+  { id: 'small', massCap: 55, baseHp: 250, deckSpace: 30, topSpeed: 11, maxRudders: 3, baseCost: 15000, hullSpaces: 10 },
+  { id: 'medium', massCap: 80, baseHp: 350, deckSpace: 50, topSpeed: 10, maxRudders: 4, baseCost: 35000, hullSpaces: 14 },
+  { id: 'large', massCap: 100, baseHp: 500, deckSpace: 90, topSpeed: 9, maxRudders: 5, baseCost: 60000, hullSpaces: 20 },
+];
+
+const ARMORS: ShipArmor[] = [
+  { id: 'wood', massFactor: 0.0, ac: 15, boxHp: 5, costMult: 1 },
+  { id: 'plated', massFactor: 0.2, ac: 17, boxHp: 6, costMult: 2 },
+  { id: 'metal', massFactor: 0.4, ac: 19, boxHp: 7, costMult: 4 },
+  { id: 'ceramic', massFactor: 0.1, ac: 13, boxHp: 6, costMult: 3 },
+  { id: 'stone', massFactor: 0.5, ac: 17, boxHp: 8, costMult: 1 },
+];
+
+const COMPONENTS: ShipComponent[] = [
+  { id: 'helm_bridge', mass: 2, deck: 6, crew: 1, cost: 0, reinforceOrder: 1, hittable: true },
+  { id: 'aux_helm', mass: 2, deck: 6, crew: 1, cost: 3000, reinforceOrder: 3, hittable: true },
+  { id: 'sail', mass: 2, deck: 0, crew: 0.5, cost: 2000, reinforceOrder: null, hittable: true },
+  { id: 'rudder', mass: 2, deck: 0, crew: 1, cost: 3000, reinforceOrder: 5, hittable: true },
+  { id: 'l_weap', mass: 4, deck: 6, crew: 1, cost: 4000, reinforceOrder: 4, hittable: true },
+  { id: 's_weap', mass: 2, deck: 4, crew: 1, cost: 2000, reinforceOrder: 6, hittable: true },
+  { id: 'hull_r', mass: 1, deck: 0, crew: 0, cost: 1000, reinforceOrder: null, hittable: false },
+  { id: 'crew_quarters', mass: 1, deck: 1, crew: 5, cost: 0, reinforceOrder: null, hittable: true },
+  { id: 'command_bridge', mass: 2, deck: 8, crew: 2, cost: 6000, reinforceOrder: 2, hittable: true },
+];
+
+const ACCESSORIES: ShipAccessory[] = [
+  { id: 'watertight_hull', mass: 5, deck: 5, crew: 0, cost: 0, poolType: 'mass_x_boxhp', hittable: false, effect: 'Water + Underwater travel (safe hull plating)' },
+  { id: 'ram', mass: 5, deck: 2, crew: 0, cost: 5000, poolType: 'mass_x_boxhp', hittable: true, effect: '16d10 ram; attacker takes 1/2 damage' },
+  { id: 'grappling_jaws', mass: 2, deck: 2, crew: 0, cost: 0, poolType: 'mass_x_boxhp', hittable: true, effect: '4d10 melee (Lamprey)' },
+  { id: 'tentacles', mass: 3, deck: 4, crew: 0, cost: 4000, poolType: 'mass_x_boxhp', hittable: true, effect: '4d10/teleport melee, reach 3 forward hexes' },
+  { id: 'bombard_mount', mass: 40, deck: 4, crew: 0, cost: 80000, poolType: 'mass_x_boxhp', hittable: true, effect: 'Siege cannon (16d10, cycle 600), DT flat' },
+  { id: 'magazine', mass: 2, deck: 0, crew: 0, cost: 6000, poolType: 'mass_x_boxhp', hittable: true, effect: 'Ammo store' },
+  { id: 'smoke_sac', mass: 1, deck: 1, crew: 0, cost: 2000, poolType: 'mass_x_boxhp', hittable: true, effect: 'Reaction smoke overlay, AC+2' },
+  { id: 'living_treant', mass: 2, deck: 0, crew: 0, cost: 50000, poolType: 'mass_x_boxhp', hittable: true, effect: 'Regenerate 2d8/rd on water; replaces 9 crew' },
+  { id: 'hover_device', mass: 2, deck: 4, crew: 0, cost: 60000, poolType: 'mass_x_boxhp', hittable: true, effect: 'Rotate in place at any speed (MC 3 always); NOT for sale' },
+  { id: 'scorpion_claws', mass: 2, deck: 2, crew: 0, cost: 0, poolType: 'small_anchor', hittable: true, effect: 'Land travel + 3d10 melee (2 claws)' },
+  { id: 'eyestalk_cannons', mass: 2, deck: 4, crew: 0, cost: 0, poolType: 'small_anchor', hittable: true, effect: '10d6, Beholder concentration / Destructive Ray' },
+  { id: 'grappling_legs', mass: 2, deck: 2, crew: 0, cost: 0, poolType: 'mass_x_boxhp', hittable: true, effect: 'Grappling legs (Nightspider)' },
+  { id: 'low_visibility', mass: 0, deck: 0, crew: 0, cost: 2000, poolType: 'none', hittable: false, effect: 'Magic - surprise + double speed round 1 (no hit box)' },
+  { id: 'air_envelope', mass: 0, deck: 0, crew: 0, cost: 0, poolType: 'none', hittable: false, effect: 'Air - spelljammer physics (no hit box)' },
+  { id: 'planar_device', mass: 4, deck: 4, crew: 0, cost: 60000, poolType: 'mass_x_boxhp', hittable: true, effect: 'Plane travel (narrative)' },
+];
+
+const WEAPONS: ShipWeapon[] = [
+  { id: 'ballista_light', mount: 'small', damage: '2d10', rangeStd: 3, rangeDis: 10, fireCycleRd: 2, crew: 2, cost: 500, ammoCost: 1, special: 'ammo 1gp' },
+  { id: 'catapult_medium', mount: 'large', damage: '5d10', rangeStd: 4, rangeDis: 16, fireCycleRd: 5, crew: 4, cost: 800, ammoCost: null, special: 'min range 2; 1/15t' },
+  { id: 'scorpion_claws_wpn', mount: 'special', damage: '3d10', rangeStd: 1, rangeDis: 1, fireCycleRd: 1, crew: 1, cost: 0, ammoCost: null, special: '2 claws (special; mount via accessory)' },
+];
+
+const frame = (id: string) => FRAMES.find(f => f.id === id)!;
+const armor = (id: string) => ARMORS.find(a => a.id === id)!;
+const acc = (id: string): ShipTemplateAccessory => ({ accessoryId: id, count: 1 });
+
+function buildBase(opts: {
+  frameId: string; armorId: string; rudders: number; sails: number; lWeap: number; sWeap: number;
+  hullR?: number; bridge?: number; auxHelm?: number; crewCount?: number; cargoArea?: number;
+  atmosphereSpeed?: number; accessories?: ShipTemplateAccessory[];
+}): ShipBuild {
+  return {
+    frame: frame(opts.frameId),
+    armor: armor(opts.armorId),
+    components: COMPONENTS,
+    accessoriesCatalog: ACCESSORIES,
+    weaponsCatalog: WEAPONS,
+    atmosphereSpeed: opts.atmosphereSpeed ?? 4,
+    rudders: opts.rudders,
+    sails: opts.sails,
+    lWeap: opts.lWeap,
+    sWeap: opts.sWeap,
+    hullR: opts.hullR ?? 0,
+    bridge: opts.bridge ?? 0,
+    auxHelm: opts.auxHelm ?? 0,
+    crewCount: opts.crewCount ?? 0,
+    cargoArea: opts.cargoArea ?? 0,
+    templateAccessories: opts.accessories ?? [],
+    templateWeapons: [],
+  };
+}
+
+describe('ship mass / space', () => {
+  it('Wasp (Tiny/Wood, 2R/6S/0L/1S, cargo 8, crew 0): mass 20, avail 15, unclaimed 7', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, cargoArea: 8, atmosphereSpeed: 5 });
+    expect(computeGearMass(b)).toBe(20);
+    expect(computeEmptyMass(b)).toBe(20);
+    expect(computeAvailableSpace(b)).toBe(15);
+    expect(computeUnclaimedSpace(b)).toBe(7);
+  });
+
+  it('Damselfly (Small/Plated): armor eats 11 t of capacity', () => {
+    const b = buildBase({ frameId: 'small', armorId: 'plated', rudders: 3, sails: 8, lWeap: 1, sWeap: 1, crewCount: 2, bridge: 1, cargoArea: 5, atmosphereSpeed: 7 });
+    expect(computeEmptyMass(b)).toBe(44); // armor 11 + gear 33
+    expect(computeAvailableSpace(b)).toBe(11);
+    expect(computeUnclaimedSpace(b)).toBe(6);
+  });
+
+  it('Scorpion (Small/Metal): heavy armor eats 22 t, cargo 10 -> unclaimed 2', () => {
+    const b = buildBase({ frameId: 'small', armorId: 'metal', rudders: 3, sails: 2, lWeap: 1, sWeap: 1, crewCount: 5, cargoArea: 10, atmosphereSpeed: 3, accessories: [acc('scorpion_claws')] });
+    expect(computeEmptyMass(b)).toBe(43);
+    expect(computeAvailableSpace(b)).toBe(12);
+    expect(computeUnclaimedSpace(b)).toBe(2);
+  });
+});
+
+describe('crew & quarters', () => {
+  it('Wasp: crew_count 7 is the current crew; quarters ceil(7/5) = 2; min crew 7', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, crewCount: 7 });
+    expect(computeCrew(b)).toBe(7);
+    expect(computeCrewQuartersTons(computeCrew(b))).toBe(2);
+    expect(computeMinCrew(b)).toBe(7);
+  });
+
+  it('Damselfly: crew_count 2 -> quarters 1; min crew 12 (incl. bridge)', () => {
+    const b = buildBase({ frameId: 'small', armorId: 'plated', rudders: 3, sails: 8, lWeap: 1, sWeap: 1, crewCount: 2, bridge: 1 });
+    expect(computeCrew(b)).toBe(2);
+    expect(computeCrewQuartersTons(computeCrew(b))).toBe(1);
+    expect(computeMinCrew(b)).toBe(12);
+  });
+
+  it('Lamprey: fractional component crew 12.5 rounds min crew up to 13', () => {
+    const b = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 3, sails: 9, lWeap: 0, sWeap: 4, hullR: 10, crewCount: 5, cargoArea: 6, accessories: [acc('grappling_jaws')] });
+    expect(computeCrew(b)).toBe(5);          // current = crew_count
+    expect(computeCrewQuartersTons(computeCrew(b))).toBe(1);
+    expect(computeMinCrew(b)).toBe(13);      // ceil(12.5)
+  });
+
+  it('Bombard: crew_count 4 -> quarters 1; min crew 12', () => {
+    const b = buildBase({ frameId: 'large', armorId: 'wood', rudders: 3, sails: 8, lWeap: 0, sWeap: 2, crewCount: 4, bridge: 1, cargoArea: 15, accessories: [acc('bombard_mount'), { accessoryId: 'magazine', count: 2 }] });
+    expect(computeCrew(b)).toBe(4);
+    expect(computeCrewQuartersTons(computeCrew(b))).toBe(1);
+    expect(computeMinCrew(b)).toBe(12);
+  });
+});
+
+describe('accel', () => {
+  it('Accel = 18 x sails / mass (round)', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, cargoArea: 8 });
+    expect(SAIL_THRUST).toBe(18);
+    expect(computeAccel(b, computeEmptyMass(b))).toBe(5);       // 108/20 = 5.4
+    expect(computeAccel(b, computeEmptyMass(b) + 8)).toBe(4);   // laden 108/28 = 3.9
+  });
+
+  it('Bombard (laden) crawls: 2', () => {
+    const b = buildBase({ frameId: 'large', armorId: 'wood', rudders: 3, sails: 8, lWeap: 0, sWeap: 2, crewCount: 4, bridge: 1, cargoArea: 15, accessories: [acc('bombard_mount'), { accessoryId: 'magazine', count: 2 }] });
+    expect(computeEmptyMass(b)).toBe(75);
+    expect(computeAccel(b, 75)).toBe(2);
+    expect(computeAccel(b, 90)).toBe(2);
+  });
+});
+
+describe('active speed cap', () => {
+  it('Environment picks TopSpeed (Space) vs AtmosphereSpd (Atmosphere)', () => {
+    const tiny = frame('tiny');
+    expect(computeActiveTopSpeed(tiny, 5, 'space')).toBe(12);
+    expect(computeActiveTopSpeed(tiny, 5, 'atmosphere')).toBe(5);
+    expect(computeActiveTopSpeed(tiny, 0, 'atmosphere')).toBe(12); // fallback
+  });
+});
+
+describe('ship HP & DT', () => {
+  it('Ship HP = frame base + hullR x 25', () => {
+    expect(computeShipHp(buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 }))).toBe(200);
+    expect(computeShipHp(buildBase({ frameId: 'medium', armorId: 'wood', rudders: 3, sails: 9, lWeap: 0, sWeap: 4, hullR: 10 }))).toBe(600);
+  });
+
+  it('DT is flat 15', () => {
+    expect(SHIP_DT).toBe(15);
+  });
+});
+
+describe('box HP & pools', () => {
+  it('BoxHP = ceil(5 x (1 + armorFactor))', () => {
+    expect(computeBoxHp(armor('wood'))).toBe(5);
+    expect(computeBoxHp(armor('plated'))).toBe(6);
+    expect(computeBoxHp(armor('metal'))).toBe(7);
+    expect(computeBoxHp(armor('ceramic'))).toBe(6);
+    expect(computeBoxHp(armor('stone'))).toBe(8);
+  });
+
+  it('Wasp pools total 175 (helm 10 + sails 60 + rudders 20 + sWeap 10 + cargo 40 + unclaimed 25 + quarters 10)', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, cargoArea: 8 });
+    const p = computePools(b);
+    expect(p.helm).toBe(10);
+    expect(p.sails).toBe(60);
+    expect(p.rudders).toBe(20);
+    expect(p.lWeap).toBe(0);
+    expect(p.sWeap).toBe(10);
+    expect(p.cargo).toBe(40);
+    expect(p.unclaimed).toBe(35);
+    expect(p.crewQuarters).toBe(0);
+    expect(p.total).toBe(175);
+  });
+
+  it('Lamprey: hullR 10 reinforces Helm, Rudder and S.Weap pools', () => {
+    const b = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 3, sails: 9, lWeap: 0, sWeap: 4, hullR: 10, crewCount: 5, cargoArea: 6, accessories: [acc('grappling_jaws')] });
+    const p = computePools(b);
+    expect(p.helm).toBe(20);      // 2 x 5 x 2 (reinforced #1)
+    expect(p.sails).toBe(90);     // never reinforced
+    expect(p.rudders).toBe(60);   // 2x5x3x2 (reinforced #5)
+    expect(p.sWeap).toBe(80);     // 10 x 4 x 2 (reinforced #6)
+    expect(p.accessories).toBe(10); // jaws 2t x 5
+    expect(p.cargo).toBe(30);
+    expect(p.unclaimed).toBe(135); // 27 unclaimed x 5
+    expect(p.crewQuarters).toBe(5); // crew_count 5 -> 1 ton x 5
+    expect(p.total).toBe(430);
+  });
+
+  it('Scorpion: small-anchor special = 10, not mass x boxHP', () => {
+    const b = buildBase({ frameId: 'small', armorId: 'metal', rudders: 3, sails: 2, lWeap: 1, sWeap: 1, crewCount: 5, cargoArea: 10, accessories: [acc('scorpion_claws')] });
+    const p = computePools(b);
+    expect(p.accessories).toBe(10); // small anchor, NOT 2 x 7 = 14
+    expect(p.lWeap).toBe(20);
+    expect(p.sWeap).toBe(10);
+    expect(p.total).toBe(215);
+  });
+});
+
+describe('MC / TE (parabola)', () => {
+  it('fill = rudder count ÷ frame mass capacity (tons)', () => {
+    expect(computeFill(2, 35)).toBeCloseTo(0.0571, 3);  // Wasp / Tiny
+    expect(computeFill(3, 55)).toBeCloseTo(0.0545, 3);  // Damselfly / Small
+    expect(computeFill(2, 100)).toBeCloseTo(0.02, 3);   // Galleon / Large
+  });
+
+  it('u* favors tiny/small (fill 1.0-equivalent) and heavy laden ships sit back', () => {
+    const wasp = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
+    expect(computeUStar(wasp, computeEmptyMass(wasp))).toBe(0.6); // clamped: tiny edge
+
+    const fast = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 4, sails: 12, lWeap: 1, sWeap: 4, crewCount: 5 });
+    expect(computeUStar(fast, 62)).toBeCloseTo(0.581, 3);
+
+    const galleon = buildBase({ frameId: 'large', armorId: 'wood', rudders: 2, sails: 3, lWeap: 1, sWeap: 2, crewCount: 4, cargoArea: 70 });
+    expect(computeUStar(galleon, 93)).toBeCloseTo(0.392, 3);
+  });
+
+  it('width grows with rudders; TE_max shrinks with mass', () => {
+    expect(computeWidth(2)).toBeCloseTo(0.5, 10);
+    expect(computeWidth(4)).toBeCloseTo(0.6, 10);
+    expect(computeTEMax(22)).toBe(3.0);
+    expect(computeTEMax(93)).toBeCloseTo(1.196, 3);
+  });
+
+  it('Wasp empty: MC band + TE band', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
+    const band = computeMCBand(b, computeEmptyMass(b)); // 20 (crew 0)
+    expect(band.map(x => x.mc)).toEqual([2, 3, 2, 2, 2, 2, 2, 3, 3, 4, 6, 11]);
+    expect(band.map(x => x.te)).toEqual([0.5, 0.7, 1.5, 2, 2.5, 3, 3.5, 2.7, 3, 2.5, 1.8, 1.1]);
+  });
+
+  it('Wasp laden: load taxes maneuver (MC up, TE down)', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, cargoArea: 8 });
+    const band = computeMCBand(b, computeEmptyMass(b) + 8); // 28
+    expect(band.map(x => x.mc)).toEqual([2, 3, 2, 2, 2, 2, 3, 3, 4, 5, 7, 12]);
+    expect(band.map(x => x.te)).toEqual([0.5, 0.7, 1.5, 2, 2.5, 3, 2.3, 2.7, 2.3, 2, 1.6, 1.0]);
+  });
+
+  it('Fast Lamprey (4 rudders) keeps a wide mid–top band', () => {
+    const b = buildBase({ frameId: 'medium', armorId: 'wood', rudders: 4, sails: 12, lWeap: 1, sWeap: 4, crewCount: 5 });
+    const band = computeMCBand(b, 62);
+    expect(band.map(x => x.mc)).toEqual([2, 2, 2, 3, 3, 4, 5, 6, 8, 12]);
+  });
+
+  it('Heavy laden Galleon can barely turn at top (TE floor 0.5)', () => {
+    const b = buildBase({ frameId: 'large', armorId: 'wood', rudders: 2, sails: 3, lWeap: 1, sWeap: 2, crewCount: 4, cargoArea: 70 });
+    const band = computeMCBand(b, 93);
+    expect(band.map(x => x.mc)).toEqual([1, 2, 3, 3, 5, 7, 14, 16, 18]);
+    expect(band[8].te).toBe(0.5);
+  });
+
+  it('computeMC at a single speed', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
+    expect(computeMC(b, 7, 22)).toBe(2);
+    expect(computeMC(b, 12, 22)).toBe(11);
+  });
+});
+
+describe('Turning Efficiency', () => {
+  it('speed ÷ MC rounded to 1 decimal', () => {
+    expect(computeTurningEfficiency(8, 4)).toBe(2.0);
+    expect(computeTurningEfficiency(12, 2)).toBe(6.0);
+    expect(computeTurningEfficiency(3, 1)).toBe(3.0);
+    expect(computeTurningEfficiency(5, 3)).toBe(1.7); // 1.6667 -> 1.7
+    expect(computeTurningEfficiency(4, 3)).toBe(1.3); // 1.333 -> 1.3
+  });
+
+  it('guards mc <= 0', () => {
+    expect(computeTurningEfficiency(6, 0)).toBe(0);
+  });
+});
+
+describe('Officer actions', () => {
+  it('no bridge: max(1, helmsman Int mod)', () => {
+    expect(computeOfficerActions(0, 0)).toBe(1);
+    expect(computeOfficerActions(0, 4)).toBe(4);
+    expect(computeOfficerActions(0, -2)).toBe(1);
+  });
+
+  it('with bridge: max(4, 4 + captain Int mod)', () => {
+    expect(computeOfficerActions(1, 0, 0)).toBe(4);
+    expect(computeOfficerActions(1, 0, 5)).toBe(9);
+    expect(computeOfficerActions(2, 0, -3)).toBe(4);
+  });
+});
+
+describe('deck', () => {
+  it('Damselfly fits its deck: 25 of 30', () => {
+    const b = buildBase({ frameId: 'small', armorId: 'plated', rudders: 3, sails: 8, lWeap: 1, sWeap: 1, crewCount: 2, bridge: 1, cargoArea: 5 });
+    expect(computeDeckUsed(b)).toBe(25);
+    expect(b.frame.deckSpace).toBe(30);
+  });
+
+  it('Wasp overloads Tiny deck: 10 of 10 (crew 0 -> no quarters deck)', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
+    expect(computeDeckUsed(b)).toBe(10);
+  });
+});
+
+describe('cost', () => {
+  it('Wasp build cost = frame x armor + components (no specials/weapons)', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
+    // 5000 + helm 0 + rudders 6000 + sails 12000 + s_weap 2000
+    expect(computeBuildCost(b)).toBe(25000);
+  });
+
+  it('Damselfly: plated x2 frame + bridge + weapons catalog costs', () => {
+    const b = buildBase({ frameId: 'small', armorId: 'plated', rudders: 3, sails: 8, lWeap: 1, sWeap: 1, crewCount: 2, bridge: 1, cargoArea: 5 });
+    // 30000 + (0 + 9000 + 16000 + 4000 + 2000 + 6000) = 67000; no weapon assignments
+    expect(computeBuildCost(b)).toBe(67000);
+  });
+
+  it('Weapon assignments add their catalog cost', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1 });
+    b.templateWeapons = [{ weaponId: 'catapult_medium', mountSlot: 'fore', count: 1 }];
+    expect(computeBuildCost(b)).toBe(25000 + 800);
+  });
+});
+
+describe('computeShipBuild aggregate', () => {
+  it('Wasp (crew 0): current crew 0, min crew 7, quarters 0', () => {
+    const b = buildBase({ frameId: 'tiny', armorId: 'wood', rudders: 2, sails: 6, lWeap: 0, sWeap: 1, cargoArea: 8, atmosphereSpeed: 5 });
+    const s = computeShipBuild(b);
+    expect(s.crew).toBe(0);
+    expect(s.minCrew).toBe(7);
+    expect(s.crewQuarters).toBe(0);
+    expect(s.armorMass).toBe(0);
+    expect(s.gearMass).toBe(20);
+    expect(s.emptyMass).toBe(20);
+    expect(s.availableSpace).toBe(15);
+    expect(s.unclaimedSpace).toBe(7);
+    expect(s.ladenMass).toBe(28);
+    expect(s.accelEmpty).toBe(5);
+    expect(s.accelLaden).toBe(4);
+    expect(s.topSpeed).toBe(12);
+    expect(s.atmosphereSpeed).toBe(5);
+    expect(s.shipHp).toBe(200);
+    expect(s.dt).toBe(15);
+    expect(s.boxHp).toBe(5);
+    expect(s.pools.total).toBe(175);
+    expect(s.deckUsed).toBe(10);
+    expect(s.deckSpace).toBe(10);
+    expect(s.buildCost).toBe(25000);
+    expect(s.officerActions).toBe(1); // no bridge -> max(1, 0)
+  });
+});

@@ -2,9 +2,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import { ScenarioRole, ScenarioRoleCapabilities } from '@/types/gameProtocol';
-import { getRoleCapabilities, emptyCapabilities } from '@/lib/scenarioPermissions';
+import { getRoleCapabilities, emptyCapabilities } from '@/packages/world';
 
 // Session cache: the scenario_role_access_rights matrix is read-only config and
 // changes with a DB edit, not at runtime — safe to fetch once per session.

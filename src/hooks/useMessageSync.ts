@@ -2,7 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import { useMessages } from '@/contexts/MessageContext';
 
 const MESSAGE_EVENT = 'game-message';

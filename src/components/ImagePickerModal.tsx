@@ -7,8 +7,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import NextImage from 'next/image';
-import { supabase } from '@/lib/supabaseClient';
-import { raceIconFromName } from '@/lib/imageUrls';
+import { supabase } from '@/packages/infra/supabase';
+import { raceIconFromName } from '@/packages/infra';
 
 function resizeImage(file: File, maxWidth: number, maxHeight: number): Promise<Blob> {
   return new Promise((resolve, reject) => {

@@ -5,12 +5,12 @@
 // post-cast morale/rout check. Owns the pendingCastOverBudget state.
 import { useCallback, useState } from 'react';
 import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
-import { resolveSpellDamage } from '@/lib/spellDamage';
-import { saveRollFlags } from '@/lib/unitEffects';
-import { computeEffectiveMoraleModifier, shouldRout } from '@/lib/unitMorale';
-import { allianceOf } from '@/lib/alliances';
-import { SubStep, UnitChange } from '@/lib/commandLog';
-import { formatSpellRollLine } from '@/lib/verboseCombat';
+import { resolveSpellDamage } from '@/packages/combat';
+import { saveRollFlags } from '@/packages/effects';
+import { computeEffectiveMoraleModifier, shouldRout } from '@/packages/morale';
+import { allianceOf } from '@/packages/primitives';
+import { SubStep, UnitChange } from '@/packages/infra';
+import { formatSpellRollLine } from '@/packages/units';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { ExecuteFn, routeUnit } from './routeUnit';
 

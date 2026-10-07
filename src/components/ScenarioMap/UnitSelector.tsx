@@ -2,10 +2,10 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import { UnitTemplate, UnitType, Race } from '@/types/gameProtocol';
-import { Team } from '@/components/TokenRenderer/tokenUtils';
-import { mapTemplate } from '@/lib/templateMappers';
+import { Team } from '@/packages/units';
+import { mapTemplate } from '@/packages/infra';
 import { UnitTemplateTooltip } from './UnitTemplateTooltip';
 
 interface UnitSelectorProps {

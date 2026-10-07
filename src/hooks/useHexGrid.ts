@@ -3,14 +3,14 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Hex, Unit } from '@/types/gameProtocol';
-import { isUnitInteractable } from '@/lib/unitInteractions';
-import { elevationOffset, canFly, parseClimbTo, hexDirection } from '@/lib/flying';
-import { hexToPixel, pixelToHex } from '@/lib/hexGeometry';
-import { getAttachedHeroPos, getHeroSquareSize, TOKEN_HEIGHT } from '@/lib/heroLayout';
-import { EdgeRef, Walls, nearestWallEdge } from '@/lib/walls';
+import { isUnitInteractable } from '@/packages/units';
+import { elevationOffset, canFly, parseClimbTo, hexDirection } from '@/packages/movement';
+import { hexToPixel, pixelToHex } from '@/packages/primitives';
+import { getAttachedHeroPos, getHeroSquareSize, TOKEN_HEIGHT } from '@/packages/units';
+import { EdgeRef, Walls, nearestWallEdge } from '@/packages/movement';
 
 // Re-export the pure hex math so existing importers keep working.
-export { hexToPixel, pixelToHex } from '@/lib/hexGeometry';
+export { hexToPixel, pixelToHex } from '@/packages/primitives';
 
 export interface UseHexGridProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;

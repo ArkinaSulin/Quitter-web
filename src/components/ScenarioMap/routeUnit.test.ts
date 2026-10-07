@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { routeUnit } from './routeUnit';
 import { Unit } from '@/types/gameProtocol';
-import { ActionType, SubStep } from '@/lib/commandLog';
+import { ActionType, SubStep } from '@/packages/infra';
 
 const unit = (over: Partial<Unit> = {}): Unit => ({
   id: 'u1', unitName: 'Arc', isHero: false, currentFormation: 'Open Order',

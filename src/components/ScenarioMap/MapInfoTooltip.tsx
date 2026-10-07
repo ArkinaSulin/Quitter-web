@@ -6,11 +6,11 @@
 // side by side (like the hero+host UnitTooltip).
 import React from 'react';
 import { Hex, GroundEffect } from '@/types/gameProtocol';
-import { EdgeRef } from '@/lib/walls';
-import { MapStructures, instanceModifiers, structureDoorState } from '@/lib/mapStructures';
+import { EdgeRef } from '@/packages/movement';
+import { MapStructures, instanceModifiers, structureDoorState } from '@/packages/movement';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
-import { modifierAmount, modifierSummary } from '@/lib/effectTemplates';
-import { mpPairText } from './mapGeometry';
+import { modifierAmount, modifierSummary } from '@/packages/effects';
+import { mpPairText } from '@/packages/world';
 import { Floating } from './Floating';
 
 interface MapInfoTooltipProps {

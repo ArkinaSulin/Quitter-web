@@ -6,8 +6,8 @@
 // cache is invalidated and reloaded so running clients pick up new values.
 
 import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { invalidateSettingsCache, loadSettings } from '@/lib/settingsCache';
+import { supabase } from '@/packages/infra/supabase';
+import { invalidateSettingsCache, loadSettings } from '@/packages/infra';
 
 interface SettingsRow {
   key: string;

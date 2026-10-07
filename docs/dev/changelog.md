@@ -1,5 +1,31 @@
 # QuiTTER Changelog
 
+## Deep-module restructure: src/lib → src/packages + enforced boundaries (2026-10-06)
+**Files:** src/packages/** (new; all of src/lib moved), .dependency-cruiser.cjs (new), src/rules.test.ts (new), src/packages/README.md (new), package.json, docs/dev/{00-universal-rules,changelog}.md, AGENTS.md
+
+- **Everything under `src/lib` moved into `src/packages/<domain>/`** as deep
+  modules: entry point at the package root (`index.ts`), implementation in
+  `lib/`, tests in `tests/`. 11 domains: `primitives, units, combat, movement,
+  morale, effects, world, battle, ships, ai, infra`. `mapGeometry` and
+  `tokenUtils` (pure helpers mis-filed under `components/`) moved into `world`
+  and `units`. `src/lib` is gone; imports are now `@/packages/<domain>` (the
+  `@/*` alias is unchanged). 116 files moved, ~400 import lines re-pointed.
+- **Boundaries enforced** by dependency-cruiser (`npm run lint:boundaries`, part
+  of the new `npm run check` = tsc + vitest + depcruise + build): app/UI may
+  import a package's entry points only; packages reach other packages only via
+  entry points; packages never import the UI layer; `src/types` is a leaf.
+  `no-circular` is a **warning** (the game's rules are cross-cutting — a strictly
+  acyclic package graph needs a future domain re-model). Proved the rule bites
+  (deep import → error → revert).
+- **One-rule-one-home guardrail** (`src/rules.test.ts`): asserts d20, the
+  fly-pool composition (`isAirborne && canFly`), and the damage clamps each have
+  a single implementation. Folded `rollD20` into `primitives/damage.ts`
+  (re-exported by `unitCombat`); `unitEffects.saveRoll` now uses it.
+- **Side-effect-free barrels**: `supabaseClient` (top-level `createClient`) got
+  its own entry `@/packages/infra/supabase` and is excluded from `infra/index.ts`;
+  `formationCache`/`structureTemplateCache` switched to lazy `import()`. `tsc`
+  clean, 957 tests, build clean. No migration.
+
 ## Universal damage rule (≥1) + one damage parser; effect damage per troop (2026-10-06)
 **Files:** src/lib/{damage.ts (new), damage.test.ts (new), unitCombat(+test), spellDamage(+test), wallCombat(+test), structureCombat, unitEffects(+test), effectTemplates(+test), enemyAI/planner}.ts, src/hooks/useSupabaseSync.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{08-combat,10-temporary-effects,changelog}.md, docs/players/player-manual.md
 

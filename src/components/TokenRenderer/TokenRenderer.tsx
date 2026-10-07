@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { drawToken } from './drawToken';
-import { Team } from './tokenUtils';
+import { Team } from '@/packages/units';
 import { Formation, SizeCategory } from '@/types/gameProtocol';
 
 export interface TokenRendererProps {

@@ -6,17 +6,17 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import { MapEntity, mapMapRow, mapEntityToRow } from '@/lib/mapEntities';
-import { MAP_DEFAULTS } from '@/lib/mapEntities';
-import { edgeRef } from '@/lib/walls';
-import { MapStructures } from '@/lib/mapStructures';
+import { MapEntity, mapMapRow, mapEntityToRow } from '@/packages/world';
+import { MAP_DEFAULTS } from '@/packages/world';
+import { edgeRef } from '@/packages/movement';
+import { MapStructures } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
-import { getStructureTemplates } from '@/lib/structureTemplateCache';
-import { structureHasDoor } from '@/lib/structureTemplates';
-import { EffectTemplate, mapEffectRow, modifierSummary, modifierAmount } from '@/lib/effectTemplates';
-import { mpPairText } from '@/components/ScenarioMap/mapGeometry';
+import { getStructureTemplates } from '@/packages/infra';
+import { structureHasDoor } from '@/packages/movement';
+import { EffectTemplate, mapEffectRow, modifierSummary, modifierAmount } from '@/packages/effects';
+import { mpPairText } from '@/packages/world';
 import { StructureEditModal, StructureInstancePatch } from '@/components/StructureEditModal';
 import { MapCanvas } from './MapCanvas';
 

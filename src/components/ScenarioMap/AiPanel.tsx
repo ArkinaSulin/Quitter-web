@@ -8,16 +8,16 @@
 // batch back to its start.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, ALLIANCE_COLORS } from '@/types/gameProtocol';
-import { TEAMS } from '@/components/TokenRenderer/tokenUtils';
-import { planAiMoves, AiUnitPlan, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf } from '@/lib/enemyAI';
-import { isUnitRouted } from '@/lib/unitMorale';
-import { computeReachableMap, computeMovePool } from '@/lib/moveCost';
-import { isFormationChangeAffordable } from '@/lib/formationCost';
-import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/components/ScenarioMap/mapGeometry';
-import { Walls } from '@/lib/walls';
-import { legalTargets } from '@/lib/enemyAI';
-import { unitAttackCap } from '@/lib/attackCap';
-import { supabase } from '@/lib/supabaseClient';
+import { TEAMS } from '@/packages/units';
+import { planAiMoves, AiUnitPlan, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf } from '@/packages/ai';
+import { isUnitRouted } from '@/packages/morale';
+import { computeReachableMap, computeMovePool } from '@/packages/movement';
+import { isFormationChangeAffordable } from '@/packages/movement';
+import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/packages/world';
+import { Walls } from '@/packages/movement';
+import { legalTargets } from '@/packages/ai';
+import { unitAttackCap } from '@/packages/combat';
+import { supabase } from '@/packages/infra/supabase';
 import { AiOverlayData } from './aiTypes';
 
 type AiStep = AiUnitPlan['steps'][number];

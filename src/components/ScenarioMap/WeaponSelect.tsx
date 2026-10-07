@@ -7,8 +7,8 @@
 // weapon's `[x]d[y]+[z]` with up/down arrows that change ONLY the leading die
 // count `[x]` (upcast — e.g. a caster using a higher slot).
 import { Unit } from '@/types/gameProtocol';
-import { Weapon, withDamageDiceCount } from '@/lib/weaponParser';
-import { canWeaponAttack } from '@/lib/meleeFallback';
+import { Weapon, withDamageDiceCount } from '@/packages/units';
+import { canWeaponAttack } from '@/packages/combat';
 
 export function WeaponSelect({ attacker, target, weapons, value, rangeBonus, onChange, diceCount, onDiceCountChange, isUsable }: {
   attacker: Unit;

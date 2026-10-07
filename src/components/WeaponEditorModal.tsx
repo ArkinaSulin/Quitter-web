@@ -9,9 +9,9 @@
 // surfaces always stay in sync.
 
 import React, { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { Weapon, blankWeapon, validateWeapon } from '@/lib/weaponParser';
-import { LibraryWeapon, mapWeaponRow } from '@/lib/weaponMappers';
+import { supabase } from '@/packages/infra/supabase';
+import { Weapon, blankWeapon, validateWeapon } from '@/packages/units';
+import { LibraryWeapon, mapWeaponRow } from '@/packages/infra';
 import { WeaponFields } from '@/components/WeaponEditor/WeaponFields';
 
 interface WeaponEditorModalProps {

@@ -6,9 +6,9 @@
 // (a player controlling the hex) exposes ONLY the door Open/Close toggle.
 import React, { useState } from 'react';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
-import { EffectModifier } from '@/lib/effectTemplates';
+import { EffectModifier } from '@/packages/effects';
 import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
-import { structureDoorState } from '@/lib/mapStructures';
+import { structureDoorState } from '@/packages/movement';
 
 export interface StructureInstancePatch {
   hp?: number;

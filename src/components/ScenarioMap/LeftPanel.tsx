@@ -9,13 +9,13 @@ import { AlliancePanel } from './AlliancePanel';
 import { MapEditorPanel } from './MapEditorPanel';
 import { MapPickerList } from './MapPickerList';
 import { StructurePaintPanel } from './StructurePaintPanel';
-import { MapStructures } from '@/lib/mapStructures';
+import { MapStructures } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import EffectsPanel from './EffectsPanel';
 import { PlayerPanel } from './PlayerPanel';
 import { UndoDebugPanel } from './UndoDebugPanel';
 import { UnitTemplate, AllianceGroup, Participant, ScenarioRole } from '@/types/gameProtocol';
-import { MapEntity } from '@/lib/mapEntities';
+import { MapEntity } from '@/packages/world';
 
 const FootIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">

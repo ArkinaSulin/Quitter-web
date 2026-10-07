@@ -10,9 +10,9 @@
 // alliance are hidden.
 import { Fragment, useMemo } from 'react';
 import { Unit, AllianceGroup, ALLIANCE_COLORS } from '@/types/gameProtocol';
-import { CommandLogRow } from '@/lib/commandLog';
-import { buildStats, formatStatsText } from '@/lib/battleStats';
-import { TEAM_COLORS } from '@/components/TokenRenderer/tokenUtils';
+import { CommandLogRow } from '@/packages/infra';
+import { buildStats, formatStatsText } from '@/packages/battle';
+import { TEAM_COLORS } from '@/packages/units';
 
 interface Props {
   rows: CommandLogRow[];

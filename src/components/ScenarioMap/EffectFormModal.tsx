@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { ColorField } from '@/components/ColorField';
 import { EffectModifierFields, DEFAULT_INPUT_CLASS } from '@/components/EffectEditor/EffectModifierFields';
-import { EffectModifier, EffectLayer } from '@/lib/effectTemplates';
+import { EffectModifier, EffectLayer } from '@/packages/effects';
 
 export interface EffectFormValue {
   name: string;

@@ -2,13 +2,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import {
   buildReplayTimeline,
   replayStateToUnits,
   CommandLogRow,
   ReplayStep,
-} from '@/lib/commandHistory';
+} from '@/packages/infra';
 import { Unit, AllianceGroup } from '@/types/gameProtocol';
 
 const REPLAY_EVENT = 'replay';

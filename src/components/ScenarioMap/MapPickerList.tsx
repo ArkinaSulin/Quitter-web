@@ -5,8 +5,8 @@
 // scenario with no map keeps its plain board.
 
 import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { MapEntity, mapMapRow } from '@/lib/mapEntities';
+import { supabase } from '@/packages/infra/supabase';
+import { MapEntity, mapMapRow } from '@/packages/world';
 
 interface MapPickerListProps {
   currentMapId: string | null;

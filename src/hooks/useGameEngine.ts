@@ -1,23 +1,23 @@
 'use client';
 
 import { useRef, useCallback, useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import { Unit, Hex, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
-import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
-import { applyFormationChange } from '@/lib/formationCost';
-import { nextLowerFormation } from '@/lib/formationCost';
-import { flyingFormationCap, movePoolMode, flyMax, moveBudgetUnit, passengerDrain, usesFlyPool } from '@/lib/flying';
-import { applyMoveCost, applyMpSpend, applyHeroMoveCost } from '@/lib/moveCost';
-import { getSetting } from '@/lib/settingsCache';
-import { parseWeapons } from '@/lib/weaponParser';
-import { isUnitRouted } from '@/lib/unitMorale';
+import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
+import { applyFormationChange } from '@/packages/movement';
+import { nextLowerFormation } from '@/packages/movement';
+import { flyingFormationCap, movePoolMode, flyMax, moveBudgetUnit, passengerDrain, usesFlyPool } from '@/packages/movement';
+import { applyMoveCost, applyMpSpend, applyHeroMoveCost } from '@/packages/movement';
+import { getSetting } from '@/packages/infra';
+import { parseWeapons } from '@/packages/units';
+import { isUnitRouted } from '@/packages/morale';
 import { useMessageSync } from '@/hooks/useMessageSync';
-import { ActionType, SubStep, CommandLogRow, UndoState, parseSubSteps } from '@/lib/commandLog';
-import { getActiveGroups, advanceTurn } from '@/lib/turnState';
+import { ActionType, SubStep, CommandLogRow, UndoState, parseSubSteps } from '@/packages/infra';
+import { getActiveGroups, advanceTurn } from '@/packages/world';
 import { UnitEffect, GroundEffect } from '@/types/gameProtocol';
-import { Walls } from '@/lib/walls';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, computeZoneReconcile, newEffectKey, EffectSpec, resolveEffectDamage, describeEffectDamage, EffectDamageEvent } from '@/lib/unitEffects';
-import { modifierAmount } from '@/lib/effectTemplates';
+import { Walls } from '@/packages/movement';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, computeZoneReconcile, newEffectKey, EffectSpec, resolveEffectDamage, describeEffectDamage, EffectDamageEvent } from '@/packages/effects';
+import { modifierAmount } from '@/packages/effects';
 
 /** The first `forced_stop` zone on a hex (halts a unit entering it). */
 function forcedStopZone(hex: Hex, zones: GroundEffect[]): GroundEffect | undefined {

@@ -6,16 +6,16 @@
 // an optional battlement/stakes decoration, two durability pools (door gates
 // passage, HP gates modifiers), a Damage Threshold and a mode-scoped modifier list.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
 import { StructurePreview } from '@/components/StructureEditor/StructurePreview';
 import { StructureTemplate, StructureAnchor } from '@/types/structure';
-import { EffectModifier, modifierAmount, modifierSummary } from '@/lib/effectTemplates';
+import { EffectModifier, modifierAmount, modifierSummary } from '@/packages/effects';
 import {
   mapStructureRow, mapStructureToRow, blankStructureTemplate, sanitizeStructureTemplate,
-} from '@/lib/structureTemplates';
-import { refreshAndReselect } from '@/lib/librarySelection';
+} from '@/packages/movement';
+import { refreshAndReselect } from '@/packages/world';
 
 type Draft = Omit<StructureTemplate, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
 

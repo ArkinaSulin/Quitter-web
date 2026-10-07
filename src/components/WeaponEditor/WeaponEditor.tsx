@@ -3,10 +3,10 @@
 // Weapon Editor — author the reusable weapons library (2 panels: list + form).
 // The form body is the same `WeaponFields` the Add/Edit Weapon modal uses.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { blankWeapon, validateWeapon } from '@/lib/weaponParser';
-import { LibraryWeapon, mapWeaponRow, mapWeaponToRow } from '@/lib/weaponMappers';
-import { refreshAndReselect } from '@/lib/librarySelection';
+import { supabase } from '@/packages/infra/supabase';
+import { blankWeapon, validateWeapon } from '@/packages/units';
+import { LibraryWeapon, mapWeaponRow, mapWeaponToRow } from '@/packages/infra';
+import { refreshAndReselect } from '@/packages/world';
 import { WeaponFields } from '@/components/WeaponEditor/WeaponFields';
 
 export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {

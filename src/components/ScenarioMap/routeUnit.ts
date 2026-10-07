@@ -1,8 +1,8 @@
 // src/components/ScenarioMap/routeUnit.ts
 // Shared chained ROUT command builder (combat, magic, reactions).
 import { Unit } from '@/types/gameProtocol';
-import { ActionType, SubStep, CommandLogRow } from '@/lib/commandLog';
-import { unitHasFeatherFall } from '@/lib/unitEffects';
+import { ActionType, SubStep, CommandLogRow } from '@/packages/infra';
+import { unitHasFeatherFall } from '@/packages/effects';
 
 export type ExecuteFn = (
   actionType: ActionType,

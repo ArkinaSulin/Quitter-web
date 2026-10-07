@@ -2,7 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import { Participant, ScenarioRole } from '@/types/gameProtocol';
 
 const ROLE_ORDER: Record<string, number> = { GM: 0, AssistGM: 1, SuperPlayer: 2, Player: 3 };

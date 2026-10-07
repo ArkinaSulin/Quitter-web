@@ -1,7 +1,7 @@
 // src/components/TokenRenderer/TeamChip.tsx
 'use client';
 
-import { TEAM_COLORS, TEAM_SHAPES, Team, getDotColor } from './tokenUtils';
+import { TEAM_COLORS, TEAM_SHAPES, Team, getDotColor } from '@/packages/units';
 
 export function TeamShape({ shape, color, size = 10 }: { shape: string; color: string; size?: number }) {
   const common = { fill: color } as const;

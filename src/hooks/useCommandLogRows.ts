@@ -4,8 +4,8 @@
 // the consumers skip by `deleted_at`). Refreshed on mount and on every
 // realtime command-log change. Shared source for corpse piles + battle stats.
 import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { CommandLogRow } from '@/lib/commandLog';
+import { supabase } from '@/packages/infra/supabase';
+import { CommandLogRow } from '@/packages/infra';
 
 export function useCommandLogRows(scenarioId: string, enabled = true): CommandLogRow[] {
   const [rows, setRows] = useState<CommandLogRow[]>([]);

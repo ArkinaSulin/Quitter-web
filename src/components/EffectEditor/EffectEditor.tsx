@@ -4,7 +4,7 @@
 // a name/color/image/layer plus a list of modifiers (ac/morale/movement/dot/
 // hp_borrow/entry/mp_cost) — that any scenario can apply.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { ColorField } from '@/components/ColorField';
 import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
@@ -12,8 +12,8 @@ import { EffectHexPreview } from '@/components/EffectEditor/EffectHexPreview';
 import {
   EffectTemplate, EffectModifier, EffectLayer, EffectScope,
   mapEffectRow, mapEffectToRow, blankEffectTemplate, modifierSummary, modifierScopeConflict,
-} from '@/lib/effectTemplates';
-import { refreshAndReselect } from '@/lib/librarySelection';
+} from '@/packages/effects';
+import { refreshAndReselect } from '@/packages/world';
 
 type Draft = Omit<EffectTemplate, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
 

@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SizeCategory, Formation } from '@/types/gameProtocol';
 import { drawSpellCastToken, computeSpellCastLayout } from '@/components/TokenRenderer/drawToken';
 import { MagicCastState, MagicCircle } from '@/hooks/useMagicCast';
-import { SaveStat, SAVE_STATS, AreaShape } from '@/lib/weaponParser';
+import { SaveStat, SAVE_STATS, AreaShape } from '@/packages/units';
 
 export const MAGIC_CANVAS_WIDTH = 400;
 export const MAGIC_CANVAS_HEIGHT = 300;

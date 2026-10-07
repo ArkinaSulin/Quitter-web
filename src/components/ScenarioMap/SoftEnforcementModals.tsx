@@ -3,11 +3,11 @@
 // Pure rendering: the pending states + fully-bound action closures come from
 // ScenarioMap; the bodies are text built from the states.
 import { Unit, Hex } from '@/types/gameProtocol';
-import { EdgeRef } from '@/lib/walls';
-import { heroMovePerAction } from '@/lib/moveCost';
-import { unitAttackCap } from '@/lib/attackCap';
-import { getFormationChangeMpCost } from '@/lib/formationCost';
-import { flyMax } from '@/lib/flying';
+import { EdgeRef } from '@/packages/movement';
+import { heroMovePerAction } from '@/packages/movement';
+import { unitAttackCap } from '@/packages/combat';
+import { getFormationChangeMpCost } from '@/packages/movement';
+import { flyMax } from '@/packages/movement';
 import { ConfirmModal } from './ConfirmModal';
 
 export interface PendingMove {

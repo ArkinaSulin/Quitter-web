@@ -2,7 +2,7 @@
 // Scenario header: role label, Undo, turn counter, End Turn, Free Move toggle,
 // GM settings/replay buttons, and Exit to Lobby.
 import { AllianceGroup } from '@/types/gameProtocol';
-import { allianceOf } from '@/lib/alliances';
+import { allianceOf } from '@/packages/primitives';
 
 interface TopBarProps {
   roleLabel: string;

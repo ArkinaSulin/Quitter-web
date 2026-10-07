@@ -1,6 +1,6 @@
 // src/types/gameProtocol.ts
 
-import { EffectModifier } from '@/lib/effectTemplates';
+import { EffectModifier } from '@/types/effects';
 
 export const ORGANIZATION_LEVEL: Record<string, number> = {
   'Routed': 0,

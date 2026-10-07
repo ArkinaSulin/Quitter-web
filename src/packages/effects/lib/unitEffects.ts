@@ -1,0 +1,934 @@
+// src/lib/unitEffects.ts
+// Temporary-effect domain logic (pure, unit-tested): unit buffs/debuffs/DoTs and
+// ground (hex) effects. Shared by the live map (apply/remove commands, the
+// END_TURN expiry/DoT sweep) and replay.
+//
+// Semantics (locked):
+//  - Duration counts ACTIVATIONS OF THE CASTER. A tick happens at the start of the
+//    caster's activation (END_TURN transitions INTO the caster's alliance): DoT
+//    damage lands, turnsLeft decrements, and at 0 the effect expires (stat restored).
+//  - If the caster unit is destroyed the effect expires immediately. Effects with no
+//    caster unit (GM-placed ground effects) tick on their recorded casterTeam.
+//  - No same-kind stacking on one carrier: a second effect of the same kind is
+//    ignored (stat math = snapshot base + delta, restore = base).
+//  - Stat deltas materialize on the REAL unit fields (currentAc, currentMoraleModifier,
+//    movementPoints base) so combat/morale/movement consumers need no edits.
+
+import { Unit, UnitEffect, GroundEffect, EffectKind, AllianceGroup, Hex } from '@/types/gameProtocol';
+import { SubStep, UnitChange } from '@/packages/infra';
+import { parseDice, rollDice, modifierAmount, isDiceAmount, modifierSummary, EffectModifier } from '@/packages/effects/lib/effectTemplates';
+import { clampDamage, rollD20 } from '@/packages/primitives';
+
+/** The real unit field a stat kind modifies (dot/hp_borrow have none — they touch HP). */
+export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModifier' | 'movementPoints' | null {
+  switch (kind) {
+    case 'morale': return 'currentMoraleModifier';
+    case 'movement': return 'movementPoints';
+    case 'ac':
+    case 'dot':
+    case 'hp_borrow':
+    case 'entry':
+    case 'mp_cost':
+    case 'max_org_level_allowed':
+    case 'range':
+    case 'advantage':
+    case 'disadvantage':
+    case 'grant_advantage':
+    case 'grant_disadvantage':
+    case 'block_attacks':
+    case 'save_advantage':
+    case 'save_disadvantage':
+    case 'forced_stop':
+    case 'ignore_climb':
+    case 'feather_fall': return null;
+  }
+}
+
+export function isStatEffect(kind: EffectKind): boolean {
+  // `ac` is a DERIVED aura (read by `unitStats.effectiveAc`), not a materialized
+  // stat — it must stay consistent across melee/ranged/rear, which a single
+  // persisted `currentAc` cannot express.
+  return kind === 'morale' || kind === 'movement';
+}
+
+/** Attack-roll flag kinds: read at attack resolution, not materialized as stats. */
+export function isAttackRollEffect(kind: EffectKind): boolean {
+  return kind === 'advantage' || kind === 'disadvantage' || kind === 'grant_advantage' || kind === 'grant_disadvantage';
+}
+
+/**
+ * Sum of `range` modifiers on a unit's active effects (direct effects AND
+ * ground-zone memberships). Added to both `range` and `maxRange` of the carrier's
+ * weapon when attacks/reactions are resolved.
+ */
+export function effectRangeBonus(unit: Unit | null | undefined): number {
+  let sum = 0;
+  for (const e of unit?.effects ?? []) {
+    if (e.kind === 'range') sum += modifierAmount(e.dice);
+  }
+  return sum;
+}
+
+/** Stacking identity: same kind AND same `mode` (so `ac (melee)` and `ac (ranged)`
+ *  coexist on one carrier). Kinds without a mode compare equal as before. */
+function sameStackKey(a: { kind: string; mode?: string }, b: { kind: string; mode?: string }): boolean {
+  return a.kind === b.kind && (a.mode ?? null) === (b.mode ?? null);
+}
+
+/** Does this `ac` effect apply to the given attack type (melee vs ranged)? */
+function acApplies(e: { kind: EffectKind; mode?: 'melee' | 'ranged' }, isRanged: boolean): boolean {
+  if (e.kind !== 'ac') return false;
+  if (e.mode === 'melee' && isRanged) return false;
+  if (e.mode === 'ranged' && !isRanged) return false;
+  return true;
+}
+
+/**
+ * COVER AC from zone-sourced `ac` effects (hex structures, painted ground
+ * zones): positional cover never stacks — the HIGHEST wins. 360° (applies at
+ * every direction; `unitStats.effectiveAc` maxes it against formation + wall).
+ */
+export function coverAcBonus(unit: { effects?: Unit['effects'] } | null | undefined, isRanged: boolean): number {
+  let best = 0;
+  for (const e of unit?.effects ?? []) {
+    if (!e.zoneHex) continue;
+    if (!acApplies(e, isRanged)) continue;
+    best = Math.max(best, modifierAmount(e.dice));
+  }
+  return best;
+}
+
+/**
+ * BUFF AC from direct unit `ac` effects (e.g. Haste): these STACK with cover
+ * (and with each other).
+ */
+export function directAcBonus(unit: { effects?: Unit['effects'] } | null | undefined, isRanged: boolean): number {
+  let sum = 0;
+  for (const e of unit?.effects ?? []) {
+    if (e.zoneHex) continue;
+    if (!acApplies(e, isRanged)) continue;
+    sum += modifierAmount(e.dice);
+  }
+  return sum;
+}
+
+/**
+ * Total AC from effects (cover max + direct sum), without formation/wall cover.
+ * Used where a unit's own effect AC is wanted standalone (e.g. an attached
+ * hero's split AC); `unitStats.effectiveAc` composes cover + formation + wall
+ * itself.
+ */
+export function effectAcBonus(unit: { effects?: Unit['effects'] } | null | undefined, isRanged: boolean): number {
+  return coverAcBonus(unit, isRanged) + directAcBonus(unit, isRanged);
+}
+
+/**
+ * True when a unit is standing on a hex effect that has NOT materialized yet
+ * (zone memberships are only created on move / END_TURN, so a placed unit or a
+ * freshly-painted structure shows no membership until then). Used to flag "this
+ * hex effect will apply at end of turn" without showing a misleading number.
+ */
+export function hasPendingZoneEffect(
+  unit: { effects?: Unit['effects']; hex?: Hex } | null | undefined,
+  zones: GroundEffect[] | null | undefined,
+): boolean {
+  if (!unit?.hex || !zones) return false;
+  const materialized = new Set((unit.effects ?? []).filter(e => e.zoneHex).map(e => e.key));
+  return zones.some(z => z.q === unit.hex!.q && z.r === unit.hex!.r && !materialized.has(z.key));
+}
+
+/**
+ * Range bonus for a unit at its CURRENT hex: persisted effect/zone memberships
+ * (`effectRangeBonus`) PLUS any `range` zone underfoot not yet materialized as a
+ * membership. Zone memberships are only created on move / END_TURN, so without
+ * this a unit standing on a structure with `range` (or one edited in) would show
+ * no bonus until its next move. Non-persisting — safe to call for display.
+ * A zone already represented by a membership is skipped (no double-count).
+ */
+export function rangeBonusAt(unit: Unit | null | undefined, zones: GroundEffect[] | null | undefined): number {
+  if (!unit) return 0;
+  let sum = effectRangeBonus(unit);
+  const materialized = new Set((unit.effects ?? []).filter(e => e.zoneHex).map(e => e.key));
+  for (const z of zones ?? []) {
+    if (z.kind !== 'range') continue;
+    if (z.q !== unit.hex.q || z.r !== unit.hex.r) continue;
+    if (materialized.has(z.key)) continue;
+    sum += modifierAmount(z.dice);
+  }
+  return sum;
+}
+
+/** The four attack-roll flag kinds present on one unit (effects + zone memberships). */
+export interface AttackRollFlags {
+  advantage: boolean;
+  disadvantage: boolean;
+  grantAdvantage: boolean;
+  grantDisadvantage: boolean;
+}
+
+export function attackRollFlags(unit: Unit | null | undefined): AttackRollFlags {
+  const has = (kind: EffectKind) => (unit?.effects ?? []).some(e => e.kind === kind);
+  return {
+    advantage: has('advantage'),
+    disadvantage: has('disadvantage'),
+    grantAdvantage: has('grant_advantage'),
+    grantDisadvantage: has('grant_disadvantage'),
+  };
+}
+
+/** Saving-throw roll flags: advantage/disadvantage from the carrier's effects. */
+export interface SaveRollFlags {
+  advantage: boolean;
+  disadvantage: boolean;
+}
+
+export function saveRollFlags(unit: Unit | null | undefined): SaveRollFlags {
+  const has = (kind: EffectKind) => (unit?.effects ?? []).some(e => e.kind === kind);
+  return {
+    advantage: has('save_advantage'),
+    disadvantage: has('save_disadvantage'),
+  };
+}
+
+/** Apply-time payload for a new effect (duration/turnsLeft filled by the engine). */
+export type EffectSpec = Omit<UnitEffect, 'key' | 'base' | 'turnsLeft' | 'duration'>;
+
+/** Stable instance id (injectable for tests). */
+export function newEffectKey(rnd: () => number = Math.random): string {
+  return `eff-${Date.now().toString(36)}-${rnd().toString(36).slice(2, 9)}`;
+}
+
+export function effectAt(unit: Unit | null | undefined, kind: EffectKind): UnitEffect | undefined {
+  return (unit?.effects ?? []).find(e => e.kind === kind);
+}
+
+export function effectByKey(unit: Unit | null | undefined, key: string): UnitEffect | undefined {
+  return (unit?.effects ?? []).find(e => e.key === key);
+}
+
+/** True when the unit carries an effect of `kind` (direct or zone membership). */
+export function hasEffectKind(unit: Unit | null | undefined, kind: EffectKind): boolean {
+  return (unit?.effects ?? []).some(e => e.kind === kind);
+}
+
+/**
+ * True when the carrier ignores climb/elevation cost: a direct `ignore_climb`
+ * effect, OR an underfoot `ignore_climb` zone not yet materialized as a
+ * membership (zone memberships are only created on move / END_TURN).
+ */
+export function unitIgnoresClimb(unit: Unit | null | undefined, zones?: GroundEffect[] | null): boolean {
+  if (hasEffectKind(unit, 'ignore_climb')) return true;
+  if (!unit?.hex || !zones) return false;
+  const materialized = new Set((unit.effects ?? []).filter(e => e.zoneHex).map(e => e.key));
+  return zones.some(z => z.kind === 'ignore_climb' && z.q === unit.hex!.q && z.r === unit.hex!.r && !materialized.has(z.key));
+}
+
+/** True when the carrier ignores falling damage. */
+export function unitHasFeatherFall(unit: Unit | null | undefined): boolean {
+  return hasEffectKind(unit, 'feather_fall');
+}
+
+/** Field value a stat effect snapshots/restores on the carrier. */
+function statValue(unit: Unit, kind: EffectKind): number {
+  const field = statFieldOf(kind);
+  if (!field) return 0;
+  const v = unit[field] as number;
+  return typeof v === 'number' && !Number.isNaN(v) ? v : 0;
+}
+
+/**
+ * UnitChanges that materialize a NEW effect on `effects`. Stat kinds write
+ * field = current + delta and snapshot the pre-effect value as `base`. DoT writes
+ * nothing now (it damages at each caster tick).
+ */
+export function applyEffectChanges(unit: Unit, spec: Omit<UnitEffect, 'key' | 'base'>, key = newEffectKey()): { changes: UnitChange[]; effect: UnitEffect } {
+  const effects = unit.effects ?? [];
+  // No same-kind stacking on one carrier — but `mode`-scoped kinds (ac melee vs
+  // ac ranged) are different stacks.
+  if (effects.some(e => sameStackKey(e, spec))) {
+    return { changes: [], effect: effects.find(e => sameStackKey(e, spec))! };
+  }
+  const effect: UnitEffect = { ...spec, key, base: isStatEffect(spec.kind) ? statValue(unit, spec.kind) : undefined };
+  const changes: UnitChange[] = [
+    { field: 'effects', from: effects, to: [...effects, effect] },
+  ];
+  const field = statFieldOf(spec.kind);
+  if (field) {
+    const to = statValue(unit, spec.kind) + modifierAmount(spec.dice);
+    changes.unshift({ field, from: unit[field], to });
+  }
+  // Sleep (hp_borrow): HP is deducted immediately (never below 1); the refund
+  // happens when the effect expires (see removeEffectChanges / END_TURN).
+  if (spec.kind === 'hp_borrow' && modifierAmount(spec.dice) > 0) {
+    changes.unshift(...hpBorrowDamageChanges(unit, modifierAmount(spec.dice)));
+  }
+  return { changes, effect };
+}
+
+/**
+ * Expand a unit template's authored modifiers into PERMANENT effects for a
+ * spawned unit (innate abilities — never tick/expire). Returns the effects plus
+ * the materialized `movement`/`morale` stat deltas so the caller can set the
+ * spawned unit's real fields. Stat effects carry their pre-delta `base` snapshot
+ * so an explicit removal still restores correctly.
+ */
+export function expandInheritedEffects(
+  mods: EffectModifier[] | null | undefined,
+  baseMovementPoints: number,
+): { effects: UnitEffect[]; movementPoints: number; currentMoraleModifier: number } {
+  const effects: UnitEffect[] = [];
+  let movementPoints = baseMovementPoints;
+  let currentMoraleModifier = 0;
+  for (const m of mods ?? []) {
+    if (!m || typeof m.kind !== 'string') continue;
+    const isMov = m.kind === 'movement';
+    const isMor = m.kind === 'morale';
+    const base = isMov ? movementPoints : isMor ? currentMoraleModifier : undefined;
+    const delta = modifierAmount(m.dice);
+    if (isMov) movementPoints += delta;
+    else if (isMor) currentMoraleModifier += delta;
+    effects.push({
+      key: newEffectKey(),
+      name: modifierSummary(m),
+      color: '#9aa0a6',
+      kind: m.kind as EffectKind,
+      ...(m.dice ? { dice: m.dice } : {}),
+      ...(m.healing ? { healing: true } : {}),
+      ...(m.savingThrow ? { savingThrow: m.savingThrow } : {}),
+      ...(m.saveDC != null ? { saveDC: m.saveDC } : {}),
+      ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
+      ...(m.mode ? { mode: m.mode } : {}),
+      ...(m.direction ? { direction: m.direction } : {}),
+      duration: 1,
+      turnsLeft: 1,
+      casterUnitId: null,
+      casterTeam: null,
+      casterPlayerId: null,
+      permanent: true,
+      ...(base !== undefined ? { base } : {}),
+    });
+  }
+  return { effects, movementPoints, currentMoraleModifier };
+}
+
+/**
+ * UnitChanges that revert one effect by key: removes it from `effects` and, for a
+ * stat kind, restores the field to the snapshot `base`.
+ */
+export function removeEffectChanges(unit: Unit, key: string): UnitChange[] {
+  const effects = unit.effects ?? [];
+  const entry = effects.find(e => e.key === key);
+  if (!entry) return [];
+  const changes: UnitChange[] = [
+    { field: 'effects', from: effects, to: effects.filter(e => e.key !== key) },
+  ];
+  const field = statFieldOf(entry.kind);
+  if (field && typeof entry.base === 'number') {
+    changes.unshift({ field, from: unit[field], to: entry.base });
+  }
+  // Sleep refund: expiring/removing an hp_borrow gives the borrowed HP back
+  // (capped) unless the unit was killed in the meantime.
+  if (entry.kind === 'hp_borrow') {
+    changes.unshift(...hpBorrowRefundChanges(unit, modifierAmount(entry.dice)));
+  }
+  return changes;
+}
+
+/**
+ * UnitChanges that replace one effect in place (same key slot, new payload):
+ * remove the old (restores any stat snapshot) then re-apply the new spec. Used
+ * by the instance edit modal so stat effects rebase correctly.
+ */
+export function editEffectChanges(
+  unit: Unit,
+  key: string,
+  spec: Omit<UnitEffect, 'key' | 'base' | 'turnsLeft' | 'duration'>,
+  duration: number,
+  newKey = newEffectKey(),
+): UnitChange[] {
+  const remove = removeEffectChanges(unit, key);
+  if (remove.length === 0) return [];
+  const unitAfter: Unit = { ...unit };
+  for (const c of remove) (unitAfter as any)[c.field] = c.to;
+  const { changes: apply } = applyEffectChanges(unitAfter, { ...spec, duration: Math.max(1, duration), turnsLeft: Math.max(1, duration) }, newKey);
+  return [...remove, ...apply];
+}
+
+
+function troopFromHp(target: Unit, hp: number): number {
+  return Math.min(target.maxTroopCount ?? hp, Math.max(1, Math.ceil(hp / Math.max(1, target.troopHp ?? 1))));
+}
+
+/** Sleep (hp_borrow): remove X HP now — NEVER below 1 HP (cannot kill). */
+export function hpBorrowDamageChanges(target: Unit, x: number): UnitChange[] {
+  if (x <= 0) return [];
+  const newHp = Math.max(1, (target.currentUnitHp ?? 1) - x);
+  return [
+    { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+    { field: 'currentTroopCount', from: target.currentTroopCount, to: troopFromHp(target, newHp) },
+  ];
+}
+
+/** Sleep refund: give the borrowed X HP back (capped at max) — only if alive. */
+export function hpBorrowRefundChanges(target: Unit, x: number): UnitChange[] {
+  if (x <= 0 || (target.currentUnitHp ?? 0) <= 0) return [];
+  const newHp = Math.min(target.maxUnitHp ?? (target.currentUnitHp ?? 0) + x, (target.currentUnitHp ?? 0) + x);
+  return [
+    { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+    { field: 'currentTroopCount', from: target.currentTroopCount, to: troopFromHp(target, newHp) },
+  ];
+}
+
+const thOf = (t: Unit) => Math.max(1, t.troopHp ?? 1);
+type SaveStatName = 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha';
+
+/** One d20 roll for a saving throw, honouring save advantage/disadvantage
+ *  (any advantage cancels any disadvantage). */
+function saveRoll(rng: () => number, flags: SaveRollFlags): number {
+  const a = rollD20(rng);
+  if (flags.advantage && !flags.disadvantage) return Math.max(a, rollD20(rng));
+  if (flags.disadvantage && !flags.advantage) return Math.min(a, rollD20(rng));
+  return a;
+}
+
+/** One troop's saving throw total: d20 + bonus (compare to the DC). */
+function troopSaveTotal(target: Unit, stat: SaveStatName, rng: () => number): number {
+  const bonus = ((target as any)[stat.toLowerCase()] as number) || 0;
+  return saveRoll(rng, saveRollFlags(target)) + bonus;
+}
+
+function healChanges(target: Unit, amount: number): UnitChange[] {
+  if (amount <= 0) return [];
+  const newHp = Math.min(target.maxUnitHp ?? (target.currentUnitHp ?? 0) + amount, (target.currentUnitHp ?? 0) + amount);
+  return [
+    { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+    { field: 'currentTroopCount', from: target.currentTroopCount, to: troopFromHp(target, newHp) },
+  ];
+}
+
+/**
+ * Structured result of an effect damage/heal resolution (for chat messages/logs).
+ * `total` is the absolute HP changed; troop counts bracket the resolution.
+ */
+export interface EffectDamageDetail {
+  /** Troops targeted (flat path: all current troops). */
+  affected: number;
+  /** Troops that passed their save. */
+  passed: number;
+  /** Troops that failed their save (affected - passed). */
+  failed: number;
+  /** Absolute HP change. */
+  total: number;
+  healing: boolean;
+  /** Dice expression when one was rolled. */
+  dice?: string;
+  /** Each troop's individual raw die roll (dice path only). */
+  rolls?: number[];
+  /** Sum of the per-troop rolls (dice path only). */
+  roll?: number;
+  /** The save DC when saves were rolled (so messages can print it). */
+  saveDC?: number;
+  /** Each troop's save total (d20 + bonus), aligned to `rolls` when saves rolled. */
+  saveRolls?: number[];
+  /** Each troop's post-save damage/heal applied, aligned to `rolls`. */
+  applied?: number[];
+  hpBefore: number;
+  hpAfter: number;
+  troopsBefore: number;
+  troopsAfter: number;
+}
+
+/** One damage/heal event from a temporary effect, for the message log. */
+export interface EffectDamageEvent {
+  unitId: string;
+  unitName: string;
+  /** Effect or zone name that caused it. */
+  source: string;
+  detail: EffectDamageDetail;
+}
+
+/**
+ * Damage/heal from an effect modifier, returning both the UnitChanges and a
+ * structured detail (rolls, saves, troop counts) for messaging.
+ *  - `dice` present: the dice are rolled **once per affected troop** — each troop
+ *    takes its own roll (save-adjusted, CAPPED at its troop HP); `healing` flips
+ *    damage to healing (also capped per troop at troopHp). Per-troop saves when
+ *    `savingThrow` + `saveDC` are set (pass => half if onSaveHalfOrNeg, else 0).
+ *  - no `dice`: legacy flat amount applied to the unit HP once (unchanged).
+ */
+export function resolveEffectDamage(
+  target: Unit,
+  mod: {
+    dice?: string;
+    healing?: boolean;
+    savingThrow?: SaveStatName | null;
+    saveDC?: number | null;
+    onSaveHalfOrNeg?: boolean;
+  },
+  rng: () => number = Math.random,
+  affectedOverride?: number,
+): { changes: UnitChange[]; detail: EffectDamageDetail } {
+  const hpBefore = target.currentUnitHp ?? 0;
+  const troopsBefore = target.currentTroopCount ?? 0;
+  const healing = !!mod.healing;
+  const isDice = isDiceAmount(mod.dice);
+  const parsed = isDice ? parseDice(mod.dice) : null;
+  const flatAmt = parsed ? 0 : modifierAmount(mod.dice);
+
+  let changes: UnitChange[] = [];
+  let affected = 0;
+  let passed = 0;
+  let rolls: number[] | undefined;
+  let roll: number | undefined;
+  let saveRolls: number[] | undefined;
+  let applied: number[] | undefined;
+
+  // Universal per-troop model: EVERY effect amount (flat or dice) lands on each
+  // affected troop, clamped to [1, troopHp] (`1d6-4` → at least 1). A full
+  // saving-throw negate is the only 0; a half-save still lands at least 1.
+  const currentTroops = Math.max(0, troopsBefore);
+  affected = Math.max(0, Math.min(affectedOverride ?? currentTroops, currentTroops));
+  if (affected > 0 && (isDice || flatAmt !== 0)) {
+    const th = thOf(target);
+    const halfOnSave = mod.onSaveHalfOrNeg !== false;
+    const hasSave = !!(mod.savingThrow && mod.saveDC != null);
+    rolls = [];
+    if (hasSave) saveRolls = [];
+    applied = [];
+    let total = 0;
+    for (let i = 0; i < affected; i++) {
+      const r = isDice ? rollDice(mod.dice, rng) : flatAmt;
+      rolls.push(r);
+      let per = clampDamage(r, th);
+      if (hasSave) {
+        const saveTotal = troopSaveTotal(target, mod.savingThrow!, rng);
+        saveRolls!.push(saveTotal);
+        if (saveTotal >= mod.saveDC!) {
+          passed++;
+          // Half the RAW roll, then cap (a half-save still lands ≥1); negate = 0.
+          per = halfOnSave ? clampDamage(Math.floor(r / 2), th) : 0;
+        }
+      }
+      applied.push(per);
+      total += per;
+    }
+    roll = rolls.reduce((a, b) => a + b, 0);
+    if (healing) {
+      changes = healChanges(target, total);
+    } else {
+      const newHp = Math.max(0, hpBefore - total);
+      changes = [
+        { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+        { field: 'currentTroopCount', from: target.currentTroopCount, to: Math.max(0, Math.ceil(newHp / th)) },
+      ];
+    }
+  }
+
+  const hpAfter = changes.find(c => c.field === 'currentUnitHp')?.to ?? hpBefore;
+  const troopsAfter = changes.find(c => c.field === 'currentTroopCount')?.to ?? troopsBefore;
+  return {
+    changes,
+    detail: {
+      affected,
+      passed,
+      failed: Math.max(0, affected - passed),
+      total: Math.abs(hpAfter - hpBefore),
+      healing,
+      ...(mod.dice ? { dice: mod.dice } : {}),
+      ...(rolls ? { rolls } : {}),
+      ...(roll != null ? { roll } : {}),
+      ...(saveRolls ? { saveDC: mod.saveDC ?? undefined, saveRolls } : {}),
+      ...(applied ? { applied } : {}),
+      hpBefore,
+      hpAfter,
+      troopsBefore,
+      troopsAfter,
+    },
+  };
+}
+
+/** UnitChanges only (legacy signature used by apply/entry paths). */
+export function effectDamageChanges(
+  target: Unit,
+  mod: {
+    dice?: string;
+    healing?: boolean;
+    savingThrow?: SaveStatName | null;
+    saveDC?: number | null;
+    onSaveHalfOrNeg?: boolean;
+  },
+  rng: () => number = Math.random,
+  affectedOverride?: number,
+): UnitChange[] {
+  return resolveEffectDamage(target, mod, rng, affectedOverride).changes;
+}
+
+/**
+ * One-line chat summary of an effect damage/heal event: who, how many troops
+ * were affected, and the damage/heal taken. Verbose mode prints every die roll:
+ * per-troop damage rolls, and (when saves apply) each troop's save total → applied
+ * damage, e.g. `1d2 per troop DC 16 → 2(18→1), 1(13→1)`.
+ */
+export function describeEffectDamage(unitName: string, source: string, d: EffectDamageDetail, verbose = false): string {
+  const troopWord = d.affected === 1 ? 'troop' : 'troops';
+  const rollTxt = (() => {
+    if (!d.dice) return 'flat';
+    if (!d.rolls || d.rolls.length === 0) return d.dice;
+    if (d.saveRolls) {
+      const pairs = d.rolls.map((r, i) => `${r}(${d.saveRolls![i]}→${d.applied?.[i] ?? 0})`).join(', ');
+      return `${d.dice} per troop DC ${d.saveDC ?? '?'} → ${pairs} (Σ ${d.roll})`;
+    }
+    return `${d.dice} per troop → ${d.rolls.join(', ')}${d.rolls.length > 1 ? ` (Σ ${d.roll})` : ''}`;
+  })();
+  const saveTxt = d.passed > 0 ? `, ${d.passed} saved` : '';
+  if (d.healing) {
+    const recovered = Math.max(0, d.troopsAfter - d.troopsBefore);
+    return verbose
+      ? `${unitName} healed ${d.total} from ${source} (${d.affected} ${troopWord}, ${rollTxt})`
+      : `${unitName} healed ${d.total} from ${source} (${d.affected} ${troopWord} affected${recovered ? `, ${recovered} recovered` : ''})`;
+  }
+  const lost = Math.max(0, d.troopsBefore - d.troopsAfter);
+  return verbose
+    ? `${unitName} took ${d.total} from ${source} (${d.affected} ${troopWord}, ${rollTxt}, ${lost} lost)`
+    : `${unitName} took ${d.total} damage from ${source} (${d.affected} ${troopWord} affected${saveTxt}, ${lost} lost)`;
+}
+
+/** Remaining ticks of an effect (its own countdown) — DoT ticks then expires. */
+function tickDown(effect: UnitEffect): UnitEffect {
+  return { ...effect, turnsLeft: Math.max(0, effect.turnsLeft - 1) };
+}
+
+interface EndTurnEffectsContext {
+  units: Unit[];
+  zones: GroundEffect[];
+  /** The alliance about to act (END_TURN transition target). */
+  nextGroup: AllianceGroup;
+  /** Team -> alliance group for the scenario. */
+  alliances: Record<string, AllianceGroup>;
+  makeKey?: () => string;
+  /** Injectable RNG for dice/save rolls (tests). */
+  rng?: () => number;
+}
+
+export interface EndTurnEffectsResult {
+  /** Unit sub-steps to fold into the END_TURN command (before the refresh steps). */
+  subSteps: SubStep[];
+  /** Ground zones after ticks/expiry — persist to scenarios.map_data. */
+  zonesAfter: GroundEffect[];
+  /** Damage/heal events this tick, for the message log (who/affected/damage). */
+  damageEvents: EffectDamageEvent[];
+}
+
+function teamsOf(alliances: Record<string, AllianceGroup>, group: AllianceGroup): Set<string> {
+  const teams = new Set<string>();
+  for (const [team, g] of Object.entries(alliances)) {
+    if (g === group) teams.add(team);
+  }
+  return teams;
+}
+
+/**
+ * Compute every effect change that happens when play transitions into `nextGroup`
+ * (the start of that alliance's segment):
+ *   1. Unit effects whose caster unit was destroyed expire immediately.
+ *   2. Effects tick when the incoming alliance is the caster's; effects with NO
+ *      caster team (GM/table-tempo-free) tick once per game turn on the FIRST
+ *      active alliance: DoT damage to the carrier, turnsLeft--, expire at 0.
+ *   3. Ground zones: DoT to every unit standing on the zone when the caster's
+ *      alliance (or the first-active alliance for tempo-free zones) activates;
+ *      stat zones only expire at 0. Expired zones are removed and their
+ *      membership effects restored on standing carriers.
+ *   4. Units of the incoming alliance reconcile their ground-zone memberships at
+ *      the start of their own activation (enter/leave the zone).
+ * Returns unit sub-steps (ordered, one per affected unit) + the surviving zones.
+ */
+export function computeEndTurnEffects(ctx: EndTurnEffectsContext): EndTurnEffectsResult {
+  const { units, zones, nextGroup, alliances, makeKey = newEffectKey, rng = Math.random } = ctx;
+  const activeTeams = teamsOf(alliances, nextGroup);
+  // GM/table-placed effects and zones have no caster team ("tempo-free"). They
+  // should tick ONCE per game turn, not on every alliance's end-turn — anchor
+  // them to the FIRST active alliance in the cycle (friendly if none assigned).
+  const firstActive: AllianceGroup =
+    (['friendly', 'enemy', 'neutral'] as const).find(g => teamsOf(alliances, g).size > 0) ?? 'friendly';
+  const subSteps: SubStep[] = [];
+  const zonesAfter = zones.map(z => ({ ...z }));
+  const damageEvents: EffectDamageEvent[] = [];
+
+  // Fold changes onto per-unit change lists so one sub-step per affected unit.
+  type UnitDraft = { effects: UnitEffect[]; changes: UnitChange[]; hpChanged: boolean };
+  const drafts = new Map<string, UnitDraft>();
+  const draftFor = (u: Unit): UnitDraft => {
+    let d = drafts.get(u.id);
+    if (!d) {
+      d = { effects: [...(u.effects ?? [])], changes: [], hpChanged: false };
+      drafts.set(u.id, d);
+    }
+    return d;
+  };
+  const alive = (id?: string | null) => !id || units.some(u => u.id === id && !u.isDeleted);
+
+  // --- 1 & 2: unit effects ---
+  for (const unit of units) {
+    if (unit.isDeleted) continue;
+    const d = draftFor(unit);
+    for (const e of d.effects) {
+      // Ground-zone membership is handled by the zone + reconcile passes, never
+      // ticked here (its life is the zone's).
+      if (e.zoneHex) continue;
+      // Permanent effects (innate/design-time) never tick or expire.
+      if (e.permanent) continue;
+      if (!alive(e.casterUnitId)) {
+        // Caster destroyed -> expire now (restore stat).
+        const changes = removeEffectChanges({ ...unit, effects: d.effects }, e.key);
+        for (const c of changes) d.changes.push(c);
+        d.effects = d.effects.filter(x => x.key !== e.key);
+        continue;
+      }
+      const casterActive = e.casterTeam ? activeTeams.has(e.casterTeam) : nextGroup === firstActive;
+      if (!casterActive) continue;
+      // Caster's activation start: tick.
+      const ticked = tickDown(e);
+      if (e.kind === 'dot') {
+        const { changes, detail } = resolveEffectDamage(unit, e, rng);
+        for (const c of changes) d.changes.push(c);
+        d.hpChanged = true;
+        damageEvents.push({ unitId: unit.id, unitName: unit.unitName, source: e.name, detail });
+      }
+      if (ticked.turnsLeft <= 0) {
+        for (const c of removeEffectChanges({ ...unit, effects: d.effects }, e.key)) d.changes.push(c);
+        d.effects = d.effects.filter(x => x.key !== e.key);
+      } else {
+        d.effects = d.effects.map(x => (x.key === e.key ? ticked : x));
+      }
+    }
+  }
+
+  // --- 3: ground zones tick/expire ---
+  const removedZones: string[] = [];
+  for (const zone of zonesAfter) {
+    // Permanent zones (authored on a map board) never tick or expire — their
+    // memberships live as long as the zone itself.
+    if (zone.permanent) continue;
+    const casterActive = zone.casterTeam ? activeTeams.has(zone.casterTeam) : nextGroup === firstActive;
+    const casterDead = zone.casterUnitId ? !alive(zone.casterUnitId) : false;
+    if (!casterActive && !casterDead) continue;
+    const zoneKey = zone.key;
+    const standing = units.filter(u => !u.isDeleted && u.hex.q === zone.q && u.hex.r === zone.r);
+    let surviving = zone;
+    if (!casterDead) {
+      // DoT lands every tick while the zone is alive.
+      if (zone.kind === 'dot') {
+        for (const u of standing) {
+          const d = draftFor(u);
+          const { changes, detail } = resolveEffectDamage(u, zone, rng);
+          for (const c of changes) { d.changes.push(c); d.hpChanged = true; }
+          damageEvents.push({ unitId: u.id, unitName: u.unitName, source: zone.name, detail });
+        }
+      }
+      surviving = { ...zone, turnsLeft: Math.max(0, zone.turnsLeft - 1) };
+    }
+    if (casterDead || surviving.turnsLeft <= 0) {
+      removedZones.push(zoneKey);
+      // Expired: remove zone memberships from carriers standing on it (restore).
+      for (const u of units) {
+        if (u.isDeleted) continue;
+        const mem = (u.effects ?? []).find(e => e.zoneHex && e.key === zoneKey);
+        if (!mem) continue;
+        const d = draftFor(u);
+        for (const c of removeEffectChanges({ ...u, effects: d.effects }, zoneKey)) d.changes.push(c);
+        d.effects = d.effects.filter(x => x.key !== zoneKey);
+      }
+    } else {
+      // Survived the tick — keep the decremented zone.
+      const idx = zonesAfter.findIndex(z => z.key === zoneKey);
+      if (idx >= 0) zonesAfter[idx] = surviving;
+    }
+  }
+  const finalZones = zonesAfter.filter(z => !removedZones.includes(z.key));
+
+  // --- 4: membership reconcile at the unit's own activation start ---
+  for (const unit of units) {
+    if (unit.isDeleted || !activeTeams.has(unit.team)) continue;
+    const d = draftFor(unit);
+    const zonesAt = finalZones.filter(z => z.q === unit.hex.q && z.r === unit.hex.r);
+    const zoneKeysAt = new Set(zonesAt.map(z => z.key));
+    // Drop memberships whose zone is gone or whose hex no longer matches.
+    for (const e of [...d.effects]) {
+      if (!e.zoneHex) continue;
+      const still = zoneKeysAt.has(e.key) && e.zoneHex.q === unit.hex.q && e.zoneHex.r === unit.hex.r;
+      if (!still) {
+        for (const c of removeEffectChanges({ ...unit, effects: d.effects }, e.key)) d.changes.push(c);
+        d.effects = d.effects.filter(x => x.key !== e.key);
+      }
+    }
+    // Create membership for each stat zone underfoot (skips stacking conflicts).
+    for (const z of zonesAt) {
+      if (z.kind === 'dot') continue;
+      const already = d.effects.some(e => e.zoneHex && e.key === z.key) || d.effects.some(e => sameStackKey(e, z));
+      if (already) continue;
+      const membership: UnitEffect = {
+        key: z.key,
+        zoneHex: { q: unit.hex.q, r: unit.hex.r, s: -unit.hex.q - unit.hex.r },
+        name: z.name,
+        color: z.color,
+        kind: z.kind,
+        ...(z.mode ? { mode: z.mode } : {}),
+        ...(z.direction ? { direction: z.direction } : {}),
+        dice: z.dice,
+        duration: z.duration,
+        turnsLeft: z.turnsLeft,
+        casterUnitId: z.casterUnitId,
+        casterTeam: z.casterTeam,
+        casterPlayerId: z.casterPlayerId,
+        base: isStatEffect(z.kind) ? statValue(unit, z.kind) : undefined,
+      };
+      const field = statFieldOf(z.kind);
+      if (field) {
+        d.changes.push({ field, from: unit[field], to: statValue(unit, z.kind) + modifierAmount(z.dice) });
+      }
+      d.effects.push(membership);
+    }
+  }
+
+  // Emit one sub-step per affected unit (skip pure effects-list no-ops). Effects
+  // changes are collapsed into a SINGLE from-original -> to-final change so undo
+  // never restores an intermediate draft array.
+  drafts.forEach((draft, unitId) => {
+    const unit = units.find(u => u.id === unitId);
+    if (!unit) return;
+    const originalEffects = unit.effects ?? [];
+    const statChanges = draft.changes.filter(c => c.field !== 'effects');
+    const effChanged = !sameEffects(originalEffects, draft.effects);
+    const finalChanges: UnitChange[] = effChanged
+      ? [{ field: 'effects', from: originalEffects, to: draft.effects }, ...statChanges]
+      : statChanges;
+    if (finalChanges.length === 0) return;
+    const kind = draft.hpChanged || finalChanges.some(c => c.field === 'currentUnitHp') ? 'DoT' : 'effect';
+    subSteps.push({
+      type: 'EFFECT',
+      description: `${unit.unitName} — ${kind} resolved at the start of the ${nextGroup} turn`,
+      unitId,
+      changes: finalChanges,
+    });
+  });
+
+  return { subSteps, zonesAfter: finalZones, damageEvents };
+}
+
+function sameEffects(a: UnitEffect[], b: UnitEffect[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((x, i) => {
+    const y = b[i];
+    return x.key === y.key && x.turnsLeft === y.turnsLeft && x.base === y.base && x.zoneHex?.q === y.zoneHex?.q && x.zoneHex?.r === y.zoneHex?.r;
+  });
+}
+
+/**
+ * Reconcile a unit's ground-zone memberships against `zones` at its CURRENT hex:
+ * drop memberships whose zone is gone / no longer underfoot, and add a membership
+ * for each stat zone it now stands on (dot zones create none). Pure: returns the
+ * `effects` array plus the UnitChanges (a single collapsed `effects` change + the
+ * stat restores/applies). Used by the END_TURN sweep AND on move, so entering a
+ * buff/debuff zone applies immediately.
+ */
+export function computeZoneReconcile(unit: Unit, zones: GroundEffect[]): { effects: UnitEffect[]; changes: UnitChange[] } {
+  const original = unit.effects ?? [];
+  let effects = [...original];
+  const statChanges: UnitChange[] = [];
+  const fieldNow = new Map<string, number>();
+  const now = (f: string): number => (fieldNow.has(f) ? fieldNow.get(f)! : ((unit as any)[f] as number) ?? 0);
+
+  const zonesHere = zones.filter(z => z.q === unit.hex.q && z.r === unit.hex.r);
+  const keysHere = new Set(zonesHere.map(z => z.key));
+
+  // Drop memberships whose zone is gone or whose hex no longer matches.
+  for (const e of [...effects]) {
+    if (!e.zoneHex) continue;
+    const still = keysHere.has(e.key) && e.zoneHex.q === unit.hex.q && e.zoneHex.r === unit.hex.r;
+    if (still) continue;
+    const restores = removeEffectChanges({ ...unit, effects }, e.key);
+    for (const c of restores) {
+      if (c.field === 'effects') continue;
+      statChanges.push({ field: c.field, from: now(c.field), to: c.to });
+      fieldNow.set(c.field, c.to);
+    }
+    effects = effects.filter(x => x.key !== e.key);
+  }
+
+  // Add a membership for each stat zone underfoot (skips same-kind stacking).
+  for (const z of zonesHere) {
+    if (z.kind === 'dot') continue;
+    const already = effects.some(e => e.zoneHex && e.key === z.key) || effects.some(e => sameStackKey(e, z));
+    if (already) continue;
+    effects.push({
+      key: z.key,
+      zoneHex: { q: unit.hex.q, r: unit.hex.r, s: -unit.hex.q - unit.hex.r },
+      name: z.name,
+      color: z.color,
+      kind: z.kind,
+      ...(z.mode ? { mode: z.mode } : {}),
+      ...(z.direction ? { direction: z.direction } : {}),
+      dice: z.dice,
+      duration: z.duration,
+      turnsLeft: z.turnsLeft,
+      casterUnitId: z.casterUnitId,
+      casterTeam: z.casterTeam,
+      casterPlayerId: z.casterPlayerId,
+      base: isStatEffect(z.kind) ? statValue(unit, z.kind) : undefined,
+    });
+    const field = statFieldOf(z.kind);
+    if (field) {
+      const from = now(field);
+      const to = from + modifierAmount(z.dice);
+      statChanges.push({ field, from, to });
+      fieldNow.set(field, to);
+    }
+  }
+
+  const effChanged = !sameEffects(original, effects);
+  if (!effChanged && statChanges.length === 0) return { effects, changes: [] };
+  return {
+    effects,
+    changes: effChanged
+      ? [{ field: 'effects', from: original, to: effects }, ...statChanges]
+      : statChanges,
+  };
+}
+
+/** All active ground zones' stat kinds at a hex (used for tooltips/tests). */
+export function zonesAt(zones: GroundEffect[], hex: { q: number; r: number }): GroundEffect[] {
+  return zones.filter(z => z.q === hex.q && z.r === hex.r);
+}
+
+// --- Effect catalog (in-code templates the apply UI offers; magnitude/duration
+// are overridable at apply time). ---
+export interface EffectCatalogTemplate {
+  id: string;
+  name: string;
+  color: string;
+  kind: EffectKind;
+  defaultDelta: number;
+  defaultDuration: number;
+  description: string;
+  /** The amount heals instead of damaging (Regen). */
+  healing?: boolean;
+}
+
+export const EFFECT_TEMPLATES: EffectCatalogTemplate[] = [
+  { id: 'bless', name: 'Bless', color: '#ffd54d', kind: 'ac', defaultDelta: 2, defaultDuration: 3, description: '+2 AC' },
+  { id: 'bane', name: 'Bane', color: '#ff8a65', kind: 'ac', defaultDelta: -2, defaultDuration: 3, description: '-2 AC' },
+  { id: 'haste', name: 'Haste', color: '#a5d6a7', kind: 'movement', defaultDelta: 2, defaultDuration: 3, description: '+2 movement hexes' },
+  { id: 'slow', name: 'Slow', color: '#9e9d24', kind: 'movement', defaultDelta: -2, defaultDuration: 3, description: '-2 movement hexes' },
+  { id: 'rally', name: 'Rally', color: '#4fc3f7', kind: 'morale', defaultDelta: 3, defaultDuration: 3, description: '+3 morale' },
+  { id: 'fear', name: 'Fear', color: '#9575cd', kind: 'morale', defaultDelta: -3, defaultDuration: 3, description: '-3 morale' },
+  { id: 'burn', name: 'Burning', color: '#ff7043', kind: 'dot', defaultDelta: 4, defaultDuration: 3, description: '4 damage per troop each tick' },
+  { id: 'regen', name: 'Regen', color: '#81c784', kind: 'dot', defaultDelta: 4, healing: true, defaultDuration: 3, description: 'heal 4 per troop each tick' },
+  { id: 'advantage', name: 'Advantage', color: '#b2ff59', kind: 'advantage', defaultDelta: 0, defaultDuration: 3, description: 'gain advantage on own attacks' },
+  { id: 'disadvantage', name: 'Disadvantage', color: '#ff8a80', kind: 'disadvantage', defaultDelta: 0, defaultDuration: 3, description: 'suffer disadvantage on own attacks' },
+  { id: 'grant_advantage', name: 'Grant Advantage', color: '#69f0ae', kind: 'grant_advantage', defaultDelta: 0, defaultDuration: 3, description: 'grant advantage to attackers' },
+  { id: 'grant_disadvantage', name: 'Grant Disadvantage', color: '#ff5252', kind: 'grant_disadvantage', defaultDelta: 0, defaultDuration: 3, description: 'grant disadvantage to attackers' },
+];
+
+export function templateById(id: string): EffectCatalogTemplate | undefined {
+  return EFFECT_TEMPLATES.find(t => t.id === id);
+}

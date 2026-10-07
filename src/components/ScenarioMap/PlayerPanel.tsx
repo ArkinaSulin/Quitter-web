@@ -2,9 +2,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import { Participant, ScenarioRole } from '@/types/gameProtocol';
-import { TEAMS, Team } from '@/components/TokenRenderer/tokenUtils';
+import { TEAMS, Team } from '@/packages/units';
 import { TeamChip } from '@/components/TokenRenderer/TeamChip';
 
 const ROLE_OPTIONS: ScenarioRole[] = ['Player', 'SuperPlayer', 'AssistGM'];

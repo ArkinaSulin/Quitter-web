@@ -5,8 +5,8 @@
 // map — an empty hex places a zone (with an editable pre-apply form), a unit
 // applies the effect.
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { EffectTemplate, mapEffectRow, modifierSummary } from '@/lib/effectTemplates';
+import { supabase } from '@/packages/infra/supabase';
+import { EffectTemplate, mapEffectRow, modifierSummary } from '@/packages/effects';
 import { Floating } from './Floating';
 
 export function dragPayload(t: EffectTemplate): string {

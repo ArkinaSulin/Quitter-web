@@ -5,26 +5,26 @@
 // the hovered-unit front-arc tint. Pure function — ScenarioMap feeds it the
 // grid state (draggingUnitId/hoveredUnit come from useHexGrid) in an effect.
 import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
-import { computeReachableMap, computeMovePool, computeMoveBudget, computeHeroMovePool, computeChargeReachable } from '@/lib/moveCost';
-import { computeEffectiveMovement, getFormationMultiplier } from '@/lib/unitStats';
-import { getSetting } from '@/lib/settingsCache';
-import { imposesKillZone } from '@/lib/unitMorale';
-import { isHostile } from '@/lib/alliances';
-import { frontArcIndices } from '@/lib/hexGeometry';
-import { parseWeapons } from '@/lib/weaponParser';
-import { isRangedCapableWeapon, reactionMovePool } from '@/lib/archerReaction';
-import { canRangedTarget } from '@/lib/formationRules';
-import { arcOfTarget } from '@/lib/attackDirection';
-import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from './mapGeometry';
-import { Walls, EdgeRef } from '@/lib/walls';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation, structureSurfaceAt, flightBlockedHexes } from '@/lib/mapStructures';
+import { computeReachableMap, computeMovePool, computeMoveBudget, computeHeroMovePool, computeChargeReachable } from '@/packages/movement';
+import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
+import { getSetting } from '@/packages/infra';
+import { imposesKillZone } from '@/packages/morale';
+import { isHostile } from '@/packages/primitives';
+import { frontArcIndices } from '@/packages/primitives';
+import { parseWeapons } from '@/packages/units';
+import { isRangedCapableWeapon, reactionMovePool } from '@/packages/combat';
+import { canRangedTarget } from '@/packages/movement';
+import { arcOfTarget } from '@/packages/primitives';
+import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
+import { Walls, EdgeRef } from '@/packages/movement';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, structureSurfaceAt, flightBlockedHexes } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
-import { rangeBonusAt, unitIgnoresClimb } from '@/lib/unitEffects';
-import { edgeHexes } from '@/lib/wallCombat';
-import { canWithdraw, withdrawDestinations } from '@/lib/withdraw';
-import { moveBudgetUnit, parseClimbTo, isAirborne } from '@/lib/flying';
-import { isStooping } from '@/lib/chargeStance';
+import { rangeBonusAt, unitIgnoresClimb } from '@/packages/effects';
+import { edgeHexes } from '@/packages/combat';
+import { canWithdraw, withdrawDestinations } from '@/packages/movement';
+import { moveBudgetUnit, parseClimbTo, isAirborne } from '@/packages/movement';
+import { isStooping } from '@/packages/combat';
 
 /** Hovered unit's imposed kill-zone/ZoC tint: its two front hexes at the same
  *  elevation PLUS the hex directly below it when it is an actually-airborne

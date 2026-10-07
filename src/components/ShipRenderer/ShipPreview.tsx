@@ -3,7 +3,7 @@
 // functional area), mirroring TokenRenderer/TokenPreview. The ScenarioMap will use the
 // same underlying components directly with live scenario state.
 
-import { ShipBuild, ShipDerivedStats, componentById, COMPONENT_IDS } from '@/lib/shipStats';
+import { ShipBuild, ShipDerivedStats, componentById, COMPONENT_IDS } from '@/packages/ships';
 import { hitBoxGroups, ShipHitGrid } from './ShipHitGrid';
 import { ShipFunctionalArea, ShipStation } from './ShipFunctionalArea';
 

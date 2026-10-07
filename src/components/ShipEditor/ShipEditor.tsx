@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import {
   ShipAccessory,
   ShipArmor,
@@ -20,7 +20,7 @@ import {
   computeMCParts,
   computeShipBuild,
   ShipBuild,
-} from '@/lib/shipStats';
+} from '@/packages/ships';
 import {
   mapAccessoryRows,
   mapCrewRows,
@@ -32,7 +32,7 @@ import {
   mapShipTemplateToRow,
   mapShipWeaponRow,
   mapWeaponRows,
-} from '@/lib/shipMappers';
+} from '@/packages/ships';
 import { ShipPreview } from '@/components/ShipRenderer/ShipPreview';
 
 const MOUNT_SLOTS = ['Fore', 'Left', 'Right', 'Rear', '360'] as const;

@@ -4,7 +4,7 @@
 // ticking) by arming a template then left-clicking hexes. Left-click again on a
 // same-name zone removes it.
 import { useEffect } from 'react';
-import { EffectTemplate, EFFECT_TEMPLATES } from '@/lib/unitEffects';
+import { EffectCatalogTemplate, EFFECT_TEMPLATES } from '@/packages/effects';
 
 interface EffectsPaintPanelProps {
   activeTemplateId: string | null;
@@ -42,4 +42,4 @@ export function EffectsPaintPanel({ activeTemplateId, onSetTemplate }: EffectsPa
   );
 }
 
-export type { EffectTemplate };
+export type { EffectCatalogTemplate as EffectTemplate };

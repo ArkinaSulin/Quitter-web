@@ -1,0 +1,679 @@
+import { describe, it, expect } from 'vitest';
+import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, coverAcBonus, directAcBonus, hasPendingZoneEffect, rangeBonusAt, saveRollFlags, expandInheritedEffects, hasEffectKind, unitIgnoresClimb, unitHasFeatherFall } from '@/packages/effects/lib/unitEffects';
+import { parseDice } from '@/packages/effects/lib/effectTemplates';
+
+const h = (q: number, r: number) => ({ q, r, s: -q - r });
+
+const unit = (id: string, team: string, hex = h(0, 0), overrides: Partial<Unit> = {}): Unit => ({
+  id,
+  scenarioId: 'sc',
+  templateId: null,
+  unitName: id,
+  raceId: 'r',
+  raceName: '',
+  armorName: '',
+  mountId: null,
+  mountName: '',
+  isHero: false,
+  attachedToUnitId: null,
+  attachedPosition: null,
+  currentTroopCount: 10,
+  maxTroopCount: 10,
+  level: 1,
+  troopHp: 1,
+  maxUnitHp: 10,
+  currentUnitHp: 10,
+  isShielded: false,
+  baselineAc: 12,
+  currentAc: 12,
+  weaponString: '',
+  movementPoints: 3,
+  movementPointsAvailable: 0,
+  aggressiveness: 3,
+  baseMorale: 3,
+    currentMoraleModifier: 0,
+    moraleBoost: 0,
+  sizeCategory: 100,
+  visualScale: 100,
+  currentFormation: 'Open Order',
+  formationAvailability: [],
+  equipCostGp: 0,
+  canCharge: false,
+  hex,
+  facing: 0,
+  team,
+  hidden: false,
+  isDeleted: false,
+  ignoreMoraleChecks: false,
+  isCharging: false,
+  chargeDistance: 0,
+  commandSeq: 0,
+  organizationLevel: 1,
+  actionsAvailable: 2,
+  attacksUsed: 0,
+    archerReactionUsed: false,
+    pursuitUsed: false,
+    heroicInspirationActive: false,
+  activeWeaponIndex: 0,
+  str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
+  effects: [],
+  ...overrides,
+});
+
+const ef = (over: Partial<UnitEffect> = {}, overrides?: Partial<Unit>): UnitEffect => ({
+  key: newEffectKey(() => 0.42),
+  name: 'Bless',
+  color: '#ffd700',
+  kind: 'ac',
+  dice: '2',
+  duration: 3,
+  turnsLeft: 3,
+  casterUnitId: 'caster',
+  casterTeam: 'blue',
+  base: 12,
+  ...over,
+});
+
+const groups: Record<string, AllianceGroup> = { blue: 'friendly', red: 'enemy' };
+
+describe('apply / remove effect changes', () => {
+  it('ac effect adds a membership but writes NO stat field (derived aura)', () => {
+    const u = unit('u', 'blue');
+    const { changes, effect } = applyEffectChanges(u, { name: 'Bless', color: '#ffd700', kind: 'ac', dice: '2', duration: 3, turnsLeft: 3, casterUnitId: 'c', casterTeam: 'blue' }, 'k1');
+    const effects = changes.find(c => c.field === 'effects');
+    expect((effects!.to as UnitEffect[]).length).toBe(1);
+    expect(effect.base).toBeUndefined();
+    expect(changes.some(c => c.field === 'currentAc')).toBe(false);
+  });
+
+  it('movement effect modifies the movementPoints base field', () => {
+    const u = unit('u', 'blue');
+    const { changes } = applyEffectChanges(u, { name: 'Haste', color: '#66ff66', kind: 'movement', dice: '2', duration: 2, turnsLeft: 2, casterUnitId: 'c', casterTeam: 'blue' }, 'k2');
+    expect(changes.find(c => c.field === 'movementPoints')).toEqual({ field: 'movementPoints', from: 3, to: 5 });
+  });
+
+  it('morale effect modifies currentMoraleModifier', () => {
+    const u = unit('u', 'blue');
+    const { changes } = applyEffectChanges(u, { name: 'Chill', color: '#88bbff', kind: 'morale', dice: '-2', duration: 3, turnsLeft: 3, casterUnitId: 'c', casterTeam: 'blue' }, 'k3');
+    expect(changes.find(c => c.field === 'currentMoraleModifier')).toEqual({ field: 'currentMoraleModifier', from: 0, to: -2 });
+  });
+
+  it('no same-kind stacking: second ac apply is a no-op returning the existing effect', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'k1' })] });
+    const { changes, effect } = applyEffectChanges(u, { name: 'Curse', color: '#ff8888', kind: 'ac', dice: '-2', duration: 2, turnsLeft: 2, casterUnitId: 'c', casterTeam: 'blue' }, 'k2');
+    expect(changes).toEqual([]);
+    expect(effect.key).toBe('k1');
+  });
+
+  it('remove restores the snapshotted stat base', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'k1', kind: 'morale', dice: '-2', base: 0 })], currentMoraleModifier: -2 });
+    const changes = removeEffectChanges(u, 'k1');
+    expect(changes.find(c => c.field === 'currentMoraleModifier')).toEqual({ field: 'currentMoraleModifier', from: -2, to: 0 });
+    expect((changes.find(c => c.field === 'effects')!.to as UnitEffect[]).length).toBe(0);
+  });
+
+  it('remove of an unknown key is a no-op', () => {
+    const u = unit('u', 'blue');
+    expect(removeEffectChanges(u, 'nope')).toEqual([]);
+  });
+
+  it('dot apply writes no stat field', () => {
+    const u = unit('u', 'blue');
+    const { changes } = applyEffectChanges(u, { name: 'Burning', color: '#ff8844', kind: 'dot', dice: '3', duration: 2, turnsLeft: 2, casterUnitId: 'c', casterTeam: 'blue' }, 'k9');
+    expect(changes.some(c => c.field !== 'effects')).toBe(false);
+  });
+});
+
+describe('editEffectChanges', () => {
+  it('rebases a stat effect: restores the old base, then applies the new delta', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'k1', kind: 'morale', dice: '-2', base: 0 })], currentMoraleModifier: -2 });
+    const changes = editEffectChanges(u, 'k1', { name: 'Rally', color: '#fff', kind: 'morale', dice: '3', casterUnitId: null, casterTeam: null }, 3, 'k2');
+    expect(changes.filter(c => c.field === 'currentMoraleModifier')).toEqual([
+      { field: 'currentMoraleModifier', from: -2, to: 0 },
+      { field: 'currentMoraleModifier', from: 0, to: 3 },
+    ]);
+    const effects = changes.filter(c => c.field === 'effects').pop()!;
+    const final = effects.to as UnitEffect[];
+    expect(final.length).toBe(1);
+    expect(final[0].key).toBe('k2');
+    expect(final[0].dice).toBe('3');
+  });
+
+  it('edits a dot effect (no stat field) with new dice', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'k1', kind: 'dot', dice: '3', base: undefined })] });
+    const changes = editEffectChanges(u, 'k1', { name: 'Burning', color: '#ff8844', kind: 'dot', dice: '2d6', casterUnitId: null, casterTeam: null }, 2, 'k2');
+    expect(changes.some(c => c.field !== 'effects')).toBe(false);
+    const final = changes.filter(c => c.field === 'effects').pop()!.to as UnitEffect[];
+    expect(final[0].dice).toBe('2d6');
+  });
+
+  it('editing an unknown key is a no-op', () => {
+    const u = unit('u', 'blue');
+    expect(editEffectChanges(u, 'nope', { name: 'x', color: '#fff', kind: 'ac', dice: '1', casterUnitId: null, casterTeam: null }, 1)).toEqual([]);
+  });
+});
+
+describe('flat effect damage (per troop, universal min 1)', () => {
+  const mk = (over: Partial<Unit> = {}) => unit('u', 'blue', h(0, 0), { troopHp: 5, maxTroopCount: 4, currentTroopCount: 4, maxUnitHp: 20, currentUnitHp: 20, ...over });
+
+  it('a flat amount lands on EACH affected troop, capped at troopHp', () => {
+    const { detail } = resolveEffectDamage(mk(), { dice: '3' });
+    expect(detail.affected).toBe(4);
+    expect(detail.total).toBe(12); // 3 x 4 troops
+    expect(detail.hpAfter).toBe(8); // 20 - 12
+    expect(detail.troopsAfter).toBe(2); // ceil(8/5)
+  });
+
+  it('a negative flat amount is damage floored at 1 (never heals)', () => {
+    const { detail } = resolveEffectDamage(mk(), { dice: '-4' });
+    expect(detail.total).toBe(4); // max(1, -4) x 4 troops
+    expect(detail.healing).toBe(false);
+  });
+
+  it('honours the affected override (entry traps)', () => {
+    const { detail } = resolveEffectDamage(mk(), { dice: '3' }, () => 0.5, 2);
+    expect(detail.affected).toBe(2);
+    expect(detail.total).toBe(6);
+  });
+
+  it('a half-save still lands at least 1; the healing flag heals per troop', () => {
+    // 1 troop, huge save bonus: raw 1 halved/floor = 0 -> clamped to 1.
+    const { detail: saved } = resolveEffectDamage(mk(), { dice: '1', savingThrow: 'Dex', saveDC: 1000, onSaveHalfOrNeg: true } as any);
+    expect(saved.total).toBe(4); // max(1, floor(1/2)) x 4 troops
+    // Healing flag: +3 per troop (from a hurt unit so the heal is visible).
+    const hurt = mk({ currentUnitHp: 4 });
+    const { detail: heal } = resolveEffectDamage(hurt, { dice: '3', healing: true });
+    expect(heal.healing).toBe(true);
+    expect(heal.total).toBe(12);
+  });
+});
+
+describe('computeEndTurnEffects', () => {
+  const makeKey = (() => { let n = 0; return () => `k${++n}`; })();
+
+  it('ticks a DoT on the caster activation and decrements turnsLeft', () => {
+    const caster = unit('caster', 'blue');
+    const target = unit('target', 'red', h(5, 0), { troopHp: 5, currentTroopCount: 1, maxTroopCount: 1, effects: [ef({ key: 'd1', kind: 'dot', dice: '4', turnsLeft: 2, duration: 2, casterUnitId: 'caster', casterTeam: 'blue' })] });
+    const res = computeEndTurnEffects({ units: [caster, target], zones: [], nextGroup: 'friendly', alliances: groups, makeKey });
+    const step = res.subSteps.find(s => s.unitId === 'target');
+    expect(step).toBeDefined();
+    expect(step!.changes.find(c => c.field === 'currentUnitHp')!.to).toBe(6); // 10 - 4 (1 troop)
+    const effects = step!.changes.find(c => c.field === 'effects')!.to as UnitEffect[];
+    expect(effects[0].turnsLeft).toBe(1);
+  });
+
+  it('expires at 0 on the caster tick and restores the stat', () => {
+    const caster = unit('caster', 'blue');
+    const target = unit('target', 'red', h(5, 0), { effects: [ef({ key: 'a1', kind: 'morale', dice: '-2', base: 0, turnsLeft: 1, duration: 1, casterUnitId: 'caster', casterTeam: 'blue' })], currentMoraleModifier: -2 });
+    const res = computeEndTurnEffects({ units: [caster, target], zones: [], nextGroup: 'friendly', alliances: groups, makeKey });
+    const step = res.subSteps.find(s => s.unitId === 'target');
+    expect(step!.changes.find(c => c.field === 'currentMoraleModifier')!.to).toBe(0);
+    expect((step!.changes.find(c => c.field === 'effects')!.to as UnitEffect[]).length).toBe(0);
+  });
+
+  it('does not tick when a different alliance activates', () => {
+    const target = unit('target', 'red', h(5, 0), { effects: [ef({ key: 'a1', kind: 'dot', dice: '4', turnsLeft: 2, duration: 2, casterUnitId: 'caster', casterTeam: 'blue' })] });
+    const caster = unit('caster', 'blue');
+    const res = computeEndTurnEffects({ units: [caster, target], zones: [], nextGroup: 'enemy', alliances: groups, makeKey });
+    expect(res.subSteps.length).toBe(0);
+  });
+
+  it('expires immediately when the caster unit is deleted', () => {
+    const caster = unit('caster', 'blue', h(9, 9), { isDeleted: true });
+    const target = unit('target', 'red', h(5, 0), { effects: [ef({ key: 'a1', kind: 'morale', dice: '-2', base: 0, turnsLeft: 3, duration: 3, casterUnitId: 'caster', casterTeam: 'blue' })], currentMoraleModifier: -2 });
+    const res = computeEndTurnEffects({ units: [caster, target], zones: [], nextGroup: 'enemy', alliances: groups, makeKey });
+    const step = res.subSteps.find(s => s.unitId === 'target');
+    expect(step!.changes.find(c => c.field === 'currentMoraleModifier')!.to).toBe(0);
+  });
+
+  it('creates a zone membership at the start of a standing unit activation (derived ac, no field)', () => {
+    const zone: GroundEffect = { key: 'z1', q: 0, r: 0, name: 'Acid Pool', color: '#88ff44', kind: 'ac', dice: '-2', duration: 4, turnsLeft: 4, casterTeam: 'blue', casterUnitId: 'caster' };
+    const caster = unit('caster', 'blue', h(3, 3));
+    const u = unit('u', 'blue'); // stands at (0,0) -> zone
+    const res = computeEndTurnEffects({ units: [caster, u], zones: [zone], nextGroup: 'friendly', alliances: groups, makeKey });
+    const step = res.subSteps.find(s => s.unitId === 'u');
+    expect(step).toBeDefined();
+    expect(step!.changes.some(c => c.field === 'currentAc')).toBe(false);
+    const effects = step!.changes.find(c => c.field === 'effects')!.to as UnitEffect[];
+    expect(effects.find(e => e.key === 'z1' && e.zoneHex)).toBeDefined();
+  });
+
+  it('removes a zone membership once the unit leaves the hex (its own activation)', () => {
+    const zone: GroundEffect = { key: 'z1', q: 0, r: 0, name: 'Acid Pool', color: '#88ff44', kind: 'ac', dice: '-2', duration: 4, turnsLeft: 4, casterTeam: 'blue', casterUnitId: 'caster' };
+    const caster = unit('caster', 'blue', h(3, 3));
+    const u = unit('u', 'blue', h(2, 2), {
+      effects: [{ key: 'z1', zoneHex: h(0, 0), name: 'Acid Pool', color: '#88ff44', kind: 'ac', dice: '-2', duration: 4, turnsLeft: 4, casterUnitId: 'caster', casterTeam: 'blue' }],
+    });
+    const res = computeEndTurnEffects({ units: [caster, u], zones: [zone], nextGroup: 'friendly', alliances: groups, makeKey });
+    const step = res.subSteps.find(s => s.unitId === 'u');
+    const effects = step!.changes.find(c => c.field === 'effects')!.to as UnitEffect[];
+    expect(effects.some(e => e.key === 'z1')).toBe(false);
+    expect(step!.changes.some(c => c.field === 'currentAc')).toBe(false);
+  });
+
+  it('a permanent zone never ticks or expires across many turns', () => {
+    const perm: GroundEffect = { key: 'p1', q: 0, r: 0, name: 'Ancient Ward', color: '#ffffff', kind: 'ac', dice: '2', duration: 0, turnsLeft: 0, permanent: true };
+    const u = unit('u', 'blue');
+    let zones: GroundEffect[] = [perm];
+    for (let i = 0; i < 6; i++) {
+      const res = computeEndTurnEffects({ units: [u], zones, nextGroup: 'friendly', alliances: groups, makeKey });
+      zones = res.zonesAfter;
+    }
+    expect(zones).toHaveLength(1);
+    expect(zones[0].turnsLeft).toBe(0); // never decremented
+    expect(zones[0].permanent).toBe(true);
+  });
+
+  it('a zone expires at 0 on its caster activation: removed + memberships dropped', () => {
+    const zone: GroundEffect = { key: 'z1', q: 0, r: 0, name: 'Acid Pool', color: '#88ff44', kind: 'ac', dice: '-2', duration: 1, turnsLeft: 1, casterTeam: 'blue', casterUnitId: 'caster' };
+    const caster = unit('caster', 'blue', h(3, 3));
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [{ key: 'z1', zoneHex: h(0, 0), name: 'Acid Pool', color: '#88ff44', kind: 'ac', dice: '-2', duration: 1, turnsLeft: 1, casterUnitId: 'caster', casterTeam: 'blue' }],
+    });
+    const res = computeEndTurnEffects({ units: [caster, u], zones: [zone], nextGroup: 'friendly', alliances: groups, makeKey });
+    expect(res.zonesAfter.length).toBe(0);
+    const step = res.subSteps.find(s => s.unitId === 'u');
+    const effects = step!.changes.find(c => c.field === 'effects')!.to as UnitEffect[];
+    expect(effects.some(e => e.key === 'z1')).toBe(false);
+    expect(step!.changes.some(c => c.field === 'currentAc')).toBe(false);
+  });
+
+  it('a dot zone deals damage to every standing unit when its caster activates', () => {
+    const zone: GroundEffect = { key: 'z9', q: 0, r: 0, name: 'Burning Field', color: '#ff8844', kind: 'dot', dice: '3', duration: 3, turnsLeft: 3, casterTeam: 'blue', casterUnitId: 'caster' };
+    const caster = unit('caster', 'blue', h(3, 3));
+    const u = unit('u', 'red', h(0, 0), { troopHp: 5, currentTroopCount: 1, maxTroopCount: 1 });
+    const res = computeEndTurnEffects({ units: [caster, u], zones: [zone], nextGroup: 'friendly', alliances: groups, makeKey });
+    const step = res.subSteps.find(s => s.unitId === 'u');
+    expect(step).toBeDefined();
+    expect(step!.changes.find(c => c.field === 'currentUnitHp')!.to).toBe(7);
+    expect(res.zonesAfter[0].turnsLeft).toBe(2); // not expired yet
+  });
+
+  it('tempo-free (no caster team) effects tick once per turn cycle, not per alliance', () => {
+    const dot: UnitEffect = ef({ key: 'no-cast', kind: 'dot', dice: '4', turnsLeft: 3, duration: 3, casterUnitId: null, casterTeam: null });
+    const target = unit('target', 'red', h(5, 0), { effects: [dot] });
+    const friendlyTick = computeEndTurnEffects({ units: [target], zones: [], nextGroup: 'friendly', alliances: groups, makeKey });
+    const hpAfterFriendly = friendlyTick.subSteps.find(s => s.unitId === 'target')!.changes.find(c => c.field === 'currentUnitHp')!.to as number;
+    expect(hpAfterFriendly).toBeLessThan(target.currentUnitHp);
+
+    const enemyTick = computeEndTurnEffects({ units: [target], zones: [], nextGroup: 'enemy', alliances: groups, makeKey });
+    expect(enemyTick.subSteps.find(s => s.unitId === 'target')).toBeUndefined(); // no burn on enemy's turn
+
+    // Zone with no caster team behaves the same way.
+    const z: GroundEffect = { key: 'zn', q: 5, r: 0, name: 'Burning Field', color: '#ff8844', kind: 'dot', dice: '3', duration: 3, turnsLeft: 3, casterTeam: null, casterUnitId: null };
+    const st = unit('standing', 'blue', h(5, 0));
+    const zFriendly = computeEndTurnEffects({ units: [st], zones: [z], nextGroup: 'friendly', alliances: groups, makeKey });
+    expect(zFriendly.subSteps.find(s => s.unitId === 'standing')).toBeDefined();
+    const zEnemy = computeEndTurnEffects({ units: [st], zones: [z], nextGroup: 'enemy', alliances: groups, makeKey });
+    expect(zEnemy.subSteps.find(s => s.unitId === 'standing')).toBeUndefined();
+  });
+
+  it('hp_borrow (Sleep): deducts HP on apply (never kills) and refunds on expiry if alive', () => {
+    const victim = unit('v', 'red', h(0, 0), { currentUnitHp: 8, maxUnitHp: 10, troopHp: 1, currentTroopCount: 8, maxTroopCount: 10 });
+    const applied = applyEffectChanges(victim, { name: 'Sleep', color: '#90caf9', kind: 'hp_borrow', dice: '6', duration: 2, turnsLeft: 2, casterUnitId: null, casterTeam: null });
+    const hpStep = applied.changes.find(c => c.field === 'currentUnitHp');
+    expect(hpStep!.to).toBe(2); // 8 - 6, but never below 1
+    const asleep = { ...victim, currentUnitHp: 2, currentTroopCount: 2, effects: applied.effect ? [applied.effect] : [] };
+    // Refund on removal/expiry while alive: back to 8.
+    const refunded = removeEffectChanges(asleep, applied.effect.key);
+    expect(refunded.find(c => c.field === 'currentUnitHp')!.to).toBe(8);
+
+    // Large borrow cannot kill: 3 HP - 5 => 1 HP.
+    const nearDead = unit('d', 'red', h(0, 0), { currentUnitHp: 3, maxUnitHp: 10, troopHp: 1, currentTroopCount: 3, maxTroopCount: 10 });
+    const big = applyEffectChanges(nearDead, { name: 'Sleep', color: '#90caf9', kind: 'hp_borrow', dice: '5', duration: 2, turnsLeft: 2, casterUnitId: null, casterTeam: null });
+    expect(big.changes.find(c => c.field === 'currentUnitHp')!.to).toBe(1);
+
+    // No refund if the unit died while asleep.
+    const corpse = unit('c', 'red', h(0, 0), { currentUnitHp: 0, currentTroopCount: 0, maxUnitHp: 10, troopHp: 1, maxTroopCount: 10 });
+    const deadSleep: UnitEffect = ef({ key: 'ds', kind: 'hp_borrow', dice: '6', turnsLeft: 1, duration: 1, casterUnitId: null, casterTeam: null });
+    const corpseRemove = removeEffectChanges({ ...corpse, effects: [deadSleep] }, 'ds');
+    expect(corpseRemove.some(c => c.field === 'currentUnitHp')).toBe(false);
+  });
+});
+
+describe('effect dice + saves', () => {
+  const mk = (over: Partial<Unit> = {}) => unit('t', 'red', h(0, 0), { troopHp: 2, currentUnitHp: 10, maxUnitHp: 10, currentTroopCount: 5, maxTroopCount: 5, ...over });
+
+  it('parseDice handles XdY±Z and flat numbers', () => {
+    expect(parseDice('2d6+2')).toEqual({ count: 2, sides: 6, bonus: 2 });
+    expect(parseDice('0d0+4')).toEqual({ count: 0, sides: 0, bonus: 4 });
+    expect(parseDice('7')).toEqual({ count: 0, sides: 0, bonus: 7 });
+    expect(parseDice('nonsense')).toBeNull();
+  });
+
+  it('dice damage is spread per troop and capped at troop HP', () => {
+    // 3d1 = 3 per troop, capped at troopHp 2 across 5 troops = 10 -> 0 HP.
+    const changes = effectDamageChanges(mk(), { dice: '3d1' }, () => 0.5);
+    expect(changes.find(c => c.field === 'currentUnitHp')!.to).toBe(0);
+    // 1d1 = 1 per troop capped at 2 -> 5 total -> 5 HP left.
+    const changes2 = effectDamageChanges(mk(), { dice: '1d1' }, () => 0.5);
+    expect(changes2.find(c => c.field === 'currentUnitHp')!.to).toBe(5);
+  });
+
+  it('healing dice restore per troop (capped at troop HP / max)', () => {
+    const hurt = mk({ currentUnitHp: 5, currentTroopCount: 3 });
+    const changes = effectDamageChanges(hurt, { dice: '1d1', healing: true }, () => 0.5);
+    expect(changes.find(c => c.field === 'currentUnitHp')!.to).toBe(8); // +1 x 3 troops
+  });
+
+  it('saves halve or negate per troop; a half-save still lands 1', () => {
+    // 1d1 (roll 1), half on save, DC 1 => every troop saves => floor(1/2)=0 → clamped to 1/troop.
+    const passed = effectDamageChanges(mk(), { dice: '1d1', savingThrow: 'Dex', saveDC: 1, onSaveHalfOrNeg: true }, () => 0.5);
+    expect(passed.find(c => c.field === 'currentUnitHp')!.to).toBe(5); // 1 x 5 troops
+    // huge DC => all fail => full 1 x 5 = 5.
+    const failed = effectDamageChanges(mk(), { dice: '1d1', savingThrow: 'Dex', saveDC: 100, onSaveHalfOrNeg: true }, () => 0.5);
+    expect(failed.find(c => c.field === 'currentUnitHp')!.to).toBe(5);
+  });
+
+  it('affected override limits the troops hit', () => {
+    const changes = effectDamageChanges(mk(), { dice: '1d1' }, () => 0.5, 2);
+    expect(changes.find(c => c.field === 'currentUnitHp')!.to).toBe(8); // only 2 troops take 1
+  });
+});
+
+describe('effect damage detail + messages', () => {
+  const mk = (over: Partial<Unit> = {}) => unit('t', 'red', h(0, 0), { troopHp: 2, currentUnitHp: 10, maxUnitHp: 10, currentTroopCount: 5, maxTroopCount: 5, ...over });
+
+  it('resolveEffectDamage rolls per troop and reports each roll', () => {
+    const { detail } = resolveEffectDamage(mk(), { dice: '1d2', savingThrow: 'Dex', saveDC: 100, onSaveHalfOrNeg: true }, () => 0.5);
+    expect(detail.affected).toBe(5);
+    expect(detail.rolls).toEqual([2, 2, 2, 2, 2]); // floor(0.5 * 2) + 1 per troop
+    expect(detail.roll).toBe(10);
+    expect(detail.passed).toBe(0);
+    expect(detail.total).toBe(10); // 5 troops x 2 each (capped at troop HP 2)
+    expect(detail.troopsBefore).toBe(5);
+    expect(detail.troopsAfter).toBe(0);
+  });
+
+  it('describeEffectDamage shows who/affected/damage; verbose adds the per-troop rolls', () => {
+    const { detail } = resolveEffectDamage(mk(), { dice: '1d2', savingThrow: 'Dex', saveDC: 100 }, () => 0.5);
+    const plain = describeEffectDamage('Goblins', 'Burning', detail);
+    expect(plain).toContain('Goblins');
+    expect(plain).toContain('5 troops');
+    expect(plain).toContain('10 damage');
+    expect(plain).not.toContain('1d2');
+    const verbose = describeEffectDamage('Goblins', 'Burning', detail, true);
+    expect(verbose).toContain('1d2 per troop DC 100');
+    expect(verbose).toContain('2(11→2)');
+  });
+
+  it('verbose effect line shows per-troop save total → applied damage', () => {
+    // Four troops, one damage roll each; every troop saves (huge bonus) → half.
+    const u = mk({ dex: 100 });
+    const { detail } = resolveEffectDamage(u, { dice: '1d6', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true }, () => 0.5);
+    const line = describeEffectDamage('Goblins', 'Burning', detail, true);
+    // floor(0.5*6)+1 = 4 damage roll; save 111 >= 10 → half floor(4/2)=2 applied.
+    expect(line).toContain('DC 10');
+    expect(line).toContain('4(111→2)');
+  });
+
+  it('computeEndTurnEffects emits a damage event for a ticking DoT', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      troopHp: 2, currentUnitHp: 10, maxUnitHp: 10, currentTroopCount: 5, maxTroopCount: 5,
+      effects: [ef({ key: 'd1', kind: 'dot', dice: '1d2', base: undefined, casterUnitId: null, casterTeam: 'blue' })],
+    });
+    const res = computeEndTurnEffects({ units: [u], zones: [], nextGroup: 'friendly', alliances: groups, rng: () => 0.5 });
+    expect(res.damageEvents).toHaveLength(1);
+    expect(res.damageEvents[0].unitName).toBe('u');
+    expect(res.damageEvents[0].source).toBe('Bless');
+    expect(res.damageEvents[0].detail.total).toBe(10);
+  });
+});
+
+describe('computeZoneReconcile', () => {
+  const zone = (over: Partial<GroundEffect> = {}): GroundEffect => ({
+    key: 'z1', q: 0, r: 0, name: 'Bless', color: '#ffd700', kind: 'ac', dice: '2',
+    duration: 3, turnsLeft: 3, ...over,
+  });
+
+  it('adds a zone membership on enter (derived ac, no field)', () => {
+    const u = unit('u', 'blue');
+    const { effects, changes } = computeZoneReconcile(u, [zone()]);
+    expect(effects).toHaveLength(1);
+    expect(effects[0].zoneHex).toEqual(h(0, 0));
+    expect(changes.some(c => c.field === 'currentAc')).toBe(false);
+    expect(changes.find(c => c.field === 'effects')).toBeDefined();
+  });
+
+  it('drops the membership on leave (derived ac, no field)', () => {
+    const membershipped = ef({ key: 'z1', kind: 'ac', dice: '2', zoneHex: h(0, 0) });
+    const u = unit('u', 'blue', h(1, 0), { effects: [membershipped] });
+    const { effects, changes } = computeZoneReconcile(u, [zone()]);
+    expect(effects).toHaveLength(0);
+    expect(changes.some(c => c.field === 'currentAc')).toBe(false);
+  });
+
+  it('ignores dot zones (no membership)', () => {
+    const u = unit('u', 'blue');
+    const { changes } = computeZoneReconcile(u, [zone({ kind: 'dot', dice: '4' })]);
+    expect(changes).toEqual([]);
+  });
+
+  it('ac zones with different modes stack as separate memberships (mode preserved)', () => {
+    const melee = zone({ key: 'zm', mode: 'melee', dice: '2' });
+    const ranged = zone({ key: 'zr', mode: 'ranged', dice: '5' });
+    const u = unit('u', 'blue');
+    const { effects } = computeZoneReconcile(u, [melee, ranged]);
+    expect(effects).toHaveLength(2);
+    expect(effects.find(e => e.key === 'zm')?.mode).toBe('melee');
+    expect(effects.find(e => e.key === 'zr')?.mode).toBe('ranged');
+    expect(effectAcBonus({ ...u, effects } as Unit, false)).toBe(2);
+    expect(effectAcBonus({ ...u, effects } as Unit, true)).toBe(5);
+  });
+
+  it('no-ops when already in sync', () => {
+    const membershipped = ef({ key: 'z1', kind: 'ac', dice: '2', base: 12, zoneHex: h(0, 0) });
+    const u = unit('u', 'blue', h(0, 0), { effects: [membershipped], currentAc: 14 });
+    const { changes } = computeZoneReconcile(u, [zone()]);
+    expect(changes).toEqual([]);
+  });
+});
+
+describe('attack-roll flag effects', () => {
+  const flags = ['advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage'] as const;
+
+  it('statFieldOf is null and isAttackRollEffect is true for all four', () => {
+    for (const kind of flags) {
+      expect(statFieldOf(kind)).toBeNull();
+      expect(isStatEffect(kind)).toBe(false);
+      expect(isAttackRollEffect(kind)).toBe(true);
+    }
+  });
+
+  it('applying a flag effect changes no stat field (only the effects list)', () => {
+    const u = unit('u', 'blue');
+    const { changes } = applyEffectChanges(u, { name: 'Advantage', color: '#fff', kind: 'advantage', dice: '0', duration: 3, turnsLeft: 3 });
+    expect(changes).toHaveLength(1);
+    expect(changes[0].field).toBe('effects');
+  });
+
+  it('does not stack the same flag kind twice', () => {
+    const first = ef({ kind: 'advantage', dice: '0' });
+    const u = unit('u', 'blue', h(0, 0), { effects: [first] });
+    const { changes } = applyEffectChanges(u, { name: 'Advantage', color: '#fff', kind: 'advantage', dice: '0', duration: 3, turnsLeft: 3 });
+    expect(changes).toEqual([]);
+  });
+
+  it('attackRollFlags reads the four kinds off a unit', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ kind: 'advantage' }), ef({ kind: 'grant_disadvantage' })] });
+    expect(attackRollFlags(u)).toEqual({ advantage: true, disadvantage: false, grantAdvantage: false, grantDisadvantage: true });
+    expect(attackRollFlags(null)).toEqual({ advantage: false, disadvantage: false, grantAdvantage: false, grantDisadvantage: false });
+  });
+
+  it('a zone flag materializes as a membership with no stat change', () => {
+    const zone: GroundEffect = { key: 'z9', q: 0, r: 0, name: 'Grant Advantage', color: '#69f0ae', kind: 'grant_advantage', dice: '0', duration: 3, turnsLeft: 3 };
+    const { effects, changes } = computeZoneReconcile(unit('u', 'blue'), [zone]);
+    expect(effects).toHaveLength(1);
+    expect(effects[0].kind).toBe('grant_advantage');
+    expect(effects[0].zoneHex).toEqual(h(0, 0));
+    // Only the collapsed effects-list change — no stat delta.
+    expect(changes).toHaveLength(1);
+    expect(changes[0].field).toBe('effects');
+  });
+});
+
+describe('effectRangeBonus', () => {
+  it('sums range modifiers on the unit (direct effects and zone memberships)', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [ef({ kind: 'range', dice: '1' }), ef({ key: 'z', kind: 'range', dice: '-2', zoneHex: h(0, 0) }), ef({ kind: 'ac', dice: '2' })],
+    });
+    expect(effectRangeBonus(u)).toBe(-1);
+    expect(effectRangeBonus(null)).toBe(0);
+    expect(effectRangeBonus(unit('v', 'blue'))).toBe(0);
+  });
+});
+
+describe('effectAcBonus', () => {
+  it('flat ac applies to melee and ranged; mode scopes it', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [
+        ef({ key: 'a', kind: 'ac', dice: '2' }),                                  // flat → both
+        ef({ key: 'b', kind: 'ac', dice: '1', mode: 'melee' }),
+        ef({ key: 'c', kind: 'ac', dice: '3', mode: 'ranged' }),
+        ef({ key: 'd', kind: 'morale', dice: '9' }),                              // ignored
+      ],
+    });
+    expect(effectAcBonus(u, false)).toBe(3); // 2 + 1 (melee)
+    expect(effectAcBonus(u, true)).toBe(5);  // 2 + 3 (ranged)
+    expect(effectAcBonus(null, false)).toBe(0);
+  });
+});
+
+describe('coverAcBonus / directAcBonus', () => {
+  it('coverAcBonus takes the HIGHEST zone ac and never stacks', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [
+        ef({ key: 'z1', kind: 'ac', dice: '2', zoneHex: h(0, 0) }),
+        ef({ key: 'z2', kind: 'ac', dice: '5', zoneHex: h(0, 0) }),
+        ef({ key: 'z3', kind: 'ac', dice: '8', mode: 'ranged', zoneHex: h(0, 0) }),
+      ],
+    });
+    expect(coverAcBonus(u, false)).toBe(5); // max(2, 5) — ranged-only skipped
+    expect(coverAcBonus(u, true)).toBe(8);  // max(2, 5, 8)
+  });
+
+  it('directAcBonus sums direct unit ac effects', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [
+        ef({ key: 'a', kind: 'ac', dice: '2' }),
+        ef({ key: 'b', kind: 'ac', dice: '1', mode: 'melee' }),
+        ef({ key: 'c', kind: 'ac', dice: '3', mode: 'ranged' }),
+      ],
+    });
+    expect(directAcBonus(u, false)).toBe(3); // 2 + 1
+    expect(directAcBonus(u, true)).toBe(5);  // 2 + 3
+  });
+
+  it('effectAcBonus = cover max + direct sum', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [
+        ef({ key: 'z1', kind: 'ac', dice: '5', zoneHex: h(0, 0) }),
+        ef({ key: 'z2', kind: 'ac', dice: '9', zoneHex: h(0, 0) }),
+        ef({ key: 'a', kind: 'ac', dice: '2' }),
+      ],
+    });
+    expect(effectAcBonus(u, false)).toBe(11); // max(5, 9) + 2
+  });
+});
+
+describe('hasPendingZoneEffect', () => {
+  const zone = (over: Partial<GroundEffect> = {}): GroundEffect => ({ key: 'z1', q: 0, r: 0, name: 'Tower', color: '#fff', kind: 'ac', dice: '5', duration: 0, turnsLeft: 0, permanent: true, ...over });
+
+  it('true for an unmaterialized zone underfoot (structure/effect before a move)', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [] });
+    expect(hasPendingZoneEffect(u, [zone()])).toBe(true);
+  });
+
+  it('false once the membership is materialized', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'z1', kind: 'ac', dice: '5', zoneHex: h(0, 0) })] });
+    expect(hasPendingZoneEffect(u, [zone()])).toBe(false);
+  });
+
+  it('false for zones on other hexes and null input', () => {
+    const u = unit('u', 'blue', h(5, 0), { effects: [] });
+    expect(hasPendingZoneEffect(u, [zone()])).toBe(false);
+    expect(hasPendingZoneEffect(null, null)).toBe(false);
+  });
+
+  it('detects non-ac zones too (any kind pending)', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [] });
+    expect(hasPendingZoneEffect(u, [zone({ kind: 'movement', dice: '2' })])).toBe(true);
+  });
+});
+
+describe('rangeBonusAt', () => {
+  const rzone = (over: Partial<GroundEffect> = {}): GroundEffect => ({ key: 'z1', q: 0, r: 0, name: 'Tower', color: '#fff', kind: 'range', dice: '2', duration: 0, turnsLeft: 0, permanent: true, ...over });
+
+  it('adds an unmaterialized range zone underfoot (structure range before a move)', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [] });
+    expect(rangeBonusAt(u, [rzone()])).toBe(2);
+  });
+
+  it('does NOT double-count a zone already represented by a membership', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ key: 'z1', kind: 'range', dice: '2', zoneHex: h(0, 0) })] });
+    expect(rangeBonusAt(u, [rzone()])).toBe(2);
+  });
+
+  it('ignores zones on other hexes and null input', () => {
+    const u = unit('u', 'blue', h(5, 0), { effects: [] });
+    expect(rangeBonusAt(u, [rzone()])).toBe(0);
+    expect(rangeBonusAt(null, [rzone()])).toBe(0);
+  });
+});
+
+describe('saveRollFlags', () => {
+  it('reads save advantage/disadvantage from effects', () => {
+    expect(saveRollFlags(unit('u', 'blue', h(0, 0), { effects: [ef({ kind: 'save_advantage' })] }))).toEqual({ advantage: true, disadvantage: false });
+    expect(saveRollFlags(unit('u', 'blue', h(0, 0), { effects: [ef({ kind: 'save_disadvantage' })] }))).toEqual({ advantage: false, disadvantage: true });
+    expect(saveRollFlags(unit('u', 'blue', h(0, 0)))).toEqual({ advantage: false, disadvantage: false });
+  });
+});
+
+describe('expandInheritedEffects', () => {
+  it('expands modifiers into permanent effects and materializes stat deltas', () => {
+    const { effects, movementPoints, currentMoraleModifier } = expandInheritedEffects(
+      [{ kind: 'movement', dice: '2' }, { kind: 'morale', dice: '1' }, { kind: 'save_advantage' }],
+      3,
+    );
+    expect(movementPoints).toBe(5);
+    expect(currentMoraleModifier).toBe(1);
+    expect(effects).toHaveLength(3);
+    expect(effects.every(e => e.permanent === true)).toBe(true);
+    expect(effects.find(e => e.kind === 'movement')?.base).toBe(3);
+    expect(effects.find(e => e.kind === 'morale')?.base).toBe(0);
+  });
+
+  it('returns no effects for empty input', () => {
+    const { effects, movementPoints, currentMoraleModifier } = expandInheritedEffects(null, 3);
+    expect(effects).toEqual([]);
+    expect(movementPoints).toBe(3);
+    expect(currentMoraleModifier).toBe(0);
+  });
+});
+
+describe('ignore_climb / feather_fall helpers', () => {
+  it('hasEffectKind reads a kind from effects', () => {
+    const u = unit('u', 'blue', h(0, 0), { effects: [ef({ kind: 'ignore_climb' })] });
+    expect(hasEffectKind(u, 'ignore_climb')).toBe(true);
+    expect(hasEffectKind(u, 'feather_fall')).toBe(false);
+  });
+
+  it('unitIgnoresClimb from a direct effect', () => {
+    expect(unitIgnoresClimb(unit('u', 'blue', h(0, 0), { effects: [ef({ kind: 'ignore_climb' })] }))).toBe(true);
+    expect(unitIgnoresClimb(unit('u', 'blue', h(0, 0)))).toBe(false);
+  });
+
+  it('unitIgnoresClimb from an underfoot zone not yet materialized', () => {
+    const zone: GroundEffect = { key: 'z1', q: 0, r: 0, name: 'Ramp', color: '#fff', kind: 'ignore_climb', duration: 0, turnsLeft: 0, permanent: true, casterUnitId: null, casterTeam: null, casterPlayerId: null };
+    const onZone = unit('u', 'blue', h(0, 0), { effects: [] });
+    expect(unitIgnoresClimb(onZone, [zone])).toBe(true);
+    const elsewhere = unit('u', 'blue', h(3, 0), { effects: [] });
+    expect(unitIgnoresClimb(elsewhere, [zone])).toBe(false);
+  });
+
+  it('unitHasFeatherFall', () => {
+    expect(unitHasFeatherFall(unit('u', 'blue', h(0, 0), { effects: [ef({ kind: 'feather_fall' })] }))).toBe(true);
+    expect(unitHasFeatherFall(unit('u', 'blue', h(0, 0)))).toBe(false);
+  });
+});

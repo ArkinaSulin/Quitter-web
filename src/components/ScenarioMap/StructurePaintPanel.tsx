@@ -6,10 +6,10 @@
 // right-click removes. Hover a template for its full info (Unit-Selector style);
 // placed instances are edited with Shift + double-click on the canvas.
 import { useState } from 'react';
-import { MapStructures } from '@/lib/mapStructures';
+import { MapStructures } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
-import { modifierAmount, modifierSummary } from '@/lib/effectTemplates';
-import { mpPairText } from './mapGeometry';
+import { modifierAmount, modifierSummary } from '@/packages/effects';
+import { mpPairText } from '@/packages/world';
 import { Floating } from './Floating';
 
 interface StructurePaintPanelProps {

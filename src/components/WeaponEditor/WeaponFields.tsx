@@ -3,7 +3,7 @@
 // The shared weapon form body — used by the Weapon Editor page (mid panel) and
 // the Add/Edit Weapon modal, so both always look and behave identically.
 import React from 'react';
-import { Weapon, SaveStat, SAVE_STATS, AreaShape, AREA_SHAPES } from '@/lib/weaponParser';
+import { Weapon, SaveStat, SAVE_STATS, AreaShape, AREA_SHAPES } from '@/packages/units';
 
 export const WEAPON_INPUT =
   'w-full bg-gray-700 text-white text-sm rounded px-3 py-1.5 border border-gray-600 focus:border-yellow-400 outline-none disabled:opacity-50';

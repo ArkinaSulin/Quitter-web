@@ -7,8 +7,8 @@
 // outside (the real side is chosen per placement).
 import React, { useState } from 'react';
 import { StructureAnchor } from '@/types/structure';
-import { battlementPath, battlementDepth, crossMarksPath, sineWavePath, ladderPaths } from '@/lib/structureDraw';
-import { HEX_DIRS } from '@/lib/hexGeometry';
+import { battlementPath, battlementDepth, crossMarksPath, sineWavePath, ladderPaths } from '@/packages/movement';
+import { HEX_DIRS } from '@/packages/primitives';
 
 const hexToPixel = (q: number, r: number, size: number) => ({
   x: size * (Math.sqrt(3) * q + (Math.sqrt(3) / 2) * r),

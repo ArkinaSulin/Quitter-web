@@ -2,13 +2,13 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import { Unit, Hex, UnitTemplate, SizeCategory, getOrganizationLevel, UnitEffect } from '@/types/gameProtocol';
-import { parseWeapons } from '@/lib/weaponParser';
-import { alphaLabel } from '@/lib/unitNaming';
-import { normalizeLocalAssetUrl, raceIconFromName } from '@/lib/imageUrls';
-import { getSetting } from '@/lib/settingsCache';
-import { expandInheritedEffects } from '@/lib/unitEffects';
+import { parseWeapons } from '@/packages/units';
+import { alphaLabel } from '@/packages/units';
+import { normalizeLocalAssetUrl, raceIconFromName } from '@/packages/infra';
+import { getSetting } from '@/packages/infra';
+import { expandInheritedEffects } from '@/packages/effects';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // --- Converters ---

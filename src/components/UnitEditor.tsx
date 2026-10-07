@@ -5,14 +5,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import NextImage from 'next/image';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import { UnitTemplate, Race, Armor, Formation, UnitType, Mount, SizeCategory } from '@/types/gameProtocol';
-import { parseWeapons, stringifyWeapons, Weapon as WeaponType, formatWeaponDisplay, SaveStat } from '@/lib/weaponParser';
+import { parseWeapons, stringifyWeapons, Weapon as WeaponType, formatWeaponDisplay, SaveStat } from '@/packages/units';
 import { WeaponEditorModal } from '@/components/WeaponEditorModal';
 import { TokenPreview } from '@/components/TokenRenderer/TokenPreview';
-import { Team } from '@/components/TokenRenderer/tokenUtils';
-import { mapTemplate, mapTemplateToRow } from '@/lib/templateMappers';
-import { raceIconFromName } from '@/lib/imageUrls';
+import { Team } from '@/packages/units';
+import { mapTemplate, mapTemplateToRow } from '@/packages/infra';
+import { raceIconFromName } from '@/packages/infra';
 import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
 
 const SIZE_LABELS: Record<number, string> = {

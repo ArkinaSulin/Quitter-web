@@ -2,8 +2,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { Weapon, SaveStat } from '@/lib/weaponParser';
+import { supabase } from '@/packages/infra/supabase';
+import { Weapon, SaveStat } from '@/packages/units';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 
 const MAGIC_EVENT = 'magic-cast';

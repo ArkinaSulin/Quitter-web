@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getSessionUser, onAuthStateChange } from '@/lib/supabaseClient';
+import { getSessionUser, onAuthStateChange } from '@/packages/infra/supabase';
 
 /**
  * Synchronous-ish auth hydration. supabase-js v2 fires an INITIAL_SESSION event

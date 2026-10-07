@@ -3,12 +3,12 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Unit, getOrganizationLevel, Formation } from '@/types/gameProtocol';
-import { areHexesAdjacent, isUnitRouted } from '@/lib/unitMorale';
-import { parseWeapons, formatWeaponDisplay } from '@/lib/weaponParser';
-import { chargeStanceFor } from '@/lib/chargeStance';
-import { canFly } from '@/lib/flying';
-import { getSetting } from '@/lib/settingsCache';
-import { TEAM_COLORS } from '@/components/TokenRenderer/tokenUtils';
+import { areHexesAdjacent, isUnitRouted } from '@/packages/morale';
+import { parseWeapons, formatWeaponDisplay } from '@/packages/units';
+import { chargeStanceFor } from '@/packages/combat';
+import { canFly } from '@/packages/movement';
+import { getSetting } from '@/packages/infra';
+import { TEAM_COLORS } from '@/packages/units';
 import { Floating } from './Floating';
 
 interface ContextMenuProps {

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useScenarios } from '@/hooks/useScenarios';
 import { useProfile } from '@/hooks/useProfile';
 import { Scenario } from '@/types/gameProtocol';
-import { supabase, signInWithGoogle, signOut } from '@/lib/supabaseClient';
+import { supabase, signInWithGoogle, signOut } from '@/packages/infra/supabase';
 import Toast from '@/components/Toast';
 import { SettingsModal } from '@/components/SettingsModal';
 

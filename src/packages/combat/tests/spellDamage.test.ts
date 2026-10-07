@@ -1,0 +1,232 @@
+// src/lib/spellDamage.test.ts
+import { describe, it, expect } from 'vitest';
+import { resolveSpellDamage } from '@/packages/combat/lib/spellDamage';
+
+function seededRng(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0x100000000;
+  };
+}
+
+describe('resolveSpellDamage', () => {
+  it('rolls base damage once and applies it to every failed troop', () => {
+    // Deterministic rng: verify by rolling 1d100 — any roll >= DC fails all troops
+    // when saveBonus is negative enough, so every troop takes full base damage.
+    const result = resolveSpellDamage({
+      damageDice: '1d10',
+      saveBonus: -20,
+      saveDC: 20,
+      halfOnSave: true,
+      affectedCount: 5,
+      troopHp: 100,
+      rng: seededRng(42),
+    });
+    expect(result.baseDamage).toBeGreaterThan(0);
+    expect(result.perTroop).toHaveLength(5);
+    for (const t of result.perTroop) {
+      expect(t.success).toBe(false);
+      expect(t.damage).toBe(result.baseDamage);
+    }
+    expect(result.totalDamage).toBe(result.baseDamage * 5);
+  });
+
+  it('applies half (floored) damage on success when halfOnSave is set', () => {
+    // saveBonus huge → every troop succeeds → each takes floor(base/2)
+    const result = resolveSpellDamage({
+      damageDice: '1d6',
+      saveBonus: 100,
+      saveDC: 5,
+      halfOnSave: true,
+      affectedCount: 3,
+      troopHp: 100,
+      rng: seededRng(7),
+    });
+    const expected = Math.floor(result.baseDamage / 2);
+    for (const t of result.perTroop) {
+      expect(t.success).toBe(true);
+      expect(t.damage).toBe(expected);
+    }
+    expect(result.totalDamage).toBe(expected * 3);
+  });
+
+  it('applies 0 damage on success when negate (halfOnSave false)', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1d6',
+      saveBonus: 100,
+      saveDC: 5,
+      halfOnSave: false,
+      affectedCount: 4,
+      troopHp: 100,
+      rng: seededRng(7),
+    });
+    expect(result.baseDamage).toBeGreaterThan(0);
+    for (const t of result.perTroop) {
+      expect(t.success).toBe(true);
+      expect(t.damage).toBe(0);
+    }
+    expect(result.totalDamage).toBe(0);
+  });
+
+  it('caps damage per troop at troopHp', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1d6',
+      saveBonus: -100,
+      saveDC: 99,
+      halfOnSave: true,
+      affectedCount: 2,
+      troopHp: 3,
+      rng: seededRng(42),
+    });
+    for (const t of result.perTroop) {
+      expect(t.success).toBe(false);
+      expect(t.damage).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it('total damage is the sum of per-troop damage', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1d20',
+      saveBonus: 0,
+      saveDC: 10,
+      halfOnSave: true,
+      affectedCount: 8,
+      troopHp: 100,
+      rng: seededRng(1234),
+    });
+    const sum = result.perTroop.reduce((acc, t) => acc + t.damage, 0);
+    expect(result.totalDamage).toBe(sum);
+  });
+
+  it('reports the raw save roll and save result', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1d6',
+      saveBonus: 5,
+      saveDC: 15,
+      halfOnSave: true,
+      affectedCount: 1,
+      troopHp: 100,
+      rng: seededRng(1),
+    });
+    const t = result.perTroop[0];
+    expect(t.roll).toBeGreaterThanOrEqual(1);
+    expect(t.roll).toBeLessThanOrEqual(20);
+    expect(t.saveResult).toBe(t.roll + 5);
+    expect(t.success).toBe(t.saveResult >= 15);
+  });
+
+  it('handles zero affected troops', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1d6',
+      saveBonus: 0,
+      saveDC: 10,
+      halfOnSave: true,
+      affectedCount: 0,
+      troopHp: 100,
+      rng: seededRng(42),
+    });
+    expect(result.perTroop).toHaveLength(0);
+    expect(result.totalDamage).toBe(0);
+  });
+
+  it('heals each affected troop up to troopHp (isHealing, no save)', () => {
+    // 1d4 with seeded rng: base damage is fixed; each troop heals min(base, troopHp).
+    const result = resolveSpellDamage({
+      damageDice: '1d4',
+      saveBonus: 0,
+      saveDC: 20,
+      halfOnSave: true,
+      isHealing: true,
+      affectedCount: 6,
+      troopHp: 100,
+      rng: seededRng(42),
+    });
+    expect(result.baseDamage).toBeGreaterThan(0);
+    expect(result.perTroop).toHaveLength(6);
+    for (const t of result.perTroop) {
+      expect(t.success).toBe(true); // no save — always "succeeds"
+      expect(t.damage).toBe(result.baseDamage);
+    }
+    expect(result.totalDamage).toBe(result.baseDamage * 6);
+  });
+
+  it('caps healing per troop at troopHp', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1d100',
+      saveBonus: 0,
+      saveDC: 20,
+      halfOnSave: true,
+      isHealing: true,
+      affectedCount: 2,
+      troopHp: 10,
+      rng: seededRng(7),
+    });
+    for (const t of result.perTroop) {
+      expect(t.damage).toBeLessThanOrEqual(10);
+    }
+    expect(result.totalDamage).toBeLessThanOrEqual(20);
+  });
+});
+
+describe('resolveSpellDamage — save roll modes', () => {
+  const seqRng = (values: number[]) => {
+    let i = 0;
+    return () => values[Math.min(i++, values.length - 1)];
+  };
+
+  it('advantage takes the higher of two d20s', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1', saveBonus: 0, saveDC: 100, halfOnSave: true,
+      affectedCount: 1, troopHp: 100, saveMode: 'advantage', rng: seqRng([0.0, 0.9]),
+    });
+    expect(result.perTroop[0].roll).toBe(19); // max(1, 19)
+  });
+
+  it('disadvantage takes the lower of two d20s', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1', saveBonus: 0, saveDC: 0, halfOnSave: false,
+      affectedCount: 1, troopHp: 100, saveMode: 'disadvantage', rng: seqRng([0.0, 0.9]),
+    });
+    expect(result.perTroop[0].roll).toBe(1); // min(1, 19)
+  });
+
+  it('normal rolls a single d20', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1', saveBonus: 0, saveDC: 0, halfOnSave: false,
+      affectedCount: 1, troopHp: 100, rng: seqRng([0.9, 0.0]),
+    });
+    expect(result.perTroop[0].roll).toBe(19); // one roll, first value
+  });
+});
+
+describe('resolveSpellDamage — universal damage floor (>=1)', () => {
+  it('a negative-bonus base is floored to 1', () => {
+    // 1d6-4 rolling a 1 => raw -3, base clamped to 1.
+    const result = resolveSpellDamage({
+      damageDice: '1d6-4', saveBonus: -100, saveDC: 99, halfOnSave: true,
+      affectedCount: 3, troopHp: 100, rng: () => 0,
+    });
+    expect(result.baseDamage).toBe(1);
+    for (const t of result.perTroop) expect(t.damage).toBe(1);
+  });
+
+  it('a half-save on a 1-damage spell still lands 1 (not 0)', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1', saveBonus: 100, saveDC: 5, halfOnSave: true,
+      affectedCount: 2, troopHp: 100, rng: () => 0.5,
+    });
+    for (const t of result.perTroop) {
+      expect(t.success).toBe(true);
+      expect(t.damage).toBe(1);
+    }
+  });
+
+  it('a negate save still deals 0', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1', saveBonus: 100, saveDC: 5, halfOnSave: false,
+      affectedCount: 2, troopHp: 100, rng: () => 0.5,
+    });
+    for (const t of result.perTroop) expect(t.damage).toBe(0);
+  });
+});

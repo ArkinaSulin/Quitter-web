@@ -1,9 +1,9 @@
 // src/components/TokenRenderer/drawToken.ts
 import { Unit, Formation, SizeCategory } from '@/types/gameProtocol';
-import { Team, TEAM_COLORS, TEAM_SHAPES, getDotColor, generateDotPositions, getFormationConfig, FormationConfig } from './tokenUtils';
+import { Team, TEAM_COLORS, TEAM_SHAPES, getDotColor, generateDotPositions, getFormationConfig, FormationConfig } from '@/packages/units';
 import { ALLIANCE_COLORS, AllianceGroup } from '@/types/gameProtocol';
-import { isUnitRouted } from '@/lib/unitMorale';
-import { getHeroSquareSize } from '@/lib/heroLayout';
+import { isUnitRouted } from '@/packages/morale';
+import { getHeroSquareSize } from '@/packages/units';
 
 const imageCache = new Map<string, HTMLImageElement>();
 

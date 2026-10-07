@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint:boundaries": "depcruise src app",
+    "check": "tsc --noEmit && vitest run && depcruise src app && next build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",
@@ -20,6 +22,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.5.2",
+    "dependency-cruiser": "^17.4.3",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5",

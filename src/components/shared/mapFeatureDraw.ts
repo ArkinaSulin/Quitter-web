@@ -5,7 +5,7 @@
 // in coordinate model (screen-space vs world-space) and image loading, so each
 // keeps its own loop and passes a pixel mapper + font/line-width scaler here.
 import { StructureTemplate, StructureInstance } from '@/types/structure';
-import { structureDoorState } from '@/lib/mapStructures';
+import { structureDoorState } from '@/packages/movement';
 
 /** The grey used for the MP-cost number and the destroyed "✕" badge. */
 export const MP_COST_GREY = '#9ca3af';

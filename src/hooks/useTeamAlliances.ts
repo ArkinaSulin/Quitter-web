@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/packages/infra/supabase';
 import { AllianceGroup } from '@/types/gameProtocol';
-import { allianceOf } from '@/lib/alliances';
-import { TEAMS } from '@/components/TokenRenderer/tokenUtils';
+import { allianceOf } from '@/packages/primitives';
+import { TEAMS } from '@/packages/units';
 
 function buildMap(rows: { team: string; alliance_group: string }[]): Record<string, AllianceGroup> {
   const map: Record<string, AllianceGroup> = {};

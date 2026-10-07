@@ -3,7 +3,7 @@
 // Ship Editor (right panel, full/edited build) and later by the ScenarioMap (live box
 // pools + damage states). Mirror of the TokenRenderer <-> preview split.
 
-import { ShipBuild, ShipDerivedStats, accessoryPoolHp, componentById, COMPONENT_IDS } from '@/lib/shipStats';
+import { ShipBuild, ShipDerivedStats, accessoryPoolHp, componentById, COMPONENT_IDS } from '@/packages/ships';
 
 export interface BoxGroup {
   label: string;

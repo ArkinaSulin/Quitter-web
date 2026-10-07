@@ -5,8 +5,8 @@
 // field accepts a plain number or dice "XdY±Z" (X=0 = flat Z); the flat part is
 // mirrored into `delta` for stat kinds and legacy consumers.
 import React from 'react';
-import { EffectModifier, EffectModifierKind, isFlagModifierKind, honorsMode, EFFECT_MODIFIER_LABELS } from '@/lib/effectTemplates';
-import { EffectDirection } from '@/lib/effectTemplates';
+import { EffectModifier, EffectModifierKind, isFlagModifierKind, honorsMode, EFFECT_MODIFIER_LABELS } from '@/packages/effects';
+import { EffectDirection } from '@/packages/effects';
 
 export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
   { value: 'ac', label: 'AC ±' },
