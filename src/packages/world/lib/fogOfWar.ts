@@ -1,4 +1,4 @@
-// src/lib/fogOfWar.ts
+// src/packages/world/lib/fogOfWar.ts
 // Fog-of-war reveal + darkvision. Pure functions shared by the scenario map
 // (live + replay) and tested. Effective sight of a unit =
 // max(scenario sight_radius, unit.darkvision); the unit's own hex is not counted

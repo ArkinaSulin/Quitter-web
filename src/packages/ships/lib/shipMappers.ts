@@ -1,4 +1,4 @@
-// src/lib/shipMappers.ts
+// src/packages/ships/lib/shipMappers.ts
 // Supabase row <-> ship model mapping (mirrors templateMappers). The editor and any
 // later consumer (ship spawner, ship engine) share these so the camelCase model stays
 // consistent with the snake_case ship_* tables.

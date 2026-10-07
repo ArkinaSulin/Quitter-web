@@ -1,4 +1,4 @@
-// src/lib/routedRetreat.ts
+// src/packages/morale/lib/routedRetreat.ts
 // Pure decision logic for routed-unit retreat (owner-decided retreat, rout-through
 // friendly Open Order/Scattered). Pursuit is handled by `pursuit.ts` /
 // `zocDisengage.ts`; this file owns the retreat geometry + diagnosis. Integration

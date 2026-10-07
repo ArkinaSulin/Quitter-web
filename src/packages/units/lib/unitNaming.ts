@@ -1,4 +1,4 @@
-// src/lib/unitNaming.ts
+// src/packages/units/lib/unitNaming.ts
 // Unit instance serials are alphabet labels instead of numbers so combat/message
 // logs stay readable: "Human scout A", "Human scout B", … "Z", "AA", … "ZZ", …
 

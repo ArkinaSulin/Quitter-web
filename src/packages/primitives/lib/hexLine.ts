@@ -1,4 +1,4 @@
-// src/lib/hexLine.ts
+// src/packages/primitives/lib/hexLine.ts
 // Axial hex line (cube lerp, Red Blob Games). Returns every hex the segment
 // passes through, inclusive of both endpoints, ordered from `a` to `b`. Used to
 // find which edge a ranged attack crosses as it enters the defender's hex.

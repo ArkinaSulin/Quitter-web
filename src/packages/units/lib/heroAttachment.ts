@@ -1,4 +1,4 @@
-// src/lib/heroAttachment.ts
+// src/packages/units/lib/heroAttachment.ts
 // Sub-step builders that keep an attached hero's logical position consistent with
 // its host whenever the host's hex changes through a path that is NOT the normal
 // drag-move (`moveUnitRecorded` / `moveUnitFree`). The hero is drawn at the host's

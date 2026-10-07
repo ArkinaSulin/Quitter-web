@@ -1,4 +1,4 @@
-// src/lib/unitEffects.ts
+// src/packages/effects/lib/unitEffects.ts
 // Temporary-effect domain logic (pure, unit-tested): unit buffs/debuffs/DoTs and
 // ground (hex) effects. Shared by the live map (apply/remove commands, the
 // END_TURN expiry/DoT sweep) and replay.

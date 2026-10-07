@@ -1,4 +1,4 @@
-// src/lib/damage.ts
+// src/packages/primitives/lib/damage.ts
 // The ONE damage parser. Every damage path (weapon combat, area magic, walls,
 // hex structures, temporary effects, fall damage) rolls and clamps through here
 // so a single universal rule holds: a LANDED amount of damage is never below 1.

@@ -1,4 +1,4 @@
-// src/lib/formationRules.ts
+// src/packages/movement/lib/formationRules.ts
 // Pure helpers over the data-driven formations matrix. Replaces hard-coded
 // formation branches in combat / morale / movement / UI.
 import { Formation, Unit } from '@/types/gameProtocol';

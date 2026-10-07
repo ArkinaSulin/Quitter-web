@@ -1,4 +1,4 @@
-// src/lib/scenarioPermissions.ts
+// src/packages/world/lib/scenarioPermissions.ts
 import { AllianceGroup, ScenarioRole, ScenarioRoleCapabilities } from '@/types/gameProtocol';
 import { allianceOf, sameAlliance } from '@/packages/primitives';
 

@@ -1,4 +1,4 @@
-// src/lib/rally.ts
+// src/packages/morale/lib/rally.ts
 // Rally: a routed unit (or hero) recovers its nerve when the pressure is off.
 // Prerequisites (checked for the context-menu item): the unit is not fearless,
 // is currently Routed, is alive, has positive effective morale, and no visible

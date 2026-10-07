@@ -1,4 +1,4 @@
-// src/lib/verboseCombat.ts
+// src/packages/units/lib/verboseCombat.ts
 // Pure formatting helpers for the per-scenario "verbose combat" setting. When
 // enabled, attack/spell descriptions print every dice roll (sorted ascending)
 // so players can verify the engine's formulas from the raw faces.

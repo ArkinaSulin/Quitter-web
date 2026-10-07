@@ -1,4 +1,4 @@
-// src/lib/battleStats.ts
+// src/packages/battle/lib/battleStats.ts
 // Scenario battle statistics — DERIVED from the command log + the live unit
 // list (no counters stored), so undo always stays correct.
 //

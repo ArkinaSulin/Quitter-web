@@ -1,4 +1,4 @@
-// src/lib/structureDraw.ts
+// src/packages/movement/lib/structureDraw.ts
 // Shared canvas geometry for map structures. The battlement (crenellation) is a
 // square-wave drawn along an edge, offset toward the OUTSIDE face. Kept small so
 // it reads as decoration at map scale.

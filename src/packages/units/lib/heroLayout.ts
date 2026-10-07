@@ -1,4 +1,4 @@
-// src/lib/heroLayout.ts
+// src/packages/units/lib/heroLayout.ts
 // Token footprint + attached-hero layout, shared by the renderer (drawToken /
 // useCanvasDraw) and the hit-tester (useHexGrid) so the drawn token and its
 // grabbable box always agree. Pure — depends only on hex geometry.

@@ -1,4 +1,4 @@
-// src/lib/templateMappers.ts
+// src/packages/infra/lib/templateMappers.ts
 import { UnitTemplate, getOrganizationLevel } from '@/types/gameProtocol';
 import { normalizeLocalAssetUrl, raceIconFromName } from '@/packages/infra/lib/imageUrls';
 import { parseModifiers } from '@/packages/effects';

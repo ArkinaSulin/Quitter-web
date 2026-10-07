@@ -1,4 +1,4 @@
-// src/lib/flying.ts
+// src/packages/movement/lib/flying.ts
 // Pure flying / elevation domain logic (Phase 2). Reused by movement, combat,
 // rendering and the AI. `canFly` is DERIVED: a unit flies when its aerial pool
 // (`flySpeed`) is > 0; `elevation > 0` means it is currently airborne.

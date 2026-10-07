@@ -1,4 +1,4 @@
-// src/lib/pursuit.ts
+// src/packages/morale/lib/pursuit.ts
 // Zone-of-control pursuit domain logic (pure, unit-tested).
 //
 // When a unit leaves a hostile kill zone it drops to Scattered (a formed

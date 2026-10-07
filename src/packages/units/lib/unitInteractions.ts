@@ -1,4 +1,4 @@
-// src/lib/unitInteractions.ts
+// src/packages/units/lib/unitInteractions.ts
 import { Unit } from '@/types/gameProtocol';
 
 /**

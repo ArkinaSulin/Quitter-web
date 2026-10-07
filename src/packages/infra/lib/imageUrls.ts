@@ -1,4 +1,4 @@
-// src/lib/imageUrls.ts
+// src/packages/infra/lib/imageUrls.ts
 /**
  * Normalize a local public-asset URL to match this repo's committed files.
  *

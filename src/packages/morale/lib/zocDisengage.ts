@@ -1,4 +1,4 @@
-﻿// src/lib/zocDisengage.ts
+﻿// src/packages/morale/lib/zocDisengage.ts
 // Zone-of-control pursuit eligibility. When a unit LEAVES a hostile kill zone,
 // the formed hostiles that had it in their kill zone may pursue it (an
 // aggression-gated chase, once per turn). Kill zones are the SAME front-arc

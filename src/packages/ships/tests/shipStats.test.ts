@@ -1,4 +1,4 @@
-// src/lib/shipStats.test.ts
+// src/packages/ships/tests/shipStats.test.ts
 // Oracle: .scratch/shipyard-formula/shipyard.csv (v8.1 FINAL) + migration 067 seeds.
 // Fixtures replicate the 067 catalog rows; expected values are hand-derived from the
 // CSV formulas (Wasp/Damselfly/Scorpion/Lamprey/Bombard cross-checked).

@@ -1,4 +1,4 @@
-// src/lib/structureTemplates.ts
+// src/packages/movement/lib/structureTemplates.ts
 // Map-structure template domain types + row mappers. Templates are authored in
 // the Structure Editor and applied on map layers; placed instances reference the
 // template id (see src/types/structure.ts).

@@ -1,4 +1,4 @@
-// src/lib/spellDamage.ts
+// src/packages/combat/lib/spellDamage.ts
 import { rollD20 } from '@/packages/combat/lib/unitCombat';
 import { clampDamage, rollDamageDetailed } from '@/packages/primitives';
 

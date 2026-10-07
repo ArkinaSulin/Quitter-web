@@ -1,4 +1,4 @@
-// src/lib/withdraw.ts
+// src/packages/movement/lib/withdraw.ts
 // The Withdraw action: a formed unit spends 2 actions to step ONE hex straight
 // back into either rear-arc hex, KEEPING its facing. It is the ordered alternative
 // to a normal disengagement (which scatters + provokes pursuit): the withdraw

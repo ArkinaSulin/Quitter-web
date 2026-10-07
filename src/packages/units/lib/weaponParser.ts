@@ -1,4 +1,4 @@
-// src/lib/weaponParser.ts
+// src/packages/units/lib/weaponParser.ts
 
 export type SaveStat = 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha';
 

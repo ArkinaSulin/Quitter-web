@@ -1,4 +1,4 @@
-// src/lib/weaponMappers.ts
+// src/packages/infra/lib/weaponMappers.ts
 // Row <-> object mapping for the `unit_weapons` library table (edited by the Weapon
 // Editor page and read by the unit editor / add-weapon modal).
 import { Weapon, SaveStat, SAVE_STATS, AreaShape, AREA_SHAPES } from '@/packages/units';

@@ -1,4 +1,4 @@
-// src/lib/structureCombat.ts
+// src/packages/combat/lib/structureCombat.ts
 // Attacking a HEX structure (gate / tower). No to-hit roll (like walls): reaching
 // the hex AND facing it within the formation's attack arcs is the hit, then the
 // Damage Threshold gates the blow. Durability is two pools damaged

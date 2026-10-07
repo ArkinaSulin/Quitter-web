@@ -1,4 +1,4 @@
-// src/lib/shipStats.ts
+// src/packages/ships/lib/shipStats.ts
 // Pure Shipyard v8.1 FINAL formulas. Source of truth: .scratch/shipyard-formula/shipyard.csv
 // + HANDBOOK §17.4/§17.5. Shared by the Ship Editor and (later) the ship engine — every
 // value here is a pure function of the build inputs.

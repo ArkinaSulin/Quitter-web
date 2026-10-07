@@ -1,4 +1,4 @@
-// src/lib/effectTemplates.ts
+// src/packages/effects/lib/effectTemplates.ts
 // Effects library domain types + row mappers. A template is authored once
 // (DM/admin) and applied in any scenario; instances live on units.effects /
 // map_data.groundEffects and reference templateId. Each template = a set of

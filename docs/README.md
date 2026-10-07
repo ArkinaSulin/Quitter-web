@@ -52,7 +52,7 @@ This tree is the single home for all documentation. It has two audiences:
 
 ## Related reference
 
-- `src/lib/*` — pure game-rule modules (the canonical source).
+- `src/packages/*` — deep game-rule modules (the canonical source).
 - `.scratch/*/spec.md` — per-feature design specs (some `status: done`, some
   pending). The most useful current one is `.scratch/game-logic-map.md`.
 - `AGENTS.md` — work summary + agent workflow notes at the repo root.

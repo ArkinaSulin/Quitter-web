@@ -1,4 +1,4 @@
-// src/lib/shipMappers.test.ts
+// src/packages/ships/tests/shipMappers.test.ts
 // Locks the snake_case -> camelCase catalog mapping + numeric coercion (PostgREST
 // returns `numeric` columns as strings). A raw row fed straight into the editor was
 // the NaN bug — camelCase reads of snake_case keys are undefined.

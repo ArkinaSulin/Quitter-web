@@ -1,4 +1,4 @@
-// src/lib/structureTemplateCache.ts
+// src/packages/infra/lib/structureTemplateCache.ts
 import { StructureTemplate } from '@/types/structure';
 import { mapStructureRow } from '@/packages/movement';
 

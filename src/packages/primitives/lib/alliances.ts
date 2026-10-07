@@ -1,4 +1,4 @@
-// src/lib/alliances.ts
+// src/packages/primitives/lib/alliances.ts
 // The ONE home for team -> alliance-group resolution and hostility. Teams are
 // grouped into `friendly | enemy | neutral` by the `alliances` map; every pair
 // of DIFFERENT groups is hostile (friendly↔enemy, friendly↔neutral,

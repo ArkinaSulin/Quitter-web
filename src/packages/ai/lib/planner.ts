@@ -1,4 +1,4 @@
-// src/lib/enemyAI/planner.ts
+// src/packages/ai/lib/planner.ts
 // Pure "enemy AI assist" decision layer. Given a snapshot of the board and the
 // teams handed to the AI, produce an ordered plot (per-unit move/attack/
 // turn/formation steps) that the GM can preview and then execute through the

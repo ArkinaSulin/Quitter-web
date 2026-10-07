@@ -1,4 +1,4 @@
-// src/lib/spellDamage.test.ts
+// src/packages/combat/tests/spellDamage.test.ts
 import { describe, it, expect } from 'vitest';
 import { resolveSpellDamage } from '@/packages/combat/lib/spellDamage';
 

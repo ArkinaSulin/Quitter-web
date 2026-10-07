@@ -1,4 +1,4 @@
-// src/lib/walls.ts
+// src/packages/movement/lib/walls.ts
 // Edge walls/barriers (pure domain logic). A wall sits on the shared edge between
 // a hex and one of its 6 neighbours. Each edge has two FACES — one belongs to each
 // of the two hexes — and a face can:

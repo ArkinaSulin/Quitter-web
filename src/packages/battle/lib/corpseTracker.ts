@@ -1,4 +1,4 @@
-// src/lib/corpseTracker.ts
+// src/packages/battle/lib/corpseTracker.ts
 // Decorative per-hex "fallen" piles derived deterministically from the command
 // log (same principle as replay). A corpse marker is pure scenery: it never
 // occupies a hex, never interacts with rules, and is not part of statistics.

@@ -1,4 +1,4 @@
-// src/lib/mapEntities.ts
+// src/packages/world/lib/mapEntities.ts
 // Map-entity domain types + row mappers. A map entity is an authored, reusable
 // board: background image (map_images) + placement + grid radius + placed
 // structures + authored per-hex effects. Scenarios snapshot one into

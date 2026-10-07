@@ -1,4 +1,4 @@
-// src/lib/mapEffects.ts
+// src/packages/effects/lib/mapEffects.ts
 // Authored per-hex effects on a reusable map board (maps.hex_effects). Each hex
 // holds ONE effect template reference; on scenario assign the refs are expanded
 // into PERMANENT ground zones (one zone per template modifier) so the existing

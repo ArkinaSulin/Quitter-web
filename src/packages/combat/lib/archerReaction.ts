@@ -1,4 +1,4 @@
-// src/lib/archerReaction.ts
+// src/packages/combat/lib/archerReaction.ts
 import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { Weapon, parseWeapons } from '@/packages/units';
 import { isUnitRouted } from '@/packages/morale';

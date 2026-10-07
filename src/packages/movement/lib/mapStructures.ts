@@ -1,4 +1,4 @@
-// src/lib/mapStructures.ts
+// src/packages/movement/lib/mapStructures.ts
 // Placed map structures (instances) on the library/scenario map layers, keyed by
 // anchor: "q,r,dir" for an edge structure, "q,r" for a hex structure. Values are
 // StructureInstance (template id + optional runtime overrides).

@@ -1,4 +1,4 @@
-// src/lib/lineOfSight.ts
+// src/packages/combat/lib/lineOfSight.ts
 // Hex-centre line of sight between a shooter and its target. Any other unit on
 // the line (friendly or hostile), or any non-decorative structure the line
 // crosses, blocks the shot, turning it into an "indirect shot" resolved at

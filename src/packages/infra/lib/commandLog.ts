@@ -1,4 +1,4 @@
-// src/lib/commandLog.ts
+// src/packages/infra/lib/commandLog.ts
 // Command-log domain types shared by the engine hook, replay, and the undo
 // debug panel. Moved here from src/game/GameEngine.ts when the client-side
 // undo stack was removed (commands are now executed/undone/redone server-side

@@ -1,4 +1,4 @@
-// src/lib/wallCombat.ts
+// src/packages/combat/lib/wallCombat.ts
 // Attacking a destructible wall segment (Phase 2). There is no to-hit roll: a
 // unit that can REACH the edge hits it, then the wall's Damage Threshold decides
 // whether the blow lands. Reach is melee when the attacker stands on one of the

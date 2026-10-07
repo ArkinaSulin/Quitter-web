@@ -15,12 +15,12 @@ import { modifierAmount } from '@/packages/effects';
 import type { CostOfHexFn, BlockedEdgeFn } from '@/packages/movement';
 
 // Re-export the elevation/flying helpers so existing importers keep working
-// (the canonical implementations live in src/lib/flying.ts).
+// (the canonical implementations live in src/packages/movement/lib/flying.ts).
 import { elevationOffset, elevationGapFeet, elevationGapHexes, airOccupiedHexes, canFly, isAirborne, verticalGapDown } from '@/packages/movement';
 export { elevationOffset, elevationGapFeet, elevationGapHexes, airOccupiedHexes, canFly, isAirborne, verticalGapDown };
 
-// Re-export the shared hex/token geometry (canonical: src/lib/hexGeometry.ts and
-// src/lib/heroLayout.ts) so existing map importers keep working.
+// Re-export the shared hex/token geometry (canonical: src/packages/primitives/lib/hexGeometry.ts and
+// src/packages/units/lib/heroLayout.ts) so existing map importers keep working.
 export { HEX_SIZE } from '@/packages/primitives';
 export { TOKEN_WIDTH, TOKEN_HEIGHT, getAttachedHeroPos, getHeroSquareSize } from '@/packages/units';
 

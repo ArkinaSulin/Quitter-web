@@ -1,4 +1,4 @@
-// src/lib/librarySelection.ts
+// src/packages/world/lib/librarySelection.ts
 // Tiny helper for the library editors (Unit/Ship/Effect/Structure/Weapon).
 //
 // After a save, an editor must reselect the saved row from a FRESH list — never

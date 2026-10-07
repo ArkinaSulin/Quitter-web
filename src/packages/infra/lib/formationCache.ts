@@ -1,4 +1,4 @@
-// src/lib/formationCache.ts
+// src/packages/infra/lib/formationCache.ts
 import { Formation } from '@/types/gameProtocol';
 
 // Session-scoped cache of the unit_formations lookup table. The matrix is small and

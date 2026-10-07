@@ -20,7 +20,7 @@ Statuses: 🔜 next / ⏳ later / 🚧 blocked / ✅ done-here-listed-for-contex
 - ✅ **Attack-roll flag effects** (`advantage` / `disadvantage` / `grant_advantage`
   / `grant_disadvantage`): boolean markers read at attack resolution; any advantage
   cancels any disadvantage (count irrelevant). Library seed = migration **088**;
-  UI/tooltips show `attack roll`. `src/lib/unitCombat.combatRollMode`.
+  UI/tooltips show `attack roll`. `combat/unitCombat.combatRollMode`.
 - ✅ **Messages record both variants**: every `GameMessage` carries the plain
   `text` plus an always-recorded `verboseText` (dice/roll detail); the scenario
   verbose setting only picks which is **displayed**, so toggling it re-renders the

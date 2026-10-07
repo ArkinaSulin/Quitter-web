@@ -1,4 +1,4 @@
-// src/lib/settingsCache.ts
+// src/packages/infra/lib/settingsCache.ts
 
 // Session-scoped in-memory cache of the admin_game_settings table (see migration 041).
 // Values are small and rarely change, so load once and read synchronously from

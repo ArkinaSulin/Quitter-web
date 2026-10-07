@@ -1,4 +1,4 @@
-// src/lib/attackDirection.ts
+// src/packages/primitives/lib/attackDirection.ts
 // Which side of a defender an attack comes from, at any range. Used for the
 // directional AC rules (formation AC never applies from the REAR).
 //

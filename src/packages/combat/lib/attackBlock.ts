@@ -1,4 +1,4 @@
-// src/lib/attackBlock.ts
+// src/packages/combat/lib/attackBlock.ts
 // Hard "block attacks" gate for a temporary effect / ground zone / structure.
 //
 // A `block_attacks` modifier denies attacks crossing into or out of its carrier,

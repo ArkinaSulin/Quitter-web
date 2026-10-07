@@ -1,4 +1,4 @@
-// src/lib/chargeStance.ts
+// src/packages/combat/lib/chargeStance.ts
 // Which "declare a charge" command (if any) the context menu should offer for a
 // unit. A ground charge and a stoop share the same machinery — both simply set
 // `isCharging`, then the charge-move / CHARGE tick / free-attack path runs — so

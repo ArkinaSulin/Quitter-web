@@ -1,4 +1,4 @@
-// src/lib/chargeOver.ts
+// src/packages/combat/lib/chargeOver.ts
 // Pure helpers for the post-charge overrun: a charging unit that just delivered
 // its full charge attack may ride over the target and land on its far side.
 import { Hex, Unit, Formation } from '@/types/gameProtocol';

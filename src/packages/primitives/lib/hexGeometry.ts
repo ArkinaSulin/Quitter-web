@@ -1,4 +1,4 @@
-// src/lib/hexGeometry.ts
+// src/packages/primitives/lib/hexGeometry.ts
 // Pure hex <-> pixel math (pointy-top), shared by the canvas hook, map geometry,
 // token layout and hit-testing. Kept dependency-free so any layer can import it
 // without creating a cycle (mapGeometry no longer imports from useHexGrid).

@@ -16,7 +16,7 @@ npm test           # vitest (pure rule-lib tests)
 npx tsc --noEmit   # typecheck
 ```
 
-Requires a Supabase project (see `src/lib/supabaseClient.ts` / `.env.local`)
+Requires a Supabase project (see `src/packages/infra/supabase.ts` / `.env.local`)
 with the schema + migrations under `supabase/migrations/` applied.
 
 ## Documentation
@@ -46,7 +46,8 @@ edit.
 
 ```
 app/            routes (/, /unit-editor, /map-editor, /ship-editor, /effect-editor, /weapon-editor)
-src/lib/        PURE game-rule modules (movement, combat, morale, effects,
+src/packages/   DEEP game-rule modules — one domain per folder, each
+                {index.ts, lib/, tests/} (movement, combat, morale, effects,
                 fog, routing/pursuit, weapon parsing, ship stats, …)
 src/hooks/      React bridges (useGameEngine, useSupabaseSync, useReplay,
                 useScenarios, useMessageSync, …)

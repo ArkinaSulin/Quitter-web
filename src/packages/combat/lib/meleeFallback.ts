@@ -1,4 +1,4 @@
-// src/lib/meleeFallback.ts
+// src/packages/combat/lib/meleeFallback.ts
 import { Unit, AllianceGroup, hexDistance } from '@/types/gameProtocol';
 import { Weapon } from '@/packages/units';
 import { isInKillZone, isUnitRouted } from '@/packages/morale';
