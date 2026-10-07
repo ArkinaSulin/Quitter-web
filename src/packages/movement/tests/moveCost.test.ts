@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeReachableMap, computeChargeReachable, computeMoveBudget, computeMovePool, computeMoveCapacity, applyMoveCost, applyMpSpend, isMoveAffordable, heroMovePerAction, computeHeroMoveBudget, computeHeroMovePool, applyHeroMoveCost, isHeroMoveAffordable, applyHeroMpSpend } from '@/packages/movement/lib/moveCost';
+import { computeReachableMap, computeChargeReachable, computeMoveBudget, computeMovePool, computeMoveCapacity, applyMoveCost, applyMpSpend, isMoveAffordable, heroMovePerAction, computeHeroMoveBudget, computeHeroMovePool, applyHeroMoveCost, isHeroMoveAffordable, applyHeroMpSpend, isRotationAffordable } from '@/packages/movement/lib/moveCost';
 import { Hex } from '@/types/gameProtocol';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
@@ -632,5 +632,21 @@ describe('computeReachableMap - max_org_level_allowed break (org-aware)', () => 
     // After breaking to Scattered at (0,-1) the unit moves in ANY direction, so a
     // hex that was a grey hint (e.g. (1,0)) becomes a white droppable destination.
     expect(map.get('1,0')).toMatchObject({ needsTurn: false, finalFormation: 'Scattered' });
+  });
+});
+
+describe('isRotationAffordable', () => {
+  it('free rotations always qualify', () => {
+    expect(isRotationAffordable(0, 0, 1, true)).toBe(true);
+  });
+  it('affordable with enough MP, or with an action to convert', () => {
+    expect(isRotationAffordable(1, 0, 1, false)).toBe(true);  // 1 MP covers a 60 deg
+    expect(isRotationAffordable(0, 1, 1, false)).toBe(true);  // convert an action
+    expect(isRotationAffordable(1, 0, 2, false)).toBe(false); // 2-cost about-turn, no action
+    expect(isRotationAffordable(2, 0, 2, false)).toBe(true);
+  });
+  it('not affordable with no MP and no actions', () => {
+    expect(isRotationAffordable(0, 0, 1, false)).toBe(false);
+    expect(isRotationAffordable(0, 0, 2, false)).toBe(false);
   });
 });

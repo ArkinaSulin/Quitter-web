@@ -22,7 +22,7 @@ import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { rangeBonusAt, unitIgnoresClimb } from '@/packages/effects';
 import { edgeHexes } from '@/packages/combat';
-import { canWithdraw, withdrawDestinations } from '@/packages/movement';
+import { canWithdraw, withdrawDestinations, WITHDRAW_ACTION_COST } from '@/packages/movement';
 import { moveBudgetUnit, parseClimbTo, isAirborne } from '@/packages/movement';
 import { isStooping } from '@/packages/combat';
 
@@ -281,8 +281,11 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     });
     // Withdraw: a formed unit may step one hex into an empty rear hex that is NOT
     // in a threat zone (no face change) — shown white/droppable like a move.
-    // Not offered while airborne.
-    if (!flying && canWithdraw(draggedUnit)) {
+    // Not offered while airborne. The highlight appears only when the unit can
+    // AFFORD it (2 actions, or free-move); when it can't, dropping on a rear hex
+    // still opens the withdraw confirm (soft — actions may go negative).
+    const canAffordWithdraw = freeMove || (draggedUnit.actionsAvailable ?? 0) >= WITHDRAW_ACTION_COST;
+    if (!flying && canAffordWithdraw && canWithdraw(draggedUnit)) {
       const occupied = computeOccupiedHexes(units, draggedUnit.id, surface);
       const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
       for (const hx of withdrawDestinations(draggedUnit, occupied, radius, threatHexes)) {

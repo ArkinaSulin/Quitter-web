@@ -118,6 +118,17 @@ export function isMoveAffordable(unit: MpBudget, cost: number, maxMP: number): b
   return applyMoveCost(unit, cost, maxMP).actionsAvailable >= 0;
 }
 
+/**
+ * Can the unit pay `cost` MP for a rotate / about-turn without going negative?
+ * Free rotations always qualify; otherwise the unit needs the active pool (ground
+ * MP or fly points) to cover the cost, OR a convertible action. Soft enforcement
+ * may still push MP/actions negative if the player confirms the over-budget prompt.
+ */
+export function isRotationAffordable(pool: number, actions: number, cost: number, isFree: boolean): boolean {
+  if (isFree) return true;
+  return pool >= cost || actions >= 1;
+}
+
 // ---------------------------------------------------------------------------
 // Hero movement: 5 actions = 1 full movement, prorated.
 // Each converted action grants maxMP/5 MP (1 decimal). Fractions carry across

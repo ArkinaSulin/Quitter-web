@@ -56,6 +56,18 @@ export interface PendingFormation {
   mode: 'ground' | 'fly';
 }
 
+/** A rotate / about-turn with no MP and no convertible action — confirm first. */
+export interface PendingRotate {
+  unit: Unit;
+  direction: 'left' | 'right';
+  /** 1 = a 60° rotate; 3 = a 180° about-turn. */
+  steps: number;
+  /** The MP/FP the rotate costs. */
+  cost: number;
+  /** Which pool label to show in the prompt. */
+  poolLabel: 'MP' | 'FP';
+}
+
 export interface PendingChargeAttack {
   attacker: Unit;
   target: Unit;
@@ -107,6 +119,7 @@ export interface SoftEnforcementModalsProps {
     heroAttachConversion: PendingHeroAttachConversion | null;
     attachOverBudget: PendingAttachOverBudget | null;
     formation: PendingFormation | null;
+    rotate: PendingRotate | null;
     castOverBudget: boolean;
     chargeAttack: PendingChargeAttack | null;
     chargeThrough: PendingChargeThrough | null;
@@ -121,6 +134,7 @@ export interface SoftEnforcementModalsProps {
     confirmHeroAttachConversion: () => void;
     confirmAttachOverBudget: () => void;
     confirmFormation: () => void;
+    confirmRotate: () => void;
     confirmCast: () => void;
     confirmChargeAttack: () => void;
     confirmChargeThrough: () => void;
@@ -135,6 +149,7 @@ export interface SoftEnforcementModalsProps {
     heroAttachConversion: () => void;
     attachOverBudget: () => void;
     formation: () => void;
+    rotate: () => void;
     castOverBudget: () => void;
     chargeAttack: () => void;
     weaponSwitch: () => void;
@@ -218,6 +233,17 @@ export function SoftEnforcementModals({ pending, actions, cancels, unitMaxMP }: 
           onCancel={cancels.formation}
         >
           {p.formation.unit.unitName} needs {getFormationChangeMpCost(p.formation.mode === 'fly' ? flyMax(p.formation.unit) : unitMaxMP(p.formation.unit))} {p.formation.mode === 'fly' ? 'FP' : 'MP'} (1 action) to form {p.formation.formation}, but has {p.formation.unit.actionsAvailable} action(s) left.
+        </ConfirmModal>
+      )}
+
+      {p.rotate && (
+        <ConfirmModal
+          tone="red"
+          title={p.rotate.steps === 3 ? 'About-turn with no MP?' : 'Rotate with no MP?'}
+          buttons={[{ label: 'Yes, rotate anyway', variant: 'red', onClick: actions.confirmRotate }]}
+          onCancel={cancels.rotate}
+        >
+          {p.rotate.unit.unitName} has no {p.rotate.poolLabel} or actions left — {p.rotate.steps === 3 ? 'about-turning 180°' : 'rotating 60°'} costs {p.rotate.cost} {p.rotate.poolLabel}. Rotate anyway ({p.rotate.poolLabel}/actions may go negative)?
         </ConfirmModal>
       )}
 

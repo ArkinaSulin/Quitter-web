@@ -1,5 +1,24 @@
 # QuiTTER Changelog
 
+## Fix: drag-target range rings; withdraw/rotate affordability (2026-10-07)
+**Files:** src/hooks/useHexGrid.ts, src/components/ScenarioMap/{ScenarioMap,useOverlay,SoftEnforcementModals}.tsx (+ useOverlay.test.ts), src/packages/movement/lib/moveCost.ts (+ tests/moveCost.test.ts), docs/dev/{07-movement-economy,changelog}.md
+
+- **Range rings / drag-target preview restored.** `0eae048` changed `useHexGrid`
+  to suppress hover whenever `draggingUnitId` was set — which also killed the
+  ONLY producer of `hoveredUnit`, so the whole drag-target overlay (ranged
+  min/max rings, green melee target, stoop amber) never rendered while dragging
+  **for any target** (not just heroes). Hover now fires during a drag again; the
+  unit **tooltip** is hidden during a drag instead (gated on `draggingUnitId`).
+- **Withdraw highlight reflects affordability.** `useOverlay` paints the white
+  rear-hex withdraw destinations only when the unit can pay
+  `WITHDRAW_ACTION_COST` (2 actions) or is under free-move. Dropping on a rear
+  hex still opens the withdraw confirm (soft — actions may go negative).
+- **Rotate / about-turn soft gate.** New `isRotationAffordable(pool, actions,
+  cost, isFree)` (`movement`). The context-menu Rotate Left/Right/180° and the
+  Q/E keyboard rotate now confirm first when the unit has no MP/FP and no
+  convertible action; confirming applies it and lets MP/actions go negative.
+  Free rotations never prompt. `tsc` clean, 963 tests, build clean. No migration.
+
 ## Deep-module restructure: src/lib → src/packages + enforced boundaries (2026-10-06)
 **Files:** src/packages/** (new; all of src/lib moved), .dependency-cruiser.cjs (new), src/rules.test.ts (new), src/packages/README.md (new), package.json, docs/dev/{00-universal-rules,changelog}.md, AGENTS.md
 

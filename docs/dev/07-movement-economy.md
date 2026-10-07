@@ -68,6 +68,11 @@ soft confirm.
   drop of **1** (`about_turn_org_penalty`); free for Hero/Scattered/free-move.
   Mounted units in **Close Order cannot about-turn** at all.
 - Rotation is its own `ROTATE` command; movement cost is distance-only.
+- **Affordability (soft).** `isRotationAffordable(pool, actions, cost, isFree)`
+  — a rotate is affordable when the active pool covers the cost **or** a
+  convertible action remains (free rotations always). The context menu (and the
+  Q/E keyboard rotate) **confirm first** when it isn't; confirming applies it and
+  lets MP/actions go negative (never a hard block).
 
 ## Formation changes
 
@@ -190,7 +195,9 @@ ON). With it ON, leaving a hostile kill zone (`src/packages/morale/lib/zocDiseng
 Withdraw** (`src/packages/movement/lib/withdraw.ts`): it keeps its facing for **2 actions** — the
 ordered alternative to a scattering rout. The overlay paints legal rear hexes
 **white/droppable** (`useOverlay`; just like a normal move) since no face change
-is needed; on drop an **always-on confirm** states the cost before applying —
+is needed — but **only when the unit can afford it** (2 actions, or free-move);
+when it can't, no highlight is shown though a drop on a rear hex still opens the
+confirm. on drop an **always-on confirm** states the cost before applying —
 **skipped under `free_move`**, where a rear drag is just a free move (no prompt).
 It
 **never scatters and never provokes** a pursue; archer reactions still fire off

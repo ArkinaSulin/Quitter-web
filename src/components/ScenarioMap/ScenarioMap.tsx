@@ -51,7 +51,7 @@ import { computeAttackCount } from '@/packages/combat';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes, mpCostOverrides } from '@/packages/world';
-import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST } from '@/packages/movement';
+import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST, isRotationAffordable } from '@/packages/movement';
 import { canReachStructure, canFly, parseClimbTo, isAirborne, flyMax } from '@/packages/movement';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/packages/movement';
 import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt } from '@/packages/movement';
@@ -82,7 +82,7 @@ import { useCastActions } from './useCastActions';
 import { useCombatActions } from './useCombatActions';
 import { computeOverlayMap } from './useOverlay';
 import { TopBar } from './TopBar';
-import { SoftEnforcementModals, type PendingWallAttack } from './SoftEnforcementModals';
+import { SoftEnforcementModals, type PendingWallAttack, type PendingRotate } from './SoftEnforcementModals';
 
 interface ScenarioMapProps {
   scenarioId: string;
@@ -2182,6 +2182,31 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Any modal/dialog opened over the canvas must hide the hover tooltips so they
   // never cover (or float above) the dialog. The canvas has no reliable leave
   // event while an overlay is under the cursor, so clear on the open edge too.
+  // Rotate / about-turn soft gate: a rotate costs 1 MP (2 for a mounted
+  // about-turn, plus an org drop); when the unit has neither the pool nor a
+  // convertible action, confirm first (MP/actions may go negative). Free
+  // rotations (Scattered/Routed/free-move) never prompt.
+  const [pendingRotate, setPendingRotate] = useState<PendingRotate | null>(null);
+  const requestRotate = useCallback((unit: Unit, direction: 'left' | 'right', steps: number) => {
+    const surface = structureSurfaceAt(unit.hex, structures, structureTemplates);
+    const freeRotate = unit.isHero || freeMove || unit.currentFormation === 'Scattered' || isUnitRouted(unit);
+    // A mounted Close-Order about-turn is blocked — let rotateUnit report it.
+    if (steps === 3 && (unit.mountId || unit.mountName) && unit.currentFormation === 'Close Order') {
+      void rotateUnit(unit, direction, unitMaxMP(unit), steps, surface);
+      return;
+    }
+    const fly = isAirborne(unit.elevation, surface) && canFly(unit);
+    const pool = fly ? (unit.flySpeedAvailable ?? 0) : unit.movementPointsAvailable;
+    const cost = steps === 3
+      ? (unit.mountId || unit.mountName ? getSetting('about_turn_cost_mounted', 2) : getSetting('about_turn_cost_foot', 1))
+      : 1;
+    if (isRotationAffordable(pool, unit.actionsAvailable ?? 0, cost, freeRotate)) {
+      void rotateUnit(unit, direction, unitMaxMP(unit), steps, surface);
+    } else {
+      setPendingRotate({ unit, direction, steps, cost, poolLabel: fly ? 'FP' : 'MP' });
+    }
+  }, [structures, structureTemplates, freeMove, rotateUnit, unitMaxMP]);
+
   const anyModalOpen = !!(
     contextMenuUnit || withdrawConfirm || effectMenuUnit || retreatPick ||
     reactionFormationPicker || showScenarioSettings || attachModal ||
@@ -2193,6 +2218,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingMove || pendingAttack || pendingAttackCap || pendingHeroAttachConversion ||
     pendingAttachOverBudget ||
     pendingFormation || pendingCastOverBudget || pendingChargeAttack ||
+    pendingRotate ||
     pendingChargeThrough || pendingWeaponSwitch || pendingWallAttack
   );
   useEffect(() => {
@@ -2563,13 +2589,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         const source = selectedUnit ?? contextMenuUnit;
         const live = source ? (units.find(u => u.id === source.id && !u.isDeleted) ?? source) : null;
         if (live && !live.isHero && !live.isCharging && canControlUnit(live)) {
-          rotateUnit(live, e.key.toLowerCase() === 'q' ? 'left' : 'right', unitMaxMP(live), 1, structureSurfaceAt(live.hex, structures, structureTemplates));
+          requestRotate(live, e.key.toLowerCase() === 'q' ? 'left' : 'right', 1);
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [controlsLocked, undo, redo, contextMenuUnit, selectedUnit, units, rotateUnit, canControlUnit, reactionMode, reactionFormationPicker, zoneTemplate]);
+  }, [controlsLocked, undo, redo, contextMenuUnit, selectedUnit, units, requestRotate, canControlUnit, reactionMode, reactionFormationPicker, zoneTemplate]);
 
   // ---- WASD map panning (always active — not gated by controlsLocked) ----
   useEffect(() => {
@@ -2628,6 +2654,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }
     },
     confirmCast: () => { setPendingCastOverBudget(false); if (!controlsLocked) handleResolveCast(true); },
+    confirmRotate: () => {
+      const pr = pendingRotate!;
+      setPendingRotate(null);
+      if (controlsLocked) return;
+      addError(`${pr.unit.unitName} rotated with no ${pr.poolLabel}/actions left — going negative`);
+      void rotateUnit(pr.unit, pr.direction, unitMaxMP(pr.unit), pr.steps, structureSurfaceAt(pr.unit.hex, structures, structureTemplates));
+    },
     confirmChargeAttack: async () => {
       const pca = pendingChargeAttack!;
       setPendingChargeAttack(null);
@@ -2681,6 +2714,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     heroAttachConversion: () => setPendingHeroAttachConversion(null),
     attachOverBudget: () => setPendingAttachOverBudget(null),
     formation: () => setPendingFormation(null),
+    rotate: () => setPendingRotate(null),
     castOverBudget: () => setPendingCastOverBudget(false),
     chargeAttack: () => setPendingChargeAttack(null),
     weaponSwitch: () => cancelWeaponSwitch(),
@@ -2822,8 +2856,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         <DragGhost hex={hoveredHex} zoom={zoom} offsetX={offsetX} offsetY={offsetY} />
       )}
 
-      {/* Tooltip */}
-      {hoveredUnit && tooltipPos && (() => {
+      {/* Tooltip (hidden while dragging a unit — the drag overlay needs the
+          hovered target, but the tooltip would block the drag). */}
+      {hoveredUnit && tooltipPos && !draggingUnitId && (() => {
         const companion =
           displayUnits.find(u => u.attachedToUnitId === hoveredUnit.id && !u.isDeleted) ??
           (hoveredUnit.attachedToUnitId
@@ -2876,8 +2911,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onSwitchToUnit={(host) => { setContextMenuUnit(host); setActiveHeroId(null); }}
           onOtherAction={(hero) => handleOtherAction(hero)}
           onClose={() => { setContextMenuUnit(null); setContextMenuPos(null); }}
-          onRotate={(dir) => rotateUnit(contextMenuUnit, dir, unitMaxMP(contextMenuUnit), 1, structureSurfaceAt(contextMenuUnit.hex, structures, structureTemplates))}
-          onRotate180={() => rotateUnit(contextMenuUnit, 'left', unitMaxMP(contextMenuUnit), 3, structureSurfaceAt(contextMenuUnit.hex, structures, structureTemplates))}
+          onRotate={(dir) => requestRotate(contextMenuUnit, dir, 1)}
+          onRotate180={() => requestRotate(contextMenuUnit, 'left', 3)}
           freeMove={freeMove}
           onChangeFormation={(formation) => handleChangeFormation(contextMenuUnit, formation)}
           onCharge={() => charge(contextMenuUnit)}
@@ -3143,6 +3178,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           heroAttachConversion: pendingHeroAttachConversion,
           attachOverBudget: pendingAttachOverBudget,
           formation: pendingFormation,
+          rotate: pendingRotate,
           castOverBudget: pendingCastOverBudget,
           chargeAttack: pendingChargeAttack,
           chargeThrough: pendingChargeThrough,

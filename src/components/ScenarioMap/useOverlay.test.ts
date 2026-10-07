@@ -98,3 +98,67 @@ describe('computeOverlayMap — hovered-unit ZoC tint', () => {
     expect(map['0,0']).toBe(CYAN); // own hex
   });
 });
+
+// The bug this locks: hover was suppressed during a drag, so the whole drag
+// target preview (range rings, melee/stoop colour) never rendered — for ANY
+// target, hero or not. `draggingUnitId` + a hostile `hoveredUnit` must both be set.
+describe('computeOverlayMap — drag over a hostile target shows range rings', () => {
+  const RANGED_FORMS: Record<string, Formation> = {
+    'Close Order': { name: 'Close Order', movement_multiplier: 1, ranged_target_arcs: ['front', 'flank', 'rear'] } as Formation,
+  };
+  const WHITE_RING = 'rgba(255, 255, 255, 0.9)';
+  const AMBER_RING = 'rgba(255, 180, 60, 0.9)';
+  const AMBER_TARGET = 'rgba(255, 180, 60, 0.85)';
+
+  // Bow: range 2, maxRange 6 → min ring at 2, max ring at 6.
+  const BOW = 'Bow,1,1d6,false,2,6,0,false,false,false,false,1,true,Dex,circle';
+  const archer = (over: Partial<Unit> = {}) =>
+    mk({ id: 'archer', team: 'blue', hex: h(0, 0), facing: 0, currentFormation: 'Close Order', weaponString: BOW, ...over });
+  const enemy = (over: Partial<Unit> = {}) => mk({ id: 'enemy', team: 'red', hex: h(3, 0), facing: 3, ...over });
+
+  function dragOver(hovered: Unit, units: Unit[]) {
+    return computeOverlayMap({
+      reactionMode: null,
+      draggingUnitId: 'archer',
+      hoveredUnit: hovered,
+      units,
+      alliances: ALLIANCES,
+      formationsMap: RANGED_FORMS,
+      freeMove: false,
+      backgroundConfig: { imageUrl: '', offsetX: 0, offsetY: 0, scale: 1, gridRadius: 12 },
+      rangeViolationHex: null,
+      terrainCosts: {},
+      walls: {},
+    });
+  }
+
+  it('shows the white min-ring, amber max-ring, and the amber target hex', () => {
+    const e = enemy();
+    const map = dragOver(e, [archer(), e]);
+    expect(map['2,0']).toBe(WHITE_RING); // min range ring (dist 2)
+    expect(map['6,0']).toBe(AMBER_RING); // max range ring (dist 6)
+    expect(map['3,0']).toBe(AMBER_TARGET); // target, band range..max
+  });
+
+  it('shows the same rings when the hostile target is a HERO', () => {
+    const e = enemy({ isHero: true, currentFormation: 'Hero' });
+    const map = dragOver(e, [archer(), e]);
+    expect(map['2,0']).toBe(WHITE_RING);
+    expect(map['6,0']).toBe(AMBER_RING);
+    expect(map['3,0']).toBe(AMBER_TARGET);
+  });
+});
+
+describe('computeOverlayMap — withdraw highlight affordability', () => {
+  it('paints the withdraw rear hexes when the unit has 2 actions', () => {
+    const map = overlayFor([mk({ id: 'u', hex: h(0, 0), facing: 0, actionsAvailable: 2, movementPointsAvailable: 0 })]);
+    expect(map['0,1']).toBe(WHITE);
+    expect(map['-1,1']).toBe(WHITE);
+  });
+
+  it('does NOT paint them (no highlight) when the unit cannot afford it', () => {
+    const map = overlayFor([mk({ id: 'u', hex: h(0, 0), facing: 0, actionsAvailable: 0, movementPointsAvailable: 0 })]);
+    expect(map['0,1']).not.toBe(WHITE);
+    expect(map['-1,1']).not.toBe(WHITE);
+  });
+});

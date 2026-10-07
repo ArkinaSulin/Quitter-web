@@ -444,9 +444,11 @@ export function useHexGrid({
     if (hex) setHoveredHex(hex);
 
     const unit = getUnitAtScreen(e.clientX, e.clientY, { airOnly });
-    // Inspect mode (Shift) suppresses unit hover so the map info tooltip shows;
-    // while dragging a unit the tooltip is suppressed too (never blocks a drag).
-    const hoverUnit = (shiftHeld || draggingUnitId) ? undefined : unit;
+    // Inspect mode (Shift) suppresses unit hover so the map info tooltip shows.
+    // NOTE: hover still fires while dragging — the drag overlay needs the hovered
+    // target (range rings, melee/stoop target). The unit TOOLTIP is hidden during
+    // a drag in ScenarioMap instead (it never blocks a drag).
+    const hoverUnit = shiftHeld ? undefined : unit;
     if (hoverUnit && hoverUnit !== lastHoveredUnit) {
       setLastHoveredUnit(hoverUnit);
       // Viewport (client) coords — the tooltips are portal/fixed, browser-bound.
