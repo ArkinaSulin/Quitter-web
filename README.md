@@ -1,5 +1,7 @@
 # QuiTTER — Quick Terrestrial Tactical Encounter Rules
 
+![check](https://github.com/ArkinaSulin/Quitter-web/actions/workflows/check.yml/badge.svg)
+
 A hex-map **mass-combat wargame for D&D 5e groups**. One GM and a handful of
 players run big battles on a shared board — units, formations, cavalry,
 heroes, morale and routing, spells, fog of war — in real time over the web.

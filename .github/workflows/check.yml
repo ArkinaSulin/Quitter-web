@@ -1,0 +1,33 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+    # Docs-only pushes skip CI (keeps Actions minutes for real changes).
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.scratch/**'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      # CI never connects to Supabase; `next build` only needs the vars to exist.
+      # Real values can be provided as repo secrets; otherwise dummies are used.
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:54321' }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'ci-dummy-anon-key' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
