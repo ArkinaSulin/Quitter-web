@@ -118,10 +118,14 @@ export function elevationSliderRange(
   hexesMoved: number,
   groundOccupied: boolean,
 ): { min: number; max: number; defaultValue: number } {
-  const max = maxElevationAfter(currentElevation, hexesMoved);
-  // A flyer cannot land (elevation 0) on a ground-occupied hex — it hovers above it.
   const min = groundOccupied ? 10 : 0;
-  return { min, max, defaultValue: currentElevation };
+  const max = Math.max(min, maxElevationAfter(currentElevation, hexesMoved));
+  // A flyer cannot land (elevation 0) on a ground-occupied hex — it hovers above
+  // it (min 10 ft). The default MUST be clamped into [min, max]: a grounded
+  // flyable unit (elevation 0) defaulting to 0 would otherwise let the Move
+  // button commit elevation 0 and stack with the ground unit.
+  const defaultValue = Math.min(Math.max(currentElevation ?? 0, min), max);
+  return { min, max, defaultValue };
 }
 
 /** Can a flying host carry an attached hero? */

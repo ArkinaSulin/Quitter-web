@@ -140,6 +140,13 @@ candidate hex at that hex's surface (a grounded mover stepping onto a 10-ft
 structure is threatened by hostiles up there), or at the mover's flight
 elevation when airborne. Occupied hexes are skipped at the destination surface.
 
+**Flyer landing / hover.** Dropping a fly-capable unit on a hex occupied by a
+**ground** unit opens the elevation modal with a **10-ft minimum** — the flyer
+**hovers above** the occupant and can never land at the occupant's elevation
+(`elevationSliderRange` clamps the default into `[min, max]`, and
+`confirmElevation` clamps the committed value, so even a grounded flyable can't
+stack at 0).
+
 **Movement rule — stop, not pass-through.** A threat hex is a destination a
 unit may *stop* on but never move *through*; entering one ends the move. The
 hex a unit is already on is not an entry, so a unit that begins inside a ZoC

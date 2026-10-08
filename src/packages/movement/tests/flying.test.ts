@@ -91,6 +91,12 @@ describe('flying', () => {
   it('elevationSliderRange', () => {
     expect(elevationSliderRange(20, 3, false)).toEqual({ min: 0, max: 50, defaultValue: 20 });
     expect(elevationSliderRange(20, 3, true)).toEqual({ min: 10, max: 50, defaultValue: 20 });
+    // A GROUNDED flyable over a ground-occupied hex must default to the 10-ft
+    // hover minimum (not 0 — else Move would stack it with the occupant).
+    expect(elevationSliderRange(0, 1, true)).toEqual({ min: 10, max: 10, defaultValue: 10 });
+    expect(elevationSliderRange(0, 2, true)).toEqual({ min: 10, max: 20, defaultValue: 10 });
+    // Grounded over an EMPTY hex still defaults to 0 (may land).
+    expect(elevationSliderRange(0, 1, false)).toEqual({ min: 0, max: 10, defaultValue: 0 });
   });
 
   it('carryRule', () => {

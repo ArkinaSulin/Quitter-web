@@ -1,5 +1,18 @@
 # QuiTTER Changelog
 
+## Fix: grounded flyable could stack with a ground unit (elevation 0) (2026-10-07)
+**Files:** src/packages/movement/lib/flying.ts (+ tests/flying.test.ts), src/components/ScenarioMap/useMoveActions.ts, docs/dev/{07-movement-economy,changelog}.md
+
+- **Elevation modal default wasn't clamped to its minimum.** Dropping a
+  fly-capable unit on a ground-occupied hex opens the hover modal with `min: 10`,
+  but `elevationSliderRange` returned `defaultValue: currentElevation` — so a
+  **grounded** flyable (elevation 0) defaulted to 0. The range input displayed
+  the thumb at 10 while the state stayed 0, and **Move** committed
+  `confirmElevation(0)` → the flyer landed on the occupant's elevation (stack).
+  Now `elevationSliderRange` clamps `defaultValue` into `[min, max]` (and keeps
+  `max ≥ min`), and `confirmElevation` defensively clamps the committed value to
+  the modal's range. `tsc` clean, tests pass, build clean. No migration.
+
 ## Universal melee reach (adjacent = same elevation) + Scattered threat (2026-10-07)
 **Files:** src/packages/combat/lib/meleeFallback.ts (+ tests), src/packages/morale/lib/unitMorale.ts (+ tests), src/components/ScenarioMap/{ScenarioMap,useOverlay,UnitTooltip}.tsx, docs/dev/{00-universal-rules,08-combat,09-morale-routing-pursuit,changelog}.md, docs/players/player-manual.md
 

@@ -816,29 +816,33 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const p = pendingElevation;
     setPendingElevation(null);
     if (!p) return;
+    // Defensive clamp: never commit an elevation outside the modal's range. A
+    // grounded flyable dropped on a ground-occupied hex has min 10 (hover), so a
+    // stale default of 0 can't stack it with the occupant.
+    const elev = Math.min(Math.max(newElevation, p.range.min), p.range.max);
     // A grounded origin taking off pays fly points; an airborne origin always does.
     // Relative to the destination SURFACE (dynamic ground).
-    const finalAir = p.originAir || newElevation > p.endSurface;
+    const finalAir = p.originAir || elev > p.endSurface;
     const finalMax = finalAir ? (p.unit.flySpeed ?? 0) : p.maxMP;
     // A flying unit landing on/over a structure must clear its top, else it is
     // blocked ("structure blocked flight passage").
-    if (p.originAir && newElevation < structureSurfaceAt(p.targetHex, structures, structureTemplates)) {
+    if (p.originAir && elev < structureSurfaceAt(p.targetHex, structures, structureTemplates)) {
       addError(`structure blocked flight passage`);
       return;
     }
     // A non-flying attached hero too large to carry must be left behind on take-off.
-    if (p.attachedHero && newElevation > p.endSurface && carryRule(p.unit, p.attachedHero) === 'leave') {
-      setPendingLeaveHero({ unit: p.unit, targetHex: p.targetHex, cost: p.cost, maxMP: finalMax, hero: p.attachedHero, heroMaxMP: p.heroMaxMP, breakToFormation: p.breakToFormation, elevation: newElevation });
+    if (p.attachedHero && elev > p.endSurface && carryRule(p.unit, p.attachedHero) === 'leave') {
+      setPendingLeaveHero({ unit: p.unit, targetHex: p.targetHex, cost: p.cost, maxMP: finalMax, hero: p.attachedHero, heroMaxMP: p.heroMaxMP, breakToFormation: p.breakToFormation, elevation: elev });
       return;
     }
     if (p.occupant) {
       // Fly move onto the occupied hex (passenger drains passively, never limits).
-      void completeMove(p.unit, p.targetHex, p.cost, false, finalMax, p.attachedHero, p.heroMaxMP, undefined, newElevation, p.endSurface);
+      void completeMove(p.unit, p.targetHex, p.cost, false, finalMax, p.attachedHero, p.heroMaxMP, undefined, elev, p.endSurface);
       return;
     }
     const budgetUnit = moveBudgetUnit(p.unit, finalAir ? 'fly' : 'ground');
     const affordable = p.unit.isHero ? isHeroMoveAffordable(budgetUnit, p.cost, finalMax) : isMoveAffordable(budgetUnit, p.cost, finalMax);
-    void completeMove(p.unit, p.targetHex, p.cost, !affordable, finalMax, p.attachedHero, p.heroMaxMP, p.breakToFormation, newElevation, p.endSurface);
+    void completeMove(p.unit, p.targetHex, p.cost, !affordable, finalMax, p.attachedHero, p.heroMaxMP, p.breakToFormation, elev, p.endSurface);
   }, [pendingElevation, completeMove, structures, structureTemplates, addError]);
 
   const confirmLeaveHero = useCallback(async () => {
