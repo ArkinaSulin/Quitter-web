@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, SizeCategory, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
 import { resolveCombatSequence, wallCoverAgainst } from '@/packages/combat';
-import { applyFormationChange } from '@/packages/movement';
+import { applyFormationChange, formationOrgLevels } from '@/packages/movement';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement, effectiveAc, heroicCapacityBonus } from '@/packages/units';
 import { attackDirection, arcOfTarget } from '@/packages/primitives';
 import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers, canReactWithWeapon } from '@/packages/combat';
@@ -361,7 +361,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const mounted = !!archer.mountId || !!archer.mountName;
     const waiveClimb = unitIgnoresClimb(archer, groundZones);
     const passThrough = new Set<string>(Array.from(doorPassThroughHexes(structures, structureTemplates, occupied)));
-    for (const k of Array.from(loosePassThroughHexes(displayUnits, archer, alliances, 'ground', 0))) passThrough.add(k);
+    for (const k of Array.from(loosePassThroughHexes(displayUnits, archer, formationsMap, alliances, 'ground', 0))) passThrough.add(k);
     const movementMultipliers: Record<string, number> = {};
     for (const [name, f] of Object.entries(formationsMap)) movementMultipliers[name] = f.movement_multiplier;
     const breakOnEntry = (fq: number, fr: number, tq: number, tr: number, formation: string) =>
@@ -372,7 +372,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       zones: groundZones,
       isMounted: mounted,
       waiveClimb,
-    }), undefined, passThrough, { movementMultipliers, breakOnEntry });
+    }), undefined, passThrough, { movementMultipliers, breakOnEntry, orgLevels: formationOrgLevels(formationsMap) });
   }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones, formationsMap, alliances]);
 
   const handleReactionAttack = useCallback(async (

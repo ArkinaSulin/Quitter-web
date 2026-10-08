@@ -19,7 +19,7 @@ import { parseWeapons, damageDiceCount } from '@/packages/units';
 import { SubStep, UnitChange } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
-import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes } from '@/packages/movement';
+import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
 import { Walls, directionBetween, edgeRef } from '@/packages/movement';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, structureWaivesClimb, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
@@ -432,7 +432,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // Friendly pass-through: a pass-eligible mover may TRAVERSE pass-eligible
     // friendly hexes (Open Order/Scattered/Routed, or a hero <= Large) — never
     // stop on them (the search excludes pass hexes from its results → no stacking).
-    const loosePass = loosePassThroughHexes(units, unit, alliances, flying ? 'fly' : 'ground', originSurface);
+    const loosePass = loosePassThroughHexes(units, unit, formationsMap, alliances, flying ? 'fly' : 'ground', originSurface);
 
     // Climb / hang movement (mounted units cannot climb). A climbing unit moves
     // linearly: up toward `climbTo`, or down (its own hex). A grounded non-mounted
@@ -546,7 +546,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       ? () => null
       : (fq: number, fr: number, tq: number, tr: number, formation: string) =>
           entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, structures, structureTemplates, groundZones);
-    const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true, blockedEdge, hopCap, passThrough, { movementMultipliers, breakOnEntry });
+    const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true, blockedEdge, hopCap, passThrough, { movementMultipliers, breakOnEntry, orgLevels: formationOrgLevels(formationsMap) });
     const entry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!entry) {
       // Beyond the physical hop limit — genuinely can't walk that far.

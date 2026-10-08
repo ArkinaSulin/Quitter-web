@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Unit, AllianceGroup } from '@/types/gameProtocol';
+import { Unit, Formation, AllianceGroup } from '@/types/gameProtocol';
 import { isPassThroughUnit } from '@/packages/movement/lib/formationRules';
 import { loosePassThroughHexes } from '@/packages/movement/lib/passThrough';
 import { computeReachableMap } from '@/packages/movement/lib/moveCost';
@@ -12,15 +12,23 @@ const u = (over: Partial<Unit> = {}): Unit => ({
 } as unknown as Unit);
 const groups: Record<string, AllianceGroup> = { blue: 'friendly', red: 'enemy' };
 
+const FORMATIONS: Record<string, Formation> = {
+  'Open Order': { name: 'Open Order', organization_level: 1 } as Formation,
+  Scattered: { name: 'Scattered', organization_level: 0 } as Formation,
+  Routed: { name: 'Routed', organization_level: 0 } as Formation,
+  'Close Order': { name: 'Close Order', organization_level: 2 } as Formation,
+  Phalanx: { name: 'Phalanx', organization_level: 3 } as Formation,
+};
+
 describe('isPassThroughUnit', () => {
-  it('Open Order / Scattered / Routed and heroes <= Large pass; bigger heroes and Close+ do not', () => {
-    expect(isPassThroughUnit(u({ currentFormation: 'Open Order' }))).toBe(true);
-    expect(isPassThroughUnit(u({ currentFormation: 'Scattered' }))).toBe(true);
-    expect(isPassThroughUnit(u({ currentFormation: 'Routed' }))).toBe(true);
-    expect(isPassThroughUnit(u({ isHero: true, currentFormation: 'Hero', sizeCategory: 200 }))).toBe(true);
-    expect(isPassThroughUnit(u({ isHero: true, currentFormation: 'Hero', sizeCategory: 300 }))).toBe(false);
-    expect(isPassThroughUnit(u({ currentFormation: 'Close Order' }))).toBe(false);
-    expect(isPassThroughUnit(u({ currentFormation: 'Phalanx' }))).toBe(false);
+  it('org level <= 1 and heroes <= Large pass; bigger heroes and Close+ do not', () => {
+    expect(isPassThroughUnit(u({ currentFormation: 'Open Order' }), FORMATIONS['Open Order'])).toBe(true);
+    expect(isPassThroughUnit(u({ currentFormation: 'Scattered' }), FORMATIONS.Scattered)).toBe(true);
+    expect(isPassThroughUnit(u({ currentFormation: 'Routed' }), FORMATIONS.Routed)).toBe(true);
+    expect(isPassThroughUnit(u({ isHero: true, sizeCategory: 200 }), undefined)).toBe(true);
+    expect(isPassThroughUnit(u({ isHero: true, sizeCategory: 300 }), undefined)).toBe(false);
+    expect(isPassThroughUnit(u({ currentFormation: 'Close Order' }), FORMATIONS['Close Order'])).toBe(false);
+    expect(isPassThroughUnit(u({ currentFormation: 'Phalanx' }), FORMATIONS.Phalanx)).toBe(false);
   });
 });
 
@@ -31,14 +39,14 @@ describe('loosePassThroughHexes', () => {
     const closed = u({ id: 'c', hex: h(0, 1), currentFormation: 'Close Order' });
     const enemy = u({ id: 'e', team: 'red', hex: h(-1, 0), currentFormation: 'Scattered' });
     const air = u({ id: 'a', hex: h(0, -1), currentFormation: 'Scattered', elevation: 10 });
-    const set = loosePassThroughHexes([mover, friend, closed, enemy, air], mover, groups, 'ground', 0);
+    const set = loosePassThroughHexes([mover, friend, closed, enemy, air], mover, FORMATIONS, groups, 'ground', 0);
     expect(Array.from(set)).toEqual(['1,0']);
   });
 
   it('a non-pass mover gets an empty set', () => {
     const mover = u({ id: 'm', currentFormation: 'Close Order' });
     const friend = u({ id: 'f', hex: h(1, 0), currentFormation: 'Open Order' });
-    expect(loosePassThroughHexes([mover, friend], mover, groups, 'ground', 0).size).toBe(0);
+    expect(loosePassThroughHexes([mover, friend], mover, FORMATIONS, groups, 'ground', 0).size).toBe(0);
   });
 });
 

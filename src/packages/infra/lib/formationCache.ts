@@ -1,5 +1,5 @@
 // src/packages/infra/lib/formationCache.ts
-import { Formation } from '@/types/gameProtocol';
+import { Formation, getOrganizationLevel } from '@/types/gameProtocol';
 
 // Session-scoped cache of the unit_formations lookup table. The matrix is small and
 // rarely changes, so load it once and share it across all consumers (ScenarioMap,
@@ -35,6 +35,7 @@ export async function getFormations(): Promise<Record<string, Formation>> {
             charge_through_arcs: f.charge_through_arcs ?? [],
             be_attacked_melee_modifier: f.be_attacked_melee_modifier ?? 1,
             be_attacked_range_modifier: f.be_attacked_range_modifier ?? 1,
+            organization_level: Number(f.organization_level) || getOrganizationLevel(f.name),
           } as Formation;
         }
         cache = map;

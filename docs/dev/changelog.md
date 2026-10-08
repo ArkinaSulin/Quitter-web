@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## Formation org level moves to the DB (loose + pass-through) (2026-10-07)
+**Files:** supabase/migrations/{117_formation_organization_level,118_formation_org_level_rpc}.sql (new), src/types/gameProtocol.ts, src/packages/infra/lib/formationCache.ts, src/packages/movement/lib/{formationRules,passThrough,moveCost}.ts (+ tests), src/packages/ai/lib/planner.ts, src/components/ScenarioMap/{useMoveActions,useOverlay,useReactionActions}.tsx, docs/dev/{00-universal-rules,07-movement-economy,changelog}.md
+
+- **`unit_formations.organization_level`** (migration 117; seeded 0/1/2/3) is now
+  the single source of truth for a formation's org level. `Formation` carries it,
+  `formationCache` maps it (name-map fallback), and the **command RPC**
+  `apply_substeps` (migration 118) reads it instead of a hard-coded name CASE.
+- **Movement rules read it**: `isLooseFormation` = level 0 (loose, no facing),
+  `isPassThroughUnit` = level ≤ 1 (pass-through) — threaded into
+  `computeReachableMap` (via an `orgLevels` map), `loosePassThroughHexes`, and the
+  AI planner. No more hard-coded formation-name lists for these.
+- **Melee arcs verified unchanged** (no code change): formed `melee_target_arcs =
+  {front}`; `retaliate_arcs = {front:full, flank:rows, rear:none}` (formed flank
+  retaliation already present at *rows*; **rear is the only no-retaliation arc**);
+  same-hex ±10 ft resolves to arc `front` → front attack/retaliation counts. The
+  universal melee REACH stays in code and consults these DB arcs.
+- `tsc` clean, 976 tests, build clean. **Apply 117 + 118 in Supabase.**
+
 ## Loose pass-through + deterministic rout retreat (2026-10-07)
 **Files:** src/packages/movement/lib/{formationRules,passThrough (new),moveCost}.ts (+ tests), src/packages/movement/index.ts, src/packages/morale/lib/routedRetreat.ts (+ tests), src/components/ScenarioMap/{useMoveActions,useOverlay,useReactionActions,ScenarioMap}.tsx, docs/dev/{07-movement-economy,09-morale-routing-pursuit,changelog}.md, docs/players/player-manual.md
 

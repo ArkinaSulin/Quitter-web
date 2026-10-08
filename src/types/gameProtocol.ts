@@ -441,6 +441,10 @@ export interface Formation {
   charge_through_arcs: string[];
   be_attacked_melee_modifier: number;
   be_attacked_range_modifier: number;
+  /** Organization level of the formation (DB-driven): 0 = loose (no facing),
+   *  1 = Open Order, 2 = Close Order, 3 = Phalanx / Shield Wall. Optional so
+   *  older fixtures/rows fall back to the name map. */
+  organization_level?: number;
 }
 
 export interface UnitType {

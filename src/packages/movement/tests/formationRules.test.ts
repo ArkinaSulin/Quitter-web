@@ -12,6 +12,7 @@ import {
   getEffectivePosition,
   isLooseFormation,
   isLooseUnit,
+  isPassThroughUnit,
 } from '@/packages/movement/lib/formationRules';
 import { Formation } from '@/types/gameProtocol';
 
@@ -122,13 +123,23 @@ describe('formationRules', () => {
     expect(getEffectivePosition(formed, 'rear')).toBe('rear');
   });
 
-  it('isLooseFormation / isLooseUnit', () => {
-    expect(isLooseFormation('Scattered')).toBe(true);
-    expect(isLooseFormation('Routed')).toBe(true);
-    expect(isLooseFormation('Hero')).toBe(true);
-    expect(isLooseFormation('Open Order')).toBe(false);
-    expect(isLooseUnit({ isHero: true, currentFormation: 'Open Order' })).toBe(true);
-    expect(isLooseUnit({ isHero: false, currentFormation: 'Routed' })).toBe(true);
-    expect(isLooseUnit({ isHero: false, currentFormation: 'Phalanx' })).toBe(false);
+  it('isLooseFormation / isLooseUnit (org level 0 = loose)', () => {
+    const f = (name: string, organization_level: number) => ({ name, organization_level } as Formation);
+    expect(isLooseFormation(f('Scattered', 0))).toBe(true);
+    expect(isLooseFormation(f('Routed', 0))).toBe(true);
+    expect(isLooseFormation(f('Hero', 0))).toBe(true);
+    expect(isLooseFormation(f('Open Order', 1))).toBe(false);
+    expect(isLooseUnit({ isHero: true }, f('Open Order', 1))).toBe(true);
+    expect(isLooseUnit({ isHero: false }, f('Routed', 0))).toBe(true);
+    expect(isLooseUnit({ isHero: false }, f('Phalanx', 3))).toBe(false);
+  });
+
+  it('isPassThroughUnit (org level <= 1, or a hero <= Large)', () => {
+    expect(isPassThroughUnit({ isHero: false, sizeCategory: 100 }, { name: 'Open Order', organization_level: 1 } as Formation)).toBe(true);
+    expect(isPassThroughUnit({ isHero: false, sizeCategory: 100 }, { name: 'Scattered', organization_level: 0 } as Formation)).toBe(true);
+    expect(isPassThroughUnit({ isHero: false, sizeCategory: 100 }, { name: 'Close Order', organization_level: 2 } as Formation)).toBe(false);
+    expect(isPassThroughUnit({ isHero: false, sizeCategory: 100 }, { name: 'Phalanx', organization_level: 3 } as Formation)).toBe(false);
+    expect(isPassThroughUnit({ isHero: true, sizeCategory: 200 }, undefined)).toBe(true);
+    expect(isPassThroughUnit({ isHero: true, sizeCategory: 300 }, undefined)).toBe(false);
   });
 });

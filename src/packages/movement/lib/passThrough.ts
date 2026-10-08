@@ -3,7 +3,7 @@
 // Routed, or a hero <= Large) may move THROUGH a pass-eligible friendly unit's
 // hex — traversal only, never a destination (no stacking). The mover and the
 // unit passed must BOTH be pass-eligible, be friendly, and share a layer.
-import { Unit, AllianceGroup } from '@/types/gameProtocol';
+import { Unit, Formation, AllianceGroup } from '@/types/gameProtocol';
 import { sameAlliance } from '@/packages/primitives';
 import { isUnitInteractable } from '@/packages/units';
 import { isPassThroughUnit } from './formationRules';
@@ -16,17 +16,18 @@ import { isPassThroughUnit } from './formationRules';
  */
 export function loosePassThroughHexes(
   units: Unit[],
-  mover: Pick<Unit, 'id' | 'team' | 'isHero' | 'currentFormation' | 'sizeCategory'>,
+  mover: Pick<Unit, 'id' | 'team' | 'currentFormation' | 'isHero' | 'sizeCategory'>,
+  formationsMap: Record<string, Formation>,
   alliances: Record<string, AllianceGroup>,
   layer: 'ground' | 'fly',
   surface = 0,
 ): Set<string> {
   const out = new Set<string>();
-  if (!isPassThroughUnit(mover)) return out;
+  if (!isPassThroughUnit(mover, formationsMap[mover.currentFormation])) return out;
   for (const u of units) {
     if (!isUnitInteractable(u) || u.id === mover.id) continue;
     if (!sameAlliance(u.team, mover.team, alliances)) continue;
-    if (!isPassThroughUnit(u)) continue;
+    if (!isPassThroughUnit(u, formationsMap[u.currentFormation])) continue;
     const elev = u.elevation ?? 0;
     const onLayer = layer === 'fly' ? elev > 0 : elev === surface;
     if (onLayer) out.add(`${u.hex.q},${u.hex.r}`);

@@ -1,6 +1,5 @@
-import { Hex, Unit } from '@/types/gameProtocol';
+import { Hex, Unit, getOrganizationLevel } from '@/types/gameProtocol';
 import { getSetting } from '@/packages/infra';
-import { isLooseFormation } from '@/packages/movement/lib/formationRules';
 import { HEX_DIRS, frontArcIndices, rotateLeft, rotateRight } from '@/packages/primitives';
 
 export interface MovePathEntry {
@@ -23,6 +22,9 @@ export interface MovePathEntry {
 export interface OrgMoveOpts {
   /** formation name -> movement_multiplier (rescales the MP budget on break). */
   movementMultipliers?: Record<string, number>;
+  /** formation name -> organization_level (DB-driven; drives LOOSE = level 0).
+   *  Falls back to the code map when a formation is absent. */
+  orgLevels?: Record<string, number>;
   /** (fromQ, fromR, toQ, toR, formation) -> formation to break to, or null when
    *  no governing gate is exceeded. */
   breakOnEntry?: (fromQ: number, fromR: number, toQ: number, toR: number, formation: string) => string | null;
@@ -362,7 +364,7 @@ export function computeReachableMap(
   const budgetOf = (f: string): number => maxMP * scaleOf(f);
   const stepCapOf = (f: string): number => Math.ceil(stepCap * scaleOf(f));
 
-  const isLoose = isLooseFormation;
+  const isLoose = (name: string): boolean => (org?.orgLevels?.[name] ?? getOrganizationLevel(name)) === 0;
   const isMounted = !!unit.mountId || !!unit.mountName;
   const aboutTurnCost = isMounted
     ? getSetting('about_turn_cost_mounted', 2)

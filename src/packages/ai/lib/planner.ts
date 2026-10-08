@@ -263,12 +263,12 @@ function unitDoctrine(u: Unit): Doctrine {
   return hasRanged ? 'ranged' : 'melee';
 }
 
-function isLoose(u: Unit): boolean {
-  return isLooseUnit(u);
+function isLoose(u: Unit, forms: Record<string, Formation>): boolean {
+  return isLooseUnit(u, forms[u.currentFormation]);
 }
 
-function freeTurn(u: Unit): boolean {
-  return isLoose(u);
+function freeTurn(u: Unit, forms: Record<string, Formation>): boolean {
+  return isLoose(u, forms);
 }
 
 /** Can the unit pay `cost` MP right now (mirrors applyMpSpend logic). */
@@ -377,11 +377,11 @@ function maneuverOptions(
   const recurse = (turns: { dir: 'left' | 'right' }[], unitState: Unit) => {
     evaluate(turns, unitState);
     if (turns.length >= maxTurns) return;
-    if (!freeTurn(unitState) && !canPayMp(unitState, 1)) return;
+    if (!freeTurn(unitState, ctx.formations) && !canPayMp(unitState, 1)) return;
     for (const dir of ['left', 'right'] as const) {
       let next = unitState;
       const nf = dir === 'left' ? rotateLeft(unitState.facing) : rotateRight(unitState.facing);
-      if (freeTurn(unitState)) {
+      if (freeTurn(unitState, ctx.formations)) {
         next = { ...unitState, facing: nf };
       } else {
         const { movementPointsAvailable, actionsAvailable } = applyMpSpend(unitState, 1, effMax(unitState, ctx.formations));
@@ -571,7 +571,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const best = options[0];
       // Replay the simulated turns/move onto the real accounting.
       for (const t of best.turns) {
-        if (freeTurn(u)) {
+        if (freeTurn(u, ctx.formations)) {
           u = { ...u, facing: t.dir === 'left' ? rotateLeft(u.facing) : rotateRight(u.facing) };
         } else {
           const { movementPointsAvailable, actionsAvailable } = applyMpSpend(u, 1, effMax(u, ctx.formations));

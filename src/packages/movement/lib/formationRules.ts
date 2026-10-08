@@ -1,28 +1,37 @@
 // src/packages/movement/lib/formationRules.ts
 // Pure helpers over the data-driven formations matrix. Replaces hard-coded
 // formation branches in combat / morale / movement / UI.
-import { Formation, Unit } from '@/types/gameProtocol';
+import { Formation, Unit, getOrganizationLevel } from '@/types/gameProtocol';
 
-/** Formations with no facing: they move any direction at 1 MP/hex and have no org. */
-export function isLooseFormation(name: string): boolean {
-  return name === 'Scattered' || name === 'Routed' || name === 'Hero';
+/** formation name -> organization_level (DB value, code-map fallback) for the move search. */
+export function formationOrgLevels(formationsMap: Record<string, Formation>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [name, f] of Object.entries(formationsMap)) out[name] = f?.organization_level ?? getOrganizationLevel(name);
+  return out;
 }
 
-/** A loose UNIT: a hero, or a unit in a loose formation. */
-export function isLooseUnit(unit: Pick<Unit, 'isHero' | 'currentFormation'>): boolean {
-  return unit.isHero || isLooseFormation(unit.currentFormation);
+/** Formations with no facing: ORGANIZATION LEVEL 0 (DB `unit_formations.organization_level`, name-map fallback). */
+export function isLooseFormation(form: Formation | null | undefined): boolean {
+  if (!form) return false;
+  return (form.organization_level ?? getOrganizationLevel(form.name)) === 0;
+}
+
+/** A loose UNIT: a hero, or a unit in a loose formation (org level 0). */
+export function isLooseUnit(unit: Pick<Unit, 'isHero'>, form?: Formation | null): boolean {
+  return unit.isHero || isLooseFormation(form);
 }
 
 /**
  * Pass-through eligibility: units that may move THROUGH (and be moved through
- * by) other pass-eligible friendly units — **Open Order, Scattered, Routed**, or
- * a **hero of Large size or smaller** (`sizeCategory <= 200`). Close Order /
- * Phalanx / Shield Wall (org >= 2) and bigger heroes block. Passing through is
- * traversal only — never stacking.
+ * by) other pass-eligible friendly units — a formation at **org level ≤ 1**
+ * (Open Order / Scattered / Routed), or a **hero of Large size or smaller**
+ * (`sizeCategory <= 200`). Close Order / Phalanx / Shield Wall (org ≥ 2) and
+ * bigger heroes block. Traversal only — never stacking.
  */
-export function isPassThroughUnit(unit: Pick<Unit, 'isHero' | 'currentFormation' | 'sizeCategory'>): boolean {
+export function isPassThroughUnit(unit: Pick<Unit, 'isHero' | 'sizeCategory'>, form?: Formation | null): boolean {
   if (unit.isHero) return (unit.sizeCategory ?? 100) <= 200;
-  return unit.currentFormation === 'Open Order' || isLooseFormation(unit.currentFormation);
+  if (!form) return false;
+  return (form.organization_level ?? getOrganizationLevel(form.name)) <= 1;
 }
 
 export type Arc = 'front' | 'flank' | 'rear';

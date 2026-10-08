@@ -13,7 +13,7 @@ import { isHostile } from '@/packages/primitives';
 import { frontArcIndices } from '@/packages/primitives';
 import { parseWeapons } from '@/packages/units';
 import { isRangedCapableWeapon, reactionMovePool, isMeleeReachable } from '@/packages/combat';
-import { canRangedTarget, loosePassThroughHexes } from '@/packages/movement';
+import { canRangedTarget, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
 import { arcOfTarget } from '@/packages/primitives';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
 import { Walls, EdgeRef } from '@/packages/movement';
@@ -100,7 +100,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
   for (const [name, f] of Object.entries(formationsMap)) movementMultipliers[name] = f.movement_multiplier;
   const breakOnEntry = (fq: number, fr: number, tq: number, tr: number, formation: string) =>
     entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, structures, templates, zones);
-  const org = { movementMultipliers, breakOnEntry };
+  const org = { movementMultipliers, breakOnEntry, orgLevels: formationOrgLevels(formationsMap) };
 
   // Reaction mode: the target is ALWAYS the unit that moved (persistently
   // highlighted). While dragging the reacting archer, hovering that mover shows
@@ -216,7 +216,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       budget = Math.min(budget, heroBudget);
       hopCap = Math.min(hopCap, heroHop);
     }
-    const passThrough = new Set<string>(Array.from(loosePassThroughHexes(units, draggedUnit, alliances, flying ? 'fly' : 'ground', surface)));
+    const passThrough = new Set<string>(Array.from(loosePassThroughHexes(units, draggedUnit, formationsMap, alliances, flying ? 'fly' : 'ground', surface)));
     if (!flying) for (const k of Array.from(doorPassThroughHexes(structures, templates, occupied))) passThrough.add(k);
     const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, flying ? undefined : costOfHexFor(draggedUnit), false, flying ? undefined : blockedEdgeFor(draggedUnit), hopCap, passThrough, flying ? undefined : org);
 
