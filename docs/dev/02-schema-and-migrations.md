@@ -176,6 +176,7 @@ as applied in the notes — check the live DB before relying on it).
 | 113 | retire `stairs` → `ignore_climb` modifier; drop `map_structure_templates.stairs` | ✅ applied |
 | 114 | edge structure `ladder` decoration + backfill from `ignore_climb` | ✅ applied |
 | 115 | `map_effect_templates.permanent` (effect-template never-ticks flag) | ✅ applied (2026-10-04) |
+| 116 | re-assert `units.movement_points_available` + `fly_speed_available` as NUMERIC (idempotent; fixes "invalid input syntax for type integer" if 060/110 were skipped) | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

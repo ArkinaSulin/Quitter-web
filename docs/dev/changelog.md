@@ -1,5 +1,16 @@
 # QuiTTER Changelog
 
+## Fix: fractional hero MP write failed on an integer column (2026-10-07)
+**Files:** supabase/migrations/116_ensure_mp_numeric.sql (new), docs/dev/{02-schema-and-migrations,changelog}.md
+
+- **`invalid input syntax for type integer: "1.2"` on a MOVE.** A hero converts
+  actions to MP at `maxMP/5` (e.g. `6/5 = 1.2`), so `movement_points_available`
+  (migration 060) and `fly_speed_available` (migration 110) must be `NUMERIC`.
+  If either migration was skipped or applied out of order the column stays
+  `integer` and the fractional write fails. Migration **116** re-asserts BOTH
+  columns as `NUMERIC` (idempotent — a no-op when already numeric). **Apply 116 in
+  Supabase.** No code change.
+
 ## Universal 8-hex footprint for isolation / hero aura / capacity bonus (2026-10-07)
 **Files:** src/packages/morale/lib/unitMorale.ts (+ tests/unitMorale.test.ts), src/packages/units/lib/unitStats.ts (+ tests/unitStats.test.ts), docs/dev/{09-morale-routing-pursuit,changelog}.md, docs/players/player-manual.md
 
