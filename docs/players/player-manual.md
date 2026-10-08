@@ -839,15 +839,16 @@ facing; a hero in your hex pressures you within 10 ft (up or down).
 effective = base morale + current modifier
           − wounds − isolation − kill-zone threats + formation bonus + hero aura
   wounds:    −floor((1 − HP/max) × 10)          (factor 10)
-  isolation: −1 when no friendly is adjacent
+  isolation: −1 when no friendly is inside your 8-hex footprint
   threats:   normalized kill-zone threat sum (above)
   formation: from your formation (data-driven)
   hero aura: +N from a nearby allied hero (see below)
 ```
 
 **Hero aura (Commanding Presence / Heroic Inspiration).** A hero with a
-**morale boost** value `N` steadies every allied unit in its hex and the 6
-around it (7 hexes). This is **Commanding Presence +N**. When the hero lands a
+**morale boost** value `N` steadies every allied unit in its **8-hex footprint**
+(the 6 hexes around it **at its elevation** plus its own hex up to 10 ft above or
+below). This is **Commanding Presence +N**. When the hero lands a
 **melee attack**, the aura upgrades to **Heroic Inspiration +N+1** and stays
 that way until the start of the hero's next turn (even if the hero then moves to
 the back of its unit). A hero with `N = 0` gives nothing until it attacks (then

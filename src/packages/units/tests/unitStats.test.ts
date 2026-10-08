@@ -144,4 +144,13 @@ describe('heroicCapacityBonus', () => {
     setHeroMoraleBoostEnabled(true);
     expect(heroicCapacityBonus(hero(), [hero({ attachedToUnitId: 'x', attachedPosition: 'front' })], alliances)).toBe(0);
   });
+
+  it('uses the 8-hex footprint: not a 10-ft-higher adjacent hex, but the same hex ±10 ft', () => {
+    setHeroMoraleBoostEnabled(true);
+    const inspired = (over: Record<string, unknown> = {}) => hero({ heroicInspirationActive: true, ...over });
+    // Inspired hero one hex away but 10 ft higher → out of the footprint.
+    expect(heroicCapacityBonus(ally({ elevation: 0 }), [inspired({ hex: { q: 0, r: 0, s: 0 }, elevation: 10 })], alliances)).toBe(0);
+    // Inspired hero in the SAME hex, 10 ft up → in the footprint.
+    expect(heroicCapacityBonus(ally({ hex: { q: 0, r: 0, s: 0 }, elevation: 0 }), [inspired({ hex: { q: 0, r: 0, s: 0 }, elevation: 10 })], alliances)).toBe(1);
+  });
 });

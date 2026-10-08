@@ -116,7 +116,7 @@ export function calcIsolation(unit: Unit, units: Unit[], alliances: Record<strin
     (u.currentUnitHp ?? 0) > 0 &&
     u.id !== unit.id &&
     sameAlliance(u.team, unit.team, alliances) &&
-    areHexesAdjacent(unit.hex, u.hex)
+    withinAdjacencyFootprint(u, unit)
   );
 }
 
@@ -153,7 +153,7 @@ export function calcEnemyThreats(
     } else if (other.currentFormation === 'Scattered') {
       // A Scattered unit exerts HALF its rating over its loose footprint
       // (6 adjacent same-elevation + own hex ±10 ft) — it imposes no ZoC.
-      if (looseThreatFootprint(other, unit)) totalSum += exertedThreatRating(other) * mult;
+      if (withinAdjacencyFootprint(other, unit)) totalSum += exertedThreatRating(other) * mult;
     } else if (isInKillZone(other, unit.hex, unit.elevation)) {
       totalSum += computeThreatRating(other) * mult;
     }
@@ -167,11 +167,14 @@ export function calcEnemyThreats(
 }
 
 /**
- * The threat footprint of a LOOSE unit (lone hero or Scattered): all six
- * adjacent hexes at the SAME elevation, plus its own hex within 10 ft (up OR
- * down) — the same shape as the melee attack area (`isMeleeReachable`).
+ * The universal DIRECTIONLESS adjacency footprint — the **8 surrounding hexes**:
+ * all six adjacent hexes at the **SAME elevation**, plus the unit's own hex
+ * within 10 ft (up OR down). Used for morale concerns that are not directional —
+ * isolation, the hero aura/inspiration, the capacity bonus, and the loose
+ * (hero/Scattered) threat footprint. NOT the melee rule (which is front-only for
+ * a formed unit).
  */
-export function looseThreatFootprint(
+export function withinAdjacencyFootprint(
   unit: Pick<Unit, 'hex' | 'elevation'>,
   victim: Pick<Unit, 'hex' | 'elevation'>,
 ): boolean {
@@ -204,7 +207,7 @@ export function heroThreatAgainst(hero: Unit, victim: Unit, units: Unit[]): numb
       : isInKillZone(host, victim.hex, victim.elevation);
     return applies ? rating : 0;
   }
-  return looseThreatFootprint(hero, victim) ? rating : 0;
+  return withinAdjacencyFootprint(hero, victim) ? rating : 0;
 }
 
 // --- Hero morale aura (Commanding Presence / Heroic Inspiration) ------------
@@ -228,8 +231,9 @@ export function isZocPursuitEnabled(): boolean { return zocPursuitEnabled; }
 
 /**
  * Hero aura on `unit`: the strongest single HERO (same alliance, alive, visible,
- * within the hero's hex + 6 neighbours — 7 hexes) whose Commanding Presence is
- * positive. Presence = `moraleBoost`; while the hero is inspired it upgrades to
+ * within the hero's **8-hex footprint** — 6 adjacent hexes at the same elevation
+ * + the hero's own hex ≤10 ft up/down) whose Commanding Presence is positive.
+ * Presence = `moraleBoost`; while the hero is inspired it upgrades to
  * `moraleBoost + 1` (even from 0). Non-hero sources are inert; several heroes
  * do not stack (max). Returns 0 when nothing applies.
  */
@@ -245,8 +249,7 @@ export function calcMoraleBoostInfo(unit: Unit, units: Unit[], alliances: Record
     if (src.id === unit.id) continue; // a hero does not inspire itself
     if (!src.isHero || src.isDeleted || src.hidden || (src.currentUnitHp ?? 0) <= 0) continue;
     if (!sameAlliance(src.team, unit.team, alliances)) continue;
-    const sameHex = src.hex.q === unit.hex.q && src.hex.r === unit.hex.r;
-    if (!sameHex && !areHexesAdjacent(src.hex, unit.hex)) continue;
+    if (!withinAdjacencyFootprint(src, unit)) continue;
     const aura = (src.moraleBoost ?? 0) + (src.heroicInspirationActive ? HERO_INSPIRATION_BONUS : 0);
     if (aura > 0 && (best === null || aura > best.value)) best = { value: aura, inspired: !!src.heroicInspirationActive };
   }

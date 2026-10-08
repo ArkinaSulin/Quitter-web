@@ -433,6 +433,18 @@ describe('calcIsolation', () => {
     const buddy = makeUnit({ id: 'b1', team: 'blue', hex: DIR_HEXES[0], ...threat1 });
     expect(calcIsolation(me, [buddy], alliances)).toBe(false);
   });
+
+  it('still isolated when the adjacent friendly is 10 ft higher (same-elevation only)', () => {
+    const me = makeUnit({ ...threat1, elevation: 0 });
+    const above = makeUnit({ id: 'b1', team: 'blue', hex: DIR_HEXES[0], elevation: 10, ...threat1 });
+    expect(calcIsolation(me, [above], alliances)).toBe(true);
+  });
+
+  it('not isolated by a friendly in the SAME hex within 10 ft', () => {
+    const me = makeUnit({ ...threat1, elevation: 0 });
+    const flyer = makeUnit({ id: 'b1', team: 'blue', hex: { q: 0, r: 0, s: 0 }, elevation: 10, ...threat1 });
+    expect(calcIsolation(me, [flyer], alliances)).toBe(false);
+  });
 });
 
 describe('computeEffectiveMoraleModifier', () => {
@@ -484,13 +496,21 @@ describe('calcMoraleBoost (hero aura)', () => {
     expect(calcMoraleBoost(me, [me], alliances)).toBe(0);
   });
 
-  it('gives Commanding Presence +n to allies within 7 hexes, never itself', () => {
+  it('gives Commanding Presence +n to allies in the 8-hex footprint, never itself', () => {
     const hero = makeUnit({ id: 'h', team: 'blue', isHero: true, moraleBoost: 1, hex: { q: 0, r: 0, s: 0 } });
     const ally = makeUnit({ id: 'a', team: 'blue', hex: DIR_HEXES[0] });
     const far = makeUnit({ id: 'f', team: 'blue', hex: { q: 2, r: 0, s: -2 } });
     expect(calcMoraleBoost(ally, [hero, ally, far], alliances)).toBe(1);
     expect(calcMoraleBoost(far, [hero, ally, far], alliances)).toBe(0);
     expect(calcMoraleBoost(hero, [hero, ally, far], alliances)).toBe(0);
+  });
+
+  it('the aura does not reach a 10-ft-higher adjacent hex, but does reach the same hex ±10 ft', () => {
+    const hero = makeUnit({ id: 'h', team: 'blue', isHero: true, moraleBoost: 1, hex: { q: 0, r: 0, s: 0 }, elevation: 0 });
+    const higher = makeUnit({ id: 'a', team: 'blue', hex: DIR_HEXES[0], elevation: 10 });
+    const above = makeUnit({ id: 'b', team: 'blue', hex: { q: 0, r: 0, s: 0 }, elevation: 10 });
+    expect(calcMoraleBoost(higher, [hero, higher], alliances)).toBe(0); // adjacent, cross-elevation
+    expect(calcMoraleBoost(above, [hero, above], alliances)).toBe(1); // same hex, ≤10 ft
   });
 
   it('Heroic Inspiration upgrades the aura by +1', () => {

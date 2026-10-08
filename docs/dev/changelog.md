@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Universal 8-hex footprint for isolation / hero aura / capacity bonus (2026-10-07)
+**Files:** src/packages/morale/lib/unitMorale.ts (+ tests/unitMorale.test.ts), src/packages/units/lib/unitStats.ts (+ tests/unitStats.test.ts), docs/dev/{09-morale-routing-pursuit,changelog}.md, docs/players/player-manual.md
+
+- **Directionless adjacency = the 8 surrounding hexes** (6 adjacent at the SAME
+  elevation + own hex ≤10 ft up/down). `looseThreatFootprint` renamed to the
+  neutral **`withinAdjacencyFootprint`** and reused everywhere a morale concern
+  is not directional.
+- **Isolation** (`calcIsolation`) and the **hero aura / Heroic Inspiration**
+  (`calcMoraleBoostInfo`) and the **heroic capacity bonus**
+  (`heroicCapacityBonus`) now use it instead of elevation-agnostic 7-hex
+  adjacency — so a friendly **10 ft higher in an adjacent hex** no longer relieves
+  isolation or grants the aura/bonus, while a same-hex ≤10 ft friendly does.
+  (Not the melee rule — that is front-only for formed units; isolation/aura are
+  all-around.) `tsc` clean, tests pass, build clean. No migration.
+
 ## Fix: grounded flyable could stack with a ground unit (elevation 0) (2026-10-07)
 **Files:** src/packages/movement/lib/flying.ts (+ tests/flying.test.ts), src/components/ScenarioMap/useMoveActions.ts, docs/dev/{07-movement-economy,changelog}.md
 

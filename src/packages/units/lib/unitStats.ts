@@ -1,7 +1,7 @@
 import { Unit, Formation, SizeCategory, AllianceGroup } from '@/types/gameProtocol';
 import { parseWeapons } from '@/packages/units/lib/weaponParser';
 import { getBandSetting, getSetting, SettingBand } from '@/packages/infra';
-import { isUnitRouted, areHexesAdjacent, isHeroMoraleBoostEnabled } from '@/packages/morale';
+import { isUnitRouted, withinAdjacencyFootprint, isHeroMoraleBoostEnabled } from '@/packages/morale';
 import { sameAlliance } from '@/packages/primitives';
 import { AttackDirection } from '@/packages/primitives';
 import { coverAcBonus, directAcBonus } from '@/packages/effects';
@@ -111,7 +111,7 @@ export function effectiveAc(
  * scenario toggle. Returns 0 when nothing applies.
  */
 export function heroicCapacityBonus(
-  unit: Pick<Unit, 'isHero' | 'hex' | 'team'>,
+  unit: Pick<Unit, 'isHero' | 'hex' | 'elevation' | 'team'>,
   units: Unit[],
   alliances: Record<string, AllianceGroup>,
 ): number {
@@ -124,8 +124,7 @@ export function heroicCapacityBonus(
     if (!sameAlliance(src.team, unit.team, alliances)) continue;
     const leading = !!src.attachedToUnitId && src.attachedPosition === 'front';
     if (!leading && !src.heroicInspirationActive) continue;
-    const sameHex = src.hex.q === unit.hex.q && src.hex.r === unit.hex.r;
-    if (!sameHex && !areHexesAdjacent(src.hex, unit.hex)) continue;
+    if (!withinAdjacencyFootprint(src, unit)) continue;
     return bonus;
   }
   return 0;
