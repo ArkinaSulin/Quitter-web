@@ -12,7 +12,7 @@ import { imposesKillZone } from '@/packages/morale';
 import { isHostile } from '@/packages/primitives';
 import { frontArcIndices } from '@/packages/primitives';
 import { parseWeapons } from '@/packages/units';
-import { isRangedCapableWeapon, reactionMovePool } from '@/packages/combat';
+import { isRangedCapableWeapon, reactionMovePool, isMeleeReachable } from '@/packages/combat';
 import { canRangedTarget } from '@/packages/movement';
 import { arcOfTarget } from '@/packages/primitives';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
@@ -266,9 +266,13 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
         if (d > maxRange) color = 'rgba(255, 80, 80, 0.85)';
         else if (d > minRange) color = 'rgba(255, 180, 60, 0.85)';
         combined[targetKey] = color;
-      } else {
-        // Melee target: mark it green (the drop attacks it, not a move).
+      } else if (isMeleeReachable(draggedUnit, hoveredUnit!)) {
+        // Melee target in reach: mark it green (the drop attacks it, not a move).
         combined[targetKey] = 'rgba(80, 220, 120, 0.85)';
+      } else {
+        // Hostile but out of melee reach from the current hex (e.g. a 10-ft gap in
+        // an ADJACENT hex — melee needs the same elevation or the same hex).
+        combined[targetKey] = 'rgba(255, 80, 80, 0.7)';
       }
       return combined;
     }

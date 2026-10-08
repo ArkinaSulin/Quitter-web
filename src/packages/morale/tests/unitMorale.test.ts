@@ -249,11 +249,19 @@ describe('calcEnemyThreats', () => {
     expect(calcEnemyThreats(me, [facingAtMe], alliances)).toMatchObject({ total: 1 });
   });
 
-  it('Scattered / Routed enemies never impose threat', () => {
-    const me = makeUnit({ ...threat1 });
-    const scattered = enemyAt(DIR_HEXES[1], { ...threat1, currentFormation: 'Scattered' });
+  it('a Scattered enemy imposes HALF threat; a Routed enemy none', () => {
+    const me = makeUnit({ ...threat1 }); // myThreat 1
+    const scattered = enemyAt(DIR_HEXES[1], { ...threat4, currentFormation: 'Scattered' }); // rating 4 → half 2
     const routed = enemyAt(DIR_HEXES[2], { ...threat1, currentFormation: 'Routed' });
-    expect(calcEnemyThreats(me, [scattered, routed], alliances)).toMatchObject({ total: 0 });
+    expect(calcEnemyThreats(me, [scattered, routed], alliances)).toMatchObject({ totalSum: 2, total: 2 });
+  });
+
+  it('Scattered threat uses the loose footprint (same-elevation adjacency only)', () => {
+    const me = makeUnit({ ...threat1, elevation: 0 }); // myThreat 1
+    const sameElev = enemyAt(DIR_HEXES[1], { ...threat4, currentFormation: 'Scattered', elevation: 0 });
+    const crossElev = enemyAt(DIR_HEXES[1], { ...threat4, currentFormation: 'Scattered', elevation: 20 });
+    expect(calcEnemyThreats(me, [sameElev], alliances)).toMatchObject({ totalSum: 2 });
+    expect(calcEnemyThreats(me, [crossElev], alliances)).toMatchObject({ totalSum: 0 });
   });
 
   it('sums multiple covering enemies and divides by my threat', () => {
@@ -441,11 +449,11 @@ describe('computeEffectiveMoraleModifier', () => {
     expect(computeEffectiveMoraleModifier(me, [], alliances, { morale_modifier: 3 } as Formation)).toBe(-5 - 1 + 3);
   });
 
-  it('Scattered / Routed enemies impose no threat (receiver threat arcs removed)', () => {
+  it('a Scattered enemy contributes half threat; a Routed one none', () => {
     const me = makeUnit({ ...threat1, currentUnitHp: 100, maxUnitHp: 200 });
-    const scattered = enemyAt(DIR_HEXES[1], { ...threat1, currentFormation: 'Scattered' });
+    const scattered = enemyAt(DIR_HEXES[1], { ...threat4, currentFormation: 'Scattered' }); // rating 4 → half 2
     const routed = enemyAt(DIR_HEXES[2], { ...threat1, currentFormation: 'Routed' });
-    expect(computeEffectiveMoraleModifier(me, [scattered, routed], alliances)).toBe(-5 - 1);
+    expect(computeEffectiveMoraleModifier(me, [scattered, routed], alliances)).toBe(-5 - 1 - 2);
   });
 });
 

@@ -1,5 +1,25 @@
 # QuiTTER Changelog
 
+## Universal melee reach (adjacent = same elevation) + Scattered threat (2026-10-07)
+**Files:** src/packages/combat/lib/meleeFallback.ts (+ tests), src/packages/morale/lib/unitMorale.ts (+ tests), src/components/ScenarioMap/{ScenarioMap,useOverlay,UnitTooltip}.tsx, docs/dev/{00-universal-rules,08-combat,09-morale-routing-pursuit,changelog}.md, docs/players/player-manual.md
+
+- **Melee reach is universal: same-hex ±10 ft OR adjacent at the SAME elevation.**
+  `isMeleeReachable` no longer allows a ≤10 ft gap in an *adjacent* hex (a hero
+  at 10 ft could melee a ground unit one hex away — bug). The target must be in
+  the same hex within 10 ft (up/down), or an adjacent hex at the same elevation.
+  With the formation arc gate this is: **formed = front-2 + own column ±10 ft**;
+  **hero/Scattered = all-around (6 adjacent + own column ±10 ft = 8 hexes)**.
+  `canWeaponAttack`/`attackKind` inherit it, so an out-of-reach melee weapon
+  greys out; the drop-modal **Attack** button disables when the weapon can't
+  reach from the current hex, and the drag overlay only paints the green
+  melee-target marker when actually in reach (red = hostile but out of reach).
+- **Scattered units now exert threat — at half rating.** New shared
+  `looseThreatFootprint` (also used by `heroThreatAgainst`); `exertedThreatRating`
+  halves Scattered units as well as ≤Large heroes; `calcEnemyThreats` adds a
+  Scattered branch. Threat only — Scattered still imposes **no ZoC** (disengage
+  unchanged). Tooltip shows `(halved)`.
+- `tsc` clean, 965 tests, build clean. No migration.
+
 ## Fix: drag-target range rings; withdraw/rotate affordability (2026-10-07)
 **Files:** src/hooks/useHexGrid.ts, src/components/ScenarioMap/{ScenarioMap,useOverlay,SoftEnforcementModals}.tsx (+ useOverlay.test.ts), src/packages/movement/lib/moveCost.ts (+ tests/moveCost.test.ts), docs/dev/{07-movement-economy,changelog}.md
 

@@ -46,6 +46,12 @@ structure, an edge wall, or a hex gate/tower:
 - **Scattered and Hero** reach **all around** (their `melee_target_arcs` are
   all three arcs). `Routed` has no melee arcs at all (and its own explicit
   no-attack gate).
+- **Reach** (`isMeleeReachable`): the target must be in the **same hex within
+  10 ft** (up OR down), or in an **adjacent hex at the SAME elevation**. A 10-ft
+  vertical gap in an *adjacent* hex is **out of reach** — you must climb to the
+  same elevation, or hover directly above/below (same hex). Net: formed units
+  reach front-2 **+ own column ±10 ft**; Scattered/Hero reach all-around
+  (6 adjacent same-elevation + own column ±10 ft).
 - **Same hex ±≤10 ft vertical** (a stooping flyer hovering over its target) is
   attackable by **any** formation — the zero horizontal delta resolves to
   `front`. It *is* a kill zone/ZoC when the upper unit is an actually-airborne
@@ -54,9 +60,10 @@ structure, an edge wall, or a hex gate/tower:
 
 The **kill zone** (used by morale threat, the AGR penalty and the adjacent
 point-blank melee decision) is the *same* shape as the ZoC — front-2 at the
-**same elevation**, plus the airborne-flyer vertical — **except heroes**, which
-threaten all **6 adjacent hexes at the same elevation + the same hex ±10 ft**
-(360°, threat only; heroes still impose no ZoC). See `07` and `09`.
+**same elevation**, plus the airborne-flyer vertical — **except loose units**:
+**heroes and Scattered units** threaten all **6 adjacent hexes at the same
+elevation + the same hex ±10 ft** (360°), at **half** their rating, and **threat
+only** — neither imposes a ZoC. See `07` and `09`.
 
 Structure attacks follow the rule too (`combat/wallCombat.wallAttackKind`,
 `combat/structureCombat.hexStructureAttackKind`): a unit on either side of a wall must

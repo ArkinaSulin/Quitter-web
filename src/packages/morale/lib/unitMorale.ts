@@ -46,11 +46,13 @@ export const HERO_HALF_THREAT_MAX_SIZE = 200; // Large (200) and under
 
 /**
  * The threat a unit EXERTS on others. Heroes of Large size or smaller are a
- * single token that can turn and act any direction, so they exert only half
- * their raw rating; bigger heroes and all units exert the full rating.
+ * single token that can turn and act any direction; Scattered units are a loose
+ * swarm with no frontage — both exert only HALF their raw rating. Bigger heroes
+ * and formed units exert the full rating.
  */
 export function exertedThreatRating(unit: Unit): number {
   const rating = computeThreatRating(unit);
+  if (unit.currentFormation === 'Scattered') return rating / 2;
   if (unit.isHero && unit.sizeCategory <= HERO_HALF_THREAT_MAX_SIZE) return rating / 2;
   return rating;
 }
@@ -120,9 +122,10 @@ export function calcIsolation(unit: Unit, units: Unit[], alliances: Record<strin
 
 /**
  * Enemy threat imposed on `unit`: the sum of the threat ratings of every enemy
- * whose kill zone contains `unit` — plus, for heroes, a wider footprint (see
- * `heroThreatAgainst`). Scattered / Routed enemies never impose threat. For
- * non-heroes, being merely adjacent is not enough — the enemy must be facing you.
+ * whose footprint contains `unit` — a **formed** enemy through its kill zone, a
+ * **hero** through `heroThreatAgainst`, a **Scattered** enemy through its loose
+ * footprint (half rating). Routed enemies impose nothing. For formed units,
+ * merely being adjacent is not enough — the enemy must be facing you.
  *
  * Directional multiplier: the subject's formation `threat_arcs` /
  * `double_threat_arcs` (via `getThreatMode`) scale each threat by the arc the
@@ -147,6 +150,10 @@ export function calcEnemyThreats(
     const mult = mode === 'double' ? 2 : 1;
     if (other.isHero) {
       totalSum += heroThreatAgainst(other, unit, units) * mult;
+    } else if (other.currentFormation === 'Scattered') {
+      // A Scattered unit exerts HALF its rating over its loose footprint
+      // (6 adjacent same-elevation + own hex ±10 ft) — it imposes no ZoC.
+      if (looseThreatFootprint(other, unit)) totalSum += exertedThreatRating(other) * mult;
     } else if (isInKillZone(other, unit.hex, unit.elevation)) {
       totalSum += computeThreatRating(other) * mult;
     }
@@ -160,14 +167,28 @@ export function calcEnemyThreats(
 }
 
 /**
+ * The threat footprint of a LOOSE unit (lone hero or Scattered): all six
+ * adjacent hexes at the SAME elevation, plus its own hex within 10 ft (up OR
+ * down) — the same shape as the melee attack area (`isMeleeReachable`).
+ */
+export function looseThreatFootprint(
+  unit: Pick<Unit, 'hex' | 'elevation'>,
+  victim: Pick<Unit, 'hex' | 'elevation'>,
+): boolean {
+  if (unit.hex.q === victim.hex.q && unit.hex.r === victim.hex.r) {
+    return withinVerticalGap(unit.elevation, victim.elevation);
+  }
+  return areHexesAdjacent(unit.hex, victim.hex) && (unit.elevation ?? 0) === (victim.elevation ?? 0);
+}
+
+/**
  * A hero's threat contribution against `victim` (0 = no threat):
  * - a protected (back-attached) hero exerts nothing;
  * - an attached hero uses its HOST's footprint — a hero-on-hero MOUNT therefore
  *   sums mount + rider (both counted once); a front-attached hero on a normal
  *   unit threatens only through that host's kill zone;
- * - a lone hero threatens 360°: all six adjacent hexes **at the same elevation**,
- *   plus its own hex within 10 ft vertically (up OR down) — threat only, a hero
- *   never imposes a ZoC;
+ * - a lone hero threatens its loose footprint (6 adjacent same-elevation + own
+ *   hex ±10 ft) — threat only, a hero never imposes a ZoC;
  * - the rating is `exertedThreatRating` (Large-and-under heroes half).
  */
 export function heroThreatAgainst(hero: Unit, victim: Unit, units: Unit[]): number {
@@ -183,12 +204,7 @@ export function heroThreatAgainst(hero: Unit, victim: Unit, units: Unit[]): numb
       : isInKillZone(host, victim.hex, victim.elevation);
     return applies ? rating : 0;
   }
-  // Lone hero: 360° — any adjacent hex AT THE SAME ELEVATION, or the own hex
-  // within 10 ft vertically (up/down).
-  if (hero.hex.q === victim.hex.q && hero.hex.r === victim.hex.r) {
-    return withinVerticalGap(hero.elevation, victim.elevation) ? rating : 0;
-  }
-  return areHexesAdjacent(hero.hex, victim.hex) && (hero.elevation ?? 0) === (victim.elevation ?? 0) ? rating : 0;
+  return looseThreatFootprint(hero, victim) ? rating : 0;
 }
 
 // --- Hero morale aura (Commanding Presence / Heroic Inspiration) ------------

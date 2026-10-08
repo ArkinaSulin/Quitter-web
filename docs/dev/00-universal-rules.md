@@ -23,7 +23,7 @@ instead of re-deriving it.
 | Looseness | `src/packages/movement/lib/formationRules.ts` → `isLooseFormation`, `isLooseUnit` | Scattered/Routed/Hero — move any direction, no org. |
 | Actually airborne | `src/packages/movement/lib/flying.ts` → `isAirborne(elevation, surface)` | `elevation > surfaceAt(hex)` — a fly-capable garrison on a structure is grounded. Consumers pass `structureSurfaceAt(hex)` (move/rotate/formation pool, kill zone, overlay). |
 | Vertical gap ≤ 10 ft | `src/packages/movement/lib/flying.ts` → `withinVerticalGap`, `verticalGapDown` | Melee reach / same-column domination. |
-| Melee reach | `src/packages/combat/lib/meleeFallback.ts` → `isMeleeReachable` | Horizontal adjacency AND ≤10 ft vertical. |
+| Melee reach | `src/packages/combat/lib/meleeFallback.ts` → `isMeleeReachable` | **Same hex ≤10 ft (up/down), OR adjacent hex at the SAME elevation.** A vertical gap in an adjacent hex is out of reach. The formation arc gate narrows directions: formed = front-2 + own column ±10 ft; hero/Scattered = all-around (6 adjacent + own column ±10 ft = 8). |
 | **Damage / d20 / min-1** | `src/packages/primitives/lib/damage.ts` → `rollDamageDetailed`, `rollD20`, `clampDamage`, `rollAppliedDamage`, `MIN_DAMAGE` | **The one damage parser.** Every path (weapon, magic, walls, structures, effects, entry, fall) rolls and clamps here. A **landed** amount is never < 1 and never > cap; a save **negate** is the only 0, a half-save still lands ≥1. `combat/unitCombat` re-exports for compat. |
 | **Fly pool vs ground MP** | `src/packages/movement/lib/flying.ts` → `usesFlyPool(unit, surface)` (`isAirborne && canFly`), `movePoolMode` | Rotate / formation / move pool selection (context menu labels too). An elevated **non-flyer** (climber) stays on ground MP. |
 

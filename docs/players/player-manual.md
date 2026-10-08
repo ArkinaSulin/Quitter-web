@@ -433,9 +433,12 @@ Units face a **vertex** (corner), not a flat side. Their arcs:
 - **Rear**: the two hexes at the opposite vertex.
 - **Flanks**: the two in between.
 
-**Melee reach:** a normal formation may only melee into its **front** two
-hexes; **Scattered** and **Heroes** strike in **any** adjacent arc. Any unit may
-also strike a target in its **own hex** up to 10 ft above/below it.
+**Melee reach.** A target is reachable only in the **same hex within 10 ft**
+(up or down), or in an **adjacent hex at the SAME elevation** — a 10-ft vertical
+gap in an adjacent hex is **out of reach** (climb to the same level, or hover
+directly above). A normal formation may then melee only into its **front** two
+hexes; **Scattered** and **Heroes** strike in **any** adjacent arc (6 adjacent
+hexes + own column ±10 ft = 8 hexes).
 
 **Zone of control (kill zone — the same thing).** A **formed** unit (not
 Hero / Scattered / Routed) controls its **two front hexes at the same
@@ -814,13 +817,14 @@ Medium at 50 → 3 + 1 + 4 = **8**. A lone L10 hero → 4 + 1 + 0 = **5**
 
 Only enemies whose **kill zone** contains you pressure you — the two front
 hexes at the **same elevation**, plus an actually-airborne flyer's own hex
-≤10 ft below. Adjacency alone is nothing; Scattered/Routed enemies, hidden units
-and routing units exert none. **Heroes** are the exception: a lone hero is a
-single token that threatens **every adjacent hex (360°) plus its own hex up to
-10 ft above or below** — threat only (heroes impose no ZoC). A hero attached
-**in front** of a unit threatens only through that unit's kill zone, and a hero
-protected **behind** a unit (back) threatens nothing. A hero of **Large size or
-smaller** exerts **half** its threat rating; bigger heroes exert full. Your
+≤10 ft below. Adjacency alone is nothing; Routed enemies, hidden units
+and routing units exert none. **Loose units** are the exception: a lone **hero**
+(or a **Scattered** unit) threatens **every adjacent hex at the same elevation
+(360°) plus its own hex up to 10 ft above or below** — threat only (loose units
+impose no ZoC) — and both are **halved**. A hero attached **in front** of a unit
+threatens only through that unit's kill zone, and a hero protected **behind** a
+unit (back) threatens nothing. A hero of **larger than Large size** ignores the
+halving and exerts its full rating. Your
 morale penalty is `their summed threat ÷ your own threat` (rounded).
 
 **Rear threat ×2.** Threat that comes from one of **your two rear hexes**

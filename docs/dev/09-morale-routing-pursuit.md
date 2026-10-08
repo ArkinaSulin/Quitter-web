@@ -25,32 +25,33 @@ A lone hero (troop 1) gets its level + size² + 0.
 
 ## Who pressures you: kill zones, not adjacency
 
-A unit imposes threat on an enemy **only while that enemy stands in its
-kill zone** (one unified predicate with the movement ZoC, `isInKillZone`): the
-**two front hexes at the same elevation**, plus — for an **actually-airborne,
+A **formed** unit imposes threat on an enemy **only while that enemy stands in
+its kill zone** (one unified predicate with the movement ZoC, `isInKillZone`):
+the **two front hexes at the same elevation**, plus — for an **actually-airborne,
 formed flyer** — its **own hex 1–10 ft below** (facing-independent, and only
-while a hostile is under it). Formations without a kill zone (Scattered, Routed)
-never impose threat; neither do hidden/attached/dead units. Cross-elevation
-never applies for the front-2. Merely adjacent ≠ threatening. Full rule:
+while a hostile is under it). Formations without a kill zone (Routed) impose no
+*kill zone*; neither do hidden/attached/dead units. Cross-elevation never applies
+for the front-2. Merely adjacent ≠ threatening. Full rule:
 `07` "Zone of control (universal rule)".
 
-Heroes are the exception: a **lone** hero is a single token with no fixed
-facing, so it threatens **all six adjacent hexes at the same elevation AND its
-own hex within 10 ft (up or down)** — `heroThreatAgainst`. (Threat only: heroes
-never impose a ZoC.) An **attached** hero uses its **host's footprint**: a
+**Loose units (heroes and Scattered) threaten their attack footprint** instead of
+a facing kill zone — **all six adjacent hexes at the same elevation AND their own
+hex within 10 ft (up or down)** (the same shape as `isMeleeReachable`). This is
+**threat only** — a loose unit never imposes a ZoC. Both are **halved**
+(`exertedThreatRating`): a lone hero (`heroThreatAgainst`) and a Scattered unit
+alike. A hero of **larger than Large size** (`sizeCategory > 200`) ignores the
+halving and exerts full. An **attached** hero uses its **host's footprint**: a
 front-attached hero on a normal unit threatens only through that host's kill
-zone, while a **rider on a hero mount** uses the mount's 360° footprint, so the
+zone, while a **rider on a hero mount** uses the mount's footprint, so the
 **mount + rider count together** (each once). A **protected (back-attached)**
-hero exerts no threat at all. A hero of **Large size or smaller**
-(`sizeCategory ≤ 200`) exerts **half** its rating (`exertedThreatRating`);
-bigger heroes exert full. The tooltip Threat row notes this as
-`halved; ≤ Large`.
+hero exerts no threat at all. The tooltip Threat row notes the halving as
+`(halved)`.
 
 `calcEnemyThreats(unit, …, formation)`: sum the threat ratings of every hostile
-whose kill zone contains you (plus hero threat as above), then **normalize by
-your own**: `total = round(sum / myThreat)`. A goblin beside a dragon feels its
-full rating; the dragon barely notices the goblin. The tooltip shows the
-formula as `-N = (sum threat) ÷ myThreat`.
+whose **kill zone** (formed) or **loose footprint** (hero/Scattered) contains you,
+then **normalize by your own**: `total = round(sum / myThreat)`. A goblin beside
+a dragon feels its full rating; the dragon barely notices the goblin. The tooltip
+shows the formula as `-N = (sum threat) ÷ myThreat`.
 
 **Directional multiplier (rear ×2):** each contributing threat is scaled by the
 arc the hostile occupies relative to **your** facing, read from your formation's

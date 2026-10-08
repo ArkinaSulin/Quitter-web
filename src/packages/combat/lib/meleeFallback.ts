@@ -51,10 +51,19 @@ export function isAdjacentDistance(dist: number): boolean {
   return dist <= 1;
 }
 
-/** Can these units have a MELEE exchange: horizontal adjacency (≤1 hex) AND a
- *  vertical gap of at most 10 ft. */
+/** Can these units have a MELEE exchange (the universal melee-reach rule)?
+ *  - SAME hex: within 10 ft vertically (up OR down).
+ *  - ADJACENT hex: the SAME elevation only (a 10-ft gap in an adjacent hex is
+ *    out of reach — you must be at the same elevation, or in the same column).
+ *  Anything further is out of reach. The formation arc gate (`canMeleeTarget`)
+ *  still narrows the DIRECTIONS: hero/Scattered reach all around, formed units
+ *  front-2. Net: hero/Scattered = 6 adjacent + own column ±10 ft (8 hexes);
+ *  formed = front-2 + own column ±10 ft. */
 export function isMeleeReachable(attacker: Pick<Unit, 'hex' | 'elevation'>, target: Pick<Unit, 'hex' | 'elevation'>): boolean {
-  return isAdjacentDistance(hexDistance(attacker.hex, target.hex)) && withinVerticalGap(attacker.elevation, target.elevation);
+  const dist = hexDistance(attacker.hex, target.hex);
+  if (dist === 0) return withinVerticalGap(attacker.elevation, target.elevation);
+  if (dist === 1) return (attacker.elevation ?? 0) === (target.elevation ?? 0);
+  return false;
 }
 
 /**

@@ -117,11 +117,14 @@ describe('isAdjacentDistance', () => {
 
 describe('isMeleeReachable', () => {
   const at = (hex: Hex, elevation = 0) => ({ hex, elevation });
-  it('horizontal adjacency AND ≤10 ft vertical', () => {
-    expect(isMeleeReachable(at(h(0, 0)), at(h(1, 0)))).toBe(true);
+  it('adjacent only at the SAME elevation; vertical reach only in the same hex', () => {
+    expect(isMeleeReachable(at(h(0, 0)), at(h(1, 0)))).toBe(true); // adjacent, same elev
+    expect(isMeleeReachable(at(h(0, 0)), at(h(1, 0), 10))).toBe(false); // adjacent + 10 ft gap → OUT of reach
+    expect(isMeleeReachable(at(h(0, 0)), at(h(1, 0), -10))).toBe(false); // adjacent + 10 ft down → out of reach
     expect(isMeleeReachable(at(h(0, 0)), at(h(0, 0), 10))).toBe(true); // same hex, 10 ft up
+    expect(isMeleeReachable(at(h(0, 0)), at(h(0, 0), -10))).toBe(true); // same hex, 10 ft down
+    expect(isMeleeReachable(at(h(0, 0)), at(h(0, 0), 20))).toBe(false); // same hex, >10 ft
     expect(isMeleeReachable(at(h(0, 0)), at(h(2, 0)))).toBe(false); // too far
-    expect(isMeleeReachable(at(h(0, 0)), at(h(1, 0), 20))).toBe(false); // too high
   });
 });
 

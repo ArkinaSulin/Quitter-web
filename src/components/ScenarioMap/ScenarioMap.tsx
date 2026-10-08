@@ -3653,6 +3653,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 const weapons = parseWeapons(p.unit.weaponString || '');
                 const rangeBonus = rangeBonusAt(p.unit, groundZones);
                 const rider = units.find(u => u.attachedToUnitId === occ.id && !u.isDeleted && u.attachedPosition === 'rider') ?? null;
+                // Melee reach is same-elevation adjacency OR same-hex ±10 ft; a
+                // weapon that can't reach from the CURRENT hex greys the Attack button.
+                const canReach = !!weapons[p.weaponIndex] && canWeaponAttack(weapons[p.weaponIndex], p.unit, occ, rangeBonus);
                 return (
                   <>
                     <WeaponSelect
@@ -3674,8 +3677,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                       />
                     )}
                     <button
-                      className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
-                      onClick={() => { setPendingElevation(null); if (!controlsLocked) void handleAttackRequest(p.unit.id, occ.id, { weaponIndex: p.weaponIndex, ...(weapons[p.weaponIndex] ? { damageDice: withDamageDiceCount(weapons[p.weaponIndex].damageDice, p.damageDiceCount) } : {}), ...(rider ? { mainTarget: p.mainTarget } : {}) }); }}
+                      disabled={!canReach}
+                      title={canReach ? undefined : 'Weapon out of reach from this hex'}
+                      className={`px-4 py-2 rounded-lg text-sm ${canReach ? 'bg-amber-700 hover:bg-amber-600 text-white' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}
+                      onClick={() => { if (!canReach) return; setPendingElevation(null); if (!controlsLocked) void handleAttackRequest(p.unit.id, occ.id, { weaponIndex: p.weaponIndex, ...(weapons[p.weaponIndex] ? { damageDice: withDamageDiceCount(weapons[p.weaponIndex].damageDice, p.damageDiceCount) } : {}), ...(rider ? { mainTarget: p.mainTarget } : {}) }); }}
                     >
                       Attack{weapons[p.weaponIndex] ? ` with ${weapons[p.weaponIndex].name}` : ''}
                     </button>
