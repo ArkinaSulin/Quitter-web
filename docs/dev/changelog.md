@@ -1,5 +1,29 @@
 # QuiTTER Changelog
 
+## Loose pass-through + deterministic rout retreat (2026-10-07)
+**Files:** src/packages/movement/lib/{formationRules,passThrough (new),moveCost}.ts (+ tests), src/packages/movement/index.ts, src/packages/morale/lib/routedRetreat.ts (+ tests), src/components/ScenarioMap/{useMoveActions,useOverlay,useReactionActions,ScenarioMap}.tsx, docs/dev/{07-movement-economy,09-morale-routing-pursuit,changelog}.md, docs/players/player-manual.md
+
+- **Friendly pass-through.** A pass-eligible mover — **Open Order / Scattered /
+  Routed**, or a **hero ≤ Large** (`isPassThroughUnit`) — may move **through**
+  another pass-eligible friendly unit's hex (traversal only, never a destination
+  → **no stacking**). Close Order / Phalanx / Shield Wall and bigger heroes block.
+  New `loosePassThroughHexes` feeds the `passThrough` set of `computeReachableMap`
+  in `handleUnitMove` (ground + fly), `useOverlay` (ground + fly) and
+  `useReactionActions`. Charge (straight) and withdraw (1 hex) unchanged; ZoC still
+  stops passage; reactions/pursuit still fire at the destination.
+- **Deterministic rout retreat.** `routedRetreat` rewritten to `routRetreatPath`:
+  the routed unit walks **away** from the attacker → else the nearest hostile →
+  else the hostile mass, ordering each hop's neighbours **away (4) → rear flanks
+  (3/5) → push through a friendly org ≤ 1 → hostile-side flanks (2/6)**, prefer
+  not-hostile-adjacent (random tie) / fewest-hostiles-adjacent, and repeating
+  through friendlies **unbounded** until an empty, non-kill-zone hex. Every Open
+  Order unit pushed through is disrupted to **Scattered**. Routed friendlies
+  **yield** now; blocked = hostile · enemy kill zone · friendly org ≥ 2. The
+  retreat card is **informational** (no hex picker); the owner only picks whether
+  an attached hero rides along. `ScenarioMap.applyRoutedFlow` executes the path
+  (MOVE + chained FORMATION scatters). `tsc` clean, 975 tests, build clean. No
+  migration.
+
 ## Fix: fractional hero MP write failed on an integer column (2026-10-07)
 **Files:** supabase/migrations/116_ensure_mp_numeric.sql (new), docs/dev/{02-schema-and-migrations,changelog}.md
 

@@ -46,7 +46,7 @@ a fixed, readable zoom; stage one concept per frame (GM sandbox map is fine).
 | S-19 | 6 · Ranged | Ranged drag over an enemy: **range / max-range rings** + valid target tint | bow unit dragging |
 | S-20 | 6 · Combat | Combat result in the message log (hits/damage/troops, verbose rolls if on) | one exchange just resolved |
 | S-21 | 6 · Magic | **Magic cast** modal: placed circle shape, save stat + DC, "troops affected" | caster aiming |
-| S-22 | 7 · Rout | **Retreat card** listing legal hexes (and a rout-through option) with hex highlight | unit just routed |
+| S-22 | 7 · Rout | **Retreat card** (informational: where the unit flees) | unit just routed |
 | S-23 | 9 · Effects | **Effects…** modal with catalog + active-effect list; a token with effect pips | one unit blessed/burning |
 | S-24 | 11 · Replay | In-session replay: amber REPLAY frame, timeline, ▲ Turn-1 marker, speed control | GM replay mode |
 | S-25 | 12 · GM | **Alliances** tab: team pills in Friendly / Enemy / Neutral boxes | GM panel |
@@ -477,6 +477,11 @@ about-turn = 1 MP foot / 2 MP mounted **and** −1 organization level. **Loose
 units** (Routed, Scattered, Heroes) ignore facing entirely: 1 MP/hex in any
 direction, always droppable. Rotating/charging a hero is free.
 
+**Pass through friends.** A unit in **Open Order, Scattered or Routed** (or a
+**hero of Large size or smaller**) may move **through** another such friendly
+unit — you can traverse its hex but never stop on it (no stacking). Close Order /
+Phalanx / Shield Wall and bigger heroes block.
+
 ![S-16 Context menu rotate](screenshots/s-16-context-menu.png)
 
 > Right-click a unit for **Rotate Left/Right**, **Rotate 180°**, formations,
@@ -884,22 +889,23 @@ can't hold a formation, is easier to hit (drops its shield) and much easier to
 overrun (2× melee attacks against it). It can **rally** by adopting a formed
 formation when its morale recovers above 0.
 
-### Retreat (you choose the rout path)
+### Retreat (automatic rout path)
 
-When your unit routs, its **retreat card** appears. Legal retreat hexes are
-empty hexes **outside enemy kill zones**. You may:
-- **rout 1 hex** to a legal neighbor;
-- if none exists, **rout through** one adjacent friendly in **Open Order or
-  Scattered** (2 hexes total) — running through an Open Order friendly
-  **disrupts it to Scattered**;
-- if literally nowhere is legal, the unit **stands** (still Routed — and the
-  attacker gets a free "as-if-pursued" attack at it).
+When your unit routs, its **retreat card** appears (informational — the path is
+chosen for you) and it flees **directly away from the threat**: away from the
+attacker, else the nearest enemy, else the enemy mass. It prefers the hex
+**directly opposite** the attacker, then the two rear flanks, then it **pushes
+through** friendly ranks (org 0–1) — disrupting every **Open Order** unit it runs
+through to **Scattered** — until it reaches an **empty hex outside enemy kill
+zones**. Ordered ranks (**Close Order+**) and enemies block it; a unit with
+nowhere to go **stands** (still Routed — and the attacker gets a free
+"as-if-pursued" attack at it).
 
 ![S-22 Retreat card](screenshots/s-22-rout-modal.png)
 
-> **Routed units never yield:** a rout never passes through another Routed
-> friendly (two crowds don't part), and ordered ranks (Close/Phalanx/Shield
-> Wall) can't be pushed through either.
+> **Routed friendlies yield** (they are org 0), so a rout may push through other
+> Routed units and through Scattered/Open Order ranks; only Close Order / Phalanx
+> / Shield Wall stop it.
 
 ### Zone of control: disengaging, pursuit, and Withdraw
 

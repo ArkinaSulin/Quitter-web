@@ -19,7 +19,7 @@ import { parseWeapons, damageDiceCount } from '@/packages/units';
 import { SubStep, UnitChange } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
-import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool } from '@/packages/movement';
+import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes } from '@/packages/movement';
 import { Walls, directionBetween, edgeRef } from '@/packages/movement';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, structureWaivesClimb, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
@@ -429,6 +429,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // on confirm); blocked intermediate hexes are avoided.
     const flyOccupied = airOccupiedHexes(units, unitId);
     for (const k of Array.from(flightBlockedHexes(structures, structureTemplates, unit.elevation ?? 0, `${targetHex.q},${targetHex.r}`))) flyOccupied.add(k);
+    // Friendly pass-through: a pass-eligible mover may TRAVERSE pass-eligible
+    // friendly hexes (Open Order/Scattered/Routed, or a hero <= Large) — never
+    // stop on them (the search excludes pass hexes from its results → no stacking).
+    const loosePass = loosePassThroughHexes(units, unit, alliances, flying ? 'fly' : 'ground', originSurface);
 
     // Climb / hang movement (mounted units cannot climb). A climbing unit moves
     // linearly: up toward `climbTo`, or down (its own hex). A grounded non-mounted
@@ -532,7 +536,8 @@ export function useMoveActions(deps: MoveActionsDeps) {
       : Math.max(1, Math.min(effectiveMax, attachedHero && heroMax && !isRider ? heroMax : Infinity));
     // Occupied hex structures whose door is open/broken may be TRAVERSED (not
     // stopped on) — pass them to the reachability search.
-    const passThrough = flying ? undefined : doorPassThroughHexes(structures, structureTemplates, occupied);
+    const passThrough = new Set<string>(Array.from(loosePass));
+    if (!flying) for (const k of Array.from(doorPassThroughHexes(structures, structureTemplates, occupied))) passThrough.add(k);
     // Org-gate context: a `max_org_level_allowed` gate breaks the formation at the
     // crossing point, rescaling the movement budget by the new multiplier.
     const movementMultipliers: Record<string, number> = {};

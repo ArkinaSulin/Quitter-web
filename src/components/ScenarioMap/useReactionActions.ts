@@ -26,7 +26,7 @@ import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { formatStrikeDetail } from '@/packages/units';
 import { computeOccupiedHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts } from '@/packages/world';
 import { Walls } from '@/packages/movement';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation } from '@/packages/movement';
+import { MapStructures, doorPassThroughHexes, loosePassThroughHexes, entryBreakFormation } from '@/packages/movement';
 import { attacksBlocked } from '@/packages/combat';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
@@ -360,7 +360,8 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const occupied = computeOccupiedHexes(displayUnits, archer.id);
     const mounted = !!archer.mountId || !!archer.mountName;
     const waiveClimb = unitIgnoresClimb(archer, groundZones);
-    const passThrough = doorPassThroughHexes(structures, structureTemplates, occupied);
+    const passThrough = new Set<string>(Array.from(doorPassThroughHexes(structures, structureTemplates, occupied)));
+    for (const k of Array.from(loosePassThroughHexes(displayUnits, archer, alliances, 'ground', 0))) passThrough.add(k);
     const movementMultipliers: Record<string, number> = {};
     for (const [name, f] of Object.entries(formationsMap)) movementMultipliers[name] = f.movement_multiplier;
     const breakOnEntry = (fq: number, fr: number, tq: number, tr: number, formation: string) =>
@@ -372,7 +373,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       isMounted: mounted,
       waiveClimb,
     }), undefined, passThrough, { movementMultipliers, breakOnEntry });
-  }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones, formationsMap]);
+  }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones, formationsMap, alliances]);
 
   const handleReactionAttack = useCallback(async (
     attackerId: string,

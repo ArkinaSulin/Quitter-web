@@ -113,21 +113,31 @@ editor's formation picker).
   way out. Prereqs live in `src/packages/morale/lib/rally.ts` (`canRally`); the command is
   `useGameEngine.rallyUnit`.
 
-## Retreat (owner-decided)
+## Retreat (deterministic path)
 
-When a unit routs the owner is shown the retreat card (draggable; hexes
-highlight on hover). Logic in `morale/routedRetreat.ts`:
+When a unit routs, `routRetreatPath` (`morale/routedRetreat.ts`) computes its
+retreat deterministically and the owner is shown an **informational** card ("X is
+routing", the destination). It walks **away** from the threat, pushing through
+friendly org ≤ 1 units:
 
-- Legal single-hex retreat candidates: **empty** hexes **outside any enemy kill
-  zone**.
-- One legal → auto-rout there. Several → owner picks. None → consider
-  **rout-through**: run 2 hexes through one adjacent friendly in Open Order or
-  Scattered (never through other **Routed** units — two crowds don't step
-  aside — nor through ordered Close/Phalanx/Shield-Wall ranks). Passing through
-  an Open Order friendly **disrupts it to Scattered**; Scattered costs nothing.
-- No legal rout at all → the unit stands (still Routed). `retreatDiagnosis`
-  returns structured reasons for the modal ("every adjacent friendly is
-  routing/ordered…").
+- The "away" axis = away from the **attacker** → else away from the **nearest
+  hostile** → else away from the **hostile mass** (the neighbour maximising total
+  distance to all hostiles) → else opposite the unit's facing.
+- Each hop, neighbours are ordered relative to that axis (away = **4**; rear
+  flanks **3/5**; hostile-side flanks **2/6**):
+  1. **4** if empty + outside any enemy kill zone;
+  2. **3 or 5** (prefer the one **not adjacent to a hostile**; random tie);
+  3. else **push through** a friendly org ≤ 1 (an **Open Order** unit is disrupted
+     to **Scattered**; Scattered/Routed/heroes pass freely) — then repeat from the
+     new hex, **unbounded** until a gap;
+  4. else **2 or 6** (fewest hostiles adjacent).
+- **Blocked** = a hostile unit, an enemy kill zone, or a friendly org ≥ 2
+  (Close Order+). Routed friendlies **do** yield (they are org 0). No legal route →
+  the unit stands (still Routed) and faces a free pursue.
+
+Part A of the same rule applies to **normal movement**: a pass-eligible unit
+(Open Order / Scattered / Routed / hero ≤ Large) may move THROUGH another
+pass-eligible friendly — never stacking. See `07` "Friendly pass-through".
 
 ## Pursuit (zone of control)
 

@@ -155,6 +155,15 @@ as normal. (`computeReachableMap` gates the pass-through on `hops > 0`, i.e. a
 move that has stepped onto a threat hex — the origin, and same-hex turns, stay
 free.)
 
+**Friendly pass-through.** A pass-eligible mover — **Open Order / Scattered /
+Routed**, or a **hero of Large size or smaller** (`isPassThroughUnit`) — may move
+**THROUGH** another pass-eligible friendly unit's hex (traversal only, never a
+destination, so **no stacking**). Close Order / Phalanx / Shield Wall and bigger
+heroes block. `loosePassThroughHexes(units, mover, alliances, layer, surface)`
+feeds the move reachability, the drag overlay and the reaction reposition (the
+`passThrough` set of `computeReachableMap`); enemy units and non-eligible
+friendlies still stop the move.
+
 Every **alliance is hostile to every other** (friendly↔enemy, friendly↔neutral,
 enemy↔neutral); same-alliance pairs (including neutral↔neutral) are not.
 

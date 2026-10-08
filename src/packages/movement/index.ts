@@ -4,6 +4,7 @@ export * from './lib/moveCost';
 export * from './lib/flying';
 export * from './lib/formationCost';
 export * from './lib/formationRules';
+export * from './lib/passThrough';
 export * from './lib/mapStructures';
 export * from './lib/walls';
 export * from './lib/structureTemplates';

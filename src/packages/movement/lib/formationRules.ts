@@ -13,6 +13,18 @@ export function isLooseUnit(unit: Pick<Unit, 'isHero' | 'currentFormation'>): bo
   return unit.isHero || isLooseFormation(unit.currentFormation);
 }
 
+/**
+ * Pass-through eligibility: units that may move THROUGH (and be moved through
+ * by) other pass-eligible friendly units — **Open Order, Scattered, Routed**, or
+ * a **hero of Large size or smaller** (`sizeCategory <= 200`). Close Order /
+ * Phalanx / Shield Wall (org >= 2) and bigger heroes block. Passing through is
+ * traversal only — never stacking.
+ */
+export function isPassThroughUnit(unit: Pick<Unit, 'isHero' | 'currentFormation' | 'sizeCategory'>): boolean {
+  if (unit.isHero) return (unit.sizeCategory ?? 100) <= 200;
+  return unit.currentFormation === 'Open Order' || isLooseFormation(unit.currentFormation);
+}
+
 export type Arc = 'front' | 'flank' | 'rear';
 export type RetaliationMode = 'full' | 'rows' | 'none';
 
