@@ -6,7 +6,7 @@
 // and never block — a hidden unit must not reveal itself by imposing a penalty.
 import { Hex, Unit } from '@/types/gameProtocol';
 import { hexLine } from '@/packages/primitives';
-import { MapStructures } from '@/packages/movement';
+import { MapStructures, structureElevation } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { edgeRef, directionBetween } from '@/packages/movement';
 
@@ -47,36 +47,55 @@ export function hasLineOfSight(
   excludeIds: ReadonlySet<string> = new Set(),
   structures?: MapStructures | null,
   templates?: Record<string, StructureTemplate> | null,
+  opts?: { fromElevation?: number; toElevation?: number },
 ): boolean {
   return unitsBlockingLine(from, to, units, excludeIds).length === 0
-    && !structuresBlockingLine(from, to, structures, templates);
+    && !structuresBlockingLine(from, to, structures, templates, opts);
 }
 
 /**
- * True when a non-decorative structure (maxHp > 0) sits on the shot line: an
- * edge structure on any edge the line crosses, or a hex structure on any hex
- * strictly between the endpoints. Decorative structures (maxHp = 0) are ignored.
+ * True when an intervening structure blocks the shot — i.e. the shot's side-view
+ * LINE (from `fromElevation` to `toElevation`) passes **below the structure's
+ * top** at the structure's horizontal position.
+ *
+ * Only structures **strictly between** the endpoints count:
+ * - a **hex structure** on a hex strictly between A and B, or
+ * - an **edge structure** on an edge between two strictly-between hexes.
+ * A structure on A's or B's own hex, and the edges immediately in front of A or B,
+ * are handled by other mechanics (cover) and never block LoS. Decorative
+ * structures (top ≤ 0) never block. At exactly the top height the line CLEARS.
  */
 export function structuresBlockingLine(
   from: Hex,
   to: Hex,
   structures: MapStructures | null | undefined,
   templates: Record<string, StructureTemplate> | null | undefined,
+  opts?: { fromElevation?: number; toElevation?: number },
 ): boolean {
   if (!structures) return false;
-  const blocks = (inst: { templateId: string } | undefined): boolean =>
-    !!inst && (templates?.[inst.templateId]?.maxHp ?? 0) > 0;
   const line = hexLine(from, to);
-  // Edge structures crossed by the line (between consecutive hexes).
-  for (let i = 0; i < line.length - 1; i++) {
+  const n = line.length - 1;
+  if (n <= 0) return false;
+  const fromElev = opts?.fromElevation ?? 0;
+  const toElev = opts?.toElevation ?? 0;
+  const blocksAt = (inst: { templateId: string } | undefined, t: number): boolean => {
+    if (!inst) return false;
+    const top = structureElevation(templates?.[inst.templateId], inst);
+    if (top <= 0) return false; // decorative
+    const lineElev = fromElev + (toElev - fromElev) * t;
+    return lineElev < top; // equal clears
+  };
+  // Edge structures on edges between two STRICTLY-BETWEEN hexes: i in [1, n-2]
+  // (the first edge, in front of A, and the last, in front of B, never block).
+  for (let i = 1; i <= n - 2; i++) {
     const dir = directionBetween(line[i], line[i + 1]);
     if (dir < 0) continue;
     const ref = edgeRef(line[i].q, line[i].r, dir);
-    if (blocks(structures[ref.key])) return true;
+    if (blocksAt(structures[ref.key], (i + 0.5) / n)) return true;
   }
   // Hex structures strictly between the endpoints.
-  for (let i = 1; i < line.length - 1; i++) {
-    if (blocks(structures[`${line[i].q},${line[i].r}`])) return true;
+  for (let i = 1; i <= n - 1; i++) {
+    if (blocksAt(structures[`${line[i].q},${line[i].r}`], i / n)) return true;
   }
   return false;
 }

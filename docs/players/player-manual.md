@@ -585,7 +585,13 @@ over an enemy to see its range rings). The game shows range before you commit:
 - within **range**: full effect;
 - between **range** and **max range**: you attack at **disadvantage**
   (roll two D20, take the lower);
-- beyond **max range**: blocked.
+- beyond **max range**: blocked;
+- **line of sight**: any other unit on the shot line, or an intervening structure
+  the shot's height line cannot clear (it passes **below the structure's top**),
+  turns it into an **indirect shot** — also **disadvantage**. Only structures
+  *between* you and the target count (one on your own hex, or an edge right in
+  front of you, is cover, not LoS). Shooting **over** a low wall from higher
+  ground clears it; a taller structure still blocks.
 
 When the drop gives you a real choice the game opens an **Attack** picker first:
 a **flying** unit dropping on a ground enemy always shows its elevation slider and

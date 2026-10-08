@@ -194,10 +194,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // Line of sight: any other unit (friendly or hostile) between the two hex
     // centres turns a ranged shot into an "indirect shot" (disadvantage). Melee
     // is not LoS-gated; the auto-draw already resolved adjacent weapons above.
-    // A flyer shoots OVER structures: it ignores the shoot-over-structure penalty
-    // (units still block the horizontal line).
-    const flyingAttacker = isAirborne(attacker.elevation, structureSurfaceAt(attacker.hex, structures, structureTemplates));
-    const indirectShot = isRanged && !hasLineOfSight(attacker.hex, target.hex, units, new Set([attacker.id, target.id]), flyingAttacker ? null : structures, structureTemplates);
+    // STRUCTURE HEIGHT decides: the shot's side-view line clears a structure whose
+    // top the line passes above (a flying attacker is no special case).
+    const indirectShot = isRanged && !hasLineOfSight(attacker.hex, target.hex, units, new Set([attacker.id, target.id]), structures, structureTemplates, { fromElevation: attacker.elevation ?? 0, toElevation: target.elevation ?? 0 });
     const hostileTarget = isHostile(attacker.team, target.team, alliances);
 
     // A leading (front-attached) hero AUTO-joins the host's attack — melee OR

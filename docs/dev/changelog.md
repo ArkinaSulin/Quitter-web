@@ -1,5 +1,24 @@
 # QuiTTER Changelog
 
+## Ranged LoS is structure-height aware (2026-10-07)
+**Files:** src/packages/combat/lib/lineOfSight.ts (+ tests/lineOfSight.test.ts), src/components/ScenarioMap/{useCombatActions,useReactionActions}.tsx, src/packages/ai/lib/planner.ts, docs/dev/{08-combat,changelog}.md, docs/players/player-manual.md
+
+- **Structure blocking now depends on height.** `structuresBlockingLine` takes
+  `{ fromElevation, toElevation }`: for an intervening structure of top `H`, the
+  shot's side-view line at the structure's position is `Ea + (Eb−Ea)·t`; it blocks
+  only when that line is **below `H`** (equal to the top **clears**). Decorative
+  (top ≤ 0) structures never block. `hasLineOfSight` forwards the elevations.
+- **Endpoints excluded.** Only structures **strictly between** count — a **hex
+  structure** on a strictly-between hex, or an **edge wall** on an edge **between
+  two strictly-between hexes**. A structure on the shooter's/target's own hex, or
+  on the edge immediately in front of either, never blocks LoS (those are cover).
+  So a wall 10 ft tall blocks a 0-ft shot and a 10-ft shooter (line 5 < 10), but a
+  **20-ft** shooter clears it (line 10 ≥ 10).
+- **Flying is no special case** — `useCombatActions` no longer nulls structures
+  for an airborne attacker; height decides for everyone. `useReactionActions` and
+  the AI estimate pass elevations too. `tsc` clean, tests pass, build clean. No
+  migration.
+
 ## Formation org level moves to the DB (loose + pass-through) (2026-10-07)
 **Files:** supabase/migrations/{117_formation_organization_level,118_formation_org_level_rpc}.sql (new), src/types/gameProtocol.ts, src/packages/infra/lib/formationCache.ts, src/packages/movement/lib/{formationRules,passThrough,moveCost}.ts (+ tests), src/packages/ai/lib/planner.ts, src/components/ScenarioMap/{useMoveActions,useOverlay,useReactionActions}.tsx, docs/dev/{00-universal-rules,07-movement-economy,changelog}.md
 

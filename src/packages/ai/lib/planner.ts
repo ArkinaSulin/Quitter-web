@@ -214,7 +214,7 @@ export function expectedDamage(
     targetAdvantage: tFlags.grantAdvantage,
     targetDisadvantage: tFlags.grantDisadvantage,
     rangeDisadvantage: !!weapon && isRanged && dist > weaponRange && dist <= weaponMax,
-    losDisadvantage: !!weapon && isRanged && !hasLineOfSight(attacker.hex, target.hex, ctx.units, new Set([attacker.id, target.id])),
+    losDisadvantage: !!weapon && isRanged && !hasLineOfSight(attacker.hex, target.hex, ctx.units, new Set([attacker.id, target.id]), undefined, undefined, { fromElevation: attacker.elevation ?? 0, toElevation: target.elevation ?? 0 }),
   });
   if (weapon?.isHealing || (weapon && isAreaWeapon(weapon))) return 0; // AI doesn't heal/cast in v2
   if (!weapon) {

@@ -132,6 +132,20 @@ front; **Scattered** → all sides flank; **Routed** → all sides rear.
 - **Melee-vs-hero cap**: only `unit_melee_hero_cap` (0.5) of a unit's troops
   can reach a lone (or front-attached) hero in melee — ranged is uncapped.
 
+## Ranged line of sight (structure height)
+
+A ranged shot's line is the straight hex-centre line. **Any other unit** on it
+(friendly or hostile, not hidden/dead) turns the shot into an **indirect shot**
+resolved at **disadvantage**. Intervening **structures** block by **height**: take
+the side-view line from the shooter's elevation to the target's elevation; a
+structure blocks when that line is **below its top** at the structure's position
+(equal to the top **clears**). Only structures **strictly between** the shooter
+and target count — a structure on either unit's own hex, or on an edge immediately
+in front of either, is handled by cover and never blocks LoS. A **flying** attacker
+is no special case: it clears low structures by elevation and is blocked by taller
+ones. `src/packages/combat/lib/lineOfSight.ts` (`hasLineOfSight` /
+`structuresBlockingLine`); read by the attack, the archer reaction and the AI.
+
 ## To-hit, damage, crits
 
 Per attack: roll D20. Hit when `roll + attackBonus + formation.attack_modifier
