@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chargeStanceFor, isStooping, ChargeStanceInput } from '@/packages/combat/lib/chargeStance';
+import { chargeStanceFor, isSwooping, ChargeStanceInput } from '@/packages/combat/lib/chargeStance';
 import { Formation } from '@/types/gameProtocol';
 
 const form = (canCharge: boolean): Formation => ({ can_charge: canCharge } as unknown as Formation);
@@ -28,9 +28,9 @@ describe('chargeStanceFor', () => {
     expect(chargeStanceFor(base())).toBe('charge');
   });
 
-  it('airborne flyer → stoop (unit or hero)', () => {
-    expect(chargeStanceFor(base({ unit: unit({ flySpeed: 4, elevation: 20 }), airborne: true }))).toBe('stoop');
-    expect(chargeStanceFor(base({ unit: unit({ isHero: true, flySpeed: 4, elevation: 20 }), airborne: true }))).toBe('stoop');
+  it('airborne flyer → swoop (unit or hero)', () => {
+    expect(chargeStanceFor(base({ unit: unit({ flySpeed: 4, elevation: 20 }), airborne: true }))).toBe('swoop');
+    expect(chargeStanceFor(base({ unit: unit({ isHero: true, flySpeed: 4, elevation: 20 }), airborne: true }))).toBe('swoop');
   });
 
   it('airborne non-flyer (a hanging climber) → none', () => {
@@ -55,14 +55,14 @@ describe('chargeStanceFor', () => {
   });
 });
 
-describe('isStooping (already-declared)', () => {
+describe('isSwooping (already-declared)', () => {
   it('charging + actually airborne (own surface) only', () => {
-    expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: true })).toBe(true);
-    expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: false })).toBe(false);
-    expect(isStooping({ flySpeed: 4, elevation: 0, isCharging: true })).toBe(false);
-    expect(isStooping({ flySpeed: 0, elevation: 20, isCharging: true })).toBe(false);
-    // Grounded on a 10-ft structure (elevation == surface) → not stooping.
-    expect(isStooping({ flySpeed: 4, elevation: 10, isCharging: true }, 10)).toBe(false);
-    expect(isStooping({ flySpeed: 4, elevation: 20, isCharging: true }, 10)).toBe(true);
+    expect(isSwooping({ flySpeed: 4, elevation: 20, isCharging: true })).toBe(true);
+    expect(isSwooping({ flySpeed: 4, elevation: 20, isCharging: false })).toBe(false);
+    expect(isSwooping({ flySpeed: 4, elevation: 0, isCharging: true })).toBe(false);
+    expect(isSwooping({ flySpeed: 0, elevation: 20, isCharging: true })).toBe(false);
+    // Grounded on a 10-ft structure (elevation == surface) → not swooping.
+    expect(isSwooping({ flySpeed: 4, elevation: 10, isCharging: true }, 10)).toBe(false);
+    expect(isSwooping({ flySpeed: 4, elevation: 20, isCharging: true }, 10)).toBe(true);
   });
 });

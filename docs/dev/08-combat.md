@@ -52,7 +52,7 @@ structure, an edge wall, or a hex gate/tower:
   same elevation, or hover directly above/below (same hex). Net: formed units
   reach front-2 **+ own column ±10 ft**; Scattered/Hero reach all-around
   (6 adjacent same-elevation + own column ±10 ft).
-- **Same hex ±≤10 ft vertical** (a stooping flyer hovering over its target) is
+- **Same hex ±≤10 ft vertical** (a swooping flyer hovering over its target) is
   attackable by **any** formation — the zero horizontal delta resolves to
   `front`. It *is* a kill zone/ZoC when the upper unit is an actually-airborne
   formed flyer (≤10 ft down); see `07` "Zone of control (universal rule)".
@@ -249,20 +249,20 @@ pause; allowing records over cap, **declining suppresses the counter**
 (`suppressRetaliation(..., atCap)`). The count resets on the unit's own turn
 start. Heroes also respect the cap in practice via their 5-action budget.
 
-## Charge! / Stoop! (one shared command)
+## Charge! / Swoop! (one shared command)
 
 The context menu offers a single charge entry, computed by `chargeStanceFor`
 (`src/packages/combat/lib/chargeStance.ts`) from the unit's **actual** state (airborne =
 `elevation > surfaceAt(hex)`, not merely `elevation > 0`):
 
 - **Grounded**, non-hero, with `canCharge` + `canFormationCharge` → **Charge!**;
-- **Airborne** fly-capable → **Stoop!** (offered to units *and* heroes);
+- **Airborne** fly-capable → **Swoop!** (offered to units *and* heroes);
 - a hanging climber is airborne but can't fly → nothing.
 
 Both merely mark `isCharging` + `chargeDistance = 0` and lock rotate/formation;
-the following move/drop decides ground-charge vs stoop, so they share the engine
+the following move/drop decides ground-charge vs swoop, so they share the engine
 handler. The entry is gated by the scenario `mounted_charge_enabled` setting
-(shown as **"Mounted charge and airborne stoop"**).
+(shown as **"Mounted charge and airborne swoop"**).
 - Moves only through the charge wedge (`07`); distance accumulates.
 - Attack at distance ≥ `charge_full_distance` (2) → **free double-damage
   attack**, then drop one organization level (`CHARGE_END`). Attack < 2 →

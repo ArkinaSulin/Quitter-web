@@ -24,7 +24,7 @@ import { rangeBonusAt, unitIgnoresClimb } from '@/packages/effects';
 import { edgeHexes } from '@/packages/combat';
 import { canWithdraw, withdrawDestinations, WITHDRAW_ACTION_COST } from '@/packages/movement';
 import { moveBudgetUnit, parseClimbTo, isAirborne } from '@/packages/movement';
-import { isStooping } from '@/packages/combat';
+import { isSwooping } from '@/packages/combat';
 
 /** Hovered unit's imposed kill-zone/ZoC tint: its two front hexes at the same
  *  elevation PLUS the hex directly below it when it is an actually-airborne
@@ -239,9 +239,9 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
         combined[targetKey] = 'rgba(255, 80, 80, 0.7)';
         return combined;
       }
-      // A stooping flyer hovering a GROUND enemy: the drop offers the charge-drop
+      // A swooping flyer hovering a GROUND enemy: the drop offers the charge-drop
       // (move onto the hex + free melee). Amber distinguishes it from a plain shot.
-      if (isStooping(draggedUnit, structureSurfaceAt(draggedUnit.hex, structures, templates)) && (hoveredUnit!.elevation ?? 0) <= 0) {
+      if (isSwooping(draggedUnit, structureSurfaceAt(draggedUnit.hex, structures, templates)) && (hoveredUnit!.elevation ?? 0) <= 0) {
         combined[targetKey] = 'rgba(255, 140, 60, 0.85)';
         return combined;
       }

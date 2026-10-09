@@ -19,7 +19,7 @@ import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreat
 import { isHostile, sameAlliance, allianceOf } from '@/packages/primitives';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isMeleeReachable, computeWeaponSwitchAc, attackKind, canWeaponAttack } from '@/packages/combat';
 import { meleeElevationFor, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo, isAirborne } from '@/packages/movement';
-import { isStooping } from '@/packages/combat';
+import { isSwooping } from '@/packages/combat';
 import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable } from '@/packages/movement';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay, damageDiceCount, withDamageDiceCount } from '@/packages/units';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/packages/units';
@@ -51,9 +51,9 @@ function auraEffects(f: StructureAuraFlags, unitName: string): UnitEffect[] {
   return out;
 }
 
-/** A resolved stoop drop: the flyer charge-moves onto the ground target's hex,
+/** A resolved swoop drop: the flyer charge-moves onto the ground target's hex,
  *  dives to melee range, and delivers the free melee charge attack atomically. */
-export interface StoopDropPlan {
+export interface SwoopDropPlan {
   landHex: Hex;
   elevation: number;
   cost: number;
@@ -360,7 +360,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
     const subSteps: SubStep[] = [];
 
-    // A stoop drop rides its charge MOVE/ELEVATE inside this same ATTACK command
+    // A swoop drop rides its charge MOVE/ELEVATE inside this same ATTACK command
     // (one undo entry): the attacker snapshot above is already at the landing hex.
     if (options?.prependSubSteps) subSteps.push(...options.prependSubSteps);
 
@@ -1020,19 +1020,19 @@ export function useCombatActions(deps: CombatActionsDeps) {
   }, [units, formationsMap, performChargeEnd]);
 
   /**
-   * Resolve the stoop drop for `attacker` onto `target`, or null when it does not
-   * apply: attacker must be an already-declared STOOP (airborne + charging), the
+   * Resolve the swoop drop for `attacker` onto `target`, or null when it does not
+   * apply: attacker must be an already-declared SWOOP (airborne + charging), the
    * target a GROUND unit, the target hex a legal forward-charge destination (in
    * the charge wedge, no other flyer there), the total charge distance at least a
    * full charge, and no attached hero (the flyer drops alone — v1).
    */
-  const buildStoopDropPlan = useCallback((attacker: Unit, target: Unit): StoopDropPlan | null => {
-    if (!isStooping(attacker, structureSurfaceAt(attacker.hex, structures, structureTemplates)) || isAirborne(target.elevation, structureSurfaceAt(target.hex, structures, structureTemplates))) return null;
+  const buildSwoopDropPlan = useCallback((attacker: Unit, target: Unit): SwoopDropPlan | null => {
+    if (!isSwooping(attacker, structureSurfaceAt(attacker.hex, structures, structureTemplates)) || isAirborne(target.elevation, structureSurfaceAt(target.hex, structures, structureTemplates))) return null;
     if (target.isDeleted || target.id === attacker.id) return null;
     // v1: the flyer drops alone (an attached hero would need its own MOVE/ELEVATE
     // sub-steps and a mid-command state snapshot).
     if (units.some(u => u.attachedToUnitId === attacker.id && !u.isDeleted)) return null;
-    // A stoop is an airborne charge: it draws from the fly pool (raw flySpeed).
+    // A swoop is an airborne charge: it draws from the fly pool (raw flySpeed).
     const maxMP = flyMax(attacker);
     const budgetUnit = moveBudgetUnit(attacker, 'fly');
     const occupied = airOccupiedHexes(units, attacker.id);
@@ -1052,25 +1052,25 @@ export function useCombatActions(deps: CombatActionsDeps) {
     };
   }, [units, structures, structureTemplates]);
 
-  /** The plan if a stoop drop applies to this pair, else null (used by the UI to
+  /** The plan if a swoop drop applies to this pair, else null (used by the UI to
    *  decide whether to prompt). */
-  const planStoopDrop = useCallback((attackerId: string, targetId: string): StoopDropPlan | null => {
+  const planSwoopDrop = useCallback((attackerId: string, targetId: string): SwoopDropPlan | null => {
     const attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return null;
-    return buildStoopDropPlan(attacker, target);
-  }, [units, buildStoopDropPlan]);
+    return buildSwoopDropPlan(attacker, target);
+  }, [units, buildSwoopDropPlan]);
 
   /**
-   * Execute the stoop drop as ONE command: charge MOVE (hex + MP/action spend),
+   * Execute the swoop drop as ONE command: charge MOVE (hex + MP/action spend),
    * ELEVATE (dive to melee), CHARGE distance tick, then the free melee attack —
    * all applied atomically so undo never sees a half-moved state.
    */
-  const performStoopDrop = useCallback(async (attackerId: string, targetId: string) => {
+  const performSwoopDrop = useCallback(async (attackerId: string, targetId: string) => {
     const attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return;
-    const plan = buildStoopDropPlan(attacker, target);
+    const plan = buildSwoopDropPlan(attacker, target);
     if (!plan) return;
     const flyBudget = moveBudgetUnit(attacker, 'fly');
     const spend = attacker.isHero
@@ -1079,7 +1079,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const currentElev = attacker.elevation ?? 0;
     const prepend: SubStep[] = [{
       type: 'MOVE',
-      description: `${attacker.unitName} stoops onto ${target.unitName}`,
+      description: `${attacker.unitName} swoops onto ${target.unitName}`,
       unitId: attacker.id,
       changes: [
         { field: 'hex', from: { ...attacker.hex }, to: { ...plan.landHex } },
@@ -1105,7 +1105,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     }
     prepend.push({
       type: 'CHARGE',
-      description: `${attacker.unitName} advanced ${plan.cost} hex(es) in its stoop`,
+      description: `${attacker.unitName} advanced ${plan.cost} hex(es) in its swoop`,
       unitId: attacker.id,
       changes: [{ field: 'chargeDistance', from: attacker.chargeDistance, to: (attacker.chargeDistance ?? 0) + plan.cost }],
     });
@@ -1120,7 +1120,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const result = await performAttack(adjusted, target, plan.overBudget, { isCharging: true, prependSubSteps: prepend });
     if (!result) return;
     await finishChargeAfterAttack(adjusted, target, result);
-  }, [units, buildStoopDropPlan, performAttack, finishChargeAfterAttack]);
+  }, [units, buildSwoopDropPlan, performAttack, finishChargeAfterAttack]);
 
   const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; weaponIndex?: number; heroJoin?: boolean; heroOverBudget?: boolean; mainTarget?: 'mount' | 'rider'; damageDice?: string }) => {
     let attacker = units.find(u => u.id === attackerId);
@@ -1337,7 +1337,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       }
       // The formation's melee-target arcs are the single gate (universal rule):
       // normal formations reach only the front ZoC; Scattered/Hero reach all
-      // around. Same-hex (a stooping flyer hovering) resolves to 'front', so any
+      // around. Same-hex (a swooping flyer hovering) resolves to 'front', so any
       // formation may strike it.
       if (!canMeleeTarget(attackerForm, targetPos)) {
         addMessage(`${attacker.unitName} (${attacker.currentFormation}) cannot melee target in that direction`);
@@ -1495,7 +1495,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     finishChargeAfterAttack,
     performPursuits,
     handleAttackRequest,
-    planStoopDrop,
-    performStoopDrop,
+    planSwoopDrop,
+    performSwoopDrop,
   };
 }

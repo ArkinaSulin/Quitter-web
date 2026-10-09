@@ -120,8 +120,8 @@ export function useMoveActions(deps: MoveActionsDeps) {
     endSurface: number;
     /** A ground unit already occupying the target hex (a flyer may hover above it). */
     occupant: Unit | null;
-    /** The occupant is a hostile stoop target (the unified modal offers Stoop). */
-    canStoop: boolean;
+    /** The occupant is a hostile swoop target (the unified modal offers Swoop). */
+    canSwoop: boolean;
     /** The occupant is hostile (the unified modal offers the attack choice). */
     isHostile: boolean;
     /** Selected weapon index for the occupant attack (defaults to the active one). */
@@ -471,7 +471,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
 
     // Charging units may only move forward through the front-arc charge wedge,
-    // and cannot enter broken terrain (painted MP cost > 1). A stooping flyer
+    // and cannot enter broken terrain (painted MP cost > 1). A swooping flyer
     // charges on the air layer (over terrain/walls, air-occupied only).
     const waiveClimb = unitIgnoresClimb(unit, groundZones);
     if (unit.isCharging) {
@@ -579,7 +579,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (canFly(unit)) {
       const groundOccupied = units.some(u => u.id !== unitId && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) <= 0 && u.hex.q === targetHex.q && u.hex.r === targetHex.r);
       const range = elevationSliderRange(unit.elevation ?? 0, entry.cost, groundOccupied);
-      setPendingElevation({ unit, targetHex, cost: entry.cost, maxMP: finalMax, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation, range, originAir: flying, originSurface, endSurface, occupant: null, canStoop: false, isHostile: false, weaponIndex: unit.activeWeaponIndex ?? 0, damageDiceCount: damageDiceCount(parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0]?.damageDice ?? ''), mainTarget: 'rider' });
+      setPendingElevation({ unit, targetHex, cost: entry.cost, maxMP: finalMax, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation, range, originAir: flying, originSurface, endSurface, occupant: null, canSwoop: false, isHostile: false, weaponIndex: unit.activeWeaponIndex ?? 0, damageDiceCount: damageDiceCount(parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0]?.damageDice ?? ''), mainTarget: 'rider' });
       return;
     }
     await completeMove(unit, targetHex, entry.cost, false, finalMax, attachedHero, heroMax, breakToFormation, descendElev, originSurface);
@@ -795,7 +795,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
   /** Open the unified flyer-drop modal for a hex occupied by a ground unit.
    *  A turn-required destination reports the move error (a move intent, not an
    *  attack); a truly unreachable hex returns false (falls back to attack). */
-  const beginFlyerDrop = useCallback((unit: Unit, occupant: Unit, opts: { canStoop: boolean; isHostile: boolean }): boolean => {
+  const beginFlyerDrop = useCallback((unit: Unit, occupant: Unit, opts: { canSwoop: boolean; isHostile: boolean }): boolean => {
     const reach = flyerOccupyReach(unit, occupant.hex);
     if (reach.kind === 'needsTurn') {
       addMessage(`${unit.unitName} must turn first (1 MP) to move to (${occupant.hex.q}, ${occupant.hex.r})`);
@@ -809,7 +809,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       unit, targetHex: occupant.hex, cost: reach.cost, maxMP: reach.maxMP,
       attachedHero: reach.attachedHero, heroMaxMP: reach.heroMaxMP, breakToFormation: undefined,
       range, originAir: isAirborne(unit.elevation, originSurface), originSurface, endSurface, occupant,
-      canStoop: opts.canStoop, isHostile: opts.isHostile,
+      canSwoop: opts.canSwoop, isHostile: opts.isHostile,
       weaponIndex: unit.activeWeaponIndex ?? 0,
       damageDiceCount: damageDiceCount(parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0]?.damageDice ?? ''),
       mainTarget: 'rider',

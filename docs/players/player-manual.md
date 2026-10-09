@@ -1182,7 +1182,7 @@ Players can skim it to know what the GM can do.
 ![S-27 Scenario Settings](screenshots/s-27-settings.png)
 
 - **Reactive archery** — opportunity fire on/off.
-- **Mounted charge and airborne stoop** — Charge! for grounded charge-capable units and Stoop! for airborne flyers, on/off.
+- **Mounted charge and airborne swoop** — Charge! for grounded charge-capable units and Swoop! for airborne flyers, on/off.
 - **Verbose combat** — show every dice roll in the log (great for teaching). Every message records its full detail regardless; this toggle only changes what is **displayed**, so turning it on mid-game reveals the rolls for the whole history.
 - **Fog of war** + **Sight radius** (1–9).
 

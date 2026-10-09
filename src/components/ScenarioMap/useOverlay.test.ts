@@ -100,7 +100,7 @@ describe('computeOverlayMap — hovered-unit ZoC tint', () => {
 });
 
 // The bug this locks: hover was suppressed during a drag, so the whole drag
-// target preview (range rings, melee/stoop colour) never rendered — for ANY
+// target preview (range rings, melee/swoop colour) never rendered — for ANY
 // target, hero or not. `draggingUnitId` + a hostile `hoveredUnit` must both be set.
 describe('computeOverlayMap — drag over a hostile target shows range rings', () => {
   const RANGED_FORMS: Record<string, Formation> = {

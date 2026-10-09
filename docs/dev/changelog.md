@@ -1,5 +1,16 @@
 # QuiTTER Changelog
 
+## Rename flyer charge "Stoop" -> "Swoop" (2026-10-08)
+**Files:** src/packages/combat/lib/{chargeStance,chargeOver}.ts (+ tests/chargeStance.test.ts), src/components/ScenarioMap/{ContextMenu,ScenarioMap,useCombatActions,useMoveActions,useOverlay,useOverlay.test}.ts(x), src/hooks/useHexGrid.ts, docs/dev/{00,06,08}, docs/players/player-manual.md, AGENTS.md
+
+- Corrected the misspelling: the airborne flyer charge is **Swoop!** (was "Stoop").
+  Renamed the identifier throughout — `ChargeStance` value `'stoop'` → `'swoop'`,
+  `isStooping` → `isSwooping`, `StoopDropPlan`/`buildStoopDropPlan`/
+  `planStoopDrop`/`performStoopDrop` → `SwoopDropPlan`/`buildSwoopDropPlan`/
+  `planSwoopDrop`/`performSwoopDrop`, `canStoop` → `canSwoop` — plus every UI
+  label ("Swoop attack", "Mounted charge and airborne swoop", scenario toggle)
+  and doc. No behaviour change. `tsc` clean, 979 tests pass, build clean. No migration.
+
 ## Unit editor: respect a saved troop count (2026-10-08)
 **Files:** src/components/UnitEditor.tsx, docs/dev/changelog.md
 
@@ -151,7 +162,7 @@
 - **Range rings / drag-target preview restored.** `0eae048` changed `useHexGrid`
   to suppress hover whenever `draggingUnitId` was set — which also killed the
   ONLY producer of `hoveredUnit`, so the whole drag-target overlay (ranged
-  min/max rings, green melee target, stoop amber) never rendered while dragging
+  min/max rings, green melee target, swoop amber) never rendered while dragging
   **for any target** (not just heroes). Hover now fires during a drag again; the
   unit **tooltip** is hidden during a drag instead (gated on `draggingUnitId`).
 - **Withdraw highlight reflects affordability.** `useOverlay` paints the white
@@ -349,7 +360,7 @@
   checks; fixed the last `verticalFeet <= 10` miss in `useCombatActions`.
 - **Airborne is surface-relative everywhere** it matters: `useOverlay`,
   `useMoveActions` (move + withdraw + flyer drop), `ScenarioMap` (withdraw
-  guard), `useCombatActions` (flyer LoS, pursue skip, stoop target) all call
+  guard), `useCombatActions` (flyer LoS, pursue skip, swoop target) all call
   `isAirborne(elevation, structureSurfaceAt(hex))`. `rotateUnit` /
   `changeFormation` gain an optional `surface` param so a garrison on a
   structure turns/reforms on the ground pool; `ScenarioMap` passes it.
@@ -359,7 +370,7 @@
 - Behavior preserved (except the intended airborne-surface fixes). `tsc` clean,
   923 tests pass, build clean. No migration.
 
-## Fold ZoC/kill-zone + Charge/Stoop into single predicates (2026-10-04)
+## Fold ZoC/kill-zone + Charge/Swoop into single predicates (2026-10-04)
 **Files:** src/lib/{unitMorale(+test),zocDisengage,chargeStance(+test),flying(+test)}.ts, src/components/ScenarioMap/{mapGeometry,threatHexes.test,useCombatActions,useOverlay}.ts(x), docs/dev/{00-universal-rules,changelog}.md
 
 - **One kill-zone/ZoC predicate** — `unitMorale.imposesKillZone(unit, hex, {
@@ -371,7 +382,7 @@
   the front-2/vertical/exclusion logic is no longer assembled in three places.
   `mapGeometry` drops its `determineCombatPosition`/`getOrganizationLevel`/
   `isUnitRouted` imports.
-- **Charge/Stoop unified** — `isStooping` moves into `chargeStance.ts` (beside
+- **Charge/Swoop unified** — `isSwooping` moves into `chargeStance.ts` (beside
   `chargeStanceFor`) and builds on `flying.isAirborne`; `flying.ts` no longer
   exports it, and `useCombatActions`/`useOverlay` import it from `chargeStance`.
 - Behavior-preserving. `docs/dev/00-universal-rules.md` status updated. `tsc`
@@ -393,7 +404,7 @@
 - **One elevation home** (`src/lib/flying.ts`): `isAirborne(elevation, surface)`,
   `withinVerticalGap`, `verticalGapDown`. Replaced the inlined
   `elevation > surface`, `Math.abs(..) <= 10` and `gap > 0 && gap <= 10` checks
-  in kill zone, threat hexes, melee/point-blank, `isStooping`, `canReachStructure`,
+  in kill zone, threat hexes, melee/point-blank, `isSwooping`, `canReachStructure`,
   the move confirm and the effect-elevation badge.
 - Behavior-preserving. New docs chapter `00-universal-rules.md` (rule → home map)
   indexed from the README. `tsc` clean, 916 tests pass, build clean. No migration.
@@ -473,26 +484,26 @@
 - `formatStatsText` (Share) mirrors the grouped layout. `tsc` clean, tests pass,
   build clean. No migration.
 
-## Unified Charge!/Stoop! context entry; airborne detection fixed (2026-10-04)
+## Unified Charge!/Swoop! context entry; airborne detection fixed (2026-10-04)
 **Files:** src/lib/{chargeStance.ts (+ test),flying.ts (+ test)}, src/components/ScenarioMap/{ContextMenu,ScenarioMap,useCombatActions,useOverlay}.tsx, docs/dev/{06-turn-system,08-combat,changelog}.md, docs/players/player-manual.md
 
-- **Stoop! is now offered to flying units AND heroes in the air.** The two
-  duplicated Charge!/Stoop! context-menu blocks are replaced by one entry whose
+- **Swoop! is now offered to flying units AND heroes in the air.** The two
+  duplicated Charge!/Swoop! context-menu blocks are replaced by one entry whose
   stance comes from the new pure `chargeStanceFor({ unit, airborne, form,
-  chargeEnabled })`: airborne flyer → `Stoop!`, grounded charge-capable unit →
+  chargeEnabled })`: airborne flyer → `Swoop!`, grounded charge-capable unit →
   `Charge!`, otherwise nothing. Both call the same `charge` handler (they only
-  set `isCharging`), so charge and stoop genuinely share code. The entry is no
+  set `isCharging`), so charge and swoop genuinely share code. The entry is no
   longer inside the `!unit.isHero` group, so flying heroes qualify.
 - **Airborne means `elevation > surfaceAt(hex)`, not `elevation > 0`.** `ContextMenu`
   takes a new `isAirborne` prop (computed in `ScenarioMap` via
   `structureSurfaceAt`), so a flyer **standing on a structure** no longer shows
-  Stoop! (and now correctly shows Charge! instead — the inverse `<= 0` gate is
-  fixed). The same fix lands in `isStooping(unit, surface = 0)`, threaded through
-  `buildStoopDropPlan` and the drag overlay, so a grounded flyer on a wall can't
-  be treated as stooping.
+  Swoop! (and now correctly shows Charge! instead — the inverse `<= 0` gate is
+  fixed). The same fix lands in `isSwooping(unit, surface = 0)`, threaded through
+  `buildSwoopDropPlan` and the drag overlay, so a grounded flyer on a wall can't
+  be treated as swooping.
 - **Scenario setting renamed** (UI only; column stays `mounted_charge_enabled`):
-  **"Mounted charge and airborne stoop"** — "When on, charge-capable units may
-  use Charge! and airborne flyers may use Stoop!."
+  **"Mounted charge and airborne swoop"** — "When on, charge-capable units may
+  use Charge! and airborne flyers may use Swoop!."
 - `tsc` clean, tests pass, build clean. No migration.
 
 ## Universal attack-arc rule; structure arc gating; vertical flyer ZoC; rear threat ×2 (2026-10-04)
@@ -870,17 +881,17 @@
 - **A real Fly pool** (`flySpeed` / `flySpeedAvailable`) now drives aerial movement, mirroring the ground economy (**1 action = 1 full fly pool**; fly max is raw `flySpeed`). The pool is chosen by origin/end elevation (`movePoolMode`): an airborne start or end is a FLY move, else GROUND. End-turn refreshes flyable **heroes to full**, **units to 0**. New pure helpers `movePoolMode`/`flyMax`/`moveBudgetUnit`/`passengerDrain` (+ tests).
 - **Engine spends switch pools**: `moveUnitRecorded` writes `flySpeedAvailable` for fly moves and applies a **passive passenger drain** (`frac = used/hostFlyMax`; attached/rider ground MP ↓ `frac×passengerGroundMax`, plus the passenger's own fly pool ↓ `frac×passengerFlyMax`; never limits). `rotateUnit`, `changeFormation`, `attachHero`, `swapHeroPosition` spend from the fly pool while airborne. `endTurn` resets `flySpeedAvailable`.
 - **Tooltip**: flyable units show **"Ground Move"** + **"Fly Move: flySpeedAvailable/flySpeed"**; others keep the single **"Move"** row.
-- **Unified flyer drop modal**: dropping a fly-capable unit on a ground-occupied hex offers **Move** (hover above it, min 10 ft; friendly = Move only) plus **Stoop attack** (a declared Stoop on an enemy, now fly-pool funded) and **Range attack** (hostile, from the current hex). Empty-hex drops keep Move + elevation. Preview/budget follows the **origin** pool (`useOverlay`).
+- **Unified flyer drop modal**: dropping a fly-capable unit on a ground-occupied hex offers **Move** (hover above it, min 10 ft; friendly = Move only) plus **Swoop attack** (a declared Swoop on an enemy, now fly-pool funded) and **Range attack** (hostile, from the current hex). Empty-hex drops keep Move + elevation. Preview/budget follows the **origin** pool (`useOverlay`).
 - **Withdraw while airborne is disabled** (no overlay hexes; a would-be withdraw drop shows "Cannot withdraw during flight.").
 - `tsc` clean; 840 tests pass; build clean. No migration (`flySpeedAvailable` already mapped in 108).
 
-## Stoop drop attack + melee-only free charge (2026-10-02)
+## Swoop drop attack + melee-only free charge (2026-10-02)
 **Files:** src/lib/flying.ts (+ test), src/components/ScenarioMap/{useCombatActions,ScenarioMap,useOverlay}.tsx, docs/dev/changelog.md
 
-- **Stoop drop**: dropping an already-declared **Stoop** (`isCharging && elevation > 0`, new `isStooping`) onto an **enemy ground** unit now offers a prompt — **Attack** = one atomic `ATTACK` command carrying the charge `MOVE` (hex + MP/action spend) + `ELEVATE` (dive to melee 10 ft) + `CHARGE` distance tick + the **free melee charge attack** (so undo never sees a half-moved state); **Cancel** = the normal attack from the current hex. The prompt only appears when the target hex is a legal forward-charge destination (charge wedge, no other flyer), the target is a different alliance and visible, and the total charge distance reaches a full charge. Attached heroes are excluded (the flyer drops alone). Over-budget/cap are soft-gated.
-- **Charge free attack is MELEE-only** (land + stoop): `handleAttackRequest` only takes the free charge branch when `!isRangedThisAttack`; a charging unit's ranged attack rides the normal paid path and the charge stays active.
-- **Same-hex melee allowed**: the attacker front-arc gate is skipped at `dist === 0`, so a stooping flyer hovering its target can strike (position/arc already resolve to `front`).
-- `performAttack` gained a `prependSubSteps` option; `planStoopDrop`/`performStoopDrop` exported. Overlay paints the stoop-drop target amber. `tsc` clean; 836 tests pass; build clean. No migration.
+- **Swoop drop**: dropping an already-declared **Swoop** (`isCharging && elevation > 0`, new `isSwooping`) onto an **enemy ground** unit now offers a prompt — **Attack** = one atomic `ATTACK` command carrying the charge `MOVE` (hex + MP/action spend) + `ELEVATE` (dive to melee 10 ft) + `CHARGE` distance tick + the **free melee charge attack** (so undo never sees a half-moved state); **Cancel** = the normal attack from the current hex. The prompt only appears when the target hex is a legal forward-charge destination (charge wedge, no other flyer), the target is a different alliance and visible, and the total charge distance reaches a full charge. Attached heroes are excluded (the flyer drops alone). Over-budget/cap are soft-gated.
+- **Charge free attack is MELEE-only** (land + swoop): `handleAttackRequest` only takes the free charge branch when `!isRangedThisAttack`; a charging unit's ranged attack rides the normal paid path and the charge stays active.
+- **Same-hex melee allowed**: the attacker front-arc gate is skipped at `dist === 0`, so a swooping flyer hovering its target can strike (position/arc already resolve to `front`).
+- `performAttack` gained a `prependSubSteps` option; `planSwoopDrop`/`performSwoopDrop` exported. Overlay paints the swoop-drop target amber. `tsc` clean; 836 tests pass; build clean. No migration.
 
 ## Fix: rider no longer caps the mount's movement preview (2026-09-30)
 **Files:** src/components/ScenarioMap/useOverlay.ts, docs/dev/changelog.md
@@ -913,11 +924,11 @@
 - **Leave-hero-behind prompt**: on take-off, a non-flying attached hero too large to carry (`carryRule === 'leave'`) prompts "Leave it behind?" — confirming detaches the hero at the origin and the host takes off alone.
 - `tsc` clean; 835 tests pass; build clean. No migration.
 
-## Stoop (flying charge) — first pass (Phase 2) (2026-09-30)
+## Swoop (flying charge) — first pass (Phase 2) (2026-09-30)
 **Files:** src/components/ScenarioMap/{ContextMenu,useMoveActions}.tsx, src/lib/chargeOver.ts, docs/dev/changelog.md
 
-- **Stoop!** context entry (flyers at elevation > 0) reuses the charge machinery: the charge move uses the air layer (over terrain/walls, air-occupied only), and a stooping charger only overruns another airborne target (`isChargeOverEligible` requires both at elevation > 0). Org-drop and double damage reuse `isCharging`.
-- Note: dive-during-stoop and the "horizontal + vertical (10 ft = 1 hex)" charge-distance accumulation are pending refinements.
+- **Swoop!** context entry (flyers at elevation > 0) reuses the charge machinery: the charge move uses the air layer (over terrain/walls, air-occupied only), and a swooping charger only overruns another airborne target (`isChargeOverEligible` requires both at elevation > 0). Org-drop and double damage reuse `isCharging`.
+- Note: dive-during-swoop and the "horizontal + vertical (10 ft = 1 hex)" charge-distance accumulation are pending refinements.
 - `tsc` clean; 834 tests pass; build clean. No migration.
 
 ## Dive/climb attack for flyers (Phase 2) (2026-09-30)

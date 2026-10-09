@@ -32,7 +32,7 @@ interface ContextMenuProps {
   onSetRouting?: () => void;
   onDeleteUnit: () => void;
   onCharge?: () => void;
-  /** Scenario toggle: when false, the Charge!/Stoop! action is hidden. */
+  /** Scenario toggle: when false, the Charge!/Swoop! action is hidden. */
   chargeEnabled?: boolean;
   /** True when the unit hovers above its hex surface (elevation > surface). */
   isAirborne?: boolean;
@@ -273,9 +273,9 @@ export function ContextMenu({
         </>
       )}
 
-      {/* Charge! (grounded, charge-capable formation) / Stoop! (airborne flyer):
+      {/* Charge! (grounded, charge-capable formation) / Swoop! (airborne flyer):
           ONE shared command offered to units and heroes. Both just set
-          `isCharging`; the following move/drop decides ground-charge vs stoop. */}
+          `isCharging`; the following move/drop decides ground-charge vs swoop. */}
       {!unit.attachedToUnitId && (() => {
         const stance = chargeStanceFor({ unit, airborne: isAirborne, form: formationsMap?.[unit.currentFormation], chargeEnabled });
         if (!stance || !onCharge) return null;
@@ -285,7 +285,7 @@ export function ContextMenu({
               className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300 font-semibold"
               onClick={() => { onCharge(); onClose(); }}
             >
-              {stance === 'stoop' ? 'Stoop!' : 'Charge!'}
+              {stance === 'swoop' ? 'Swoop!' : 'Charge!'}
             </div>
             <div className="border-t border-gray-700 my-1" />
           </>

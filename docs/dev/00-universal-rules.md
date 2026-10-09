@@ -37,7 +37,7 @@ instead of re-deriving it.
 | Kill zone / ZoC (unified) | `src/packages/morale/lib/unitMorale.ts` → `imposesKillZone` (the one predicate) | `isInKillZone` (morale/point-blank/AGR), `computeThreatHexes` (overlay), `imposesZocOn` (disengage), `combat/meleeFallback`, `useCombatActions`. |
 | Threat reach (heroes) | `src/packages/morale/lib/unitMorale.ts` → `heroThreatAgainst` | `calcEnemyThreats`. |
 | Rear-threat ×2 | `getThreatMode` (`movement/formationRules`) via `calcEnemyThreats` | tooltip, morale checks. |
-| Charge / Stoop | `src/packages/combat/lib/chargeStance.ts` → `chargeStanceFor` (declare) + `isStooping` (declared) | `ContextMenu`, `useCombatActions`, `useOverlay`. |
+| Charge / Swoop | `src/packages/combat/lib/chargeStance.ts` → `chargeStanceFor` (declare) + `isSwooping` (declared) | `ContextMenu`, `useCombatActions`, `useOverlay`. |
 | Vertical flyer dominance | `imposesKillZone` + `computeThreatHexes` (with `isAirborne`/`verticalGapDown`) | overlay, pursue, retreat, combat. |
 
 ## Consolidation status
@@ -49,8 +49,8 @@ shapes have been folded in:
   `exclude`, `requireFormed`) is the one predicate; `isInKillZone`,
   `computeThreatHexes` and `imposesZocOn` all call it (no more per-caller
   front-2/vertical/exclusion assembly).
-- **Charge/Stoop** — both halves live in `combat/chargeStance.ts`;
-  `isStooping` builds on the shared `isAirborne`.
+- **Charge/Swoop** — both halves live in `combat/chargeStance.ts`;
+  `isSwooping` builds on the shared `isAirborne`.
 - **`ai/planner.allianceOf`** is a wrapper over `primitives/alliances.allianceOf`.
 
 ## Package boundaries (enforced)

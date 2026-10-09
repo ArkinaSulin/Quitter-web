@@ -1725,8 +1725,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     finishChargeAfterAttack,
     performPursuits,
     handleAttackRequest,
-    planStoopDrop,
-    performStoopDrop,
+    planSwoopDrop,
+    performSwoopDrop,
   } = useCombatActions({
     units,
     alliances,
@@ -2099,13 +2099,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         }
       }
       // A fly-capable unit dropped on a GROUND-occupied hex opens the unified flyer
-      // modal (Move / Stoop attack / Range attack) when the hex is a legal fly
+      // modal (Move / Swoop attack / Range attack) when the hex is a legal fly
       // destination. An air-occupied hex is not a destination → plain attack.
       if (attacker && target && canFly(attacker) && (target.elevation ?? 0) <= 0) {
         const hostile = isHostile(attacker.team, target.team, alliances);
         const hostileVisible = hostile && canAttackInFog(attacker, target);
-        const canStoop = hostileVisible && !!planStoopDrop(attackerId, targetId);
-        if ((hostileVisible || !hostile) && beginFlyerDrop(attacker, target, { canStoop, isHostile: hostileVisible })) return;
+        const canSwoop = hostileVisible && !!planSwoopDrop(attackerId, targetId);
+        if ((hostileVisible || !hostile) && beginFlyerDrop(attacker, target, { canSwoop, isHostile: hostileVisible })) return;
       }
       // Ground / airborne drop: offer the combined weapon + mount/rider picker
       // when there is a real choice (>1 weapon can attack, or the target rides a
@@ -3214,9 +3214,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 className="h-4 w-4 accent-amber-400 mt-0.5"
               />
               <span>
-                <span className="font-medium text-amber-300">Mounted charge and airborne stoop</span>
+                <span className="font-medium text-amber-300">Mounted charge and airborne swoop</span>
                 <span className="block text-gray-400 text-[11px]">
-                  When on, charge-capable units may use Charge! and airborne flyers may use Stoop!.
+                  When on, charge-capable units may use Charge! and airborne flyers may use Swoop!.
                 </span>
               </span>
             </label>
@@ -3515,7 +3515,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       )}
 
       {/* Flyer drop — a flyable unit chooses its destination elevation. On an
-          occupied hex it also offers Stoop (stooping flyer) / Range attack. */}
+          occupied hex it also offers Swoop (swooping flyer) / Range attack. */}
       {pendingElevation && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
@@ -3541,7 +3541,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               <span className="text-yellow-300">{pendingElevation.range.defaultValue} ft</span>
               <span>{pendingElevation.range.max} ft</span>
             </div>
-            {pendingElevation.canStoop && (pendingElevation.unit.attacksUsed ?? 0) >= unitAttackCap() && (
+            {pendingElevation.canSwoop && (pendingElevation.unit.attacksUsed ?? 0) >= unitAttackCap() && (
               <p className="text-red-400 text-xs mt-2 text-center">
                 Past the {unitAttackCap()}-attack cap ({pendingElevation.unit.attacksUsed}/{unitAttackCap()}).
               </p>
@@ -3553,12 +3553,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               >
                 Move
               </button>
-              {pendingElevation.canStoop && pendingElevation.occupant && (
+              {pendingElevation.canSwoop && pendingElevation.occupant && (
                 <button
                   className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                  onClick={() => { const p = pendingElevation; setPendingElevation(null); if (!controlsLocked && p.occupant) void performStoopDrop(p.unit.id, p.occupant.id); }}
+                  onClick={() => { const p = pendingElevation; setPendingElevation(null); if (!controlsLocked && p.occupant) void performSwoopDrop(p.unit.id, p.occupant.id); }}
                 >
-                  Stoop attack (move + free melee)
+                  Swoop attack (move + free melee)
                 </button>
               )}
               {pendingElevation.isHostile && pendingElevation.occupant && (() => {

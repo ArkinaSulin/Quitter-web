@@ -40,7 +40,7 @@ export function isChargeOverEligible(
   maxMP: number,
 ): boolean {
   if (result.attackerRouted || result.attackerKilled) return false;
-  // A stooping (flying) charger only overruns another airborne target — it cannot
+  // A swooping (flying) charger only overruns another airborne target — it cannot
   // ride over a ground unit (charge-through requires both at elevation > 0).
   if ((charger.elevation ?? 0) > 0 && (target.elevation ?? 0) <= 0) return false;
   if (!isInFrontArc(charger.hex, charger.facing, target.hex)) return false;
