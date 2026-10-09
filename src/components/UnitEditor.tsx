@@ -134,6 +134,9 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
   const [previousHeroState, setPreviousHeroState] = useState<boolean>(false);
   const [previousBodyCount, setPreviousBodyCount] = useState<number>(10);
   const [wasAt400, setWasAt400] = useState<boolean>(false);
+  // While a saved template is loaded we must not overwrite its troopCount with the
+  // size max; deliberate size/race/mount edits (and New) clear this so auto-max runs.
+  const suppressAutoTroopRef = useRef(false);
 
   const [showImagePicker, setShowImagePicker] = useState(false);
 
@@ -322,7 +325,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
       }
     }
 
-    if (!formData.isHero) {
+    if (!formData.isHero && !suppressAutoTroopRef.current) {
       const cap = getMaxTroopForSize(formData.sizeCategory || 100, isMounted);
       updateFormData('troopCount', cap);
     }
@@ -384,7 +387,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
     }
 
     // Auto-set troop count to max for this size (heroes stay at 1)
-    if (!formData.isHero) {
+    if (!formData.isHero && !suppressAutoTroopRef.current) {
       const cap = getMaxTroopForSize(formData.sizeCategory || 100, !!formData.mountId);
       updateFormData('troopCount', cap);
     }
@@ -460,6 +463,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
     if (selectedId) {
       const found = templates.find(t => t.id === selectedId);
       if (found) {
+        suppressAutoTroopRef.current = true;
         setFormData({ ...found });
         savedSnapshotRef.current = JSON.stringify(found);
         setError(null);
@@ -607,6 +611,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
     if (readOnly) return;
     requestAction(() => {
       const blank = createBlankTemplate();
+      suppressAutoTroopRef.current = false;
       setFormData(blank);
       savedSnapshotRef.current = JSON.stringify(blank);
       setSelectedId('new');
@@ -991,6 +996,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                             key={`race-${formData.raceId || 'none'}`}
                             value={formData.raceId || ''}
                             onChange={(e) => {
+                              suppressAutoTroopRef.current = false;
                               const race = races.find(r => r.id === e.target.value);
                               const currentHp = formData?.troopHp || 0;
                               const newHp = (race?.base_hd && (currentHp === 10 || currentHp === 0)) ? race.base_hd : currentHp;
@@ -1042,7 +1048,10 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                           max="4"
                           step="1"
                           value={Math.max(0, SIZE_SLIDER_VALUES.indexOf(formData.sizeCategory || 100))}
-                          onChange={(e) => updateFormData('sizeCategory', SIZE_SLIDER_VALUES[parseInt(e.target.value)] || 100)}
+                          onChange={(e) => {
+                            suppressAutoTroopRef.current = false;
+                            updateFormData('sizeCategory', SIZE_SLIDER_VALUES[parseInt(e.target.value)] || 100);
+                          }}
                           className="w-full accent-yellow-400"
                         />
                         <div className="flex justify-between text-[9px] text-gray-500 px-0.5 mt-0.5">
@@ -1109,6 +1118,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                             key={`mount-${formData.mountId || 'none'}`}
                             value={formData.mountId || ''}
                             onChange={(e) => {
+                              suppressAutoTroopRef.current = false;
                               const selectedValue = e.target.value;
                               const mount = mounts.find(m => m.id === selectedValue);
 

@@ -1,5 +1,30 @@
 # QuiTTER Changelog
 
+## Unit editor: respect a saved troop count (2026-10-08)
+**Files:** src/components/UnitEditor.tsx, docs/dev/changelog.md
+
+- Loading a saved template no longer overwrites its (possibly under-strength)
+  `troopCount` with the size max. The two auto-max effects now check a
+  `suppressAutoTroopRef` flag that the template-load effect sets while a saved
+  template is displayed, so the saved value is preserved. **New** units and
+  deliberate **size / race / mount** changes still auto-set `troopCount` to the
+  new max (those handlers clear the flag). Hero/Gargantuan pin-to-1 + restore
+  and the mounted Phalanx/Shield-Wall filtering are unchanged. `tsc` clean, 979
+  tests pass, build clean. No migration.
+
+## Image picker: delete an uploaded image from the library (2026-10-08)
+**Files:** src/components/ImagePickerModal.tsx, supabase/migrations/119_unit_images_delete_policy.sql, docs/dev/changelog.md
+
+- The shared `ImagePickerModal` (used by the Unit Editor, the scenario DM unit
+  modal, and the Effect/Structure editors) gains a **Remove Image** button. It
+  enters a delete mode ("click an uploaded image to remove"), highlights the
+  uploaded tiles, and opens a **confirmation** overlay showing the chosen image.
+  Confirming calls `storage.from(bucket).remove([name])`, then **reloads** the
+  grid so the gone image disappears. Race icons are inert in delete mode; the
+  old "Remove Custom" is relabelled **Clear Image** (it still just clears the
+  selection). Migration **119** adds the missing authenticated **delete** policy
+  on the `unit_images` bucket. `tsc` clean. **Apply 119 in Supabase.**
+
 ## Ranged LoS is structure-height aware (2026-10-07)
 **Files:** src/packages/combat/lib/lineOfSight.ts (+ tests/lineOfSight.test.ts), src/components/ScenarioMap/{useCombatActions,useReactionActions}.tsx, src/packages/ai/lib/planner.ts, docs/dev/{08-combat,changelog}.md, docs/players/player-manual.md
 
