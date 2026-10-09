@@ -2,8 +2,8 @@
 'use client';
 
 // Shared "Select Unit Image" picker (mirrors UnitEditor's): race icons + uploaded
-// user images (unit_images bucket) + upload + remove custom. Used by the template
-// editor and the scenario DM stat editor.
+// user images (unit_images bucket) + upload + remove custom + delete-from-library.
+// Used by the template editor and the scenario DM stat editor.
 
 import { useCallback, useEffect, useState } from 'react';
 import NextImage from 'next/image';
@@ -63,6 +63,16 @@ async function uploadCustomImage(file: File, key: string, bucket: string): Promi
   }
 }
 
+/** Recover the object name from a public storage URL (last path segment). */
+function storagePathFromUrl(url: string): string {
+  try {
+    const parts = new URL(url).pathname.split('/');
+    return decodeURIComponent(parts[parts.length - 1]);
+  } catch {
+    return decodeURIComponent(url.split('/').pop() || '');
+  }
+}
+
 interface ImagePickerModalProps {
   /** Current custom image URL, to highlight / allow "Remove Custom". */
   current?: string | null;
@@ -91,6 +101,9 @@ export function ImagePickerModal({
   const [userImages, setUserImages] = useState<string[]>([]);
   const [loadingImages, setLoadingImages] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadUserImages = useCallback(async () => {
     setLoadingImages(true);
@@ -149,19 +162,47 @@ export function ImagePickerModal({
     }
   };
 
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.storage.from(bucket).remove([storagePathFromUrl(pendingDelete)]);
+      if (error) throw error;
+      await loadUserImages();
+      setPendingDelete(null);
+      setDeleteMode(false);
+    } catch (err) {
+      console.error('Delete failed:', err);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
       <div className="bg-gray-800 p-6 rounded-lg w-[600px] max-h-[80vh] flex flex-col border border-gray-700">
         <h2 className="text-xl font-bold mb-4 text-white">{title}</h2>
         <div className="flex-1 overflow-y-auto">
+          {deleteMode && (
+            <div className="mb-3 flex items-center justify-between rounded border border-red-500/60 bg-red-900/30 px-3 py-2 text-xs text-red-200">
+              <span>Click an uploaded image below to remove it from the library.</span>
+              <button
+                type="button"
+                onClick={() => setDeleteMode(false)}
+                className="ml-3 underline hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-4 gap-2 mb-4">
             {showRaces && races.map(race => {
               const icon = raceIconFromName(race.name, race.icon_url);
               return icon && (
                 <div
                   key={`race-${race.id}`}
-                  onClick={() => onSelect(icon)}
-                  className={`border-2 rounded p-1 cursor-pointer transition ${current === icon ? 'border-yellow-400' : 'border-gray-600 hover:border-yellow-400'}`}
+                  onClick={() => { if (!deleteMode) onSelect(icon); }}
+                  className={`border-2 rounded p-1 transition ${deleteMode ? 'border-gray-700 opacity-40' : `cursor-pointer ${current === icon ? 'border-yellow-400' : 'border-gray-600 hover:border-yellow-400'}`}`}
                 >
                   <NextImage
                     src={icon}
@@ -181,8 +222,8 @@ export function ImagePickerModal({
               userImages.map((url, idx) => (
                 <div
                   key={`user-${idx}`}
-                  onClick={() => onSelect(url)}
-                  className={`border-2 rounded p-1 cursor-pointer transition ${current === url ? 'border-yellow-400' : 'border-gray-600 hover:border-yellow-400'}`}
+                  onClick={() => { if (deleteMode) setPendingDelete(url); else onSelect(url); }}
+                  className={`border-2 rounded p-1 transition ${deleteMode ? 'cursor-pointer border-gray-600 hover:border-red-500 hover:opacity-80' : `cursor-pointer ${current === url ? 'border-yellow-400' : 'border-gray-600 hover:border-yellow-400'}`}`}
                 >
                   <NextImage
                     src={url}
@@ -216,7 +257,14 @@ export function ImagePickerModal({
               onClick={() => onSelect(null)}
               className="px-4 py-2 bg-red-800 border-2 border-red-400 text-white rounded hover:bg-red-700 transition"
             >
-              Remove Custom
+              Clear Image
+            </button>
+            <button
+              onClick={() => setDeleteMode(true)}
+              disabled={userImages.length === 0 || deleteMode}
+              className="px-4 py-2 bg-red-900 border-2 border-red-500 text-white rounded hover:bg-red-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Remove Image
             </button>
           </div>
           <button
@@ -227,6 +275,41 @@ export function ImagePickerModal({
           </button>
         </div>
       </div>
+
+      {pendingDelete && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60]">
+          <div className="bg-gray-800 p-6 rounded-lg w-80 border border-gray-700 text-center">
+            <h3 className="text-lg font-bold mb-3 text-white">Remove this image?</h3>
+            <NextImage
+              src={pendingDelete}
+              alt="Image to remove"
+              width={160}
+              height={160}
+              className="object-contain mx-auto mb-4 max-h-40 w-auto"
+              unoptimized
+            />
+            <p className="text-xs text-gray-400 mb-4">
+              This deletes the image from the library for everyone and cannot be undone.
+            </p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => setPendingDelete(null)}
+                disabled={deleting}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded disabled:opacity-50"
+              >
+                {deleting ? 'Removing...' : 'Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
