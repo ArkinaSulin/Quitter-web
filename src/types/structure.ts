@@ -78,6 +78,9 @@ export interface StructureInstance {
   elevation?: number;
   /** Per-instance ladder-decoration override (edge structures). */
   ladder?: boolean;
+  /** Per-instance visual lean override for the edge ladder (which side it points
+   *  toward). Unset = auto (toward the higher adjacent hex surface). */
+  ladderSide?: StructureOutside;
   /** Per-instance modifier override (inherited from the template when absent). */
   modifiers?: EffectModifier[];
 }

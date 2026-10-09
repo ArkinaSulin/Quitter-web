@@ -141,7 +141,9 @@ the side-view line from the shooter's elevation to the target's elevation; a
 structure blocks when that line is **below its top** at the structure's position
 (equal to the top **clears**). Only structures **strictly between** the shooter
 and target count — a structure on either unit's own hex, or on an edge immediately
-in front of either, is handled by cover and never blocks LoS. A **flying** attacker
+in front of either, is handled by cover and never blocks LoS. A **hex** structure's
+top is its authored `elevation`; an **edge** wall's top is **derived**
+(`max(10 ft, the two adjacent hex surfaces)` — see `18`). A **flying** attacker
 is no special case: it clears low structures by elevation and is blocked by taller
 ones. `src/packages/combat/lib/lineOfSight.ts` (`hasLineOfSight` /
 `structuresBlockingLine`); read by the attack, the archer reaction and the AI.

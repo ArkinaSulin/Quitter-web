@@ -10,13 +10,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
 import { HEX_SIZE, DEFAULT_GRID_RADIUS, hexMpLabelAt, costShade } from '@/packages/world';
 import { edgeRef, nearestEdge, hexCorner } from '@/packages/movement';
-import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls, structureZones } from '@/packages/movement';
-import { battlementPath, battlementDepth, crossMarksPath, sineWavePath, ladderPaths } from '@/packages/movement';
-import { structureHasLadder } from '@/packages/movement';
+import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls, structureZones, structureSurfaceAt, structureElevation } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { MapHexEffect, expandHexEffects } from '@/packages/effects';
 import { EffectTemplate } from '@/packages/effects';
-import { strokeFillText, fillHexPath, structureBadges, MP_COST_GREY } from '@/components/shared/mapFeatureDraw';
+import { strokeFillText, fillHexPath, structureBadges, MP_COST_GREY, edgeStructureVisuals } from '@/components/shared/mapFeatureDraw';
 
 export interface MapCanvasProps {
   imageUrl: string;
@@ -225,6 +223,12 @@ export function MapCanvas({
         if (badges.doorText) {
           strokeFillText(ctx, pos.x, pos.y + HEX_SIZE * 0.62, badges.doorText, hpFont, 3 / zoom, badges.doorOpen ? '#a5d6a7' : '#ffd9c9');
         }
+        // Elevation badge (display only), matching the scenario map's north-vertex "N ft".
+        const top = structureElevation(t, inst);
+        if (top > 0) {
+          const eFont = `bold ${Math.max(10 / zoom, 12)}px ui-monospace, monospace`;
+          strokeFillText(ctx, pos.x, pos.y - HEX_SIZE * 0.72, `${top} ft`, eFont, Math.max(2 / zoom, 3), '#ffe0b2');
+        }
       }
     }
     // MP-cost numbers (foot/mounted) from hex structures + authored mp_cost
@@ -282,57 +286,46 @@ export function MapCanvas({
         const w = walls[key];
         const inst = p.structures[key];
         const t = p.templates?.[inst.templateId];
-        const decoration = t?.sinWave ? 'sinWave' : t?.barricade ? 'barricade' : t?.battlement ? 'battlement' : 'none';
         const a = worldCorner(q, r, d);
         const b = worldCorner(q, r, d + 1);
-        const seg = Math.hypot(b.x - a.x, b.y - a.y);
-        // Battlement (and plain edges) draw the thick base line; a barricade / sin
-        // wave draws only its marks, centred on the edge.
-        if (decoration !== 'barricade' && decoration !== 'sinWave') {
-          ctx.strokeStyle = 'rgba(0,0,0,0.95)';
-          ctx.lineWidth = 6;
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-          ctx.stroke();
-        }
-        if (decoration !== 'none') {
-          ctx.strokeStyle = 'rgba(0,0,0,0.95)';
-          ctx.lineWidth = 2;
-          let d2 = '';
-          if (decoration === 'battlement') {
-            const ref = edgeRef(q, r, d);
-            const outsideIsA = (inst.outside ?? 'a') === 'a';
-            const ox = outsideIsA ? ref.aq : ref.bq;
-            const or = outsideIsA ? ref.ar : ref.br;
-            const midX = (a.x + b.x) / 2;
-            const midY = (a.y + b.y) / 2;
-            const hexCenterPt = hexToPixel({ q: ox, r: or, s: -ox - or }, HEX_SIZE);
-            let nx = hexCenterPt.x - midX;
-            let ny = hexCenterPt.y - midY;
-            const nl = Math.hypot(nx, ny) || 1;
-            nx /= nl; ny /= nl;
-            d2 = battlementPath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8), 8);
-          } else if (decoration === 'barricade') {
-            d2 = crossMarksPath(a, b, battlementDepth(seg, 8), 8);
-          } else {
-            d2 = sineWavePath(a, b, battlementDepth(seg, 8), 2);
-          }
-          ctx.stroke(new Path2D(d2));
-        }
-        // Ladder decoration (pure visual; independent of battlement/sin wave).
-        if (inst && t && structureHasLadder(t, inst)) {
+        if (inst && t) {
           const ref = edgeRef(q, r, d);
-          const hi = hexToPixel({ q: ref.bq, r: ref.br, s: -ref.bq - ref.br }, HEX_SIZE);
-          const { rungs, rails } = ladderPaths(a, b, { x: hi.x, y: hi.y });
-          ctx.save();
-          ctx.strokeStyle = '#c49a58';
-          ctx.lineCap = 'round';
-          ctx.lineWidth = 1.5;
-          ctx.stroke(new Path2D(rungs));
-          ctx.lineWidth = 1;
-          ctx.stroke(new Path2D(rails));
-          ctx.restore();
+          const ca = hexToPixel({ q: ref.aq, r: ref.ar, s: -ref.aq - ref.ar }, HEX_SIZE);
+          const cb = hexToPixel({ q: ref.bq, r: ref.br, s: -ref.bq - ref.br }, HEX_SIZE);
+          // Shared with the scenario canvas (mapFeatureDraw.edgeStructureVisuals)
+          // so wall/stairs rendering is identical in both.
+          const visuals = edgeStructureVisuals({
+            a, b,
+            hexA: { x: ca.x, y: ca.y },
+            hexB: { x: cb.x, y: cb.y },
+            surfaceA: structureSurfaceAt({ q: ref.aq, r: ref.ar }, p.structures, p.templates),
+            surfaceB: structureSurfaceAt({ q: ref.bq, r: ref.br }, p.structures, p.templates),
+            template: t,
+            instance: inst,
+          });
+          if (visuals.baseLine) {
+            ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+          }
+          if (visuals.decorationPath) {
+            ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+            ctx.lineWidth = 2;
+            ctx.stroke(new Path2D(visuals.decorationPath));
+          }
+          if (visuals.ladder) {
+            ctx.save();
+            ctx.strokeStyle = '#c49a58';
+            ctx.lineCap = 'round';
+            ctx.lineWidth = 1.5;
+            ctx.stroke(new Path2D(visuals.ladder.rungs));
+            ctx.lineWidth = 1;
+            ctx.stroke(new Path2D(visuals.ladder.rails));
+            ctx.restore();
+          }
         }
         // Move-cost labels on the edge, one per face that overrides the cost.
         const labelFor = (faceKey: 'a' | 'b') => {

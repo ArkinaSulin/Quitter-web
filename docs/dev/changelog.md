@@ -1,5 +1,29 @@
 # QuiTTER Changelog
 
+## Stairs direction flip + shared edge rendering + derived wall height (2026-10-08)
+**Files:** src/types/structure.ts, src/packages/movement/lib/{mapStructures,structureTemplates}.ts (+ tests/structureElevation.test.ts), src/packages/combat/lib/lineOfSight.ts, src/components/shared/mapFeatureDraw.ts (+ test), src/components/ScenarioMap/{useCanvasDraw,ScenarioMap,StructurePaintPanel}.tsx, src/components/MapEditor/{MapEditor,MapCanvas}.tsx, src/components/StructureEditor/StructureEditor.tsx, src/components/StructureEditModal.tsx, docs/dev/{08-combat,18-map-structures,changelog}.md
+
+- **Stairs flip.** A placed edge structure that is a **stairs** (ladder flag or an
+  `ignore_climb` modifier) flips its **ladder direction** on re-click
+  (`inst.ladderSide: 'a' | 'b'`, jsonb — no migration); any other edge still flips
+  its wall face (`outside`). This is the two-step workflow: place the wall → flip
+  its face outward → add the ladder → re-clicks flip the ladder.
+- **Ladder lean** follows the higher adjacent hex surface, or the `ladderSide`
+  override.
+- **Derived edge height.** An edge wall's height is now fully derived =
+  `max(10 ft, the two adjacent hex surfaces)` (`edgeStructureElevation`); the
+  authored edge `elevation` is ignored. It feeds the wall's climb cost
+  (`structureClimbCostBetween`) and LoS blocking top (`structuresBlockingLine`).
+  Hex structures keep their authored elevation. Editors show edge elevation as
+  **auto** (no field).
+- **Shared rendering / parity.** `mapFeatureDraw.edgeStructureVisuals(...)` is the
+  single geometry source for the base line + battlement/barricade/sine-wave/ladder,
+  called by **both** `useCanvasDraw` (scenario) and `MapCanvas` (Map Editor), so the
+  two cannot diverge; the Map Editor ladder now auto-orients by surface (was fixed
+  side B) and the editor draws **hex**-structure elevation badges to match the
+  scenario. **No** edge elevation badge. New tests in `mapFeatureDraw.test.ts` +
+  `structureElevation.test.ts`. `tsc` clean, 986 tests pass, build clean. No migration.
+
 ## Rename flyer charge "Stoop" -> "Swoop" (2026-10-08)
 **Files:** src/packages/combat/lib/{chargeStance,chargeOver}.ts (+ tests/chargeStance.test.ts), src/components/ScenarioMap/{ContextMenu,ScenarioMap,useCombatActions,useMoveActions,useOverlay,useOverlay.test}.ts(x), src/hooks/useHexGrid.ts, docs/dev/{00,06,08}, docs/players/player-manual.md, AGENTS.md
 

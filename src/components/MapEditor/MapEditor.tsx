@@ -12,6 +12,7 @@ import { MapEntity, mapMapRow, mapEntityToRow } from '@/packages/world';
 import { MAP_DEFAULTS } from '@/packages/world';
 import { edgeRef } from '@/packages/movement';
 import { MapStructures } from '@/packages/movement';
+import { edgeShowsLadder, structureSurfaceAt } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { getStructureTemplates } from '@/packages/infra';
 import { structureHasDoor } from '@/packages/movement';
@@ -22,7 +23,7 @@ import { MapCanvas } from './MapCanvas';
 
 type Tab = 'image' | 'structures' | 'effects';
 
-const structuresNote = 'Pick a structure, then click/drag a hex or near a hex edge to place it. Click a placed edge again to flip its battlement. Right-click removes. Shift + double-click a placed structure to edit it.';
+const structuresNote = 'Pick a structure, then click/drag a hex or near a hex edge to place it. Click a placed edge again to flip its battlement (or, for a stairs edge, the ladder direction). Right-click removes. Shift + double-click a placed structure to edit it.';
 const effectsNote = 'Pick an effect, then click/drag hexes to place it (one per hex); clicking its own hex clears it. Authored effects are permanent and snapshot into the scenario on assign.';
 
 function blankMap(): MapEntity {
@@ -238,6 +239,15 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
       update({ structures: { ...entity.structures, [ref.key]: { templateId: paletteId } } });
       setSelectedStructureKey(ref.key);
     } else if (selectedStructureKey === ref.key) {
+      const t = templates[existing.templateId];
+      if (edgeShowsLadder(existing, t)) {
+        // Stairs edge: flip only the ladder's lean (the wall face stays as placed).
+        const effSide = existing.ladderSide
+          ?? (structureSurfaceAt({ q: ref.bq, r: ref.br }, entity.structures, templates)
+              >= structureSurfaceAt({ q: ref.aq, r: ref.ar }, entity.structures, templates) ? 'b' : 'a');
+        update({ structures: { ...entity.structures, [ref.key]: { ...existing, ladderSide: effSide === 'a' ? 'b' : 'a' } } });
+        return;
+      }
       const nextOutside = (existing.outside ?? 'a') === 'a' ? 'b' : 'a';
       update({ structures: { ...entity.structures, [ref.key]: { ...existing, outside: nextOutside } } });
     } else {

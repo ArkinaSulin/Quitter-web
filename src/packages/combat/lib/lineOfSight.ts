@@ -6,7 +6,7 @@
 // and never block — a hidden unit must not reveal itself by imposing a penalty.
 import { Hex, Unit } from '@/types/gameProtocol';
 import { hexLine } from '@/packages/primitives';
-import { MapStructures, structureElevation } from '@/packages/movement';
+import { MapStructures, structureElevation, edgeStructureElevation } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { edgeRef, directionBetween } from '@/packages/movement';
 
@@ -78,24 +78,26 @@ export function structuresBlockingLine(
   if (n <= 0) return false;
   const fromElev = opts?.fromElevation ?? 0;
   const toElev = opts?.toElevation ?? 0;
-  const blocksAt = (inst: { templateId: string } | undefined, t: number): boolean => {
-    if (!inst) return false;
-    const top = structureElevation(templates?.[inst.templateId], inst);
-    if (top <= 0) return false; // decorative
-    const lineElev = fromElev + (toElev - fromElev) * t;
-    return lineElev < top; // equal clears
-  };
+  const lineElev = (t: number): number => fromElev + (toElev - fromElev) * t;
+  /** A structure with top `top` blocks when the shot's line at `t` is below it. */
+  const blocks = (top: number, t: number): boolean => top > 0 && lineElev(t) < top;
   // Edge structures on edges between two STRICTLY-BETWEEN hexes: i in [1, n-2]
   // (the first edge, in front of A, and the last, in front of B, never block).
+  // An edge wall's height is derived (max of the two adjacent hex surfaces, min 10).
   for (let i = 1; i <= n - 2; i++) {
     const dir = directionBetween(line[i], line[i + 1]);
     if (dir < 0) continue;
     const ref = edgeRef(line[i].q, line[i].r, dir);
-    if (blocksAt(structures[ref.key], (i + 0.5) / n)) return true;
+    if (!structures[ref.key]) continue;
+    const top = edgeStructureElevation(line[i], line[i + 1], structures, templates);
+    if (blocks(top, (i + 0.5) / n)) return true;
   }
   // Hex structures strictly between the endpoints.
   for (let i = 1; i <= n - 1; i++) {
-    if (blocksAt(structures[`${line[i].q},${line[i].r}`], i / n)) return true;
+    const inst = structures[`${line[i].q},${line[i].r}`];
+    if (!inst) continue;
+    const top = structureElevation(templates?.[inst.templateId], inst);
+    if (blocks(top, i / n)) return true;
   }
   return false;
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { climbCostMp, structureSurfaceAt, structureClimbCostBetween, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/packages/movement';
+import { climbCostMp, structureSurfaceAt, structureClimbCostBetween, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, edgeStructureElevation } from '@/packages/movement';
 import { blankStructureTemplate } from '@/packages/movement';
 import { directionBetween, edgeRef } from '@/packages/movement';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
@@ -72,11 +72,28 @@ describe('structure elevation (2b)', () => {
     expect(Array.from(flightBlockedHexes(structures, templates, 20, '2,0')).length).toBe(0);
   });
 
-  it('a solid (door-less) edge wall is climbed by its height', () => {
+  it('an edge wall derives its height (authored value ignored), min 10 ft', () => {
+    // Authored edge elevation 20 but BOTH adjacent hexes are open ground → derived 10.
     const templates = { wall: tmpl({ anchor: 'edge', elevation: 20, doorHp: null, maxHp: 30 }) };
     const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
     const key = edgeRef(0, 0, dir).key;
     const structures = { [key]: inst('wall') };
+    expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(4);
+  });
+
+  it('an edge wall matches a taller adjacent hex surface', () => {
+    const templates = { wall: tmpl({ anchor: 'edge', doorHp: null, maxHp: 30 }), tower: tmpl({ anchor: 'hex', elevation: 20 }) };
+    const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
+    const key = edgeRef(0, 0, dir).key;
+    // A 20-ft tower on (0,0) raises the wall beside it to 20 ft.
+    const structures = { [key]: inst('wall'), '0,0': inst('tower') };
     expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(8);
+  });
+
+  it('edgeStructureElevation: max(10, the two adjacent hex surfaces)', () => {
+    const templates = { tower: tmpl({ anchor: 'hex', elevation: 30 }) };
+    const structures = { '1,0': inst('tower') };
+    expect(edgeStructureElevation({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(30);
+    expect(edgeStructureElevation({ q: 5, r: 5 }, { q: 6, r: 5 }, structures, templates)).toBe(10);
   });
 });

@@ -2,9 +2,10 @@
 'use client';
 // Left-panel Features tab (GM): the live structure brush. Arm it, pick a template,
 // then click near a hex edge (edge structures) or a hex (hex structures) on the
-// scenario canvas to place one; click a placed edge again to flip its battlement;
-// right-click removes. Hover a template for its full info (Unit-Selector style);
-// placed instances are edited with Shift + double-click on the canvas.
+// scenario canvas to place one; click a placed edge again to flip its battlement
+// (or, for a stairs edge, the ladder direction); right-click removes. Hover a
+// template for its full info (Unit-Selector style); placed instances are edited
+// with Shift + double-click on the canvas.
 import { useState } from 'react';
 import { MapStructures } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
@@ -60,7 +61,7 @@ export function StructurePaintPanel({
       <p className="text-[10px] uppercase tracking-wide text-gray-500">Map structures (temporary GM edit)</p>
       <p className="text-xs text-gray-500">
         {armedTemplate
-          ? `Armed: ${armedTemplate.name}. Click/drag ${armedTemplate.anchor === 'hex' ? 'a hex' : 'near a hex edge'} to place; click a placed edge again to flip its battlement. Right-click removes. Shift + double-click a placed structure to edit it.`
+          ? `Armed: ${armedTemplate.name}. Click/drag ${armedTemplate.anchor === 'hex' ? 'a hex' : 'near a hex edge'} to place; click a placed edge again to flip its battlement (or, for stairs, the ladder). Right-click removes. Shift + double-click a placed structure to edit it.`
           : 'Pick a structure below to arm placement.'}
       </p>
 

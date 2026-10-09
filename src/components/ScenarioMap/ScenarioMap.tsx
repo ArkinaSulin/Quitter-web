@@ -54,7 +54,7 @@ import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackground
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST, isRotationAffordable } from '@/packages/movement';
 import { canReachStructure, canFly, parseClimbTo, isAirborne, flyMax } from '@/packages/movement';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/packages/movement';
-import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt } from '@/packages/movement';
+import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt, edgeShowsLadder } from '@/packages/movement';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { getStructureTemplates } from '@/packages/infra';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/packages/combat';
@@ -749,6 +749,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return;
     }
     if (selectedStructureKey === ref.key) {
+      const t = structureTemplates[existing.templateId];
+      if (edgeShowsLadder(existing, t)) {
+        // Stairs edge: flip only the ladder's lean (the wall face stays as placed).
+        const effSide = existing.ladderSide
+          ?? (structureSurfaceAt({ q: ref.bq, r: ref.br }, structures, structureTemplates)
+              >= structureSurfaceAt({ q: ref.aq, r: ref.ar }, structures, structureTemplates) ? 'b' : 'a');
+        await editStructureCommand(ref.key, { ...existing, ladderSide: effSide === 'a' ? 'b' : 'a' }, 'Stairs direction flipped');
+        return;
+      }
       const outside = (existing.outside ?? 'a') === 'a' ? 'b' : 'a';
       await editStructureCommand(ref.key, { ...existing, outside }, 'Battlement side flipped');
       return;

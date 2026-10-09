@@ -11,7 +11,7 @@
 import { Walls, Wall, WallFace, WallRollFlags, edgeRef, directionBetween } from '@/packages/movement/lib/walls';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { EffectModifier, modifierAmount } from '@/packages/effects';
-import { templateDoorMax, structureElevation } from '@/packages/movement/lib/structureTemplates';
+import { templateDoorMax, structureElevation, structureHasLadder } from '@/packages/movement/lib/structureTemplates';
 import { GroundEffect, Unit, getOrganizationLevel } from '@/types/gameProtocol';
 import { formationAtOrBelow } from '@/packages/movement/lib/formationCost';
 
@@ -43,6 +43,28 @@ export function structureSurfaceAt(
   const inst = structures[`${hex.q},${hex.r}`];
   if (!inst) return 0;
   return structureElevation(templates?.[inst.templateId], inst);
+}
+
+/**
+ * The effective height of an EDGE structure (a wall) — fully derived, no authored
+ * value: the taller of the two adjacent hex surfaces, floored at 10 ft. So a wall
+ * on flat ground is 10 ft and a wall beside a taller hex (platform/tower) matches
+ * it. Used for the wall's climb cost and its line-of-sight blocking height; edges
+ * never define a walkable hex surface (see `structureSurfaceAt`).
+ */
+export const EDGE_STRUCTURE_MIN_ELEVATION = 10;
+
+export function edgeStructureElevation(
+  hexA: { q: number; r: number },
+  hexB: { q: number; r: number },
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+): number {
+  return Math.max(
+    EDGE_STRUCTURE_MIN_ELEVATION,
+    structureSurfaceAt(hexA, structures ?? undefined, templates ?? undefined),
+    structureSurfaceAt(hexB, structures ?? undefined, templates ?? undefined),
+  );
 }
 
 /** Hex keys whose structure TOP is above `elevation` — these block a flyer at that
@@ -141,9 +163,10 @@ export function structureClimbCostBetween(
     if (!groundPass) climb = Math.max(climb, climbCostMp(toSurf - fromSurf));
   }
   // Edge wall height — a solid (door-less) wall is climbed; a door handles passage.
+  // The wall's height is derived (max of the adjacent hex surfaces, min 10 ft).
   if (edgeInst && edgeT) {
     const st = structureDoorState(edgeInst, edgeT);
-    if (st.noDoor) climb = Math.max(climb, climbCostMp(structureElevation(edgeT, edgeInst)));
+    if (st.noDoor) climb = Math.max(climb, climbCostMp(edgeStructureElevation(from, to, structures, templates)));
   }
   return climb;
 }
@@ -170,6 +193,8 @@ export function parseStructures(raw: any): MapStructures {
     if ((v as any).open === true) inst.open = true;
     if ((v as any).ladder === true) inst.ladder = true;
     if ((v as any).ladder === false) inst.ladder = false;
+    const ladderSide = (v as any).ladderSide;
+    if (ladderSide === 'a' || ladderSide === 'b') inst.ladderSide = ladderSide;
     if (Array.isArray((v as any).modifiers)) inst.modifiers = (v as any).modifiers as EffectModifier[];
     out[key] = inst;
   }
@@ -184,6 +209,13 @@ export function instanceModifiers(inst: StructureInstance | null | undefined, t:
 /** True when the structure carries an `ignore_climb` modifier (waives climb). */
 export function structureWaivesClimb(inst: StructureInstance | null | undefined, t: StructureTemplate | null | undefined): boolean {
   return instanceModifiers(inst, t).some(m => m.kind === 'ignore_climb');
+}
+
+/** True when an edge structure renders a ladder: the `ladder` decoration flag OR
+ *  an `ignore_climb` modifier (the latter keeps effect-based stairs drawn). The
+ *  shared renderer and the re-click flip both key off this. */
+export function edgeShowsLadder(inst: StructureInstance | null | undefined, t: StructureTemplate | null | undefined): boolean {
+  return structureHasLadder(t, inst) || structureWaivesClimb(inst, t);
 }
 
 /** Current door pool of a placed instance (null door defaults to maxHp). */

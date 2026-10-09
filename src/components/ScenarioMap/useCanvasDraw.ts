@@ -16,11 +16,9 @@ import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrde
 import { parseClimbTo, hexDirection } from '@/packages/movement';
 import { FOG_RGB } from '@/packages/world';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/packages/movement';
-import { MapStructures, isHexStructureKey, structureSurfaceAt, structureWaivesClimb } from '@/packages/movement';
-import { structureHasLadder } from '@/packages/movement';
+import { MapStructures, isHexStructureKey, structureSurfaceAt } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
-import { strokeFillText, fillHexPath, structureBadges, MP_COST_GREY } from '@/components/shared/mapFeatureDraw';
-import { battlementPath, battlementDepth, crossMarksPath, sineWavePath, ladderPaths } from '@/packages/movement';
+import { strokeFillText, fillHexPath, structureBadges, MP_COST_GREY, edgeStructureVisuals } from '@/components/shared/mapFeatureDraw';
 import { AiOverlayData } from './aiTypes';
 
 interface CanvasDrawDeps {
@@ -345,69 +343,54 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const damaged = destructible && wallHp(w) < (w.maxHp ?? 0);
         const inst = structures?.[key];
         const t = inst ? templates?.[inst.templateId] : undefined;
-        const decoration = t?.sinWave ? 'sinWave' : t?.barricade ? 'barricade' : t?.battlement ? 'battlement' : 'none';
         const a = cornerScreen(q, r, d);
         const b = cornerScreen(q, r, d + 1);
-        const seg = Math.hypot(b.x - a.x, b.y - a.y);
-        // Ladder (variant C): a trapezoid ladder — 3 rungs parallel to the edge
-        // (short on the lower hex side, long on the higher), rails leaning against
-        // the rung ends and extruded past them. Auto-oriented from the surfaces.
-        // Drawn for any edge structure with the `ladder` decoration flag OR an
-        // `ignore_climb` modifier (the latter keeps old effect-based stairs drawn).
-        if (inst && t && (structureHasLadder(t, inst) || structureWaivesClimb(inst, t))) {
+        if (inst && t) {
           const ref = edgeRef(q, r, d);
-          const sA = structureSurfaceAt({ q: ref.aq, r: ref.ar }, structures, templates);
-          const sB = structureSurfaceAt({ q: ref.bq, r: ref.br }, structures, templates);
           const ca = hexCenter({ q: ref.aq, r: ref.ar, s: -ref.aq - ref.ar });
           const cb = hexCenter({ q: ref.bq, r: ref.br, s: -ref.bq - ref.br });
-          const hi = sB >= sA ? cb : ca;
-          const { rungs, rails } = ladderPaths(a, b, { x: hi.cx, y: hi.cy });
-          ctx.save();
-          ctx.strokeStyle = '#c49a58';
-          ctx.lineCap = 'round';
-          ctx.lineWidth = Math.max(1, 1.5 * currentZoom);
-          ctx.stroke(new Path2D(rungs));
-          ctx.lineWidth = Math.max(0.75, 1 * currentZoom);
-          ctx.stroke(new Path2D(rails));
-          ctx.restore();
-          if (hoveredWallEdge && hoveredWallEdge.key === key) {
+          // Shared with the Map Editor (mapFeatureDraw.edgeStructureVisuals) so the
+          // two canvases render walls/stairs identically.
+          const visuals = edgeStructureVisuals({
+            a, b,
+            hexA: { x: ca.cx, y: ca.cy },
+            hexB: { x: cb.cx, y: cb.cy },
+            surfaceA: structureSurfaceAt({ q: ref.aq, r: ref.ar }, structures, templates),
+            surfaceB: structureSurfaceAt({ q: ref.bq, r: ref.br }, structures, templates),
+            template: t,
+            instance: inst,
+          });
+          if (visuals.ladder) {
             ctx.save();
-            ctx.strokeStyle = 'rgba(255, 140, 60, 0.95)';
-            ctx.lineWidth = 11 * currentZoom;
-            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+            ctx.strokeStyle = '#c49a58';
+            ctx.lineCap = 'round';
+            ctx.lineWidth = Math.max(1, 1.5 * currentZoom);
+            ctx.stroke(new Path2D(visuals.ladder.rungs));
+            ctx.lineWidth = Math.max(0.75, 1 * currentZoom);
+            ctx.stroke(new Path2D(visuals.ladder.rails));
             ctx.restore();
           }
-          continue;
-        }
-        // Battlement (and plain edges) draw the thick base line; a barricade / sin
-        // wave draws only its marks, centred on the edge.
-        if (decoration !== 'barricade' && decoration !== 'sinWave') {
+          if (visuals.baseLine) {
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
+            ctx.lineWidth = 6 * currentZoom;
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+          }
+          if (visuals.decorationPath) {
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
+            ctx.lineWidth = 2 * currentZoom;
+            ctx.stroke(new Path2D(visuals.decorationPath));
+          }
+        } else {
+          // Legacy authored wall with no structure instance: a plain thick segment.
           ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
           ctx.lineWidth = 6 * currentZoom;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
           ctx.lineTo(b.x, b.y);
           ctx.stroke();
-        }
-        if (decoration !== 'none' && inst) {
-          ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
-          ctx.lineWidth = 2 * currentZoom;
-          let d2 = '';
-          if (decoration === 'battlement') {
-            const ref = edgeRef(q, r, d);
-            const outsideIsA = (inst.outside ?? 'a') === 'a';
-            const oc = hexCenter({ q: outsideIsA ? ref.aq : ref.bq, r: outsideIsA ? ref.ar : ref.br, s: 0 });
-            let nx = oc.cx - (a.x + b.x) / 2;
-            let ny = oc.cy - (a.y + b.y) / 2;
-            const nl = Math.hypot(nx, ny) || 1;
-            nx /= nl; ny /= nl;
-            d2 = battlementPath(a, b, { x: nx, y: ny }, battlementDepth(seg, 8), 8);
-          } else if (decoration === 'barricade') {
-            d2 = crossMarksPath(a, b, battlementDepth(seg, 8), 8);
-          } else {
-            d2 = sineWavePath(a, b, battlementDepth(seg, 8), 2);
-          }
-          ctx.stroke(new Path2D(d2));
         }
         // Damaged barriers show their remaining HP at the segment midpoint.
         if (damaged) {

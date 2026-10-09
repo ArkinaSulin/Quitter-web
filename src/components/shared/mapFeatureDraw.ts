@@ -6,6 +6,15 @@
 // keeps its own loop and passes a pixel mapper + font/line-width scaler here.
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { structureDoorState } from '@/packages/movement';
+import {
+  battlementPath,
+  battlementDepth,
+  crossMarksPath,
+  sineWavePath,
+  ladderPaths,
+  edgeShowsLadder,
+  type Pt,
+} from '@/packages/movement';
 
 /** The grey used for the MP-cost number and the destroyed "✕" badge. */
 export const MP_COST_GREY = '#9ca3af';
@@ -78,4 +87,68 @@ export function structureBadges(t: StructureTemplate | null | undefined, inst: S
     : st.doorNow <= 0 ? 'broken'
     : `door ${st.doorNow}`;
   return { hpText, destroyed, doorText, doorOpen: st?.open ?? false };
+}
+
+export type EdgeDecorationKind = 'battlement' | 'barricade' | 'sinWave' | 'none';
+
+/** One edge structure's decoration geometry — the SINGLE source shared by the
+ *  scenario canvas (`useCanvasDraw`) and the Map Editor (`MapCanvas`), so the two
+ *  cannot diverge. Coordinates are whatever space the caller draws in (screen-space
+ *  for the scenario, world-space for the editor; both are internally consistent). */
+export interface EdgeStructureVisuals {
+  /** Draw the thick base wall line (ladder edges draw no wall line). */
+  baseLine: boolean;
+  decorationKind: EdgeDecorationKind;
+  /** Battlement / barricade / sine-wave path (null for `none` / ladder edges). */
+  decorationPath: string | null;
+  /** Trapezoid ladder rung/rail paths when the edge is a ladder, else null. */
+  ladder: { rungs: string; rails: string } | null;
+}
+
+/**
+ * The decoration geometry for one placed edge structure. `hexA`/`hexB` are the
+ * two adjacent hex centres (edge face A and B) and `surfaceA`/`surfaceB` their
+ * (effective) surfaces — used to pick the ladder's lean (higher side, or the
+ * instance's `ladderSide` override). A ladder edge draws ONLY the ladder (no base
+ * wall line / battlement), matching the scenario's long-standing behaviour.
+ */
+export function edgeStructureVisuals(args: {
+  a: Pt;
+  b: Pt;
+  hexA: Pt;
+  hexB: Pt;
+  surfaceA: number;
+  surfaceB: number;
+  template: StructureTemplate;
+  instance: StructureInstance;
+}): EdgeStructureVisuals {
+  const { a, b, hexA, hexB, surfaceA, surfaceB, template: t, instance: inst } = args;
+  const seg = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  const midX = (a.x + b.x) / 2;
+  const midY = (a.y + b.y) / 2;
+  const depth = battlementDepth(seg, 8);
+  const outward = (c: Pt): Pt => {
+    let nx = c.x - midX;
+    let ny = c.y - midY;
+    const nl = Math.hypot(nx, ny) || 1;
+    return { x: nx / nl, y: ny / nl };
+  };
+
+  if (edgeShowsLadder(inst, t)) {
+    const side = inst.ladderSide ?? (surfaceB >= surfaceA ? 'b' : 'a');
+    return { baseLine: false, decorationKind: 'none', decorationPath: null, ladder: ladderPaths(a, b, side === 'a' ? hexA : hexB) };
+  }
+
+  const kind: EdgeDecorationKind = t.sinWave ? 'sinWave' : t.barricade ? 'barricade' : t.battlement ? 'battlement' : 'none';
+  let decorationPath: string | null = null;
+  if (kind === 'battlement') {
+    const outsideHex = (inst.outside ?? 'a') === 'a' ? hexA : hexB;
+    decorationPath = battlementPath(a, b, outward(outsideHex), depth, 8);
+  } else if (kind === 'barricade') {
+    decorationPath = crossMarksPath(a, b, depth, 8);
+  } else if (kind === 'sinWave') {
+    decorationPath = sineWavePath(a, b, depth, 2);
+  }
+  const baseLine = kind !== 'barricade' && kind !== 'sinWave';
+  return { baseLine, decorationKind: kind, decorationPath, ladder: null };
 }
