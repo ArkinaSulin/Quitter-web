@@ -275,7 +275,7 @@ function distToSegment(p: { x: number; y: number }, a: { x: number; y: number },
  * Shift + double-click structure edit (its hover highlight uses the same value, so
  * the highlight always marks exactly what the edit gesture will select).
  */
-export const EDGE_HIT_RATIO = 0.5;
+export const EDGE_HIT_RATIO = 0.3;
 
 /**
  * The edge of `hex` nearest to a world-space point (for pointer authoring).

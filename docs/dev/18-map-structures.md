@@ -346,9 +346,10 @@ faces and `hex_move_cost` are gone:
   `StructureEditModal` (HP, door HP, gate open, outside side, the instance's
   modifier override seeded from the template). Elevation (authored height, step
   10 ft) is editable for **edge** and **hex** structures alike (see *Edge climb*).
-  The edge hit test is unified at `movement.EDGE_HIT_RATIO` (`0.5 × hex size`) —
-  shared by the hover tooltip, the drag-onto-edge attack and this edit, so the
-  Shift-held hover cap marks exactly the edge the double-click will select.
+  The edge hit test is unified at `movement.EDGE_HIT_RATIO` (`0.3 × hex size`) —
+  shared by the hover tooltip, the drag-onto-edge attack and this edit. The tooltip
+  and the double-click resolve the **edge first** (falling back to the hex structure),
+  so the Shift-held hover cap marks exactly the edge the double-click will select.
 - **Color**: `color` is authored as a wood/stone tint (used for the palette swatch;
   full `source-atop` texture tinting is a follow-up).
 - **Data**: migration 099 wipes every placed instance and reseeds the 9 presets in

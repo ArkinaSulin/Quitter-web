@@ -475,11 +475,12 @@ export function MapCanvas({
     if (!p.onEditStructureKey || !p.structures) return;
     const hex = hexAtClient(e.clientX, e.clientY);
     if (!hex) return;
-    const hexKey = `${hex.q},${hex.r}`;
-    if (p.structures[hexKey]) { p.onEditStructureKey(hexKey); return; }
-    // Wall-aware at the shared threshold: reliably targets the wall near the cursor.
+    // Prefer a nearby EDGE structure first (the same order as the tooltip), then the
+    // clicked hex's structure, then the legacy nearest-edge fallback.
     const wall = wallEdgeAtClient(e.clientX, e.clientY);
     if (wall && p.structures[wall.key]) { p.onEditStructureKey(wall.key); return; }
+    const hexKey = `${hex.q},${hex.r}`;
+    if (p.structures[hexKey]) { p.onEditStructureKey(hexKey); return; }
     const edge = edgeAtClient(e.clientX, e.clientY);
     if (edge) {
       const key = edgeRef(edge.q, edge.r, edge.dir).key;

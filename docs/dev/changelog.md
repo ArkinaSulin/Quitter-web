@@ -1,5 +1,17 @@
 # QuiTTER Changelog
 
+## Edge band → 0.3; double-click resolves the edge before the hex (2026-10-10)
+**Files:** src/packages/movement/lib/walls.ts, src/components/ScenarioMap/ScenarioMap.tsx, src/components/MapEditor/MapCanvas.tsx, docs/dev/{18-map-structures,changelog}.md
+
+- **Tighter shared band.** `movement.EDGE_HIT_RATIO` `0.5 → 0.3` — the tooltip,
+  drag-onto-edge attack and Shift + double-click edit (and its hover highlight) all
+  now use `0.3 × hex size`.
+- **Edge-first double-click.** The Shift + double-click edit in both canvases now
+  resolves a nearby **edge** structure *before* the clicked hex's structure —
+  mirroring the tooltip — so inside the band the wall opens instead of the adjacent
+  hex structure. Falls back to the hex structure, then the legacy nearest-edge path.
+- `tsc` clean, 1005 tests pass, build clean. No migration.
+
 ## Unified edge hitbox (0.5) + Shift-only wall hover highlight (2026-10-10)
 **Files:** src/packages/movement/lib/walls.ts, src/hooks/useHexGrid.ts, src/components/ScenarioMap/ScenarioMap.tsx, src/components/MapEditor/MapCanvas.tsx, docs/dev/{18-map-structures,changelog}.md
 

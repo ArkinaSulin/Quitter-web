@@ -2335,13 +2335,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (e.shiftKey) {
       const hex = getHexFromScreen(e.clientX, e.clientY);
       if (hex) {
-        const hexKey = `${hex.q},${hex.r}`;
-        let key: string | null = structures[hexKey] ? hexKey : null;
+        // Prefer a nearby EDGE structure first (the SAME order as the tooltip), so the
+        // wall wins inside the shared hit band; fall back to the clicked hex's structure.
+        const edge = getWallEdgeAt(e.clientX, e.clientY);
+        let key: string | null = edge && structures[edge.key] ? edge.key : null;
         if (!key) {
-          // Wall-aware hit test at the shared edge threshold (so a click near the
-          // wall reliably targets it, even when another edge is geometrically nearer).
-          const edge = getWallEdgeAt(e.clientX, e.clientY);
-          if (edge && structures[edge.key]) key = edge.key;
+          const hexKey = `${hex.q},${hex.r}`;
+          if (structures[hexKey]) key = hexKey;
         }
         if (key && structureTemplates[structures[key].templateId]) {
           if (isGM || canToggleStructureDoor(key, structures, structureTemplates, units, isGM, canControlUnit)) {
