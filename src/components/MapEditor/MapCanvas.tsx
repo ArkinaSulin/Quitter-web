@@ -10,11 +10,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
 import { HEX_SIZE, DEFAULT_GRID_RADIUS, hexMpLabelAt, costShade } from '@/packages/world';
 import { edgeRef, nearestEdge, hexCorner } from '@/packages/movement';
-import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls, structureZones, structureSurfaceAt, structureElevation } from '@/packages/movement';
+import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls, structureZones, structureSurfaceAt } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { MapHexEffect, expandHexEffects } from '@/packages/effects';
 import { EffectTemplate } from '@/packages/effects';
-import { strokeFillText, fillHexPath, structureBadges, MP_COST_GREY, edgeStructureVisuals } from '@/components/shared/mapFeatureDraw';
+import { strokeFillText, fillHexPath, MP_COST_GREY, edgeStructureVisuals, mapTextStyles, MONO, drawHexStructure, drawEffectMark } from '@/components/shared/mapFeatureDraw';
 
 export interface MapCanvasProps {
   imageUrl: string;
@@ -126,6 +126,7 @@ export function MapCanvas({
     }
     const p = propsRef.current;
     const { zoom, ox, oy } = view.current;
+    const ts = mapTextStyles(zoom);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
@@ -147,25 +148,13 @@ export function MapCanvas({
       ctx.closePath();
     };
 
-    // Authored per-hex effects: tint (unless transparent) + colour dot + artwork.
+    // Authored per-hex effects: tint + colour dot (shared drawEffectMark) + artwork.
     if (p.hexEffects && p.hexEffects.length > 0) {
       for (const he of p.hexEffects) {
         const t = p.effectTemplates?.[he.effectId];
         const pos = hexToPixel({ q: he.q, r: he.r, s: -he.q - he.r }, HEX_SIZE);
         const c = t?.color || '#ff7043';
-        ctx.save();
-        if (!t?.transparentBackground) {
-          ctx.globalAlpha = 0.15;
-          hexPath(pos.x, pos.y);
-          ctx.fillStyle = c;
-          ctx.fill();
-        }
-        ctx.globalAlpha = 0.9;
-        ctx.fillStyle = c;
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, Math.max(3, 6), 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.restore();
+        drawEffectMark(ctx, { cx: pos.x, cy: pos.y, unit: zoom, zoom, color: c, transparentBackground: t?.transparentBackground });
         if (t?.imageUrl) {
           let img = structImgs.current.get(t.imageUrl);
           if (!img) {
@@ -182,53 +171,23 @@ export function MapCanvas({
         }
       }
     }
-    // Hex structures: tint the hex + artwork/Cost badge (drawn under the grid).
+    // Hex structures — drawn via the SAME shared renderer as the scenario map
+    // (mapFeatureDraw.drawHexStructure) so the two can never drift.
     if (p.structures) {
       for (const [key, inst] of Object.entries(p.structures)) {
         if (!isHexStructureKey(key)) continue;
         const [q, r] = key.split(',').map(Number);
         if (Number.isNaN(q) || Number.isNaN(r)) continue;
         const t = p.templates?.[inst.templateId];
+        // Kick off artwork loading (side effect); the shared draw uses the cache.
+        if (t?.imageUrl && !structImgs.current.get(t.imageUrl)) {
+          const img = new Image();
+          img.onload = () => requestAnimationFrame(draw);
+          img.src = t.imageUrl;
+          structImgs.current.set(t.imageUrl, img);
+        }
         const pos = hexToPixel({ q, r, s: -q - r }, HEX_SIZE);
-        // Transparent background: a thick black outline only (no colour tint),
-        // unless the template opts out (decorative hexes: `hex_border` false).
-        if (t?.hexBorder !== false) {
-          hexPath(pos.x, pos.y);
-          ctx.strokeStyle = 'rgba(0,0,0,0.95)';
-          ctx.lineWidth = 5;
-          ctx.stroke();
-        }
-        if (t?.imageUrl) {
-          let img = structImgs.current.get(t.imageUrl);
-          if (!img) {
-            img = new Image();
-            img.onload = () => requestAnimationFrame(draw);
-            img.src = t.imageUrl;
-            structImgs.current.set(t.imageUrl, img);
-          }
-          if (img.complete && img.naturalWidth > 0) {
-            const h = 1.2 * HEX_SIZE;
-            const w = (img.naturalWidth / img.naturalHeight) * h;
-            ctx.drawImage(img, pos.x - w / 2, pos.y - h / 2, w, h);
-          }
-        }
-        const badges = structureBadges(t, inst);
-        const topY = pos.y - HEX_SIZE * 0.62;
-        const hpFont = `bold ${Math.max(10 / zoom, 0.5)}px ui-monospace, monospace`;
-        if (badges.destroyed) {
-          strokeFillText(ctx, pos.x, topY, '✕', hpFont, 3 / zoom, MP_COST_GREY);
-        } else if (badges.hpText !== null) {
-          strokeFillText(ctx, pos.x, topY, badges.hpText, hpFont, 3 / zoom, '#ffe0b2');
-        }
-        if (badges.doorText) {
-          strokeFillText(ctx, pos.x, pos.y + HEX_SIZE * 0.62, badges.doorText, hpFont, 3 / zoom, badges.doorOpen ? '#a5d6a7' : '#ffd9c9');
-        }
-        // Elevation badge (display only), matching the scenario map's north-vertex "N ft".
-        const top = structureElevation(t, inst);
-        if (top > 0) {
-          const eFont = `bold ${Math.max(10 / zoom, 12)}px ui-monospace, monospace`;
-          strokeFillText(ctx, pos.x, pos.y - HEX_SIZE * 0.72, `${top} ft`, eFont, Math.max(2 / zoom, 3), '#ffe0b2');
-        }
+        drawHexStructure(ctx, { cx: pos.x, cy: pos.y, hexRadius: HEX_SIZE, unit: zoom, zoom, template: t, instance: inst, getImage: (url: string) => structImgs.current.get(url) ?? null, drawElevation: true });
       }
     }
     // MP-cost numbers (foot/mounted) from hex structures + authored mp_cost
@@ -239,7 +198,7 @@ export function MapCanvas({
     for (const z of mpZones) if (z.kind === 'mp_cost') mpHexKeys.add(`${z.q},${z.r}`);
     if (mpHexKeys.size > 0) {
       // Capped at 1/3 of the hex's rendered height (pointy-top height = 2 × size).
-      const mpFont = `bold ${Math.max(Math.min(33, (2 * HEX_SIZE * zoom) / 3) / zoom, 0.5)}px ui-monospace, monospace`;
+      const mpFont = MONO(ts.mp.fontPx / zoom);
       for (const key of Array.from(mpHexKeys)) {
         const [q, r] = key.split(',').map(Number);
         if (Number.isNaN(q) || Number.isNaN(r)) continue;
@@ -248,7 +207,7 @@ export function MapCanvas({
         const shade = label.blocked ? 'rgba(220, 38, 38, 0.4)' : costShade(label.cost);
         const pos = hexToPixel({ q, r, s: -q - r }, HEX_SIZE);
         if (shade) fillHexPath(ctx, pos.x, pos.y, HEX_SIZE, shade);
-        strokeFillText(ctx, pos.x, pos.y, label.text, mpFont, 3 / zoom, MP_COST_GREY, 'rgba(0,0,0,0)');
+        strokeFillText(ctx, pos.x, pos.y, label.text, mpFont, ts.mp.linePx / zoom, MP_COST_GREY, 'rgba(0,0,0,0)');
       }
     }
     ctx.lineWidth = 1;

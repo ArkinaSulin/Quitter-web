@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## One renderer for board features (scenario map = map editor = preview) (2026-10-09)
+**Files:** src/components/shared/mapFeatureDraw.ts (+ test), src/components/{ScenarioMap/useCanvasDraw,MapEditor/MapCanvas,StructureEditor/StructurePreview}.tsx, src/components/StructureEditor/StructureEditor.tsx, docs/dev/changelog.md
+
+- **One shared text-style table.** `mapFeatureDraw.mapTextStyles(zoom)` is now the single
+  source (screen px) for the HP / door / elevation / effect-elevation / MP label fonts and
+  line widths. Both canvases read it — the scenario uses it directly, the Map Editor (which
+  draws inside `ctx.scale(zoom)`) divides by `zoom` — so the **HP and elevation labels now
+  scale together** in the Map Editor (previously HP was pinned ~10 px while elevation grew).
+- **Shared feature drawing.** `drawHexStructure(...)` (outline / artwork / HP / door /
+  optional elevation badge) and `drawEffectMark(...)` (tint + centre dot) live in
+  `mapFeatureDraw` and are called by **both** canvases with a `unit` (screen px per caller
+  unit: `1` screen, `zoom` world) — mirroring the already-shared `edgeStructureVisuals`, so
+  the scenario map, the Map Editor and the Structure Editor preview can't drift.
+- **Structure Editor preview** adopts the same style sizes and gains an **elevation badge**
+  (new `elevation` prop). New `mapTextStyles` tests assert the HP/elevation 12× parity and
+  the world/screen stability. `tsc` clean, 998 tests pass, build clean. No migration.
+
 ## Edge climb = per-10-ft mp_* (overrides hex); structure ignore_climb retired; editor tweaks (2026-10-09)
 **Files:** src/packages/movement/lib/mapStructures.ts (+ tests/structureElevation.test.ts), src/components/ScenarioMap/useMoveActions.ts, src/packages/effects/lib/effectTemplates.ts (+ tests/effectTemplates.test.ts), src/components/EffectEditor/EffectModifierFields.tsx, src/components/StructureEditor/StructureEditor.tsx, src/types/structure.ts, src/components/shared/mapFeatureDraw.test.ts, supabase/migrations/120_structure_retire_ignore_climb.sql, docs/dev/{18-map-structures,changelog}.md, docs/players/player-manual.md
 

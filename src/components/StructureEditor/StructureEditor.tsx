@@ -439,6 +439,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                 doorHp={draft.doorHp}
                 maxHp={draft.maxHp}
                 dt={draft.dt}
+                elevation={draft.elevation ?? 0}
               />
               <p className="text-xs text-gray-300">{summary}</p>
               <p className="text-[11px] text-gray-500">{draft.description}</p>

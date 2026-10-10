@@ -9,6 +9,7 @@ import React, { useState } from 'react';
 import { StructureAnchor } from '@/types/structure';
 import { battlementPath, battlementDepth, crossMarksPath, sineWavePath, ladderPaths } from '@/packages/movement';
 import { HEX_DIRS } from '@/packages/primitives';
+import { mapTextStyles } from '@/components/shared/mapFeatureDraw';
 
 const hexToPixel = (q: number, r: number, size: number) => ({
   x: size * (Math.sqrt(3) * q + (Math.sqrt(3) / 2) * r),
@@ -32,15 +33,19 @@ interface StructurePreviewProps {
   doorHp: number | null;
   maxHp: number;
   dt: number;
+  /** Authored top-surface height (ft); shown as a badge like the board. */
+  elevation: number;
 }
 
 const mpLabel = (v: number | null): string => (v === null ? '—' : v < 0 ? 'block' : `${v}`);
 
 export function StructurePreview({
   anchor, imageUrl, battlement, barricade, sinWave, ladder, hexBorder,
-  mpFootIn, mpFootOut, mpMountedIn, mpMountedOut, coverMelee, coverRanged, doorHp, maxHp, dt,
+  mpFootIn, mpFootOut, mpMountedIn, mpMountedOut, coverMelee, coverRanged, doorHp, maxHp, dt, elevation,
 }: StructurePreviewProps) {
   const [flipped, setFlipped] = useState(false);
+  // Shared board-label sizes (zoom = 1) so the preview reads like the canvases.
+  const ts = mapTextStyles(1);
   const doorText = doorHp === null ? 'no door' : doorHp === 0 ? 'open (no gate)' : `door ${doorHp} HP`;
 
   if (anchor === 'hex') {
@@ -87,10 +92,13 @@ export function StructurePreview({
           ) : (
             <span className="absolute inset-0 grid place-items-center text-[10px] text-gray-500">no image</span>
           )}
+          {elevation > 0 && (
+            <span className="absolute font-mono font-bold" style={{ left: centre.x, top: 2, transform: 'translateX(-50%)', fontSize: ts.elevation.fontPx, color: '#b45309' }}>{elevation} ft</span>
+          )}
         </div>
         <p className="text-[11px] text-gray-400">Enter: foot {mpLabel(mpFootIn)} MP · mounted {mpLabel(mpMountedIn)} MP</p>
         <p className="text-[11px] text-gray-400">{doorText}</p>
-        <p className="text-[11px] text-gray-500">HP {maxHp} · DT {dt}
+        <p className="text-[11px] text-gray-500" style={{ fontSize: ts.hp.fontPx }}>HP {maxHp} · DT {dt}
           {(coverMelee || coverRanged) ? ` · cover AC m${coverMelee}/r${coverRanged}` : ''}</p>
       </div>
     );
@@ -144,6 +152,9 @@ export function StructurePreview({
             <span className="absolute right-1 bottom-0.5 text-[9px] text-gray-700">foot {mpLabel(inFoot)} · mtd {mpLabel(inMounted)}</span>
           </>
         )}
+        {elevation > 0 && (
+          <span className="absolute font-mono font-bold" style={{ left: '50%', top: 2, transform: 'translateX(-50%)', fontSize: ts.elevation.fontPx, color: '#b45309' }}>{elevation} ft</span>
+        )}
       </div>
       {decoration === 'battlement' && (
         <button
@@ -156,7 +167,7 @@ export function StructurePreview({
         </button>
       )}
       <p className="text-[11px] text-gray-400">{doorText}</p>
-      <p className="text-[11px] text-gray-500">HP {maxHp} · DT {dt}
+      <p className="text-[11px] text-gray-500" style={{ fontSize: ts.hp.fontPx }}>HP {maxHp} · DT {dt}
         {(coverMelee || coverRanged) ? ` · cover AC m${coverMelee}/r${coverRanged}` : ''}</p>
     </div>
   );

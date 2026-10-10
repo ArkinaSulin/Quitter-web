@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { structureBadges, edgeStructureVisuals } from './mapFeatureDraw';
+import { structureBadges, edgeStructureVisuals, mapTextStyles } from './mapFeatureDraw';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 
 const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => ({
@@ -103,5 +103,24 @@ describe('edgeStructureVisuals (shared by scenario + Map Editor)', () => {
     const v = edgeStructureVisuals({ ...geom, template: edge({ modifiers: [{ kind: 'ignore_climb' }] }), instance: inst() });
     expect(v.ladder).toBeNull();
     expect(v.baseLine).toBe(true);
+  });
+});
+
+describe('mapTextStyles (single source for all three renderers)', () => {
+  it('scales HP and elevation at the SAME 12× rate (the reported bug)', () => {
+    const a = mapTextStyles(1);
+    const b = mapTextStyles(3);
+    expect(b.hp.fontPx - a.hp.fontPx).toBe(24);
+    expect(b.elevation.fontPx - a.elevation.fontPx).toBe(24);
+    expect(a.hp.fontPx).toBe(Math.max(11, 12));
+    expect(a.elevation.fontPx).toBe(Math.max(10, 12));
+  });
+
+  it('is world/screen stable: a world font of fontPx/zoom renders at fontPx screen', () => {
+    for (const zoom of [0.5, 1, 2, 3]) {
+      const ts = mapTextStyles(zoom);
+      expect((ts.hp.fontPx / zoom) * zoom).toBeCloseTo(ts.hp.fontPx);
+      expect((ts.elevation.linePx / zoom) * zoom).toBeCloseTo(ts.elevation.linePx);
+    }
   });
 });

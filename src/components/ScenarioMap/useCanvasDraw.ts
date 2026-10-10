@@ -18,7 +18,7 @@ import { FOG_RGB } from '@/packages/world';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/packages/movement';
 import { MapStructures, isHexStructureKey, structureSurfaceAt } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
-import { strokeFillText, fillHexPath, structureBadges, MP_COST_GREY, edgeStructureVisuals } from '@/components/shared/mapFeatureDraw';
+import { strokeFillText, fillHexPath, MP_COST_GREY, edgeStructureVisuals, mapTextStyles, MONO, drawHexStructure, drawEffectMark } from '@/components/shared/mapFeatureDraw';
 import { AiOverlayData } from './aiTypes';
 
 interface CanvasDrawDeps {
@@ -144,6 +144,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
   const customDraw = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, currentZoom: number, offsetX: number, offsetY: number) => {
     const tokenWidth = TOKEN_WIDTH * currentZoom;
     const tokenHeight = TOKEN_HEIGHT * currentZoom;
+    // Shared board-label styles (screen px) — the single source also used by the
+    // Map Editor + Structure Editor (see mapFeatureDraw.mapTextStyles).
+    const ts = mapTextStyles(currentZoom);
 
     // One pass over the units: hostId -> attached hero (avoids a find per token).
     const attachedByHost = new Map<string, Unit>();
@@ -159,35 +162,6 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     const hexCenter = (hex: Hex) => {
       const pos = hexToPixel(hex, HEX_SIZE);
       return { cx: pos.x * currentZoom + offsetX, cy: pos.y * currentZoom + offsetY };
-    };
-    const fillHex = (hex: Hex, color: string) => {
-      const { cx, cy } = hexCenter(hex);
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const angle = (Math.PI / 180) * (60 * i - 30);
-        const px = cx + HEX_SIZE * currentZoom * Math.cos(angle);
-        const py = cy + HEX_SIZE * currentZoom * Math.sin(angle);
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-      ctx.fillStyle = color;
-      ctx.fill();
-    };
-    const strokeHex = (hex: Hex, color: string, width: number) => {
-      const { cx, cy } = hexCenter(hex);
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const angle = (Math.PI / 180) * (60 * i - 30);
-        const px = cx + HEX_SIZE * currentZoom * Math.cos(angle);
-        const py = cy + HEX_SIZE * currentZoom * Math.sin(angle);
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = width;
-      ctx.stroke();
     };
     const isFogHidden = (key: string) => !!fogReveal && !fogReveal.has(key);
 
@@ -246,18 +220,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const key = `${z.q},${z.r}`;
         if (isFogHidden(key)) continue;
         const c = z.color || '#ff7043';
-        ctx.save();
-        if (!z.transparentBackground) {
-          ctx.globalAlpha = 0.15;
-          fillHex({ q: z.q, r: z.r, s: -z.q - z.r }, c);
-        }
-        ctx.globalAlpha = 0.9;
         const { cx, cy } = hexCenter({ q: z.q, r: z.r, s: -z.q - z.r });
-        ctx.fillStyle = c;
-        ctx.beginPath();
-        ctx.arc(cx, cy, Math.max(3, 6 * currentZoom), 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.restore();
+        // Shared tint + centre-dot (also used by the Map Editor).
+        drawEffectMark(ctx, { cx, cy, unit: 1, zoom: currentZoom, color: c, transparentBackground: z.transparentBackground });
       }
     }
     // MP-cost numbers (foot/mounted) from hex structures + mp_cost zones — the
@@ -269,8 +234,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       ctx.save();
       // Capped at 1/3 of the hex's rendered height so the number never dwarfs a
       // zoomed-out hex (pointy-top height = 2 × circumradius).
-      const hexHeightPx = 2 * HEX_SIZE * currentZoom;
-      const mpFont = `bold ${Math.min(39, hexHeightPx / 3)}px ui-monospace, monospace`;
+      const mpFont = MONO(ts.mp.fontPx);
       for (const key of Array.from(mpHexKeys)) {
         if (isFogHidden(key)) continue;
         const [q, r] = key.split(',').map(Number);
@@ -280,13 +244,14 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const shade = label.blocked ? 'rgba(220, 38, 38, 0.4)' : costShade(label.cost);
         const { cx, cy } = hexCenter({ q, r, s: -q - r });
         if (shade) fillHexPath(ctx, cx, cy, HEX_SIZE * currentZoom, shade);
-        strokeFillText(ctx, cx, cy, label.text, mpFont, 4, MP_COST_GREY, 'rgba(0,0,0,0)');
+        strokeFillText(ctx, cx, cy, label.text, mpFont, ts.mp.linePx, MP_COST_GREY, 'rgba(0,0,0,0)');
       }
       ctx.restore();
     }
 
     // Hex structures (gates/towers): tint + artwork + HP/door badge, drawn under
-    // the edge walls and tokens.
+    // the edge walls and tokens. Delegated to the shared renderer used by the Map
+    // Editor too (mapFeatureDraw.drawHexStructure), so the two never drift.
     if (structures && Object.keys(structures).length > 0) {
       ctx.save();
       for (const key of Object.keys(structures)) {
@@ -296,29 +261,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         if (isFogHidden(`${q},${r}`)) continue;
         const inst = structures[key];
         const t = templates?.[inst.templateId];
-        const hx = { q, r, s: -q - r };
-        // Transparent background: a thick black outline only (no colour tint) —
-        // unless the template opts out (decorative hexes: `hex_border` false).
-        if (t?.hexBorder !== false) strokeHex(hx, 'rgba(0,0,0,0.95)', Math.max(3, 5 * currentZoom));
-        const { cx, cy } = hexCenter(hx);
-        if (t?.imageUrl) {
-          const img = getLoadedImage(t.imageUrl);
-          if (img && img.complete && img.naturalWidth > 0) {
-            const h = 1.2 * HEX_SIZE * currentZoom;
-            const w = (img.naturalWidth / img.naturalHeight) * h;
-            ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
-          }
-        }
-        const badges = structureBadges(t, inst);
-        const ly = cy - HEX_SIZE * currentZoom * 0.55;
-        if (badges.destroyed) {
-          strokeFillText(ctx, cx, ly, '✕', `bold ${Math.max(11, 12 * currentZoom)}px ui-monospace, monospace`, Math.max(2, 3 * currentZoom), MP_COST_GREY);
-        } else if (badges.hpText !== null) {
-          strokeFillText(ctx, cx, ly, badges.hpText, `bold ${Math.max(11, 12 * currentZoom)}px ui-monospace, monospace`, Math.max(2, 3 * currentZoom), '#ffe0b2');
-        }
-        if (badges.doorText) {
-          strokeFillText(ctx, cx, cy + HEX_SIZE * currentZoom * 0.55, badges.doorText, `bold ${Math.max(10, 11 * currentZoom)}px ui-monospace, monospace`, Math.max(2, 3 * currentZoom), badges.doorOpen ? '#a5d6a7' : '#ffd9c9');
-        }
+        const { cx, cy } = hexCenter({ q, r, s: -q - r });
+        drawHexStructure(ctx, { cx, cy, hexRadius: HEX_SIZE * currentZoom, unit: 1, zoom: currentZoom, template: t, instance: inst, getImage: getLoadedImage, drawElevation: false });
       }
       ctx.restore();
     }
@@ -397,10 +341,10 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           const mx = (a.x + b.x) / 2;
           const my = (a.y + b.y) / 2;
           const label = `${wallHp(w)}/${w.maxHp}`;
-          ctx.font = `bold ${Math.max(11, 12 * currentZoom)}px ui-monospace, monospace`;
+          ctx.font = MONO(ts.hp.fontPx);
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.lineWidth = Math.max(2, 3 * currentZoom);
+          ctx.lineWidth = ts.hp.linePx;
           ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
           ctx.strokeText(label, mx, my);
           ctx.fillStyle = '#ffd9c9';
@@ -448,8 +392,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.save();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        const sFont = `bold ${Math.max(10, 12 * currentZoom)}px ui-monospace, monospace`;
-        const eFont = `bold ${Math.max(9, 11 * currentZoom)}px ui-monospace, monospace`;
+        const sFont = MONO(ts.elevation.fontPx);
+        const eFont = MONO(ts.effectElev.fontPx);
         for (const key of badgeKeys) {
           if (isFogHidden(key)) continue;
           const [q, r] = key.split(',').map(Number);
@@ -460,7 +404,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           const baseY = cy - HEX_SIZE * currentZoom * 0.72;
           if (top > 0) {
             ctx.font = sFont;
-            ctx.lineWidth = Math.max(2, 3 * currentZoom);
+            ctx.lineWidth = ts.elevation.linePx;
             ctx.strokeStyle = 'rgba(0,0,0,0.85)';
             ctx.strokeText(`${top} ft`, cx, baseY);
             ctx.fillStyle = '#ffe0b2';
@@ -469,7 +413,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           if (eff > 0 && eff !== top) {
             const y = baseY + HEX_SIZE * currentZoom * 0.17;
             ctx.font = eFont;
-            ctx.lineWidth = Math.max(2, 3 * currentZoom);
+            ctx.lineWidth = ts.effectElev.linePx;
             ctx.strokeStyle = 'rgba(0,0,0,0.85)';
             ctx.strokeText(`${eff} ft`, cx, y);
             ctx.fillStyle = '#b2e0ff';

@@ -5,6 +5,13 @@ Core: `src/components/TokenRenderer/drawToken.ts` (pure draw function),
 `units/tokenUtils.ts` (layout math + colors), `TokenRenderer.tsx`/`TokenPreview.tsx`
 (editor wrappers). The map draws tokens through `useCanvasDraw.customDraw`.
 
+> **Board features (structures / effects) are shared too.** `src/components/shared/mapFeatureDraw.ts`
+> is the single renderer for edge-structure geometry (`edgeStructureVisuals`), hex structures
+> (`drawHexStructure`), effect marks (`drawEffectMark`) and every label style
+> (`mapTextStyles`). Called by the scenario map, the Map Editor and the Structure Editor
+> preview with a `unit` = screen-px-per-caller-unit (`1` screen, `zoom` world) so the HP /
+> door / elevation labels scale identically everywhere.
+
 ## Geometry & palette
 
 - Map tokens: `width = hexWidth × 1.6` (≈160), `height = width × 0.75`
