@@ -16,9 +16,9 @@ map), exactly like weapons/effects split authored vs placed.
 > **climb**: crossing a solid **edge** wall, or rising onto a higher **hex** structure,
 > costs `round(Δft/10) × mp_climb_{up|down}` (per 10 ft, foot/mounted), which
 > **replaces** the base. The crossed **edge overrides the hex**. A **negative**
-> `mp_climb_*` is a hard block (`✕`). An open/broken door waives the rise (base step).
-> The board prints the hex centre as the terrain/effect `foot/mounted` and each edge's
-> climb cost as a tiny per-edge label.
+> `mp_climb_*` is a hard block (shown as `-`). An open/broken door waives the rise
+> (base step). The board prints the hex centre as the terrain/effect `foot/mounted`
+> and each edge's climb cost as a per-edge label at the HP font size.
 
 ## Template vs instance
 

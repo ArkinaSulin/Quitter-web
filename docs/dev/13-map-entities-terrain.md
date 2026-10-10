@@ -23,7 +23,8 @@
 > `round(Δft/10) × mp_climb_up/down` (foot/mounted, `NOT NULL DEFAULT 4`) and
 > **replaces** the base; the crossed **edge overrides the hex**; a negative is a hard
 > block. An open/broken door waives the rise (base step). The board prints the hex
-> centre as the terrain/effect cost and each edge's climb as a tiny per-edge label.
+> centre as the terrain/effect cost and each edge's climb as a per-edge label at the
+> HP font size.
 
 ## Authored map effects
 

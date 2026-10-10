@@ -1,5 +1,17 @@
 # QuiTTER Changelog
 
+## Edge climb labels use the HP font; "not allowed" shows `-` (2026-10-10)
+**Files:** src/components/shared/mapFeatureDraw.ts, src/components/ScenarioMap/useCanvasDraw.ts, src/components/MapEditor/MapCanvas.tsx, docs/dev/{13-map-entities-terrain,18-map-structures,changelog}.md
+
+- **Climb labels reuse the HP style.** The dedicated `mapTextStyles.edge` entry is
+  removed; both canvases (scenario `useCanvasDraw`, Map Editor `MapCanvas`) now draw the
+  per-edge climb cost with `ts.hp`, so the labels share the structure HP badge's font size
+  **and** zoom progression (they were previously larger and capped when zoomed out).
+- **`-` instead of `✕`.** A negative `mp_climb_*` / `mp_mounted_*` (hard block / mounted
+  not allowed) now renders `-`, so a 4 MP climb that mounted units cannot take reads
+  `4/-` — less clutter than `4/✕`.
+- `tsc` clean, tests pass, build clean. No migration.
+
 ## Structure climb columns renamed + climb replaces terrain; per-edge climb labels (2026-10-10)
 **Files:** supabase/migrations/121_structure_climb_mp_rename.sql, src/types/structure.ts, src/packages/movement/lib/{structureTemplates,mapStructures}.ts (+ tests), src/packages/world/lib/mapGeometry.ts (+ tests), src/components/{StructureEditor/StructureEditor,shared/mapFeatureDraw,ScenarioMap/{useCanvasDraw,MapInfoTooltip,StructurePaintPanel},MapEditor/{MapEditor,MapCanvas}}.tsx, docs/dev/{18-map-structures,changelog}.md, docs/players/player-manual.md
 

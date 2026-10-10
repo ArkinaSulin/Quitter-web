@@ -293,7 +293,7 @@ export function MapCanvas({
           const isOutside = (faceKey === 'a') === outside;
           const foot = isOutside ? t.mpClimbUp : t.mpClimbDown;
           const mounted = isOutside ? t.mpMountedUp : t.mpMountedDown;
-          const fmt = (v: number) => (v < 0 ? '✕' : String(v));
+          const fmt = (v: number) => (v < 0 ? '-' : String(v));
           const text = foot === mounted ? fmt(foot) : `${fmt(foot)}/${fmt(mounted)}`;
           const ref2 = edgeRef(q, r, d);
           const hq = faceKey === 'a' ? ref2.aq : ref2.bq;
@@ -305,10 +305,10 @@ export function MapCanvas({
         };
         for (const lbl of [labelFor('a'), labelFor('b')]) {
           if (!lbl) continue;
-          ctx.font = MONO(ts.edge.fontPx / zoom);
+          ctx.font = MONO(ts.hp.fontPx / zoom);
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.lineWidth = ts.edge.linePx / zoom;
+          ctx.lineWidth = ts.hp.linePx / zoom;
           ctx.strokeStyle = 'rgba(0,0,0,0.85)';
           ctx.strokeText(lbl.text, lbl.x, lbl.y);
           ctx.fillStyle = '#ffe0b2';

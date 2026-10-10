@@ -37,7 +37,7 @@ export interface MapTextStyle {
  * inside a `ctx.scale(zoom)` transform converts to its own units by dividing by
  * `zoom` (a world font of `fontPx / zoom` renders at `fontPx` screen px).
  */
-export function mapTextStyles(zoom: number): Record<'hp' | 'door' | 'elevation' | 'effectElev' | 'mp' | 'edge', MapTextStyle> {
+export function mapTextStyles(zoom: number): Record<'hp' | 'door' | 'elevation' | 'effectElev' | 'mp', MapTextStyle> {
   const z = Math.max(0.05, zoom);
   const line = Math.max(2, 3 * z);
   return {
@@ -46,8 +46,6 @@ export function mapTextStyles(zoom: number): Record<'hp' | 'door' | 'elevation' 
     elevation: { fontPx: Math.max(10, 12 * z), linePx: line },
     effectElev: { fontPx: Math.max(9, 11 * z), linePx: line },
     mp: { fontPx: Math.min(39, (2 * HEX_SIZE * z) / 3), linePx: 4 },
-    // Tiny per-edge climb labels: scale down with zoom but cap (like `mp`).
-    edge: { fontPx: Math.max(6, Math.min(22, (2 * HEX_SIZE * z) / 3 * 0.6)), linePx: line },
   };
 }
 
