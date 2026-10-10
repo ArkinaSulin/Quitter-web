@@ -295,7 +295,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                     Ladder — a trapezoid ladder on the edge (pure visual; the climb waiver is the <span className="text-amber-300">Ignore climb</span> effect)
                   </label>
                   <div className="rounded border border-gray-700 p-2 space-y-2">
-                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Movement (MP to cross; blank = terrain; negative = block)</p>
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Climb MP per 10 ft (blank = default 4; direction-relative)</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
                       <div className="space-y-1">
                         <p className="text-gray-400">Into inside (outside → inside)</p>
@@ -338,19 +338,12 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
 
               <div className="rounded border border-gray-700 p-2 space-y-2">
                 <p className="text-[10px] uppercase tracking-wide text-gray-500">Surface elevation</p>
-                {draft.anchor === 'edge' ? (
-                  <p className="text-[11px] text-gray-400">
-                    <span className="text-amber-300">Auto</span> — a wall's height is derived at runtime as
-                    <span className="text-gray-200"> max(10 ft, the two adjacent hex surfaces)</span>, so it needs no value here.
-                  </p>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-3 text-[11px]">
-                    <label className="flex items-center gap-1">Height (ft)
-                      <NumInput value={draft.elevation ?? 0} readOnly={readOnly} onChange={v => patch({ elevation: Math.max(0, v ?? 0) })} max={9990} />
-                    </label>
-                    <span className="text-gray-500">0 = decorative (ground level, no height/blocking)</span>
-                  </div>
-                )}
+                <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                  <label className="flex items-center gap-1">Height (ft)
+                    <NumInput value={draft.elevation ?? 0} readOnly={readOnly} onChange={v => patch({ elevation: Math.max(0, v ?? 0) })} max={9990} />
+                  </label>
+                  <span className="text-gray-500">0 = decorative / low (no climb, no LoS block; e.g. a barricade)</span>
+                </div>
               </div>
 
               <div className="rounded border border-gray-700 p-2 space-y-2">

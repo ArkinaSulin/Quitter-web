@@ -34,7 +34,7 @@ import { formatStrikeDetail } from '@/packages/units';
 import { SubStep, UnitChange } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
-import { computeOccupiedHexes, airOccupiedHexes } from '@/packages/world';
+import { computeOccupiedHexes } from '@/packages/world';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingAttack, PendingAttackCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch } from './SoftEnforcementModals';
 import { useMagicCast } from '@/hooks/useMagicCast';
@@ -1035,7 +1035,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // A swoop is an airborne charge: it draws from the fly pool (raw flySpeed).
     const maxMP = flyMax(attacker);
     const budgetUnit = moveBudgetUnit(attacker, 'fly');
-    const occupied = airOccupiedHexes(units, attacker.id);
+    const occupied = computeOccupiedHexes(units, attacker.id, 1);
     const reach = computeChargeReachable(attacker, occupied, maxMP);
     const cost = reach.get(`${target.hex.q},${target.hex.r}`);
     if (cost == null) return null;

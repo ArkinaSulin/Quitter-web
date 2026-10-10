@@ -58,9 +58,7 @@ export function StructureEditModal({ template, instance, onSave, onClose, restri
       onClose();
       return;
     }
-    // Edge (wall) height is derived at runtime (max 10, adjacent surfaces) — don't
-    // store an authored value for edges; hex structures keep their elevation.
-    onSave({ hp, doorHp, open, outside, elevation: template.anchor === 'edge' ? undefined : elev, ladder, modifiers: mods });
+    onSave({ hp, doorHp, open, outside, elevation: elev, ladder, modifiers: mods });
     onClose();
   };
 
@@ -115,17 +113,10 @@ export function StructureEditModal({ template, instance, onSave, onClose, restri
                   </select>
                 </label>
               )}
-              {template.anchor === 'edge' ? (
-                <div className="text-gray-400 pb-1">
-                  <span className="block">Elevation</span>
-                  <span className="text-amber-300">auto (max 10, adjacent)</span>
-                </div>
-              ) : (
-                <label className="text-gray-400">Elevation (ft)
-                  <input type="number" min={0} step={10} className={input + ' !w-24 block'} value={elev}
-                    onChange={e => setElev(Math.max(0, Math.round(Number(e.target.value) || 0)))} />
-                </label>
-              )}
+              <label className="text-gray-400">Elevation (ft)
+                <input type="number" min={0} step={10} className={input + ' !w-24 block'} value={elev}
+                  onChange={e => setElev(Math.max(0, Math.round(Number(e.target.value) || 0)))} />
+              </label>
               {template.anchor === 'edge' && (
                 <label className="flex items-center gap-2 text-gray-300 pb-1.5" title="Draw the trapezoid ladder on this edge (pure visual).">
                   <input type="checkbox" checked={ladder} onChange={e => setLadder(e.target.checked)} /> ladder

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hexMpLabelAt, makeCostOfHex, mpCostOverrides, mpPairText } from '@/packages/world/lib/mapGeometry';
+import { hexMpLabelAt, makeCostOfHex, mpCostOverrides, mpPairText, computeOccupiedHexes, tokenDrawOrder } from '@/packages/world/lib/mapGeometry';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 
@@ -136,5 +136,48 @@ describe('mpPairText', () => {
   it('shows foot/mtd only when they differ', () => {
     expect(mpPairText(2, 3)).toBe('foot 2 / mtd 3');
     expect(mpPairText(2, null)).toBe('foot 2 / mtd -');
+  });
+});
+
+describe('computeOccupiedHexes — ground slot + air slot', () => {
+  const u = (id: string, q: number, r: number, elevation = 0, over: any = {}) => ({
+    id, hex: { q, r, s: -q - r }, elevation, isDeleted: false, attachedToUnitId: null, currentUnitHp: 10, isHero: false, flySpeed: 0, ...over,
+  });
+  const ground = u('g', 0, 0, 0);
+  const garrison = u('t', 0, 0, 10);
+  const flyer = u('f', 1, 0, 30);
+  const rider = u('h', 0, 0, 10, { attachedToUnitId: 'g' });
+
+  it('ground mover is blocked only by a ground occupant (not a garrison/flyer)', () => {
+    expect(computeOccupiedHexes([ground, garrison, flyer, rider], undefined, 0).has('0,0')).toBe(true);
+    expect(computeOccupiedHexes([garrison, flyer], undefined, 0).size).toBe(0);
+  });
+
+  it('air mover (surface > 0) is blocked by ANY elevated unit (one air slot)', () => {
+    const air = computeOccupiedHexes([ground, garrison, flyer], undefined, 1);
+    expect(air.has('0,0')).toBe(true); // garrison occupies the air slot
+    expect(air.has('1,0')).toBe(true); // flyer occupies the air slot
+    expect(air.has('2,0')).toBe(false);
+  });
+
+  it('an attached/rider hero does not occupy a slot', () => {
+    expect(computeOccupiedHexes([rider], undefined, 1).size).toBe(0);
+  });
+});
+
+describe('tokenDrawOrder', () => {
+  const u = (elevation: number, over: any = {}) => ({ elevation, isDeleted: false, attachedToUnitId: null, currentUnitHp: 10, isHero: false, flySpeed: 0, ...over });
+  it('lower elevation first; at equal elevation flying after non-flying, attached hero last', () => {
+    const nonFly = u(0);
+    const fly = u(0, { flySpeed: 5 });
+    const attached = u(0, { isHero: true, attachedToUnitId: 'x' });
+    const arr = [attached, fly, nonFly];
+    arr.sort(tokenDrawOrder);
+    expect(arr).toEqual([nonFly, fly, attached]);
+  });
+  it('elevation dominates the tie-break', () => {
+    const low = u(0, { flySpeed: 5 });
+    const high = u(10);
+    expect([high, low].sort(tokenDrawOrder)).toEqual([low, high]);
   });
 });

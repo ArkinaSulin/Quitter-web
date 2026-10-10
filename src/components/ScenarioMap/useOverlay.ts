@@ -15,7 +15,7 @@ import { parseWeapons } from '@/packages/units';
 import { isRangedCapableWeapon, reactionMovePool, isMeleeReachable } from '@/packages/combat';
 import { canRangedTarget, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
 import { arcOfTarget } from '@/packages/primitives';
-import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
+import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
 import { Walls, EdgeRef } from '@/packages/movement';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, structureSurfaceAt, flightBlockedHexes } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
@@ -153,7 +153,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     const flying = isAirborne(draggedUnit.elevation, surface);
     let occupied: Set<string>;
     if (flying) {
-      occupied = airOccupiedHexes(units);
+      occupied = computeOccupiedHexes(units, undefined, 1);
       for (const k of Array.from(flightBlockedHexes(structures, templates, draggedUnit.elevation ?? 0))) occupied.add(k);
     } else {
       occupied = computeOccupiedHexes(units, undefined, surface);

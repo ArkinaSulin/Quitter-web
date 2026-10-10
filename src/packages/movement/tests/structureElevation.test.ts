@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { climbCostMp, structureSurfaceAt, structureClimbCostBetween, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, edgeStructureElevation } from '@/packages/movement';
+import { climbCostMp, structureSurfaceAt, structureClimbCostBetween, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/packages/movement';
 import { blankStructureTemplate } from '@/packages/movement';
 import { directionBetween, edgeRef } from '@/packages/movement';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
@@ -72,28 +72,40 @@ describe('structure elevation (2b)', () => {
     expect(Array.from(flightBlockedHexes(structures, templates, 20, '2,0')).length).toBe(0);
   });
 
-  it('an edge wall derives its height (authored value ignored), min 10 ft', () => {
-    // Authored edge elevation 20 but BOTH adjacent hexes are open ground → derived 10.
+  it('an edge wall is climbed by its AUTHORED height in 10-ft steps', () => {
     const templates = { wall: tmpl({ anchor: 'edge', elevation: 20, doorHp: null, maxHp: 30 }) };
     const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
     const key = edgeRef(0, 0, dir).key;
     const structures = { [key]: inst('wall') };
-    expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(4);
-  });
-
-  it('an edge wall matches a taller adjacent hex surface', () => {
-    const templates = { wall: tmpl({ anchor: 'edge', doorHp: null, maxHp: 30 }), tower: tmpl({ anchor: 'hex', elevation: 20 }) };
-    const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
-    const key = edgeRef(0, 0, dir).key;
-    // A 20-ft tower on (0,0) raises the wall beside it to 20 ft.
-    const structures = { [key]: inst('wall'), '0,0': inst('tower') };
+    // 20 ft = 2 steps × the default 4 MP/step.
     expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(8);
   });
 
-  it('edgeStructureElevation: max(10, the two adjacent hex surfaces)', () => {
-    const templates = { tower: tmpl({ anchor: 'hex', elevation: 30 }) };
-    const structures = { '1,0': inst('tower') };
-    expect(edgeStructureElevation({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(30);
-    expect(edgeStructureElevation({ q: 5, r: 5 }, { q: 6, r: 5 }, structures, templates)).toBe(10);
+  it('the authored mp_* is the per-10-ft climb cost, direction-dependent', () => {
+    const templates = { wall: tmpl({ anchor: 'edge', elevation: 10, doorHp: null, maxHp: 30, mpFootIn: 2, mpFootOut: 5 }) };
+    const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
+    const key = edgeRef(0, 0, dir).key;
+    // outside = canonical face A = (0,0): (0,0)->(1,0) is outside->inside → `_in` = 2.
+    const outAB = { [key]: inst('wall', { outside: 'a' }) };
+    expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, outAB, templates)).toBe(2);
+    // outside = face B = (1,0): the same crossing is inside->outside → `_out` = 5.
+    const outBA = { [key]: inst('wall', { outside: 'b' }) };
+    expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, outBA, templates)).toBe(5);
+  });
+
+  it('a mounted mover uses the mounted mp_*', () => {
+    const templates = { wall: tmpl({ anchor: 'edge', elevation: 10, doorHp: null, maxHp: 30, mpFootIn: 2, mpMountedIn: 6 }) };
+    const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
+    const key = edgeRef(0, 0, dir).key;
+    const structures = { [key]: inst('wall', { outside: 'a' }) };
+    expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates, false, true)).toBe(6);
+  });
+
+  it('a low edge (height < 10 ft, e.g. a barricade) needs no climb', () => {
+    const templates = { barricade: tmpl({ anchor: 'edge', elevation: 0, doorHp: 0, maxHp: 0 }) };
+    const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
+    const key = edgeRef(0, 0, dir).key;
+    const structures = { [key]: inst('barricade') };
+    expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(0);
   });
 });

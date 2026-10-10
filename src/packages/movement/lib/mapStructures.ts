@@ -45,28 +45,6 @@ export function structureSurfaceAt(
   return structureElevation(templates?.[inst.templateId], inst);
 }
 
-/**
- * The effective height of an EDGE structure (a wall) — fully derived, no authored
- * value: the taller of the two adjacent hex surfaces, floored at 10 ft. So a wall
- * on flat ground is 10 ft and a wall beside a taller hex (platform/tower) matches
- * it. Used for the wall's climb cost and its line-of-sight blocking height; edges
- * never define a walkable hex surface (see `structureSurfaceAt`).
- */
-export const EDGE_STRUCTURE_MIN_ELEVATION = 10;
-
-export function edgeStructureElevation(
-  hexA: { q: number; r: number },
-  hexB: { q: number; r: number },
-  structures: MapStructures | null | undefined,
-  templates: Record<string, StructureTemplate> | null | undefined,
-): number {
-  return Math.max(
-    EDGE_STRUCTURE_MIN_ELEVATION,
-    structureSurfaceAt(hexA, structures ?? undefined, templates ?? undefined),
-    structureSurfaceAt(hexB, structures ?? undefined, templates ?? undefined),
-  );
-}
-
 /** Hex keys whose structure TOP is above `elevation` — these block a flyer at that
  *  height (it must climb above the top to pass). `excludeKey` keeps a drop
  *  destination reachable so the elevation modal can clear it. */
@@ -141,6 +119,7 @@ export function structureClimbCostBetween(
   templates: Record<string, StructureTemplate> | undefined,
   /** The mover ignores climb cost entirely (`ignore_climb` effect). */
   waiveClimb = false,
+  isMounted = false,
 ): number {
   if (waiveClimb) return 0;
   if (!structures) return 0;
@@ -162,11 +141,27 @@ export function structureClimbCostBetween(
     const groundPass = !!(toInst && toT && structureDoorState(toInst, toT).openOrBroken);
     if (!groundPass) climb = Math.max(climb, climbCostMp(toSurf - fromSurf));
   }
-  // Edge wall height — a solid (door-less) wall is climbed; a door handles passage.
-  // The wall's height is derived (max of the adjacent hex surfaces, min 10 ft).
-  if (edgeInst && edgeT) {
+  // Edge wall: cross it by climbing its AUTHORED height in 10-ft steps, each step
+  // costing the template's `mp_*` for the crossing DIRECTION (`_in` = outside→inside,
+  // `_out` = inside→outside; NULL falls back to 4 MP/step). An open/broken door
+  // waives the whole climb; a height < 10 ft (e.g. a barricade) needs no climb.
+  if (edgeInst && edgeT && dir >= 0) {
     const st = structureDoorState(edgeInst, edgeT);
-    if (st.noDoor) climb = Math.max(climb, climbCostMp(edgeStructureElevation(from, to, structures, templates)));
+    if (st.noDoor) {
+      const steps = Math.round(structureElevation(edgeT, edgeInst) / 10);
+      if (steps > 0) {
+        const ref = edgeRef(from.q, from.r, dir);
+        const outsideIsA = (edgeInst.outside ?? 'a') === 'a';
+        const fromIsOutside = outsideIsA
+          ? (from.q === ref.aq && from.r === ref.ar)
+          : (from.q === ref.bq && from.r === ref.br);
+        const authored = isMounted
+          ? (fromIsOutside ? edgeT.mpMountedIn : edgeT.mpMountedOut)
+          : (fromIsOutside ? edgeT.mpFootIn : edgeT.mpFootOut);
+        const perStep = authored !== null && authored !== undefined && authored > 0 ? authored : CLIMB_MP_PER_STEP;
+        climb = Math.max(climb, steps * perStep);
+      }
+    }
   }
   return climb;
 }

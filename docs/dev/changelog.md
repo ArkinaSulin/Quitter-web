@@ -1,5 +1,27 @@
 # QuiTTER Changelog
 
+## Occupancy slots (ground/air) + draw order + authored edge height / per-10-ft climb (2026-10-09)
+**Files:** src/packages/world/lib/mapGeometry.ts (+ tests/mapGeometry.test.ts), src/packages/movement/lib/mapStructures.ts (+ tests/structureElevation.test.ts), src/packages/combat/lib/lineOfSight.ts, src/components/ScenarioMap/{useCombatActions,useMoveActions,useOverlay}.ts, src/components/StructureEditor/StructureEditor.tsx, src/components/StructureEditModal.tsx
+
+- **One occupancy function.** `computeOccupiedHexes(units, excludeId, surface)` is now the
+  sole eligibility check: a hex has a **ground** slot (`elevation === 0`) and an **air**
+  slot (`elevation > 0`); a mover on the ground (`surface 0`) is blocked only by a ground
+  occupant, a mover on/above a structure (`surface > 0`) by any elevated occupant. Attached
+  heroes ride the host (`isUnitInteractable` excludes them), so a host + rider = one
+  occupant. `airOccupiedHexes` is now internal to it; all component call sites use
+  `computeOccupiedHexes(..., 1)` for the air slot.
+- **Draw order.** `tokenDrawOrder`: elevation ascending; at equal elevation
+  non-flying → flying → attached/riding hero last.
+- **Authored edge height (auto-height reverted).** An edge structure's blocking/LoS height
+  is its authored `elevation` again (default 10; **0 = low/decorative**, e.g. a barricade →
+  no climb, no block). Removed `edgeStructureElevation`/`EDGE_STRUCTURE_MIN_ELEVATION`.
+- **Per-10-ft climb cost.** Edge `mp_*` is repurposed as the **climb MP per 10 ft**,
+  direction-relative (`_in` = outside→inside, `_out` = inside→outside, foot/mounted); a
+  blank falls back to 4. Crossing an edge wall = `round(height/10) × mp_*`; a door or
+  `ignore_climb` waives it; height < 10 ft needs no climb. Threaded `isMounted` through
+  `structureClimbCostBetween`. Editors relabel `mp_*` "Climb MP per 10 ft" and restore the
+  edge Height field. `tsc` clean, 992 tests pass. No migration.
+
 ## Stairs direction flip + shared edge rendering + derived wall height (2026-10-08)
 **Files:** src/types/structure.ts, src/packages/movement/lib/{mapStructures,structureTemplates}.ts (+ tests/structureElevation.test.ts), src/packages/combat/lib/lineOfSight.ts, src/components/shared/mapFeatureDraw.ts (+ test), src/components/ScenarioMap/{useCanvasDraw,ScenarioMap,StructurePaintPanel}.tsx, src/components/MapEditor/{MapEditor,MapCanvas}.tsx, src/components/StructureEditor/StructureEditor.tsx, src/components/StructureEditModal.tsx, docs/dev/{08-combat,18-map-structures,changelog}.md
 

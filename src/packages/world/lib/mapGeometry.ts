@@ -73,7 +73,7 @@ export function makeCostOfHex(
     // crossing a tall wall costs MP; an `ignore_climb` effect (or a passable door)
     // waives it. The base step cost still applies — the higher of the two wins.
     if (fromQ !== undefined && fromR !== undefined) {
-      const climb = structureClimbCostBetween({ q: fromQ, r: fromR }, { q, r }, opts.structures, opts.templates, !!opts.waiveClimb);
+      const climb = structureClimbCostBetween({ q: fromQ, r: fromR }, { q, r }, opts.structures, opts.templates, !!opts.waiveClimb, !!opts.isMounted);
       if (climb > base) base = climb;
     }
     return base;
@@ -114,7 +114,7 @@ export function makeBlockedEdge(walls: Walls | null | undefined, opts: BlockEdge
     if (walls && blockedStep(walls, fromQ, fromR, toQ, toR, !!isMounted)) return true;
     if (structures && structureHexBlocked({ q: toQ, r: toR }, structures, templates, !!isMounted)) return true;
     // Mounted units cannot climb: block entering a higher-surface hex.
-    if (isMounted && structures && structureClimbCostBetween({ q: fromQ, r: fromR }, { q: toQ, r: toR }, structures, templates, !!waiveClimb) > 0) return true;
+    if (isMounted && structures && structureClimbCostBetween({ q: fromQ, r: fromR }, { q: toQ, r: toR }, structures, templates, !!waiveClimb, isMounted) > 0) return true;
     return false;
   };
 }
@@ -282,10 +282,17 @@ export interface MapBackgroundConfig {
 export const corpseLast = (a: Unit, b: Unit) =>
   ((a.currentUnitHp ?? 0) <= 0 ? 0 : 1) - ((b.currentUnitHp ?? 0) <= 0 ? 0 : 1);
 
-/** Token draw order: corpses first, then live tokens by ELEVATION ascending, so an
- *  airborne unit stacked on a ground unit paints above it. */
-export const tokenDrawOrder = (a: Unit, b: Unit) =>
-  corpseLast(a, b) || ((a.elevation ?? 0) - (b.elevation ?? 0));
+/** Token draw order: corpses first, then live tokens by ELEVATION ascending. At the
+ *  same elevation, non-flying tokens draw first, then flying, then an attached /
+ *  riding hero last. */
+export const tokenDrawOrder = (a: Unit, b: Unit) => {
+  const corpse = corpseLast(a, b);
+  if (corpse) return corpse;
+  const elev = (a.elevation ?? 0) - (b.elevation ?? 0);
+  if (elev) return elev;
+  const tier = (u: Unit) => (u.attachedToUnitId ? 2 : canFly(u) ? 1 : 0);
+  return tier(a) - tier(b);
+};
 
 /** All hexes exactly at `radius` hexes from `center` (a hexagonal ring). */
 export function hexRing(center: Hex, radius: number): Hex[] {
@@ -302,14 +309,20 @@ export function hexRing(center: Hex, radius: number): Hex[] {
   return results;
 }
 
-/** Hexes occupied at a given SURFACE (dynamic ground). A move on surface `S` is
- *  blocked only by units standing at exactly `S` (default 0 = bare ground). Airborne
- *  units (higher than the surface) live on the air layer (`airOccupiedHexes`), so a
- *  ground unit may enter a hex beneath a flyer / under a platform garrison. */
+/**
+ * Hexes occupied for a mover standing on `surface` — the SINGLE occupancy check.
+ * A hex has exactly two slots: a **ground** slot (`elevation === 0`) and an **air**
+ * slot (`elevation > 0`). A mover on the ground (`surface === 0`) is blocked only by
+ * a unit at elevation 0; a mover on/above a structure (`surface > 0`) is blocked by
+ * ANY elevated unit (one air occupant per hex, regardless of altitude). Attached
+ * heroes ride the host and never occupy (`isUnitInteractable` excludes them), so a
+ * host + its rider counts as one occupant.
+ */
 export function computeOccupiedHexes(allUnits: Unit[], excludeUnitId?: string, surface = 0): Set<string> {
+  if (surface > 0) return airOccupiedHexes(allUnits, excludeUnitId);
   return new Set(
     allUnits
-      .filter(u => isUnitInteractable(u) && u.id !== excludeUnitId && (u.elevation ?? 0) === surface)
+      .filter(u => isUnitInteractable(u) && u.id !== excludeUnitId && (u.elevation ?? 0) === 0)
       .map(u => `${u.hex.q},${u.hex.r}`),
   );
 }

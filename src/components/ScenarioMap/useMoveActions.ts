@@ -18,7 +18,7 @@ import { WITHDRAW_ACTION_COST } from '@/packages/movement';
 import { parseWeapons, damageDiceCount } from '@/packages/units';
 import { SubStep, UnitChange } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
-import { computeOccupiedHexes, airOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
+import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
 import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
 import { Walls, directionBetween, edgeRef } from '@/packages/movement';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, structureWaivesClimb, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/packages/movement';
@@ -427,7 +427,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // above the flyer's height (it can't pass them at this elevation). The drop
     // DESTINATION is kept reachable so the elevation modal can clear it (checked
     // on confirm); blocked intermediate hexes are avoided.
-    const flyOccupied = airOccupiedHexes(units, unitId);
+    const flyOccupied = computeOccupiedHexes(units, unitId, 1);
     for (const k of Array.from(flightBlockedHexes(structures, structureTemplates, unit.elevation ?? 0, `${targetHex.q},${targetHex.r}`))) flyOccupied.add(k);
     // Friendly pass-through: a pass-eligible mover may TRAVERSE pass-eligible
     // friendly hexes (Open Order/Scattered/Routed, or a hero <= Large) — never
@@ -780,7 +780,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const attachedHero = unit.attachedToUnitId ? null : (units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted) ?? null);
     const maxMP = unit.flySpeed ?? 0;
     const budgetUnit = moveBudgetUnit(unit, 'fly');
-    const occupied = airOccupiedHexes(units, unit.id);
+    const occupied = computeOccupiedHexes(units, unit.id, 1);
     for (const k of Array.from(flightBlockedHexes(structures, structureTemplates, unit.elevation ?? 0, `${targetHex.q},${targetHex.r}`))) occupied.add(k);
     const threatHexes = computeThreatHexes(units, unit.id, alliances, formationsMap, structures, structureTemplates);
     const hopCap = unit.isHero ? computeHeroMovePool(budgetUnit, maxMP) : computeMovePool(budgetUnit, maxMP);
