@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Walls block melee & ground ZoC; an open door is a plain passage (2026-10-09)
+**Files:** src/packages/movement/lib/mapStructures.ts (+ tests/mapStructures.test.ts), src/packages/combat/lib/meleeFallback.ts (+ tests), src/packages/morale/lib/{unitMorale,zocDisengage}.ts, src/packages/world/lib/mapGeometry.ts, src/components/ScenarioMap/{useCombatActions,useOverlay,ScenarioMap}.tsx
+
+- **Walls block ground melee & ZoC.** New `edgeStructureHeightBetween(from,to,structures,templates)`.
+  `isMeleeReachable` now returns false across an edge whose authored wall height exceeds
+  both units' elevation (so two ground units on opposite sides of a 10-ft wall can't
+  melee each other; a low barricade doesn't block). `imposesKillZone` (and thus
+  `imposesZocOn`/`computeThreatHexes`) drops the ground kill zone across such a wall.
+  Threaded `structures`/`templates` through `canWeaponAttack` and the combat/overlay call
+  sites. Over-wall is same-hex only (a climber hanging at the top strikes down ≤10 ft).
+- **An open/broken door is a plain passage.** `structuresToWalls.faceFromTemplate` now
+  returns an EMPTY face when the door is `openOrBroken` — no crossing MP, no cover AC, no
+  attack-roll flags; `orgGatesForEntry` also skips the edge's `max_org_level_allowed` gate.
+  (Ladder/`ignore_climb` still waives only the climb.) `tsc` clean, 994 tests pass. No migration.
+
 ## Occupancy slots (ground/air) + draw order + authored edge height / per-10-ft climb (2026-10-09)
 **Files:** src/packages/world/lib/mapGeometry.ts (+ tests/mapGeometry.test.ts), src/packages/movement/lib/mapStructures.ts (+ tests/structureElevation.test.ts), src/packages/combat/lib/lineOfSight.ts, src/components/ScenarioMap/{useCombatActions,useMoveActions,useOverlay}.ts, src/components/StructureEditor/StructureEditor.tsx, src/components/StructureEditModal.tsx
 

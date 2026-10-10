@@ -31,6 +31,8 @@ export function imposesZocOn(
   formationsMap: Record<string, Formation>,
   targetElevation = 0,
   ownSurface = 0,
+  structures?: MapStructures | null,
+  templates?: Record<string, StructureTemplate> | null,
 ): boolean {
   const sameHex = hex.q === enemy.hex.q && hex.r === enemy.hex.r;
   if (!imposesKillZone(enemy, hex, {
@@ -38,6 +40,8 @@ export function imposesZocOn(
     ownSurface,
     exclude: (u: Unit) => u.isHero || !!u.attachedToUnitId,
     requireFormed: true,
+    structures,
+    templates,
   })) {
     return false;
   }
@@ -75,8 +79,8 @@ export function hostilesLeftZoc(
     isHostile(e.team, mover.team, alliances) &&
     // Elevation gating lives in imposesZocOn: horizontal ZoC needs exact
     // elevation, but a flyer directly above still imposes a vertical ZoC.
-    imposesZocOn(e, originHex, formationsMap, moverElev, surfaceOf(e.hex)) &&
-    !imposesZocOn(e, destHex, formationsMap, moverElev, surfaceOf(e.hex)),
+    imposesZocOn(e, originHex, formationsMap, moverElev, surfaceOf(e.hex), structures, templates) &&
+    !imposesZocOn(e, destHex, formationsMap, moverElev, surfaceOf(e.hex), structures, templates),
   );
 }
 

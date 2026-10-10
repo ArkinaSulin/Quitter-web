@@ -4,7 +4,8 @@ import { isDeadCorpse, isProtectedHero } from '@/packages/units';
 import { getThreatMode, Arc } from '@/packages/movement';
 import { arcOf, frontArcIndices, hexDirIndex } from '@/packages/primitives';
 import { isHostile, sameAlliance } from '@/packages/primitives';
-import { isAirborne, verticalGapDown, withinVerticalGap } from '@/packages/movement';
+import { isAirborne, verticalGapDown, withinVerticalGap, MapStructures, edgeStructureHeightBetween } from '@/packages/movement';
+import { StructureTemplate } from '@/types/structure';
 
 // Code fallbacks match migration 042 seeds — correct until the cache is loaded.
 const DEFAULT_LEVEL_BANDS: SettingBand[] = [
@@ -66,6 +67,9 @@ export interface KillZoneQuery {
   exclude?: (unit: Unit) => boolean;
   /** Gate the vertical (same-column) clause on a formed unit (movement ZoC). */
   requireFormed?: boolean;
+  /** Placed structures (an edge wall between the two hexes blocks a ground ZoC). */
+  structures?: MapStructures | null;
+  templates?: Record<string, StructureTemplate> | null;
 }
 
 /**
@@ -93,12 +97,23 @@ export function imposesKillZone(unit: Unit, hex: Hex, q: KillZoneQuery): boolean
   if (unitElev !== q.targetElevation) return false;
   const dirIdx = hexDirIndex(unit.hex, hex);
   if (dirIdx === -1) return false;
-  return frontArcIndices(unit.facing).includes(dirIdx);
+  if (!frontArcIndices(unit.facing).includes(dirIdx)) return false;
+  // A wall between the two hexes blocks the ground kill zone when it is taller
+  // than the unit (so a 10-ft wall stops a foot unit's ZoC; a low barricade doesn't).
+  if (edgeStructureHeightBetween(unit.hex, hex, q.structures, q.templates) > unitElev) return false;
+  return true;
 }
 
 /** Kill zone for morale/point-blank/AGR (no formation/hero gate). */
-export function isInKillZone(unit: Unit, hex: Hex, targetElevation = 0, ownSurface = 0): boolean {
-  return imposesKillZone(unit, hex, { targetElevation, ownSurface });
+export function isInKillZone(
+  unit: Unit,
+  hex: Hex,
+  targetElevation = 0,
+  ownSurface = 0,
+  structures?: MapStructures | null,
+  templates?: Record<string, StructureTemplate> | null,
+): boolean {
+  return imposesKillZone(unit, hex, { targetElevation, ownSurface, structures, templates });
 }
 
 export function calcWounds(unit: Unit): number {

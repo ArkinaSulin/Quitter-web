@@ -3,7 +3,8 @@ import { Unit, AllianceGroup, hexDistance } from '@/types/gameProtocol';
 import { Weapon } from '@/packages/units';
 import { isInKillZone, isUnitRouted } from '@/packages/morale';
 import { isHostile } from '@/packages/primitives';
-import { withinVerticalGap } from '@/packages/movement';
+import { withinVerticalGap, MapStructures, edgeStructureHeightBetween } from '@/packages/movement';
+import { StructureTemplate } from '@/types/structure';
 
 /**
  * Fists: the last-resort melee weapon used by a unit whose active weapon is
@@ -59,10 +60,20 @@ export function isAdjacentDistance(dist: number): boolean {
  *  still narrows the DIRECTIONS: hero/Scattered reach all around, formed units
  *  front-2. Net: hero/Scattered = 6 adjacent + own column ±10 ft (8 hexes);
  *  formed = front-2 + own column ±10 ft. */
-export function isMeleeReachable(attacker: Pick<Unit, 'hex' | 'elevation'>, target: Pick<Unit, 'hex' | 'elevation'>): boolean {
+export function isMeleeReachable(
+  attacker: Pick<Unit, 'hex' | 'elevation'>,
+  target: Pick<Unit, 'hex' | 'elevation'>,
+  structures?: MapStructures | null,
+  templates?: Record<string, StructureTemplate> | null,
+): boolean {
   const dist = hexDistance(attacker.hex, target.hex);
   if (dist === 0) return withinVerticalGap(attacker.elevation, target.elevation);
-  if (dist === 1) return (attacker.elevation ?? 0) === (target.elevation ?? 0);
+  if (dist === 1) {
+    if ((attacker.elevation ?? 0) !== (target.elevation ?? 0)) return false;
+    // A wall between two units blocks melee when both stand BELOW its top.
+    if (edgeStructureHeightBetween(attacker.hex, target.hex, structures, templates) > (attacker.elevation ?? 0)) return false;
+    return true;
+  }
   return false;
 }
 
@@ -96,11 +107,13 @@ export function canWeaponAttack(
   attacker: Unit,
   target: Unit,
   rangeBonus = 0,
+  structures?: MapStructures | null,
+  templates?: Record<string, StructureTemplate> | null,
 ): boolean {
   if (!weapon || weapon.isHealing) return false;
   const dist = hexDistance(attacker.hex, target.hex);
-  const isAdjacent = isMeleeReachable(attacker, target);
-  const kind = attackKind(weapon, isAdjacent, isInKillZone(target, attacker.hex, attacker.elevation));
+  const isAdjacent = isMeleeReachable(attacker, target, structures, templates);
+  const kind = attackKind(weapon, isAdjacent, isInKillZone(target, attacker.hex, attacker.elevation, 0, structures, templates));
   if (kind === 'none') return false;
   if (kind === 'ranged' && (weapon.magicDimension ?? 0) <= 0) {
     const upHex = Math.max(0, Math.floor(((target.elevation ?? 0) - (attacker.elevation ?? 0)) / 10));

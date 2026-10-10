@@ -90,6 +90,17 @@ describe('structuresToWalls', () => {
     expect(walls['0,0,0'].b).toEqual({ moveCostFoot: 3 });
   });
 
+  it('an open/broken door makes the edge a plain passage (no face effects)', () => {
+    const g = template({ doorHp: 10, maxHp: 30 });
+    const open = structuresToWalls({ '0,0,0': { templateId: 'g', open: true } }, { g });
+    expect(open['0,0,0'].a).toEqual({});
+    expect(open['0,0,0'].b).toEqual({});
+    // A closed door keeps its crossing cost + cover.
+    const closed = structuresToWalls({ '0,0,0': { templateId: 'g' } }, { g });
+    expect(closed['0,0,0'].b.meleeAc).toBe(2);
+    expect(closed['0,0,0'].b.moveCostFoot).toBe(1);
+  });
+
   it('carries attack-roll flags on the inside face only (melee vs ranged scope)', () => {
     const aura = template({
       id: 'aura',

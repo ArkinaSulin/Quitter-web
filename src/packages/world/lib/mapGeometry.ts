@@ -371,7 +371,7 @@ export function computeThreatHexes(
       const dir = HEX_DIRS[dirIdx];
       const H = { q: unit.hex.q + dir.q, r: unit.hex.r + dir.r, s: -unit.hex.q - dir.q - unit.hex.r - dir.r };
       const destElev = destElevOf(H);
-      if (!imposesKillZone(unit, H, { targetElevation: destElev, ownSurface, exclude, requireFormed: true })) continue;
+      if (!imposesKillZone(unit, H, { targetElevation: destElev, ownSurface, exclude, requireFormed: true, structures, templates })) continue;
       if (!canStopEnemyMovement(formationsMap[unit.currentFormation], 'front')) continue;
       const key = `${H.q},${H.r}`;
       if (computeOccupiedHexes(allUnits, draggedUnitId, destElev).has(key)) continue;
@@ -382,7 +382,7 @@ export function computeThreatHexes(
     // below — facing-independent — but only when a hostile is actually under it.
     const ownHex = unit.hex;
     if (
-      imposesKillZone(unit, ownHex, { targetElevation: destElevOf(ownHex), ownSurface, exclude, requireFormed: true }) &&
+      imposesKillZone(unit, ownHex, { targetElevation: destElevOf(ownHex), ownSurface, exclude, requireFormed: true, structures, templates }) &&
       hostileUnder(unit)
     ) {
       threats.add(`${ownHex.q},${ownHex.r}`);

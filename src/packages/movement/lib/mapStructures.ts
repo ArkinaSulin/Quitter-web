@@ -45,6 +45,24 @@ export function structureSurfaceAt(
   return structureElevation(templates?.[inst.templateId], inst);
 }
 
+/** The authored height (ft) of an edge structure on the shared edge between two
+ *  adjacent hexes, or 0 when none. A wall taller than a unit's elevation is what
+ *  blocks melee / ground kill-zone across the edge. */
+export function edgeStructureHeightBetween(
+  from: { q: number; r: number },
+  to: { q: number; r: number },
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+): number {
+  if (!structures) return 0;
+  const dir = directionBetween(from, to);
+  if (dir < 0) return 0;
+  const ref = edgeRef(from.q, from.r, dir);
+  const inst = structures[ref.key];
+  if (!inst) return 0;
+  return structureElevation(templates?.[inst.templateId], inst);
+}
+
 /** Hex keys whose structure TOP is above `elevation` — these block a flyer at that
  *  height (it must climb above the top to pass). `excludeKey` keeps a drop
  *  destination reachable so the elevation modal can clear it. */
@@ -359,13 +377,15 @@ function rollFlagsEmpty(f: WallRollFlags): boolean {
  *  are oriented on the INSIDE only: the inside face carries cover AC + attack-roll
  *  flags for the unit holding it; the outside face carries only the crossing cost. */
 function faceFromTemplate(t: StructureTemplate, mods: EffectModifier[], which: 'inside' | 'outside', openOrBroken: boolean): WallFace {
+  // A door that is open/broken makes the edge a plain passage: it contributes NO
+  // face effects (crossing MP, cover AC, attack-roll flags) — only HP/door pools
+  // remain (handled on the Wall, not the face).
+  if (openOrBroken) return {};
   const foot = which === 'inside' ? t.mpFootIn : t.mpFootOut;
   const mounted = which === 'inside' ? t.mpMountedIn : t.mpMountedOut;
   const f: WallFace = {};
-  if (!openOrBroken) {
-    if (foot !== null && foot !== undefined) f.moveCostFoot = foot;
-    if (mounted !== null && mounted !== undefined) f.moveCostMounted = mounted;
-  }
+  if (foot !== null && foot !== undefined) f.moveCostFoot = foot;
+  if (mounted !== null && mounted !== undefined) f.moveCostMounted = mounted;
   if (which === 'inside') {
     const ac = coverAc(mods);
     if (ac.melee) f.meleeAc = ac.melee;
@@ -476,7 +496,9 @@ export function orgGatesForEntry(
     const edgeInst = structures[ref.key];
     if (edgeInst) {
       const t = templates?.[edgeInst.templateId];
-      for (const m of instanceModifiers(edgeInst, t)) if (m.kind === 'max_org_level_allowed') push('edge structure', t?.name ?? edgeInst.templateId, m.dice);
+      // An open/broken door makes the edge a plain passage — its org gate is bypassed.
+      const doorOpen = !!(t && structureDoorState(edgeInst, t).openOrBroken);
+      if (!doorOpen) for (const m of instanceModifiers(edgeInst, t)) if (m.kind === 'max_org_level_allowed') push('edge structure', t?.name ?? edgeInst.templateId, m.dice);
     }
   }
   const hexInst = structures?.[`${toHex.q},${toHex.r}`];

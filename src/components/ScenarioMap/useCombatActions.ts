@@ -157,15 +157,15 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // it owns none. Magic weapons always act at range; everything beyond adjacency
     // is a ranged attack (thrown/shot).
     const dist = hexDistance(attacker.hex, target.hex);
-    const isAdjacent = isMeleeReachable(attacker, target);
+    const isAdjacent = isMeleeReachable(attacker, target, structures, structureTemplates);
     let attackerSwitchIdx: number | null = null;
     let defenderSwitchIdx: number | null = null;
     let usedFists = false;
     // Adjacency forces a MELEE weapon only when the combatant stands in the
     // opponent's kill zone (engaged frontally). Outside it, a ranged weapon may
     // fire at point-blank; magic always acts at range.
-    const inTargetKillZone = isInKillZone(target, attacker.hex, attacker.elevation, structureSurfaceAt(target.hex, structures, structureTemplates));
-    const inAttackerKillZone = isInKillZone(attacker, target.hex, target.elevation, structureSurfaceAt(attacker.hex, structures, structureTemplates));
+    const inTargetKillZone = isInKillZone(target, attacker.hex, attacker.elevation, structureSurfaceAt(target.hex, structures, structureTemplates), structures, structureTemplates);
+    const inAttackerKillZone = isInKillZone(attacker, target.hex, target.elevation, structureSurfaceAt(attacker.hex, structures, structureTemplates), structures, structureTemplates);
     if (isAdjacent && weapon.magicDimension <= 0 && inTargetKillZone && !isMeleeWeapon(weapon)) {
       const attackerWeapons = parseWeapons(attacker.weaponString || '');
       const meleeIdx = findFirstMeleeWeaponIndex(attackerWeapons);
@@ -461,7 +461,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       // Threat penalty only applies while the attacker stands in the target's
       // kill zone (front two hexes) — otherwise the target's rating doesn't
       // pressure the attacker's nerve.
-      const threatPenalty = isInKillZone(target, attacker.hex, attacker.elevation, structureSurfaceAt(target.hex, structures, structureTemplates))
+      const threatPenalty = isInKillZone(target, attacker.hex, attacker.elevation, structureSurfaceAt(target.hex, structures, structureTemplates), structures, structureTemplates)
         ? Math.max(0, Math.round(computeThreatRating(target) / computeThreatRating(attacker)) - 1)
         : 0;
       // Plain: just the outcome. The dice/bonus breakdown is verbose-only.
@@ -1158,7 +1158,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const upHex = Math.max(0, Math.floor((((target.elevation ?? 0) - (attacker.elevation ?? 0))) / 10));
     const reachDist = dist + upHex;
     // Melee needs horizontal adjacency AND a vertical gap of at most 10 ft.
-    const isAdjacent = isMeleeReachable(attacker, target);
+    const isAdjacent = isMeleeReachable(attacker, target, structures, structureTemplates);
 
     const attackerWeapons = parseWeapons(attacker.weaponString || '');
     // A resumed attack (post weapon-switch confirm) carries the chosen index; use
@@ -1263,7 +1263,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // used only when the attacker is NOT in the target's kill zone (point-blank);
     // in the kill zone the melee fallback runs (in `performAttack`). A melee
     // weapon beyond adjacency cannot reach.
-    const inTargetKillZone = isInKillZone(target, attacker.hex, attacker.elevation, structureSurfaceAt(target.hex, structures, structureTemplates));
+    const inTargetKillZone = isInKillZone(target, attacker.hex, attacker.elevation, structureSurfaceAt(target.hex, structures, structureTemplates), structures, structureTemplates);
     const attackType = attackKind(weapon, isAdjacent, inTargetKillZone);
     if (attackType === 'none') {
       addMessage(`${attacker.unitName} cannot reach ${target.unitName} — get within 10 ft to melee`);
@@ -1440,7 +1440,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     if (sameAlliance(attacker.team, target.team, alliances)) return false;
     const weapons = parseWeapons(attacker.weaponString || '');
     const bonus = rangeBonusAt(attacker, groundZones);
-    const usable = weapons.map((w, i) => ({ w, i })).filter(({ w }) => canWeaponAttack(w, attacker, target, bonus));
+    const usable = weapons.map((w, i) => ({ w, i })).filter(({ w }) => canWeaponAttack(w, attacker, target, bonus, structures, structureTemplates));
     const rider = units.find(u => u.attachedToUnitId === targetId && !u.isDeleted && u.attachedPosition === 'rider') ?? null;
     if (usable.length <= 1 && !rider) return false;
     const weaponIndex = usable[0]?.i ?? (attacker.activeWeaponIndex ?? 0);

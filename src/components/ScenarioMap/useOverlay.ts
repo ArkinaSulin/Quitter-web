@@ -267,7 +267,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
         if (d > maxRange) color = 'rgba(255, 80, 80, 0.85)';
         else if (d > minRange) color = 'rgba(255, 180, 60, 0.85)';
         combined[targetKey] = color;
-      } else if (isMeleeReachable(draggedUnit, hoveredUnit!)) {
+      } else if (isMeleeReachable(draggedUnit, hoveredUnit!, structures, templates)) {
         // Melee target in reach: mark it green (the drop attacks it, not a move).
         combined[targetKey] = 'rgba(80, 220, 120, 0.85)';
       } else {

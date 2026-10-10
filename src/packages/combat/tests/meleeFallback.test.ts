@@ -1,6 +1,7 @@
 ﻿import { describe, it, expect } from 'vitest';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, isMeleeReachable, isInAnyHostileKillZone, computeWeaponSwitchAc, attackKind, canWeaponAttack } from '@/packages/combat/lib/meleeFallback';
 import { Unit, Hex } from '@/types/gameProtocol';
+import { directionBetween, edgeRef } from '@/packages/movement';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
 
@@ -125,6 +126,15 @@ describe('isMeleeReachable', () => {
     expect(isMeleeReachable(at(h(0, 0)), at(h(0, 0), -10))).toBe(true); // same hex, 10 ft down
     expect(isMeleeReachable(at(h(0, 0)), at(h(0, 0), 20))).toBe(false); // same hex, >10 ft
     expect(isMeleeReachable(at(h(0, 0)), at(h(2, 0)))).toBe(false); // too far
+  });
+
+  it('an edge wall blocks melee between two units below its top; a low wall does not', () => {
+    const dir = directionBetween(h(0, 0), h(1, 0));
+    const key = edgeRef(0, 0, dir).key;
+    const t = (elevation: number) => ({ id: 'w', name: 'Wall', anchor: 'edge', elevation, modifiers: [], maxHp: 30, dt: 15, doorHp: null }) as any;
+    const structures = { [key]: { templateId: 'w' } };
+    expect(isMeleeReachable(at(h(0, 0)), at(h(1, 0)), structures, { w: t(10) })).toBe(false);
+    expect(isMeleeReachable(at(h(0, 0)), at(h(1, 0)), structures, { w: t(0) })).toBe(true);
   });
 });
 

@@ -3428,7 +3428,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         const p = pendingAttackChoice;
         const weapons = parseWeapons(p.attacker.weaponString || '');
         const rangeBonus = rangeBonusAt(p.attacker, groundZones);
-        const showWeapons = weapons.filter(w => canWeaponAttack(w, p.attacker, p.target, rangeBonus)).length > 1;
+        const showWeapons = weapons.filter(w => canWeaponAttack(w, p.attacker, p.target, rangeBonus, structures, structureTemplates)).length > 1;
         return (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[320px] space-y-4">
@@ -3578,7 +3578,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 const rider = units.find(u => u.attachedToUnitId === occ.id && !u.isDeleted && u.attachedPosition === 'rider') ?? null;
                 // Melee reach is same-elevation adjacency OR same-hex ±10 ft; a
                 // weapon that can't reach from the CURRENT hex greys the Attack button.
-                const canReach = !!weapons[p.weaponIndex] && canWeaponAttack(weapons[p.weaponIndex], p.unit, occ, rangeBonus);
+                const canReach = !!weapons[p.weaponIndex] && canWeaponAttack(weapons[p.weaponIndex], p.unit, occ, rangeBonus, structures, structureTemplates);
                 return (
                   <>
                     <WeaponSelect
