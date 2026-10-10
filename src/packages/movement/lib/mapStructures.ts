@@ -107,13 +107,35 @@ export function flightBlockedHexes(
   return out;
 }
 
-/** MP to climb a height in feet: 10 ft = 4 MP (height / 2.5), rounded. */
-export function climbCostMp(feet: number): number {
-  return feet > 0 ? Math.round(feet / 2.5) : 0;
+/** Number of 10-ft climb steps for a height in feet (rounded). */
+export function climbStepsFromFeet(feet: number): number {
+  return feet > 0 ? Math.round(feet / 10) : 0;
 }
 
-/** MP per 10-ft climb step (up or down). */
+/** Default MP per 10-ft climb step when a structure doesn't author one. */
 export const CLIMB_MP_PER_STEP = 4;
+
+/**
+ * The MP per 10-ft climb step for a structure, from its DB `mp_*` — the UNIFORM
+ * rule: climbing costs `step × per-10-ft` (NOT `height/2.5`). `null`/absent = the
+ * default 4; `0` = free; a negative is a hard block (handled elsewhere; treated as
+ * 0 here). An edge picks `_in`/`_out` by `fromIsOutside`; a hex uses `_in`.
+ */
+export function structureClimbPerStep10(
+  template: StructureTemplate | null | undefined,
+  _instance?: StructureInstance | null,
+  opts: { isMounted?: boolean; fromIsOutside?: boolean } = {},
+): number {
+  if (!template) return CLIMB_MP_PER_STEP;
+  const outside = opts.fromIsOutside ?? true;
+  const authored = template.anchor === 'edge'
+    ? (opts.isMounted
+      ? (outside ? template.mpMountedIn : template.mpMountedOut)
+      : (outside ? template.mpFootIn : template.mpFootOut))
+    : (opts.isMounted ? template.mpMountedIn : template.mpFootIn);
+  if (authored === null || authored === undefined) return CLIMB_MP_PER_STEP;
+  return Math.max(0, authored);
+}
 
 export interface ClimbPlan {
   /** 10-ft steps this move can afford (0 = none). */
@@ -129,15 +151,17 @@ export interface ClimbPlan {
 
 /**
  * Resolve one climb move: rise as far as the MP budget allows toward a target
- * surface `diffFeet` above the origin (in 10-ft steps @ `CLIMB_MP_PER_STEP`), up
- * to the target. `complete` only when the top is reached AND the target is free.
+ * surface `diffFeet` above the origin (in 10-ft steps @ `perStep` MP each), up to
+ * the target. `complete` only when the top is reached AND the target is free.
+ * `perStep` is the structure's DB per-10-ft cost (default 4; `0` = free/instant).
  */
-export function climbPlan(diffFeet: number, budgetMp: number, doneSteps: number, targetOccupied: boolean): ClimbPlan {
+export function climbPlan(diffFeet: number, budgetMp: number, doneSteps: number, targetOccupied: boolean, perStep: number = CLIMB_MP_PER_STEP): ClimbPlan {
   const totalSteps = Math.max(1, Math.round(diffFeet / 10));
   const remaining = totalSteps - doneSteps;
   if (remaining <= 0) return { steps: 0, cost: 0, newElevSteps: doneSteps, complete: false, atTop: true };
-  const steps = Math.min(remaining, Math.max(0, Math.floor(budgetMp / CLIMB_MP_PER_STEP)));
-  const cost = steps * CLIMB_MP_PER_STEP;
+  const per = Math.max(0, perStep);
+  const steps = per <= 0 ? remaining : Math.min(remaining, Math.max(0, Math.floor(budgetMp / per)));
+  const cost = steps * per;
   return {
     steps,
     cost,
@@ -151,16 +175,16 @@ export function climbPlan(diffFeet: number, budgetMp: number, doneSteps: number,
  * Climb MP to move between two ADJACENT hexes (0 = no climb / waived). Two sources:
  *   - a rise in the hex SURFACE (climbing onto a hex structure top);
  *   - an EDGE structure's HEIGHT (a solid wall must be climbed).
- * An `ignore_climb` modifier on the shared edge (or a `waiveClimb` mover)
- * waives the whole climb; a passable (open/broken) door lets the unit pass at
- * ground level, waiving that source too.
+ * UNIFORM COST: `round(height/10) × mp_*` (the structure's per-10-ft MP; default 4,
+ * `0` = free). A passable (open/broken) door lets the unit pass at ground level,
+ * waiving that source too.
  */
 export function structureClimbCostBetween(
   from: { q: number; r: number },
   to: { q: number; r: number },
   structures: MapStructures | undefined,
   templates: Record<string, StructureTemplate> | undefined,
-  /** The mover ignores climb cost entirely (`ignore_climb` effect). */
+  /** The mover ignores climb cost entirely (`waiveClimb` mover flag). */
   waiveClimb = false,
   isMounted = false,
 ): number {
@@ -171,26 +195,18 @@ export function structureClimbCostBetween(
   const edgeInst = edgeKey ? structures[edgeKey] : undefined;
   const edgeT = edgeInst ? templates?.[edgeInst.templateId] : undefined;
 
-  // An EDGE structure's climb OVERRIDES the adjacent hex's surface climb: crossing
-  // it costs `round(height/10) × mp_*` (per 10 ft; a `0` mp_* = FREE, `null` = the
-  // default 4). A height < 10 ft needs no climb. NOTE: a "10-ft ladder" is relative
-  // — the structure spans elevation 0 (base) → X (top), so its 10-ft segments are
-  // 0→10, 10→20, …; the door is the exception (always at elevation 0). `mp = 0` is
-  // the free case (the `ignore_climb` structure modifier is retired).
+  // An EDGE structure's climb OVERRIDES the adjacent hex's surface climb. A height
+  // < 10 ft needs no climb. NOTE: a "10-ft ladder" is relative — the structure spans
+  // elevation 0 (base) → X (top), so its 10-ft segments are 0→10, 10→20, …; the
+  // door is the exception (always at elevation 0).
   if (edgeInst && edgeT && dir >= 0 && structureDoorState(edgeInst, edgeT).noDoor) {
-    const steps = Math.round(structureElevation(edgeT, edgeInst) / 10);
+    const steps = climbStepsFromFeet(structureElevation(edgeT, edgeInst));
     const ref = edgeRef(from.q, from.r, dir);
     const outsideIsA = (edgeInst.outside ?? 'a') === 'a';
     const fromIsOutside = outsideIsA
       ? (from.q === ref.aq && from.r === ref.ar)
       : (from.q === ref.bq && from.r === ref.br);
-    const authored = isMounted
-      ? (fromIsOutside ? edgeT.mpMountedIn : edgeT.mpMountedOut)
-      : (fromIsOutside ? edgeT.mpFootIn : edgeT.mpFootOut);
-    // `null` = default 4 MP/step; a `0` (or any >= 0) is used verbatim (0 = free);
-    // a negative (hard block) contributes no climb here (the block is elsewhere).
-    const perStep = authored === null || authored === undefined ? CLIMB_MP_PER_STEP : Math.max(0, authored);
-    return steps * perStep;
+    return steps * structureClimbPerStep10(edgeT, edgeInst, { isMounted, fromIsOutside });
   }
 
   // No edge structure (or an open door) → the hex surface rise (onto the top),
@@ -201,7 +217,7 @@ export function structureClimbCostBetween(
     const toInst = structures[`${to.q},${to.r}`];
     const toT = toInst ? templates?.[toInst.templateId] : undefined;
     const groundPass = !!(toInst && toT && structureDoorState(toInst, toT).openOrBroken);
-    if (!groundPass) return climbCostMp(toSurf - fromSurf);
+    if (!groundPass) return climbStepsFromFeet(toSurf - fromSurf) * structureClimbPerStep10(toT, toInst, { isMounted });
   }
   return 0;
 }

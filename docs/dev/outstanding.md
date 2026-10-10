@@ -66,8 +66,9 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   boolean (retired in migration 113).
 - ✅ **Dynamic ground + occupancy**: `structureSurfaceAt`; `movePoolMode`/`moveBudgetUnit`
   take a surface; `computeOccupiedHexes(units, excludeId, surface=0)` is per-surface.
-- ✅ **Climb / hang**: `climbPlan` (10 ft @ 4 MP, `height/2.5`), `climb_to`;
-  `ignore_climb` waives climb; `feather_fall` ignores fall damage; mounted can't
+- ✅ **Climb / hang**: `climbPlan` (`steps × mp_*` MP per 10 ft, uniform for hex +
+  edge; `mp_*` default 4, `0` = free), `climb_to`; a mover's own `ignore_climb`
+  effect waives climb; `feather_fall` ignores fall damage; mounted can't
   climb; linear movement (up = target / down = own hex);
   hover +10 ft if the origin ground is occupied; no retaliation; attack/ZoC only at
   the wall top; rout = free-fall (d6/10 ft) + standard rout picker.
@@ -81,8 +82,8 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
     climber falls to the platform, not 0.
   - ✅ **Voluntary descent UI shipped**: dropping a unit on an **adjacent lower**
     surface opens a **Climb down / Drop / Cancel** modal (`pendingDescent`,
-    `confirmDescentClimb`/`confirmDescentDrop`). Climb down = 4 MP/10 ft (hangs
-    midway if short; stairs free; mounted barred); Drop = `floor(ft/10)`d6 fall
+    `confirmDescentClimb`/`confirmDescentDrop`). Climb down = `steps × mp_*` MP (hangs
+    midway if short; a `0` mp_* = free; mounted barred); Drop = `floor(ft/10)`d6 fall
     (`feather_fall` negates; refused on an occupied hex); both provoke archer
     reactions, pursue self-gated on a raised origin. Elevation changes only across
     an adjacent edge — a non-adjacent move ending on a different surface is refused.

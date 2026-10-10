@@ -3526,12 +3526,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 ? ' Mounted — cannot climb down; drop to take the fall damage.'
                 : pendingDescent.noDrop
                   ? ' Climb down (free move).'
-                  : ` Climb down for ${Math.round(pendingDescent.feet / 2.5)} MP (may hang midway), or drop and take the fall damage.`}
+                  : ` Climb down for ${Math.round(pendingDescent.feet / 10) * pendingDescent.perStep} MP (may hang midway), or drop and take the fall damage.`}
             </p>
             <div className="flex flex-col gap-2">
               {pendingDescent.canClimb && (
                 <button className="px-4 py-2 bg-green-800 hover:bg-green-700 text-white rounded-lg text-sm" onClick={() => void confirmDescentClimb()}>
-                  {pendingDescent.noDrop ? 'Climb down (free)' : `Climb down (${Math.round(pendingDescent.feet / 2.5)} MP)`}
+                  {pendingDescent.noDrop ? 'Climb down (free)' : `Climb down (${Math.round(pendingDescent.feet / 10) * pendingDescent.perStep} MP)`}
                 </button>
               )}
               {!pendingDescent.noDrop && (

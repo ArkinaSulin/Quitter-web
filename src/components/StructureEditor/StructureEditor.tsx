@@ -322,7 +322,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                 </>
               ) : (
                 <div className="rounded border border-gray-700 p-2 space-y-2">
-                  <p className="text-[10px] uppercase tracking-wide text-gray-500">Hex entry MP (blank = terrain; negative = block)</p>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-500">Climb MP per 10 ft (blank = default 4; negative = block)</p>
                   <div className="flex flex-wrap items-center gap-3 text-[11px]">
                     <label className="flex items-center gap-1">Foot
                       <MoveInput value={draft.mpFootIn} readOnly={readOnly} onChange={v => patch({ mpFootIn: v })} />

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { climbCostMp, structureSurfaceAt, structureClimbCostBetween, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/packages/movement';
+import { climbStepsFromFeet, structureSurfaceAt, structureClimbCostBetween, structureClimbPerStep10, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP } from '@/packages/movement';
 import { blankStructureTemplate } from '@/packages/movement';
 import { directionBetween, edgeRef } from '@/packages/movement';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
@@ -8,10 +8,10 @@ const tmpl = (over: Partial<StructureTemplate>): StructureTemplate => ({ ...blan
 const inst = (templateId: string, over: Partial<StructureInstance> = {}): StructureInstance => ({ templateId, ...over });
 
 describe('structure elevation (2b)', () => {
-  it('climbCostMp: 10 ft = 4 MP, 20 ft = 8 MP, 0 = free', () => {
-    expect(climbCostMp(10)).toBe(4);
-    expect(climbCostMp(20)).toBe(8);
-    expect(climbCostMp(0)).toBe(0);
+  it('climbStepsFromFeet: height → 10-ft steps (rounded)', () => {
+    expect(climbStepsFromFeet(10)).toBe(1);
+    expect(climbStepsFromFeet(20)).toBe(2);
+    expect(climbStepsFromFeet(0)).toBe(0);
     expect(CLIMB_MP_PER_STEP).toBe(4);
   });
 
@@ -32,10 +32,20 @@ describe('structure elevation (2b)', () => {
     expect(structureSurfaceAt({ q: 5, r: 0 }, structures, templates)).toBe(0);
   });
 
-  it('climbing onto a higher hex structure costs height/2.5', () => {
+  it('climbing onto a higher hex structure costs steps × its per-10-ft mp_*', () => {
     const templates = { tower: tmpl({ anchor: 'hex', elevation: 10 }) };
     const structures = { '1,0': inst('tower') };
+    // Height 10 = 1 step; mp_foot_in null = default 4.
     expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(4);
+    // An authored per-10-ft (mp_foot_in 2) → 1 step × 2.
+    const t2 = { tower: tmpl({ anchor: 'hex', elevation: 10, mpFootIn: 2 }) };
+    expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, t2)).toBe(2);
+    // A 20-ft hex tower = 2 steps.
+    const t20 = { tower: tmpl({ anchor: 'hex', elevation: 20, mpFootIn: 3 }) };
+    expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, t20)).toBe(6);
+    // `structureClimbPerStep10` reads the DB value (default 4, 0 = free).
+    expect(structureClimbPerStep10(t2.tower, inst('tower'))).toBe(2);
+    expect(structureClimbPerStep10(tmpl({ anchor: 'hex', mpFootIn: 0 }), inst('tower'))).toBe(0);
   });
 
   it('same-surface movement has no climb', () => {
@@ -63,7 +73,7 @@ describe('structure elevation (2b)', () => {
     const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
     const key = edgeRef(0, 0, dir).key;
     const structures = { [key]: inst('wall', { outside: 'a' }), '1,0': inst('tower') };
-    // The wall's 1 step × 2 MP wins over the tower's climbCostMp(20)=8 — not max'd.
+    // The wall's 1 step × 2 MP wins over the tower's 2 steps × 4 = 8 — not max'd.
     expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(2);
   });
 

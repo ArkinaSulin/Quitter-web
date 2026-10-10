@@ -18,7 +18,7 @@ import { nextLowerFormation } from '@/packages/movement';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, isHeroMoraleBoostEnabled, isZocPursuitEnabled } from '@/packages/morale';
 import { isHostile, sameAlliance, allianceOf } from '@/packages/primitives';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isMeleeReachable, computeWeaponSwitchAc, attackKind, canWeaponAttack } from '@/packages/combat';
-import { meleeElevationFor, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo, isAirborne, computeMoveBudget, computeHeroMoveBudget, CLIMB_MP_PER_STEP } from '@/packages/movement';
+import { meleeElevationFor, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo, isAirborne, computeMoveBudget, computeHeroMoveBudget, structureClimbPerStep10 } from '@/packages/movement';
 import { isSwooping } from '@/packages/combat';
 import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable } from '@/packages/movement';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay, damageDiceCount, withDamageDiceCount } from '@/packages/units';
@@ -1081,9 +1081,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const budget = freeMove ? Number.POSITIVE_INFINITY : (attacker.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP));
     const need = Math.max(0, Math.round((top - originSurface) / 10));
     const done = Math.max(0, Math.round((curElev - originSurface) / 10));
-    const steps = freeMove ? (need - done) : Math.min(need - done, Math.max(0, Math.floor(budget / CLIMB_MP_PER_STEP)));
+    // Uniform climb cost: the target structure's DB MP per 10 ft (default 4; 0 = free).
+    const tInst = structures?.[`${target.hex.q},${target.hex.r}`];
+    const tT = tInst ? structureTemplates?.[tInst.templateId] : undefined;
+    const perStep = structureClimbPerStep10(tT, tInst, { isMounted: !!(attacker.mountId || attacker.mountName) });
+    const steps = freeMove ? (need - done) : (perStep <= 0 ? (need - done) : Math.min(need - done, Math.max(0, Math.floor(budget / perStep))));
     if (steps <= 0) { addError(`${attacker.unitName} has no movement to climb`); return true; }
-    const cost = steps * CLIMB_MP_PER_STEP;
+    const cost = steps * perStep;
     const spend = freeMove
       ? { movementPointsAvailable: attacker.movementPointsAvailable, actionsAvailable: attacker.actionsAvailable }
       : (attacker.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP));

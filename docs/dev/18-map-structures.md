@@ -97,16 +97,19 @@ The four attack-roll flags map to the four directions, with the carrier always
   expressed by a **`mp_*` of 0** — the edge climbs `round(height/10) × mp_*`, so a
   `0` costs nothing (see *Edge climb = the edge's `mp_*`*).
 
-## Edge climb = the edge's `mp_*` (per 10 ft), overriding the hex climb
+## Climb = `x` MP per 10 ft (as per DB), uniform for hex + edge
 
-An **edge** structure's height is its **authored** `elevation` (default 10 ft; `0` =
-low/decorative). Crossing it costs **`round(height/10) × mp_*`**, where `mp_*` is the
-template's **MP per 10 ft** for the crossing direction (`_in` outside→inside, `_out`
-inside→outside; foot/mounted) — `null` = default 4 MP/step, **`0` = free** (the
-`ignore_climb` replacement). The edge structure's climb **overrides** the adjacent
-hex's surface-rise climb (replace, never `max`). This value feeds the movement cost
-(`structureClimbCostBetween`). The wall's authored **height** also drives its
-**line-of-sight blocking top** (`combat/lineOfSight.structuresBlockingLine`).
+A structure's height is its **authored** `elevation` (default 10 ft; `0` =
+low/decorative). **Climbing costs `round(height/10) × mp_*`** — the template's
+**MP per 10 ft** (`mp_*`): an **edge** uses the crossing direction (`_in`
+outside→inside, `_out` inside→outside), a **hex** uses `_in`; foot/mounted as
+authored. `null` = default 4 MP/step, **`0` = free**. This is the uniform rule for
+**hex and edge alike** (the old `height / 2.5` formula is retired). For an edge the
+climb **overrides** the adjacent hex's surface-rise climb (replace, never `max`).
+The value feeds the movement cost (`structureClimbCostBetween`) and the climb action
+(`handleClimbMove`); an unaffordable climb soft-confirms like a move. The wall's
+authored **height** also drives its **line-of-sight blocking top**
+(`combat/lineOfSight.structuresBlockingLine`).
 
 > **Key note.** A structure spans elevation **0 (base) → X (top)**, so a "10-ft
 > ladder" is **relative** — its 10-ft segments are 0→10, 10→20, … and the height
@@ -119,10 +122,10 @@ hex's surface-rise climb (replace, never `max`). This value feeds the movement c
 A grounded unit's elevation changes **only across an adjacent edge**:
 
 - **Up** onto an adjacent higher surface → the climb action (`handleClimbMove`,
-  4 MP/10 ft, may hang midway).
+  `steps × mp_*` MP, may hang midway).
 - **Down** onto an adjacent lower surface → the **descent modal**
-  (`pendingDescent`: Climb down / Drop / Cancel). Climb down costs 4 MP/10 ft and
-  may hang midway; Drop is a fall (`floor(ft/10)`d6, `feather_fall` negates,
+  (`pendingDescent`: Climb down / Drop / Cancel). Climb down costs `steps × mp_*`
+  and may hang midway; Drop is a fall (`floor(ft/10)`d6, `feather_fall` negates,
   refused on an occupied hex). Both provoke archer reactions on completion and run
   the pursue gate (a raised origin never provokes). Mounted units can't climb down
   (Drop/Cancel only).

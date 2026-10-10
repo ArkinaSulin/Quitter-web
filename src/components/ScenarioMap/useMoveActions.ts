@@ -21,7 +21,7 @@ import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
 import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
 import { Walls, directionBetween, edgeRef } from '@/packages/movement';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween } from '@/packages/movement';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween, structureClimbPerStep10 } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
@@ -38,6 +38,8 @@ export interface PendingDescent {
   canClimb: boolean;
   /** Free-move: movement is free, so only Climb down is offered (never Drop). */
   noDrop?: boolean;
+  /** The descended structure's MP per 10 ft (default 4) for the label. */
+  perStep: number;
 }
 
 /** A plain drop onto a wall/structure with ≥2 legal actions: a pick-one prompt. */
@@ -319,16 +321,21 @@ export function useMoveActions(deps: MoveActionsDeps) {
 
     // IN-PLACE: drop on the unit's own hex while climbing → return to the origin
     // surface (cancel an ascent by climbing back down, or a descent by climbing
-    // back up). 4 MP / 10 ft either direction.
+    // back up). `perStep` = the structure's DB MP per 10 ft (default 4).
     if (climbTarget && targetHex.q === unit.hex.q && targetHex.r === unit.hex.r) {
       const delta = originSurface - curElev;
-      const totalSteps = Math.round(Math.abs(delta) / 10);
+      const totalSteps = Math.max(0, Math.round(Math.abs(delta) / 10));
       if (totalSteps <= 0) { addMessage(`${unit.unitName} is already there`); return; }
       const ascending = delta > 0;
-      const steps = Math.min(totalSteps, Math.floor(budget / CLIMB_MP_PER_STEP));
+      const ownInst = structures?.[`${unit.hex.q},${unit.hex.r}`];
+      const ownT = ownInst ? structureTemplates?.[ownInst.templateId] : undefined;
+      const perStep = structureClimbPerStep10(ownT, ownInst, { isMounted: !!(unit.mountId || unit.mountName) });
+      const afford = perStep <= 0 ? totalSteps : Math.min(totalSteps, Math.floor(budget / perStep));
+      // Over-budget gate (uniform with a move); can't afford even one step → still confirm.
+      if (afford > 0 ? gateClimb(afford * perStep) : gateClimb(perStep)) return;
+      const steps = afford > 0 ? afford : (perStep > 0 ? 1 : 0);
       if (steps <= 0) { addMessage(`${unit.unitName} has no movement to ${ascending ? 'climb up' : 'climb down'}`); return; }
-      if (gateClimb(steps * CLIMB_MP_PER_STEP)) return;
-      const spend = spendMp(steps * CLIMB_MP_PER_STEP);
+      const spend = spendMp(steps * perStep);
       const dir = ascending ? 1 : -1;
       let newElev = curElev + dir * steps * 10;
       let climbTo = unit.climbTo ?? null;
@@ -364,15 +371,24 @@ export function useMoveActions(deps: MoveActionsDeps) {
       ? Math.max(0, Math.round((curElev - originSurface) / 10))
       : Math.max(0, Math.round((originSurface - curElev) / 10));
     const targetOccupied = units.some(u => u.id !== unit.id && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) === endSurface && u.hex.q === tHex.q && u.hex.r === tHex.r);
-    const plan = climbPlan(Math.abs(diff), budget, doneSteps, targetOccupied);
+    // The structure being climbed is the HIGHER one: the target hex when ascending,
+    // the origin hex when descending.
+    const structHex = ascending ? tHex : unit.hex;
+    const tInst = structures?.[`${structHex.q},${structHex.r}`];
+    const tT = tInst ? structureTemplates?.[tInst.templateId] : undefined;
+    const perStep = structureClimbPerStep10(tT, tInst, { isMounted: !!(unit.mountId || unit.mountName) });
+    const plan = climbPlan(Math.abs(diff), budget, doneSteps, targetOccupied, perStep);
     if (plan.atTop) { addMessage(`${unit.unitName} is already ${ascending ? 'at the top' : 'down'}`); return; }
-    if (plan.steps <= 0) { addMessage(`${unit.unitName} has no movement to ${ascending ? 'climb' : 'climb down'}`); return; }
-    if (gateClimb(plan.cost)) return;
-    const spend = spendMp(plan.cost);
-    const newElev = ascending
-      ? originSurface + plan.newElevSteps * 10
-      : originSurface - plan.newElevSteps * 10;
-    const complete = plan.complete;
+    // Over-budget gate (uniform with a move): if the climb can't be paid it asks first
+    // (may go negative) — and a climb the unit can't even afford one step for still
+    // offers the confirm (one step) rather than hard-refusing.
+    if (plan.steps > 0 ? gateClimb(plan.cost) : gateClimb(perStep)) return;
+    const steps = plan.steps > 0 ? plan.steps : (perStep > 0 ? 1 : 0);
+    if (steps <= 0) { addMessage(`${unit.unitName} has no movement to ${ascending ? 'climb' : 'climb down'}`); return; }
+    const spend = spendMp(steps * perStep);
+    const newElevSteps = doneSteps + steps;
+    const newElev = ascending ? originSurface + newElevSteps * 10 : originSurface - newElevSteps * 10;
+    const complete = newElevSteps >= Math.max(1, Math.round(Math.abs(diff) / 10)) && !targetOccupied;
     await run([
       ...(complete ? [{ field: 'hex', from: { ...unit.hex }, to: { ...tHex } }] : []),
       { field: 'elevation', from: curElev, to: complete ? endSurface : newElev },
@@ -507,12 +523,15 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // Climb down is offered (never Drop).
     if (!flying && !unit.isCharging && !unit.attachedToUnitId && !canFly(unit)
         && endSurface < originSurface && areHexesAdjacent(unit.hex, targetHex)) {
+      const ownInst = structures?.[`${unit.hex.q},${unit.hex.r}`];
+      const ownT = ownInst ? structureTemplates?.[ownInst.templateId] : undefined;
       setPendingDescent({
         unit, targetHex,
         originHex: { ...unit.hex },
         feet: originSurface - endSurface,
         canClimb: !unit.mountId && !unit.mountName,
         noDrop: freeMove,
+        perStep: structureClimbPerStep10(ownT, ownInst, { isMounted: !!(unit.mountId || unit.mountName) }),
       });
       return;
     }
@@ -663,7 +682,8 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const H = edgeStructureHeightBetween(from, farHex, structures, structureTemplates);
     if (H <= originSurface) { addMessage(`${unit.unitName} — no wall to climb there`); return; }
     const steps = Math.max(1, Math.round(H / 10));
-    const perStep = Math.max(1, structureClimbCostBetween(from, farHex, structures, structureTemplates, false, false) / steps);
+    const upTotal = structureClimbCostBetween(from, farHex, structures, structureTemplates, false, false);
+    const perStep = steps > 0 ? upTotal / steps : CLIMB_MP_PER_STEP;
     const maxMP = unitMaxMP(unit);
     const budgetUnit = moveBudgetUnit(unit, 'ground');
     // Free-move waives the MP cost (movement is free) but keeps the mechanic.
@@ -692,7 +712,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
     // Full climb-over. Coerce to a drop when a climb-down is unaffordable (never
     // under free-move — movement is free, so climb-down is always affordable).
-    const downCost = steps * CLIMB_MP_PER_STEP;
+    const downCost = steps * perStep;
     let actual = descent;
     if (!freeMove && descent === 'climb' && !(unit.isHero ? isHeroMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP) : isMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP))) {
       actual = 'drop';

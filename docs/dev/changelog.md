@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## Uniform climb cost = x MP per 10 ft (as per DB); hex climb authorable; soft over-budget climb (2026-10-10)
+**Files:** src/packages/movement/lib/mapStructures.ts (+ tests/structureElevation.test.ts), src/components/ScenarioMap/{useMoveActions,useCombatActions,ScenarioMap}.tsx, docs/dev/{18-map-structures,outstanding,changelog}.md, docs/players/player-manual.md
+
+- **Retired `height / 2.5`.** `climbCostMp` is removed; a climb costs
+  `round(height/10) × mp_*` — the structure's **MP per 10 ft from the DB**
+  (`structureClimbPerStep10`: edge `_in`/`_out` by direction; hex `_in`; foot/mounted;
+  `null` = default 4; **`0` = free**). Uniform for **hex and edge** alike. A hex's climb
+  is now authorable (its `mp_foot_in`/`mp_mounted_in` is the per-10-ft cost) — the
+  Structure Editor's hex MP block will label it "Climb MP per 10 ft".
+- **`climbPlan` takes a `perStep`** (default `CLIMB_MP_PER_STEP = 4`); the climb action,
+  the climb-attack and the climb-over all pass the structure's per-10-ft value.
+- **Soft over-budget climb.** `handleClimbMove` now gates the climb through the shared
+  over-budget confirm **even when the unit can't afford a single step** (it used to
+  hard-refuse with "has no movement to climb"). So a 20-ft tower and a 10-ft tower behave
+  the same — you get the "Climb over budget?" prompt. Confirm only for genuinely
+  impossible climbs (`diff === 0`, at top, mounted). The descent modal shows `steps × perStep`.
+- `tsc` clean, 998 tests pass, build clean. No migration.
+
 ## One renderer for board features (scenario map = map editor = preview) (2026-10-09)
 **Files:** src/components/shared/mapFeatureDraw.ts (+ test), src/components/{ScenarioMap/useCanvasDraw,MapEditor/MapCanvas,StructureEditor/StructurePreview}.tsx, src/components/StructureEditor/StructureEditor.tsx, docs/dev/changelog.md
 
