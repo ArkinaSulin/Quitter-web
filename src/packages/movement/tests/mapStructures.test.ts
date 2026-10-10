@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseStructures, structuresToWalls, isEdgeStructureKey, isHexStructureKey, structureCounts,
   structureBlocksOrg, zoneBlocksOrg, structureRangeBonus, structureIsOpen,
-  structureHexEntryCost, structureHexBlocked, structureAuraFlags, structureZones,
+  structureStepClimb, structureHexBlocked, structureAuraFlags, structureZones,
   structureDoorState, structureDoorHex, canToggleStructureDoor, doorPassThroughHexes,
   orgGatesForEntry, describeOrgGateBlock, entryBreakFormation, standingMaxOrg,
 } from '@/packages/movement/lib/mapStructures';
@@ -21,10 +21,10 @@ const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => (
   sinWave: false,
   ladder: false,
   hexBorder: true,
-  mpFootIn: 1,
-  mpFootOut: 3,
-  mpMountedIn: -1,
-  mpMountedOut: null,
+  mpClimbUp: 1,
+  mpClimbDown: 3,
+  mpMountedUp: -1,
+  mpMountedDown: 4,
   doorHp: 30,
   maxHp: 30,
   dt: 15,
@@ -71,10 +71,10 @@ describe('structuresToWalls', () => {
   it('maps in/out onto the canonical sides (outside = a)', () => {
     const walls = structuresToWalls({ '0,0,0': { templateId: 't1', outside: 'a' } }, templates);
     const w = walls['0,0,0'];
-    // a = OUTSIDE: into-outside MP (foot 3; mounted unset), no cover AC.
-    expect(w.a).toEqual({ moveCostFoot: 3 });
-    // b = INSIDE: into-inside MP (foot 1; mounted -1 = block), cover 2/2.
-    expect(w.b).toEqual({ moveCostFoot: 1, moveCostMounted: -1, meleeAc: 2, rangedAc: 2 });
+    // a = OUTSIDE: no cover/flags. b = INSIDE: cover 2/2. (No face moveCost — the
+    // crossing cost is the structure climb, see structureStepClimb.)
+    expect(w.a).toEqual({});
+    expect(w.b).toEqual({ meleeAc: 2, rangedAc: 2 });
     expect(w.maxHp).toBe(30);
     expect(w.hp).toBe(30);
     expect(w.dt).toBe(15);
@@ -86,8 +86,8 @@ describe('structuresToWalls', () => {
   it('swaps faces when outside = b', () => {
     const walls = structuresToWalls({ '0,0,0': { templateId: 't1', outside: 'b' } }, templates);
     // outside = b: a = INSIDE (cover), b = OUTSIDE (no cover).
-    expect(walls['0,0,0'].a).toEqual({ moveCostFoot: 1, moveCostMounted: -1, meleeAc: 2, rangedAc: 2 });
-    expect(walls['0,0,0'].b).toEqual({ moveCostFoot: 3 });
+    expect(walls['0,0,0'].a).toEqual({ meleeAc: 2, rangedAc: 2 });
+    expect(walls['0,0,0'].b).toEqual({});
   });
 
   it('an open/broken door makes the edge a plain passage (no face effects)', () => {
@@ -95,10 +95,9 @@ describe('structuresToWalls', () => {
     const open = structuresToWalls({ '0,0,0': { templateId: 'g', open: true } }, { g });
     expect(open['0,0,0'].a).toEqual({});
     expect(open['0,0,0'].b).toEqual({});
-    // A closed door keeps its crossing cost + cover.
+    // A closed door keeps its cover.
     const closed = structuresToWalls({ '0,0,0': { templateId: 'g' } }, { g });
     expect(closed['0,0,0'].b.meleeAc).toBe(2);
-    expect(closed['0,0,0'].b.moveCostFoot).toBe(1);
   });
 
   it('carries attack-roll flags on the inside face only (melee vs ranged scope)', () => {
@@ -237,8 +236,8 @@ describe('entryBreakFormation / standingMaxOrg', () => {
 });
 
 describe('hex structure helpers', () => {
-  const tower = template({ id: 'tower', anchor: 'hex', mpFootIn: 2, mpMountedIn: -1, doorHp: 0, modifiers: [{ kind: 'range', dice: '1' }] });
-  const gate = template({ id: 'gate', anchor: 'hex', mpFootIn: 2, mpMountedIn: -1, doorHp: 30, modifiers: [] });
+  const tower = template({ id: 'tower', anchor: 'hex', mpClimbUp: 2, mpMountedUp: -1, doorHp: 0, modifiers: [{ kind: 'range', dice: '1' }] });
+  const gate = template({ id: 'gate', anchor: 'hex', mpClimbUp: 2, mpMountedUp: -1, doorHp: 30, modifiers: [] });
   const templates = { tower, gate };
 
   it('structureRangeBonus sums range modifiers at the hex', () => {
@@ -247,25 +246,35 @@ describe('hex structure helpers', () => {
     expect(structureRangeBonus({ q: 1, r: 0 }, {}, templates)).toBe(0);
   });
 
-  it('structureHexEntryCost replaces terrain (undefined for open / no structure)', () => {
-    expect(structureHexEntryCost({ q: 0, r: 0 }, { '0,0': { templateId: 'gate' } }, templates, false)).toBe(2);
-    expect(structureHexEntryCost({ q: 0, r: 0 }, { '0,0': { templateId: 'gate' } }, templates, true)).toBeUndefined(); // mounted blocked
-    expect(structureHexEntryCost({ q: 0, r: 0 }, { '0,0': { templateId: 'gate', open: true } }, templates, false)).toBeUndefined();
-    expect(structureHexEntryCost({ q: 0, r: 0 }, {}, templates, false)).toBeUndefined();
+  it('structureStepClimb: a hex rise costs steps × mp_climb_up (undefined for open door / no structure)', () => {
+    const templates = { tower: template({ id: 'tower', anchor: 'hex', elevation: 10 }) };
+    const structures = { '1,0': { templateId: 'tower' } };
+    // Height 10 = 1 step; mp_climb_up default (edge helper) — override to 4 below.
+    const t4 = { tower: template({ id: 'tower', anchor: 'hex', elevation: 10, mpClimbUp: 4 }) };
+    expect(structureStepClimb({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, t4)).toBe(4);
+    // A 20-ft tower = 2 steps.
+    const structures20 = { '1,0': { templateId: 'tower' } };
+    const t20 = { tower: template({ id: 'tower', anchor: 'hex', elevation: 20, mpClimbUp: 3 }) };
+    expect(structureStepClimb({ q: 0, r: 0 }, { q: 1, r: 0 }, structures20, t20)).toBe(6);
+    // Open door → not a climb step.
+    const open = { '1,0': { templateId: 'tower', open: true } };
+    expect(structureStepClimb({ q: 0, r: 0 }, { q: 1, r: 0 }, open, t4)).toBeUndefined();
+    // No structure → undefined.
+    expect(structureStepClimb({ q: 0, r: 0 }, { q: 2, r: 0 }, structures, t4)).toBeUndefined();
   });
 
   it('structureHexBlocked only hard-blocks on a negative MP (doors never gate hex entry)', () => {
     // A closed distinct door (10 < 30) does NOT gate entry — you pay the structure MP.
-    const gated = template({ id: 'gated', anchor: 'hex', mpFootIn: 2, mpMountedIn: -1, doorHp: 10, maxHp: 30 });
+    const gated = template({ id: 'gated', anchor: 'hex', mpClimbUp: 2, mpMountedUp: -1, doorHp: 10, maxHp: 30 });
     expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'gated' } }, { gated }, false)).toBe(false);
     expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'gated', open: false } }, { gated }, false)).toBe(false);
     // The seeded gate fixture (doorHp 30 == maxHp 30) likewise does not gate.
     expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'gate' } }, templates, false)).toBe(false);
-    // Mounted hard-block (mp_mounted_in -1) still blocks.
+    // Mounted hard-block (mp_mounted_up -1) still blocks.
     expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'tower' } }, templates, true)).toBe(true);
     expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'tower' } }, templates, false)).toBe(false);
     // Foot negative hard-block.
-    const blockedFoot = template({ id: 'bf', anchor: 'hex', mpFootIn: -1, mpMountedIn: -1, doorHp: 0 });
+    const blockedFoot = template({ id: 'bf', anchor: 'hex', mpClimbUp: -1, mpMountedUp: -1, doorHp: 0 });
     expect(structureHexBlocked({ q: 0, r: 0 }, { '0,0': { templateId: 'bf' } }, { bf: blockedFoot }, false)).toBe(true);
   });
 
@@ -350,13 +359,15 @@ describe('door state & control (instance-relative)', () => {
     expect(pt.has('2,0')).toBe(false); // intact door
   });
 
-  it('waives the edge face cost when the door is open/broken', () => {
-    const t = template({ id: 'g', anchor: 'edge', mpFootIn: 4, doorHp: 30, maxHp: 100 });
-    const open = structuresToWalls({ '0,0,0': { templateId: 'g', open: true } }, { g: t } as any);
-    expect(open['0,0,0'].a.moveCostFoot).toBeUndefined();
-    expect(open['0,0,0'].b.moveCostFoot).toBeUndefined();
-    const closed = structuresToWalls({ '0,0,0': { templateId: 'g' } }, { g: t } as any);
-    expect(closed['0,0,0'].b.moveCostFoot).toBe(4); // inside face
+  it('waives the structure climb when the door is open/broken', () => {
+    const t = template({ id: 'g', anchor: 'edge', elevation: 10, mpClimbUp: 4, doorHp: 30, maxHp: 100 });
+    const key = edgeRef(0, 0, 0).key; // edge (0,0) -> (1,0)
+    const closed = { [key]: { templateId: 'g' } };
+    // Closed door → a solid wall: 1 step × 4.
+    expect(structureStepClimb({ q: 0, r: 0 }, { q: 1, r: 0 }, closed, { g: t })).toBe(4);
+    // Open door → a plain passage: no climb.
+    const open = { [key]: { templateId: 'g', open: true } };
+    expect(structureStepClimb({ q: 0, r: 0 }, { q: 1, r: 0 }, open, { g: t })).toBeUndefined();
   });
 });
 

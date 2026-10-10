@@ -22,10 +22,10 @@ describe('mapStructureRow', () => {
       battlement: true,
       barricade: false,
       sinWave: false,
-      mp_foot_in: null,
-      mp_foot_out: null,
-      mp_mounted_in: -1,
-      mp_mounted_out: 2,
+      mp_climb_up: null,
+      mp_climb_down: null,
+      mp_mounted_up: -1,
+      mp_mounted_down: 2,
       door_hp: null,
       max_hp: 30,
       dt: 15,
@@ -34,9 +34,10 @@ describe('mapStructureRow', () => {
       updated_at: 'b',
     });
     expect(t?.anchor).toBe('edge');
-    expect(t?.mpFootIn).toBeNull();
-    expect(t?.mpMountedIn).toBe(-1); // kept (hard block)
-    expect(t?.mpMountedOut).toBe(2);
+    expect(t?.mpClimbUp).toBe(4); // null → default 4 (columns are NOT NULL DEFAULT 4)
+    expect(t?.mpClimbDown).toBe(4);
+    expect(t?.mpMountedUp).toBe(-1); // kept (hard block)
+    expect(t?.mpMountedDown).toBe(2);
     expect(t?.doorHp).toBeNull();
     expect(t?.maxHp).toBe(30);
     expect(t?.hexBorder).toBe(true); // default when the row omits it
@@ -69,13 +70,13 @@ describe('mapStructureToRow', () => {
   const base = blankStructureTemplate();
 
   it('writes snake_case columns, nulls pass through', () => {
-    const row = mapStructureToRow({ ...base, name: '  Gate Tower  ', anchor: 'hex', doorHp: 30, mpFootIn: 2, maxHp: 100, dt: 15 });
+    const row = mapStructureToRow({ ...base, name: '  Gate Tower  ', anchor: 'hex', doorHp: 30, mpClimbUp: 2, maxHp: 100, dt: 15 });
     expect(row.name).toBe('Gate Tower');
     expect(row.anchor).toBe('hex');
     expect(row.door_hp).toBe(30);
-    expect(row.mp_foot_in).toBe(2);
+    expect(row.mp_climb_up).toBe(2);
     expect(row.max_hp).toBe(100);
-    expect(row.mp_foot_out).toBeNull();
+    expect(row.mp_climb_down).toBe(4); // base default (NOT NULL DEFAULT 4)
   });
 
   it('writes the ladder decoration flag', () => {
@@ -84,9 +85,9 @@ describe('mapStructureToRow', () => {
   });
 
   it('keeps negative movement (hard block) and clamps door to [0, maxHp]', () => {
-    const row = mapStructureToRow({ ...base, mpFootIn: -3 as any, mpMountedIn: 2.6, doorHp: 500, maxHp: -5, dt: 15.4 });
-    expect(row.mp_foot_in).toBe(-3);
-    expect(row.mp_mounted_in).toBe(3);
+    const row = mapStructureToRow({ ...base, mpClimbUp: -3 as any, mpMountedUp: 2.6, doorHp: 500, maxHp: -5, dt: 15.4 });
+    expect(row.mp_climb_up).toBe(-3);
+    expect(row.mp_mounted_up).toBe(3);
     expect(row.max_hp).toBe(0);
     expect(row.door_hp).toBe(0); // clamped to maxHp 0
     expect(row.dt).toBe(15);

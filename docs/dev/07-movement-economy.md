@@ -240,13 +240,15 @@ Effective movement = `floor(movementPoints × formation.movement_multiplier)`
 Wall ×0.5, others ×1 — verify live `formations` rows). Effects (Haste/Slow)
 adjust the `movementPoints` base (see `10`).
 
-## Structural barriers (migration 099)
+## Structural barriers (migrations 099 / 121)
 
-A structure's `mp_foot_in/out` / `mp_mounted_in/out` REPLACE the destination
-hex/edge terrain cost (`_in` = outside→inside, `_out` = inside→outside; hex uses
-`_in` only). A negative value is a hard block for that locomotion, bypassed by
-free move and the DM. **Rule of thumb: any hex with MP cost 2+ will disable
-charge** (`makeChargeBlockedEdge`). Movement evaluation pools every remaining
-action as the MP budget while the hex-step cap stays at one pool ("Option 2", the
-`hopCap` argument of `computeReachableMap`) — an expensive single step is
+A structure's `mp_climb_up/down` / `mp_mounted_up/down` are the MP **per 10 ft climb**
+(ascend/descend), `NOT NULL DEFAULT 4`. A **rising** step onto/over a structure costs
+`round(Δft/10) × mp_climb_*` and **replaces** the base terrain; the crossed **edge
+overrides the hex**; the structure top itself has no entry MP (base terrain). A
+negative value is a hard block for that locomotion, bypassed by free move and the DM.
+**Rule of thumb: any hex with MP cost 2+ will disable charge**
+(`makeChargeBlockedEdge`). Movement evaluation pools every remaining action as the MP
+budget while the hex-step cap stays at one pool ("Option 2", the `hopCap` argument of
+`computeReachableMap`) — an expensive single step is
 selectable without extending normal one-move reach. See `18` for the barriers.

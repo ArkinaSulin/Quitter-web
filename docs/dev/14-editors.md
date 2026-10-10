@@ -88,9 +88,11 @@ Effect Editor: left = template list (search, New, Clone), middle = the form,
 right = a `StructurePreview`.
 
 - **Anchor** `edge` or `hex`. Edge structures carry two directional faces —
-  **Inside (A)** / **Outside (B)** — each with block / move cost / melee AC /
-  ranged AC; a `battlement` flag draws crenellations on the outside face.
-- Hex structures carry an extra entry MP cost and an optional **Door HP**
+  **Inside (A)** / **Outside (B)** — each with block / melee AC / ranged AC; a
+  `battlement` flag draws crenellations on the outside face.
+- Set the structure's **Climb MP per 10 ft** (`mp_climb_up/down`, `NOT NULL DEFAULT 4`;
+  edge: outside→inside = up, inside→outside = down; hex: ascend/descend, foot/mounted).
+- Hex structures carry an optional **Door HP**
   (`NULL` = no door; the door shares the template DT and resolves door-first,
   then the structure HP).
 - **Durability** `maxHp` (default 30) / `dt` (default 15).

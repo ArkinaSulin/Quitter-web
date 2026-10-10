@@ -35,11 +35,11 @@ function StructureTooltip({ t, x, y }: { t: StructureTemplate; x: number; y: num
       <div className="text-gray-300 capitalize">{t.anchor}{t.battlement ? ' · battlement' : ''}{t.barricade ? ' · barricade' : ''}{t.sinWave ? ' · sin wave' : ''}{t.ladder ? ' · ladder' : ''}</div>
       {t.anchor === 'edge' ? (
         <>
-          <div className="text-gray-400 mt-1">In: {mpPairText(t.mpFootIn, t.mpMountedIn)} MP</div>
-          <div className="text-gray-400">Out: {mpPairText(t.mpFootOut, t.mpMountedOut)} MP</div>
+          <div className="text-gray-400 mt-1">Climb up: {mpPairText(t.mpClimbUp, t.mpMountedUp)} MP per 10 ft</div>
+          <div className="text-gray-400">Climb down: {mpPairText(t.mpClimbDown, t.mpMountedDown)} MP per 10 ft</div>
         </>
       ) : (
-        <div className="text-gray-400 mt-1">Enter: {mpPairText(t.mpFootIn, t.mpMountedIn)} MP</div>
+        <div className="text-gray-400 mt-1">Climb {mpPairText(t.mpClimbUp, t.mpMountedUp)} up / {mpPairText(t.mpClimbDown, t.mpMountedDown)} down MP per 10 ft</div>
       )}
       <div className="text-gray-400 mt-1">HP {t.maxHp} · DT {t.dt} · door {door === 0 ? 'none' : door}</div>
       {(melee || ranged) ? <div className="text-gray-400">Cover AC melee {melee} · ranged {ranged}</div> : null}

@@ -6,7 +6,7 @@ import { isUnitInteractable, isDeadCorpse } from '@/packages/units';
 import { imposesKillZone } from '@/packages/morale';
 import { isHostile } from '@/packages/primitives';
 import { Walls, crossingCost, blockedStep, wallBetween, edgeRef, directionBetween } from '@/packages/movement';
-import { MapStructures, structureBlocksOrg, zoneBlocksOrg, structureHexEntryCost, structureHexBlocked, structureClimbCostBetween, hexStructureAt, structureDoorState, structureSurfaceAt } from '@/packages/movement';
+import { MapStructures, structureBlocksOrg, zoneBlocksOrg, structureHexBlocked, structureClimbCostBetween, structureStepClimb, structureEdgeBlocked, hexStructureAt, structureDoorState, structureSurfaceAt } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { HEX_DIRS, frontArcIndices } from '@/packages/primitives';
@@ -45,10 +45,10 @@ export interface CostOfHexOpts {
 }
 
 /**
- * Combined step-cost for movement: a wall face on the destination's side REPLACES
- * the hex's terrain entry cost when crossing that edge; a hex structure's entry
- * MP REPLACES it too; otherwise terrain applies. `fromQ/fromR` are supplied by
- * the movement BFS.
+ * Combined step-cost for movement. A RISING structure step (crossing a solid edge
+ * wall, or climbing onto a higher hex structure) costs the structure's **climb**
+ * (`round(Δft/10) × mp_climb_*`), which REPLACES the base cost. Otherwise the base
+ * is the hex terrain (+ any painted mp_cost effect). `fromQ/fromR` come from the BFS.
  */
 export function makeCostOfHex(
   terrain: TerrainCosts | null | undefined,
@@ -56,27 +56,18 @@ export function makeCostOfHex(
   opts: CostOfHexOpts = {},
 ): CostOfHexFn {
   return (q, r, fromQ, fromR) => {
-    let base: number | undefined;
+    if (fromQ !== undefined && fromR !== undefined) {
+      // A rising structure step → the structure climb REPLACES terrain/zone/wall.
+      const climb = structureStepClimb({ q: fromQ, r: fromR }, { q, r }, opts.structures, opts.templates, { isMounted: !!opts.isMounted, waiveClimb: !!opts.waiveClimb });
+      if (climb !== undefined) return climb;
+    }
+    // Legacy authored walls (not structure-derived) replace the terrain cost.
     if (walls && fromQ !== undefined && fromR !== undefined) {
       const wc = crossingCost(walls, { q: fromQ, r: fromR }, { q, r }, !!opts.isMounted);
-      if (wc !== undefined) base = wc;
+      if (wc !== undefined) return wc;
     }
-    if (base === undefined) {
-      const hc = structureHexEntryCost({ q, r }, opts.structures, opts.templates, !!opts.isMounted);
-      const tc = terrainCostOf(terrain, q, r);
-      // "Higher of the two": a hex structure's entry MP and terrain both apply.
-      // A hard block (negative structure MP) is handled by the blocked-edge
-      // predicate, not here.
-      base = hc !== undefined ? Math.max(hc, tc) : tc;
-    }
-    // Climb (dynamic ground + edge-structure height): entering a higher surface or
-    // crossing a tall wall costs MP; an `ignore_climb` effect (or a passable door)
-    // waives it. The base step cost still applies — the higher of the two wins.
-    if (fromQ !== undefined && fromR !== undefined) {
-      const climb = structureClimbCostBetween({ q: fromQ, r: fromR }, { q, r }, opts.structures, opts.templates, !!opts.waiveClimb, !!opts.isMounted);
-      if (climb > base) base = climb;
-    }
-    return base;
+    // Base: terrain, maxed with any painted mp_cost effect ("higher of the two").
+    return terrainCostOf(terrain, q, r);
   };
 }
 
@@ -113,6 +104,8 @@ export function makeBlockedEdge(walls: Walls | null | undefined, opts: BlockEdge
   return (fromQ, fromR, toQ, toR) => {
     if (walls && blockedStep(walls, fromQ, fromR, toQ, toR, !!isMounted)) return true;
     if (structures && structureHexBlocked({ q: toQ, r: toR }, structures, templates, !!isMounted)) return true;
+    // A crossed edge structure with a negative climb MP hard-blocks (doors never gate).
+    if (structures && structureEdgeBlocked({ q: fromQ, r: fromR }, { q: toQ, r: toR }, structures, templates, !!isMounted)) return true;
     // Mounted units cannot climb: block entering a higher-surface hex.
     if (isMounted && structures && structureClimbCostBetween({ q: fromQ, r: fromR }, { q: toQ, r: toR }, structures, templates, !!waiveClimb, isMounted) > 0) return true;
     return false;
@@ -148,11 +141,11 @@ export function makeChargeBlockedEdge(walls: Walls | null | undefined, opts: Cha
         const cost = isMounted ? hit.faceTo.moveCostMounted : hit.faceTo.moveCostFoot;
         // Doors never gate (mirrors movement) — only a hard block or a 2+ MP crossing.
         if (hit.faceFrom.block) return true;
-        if (cost === undefined || cost < 0 || cost >= 2) return true;
+        if (cost !== undefined && (cost < 0 || cost >= 2)) return true;
       }
     }
-    const hc = structureHexEntryCost({ q: toQ, r: toR }, structures, templates, !!isMounted);
-    if (hc !== undefined && hc >= 2) return true;
+    const climb = structureStepClimb({ q: fromQ, r: fromR }, { q: toQ, r: toR }, structures, templates, { isMounted: !!isMounted });
+    if (climb !== undefined && climb >= 2) return true;
     if (orgLevel !== undefined) {
       if (structures) {
         const dir = directionBetween({ q: fromQ, r: fromR }, { q: toQ, r: toR });
@@ -194,46 +187,25 @@ export interface HexMpLabel {
 }
 
 /**
- * Effective hex-entry MP for display, from a hex structure's `mp_foot_in` /
- * `mp_mounted_in` and any `mp_cost` ground zones on the hex — "higher of the
+ * Effective hex-entry MP for display, from a hex structure's `mp_climb_up` /
+ * `mp_mounted_up` and any `mp_cost` ground zones on the hex — "higher of the
  * two" per locomotion, with a negative structure MP as a hard block. An
  * open/broken door waives the structure's MP. Returns null for a base (1 MP)
  * hex.
  */
 export function hexMpLabelAt(
   hex: { q: number; r: number },
-  structures: MapStructures | null | undefined,
-  templates: Record<string, StructureTemplate> | null | undefined,
+  _structures: MapStructures | null | undefined,
+  _templates: Record<string, StructureTemplate> | null | undefined,
   zones: GroundEffect[] | null | undefined,
 ): HexMpLabel | null {
+  // The hex CENTRE shows only the terrain / mp_cost-effect entry (the move INTO the
+  // hex). Structure climb costs are drawn per-EDGE, not here.
   let zoneDelta = 0;
   if (zones) for (const z of zones) if (z.q === hex.q && z.r === hex.r && z.kind === 'mp_cost') zoneDelta = Math.max(zoneDelta, modifierAmount(z.dice));
-  zoneDelta = Math.max(0, Math.min(9, zoneDelta));
-
-  const inst = hexStructureAt(structures, hex);
-  const t = inst ? templates?.[inst.templateId] : undefined;
-  const structActive = !!inst && !!t && !structureDoorState(inst, t).openOrBroken;
-
-  const loc = (structVal: number | null | undefined): number | 'block' => {
-    if (structActive && structVal !== null && structVal !== undefined && structVal < 0) return 'block';
-    const s = structActive && structVal !== null && structVal !== undefined ? structVal : 1;
-    return Math.max(s, 1, zoneDelta);
-  };
-
-  const foot = loc(t?.mpFootIn);
-  const mounted = loc(t?.mpMountedIn);
-  if (foot === 1 && mounted === 1) return null;
-
-  const fmt = (v: number | 'block') => (v === 'block' ? 'X' : v > 1 ? String(v) : '-');
-  const f = fmt(foot);
-  const m = fmt(mounted);
-  const nFoot = foot === 'block' ? 0 : foot;
-  const nMounted = mounted === 'block' ? 0 : mounted;
-  return {
-    text: f === m ? f : `${f}/${m}`,
-    cost: Math.max(2, Math.min(9, Math.max(nFoot, nMounted))),
-    blocked: foot === 'block' || mounted === 'block',
-  };
+  const v = Math.max(1, Math.min(9, zoneDelta));
+  if (v === 1) return null;
+  return { text: String(v), cost: v, blocked: false };
 }
 
 /**

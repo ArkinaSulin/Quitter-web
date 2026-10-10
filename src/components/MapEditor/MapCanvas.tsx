@@ -286,28 +286,29 @@ export function MapCanvas({
             ctx.restore();
           }
         }
-        // Move-cost labels on the edge, one per face that overrides the cost.
+        // Climb-cost labels on the edge (per 10 ft), one per face/direction.
         const labelFor = (faceKey: 'a' | 'b') => {
-          const face = faceKey === 'a' ? w?.a : w?.b;
-          if (!face) return null;
-          const cost = face.moveCostFoot ?? face.moveCostMounted;
-          if (cost === undefined) return null;
+          if (!t) return null;
+          const outside = (inst.outside ?? 'a') === 'a';
+          const isOutside = (faceKey === 'a') === outside;
+          const foot = isOutside ? t.mpClimbUp : t.mpClimbDown;
+          const mounted = isOutside ? t.mpMountedUp : t.mpMountedDown;
+          const fmt = (v: number) => (v < 0 ? '✕' : String(v));
+          const text = foot === mounted ? fmt(foot) : `${fmt(foot)}/${fmt(mounted)}`;
           const ref2 = edgeRef(q, r, d);
           const hq = faceKey === 'a' ? ref2.aq : ref2.bq;
           const hr = faceKey === 'a' ? ref2.ar : ref2.br;
           const c = hexToPixel({ q: hq, r: hr, s: -hq - hr }, HEX_SIZE);
           const mx = (a.x + b.x) / 2;
           const my = (a.y + b.y) / 2;
-          const lx = mx + (c.x - mx) * 0.3;
-          const ly = my + (c.y - my) * 0.3;
-          return { text: cost < 0 ? '✕' : String(cost), x: lx, y: ly };
+          return { text, x: mx + (c.x - mx) * 0.3, y: my + (c.y - my) * 0.3 };
         };
         for (const lbl of [labelFor('a'), labelFor('b')]) {
           if (!lbl) continue;
-          ctx.font = `bold ${Math.max(11 / zoom, 0.5)}px ui-monospace, monospace`;
+          ctx.font = MONO(ts.edge.fontPx / zoom);
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.lineWidth = 3 / zoom;
+          ctx.lineWidth = ts.edge.linePx / zoom;
           ctx.strokeStyle = 'rgba(0,0,0,0.85)';
           ctx.strokeText(lbl.text, lbl.x, lbl.y);
           ctx.fillStyle = '#ffe0b2';

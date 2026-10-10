@@ -2,8 +2,8 @@
 // Map structure templates (authored) and instances (placed on a map).
 //
 // A structure is either EDGE-anchored (walls, barricades, magic barriers) or
-// HEX-anchored (gates, towers). Movement is direction-relative: `mpFootIn/Out` /
-// `mpMountedIn/Out`
+// HEX-anchored (gates, towers). Movement is direction-relative: `mpClimbUp/Out` /
+// `mpMountedUp/Out`
 // are the MP to cross (OUTSIDE->INSIDE for `_in`, INSIDE->OUTSIDE for `_out`;
 // a hex uses only `_in`). A negative value is a hard block for that locomotion;
 // NULL falls back to the hex terrain cost. Inside/outside is decided when the
@@ -49,11 +49,12 @@ export interface StructureTemplate {
   /** Top surface height in feet where troops stand (0 = decorative / no height).
    *  A wall spans the ground up to this surface. Defaults to 10 when absent. */
   elevation?: number;
-  // Direction-relative movement. NULL = fall back to terrain; negative = hard block.
-  mpFootIn: number | null;
-  mpFootOut: number | null;
-  mpMountedIn: number | null;
-  mpMountedOut: number | null;
+  // Climb cost in MP per 10 ft (ascend/descend, foot/mounted). Default 4; 0 = free;
+  // negative = hard block. (Not an entry cost — the structure top is terrain.)
+  mpClimbUp: number;
+  mpClimbDown: number;
+  mpMountedUp: number;
+  mpMountedDown: number;
   /** Passage gate pool. NULL = no explicit door (app defaults to maxHp). 0 = passable. */
   doorHp: number | null;
   /** Structure pool. <= 0 = destroyed (instance removed). */

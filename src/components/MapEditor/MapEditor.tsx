@@ -295,7 +295,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     const door = t.doorHp ?? t.maxHp;
     const lines = [
       `${t.anchor}${t.battlement ? ' · battlement' : ''}${t.barricade ? ' · barricade' : ''}${t.sinWave ? ' · sin wave' : ''}${t.ladder ? ' · ladder' : ''}`,
-      t.anchor === 'edge' ? `In ${mpPairText(t.mpFootIn, t.mpMountedIn)} MP` : `Enter ${mpPairText(t.mpFootIn, t.mpMountedIn)} MP`,
+      `Climb ${mpPairText(t.mpClimbUp, t.mpMountedUp)} up / ${mpPairText(t.mpClimbDown, t.mpMountedDown)} down MP per 10 ft`,
       `HP ${t.maxHp} · DT ${t.dt}${structureHasDoor(t) ? ` · door ${door}` : ''}`,
     ];
     if (melee || ranged) lines.push(`Cover AC melee ${melee} / ranged ${ranged}`);

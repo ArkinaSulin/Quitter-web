@@ -22,6 +22,13 @@ const clampInt = (v: unknown, min: number, max: number, fallback: number): numbe
   return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
 };
 
+/** Climb MP from a column: an integer (negatives = hard block), default 4 when absent. */
+const climbMp = (v: unknown): number => {
+  if (v === null || v === undefined || v === '') return 4;
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? n : 4;
+};
+
 /** The effective door pool of a template (null door defaults to maxHp). */
 export function templateDoorMax(t: StructureTemplate): number {
   return t.doorHp === null ? t.maxHp : t.doorHp;
@@ -62,10 +69,10 @@ export function mapStructureRow(row: any): StructureTemplate {
     ladder: !!row.ladder,
     hexBorder: row.hex_border !== false,
     elevation: Math.max(0, Math.round(num(row.elevation))),
-    mpFootIn: numOrNull(row.mp_foot_in),
-    mpFootOut: numOrNull(row.mp_foot_out),
-    mpMountedIn: numOrNull(row.mp_mounted_in),
-    mpMountedOut: numOrNull(row.mp_mounted_out),
+    mpClimbUp: climbMp(row.mp_climb_up),
+    mpClimbDown: climbMp(row.mp_climb_down),
+    mpMountedUp: climbMp(row.mp_mounted_up),
+    mpMountedDown: climbMp(row.mp_mounted_down),
     doorHp: numOrNull(row.door_hp),
     maxHp: Math.max(0, Math.round(num(row.max_hp))),
     dt: Math.max(0, Math.round(num(row.dt))),
@@ -79,14 +86,8 @@ export function mapStructureRow(row: any): StructureTemplate {
 export function mapStructureToRow(t: Pick<StructureTemplate,
   'name' | 'description' | 'anchor' | 'color' | 'imageUrl' | 'battlement' | 'barricade' | 'sinWave' | 'ladder' | 'hexBorder' |
   'elevation' |
-  'mpFootIn' | 'mpFootOut' | 'mpMountedIn' | 'mpMountedOut' |
+  'mpClimbUp' | 'mpClimbDown' | 'mpMountedUp' | 'mpMountedDown' |
   'doorHp' | 'maxHp' | 'dt' | 'modifiers'>) {
-  // A movement value may be any integer (negative = hard block); null = terrain.
-  const move = (v: number | null | undefined): number | null => {
-    if (v === null || v === undefined) return null;
-    const n = Math.round(v);
-    return Number.isFinite(n) ? n : null;
-  };
   const maxHp = Math.max(0, Math.round(num(t.maxHp)));
   // Door pool clamped to [0, maxHp]; null = "no explicit door".
   const door = t.doorHp === null || t.doorHp === undefined
@@ -104,10 +105,10 @@ export function mapStructureToRow(t: Pick<StructureTemplate,
     ladder: !!t.ladder,
     hex_border: t.hexBorder !== false,
     elevation: Math.max(0, Math.round(num(t.elevation))),
-    mp_foot_in: move(t.mpFootIn),
-    mp_foot_out: move(t.mpFootOut),
-    mp_mounted_in: move(t.mpMountedIn),
-    mp_mounted_out: move(t.mpMountedOut),
+    mp_climb_up: climbMp(t.mpClimbUp),
+    mp_climb_down: climbMp(t.mpClimbDown),
+    mp_mounted_up: climbMp(t.mpMountedUp),
+    mp_mounted_down: climbMp(t.mpMountedDown),
     door_hp: door,
     max_hp: maxHp,
     dt: Math.max(0, Math.round(num(t.dt))),
@@ -129,10 +130,10 @@ export function blankStructureTemplate(): Omit<StructureTemplate, 'id' | 'create
     ladder: false,
     hexBorder: true,
     elevation: 10,
-    mpFootIn: null,
-    mpFootOut: null,
-    mpMountedIn: null,
-    mpMountedOut: null,
+    mpClimbUp: 4,
+    mpClimbDown: 4,
+    mpMountedUp: 4,
+    mpMountedDown: 4,
     doorHp: 30,
     maxHp: 30,
     dt: 15,

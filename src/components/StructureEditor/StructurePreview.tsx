@@ -24,10 +24,10 @@ interface StructurePreviewProps {
   sinWave: boolean;
   ladder: boolean;
   hexBorder: boolean;
-  mpFootIn: number | null;
-  mpFootOut: number | null;
-  mpMountedIn: number | null;
-  mpMountedOut: number | null;
+  mpClimbUp: number | null;
+  mpClimbDown: number | null;
+  mpMountedUp: number | null;
+  mpMountedDown: number | null;
   coverMelee: number;
   coverRanged: number;
   doorHp: number | null;
@@ -41,7 +41,7 @@ const mpLabel = (v: number | null): string => (v === null ? '—' : v < 0 ? 'blo
 
 export function StructurePreview({
   anchor, imageUrl, battlement, barricade, sinWave, ladder, hexBorder,
-  mpFootIn, mpFootOut, mpMountedIn, mpMountedOut, coverMelee, coverRanged, doorHp, maxHp, dt, elevation,
+  mpClimbUp, mpClimbDown, mpMountedUp, mpMountedDown, coverMelee, coverRanged, doorHp, maxHp, dt, elevation,
 }: StructurePreviewProps) {
   const [flipped, setFlipped] = useState(false);
   // Shared board-label sizes (zoom = 1) so the preview reads like the canvases.
@@ -96,7 +96,7 @@ export function StructurePreview({
             <span className="absolute font-mono font-bold" style={{ left: centre.x, top: 2, transform: 'translateX(-50%)', fontSize: ts.elevation.fontPx, color: '#b45309' }}>{elevation} ft</span>
           )}
         </div>
-        <p className="text-[11px] text-gray-400">Enter: foot {mpLabel(mpFootIn)} MP · mounted {mpLabel(mpMountedIn)} MP</p>
+        <p className="text-[11px] text-gray-400">Enter: foot {mpLabel(mpClimbUp)} MP · mounted {mpLabel(mpMountedUp)} MP</p>
         <p className="text-[11px] text-gray-400">{doorText}</p>
         <p className="text-[11px] text-gray-500" style={{ fontSize: ts.hp.fontPx }}>HP {maxHp} · DT {dt}
           {(coverMelee || coverRanged) ? ` · cover AC m${coverMelee}/r${coverRanged}` : ''}</p>
@@ -125,10 +125,10 @@ export function StructurePreview({
     ? ladderPaths({ x: x0, y }, { x: x1, y }, { x: (x0 + x1) / 2, y: y - 100 })
     : null;
   // When flipped, the labels swap which physical side is "outside".
-  const outFoot = flipped ? mpFootIn : mpFootOut;
-  const outMounted = flipped ? mpMountedIn : mpMountedOut;
-  const inFoot = flipped ? mpFootOut : mpFootIn;
-  const inMounted = flipped ? mpMountedOut : mpMountedIn;
+  const outFoot = flipped ? mpClimbUp : mpClimbDown;
+  const outMounted = flipped ? mpMountedUp : mpMountedDown;
+  const inFoot = flipped ? mpClimbDown : mpClimbUp;
+  const inMounted = flipped ? mpMountedDown : mpMountedUp;
   return (
     <div className="space-y-2">
       <div className="relative rounded border border-gray-700 bg-gray-200" style={{ width: W, height: H }}>

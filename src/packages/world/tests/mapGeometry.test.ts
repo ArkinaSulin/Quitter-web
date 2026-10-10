@@ -15,10 +15,10 @@ const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => (
   sinWave: false,
   ladder: false,
   hexBorder: true,
-  mpFootIn: null,
-  mpFootOut: null,
-  mpMountedIn: null,
-  mpMountedOut: null,
+  mpClimbUp: 4,
+  mpClimbDown: 4,
+  mpMountedUp: 4,
+  mpMountedDown: 4,
   doorHp: null,
   maxHp: 30,
   dt: 15,
@@ -52,22 +52,13 @@ describe('hexMpLabelAt', () => {
     expect(label?.blocked).toBe(false);
   });
 
-  it('shows a structure foot cost and a mounted block as "3/X"', () => {
-    const t = template({ mpFootIn: 3, mpMountedIn: -1 });
-    const label = hexMpLabelAt({ q: 0, r: 0 }, { '0,0': { templateId: 't1' } }, { t1: t }, null);
-    expect(label?.text).toBe('3/X');
-    expect(label?.blocked).toBe(true);
+  it('ignores a hex structure at the centre — its climb cost is drawn per-edge', () => {
+    const t = template({ mpClimbUp: 3, mpMountedUp: -1 });
+    expect(hexMpLabelAt({ q: 0, r: 0 }, { '0,0': { templateId: 't1' } }, { t1: t }, null)).toBeNull();
   });
 
-  it('shows "X" when both locomotions are blocked', () => {
-    const t = template({ mpFootIn: -1, mpMountedIn: -1 });
-    const label = hexMpLabelAt({ q: 0, r: 0 }, { '0,0': { templateId: 't1' } }, { t1: t }, null);
-    expect(label?.text).toBe('X');
-    expect(label?.blocked).toBe(true);
-  });
-
-  it('takes the higher of structure entry MP and a zone mp_cost', () => {
-    const t = template({ mpFootIn: 3, mpMountedIn: 3 });
+  it('shows the zone mp_cost (foot == mounted) alongside a structure', () => {
+    const t = template({ mpClimbUp: 3, mpMountedUp: 3 });
     const label = hexMpLabelAt({ q: 0, r: 0 }, { '0,0': { templateId: 't1' } }, { t1: t }, [zone(0, 0, '5')]);
     expect(label?.text).toBe('5');
   });
@@ -78,7 +69,7 @@ describe('hexMpLabelAt', () => {
   });
 
   it('waives the structure MP when its door is open/broken', () => {
-    const t = template({ mpFootIn: 3, mpMountedIn: 3, doorHp: 30, maxHp: 30 });
+    const t = template({ mpClimbUp: 3, mpMountedUp: 3, doorHp: 30, maxHp: 30 });
     const label = hexMpLabelAt({ q: 0, r: 0 }, { '0,0': { templateId: 't1', open: true } }, { t1: t }, null);
     expect(label).toBeNull();
   });
@@ -100,22 +91,22 @@ describe('mpCostOverrides (terrain cost replaces the base MP)', () => {
   });
 });
 
-describe('makeCostOfHex (higher of the two)', () => {
-  const t = template({ mpFootIn: 3, mpMountedIn: 3 });
+describe('makeCostOfHex', () => {
+  const tower = template({ anchor: 'hex', elevation: 10, mpClimbUp: 3, mpMountedUp: 3 });
   const structures = { '0,0': { templateId: 't1' } };
-  const templates = { t1: t };
 
-  it('uses the structure entry MP when no zone overrides it', () => {
-    const cost = makeCostOfHex({}, null, { structures, templates, isMounted: false });
-    expect(cost(0, 0, -1, 0)).toBe(3); // entering (0,0) from neighbour (-1,0)
+  it('a rising structure step costs the climb (replaces terrain)', () => {
+    const cost = makeCostOfHex({}, null, { structures, templates: { t1: tower }, isMounted: false });
+    expect(cost(0, 0, -1, 0)).toBe(3); // entering (0,0) from (-1,0): 1 step × 3
   });
 
-  it('returns the higher of structure MP and zone mp_cost', () => {
-    const cost = makeCostOfHex({ '0,0': 5 }, null, { structures, templates, isMounted: false });
-    expect(cost(0, 0, -1, 0)).toBe(5);
+  it('a decorative (elevation 0) structure hex falls back to the base terrain (1)', () => {
+    const flat = template({ anchor: 'hex', elevation: 0 });
+    const cost = makeCostOfHex({}, null, { structures, templates: { t1: flat }, isMounted: false });
+    expect(cost(0, 0, -1, 0)).toBe(1);
   });
 
-  it('falls back to the zone mp_cost when there is no structure', () => {
+  it('falls back to the zone mp_cost when there is no climb', () => {
     const cost = makeCostOfHex({ '0,0': 2 }, null, { isMounted: false });
     expect(cost(0, 0, -1, 0)).toBe(2);
   });

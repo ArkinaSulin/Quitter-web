@@ -23,9 +23,9 @@ const input =
   'w-full bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700 focus:border-amber-400 outline-none disabled:opacity-50';
 
 /** Integer field allowing negatives (movement: negative = hard block). Blank = null. */
-function MoveInput({ value, onChange, readOnly, placeholder = '—' }: {
-  value: number | null;
-  onChange: (v: number | null) => void;
+function MoveInput({ value, onChange, readOnly, placeholder = '4' }: {
+  value: number;
+  onChange: (v: number) => void;
   readOnly: boolean;
   placeholder?: string;
 }) {
@@ -33,14 +33,14 @@ function MoveInput({ value, onChange, readOnly, placeholder = '—' }: {
     <input
       className={input + ' !w-16'}
       type="number"
-      value={value === null ? '' : String(value)}
+      value={String(value)}
       placeholder={placeholder}
       disabled={readOnly}
       onChange={e => {
         const raw = e.target.value;
-        if (raw === '') return onChange(null);
+        if (raw === '') return onChange(4);
         const n = Math.round(Number(raw));
-        onChange(Number.isFinite(n) ? Math.max(-1, Math.min(99, n)) : null);
+        onChange(Number.isFinite(n) ? Math.max(-99, Math.min(99, n)) : 4);
       }}
     />
   );
@@ -300,21 +300,21 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                     <p className="text-[10px] uppercase tracking-wide text-gray-500">Climb MP per 10 ft (blank = default 4; direction-relative)</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
                       <div className="space-y-1">
-                        <p className="text-gray-400">Into inside (outside → inside)</p>
+                        <p className="text-gray-400">Ascend (outside → inside)</p>
                         <label className="flex items-center gap-1">Foot
-                          <MoveInput value={draft.mpFootIn} readOnly={readOnly} onChange={v => patch({ mpFootIn: v })} />
+                          <MoveInput value={draft.mpClimbUp} readOnly={readOnly} onChange={v => patch({ mpClimbUp: v })} />
                         </label>
                         <label className="flex items-center gap-1">Mounted
-                          <MoveInput value={draft.mpMountedIn} readOnly={readOnly} onChange={v => patch({ mpMountedIn: v })} />
+                          <MoveInput value={draft.mpMountedUp} readOnly={readOnly} onChange={v => patch({ mpMountedUp: v })} />
                         </label>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-gray-400">Into outside (inside → outside)</p>
+                        <p className="text-gray-400">Descend (inside → outside)</p>
                         <label className="flex items-center gap-1">Foot
-                          <MoveInput value={draft.mpFootOut} readOnly={readOnly} onChange={v => patch({ mpFootOut: v })} />
+                          <MoveInput value={draft.mpClimbDown} readOnly={readOnly} onChange={v => patch({ mpClimbDown: v })} />
                         </label>
                         <label className="flex items-center gap-1">Mounted
-                          <MoveInput value={draft.mpMountedOut} readOnly={readOnly} onChange={v => patch({ mpMountedOut: v })} />
+                          <MoveInput value={draft.mpMountedDown} readOnly={readOnly} onChange={v => patch({ mpMountedDown: v })} />
                         </label>
                       </div>
                     </div>
@@ -323,13 +323,25 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
               ) : (
                 <div className="rounded border border-gray-700 p-2 space-y-2">
                   <p className="text-[10px] uppercase tracking-wide text-gray-500">Climb MP per 10 ft (blank = default 4; negative = block)</p>
-                  <div className="flex flex-wrap items-center gap-3 text-[11px]">
-                    <label className="flex items-center gap-1">Foot
-                      <MoveInput value={draft.mpFootIn} readOnly={readOnly} onChange={v => patch({ mpFootIn: v })} />
-                    </label>
-                    <label className="flex items-center gap-1">Mounted
-                      <MoveInput value={draft.mpMountedIn} readOnly={readOnly} onChange={v => patch({ mpMountedIn: v })} />
-                    </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+                    <div className="space-y-1">
+                      <p className="text-gray-400">Ascend (climb up)</p>
+                      <label className="flex items-center gap-1">Foot
+                        <MoveInput value={draft.mpClimbUp} readOnly={readOnly} onChange={v => patch({ mpClimbUp: v })} />
+                      </label>
+                      <label className="flex items-center gap-1">Mounted
+                        <MoveInput value={draft.mpMountedUp} readOnly={readOnly} onChange={v => patch({ mpMountedUp: v })} />
+                      </label>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-gray-400">Descend (climb down)</p>
+                      <label className="flex items-center gap-1">Foot
+                        <MoveInput value={draft.mpClimbDown} readOnly={readOnly} onChange={v => patch({ mpClimbDown: v })} />
+                      </label>
+                      <label className="flex items-center gap-1">Mounted
+                        <MoveInput value={draft.mpMountedDown} readOnly={readOnly} onChange={v => patch({ mpMountedDown: v })} />
+                      </label>
+                    </div>
                   </div>
                   <label className="flex items-center gap-2 text-[11px] text-gray-300">
                     <input type="checkbox" disabled={readOnly} checked={draft.hexBorder} onChange={e => patch({ hexBorder: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
@@ -430,10 +442,10 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                 sinWave={draft.sinWave}
                 ladder={draft.ladder}
                 hexBorder={draft.hexBorder}
-                mpFootIn={draft.mpFootIn}
-                mpFootOut={draft.mpFootOut}
-                mpMountedIn={draft.mpMountedIn}
-                mpMountedOut={draft.mpMountedOut}
+                mpClimbUp={draft.mpClimbUp}
+                mpClimbDown={draft.mpClimbDown}
+                mpMountedUp={draft.mpMountedUp}
+                mpMountedDown={draft.mpMountedDown}
                 coverMelee={cover.melee}
                 coverRanged={cover.ranged}
                 doorHp={draft.doorHp}

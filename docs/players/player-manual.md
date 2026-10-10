@@ -506,8 +506,8 @@ The MP cost to enter a hex comes from **structures** and **ground effects**, not
 a painted number:
 
 > *The MP cost to enter a hex is the **higher** of every source that applies,
-> computed **per locomotion**: a hex structure's entry MP (`mp_foot_in` /
-> `mp_mounted_in`) and the summed `mp_cost` of any ground zones there. A
+> computed **per locomotion**: a hex structure's entry MP (`mp_climb_up` /
+> `mp_mounted_up`) and the summed `mp_cost` of any ground zones there. A
 > **negative** value is a hard block — that locomotion may not cross (`X`). An
 > open/broken door **waives** the structure's MP. Edge-structure faces are
 > directional and apply per-edge (they replace the hex cost when crossed, they do

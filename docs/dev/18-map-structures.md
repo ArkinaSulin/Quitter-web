@@ -11,14 +11,14 @@ map), exactly like weapons/effects split authored vs placed.
 > rendering, hex/edge **info tooltips**, structure **range bonuses**, and gate
 > **open/close**. Only known gap: the AI planner ignores structure rules.
 
-> **Hex MP cost rule.** *The MP cost to enter a hex is the **higher** of every
-> source that applies, computed **per locomotion**: a hex structure's entry MP
-> (`mp_foot_in` / `mp_mounted_in`) and the summed `mp_cost` of any ground zones
-> there. A **negative** value is a hard block — that locomotion may not cross
-> (`X`). An open/broken door **waives** the structure's MP. Edge-structure faces
-> are directional and apply per-edge (they replace the hex cost when crossed, they
-> do not max with it). The board prints `foot/mounted` when either differs from
-> base (1): a number, `X` for blocked, `-` for no change.*
+> **MP cost rule.** A hex structure has **no entry MP** — the move into its top uses
+> the **base terrain** (`max(1, terrain, mp_cost effect)`). Structure cost is the
+> **climb**: crossing a solid **edge** wall, or rising onto a higher **hex** structure,
+> costs `round(Δft/10) × mp_climb_{up|down}` (per 10 ft, foot/mounted), which
+> **replaces** the base. The crossed **edge overrides the hex**. A **negative**
+> `mp_climb_*` is a hard block (`✕`). An open/broken door waives the rise (base step).
+> The board prints the hex centre as the terrain/effect `foot/mounted` and each edge's
+> climb cost as a tiny per-edge label.
 
 ## Template vs instance
 
@@ -40,8 +40,9 @@ scenario is migrated (Slice 3).
 - **Edge** (`anchor='edge'`) — sits on the shared edge between two hexes.
   Directional, one face per side:
   - **Inside face (A)** / **Outside face (B)** — each has `block`,
-    `movement/moveCost` (replaces the entered hex's terrain when crossing INTO that face),
-    `meleeAc` / `rangedAc` (cover for the unit standing on that side).
+    `meleeAc` / `rangedAc` (cover for the unit standing on that side). The crossing
+    cost is the structure **climb** (`mp_climb_up/down` per 10 ft, below); faces no
+    longer carry a flat `moveCost`.
   - `battlement` draws a crenellation (square wave) on the **outside** face; the
     amplitude is tied to the tooth width so the teeth read as squares.
   - `spikes` draws a triangle (sawtooth) wave — minima on the edge, peaks
@@ -94,22 +95,25 @@ The four attack-roll flags map to the four directions, with the carrier always
 - `ignore_climb` — **UNIT effect / GROUND-ZONE effect only** (retired for
   structures, migration **120**). It waives the elevation cost for the
   carrier/mover (`unitIgnoresClimb`). On a **structure**, a free climb is instead
-  expressed by a **`mp_*` of 0** — the edge climbs `round(height/10) × mp_*`, so a
-  `0` costs nothing (see *Edge climb = the edge's `mp_*`*).
+  expressed by a **`mp_climb_*` of 0** — the edge climb is `round(height/10) × mp_climb_*`,
+  so a `0` costs nothing (see *Climb = x MP per 10 ft*).
 
 ## Climb = `x` MP per 10 ft (as per DB), uniform for hex + edge
 
 A structure's height is its **authored** `elevation` (default 10 ft; `0` =
-low/decorative). **Climbing costs `round(height/10) × mp_*`** — the template's
-**MP per 10 ft** (`mp_*`): an **edge** uses the crossing direction (`_in`
-outside→inside, `_out` inside→outside), a **hex** uses `_in`; foot/mounted as
-authored. `null` = default 4 MP/step, **`0` = free**. This is the uniform rule for
-**hex and edge alike** (the old `height / 2.5` formula is retired). For an edge the
-climb **overrides** the adjacent hex's surface-rise climb (replace, never `max`).
-The value feeds the movement cost (`structureClimbCostBetween`) and the climb action
-(`handleClimbMove`); an unaffordable climb soft-confirms like a move. The wall's
-authored **height** also drives its **line-of-sight blocking top**
-(`combat/lineOfSight.structuresBlockingLine`).
+low/decorative). **Climbing costs `round(height/10) × mp_climb_*`** — the template's
+**MP per 10 ft**: an **edge** picks `_up`/`_down` by direction (`mp_climb_up` =
+outside→inside, `mp_climb_down` = inside→outside), a **hex** picks ascend
+(`mp_climb_up`) / descend (`mp_climb_down`); foot/mounted as authored. Columns are
+**`NOT NULL DEFAULT 4`**; **`0` = free**; a negative = hard block. This is the
+uniform rule for **hex and edge alike** (the old `height / 2.5` formula is retired).
+A structure's **top has no entry MP** — the move onto it uses base terrain
+(`max(1, terrain, mp_cost effect)`); a **rising** step instead costs the climb, which
+**replaces** the base, and the crossed **edge overrides the hex**. Open/broken door
+waives the rise. The value feeds the movement cost (`structureStepClimb` /
+`makeCostOfHex`) and the climb action (`handleClimbMove`); an unaffordable climb
+soft-confirms like a move. The wall's authored **height** also drives its
+**line-of-sight blocking top** (`combat/lineOfSight.structuresBlockingLine`).
 
 > **Key note.** A structure spans elevation **0 (base) → X (top)**, so a "10-ft
 > ladder" is **relative** — its 10-ft segments are 0→10, 10→20, … and the height
@@ -287,11 +291,12 @@ tab in the Map Editor:
 The template is now direction-relative and locomotion-aware; the authored A/B
 faces and `hex_move_cost` are gone:
 
-- **Movement**: `mp_foot_in/out` + `mp_mounted_in/out` REPLACE the destination
-  terrain cost (`_in` = outside→inside, `_out` = inside→outside; a hex uses `_in`
-  only). `NULL` = fall back to terrain; **negative = hard block** for that
-  locomotion (bypassed by free move and the DM). Inside/outside is chosen when the
-  structure is placed (instance `outside`), not authored.
+- **Movement (current)**: `mp_climb_up/down` + `mp_mounted_up/down` are the MP **per
+  10 ft climb** (ascend/descend; `NOT NULL DEFAULT 4`, `0` = free, negative = hard
+  block) — NOT an entry cost. See *Climb = x MP per 10 ft*. (Historic layout: these
+  began as flat directional crossing costs `_in`/`_out`; migrations 120–121 retired the
+  `ignore_climb` structure modifier and renamed the columns.) Inside/outside is chosen
+  when the structure is placed (instance `outside`), not authored.
 - **Durability is two pools damaged SIMULTANEOUSLY**: `max_hp` gates **modifiers**
   (`<= 0` = destroyed → the instance is removed) and `door_hp` is a second
   damageable pool. `0 <= door_hp <= max_hp`; `door_hp` defaults to `max_hp`. DT

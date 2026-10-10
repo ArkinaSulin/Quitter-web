@@ -63,7 +63,7 @@ function HexStructureInfo({ template, inst, hp, maxHp }: { template: StructureTe
       <div className="font-semibold text-amber-300">{template.name}</div>
       <div className="text-gray-300">HP {hp}/{maxHp} · DT {template.dt}</div>
       {!st.noDoor && <div className="text-gray-300">Door {doorText}</div>}
-      <div className="text-gray-400">Enter: {mpPairText(template.mpFootIn, template.mpMountedIn)} MP</div>
+      <div className="text-gray-400">Climb {mpPairText(template.mpClimbUp, template.mpMountedUp)} MP per 10 ft</div>
       {template.modifiers.length > 0 && <div className="text-gray-400">Effects: {modLine(template.modifiers)}</div>}
       <div className="text-gray-500 mt-1">Shift + double-click to edit · Shift + drop a unit to attack</div>
     </div>
@@ -79,8 +79,8 @@ function EdgeStructureInfo({ template, inst, hp, maxHp, outside }: { template: S
       <div className="font-semibold text-amber-300">{template.name}</div>
       <div className="text-gray-300">HP {hp}/{maxHp} · DT {template.dt}</div>
       {!st.noDoor && <div className="text-gray-300">Door {st.open ? 'open' : st.doorNow <= 0 ? 'broken' : `${st.doorNow}/${st.hpNow}`}</div>}
-      <div className="text-gray-400">In: {mpPairText(template.mpFootIn, template.mpMountedIn)} MP</div>
-      <div className="text-gray-400">Out: {mpPairText(template.mpFootOut, template.mpMountedOut)} MP</div>
+      <div className="text-gray-400">Climb up: {mpPairText(template.mpClimbUp, template.mpMountedUp)} MP per 10 ft</div>
+      <div className="text-gray-400">Climb down: {mpPairText(template.mpClimbDown, template.mpMountedDown)} MP per 10 ft</div>
       {(ac.melee || ac.ranged) ? <div className="text-gray-400">Cover AC melee {ac.melee} · ranged {ac.ranged}</div> : null}
       <div className="text-gray-500">Outside side: {outside === 'a' ? 'A' : 'B'}{template.battlement ? ' · battlement' : template.barricade ? ' · barricade' : template.sinWave ? ' · sin wave' : ''}{template.ladder ? ' · ladder' : ''}</div>
       <div className="text-gray-500 mt-1">Shift + double-click to edit · Shift + drop a unit to attack</div>

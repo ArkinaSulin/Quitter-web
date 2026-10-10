@@ -17,14 +17,13 @@
 
 `persistMapData` always **merges all layers** so no writer drops another.
 
-> **Hex MP cost rule.** *The MP cost to enter a hex is the **higher** of every
-> source that applies, computed **per locomotion**: a hex structure's entry MP
-> (`mp_foot_in` / `mp_mounted_in`) and the summed `mp_cost` of any ground zones
-> there. A **negative** value is a hard block — that locomotion may not cross
-> (`X`). An open/broken door **waives** the structure's MP. Edge-structure faces
-> are directional and apply per-edge (they replace the hex cost when crossed, they
-> do not max with it). The board prints `foot/mounted` when either differs from
-> base (1): a number, `X` for blocked, `-` for no change.*
+> **MP cost rule.** A hex's centre cost is the **base terrain** (`max(1, terrain,
+> mp_cost effect)`); a hex structure has **no entry MP**. Structure cost is the
+> **climb** — a rising step onto/over a structure costs
+> `round(Δft/10) × mp_climb_up/down` (foot/mounted, `NOT NULL DEFAULT 4`) and
+> **replaces** the base; the crossed **edge overrides the hex**; a negative is a hard
+> block. An open/broken door waives the rise (base step). The board prints the hex
+> centre as the terrain/effect cost and each edge's climb as a tiny per-edge label.
 
 ## Authored map effects
 

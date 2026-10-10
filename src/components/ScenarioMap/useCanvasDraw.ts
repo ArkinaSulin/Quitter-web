@@ -350,6 +350,31 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           ctx.fillStyle = '#ffd9c9';
           ctx.fillText(label, mx, my);
         }
+        // Climb-cost labels next to the edge (per 10 ft), one per face/direction.
+        if (inst && t) {
+          const ref2 = edgeRef(q, r, d);
+          const outside = (inst.outside ?? 'a') === 'a';
+          for (const faceKey of ['a', 'b'] as const) {
+            const isOutside = (faceKey === 'a') === outside;
+            const foot = isOutside ? t.mpClimbUp : t.mpClimbDown;
+            const mounted = isOutside ? t.mpMountedUp : t.mpMountedDown;
+            const fmt = (v: number) => (v < 0 ? '✕' : String(v));
+            const text = foot === mounted ? fmt(foot) : `${fmt(foot)}/${fmt(mounted)}`;
+            const hc = hexCenter({ q: faceKey === 'a' ? ref2.aq : ref2.bq, r: faceKey === 'a' ? ref2.ar : ref2.br, s: 0 });
+            const mx = (a.x + b.x) / 2;
+            const my = (a.y + b.y) / 2;
+            const lx = mx + (hc.cx - mx) * 0.3;
+            const ly = my + (hc.cy - my) * 0.3;
+            ctx.font = MONO(ts.edge.fontPx);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.lineWidth = ts.edge.linePx;
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+            ctx.strokeText(text, lx, ly);
+            ctx.fillStyle = '#ffe0b2';
+            ctx.fillText(text, lx, ly);
+          }
+        }
         // Drag-to-attack hint: the edge under the pointer gets a bright cap.
         if (hoveredWallEdge && hoveredWallEdge.key === key) {
           ctx.strokeStyle = 'rgba(255, 140, 60, 0.95)';

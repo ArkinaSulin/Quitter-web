@@ -35,17 +35,17 @@ describe('structure elevation (2b)', () => {
   it('climbing onto a higher hex structure costs steps × its per-10-ft mp_*', () => {
     const templates = { tower: tmpl({ anchor: 'hex', elevation: 10 }) };
     const structures = { '1,0': inst('tower') };
-    // Height 10 = 1 step; mp_foot_in null = default 4.
+    // Height 10 = 1 step; mp_climb_up null = default 4.
     expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(4);
-    // An authored per-10-ft (mp_foot_in 2) → 1 step × 2.
-    const t2 = { tower: tmpl({ anchor: 'hex', elevation: 10, mpFootIn: 2 }) };
+    // An authored per-10-ft (mp_climb_up 2) → 1 step × 2.
+    const t2 = { tower: tmpl({ anchor: 'hex', elevation: 10, mpClimbUp: 2 }) };
     expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, t2)).toBe(2);
     // A 20-ft hex tower = 2 steps.
-    const t20 = { tower: tmpl({ anchor: 'hex', elevation: 20, mpFootIn: 3 }) };
+    const t20 = { tower: tmpl({ anchor: 'hex', elevation: 20, mpClimbUp: 3 }) };
     expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, t20)).toBe(6);
     // `structureClimbPerStep10` reads the DB value (default 4, 0 = free).
     expect(structureClimbPerStep10(t2.tower, inst('tower'))).toBe(2);
-    expect(structureClimbPerStep10(tmpl({ anchor: 'hex', mpFootIn: 0 }), inst('tower'))).toBe(0);
+    expect(structureClimbPerStep10(tmpl({ anchor: 'hex', mpClimbUp: 0 }), inst('tower'))).toBe(0);
   });
 
   it('same-surface movement has no climb', () => {
@@ -56,7 +56,7 @@ describe('structure elevation (2b)', () => {
 
   it('an edge mp_* of 0 is a free climb (the ignore_climb replacement)', () => {
     const templates = {
-      stair: tmpl({ anchor: 'edge', elevation: 10, doorHp: null, maxHp: 30, mpFootIn: 0, mpFootOut: 0 }),
+      stair: tmpl({ anchor: 'edge', elevation: 10, doorHp: null, maxHp: 30, mpClimbUp: 0, mpClimbDown: 0 }),
       tower: tmpl({ anchor: 'hex', elevation: 10 }),
     };
     const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
@@ -67,7 +67,7 @@ describe('structure elevation (2b)', () => {
 
   it('an edge structure overrides the adjacent hex-surface climb', () => {
     const templates = {
-      wall: tmpl({ anchor: 'edge', elevation: 10, doorHp: null, maxHp: 30, mpFootIn: 2 }),
+      wall: tmpl({ anchor: 'edge', elevation: 10, doorHp: null, maxHp: 30, mpClimbUp: 2 }),
       tower: tmpl({ anchor: 'hex', elevation: 20 }),
     };
     const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
@@ -104,7 +104,7 @@ describe('structure elevation (2b)', () => {
   });
 
   it('the authored mp_* is the per-10-ft climb cost, direction-dependent', () => {
-    const templates = { wall: tmpl({ anchor: 'edge', elevation: 10, doorHp: null, maxHp: 30, mpFootIn: 2, mpFootOut: 5 }) };
+    const templates = { wall: tmpl({ anchor: 'edge', elevation: 10, doorHp: null, maxHp: 30, mpClimbUp: 2, mpClimbDown: 5 }) };
     const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
     const key = edgeRef(0, 0, dir).key;
     // outside = canonical face A = (0,0): (0,0)->(1,0) is outside->inside → `_in` = 2.
@@ -116,7 +116,7 @@ describe('structure elevation (2b)', () => {
   });
 
   it('a mounted mover uses the mounted mp_*', () => {
-    const templates = { wall: tmpl({ anchor: 'edge', elevation: 10, doorHp: null, maxHp: 30, mpFootIn: 2, mpMountedIn: 6 }) };
+    const templates = { wall: tmpl({ anchor: 'edge', elevation: 10, doorHp: null, maxHp: 30, mpClimbUp: 2, mpMountedUp: 6 }) };
     const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
     const key = edgeRef(0, 0, dir).key;
     const structures = { [key]: inst('wall', { outside: 'a' }) };

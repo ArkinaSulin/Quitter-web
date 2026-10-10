@@ -116,23 +116,21 @@ export function climbStepsFromFeet(feet: number): number {
 export const CLIMB_MP_PER_STEP = 4;
 
 /**
- * The MP per 10-ft climb step for a structure, from its DB `mp_*` — the UNIFORM
- * rule: climbing costs `step × per-10-ft` (NOT `height/2.5`). `null`/absent = the
- * default 4; `0` = free; a negative is a hard block (handled elsewhere; treated as
- * 0 here). An edge picks `_in`/`_out` by `fromIsOutside`; a hex uses `_in`.
+ * The MP per 10-ft climb step for a structure, from its DB `mp_climb_up/down`
+ * (`NOT NULL DEFAULT 4`). The UNIFORM rule: climbing costs `step × per-10-ft`.
+ * `0` = free. An **edge** picks up/down by `fromIsOutside`; a **hex** by
+ * `ascending`. A negative is a hard block (handled elsewhere; treated as 0 here).
  */
 export function structureClimbPerStep10(
   template: StructureTemplate | null | undefined,
   _instance?: StructureInstance | null,
-  opts: { isMounted?: boolean; fromIsOutside?: boolean } = {},
+  opts: { isMounted?: boolean; fromIsOutside?: boolean; ascending?: boolean } = {},
 ): number {
   if (!template) return CLIMB_MP_PER_STEP;
-  const outside = opts.fromIsOutside ?? true;
-  const authored = template.anchor === 'edge'
-    ? (opts.isMounted
-      ? (outside ? template.mpMountedIn : template.mpMountedOut)
-      : (outside ? template.mpFootIn : template.mpFootOut))
-    : (opts.isMounted ? template.mpMountedIn : template.mpFootIn);
+  const up = template.anchor === 'edge' ? (opts.fromIsOutside ?? true) : (opts.ascending ?? true);
+  const authored = opts.isMounted
+    ? (up ? template.mpMountedUp : template.mpMountedDown)
+    : (up ? template.mpClimbUp : template.mpClimbDown);
   if (authored === null || authored === undefined) return CLIMB_MP_PER_STEP;
   return Math.max(0, authored);
 }
@@ -172,34 +170,31 @@ export function climbPlan(diffFeet: number, budgetMp: number, doneSteps: number,
 }
 
 /**
- * Climb MP to move between two ADJACENT hexes (0 = no climb / waived). Two sources:
- *   - a rise in the hex SURFACE (climbing onto a hex structure top);
- *   - an EDGE structure's HEIGHT (a solid wall must be climbed).
- * UNIFORM COST: `round(height/10) × mp_*` (the structure's per-10-ft MP; default 4,
- * `0` = free). A passable (open/broken) door lets the unit pass at ground level,
- * waiving that source too.
+ * The climb MP for a RISING structure step between two adjacent hexes, or
+ * `undefined` when the step is not a structure climb (no structure, a same-surface
+ * step, or an open/broken door). A crossed **EDGE** structure's climb OVERRIDES the
+ * destination **hex** structure's surface rise. This value **replaces** the base
+ * (terrain) cost of the step.
+ *
+ * NOTE: a "10-ft ladder" is relative — the structure spans elevation 0 (base) → X
+ * (top), so its 10-ft segments are 0→10, 10→20, …; the door is the exception
+ * (always at elevation 0).
  */
-export function structureClimbCostBetween(
+export function structureStepClimb(
   from: { q: number; r: number },
   to: { q: number; r: number },
   structures: MapStructures | undefined,
   templates: Record<string, StructureTemplate> | undefined,
-  /** The mover ignores climb cost entirely (`waiveClimb` mover flag). */
-  waiveClimb = false,
-  isMounted = false,
-): number {
-  if (waiveClimb) return 0;
-  if (!structures) return 0;
+  opts: { isMounted?: boolean; waiveClimb?: boolean } = {},
+): number | undefined {
+  if (opts.waiveClimb) return 0;
+  if (!structures) return undefined;
+  const isMounted = !!opts.isMounted;
   const dir = directionBetween(from, to);
   const edgeKey = dir >= 0 ? edgeRef(from.q, from.r, dir).key : null;
   const edgeInst = edgeKey ? structures[edgeKey] : undefined;
   const edgeT = edgeInst ? templates?.[edgeInst.templateId] : undefined;
-
-  // An EDGE structure's climb OVERRIDES the adjacent hex's surface climb. A height
-  // < 10 ft needs no climb. NOTE: a "10-ft ladder" is relative — the structure spans
-  // elevation 0 (base) → X (top), so its 10-ft segments are 0→10, 10→20, …; the
-  // door is the exception (always at elevation 0).
-  if (edgeInst && edgeT && dir >= 0 && structureDoorState(edgeInst, edgeT).noDoor) {
+  if (edgeInst && edgeT && dir >= 0 && !structureDoorState(edgeInst, edgeT).openOrBroken) {
     const steps = climbStepsFromFeet(structureElevation(edgeT, edgeInst));
     const ref = edgeRef(from.q, from.r, dir);
     const outsideIsA = (edgeInst.outside ?? 'a') === 'a';
@@ -208,18 +203,57 @@ export function structureClimbCostBetween(
       : (from.q === ref.bq && from.r === ref.br);
     return steps * structureClimbPerStep10(edgeT, edgeInst, { isMounted, fromIsOutside });
   }
-
-  // No edge structure (or an open door) → the hex surface rise (onto the top),
-  // waived when the hex can be entered at ground.
   const fromSurf = structureSurfaceAt(from, structures, templates);
   const toSurf = structureSurfaceAt(to, structures, templates);
   if (toSurf > fromSurf) {
     const toInst = structures[`${to.q},${to.r}`];
     const toT = toInst ? templates?.[toInst.templateId] : undefined;
     const groundPass = !!(toInst && toT && structureDoorState(toInst, toT).openOrBroken);
-    if (!groundPass) return climbStepsFromFeet(toSurf - fromSurf) * structureClimbPerStep10(toT, toInst, { isMounted });
+    if (!groundPass) return climbStepsFromFeet(toSurf - fromSurf) * structureClimbPerStep10(toT, toInst, { isMounted, ascending: true });
   }
-  return 0;
+  return undefined;
+}
+
+/**
+ * Climb MP to move between two ADJACENT hexes (0 = no climb / waived) — the
+ * `structureStepClimb` value, or 0 when the step isn't a structure climb.
+ */
+export function structureClimbCostBetween(
+  from: { q: number; r: number },
+  to: { q: number; r: number },
+  structures: MapStructures | undefined,
+  templates: Record<string, StructureTemplate> | undefined,
+  waiveClimb = false,
+  isMounted = false,
+): number {
+  return structureStepClimb(from, to, structures, templates, { isMounted, waiveClimb }) ?? 0;
+}
+
+/** True when a crossed EDGE structure HARD-BLOCKS (negative climb MP for the mover's
+ *  locomotion, direction-relative). Doors never gate. */
+export function structureEdgeBlocked(
+  from: { q: number; r: number },
+  to: { q: number; r: number },
+  structures: MapStructures | undefined,
+  templates: Record<string, StructureTemplate> | undefined,
+  isMounted = false,
+): boolean {
+  if (!structures) return false;
+  const dir = directionBetween(from, to);
+  if (dir < 0) return false;
+  const edgeInst = structures[edgeRef(from.q, from.r, dir).key];
+  const edgeT = edgeInst ? templates?.[edgeInst.templateId] : undefined;
+  if (!edgeInst || !edgeT) return false;
+  if (structureDoorState(edgeInst, edgeT).openOrBroken) return false;
+  const ref = edgeRef(from.q, from.r, dir);
+  const outsideIsA = (edgeInst.outside ?? 'a') === 'a';
+  const fromIsOutside = outsideIsA
+    ? (from.q === ref.aq && from.r === ref.ar)
+    : (from.q === ref.bq && from.r === ref.br);
+  const mp = isMounted
+    ? (fromIsOutside ? edgeT.mpMountedUp : edgeT.mpMountedDown)
+    : (fromIsOutside ? edgeT.mpClimbUp : edgeT.mpClimbDown);
+  return typeof mp === 'number' && mp < 0;
 }
 
 const intOr = (v: unknown): number | undefined => {
@@ -414,11 +448,9 @@ function faceFromTemplate(t: StructureTemplate, mods: EffectModifier[], which: '
   // face effects (crossing MP, cover AC, attack-roll flags) — only HP/door pools
   // remain (handled on the Wall, not the face).
   if (openOrBroken) return {};
-  const foot = which === 'inside' ? t.mpFootIn : t.mpFootOut;
-  const mounted = which === 'inside' ? t.mpMountedIn : t.mpMountedOut;
+  // NB: no face `moveCost` — the crossing cost is the structure's CLIMB
+  // (`structureStepClimb`), not a flat MP. The face carries only cover + roll flags.
   const f: WallFace = {};
-  if (foot !== null && foot !== undefined) f.moveCostFoot = foot;
-  if (mounted !== null && mounted !== undefined) f.moveCostMounted = mounted;
   if (which === 'inside') {
     const ac = coverAc(mods);
     if (ac.melee) f.meleeAc = ac.melee;
@@ -721,27 +753,6 @@ export function structureIsOpen(inst: StructureInstance | null | undefined): boo
 }
 
 /**
- * MP to ENTER this hex from a hex structure (replace semantics). Returns
- * `undefined` when there is no structure or no configured cost (caller falls
- * back to terrain). A standing door does not block here — see `structureHexBlocked`.
- */
-export function structureHexEntryCost(
-  hex: { q: number; r: number },
-  structures: MapStructures | null | undefined,
-  templates: Record<string, StructureTemplate> | null | undefined,
-  isMounted: boolean,
-): number | undefined {
-  const inst = hexStructureAt(structures, hex);
-  const t = inst ? templates?.[inst.templateId] : undefined;
-  if (!inst || !t) return undefined;
-  // Open/broken door → BASE hex MP. No door or intact door → the structure MP.
-  if (structureDoorState(inst, t).openOrBroken) return undefined;
-  const cost = isMounted ? t.mpMountedIn : t.mpFootIn;
-  if (cost === null || cost === undefined || cost < 0) return undefined;
-  return cost;
-}
-
-/**
  * True only when a hex structure HARD-BLOCKS entry (negative MP for the mover's
  * locomotion). Doors never gate hex entry: "If a unit can pay the structure's MP
  * and the hex is not occupied, it may enter — a closed door (0 < door_hp < max_hp)
@@ -757,7 +768,7 @@ export function structureHexBlocked(
   const inst = hexStructureAt(structures, hex);
   const t = inst ? templates?.[inst.templateId] : undefined;
   if (!inst || !t) return false;
-  const cost = isMounted ? t.mpMountedIn : t.mpFootIn;
+  const cost = isMounted ? t.mpMountedUp : t.mpClimbUp;
   return cost !== null && cost !== undefined && cost < 0;
 }
 

@@ -18,7 +18,7 @@ const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => (
   sinWave: false,
   ladder: false,
   hexBorder: true,
-  mpFootIn: 2, mpFootOut: null, mpMountedIn: -1, mpMountedOut: null,
+  mpClimbUp: 2, mpClimbDown: 4, mpMountedUp: -1, mpMountedDown: 4,
   doorHp: 30, maxHp: 100, dt: 15, modifiers: [], createdAt: '', updatedAt: '',
   ...over,
 });

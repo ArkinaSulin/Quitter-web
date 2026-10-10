@@ -159,7 +159,7 @@ as applied in the notes — check the live DB before relying on it).
 | 096 | structure `spikes` flag + rename "Archer Spikes" → "Archer's Stake" | ⏳ run in Supabase |
 | 097 | `structure_images` storage bucket + policies | ⏳ run in Supabase |
 | 098 | consistent table renames + function/view rebind (see convention above) | ✅ applied (2026-09-21) |
-| 099 | structure template rework: `mp_foot_in/out`+`mp_mounted_in/out` replace the A/B faces + `hex_move_cost`; `door_hp` gates passage, `max_hp` gates modifiers; one mode-scoped `modifiers` list; wipe instances + reseed 9 presets | ✅ applied |
+| 099 | structure template rework: `mp_climb_up/out`+`mp_mounted_up/out` replace the A/B faces + `hex_move_cost`; `door_hp` gates passage, `max_hp` gates modifiers; one mode-scoped `modifiers` list; wipe instances + reseed 9 presets | ✅ applied |
 | 100 | structure `hex_border` toggle (draw the thick hex outline or not) | ✅ applied |
 | 101 | remove standalone terrain-cost layer (`maps.terrain_costs` + `map_data.terrainCosts`); MP folds into structures/zones | ✅ applied |
 | 102 | edge decorations: `spikes`→`barricade`, add `sin_wave`; rename "Archer's Stake"→"Barricade" | ✅ applied |
@@ -177,6 +177,10 @@ as applied in the notes — check the live DB before relying on it).
 | 114 | edge structure `ladder` decoration + backfill from `ignore_climb` | ✅ applied |
 | 115 | `map_effect_templates.permanent` (effect-template never-ticks flag) | ✅ applied (2026-10-04) |
 | 116 | re-assert `units.movement_points_available` + `fly_speed_available` as NUMERIC (idempotent; fixes "invalid input syntax for type integer" if 060/110 were skipped) | ⏳ run in Supabase |
+| 117-118 | `unit_formations.organization_level` + the RPC reads it | ✅ applied |
+| 119 | `unit_images` storage delete policy | ✅ applied |
+| 120 | strip structure `ignore_climb` → `mp_climb_* = 0` | ✅ applied |
+| 121 | rename structure climb columns `mp_foot_in/out`, `mp_mounted_in/out` → `mp_climb_up/down`, `mp_mounted_up/down`; `NOT NULL DEFAULT 4` | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

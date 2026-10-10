@@ -1,5 +1,24 @@
 # QuiTTER Changelog
 
+## Structure climb columns renamed + climb replaces terrain; per-edge climb labels (2026-10-10)
+**Files:** supabase/migrations/121_structure_climb_mp_rename.sql, src/types/structure.ts, src/packages/movement/lib/{structureTemplates,mapStructures}.ts (+ tests), src/packages/world/lib/mapGeometry.ts (+ tests), src/components/{StructureEditor/StructureEditor,shared/mapFeatureDraw,ScenarioMap/{useCanvasDraw,MapInfoTooltip,StructurePaintPanel},MapEditor/{MapEditor,MapCanvas}}.tsx, docs/dev/{18-map-structures,changelog}.md, docs/players/player-manual.md
+
+- **Columns renamed** `mp_foot_in/out`, `mp_mounted_in/out` → **`mp_climb_up/down`,
+  `mp_mounted_up/down`**, `NOT NULL DEFAULT 4` (migration **121**, backfills nulls).
+  They are the MP **per 10 ft climb** (ascend/descend), never an entry cost. TS fields
+  renamed too (`mpClimbUp/…`); editors relabel "Climb up / Climb down".
+- **Climb replaces terrain.** A **rising** structure step (crossing a solid edge, or
+  climbing onto a higher hex) costs `round(Δft/10) × mp_climb_*` and **replaces** the
+  base; the **crossed edge overrides the hex**. A **structure top has no entry MP** —
+  a same-elevation move uses `max(1, terrain, mp_cost effect)`. New
+  `structureStepClimb` (returning `undefined` when it is not a climb) drives
+  `makeCostOfHex`; the flat edge-face `moveCost` is gone and the negative-`mp_climb_*`
+  hard block moved to `structureEdgeBlocked`. `structureHexEntryCost` removed.
+- **Display:** the hex centre shows the terrain/effect cost only; each edge shows its
+  **climb cost as a tiny per-edge label** (both canvases, font-capped when zoomed out —
+  new `mapTextStyles.edge`).
+- `tsc` clean, 997 tests pass, build clean. **Apply 121 in Supabase.**
+
 ## Uniform climb cost = x MP per 10 ft (as per DB); hex climb authorable; soft over-budget climb (2026-10-10)
 **Files:** src/packages/movement/lib/mapStructures.ts (+ tests/structureElevation.test.ts), src/components/ScenarioMap/{useMoveActions,useCombatActions,ScenarioMap}.tsx, docs/dev/{18-map-structures,outstanding,changelog}.md, docs/players/player-manual.md
 
