@@ -159,8 +159,31 @@ export async function routeUnit(
     payload: causeId ? { cause: causeId } : undefined,
   });
 
-  // A killed/removed host drops its rider: auto-detach (and fall if airborne).
+  // A killed/removed unit: a rider killed in air detaches from its mount, any unit
+  // killed AIRBORNE drops to elevation 0 in its own hex, and its own riders detach
+  // (falling if airborne). Each step is logged.
   if (killed) {
+    if (unit.attachedToUnitId) {
+      subSteps.push({
+        type: 'DETACH_HERO',
+        description: `${name} falls off its mount`,
+        unitId: unit.id,
+        changes: [
+          { field: 'attachedToUnitId', from: unit.attachedToUnitId, to: null },
+          { field: 'attachedPosition', from: unit.attachedPosition, to: null },
+        ],
+      });
+      notes.push(`${name} detached`);
+    }
+    // Killed in air (not mid-climb, handled above) → drop to the ground, no damage.
+    if (!unit.climbTo && (unit.elevation ?? 0) > 0) {
+      subSteps.push({
+        type: 'ELEVATE',
+        description: `${name} falls to the ground`,
+        unitId: unit.id,
+        changes: [{ field: 'elevation', from: unit.elevation ?? 0, to: 0 }],
+      });
+    }
     const lost = hostLostHeroSteps(unit, units, climbFallTo);
     if (lost.steps.length > 0) {
       subSteps.push(...lost.steps);

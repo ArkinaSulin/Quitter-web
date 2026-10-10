@@ -171,4 +171,9 @@ describe('tokenDrawOrder', () => {
     const high = u(10);
     expect([high, low].sort(tokenDrawOrder)).toEqual([low, high]);
   });
+  it('dead units (incl. a fallen flyer) sort to the very bottom', () => {
+    const live = u(0);
+    const deadFlyer = u(0, { flySpeed: 5, currentUnitHp: 0 });
+    expect([live, deadFlyer].sort(tokenDrawOrder)).toEqual([deadFlyer, live]);
+  });
 });

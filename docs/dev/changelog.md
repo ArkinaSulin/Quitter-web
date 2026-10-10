@@ -20,6 +20,9 @@
   now call `hostLostHeroSteps`: a rider on a killed/removed host auto-detaches, then
   falls (per-troop) if airborne and unable to fly. `routeUnit` gained a `units` parameter
   (all callers updated). Rout (non-kill) keeps the existing Move-together/Stay-behind card.
+- **Killed in the air.** A unit **killed while airborne** (hero and/or its mount) now
+  detaches (if attached) and drops to **elevation 0 in its own hex**; corpses sort to the
+  **very bottom** of the token draw order (`tokenDrawOrder`).
 - `tsc` clean, tests pass, build clean. No migration.
 
 ## Placed-structure elevation now round-trips (2026-10-10)

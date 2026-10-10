@@ -59,3 +59,24 @@ describe('hostLostHeroSteps — rider auto-detach on host loss', () => {
     expect(steps.some(s => s.type === 'ELEVATE')).toBe(false);
   });
 });
+
+describe('routeUnit — killed in the air', () => {
+  it('drops an airborne killed unit to elevation 0 in its own hex', async () => {
+    const { execute, calls } = capture();
+    await routeUnit(execute as any, unit({ elevation: 20, flySpeed: 6 }), 'slain', true);
+    const rout = calls.find(c => c.type === 'ROUT')!;
+    const elev = rout.steps.find(s => s.type === 'ELEVATE');
+    expect(elev?.changes).toEqual([{ field: 'elevation', from: 20, to: 0 }]);
+  });
+
+  it('detaches a rider killed while attached', async () => {
+    const { execute, calls } = capture();
+    await routeUnit(execute as any, unit({ elevation: 20, attachedToUnitId: 'mount', attachedPosition: 'rider' }), 'slain', true);
+    const rout = calls.find(c => c.type === 'ROUT')!;
+    const detach = rout.steps.find(s => s.type === 'DETACH_HERO');
+    expect(detach?.changes).toEqual([
+      { field: 'attachedToUnitId', from: 'mount', to: null },
+      { field: 'attachedPosition', from: 'rider', to: null },
+    ]);
+  });
+});
