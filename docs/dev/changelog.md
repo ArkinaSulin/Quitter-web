@@ -1,5 +1,24 @@
 # QuiTTER Changelog
 
+## Unified edge hitbox (0.5) + Shift-only wall hover highlight (2026-10-10)
+**Files:** src/packages/movement/lib/walls.ts, src/hooks/useHexGrid.ts, src/components/ScenarioMap/ScenarioMap.tsx, src/components/MapEditor/MapCanvas.tsx, docs/dev/{18-map-structures,changelog}.md
+
+- **One edge threshold.** New `movement.EDGE_HIT_RATIO = 0.5` (fraction of the hex
+  size) replaces the tooltip's `0.38`/`0.6`, the drag-attack's `0.38`, and the
+  double-click edit — `getWallEdgeAt` defaults to it and the info-hover no longer
+  branches on Shift. Tooltip, drag-onto-edge attack and the edit all share it.
+- **Shift + double-click is now wall-aware.** Both the ScenarioMap
+  (`handleDoubleClick`) and the Map Editor (`onDoubleClick`) resolve the nearest
+  **existing** edge structure via `nearestWallEdge(..., EDGE_HIT_RATIO)` before the
+  old `nearestEdge` fallback, so a click near a wall reliably targets it instead of a
+  geometrically-nearer empty edge. No wall thickness/visual changes.
+- **Shift-only hover highlight.** While Shift is held, the edge the double-click would
+  edit is drawn with the orange cap: ScenarioMap feeds the info-hovered edge into the
+  existing `hoveredWallEdge` highlight; the Map Editor tracks a `hoverEdgeRef`
+  (memoized `structuresToWalls`) and strokes it. `getWallEdgeAt` is exposed from
+  `useHexGrid` for reuse.
+- `tsc` clean, 1005 tests pass, build clean. No migration.
+
 ## Climb labels show the total cost, hug the edge, and cover hex structures (2026-10-10)
 **Files:** src/components/shared/mapFeatureDraw.ts (+ test), src/components/ScenarioMap/useCanvasDraw.ts, src/components/MapEditor/MapCanvas.tsx, docs/dev/{13-map-entities-terrain,18-map-structures,changelog}.md, docs/players/player-manual.md
 

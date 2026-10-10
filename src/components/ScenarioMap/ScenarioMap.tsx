@@ -966,7 +966,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     walls,
     structures,
     templates: structureTemplates,
-    hoveredWallEdge,
+    // Highlight the edge under the cursor while Shift is held (the Shift + double-click
+    // edit target), alongside the drag-to-attack cap.
+    hoveredWallEdge: hoveredWallEdge ?? (shiftHeld && infoHover?.kind === 'edge' ? infoHover.edge ?? null : null),
     hideUnits: shiftHeld,
     hideGroundUnits: spaceHeld,
     groundZones,
@@ -1954,6 +1956,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     getHexFromScreen,
     getUnitAt,
     getUnitAtScreen,
+    getWallEdgeAt,
     centerMap,
     centerOn,
     panBy,
@@ -2335,11 +2338,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         const hexKey = `${hex.q},${hex.r}`;
         let key: string | null = structures[hexKey] ? hexKey : null;
         if (!key) {
-          const dir = edgeDirAtClient(hex, e.clientX, e.clientY);
-          if (dir !== null) {
-            const ek = edgeRef(hex.q, hex.r, dir).key;
-            if (structures[ek]) key = ek;
-          }
+          // Wall-aware hit test at the shared edge threshold (so a click near the
+          // wall reliably targets it, even when another edge is geometrically nearer).
+          const edge = getWallEdgeAt(e.clientX, e.clientY);
+          if (edge && structures[edge.key]) key = edge.key;
         }
         if (key && structureTemplates[structures[key].templateId]) {
           if (isGM || canToggleStructureDoor(key, structures, structureTemplates, units, isGM, canControlUnit)) {
@@ -2363,7 +2365,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (!unit) return;
     if (unit.hidden && !effectiveIsGM) return;
     if (effectiveIsGM || canEditUnit(unit)) setEditUnit(unit);
-  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAtScreen, effectiveIsGM, canEditUnit, structures, structureTemplates, units, isGM, canControlUnit, groundZones]);
+  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAtScreen, getWallEdgeAt, effectiveIsGM, canEditUnit, structures, structureTemplates, units, isGM, canControlUnit, groundZones]);
 
   // Editor Save → one chained command entry, one sub-step per changed field.
   const handleEditorSave = useCallback(async (changes: { field: string; from: any; to: any }[], description: string) => {

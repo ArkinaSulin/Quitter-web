@@ -270,6 +270,14 @@ function distToSegment(p: { x: number; y: number }, a: { x: number; y: number },
 }
 
 /**
+ * The single edge hit threshold, as a fraction of the hex size, shared by every
+ * edge interaction: the hover info tooltip, the drag-onto-the-edge attack, and the
+ * Shift + double-click structure edit (its hover highlight uses the same value, so
+ * the highlight always marks exactly what the edit gesture will select).
+ */
+export const EDGE_HIT_RATIO = 0.5;
+
+/**
  * The edge of `hex` nearest to a world-space point (for pointer authoring).
  * Returns the directed edge on `hex` (dir 0..5) plus its distance.
  */

@@ -6,10 +6,10 @@
 // the pointer paints exactly where it points. Zoom/pan via wheel + drag; hovering
 // shows the hex coordinate.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
 import { HEX_SIZE, DEFAULT_GRID_RADIUS, hexMpLabelAt, costShade, HEX_DIRS } from '@/packages/world';
-import { edgeRef, nearestEdge, hexCorner, climbStepsFromFeet, structureElevation } from '@/packages/movement';
+import { edgeRef, nearestEdge, hexCorner, climbStepsFromFeet, structureElevation, nearestWallEdge, EDGE_HIT_RATIO, type EdgeRef } from '@/packages/movement';
 import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls, structureZones, structureSurfaceAt } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { MapHexEffect, expandHexEffects } from '@/packages/effects';
@@ -67,6 +67,8 @@ export function MapCanvas({
   const structImgs = useRef<Map<string, HTMLImageElement>>(new Map());
   const drag = useRef<{ mode: 'none' | 'pan' | 'structure' | 'effect'; lastHex: string; sx: number; sy: number }>({ mode: 'none', lastHex: '', sx: 0, sy: 0 });
   const [hover, setHover] = useState<string | null>(null);
+  // Edge under the cursor while Shift is held (the Shift + double-click edit target).
+  const hoverEdgeRef = useRef<EdgeRef | null>(null);
   const propsRef = useRef({
     imageUrl, offsetX, offsetY, scale, gridRadius, structures, templates,
     hexEffects, effectTemplates, effectArmed,
@@ -79,6 +81,10 @@ export function MapCanvas({
     structureAnchors, selectedStructureKey, readOnly,
     onPaintStructureEdge, onPaintStructureHex, onClearStructure, onPaintEffect, onClearEffect, onEditStructureKey,
   };
+
+  // Runtime walls (for the wall-aware Shift hit test) — rebuilt only when the
+  // structures/templates change, not per pointer move.
+  const walls = useMemo(() => structuresToWalls(structures ?? {}, templates ?? {}), [structures, templates]);
 
   // Cache the background image so draw is synchronous.
   useEffect(() => {
@@ -352,6 +358,19 @@ export function MapCanvas({
         ctx.stroke();
       }
     }
+    // Shift-held hover cap: the edge the double-click would edit.
+    if (hoverEdgeRef.current) {
+      const hk = hoverEdgeRef.current;
+      const ref = edgeRef(hk.aq, hk.ar, hk.dir);
+      const a = worldCorner(ref.aq, ref.ar, ref.dir);
+      const b = worldCorner(ref.aq, ref.ar, ref.dir + 1);
+      ctx.strokeStyle = 'rgba(255, 140, 60, 0.95)';
+      ctx.lineWidth = 10 / zoom;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
 
     ctx.restore();
   }, []);
@@ -401,6 +420,20 @@ export function MapCanvas({
     return { q: hex.q, r: hex.r, dir };
   };
 
+  // Wall-aware edge under the pointer (nearest EXISTING edge structure within the
+  // shared `EDGE_HIT_RATIO`) — the Shift + double-click edit target / hover highlight.
+  const wallEdgeAtClient = (sx: number, sy: number): EdgeRef | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const { zoom, ox, oy } = view.current;
+    const world = { x: (sx - rect.left - ox) / zoom, y: (sy - rect.top - oy) / zoom };
+    const hex = pixelToHex(world, HEX_SIZE);
+    const R = propsRef.current.gridRadius || DEFAULT_GRID_RADIUS;
+    if (Math.abs(hex.q) > R || Math.abs(hex.r) > R || Math.abs(hex.s) > R) return null;
+    return nearestWallEdge(walls, hex, world, HEX_SIZE, HEX_SIZE * EDGE_HIT_RATIO);
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -444,6 +477,9 @@ export function MapCanvas({
     if (!hex) return;
     const hexKey = `${hex.q},${hex.r}`;
     if (p.structures[hexKey]) { p.onEditStructureKey(hexKey); return; }
+    // Wall-aware at the shared threshold: reliably targets the wall near the cursor.
+    const wall = wallEdgeAtClient(e.clientX, e.clientY);
+    if (wall && p.structures[wall.key]) { p.onEditStructureKey(wall.key); return; }
     const edge = edgeAtClient(e.clientX, e.clientY);
     if (edge) {
       const key = edgeRef(edge.q, edge.r, edge.dir).key;
@@ -454,6 +490,12 @@ export function MapCanvas({
     const d = drag.current;
     const hex = hexAtClient(e.clientX, e.clientY);
     setHover(hex ? `${hex.q}, ${hex.r}` : null);
+    // Shift-held hover: highlight the edge the double-click would edit.
+    const nextHoverEdge = e.shiftKey && hex ? wallEdgeAtClient(e.clientX, e.clientY) : null;
+    if ((nextHoverEdge?.key ?? null) !== (hoverEdgeRef.current?.key ?? null)) {
+      hoverEdgeRef.current = nextHoverEdge;
+      requestAnimationFrame(draw);
+    }
     if (d.mode === 'pan') {
       view.current.ox += e.clientX - d.sx;
       view.current.oy += e.clientY - d.sy;
@@ -487,7 +529,10 @@ export function MapCanvas({
       return;
     }
   };
-  const endPointer = () => { drag.current.mode = 'none'; };
+  const endPointer = () => {
+    drag.current.mode = 'none';
+    if (hoverEdgeRef.current) { hoverEdgeRef.current = null; requestAnimationFrame(draw); }
+  };
   const onWheel = (e: React.WheelEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;

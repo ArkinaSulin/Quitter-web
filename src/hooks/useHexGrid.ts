@@ -7,7 +7,7 @@ import { isUnitInteractable } from '@/packages/units';
 import { elevationOffset, canFly, parseClimbTo, hexDirection } from '@/packages/movement';
 import { hexToPixel, pixelToHex } from '@/packages/primitives';
 import { getAttachedHeroPos, getHeroSquareSize, TOKEN_HEIGHT } from '@/packages/units';
-import { EdgeRef, Walls, nearestWallEdge } from '@/packages/movement';
+import { EdgeRef, Walls, nearestWallEdge, EDGE_HIT_RATIO } from '@/packages/movement';
 
 // Re-export the pure hex math so existing importers keep working.
 export { hexToPixel, pixelToHex } from '@/packages/primitives';
@@ -359,7 +359,7 @@ export function useHexGrid({
   }, [canvasRef, offsetX, offsetY, zoom]);
 
   /** The nearest wall edge to a screen point, within a fraction-of-hex threshold. */
-  const getWallEdgeAt = useCallback((screenX: number, screenY: number, ratio = 0.38): EdgeRef | null => {
+  const getWallEdgeAt = useCallback((screenX: number, screenY: number, ratio = EDGE_HIT_RATIO): EdgeRef | null => {
     const hex = getHexFromScreen(screenX, screenY);
     if (!hex) return null;
     const world = getWorldFromScreen(screenX, screenY);
@@ -463,7 +463,7 @@ export function useHexGrid({
     const rect = canvasRef.current?.getBoundingClientRect();
     const infoKey = (() => {
       if (hoverUnit || draggingUnitId || !hex || !rect) return null;
-      const edge = getWallEdgeAt(e.clientX, e.clientY, shiftHeld ? 0.6 : 0.38);
+      const edge = getWallEdgeAt(e.clientX, e.clientY);
       return edge ? `e:${edge.key}` : `h:${hex.q},${hex.r}`;
     })();
     if (infoKey !== hoveredInfoKeyRef.current) {
@@ -473,7 +473,7 @@ export function useHexGrid({
       if (infoKey && hex && rect) {
         // Viewport (client) coords — the info tooltip is portal/fixed.
         if (infoKey.startsWith('e:')) {
-          const edge = getWallEdgeAt(e.clientX, e.clientY, shiftHeld ? 0.6 : 0.38);
+          const edge = getWallEdgeAt(e.clientX, e.clientY);
           if (edge) onEdgeHover?.(edge, e.clientX, e.clientY);
         } else {
           onHexHover?.(hex, e.clientX, e.clientY);
@@ -655,6 +655,7 @@ export function useHexGrid({
     getHexFromScreen,
     getUnitAt,
     getUnitAtScreen,
+    getWallEdgeAt,
     centerMap,
     centerOn,
     panBy,
