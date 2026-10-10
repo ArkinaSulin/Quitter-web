@@ -237,6 +237,15 @@ export function rollFallDamage(feet: number, rng: () => number = Math.random): {
   return { total, faces };
 }
 
+/**
+ * Fall damage for a TROOP unit: the fall is rolled once and EVERY troop takes it,
+ * so the unit's HP pool loses `roll × troopCount`. A `feather_fall` carrier is
+ * exempt — the caller checks `unitHasFeatherFall` and skips.
+ */
+export function perTroopFallDamage(feet: number, troopCount: number, rng: () => number = Math.random): number {
+  return rollFallDamage(feet, rng).total * Math.max(0, Math.floor(troopCount));
+}
+
 /** Structures are considered 10 ft tall (ground-level). A unit must be within
  *  10 ft of this height to attack one. (Pending: real per-structure height.) */
 export const STRUCTURE_HEIGHT_FT = 10;

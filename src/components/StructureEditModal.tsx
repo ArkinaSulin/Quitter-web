@@ -51,9 +51,8 @@ export function StructureEditModal({ template, instance, onSave, onClose, restri
   const patchMod = (i: number, p: Partial<EffectModifier>) => setMods(m => m.map((x, idx) => (idx === i ? { ...x, ...p } : x)));
 
   const save = () => {
-    // Edge structures are REMOVED at 0 HP (unlike hex structures, which stay and
-    // show a destroyed badge).
-    if (template.anchor === 'edge' && hp <= 0 && onRemove) {
+    // A structure at 0 HP is destroyed — REMOVED from the map (edge and hex alike).
+    if (hp <= 0 && onRemove) {
       onRemove();
       onClose();
       return;

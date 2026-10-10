@@ -4,7 +4,7 @@ import {
   structureBlocksOrg, zoneBlocksOrg, structureRangeBonus, structureIsOpen,
   structureStepClimb, structureHexBlocked, structureAuraFlags, structureZones,
   structureDoorState, structureDoorHex, canToggleStructureDoor, doorPassThroughHexes,
-  orgGatesForEntry, describeOrgGateBlock, entryBreakFormation, standingMaxOrg,
+  orgGatesForEntry, describeOrgGateBlock, entryBreakFormation, standingMaxOrg, floatingUnits,
 } from '@/packages/movement/lib/mapStructures';
 import { meleeWallAc, rangedWallAc, edgeRef } from '@/packages/movement/lib/walls';
 import { StructureTemplate } from '@/types/structure';
@@ -394,5 +394,32 @@ describe('edge structure cover (wood wall regression)', () => {
     const wB = structuresToWalls({ '0,0,0': { templateId: 'wood-wall', outside: 'b' } }, templates);
     expect(meleeWallAc(wB, { q: 1, r: 0 }, { q: 0, r: 0 })).toBe(2); // defender inside
     expect(meleeWallAc(wB, { q: 0, r: 0 }, { q: 1, r: 0 })).toBe(0); // defender outside
+  });
+});
+
+describe('floatingUnits (units left unsupported after a structure is removed)', () => {
+  const unit = (over: any = {}) => ({
+    id: 'u', isDeleted: false, attachedToUnitId: null, climbTo: null, elevation: 0,
+    flySpeed: 0, hex: { q: 0, r: 0, s: 0 }, ...over,
+  });
+
+  it('reports a non-flyer whose elevation exceeds the hex surface only after removal', () => {
+    const structures = { '0,0': { templateId: 'tower' } };
+    const templates = { tower: template({ id: 'tower', anchor: 'hex', elevation: 10 }) };
+    const onTop = unit({ elevation: 10 });
+    const grounded = unit({ id: 'g', elevation: 0 });
+    // Tower still stands → nobody floats.
+    expect(floatingUnits([onTop, grounded] as any, structures, templates)).toEqual([]);
+    // Tower gone → the unit on top is floating.
+    expect(floatingUnits([onTop, grounded] as any, {}, templates).map(u => u.id)).toEqual(['u']);
+  });
+
+  it('ignores flyers, hung climbers, and attached riders', () => {
+    const list = [
+      unit({ id: 'fly', elevation: 20, flySpeed: 6 }),
+      unit({ id: 'climb', elevation: 10, climbTo: '1,0' }),
+      unit({ id: 'rider', elevation: 10, attachedToUnitId: 'host' }),
+    ];
+    expect(floatingUnits(list as any, {}, {})).toEqual([]);
   });
 });

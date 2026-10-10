@@ -1,5 +1,27 @@
 # QuiTTER Changelog
 
+## Destroyed structures removed; collapse falls; rider auto-detach (2026-10-10)
+**Files:** src/components/ScenarioMap/{ScenarioMap.tsx,routeUnit.ts,useCombatActions.ts,useCastActions.ts,useReactionActions.ts,useMoveActions.ts}, src/hooks/useGameEngine.ts, src/packages/movement/lib/{flying,mapStructures}.ts (+ tests), src/components/StructureEditModal.tsx, src/components/shared/mapFeatureDraw.ts (+ test), docs/dev/{18-map-structures,changelog}.md, docs/players/player-manual.md
+
+- **Destroyed = removed.** A hex structure at 0 HP now DELETES its instance (matching
+  edge walls) instead of lingering with a grey `✕`; `performStructureAttack` writes
+  `to: null`. The `✕` badge code (`structureBadges.destroyed` / `drawHexStructure`) is
+  deleted. `StructureEditModal` routes `hp <= 0` → **Remove for every anchor** (was edge-only).
+- **Collapse fall (immediate).** On combat destruction, units standing on the top
+  (`0 < elevation <= structureElevation`) and their **attached riders** fall in the SAME
+  `ATTACK` command: `ELEVATE → 0` + per-troop `DAMAGE` (`perTroopFallDamage` = one
+  `floor(ft/10)`d6 roll × troop count; `feather_fall` negates). A host annihilated by the
+  fall detaches its rider and routes; each step is written to the message panel.
+- **End-turn float resolution.** A structure removed by the DM/editor leaves units
+  floating (no immediate fall). At any alliance's End Turn, `floatingUnits`
+  (non-flying, `elevation > structureSurfaceAt(hex)`, not climbing) + their riders drop
+  and take the same per-troop fall damage, folded into the `END_TURN` command.
+- **Rider auto-detach on host loss.** `routeUnit` (killed) and the GM `DELETE` command
+  now call `hostLostHeroSteps`: a rider on a killed/removed host auto-detaches, then
+  falls (per-troop) if airborne and unable to fly. `routeUnit` gained a `units` parameter
+  (all callers updated). Rout (non-kill) keeps the existing Move-together/Stay-behind card.
+- `tsc` clean, tests pass, build clean. No migration.
+
 ## Placed-structure elevation now round-trips (2026-10-10)
 **Files:** src/packages/movement/lib/mapStructures.ts (+ tests/mapStructures.test.ts), docs/dev/changelog.md
 

@@ -3,7 +3,7 @@ import {
   canFly, elevationGapFeet, elevationGapHexes, elevationOffset, airOccupiedHexes,
   maxElevationAfter, elevationSliderRange, carryRule, FLYING_MAX_FORMATION, flyingFormationCap,
   meleeElevationFor, canReachStructure, STRUCTURE_HEIGHT_FT,
-  movePoolMode, flyMax, moveBudgetUnit, passengerDrain, rollFallDamage,
+  movePoolMode, flyMax, moveBudgetUnit, passengerDrain, rollFallDamage, perTroopFallDamage,
   isAirborne, withinVerticalGap, verticalGapDown, usesFlyPool,
 } from '@/packages/movement/lib/flying';
 import { Unit } from '@/types/gameProtocol';
@@ -178,5 +178,12 @@ describe('flying', () => {
     // All-1 rng → every die is 1.
     const one = () => 0;
     expect(rollFallDamage(30, one)).toEqual({ total: 3, faces: [1, 1, 1] });
+  });
+
+  it('perTroopFallDamage: the roll is multiplied by the troop count', () => {
+    const six = () => 0.999;
+    expect(perTroopFallDamage(20, 4, six)).toBe(48); // 2d6 (12) × 4
+    expect(perTroopFallDamage(20, 0, six)).toBe(0);
+    expect(perTroopFallDamage(9, 5, six)).toBe(0);   // under 10 ft → no dice
   });
 });

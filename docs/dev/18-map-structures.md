@@ -242,7 +242,13 @@ blocked by any edge structure. The AI planner ignores it for v1.
 - **Door-first combat** (`combat/structureCombat.ts`): **Shift + drop** a unit on a
   gate/tower hex to attack it (a plain drop moves). No to-hit roll;
   the DT gates the blow; a standing door absorbs damage until destroyed, then the
-  structure HP is exposed; 0 HP deletes the instance. 1 action + attack cap.
+  structure HP is exposed; **0 HP removes the instance** (edge and hex alike). A
+  destroyed structure **collapses**: any unit on its top (and riders) falls — per-troop
+  `floor(ft/10)`d6 each (`feather_fall` negates). 1 action + attack cap.
+- **Removal & floats**: a structure removed in the editor leaves units floating; at any
+  End Turn, non-flying units above their hex surface (`floatingUnits`) drop and take the
+  same fall damage. A **rider whose host is killed/removed auto-detaches** (then falls if
+  airborne & non-flying) — `routeUnit`/`hostLostHeroSteps`.
 - **Rendering**: `useCanvasDraw` draws hex structures (black hex outline + artwork
   + HP badge, and a `door N`/`open` badge; tower HP above, door below).
 - **Inspect mode & tooltips**: holding **Shift** hides all unit/corpse tokens and

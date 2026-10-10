@@ -802,11 +802,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // remaining attackers.
     if (!options?.deferRouting) {
       if (defenderRouted || defenderKilled) {
-        await routeUnit(execute, target, defenderKilled ? 'slain in combat' : `morale ${defModUnit.baseMorale + defEffectiveMod} after combat`, defenderKilled, attacker.id, structureSurfaceAt(target.hex, structures, structureTemplates));
+        await routeUnit(execute, target, defenderKilled ? 'slain in combat' : `morale ${defModUnit.baseMorale + defEffectiveMod} after combat`, defenderKilled, attacker.id, structureSurfaceAt(target.hex, structures, structureTemplates), units);
       }
 
       if (attackerRouted || attackerKilled) {
-        await routeUnit(execute, attacker, attackerKilled ? 'slain in combat' : `morale ${attMoraleBreak} after combat`, attackerKilled, target.id, structureSurfaceAt(attacker.hex, structures, structureTemplates));
+        await routeUnit(execute, attacker, attackerKilled ? 'slain in combat' : `morale ${attMoraleBreak} after combat`, attackerKilled, target.id, structureSurfaceAt(attacker.hex, structures, structureTemplates), units);
       }
     }
 

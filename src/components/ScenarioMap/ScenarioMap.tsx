@@ -54,7 +54,7 @@ import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackground
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST, isRotationAffordable } from '@/packages/movement';
 import { canReachStructure, canFly, parseClimbTo, isAirborne, flyMax } from '@/packages/movement';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/packages/movement';
-import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt, edgeShowsLadder } from '@/packages/movement';
+import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt, edgeShowsLadder, structureElevation } from '@/packages/movement';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { getStructureTemplates } from '@/packages/infra';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/packages/combat';
@@ -70,7 +70,7 @@ import { EffectFormModal, EffectFormValue } from './EffectFormModal';
 import { EffectCatalogTemplate, templateById } from '@/packages/effects';
 import { EffectModifier, EffectTemplate as EffectLibraryTemplate, mapEffectRow, modifierAmount } from '@/packages/effects';
 import { expandHexEffects, normalizeGroundEffectKinds } from '@/packages/effects';
-import { routeUnit } from './routeUnit';
+import { routeUnit, fallSteps, hostLostHeroSteps } from './routeUnit';
 import { ScenarioStatsModal } from './ScenarioStatsModal';
 import { parseDragPayload } from './EffectsPanel';
 import { useCommandLogRows } from '@/hooks/useCommandLogRows';
@@ -1190,19 +1190,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
     const attacks = structureAttackCount(attacker, weapon.numberOfAttacks ?? 1);
     const result = resolveHexStructureAttack(template, inst, weapon, Math.random, attacks);
-    // Hex structures stay at 0 HP (grey ✕), unlike edge walls which are removed.
-    const to = { ...inst, hp: result.hpAfter, doorHp: result.doorHpAfter };
+    // A destroyed structure (0 HP) is REMOVED from the map (hex and edge alike).
+    const to = result.destroyed ? null : { ...inst, hp: result.hpAfter, doorHp: result.doorHpAfter };
 
-    const doorNow = result.doorHpAfter;
-    const detail = result.deflected
-      ? `${attacker.unitName} struck the structure at ${label} — the blow is shrugged off (DT ${template.dt}, ${result.damage} damage)`
-      : result.destroyed
-        ? `${attacker.unitName} broke the structure at ${label} (${result.damage} damage)`
-        : result.hitDoor
-          ? `${attacker.unitName} hit the door at ${label} for ${result.applied} damage (${doorNow}/${structureDoorMax(template)} door HP left)`
-          : `${attacker.unitName} hit the structure at ${label} for ${result.applied} damage (${result.hpAfter}/${template.maxHp} HP left)`;
-    const verbose = `${detail} · ${formatStructureAttackRolls(result.rolls, template.dt ?? 0, weapon.damageDice)}`;
-    await execute('ATTACK', [
+    const subSteps: SubStep[] = [
       {
         type: 'ATTACK',
         description: `${attacker.unitName} attacked the structure at ${label} (${kind})`,
@@ -1214,12 +1205,66 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       },
       {
         type: 'STRUCTURE',
-        description: result.destroyed ? `Structure at ${label} broken` : `Structure at ${label} damaged`,
+        description: result.destroyed ? `Structure at ${label} destroyed` : `Structure at ${label} damaged`,
         unitId: scenarioId,
         changes: [{ field: 'structures', key, from: inst, to }],
       },
-    ], `${attacker.unitName} attacked the structure at ${label}`, { message: detail, verboseMessage: verbose });
-  }, [structures, structureTemplates, execute, addError, addMessage, scenarioId, structureAttackCount, formationsMap]);
+    ];
+
+    // Collapse: units standing on the (now gone) top — and their riders — fall.
+    // The falls ride the SAME command (ELEVATE + per-troop DAMAGE per unit).
+    const fallNotes: string[] = [];
+    const deadHosts: { host: Unit; newHp: number }[] = [];
+    if (result.destroyed) {
+      const top = structureElevation(template, inst);
+      const onTop = units.filter(u =>
+        !u.isDeleted && !u.attachedToUnitId &&
+        u.hex.q === hex.q && u.hex.r === hex.r &&
+        (u.elevation ?? 0) > 0 && (u.elevation ?? 0) <= top);
+      const handled = new Set<string>();
+      for (const host of onTop) {
+        let hostNewHp: number | null = null;
+        if (!handled.has(host.id)) {
+          handled.add(host.id);
+          const f = fallSteps(host, 0);
+          if (f.steps.length > 0) { subSteps.push(...f.steps); fallNotes.push(f.note); hostNewHp = f.newHp; }
+        }
+        const riders = units.filter(h => h.attachedToUnitId === host.id && !h.isDeleted);
+        for (const hero of riders) {
+          if (handled.has(hero.id)) continue;
+          handled.add(hero.id);
+          const f = fallSteps(hero, 0);
+          if (f.steps.length > 0) { subSteps.push(...f.steps); fallNotes.push(f.note); }
+        }
+        // Host annihilated by the collapse → its riders auto-detach (already fell).
+        if (hostNewHp !== null && hostNewHp <= 0) {
+          for (const hero of riders) {
+            subSteps.push(heroDetachStep(hero, `${hero.unitName} detaches — ${host.unitName} was crushed`));
+            fallNotes.push(`${hero.unitName} detached`);
+          }
+          deadHosts.push({ host, newHp: hostNewHp });
+        }
+      }
+    }
+
+    const doorNow = result.doorHpAfter;
+    const baseDetail = result.deflected
+      ? `${attacker.unitName} struck the structure at ${label} — the blow is shrugged off (DT ${template.dt}, ${result.damage} damage)`
+      : result.destroyed
+        ? `${attacker.unitName} destroyed the structure at ${label} (${result.damage} damage)`
+        : result.hitDoor
+          ? `${attacker.unitName} hit the door at ${label} for ${result.applied} damage (${doorNow}/${structureDoorMax(template)} door HP left)`
+          : `${attacker.unitName} hit the structure at ${label} for ${result.applied} damage (${result.hpAfter}/${template.maxHp} HP left)`;
+    const detail = fallNotes.length > 0 ? `${baseDetail} · ${fallNotes.join(' · ')}` : baseDetail;
+    const verbose = `${detail} · ${formatStructureAttackRolls(result.rolls, template.dt ?? 0, weapon.damageDice)}`;
+    await execute('ATTACK', subSteps, `${attacker.unitName} attacked the structure at ${label}`, { message: detail, verboseMessage: verbose });
+
+    // A host annihilated by the fall routes through the standard death flow. Pass an
+    // empty roster so the rider isn't detached twice (already handled above).
+    for (const { host, newHp } of deadHosts) {
+      await routeUnit(execute, { ...host, currentUnitHp: newHp }, 'crushed by the collapsing structure', true, attacker.id, 0, []);
+    }
+  }, [structures, structureTemplates, units, execute, addError, addMessage, scenarioId, structureAttackCount, formationsMap]);
 
   // Identity gate for the Shift-drop router: an attackable structure EXISTS on
   // this hex (no reach/range/vertical check — the attack reports "cannot reach").
@@ -1553,6 +1598,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         turnNumber,
         freeMove,
         zones: effectiveZones,
+        structures,
+        structureTemplates,
       });
       // Only advance the client's turn state when the server actually committed —
       // otherwise the UI shows a turn that never happened (and units never reset).
@@ -2932,12 +2979,19 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           rallyReason={rallyCheck.reason}
           onRally={() => rallyUnit(contextMenuUnit)}
           onDeleteUnit={async () => {
-            await execute('DELETE', [{
-              type: 'DELETE',
-              description: `Removed ${contextMenuUnit.unitName} from play`,
-              unitId: contextMenuUnit.id,
-              changes: [{ field: 'isDeleted', from: false, to: true }],
-            }], `Removed ${contextMenuUnit.unitName}`);
+            const host = contextMenuUnit;
+            const surface = structureSurfaceAt(host.hex, structures, structureTemplates);
+            const lost = hostLostHeroSteps(host, units, surface);
+            const subSteps: SubStep[] = [
+              {
+                type: 'DELETE',
+                description: `Removed ${host.unitName} from play`,
+                unitId: host.id,
+                changes: [{ field: 'isDeleted', from: false, to: true }],
+              },
+              ...lost.steps,
+            ];
+            await execute('DELETE', subSteps, lost.notes.length ? `Removed ${host.unitName} · ${lost.notes.join(' · ')}` : `Removed ${host.unitName}`);
           }}
           onAttachHero={(heroId, targetUnitId) => {
             const hero = units.find(u => u.id === heroId);

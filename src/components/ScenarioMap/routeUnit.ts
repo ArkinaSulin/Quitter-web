@@ -3,6 +3,7 @@
 import { Unit } from '@/types/gameProtocol';
 import { ActionType, SubStep, CommandLogRow } from '@/packages/infra';
 import { unitHasFeatherFall } from '@/packages/effects';
+import { canFly, perTroopFallDamage } from '@/packages/movement';
 
 export type ExecuteFn = (
   actionType: ActionType,
@@ -14,6 +15,74 @@ export type ExecuteFn = (
 ) => Promise<CommandLogRow | null>;
 
 /**
+ * ELEVATE + (per-troop) DAMAGE steps for one unit dropping to elevation `to`.
+ * Returns the steps (empty when already at `to`), a one-line note for the message
+ * panel, and the post-fall HP/troops (for death routing). `feather_fall` negates
+ * the damage (still lands).
+ */
+export function fallSteps(unit: Unit, to = 0): { steps: SubStep[]; note: string; newHp: number; newTroops: number } {
+  const target = Math.max(0, Math.round(to));
+  const feet = Math.max(0, (unit.elevation ?? 0) - target);
+  let newHp = unit.currentUnitHp ?? 0;
+  let newTroops = unit.currentTroopCount;
+  if (feet <= 0) return { steps: [], note: '', newHp, newTroops };
+  const steps: SubStep[] = [{
+    type: 'ELEVATE',
+    description: `${unit.unitName} falls to the ground`,
+    unitId: unit.id,
+    changes: [{ field: 'elevation', from: unit.elevation ?? 0, to: target }],
+  }];
+  let note = `${unit.unitName} fell ${feet} ft`;
+  const total = unitHasFeatherFall(unit) ? 0 : perTroopFallDamage(feet, unit.currentTroopCount);
+  if (total > 0) {
+    newHp = Math.max(0, newHp - total);
+    newTroops = Math.max(0, Math.ceil(newHp / Math.max(1, unit.troopHp)));
+    steps.push({
+      type: 'DAMAGE',
+      description: `${unit.unitName} took ${total} falling damage`,
+      unitId: unit.id,
+      changes: [
+        { field: 'currentUnitHp', from: unit.currentUnitHp, to: newHp },
+        { field: 'currentTroopCount', from: unit.currentTroopCount, to: newTroops },
+      ],
+    });
+    note += ` · ${unit.unitName} took ${total} falling damage`;
+  }
+  return { steps, note, newHp, newTroops };
+}
+
+/**
+ * Steps to detach any hero riding `host` when the host is lost (killed or removed):
+ * each hero detaches, then falls (per-troop fall damage) if it is airborne and
+ * cannot fly. One description per step so the message panel shows each event.
+ */
+export function hostLostHeroSteps(host: Unit, units: Unit[], fallTo = 0): { steps: SubStep[]; notes: string[] } {
+  const steps: SubStep[] = [];
+  const notes: string[] = [];
+  const heroes = units.filter(u => u.attachedToUnitId === host.id && !u.isDeleted);
+  for (const hero of heroes) {
+    steps.push({
+      type: 'DETACH_HERO',
+      description: `${hero.unitName} detaches — ${host.unitName} is gone`,
+      unitId: hero.id,
+      changes: [
+        { field: 'attachedToUnitId', from: hero.attachedToUnitId, to: null },
+        { field: 'attachedPosition', from: hero.attachedPosition, to: null },
+      ],
+    });
+    notes.push(`${hero.unitName} detached`);
+    if ((hero.elevation ?? 0) > fallTo && !canFly(hero)) {
+      const f = fallSteps(hero, fallTo);
+      if (f.steps.length > 0) {
+        steps.push(...f.steps);
+        notes.push(f.note);
+      }
+    }
+  }
+  return { steps, notes };
+}
+
+/**
  * Chained ROUT command for a killed/routed unit. `causeId` (the unit that caused
  * the rout, when known) is carried in the sub-step `payload` so the retreat
  * orchestrator can prefer the attacker as pursuer. The server never applies
@@ -22,6 +91,10 @@ export type ExecuteFn = (
  * A unit that routes WHILE CLIMBING free-falls off the wall first (d6 per 10 ft,
  * down to `climbFallTo`, default 0 = ground) — clearing its climb state — before
  * the normal rout / retreat picker runs.
+ *
+ * When `killed` (not merely routed), any hero riding this unit is auto-detached —
+ * and falls if airborne and unable to fly (see `hostLostHeroSteps`). `units` is the
+ * live roster used to find the rider.
  */
 export async function routeUnit(
   execute: ExecuteFn,
@@ -30,10 +103,12 @@ export async function routeUnit(
   killed: boolean,
   causeId?: string | null,
   climbFallTo = 0,
+  units: Unit[] = [],
 ): Promise<void> {
   const name = unit.unitName;
   const verb = !killed ? 'routed' : unit.isHero ? 'down' : 'annihilated';
   const subSteps: SubStep[] = [];
+  const notes: string[] = [];
 
   if (unit.climbTo) {
     const to = Math.max(0, Math.round(climbFallTo));
@@ -84,7 +159,17 @@ export async function routeUnit(
     payload: causeId ? { cause: causeId } : undefined,
   });
 
-  await execute('ROUT', subSteps, `${name} ${verb}!`, { chained: true });
+  // A killed/removed host drops its rider: auto-detach (and fall if airborne).
+  if (killed) {
+    const lost = hostLostHeroSteps(unit, units, climbFallTo);
+    if (lost.steps.length > 0) {
+      subSteps.push(...lost.steps);
+      notes.push(...lost.notes);
+    }
+  }
+
+  const message = notes.length > 0 ? `${name} ${verb}! · ${notes.join(' · ')}` : `${name} ${verb}!`;
+  await execute('ROUT', subSteps, message, { chained: true });
   // Local fallback: tell THIS window a rout happened so the retreat modal opens
   // even if the realtime scenario_command_log event is delayed/missed. The orchestrator
   // dedupes against the live ROUT row via its retreatPick/busy guards.

@@ -111,7 +111,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     return () => { clearInterval(t); setBowBlinkOn(false); };
   }, [reactionOffers.size]);
 
-  const routeReactionUnit = useCallback((unit: Unit, reason: string, killed: boolean, causeId?: string | null) => routeUnit(execute, unit, reason, killed, causeId), [execute]);
+  const routeReactionUnit = useCallback((unit: Unit, reason: string, killed: boolean, causeId?: string | null) => routeUnit(execute, unit, reason, killed, causeId, 0, units), [execute, units]);
 
   /** After a move commits, offer a reaction to every eligible hostile archer.
    *  `mover` is expected to carry its NEW hex (the move's end). */

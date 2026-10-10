@@ -199,31 +199,28 @@ export function strokeHexPath(
   ctx.stroke();
 }
 
-/** The HP / door / destroyed badge state of a placed structure. */
+/** The HP / door badge state of a placed structure. */
 export interface StructureBadges {
   /** HP number to show (null = no HP badge). */
   hpText: string | null;
-  /** True when the structure had HP (`maxHp > 0`) and is now at `hp <= 0` — show a grey "✕". */
-  destroyed: boolean;
   /** Door badge text (`open` / `broken` / `door N`), or null when no distinct door. */
   doorText: string | null;
   /** Whether the door is open (picks the door badge colour). */
   doorOpen: boolean;
 }
 
-/** Derive the badges for one structure. Hex structures show a destroyed "✕"; edge
- *  structures are removed at `hp <= 0` by the caller, so no ✕ is expected there. */
+/** Derive the badges for one structure. A destroyed structure (hp <= 0) is removed
+ *  by the caller, so no badge is expected there. */
 export function structureBadges(t: StructureTemplate | null | undefined, inst: StructureInstance | null | undefined): StructureBadges {
   const maxHp = t?.maxHp ?? 0;
   const hp = inst?.hp ?? maxHp;
-  const destroyed = maxHp > 0 && hp <= 0;
-  const hpText = destroyed || hp <= 0 ? null : `HP: ${hp}`;
+  const hpText = hp <= 0 ? null : `HP: ${hp}`;
   const st = t && inst ? structureDoorState(inst, t) : null;
   const doorText = !st || st.noDoor ? null
     : st.open ? 'open'
     : st.doorNow <= 0 ? 'broken'
     : `door ${st.doorNow}`;
-  return { hpText, destroyed, doorText, doorOpen: st?.open ?? false };
+  return { hpText, doorText, doorOpen: st?.open ?? false };
 }
 
 export type EdgeDecorationKind = 'battlement' | 'barricade' | 'sinWave' | 'none';
@@ -326,8 +323,7 @@ export function drawHexStructure(ctx: CanvasRenderingContext2D, o: HexStructureD
   }
   const badges = structureBadges(o.template ?? null, o.instance ?? null);
   const ly = o.cy + px(-HEX_SIZE * o.zoom * 0.55);
-  if (badges.destroyed) strokeFillText(ctx, o.cx, ly, '\u2715', MONO(px(ts.hp.fontPx)), px(ts.hp.linePx), MP_COST_GREY);
-  else if (badges.hpText !== null) strokeFillText(ctx, o.cx, ly, badges.hpText, MONO(px(ts.hp.fontPx)), px(ts.hp.linePx), '#ffe0b2');
+  if (badges.hpText !== null) strokeFillText(ctx, o.cx, ly, badges.hpText, MONO(px(ts.hp.fontPx)), px(ts.hp.linePx), '#ffe0b2');
   if (badges.doorText) strokeFillText(ctx, o.cx, o.cy + px(HEX_SIZE * o.zoom * 0.55), badges.doorText, MONO(px(ts.door.fontPx)), px(ts.door.linePx), badges.doorOpen ? '#a5d6a7' : '#ffd9c9');
   if (o.drawElevation) {
     const top = structureElevation(o.template ?? null, o.instance ?? null);

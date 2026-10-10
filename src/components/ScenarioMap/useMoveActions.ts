@@ -748,7 +748,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     offerReactionsFor({ ...unit, hex: { ...farHex } });
     pruneReactionOffers();
     await pursuitsRef.current?.(unit, from, farHex);
-    if (dmg > 0 && newHp <= 0) await routeUnit(execute, { ...unit, currentUnitHp: newHp }, 'fell', true, null);
+    if (dmg > 0 && newHp <= 0) await routeUnit(execute, { ...unit, currentUnitHp: newHp }, 'fell', true, null, 0, units);
   }, [units, structures, structureTemplates, unitMaxMP, execute, addMessage, addError, freeMove, offerReactionsFor, pruneReactionOffers, pursuitsRef]);
 
   /** Resolve a structure-action prompt: Climb onto / Pass door (hex) or Climb over (edge). */
@@ -924,7 +924,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     offerReactionsFor({ ...p.unit, hex: { ...p.targetHex } });
     pruneReactionOffers();
     await pursuitsRef.current?.(p.unit, p.originHex, p.targetHex);
-    if (newHp <= 0) await routeUnit(execute, { ...p.unit, currentUnitHp: newHp }, 'fell', true, null);
+    if (newHp <= 0) await routeUnit(execute, { ...p.unit, currentUnitHp: newHp }, 'fell', true, null, 0, units);
   }, [pendingDescent, structures, structureTemplates, units, execute, addMessage, offerReactionsFor, pruneReactionOffers, pursuitsRef]);
 
   const cancelDescent = useCallback(() => setPendingDescent(null), []);
@@ -1108,7 +1108,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
     const roll = n > 0 ? ` (${n}d6: ${[...faces].sort((a, b) => a - b).join(',')})` : '';
     await execute('DETACH_HERO', subSteps, `${hero.unitName} fell ${p.elevation} ft${total > 0 ? ` — ${total} damage` : ''}${roll}`);
-    if (newHp <= 0) await routeUnit(execute, { ...hero, currentUnitHp: newHp }, 'fell', true, null);
+    if (newHp <= 0) await routeUnit(execute, { ...hero, currentUnitHp: newHp }, 'fell', true, null, 0, units);
     setActiveHeroId(null);
   }, [pendingHeroFall, execute, setActiveHeroId]);
 

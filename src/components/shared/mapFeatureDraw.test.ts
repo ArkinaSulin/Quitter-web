@@ -30,19 +30,16 @@ const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => (
 describe('structureBadges', () => {
   it('shows the HP number for an intact structure', () => {
     const b = structureBadges(template(), { templateId: 't' });
-    expect(b.destroyed).toBe(false);
     expect(b.hpText).toBe('HP: 30');
   });
 
-  it('shows a destroyed badge (not HP) for maxHp > 0 and hp <= 0', () => {
+  it('shows no HP badge at 0 HP (the instance is removed by the caller)', () => {
     const b = structureBadges(template(), { templateId: 't', hp: 0 });
-    expect(b.destroyed).toBe(true);
     expect(b.hpText).toBeNull();
   });
 
   it('shows nothing for a decorative maxHp = 0 structure', () => {
     const b = structureBadges(template({ maxHp: 0 }), { templateId: 't' });
-    expect(b.destroyed).toBe(false);
     expect(b.hpText).toBeNull();
     expect(b.doorText).toBeNull();
   });

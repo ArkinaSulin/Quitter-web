@@ -14,6 +14,7 @@ import { EffectModifier, modifierAmount } from '@/packages/effects';
 import { templateDoorMax, structureElevation, structureHasLadder } from '@/packages/movement/lib/structureTemplates';
 import { GroundEffect, Unit, getOrganizationLevel } from '@/types/gameProtocol';
 import { formationAtOrBelow } from '@/packages/movement/lib/formationCost';
+import { canFly } from '@/packages/movement/lib/flying';
 
 export type MapStructures = Record<string, StructureInstance>;
 
@@ -110,6 +111,28 @@ export function flightBlockedHexes(
 /** Number of 10-ft climb steps for a height in feet (rounded). */
 export function climbStepsFromFeet(feet: number): number {
   return feet > 0 ? Math.round(feet / 10) : 0;
+}
+
+/**
+ * Non-flying units left FLOATING after their support vanished (e.g. a structure was
+ * removed): their elevation exceeds their hex's current walkable surface. Hung
+ * climbers (`climbTo`) and flyers are excluded — they are still supported. Attached
+ * riders follow their host, so only hosts are returned. Resolved at end of turn.
+ */
+export function floatingUnits(
+  units: Unit[],
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+): Unit[] {
+  const out: Unit[] = [];
+  for (const u of units) {
+    if (u.isDeleted || u.attachedToUnitId) continue;
+    if (u.climbTo) continue;
+    if (canFly(u)) continue;
+    const surf = structureSurfaceAt(u.hex, structures ?? undefined, templates ?? undefined);
+    if ((u.elevation ?? 0) > surf) out.push(u);
+  }
+  return out;
 }
 
 /** Default MP per 10-ft climb step when a structure doesn't author one. */

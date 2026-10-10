@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { routeUnit } from './routeUnit';
+import { routeUnit, hostLostHeroSteps } from './routeUnit';
 import { Unit } from '@/types/gameProtocol';
 import { ActionType, SubStep } from '@/packages/infra';
 
@@ -34,5 +34,28 @@ describe('routeUnit — fearless guard', () => {
     const rout = calls.find(c => c.type === 'ROUT')!;
     const formationChange = rout.steps.flatMap(s => s.changes).find(c => c.field === 'currentFormation');
     expect(formationChange).toEqual({ field: 'currentFormation', from: 'Open Order', to: 'Routed' });
+  });
+});
+
+describe('hostLostHeroSteps — rider auto-detach on host loss', () => {
+  it('detaches an airborne non-flying rider and makes it fall (per-troop damage)', () => {
+    const host = unit({ id: 'host' });
+    const hero = unit({
+      id: 'hero', isHero: true, attachedToUnitId: 'host', attachedPosition: 'front',
+      elevation: 20, flySpeed: 0, currentUnitHp: 10, troopHp: 1, currentTroopCount: 10,
+    });
+    const { steps, notes } = hostLostHeroSteps(host, [host, hero], 0);
+    expect(steps.some(s => s.type === 'DETACH_HERO')).toBe(true);
+    expect(steps.some(s => s.type === 'ELEVATE')).toBe(true);
+    expect(steps.some(s => s.type === 'DAMAGE')).toBe(true);
+    expect(notes.some(n => n.includes('detached'))).toBe(true);
+  });
+
+  it('detaches a flyer but does not make it fall', () => {
+    const host = unit({ id: 'host' });
+    const hero = unit({ id: 'hero', isHero: true, attachedToUnitId: 'host', elevation: 20, flySpeed: 6 });
+    const { steps } = hostLostHeroSteps(host, [host, hero], 0);
+    expect(steps.some(s => s.type === 'DETACH_HERO')).toBe(true);
+    expect(steps.some(s => s.type === 'ELEVATE')).toBe(false);
   });
 });
