@@ -1,5 +1,26 @@
 # QuiTTER Changelog
 
+## Two-floor doors + structure-action popup + atomic climb-attack (2026-10-09)
+**Files:** src/packages/movement/lib/mapStructures.ts, src/components/ScenarioMap/{useMoveActions,useCombatActions,ScenarioMap}.tsx
+
+- **Two-floor door model.** New `unitStandingSurface` (a mover at elevation 0 stands on the
+  hex's ground floor 0; > 0 uses the structure surface) and `groundFloorAt` (0 for an
+  open/broken-door structure, else the structure top). `handleUnitMove(unitId, hex,
+  entry: 'ground' | 'climb')` no longer auto-climbs: the mover's origin uses its standing
+  floor and a GROUND entry lands on the destination's ground floor, so a ground unit may
+  **enter/stop/continue** through an open door at elevation 0 while the different-surface
+  guard still rejects an elevated unit until it descends. Climb stays climb-only.
+- **Structure-action popup.** A plain drop onto a hex structure with ≥2 legal actions
+  (top taller than you **and** an open/broken door) raises a modal: **Climb onto** / **Pass
+  through the door** / Cancel (`pendingStructureAction` + `confirmStructureAction`). Exactly
+  one legal action auto-resolves (a higher top still auto-climbs).
+- **Atomic climb-attack.** `performClimbAttack`: a ground unit adjacent to a higher
+  structure-top garrison claws up and melees in ONE undoable command (swoop
+  `prependSubSteps` pattern); MP-aware — too little MP climbs to the last 10-ft step and
+  skips the attack. The attack router offers **Climb & attack / Attack from the ground**.
+- **Remaining:** climbing OVER a freestanding edge wall (up → across the top → down) is
+  not yet implemented. `tsc` clean, 994 tests pass. No migration.
+
 ## Walls block melee & ground ZoC; an open door is a plain passage (2026-10-09)
 **Files:** src/packages/movement/lib/mapStructures.ts (+ tests/mapStructures.test.ts), src/packages/combat/lib/meleeFallback.ts (+ tests), src/packages/morale/lib/{unitMorale,zocDisengage}.ts, src/packages/world/lib/mapGeometry.ts, src/components/ScenarioMap/{useCombatActions,useOverlay,ScenarioMap}.tsx
 

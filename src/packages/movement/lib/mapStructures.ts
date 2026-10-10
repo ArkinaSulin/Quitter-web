@@ -45,6 +45,31 @@ export function structureSurfaceAt(
   return structureElevation(templates?.[inst.templateId], inst);
 }
 
+/** The floor a unit stands on: 0 when the unit is at ground level, else the hex's
+ *  structure surface (dynamic ground). A ground unit inside a tall structure's door
+ *  at elevation 0 stands on the ground floor, not the top. */
+export function unitStandingSurface(
+  unit: { hex: { q: number; r: number }; elevation?: number | null },
+  structures: MapStructures | undefined,
+  templates: Record<string, StructureTemplate> | undefined,
+): number {
+  return (unit.elevation ?? 0) > 0 ? structureSurfaceAt(unit.hex, structures, templates) : 0;
+}
+
+/** The ground floor a GROUND move onto `hex` lands on: 0 when there is no blocking
+ *  structure or its door is open/broken (the doorway); otherwise the structure top,
+ *  which the different-surface guard rejects (you must climb instead). */
+export function groundFloorAt(
+  hex: { q: number; r: number },
+  structures: MapStructures | undefined,
+  templates: Record<string, StructureTemplate> | undefined,
+): number {
+  const inst = structures?.[`${hex.q},${hex.r}`];
+  const t = inst ? templates?.[inst.templateId] : undefined;
+  if (inst && t && structureDoorState(inst, t).openOrBroken) return 0;
+  return structureSurfaceAt(hex, structures, templates);
+}
+
 /** The authored height (ft) of an edge structure on the shared edge between two
  *  adjacent hexes, or 0 when none. A wall taller than a unit's elevation is what
  *  blocks melee / ground kill-zone across the edge. */

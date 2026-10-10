@@ -18,7 +18,7 @@ import { nextLowerFormation } from '@/packages/movement';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, isHeroMoraleBoostEnabled, isZocPursuitEnabled } from '@/packages/morale';
 import { isHostile, sameAlliance, allianceOf } from '@/packages/primitives';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isMeleeReachable, computeWeaponSwitchAc, attackKind, canWeaponAttack } from '@/packages/combat';
-import { meleeElevationFor, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo, isAirborne } from '@/packages/movement';
+import { meleeElevationFor, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo, isAirborne, computeMoveBudget, computeHeroMoveBudget, CLIMB_MP_PER_STEP } from '@/packages/movement';
 import { isSwooping } from '@/packages/combat';
 import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable } from '@/packages/movement';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay, damageDiceCount, withDamageDiceCount } from '@/packages/units';
@@ -1061,6 +1061,45 @@ export function useCombatActions(deps: CombatActionsDeps) {
     return buildSwoopDropPlan(attacker, target);
   }, [units, buildSwoopDropPlan]);
 
+  /** A ground unit adjacent to a garrison on a HIGHER structure top may climb up
+   *  and melee it. One undoable command; MP-aware (too little MP → climb to the
+   *  last 10-ft step, no attack). Returns false when not a climb-attack case. */
+  const performClimbAttack = useCallback(async (attackerId: string, targetId: string): Promise<boolean> => {
+    const attacker = units.find(u => u.id === attackerId);
+    const target = units.find(u => u.id === targetId);
+    if (!attacker || !target || attacker.mountId || attacker.mountName) return false;
+    const top = structureSurfaceAt(target.hex, structures, structureTemplates);
+    const originSurface = structureSurfaceAt(attacker.hex, structures, structureTemplates);
+    const curElev = attacker.elevation ?? 0;
+    // Only when the target is the TOP occupant and the attacker is below it.
+    if (top <= originSurface || curElev >= top || (target.elevation ?? 0) < top) return false;
+    const maxMP = unitMaxMP(attacker);
+    const budgetUnit = moveBudgetUnit(attacker, 'ground');
+    const budget = attacker.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP);
+    const need = Math.max(0, Math.round((top - originSurface) / 10));
+    const done = Math.max(0, Math.round((curElev - originSurface) / 10));
+    const steps = Math.min(need - done, Math.max(0, Math.floor(budget / CLIMB_MP_PER_STEP)));
+    if (steps <= 0) { addError(`${attacker.unitName} has no movement to climb`); return true; }
+    const cost = steps * CLIMB_MP_PER_STEP;
+    const spend = attacker.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP);
+    const newElev = Math.min(top, curElev + steps * 10);
+    const atTop = newElev >= top;
+    const climbChange: UnitChange[] = [
+      { field: 'elevation', from: curElev, to: newElev },
+      { field: 'climbTo', from: attacker.climbTo ?? null, to: atTop ? null : `${target.hex.q},${target.hex.r}` },
+      { field: 'movementPointsAvailable', from: attacker.movementPointsAvailable, to: spend.movementPointsAvailable },
+      ...(spend.actionsAvailable !== attacker.actionsAvailable ? [{ field: 'actionsAvailable' as const, from: attacker.actionsAvailable, to: spend.actionsAvailable }] : []),
+    ];
+    if (!atTop) {
+      // MP short: climb to the last step, no attack.
+      await execute('MOVE', [{ type: 'MOVE', description: `${attacker.unitName} climbs toward the top`, unitId: attacker.id, changes: climbChange }], `${attacker.unitName} climbs to ${newElev} ft`);
+      return true;
+    }
+    const adjusted: Unit = { ...attacker, elevation: newElev, climbTo: null, movementPointsAvailable: spend.movementPointsAvailable, actionsAvailable: spend.actionsAvailable };
+    await performAttack(adjusted, target, false, { prependSubSteps: [{ type: 'MOVE', description: `${attacker.unitName} climbs onto the top`, unitId: attacker.id, changes: climbChange }] });
+    return true;
+  }, [units, structures, structureTemplates, unitMaxMP, execute, addError, performAttack]);
+
   /**
    * Execute the swoop drop as ONE command: charge MOVE (hex + MP/action spend),
    * ELEVATE (dive to melee), CHARGE distance tick, then the free melee attack —
@@ -1497,5 +1536,6 @@ export function useCombatActions(deps: CombatActionsDeps) {
     handleAttackRequest,
     planSwoopDrop,
     performSwoopDrop,
+    performClimbAttack,
   };
 }

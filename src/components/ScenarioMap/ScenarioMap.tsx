@@ -41,7 +41,7 @@ import { UnitEditorModal } from './UnitEditorModal';
 import { PingLayer } from './PingLayer';
 import { TEAM_COLORS, TEAMS, Team } from '@/packages/units';
 import { TeamChip } from '@/components/TokenRenderer/TeamChip';
-import { isUnitRouted, setHeroMoraleBoostEnabled as setHeroMoraleBoostAmbient, setZocPursuitEnabled as setZocPursuitAmbient } from '@/packages/morale';
+import { isUnitRouted, areHexesAdjacent, setHeroMoraleBoostEnabled as setHeroMoraleBoostAmbient, setZocPursuitEnabled as setZocPursuitAmbient } from '@/packages/morale';
 import { isHostile, allianceOf } from '@/packages/primitives';
 import { canRally } from '@/packages/morale';
 import { computeVisibleHexes, computeFog, hexKey, DEFAULT_SIGHT_RADIUS, FOG_UNSEEN_GM_ALPHA, FOG_UNSEEN_PLAYER_ALPHA } from '@/packages/world';
@@ -875,6 +875,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   // Wall edge under the pointer while dragging a unit (drag-to-attack hint).
   const [hoveredWallEdge, setHoveredWallEdge] = useState<EdgeRef | null>(null);
+  /** Ground attacker vs a garrison on a higher structure top: Climb & attack / Attack. */
+  const [pendingClimbAttack, setPendingClimbAttack] = useState<{ attackerId: string; targetId: string; garrison: string } | null>(null);
   // Inspect mode: while Shift is held all unit/corpse tokens hide so the map
   // (structures/effects) reads through, and Shift+drop attacks a structure.
   const [shiftHeld, setShiftHeld] = useState(false);
@@ -1004,6 +1006,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingHeroFall,
     confirmHeroFall,
     cancelHeroFall,
+    pendingStructureAction,
+    setPendingStructureAction,
+    confirmStructureAction,
     maybeAutoReturnToRanged,
     completeMove,
     handleUnitMove,
@@ -1736,6 +1741,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     handleAttackRequest,
     planSwoopDrop,
     performSwoopDrop,
+    performClimbAttack,
   } = useCombatActions({
     units,
     alliances,
@@ -2116,6 +2122,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         const canSwoop = hostileVisible && !!planSwoopDrop(attackerId, targetId);
         if ((hostileVisible || !hostile) && beginFlyerDrop(attacker, target, { canSwoop, isHostile: hostileVisible })) return;
       }
+      // Ground attacker vs a garrison on a HIGHER structure top: offer Climb & attack
+      // (melee after scaling the wall) or attack from the ground (ranged).
+      if (attacker && target && !attacker.climbTo && !canFly(attacker) && !attacker.mountId && !attacker.mountName
+          && isHostile(attacker.team, target.team, alliances)
+          && areHexesAdjacent(attacker.hex, target.hex)) {
+        const top = structureSurfaceAt(target.hex, structures, structureTemplates);
+        if (top > (attacker.elevation ?? 0) && (target.elevation ?? 0) >= top) {
+          setPendingClimbAttack({ attackerId, targetId, garrison: target.unitName });
+          return;
+        }
+      }
       // Ground / airborne drop: offer the combined weapon + mount/rider picker
       // when there is a real choice (>1 weapon can attack, or the target rides a
       // rider); otherwise attack directly.
@@ -2194,6 +2211,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     contextMenuUnit || withdrawConfirm || effectMenuUnit || retreatPick ||
     reactionFormationPicker || showScenarioSettings || attachModal ||
     pendingMountTarget || pendingAttackChoice || pendingReactionChoice || pendingElevation || pendingHeroFall ||
+    pendingStructureAction || pendingClimbAttack ||
     pendingLeaveHero || showGmTeamPick || magicCast.cast || editUnit || effectDrop ||
     effectEdit || entryPrompt || zoneMenu || hexEffectsModal || showStats ||
     otherActionHero || structureEditKey ||
@@ -3516,6 +3534,59 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 Drop ({Math.floor(pendingDescent.feet / 10)}d6)
               </button>
               <button className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm" onClick={cancelDescent}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Structure action — a drop onto a wall/structure with more than one legal
+          intent: Climb onto the top, or Pass through the (open) door at ground. */}
+      {pendingStructureAction && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[320px] max-w-[90vw]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">
+              {pendingStructureAction.structureName ?? 'Structure'} — choose an action
+            </p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              {pendingStructureAction.unit.unitName} at ({pendingStructureAction.targetHex.q}, {pendingStructureAction.targetHex.r}).
+            </p>
+            <div className="flex flex-col gap-2">
+              {pendingStructureAction.actions.includes('climb') && (
+                <button className="px-4 py-2 bg-green-800 hover:bg-green-700 text-white rounded-lg text-sm" onClick={() => void confirmStructureAction('climb')}>
+                  Climb onto the top
+                </button>
+              )}
+              {pendingStructureAction.actions.includes('pass') && (
+                <button className="px-4 py-2 bg-blue-800 hover:bg-blue-700 text-white rounded-lg text-sm" onClick={() => void confirmStructureAction('pass')}>
+                  Pass through the door (ground)
+                </button>
+              )}
+              <button className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm" onClick={() => setPendingStructureAction(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Climb-attack — a ground attacker vs a garrison on a higher structure top. */}
+      {pendingClimbAttack && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[320px] max-w-[90vw]">
+            <p className="text-white text-sm mb-1 text-center font-semibold">Climb the wall to attack?</p>
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              {pendingClimbAttack.garrison} holds the top. Scale the wall and melee, or attack from the ground.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button className="px-4 py-2 bg-green-800 hover:bg-green-700 text-white rounded-lg text-sm" onClick={() => { const p = pendingClimbAttack; setPendingClimbAttack(null); if (p) void performClimbAttack(p.attackerId, p.targetId); }}>
+                Climb &amp; attack
+              </button>
+              <button className="px-4 py-2 bg-blue-800 hover:bg-blue-700 text-white rounded-lg text-sm" onClick={() => { const p = pendingClimbAttack; setPendingClimbAttack(null); if (p) void handleAttackRequest(p.attackerId, p.targetId); }}>
+                Attack from the ground
+              </button>
+              <button className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm" onClick={() => setPendingClimbAttack(null)}>
                 Cancel
               </button>
             </div>
