@@ -273,6 +273,7 @@ export function parseStructures(raw: any): MapStructures {
     const inst: StructureInstance = { templateId };
     const hp = intOr((v as any).hp); if (hp !== undefined) inst.hp = hp;
     const doorHp = intOr((v as any).doorHp); if (doorHp !== undefined) inst.doorHp = doorHp;
+    const elevation = intOr((v as any).elevation); if (elevation !== undefined) inst.elevation = elevation;
     const outside = (v as any).outside;
     if (outside === 'a' || outside === 'b') inst.outside = outside;
     if ((v as any).open === true) inst.open = true;

@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Placed-structure elevation now round-trips (2026-10-10)
+**Files:** src/packages/movement/lib/mapStructures.ts (+ tests/mapStructures.test.ts), docs/dev/changelog.md
+
+- **Bug:** editing a structure's **height (elevation)** looked like it saved (ScenarioMap
+  said "Structure updated") but reverted on the next re-sync/reopen. Root cause:
+  `parseStructures` rebuilt each `StructureInstance` field-by-field and **omitted
+  `elevation`**, so every read dropped the override — the Map Editor load
+  (`mapMapRow` → `parseStructures`) and the ScenarioMap re-sync
+  (`setStructures(parseStructures(md.structures))`, initial fetch + realtime row).
+  Writes were fine (the `STRUCTURE` substep stores the whole `to`; the editor autosaves
+  the whole `structures` blob).
+- **Fix:** `parseStructures` now parses the instance `elevation` (`intOr` → round, clamp ≥ 0),
+  the only missing field. No migration (the value was already persisted).
+- `tsc` clean, tests pass, build clean.
+
 ## Edge band → 0.3; double-click resolves the edge before the hex (2026-10-10)
 **Files:** src/packages/movement/lib/walls.ts, src/components/ScenarioMap/ScenarioMap.tsx, src/components/MapEditor/MapCanvas.tsx, docs/dev/{18-map-structures,changelog}.md
 

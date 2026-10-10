@@ -63,6 +63,15 @@ describe('parseStructures', () => {
     expect(parseStructures(null)).toEqual({});
     expect(parseStructures([])).toEqual({});
   });
+
+  it('preserves the instance elevation override (round-trip)', () => {
+    const s = parseStructures({
+      '5,5': { templateId: 't3', elevation: 25 },
+      '6,6': { templateId: 't3', elevation: -4.4 },
+    });
+    expect(s['5,5'].elevation).toBe(25);
+    expect(s['6,6'].elevation).toBe(0);
+  });
 });
 
 describe('structuresToWalls', () => {
