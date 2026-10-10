@@ -18,8 +18,12 @@
   structure-top garrison claws up and melees in ONE undoable command (swoop
   `prependSubSteps` pattern); MP-aware — too little MP climbs to the last 10-ft step and
   skips the attack. The attack router offers **Climb & attack / Attack from the ground**.
-- **Remaining:** climbing OVER a freestanding edge wall (up → across the top → down) is
-  not yet implemented. `tsc` clean, 994 tests pass. No migration.
+- **Climb OVER a freestanding edge wall.** Dropping a ground unit on the adjacent far
+  hex of a wall taller than it opens a popup: **Climb over & drop** (fall damage,
+  `feather_fall` waives) / **Climb over & climb down** (steps × 4 MP) / **Pass door** (when
+  open). `performClimbOver` is ONE atomic command (climb up → cross the top → descend); too
+  little MP to reach the top climbs partially and hangs on the near side.
+  `tsc` clean, 994 tests pass. No migration.
 
 ## Walls block melee & ground ZoC; an open door is a plain passage (2026-10-09)
 **Files:** src/packages/movement/lib/mapStructures.ts (+ tests/mapStructures.test.ts), src/packages/combat/lib/meleeFallback.ts (+ tests), src/packages/morale/lib/{unitMorale,zocDisengage}.ts, src/packages/world/lib/mapGeometry.ts, src/components/ScenarioMap/{useCombatActions,useOverlay,ScenarioMap}.tsx

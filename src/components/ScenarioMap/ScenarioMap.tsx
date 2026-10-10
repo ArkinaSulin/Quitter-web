@@ -1009,6 +1009,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingStructureAction,
     setPendingStructureAction,
     confirmStructureAction,
+    confirmClimbOver,
     maybeAutoReturnToRanged,
     completeMove,
     handleUnitMove,
@@ -3554,9 +3555,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             </p>
             <div className="flex flex-col gap-2">
               {pendingStructureAction.actions.includes('climb') && (
-                <button className="px-4 py-2 bg-green-800 hover:bg-green-700 text-white rounded-lg text-sm" onClick={() => void confirmStructureAction('climb')}>
-                  Climb onto the top
-                </button>
+                pendingStructureAction.edge ? (
+                  <>
+                    <button className="px-4 py-2 bg-green-800 hover:bg-green-700 text-white rounded-lg text-sm" onClick={() => void confirmClimbOver('drop')}>
+                      Climb over &amp; drop (fall damage)
+                    </button>
+                    <button className="px-4 py-2 bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg text-sm" onClick={() => void confirmClimbOver('climb')}>
+                      Climb over &amp; climb down
+                    </button>
+                  </>
+                ) : (
+                  <button className="px-4 py-2 bg-green-800 hover:bg-green-700 text-white rounded-lg text-sm" onClick={() => void confirmStructureAction('climb')}>
+                    Climb onto the top
+                  </button>
+                )
               )}
               {pendingStructureAction.actions.includes('pass') && (
                 <button className="px-4 py-2 bg-blue-800 hover:bg-blue-700 text-white rounded-lg text-sm" onClick={() => void confirmStructureAction('pass')}>

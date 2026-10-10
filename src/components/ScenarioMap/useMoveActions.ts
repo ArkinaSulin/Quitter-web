@@ -21,7 +21,7 @@ import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
 import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
 import { Walls, directionBetween, edgeRef } from '@/packages/movement';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, structureWaivesClimb, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, edgeStructureHeightBetween, structureElevation } from '@/packages/movement';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, structureWaivesClimb, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
@@ -32,21 +32,23 @@ export interface PendingDescent {
   targetHex: Hex;
   /** The unit's hex before the drop (for the pursue/reaction origin). */
   originHex: Hex;
-  /** Fall height in feet (`originSurface âˆ’ endSurface`). */
+  /** Fall height in feet (`originSurface − endSurface`). */
   feet: number;
-  /** False for mounted units â€” they may only Drop or Cancel. */
+  /** False for mounted units — they may only Drop or Cancel. */
   canClimb: boolean;
 }
 
-/** A plain drop onto a wall/structure with â‰¥2 legal actions: a pick-one prompt. */
+/** A plain drop onto a wall/structure with ≥2 legal actions: a pick-one prompt. */
 export interface PendingStructureAction {
   unit: Unit;
   targetHex: Hex;
-  /** Legal actions (a subset of climb / pass / attack); always â‰¥2 when raised. */
+  /** Legal actions (a subset of climb / pass / attack); always ≥2 when raised. */
   actions: ('climb' | 'pass' | 'attack')[];
   /** A (hostile) unit garrisoning the structure hex, for climb-attack / attack. */
   occupant: Unit | null;
   structureName: string | null;
+  /** The target is across a freestanding EDGE wall (climb OVER, not onto a hex). */
+  edge?: boolean;
 }
 
 interface MoveActionsDeps {
@@ -76,7 +78,7 @@ interface MoveActionsDeps {
   structureTemplates?: Record<string, StructureTemplate>;
   groundZones?: GroundEffect[];
   /** Late-bound opportunity-attack resolver (owned by useCombatActions, assigned
-   *  via a ref to break the useMoveActions â†’ useCombatActions hook-order cycle). */
+   *  via a ref to break the useMoveActions → useCombatActions hook-order cycle). */
   pursuitsRef: { current: ((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null };
 }
 
@@ -189,14 +191,14 @@ export function useMoveActions(deps: MoveActionsDeps) {
       const heroNote = attachedHero
         ? `, ${attachedHero.unitName} has ${attachedHero.actionsAvailable} action(s) left`
         : '';
-      addError(`${unit.unitName} moved over budget â€” path costs ${cost} MP (${actionNote}), but ${unit.unitName} has ${unit.actionsAvailable} action(s) left${heroNote}`);
+      addError(`${unit.unitName} moved over budget — path costs ${cost} MP (${actionNote}), but ${unit.unitName} has ${unit.actionsAvailable} action(s) left${heroNote}`);
     }
-    // Movement alone never routs â€” only an attack (combat or a spell) can break
+    // Movement alone never routs — only an attack (combat or a spell) can break
     // a unit's morale into a rout, even when threat drops morale to zero.
     // Entering a hostile kill zone ends the move: the leftover MP is spent.
     const stopInZoc = computeThreatHexes(units, unit.id, alliances, formationsMap, structures, structureTemplates).has(`${targetHex.q},${targetHex.r}`);
     await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP, undefined, { stopInZoc, breakToFormation, elevation, surface });
-    // The unit may have left every hostile kill zone â€” return to its primary
+    // The unit may have left every hostile kill zone — return to its primary
     // ranged weapon (only reverts a melee weapon, and never a manual pick).
     await maybeAutoReturnToRanged(unit);
     // Opportunity fire: offer a reaction to any hostile archer whose weapon range
@@ -207,7 +209,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
   }, [units, alliances, formationsMap, moveUnitRecorded, addError, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers]);
 
   // An attached hero dragged away separates from its host (drag-away = the only
-  // way to detach) â€” the move's undo chain also undoes the separation.
+  // way to detach) — the move's undo chain also undoes the separation.
   const finishHeroMove = useCallback(async (moved: Unit): Promise<void> => {
     if (!moved.attachedToUnitId) return;
     await execute('DETACH_HERO', [{
@@ -226,7 +228,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
    * The full consequence of a paid move: the MOVE itself (performMove already
    * runs auto-return + reactions), then the charge-distance tick, then the
    * drag-away hero detach. Both the normal drop AND the over-budget confirm
-   * must run this â€” the confirm path used to call performMove alone, silently
+   * must run this — the confirm path used to call performMove alone, silently
    * skipping the charge tick and the detach (the intermittent "can't detach" /
    * "charge-over never offered" bugs).
    */
@@ -273,7 +275,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const descend = !!climbTarget && targetHex.q === unit.hex.q && targetHex.r === unit.hex.r;
     const ascendTarget = climbTarget ?? targetHex;
     // An `ignore_climb` effect on the MOVER or on the CROSSED edge (stairs/ramp)
-    // waives the whole climb â€” the mover still climbs (elevation bookkeeping
+    // waives the whole climb — the mover still climbs (elevation bookkeeping
     // intact) but pays no MP. The edge case matters because the dedicated climb
     // action bypasses `makeCostOfHex`, so the edge's waiver must be applied here
     // too (a normal crossing gets it via `structureClimbCostBetween`).
@@ -289,7 +291,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       freeClimb
         ? { movementPointsAvailable: unit.movementPointsAvailable, actionsAvailable: unit.actionsAvailable }
         : (unit.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP));
-    // Soft gate â€” the SAME as a normal move: a climb that needs more MP/actions
+    // Soft gate — the SAME as a normal move: a climb that needs more MP/actions
     // than the unit has asks first (the shared over-budget confirm) rather than
     // hard-blocking. Returns false when affordable (partial climbs just hang).
     const unaffordable = (cost: number): boolean =>
@@ -301,7 +303,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
         setPendingMove({ unit, targetHex, cost, climb: { originSurface } });
         return true;
       }
-      addError(`${unit.unitName} climbed over budget â€” MP/actions may go negative`);
+      addError(`${unit.unitName} climbed over budget — MP/actions may go negative`);
       return false;
     };
     const attachedHero = units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted) ?? null;
@@ -319,7 +321,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       await execute('MOVE', subSteps, desc);
     };
 
-    // IN-PLACE: drop on the unit's own hex while climbing â†’ return to the origin
+    // IN-PLACE: drop on the unit's own hex while climbing → return to the origin
     // surface (cancel an ascent by climbing back down, or a descent by climbing
     // back up). 4 MP / 10 ft either direction.
     if (climbTarget && targetHex.q === unit.hex.q && targetHex.r === unit.hex.r) {
@@ -353,7 +355,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // TARGET: climb toward `tHex` (the drop target, or the in-progress target).
     // `parseClimbTo` yields only {q,r}, so rebuild the full hex (with `s`) before
     // it is written to the units table (hex_s is NOT NULL). `diff` may be + (up
-    // onto a higher surface) or âˆ’ (DOWN off a higher surface onto this one).
+    // onto a higher surface) or − (DOWN off a higher surface onto this one).
     const tHex: Hex = climbTarget
       ? { q: climbTarget.q, r: climbTarget.r, s: -climbTarget.q - climbTarget.r }
       : targetHex;
@@ -384,7 +386,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     ], complete
       ? (ascending ? `${unit.unitName} climbs over onto (${tHex.q}, ${tHex.r})` : `${unit.unitName} climbs down onto (${tHex.q}, ${tHex.r})`)
       : `${unit.unitName} climbs ${ascending ? 'to' : 'down to'} ${newElev} ft`);
-    // A COMPLETED DESCENT moves the unit off the structure onto the target hex â€”
+    // A COMPLETED DESCENT moves the unit off the structure onto the target hex —
     // provoke archer reactions (and the pursue gate, which skips a raised origin)
     // exactly like a move. Ascents keep their existing (reaction-free) behavior.
     if (complete && !ascending) {
@@ -399,7 +401,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (!unit) return;
 
     // A non-flying hero detaching from an AIRBORNE host cannot glide: it simply
-    // falls. It drops on its own (host's) hex â€” if a ground unit already occupies
+    // falls. It drops on its own (host's) hex — if a ground unit already occupies
     // that hex it cannot land. A flying hero is exempt (normal elevation modal).
     if (unit.attachedToUnitId && (unit.elevation ?? 0) > 0 && !canFly(unit)) {
       const below = units.find(u =>
@@ -407,7 +409,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
         (u.elevation ?? 0) <= 0 && u.hex.q === unit.hex.q && u.hex.r === unit.hex.r && u.hex.s === unit.hex.s,
       );
       if (below) {
-        addError(`${unit.unitName} cannot dismount â€” ${below.unitName} occupies the hex below`);
+        addError(`${unit.unitName} cannot dismount — ${below.unitName} occupies the hex below`);
         return;
       }
       setPendingHeroFall({ hero: unit, elevation: unit.elevation ?? 0 });
@@ -429,7 +431,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // (`unitStandingSurface`): 0 at ground level, else the hex's structure surface.
     const originSurface = unitStandingSurface(unit, structures, structureTemplates);
     // A GROUND entry lands on the destination's GROUND floor (0 for a doorway of an
-    // open/broken-door structure, else the hex's structure top â€” which the
+    // open/broken-door structure, else the hex's structure top — which the
     // different-surface guard below rejects, so you must Climb instead).
     const endSurface = entry === 'climb'
       ? structureSurfaceAt(targetHex, structures, structureTemplates)
@@ -451,6 +453,20 @@ export function useMoveActions(deps: MoveActionsDeps) {
           return;
         }
       }
+      // An EDGE wall taller than the mover blocks the crossing: offer Climb over
+      // (and Pass door when the door is open).
+      const edgeH = edgeStructureHeightBetween(unit.hex, targetHex, structures, structureTemplates);
+      if (edgeH > originSurface && !unit.mountId && !unit.mountName) {
+        const eDir = directionBetween(unit.hex, targetHex);
+        const eRef = eDir >= 0 ? edgeRef(unit.hex.q, unit.hex.r, eDir) : null;
+        const eInst = eRef ? structures?.[eRef.key] : undefined;
+        const eT = eInst ? structureTemplates?.[eInst.templateId] : undefined;
+        const doorOpen = !!(eInst && eT && structureDoorState(eInst, eT).openOrBroken);
+        const actions: ('climb' | 'pass')[] = ['climb'];
+        if (doorOpen) actions.push('pass');
+        setPendingStructureAction({ unit, targetHex, actions, occupant: null, structureName: eT?.name ?? null, edge: true });
+        return;
+      }
     }
     // Explicit Climb: scale the target's structure.
     if (entry === 'climb') { await handleClimbMove(unit, targetHex, originSurface); return; }
@@ -468,8 +484,8 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const flyOccupied = computeOccupiedHexes(units, unitId, 1);
     for (const k of Array.from(flightBlockedHexes(structures, structureTemplates, unit.elevation ?? 0, `${targetHex.q},${targetHex.r}`))) flyOccupied.add(k);
     // Friendly pass-through: a pass-eligible mover may TRAVERSE pass-eligible
-    // friendly hexes (Open Order/Scattered/Routed, or a hero <= Large) â€” never
-    // stop on them (the search excludes pass hexes from its results â†’ no stacking).
+    // friendly hexes (Open Order/Scattered/Routed, or a hero <= Large) — never
+    // stop on them (the search excludes pass hexes from its results → no stacking).
     const loosePass = loosePassThroughHexes(units, unit, formationsMap, alliances, flying ? 'fly' : 'ground', originSurface);
 
     // Climb / hang movement (mounted units cannot climb). A climbing unit moves
@@ -481,7 +497,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       const up = !!t && targetHex.q === t.q && targetHex.r === t.r;
       const down = targetHex.q === unit.hex.q && targetHex.r === unit.hex.r;
       if (up || down) { await handleClimbMove(unit, targetHex, originSurface); return; }
-      addMessage(`${unit.unitName} is climbing â€” it can only climb up toward (${t?.q}, ${t?.r}) or down`);
+      addMessage(`${unit.unitName} is climbing — it can only climb up toward (${t?.q}, ${t?.r}) or down`);
       return;
     }
     if (!flying && !unit.isCharging && !unit.mountId && !unit.mountName && !unit.attachedToUnitId && endSurface > originSurface && areHexesAdjacent(unit.hex, targetHex)) {
@@ -502,9 +518,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
       return;
     }
     // A move may not end on a different surface without the adjacent edge
-    // transition â€” you must move on/off the edge first, then continue.
+    // transition — you must move on/off the edge first, then continue.
     if (!flying && !freeMove && !unit.climbTo && !canFly(unit) && !unit.attachedToUnitId && endSurface !== originSurface) {
-      addMessage(`${unit.unitName} must move onto/off the structure edge first â€” (${targetHex.q}, ${targetHex.r}) is at a different height`);
+      addMessage(`${unit.unitName} must move onto/off the structure edge first — (${targetHex.q}, ${targetHex.r}) is at a different height`);
       return;
     }
 
@@ -523,7 +539,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       );
       const cost = chargeReach.get(`${targetHex.q},${targetHex.r}`);
       if (!cost) {
-        addMessage(`${unit.unitName} cannot move there â€” outside the charge route`);
+        addMessage(`${unit.unitName} cannot move there — outside the charge route`);
         return;
       }
       const overBudget = !isMoveAffordable(unitBudget, cost, maxMP) || (attachedHero && heroMax && !isRider ? (attachedHero.isHero ? !isHeroMoveAffordable(attachedHero, cost, heroMax) : !isMoveAffordable(attachedHero, cost, heroMax)) : false);
@@ -538,7 +554,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (freeMove) {
       const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
       if (occupied.has(`${targetHex.q},${targetHex.r}`)) {
-        addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) â€” hex occupied`);
+        addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — hex occupied`);
         return;
       }
       const breakToFormation = flying ? undefined : (entryBreakFormation(unit.hex, targetHex, unit.currentFormation, structures, structureTemplates, groundZones) ?? undefined);
@@ -573,7 +589,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       ? Math.max(1, effectiveMax)
       : Math.max(1, Math.min(effectiveMax, attachedHero && heroMax && !isRider ? heroMax : Infinity));
     // Occupied hex structures whose door is open/broken may be TRAVERSED (not
-    // stopped on) â€” pass them to the reachability search.
+    // stopped on) — pass them to the reachability search.
     const passThrough = new Set<string>(Array.from(loosePass));
     if (!flying) for (const k of Array.from(doorPassThroughHexes(structures, structureTemplates, occupied))) passThrough.add(k);
     // Org-gate context: a `max_org_level_allowed` gate breaks the formation at the
@@ -587,12 +603,12 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true, blockedEdge, hopCap, passThrough, { movementMultipliers, breakOnEntry, orgLevels: formationOrgLevels(formationsMap) });
     const reachEntry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!reachEntry) {
-      // Beyond the physical hop limit â€” genuinely can't walk that far.
-      addMessage(`${unit.unitName} cannot make that move â€” (${targetHex.q}, ${targetHex.r}) is out of reach`);
+      // Beyond the physical hop limit — genuinely can't walk that far.
+      addMessage(`${unit.unitName} cannot make that move — (${targetHex.q}, ${targetHex.r}) is out of reach`);
       return;
     }
     // Movement only pays distance; turning is a separate paid ROTATE. A grey
-    // (turn-required) hex is not droppable â€” the unit must turn first.
+    // (turn-required) hex is not droppable — the unit must turn first.
     if (reachEntry.needsTurn) {
       addMessage(`${unit.unitName} must turn first (1 MP) to move to (${targetHex.q}, ${targetHex.r})`);
       return;
@@ -623,20 +639,110 @@ export function useMoveActions(deps: MoveActionsDeps) {
     await completeMove(unit, targetHex, reachEntry.cost, false, finalMax, attachedHero, heroMax, breakToFormation, descendElev, originSurface);
   }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, structures, structureTemplates, handleClimbMove, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove]);
 
-  /** Resolve a structure-action prompt (Climb / Pass door). */
+  /**
+   * Atomic climb OVER a freestanding edge wall: climb up to the top (near side),
+   * cross at the top to the far hex, then descend the far side by climbing down
+   * (`steps × 4` MP, no damage) or dropping (`rollFallDamage`, `feather_fall`
+   * waives). One undoable command. Too little MP to reach the top → partial climb
+   * (hang on the near side, `climbTo` = far hex).
+   */
+  const performClimbOver = useCallback(async (unitId: string, farHex: Hex, descent: 'climb' | 'drop') => {
+    const unit = units.find(u => u.id === unitId);
+    if (!unit) return;
+    if (unit.mountId || unit.mountName) { addError(`${unit.unitName} (mounted) cannot climb`); return; }
+    if (units.some(u => u.attachedToUnitId === unit.id && !u.isDeleted)) { addError(`${unit.unitName} cannot climb over carrying an attached hero`); return; }
+    const from = { ...unit.hex };
+    const originSurface = structureSurfaceAt(from, structures, structureTemplates);
+    const H = edgeStructureHeightBetween(from, farHex, structures, structureTemplates);
+    if (H <= originSurface) { addMessage(`${unit.unitName} — no wall to climb there`); return; }
+    const steps = Math.max(1, Math.round(H / 10));
+    const perStep = Math.max(1, structureClimbCostBetween(from, farHex, structures, structureTemplates, false, false) / steps);
+    const maxMP = unitMaxMP(unit);
+    const budgetUnit = moveBudgetUnit(unit, 'ground');
+    const budget = unit.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP);
+    const curElev = unit.elevation ?? 0;
+    const doneSteps = Math.max(0, Math.round((curElev - originSurface) / 10));
+    const needSteps = Math.max(1, steps - doneSteps);
+    const affordSteps = Math.max(0, Math.floor(budget / perStep));
+    const climbSteps = Math.min(needSteps, affordSteps);
+    if (climbSteps <= 0) { addError(`${unit.unitName} has no movement to climb`); return; }
+    const upCost = climbSteps * perStep;
+    const upSpend = unit.isHero ? applyHeroMoveCost(budgetUnit, upCost, maxMP) : applyMoveCost(budgetUnit, upCost, maxMP);
+    const newElev = Math.min(H, curElev + climbSteps * 10);
+    // Partial: not enough to reach the top → hang on the near side.
+    if (newElev < H) {
+      await execute('MOVE', [{ type: 'MOVE', description: `${unit.unitName} climbs the wall`, unitId: unit.id, changes: [
+        { field: 'elevation', from: curElev, to: newElev },
+        { field: 'climbTo', from: unit.climbTo ?? null, to: `${farHex.q},${farHex.r}` },
+        { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: upSpend.movementPointsAvailable },
+        ...(upSpend.actionsAvailable !== unit.actionsAvailable ? [{ field: 'actionsAvailable' as const, from: unit.actionsAvailable, to: upSpend.actionsAvailable }] : []),
+      ] }], `${unit.unitName} climbs to ${newElev} ft`);
+      return;
+    }
+    // Full climb-over. Coerce to a drop when a climb-down is unaffordable.
+    const downCost = steps * CLIMB_MP_PER_STEP;
+    let actual = descent;
+    if (descent === 'climb' && !(unit.isHero ? isHeroMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP) : isMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP))) {
+      actual = 'drop';
+      addMessage(`${unit.unitName} — not enough MP to climb down; dropping instead`);
+    }
+    const used = upCost + (actual === 'climb' ? downCost : 0);
+    const spend = unit.isHero ? applyHeroMoveCost(budgetUnit, used, maxMP) : applyMoveCost(budgetUnit, used, maxMP);
+    const feathers = unitHasFeatherFall(unit);
+    const dmg = actual === 'drop' && !feathers ? rollFallDamage(H).total : 0;
+    const newHp = Math.max(0, (unit.currentUnitHp ?? 0) - dmg);
+    const newTroops = dmg > 0 ? Math.max(0, Math.ceil(newHp / Math.max(1, unit.troopHp))) : unit.currentTroopCount;
+    const subSteps: SubStep[] = [
+      { type: 'MOVE', description: `${unit.unitName} climbs the wall`, unitId: unit.id, changes: [
+        { field: 'elevation', from: curElev, to: H },
+        { field: 'climbTo', from: unit.climbTo ?? null, to: null },
+        { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: spend.movementPointsAvailable },
+        ...(spend.actionsAvailable !== unit.actionsAvailable ? [{ field: 'actionsAvailable' as const, from: unit.actionsAvailable, to: spend.actionsAvailable }] : []),
+      ] },
+      { type: 'MOVE', description: `${unit.unitName} crosses the wall top to (${farHex.q}, ${farHex.r})`, unitId: unit.id, changes: [
+        { field: 'hex', from, to: { ...farHex } },
+      ] },
+      { type: 'MOVE', description: `${unit.unitName} ${actual === 'climb' ? 'climbs down' : 'drops'} to the ground`, unitId: unit.id, changes: [
+        { field: 'elevation', from: H, to: 0 },
+      ] },
+    ];
+    if (dmg > 0) {
+      subSteps.push({ type: 'DAMAGE', description: `${unit.unitName} took ${dmg} falling damage`, unitId: unit.id, changes: [
+        { field: 'currentUnitHp', from: unit.currentUnitHp, to: newHp },
+        { field: 'currentTroopCount', from: unit.currentTroopCount, to: newTroops },
+      ] });
+    }
+    await execute('MOVE', subSteps, `${unit.unitName} climbs over the wall${dmg > 0 ? ` — ${dmg} damage` : ''}`);
+    offerReactionsFor({ ...unit, hex: { ...farHex } });
+    pruneReactionOffers();
+    await pursuitsRef.current?.(unit, from, farHex);
+    if (dmg > 0 && newHp <= 0) await routeUnit(execute, { ...unit, currentUnitHp: newHp }, 'fell', true, null);
+  }, [units, structures, structureTemplates, unitMaxMP, execute, addMessage, addError, offerReactionsFor, pruneReactionOffers, pursuitsRef]);
+
+  /** Resolve a structure-action prompt: Climb onto / Pass door (hex) or Climb over (edge). */
   const confirmStructureAction = useCallback(async (action: 'climb' | 'pass') => {
     const p = pendingStructureAction;
     if (!p) return;
     setPendingStructureAction(null);
-    await handleUnitMove(p.unit.id, p.targetHex, action === 'climb' ? 'climb' : 'ground', true);
-  }, [pendingStructureAction, handleUnitMove]);
+    if (action === 'pass') { await handleUnitMove(p.unit.id, p.targetHex, 'ground', true); return; }
+    if (p.edge) { await performClimbOver(p.unit.id, p.targetHex, 'drop'); return; }
+    await handleUnitMove(p.unit.id, p.targetHex, 'climb', true);
+  }, [pendingStructureAction, handleUnitMove, performClimbOver]);
+
+  /** Climb over an edge wall with an explicit far-side descent. */
+  const confirmClimbOver = useCallback(async (descent: 'climb' | 'drop') => {
+    const p = pendingStructureAction;
+    if (!p || !p.edge) return;
+    setPendingStructureAction(null);
+    await performClimbOver(p.unit.id, p.targetHex, descent);
+  }, [pendingStructureAction, performClimbOver]);
 
   const handleChangeFormation = useCallback(async (unit: Unit, formation: string) => {
     // Standing cap: a hex structure or zone with `max_org_level_allowed` caps the
     // formation while the unit stands on it.
     const cap = standingMaxOrg(unit.hex, structures, structureTemplates, groundZones);
     if (getOrganizationLevel(formation) > cap) {
-      addMessage(`${unit.unitName} cannot form ${formation} â€” the hex caps organization at level ${cap}`);
+      addMessage(`${unit.unitName} cannot form ${formation} — the hex caps organization at level ${cap}`);
       return;
     }
     if (unit.isHero || freeMove) {
@@ -645,7 +751,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
     const surface = structureSurfaceAt(unit.hex, structures, structureTemplates);
     // Airborne FLYERS pay the formation change from the fly pool (raw flySpeed);
-    // grounded units â€” and elevated non-flyers (a climber) â€” from ground MP.
+    // grounded units — and elevated non-flyers (a climber) — from ground MP.
     // Mirrors useGameEngine.changeFormation.
     const fly = usesFlyPool(unit, surface);
     const oldForm = formationsMap[unit.currentFormation];
@@ -667,7 +773,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       description: `Changed ${team} team to ${targetGroup}`,
       unitId: team,
       changes: [{ field: 'alliance_group', from: currentGroup, to: targetGroup }],
-    }], `${team} â†’ ${targetGroup}`);
+    }], `${team} → ${targetGroup}`);
   }, [alliances, execute]);
 
   const handleAttachHero = useCallback(async (heroId: string, targetUnitId: string, position: 'front' | 'back' | 'rider') => {
@@ -675,7 +781,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const target = units.find(u => u.id === targetUnitId);
     if (!hero || !target) return;
     if (target.hidden) {
-      addMessage(`${target.unitName} is hidden â€” cannot attach`);
+      addMessage(`${target.unitName} is hidden — cannot attach`);
       return;
     }
     if (hero.team !== target.team) {
@@ -697,7 +803,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // Rider (hero-on-hero mount): neither the mount nor the rider may already be
     // mounted. Front/back attach (hero on a unit) has no mount requirement.
     if (position === 'rider' && (hero.mountId || hero.mountName || target.mountId || target.mountName || target.attachedToUnitId)) {
-      addMessage(`${hero.unitName} cannot ride ${target.unitName} â€” neither the mount nor the rider may already be mounted`);
+      addMessage(`${hero.unitName} cannot ride ${target.unitName} — neither the mount nor the rider may already be mounted`);
       return;
     }
     if (target.attachedToUnitId) {
@@ -705,7 +811,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       return;
     }
     // Attaching moves the hero into the host's hex, so it pays that hex's ENTRY
-    // cost (terrain/structure â€” same `makeCostOfHex` as a move), always from the
+    // cost (terrain/structure — same `makeCostOfHex` as a move), always from the
     // hero's GROUND pool (attach is a same-level step, not flight). When the MP
     // is short, ask to convert actions at the prorated rate; only if even that
     // can't cover it, fall back to the over-budget confirm.
@@ -729,7 +835,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
   }, [units, attachHero, addMessage, unitMaxMP, freeMove, terrainCosts, walls, structures, structureTemplates]);
 
   const handleSwapHeroPosition = useCallback(async (hero: Unit) => {
-    // Swapping front/back is a reposition WITHIN the same hex â€” free (ground or
+    // Swapping front/back is a reposition WITHIN the same hex — free (ground or
     // air), no MP/action cost.
     await swapHeroPosition(hero);
   }, [swapHeroPosition]);
@@ -752,7 +858,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       u.id !== p.unit.id && !u.isDeleted && !u.attachedToUnitId &&
       (u.elevation ?? 0) === endSurface && u.hex.q === p.targetHex.q && u.hex.r === p.targetHex.r,
     );
-    if (occupied) { addMessage(`${p.unit.unitName} cannot drop there â€” the hex is occupied`); return; }
+    if (occupied) { addMessage(`${p.unit.unitName} cannot drop there — the hex is occupied`); return; }
     const feather = unitHasFeatherFall(p.unit);
     const { total, faces } = feather ? { total: 0, faces: [] as number[] } : rollFallDamage(p.feet);
     const newHp = Math.max(0, (p.unit.currentUnitHp ?? 0) - total);
@@ -780,7 +886,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       });
     }
     const roll = faces.length ? ` (${faces.length}d6: ${faces.join(',')})` : (feather ? ' (feather fall)' : '');
-    await execute('MOVE', subSteps, `${p.unit.unitName} dropped ${p.feet} ft${total > 0 ? ` â€” ${total} damage` : ''}${roll}`);
+    await execute('MOVE', subSteps, `${p.unit.unitName} dropped ${p.feet} ft${total > 0 ? ` — ${total} damage` : ''}${roll}`);
     // A fall is still a move: archer reactions fire; the pursue gate skips it (a
     // descent always starts on a raised surface).
     offerReactionsFor({ ...p.unit, hex: { ...p.targetHex } });
@@ -966,7 +1072,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       });
     }
     const roll = n > 0 ? ` (${n}d6: ${[...faces].sort((a, b) => a - b).join(',')})` : '';
-    await execute('DETACH_HERO', subSteps, `${hero.unitName} fell ${p.elevation} ft${total > 0 ? ` â€” ${total} damage` : ''}${roll}`);
+    await execute('DETACH_HERO', subSteps, `${hero.unitName} fell ${p.elevation} ft${total > 0 ? ` — ${total} damage` : ''}${roll}`);
     if (newHp <= 0) await routeUnit(execute, { ...hero, currentUnitHp: newHp }, 'fell', true, null);
     setActiveHeroId(null);
   }, [pendingHeroFall, execute, setActiveHeroId]);
@@ -1001,6 +1107,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     pendingStructureAction,
     setPendingStructureAction,
     confirmStructureAction,
+    confirmClimbOver,
     maybeAutoReturnToRanged,
     performMove,
     completeMove,
