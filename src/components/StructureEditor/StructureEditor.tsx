@@ -47,12 +47,13 @@ function MoveInput({ value, onChange, readOnly, placeholder = '—' }: {
 }
 
 /** Nullable non-negative integer field (door HP). Blank = null (no explicit door). */
-function NumInput({ value, onChange, readOnly, max = 999, placeholder = '—' }: {
+function NumInput({ value, onChange, readOnly, max = 999, placeholder = '—', step }: {
   value: number | null;
   onChange: (v: number | null) => void;
   readOnly: boolean;
   max?: number;
   placeholder?: string;
+  step?: number;
 }) {
   return (
     <input
@@ -60,6 +61,7 @@ function NumInput({ value, onChange, readOnly, max = 999, placeholder = '—' }:
       type="number"
       min={0}
       max={max}
+      step={step}
       value={value === null ? '' : String(value)}
       placeholder={placeholder}
       disabled={readOnly}
@@ -280,19 +282,19 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                 <>
                   <label className="flex items-center gap-2 text-[11px] text-gray-300">
                     <input type="checkbox" disabled={readOnly} checked={draft.battlement} onChange={e => patch({ battlement: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
-                    Draw a battlement (crenellation) on the outside face
+                    Wall - show battlement (crenellation) on the outside face
                   </label>
                   <label className="flex items-center gap-2 text-[11px] text-gray-300">
                     <input type="checkbox" disabled={readOnly} checked={draft.barricade} onChange={e => patch({ barricade: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
-                    Barricade — a line of ✕ on the edge (affects both in and out)
+                    Barricade - affect both in and out
                   </label>
                   <label className="flex items-center gap-2 text-[11px] text-gray-300">
                     <input type="checkbox" disabled={readOnly} checked={draft.sinWave} onChange={e => patch({ sinWave: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
-                    Sin wave — a magical wave on the edge (affects both in and out)
+                    Magical wave - affect both sides
                   </label>
                   <label className="flex items-center gap-2 text-[11px] text-gray-300">
                     <input type="checkbox" disabled={readOnly} checked={draft.ladder} onChange={e => patch({ ladder: e.target.checked })} className="h-3.5 w-3.5 accent-amber-400" />
-                    Ladder — a trapezoid ladder on the edge (pure visual; the climb waiver is the <span className="text-amber-300">Ignore climb</span> effect)
+                    Ladder - visual for ascend/ descend pathway
                   </label>
                   <div className="rounded border border-gray-700 p-2 space-y-2">
                     <p className="text-[10px] uppercase tracking-wide text-gray-500">Climb MP per 10 ft (blank = default 4; direction-relative)</p>
@@ -340,7 +342,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                 <p className="text-[10px] uppercase tracking-wide text-gray-500">Surface elevation</p>
                 <div className="flex flex-wrap items-center gap-3 text-[11px]">
                   <label className="flex items-center gap-1">Height (ft)
-                    <NumInput value={draft.elevation ?? 0} readOnly={readOnly} onChange={v => patch({ elevation: Math.max(0, v ?? 0) })} max={9990} />
+                    <NumInput value={draft.elevation ?? 0} readOnly={readOnly} onChange={v => patch({ elevation: Math.max(0, v ?? 0) })} max={9990} step={10} />
                   </label>
                   <span className="text-gray-500">0 = decorative / low (no climb, no LoS block; e.g. a barricade)</span>
                 </div>
@@ -374,6 +376,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
                       modifier={m}
                       readOnly={readOnly}
                       inputClass={input}
+                      excludeKinds={['ignore_climb']}
                       onChange={next => patchMod(i, next)}
                       onRemove={() => patch({ modifiers: draft.modifiers.filter((_, idx) => idx !== i) })}
                     />

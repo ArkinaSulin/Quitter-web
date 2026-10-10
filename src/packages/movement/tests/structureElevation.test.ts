@@ -44,15 +44,27 @@ describe('structure elevation (2b)', () => {
     expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(0);
   });
 
-  it('an ignore_climb edge modifier waives the climb', () => {
+  it('an edge mp_* of 0 is a free climb (the ignore_climb replacement)', () => {
     const templates = {
-      stair: tmpl({ anchor: 'edge', elevation: 10, modifiers: [{ kind: 'ignore_climb' }] }),
+      stair: tmpl({ anchor: 'edge', elevation: 10, doorHp: null, maxHp: 30, mpFootIn: 0, mpFootOut: 0 }),
       tower: tmpl({ anchor: 'hex', elevation: 10 }),
     };
     const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
     const key = edgeRef(0, 0, dir).key;
-    const structures = { [key]: inst('stair'), '1,0': inst('tower') };
+    const structures = { [key]: inst('stair', { outside: 'a' }), '1,0': inst('tower') };
     expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(0);
+  });
+
+  it('an edge structure overrides the adjacent hex-surface climb', () => {
+    const templates = {
+      wall: tmpl({ anchor: 'edge', elevation: 10, doorHp: null, maxHp: 30, mpFootIn: 2 }),
+      tower: tmpl({ anchor: 'hex', elevation: 20 }),
+    };
+    const dir = directionBetween({ q: 0, r: 0 }, { q: 1, r: 0 });
+    const key = edgeRef(0, 0, dir).key;
+    const structures = { [key]: inst('wall', { outside: 'a' }), '1,0': inst('tower') };
+    // The wall's 1 step × 2 MP wins over the tower's climbCostMp(20)=8 — not max'd.
+    expect(structureClimbCostBetween({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(2);
   });
 
   it('a waiveClimb mover ignores any climb', () => {

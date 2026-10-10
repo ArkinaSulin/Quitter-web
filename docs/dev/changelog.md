@@ -1,5 +1,29 @@
 # QuiTTER Changelog
 
+## Edge climb = per-10-ft mp_* (overrides hex); structure ignore_climb retired; editor tweaks (2026-10-09)
+**Files:** src/packages/movement/lib/mapStructures.ts (+ tests/structureElevation.test.ts), src/components/ScenarioMap/useMoveActions.ts, src/packages/effects/lib/effectTemplates.ts (+ tests/effectTemplates.test.ts), src/components/EffectEditor/EffectModifierFields.tsx, src/components/StructureEditor/StructureEditor.tsx, src/types/structure.ts, src/components/shared/mapFeatureDraw.test.ts, supabase/migrations/120_structure_retire_ignore_climb.sql, docs/dev/{18-map-structures,changelog}.md, docs/players/player-manual.md
+
+- **Edge climb overrides the hex climb.** `structureClimbCostBetween` now returns the
+  edge structure's climb `round(height/10) × mp_*` (direction/locomotion; `null` =
+  default 4, **`0` = free**) and **replaces** (no longer `max`es) the adjacent hex's
+  surface-rise climb. No edge structure (or an open door) → the hex rise as before.
+- **`ignore_climb` retired for STRUCTURES** (kept for units + zones). A free structure
+  climb is now a **`mp_*` of 0**. Removed `structureWaivesClimb` and its edge usages
+  (`structureClimbCostBetween`, `handleClimbMove`); `edgeShowsLadder` = the `ladder`
+  flag only. The **Structure Editor hides `ignore_climb`** (new `excludeKinds` prop on
+  `EffectModifierFields`). Migration **120** strips structure `ignore_climb` and sets
+  `mp_* = 0` (behavior-preserving). **Apply 120 in Supabase.**
+- **Ladder is pure visual** — a key note (in `mapStructures.ts` + `types/structure.ts`)
+  records that a structure spans 0→X so a "10-ft ladder" is relative (0→10, 10→20, …);
+  the door is the exception (always at elevation 0).
+- **Structure Editor flags** relabelled: "Wall - show battlement (crenellation) on the
+  outside face" / "Barricade - affect both in and out" / "Magical wave - affect both
+  sides" / "Ladder - visual for ascend/ descend pathway". **Height inputs use step 10**
+  (added `step` to the Structure Editor `NumInput`; others already did).
+- **Save/DC shown only for `dot` / `entry` / `hp_borrow`** (new `modifierUsesSave` in
+  `effectTemplates.ts`) — non-damage effect kinds hide the Save/DC fields everywhere the
+  shared row is used. `tsc` clean, 996 tests pass, build clean.
+
 ## Turn-0 free-move shows the movement windows (2026-10-09)
 **Files:** src/components/ScenarioMap/{useMoveActions,useCombatActions,ScenarioMap}.tsx, docs/dev/changelog.md
 

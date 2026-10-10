@@ -99,9 +99,9 @@ describe('edgeStructureVisuals (shared by scenario + Map Editor)', () => {
     expect(up.ladder!.rungs).not.toBe(explicitB.ladder!.rungs);
   });
 
-  it('an ignore_climb edge (no ladder flag) also draws the ladder', () => {
+  it('an ignore_climb modifier alone no longer draws a ladder (structure ignore_climb retired)', () => {
     const v = edgeStructureVisuals({ ...geom, template: edge({ modifiers: [{ kind: 'ignore_climb' }] }), instance: inst() });
-    expect(v.ladder).not.toBeNull();
-    expect(v.baseLine).toBe(false);
+    expect(v.ladder).toBeNull();
+    expect(v.baseLine).toBe(true);
   });
 });

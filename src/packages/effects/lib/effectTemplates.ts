@@ -34,6 +34,15 @@ export function honorsMode(kind: EffectModifierKind): boolean {
   return MODE_MODIFIER_KINDS.includes(kind);
 }
 
+/** Kinds whose amount lands on a target's HP and therefore can take a saving
+ *  throw (the Save / DC fields). Everything else (stats, flags, gates) hides
+ *  those fields. */
+export const SAVE_MODIFIER_KINDS: EffectModifierKind[] = ['dot', 'entry', 'hp_borrow'];
+
+export function modifierUsesSave(kind: EffectModifierKind): boolean {
+  return SAVE_MODIFIER_KINDS.includes(kind);
+}
+
 /** Parse "XdY±Z" (X=0 => flat Z). Returns null when not a valid dice/number. */
 export function parseDice(dice: string | null | undefined): { count: number; sides: number; bonus: number } | null {
   if (!dice) return null;

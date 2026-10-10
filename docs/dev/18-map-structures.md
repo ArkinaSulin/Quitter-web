@@ -47,25 +47,23 @@ scenario is migrated (Slice 3).
   - `spikes` draws a triangle (sawtooth) wave — minima on the edge, peaks
     outward, at the battlement amplitude — e.g. **Archer's Stake**.
   - `barricade` (X marks), `sinWave` (magical wave) and **`ladder`** (a trapezoid
-    ladder) are further edge decorations. `ladder` is **pure visual** — the climb
-    waiver is the separate `ignore_climb` effect modifier; the ladder is still
-    auto-drawn for a structure that carries `ignore_climb` so migrated stairs keep
-    their graphic. A ladder edge draws **only** the ladder (no base wall line).
+    ladder) are further edge decorations. `ladder` is **pure visual** — a pathway
+    graphic with **no mechanic of its own**; the crossing cost is the edge's `mp_*`
+    (see below). A ladder edge draws **only** the ladder (no base wall line).
   - **Ladder direction** leans toward the higher adjacent hex surface
     (`structureSurfaceAt`), or an instance's `ladderSide: 'a' | 'b'` override.
     Instance field is jsonb-only (no migration). The re-click flip (below) toggles
-    `ladderSide`; hex height is a separate concern (see *Edge height is derived*).
+    `ladderSide`.
   - **Shared rendering**: `mapFeatureDraw.edgeStructureVisuals(...)` is the single
     source for the base line / battlement / barricade / sine-wave / ladder geometry,
     called by both `useCanvasDraw` (scenario) and `MapCanvas` (Map Editor) so the
     two canvases cannot diverge. **Both** draw hex-structure elevation badges at
-    the hex's north vertex; **no** edge elevation badge (edges are auto-height).
+    the hex's north vertex; **no** edge elevation badge.
   - A placement's `outside` flip maps the template's inside/outside onto the
     canonical `a`/`b` sides — one control that swaps the directional stats and
     moves the battlement. Re-clicking a placed edge flips **`outside`** normally,
-    but a **stairs** edge (ladder / `ignore_climb`) flips **`ladderSide`** only —
-    the two-step workflow: place the wall, flip its face outward, then add the
-    ladder and flip it.
+    but a **ladder** edge flips **`ladderSide`** only — the two-step workflow: place
+    the wall, flip its face outward, then add the ladder and flip it.
 - **Hex** (`anchor='hex'`) — occupies a whole hex:
   - `hexMoveCost` = extra MP to enter (`NULL` = normal).
   - `doorHp` = optional destructible door (`NULL` = no door). The door uses the
@@ -93,26 +91,28 @@ The four attack-roll flags map to the four directions, with the carrier always
 - `entry` — one-time damage when a unit enters (archer spikes alternative).
 - `max_org_level_allowed` — **reusable gate**: only formations whose organization
   level is `≤ value` may enter. The same kind can be put on a ground zone.
-- `ignore_climb` — waive the climb cost of the crossed edge (the effect-based
-  replacement for the old `stairs` boolean). On an edge structure it waives the
-  climb for anyone crossing (a normal step via `structureClimbCostBetween`, **and**
-  the dedicated climb action `handleClimbMove`, so climbing a stair-edged
-  tower/hex structure is free too); on a unit effect or ground zone the
-  carrier/mover ignores elevation cost (`structureWaivesClimb` /
-  `unitIgnoresClimb`).
+- `ignore_climb` — **UNIT effect / GROUND-ZONE effect only** (retired for
+  structures, migration **120**). It waives the elevation cost for the
+  carrier/mover (`unitIgnoresClimb`). On a **structure**, a free climb is instead
+  expressed by a **`mp_*` of 0** — the edge climbs `round(height/10) × mp_*`, so a
+  `0` costs nothing (see *Edge climb = the edge's `mp_*`*).
 
-## Edge height is derived (no authored wall height)
+## Edge climb = the edge's `mp_*` (per 10 ft), overriding the hex climb
 
-An **edge** structure's height is **fully derived, never authored**:
-`edgeStructureElevation(hexA, hexB, structures, templates)` =
-`max(10 ft, surfaceAt(hexA), surfaceAt(hexB))` (`movement/mapStructures.ts`). A wall
-on flat ground is 10 ft; beside a taller hex (platform/tower) it matches it. This
-value feeds the solid-wall **climb cost** (`structureClimbCostBetween`) and the
-wall's **line-of-sight blocking top** (`combat/lineOfSight.structuresBlockingLine`).
-Hex structures keep the authored `elevation` (`structureElevation`) and pass `0` =
-decorative. The Structure Editor and the instance editor show edge elevation as
-**auto** (no field); edges never contribute a walkable hex surface
-(`structureSurfaceAt` reads hex structures only).
+An **edge** structure's height is its **authored** `elevation` (default 10 ft; `0` =
+low/decorative). Crossing it costs **`round(height/10) × mp_*`**, where `mp_*` is the
+template's **MP per 10 ft** for the crossing direction (`_in` outside→inside, `_out`
+inside→outside; foot/mounted) — `null` = default 4 MP/step, **`0` = free** (the
+`ignore_climb` replacement). The edge structure's climb **overrides** the adjacent
+hex's surface-rise climb (replace, never `max`). This value feeds the movement cost
+(`structureClimbCostBetween`). The wall's authored **height** also drives its
+**line-of-sight blocking top** (`combat/lineOfSight.structuresBlockingLine`).
+
+> **Key note.** A structure spans elevation **0 (base) → X (top)**, so a "10-ft
+> ladder" is **relative** — its 10-ft segments are 0→10, 10→20, … and the height
+> decides how many there are. The **door is the exception**: it is always at
+> elevation 0, so there is no segment ambiguity for it. An edge never contributes a
+> walkable hex surface (`structureSurfaceAt` reads hex structures only).
 
 ## Elevation changes are edge-only
 
@@ -201,7 +201,7 @@ runtime `Walls` (`structuresToWalls`) so movement/combat/render are unchanged.
   result; the `WALL` branch is retained only for historical commands.
 - **In-scenario painting**: `StructurePaintPanel` (LeftPanel Map tab) mirrors the
   Map Editor — pick a template, click/drag to place on an edge or hex, click a
-  placed edge again to flip its battlement (or, for a stairs edge, the ladder
+  placed edge again to flip its battlement (or, for a ladder edge, the ladder
   direction), edit HP/DT/door, right-click removes.
   These authoring writes go straight to `map_data.structures` (like terrain/zones).
 - **Edge-structure attacks**: the Phase 2 drag-onto-the-edge attack now reads the
@@ -269,8 +269,8 @@ tab in the Map Editor:
   click/drag to place. Edge templates paint on the nearest edge; hex templates
   paint the hex.
 - Clicking an already-placed edge structure selects it; clicking it **again**
-  flips its battlement (`outside`) — or, for a **stairs** edge (ladder /
-  `ignore_climb`), flips only the ladder direction (`ladderSide`) instead.
+  flips its battlement (`outside`) — or, for a **ladder** edge, flips only the
+  ladder direction (`ladderSide`) instead.
 - Selected-instance editor: Max HP / DT overrides (blank = template default),
   Door HP for hex structures with a door, the battlement-side Flip, and Remove.
 - `MapCanvas` renders edge segments (styled by block/cost, with the battlement
@@ -333,8 +333,8 @@ faces and `hex_move_cost` are gone:
   cost 2+ will disable charge"* (`makeChargeBlockedEdge`).
 - **In-scenario editing**: **Shift + double-click** a placed structure opens
   `StructureEditModal` (HP, door HP, gate open, outside side, the instance's
-  modifier override seeded from the template). Elevation is shown only for **hex**
-  structures; an **edge** wall's height is auto (see *Edge height is derived*).
+  modifier override seeded from the template). Elevation (authored height, step
+  10 ft) is editable for **edge** and **hex** structures alike (see *Edge climb*).
 - **Color**: `color` is authored as a wood/stone tint (used for the palette swatch;
   full `source-atop` texture tinting is a follow-up).
 - **Data**: migration 099 wipes every placed instance and reseeds the 9 presets in

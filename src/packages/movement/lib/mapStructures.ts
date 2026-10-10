@@ -170,43 +170,40 @@ export function structureClimbCostBetween(
   const edgeKey = dir >= 0 ? edgeRef(from.q, from.r, dir).key : null;
   const edgeInst = edgeKey ? structures[edgeKey] : undefined;
   const edgeT = edgeInst ? templates?.[edgeInst.templateId] : undefined;
-  // An `ignore_climb` modifier on the crossed edge waives the climb for anyone
-  // (the effect-based replacement for the old `stairs` boolean).
-  if (edgeInst && edgeT && structureWaivesClimb(edgeInst, edgeT)) return 0;
 
-  let climb = 0;
-  // Hex surface rise (onto the top) — waived when the hex can be entered at ground.
+  // An EDGE structure's climb OVERRIDES the adjacent hex's surface climb: crossing
+  // it costs `round(height/10) × mp_*` (per 10 ft; a `0` mp_* = FREE, `null` = the
+  // default 4). A height < 10 ft needs no climb. NOTE: a "10-ft ladder" is relative
+  // — the structure spans elevation 0 (base) → X (top), so its 10-ft segments are
+  // 0→10, 10→20, …; the door is the exception (always at elevation 0). `mp = 0` is
+  // the free case (the `ignore_climb` structure modifier is retired).
+  if (edgeInst && edgeT && dir >= 0 && structureDoorState(edgeInst, edgeT).noDoor) {
+    const steps = Math.round(structureElevation(edgeT, edgeInst) / 10);
+    const ref = edgeRef(from.q, from.r, dir);
+    const outsideIsA = (edgeInst.outside ?? 'a') === 'a';
+    const fromIsOutside = outsideIsA
+      ? (from.q === ref.aq && from.r === ref.ar)
+      : (from.q === ref.bq && from.r === ref.br);
+    const authored = isMounted
+      ? (fromIsOutside ? edgeT.mpMountedIn : edgeT.mpMountedOut)
+      : (fromIsOutside ? edgeT.mpFootIn : edgeT.mpFootOut);
+    // `null` = default 4 MP/step; a `0` (or any >= 0) is used verbatim (0 = free);
+    // a negative (hard block) contributes no climb here (the block is elsewhere).
+    const perStep = authored === null || authored === undefined ? CLIMB_MP_PER_STEP : Math.max(0, authored);
+    return steps * perStep;
+  }
+
+  // No edge structure (or an open door) → the hex surface rise (onto the top),
+  // waived when the hex can be entered at ground.
   const fromSurf = structureSurfaceAt(from, structures, templates);
   const toSurf = structureSurfaceAt(to, structures, templates);
   if (toSurf > fromSurf) {
     const toInst = structures[`${to.q},${to.r}`];
     const toT = toInst ? templates?.[toInst.templateId] : undefined;
     const groundPass = !!(toInst && toT && structureDoorState(toInst, toT).openOrBroken);
-    if (!groundPass) climb = Math.max(climb, climbCostMp(toSurf - fromSurf));
+    if (!groundPass) return climbCostMp(toSurf - fromSurf);
   }
-  // Edge wall: cross it by climbing its AUTHORED height in 10-ft steps, each step
-  // costing the template's `mp_*` for the crossing DIRECTION (`_in` = outside→inside,
-  // `_out` = inside→outside; NULL falls back to 4 MP/step). An open/broken door
-  // waives the whole climb; a height < 10 ft (e.g. a barricade) needs no climb.
-  if (edgeInst && edgeT && dir >= 0) {
-    const st = structureDoorState(edgeInst, edgeT);
-    if (st.noDoor) {
-      const steps = Math.round(structureElevation(edgeT, edgeInst) / 10);
-      if (steps > 0) {
-        const ref = edgeRef(from.q, from.r, dir);
-        const outsideIsA = (edgeInst.outside ?? 'a') === 'a';
-        const fromIsOutside = outsideIsA
-          ? (from.q === ref.aq && from.r === ref.ar)
-          : (from.q === ref.bq && from.r === ref.br);
-        const authored = isMounted
-          ? (fromIsOutside ? edgeT.mpMountedIn : edgeT.mpMountedOut)
-          : (fromIsOutside ? edgeT.mpFootIn : edgeT.mpFootOut);
-        const perStep = authored !== null && authored !== undefined && authored > 0 ? authored : CLIMB_MP_PER_STEP;
-        climb = Math.max(climb, steps * perStep);
-      }
-    }
-  }
-  return climb;
+  return 0;
 }
 
 const intOr = (v: unknown): number | undefined => {
@@ -244,16 +241,11 @@ export function instanceModifiers(inst: StructureInstance | null | undefined, t:
   return inst?.modifiers ?? t?.modifiers ?? [];
 }
 
-/** True when the structure carries an `ignore_climb` modifier (waives climb). */
-export function structureWaivesClimb(inst: StructureInstance | null | undefined, t: StructureTemplate | null | undefined): boolean {
-  return instanceModifiers(inst, t).some(m => m.kind === 'ignore_climb');
-}
-
-/** True when an edge structure renders a ladder: the `ladder` decoration flag OR
- *  an `ignore_climb` modifier (the latter keeps effect-based stairs drawn). The
- *  shared renderer and the re-click flip both key off this. */
+/** True when an edge structure renders a ladder: the `ladder` decoration flag. The
+ *  shared renderer and the re-click flip both key off this. (`ignore_climb` is no
+ *  longer a structure concept — a free climb is a `mp_*` of 0.) */
 export function edgeShowsLadder(inst: StructureInstance | null | undefined, t: StructureTemplate | null | undefined): boolean {
-  return structureHasLadder(t, inst) || structureWaivesClimb(inst, t);
+  return structureHasLadder(t, inst);
 }
 
 /** Current door pool of a placed instance (null door defaults to maxHp). */

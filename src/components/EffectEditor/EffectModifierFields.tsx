@@ -5,7 +5,7 @@
 // field accepts a plain number or dice "XdY±Z" (X=0 = flat Z); the flat part is
 // mirrored into `delta` for stat kinds and legacy consumers.
 import React from 'react';
-import { EffectModifier, EffectModifierKind, isFlagModifierKind, honorsMode, EFFECT_MODIFIER_LABELS } from '@/packages/effects';
+import { EffectModifier, EffectModifierKind, isFlagModifierKind, honorsMode, modifierUsesSave, EFFECT_MODIFIER_LABELS } from '@/packages/effects';
 import { EffectDirection } from '@/packages/effects';
 
 export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
@@ -45,18 +45,21 @@ interface EffectModifierFieldsProps {
   readOnly?: boolean;
   onRemove?: () => void;
   inputClass?: string;
+  /** Kinds to omit from the dropdown (e.g. the Structure Editor hides `ignore_climb`). */
+  excludeKinds?: EffectModifierKind[];
 }
 
-export function EffectModifierFields({ modifier: m, onChange, readOnly = false, onRemove, inputClass }: EffectModifierFieldsProps) {
+export function EffectModifierFields({ modifier: m, onChange, readOnly = false, onRemove, inputClass, excludeKinds }: EffectModifierFieldsProps) {
   const input = inputClass ?? DEFAULT_INPUT_CLASS;
   const patch = (p: Partial<EffectModifier>) => onChange({ ...m, ...p });
   const flag = isFlagModifierKind(m.kind);
+  const kindOptions = excludeKinds?.length ? KIND_OPTIONS.filter(o => !excludeKinds.includes(o.value)) : KIND_OPTIONS;
 
   return (
     <div className="rounded border border-gray-800 p-1.5 space-y-1">
       <div className="flex flex-wrap items-center gap-2">
         <select className={input + ' !w-40 min-w-0'} value={m.kind} disabled={readOnly} onChange={e => patch({ kind: e.target.value as EffectModifierKind })}>
-          {KIND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {kindOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         {honorsMode(m.kind) && (
           <select
@@ -111,7 +114,7 @@ export function EffectModifierFields({ modifier: m, onChange, readOnly = false, 
           </button>
         )}
       </div>
-      {!flag && (
+      {!flag && modifierUsesSave(m.kind) && (
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
           <span>Save:</span>
           <select

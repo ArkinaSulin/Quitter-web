@@ -39,8 +39,10 @@ export interface StructureTemplate {
   barricade: boolean;
   /** Draw a magical sine wave centred on the edge (affects both in/out). */
   sinWave: boolean;
-  /** Draw a trapezoid ladder decoration on the edge (pure visual — the climb
-   *  waiver is the separate `ignore_climb` effect modifier). */
+  /** Draw a trapezoid ladder decoration on the edge — a purely VISUAL ascend/
+   *  descend pathway. It grants no mechanic: the climb cost is the edge's `mp_*`
+   *  per 10 ft (`structureClimbCostBetween`), and a free climb is `mp_* = 0`
+   *  (`ignore_climb` is a unit/zone effect, not a structure one). */
   ladder: boolean;
   /** Hex structures: draw the thick black hex outline (off for decorative hexes). */
   hexBorder: boolean;

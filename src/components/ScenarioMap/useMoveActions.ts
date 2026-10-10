@@ -21,7 +21,7 @@ import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
 import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
 import { Walls, directionBetween, edgeRef } from '@/packages/movement';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, structureWaivesClimb, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween } from '@/packages/movement';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
@@ -276,17 +276,11 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const climbTarget = parseClimbTo(unit.climbTo);
     const descend = !!climbTarget && targetHex.q === unit.hex.q && targetHex.r === unit.hex.r;
     const ascendTarget = climbTarget ?? targetHex;
-    // An `ignore_climb` effect on the MOVER or on the CROSSED edge (stairs/ramp)
-    // waives the whole climb — the mover still climbs (elevation bookkeeping
-    // intact) but pays no MP. The edge case matters because the dedicated climb
-    // action bypasses `makeCostOfHex`, so the edge's waiver must be applied here
-    // too (a normal crossing gets it via `structureClimbCostBetween`).
-    const climbDir = directionBetween(unit.hex, ascendTarget);
-    const climbEdgeKey = !descend && climbDir >= 0 ? edgeRef(unit.hex.q, unit.hex.r, climbDir).key : null;
-    const climbEdgeInst = climbEdgeKey ? structures?.[climbEdgeKey] : undefined;
-    const climbEdgeT = climbEdgeInst ? structureTemplates?.[climbEdgeInst.templateId] : undefined;
-    const edgeWaivesClimb = !!(climbEdgeInst && climbEdgeT && structureWaivesClimb(climbEdgeInst, climbEdgeT));
-    const freeClimb = freeMove || unitIgnoresClimb(unit, groundZones) || edgeWaivesClimb;
+    // A mover's own `ignore_climb` effect (or free-move) waives the whole climb —
+    // the mover still climbs (elevation bookkeeping intact) but pays no MP.
+    // (`ignore_climb` is a UNIT/zone effect now — not a structure one; a structure's
+    // free climb is a `mp_*` of 0, handled by `structureClimbCostBetween`.)
+    const freeClimb = freeMove || unitIgnoresClimb(unit, groundZones);
     const budget = freeClimb ? Number.POSITIVE_INFINITY
       : (unit.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP));
     const spendMp = (cost: number): { movementPointsAvailable: number; actionsAvailable: number } =>

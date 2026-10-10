@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapEffectRow, mapEffectToRow, blankEffectTemplate, parseModifiers, modifierSummary, modifierScopeConflict } from '@/packages/effects/lib/effectTemplates';
+import { mapEffectRow, mapEffectToRow, blankEffectTemplate, parseModifiers, modifierSummary, modifierScopeConflict, modifierUsesSave } from '@/packages/effects/lib/effectTemplates';
 
 describe('effectTemplates mappers', () => {
   it('maps a row including image scale + transparent background', () => {
@@ -70,6 +70,19 @@ describe('modifierSummary', () => {
     expect(modifierSummary({ kind: 'save_advantage' })).toBe('save advantage');
     expect(modifierSummary({ kind: 'save_disadvantage' })).toBe('save disadvantage');
     expect(modifierSummary({ kind: 'forced_stop' })).toBe('forced stop');
+  });
+});
+
+describe('modifierUsesSave', () => {
+  it('only dot / entry / hp_borrow take a save (the Save/DC fields)', () => {
+    expect(modifierUsesSave('dot')).toBe(true);
+    expect(modifierUsesSave('entry')).toBe(true);
+    expect(modifierUsesSave('hp_borrow')).toBe(true);
+    expect(modifierUsesSave('ac')).toBe(false);
+    expect(modifierUsesSave('morale')).toBe(false);
+    expect(modifierUsesSave('mp_cost')).toBe(false);
+    expect(modifierUsesSave('range')).toBe(false);
+    expect(modifierUsesSave('max_org_level_allowed')).toBe(false);
   });
 });
 

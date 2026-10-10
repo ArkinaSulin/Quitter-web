@@ -743,9 +743,9 @@ To get **down** off an adjacent lower hex, drop your unit on the hex below and
 choose:
 
 - **Climb down** — pay **4 MP per 10 ft** (`height ÷ 2.5`). If you can't afford
-  the whole descent the unit **hangs** partway and finishes next action. **Stairs**
-  (an `ignore_climb` edge) make the descent free. **Mounted** units cannot climb
-  down.
+  the whole descent the unit **hangs** partway and finishes next action. A
+  **ladder/stairs edge with a climb cost of 0 MP** makes the descent free. **Mounted**
+  units cannot climb down.
 - **Drop** — fall instead: take **1d6 per 10 ft** (a `Feather Fall` effect negates
   it) and land on the hex below. No MP. You can't drop onto a hex that is already
   occupied.
