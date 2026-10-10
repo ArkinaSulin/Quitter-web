@@ -4,7 +4,7 @@
 // to the primary ranged weapon. Owns the move-related soft-enforcement states
 // (pendingMove, pendingFormation, hero attach/swap conversion + over-budget).
 import { useCallback, useState } from 'react';
-import { Unit, Hex, AllianceGroup, Formation, GroundEffect, getOrganizationLevel } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, GroundEffect, getOrganizationLevel, hexDistance } from '@/types/gameProtocol';
 import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable, computeMoveBudget, computeMovePool, computeHeroMoveBudget, computeHeroMovePool, applyMoveCost, applyHeroMoveCost } from '@/packages/movement';
 import { isFormationChangeAffordable } from '@/packages/movement';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
@@ -36,6 +36,8 @@ export interface PendingDescent {
   feet: number;
   /** False for mounted units — they may only Drop or Cancel. */
   canClimb: boolean;
+  /** Free-move: movement is free, so only Climb down is offered (never Drop). */
+  noDrop?: boolean;
 }
 
 /** A plain drop onto a wall/structure with ≥2 legal actions: a pick-one prompt. */
@@ -506,14 +508,17 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
     // A grounded, non-flyable unit dropped on an ADJACENT LOWER surface steps off
     // the edge: prompt Climb down / Drop / Cancel (elevation only ever changes
-    // across an adjacent edge).
-    if (!flying && !freeMove && !unit.isCharging && !unit.attachedToUnitId && !canFly(unit)
+    // across an adjacent edge). This runs under free-move too (movement is free,
+    // but the height-change choice is still part of moving); under free-move only
+    // Climb down is offered (never Drop).
+    if (!flying && !unit.isCharging && !unit.attachedToUnitId && !canFly(unit)
         && endSurface < originSurface && areHexesAdjacent(unit.hex, targetHex)) {
       setPendingDescent({
         unit, targetHex,
         originHex: { ...unit.hex },
         feet: originSurface - endSurface,
         canClimb: !unit.mountId && !unit.mountName,
+        noDrop: freeMove,
       });
       return;
     }
@@ -555,6 +560,14 @@ export function useMoveActions(deps: MoveActionsDeps) {
       const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
       if (occupied.has(`${targetHex.q},${targetHex.r}`)) {
         addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — hex occupied`);
+        return;
+      }
+      // Free-move still picks the destination elevation for a flyer (the height
+      // choice is part of moving; only the MP cost is waived).
+      if (canFly(unit)) {
+        const groundOccupied = units.some(u => u.id !== unitId && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) <= 0 && u.hex.q === targetHex.q && u.hex.r === targetHex.r);
+        const range = elevationSliderRange(unit.elevation ?? 0, hexDistance(unit.hex, targetHex), groundOccupied);
+        setPendingElevation({ unit, targetHex, cost: 0, maxMP: unit.flySpeed ?? 0, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation: undefined, range, originAir: flying, originSurface, endSurface, occupant: null, canSwoop: false, isHostile: false, weaponIndex: unit.activeWeaponIndex ?? 0, damageDiceCount: damageDiceCount(parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0]?.damageDice ?? ''), mainTarget: 'rider' });
         return;
       }
       const breakToFormation = flying ? undefined : (entryBreakFormation(unit.hex, targetHex, unit.currentFormation, structures, structureTemplates, groundZones) ?? undefined);
@@ -659,15 +672,19 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const perStep = Math.max(1, structureClimbCostBetween(from, farHex, structures, structureTemplates, false, false) / steps);
     const maxMP = unitMaxMP(unit);
     const budgetUnit = moveBudgetUnit(unit, 'ground');
-    const budget = unit.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP);
+    // Free-move waives the MP cost (movement is free) but keeps the mechanic.
+    const budget = freeMove ? Number.POSITIVE_INFINITY : (unit.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP));
+    const spendOf = (cost: number) => freeMove
+      ? { movementPointsAvailable: unit.movementPointsAvailable, actionsAvailable: unit.actionsAvailable }
+      : (unit.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP));
     const curElev = unit.elevation ?? 0;
     const doneSteps = Math.max(0, Math.round((curElev - originSurface) / 10));
     const needSteps = Math.max(1, steps - doneSteps);
-    const affordSteps = Math.max(0, Math.floor(budget / perStep));
+    const affordSteps = freeMove ? needSteps : Math.max(0, Math.floor(budget / perStep));
     const climbSteps = Math.min(needSteps, affordSteps);
     if (climbSteps <= 0) { addError(`${unit.unitName} has no movement to climb`); return; }
     const upCost = climbSteps * perStep;
-    const upSpend = unit.isHero ? applyHeroMoveCost(budgetUnit, upCost, maxMP) : applyMoveCost(budgetUnit, upCost, maxMP);
+    const upSpend = spendOf(upCost);
     const newElev = Math.min(H, curElev + climbSteps * 10);
     // Partial: not enough to reach the top → hang on the near side.
     if (newElev < H) {
@@ -679,15 +696,16 @@ export function useMoveActions(deps: MoveActionsDeps) {
       ] }], `${unit.unitName} climbs to ${newElev} ft`);
       return;
     }
-    // Full climb-over. Coerce to a drop when a climb-down is unaffordable.
+    // Full climb-over. Coerce to a drop when a climb-down is unaffordable (never
+    // under free-move — movement is free, so climb-down is always affordable).
     const downCost = steps * CLIMB_MP_PER_STEP;
     let actual = descent;
-    if (descent === 'climb' && !(unit.isHero ? isHeroMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP) : isMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP))) {
+    if (!freeMove && descent === 'climb' && !(unit.isHero ? isHeroMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP) : isMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP))) {
       actual = 'drop';
       addMessage(`${unit.unitName} — not enough MP to climb down; dropping instead`);
     }
     const used = upCost + (actual === 'climb' ? downCost : 0);
-    const spend = unit.isHero ? applyHeroMoveCost(budgetUnit, used, maxMP) : applyMoveCost(budgetUnit, used, maxMP);
+    const spend = spendOf(used);
     const feathers = unitHasFeatherFall(unit);
     const dmg = actual === 'drop' && !feathers ? rollFallDamage(H).total : 0;
     const newHp = Math.max(0, (unit.currentUnitHp ?? 0) - dmg);
@@ -717,7 +735,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     pruneReactionOffers();
     await pursuitsRef.current?.(unit, from, farHex);
     if (dmg > 0 && newHp <= 0) await routeUnit(execute, { ...unit, currentUnitHp: newHp }, 'fell', true, null);
-  }, [units, structures, structureTemplates, unitMaxMP, execute, addMessage, addError, offerReactionsFor, pruneReactionOffers, pursuitsRef]);
+  }, [units, structures, structureTemplates, unitMaxMP, execute, addMessage, addError, freeMove, offerReactionsFor, pruneReactionOffers, pursuitsRef]);
 
   /** Resolve a structure-action prompt: Climb onto / Pass door (hex) or Climb over (edge). */
   const confirmStructureAction = useCallback(async (action: 'climb' | 'pass') => {
@@ -994,13 +1012,16 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
     if (p.occupant) {
       // Fly move onto the occupied hex (passenger drains passively, never limits).
+      if (freeMove) { void moveUnitFree(p.unit, p.targetHex, p.attachedHero, undefined, elev); return; }
       void completeMove(p.unit, p.targetHex, p.cost, false, finalMax, p.attachedHero, p.heroMaxMP, undefined, elev, p.endSurface);
       return;
     }
+    // Free-move: the elevation choice is honoured but the move costs nothing.
+    if (freeMove) { void moveUnitFree(p.unit, p.targetHex, p.attachedHero, p.breakToFormation, elev); return; }
     const budgetUnit = moveBudgetUnit(p.unit, finalAir ? 'fly' : 'ground');
     const affordable = p.unit.isHero ? isHeroMoveAffordable(budgetUnit, p.cost, finalMax) : isMoveAffordable(budgetUnit, p.cost, finalMax);
     void completeMove(p.unit, p.targetHex, p.cost, !affordable, finalMax, p.attachedHero, p.heroMaxMP, p.breakToFormation, elev, p.endSurface);
-  }, [pendingElevation, completeMove, structures, structureTemplates, addError]);
+  }, [pendingElevation, completeMove, moveUnitFree, freeMove, structures, structureTemplates, addError]);
 
   const confirmLeaveHero = useCallback(async () => {
     const p = pendingLeaveHero;

@@ -1765,6 +1765,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     elevateUnit,
     canAttackTarget: canAttackInFog,
     groundZones: effectiveZones,
+    freeMove,
   });
   pursuitsRef.current = performPursuits;
 
@@ -3521,19 +3522,23 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             <p className="text-white text-sm mb-1 text-center font-semibold">Drop off the structure?</p>
             <p className="text-gray-400 text-xs mb-4 text-center">
               {pendingDescent.unit.unitName} is {pendingDescent.feet} ft up ({Math.floor(pendingDescent.feet / 10)}d6 fall).
-              {pendingDescent.canClimb
-                ? ` Climb down for ${Math.round(pendingDescent.feet / 2.5)} MP (may hang midway), or drop and take the fall damage.`
-                : ' Mounted — cannot climb down; drop to take the fall damage.'}
+              {!pendingDescent.canClimb
+                ? ' Mounted — cannot climb down; drop to take the fall damage.'
+                : pendingDescent.noDrop
+                  ? ' Climb down (free move).'
+                  : ` Climb down for ${Math.round(pendingDescent.feet / 2.5)} MP (may hang midway), or drop and take the fall damage.`}
             </p>
             <div className="flex flex-col gap-2">
               {pendingDescent.canClimb && (
                 <button className="px-4 py-2 bg-green-800 hover:bg-green-700 text-white rounded-lg text-sm" onClick={() => void confirmDescentClimb()}>
-                  Climb down ({Math.round(pendingDescent.feet / 2.5)} MP)
+                  {pendingDescent.noDrop ? 'Climb down (free)' : `Climb down (${Math.round(pendingDescent.feet / 2.5)} MP)`}
                 </button>
               )}
-              <button className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg text-sm" onClick={() => void confirmDescentDrop()}>
-                Drop ({Math.floor(pendingDescent.feet / 10)}d6)
-              </button>
+              {!pendingDescent.noDrop && (
+                <button className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg text-sm" onClick={() => void confirmDescentDrop()}>
+                  Drop ({Math.floor(pendingDescent.feet / 10)}d6)
+                </button>
+              )}
               <button className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm" onClick={cancelDescent}>
                 Cancel
               </button>

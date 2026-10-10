@@ -88,6 +88,8 @@ interface CombatActionsDeps {
   /** Optional fog-of-war gate: whether the attacker's own side can see the target.
    *  Absent when fog is off. */
   canAttackTarget?: (attacker: Unit, target: Unit) => boolean;
+  /** Free-move: the climb portion of a climb-attack costs no MP. */
+  freeMove?: boolean;
 }
 
 export function useCombatActions(deps: CombatActionsDeps) {
@@ -112,6 +114,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     playerName,
     setAttachModal,
     canAttackTarget,
+    freeMove = false,
   } = deps;
 
   const [pendingAttack, setPendingAttack] = useState<PendingAttack | null>(null);
@@ -1075,13 +1078,15 @@ export function useCombatActions(deps: CombatActionsDeps) {
     if (top <= originSurface || curElev >= top || (target.elevation ?? 0) < top) return false;
     const maxMP = unitMaxMP(attacker);
     const budgetUnit = moveBudgetUnit(attacker, 'ground');
-    const budget = attacker.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP);
+    const budget = freeMove ? Number.POSITIVE_INFINITY : (attacker.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP));
     const need = Math.max(0, Math.round((top - originSurface) / 10));
     const done = Math.max(0, Math.round((curElev - originSurface) / 10));
-    const steps = Math.min(need - done, Math.max(0, Math.floor(budget / CLIMB_MP_PER_STEP)));
+    const steps = freeMove ? (need - done) : Math.min(need - done, Math.max(0, Math.floor(budget / CLIMB_MP_PER_STEP)));
     if (steps <= 0) { addError(`${attacker.unitName} has no movement to climb`); return true; }
     const cost = steps * CLIMB_MP_PER_STEP;
-    const spend = attacker.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP);
+    const spend = freeMove
+      ? { movementPointsAvailable: attacker.movementPointsAvailable, actionsAvailable: attacker.actionsAvailable }
+      : (attacker.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP));
     const newElev = Math.min(top, curElev + steps * 10);
     const atTop = newElev >= top;
     const climbChange: UnitChange[] = [
@@ -1098,7 +1103,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const adjusted: Unit = { ...attacker, elevation: newElev, climbTo: null, movementPointsAvailable: spend.movementPointsAvailable, actionsAvailable: spend.actionsAvailable };
     await performAttack(adjusted, target, false, { prependSubSteps: [{ type: 'MOVE', description: `${attacker.unitName} climbs onto the top`, unitId: attacker.id, changes: climbChange }] });
     return true;
-  }, [units, structures, structureTemplates, unitMaxMP, execute, addError, performAttack]);
+  }, [units, structures, structureTemplates, unitMaxMP, execute, addError, freeMove, performAttack]);
 
   /**
    * Execute the swoop drop as ONE command: charge MOVE (hex + MP/action spend),

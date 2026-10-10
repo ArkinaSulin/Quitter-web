@@ -1,5 +1,21 @@
 # QuiTTER Changelog
 
+## Turn-0 free-move shows the movement windows (2026-10-09)
+**Files:** src/components/ScenarioMap/{useMoveActions,useCombatActions,ScenarioMap}.tsx, docs/dev/changelog.md
+
+- Scenarios are created with `free_move: true` and turn-0 free-move is permanent, which
+  made `handleUnitMove` take its free fast path and **skip the flyer elevation window and
+  the climb-down window** (the free path returned before the elevation branch; the descent
+  branch was gated `!freeMove`). Both are part of moving, so they now show during free-move:
+  - the **elevation window** is raised (cost 0) for a flyer and confirmed via the existing
+    `moveUnitFree` (no MP);
+  - the **descent window** now appears under free-move too, offering **Climb down (free)**
+    only — never Drop (movement is free);
+  - the new **climb-over / climb-attack** actions waive their MP spend under free-move.
+- Reuses only the existing modals/`freeMove`/`freeClimb`/`moveUnitFree` paths — no new
+  modal, command type, or migration. The climb-onto/pass popup keeps its ambiguity gate.
+  `tsc` clean, 994 tests pass, build clean.
+
 ## Two-floor doors + structure-action popup + atomic climb-attack (2026-10-09)
 **Files:** src/packages/movement/lib/mapStructures.ts, src/components/ScenarioMap/{useMoveActions,useCombatActions,ScenarioMap}.tsx
 
