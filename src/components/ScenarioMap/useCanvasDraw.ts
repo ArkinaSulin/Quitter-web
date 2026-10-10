@@ -12,13 +12,13 @@ import { computeEffectiveMoraleModifier } from '@/packages/morale';
 import { isDeadCorpse } from '@/packages/units';
 import { corpseDots, FallenMap } from '@/packages/battle';
 import { TEAM_COLORS, Team } from '@/packages/units';
-import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, canFly, isAirborne, MapBackgroundConfig, costShade, hexMpLabelAt } from '@/packages/world';
+import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, canFly, isAirborne, MapBackgroundConfig, costShade, hexMpLabelAt, HEX_DIRS } from '@/packages/world';
 import { parseClimbTo, hexDirection } from '@/packages/movement';
 import { FOG_RGB } from '@/packages/world';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/packages/movement';
-import { MapStructures, isHexStructureKey, structureSurfaceAt } from '@/packages/movement';
+import { MapStructures, isHexStructureKey, structureSurfaceAt, climbStepsFromFeet, structureElevation } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
-import { strokeFillText, fillHexPath, MP_COST_GREY, edgeStructureVisuals, mapTextStyles, MONO, drawHexStructure, drawEffectMark } from '@/components/shared/mapFeatureDraw';
+import { strokeFillText, fillHexPath, MP_COST_GREY, edgeStructureVisuals, mapTextStyles, MONO, drawHexStructure, drawEffectMark, climbLabelText, drawClimbLabel, hexClimbLabels, CLIMB_LABEL_OFFSET } from '@/components/shared/mapFeatureDraw';
 import { AiOverlayData } from './aiTypes';
 
 interface CanvasDrawDeps {
@@ -350,29 +350,23 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           ctx.fillStyle = '#ffd9c9';
           ctx.fillText(label, mx, my);
         }
-        // Climb-cost labels next to the edge (per 10 ft), one per face/direction.
+        // Climb-cost labels next to the edge (total MP to cross), one per face.
         if (inst && t) {
           const ref2 = edgeRef(q, r, d);
           const outside = (inst.outside ?? 'a') === 'a';
+          const steps = climbStepsFromFeet(structureElevation(t, inst));
           for (const faceKey of ['a', 'b'] as const) {
             const isOutside = (faceKey === 'a') === outside;
-            const foot = isOutside ? t.mpClimbUp : t.mpClimbDown;
-            const mounted = isOutside ? t.mpMountedUp : t.mpMountedDown;
-            const fmt = (v: number) => (v < 0 ? '-' : String(v));
-            const text = foot === mounted ? fmt(foot) : `${fmt(foot)}/${fmt(mounted)}`;
+            const foot = steps * (isOutside ? t.mpClimbUp : t.mpClimbDown);
+            const mounted = steps * (isOutside ? t.mpMountedUp : t.mpMountedDown);
+            const text = climbLabelText(foot, mounted);
+            if (!text) continue;
             const hc = hexCenter({ q: faceKey === 'a' ? ref2.aq : ref2.bq, r: faceKey === 'a' ? ref2.ar : ref2.br, s: 0 });
             const mx = (a.x + b.x) / 2;
             const my = (a.y + b.y) / 2;
-            const lx = mx + (hc.cx - mx) * 0.3;
-            const ly = my + (hc.cy - my) * 0.3;
-            ctx.font = MONO(ts.hp.fontPx);
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.lineWidth = ts.hp.linePx;
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-            ctx.strokeText(text, lx, ly);
-            ctx.fillStyle = '#ffe0b2';
-            ctx.fillText(text, lx, ly);
+            const lx = mx + (hc.cx - mx) * CLIMB_LABEL_OFFSET;
+            const ly = my + (hc.cy - my) * CLIMB_LABEL_OFFSET;
+            drawClimbLabel(ctx, { text, x: lx, y: ly, unit: 1, zoom: currentZoom });
           }
         }
         // Drag-to-attack hint: the edge under the pointer gets a bright cap.
@@ -386,6 +380,30 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         }
       }
       ctx.restore();
+    }
+
+    // Hex-structure climb labels: a per-edge total on each of the 6 edges whose
+    // neighbour top is LOWER (an edge structure overrides its own edge).
+    if (structures) {
+      for (const key of Object.keys(structures)) {
+        if (!isHexStructureKey(key) || isFogHidden(key)) continue;
+        const [q, r] = key.split(',').map(Number);
+        if (!Number.isFinite(q) || !Number.isFinite(r)) continue;
+        const labels = hexClimbLabels({ q, r }, structures, templates);
+        if (labels.length === 0) continue;
+        const c = hexCenter({ q, r, s: -q - r });
+        for (const lbl of labels) {
+          const text = climbLabelText(lbl.foot, lbl.mounted);
+          if (!text) continue;
+          const d = HEX_DIRS[lbl.dir];
+          const nc = hexCenter({ q: q + d.q, r: r + d.r, s: -(q + d.q) - (r + d.r) });
+          const mx = (c.cx + nc.cx) / 2;
+          const my = (c.cy + nc.cy) / 2;
+          const x = mx + (c.cx - mx) * CLIMB_LABEL_OFFSET;
+          const y = my + (c.cy - my) * CLIMB_LABEL_OFFSET;
+          drawClimbLabel(ctx, { text, x, y, unit: 1, zoom: currentZoom });
+        }
+      }
     }
 
     // Structure + effect elevation badges (DISPLAY only): the feet value just

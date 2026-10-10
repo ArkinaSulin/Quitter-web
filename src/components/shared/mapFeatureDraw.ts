@@ -5,8 +5,8 @@
 // in coordinate model (screen-space vs world-space) and image loading, so each
 // keeps its own loop and passes a pixel mapper + font/line-width scaler here.
 import { StructureTemplate, StructureInstance } from '@/types/structure';
-import { structureDoorState, structureElevation } from '@/packages/movement';
-import { HEX_SIZE } from '@/packages/world';
+import { structureDoorState, structureElevation, structureSurfaceAt, climbStepsFromFeet, edgeRef, MapStructures } from '@/packages/movement';
+import { HEX_SIZE, HEX_DIRS } from '@/packages/world';
 import {
   battlementPath,
   battlementDepth,
@@ -47,6 +47,90 @@ export function mapTextStyles(zoom: number): Record<'hp' | 'door' | 'elevation' 
     effectElev: { fontPx: Math.max(9, 11 * z), linePx: line },
     mp: { fontPx: Math.min(39, (2 * HEX_SIZE * z) / 3), linePx: 4 },
   };
+}
+
+/** How far a per-edge climb label sits from the edge midpoint toward its hex
+ *  centre: 0 = on the edge line, 1 = at the hex centre. Shared so the scenario
+ *  canvas and the Map Editor place labels identically. */
+export const CLIMB_LABEL_OFFSET = 0.15;
+
+/** The alpha of a per-edge climb label — faint so it annotates without clutter. */
+export const CLIMB_LABEL_ALPHA = 0.4;
+
+/**
+ * The board text for a foot/mounted climb pair. `null` when BOTH are 0 (a free
+ * climb draws no label); a negative (hard block) shows `-`; equal values collapse
+ * to one number, else `foot/mounted`.
+ */
+export function climbLabelText(foot: number, mounted: number): string | null {
+  if (foot === 0 && mounted === 0) return null;
+  const fmt = (v: number) => (v < 0 ? '-' : String(v));
+  return foot === mounted ? fmt(foot) : `${fmt(foot)}/${fmt(mounted)}`;
+}
+
+/** One labelled climb edge of a HEX structure: `HEX_DIRS` index + the TOTAL MP
+ *  (10-ft steps × rate) to climb onto the structure across that edge. */
+export interface HexClimbLabel {
+  dir: number;
+  foot: number;
+  mounted: number;
+}
+
+/**
+ * The per-edge climb labels for a HEX structure: each of its 6 edges whose
+ * neighbour top is LOWER (a real climb onto this structure). Edges covered by an
+ * EDGE structure are skipped (that edge draws its own labels), and level edges
+ * (equal top surface) are hidden — there is no extra crossing cost. The HIGHER
+ * structure owns a non-level shared edge and contributes its up-rate. Returns []
+ * when the hex has no structure. Values are TOTALS: steps × mp per 10 ft.
+ */
+export function hexClimbLabels(
+  hex: { q: number; r: number },
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+): HexClimbLabel[] {
+  const inst = structures?.[`${hex.q},${hex.r}`];
+  const t = inst ? templates?.[inst.templateId] : undefined;
+  if (!inst || !t) return [];
+  const surf = structureSurfaceAt(hex, structures ?? undefined, templates ?? undefined);
+  const out: HexClimbLabel[] = [];
+  for (let dir = 0; dir < 6; dir++) {
+    const d = HEX_DIRS[dir];
+    const n = { q: hex.q + d.q, r: hex.r + d.r };
+    if (structures?.[edgeRef(hex.q, hex.r, dir).key]) continue;
+    const nSurf = structureSurfaceAt(n, structures ?? undefined, templates ?? undefined);
+    if (!(surf > nSurf)) continue;
+    const steps = climbStepsFromFeet(surf - nSurf);
+    out.push({ dir, foot: steps * t.mpClimbUp, mounted: steps * t.mpMountedUp });
+  }
+  return out;
+}
+
+export interface ClimbLabelDrawOpts {
+  text: string;
+  x: number;
+  y: number;
+  /** Screen px per caller unit (1 = screen space, `zoom` = world space). */
+  unit: number;
+  zoom: number;
+}
+
+/** Draw one per-edge climb label at (x, y) in the caller's units, using the HP
+ *  font at `CLIMB_LABEL_ALPHA` so it reads as a faint annotation over the art. */
+export function drawClimbLabel(ctx: CanvasRenderingContext2D, o: ClimbLabelDrawOpts): void {
+  const ts = mapTextStyles(o.zoom);
+  ctx.save();
+  ctx.globalAlpha = CLIMB_LABEL_ALPHA;
+  ctx.font = MONO(ts.hp.fontPx / o.unit);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = ts.hp.linePx / o.unit;
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+  ctx.strokeText(o.text, o.x, o.y);
+  ctx.fillStyle = '#ffe0b2';
+  ctx.fillText(o.text, o.x, o.y);
+  ctx.restore();
 }
 
 /** Stroke-then-fill centred text (the standard map-label look). */

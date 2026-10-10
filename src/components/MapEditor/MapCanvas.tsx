@@ -8,13 +8,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { hexToPixel, pixelToHex } from '@/hooks/useHexGrid';
-import { HEX_SIZE, DEFAULT_GRID_RADIUS, hexMpLabelAt, costShade } from '@/packages/world';
-import { edgeRef, nearestEdge, hexCorner } from '@/packages/movement';
+import { HEX_SIZE, DEFAULT_GRID_RADIUS, hexMpLabelAt, costShade, HEX_DIRS } from '@/packages/world';
+import { edgeRef, nearestEdge, hexCorner, climbStepsFromFeet, structureElevation } from '@/packages/movement';
 import { MapStructures, isEdgeStructureKey, isHexStructureKey, structuresToWalls, structureZones, structureSurfaceAt } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { MapHexEffect, expandHexEffects } from '@/packages/effects';
 import { EffectTemplate } from '@/packages/effects';
-import { strokeFillText, fillHexPath, MP_COST_GREY, edgeStructureVisuals, mapTextStyles, MONO, drawHexStructure, drawEffectMark } from '@/components/shared/mapFeatureDraw';
+import { strokeFillText, fillHexPath, MP_COST_GREY, edgeStructureVisuals, mapTextStyles, MONO, drawHexStructure, drawEffectMark, climbLabelText, drawClimbLabel, hexClimbLabels, CLIMB_LABEL_OFFSET } from '@/components/shared/mapFeatureDraw';
 
 export interface MapCanvasProps {
   imageUrl: string;
@@ -286,33 +286,50 @@ export function MapCanvas({
             ctx.restore();
           }
         }
-        // Climb-cost labels on the edge (per 10 ft), one per face/direction.
+        // Climb-cost labels on the edge (total MP to cross), one per face.
+        const steps = inst && t ? climbStepsFromFeet(structureElevation(t, inst)) : 0;
         const labelFor = (faceKey: 'a' | 'b') => {
           if (!t) return null;
           const outside = (inst.outside ?? 'a') === 'a';
           const isOutside = (faceKey === 'a') === outside;
-          const foot = isOutside ? t.mpClimbUp : t.mpClimbDown;
-          const mounted = isOutside ? t.mpMountedUp : t.mpMountedDown;
-          const fmt = (v: number) => (v < 0 ? '-' : String(v));
-          const text = foot === mounted ? fmt(foot) : `${fmt(foot)}/${fmt(mounted)}`;
+          const foot = steps * (isOutside ? t.mpClimbUp : t.mpClimbDown);
+          const mounted = steps * (isOutside ? t.mpMountedUp : t.mpMountedDown);
+          const text = climbLabelText(foot, mounted);
+          if (!text) return null;
           const ref2 = edgeRef(q, r, d);
           const hq = faceKey === 'a' ? ref2.aq : ref2.bq;
           const hr = faceKey === 'a' ? ref2.ar : ref2.br;
           const c = hexToPixel({ q: hq, r: hr, s: -hq - hr }, HEX_SIZE);
           const mx = (a.x + b.x) / 2;
           const my = (a.y + b.y) / 2;
-          return { text, x: mx + (c.x - mx) * 0.3, y: my + (c.y - my) * 0.3 };
+          return { text, x: mx + (c.x - mx) * CLIMB_LABEL_OFFSET, y: my + (c.y - my) * CLIMB_LABEL_OFFSET };
         };
         for (const lbl of [labelFor('a'), labelFor('b')]) {
           if (!lbl) continue;
-          ctx.font = MONO(ts.hp.fontPx / zoom);
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.lineWidth = ts.hp.linePx / zoom;
-          ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-          ctx.strokeText(lbl.text, lbl.x, lbl.y);
-          ctx.fillStyle = '#ffe0b2';
-          ctx.fillText(lbl.text, lbl.x, lbl.y);
+          drawClimbLabel(ctx, { text: lbl.text, x: lbl.x, y: lbl.y, unit: zoom, zoom });
+        }
+      }
+    }
+    // Hex-structure climb labels: a per-edge total on each of the 6 edges whose
+    // neighbour top is LOWER (an edge structure overrides its own edge).
+    if (p.structures) {
+      for (const key of Object.keys(p.structures)) {
+        if (!isHexStructureKey(key)) continue;
+        const [q, r] = key.split(',').map(Number);
+        if (!Number.isFinite(q) || !Number.isFinite(r)) continue;
+        const labels = hexClimbLabels({ q, r }, p.structures, p.templates);
+        if (labels.length === 0) continue;
+        const c = hexToPixel({ q, r, s: -q - r }, HEX_SIZE);
+        for (const lbl of labels) {
+          const text = climbLabelText(lbl.foot, lbl.mounted);
+          if (!text) continue;
+          const d = HEX_DIRS[lbl.dir];
+          const nc = hexToPixel({ q: q + d.q, r: r + d.r, s: -(q + d.q) - (r + d.r) }, HEX_SIZE);
+          const mx = (c.x + nc.x) / 2;
+          const my = (c.y + nc.y) / 2;
+          const x = mx + (c.x - mx) * CLIMB_LABEL_OFFSET;
+          const y = my + (c.y - my) * CLIMB_LABEL_OFFSET;
+          drawClimbLabel(ctx, { text, x, y, unit: zoom, zoom });
         }
       }
     }

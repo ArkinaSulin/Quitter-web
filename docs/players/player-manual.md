@@ -529,7 +529,8 @@ wall's MP (or is impossible if the wall blocks there), and the wall can grant
 defender behind it and is cheaper or dearer to climb from either direction.
 Charges cannot cross any wall. The GM places walls via the Map Editor's
 **Structures** tab (or the scenario's **Map Feature** tab); they show as thick
-edge segments.
+edge segments. Each edge prints its **total** climb MP (foot/mounted) as a faint
+label; edges between equal-height structures and free climbs show nothing.
 
 ### Changing formation
 

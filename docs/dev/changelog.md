@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Climb labels show the total cost, hug the edge, and cover hex structures (2026-10-10)
+**Files:** src/components/shared/mapFeatureDraw.ts (+ test), src/components/ScenarioMap/useCanvasDraw.ts, src/components/MapEditor/MapCanvas.tsx, docs/dev/{13-map-entities-terrain,18-map-structures,changelog}.md, docs/players/player-manual.md
+
+- **Total, not per-10-ft.** Both canvases now print the **total** climb for a crossing
+  (`10-ft steps × mp rate`), so a 20-ft wall reads `8` (was `4`). A free (`0/0`) climb
+  draws nothing; a lone `0` still shows (`0/4`); a hard block is `-`.
+- **Hug the edge + fade.** The label offset drops from 0.30 → **0.15** of the way from
+  the edge midpoint to the hex centre, and draws at **40% alpha**.
+- **Hex structures label all 6 edges.** New shared `mapFeatureDraw.hexClimbLabels` emits a
+  label per edge whose neighbour top is LOWER (steps × the hex's up-rate); level edges
+  (equal top) and edges owned by an **edge structure** are skipped. The higher structure
+  owns a shared non-level edge. `climbLabelText` / `drawClimbLabel` / `CLIMB_LABEL_OFFSET`
+  / `CLIMB_LABEL_ALPHA` are the single source both canvases use.
+- `tsc` clean, 1005 tests pass, build clean. No migration.
+
 ## Edge climb labels use the HP font; "not allowed" shows `-` (2026-10-10)
 **Files:** src/components/shared/mapFeatureDraw.ts, src/components/ScenarioMap/useCanvasDraw.ts, src/components/MapEditor/MapCanvas.tsx, docs/dev/{13-map-entities-terrain,18-map-structures,changelog}.md
 

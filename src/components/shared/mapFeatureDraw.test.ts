@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { structureBadges, edgeStructureVisuals, mapTextStyles } from './mapFeatureDraw';
+import { structureBadges, edgeStructureVisuals, mapTextStyles, climbLabelText, hexClimbLabels } from './mapFeatureDraw';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 
 const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => ({
@@ -122,5 +122,56 @@ describe('mapTextStyles (single source for all three renderers)', () => {
       expect((ts.hp.fontPx / zoom) * zoom).toBeCloseTo(ts.hp.fontPx);
       expect((ts.elevation.linePx / zoom) * zoom).toBeCloseTo(ts.elevation.linePx);
     }
+  });
+});
+
+describe('climbLabelText', () => {
+  it('collapses equal values and hides a fully free climb', () => {
+    expect(climbLabelText(4, 4)).toBe('4');
+    expect(climbLabelText(0, 0)).toBeNull();
+  });
+
+  it('shows both when they differ, keeping a lone 0', () => {
+    expect(climbLabelText(0, 4)).toBe('0/4');
+    expect(climbLabelText(4, 6)).toBe('4/6');
+  });
+
+  it('renders a hard block (negative) as -', () => {
+    expect(climbLabelText(-4, 4)).toBe('-/4');
+    expect(climbLabelText(-4, -4)).toBe('-');
+  });
+});
+
+describe('hexClimbLabels (per-edge totals for a hex structure)', () => {
+  const tower = (over: Partial<StructureTemplate> = {}) =>
+    template({ anchor: 'hex', elevation: 10, mpClimbUp: 4, mpMountedUp: 4, ...over });
+
+  it('labels all 6 edges of a tower on the ground (total = steps x rate)', () => {
+    const labels = hexClimbLabels({ q: 0, r: 0 }, { '0,0': { templateId: 't' } }, { t: tower() });
+    expect(labels).toHaveLength(6);
+    expect(labels.every(l => l.foot === 4 && l.mounted === 4)).toBe(true);
+  });
+
+  it('scales the total by 10-ft steps', () => {
+    const labels = hexClimbLabels({ q: 0, r: 0 }, { '0,0': { templateId: 't' } }, { t: tower({ elevation: 20 }) });
+    expect(labels[0].foot).toBe(8);
+  });
+
+  it('hides an edge to a same-height neighbour (no extra crossing cost)', () => {
+    const structures = { '0,0': { templateId: 't' }, '1,0': { templateId: 't' } };
+    const labels = hexClimbLabels({ q: 0, r: 0 }, structures, { t: tower() });
+    expect(labels.some(l => l.dir === 0)).toBe(false);
+    expect(labels).toHaveLength(5);
+  });
+
+  it('skips edges covered by an edge structure', () => {
+    const structures = { '0,0': { templateId: 't' }, '0,0,0': { templateId: 'e' } };
+    const labels = hexClimbLabels({ q: 0, r: 0 }, structures, { t: tower(), e: tower({ anchor: 'edge' }) });
+    expect(labels.some(l => l.dir === 0)).toBe(false);
+    expect(labels).toHaveLength(5);
+  });
+
+  it('returns [] for a hex with no structure', () => {
+    expect(hexClimbLabels({ q: 5, r: 5 }, {}, {})).toEqual([]);
   });
 });
