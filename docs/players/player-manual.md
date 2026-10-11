@@ -563,8 +563,8 @@ menu. It locks rotation and formation and shows a **front wedge**: amber hexes
 = short charge, white = a full charge (2+ hexes — but the wedge fans to your
 whole pool). An **airborne flyer** swoops instead of charging, and because a
 **hero** (like any loose unit) has no facing, its charge — a ground Charge! (if
-it **Can Charge**) or an airborne swoop — reaches **every direction**, so you
-can charge any enemy within range.
+it **Can Charge**) or an airborne swoop — may go along any of the six **straight
+lines** (no turning), so you can charge any enemy directly in line.
 
 ![S-15 Charge wedge](screenshots/s-15-charge-wedge.png)
 

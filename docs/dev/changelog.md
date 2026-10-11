@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Loose charge corridor is six straight rays, not a disk (2026-10-11)
+**Files:** src/packages/movement/{lib/moveCost.ts,tests/moveCost.test.ts}, docs/dev/{00-universal-rules,07-movement-economy,08-combat,changelog}.md, docs/players/player-manual.md
+
+- A **loose** (facing-less) charger — hero / Scattered — now charges along the
+  union of the **six straight rays** from its origin instead of a hex **disk**:
+  any of the six directions, but **no curving** (no mid-charge turn). The previous
+  BFS fanned all six directions at every step, so it reached curve-requiring hexes
+  (e.g. `(1,-2)`), making the drag preview much larger than a straight charge.
+  Occupied / broken terrain / a threat hex stop the ray (a threat hex is
+  enterable as the final step, never passed through). Formed chargers keep the
+  documented front-arc wedge. This also straightens the hero **swoop** corridor
+  (same `loose` flag / `buildSwoopDropPlan`).
+- Docs updated (`00`, `07`, `08`, player manual). No migration. `tsc` clean, tests
+  pass, build clean.
+
 ## Heroes may ground-charge; loose charge-over; "Charge and Swoop" label (2026-10-11)
 **Files:** src/packages/combat/{lib/chargeStance.ts,lib/chargeOver.ts,tests/chargeStance.test.ts,tests/chargeOver.test.ts}, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{00-universal-rules,06-turn-system,07-movement-economy,08-combat,changelog}.md, docs/players/player-manual.md
 

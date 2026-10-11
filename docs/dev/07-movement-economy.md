@@ -227,17 +227,18 @@ threat zone isn't a retreat). Heroes/Scattered/Routed are loose — no withdraw
 
 ## Charge (movement-side)
 
-`computeChargeReachable` — the charge corridor, **no turning**, bounded by one
-action's MP pool (`maxHexes`). A **formed** unit uses its **front-arc wedge**; a
-**loose** unit (Hero / Scattered — no facing, per the loose rule above) passes the
-`loose` flag and charges in **every direction**, so a flying hero can swoop any
-reachable target and a grounded hero may charge any direction (`chargeStanceFor`
-gates a hero on its `canCharge` flag alone). Occupied hexes block the lane; a
-**threat hex is stopped at** — enterable as the final step but never passed
-through, the same universal ZoC rule as a normal move (`computeThreatHexes`); a
-painted cost > 1 hex cannot be entered or passed through (charges stay flat).
-Charge full distance = `charge_full_distance` (2) hexes for the free
-double-damage attack; distance < 2 → premature confirm. See `08-combat.md`.
+`computeChargeReachable` — the charge corridor, bounded by one action's MP pool
+(`maxHexes`). A charge is a **straight** rush (no turning). A **formed** unit uses
+its **front-arc wedge**; a **loose** unit (Hero / Scattered — no facing, per the
+loose rule above) passes the `loose` flag and charges along the union of the
+**six straight rays** from its origin — any direction, but no curving. So a flying
+hero can swoop any target on a straight line and a grounded hero may charge any of
+the six directions (`chargeStanceFor` gates a hero on its `canCharge` flag alone).
+Occupied hexes block the ray; a **threat hex is stopped at** — enterable as the
+final step but never passed through, the same universal ZoC rule as a normal move
+(`computeThreatHexes`); a painted cost > 1 hex cannot be entered or passed through
+(charges stay flat). Charge full distance = `charge_full_distance` (2) hexes for
+the free double-damage attack; distance < 2 → premature confirm. See `08-combat.md`.
 
 ## Who provides `maxMP`
 
