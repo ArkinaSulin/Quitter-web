@@ -71,6 +71,27 @@ describe('routRetreatPath — attacker directly above (same hex)', () => {
     // Away = opposite the east launch hex → west (-1,0).
     expect(res.dest).toEqual(h(-1, 0));
   });
+
+  it('same-hex attacker + another hostile elsewhere → random (not east)', () => {
+    const routed = unit('r', 'blue', h(0, 0), { currentFormation: 'Routed' });
+    const attacker = unit('a', 'red', h(0, 0), { facing: 3 }); // directly above
+    const other = unit('e', 'red', h(3, 0)); // another hostile east — must NOT force east
+    const res = routRetreatPath(ctxOf(routed, [routed, attacker, other], attacker, () => 0.75));
+    expect(res.dest).toEqual(h(0, -1)); // random dir 4 (north)
+    expect(res.dest).not.toEqual(h(1, 0));
+  });
+});
+
+describe('routRetreatPath — hostile mass', () => {
+  it('retreats away from the centroid, not east', () => {
+    const routed = unit('r', 'blue', h(0, 0), { currentFormation: 'Routed' });
+    const e1 = unit('e1', 'red', h(0, -3));
+    const e2 = unit('e2', 'red', h(1, -3)); // both distance 3 → mass axis
+    const res = routRetreatPath(ctxOf(routed, [routed, e1, e2]));
+    // Centroid (0.5,-3) → away is south-west (-1,1), not east (1,0).
+    expect(res.dest).toEqual(h(-1, 1));
+    expect(res.dest).not.toEqual(h(1, 0));
+  });
 });
 
 describe('routRetreatPath — pass through friendlies', () => {

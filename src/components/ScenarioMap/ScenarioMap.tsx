@@ -1749,9 +1749,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   offerRef.current = offerReactionsFor;
   const unitsRef = useRef(units);
   unitsRef.current = units;
+  // Per-unit last MOVE origin, kept from the live command stream so a rout can flee
+  // the attacker's actual incoming direction even when the attack carried no explicit
+  // launch hex (a hover/charge-move + attack): the atomic swoop's prepended MOVE and
+  // an earlier hover MOVE both land here.
+  const lastMoveFromRef = useRef(new Map<string, Hex>());
   const handleCommandLogEventRef = useRef((row: CommandLogRow) => {});
   handleCommandLogEventRef.current = (row) => {
     const steps = parseSubSteps(row.sub_steps);
+    if (row.deleted_at == null) {
+      for (const step of steps) {
+        if (step.type !== 'MOVE' || !step.unitId) continue;
+        const hc = step.changes.find(c => c.field === 'hex');
+        if (hc && hc.from && typeof hc.from === 'object') lastMoveFromRef.current.set(step.unitId, hc.from as Hex);
+      }
+    }
     if (row.action_type === 'ROUT') {
       // Routed-retreat + pursuit orchestration (owner modal when multiple options).
       void routFlowRef.current?.handle(row);
@@ -1953,8 +1965,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const causeId = causePayload?.cause;
     const attacker = causeId ? unitsRef.current.find(u => u.id === causeId && !u.isDeleted) ?? null : null;
     // A swoop lands the attacker on the victim's hex; its launch hex is the real
-    // "incoming direction" the rout flees away from.
-    const attackerFrom = causePayload?.causeFrom ?? null;
+    // "incoming direction" the rout flees away from. Fall back to the attacker's
+    // last MOVE origin (a hover/charge-move approach) when the payload has none.
+    const attackerFrom = causePayload?.causeFrom ?? (causeId ? lastMoveFromRef.current.get(causeId) ?? null : null);
     // Which client orchestrates: the routed unit's owner; the DM fills in when no
     // non-GM participant controls the team.
     const ownerPeers = participantsSync.participants.filter(p => p.role !== 'GM' && p.team === routed.team);

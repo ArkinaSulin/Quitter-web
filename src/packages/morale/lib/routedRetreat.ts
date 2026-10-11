@@ -85,26 +85,27 @@ function awayDirFrom(pos: Hex, towardHex: Hex): number {
   return bestDir;
 }
 
-/** The neighbour direction that maximizes the summed distance to every hostile,
- *  or -1 when every hostile is on `pos` (degenerate — nothing to flee). */
+/** The neighbour direction pointing away from the hostile MASS (their centroid),
+ *  or -1 when every hostile is on `pos` (degenerate — nothing to flee). Using the
+ *  centroid (rather than a summed-distance argmax) avoids defaulting to dir 0/east
+ *  on a tie. */
 function massAwayDir(pos: Hex, hostiles: Unit[]): number {
   if (hostiles.every(h => h.hex.q === pos.q && h.hex.r === pos.r)) return -1;
-  let bestDir = 0;
-  let bestSum = -Infinity;
-  for (let d = 0; d < 6; d++) {
-    const n = neighborsOf(pos)[d];
-    let sum = 0;
-    for (const h of hostiles) sum += hexDistance(n, h.hex);
-    if (sum > bestSum) { bestSum = sum; bestDir = d; }
-  }
-  return bestDir;
+  let cq = 0;
+  let cr = 0;
+  for (const h of hostiles) { cq += h.hex.q; cr += h.hex.r; }
+  const n = hostiles.length;
+  return awayDirFrom(pos, { q: cq / n, r: cr / n, s: -(cq + cr) / n });
 }
+
+const randomDir = (ctx: RoutContext): number => Math.floor((ctx.rnd ?? Math.random)() * 6) % 6;
 
 /**
  * The rout's "away" axis at `pos`: away from the swoop's LAUNCH hex (a swoop lands
  * the attacker on the victim, losing its incoming direction) → else away from the
- * ATTACKER → else away from the NEAREST hostile → else away from the hostile MASS
- * → else a RANDOM direction (the incoming direction is unknown).
+ * ATTACKER → else (the attacker sits on the victim's hex, direction unknown) a
+ * RANDOM direction → else away from the NEAREST hostile → else away from the
+ * hostile MASS → else a RANDOM direction.
  */
 function awayDirection(pos: Hex, ctx: RoutContext, hostiles: Unit[]): number {
   if (ctx.attackerFrom) {
@@ -114,6 +115,9 @@ function awayDirection(pos: Hex, ctx: RoutContext, hostiles: Unit[]): number {
   if (ctx.attacker && !ctx.attacker.isDeleted && (ctx.attacker.currentUnitHp ?? 1) > 0) {
     const d = awayDirFrom(pos, ctx.attacker.hex);
     if (d >= 0) return d;
+    // A flyer directly overhead (attacker on the victim's hex) — its incoming
+    // direction is unknown, so pick a random direction rather than the hostile mass.
+    return randomDir(ctx);
   }
   if (hostiles.length > 0) {
     let nearestDist = Infinity;
@@ -130,9 +134,7 @@ function awayDirection(pos: Hex, ctx: RoutContext, hostiles: Unit[]): number {
     const m = massAwayDir(pos, hostiles);
     if (m >= 0) return m;
   }
-  // No discoverable incoming direction → pick a random direction (the hop logic
-  // still only lands on legal hexes).
-  return Math.floor((ctx.rnd ?? Math.random)() * 6) % 6;
+  return randomDir(ctx);
 }
 
 /** Count hostiles adjacent to a hex (used for the flank / front tie-breaks). */

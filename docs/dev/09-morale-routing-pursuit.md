@@ -120,14 +120,17 @@ retreat deterministically and the owner is shown an **informational** card ("X i
 routing", the destination). It walks **away** from the threat, pushing through
 friendly org ≤ 1 units:
 
-- The "away" axis = away from the **swoop's launch hex** (a swoop lands the
-  attacker on the victim, losing its incoming direction — the launch hex is passed
-  in the ROUT payload as `causeFrom`) → else away from the **attacker** → else away
-  from the **nearest hostile** → else away from the **hostile mass** (the neighbour
-  maximising total distance to all hostiles) → else a **random** direction (the
-  incoming direction is unknowable — e.g. a same-hex hover-melee attacker). A
-  **same-hex** threat contributes no axis (there is no "away from" for a flyer
-  directly overhead).
+- The "away" axis = away from the attacker's **incoming hex** → else away from the
+  **attacker** → else (the attacker sits on the victim's hex — a flyer directly
+  overhead, no bearing) a **random** direction → else away from the **nearest
+  hostile** → else away from the **hostile mass** (away from the hostiles' centroid)
+  → else a **random** direction.
+  - The attacker's incoming hex is the atomic swoop's **launch hex** (`causeFrom` in
+    the ROUT payload) or, when absent (a hover/charge-move + attack), its **last
+    MOVE origin** recovered from the command log (`ScenarioMap.handleRoutRow`) — the
+    "initiation location before landing above the victim" either way.
+  - A **same-hex** attacker with no known incoming hex contributes no axis, so the
+    rout falls to a **random** direction (never a fixed east).
 - Each hop, neighbours are ordered relative to that axis (away = **4**; the
   **away-side** flanks **3/5** = away±1; the **attacker-side** flanks **2/6** =
   away±2):

@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Rout from above: random fallback + recovered approach (2026-10-11)
+**Files:** src/packages/morale/lib/routedRetreat.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{09-morale-routing-pursuit,changelog}.md
+
+- **Stop the east default.** A unit routed by a flyer directly overhead still fled
+  **east** every time: the away-axis chain fell to `massAwayDir`, whose
+  summed-distance tie-break defaulted to dir 0 = east. Now (A) a same-hex cause
+  attacker with no known incoming hex falls to a **random** direction (the chain no
+  longer reaches the hostile-mass heuristic in that case), and (B) `massAwayDir`
+  points away from the hostiles' **centroid** (no dir-0 default).
+- **Recover the real approach.** `handleRoutRow` now also uses the attacker's **last
+  MOVE origin** (tracked live from the command stream) as the incoming hex, so a
+  hover/charge-move + attack flees the actual approach direction rather than random
+  (the atomic swoop's launch hex already rode the ROUT payload's `causeFrom`).
+- Docs + tests updated. No migration. `tsc` clean, tests pass, build clean.
+
 ## Rout retreat: away-side flanks, same-hex attacker, swoop launch hex (2026-10-11)
 **Files:** src/packages/morale/{lib/routedRetreat.ts,tests/routedRetreat.test.ts}, src/components/ScenarioMap/{routeUnit.ts,useCombatActions.ts,ScenarioMap.tsx}, docs/dev/{09-morale-routing-pursuit,changelog}.md
 
