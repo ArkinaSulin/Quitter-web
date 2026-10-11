@@ -1,5 +1,21 @@
 # QuiTTER Changelog
 
+## Charging token silhouettes — formed chevron / loose + hero triangle (2026-10-11)
+**Files:** src/packages/units/{lib/tokenUtils.ts,tests/tokenUtils.test.ts}, src/components/TokenRenderer/drawToken.ts, docs/dev/{15-token-rendering,changelog}.md, docs/players/player-manual.md
+
+- **Formed chargers get the chevron.** The `chargeStagger` layout in
+  `generateDotPositions` (`units/tokenUtils.ts`) widened from mounted-only to
+  every **formed** charger — mounted, formed foot, and formed **flying** flyers —
+  reusing the existing forward-tip concave chevron.
+- **Loose chargers get a triangle.** A charging **Scattered** unit lays its troops
+  in a deterministic forward (apex-up) triangle (`generateTrianglePositions`)
+  instead of the scatter blob; excess troops are hollow as usual.
+- **Charging heroes read as a triangle.** `drawHeroSquareToken`
+  (`TokenRenderer/drawToken.ts`) swaps the circular badge backing for a forward
+  triangle when `unit.isCharging` (portrait / HP bar / name unchanged).
+- Rule documented in `15-token-rendering.md`; no game-logic or package-boundary
+  change. No migration. `tsc` clean, tests pass, build clean.
+
 ## Hero swoop cone, ZoC-stopped charges, preserved attack options (2026-10-11)
 **Files:** src/packages/movement/{lib/moveCost.ts,tests/moveCost.test.ts}, src/components/ScenarioMap/{useMoveActions.ts,useOverlay.ts,useCombatActions.ts,ScenarioMap.tsx,SoftEnforcementModals.tsx}, docs/dev/{00-universal-rules,07-movement-economy,08-combat,13-map-entities-terrain,18-map-structures,changelog}.md, docs/players/player-manual.md
 

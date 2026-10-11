@@ -204,6 +204,13 @@ export function generateDotPositions(
   const availableHeight = topEnd - topStart;
   const padding = dotRadius * 0.5;
 
+  // A charging LOOSE unit (Scattered/Routed) forms a forward triangle instead of
+  // its scattered blob. (A charging FORMED unit uses the chevron below — loose
+  // formations return here, so they never reach it.)
+  if (chargeStagger && (effectiveFormation === 'Scattered' || effectiveFormation === 'Routed')) {
+    return generateTrianglePositions(troopCount, maxTroopCount, tokenWidth, topStart, topEnd, dotRadius);
+  }
+
   // Routed mounted: random layout
   if (effectiveFormation === 'Routed' && isMounted && config.scatteredLayout === 'random') {
     return generateRandomPositions(
@@ -284,11 +291,12 @@ export function generateDotPositions(
     }
   }
 
-  // Charging mounted: shift the whole formation into a forward-tip chevron. The
-  // center column rides up toward the token's forward (top) edge while columns
+  // Charging FORMED units: shift the whole formation into a forward-tip chevron.
+  // The center column rides up toward the token's forward (top) edge while columns
   // further outward drop progressively lower. Centered on the token's midline so
-  // it works for odd and even column counts alike.
-  if (chargeStagger && isMounted) {
+  // it works for odd and even column counts alike. (Loose Scattered/Routed units
+  // already returned the forward triangle above.)
+  if (chargeStagger) {
     const centerX = tokenWidth / 2;
     const halfSpan = tokenWidth / 2 - dotRadius;
     const amplitude = rowSpacing * 0.6;
@@ -401,6 +409,45 @@ function generateCirclePositions(
       const direction = Math.atan2(y - centerY, x - centerX) + Math.PI;
       positions.push({ x, y, isDead, direction });
       globalIdx++;
+    }
+  }
+
+  return positions;
+}
+
+/** Live troops of a charging LOOSE unit: a forward (apex-up) triangle — one dot
+ *  on the top row, growing one wider per row down to the base. Deterministic so
+ *  the shape is stable across frames (no scatter seed needed). */
+function generateTrianglePositions(
+  troopCount: number,
+  maxTroopCount: number,
+  tokenWidth: number,
+  topStart: number,
+  topEnd: number,
+  dotRadius: number,
+): Array<{ x: number; y: number; isDead: boolean; direction?: number }> {
+  const positions: Array<{ x: number; y: number; isDead: boolean; direction?: number }> = [];
+  const count = Math.min(maxTroopCount, 40);
+  if (count <= 0) return positions;
+
+  // Rows grow 1, 2, 3, … so a triangular number covers `count`.
+  const rows = Math.max(1, Math.round((Math.sqrt(8 * count + 1) - 1) / 2));
+  const centerX = tokenWidth / 2;
+  const maxRowWidth = Math.max(0, tokenWidth - dotRadius * 2);
+  const step = rows > 1 ? maxRowWidth / rows : 0;
+  const yTop = topStart + dotRadius;
+  const yBottom = topEnd - dotRadius;
+  const yStep = rows > 1 ? (yBottom - yTop) / (rows - 1) : 0;
+
+  let idx = 0;
+  for (let row = 0; row < rows && idx < count; row++) {
+    const slots = row + 1;
+    const countInRow = Math.min(slots, count - idx);
+    const y = yTop + row * yStep;
+    for (let col = 0; col < countInRow; col++) {
+      const x = centerX + (col - (countInRow - 1) / 2) * step;
+      positions.push({ x, y, isDead: idx >= troopCount });
+      idx++;
     }
   }
 

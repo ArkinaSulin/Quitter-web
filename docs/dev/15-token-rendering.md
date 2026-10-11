@@ -36,6 +36,24 @@ Core: `src/components/TokenRenderer/drawToken.ts` (pure draw function),
 3. **Hero**: portrait (custom → race icon), HP bar (`currentUnitHp/max` on the
    left 75%) + HP numbers, name at the bottom. No dots/hearts/formation.
 
+## Charging silhouette
+
+A charging token (`unit.isCharging`) changes shape to read the charge — the
+rendering mirrors the game's loose/formed split (`00`, `07`):
+
+- **Formed** units (mounted, foot, flying) — the troop layout shifts into a
+  **forward-tip concave chevron** (`units/tokenUtils.generateDotPositions`
+  `chargeStagger`: the center column rides up toward the forward edge, outer
+  columns drop lower).
+- **Loose** units (Scattered) — the troops form a **forward triangle** instead of
+  their scatter blob (`generateTrianglePositions`: apex up, one wider per row).
+- **Heroes** — the badge backing swaps its circle for a **forward triangle**
+  (`drawToken.drawHeroSquareToken`); portrait / HP / name are unchanged.
+
+Loose units (heroes, Scattered) have no facing, so the charge shape points
+token-forward (north); the formed chevron likewise rides toward the token's
+forward edge and rotates with `facing`.
+
 ## Lower third (units)
 
 Left 25% race/portrait icon · right 25% unit-type/weapon icon · middle 50% =

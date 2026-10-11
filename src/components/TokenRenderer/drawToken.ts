@@ -826,8 +826,18 @@ function drawHeroSquareToken(
   const displaySize = isAttached ? heroSize / 2 : heroSize;
   const halfSize = displaySize / 2;
 
+  const backingR = halfSize * 1.1;
   ctx.beginPath();
-  ctx.arc(cx, cy, halfSize * 1.1, 0, 2 * Math.PI);
+  if (unit.isCharging) {
+    // Charging hero: the badge backs onto a forward triangle (the loose charge
+    // silhouette — a hero has no facing, so it points token-forward/north).
+    ctx.moveTo(cx, cy - backingR);
+    ctx.lineTo(cx - backingR * 0.9, cy + backingR * 0.7);
+    ctx.lineTo(cx + backingR * 0.9, cy + backingR * 0.7);
+    ctx.closePath();
+  } else {
+    ctx.arc(cx, cy, backingR, 0, 2 * Math.PI);
+  }
   ctx.fillStyle = teamColor + 'BF';
   ctx.fill();
   ctx.strokeStyle = teamColor;

@@ -567,6 +567,8 @@ direction** — you can dive on any enemy within range.
 
 ![S-15 Charge wedge](screenshots/s-15-charge-wedge.png)
 
+- While charging, the token changes shape: a **formed** unit's troops form a
+  forward chevron, and a **loose** unit or **hero** becomes a triangle.
 - Move only within the wedge (a loose hero's swoop: any direction); each step
   adds to your charge distance.
 - An enemy **kill zone stops the charge**: you may end your charge on a

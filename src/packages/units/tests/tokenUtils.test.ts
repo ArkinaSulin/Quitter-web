@@ -231,3 +231,60 @@ describe('generateDotPositions', () => {
     expect(positions).toHaveLength(0);
   });
 });
+
+describe('charging silhouettes', () => {
+  const W = 160;
+  const H = 120;
+  const R = 4;
+
+  it('a charging FORMED unit gets the forward chevron (center rides up, edges drop)', () => {
+    const plain = generateDotPositions(20, 20, 'Close Order', false, W, H, R, 100, 42, 20, false);
+    const charge = generateDotPositions(20, 20, 'Close Order', false, W, H, R, 100, 42, 20, true);
+
+    expect(charge).toHaveLength(plain.length);
+    expect(charge).not.toEqual(plain);
+    expect(Math.min(...charge.map(p => p.y))).toBeLessThan(Math.min(...plain.map(p => p.y)));
+    expect(Math.max(...charge.map(p => p.y))).toBeGreaterThan(Math.max(...plain.map(p => p.y)));
+  });
+
+  it('a charging FOOT formed unit now also gets the chevron (not just mounted)', () => {
+    const plain = generateDotPositions(12, 12, 'Open Order', false, W, H, R, 100, 42, 10, false);
+    const charge = generateDotPositions(12, 12, 'Open Order', false, W, H, R, 100, 42, 10, true);
+    expect(charge).not.toEqual(plain);
+  });
+
+  it('a charging Scattered unit forms a forward triangle (widening rows)', () => {
+    const positions = generateDotPositions(20, 20, 'Scattered', false, W, H, R, 100, 42, undefined, true);
+    expect(positions).toHaveLength(20);
+
+    const rows: { y: number; xs: number[] }[] = [];
+    for (const p of positions) {
+      const row = rows.find(r => Math.abs(r.y - p.y) < 0.001);
+      if (row) row.xs.push(p.x);
+      else rows.push({ y: p.y, xs: [p.x] });
+    }
+    rows.sort((a, b) => a.y - b.y);
+
+    expect(rows[0].xs).toHaveLength(1); // apex
+    for (let i = 1; i < rows.length; i++) {
+      expect(rows[i].xs.length).toBeGreaterThanOrEqual(rows[i - 1].xs.length);
+    }
+    expect(rows[rows.length - 1].xs.length).toBeGreaterThan(rows[0].xs.length);
+  });
+
+  it('a charging mounted Scattered unit also forms the triangle (not the scatter circle)', () => {
+    const charge = generateDotPositions(20, 20, 'Scattered', true, W, H, R, 100, 42, undefined, true);
+    const plain = generateDotPositions(20, 20, 'Scattered', true, W, H, R, 100, 42, undefined, false);
+    expect(charge).toHaveLength(20);
+    expect(charge).not.toEqual(plain);
+    // Apex row is a single dot.
+    const minY = Math.min(...charge.map(p => p.y));
+    expect(charge.filter(p => Math.abs(p.y - minY) < 0.001)).toHaveLength(1);
+  });
+
+  it('marks excess triangle slots as dead for a damaged charging unit', () => {
+    const positions = generateDotPositions(7, 10, 'Scattered', false, W, H, R, 100, 42, undefined, true);
+    expect(positions).toHaveLength(10);
+    expect(positions.filter(p => !p.isDead)).toHaveLength(7);
+  });
+});
