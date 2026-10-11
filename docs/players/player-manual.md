@@ -562,8 +562,9 @@ Cavalry (or any unit that **Can Charge**) can **Charge!** from the context
 menu. It locks rotation and formation and shows a **front wedge**: amber hexes
 = short charge, white = a full charge (2+ hexes — but the wedge fans to your
 whole pool). An **airborne flyer** swoops instead of charging, and because a
-**hero** (like any loose unit) has no facing, its swoop reaches **every
-direction** — you can dive on any enemy within range.
+**hero** (like any loose unit) has no facing, its charge — a ground Charge! (if
+it **Can Charge**) or an airborne swoop — reaches **every direction**, so you
+can charge any enemy within range.
 
 ![S-15 Charge wedge](screenshots/s-15-charge-wedge.png)
 
@@ -1224,7 +1225,7 @@ Players can skim it to know what the GM can do.
 ![S-27 Scenario Settings](screenshots/s-27-settings.png)
 
 - **Reactive archery** — opportunity fire on/off.
-- **Mounted charge and airborne swoop** — Charge! for grounded charge-capable units and Swoop! for airborne flyers, on/off.
+- **Charge and Swoop** — Charge! for grounded charge-capable units (and heroes that Can Charge) and Swoop! for airborne flyers, on/off.
 - **Verbose combat** — show every dice roll in the log (great for teaching). Every message records its full detail regardless; this toggle only changes what is **displayed**, so turning it on mid-game reveals the rolls for the whole history.
 - **Fog of war** + **Sight radius** (1–9).
 

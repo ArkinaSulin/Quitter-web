@@ -262,25 +262,28 @@ The context menu offers a single charge entry, computed by `chargeStanceFor`
 (`src/packages/combat/lib/chargeStance.ts`) from the unit's **actual** state (airborne =
 `elevation > surfaceAt(hex)`, not merely `elevation > 0`):
 
-- **Grounded**, non-hero, with `canCharge` + `canFormationCharge` → **Charge!**;
+- **Grounded**, charge-capable → **Charge!**: a **non-hero** needs `canCharge` +
+  `canFormationCharge(form)`; a **hero** needs `canCharge` only (no formation arc —
+  its corridor is loose/all-direction, like its movement).
 - **Airborne** fly-capable → **Swoop!** (offered to units *and* heroes);
 - a hanging climber is airborne but can't fly → nothing.
 
 Both merely mark `isCharging` + `chargeDistance = 0` and lock rotate/formation;
 the following move/drop decides ground-charge vs swoop, so they share the engine
 handler. The entry is gated by the scenario `mounted_charge_enabled` setting
-(shown as **"Mounted charge and airborne swoop"**).
+(shown as **"Charge and Swoop"**).
 - Moves only through the charge corridor (`07`): a formed unit's front wedge, or —
   for a **loose** (facing-less) unit — its all-direction cone, so a flying hero
-  swoops any reachable target. A charge is stopped by enemy kill zones (may end in
-  one, never pass through). Distance accumulates.
+  swoops any reachable target and a hero ground-charge may pick any direction. A
+  charge is stopped by enemy kill zones (may end in one, never pass through).
+  Distance accumulates.
 - Attack at distance ≥ `charge_full_distance` (2) → **free double-damage
   attack**, then drop one organization level (`CHARGE_END`). Attack < 2 →
   premature confirm (normal attack, still drops org).
 - After a full-charge attack that didn't break/kill the charger, **charge-over**
   may be offered (`combat/chargeOver.ts`): target charge-through-able from the
-  approach arc, in front arc, landing hex empty, 2 MP affordable → ride over
-  and land behind (a chained MOVE).
+  approach arc, in front arc (skipped for a **loose** charger — all-around),
+  landing hex empty, 2 MP affordable → ride over and land behind (a chained MOVE).
 - Still charging at your own End Turn → forfeit (clear charge + org drop).
 
 ## Pursue (disengaging a kill zone)

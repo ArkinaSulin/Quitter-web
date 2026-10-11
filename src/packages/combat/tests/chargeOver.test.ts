@@ -97,4 +97,13 @@ describe('isChargeOverEligible', () => {
     const behind = { ...charger, facing: 3 } as unknown as Unit; // target no longer in front arc
     expect(isChargeOverEligible(behind, target, ok(), empty, { 'Close Order': closeOrder }, 4)).toBe(false);
   });
+
+  it('a LOOSE charger (hero) overruns from any direction (front-arc gate skipped)', () => {
+    const openTarget = { ...target, currentFormation: 'Open Order' } as unknown as Unit;
+    const footBehind = { ...charger, facing: 3 } as unknown as Unit;             // formed → front arc applies
+    const heroBehind = { ...charger, isHero: true, facing: 3 } as unknown as Unit; // loose → any direction
+    const forms = { 'Open Order': openOrder };
+    expect(isChargeOverEligible(footBehind, openTarget, ok(), empty, forms, 4)).toBe(false);
+    expect(isChargeOverEligible(heroBehind, openTarget, ok(), empty, forms, 4)).toBe(true);
+  });
 });

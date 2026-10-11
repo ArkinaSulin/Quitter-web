@@ -37,8 +37,10 @@ describe('chargeStanceFor', () => {
     expect(chargeStanceFor(base({ unit: unit({ flySpeed: 0, elevation: 10 }), airborne: true }))).toBeNull();
   });
 
-  it('grounded hero → none (no formation charge)', () => {
-    expect(chargeStanceFor(base({ unit: unit({ isHero: true }) }))).toBeNull();
+  it('grounded hero charges via canCharge alone (no formation arc)', () => {
+    // The Hero formation row's can_charge is irrelevant — a hero is loose.
+    expect(chargeStanceFor(base({ unit: unit({ isHero: true, canCharge: true }), form: form(false) }))).toBe('charge');
+    expect(chargeStanceFor(base({ unit: unit({ isHero: true, canCharge: false }) }))).toBeNull();
   });
 
   it('grounded but not charge-capable → none', () => {

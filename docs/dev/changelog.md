@@ -1,5 +1,21 @@
 # QuiTTER Changelog
 
+## Heroes may ground-charge; loose charge-over; "Charge and Swoop" label (2026-10-11)
+**Files:** src/packages/combat/{lib/chargeStance.ts,lib/chargeOver.ts,tests/chargeStance.test.ts,tests/chargeOver.test.ts}, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{00-universal-rules,06-turn-system,07-movement-economy,08-combat,changelog}.md, docs/players/player-manual.md
+
+- **Grounded heroes may Charge!** `chargeStanceFor` (`combat/chargeStance.ts`) no
+  longer hard-excludes heroes: a grounded hero charges when its unit `canCharge`
+  flag is set (no `canFormationCharge` — a hero has no formation arc). Its
+  corridor is loose → **all-direction**, reusing the existing
+  `computeChargeReachable` `loose` mode (move validation, overlay, swoop plan).
+  A hero's charge end/forfeit drops no org level (`Hero` is org 0).
+- **Loose charge-over.** `isChargeOverEligible` (`combat/chargeOver.ts`) skips the
+  front-arc gate for a **loose** charger (hero/Scattered), so it may overrun from
+  any direction — consistent with the loose all-around rule.
+- **Setting label** "Mounted charge and airborne swoop" → **"Charge and Swoop"**
+  (DB column `mounted_charge_enabled` unchanged).
+- Tests + docs updated. No migration. `tsc` clean, tests pass, build clean.
+
 ## Combat message order + clearer attach/ride blocker (2026-10-11)
 **Files:** src/components/ScenarioMap/useCombatActions.ts, docs/dev/{08-combat,changelog}.md
 

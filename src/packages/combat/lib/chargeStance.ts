@@ -26,7 +26,7 @@ export interface ChargeStanceInput {
   /** True when the unit stands above its hex surface (`elevation > surfaceAt(hex)`). */
   airborne: boolean;
   form?: Formation | null;
-  /** Scenario "Mounted charge and airborne swoop" toggle. */
+  /** Scenario "Charge and Swoop" toggle. */
   chargeEnabled?: boolean;
 }
 
@@ -43,7 +43,11 @@ export function chargeStanceFor({ unit, airborne, form, chargeEnabled = true }: 
   if (!chargeEnabled) return null;
   if (unit.isCharging || isUnitRouted(unit) || (unit.actionsAvailable ?? 0) < 1) return null;
   if (airborne) return canFly(unit) ? 'swoop' : null;
-  if (unit.isHero) return null; // heroes have no formation charge; they only swoop
+  // A hero has no formation arc, so its ground charge is gated on the unit's
+  // `canCharge` alone (its corridor is loose → all-direction; see
+  // `movement/moveCost.computeChargeReachable`). Formed units additionally need
+  // `canFormationCharge`.
+  if (unit.isHero) return unit.canCharge ? 'charge' : null;
   if (!unit.canCharge || !canFormationCharge(form)) return null;
   return 'charge';
 }

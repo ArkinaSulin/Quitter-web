@@ -3,7 +3,7 @@
 // its full charge attack may ride over the target and land on its far side.
 import { Hex, Unit, Formation } from '@/types/gameProtocol';
 import { isInFrontArc, determineCombatPosition } from '@/packages/combat/lib/unitCombat';
-import { canChargeThrough } from '@/packages/movement';
+import { canChargeThrough, isLooseUnit } from '@/packages/movement';
 import { isMoveAffordable, isHeroMoveAffordable } from '@/packages/movement';
 
 export interface ChargeOverOutcome {
@@ -27,7 +27,8 @@ export function computeChargeOverLandingHex(charger: Hex, target: Hex): Hex {
  *   1. the attacker did not rout / was not killed in that combat
  *   2. the target is charge-through-able from the charger's approach arc
  *      (post-combat formation: Routed if the attack broke/killed it, else as-is)
- *   3. the target sits in the charging unit's front arc
+ *   3. the target sits in the charging unit's front arc — or the charger is LOOSE
+ *      (hero/Scattered: all-around, so any direction may overrun)
  *   4. the charger can afford the 2 MP overrun (capacity incl. action pools)
  *   5. the landing hex behind the target is empty
  */
@@ -43,7 +44,8 @@ export function isChargeOverEligible(
   // A swooping (flying) charger only overruns another airborne target — it cannot
   // ride over a ground unit (charge-through requires both at elevation > 0).
   if ((charger.elevation ?? 0) > 0 && (target.elevation ?? 0) <= 0) return false;
-  if (!isInFrontArc(charger.hex, charger.facing, target.hex)) return false;
+  const loose = isLooseUnit(charger, formationsMap[charger.currentFormation]);
+  if (!loose && !isInFrontArc(charger.hex, charger.facing, target.hex)) return false;
   const affordable = charger.isHero
     ? isHeroMoveAffordable(charger, 2, maxMP)
     : isMoveAffordable(charger, 2, maxMP);

@@ -3371,9 +3371,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 className="h-4 w-4 accent-amber-400 mt-0.5"
               />
               <span>
-                <span className="font-medium text-amber-300">Mounted charge and airborne swoop</span>
+                <span className="font-medium text-amber-300">Charge and Swoop</span>
                 <span className="block text-gray-400 text-[11px]">
-                  When on, charge-capable units may use Charge! and airborne flyers may use Swoop!.
+                  When on, charge-capable units (and heroes) may use Charge! and airborne flyers may use Swoop!.
                 </span>
               </span>
             </label>
