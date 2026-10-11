@@ -1129,12 +1129,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       : { ...inst, hp: result.wall.hp, ...(result.doorHpAfter !== undefined ? { doorHp: result.doorHpAfter } : {}) };
 
     const doorNote = result.doorHpAfter !== undefined && result.doorHpAfter > 0 ? ` (door ${result.doorHpAfter}/${wall.doorMax ?? 0})` : '';
-    const detail = result.deflected
-      ? `${attacker.unitName} struck the barrier at ${label} — the blow is shrugged off (DT ${wall.dt ?? 0}, ${result.damage} damage)`
+    // Chronological: [attacked → damage past DT] · [outcome].
+    const attackPlain = `${attacker.unitName} attacked the barrier at ${label} → ${result.applied} past DT`;
+    const attackVerbose = `${attacker.unitName} attacked the barrier at ${label} → ${formatStructureAttackRolls(result.rolls, wall.dt ?? 0, weapon.damageDice)}`;
+    const outcome = result.deflected
+      ? `the blow is shrugged off (DT ${wall.dt ?? 0})`
       : result.destroyed
-        ? `${attacker.unitName} destroyed the barrier at ${label} (${result.damage} damage)`
-        : `${attacker.unitName} hit the barrier at ${label} for ${result.applied} damage (${wallHp(result.wall)}/${wall.maxHp} HP left)${doorNote}`;
-    const verbose = `${detail} · ${formatStructureAttackRolls(result.rolls, wall.dt ?? 0, weapon.damageDice)}`;
+        ? 'destroyed'
+        : `${wallHp(result.wall)}/${wall.maxHp} HP left${doorNote}`;
+    const message = [attackPlain, outcome].join(' · ');
+    const verbose = [attackVerbose, outcome].join(' · ');
     await execute('ATTACK', [
       {
         type: 'ATTACK',
@@ -1151,7 +1155,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         unitId: scenarioId,
         changes: [{ field: 'structures', key: ref.key, from: inst, to }],
       },
-    ], `${attacker.unitName} attacked the barrier at ${label}`, { message: detail, verboseMessage: verbose });
+    ], `${attacker.unitName} attacked the barrier at ${label}`, { message, verboseMessage: verbose });
   }, [walls, structures, execute, addError, addMessage, scenarioId, structureAttackCount, formationsMap]);
 
   // Drag-gate handed to useHexGrid: only a wall edge the dragged unit can reach
@@ -1280,16 +1284,19 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
 
     const doorNow = result.doorHpAfter;
-    const baseDetail = result.deflected
-      ? `${attacker.unitName} struck the structure at ${label} — the blow is shrugged off (DT ${template.dt}, ${result.damage} damage)`
+    // Chronological: [attacked → damage past DT] · [outcome] · [consequences: falls].
+    const attackPlain = `${attacker.unitName} attacked the structure at ${label} → ${result.applied} past DT`;
+    const attackVerbose = `${attacker.unitName} attacked the structure at ${label} → ${formatStructureAttackRolls(result.rolls, template.dt ?? 0, weapon.damageDice)}`;
+    const outcome = result.deflected
+      ? `the blow is shrugged off (DT ${template.dt})`
       : result.destroyed
-        ? `${attacker.unitName} destroyed the structure at ${label} (${result.damage} damage)`
+        ? 'destroyed'
         : result.hitDoor
-          ? `${attacker.unitName} hit the door at ${label} for ${result.applied} damage (${doorNow}/${structureDoorMax(template)} door HP left)`
-          : `${attacker.unitName} hit the structure at ${label} for ${result.applied} damage (${result.hpAfter}/${template.maxHp} HP left)`;
-    const detail = fallNotes.length > 0 ? `${baseDetail} · ${fallNotes.join(' · ')}` : baseDetail;
-    const verbose = `${detail} · ${formatStructureAttackRolls(result.rolls, template.dt ?? 0, weapon.damageDice)}`;
-    await execute('ATTACK', subSteps, `${attacker.unitName} attacked the structure at ${label}`, { message: detail, verboseMessage: verbose });
+          ? `door ${doorNow}/${structureDoorMax(template)} HP left`
+          : `${result.hpAfter}/${template.maxHp} HP left`;
+    const message = [attackPlain, outcome, ...fallNotes].join(' · ');
+    const verbose = [attackVerbose, outcome, ...fallNotes].join(' · ');
+    await execute('ATTACK', subSteps, `${attacker.unitName} attacked the structure at ${label}`, { message, verboseMessage: verbose });
 
     // A host annihilated by the fall routes through the standard death flow. Pass an
     // empty roster so the rider isn't detached twice (already handled above).

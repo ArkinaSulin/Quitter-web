@@ -3,7 +3,7 @@
 import { Unit } from '@/types/gameProtocol';
 import { ActionType, SubStep, CommandLogRow } from '@/packages/infra';
 import { unitHasFeatherFall } from '@/packages/effects';
-import { canFly, perTroopFallDamage } from '@/packages/movement';
+import { canFly, rollFallDamage } from '@/packages/movement';
 
 export type ExecuteFn = (
   actionType: ActionType,
@@ -33,20 +33,29 @@ export function fallSteps(unit: Unit, to = 0): { steps: SubStep[]; note: string;
     changes: [{ field: 'elevation', from: unit.elevation ?? 0, to: target }],
   }];
   let note = `${unit.unitName} fell ${feet} ft`;
-  const total = unitHasFeatherFall(unit) ? 0 : perTroopFallDamage(feet, unit.currentTroopCount);
-  if (total > 0) {
-    newHp = Math.max(0, newHp - total);
-    newTroops = Math.max(0, Math.ceil(newHp / Math.max(1, unit.troopHp)));
-    steps.push({
-      type: 'DAMAGE',
-      description: `${unit.unitName} took ${total} falling damage`,
-      unitId: unit.id,
-      changes: [
-        { field: 'currentUnitHp', from: unit.currentUnitHp, to: newHp },
-        { field: 'currentTroopCount', from: unit.currentTroopCount, to: newTroops },
-      ],
-    });
-    note += ` · ${unit.unitName} took ${total} falling damage`;
+  const n = Math.max(0, Math.floor(feet / 10));
+  if (unitHasFeatherFall(unit)) {
+    note += ' (Feather Fall — no damage)';
+  } else {
+    const roll = rollFallDamage(feet);
+    const perTroop = roll.total;
+    const total = perTroop * Math.max(0, unit.currentTroopCount);
+    if (total > 0) {
+      const dice = n > 0 ? `(${n}d6: ${roll.faces.join(',')})` : '';
+      const breakdown = `${dice} per troop × ${unit.currentTroopCount} = ${total} HP`.trim();
+      newHp = Math.max(0, newHp - total);
+      newTroops = Math.max(0, Math.ceil(newHp / Math.max(1, unit.troopHp)));
+      steps.push({
+        type: 'DAMAGE',
+        description: `${unit.unitName} fell ${feet} ft — ${breakdown}`,
+        unitId: unit.id,
+        changes: [
+          { field: 'currentUnitHp', from: unit.currentUnitHp, to: newHp },
+          { field: 'currentTroopCount', from: unit.currentTroopCount, to: newTroops },
+        ],
+      });
+      note += ` — ${breakdown}`;
+    }
   }
   return { steps, note, newHp, newTroops };
 }

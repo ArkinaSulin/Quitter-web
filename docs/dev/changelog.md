@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## Structure-attack message: chronological + no raw damage; per-troop fall breakdown (2026-10-10)
+**Files:** src/components/ScenarioMap/{ScenarioMap.tsx,useMoveActions.ts,routeUnit.ts}, docs/dev/{13-map-entities-terrain,changelog}.md
+
+- **Chronological structure/wall message.** Structure + wall attacks now print
+  `[attacked → N past DT] · [outcome: destroyed | (HP left) | door] · [consequences]` —
+  the fall notes move to the **end**, and the dice clause (`4 attacks {…}`) is
+  **verbose-only**, right after the attack clause.
+- **Raw (pre-DT) damage dropped.** The destroyed / "shrugged off" clauses no longer quote
+  `result.damage` (the theoretical sum) — only the damage that passed the DT.
+- **Per-troop fall breakdown.** `routeUnit.fallSteps` (collapse, rider auto-detach,
+  end-turn falls) and `performClimbOver` now report
+  `fell 10 ft — (1d6: 4) per troop × 20 = 80 HP` (one roll; dice faces + per-troop ×
+  troops = unit HP). `feather_fall` → `(Feather Fall — no damage)`.
+- Unit-vs-unit combat messages were already chronological (`attack → strikes → retaliation`,
+  rout/pursue as follow-up messages) — unchanged.
+- No migration. `tsc` clean, tests pass, build clean.
+
 ## Shift-drop targets the structure, not the unit on it (2026-10-10)
 **Files:** src/hooks/useHexGrid.ts, src/components/ScenarioMap/{ScenarioMap.tsx,useCanvasDraw.ts}, docs/dev/changelog.md
 

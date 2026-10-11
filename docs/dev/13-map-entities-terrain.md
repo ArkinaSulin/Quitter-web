@@ -134,9 +134,11 @@ hit** (a roll **below** DT is shrugged; **at or above** deals full), surviving h
 are summed, and `applyWallDamage` / `resolveHexStructureAttack`
 apply the total to the HP (and door) pool(s). Attacking costs **1 action** and
 counts toward the attack cap (soft-confirmed when over), with no AGR/retaliation.
-Under **verbose combat** the message appends the attack count, per-attack damage
-rolls and DT outcome (`formatStructureAttackRolls`, e.g. `3 attacks {1d8 vs DT 5:
-3,5,7 → 2 over DT, 12 damage}`). `hp <= 0` removes the segment.
+Under **verbose combat** the message is **chronological**:
+`[attacked → damage past DT] · [outcome] · [consequences]` — the dice clause
+(`formatStructureAttackRolls`, e.g. `3 attacks {1d8 vs DT 5: 3,5,7 → 2 over DT, 12 damage}`)
+is verbose-only, and a destroyed structure's collapse-fall notes come last
+(`fell 10 ft — (1d6: 4) per troop × 20 = 80 HP`). `hp <= 0` removes the segment.
 
 Persistence rides the command log: the command is `ATTACK` with a **`STRUCTURE`**
 sub-step (`{ field: 'structures', key, from, to }`), applied by `apply_substeps`

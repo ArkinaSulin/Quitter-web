@@ -19,7 +19,7 @@ import { parseWeapons, damageDiceCount } from '@/packages/units';
 import { SubStep, UnitChange } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
-import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, perTroopFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
+import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
 import { Walls, directionBetween, edgeRef } from '@/packages/movement';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, structureHasDoor, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween, structureClimbPerStep10 } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
@@ -758,7 +758,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const used = upCost + (descent === 'climb' && !hangAtTop ? downCost : 0);
     const spend = spendOf(used);
     const feathers = unitHasFeatherFall(unit);
-    const dmg = descent === 'drop' && !feathers ? perTroopFallDamage(H, unit.currentTroopCount) : 0;
+    const fallRoll = descent === 'drop' && !feathers ? rollFallDamage(H) : null;
+    const dmg = (fallRoll ? fallRoll.total : 0) * unit.currentTroopCount;
+    const fallDice = fallRoll ? `(${Math.max(0, Math.floor(H / 10))}d6: ${fallRoll.faces.join(',')})` : '';
+    const fallBreakdown = `${unit.unitName} fell ${H} ft — ${fallDice} per troop × ${unit.currentTroopCount} = ${dmg} HP`;
     const newHp = Math.max(0, (unit.currentUnitHp ?? 0) - dmg);
     const newTroops = dmg > 0 ? Math.max(0, Math.ceil(newHp / Math.max(1, unit.troopHp))) : unit.currentTroopCount;
     const subSteps: SubStep[] = [
@@ -782,14 +785,14 @@ export function useMoveActions(deps: MoveActionsDeps) {
       ] });
     }
     if (dmg > 0) {
-      subSteps.push({ type: 'DAMAGE', description: `${unit.unitName} took ${dmg} falling damage`, unitId: unit.id, changes: [
+      subSteps.push({ type: 'DAMAGE', description: fallBreakdown, unitId: unit.id, changes: [
         { field: 'currentUnitHp', from: unit.currentUnitHp, to: newHp },
         { field: 'currentTroopCount', from: unit.currentTroopCount, to: newTroops },
       ] });
     }
     await execute('MOVE', subSteps, hangAtTop
       ? `${unit.unitName} climbs to the wall top and holds (no MP to climb down)`
-      : `${unit.unitName} climbs over the wall${dmg > 0 ? ` — ${dmg} damage` : ''}`);
+      : `${unit.unitName} climbs over the wall${dmg > 0 ? ` — ${fallBreakdown}` : ''}`);
     if (!hangAtTop) {
       offerReactionsFor({ ...unit, hex: { ...farHex } });
       pruneReactionOffers();
