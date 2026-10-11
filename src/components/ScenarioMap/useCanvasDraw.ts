@@ -613,10 +613,10 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const attachedHero = attachedByHost.get(unit.id);
       if (attachedHero) {
         const heroPos = getAttachedHeroPos(unit.hex, unit.facing, attachedHero.attachedPosition, unit.sizeCategory);
-        const hostClimb = parseClimbTo(unit.climbTo);
-        const elevOff = elevationOffset(unit.elevation, HEX_SIZE, canFly(unit) && !hostClimb, hostClimb ? hexDirection(unit.hex, hostClimb, HEX_SIZE) : undefined);
-        const heroCx = heroPos.x * currentZoom + offsetX + elevOff.dx * currentZoom;
-        const heroCy = heroPos.y * currentZoom + offsetY + elevOff.dy * currentZoom;
+        // The rider rides the host — reuse the loop's (possibly air-cancelled)
+        // offset so a rider's token stays with its host in AIR mode.
+        const heroCx = heroPos.x * currentZoom + offsetX + elev.dx * currentZoom;
+        const heroCy = heroPos.y * currentZoom + offsetY + elev.dy * currentZoom;
         const heroFormationMoraleMod = formationsMap[attachedHero.currentFormation] ?? null;
         const heroMoraleMod = moraleMods.get(attachedHero.id) ?? (attachedHero.currentMoraleModifier + computeEffectiveMoraleModifier(attachedHero, displayUnits, displayAlliances, heroFormationMoraleMod));
         try {

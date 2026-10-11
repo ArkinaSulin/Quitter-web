@@ -1,5 +1,18 @@
 # QuiTTER Changelog
 
+## Air mode cancels a rider's offset; filter modifiers keep the tooltip (2026-10-11)
+**Files:** src/components/ScenarioMap/{useCanvasDraw.ts,ScenarioMap.tsx}, docs/dev/{15-token-rendering,18-map-structures,19-ui-panels-and-floating,changelog}.md
+
+- **Air mode (`3`) cancels the rider's offset too.** An attached hero / rider was
+  drawn with its own `elevationOffset` (the host's NE offset) instead of the loop's
+  air-cancelled `elev`, so the rider stayed offset while its host moved to the hex
+  centre. It now reuses the host's (possibly cancelled) offset, matching the hit box.
+- **The five filter modifiers no longer dismiss the tooltip.** The global `keydown`
+  dismiss now skips Shift / Space / 1 / 2 / 3 (via the `filterKeyId` check), so a
+  per-mode tooltip stays (and the digit-key auto-repeat no longer spams the clear).
+  Every other key press and pointer-down still dismisses.
+- Docs updated (`15`, `18`, `19`). No migration. `tsc` clean, tests pass, build clean.
+
 ## Modifier targeting filters: structure / ground / air (2026-10-11)
 **Files:** src/hooks/{useHexGrid.ts,useHexGrid.test.ts}, src/components/ScenarioMap/{ScenarioMap.tsx,useCanvasDraw.ts}, docs/players/player-manual.md, docs/dev/{15-token-rendering,changelog}.md
 

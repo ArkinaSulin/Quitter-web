@@ -104,15 +104,18 @@ A hover tooltip is shown **only on idle hover** and must never linger over a
 drag or another window:
 
 - It is driven by **hover events alone** (`onUnitHover`/`onUnitLeave`,
-  `onHexHover`/`onEdgeHover`/… in `useHexGrid`). `useHexGrid` suppresses unit
-  hover while **Shift-inspect** or while **dragging** a unit.
+  `onHexHover`/`onEdgeHover`/… in `useHexGrid`). `useHexGrid`'s target filter
+  (`structure` mode skips every unit) and a unit drag suppress unit hover.
 - Every suppression point funnels through one clear: `ScenarioMap`'s
   `dismissTooltips()` (clears the unit + hex/edge tooltips). It is called on
   **mouse-leave**, whenever a **modal opens**, and from global **`keydown`** and
   **`pointerdown`** listeners — so any key press or mouse-down drops the tooltip.
-- In short: **idle hover shows; any key, pointer-down, drag, Shift-inspect, or
-  open modal dismisses.** Add new tooltips under this rule rather than bespoke
-  timers.
+  **Exception:** the five target-filter modifiers (**Shift**, **Space**, **1**,
+  **2**, **3**) are skipped — they gate hovering/aiming, so their per-mode tooltip
+  must stay (or re-show) while held.
+- In short: **idle hover shows; any key, pointer-down, drag, or open modal
+  dismisses — except the target-filter modifiers.** Add new tooltips under this
+  rule rather than bespoke timers.
 
 ## 4. Draggable modals
 

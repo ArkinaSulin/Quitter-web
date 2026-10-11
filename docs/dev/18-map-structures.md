@@ -263,11 +263,14 @@ blocked by any edge structure. The AI planner ignores it for v1.
   airborne & non-flying) — `routeUnit`/`hostLostHeroSteps`.
 - **Rendering**: `useCanvasDraw` draws hex structures (black hex outline + artwork
   + HP badge, and a `door N`/`open` badge; tower HP above, door below).
-- **Inspect mode & tooltips**: holding **Shift** hides all unit/corpse tokens and
-  disables unit interaction; hovering a **hex** shows a `MapInfoTooltip` (effects
-  and hex structure, priority effect → structure; side by side with Shift), and
-  hovering near an **edge** shows that barrier's own tooltip, with an enlarged
-  edge hit-box while Shift is held. The old "attack vs move" target-picker is gone.
+- **Targeting filters & tooltips**: hold a modifier to filter targets (first
+  pressed wins, read live) — **Shift / 1** = structure (all unit tokens hide; only
+  walls/hex structures targetable), **Space / 2** = ground, **3** = air. In
+  **structure** mode, hovering a **hex** shows a `MapInfoTooltip` (effects and hex
+  structure, priority effect → structure; side by side) and hovering near an
+  **edge** shows that barrier's own tooltip, with an enlarged edge hit-box; unit
+  interaction (hover/menu/drag) is filtered by the active mode (see `15`). The old
+  "attack vs move" target-picker is gone.
 - **Deferred**: none — structure **range bonuses** and gate open/close state are
   now implemented (see "Range & gates" below).
 

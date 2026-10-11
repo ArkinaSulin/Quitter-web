@@ -923,10 +923,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [infoHover, setInfoHover] = useState<{ kind: 'hex' | 'edge'; hex?: Hex; edge?: EdgeRef; x: number; y: number } | null>(null);
 
   // --- Tooltip lifecycle (design rule) --------------------------------------
-  // A tooltip shows ONLY on idle hover. Any key press, pointer-down, drag,
-  // shift-inspect or opened modal dismisses it — it must never linger over a
-  // drag or another window. `dismissTooltips` is the single clear used by every
-  // suppression point (mouse-leave, modals, and the global key/pointer listeners).
+  // A tooltip shows ONLY on idle hover. Any key press, pointer-down, drag or
+  // opened modal dismisses it — it must never linger over a drag or another
+  // window. EXCEPTION: the target-filter modifiers (Shift/Space/1/2/3) do NOT
+  // dismiss, since they gate hovering and their per-mode tooltip must show.
+  // `dismissTooltips` is the single clear used by every suppression point
+  // (mouse-leave, modals, and the global key/pointer listeners).
   const dismissTooltips = useCallback(() => {
     setHoveredUnit(null);
     setTooltipPos(null);
@@ -938,11 +940,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, []);
 
   useEffect(() => {
-    window.addEventListener('keydown', dismissTooltips);
-    window.addEventListener('pointerdown', dismissTooltips);
+    // The target-filter modifiers (Shift/Space/1/2/3) must NOT dismiss — they gate
+    // hovering/aiming, so their per-mode tooltip has to stay/again show; every
+    // other key press (and pointer-down) drops the tooltip.
+    const onKeyDown = (e: KeyboardEvent) => { if (!filterKeyId(e)) dismissTooltips(); };
+    const onPointerDown = () => dismissTooltips();
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerdown', onPointerDown);
     return () => {
-      window.removeEventListener('keydown', dismissTooltips);
-      window.removeEventListener('pointerdown', dismissTooltips);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerdown', onPointerDown);
     };
   }, [dismissTooltips]);
 
