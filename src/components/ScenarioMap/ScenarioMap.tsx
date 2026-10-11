@@ -52,7 +52,7 @@ import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes, mpCostOverrides } from '@/packages/world';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST, isRotationAffordable } from '@/packages/movement';
-import { canReachStructure, canFly, parseClimbTo, isAirborne, flyMax } from '@/packages/movement';
+import { canReachStructure, canFly, parseClimbTo, isAirborne, flyMax, elevationOffset, hexDirection } from '@/packages/movement';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/packages/movement';
 import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt, edgeShowsLadder, structureElevation, edgeKeysAroundHex, floatingUnits } from '@/packages/movement';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
@@ -90,17 +90,17 @@ interface ScenarioMapProps {
   replayMode?: boolean;
 }
 
-function DragGhost({ hex, zoom, offsetX, offsetY }: { hex: Hex; zoom: number; offsetX: number; offsetY: number }) {
+function DragGhost({ x, y, zoom, offsetX, offsetY }: { x: number; y: number; zoom: number; offsetX: number; offsetY: number }) {
   return (
     <div
       className="absolute pointer-events-none border-2 border-dashed border-yellow-400 rounded-full"
       style={{
-        left: `${(hexToPixel(hex, HEX_SIZE).x * zoom + offsetX)}px`,
-        top: `${(hexToPixel(hex, HEX_SIZE).y * zoom + offsetY)}px`,
+        left: `${x * zoom + offsetX}px`,
+        top: `${y * zoom + offsetY}px`,
         width: `${TOKEN_WIDTH * zoom}px`,
         height: `${TOKEN_HEIGHT * zoom}px`,
         transform: 'translate(-50%, -50%)',
-        background: 'rgba(255,255,0,0.2)',
+        background: 'rgba(250,204,21,0.2)',
       }}
     />
   );
@@ -957,15 +957,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     };
   }, []);
 
-  // Hover / drag-target token highlight: a translucent fill at the token's
-  // elevation offset, reusing the SAME overlay colour as the hex tint (cyan on a
-  // plain hover; green/red/amber on a drag target). The owner-hex tint stays.
-  const hoverTokenFill = useMemo(() => {
-    if (!hoveredUnit) return null;
-    const color = overlayMap[`${hoveredUnit.hex.q},${hoveredUnit.hex.r}`];
-    return color ? { id: hoveredUnit.id, color } : null;
-  }, [hoveredUnit, overlayMap]);
-
   const { customDraw, captureAndUploadScreenshot } = useCanvasDraw({
     canvasRef,
     units,
@@ -1005,7 +996,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     corpseCounts,
     aiOverlay,
     aiHoveredUnitId: hoveredUnit?.id ?? null,
-    hoverTokenFill,
   });
 
   // Parting-shot resolver is owned by useCombatActions (declared later); this ref
@@ -2365,10 +2355,30 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     return facingToward(u.hex, hoveredHex);
   }, [draggingUnitId, hoveredHex, units, formationsMap]);
 
+  // The drag-ghost target follows the MOUSE-OVER HITBOX: an offset token when the
+  // cursor sits on one, else the hovered hex (a ground unit / structure / empty hex
+  // all resolve to the hex centre). Suppressed for structure/edge drops, which use
+  // their own yellow highlight instead (one indicator per drop).
+  const dragGhostPos = useMemo<{ x: number; y: number } | null>(() => {
+    if (!draggingUnitId || !hoveredHex) return null;
+    if (hoveredStructureHex || hoveredWallEdge) return null;
+    const dragged = units.find(u => u.id === draggingUnitId);
+    if (!dragged) return null;
+    if (dragged.hex.q === hoveredHex.q && dragged.hex.r === hoveredHex.r) return null;
+    if (hoveredUnit && !hoveredUnit.isDeleted) {
+      const climb = parseClimbTo(hoveredUnit.climbTo);
+      const off = elevationOffset(hoveredUnit.elevation, HEX_SIZE, canFly(hoveredUnit) && !climb, climb ? hexDirection(hoveredUnit.hex, climb, HEX_SIZE) : undefined);
+      const p = hexToPixel(hoveredUnit.hex, HEX_SIZE);
+      return { x: p.x + off.dx, y: p.y + off.dy };
+    }
+    const p = hexToPixel(hoveredHex, HEX_SIZE);
+    return { x: p.x, y: p.y };
+  }, [draggingUnitId, hoveredHex, hoveredUnit, hoveredStructureHex, hoveredWallEdge, units]);
+
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
-    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, hoveredEdge: hoveredWallEdge, chargeFacing: chargeAimFacing });
+    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, chargeFacing: chargeAimFacing });
     if (retreatHoverHex) base[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(base);
   }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex, chargeAimFacing]);
@@ -2994,12 +3004,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
       {/* Ghost previews */}
       {isDraggingFromPanel && ghostHex && (
-        <DragGhost hex={ghostHex} zoom={zoom} offsetX={offsetX} offsetY={offsetY} />
+        <DragGhost x={hexToPixel(ghostHex, HEX_SIZE).x} y={hexToPixel(ghostHex, HEX_SIZE).y} zoom={zoom} offsetX={offsetX} offsetY={offsetY} />
       )}
-      {draggingUnitId && hoveredHex && displayUnits.some(
-        u => u.id === draggingUnitId && (u.hex.q !== hoveredHex.q || u.hex.r !== hoveredHex.r)
-      ) && (
-        <DragGhost hex={hoveredHex} zoom={zoom} offsetX={offsetX} offsetY={offsetY} />
+      {dragGhostPos && (
+        <DragGhost x={dragGhostPos.x} y={dragGhostPos.y} zoom={zoom} offsetX={offsetX} offsetY={offsetY} />
       )}
 
       {/* Tooltip (hidden while dragging a unit — the drag overlay needs the

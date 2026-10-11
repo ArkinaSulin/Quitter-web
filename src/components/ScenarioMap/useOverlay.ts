@@ -16,12 +16,11 @@ import { isRangedCapableWeapon, reactionMovePool, isMeleeReachable } from '@/pac
 import { canRangedTarget, loosePassThroughHexes, formationOrgLevels, isLooseUnit } from '@/packages/movement';
 import { arcOfTarget } from '@/packages/primitives';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
-import { Walls, EdgeRef } from '@/packages/movement';
+import { Walls } from '@/packages/movement';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, structureSurfaceAt, flightBlockedHexes } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { rangeBonusAt, unitIgnoresClimb } from '@/packages/effects';
-import { edgeHexes } from '@/packages/combat';
 import { canWithdraw, withdrawDestinations, WITHDRAW_ACTION_COST } from '@/packages/movement';
 import { moveBudgetUnit, parseClimbTo, isAirborne } from '@/packages/movement';
 import { isSwooping } from '@/packages/combat';
@@ -67,8 +66,6 @@ export interface OverlayState {
   structures?: MapStructures;
   templates?: Record<string, StructureTemplate>;
   zones?: GroundEffect[];
-  /** Wall edge under the pointer while dragging (drag-to-attack hint). */
-  hoveredEdge?: EdgeRef | null;
   /** Aim facing for a loose (facing-less) charger's single front wedge (from the
    *  cursor hex). Ignored for formed units, which use their own facing. */
   chargeFacing?: number | null;
@@ -90,7 +87,6 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     structures,
     templates,
     zones,
-    hoveredEdge,
     chargeFacing,
   } = state;
 
@@ -307,13 +303,6 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       }
     }
     for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
-    // Dropping on a wall edge the unit can reach attacks the barrier instead of
-    // moving — tint the two hexes sharing that edge.
-    if (hoveredEdge) {
-      for (const hx of edgeHexes(hoveredEdge)) {
-        combined[`${hx.q},${hx.r}`] = 'rgba(255, 140, 60, 0.85)';
-      }
-    }
 
     return combined;
   }

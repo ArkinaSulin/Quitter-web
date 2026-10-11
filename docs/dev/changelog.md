@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## Drag ghost follows the mouse-over hitbox; unified drop indicator (2026-10-11)
+**Files:** src/components/ScenarioMap/{ScenarioMap.tsx,useCanvasDraw.ts,useOverlay.ts}, docs/dev/{15-token-rendering,changelog}.md
+
+- **DragGhost follows the hitbox.** The placed-unit dashed oval now sits on whatever
+  the mouse-over hit-test resolves — the hovered hex, or an **elevated token's**
+  drawn offset (a ground unit / structure / empty hex all resolve to the hex centre;
+  `getUnitAtScreen` only returns an offset unit when the cursor is inside its offset
+  token box) — instead of always the raw cursor hex. `DragGhost` takes a world
+  position; `ScenarioMap.dragGhostPos` computes it.
+- **One drop indicator.** For a **wall-edge** or **hex-structure** drop the ghost is
+  suppressed and the existing highlight is the single indicator — the structure hex
+  outline and the edge bright cap, both recoloured to the DragGhost yellow
+  (`#facc15`). The two-hex `hoveredEdge` overlay tint is removed (the edge cap
+  already marks the target), along with the now-unused `OverlayState.hoveredEdge`.
+- **Reverts** the previous token-fill highlight (`e000a47`), which was not the
+  intended target.
+- Docs updated. No migration. `tsc` clean, tests pass, build clean.
+
 ## Rout from above: random fallback + recovered approach (2026-10-11)
 **Files:** src/packages/morale/lib/routedRetreat.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{09-morale-routing-pursuit,changelog}.md
 
