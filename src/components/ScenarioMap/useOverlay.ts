@@ -13,7 +13,7 @@ import { isHostile } from '@/packages/primitives';
 import { frontArcIndices } from '@/packages/primitives';
 import { parseWeapons } from '@/packages/units';
 import { isRangedCapableWeapon, reactionMovePool, isMeleeReachable } from '@/packages/combat';
-import { canRangedTarget, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
+import { canRangedTarget, loosePassThroughHexes, formationOrgLevels, isLooseUnit } from '@/packages/movement';
 import { arcOfTarget } from '@/packages/primitives';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
 import { Walls, EdgeRef } from '@/packages/movement';
@@ -173,24 +173,29 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       return combined;
     }
 
-    // Charging units show the front-arc charge wedge: cost-1 hexes amber (charge
+    // Charging units show their charge corridor: cost-1 hexes amber (charge
     // route — premature if you stop), cost 2+ white (full charge, free attack).
+    const threatHexes = computeThreatHexes(units, draggingUnitId, alliances, formationsMap, structures, templates);
     if (draggedUnit.isCharging) {
       const combined: Record<string, string> = {};
       const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
       const effectiveMax = flying ? (draggedUnit.flySpeed ?? 0) : computeEffectiveMovement(draggedUnit, movementMult);
+      // A loose (facing-less) charger — e.g. a hero on a flying mount — charges by
+      // its loose rule (every direction); a formed charger keeps its front wedge.
+      // Either way the cone is stopped by enemy kill zones (never passed through).
+      const loose = isLooseUnit(draggedUnit, formationsMap[draggedUnit.currentFormation]);
       const chargeReach = computeChargeReachable(
         draggedUnit, occupied, effectiveMax,
         flying ? undefined : costOfHexFor(draggedUnit),
         flying ? undefined : chargeBlockedEdgeFor(draggedUnit),
+        threatHexes,
+        loose,
       );
       for (const [key, cost] of Array.from(chargeReach.entries())) {
         combined[key] = cost >= getSetting('charge_full_distance', 2) ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';
       }
       return combined;
     }
-
-    const threatHexes = computeThreatHexes(units, draggingUnitId, alliances, formationsMap, structures, templates);
 
     // White reachable hexes for the dragged unit — one full pool (an action
     // converts to MP on move), or leftover MP only when 0 actions. A host with

@@ -24,12 +24,19 @@ export interface PendingMove {
 export interface PendingAttack {
   attacker: Unit;
   target: Unit;
+  /** Preserved attack options (mount/rider main target, upcast dice) so the
+   *  confirmed attack is identical to the one the player picked. */
+  mainTarget?: 'mount' | 'rider';
+  damageDice?: string;
 }
 
 export interface PendingAttackCap {
   attacker: Unit;
   target: Unit;
   isCharging?: boolean;
+  /** Preserved attack options (mount/rider main target, upcast dice). */
+  mainTarget?: 'mount' | 'rider';
+  damageDice?: string;
 }
 
 export interface PendingHeroAttachConversion {
@@ -71,6 +78,9 @@ export interface PendingRotate {
 export interface PendingChargeAttack {
   attacker: Unit;
   target: Unit;
+  /** Preserved attack options (mount/rider main target, upcast dice). */
+  mainTarget?: 'mount' | 'rider';
+  damageDice?: string;
 }
 
 export interface PendingChargeThrough {

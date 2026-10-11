@@ -5,7 +5,7 @@
 // (pendingMove, pendingFormation, hero attach/swap conversion + over-budget).
 import { useCallback, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, GroundEffect, getOrganizationLevel, hexDistance } from '@/types/gameProtocol';
-import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable, computeMoveBudget, computeMovePool, computeHeroMoveBudget, computeHeroMovePool, applyMoveCost, applyHeroMoveCost } from '@/packages/movement';
+import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePerAction, computeChargeReachable, computeMoveBudget, computeMovePool, computeHeroMoveBudget, computeHeroMovePool, applyMoveCost, applyHeroMoveCost, isLooseUnit } from '@/packages/movement';
 import { isFormationChangeAffordable } from '@/packages/movement';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
 import { isUnitRouted } from '@/packages/morale';
@@ -581,18 +581,26 @@ export function useMoveActions(deps: MoveActionsDeps) {
       return;
     }
 
-    // Charging units may only move forward through the front-arc charge wedge,
-    // and cannot enter broken terrain (painted MP cost > 1). A swooping flyer
-    // charges on the air layer (over terrain/walls, air-occupied only).
+    // Charging units may only move through their charge corridor (a formed unit's
+    // front wedge, a loose unit's all-direction cone), cannot enter broken terrain
+    // (painted MP cost > 1), and are stopped by enemy kill zones (a threat hex may
+    // be the final step, but is never passed through). A swooping flyer charges on
+    // the air layer (over terrain/walls, air-occupied only).
     const waiveClimb = unitIgnoresClimb(unit, groundZones);
     if (unit.isCharging) {
       const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
+      const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates);
       const maxMP = originMax;
       const mounted = !!unit.mountId || !!unit.mountName;
+      // A loose (facing-less) unit — e.g. a hero on a flying mount — charges by its
+      // loose rule (every direction); a formed unit keeps its front wedge.
+      const loose = isLooseUnit(unit, formationsMap[unit.currentFormation]);
       const chargeReach = computeChargeReachable(
         unit, occupied, maxMP,
         flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted, waiveClimb }),
         flying ? undefined : makeChargeBlockedEdge(walls, { structures, templates: structureTemplates, zones: groundZones, orgLevel: getOrganizationLevel(unit.currentFormation), isMounted: mounted }),
+        threatHexes,
+        loose,
       );
       const cost = chargeReach.get(`${targetHex.q},${targetHex.r}`);
       if (!cost) {

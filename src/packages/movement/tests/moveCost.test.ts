@@ -555,7 +555,23 @@ describe('computeChargeReachable — front-arc BFS wedge', () => {
     expect(map.get('0,-1')).toBe(1); // free terrain chargeable
     expect(map.get('0,-2')).toBe(2);
   });
+
+  it('is stopped by a threat (ZoC) hex: may end on it but not charge past', () => {
+    const map = computeChargeReachable({ hex: h(0, 0), facing: 0 }, new Set(), 3, undefined, undefined, new Set(['0,-2']));
+    expect(map.get('0,-2')).toBe(2); // enterable as a destination
+    expect(map.has('0,-3')).toBe(false); // only reachable through (0,-2)
+    expect(map.get('1,-3')).toBe(3); // still reachable via (1,-2)
+  });
+
+  it('loose units charge in every direction regardless of facing', () => {
+    const map = computeChargeReachable({ hex: h(0, 0), facing: 0 }, new Set(), 1, undefined, undefined, undefined, true);
+    expect(map.size).toBe(6); // all six neighbours — facing 0 no longer means "north only"
+    for (const [q, r] of [[0, -1], [1, -1], [1, 0], [0, 1], [-1, 1], [-1, 0]]) {
+      expect(map.get(`${q},${r}`)).toBe(1);
+    }
+  });
 });
+
 
 describe('computeReachableMap - edge walls', () => {
   it('a wall face replaces the entered hex terrain cost (from-aware cost)', () => {

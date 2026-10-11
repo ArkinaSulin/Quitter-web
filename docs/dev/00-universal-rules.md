@@ -20,7 +20,7 @@ instead of re-deriving it.
 | Arc of a target (bearing, any range) | `src/packages/primitives/lib/attackDirection.ts` → `arcOfTarget` | Ranged counterpart; equals `arcOf` for adjacency. |
 | Team → alliance group | `src/packages/primitives/lib/alliances.ts` → `allianceOf(team, alliances)` | Defaults to `'friendly'`. |
 | Hostility between two teams | `src/packages/primitives/lib/alliances.ts` → `isHostile` / `sameAlliance` | Every cross-group pair is hostile; same-group (incl. neutral↔neutral) is not. |
-| Looseness | `src/packages/movement/lib/formationRules.ts` → `isLooseFormation`, `isLooseUnit` | Scattered/Routed/Hero — move any direction, no org. |
+| Looseness | `src/packages/movement/lib/formationRules.ts` → `isLooseFormation`, `isLooseUnit` | Scattered/Routed/Hero — move any direction, no org (a loose unit's charge is likewise all-direction). |
 | Actually airborne | `src/packages/movement/lib/flying.ts` → `isAirborne(elevation, surface)` | `elevation > surfaceAt(hex)` — a fly-capable garrison on a structure is grounded. Consumers pass `structureSurfaceAt(hex)` (move/rotate/formation pool, kill zone, overlay). |
 | Vertical gap ≤ 10 ft | `src/packages/movement/lib/flying.ts` → `withinVerticalGap`, `verticalGapDown` | Melee reach / same-column domination. |
 | Melee reach | `src/packages/combat/lib/meleeFallback.ts` → `isMeleeReachable` | **Same hex ≤10 ft (up/down), OR adjacent hex at the SAME elevation.** A vertical gap in an adjacent hex is out of reach. The formation arc gate narrows directions: formed = front-2 + own column ±10 ft; hero/Scattered = all-around (6 adjacent + own column ±10 ft = 8). |
@@ -37,7 +37,7 @@ instead of re-deriving it.
 | Kill zone / ZoC (unified) | `src/packages/morale/lib/unitMorale.ts` → `imposesKillZone` (the one predicate) | `isInKillZone` (morale/point-blank/AGR), `computeThreatHexes` (overlay), `imposesZocOn` (disengage), `combat/meleeFallback`, `useCombatActions`. |
 | Threat reach (heroes) | `src/packages/morale/lib/unitMorale.ts` → `heroThreatAgainst` | `calcEnemyThreats`. |
 | Rear-threat ×2 | `getThreatMode` (`movement/formationRules`) via `calcEnemyThreats` | tooltip, morale checks. |
-| Charge / Swoop | `src/packages/combat/lib/chargeStance.ts` → `chargeStanceFor` (declare) + `isSwooping` (declared) | `ContextMenu`, `useCombatActions`, `useOverlay`. |
+| Charge / Swoop | `src/packages/combat/lib/chargeStance.ts` → `chargeStanceFor` (declare) + `isSwooping` (declared); corridor in `movement/moveCost.ts` → `computeChargeReachable` | `ContextMenu`, `useCombatActions`, `useOverlay`. A loose charger is all-direction; a charge is stopped by threat hexes (`07`). |
 | Vertical flyer dominance | `imposesKillZone` + `computeThreatHexes` (with `isAirborne`/`verticalGapDown`) | overlay, pursue, retreat, combat. |
 
 ## Consolidation status

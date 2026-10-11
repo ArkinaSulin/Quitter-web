@@ -20,7 +20,7 @@ import { isHostile, sameAlliance, allianceOf } from '@/packages/primitives';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isMeleeReachable, computeWeaponSwitchAc, attackKind, canWeaponAttack } from '@/packages/combat';
 import { meleeElevationFor, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo, isAirborne, computeMoveBudget, computeHeroMoveBudget, structureClimbPerStep10 } from '@/packages/movement';
 import { isSwooping } from '@/packages/combat';
-import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable } from '@/packages/movement';
+import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable, isLooseUnit } from '@/packages/movement';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay, damageDiceCount, withDamageDiceCount } from '@/packages/units';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/packages/units';
 import { attackDirection, arcOfTarget } from '@/packages/primitives';
@@ -34,7 +34,7 @@ import { formatStrikeDetail } from '@/packages/units';
 import { SubStep, UnitChange } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
-import { computeOccupiedHexes } from '@/packages/world';
+import { computeOccupiedHexes, computeThreatHexes } from '@/packages/world';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingAttack, PendingAttackCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch } from './SoftEnforcementModals';
 import { useMagicCast } from '@/hooks/useMagicCast';
@@ -1039,7 +1039,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const maxMP = flyMax(attacker);
     const budgetUnit = moveBudgetUnit(attacker, 'fly');
     const occupied = computeOccupiedHexes(units, attacker.id, 1);
-    const reach = computeChargeReachable(attacker, occupied, maxMP);
+    const threatHexes = computeThreatHexes(units, attacker.id, alliances, formationsMap, structures, structureTemplates);
+    // A loose (facing-less) flyer — e.g. a hero on a flying mount — charges by its
+    // loose rule (every direction); a formed flyer keeps its front wedge. Either
+    // way the swoop is stopped by enemy kill zones.
+    const loose = isLooseUnit(attacker, formationsMap[attacker.currentFormation]);
+    const reach = computeChargeReachable(attacker, occupied, maxMP, undefined, undefined, threatHexes, loose);
     const cost = reach.get(`${target.hex.q},${target.hex.r}`);
     if (cost == null) return null;
     if ((attacker.chargeDistance ?? 0) + cost < getSetting('charge_full_distance', 2)) return null;
@@ -1053,7 +1058,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       maxMP,
       overBudget: !affordable,
     };
-  }, [units, structures, structureTemplates]);
+  }, [units, alliances, formationsMap, structures, structureTemplates]);
 
   /** The plan if a swoop drop applies to this pair, else null (used by the UI to
    *  decide whether to prompt). */
@@ -1414,13 +1419,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // normal paid path below), and the charge stays active for a later melee.
     if (attacker.isCharging && !isRangedThisAttack) {
       if (attacker.chargeDistance < getSetting('charge_full_distance', 2)) {
-        setPendingChargeAttack({ attacker, target });
+        setPendingChargeAttack({ attacker, target, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
         return;
       }
       // Soft 5-cap: pause and ask before a charge attack past the cap.
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
-        setPendingAttackCap({ attacker, target, isCharging: true });
+        setPendingAttackCap({ attacker, target, isCharging: true, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
         return;
       }
       const result = await performAttack(attacker, target, false, { isCharging: true, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
@@ -1437,12 +1442,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // Soft 5-cap: pause and ask before an attack past the cap.
     const attackCap = unitAttackCap();
     if ((attacker.attacksUsed ?? 0) >= attackCap) {
-      setPendingAttackCap({ attacker, target });
+      setPendingAttackCap({ attacker, target, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
       return;
     }
 
     if (attacker.actionsAvailable < 1 && !weapon.freeAction) {
-      setPendingAttack({ attacker, target });
+      setPendingAttack({ attacker, target, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
       return;
     }
     await performAttack(attacker, target, false, { mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });

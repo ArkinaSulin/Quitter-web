@@ -330,7 +330,8 @@ faces and `hex_move_cost` are gone:
   `mp_*` (per locomotion) is the only movement gate** (hex: `structureHexBlocked`;
   edge: `isBlockedEdge`), plus a `block` face for magic walls and occupancy. Doors
   are only a second **damageable** pool (combat/badges) and no longer block cross-
-  ing, entering, or charges. Charges are gated solely by a 2+ MP crossing.
+  ing, entering, or charges. Charges are gated by a 2+ MP crossing and by enemy
+  threat hexes (`07`).
 - **Door state is INSTANCE-relative** (`structureDoorState`): damage reduces BOTH
   `door_hp` and `hp` together, so `noDoor = doorNow >= hpNow` (equality survives
   equal damage — comparing to the *template* max would falsely create a door once a

@@ -561,11 +561,16 @@ its morale is above 0 (its Routed state clears).
 Cavalry (or any unit that **Can Charge**) can **Charge!** from the context
 menu. It locks rotation and formation and shows a **front wedge**: amber hexes
 = short charge, white = a full charge (2+ hexes — but the wedge fans to your
-whole pool).
+whole pool). An **airborne flyer** swoops instead of charging, and because a
+**hero** (like any loose unit) has no facing, its swoop reaches **every
+direction** — you can dive on any enemy within range.
 
 ![S-15 Charge wedge](screenshots/s-15-charge-wedge.png)
 
-- Move only within the wedge; each step adds to your charge distance.
+- Move only within the wedge (a loose hero's swoop: any direction); each step
+  adds to your charge distance.
+- An enemy **kill zone stops the charge**: you may end your charge on a
+  threat hex, but never charge through one.
 - **Charge a full distance** (≥2 hexes) onto an enemy → a **free, double-damage
   attack** — then your formation drops **one organization level** (momentum
   spent).

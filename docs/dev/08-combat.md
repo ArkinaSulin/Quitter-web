@@ -265,7 +265,10 @@ Both merely mark `isCharging` + `chargeDistance = 0` and lock rotate/formation;
 the following move/drop decides ground-charge vs swoop, so they share the engine
 handler. The entry is gated by the scenario `mounted_charge_enabled` setting
 (shown as **"Mounted charge and airborne swoop"**).
-- Moves only through the charge wedge (`07`); distance accumulates.
+- Moves only through the charge corridor (`07`): a formed unit's front wedge, or —
+  for a **loose** (facing-less) unit — its all-direction cone, so a flying hero
+  swoops any reachable target. A charge is stopped by enemy kill zones (may end in
+  one, never pass through). Distance accumulates.
 - Attack at distance ≥ `charge_full_distance` (2) → **free double-damage
   attack**, then drop one organization level (`CHARGE_END`). Attack < 2 →
   premature confirm (normal attack, still drops org).

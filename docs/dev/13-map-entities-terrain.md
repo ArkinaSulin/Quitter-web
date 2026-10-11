@@ -46,7 +46,9 @@ skips them), so the whole ground-effect runtime — stat/flag memberships, `rang
 
 `computeReachableMap` takes a `costOfHex` (`terrainCostOf` clamps to 0) and
 caps reach by **MP and by hex-count hops** — a 0-cost chain can't roam
-unbounded (`07`). Charges cannot enter/pass cost > 1 hexes (they stay flat).
+unbounded (`07`). Charges cannot enter/pass cost > 1 hexes (they stay flat), and
+are stopped by enemy threat hexes — enterable as a final step, never passed
+through (`07`).
 
 ## Edge walls & barriers
 

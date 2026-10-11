@@ -1,5 +1,25 @@
 # QuiTTER Changelog
 
+## Hero swoop cone, ZoC-stopped charges, preserved attack options (2026-10-11)
+**Files:** src/packages/movement/{lib/moveCost.ts,tests/moveCost.test.ts}, src/components/ScenarioMap/{useMoveActions.ts,useOverlay.ts,useCombatActions.ts,ScenarioMap.tsx,SoftEnforcementModals.tsx}, docs/dev/{00-universal-rules,07-movement-economy,08-combat,13-map-entities-terrain,18-map-structures,changelog}.md, docs/players/player-manual.md
+
+- **Loose chargers are all-direction.** `computeChargeReachable` gains a `loose`
+  flag (the canonical `isLooseUnit` rule): a loose unit (hero / Scattered — no
+  facing) charges in every direction instead of the fixed front wedge, so a hero on
+  a flying mount no longer swoops only north. Threaded from `isLooseUnit` at all
+  three call sites (move validation, drag overlay, `buildSwoopDropPlan`); a formed
+  charger keeps its front wedge.
+- **Charges are stopped by ZoC.** `computeChargeReachable` also takes
+  `threatHexes`: a threat hex may be ENTERED (the charge ends there) but never
+  passed through — a charge can no longer punch through an enemy kill zone. Wired
+  at the same three call sites from `computeThreatHexes`.
+- **Attack options survive the soft-enforcement prompts.** `PendingAttack`,
+  `PendingAttackCap` and `PendingChargeAttack` now carry `mainTarget`/`damageDice`;
+  the out-of-actions / attack-cap / charge-incomplete confirms replay them into
+  `performAttack`, so an archer out of actions attacking a mounted pair keeps its
+  chosen primary target (was silently defaulting to the mount).
+- No migration. `tsc` clean, 1018 tests pass, build clean.
+
 ## Free-move hero pull-apart; unified death-detach; floating guard + Drop/Lower (2026-10-10)
 **Files:** src/components/ScenarioMap/{ScenarioMap.tsx,useMoveActions.ts,ContextMenu.tsx,routeUnit.ts}, src/hooks/useGameEngine.ts, docs/players/player-manual.md, docs/dev/changelog.md
 

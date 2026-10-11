@@ -260,14 +260,17 @@ function key(q: number, r: number): string {
 }
 
 /**
- * Charge corridor for a charging unit: a front-arc BFS wedge. Each step moves into
- * one of the two front-arc hexes (relative to the fixed facing — no turning), up to
- * `maxHexes` (the unit's one-action MP pool). An occupied hex blocks the lane (cannot
- * be entered or passed through). Returns hex key -> step cost (1..maxHexes).
+ * Charge corridor for a charging unit, up to `maxHexes` (the unit's one-action MP
+ * pool). An occupied hex blocks the lane (cannot be entered or passed through). A
+ * threat/zone-of-control hex may be ENTERED (the charge ends there) but never passed
+ * through — a charge is stopped by an enemy's kill zone. Returns hex key -> step cost
+ * (1..maxHexes).
  *
- * Geometry: facing 0 (front dirs (0,-1),(1,-1)) from the origin fans out as
- * 1 hex -> 2 hexes, 2 hexes -> 3, 3 -> 4, etc. Only formed (non-loose) units can
- * charge; Scattered/Routed/Hero cannot.
+ * Geometry: a FORMED unit's charge is a front-arc BFS wedge (no turning) — facing 0
+ * (front dirs (0,-1),(1,-1)) from the origin fans out as 1 hex -> 2, 2 -> 3, etc.
+ * A LOOSE unit (hero / Scattered — no facing) charges by its loose rule: it has no
+ * front, so every direction is "front" and it can swoop any reachable target
+ * regardless of its (meaningless) facing. Pass `loose` to switch to that mode.
  */
 export function computeChargeReachable(
   unit: { hex: Hex; facing: number },
@@ -275,9 +278,13 @@ export function computeChargeReachable(
   maxHexes = 2,
   costOfHex?: CostOfHexFn,
   blockedEdge?: BlockedEdgeFn,
+  /** ZoC / kill-zone hexes: enterable as a destination, never passed through. */
+  threatHexes?: Set<string>,
+  /** Loose unit (no facing): charge in every direction instead of the front wedge. */
+  loose = false,
 ): Map<string, number> {
   const result = new Map<string, number>();
-  const frontDirs = frontArcIndices(unit.facing);
+  const dirs = loose ? HEX_DIRS.map((_, i) => i) : frontArcIndices(unit.facing);
 
   const visited = new Set<string>([key(unit.hex.q, unit.hex.r)]);
   const queue: { q: number; r: number; cost: number }[] = [
@@ -287,7 +294,9 @@ export function computeChargeReachable(
   while (queue.length > 0) {
     const cur = queue.shift()!;
     if (cur.cost >= maxHexes) continue;
-    for (const dirIdx of frontDirs) {
+    // A charge entered a threat hex: it may end there but not charge onward.
+    if (cur.cost > 0 && threatHexes?.has(key(cur.q, cur.r))) continue;
+    for (const dirIdx of dirs) {
       const dir = HEX_DIRS[dirIdx];
       const nq = cur.q + dir.q;
       const nr = cur.r + dir.r;
