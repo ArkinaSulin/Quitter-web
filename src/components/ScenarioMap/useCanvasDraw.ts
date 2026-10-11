@@ -5,7 +5,7 @@
 // the passed-in state — no handlers, no DB access.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
-import { hexToPixel } from '@/hooks/useHexGrid';
+import { hexToPixel, unitMatchesFilter, type TargetFilter } from '@/hooks/useHexGrid';
 import { Unit, Hex, AllianceGroup, Formation, SizeCategory, GroundEffect } from '@/types/gameProtocol';
 import { drawToken, loadImage, getLoadedImage, drawArcherReactionButton, drawTargetMarker } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier } from '@/packages/morale';
@@ -48,12 +48,14 @@ interface CanvasDrawDeps {
   hoveredWallEdge?: EdgeRef | null;
   /** Hex structure highlighted while Shift-dragging a unit over it (drag-to-attack). */
   hoveredStructureHex?: Hex | null;
-  /** Inspect mode (Shift held): hide all unit/hero tokens and corpse piles,
-   *  except `keepVisibleUnitId` (the unit currently being dragged). */
-  hideUnits?: boolean;
-  keepVisibleUnitId?: string | null;
-  /** Air-only view (Space held): hide ground units (elevation 0), show flyers. */
-  hideGroundUnits?: boolean;
+  /** Active targeting filter (held Shift/1 → structure, Space/2 → ground, 3 → air;
+   *  first pressed wins). Hides the non-targetable unit tokens; air also cancels
+   *  the aerial offset so those tokens draw at the hex centre. The dragged unit
+   *  (`keepVisibleUnitIdRef`) always stays visible. `null` = normal. */
+  targetFilter?: TargetFilter;
+  /** Ref to the currently dragged unit id (kept visible in every mode). A ref,
+   *  not a value, because `useCanvasDraw` is called before `useHexGrid` owns it. */
+  keepVisibleUnitIdRef?: RefObject<string | null>;
   groundZones?: GroundEffect[];
   /** Effective zones (painted + hex-structure modifiers) for the MP-cost label. */
   mpZones?: GroundEffect[];
@@ -92,9 +94,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     templates,
     hoveredWallEdge,
     hoveredStructureHex,
-    hideUnits = false,
-    keepVisibleUnitId = null,
-    hideGroundUnits = false,
+    targetFilter = null,
+    keepVisibleUnitIdRef,
     groundZones,
     mpZones,
     scenarioId,
@@ -147,6 +148,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
   const customDraw = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, currentZoom: number, offsetX: number, offsetY: number) => {
     const tokenWidth = TOKEN_WIDTH * currentZoom;
     const tokenHeight = TOKEN_HEIGHT * currentZoom;
+    // The dragged unit (kept visible in every target-filter mode) — read from the
+    // ref so the hook order (useCanvasDraw before useHexGrid) doesn't matter.
+    const keepVisibleUnitId = keepVisibleUnitIdRef?.current ?? null;
     // Shared board-label styles (screen px) — the single source also used by the
     // Map Editor + Structure Editor (see mapFeatureDraw.mapTextStyles).
     const ts = mapTextStyles(currentZoom);
@@ -484,7 +488,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     // by q+r so the scatter is stable as piles grow). Each dot mirrors its dead
     // unit: team colour, mounted = triangle vs foot = circle, radius from size.
     // Drawn UNDER live tokens; corpses never occupy hexes or interact with rules.
-    if (corpseCounts && !hideUnits) {
+    if (corpseCounts) {
       ctx.save();
       for (const [key, groups] of Object.entries(corpseCounts)) {
         if (!groups || groups.length === 0) continue;
@@ -522,11 +526,10 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
 
     for (const unit of drawOrder) {
       if (unit.isDeleted || unit.attachedToUnitId || isDeadCorpse(unit)) continue;
-      // Inspect mode: hide every token except the unit being dragged (or a host
-      // whose attached hero is being dragged).
-      if (hideUnits && unit.id !== keepVisibleUnitId && attachedByHost.get(unit.id)?.id !== keepVisibleUnitId) continue;
-      // Air-only view (Space): hide ground units, keep flyers.
-      if (hideGroundUnits && (unit.elevation ?? 0) <= 0) continue;
+      // Target-filter modes hide the non-targetable unit tokens; the dragged unit
+      // (or the host whose attached hero is being dragged) always stays visible.
+      const keepVisible = unit.id === keepVisibleUnitId || attachedByHost.get(unit.id)?.id === keepVisibleUnitId;
+      if (!keepVisible && !unitMatchesFilter(unit, targetFilter)) continue;
       if (unit.hidden) {
         if (!isGM) continue;
         ctx.save();
@@ -537,18 +540,22 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const cx = pos.x * currentZoom + offsetX;
       const cy = pos.y * currentZoom + offsetY;
       // A climber offsets TOWARD its target hex (stage-1 magnitude); a normal
-      // elevated unit uses the NE default (flyer = full, ground = half).
+      // elevated unit uses the NE default (flyer = full, ground = half). In AIR
+      // mode the aerial offset is cancelled so those tokens draw at the hex centre.
       const climbTarget = parseClimbTo(unit.climbTo);
-      const elev = elevationOffset(
-        unit.elevation, HEX_SIZE,
-        canFly(unit) && !climbTarget,
-        climbTarget ? hexDirection(unit.hex, climbTarget, HEX_SIZE) : undefined,
-      );
+      const elev = targetFilter === 'air'
+        ? { dx: 0, dy: 0 }
+        : elevationOffset(
+            unit.elevation, HEX_SIZE,
+            canFly(unit) && !climbTarget,
+            climbTarget ? hexDirection(unit.hex, climbTarget, HEX_SIZE) : undefined,
+          );
       const tokenCx = cx + elev.dx * currentZoom;
       const tokenCy = cy + elev.dy * currentZoom;
       const unitMoraleMod = moraleMods.get(unit.id) ?? (unit.currentMoraleModifier + computeEffectiveMoraleModifier(unit, displayUnits, displayAlliances, formationMoraleMod));
-      // Shadow dot on the ground hex under an elevated token.
-      if ((unit.elevation ?? 0) > 0) {
+      // Shadow dot on the ground hex under an elevated token (skipped in air mode,
+      // where the token sits at the hex centre).
+      if ((unit.elevation ?? 0) > 0 && targetFilter !== 'air') {
         ctx.save();
         ctx.globalAlpha = 0.35;
         ctx.fillStyle = '#000';
@@ -662,7 +669,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     }
 
     // Active-effect pips: one colored dot per effect under the token (small, cheap).
-    if (!isGM && !hideUnits) {
+    // Hidden in STRUCTURE mode for a clean structure/effect read (as the old Shift
+    // inspect did).
+    if (!isGM && targetFilter !== 'structure') {
       ctx.save();
       for (const unit of displayUnits) {
         const effects = unit.effects ?? [];
@@ -887,7 +896,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hoveredStructureHex, hideUnits, keepVisibleUnitId, hideGroundUnits, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick, moraleMods]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hoveredStructureHex, targetFilter, keepVisibleUnitIdRef, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick, moraleMods]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;

@@ -12,6 +12,26 @@ import { EdgeRef, Walls, nearestWallEdge, EDGE_HIT_RATIO } from '@/packages/move
 // Re-export the pure hex math so existing importers keep working.
 export { hexToPixel, pixelToHex } from '@/packages/primitives';
 
+/**
+ * The active targeting filter, driven by the held modifier keys (first pressed
+ * wins, read live):
+ *  - `'structure'` (Shift / 1): only edge walls + hex structures are targetable.
+ *  - `'ground'` (Space / 2): only `elevation === 0` units.
+ *  - `'air'` (3): only `elevation > 0` units (with the aerial offset cancelled).
+ *  - `null`: normal (units + structures).
+ * In structure mode NO unit passes; ground/air split by RAW elevation (a
+ * structure-top garrison / climber counts as air). Pure — shared with the renderer.
+ */
+export type TargetFilter = 'structure' | 'ground' | 'air' | null;
+
+/** Does `unit` pass the active target filter? (`structure` never passes a unit.) */
+export function unitMatchesFilter(unit: Pick<Unit, 'elevation'>, filter: TargetFilter): boolean {
+  if (!filter) return true;
+  if (filter === 'structure') return false;
+  const elev = unit.elevation ?? 0;
+  return filter === 'ground' ? elev === 0 : elev > 0;
+}
+
 export interface UseHexGridProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   size: number;
@@ -43,11 +63,10 @@ export interface UseHexGridProps {
   onHoverWallEdge?: (edge: EdgeRef | null) => void;
   /** Structure hex under the pointer while dragging with Shift (the drop target). */
   onHoverStructureHex?: (hex: Hex | null) => void;
-  /** Inspect mode (Shift held): unit hover is suppressed and hex/edge info hover fires. */
-  shiftHeld?: boolean;
-  /** Air-only view (Space held): tokens/wireframe show only airborne units, so
-   *  ground units are skipped by hit-testing (hover/drag/click). */
-  airOnly?: boolean;
+  /** Active targeting filter (held Shift/1 / Space/2 / 3 — first pressed wins).
+   *  Structure mode skips ALL unit hit-testing; ground/air skip by elevation; air
+   *  also cancels the aerial offset. `null` = normal. */
+  targetFilter?: TargetFilter;
   /** Hover on a hex with no unit under the cursor (hex info tooltip). */
   onHexHover?: (hex: Hex, x: number, y: number) => void;
   onHexLeave?: () => void;
@@ -93,8 +112,7 @@ export function useHexGrid({
   canAttemptStructure,
   onHoverWallEdge,
   onHoverStructureHex,
-  shiftHeld = false,
-  airOnly = false,
+  targetFilter = null,
   onHexHover,
   onHexLeave,
   onEdgeHover,
@@ -289,7 +307,7 @@ export function useHexGrid({
     if (customDraw) {
       customDraw(ctx, width, height, zoom, offsetX, offsetY);
     }
-  }, [canvasRef, size, gridRadius, offsetX, offsetY, zoom, customDraw, bgLoaded, backgroundImage, overlayMap]);
+  }, [canvasRef, size, gridRadius, offsetX, offsetY, zoom, customDraw, bgLoaded, backgroundImage, overlayMap, draggingUnitId]);
 
   useEffect(() => {
     draw();
@@ -385,11 +403,13 @@ export function useHexGrid({
    * Point-based hit test: the token's ACTUAL drawn location (hex centre plus its
    * elevation offset, NE 45°), not just its hex. This is what lets an elevated
    * token be grabbed/hovered where it is rendered, and lets a flyer stacked with a
-   * ground unit be selected (the nearest token centre wins; `airOnly` skips ground
-   * so the Space-held air view still targets the flyer).
+   * ground unit be selected (the nearest token centre wins). The active
+   * `targetFilter` skips non-targetable units (structure → all; ground/air → by
+   * elevation, air also cancelling the offset so the centred token is hit).
    */
-  const getUnitAtScreen = useCallback((screenX: number, screenY: number, opts?: { airOnly?: boolean }): Unit | undefined => {
-    const airOnlyMode = opts?.airOnly ?? airOnly;
+  const getUnitAtScreen = useCallback((screenX: number, screenY: number): Unit | undefined => {
+    // Air mode cancels the aerial offset (tokens draw at the hex centre).
+    const cancelOffset = targetFilter === 'air';
     const world = getWorldFromScreen(screenX, screenY);
     const hex = getHexFromScreen(screenX, screenY);
     const halfW = size * 0.8;  // TOKEN_WIDTH / 2  (HEX_SIZE * 1.6 / 2)
@@ -402,13 +422,13 @@ export function useHexGrid({
       if (hero) {
         const host = units.find(u => u.id === hero.attachedToUnitId);
         const hostElev = host?.elevation ?? hero.elevation ?? 0;
-        if (!airOnlyMode || hostElev > 0) {
+        if (unitMatchesFilter({ elevation: hostElev }, targetFilter)) {
           const hostHex = host?.hex ?? hero.hex;
           const hostFacing = host?.facing ?? hero.facing;
           const hostSize = host?.sizeCategory ?? hero.sizeCategory;
           const hostPos = hexToPixel(hostHex, size);
           const hostClimb = host ? parseClimbTo(host.climbTo) : null;
-          const off = elevationOffset(hostElev, size, host ? (canFly(host) && !hostClimb) : false, host && hostClimb ? hexDirection(host.hex, hostClimb, size) : undefined);
+          const off = cancelOffset ? { dx: 0, dy: 0 } : elevationOffset(hostElev, size, host ? (canFly(host) && !hostClimb) : false, host && hostClimb ? hexDirection(host.hex, hostClimb, size) : undefined);
           const hostCx = hostPos.x + off.dx;
           const hostCy = hostPos.y + off.dy;
           // Host token box (the combined pair is the hero's grabbable entity)…
@@ -424,10 +444,10 @@ export function useHexGrid({
     let bestD = Infinity;
     for (const u of units) {
       if (!isUnitInteractable(u)) continue;
-      if (airOnlyMode && (u.elevation ?? 0) <= 0) continue;
+      if (!unitMatchesFilter(u, targetFilter)) continue;
       const pos = hexToPixel(u.hex, size);
       const uClimb = parseClimbTo(u.climbTo);
-      const off = elevationOffset(u.elevation, size, canFly(u) && !uClimb, uClimb ? hexDirection(u.hex, uClimb, size) : undefined);
+      const off = cancelOffset ? { dx: 0, dy: 0 } : elevationOffset(u.elevation, size, canFly(u) && !uClimb, uClimb ? hexDirection(u.hex, uClimb, size) : undefined);
       const dx = world.x - (pos.x + off.dx);
       const dy = world.y - (pos.y + off.dy);
       if (Math.abs(dx) <= halfW && Math.abs(dy) <= halfH) {
@@ -436,24 +456,26 @@ export function useHexGrid({
       }
     }
     if (best) return best;
-    // Fallback keeps the broad whole-hex hit for GROUND units; flyers stay
-    // token-only (their hex hit box is intentionally tight).
-    if (!airOnlyMode && hex) {
+    // Fallback keeps the broad whole-hex hit for GROUND units (normal + ground
+    // mode); flyers stay token-only (their hex hit box is intentionally tight),
+    // and structure mode never targets a unit.
+    if ((!targetFilter || targetFilter === 'ground') && hex) {
       return units.find(u => isUnitInteractable(u) && (u.elevation ?? 0) <= 0 && u.hex.q === hex.q && u.hex.r === hex.r && u.hex.s === hex.s);
     }
     return undefined;
-  }, [units, activeHeroId, size, airOnly, getWorldFromScreen, getHexFromScreen]);
+  }, [units, activeHeroId, size, targetFilter, getWorldFromScreen, getHexFromScreen]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (hex) setHoveredHex(hex);
 
-    const unit = getUnitAtScreen(e.clientX, e.clientY, { airOnly });
-    // Inspect mode (Shift) suppresses unit hover so the map info tooltip shows.
+    const unit = getUnitAtScreen(e.clientX, e.clientY);
+    // The active target filter already skips non-targetable units (structure mode
+    // skips every unit), so the unit hover simply follows the hit test.
     // NOTE: hover still fires while dragging — the drag overlay needs the hovered
     // target (range rings, melee/swoop target). The unit TOOLTIP is hidden during
     // a drag in ScenarioMap instead (it never blocks a drag).
-    const hoverUnit = shiftHeld ? undefined : unit;
+    const hoverUnit = unit;
     if (hoverUnit && hoverUnit !== lastHoveredUnit) {
       setLastHoveredUnit(hoverUnit);
       // Viewport (client) coords — the tooltips are portal/fixed, browser-bound.
@@ -497,22 +519,23 @@ export function useHexGrid({
 
     // Drag-onto-the-edge: while dragging, report the wall edge under the pointer
     // (only when the dragged unit may actually attack it) for the overlay hint.
-    const rawEdge = draggingUnitId ? getWallEdgeAt(e.clientX, e.clientY) : null;
+    // Structure mode only — structures are only targetable there.
+    const rawEdge = draggingUnitId && targetFilter === 'structure' ? getWallEdgeAt(e.clientX, e.clientY) : null;
     const nextEdge = rawEdge && draggingUnitId && (!canAttackWallEdge || canAttackWallEdge(draggingUnitId, rawEdge)) ? rawEdge : null;
     if (nextEdge?.key !== hoveredEdgeKeyRef.current) {
       hoveredEdgeKeyRef.current = nextEdge?.key ?? null;
       onHoverWallEdge?.(nextEdge);
     }
-    // Shift + drag onto a hex structure (gate/tower): report the hex for the overlay
-    // hint (the same gesture routes a Shift-drop to the structure attack).
-    const rawStructHex = draggingUnitId && shiftHeld ? getHexFromScreen(e.clientX, e.clientY) : null;
+    // Structure mode + drag onto a hex structure (gate/tower): report the hex for
+    // the overlay hint (the same mode routes the drop to the structure attack).
+    const rawStructHex = draggingUnitId && targetFilter === 'structure' ? getHexFromScreen(e.clientX, e.clientY) : null;
     const nextStructHex = rawStructHex && draggingUnitId && canAttemptStructure?.(draggingUnitId, rawStructHex) ? rawStructHex : null;
     const nextStructKey = nextStructHex ? `${nextStructHex.q},${nextStructHex.r}` : null;
     if (nextStructKey !== hoveredStructKeyRef.current) {
       hoveredStructKeyRef.current = nextStructKey;
       onHoverStructureHex?.(nextStructHex);
     }
-  }, [getHexFromScreen, getUnitAtScreen, airOnly, isPanning, panStart, lastHoveredUnit, onUnitHover, onUnitLeave, draggingUnitId, canAttackWallEdge, getWallEdgeAt, onHoverWallEdge, onHoverStructureHex, canAttemptStructure, shiftHeld, onHexHover, onHexLeave, onEdgeHover, onEdgeLeave]);
+  }, [getHexFromScreen, getUnitAtScreen, targetFilter, isPanning, panStart, lastHoveredUnit, onUnitHover, onUnitLeave, draggingUnitId, canAttackWallEdge, getWallEdgeAt, onHoverWallEdge, onHoverStructureHex, canAttemptStructure, onHexHover, onHexLeave, onEdgeHover, onEdgeLeave]);
 
   // Pointer leaves the canvas (e.g. onto a modal overlay): drop all hover state so
   // tooltips disappear and a re-entry re-fires the hover callbacks.
@@ -559,7 +582,7 @@ export function useHexGrid({
       return;
     }
 
-    const unit = getUnitAtScreen(e.clientX, e.clientY, { airOnly });
+    const unit = getUnitAtScreen(e.clientX, e.clientY);
     // Record which unit (if any) the press started on, regardless of whether it
     // can be grabbed — lets clicks on tokens (e.g. the archer-reaction button)
     // be detected even for units the turn gate won't let you drag.
@@ -572,7 +595,7 @@ export function useHexGrid({
       return;
     }
     setMouseDownTarget('hex');
-  }, [getHexFromScreen, getUnitAtScreen, airOnly, readOnly, canGrabUnit, onGrabUnit, onPing]);
+  }, [getHexFromScreen, getUnitAtScreen, targetFilter, readOnly, canGrabUnit, onGrabUnit, onPing]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const targetHex = getHexFromScreen(e.clientX, e.clientY);
@@ -580,7 +603,7 @@ export function useHexGrid({
     // from a drag. Route it to onUnitClick — but keep the rest of the flow so a
     // click on a non-grabbable unit still selects its hex exactly as before.
     const pd = pointerDownRef.current;
-    const upUnit = getUnitAtScreen(e.clientX, e.clientY, { airOnly });
+    const upUnit = getUnitAtScreen(e.clientX, e.clientY);
     const clickedToken =
       !!pd && !!upUnit && upUnit.id === pd.unitId &&
       Math.abs(e.clientX - pd.x) <= 4 && Math.abs(e.clientY - pd.y) <= 4;
@@ -592,22 +615,21 @@ export function useHexGrid({
     if (draggingUnitId && dragStartPos && targetHex) {
       const unit = units.find(u => u.id === draggingUnitId);
       if (unit) {
-        const targetUnit = getUnitAtScreen(e.clientX, e.clientY, { airOnly });
+        const targetUnit = getUnitAtScreen(e.clientX, e.clientY);
         const wallEdge = getWallEdgeAt(e.clientX, e.clientY);
         // Identity gate (a wall/structure EXISTS here), NOT a reach gate: an
-        // out-of-range Shift-drop must still route to the attack so it can report
-        // "cannot reach" instead of silently falling through to a move.
+        // out-of-range structure drop must still route to the attack so it can
+        // report "cannot reach" instead of silently falling through to a move.
         const canHitWall = !!wallEdge && (!canAttemptWallEdge || canAttemptWallEdge(draggingUnitId, wallEdge));
-        // Structure attacks require Shift at drop (plain drop = move). This is
-        // the same gesture for edge (walls/spikes) and hex (gates/towers). SHIFT
-        // takes priority over a unit occupying the hex: a Shift-drop on a structure
-        // targets the STRUCTURE, not the unit standing on it.
-        const shift = e.shiftKey;
-        if (shift && canHitWall && onAttackWall) {
-          // Shift-dropped onto a wall segment: attack it (reach reported there).
+        // STRUCTURE mode (Shift/1) routes the drop to the barrier/structure; other
+        // modes fall through to a unit attack or a move. Structure mode takes
+        // priority over a unit occupying the hex (it targets the STRUCTURE).
+        const structureMode = targetFilter === 'structure';
+        if (structureMode && canHitWall && onAttackWall) {
+          // Dropped onto a wall segment: attack it (reach reported there).
           onAttackWall(draggingUnitId, wallEdge!);
-        } else if (shift && onAttackStructure && canAttemptStructure?.(draggingUnitId, targetHex)) {
-          // Shift-dropped onto a hex with a structure (gate/tower): attack it.
+        } else if (structureMode && onAttackStructure && canAttemptStructure?.(draggingUnitId, targetHex)) {
+          // Dropped onto a hex with a structure (gate/tower): attack it.
           onAttackStructure(draggingUnitId, targetHex);
         } else if (targetUnit && targetUnit.id !== draggingUnitId) {
           if (onAttack) onAttack(draggingUnitId, targetUnit.id);
@@ -632,14 +654,14 @@ export function useHexGrid({
     }
 
     if (mouseDownTarget === 'hex' && !draggingUnitId && !panMovedRef.current) {
-      if (targetHex && onHexClick) onHexClick(targetHex, getUnitAtScreen(e.clientX, e.clientY, { airOnly }), e.clientX, e.clientY);
+      if (targetHex && onHexClick) onHexClick(targetHex, getUnitAtScreen(e.clientX, e.clientY), e.clientX, e.clientY);
     }
     panMovedRef.current = false;
 
     setIsPanning(false);
     setPanStart(null);
     setMouseDownTarget('none');
-  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAtScreen, airOnly, onAttack, onAttackWall, canAttemptWallEdge, onAttackStructure, canAttemptStructure, getWallEdgeAt, onHoverWallEdge, onHoverStructureHex, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
+  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAtScreen, targetFilter, onAttack, onAttackWall, canAttemptWallEdge, onAttackStructure, canAttemptStructure, getWallEdgeAt, onHoverWallEdge, onHoverStructureHex, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
 
   const handleRightClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
@@ -648,10 +670,10 @@ export function useHexGrid({
     if (e.ctrlKey || e.metaKey) return;
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (hex) {
-      const unit = getUnitAtScreen(e.clientX, e.clientY, { airOnly });
+      const unit = getUnitAtScreen(e.clientX, e.clientY);
       if (onHexRightClick) onHexRightClick(hex, unit, e.clientX, e.clientY);
     }
-  }, [getHexFromScreen, getUnitAtScreen, airOnly, onHexRightClick, readOnly]);
+  }, [getHexFromScreen, getUnitAtScreen, targetFilter, onHexRightClick, readOnly]);
 
   const centerOn = useCallback((hex: { q: number; r: number }) => {
     const canvas = canvasRef.current;

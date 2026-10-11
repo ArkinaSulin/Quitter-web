@@ -791,12 +791,25 @@ A completed climb-down or drop is a move: enemy archers may react to it, and it
 provokes a pursue only if you vacate a normal (non-raised) kill zone — stepping
 off a raised structure never provokes one.
 
-**Inspecting the map:** holding **Shift** hides every unit (and corpse pile) so
-the board reads through — the map's structures and effects stay visible. While
-Shift is held, hovering a **hex** shows its effects and hex structure (side by
-side), and hovering near an **edge** shows that barrier's tooltip (edge
-wall/spike). The pointer's edge hit-box is enlarged in this mode. Mouse over a
-hex/edge for info anytime; unit tokens keep their own tooltip.
+**Targeting filters:** hold a modifier to restrict what you can target — the
+non-targetable tokens hide while it's held. If you hold several, the **first
+pressed wins**; the keys do nothing while you're typing in a text box.
+
+- **Shift** (or **`1`**) — **structure mode**: every unit/hero token hides (the
+  one you're dragging stays visible) and you can only target **structures**:
+  Shift-drop a unit onto a wall/hex structure to attack it. Hovering a **hex**
+  shows its effects and hex structure (side by side) and hovering near an **edge**
+  shows that barrier's tooltip (edge wall/spike); the pointer's edge hit-box is
+  enlarged.
+- **Space** (or **`2`**) — **ground mode**: aerial tokens (`elevation > 0`) hide;
+  only ground units (`elevation = 0`) can be targeted.
+- **`3`** — **air mode**: ground tokens (`elevation = 0`) hide and elevated tokens
+  draw at their hex centre (the aerial offset is cancelled); only `elevation > 0`
+  units can be targeted.
+
+Dropping on an **empty hex** still moves the dragged unit in any mode (the filter
+only removes the *attack* target; an occupied hex still blocks). **Ctrl/⌘ + click**
+pings the map (an indicator, never a drag).
 
 ### Magic & area spells
 

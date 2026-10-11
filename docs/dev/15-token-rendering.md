@@ -86,6 +86,13 @@ Name runs flush along the bottom in white with a dark shadow.
   NE 45°, constant by height — a **flyer** = a full hex radius; a **non-flyer**
   (an elevated ground unit or a climber) = a **quarter** hex radius. A climber
   points the offset toward its target hex.
+- **Targeting filters** (`ScenarioMap.targetFilter`, held Shift/1 → `structure`,
+  Space/2 → `ground`, 3 → `air`; first pressed wins, read live): the non-targetable
+  unit tokens **hide** (`useCanvasDraw`, generalising the old Shift/Space hide) and
+  the **dragged unit always stays visible**. In **air** mode the aerial offset is
+  **cancelled** — elevated tokens draw at the hex centre (and `useHexGrid`'s hit box
+  matches, at the centre); **structure** mode skips every unit in `getUnitAtScreen`.
+  Ground/air split by **raw elevation**. Corpse piles stay visible.
 - **Reaction markers**: the acting archer gets an amber halo (`#f59e0b`); the
   mover it reacts to (the reaction **target**) gets a bold amber **X**
   (`drawTargetMarker`) on its token; hovering a unit tints its **own hex cyan**

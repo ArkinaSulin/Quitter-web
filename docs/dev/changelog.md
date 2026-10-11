@@ -1,5 +1,24 @@
 # QuiTTER Changelog
 
+## Modifier targeting filters: structure / ground / air (2026-10-11)
+**Files:** src/hooks/{useHexGrid.ts,useHexGrid.test.ts}, src/components/ScenarioMap/{ScenarioMap.tsx,useCanvasDraw.ts}, docs/players/player-manual.md, docs/dev/{15-token-rendering,changelog}.md
+
+- The old Shift inspect-mode + Space air-only toggles are replaced by one
+  **target filter** read live from the held modifiers (**first pressed wins**):
+  **Shift / 1 → structure** (all unit/hero tokens hide; only walls/hex structures
+  targetable), **Space / 2 → ground** (aerial tokens hide; only `elevation = 0`
+  units), **3 → air** (ground tokens hide **and** the aerial offset is cancelled so
+  those tokens draw at the hex centre; only `elevation > 0` units).
+  `useHexGrid.unitMatchesFilter` is the shared pure predicate.
+- Applies to **all** hit-testing (hover / select / right-click / double-click /
+  drag); empty-hex moves still work; **Ctrl/⌘+click ping** and **WASD pan**
+  unchanged; the digit keys are ignored while typing in an input. The **dragged
+  unit stays visible** in every mode and **corpse piles are no longer hidden**.
+- Structure attacks now gate on the **structure mode** rather than a live
+  `e.shiftKey` read; ground/air split by **raw elevation** (a structure-top garrison
+  / climber counts as air).
+- Docs updated. No migration. `tsc` clean, tests pass, build clean.
+
 ## Drag ghost follows the mouse-over hitbox; unified drop indicator (2026-10-11)
 **Files:** src/components/ScenarioMap/{ScenarioMap.tsx,useCanvasDraw.ts,useOverlay.ts}, docs/dev/{15-token-rendering,changelog}.md
 

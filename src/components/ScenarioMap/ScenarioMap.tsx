@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-import { useHexGrid, hexToPixel } from '@/hooks/useHexGrid';
+import { useHexGrid, hexToPixel, type TargetFilter } from '@/hooks/useHexGrid';
 import { parseSubSteps, CommandLogRow, SubStep } from '@/packages/infra';
 import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel, GroundEffect, EffectKind, hexDistance } from '@/types/gameProtocol';
 import { routRetreatPath, type RoutPath } from '@/packages/morale';
@@ -104,6 +104,26 @@ function DragGhost({ x, y, zoom, offsetX, offsetY }: { x: number; y: number; zoo
       }}
     />
   );
+}
+
+/** The drag-target filter a held modifier selects. Shift/1 → structure,
+ *  Space/2 → ground, 3 → air (first pressed wins). */
+const FILTER_KIND: Record<string, Exclude<TargetFilter, null>> = {
+  shift: 'structure',
+  d1: 'structure',
+  space: 'ground',
+  d2: 'ground',
+  d3: 'air',
+};
+
+/** A stable id for a filter-modifier keydown/keyup (aliases share the kind), or null. */
+function filterKeyId(e: KeyboardEvent): string | null {
+  if (e.key === 'Shift') return 'shift';
+  if (e.code === 'Space') return 'space';
+  if (e.code === 'Digit1' || e.key === '1') return 'd1';
+  if (e.code === 'Digit2' || e.key === '2') return 'd2';
+  if (e.code === 'Digit3' || e.key === '3') return 'd3';
+  return null;
 }
 
 type DroppedEffect = {
@@ -894,12 +914,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [hoveredStructureHex, setHoveredStructureHex] = useState<Hex | null>(null);
   /** Ground attacker vs a garrison on a higher structure top: Climb & attack / Attack. */
   const [pendingClimbAttack, setPendingClimbAttack] = useState<{ attackerId: string; targetId: string; garrison: string } | null>(null);
-  // Inspect mode: while Shift is held all unit/corpse tokens hide so the map
-  // (structures/effects) reads through, and Shift+drop attacks a structure.
-  const [shiftHeld, setShiftHeld] = useState(false);
-  // Air-only view: while Space is held ground units hide (only elevated units
-  // remain) for air-to-air targeting.
-  const [spaceHeld, setSpaceHeld] = useState(false);
+  // Target-filter modes (first pressed wins, read live): Shift/1 → structure
+  // (only structures targetable, all unit tokens hidden), Space/2 → ground (only
+  // elevation-0 units), 3 → air (only elevation>0 units, aerial offset cancelled).
+  const [heldFilterIds, setHeldFilterIds] = useState<string[]>([]);
+  const targetFilter: TargetFilter = heldFilterIds.length ? FILTER_KIND[heldFilterIds[0]] : null;
   // Hex/edge info-hover (structure + effect tooltip), from useHexGrid.
   const [infoHover, setInfoHover] = useState<{ kind: 'hex' | 'edge'; hex?: Hex; edge?: EdgeRef; x: number; y: number } | null>(null);
 
@@ -927,26 +946,26 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     };
   }, [dismissTooltips]);
 
+  // Target-filter modifiers: Shift / 1 → structure, Space / 2 → ground, 3 → air.
+  // Held keys keep a press-ordered id list (FIRST pressed wins); ignored while
+  // typing in a text field; blur clears everything.
   useEffect(() => {
-    const down = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(true); };
-    const up = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(false); };
-    const blur = () => setShiftHeld(false);
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
-    window.addEventListener('blur', blur);
-    return () => {
-      window.removeEventListener('keydown', down);
-      window.removeEventListener('keyup', up);
-      window.removeEventListener('blur', blur);
+    const typing = (t: EventTarget | null): boolean => {
+      const el = t as HTMLElement | null;
+      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
     };
-  }, []);
-
-  useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.code === 'Space') { e.preventDefault(); setSpaceHeld(true); }
+      const id = filterKeyId(e);
+      if (!id || typing(e.target)) return;
+      if (e.code === 'Space') e.preventDefault();
+      setHeldFilterIds(prev => (prev.includes(id) ? prev : [...prev, id]));
     };
-    const up = (e: KeyboardEvent) => { if (e.code === 'Space') setSpaceHeld(false); };
-    const blur = () => setSpaceHeld(false);
+    const up = (e: KeyboardEvent) => {
+      const id = filterKeyId(e);
+      if (!id) return;
+      setHeldFilterIds(prev => prev.filter(k => k !== id));
+    };
+    const blur = () => setHeldFilterIds([]);
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     window.addEventListener('blur', blur);
@@ -957,6 +976,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     };
   }, []);
 
+  // The currently dragged unit id, exposed to `useCanvasDraw` (called before
+  // `useHexGrid` owns the state) so its token stays visible in every filter mode.
+  const draggedUnitIdRef = useRef<string | null>(null);
   const { customDraw, captureAndUploadScreenshot } = useCanvasDraw({
     canvasRef,
     units,
@@ -983,12 +1005,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     walls,
     structures,
     templates: structureTemplates,
-    // Highlight the edge under the cursor while Shift is held (the Shift + double-click
+    // Highlight the edge under the cursor in structure mode (the Shift + double-click
     // edit target), alongside the drag-to-attack cap.
-    hoveredWallEdge: hoveredWallEdge ?? (shiftHeld && infoHover?.kind === 'edge' ? infoHover.edge ?? null : null),
+    hoveredWallEdge: hoveredWallEdge ?? (targetFilter === 'structure' && infoHover?.kind === 'edge' ? infoHover.edge ?? null : null),
     hoveredStructureHex,
-    hideUnits: shiftHeld,
-    hideGroundUnits: spaceHeld,
+    targetFilter,
+    keepVisibleUnitIdRef: draggedUnitIdRef,
     groundZones,
     mpZones: effectiveZones,
     scenarioId,
@@ -2270,13 +2292,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     },
     onHoverWallEdge: setHoveredWallEdge,
     onHoverStructureHex: setHoveredStructureHex,
-    shiftHeld,
-    airOnly: spaceHeld,
+    targetFilter,
     onHexHover: (hex, x, y) => setInfoHover({ kind: 'hex', hex, x, y }),
     onEdgeHover: (edge, x, y) => setInfoHover({ kind: 'edge', edge, x, y }),
     onHexLeave: () => setInfoHover(null),
     onEdgeLeave: () => setInfoHover(null),
-    canGrabUnit: (unit) => (reactionMode ? unit.id === reactionMode.archer.id : !shiftHeld && canControlUnit(unit)),
+    canGrabUnit: (unit) => (reactionMode ? unit.id === reactionMode.archer.id : canControlUnit(unit)),
     onGrabUnit: (unit) => { if (unit.attachedToUnitId) setActiveHeroId(unit.id); },
     onPing: (hex) => pingAtHex(hex, playerName, pingColor),
     activeHeroId,
@@ -2286,6 +2307,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     overlayMap,
     readOnly: controlsLocked,
   });
+  // Keep the dragged unit visible in every filter mode (read by useCanvasDraw).
+  draggedUnitIdRef.current = draggingUnitId;
 
   // When the rout modal opens: center the map on the routed unit and clear hover
   // so the tooltip never covers it.
@@ -2505,7 +2528,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     // Point-based hit test — the SAME resolver as hover (elevation/attachment
     // offset aware), so a double-click opens the unit under the cursor even when
     // its token is drawn off its logical hex centre.
-    const unit = getUnitAtScreen(e.clientX, e.clientY, { airOnly: false });
+    const unit = getUnitAtScreen(e.clientX, e.clientY);
     if (!unit) return;
     if (unit.hidden && !effectiveIsGM) return;
     if (effectiveIsGM || canEditUnit(unit)) setEditUnit(unit);
@@ -3044,7 +3067,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           structures={structures}
           templates={structureTemplates}
           zones={groundZones}
-          sideBySide={shiftHeld}
+          sideBySide={targetFilter === 'structure'}
         />
       )}
 
