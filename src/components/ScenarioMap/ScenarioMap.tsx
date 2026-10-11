@@ -54,7 +54,7 @@ import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackground
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST, isRotationAffordable } from '@/packages/movement';
 import { canReachStructure, canFly, parseClimbTo, isAirborne, flyMax } from '@/packages/movement';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/packages/movement';
-import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt, edgeShowsLadder, structureElevation, edgeKeysAroundHex } from '@/packages/movement';
+import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt, edgeShowsLadder, structureElevation, edgeKeysAroundHex, floatingUnits } from '@/packages/movement';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { getStructureTemplates } from '@/packages/infra';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/packages/combat';
@@ -70,7 +70,7 @@ import { EffectFormModal, EffectFormValue } from './EffectFormModal';
 import { EffectCatalogTemplate, templateById } from '@/packages/effects';
 import { EffectModifier, EffectTemplate as EffectLibraryTemplate, mapEffectRow, modifierAmount } from '@/packages/effects';
 import { expandHexEffects, normalizeGroundEffectKinds } from '@/packages/effects';
-import { routeUnit, fallSteps, hostLostHeroSteps } from './routeUnit';
+import { routeUnit, fallSteps, detachOnDeath } from './routeUnit';
 import { ScenarioStatsModal } from './ScenarioStatsModal';
 import { parseDragPayload } from './EffectsPanel';
 import { useCommandLogRows } from '@/hooks/useCommandLogRows';
@@ -1627,6 +1627,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   const performEndTurn = useCallback(async () => {
     if (isEndingTurn) return;
+    // Block End Turn while any non-flying unit/hero is left floating (e.g. a hero
+    // pulled off a flying mount, or a unit orphaned by a removed structure) — the DM
+    // must ground it (context menu: Drop / Lower to ground).
+    const floaters = floatingUnits(units, structures, structureTemplates);
+    if (floaters.length > 0) {
+      addError(`Cannot end turn — resolve floating unit(s) first: ${floaters.map(u => u.unitName).join(', ')}`);
+      return;
+    }
     setIsEndingTurn(true);
     try {
       const { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded, ok, zonesAfter } = await endTurn({
@@ -1672,7 +1680,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     } finally {
       setIsEndingTurn(false);
     }
-  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, freeMove, isEndingTurn, effectiveZones, persistMapData, scenarioId]);
+  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, freeMove, isEndingTurn, effectiveZones, persistMapData, scenarioId, structures, structureTemplates, addError]);
 
   const handleEndTurn = useCallback(async () => {
     if (isEndingTurn) return;
@@ -3025,10 +3033,27 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           canRally={rallyCheck.ok}
           rallyReason={rallyCheck.reason}
           onRally={() => rallyUnit(contextMenuUnit)}
+          canDropToGround={!contextMenuUnit.attachedToUnitId && !canFly(contextMenuUnit) && (contextMenuUnit.elevation ?? 0) > structureSurfaceAt(contextMenuUnit.hex, structures, structureTemplates)}
+          onDropToGround={async () => {
+            const f = fallSteps(contextMenuUnit, 0);
+            if (f.steps.length > 0) await execute('ELEVATE', f.steps, f.note || `${contextMenuUnit.unitName} drops to the ground`);
+          }}
+          canLowerToGround={effectiveIsGM && !contextMenuUnit.attachedToUnitId && !canFly(contextMenuUnit) && (contextMenuUnit.elevation ?? 0) > structureSurfaceAt(contextMenuUnit.hex, structures, structureTemplates)}
+          onLowerToGround={effectiveIsGM ? async () => {
+            const surface = structureSurfaceAt(contextMenuUnit.hex, structures, structureTemplates);
+            if ((contextMenuUnit.elevation ?? 0) > surface) {
+              await execute('ELEVATE', [{
+                type: 'ELEVATE',
+                description: `${contextMenuUnit.unitName} lowered to the ground`,
+                unitId: contextMenuUnit.id,
+                changes: [{ field: 'elevation', from: contextMenuUnit.elevation ?? 0, to: surface }],
+              }], `${contextMenuUnit.unitName} lowered to the ground`);
+            }
+          } : undefined}
           onDeleteUnit={async () => {
             const host = contextMenuUnit;
             const surface = structureSurfaceAt(host.hex, structures, structureTemplates);
-            const lost = hostLostHeroSteps(host, units, surface);
+            const lost = detachOnDeath(host, units, surface);
             const subSteps: SubStep[] = [
               {
                 type: 'DELETE',

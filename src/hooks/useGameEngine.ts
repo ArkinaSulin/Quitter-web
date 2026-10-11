@@ -18,9 +18,8 @@ import { UnitEffect, GroundEffect } from '@/types/gameProtocol';
 import { Walls } from '@/packages/movement';
 import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, computeZoneReconcile, newEffectKey, EffectSpec, resolveEffectDamage, describeEffectDamage, EffectDamageEvent } from '@/packages/effects';
 import { modifierAmount } from '@/packages/effects';
-import { floatingUnits, MapStructures } from '@/packages/movement';
+import { MapStructures } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
-import { fallSteps } from '@/components/ScenarioMap/routeUnit';
 
 /** The first `forced_stop` zone on a hex (halts a unit entering it). */
 function forcedStopZone(hex: Hex, zones: GroundEffect[]): GroundEffect | undefined {
@@ -1090,19 +1089,6 @@ export function useGameEngine({
         });
       }
 
-      // Units left FLOATING by a removed structure (non-flyers whose elevation
-      // exceeds their hex surface) drop and take per-troop fall damage at any turn
-      // boundary; riders follow their host. Folded into this END_TURN command.
-      const floatEvents: string[] = [];
-      for (const floater of floatingUnits(args.units, args.structures, args.structureTemplates)) {
-        const f = fallSteps(floater, 0);
-        if (f.steps.length > 0) { subSteps.push(...f.steps); floatEvents.push(f.note); }
-        for (const rider of args.units.filter(h => h.attachedToUnitId === floater.id && !h.isDeleted)) {
-          const rf = fallSteps(rider, 0);
-          if (rf.steps.length > 0) { subSteps.push(...rf.steps); floatEvents.push(rf.note); }
-        }
-      }
-
       const activeTeams = new Set<string>();
       for (const [team, group] of Object.entries(args.alliances)) {
         if (group === next) activeTeams.add(team);
@@ -1140,8 +1126,8 @@ export function useGameEngine({
       }
 
       const turnLine = `End Turn — ${next} turn begins`;
-      const endMessage = [turnLine, ...effectMessages, ...floatEvents].join('  ·  ');
-      const endVerbose = [turnLine, ...effectVerbose, ...floatEvents].join('  ·  ');
+      const endMessage = [turnLine, ...effectMessages].join('  ·  ');
+      const endVerbose = [turnLine, ...effectVerbose].join('  ·  ');
       const row = await execute('END_TURN', subSteps, turnLine, { message: endMessage, verboseMessage: endVerbose });
       return { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded: leavingFreePlay, ok: !!row, zonesAfter };
     },

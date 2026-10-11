@@ -49,6 +49,12 @@ interface ContextMenuProps {
   onOtherAction?: (hero: Unit) => void;
   /** Open the temporary-effects dialog for this unit (GM or players). */
   onAddEffect?: () => void;
+  /** Floating unit (non-flyer above its surface): drop to the ground (fall damage). */
+  canDropToGround?: boolean;
+  onDropToGround?: () => void;
+  /** GM-only: lower to the ground with no fall damage. */
+  canLowerToGround?: boolean;
+  onLowerToGround?: () => void;
   /** Rally (routed, non-fearless units/heroes): leave Routed for Scattered/Hero. */
   canRally?: boolean;
   rallyReason?: string;
@@ -84,6 +90,10 @@ export function ContextMenu({
   onSwitchToUnit,
   onOtherAction,
   onAddEffect,
+  canDropToGround,
+  onDropToGround,
+  canLowerToGround,
+  onLowerToGround,
   canRally,
   rallyReason,
   onRally,
@@ -180,6 +190,28 @@ export function ContextMenu({
           >
             Effects…
           </div>
+          <div className="border-t border-gray-700 my-1" />
+        </>
+      )}
+      {/* Floating unit (non-flyer above its surface): resolve it before End Turn. */}
+      {(canDropToGround || canLowerToGround) && (
+        <>
+          {canDropToGround && onDropToGround && (
+            <div
+              className="px-3 py-1 hover:bg-amber-900 cursor-pointer text-amber-300"
+              onClick={() => { onDropToGround(); onClose(); }}
+            >
+              Drop to ground (fall)
+            </div>
+          )}
+          {canLowerToGround && onLowerToGround && (
+            <div
+              className="px-3 py-1 hover:bg-gray-700 cursor-pointer"
+              onClick={() => { onLowerToGround(); onClose(); }}
+            >
+              Lower to ground (no damage)
+            </div>
+          )}
           <div className="border-t border-gray-700 my-1" />
         </>
       )}

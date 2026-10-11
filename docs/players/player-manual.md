@@ -411,6 +411,11 @@ turn passes to the next active alliance; its units reset (heroes: full MP +
 still running on the *ending* side are forfeited (the charger drops one
 formation level).
 
+A turn **cannot end** while any unit/hero is left **floating** (a non-flyer above
+the ground it should stand on — e.g. a hero pulled off a flying mount, or a unit
+orphaned by a removed structure). Resolve it via its context menu: **Drop to
+ground (fall)** — anyone; or **Lower to ground (no damage)** — the DM.
+
 ---
 
 ## 5. Movement and Position
@@ -1013,6 +1018,15 @@ convert hero actions to cover it (ground rate), and over-budget attaches still
 confirm. **Detaching** by dragging the hero away is a normal move that pays the
 destination hex. **Swapping** front/back is a reposition within the same hex and
 is **free** (ground or air).
+
+A non-flying hero pulled off an **airborne** host normally falls (or is refused
+if the ground below is occupied). The **DM** can instead drag it off freely
+(**Free Move**): dropped on a **same-alliance** unit the hero **attaches** to it
+(back, or rider on a hero-mount); on a **hostile** unit it detaches and stays
+**floating** for the DM to resolve.
+
+If either end of a link **dies** (the hero, its mount, or the host), the link
+breaks automatically — the hero detaches and, if airborne, falls.
 
 ### Hero + host movement
 

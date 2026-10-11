@@ -1,5 +1,24 @@
 # QuiTTER Changelog
 
+## Free-move hero pull-apart; unified death-detach; floating guard + Drop/Lower (2026-10-10)
+**Files:** src/components/ScenarioMap/{ScenarioMap.tsx,useMoveActions.ts,ContextMenu.tsx,routeUnit.ts}, src/hooks/useGameEngine.ts, docs/players/player-manual.md, docs/dev/changelog.md
+
+- **Free-move + DM drag-off detach** (`useMoveActions.handleUnitMove`): under Free Move
+  the airborne-detach fall prompt / occupancy refusal is skipped, so the DM can drag an
+  attached hero off its (flying) mount. On the drop target: **same-alliance** unit →
+  **attach** to it (`rider` for a hero-mount candidate, else `back`); **hostile** unit →
+  detach in place and leave the hero **floating** for the DM to resolve.
+- **Unified death-detach** (`routeUnit.detachOnDeath`): one check for both ends of an
+  attach link — the dying/removed unit leaves its mount, and its own riders leave it
+  (falling per troop if airborne). Used by `routeUnit` (killed) and the GM `DELETE`.
+- **Floating guard replaces the End-Turn auto-drop.** The end-of-turn float resolution
+  (auto drop + fall) is removed; `performEndTurn` now **blocks End Turn** with an error
+  naming any floating non-flyer until it is grounded.
+- **Context menu "Drop to ground" (all players) / "Lower to ground" (DM only)** on a
+  floating unit: Drop = per-troop fall (`fallSteps`); Lower = GM-only, no damage. Any
+  other outcome is done in the unit-editing modal.
+- No migration. `tsc` clean, 1016 tests pass, build clean.
+
 ## Structure-attack message: chronological + no raw damage; per-troop fall breakdown (2026-10-10)
 **Files:** src/components/ScenarioMap/{ScenarioMap.tsx,useMoveActions.ts,routeUnit.ts}, docs/dev/{13-map-entities-terrain,changelog}.md
 

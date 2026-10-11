@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { routeUnit, hostLostHeroSteps } from './routeUnit';
+import { routeUnit, hostLostHeroSteps, detachOnDeath } from './routeUnit';
 import { Unit } from '@/types/gameProtocol';
 import { ActionType, SubStep } from '@/packages/infra';
 
@@ -78,5 +78,23 @@ describe('routeUnit — killed in the air', () => {
       { field: 'attachedToUnitId', from: 'mount', to: null },
       { field: 'attachedPosition', from: 'rider', to: null },
     ]);
+  });
+});
+
+describe('detachOnDeath — the single check for both ends of a link', () => {
+  it('detaches the dying unit itself AND its own riders', () => {
+    const mount = unit({ id: 'mount' });
+    const rider = unit({
+      id: 'rider', isHero: true, attachedToUnitId: 'mount', attachedPosition: 'rider',
+      elevation: 10, flySpeed: 0, currentUnitHp: 5, troopHp: 1, currentTroopCount: 5,
+    });
+    const passenger = unit({
+      id: 'passenger', isHero: true, attachedToUnitId: 'rider', attachedPosition: 'back',
+      elevation: 10, flySpeed: 0, currentUnitHp: 5, troopHp: 1, currentTroopCount: 5,
+    });
+    const { steps, notes } = detachOnDeath(rider, [mount, rider, passenger], 0);
+    const detaches = steps.filter(s => s.type === 'DETACH_HERO');
+    expect(detaches).toHaveLength(2); // itself (off mount) + its passenger
+    expect(notes.some(n => n.includes('detached'))).toBe(true);
   });
 });

@@ -9,7 +9,7 @@ import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePe
 import { isFormationChangeAffordable } from '@/packages/movement';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
 import { isUnitRouted } from '@/packages/morale';
-import { allianceOf } from '@/packages/primitives';
+import { allianceOf, sameAlliance } from '@/packages/primitives';
 import { isMeleeWeapon, isInAnyHostileKillZone, computeWeaponSwitchAc } from '@/packages/combat';
 import { modifierAmount } from '@/packages/effects';
 import { unitIgnoresClimb, unitHasFeatherFall } from '@/packages/effects';
@@ -432,7 +432,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // A non-flying hero detaching from an AIRBORNE host cannot glide: it simply
     // falls. It drops on its own (host's) hex — if a ground unit already occupies
     // that hex it cannot land. A flying hero is exempt (normal elevation modal).
-    if (unit.attachedToUnitId && (unit.elevation ?? 0) > 0 && !canFly(unit)) {
+    // Under FREE MOVE the DM detaches freely (no fall prompt / occupancy refusal) —
+    // the free-move path below handles the drop (attach to a friendly, else float).
+    if (!freeMove && unit.attachedToUnitId && (unit.elevation ?? 0) > 0 && !canFly(unit)) {
       const below = units.find(u =>
         u.id !== unit.id && !u.isDeleted && !u.attachedToUnitId &&
         (u.elevation ?? 0) <= 0 && u.hex.q === unit.hex.q && u.hex.r === unit.hex.r && u.hex.s === unit.hex.s,
@@ -607,6 +609,30 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
 
     if (freeMove) {
+      // DM free-move DRAG-OFF of an attached hero onto an OCCUPIED hex: same alliance
+      // → attach to that unit ('rider' for a hero-mount candidate, else 'back'); a
+      // HOSTILE occupant → detach in place (the hero floats; the DM resolves it).
+      if (unit.attachedToUnitId) {
+        const occupant = units.find(u =>
+          u.id !== unitId && !u.isDeleted && !u.attachedToUnitId &&
+          u.hex.q === targetHex.q && u.hex.r === targetHex.r &&
+          (u.elevation ?? 0) === (unit.elevation ?? 0));
+        if (occupant) {
+          if (sameAlliance(unit.team, occupant.team, alliances)) {
+            const mountOk = occupant.isHero && !unit.mountId && !unit.mountName && !occupant.mountId && !occupant.mountName
+              && (occupant.sizeCategory || 100) > (unit.sizeCategory || 100)
+              && !units.some(h => h.attachedToUnitId === occupant.id && !h.isDeleted);
+            const position: 'rider' | 'back' = mountOk ? 'rider' : 'back';
+            await finishHeroMove(unit);   // detach (DETACH_HERO)
+            await attachHero(unit, occupant, position, unitMaxMP(unit));
+            addMessage(`${unit.unitName} attached to ${occupant.unitName} (${position})`);
+            return;
+          }
+          await finishHeroMove(unit);     // hostile: detach, stay floating for the DM
+          addMessage(`${unit.unitName} detached — cannot land on ${occupant.unitName}; resolve it (Drop to ground)`);
+          return;
+        }
+      }
       const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
       if (occupied.has(`${targetHex.q},${targetHex.r}`)) {
         addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — hex occupied`);
@@ -700,7 +726,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       return;
     }
     await completeMove(unit, targetHex, reachEntry.cost, false, finalMax, attachedHero, heroMax, breakToFormation, descendElev, originSurface);
-  }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, structures, structureTemplates, handleClimbMove, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove]);
+  }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, structures, structureTemplates, handleClimbMove, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove, attachHero]);
 
   /**
    * Atomic climb OVER a freestanding edge wall: climb up to the top (near side),
