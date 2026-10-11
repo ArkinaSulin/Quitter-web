@@ -1949,8 +1949,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (routBusy.current || retreatPick) { console.warn('[RoutFlow] busy/pick open'); return; }
     routedHandled.current.add(row.id);
     // Who caused the rout (attacker/caster/archer) so the pursuer prefers them.
-    const causeId = (rStep.payload as { cause?: string } | undefined)?.cause;
+    const causePayload = rStep.payload as { cause?: string; causeFrom?: { q: number; r: number; s: number } } | undefined;
+    const causeId = causePayload?.cause;
     const attacker = causeId ? unitsRef.current.find(u => u.id === causeId && !u.isDeleted) ?? null : null;
+    // A swoop lands the attacker on the victim's hex; its launch hex is the real
+    // "incoming direction" the rout flees away from.
+    const attackerFrom = causePayload?.causeFrom ?? null;
     // Which client orchestrates: the routed unit's owner; the DM fills in when no
     // non-GM participant controls the team.
     const ownerPeers = participantsSync.participants.filter(p => p.role !== 'GM' && p.team === routed.team);
@@ -1967,6 +1971,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         structures,
         templates: structureTemplates,
         attacker,
+        attackerFrom,
         gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
       });
       console.info('[RoutFlow] path', pathOut.dest, pathOut.through.length, pathOut.scatters.length);
@@ -1986,7 +1991,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // the retreat modal immediately instead of waiting on realtime.
   useEffect(() => {
     const onLocalRout = (e: Event) => {
-      const d = (e as CustomEvent<{ unitId: string; causeId?: string | null }>).detail;
+      const d = (e as CustomEvent<{ unitId: string; causeId?: string | null; causeFrom?: { q: number; r: number; s: number } | null }>).detail;
       if (!d?.unitId) return;
       const pseudo: CommandLogRow = {
         id: `local-rout-${d.unitId}`,
@@ -1995,7 +2000,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         player_name: '',
         action_type: 'ROUT',
         description: 'local rout',
-        sub_steps: [{ type: 'ROUT', description: 'local rout', unitId: d.unitId, changes: [], payload: d.causeId ? { cause: d.causeId } : undefined }],
+        sub_steps: [{ type: 'ROUT', description: 'local rout', unitId: d.unitId, changes: [], payload: (d.causeId || d.causeFrom) ? { ...(d.causeId ? { cause: d.causeId } : {}), ...(d.causeFrom ? { causeFrom: d.causeFrom } : {}) } : undefined }],
         chained: true,
         created_at: new Date().toISOString(),
         deleted_at: null,

@@ -155,7 +155,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     mainTarget: 'mount' | 'rider';
   } | null>(null);
 
-  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; chained?: boolean; opportunityAttack?: boolean; mainTarget?: 'mount' | 'rider'; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean; prependSubSteps?: SubStep[]; damageDice?: string }) => {
+  const performAttack = useCallback(async (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean; pursuit?: boolean; chained?: boolean; opportunityAttack?: boolean; mainTarget?: 'mount' | 'rider'; onExecuted?: (steps: SubStep[]) => void; deferRouting?: boolean; prependSubSteps?: SubStep[]; damageDice?: string; attackFrom?: Hex }) => {
     if (overBudget) {
       const cap = unitAttackCap();
       if ((attacker.attacksUsed ?? 0) >= cap) {
@@ -824,7 +824,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // remaining attackers.
     if (!options?.deferRouting) {
       if (defenderRouted || defenderKilled) {
-        await routeUnit(execute, target, defenderKilled ? 'slain in combat' : `morale ${defModUnit.baseMorale + defEffectiveMod} after combat`, defenderKilled, attacker.id, structureSurfaceAt(target.hex, structures, structureTemplates), units);
+        await routeUnit(execute, target, defenderKilled ? 'slain in combat' : `morale ${defModUnit.baseMorale + defEffectiveMod} after combat`, defenderKilled, attacker.id, structureSurfaceAt(target.hex, structures, structureTemplates), units, options?.attackFrom);
       }
 
       if (attackerRouted || attackerKilled) {
@@ -1192,7 +1192,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       actionsAvailable: spend.actionsAvailable,
       chargeDistance: (attacker.chargeDistance ?? 0) + plan.cost,
     };
-    const result = await performAttack(adjusted, target, plan.overBudget, { isCharging: true, prependSubSteps: prepend });
+    const result = await performAttack(adjusted, target, plan.overBudget, { isCharging: true, prependSubSteps: prepend, attackFrom: { ...attacker.hex } });
     if (!result) return;
     await finishChargeAfterAttack(adjusted, target, result);
   }, [units, buildSwoopDropPlan, performAttack, finishChargeAfterAttack]);

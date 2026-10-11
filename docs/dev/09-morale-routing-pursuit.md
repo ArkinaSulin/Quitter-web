@@ -120,17 +120,23 @@ retreat deterministically and the owner is shown an **informational** card ("X i
 routing", the destination). It walks **away** from the threat, pushing through
 friendly org ≤ 1 units:
 
-- The "away" axis = away from the **attacker** → else away from the **nearest
-  hostile** → else away from the **hostile mass** (the neighbour maximising total
-  distance to all hostiles) → else opposite the unit's facing.
-- Each hop, neighbours are ordered relative to that axis (away = **4**; rear
-  flanks **3/5**; hostile-side flanks **2/6**):
+- The "away" axis = away from the **swoop's launch hex** (a swoop lands the
+  attacker on the victim, losing its incoming direction — the launch hex is passed
+  in the ROUT payload as `causeFrom`) → else away from the **attacker** → else away
+  from the **nearest hostile** → else away from the **hostile mass** (the neighbour
+  maximising total distance to all hostiles) → else a **random** direction (the
+  incoming direction is unknowable — e.g. a same-hex hover-melee attacker). A
+  **same-hex** threat contributes no axis (there is no "away from" for a flyer
+  directly overhead).
+- Each hop, neighbours are ordered relative to that axis (away = **4**; the
+  **away-side** flanks **3/5** = away±1; the **attacker-side** flanks **2/6** =
+  away±2):
   1. **4** if empty + outside any enemy kill zone;
-  2. **3 or 5** (prefer the one **not adjacent to a hostile**; random tie);
+  2. **3 or 5** (away-side; prefer the one **not adjacent to a hostile**; random tie);
   3. else **push through** a friendly org ≤ 1 (an **Open Order** unit is disrupted
      to **Scattered**; Scattered/Routed/heroes pass freely) — then repeat from the
      new hex, **unbounded** until a gap;
-  4. else **2 or 6** (fewest hostiles adjacent).
+  4. else **2 or 6** (attacker-side; fewest hostiles adjacent).
 - **Blocked** = a hostile unit, an enemy kill zone, or a friendly org ≥ 2
   (Close Order+). Routed friendlies **do** yield (they are org 0). No legal route →
   the unit stands (still Routed) and faces a free pursue.

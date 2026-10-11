@@ -1,6 +1,6 @@
 // src/components/ScenarioMap/routeUnit.ts
 // Shared chained ROUT command builder (combat, magic, reactions).
-import { Unit } from '@/types/gameProtocol';
+import { Unit, Hex } from '@/types/gameProtocol';
 import { ActionType, SubStep, CommandLogRow } from '@/packages/infra';
 import { unitHasFeatherFall } from '@/packages/effects';
 import { canFly, rollFallDamage } from '@/packages/movement';
@@ -140,6 +140,9 @@ export async function routeUnit(
   causeId?: string | null,
   climbFallTo = 0,
   units: Unit[] = [],
+  /** The cause unit's hex BEFORE a swoop landed it on the victim (the incoming
+   *  direction the swoop lost). Carried in the ROUT payload for the retreat axis. */
+  causeFrom?: Hex | null,
 ): Promise<void> {
   const name = unit.unitName;
   const verb = !killed ? 'routed' : unit.isHero ? 'down' : 'annihilated';
@@ -192,7 +195,9 @@ export async function routeUnit(
     changes: unit.ignoreMoraleChecks
       ? []
       : [{ field: 'currentFormation', from: unit.currentFormation, to: 'Routed' }],
-    payload: causeId ? { cause: causeId } : undefined,
+    payload: (causeId || causeFrom)
+      ? { ...(causeId ? { cause: causeId } : {}), ...(causeFrom ? { causeFrom } : {}) }
+      : undefined,
   });
 
   // A killed/removed unit: the SINGLE detach check (rider leaves its mount; its own
@@ -219,7 +224,7 @@ export async function routeUnit(
   // dedupes against the live ROUT row via its retreatPick/busy guards.
   if (typeof window !== 'undefined' && !killed) {
     setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('quitter:rout', { detail: { unitId: unit.id, causeId: causeId ?? null } }));
+      window.dispatchEvent(new CustomEvent('quitter:rout', { detail: { unitId: unit.id, causeId: causeId ?? null, causeFrom: causeFrom ?? null } }));
     }, 0);
   }
 }

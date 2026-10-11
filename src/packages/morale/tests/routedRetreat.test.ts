@@ -42,14 +42,34 @@ describe('routRetreatPath — away axis', () => {
   });
 });
 
-describe('routRetreatPath — away blocked, flanks prefer not-hostile-adjacent', () => {
-  it('takes the flank that is not adjacent to a hostile', () => {
+describe('routRetreatPath — away blocked, away-side flanks (3/5) first', () => {
+  it('when away is blocked, prefers an AWAY-side flank not adjacent to a hostile', () => {
     const routed = unit('r', 'blue', h(0, 0), { currentFormation: 'Routed' });
-    const attacker = unit('a', 'red', h(3, 0));
+    const attacker = unit('a', 'red', h(3, 0)); // away = dir 3 = (-1,0)
     const blocker = unit('b', 'blue', h(-1, 0), { currentFormation: 'Close Order' }); // blocks away
-    const extra = unit('e2', 'red', h(1, -2)); // adjacent to (1,-1) only
+    const extra = unit('e2', 'red', h(0, -2)); // adjacent to the away-side flank (0,-1) only
     const res = routRetreatPath(ctxOf(routed, [routed, attacker, blocker, extra], attacker));
-    expect(res.dest).toEqual(h(0, 1)); // (0,1) has 0 hostiles adjacent; (1,-1) has 1
+    // Away-side flanks (0,-1) [1 hostile adjacent] and (-1,1) [0] → (-1,1).
+    expect(res.dest).toEqual(h(-1, 1));
+  });
+});
+
+describe('routRetreatPath — attacker directly above (same hex)', () => {
+  it('does not force east — falls through to a random direction', () => {
+    const routed = unit('r', 'blue', h(0, 0), { currentFormation: 'Routed' });
+    const attacker = unit('a', 'red', h(0, 0), { facing: 3 }); // same hex; ZoC = its front-2
+    const res = routRetreatPath(ctxOf(routed, [routed, attacker], attacker, () => 0.75));
+    // Fallback axis = dir 4 = (0,-1) (north), empty/safe → north.
+    expect(res.dest).toEqual(h(0, -1));
+    expect(res.dest).not.toEqual(h(1, 0)); // was always east
+  });
+
+  it('uses the swoop launch hex (attackerFrom) as the away axis', () => {
+    const routed = unit('r', 'blue', h(0, 0), { currentFormation: 'Routed' });
+    const attacker = unit('a', 'red', h(0, 0), { facing: 0 }); // now shares the hex
+    const res = routRetreatPath({ ...ctxOf(routed, [routed, attacker], attacker), attackerFrom: h(3, 0) });
+    // Away = opposite the east launch hex → west (-1,0).
+    expect(res.dest).toEqual(h(-1, 0));
   });
 });
 

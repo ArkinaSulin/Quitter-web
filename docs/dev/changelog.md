@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## Rout retreat: away-side flanks, same-hex attacker, swoop launch hex (2026-10-11)
+**Files:** src/packages/morale/{lib/routedRetreat.ts,tests/routedRetreat.test.ts}, src/components/ScenarioMap/{routeUnit.ts,useCombatActions.ts,ScenarioMap.tsx}, docs/dev/{09-morale-routing-pursuit,changelog}.md
+
+- **Away-side flanks first.** `routRetreatPath` now orders the candidate hexes
+  away(4) → **away-side** flanks (3/5 = away±1) → push-through → **attacker-side**
+  flanks (2/6 = away±2). It previously used away±2 for step 2, contradicting its own
+  comment and `09`, so an "away blocked" rout sidestepped back toward the attacker.
+- **Attacker directly above (same hex).** `awayDirFrom` now returns -1 for a
+  same-hex threat (it was degenerating to dir 0 = **east**), `massAwayDir` returns
+  -1 when every hostile shares the hex, and the away-axis chain falls through to a
+  **random** direction when no bearing is discoverable — fixing a unit routed by a
+  flyer above always fleeing east.
+- **Swoop incoming direction.** The swoop's launch hex is threaded as `causeFrom`
+  in the ROUT payload (`performSwoopDrop` → `performAttack` → `routeUnit` →
+  `ScenarioMap.handleRoutRow` → `routRetreatPath({ attackerFrom })`), so a rout from
+  above flees away from where the swoop started.
+- Tests + docs updated. No migration. `tsc` clean, tests pass, build clean.
+
 ## Charge/Swoop entry spends an action; swoop needs >2 FP (2026-10-11)
 **Files:** src/packages/combat/{lib/chargeStance.ts,tests/chargeStance.test.ts}, src/hooks/useGameEngine.ts, docs/dev/{00-universal-rules,07-movement-economy,08-combat,changelog}.md, docs/players/player-manual.md
 

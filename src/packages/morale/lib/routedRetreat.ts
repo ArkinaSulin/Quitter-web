@@ -22,6 +22,9 @@ export interface RoutContext {
   templates?: Record<string, StructureTemplate>;
   /** The attacker that caused the rout — the primary "away from" axis. */
   attacker?: Unit | null;
+  /** The attacker's hex BEFORE a swoop landed it on the victim (the incoming
+   *  direction the swoop lost). Preferred over `attacker.hex` when present. */
+  attackerFrom?: Hex | null;
   /** Board bound for the walk (default 12). */
   gridRadius?: number;
   /** Injectable RNG for the stated random tie-breaks (tests). */
@@ -61,12 +64,15 @@ interface NeighborInfo {
 
 const opposite = (dir: number) => (dir + 3) % 6;
 
-/** The neighbour direction pointing most directly AWAY from `towardHex`. */
+/** The neighbour direction pointing most directly AWAY from `towardHex`, or -1
+ *  when `towardHex` is the SAME hex (no horizontal bearing — e.g. a flyer directly
+ *  above a swoop victim). */
 function awayDirFrom(pos: Hex, towardHex: Hex): number {
   const adj = hexDirIndex(pos, towardHex);
   if (adj >= 0) return opposite(adj); // an adjacent threat: exactly opposite
   const tq = towardHex.q - pos.q;
   const tr = towardHex.r - pos.r;
+  if (tq === 0 && tr === 0) return -1; // same hex: no bearing to flee along
   let bestDir = 0;
   let bestDot = Infinity;
   let bestCross = Infinity;
@@ -79,8 +85,10 @@ function awayDirFrom(pos: Hex, towardHex: Hex): number {
   return bestDir;
 }
 
-/** The neighbour direction that maximizes the summed distance to every hostile. */
+/** The neighbour direction that maximizes the summed distance to every hostile,
+ *  or -1 when every hostile is on `pos` (degenerate — nothing to flee). */
 function massAwayDir(pos: Hex, hostiles: Unit[]): number {
+  if (hostiles.every(h => h.hex.q === pos.q && h.hex.r === pos.r)) return -1;
   let bestDir = 0;
   let bestSum = -Infinity;
   for (let d = 0; d < 6; d++) {
@@ -93,13 +101,19 @@ function massAwayDir(pos: Hex, hostiles: Unit[]): number {
 }
 
 /**
- * The rout's "away" axis at `pos`: away from the ATTACKER, else away from the
- * NEAREST hostile, else away from the hostile MASS, else away from facing.
+ * The rout's "away" axis at `pos`: away from the swoop's LAUNCH hex (a swoop lands
+ * the attacker on the victim, losing its incoming direction) → else away from the
+ * ATTACKER → else away from the NEAREST hostile → else away from the hostile MASS
+ * → else a RANDOM direction (the incoming direction is unknown).
  */
 function awayDirection(pos: Hex, ctx: RoutContext, hostiles: Unit[]): number {
-  const { routed } = ctx;
+  if (ctx.attackerFrom) {
+    const d = awayDirFrom(pos, ctx.attackerFrom);
+    if (d >= 0) return d;
+  }
   if (ctx.attacker && !ctx.attacker.isDeleted && (ctx.attacker.currentUnitHp ?? 1) > 0) {
-    return awayDirFrom(pos, ctx.attacker.hex);
+    const d = awayDirFrom(pos, ctx.attacker.hex);
+    if (d >= 0) return d;
   }
   if (hostiles.length > 0) {
     let nearestDist = Infinity;
@@ -109,10 +123,16 @@ function awayDirection(pos: Hex, ctx: RoutContext, hostiles: Unit[]): number {
       if (d < nearestDist) { nearestDist = d; nearest = [h]; }
       else if (d === nearestDist) nearest.push(h);
     }
-    if (nearest.length === 1) return awayDirFrom(pos, nearest[0].hex);
-    return massAwayDir(pos, hostiles);
+    if (nearest.length === 1) {
+      const d = awayDirFrom(pos, nearest[0].hex);
+      if (d >= 0) return d;
+    }
+    const m = massAwayDir(pos, hostiles);
+    if (m >= 0) return m;
   }
-  return opposite(routed.facing);
+  // No discoverable incoming direction → pick a random direction (the hop logic
+  // still only lands on legal hexes).
+  return Math.floor((ctx.rnd ?? Math.random)() * 6) % 6;
 }
 
 /** Count hostiles adjacent to a hex (used for the flank / front tie-breaks). */
@@ -165,7 +185,9 @@ export function routRetreatPath(ctx: RoutContext): RoutPath {
 
   for (let step = 0; step < 512; step++) {
     const away = awayDirection(pos, ctx, hostiles);
-    const dirs = [away, (away + 2) % 6, (away + 4) % 6, (away + 1) % 6, (away + 5) % 6];
+    // Order: away (4) → AWAY-side flanks (3/5 = away±1) → push-through → the
+    // attacker-side flanks (2/6 = away±2).
+    const dirs = [away, (away + 1) % 6, (away + 5) % 6, (away + 2) % 6, (away + 4) % 6];
     const neigh = neighborsOf(pos);
     const info: NeighborInfo[] = dirs.map((d, i) => ({ dir: d, hex: neigh[d], kind: classify(neigh[d], kill, occ, ctx), unit: occ.get(key(neigh[d].q, neigh[d].r)) }));
     const ok = (n: NeighborInfo) => inBounds(n.hex, radius) && !visited.has(key(n.hex.q, n.hex.r));
