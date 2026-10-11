@@ -44,6 +44,9 @@ interface UseGameEngineProps {
   /** Optimistic local apply for STRUCTURE commands (one keyed structure at a time;
    *  null deletes the key). */
   setStructureLocal?: (key: string, value: unknown | null) => void;
+  /** Authoritative re-read of `map_data` (structures/zones) after a structure edit
+   *  — mirrors `refreshUnitsByIds` so the client can't stay stale. */
+  refreshMapData?: () => Promise<void>;
   /** Ask the table how many troops are caught by an 'entry' zone (default: all). */
   requestEntryTroops?: (actor: Unit, zone: GroundEffect) => Promise<number>;
 }
@@ -60,6 +63,7 @@ export function useGameEngine({
   setZonesLocal,
   setWallsLocal,
   setStructureLocal,
+  refreshMapData,
   requestEntryTroops,
 }: UseGameEngineProps) {
   const { addMessage, addError } = useMessageSync(scenarioId);
@@ -230,6 +234,13 @@ export function useGameEngine({
         if (touched.length > 0) await refreshUnitsByIds(touched);
       }
 
+      // Structure edits change `map_data.structures`; re-read it authoritatively so
+      // the client can't be left stale by a reordered realtime snapshot (mirrors the
+      // units refetch above). The optimistic apply already painted the change.
+      if (refreshMapData && subSteps.some(s => s.type === 'STRUCTURE')) {
+        await refreshMapData();
+      }
+
       // Unit edits (incl. by players editing their own unit) are flagged to everyone.
       // The verbose variant is always recorded alongside the plain text; the
       // "verbose combat" setting only decides which one is DISPLAYED.
@@ -238,7 +249,7 @@ export function useGameEngine({
       refreshUndoState();
       return row;
     },
-    [scenarioId, playerId, playerName, applyDeltas, refreshUnitsByIds, touchedUnitIds, addMessage, addError, refreshUndoState],
+    [scenarioId, playerId, playerName, applyDeltas, refreshUnitsByIds, refreshMapData, touchedUnitIds, addMessage, addError, refreshUndoState],
   );
 
   const subscribeToCommandLog = useCallback((): (() => void) => {

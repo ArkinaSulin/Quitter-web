@@ -17,6 +17,7 @@ import {
   oppositeDir,
   WALL_DIRS,
   Walls,
+  edgeKeysAroundHex,
 } from '@/packages/movement/lib/walls';
 
 const wall = (a: any = {}, b: any = {}): Walls => ({ '0,0,0': { a, b } });
@@ -192,5 +193,14 @@ describe('parseWalls', () => {
   it('returns {} for non-objects', () => {
     expect(parseWalls(null)).toEqual({});
     expect(parseWalls([])).toEqual({});
+  });
+});
+
+describe('edgeKeysAroundHex', () => {
+  it('returns the 6 canonical edge keys of a hex (unique, matching edgeRef)', () => {
+    const keys = edgeKeysAroundHex(0, 0);
+    expect(keys).toHaveLength(6);
+    expect(new Set(keys).size).toBe(6);
+    for (let d = 0; d < 6; d++) expect(keys[d]).toBe(edgeRef(0, 0, d).key);
   });
 });

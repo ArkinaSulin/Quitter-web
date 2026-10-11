@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## Destroyed hex structure ghost fix + clear-whole-asset (2026-10-10)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, src/hooks/useGameEngine.ts, src/packages/movement/lib/walls.ts (+ tests/walls.test.ts), supabase/migrations/122_strip_destroyed_structures.sql, docs/dev/{18-map-structures,changelog}.md, docs/players/player-manual.md
+
+- **Ghost hex structure fixed.** The DB deleted the destroyed structure correctly, but the
+  client's `structures` stayed stale (a reordered realtime `map_data` snapshot re-added it)
+  — so the thick hex border + elevation badge + editor kept showing it while gameplay
+  (which reads `hp`) treated it as gone. Structures now get an **authoritative refetch after
+  any `STRUCTURE` command** (`refreshMapData`, mirroring `refreshUnitsByIds`), and the
+  realtime `map_data` handler **ignores an older snapshot** (`scenario.updated_at` guard) so
+  a deleted structure can't be re-added.
+- **Clear the whole asset.** Destroying a **hex** structure by combat also erases every
+  **edge structure on its 6 edges** (`edgeKeysAroundHex`) in the same `ATTACK` command
+  (one undo). Edge-structure destruction does not cascade to neighbouring hexes.
+- **Migration 122** strips DESTROYED placed structures (`hp <= 0`) from `scenarios.map_data.structures`
+  and `maps.structures`, but only when the template is destructible (`max_hp > 0`) — decorative
+  (`max_hp = 0`) structures survive. One-time legacy cleanup. **Apply 122 in Supabase.**
+- `tsc` clean, tests pass, build clean.
+
 ## Destroyed structures removed; collapse falls; rider auto-detach (2026-10-10)
 **Files:** src/components/ScenarioMap/{ScenarioMap.tsx,routeUnit.ts,useCombatActions.ts,useCastActions.ts,useReactionActions.ts,useMoveActions.ts}, src/hooks/useGameEngine.ts, src/packages/movement/lib/{flying,mapStructures}.ts (+ tests), src/components/StructureEditModal.tsx, src/components/shared/mapFeatureDraw.ts (+ test), docs/dev/{18-map-structures,changelog}.md, docs/players/player-manual.md
 

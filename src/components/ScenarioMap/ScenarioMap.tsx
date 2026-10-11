@@ -54,7 +54,7 @@ import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackground
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST, isRotationAffordable } from '@/packages/movement';
 import { canReachStructure, canFly, parseClimbTo, isAirborne, flyMax } from '@/packages/movement';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/packages/movement';
-import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt, edgeShowsLadder, structureElevation } from '@/packages/movement';
+import { MapStructures, parseStructures, structuresToWalls, structureRangeBonus, structureZones, isHexStructureKey, canToggleStructureDoor, structureSurfaceAt, edgeShowsLadder, structureElevation, edgeKeysAroundHex } from '@/packages/movement';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { getStructureTemplates } from '@/packages/infra';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/packages/combat';
@@ -569,6 +569,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     });
   }, [scenarioId, updateScenarioMapData, backgroundConfig, structures, groundZones, mapId]);
 
+  // Most-recently-applied `map_data` version (scenario.updated_at); the realtime
+  // handler ignores an older snapshot so a reordered event can't re-add a deleted
+  // structure (which previously left a "ghost" hex structure on screen).
+  const lastMapDataAtRef = useRef<string>('');
+
+  /** Authoritative re-read of `map_data.structures` (called after STRUCTURE commands
+   *  so the client converges to the DB truth, like `refreshUnitsByIds` for units). */
+  const refreshMapData = useCallback(async () => {
+    const { data } = await supabase.from('scenarios').select('map_data, updated_at').eq('id', scenarioId).single();
+    if (!data) return;
+    if (data.updated_at) lastMapDataAtRef.current = data.updated_at as string;
+    setStructures(parseStructures((data.map_data as any)?.structures));
+  }, [scenarioId]);
+
   // Load the structure template library (palette + walls derivation).
   useEffect(() => {
     let cancelled = false;
@@ -690,6 +704,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setZonesLocal: setGroundZones,
     setWallsLocal: setWalls,
     setStructureLocal,
+    refreshMapData,
     requestEntryTroops,
   });
 
@@ -1216,6 +1231,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const fallNotes: string[] = [];
     const deadHosts: { host: Unit; newHp: number }[] = [];
     if (result.destroyed) {
+      // Clear the whole asset: a destroyed HEX structure also erases every edge
+      // structure on its 6 edges (same command, one undo).
+      if (isHexStructureKey(key)) {
+        for (const ekey of edgeKeysAroundHex(hex.q, hex.r)) {
+          const edgeInst = structures[ekey];
+          if (!edgeInst) continue;
+          subSteps.push({
+            type: 'STRUCTURE',
+            description: `Edge structure at ${ekey} cleared with ${label}`,
+            unitId: scenarioId,
+            changes: [{ field: 'structures', key: ekey, from: edgeInst, to: null }],
+          });
+        }
+      }
       const top = structureElevation(template, inst);
       const onTop = units.filter(u =>
         !u.isDeleted && !u.attachedToUnitId &&
@@ -2589,18 +2618,25 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             setZocPursuitEnabled(row.zoc_pursuit_enabled ?? true);
           }
           if (row.map_data !== undefined) {
-            const md = row.map_data || {};
-            if (md.structures !== undefined) setStructures(parseStructures(md.structures));
-            if (md.groundEffects !== undefined) setGroundZones(normalizeGroundEffectKinds(Array.isArray(md.groundEffects) ? md.groundEffects : []));
-            if (md.mapId !== undefined) setMapId(md.mapId ?? null);
-            if (md.backgroundImageUrl !== undefined) {
-              setBackgroundConfig({
-                imageUrl: md.backgroundImageUrl ?? '',
-                offsetX: md.bgOffsetX ?? 0,
-                offsetY: md.bgOffsetY ?? 0,
-                scale: md.bgScale ?? 1,
-                gridRadius: md.gridRadius ?? DEFAULT_GRID_RADIUS,
-              });
+            // Ignore a reordered/pre-delete snapshot (older than what we last applied)
+            // so a deleted structure can't be re-added as a ghost.
+            const at = row.updated_at as string | undefined;
+            const stale = !!at && !!lastMapDataAtRef.current && at < lastMapDataAtRef.current;
+            if (!stale) {
+              if (at) lastMapDataAtRef.current = at;
+              const md = row.map_data || {};
+              if (md.structures !== undefined) setStructures(parseStructures(md.structures));
+              if (md.groundEffects !== undefined) setGroundZones(normalizeGroundEffectKinds(Array.isArray(md.groundEffects) ? md.groundEffects : []));
+              if (md.mapId !== undefined) setMapId(md.mapId ?? null);
+              if (md.backgroundImageUrl !== undefined) {
+                setBackgroundConfig({
+                  imageUrl: md.backgroundImageUrl ?? '',
+                  offsetX: md.bgOffsetX ?? 0,
+                  offsetY: md.bgOffsetY ?? 0,
+                  scale: md.bgScale ?? 1,
+                  gridRadius: md.gridRadius ?? DEFAULT_GRID_RADIUS,
+                });
+              }
             }
           }
         }

@@ -243,6 +243,8 @@ blocked by any edge structure. The AI planner ignores it for v1.
   gate/tower hex to attack it (a plain drop moves). No to-hit roll;
   the DT gates the blow; a standing door absorbs damage until destroyed, then the
   structure HP is exposed; **0 HP removes the instance** (edge and hex alike). A
+  destroyed **hex** structure also clears every **edge structure on its 6 edges**
+  (`edgeKeysAroundHex`) in the same command. A
   destroyed structure **collapses**: any unit on its top (and riders) falls — per-troop
   `floor(ft/10)`d6 each (`feather_fall` negates). 1 action + attack cap.
 - **Removal & floats**: a structure removed in the editor leaves units floating; at any

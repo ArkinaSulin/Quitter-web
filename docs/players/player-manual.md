@@ -730,10 +730,12 @@ wall editor. Structures are neutral scenery — to attack one, hold **Shift** an
   structure's own HP is exposed. Costs 1 action and counts toward the attack
   limit. An **open** gate (GM toggle) costs no extra movement and exposes the
   structure directly — the door is bypassed.
-- A structure at **0 HP is destroyed and removed from the map**. If it collapses
-  under troops, every unit (and rider) on top **falls**: each takes `floor(ft/10)`d6
-  per troop (`Feather Fall` negates). A structure the GM removes leaves units
-  floating until the **next End Turn**, when they drop and take the same damage.
+- A structure at **0 HP is destroyed and removed from the map**. Destroying a **hex**
+  structure (gate/tower) also clears the **edge structures on its 6 edges**. If it
+  collapses under troops, every unit (and rider) on top **falls**: each takes
+  `floor(ft/10)`d6 per troop (`Feather Fall` negates). A structure the GM removes
+  leaves units floating until the **next End Turn**, when they drop and take the same
+  damage.
 - If the unit a **hero is riding/attached to is killed or removed**, the hero
   **auto-detaches** — then falls if it is in the air and cannot fly (each step is
   logged in the message panel).

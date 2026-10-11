@@ -126,6 +126,13 @@ export function edgeRef(q: number, r: number, dir: number): EdgeRef {
   return { key: `${nq},${nr},${rd}`, aq: nq, ar: nr, dir: rd, bq: q, br: r };
 }
 
+/** The 6 canonical edge keys around a hex (its 6 shared edges), in dir order. */
+export function edgeKeysAroundHex(q: number, r: number): string[] {
+  const keys: string[] = [];
+  for (let d = 0; d < 6; d++) keys.push(edgeRef(q, r, d).key);
+  return keys;
+}
+
 /** Look up the wall on the edge between two adjacent hexes (null when none). */
 export function wallBetween(walls: Walls | null | undefined, from: HexPoint, to: HexPoint): { ref: EdgeRef; wall: Wall; faceFrom: WallFace; faceTo: WallFace } | null {
   if (!walls) return null;
