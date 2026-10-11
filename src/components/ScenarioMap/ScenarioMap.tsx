@@ -890,6 +890,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   // Wall edge under the pointer while dragging a unit (drag-to-attack hint).
   const [hoveredWallEdge, setHoveredWallEdge] = useState<EdgeRef | null>(null);
+  // Hex structure under the pointer while Shift-dragging a unit (overlay hint).
+  const [hoveredStructureHex, setHoveredStructureHex] = useState<Hex | null>(null);
   /** Ground attacker vs a garrison on a higher structure top: Climb & attack / Attack. */
   const [pendingClimbAttack, setPendingClimbAttack] = useState<{ attackerId: string; targetId: string; garrison: string } | null>(null);
   // Inspect mode: while Shift is held all unit/corpse tokens hide so the map
@@ -984,6 +986,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     // Highlight the edge under the cursor while Shift is held (the Shift + double-click
     // edit target), alongside the drag-to-attack cap.
     hoveredWallEdge: hoveredWallEdge ?? (shiftHeld && infoHover?.kind === 'edge' ? infoHover.edge ?? null : null),
+    hoveredStructureHex,
     hideUnits: shiftHeld,
     hideGroundUnits: spaceHeld,
     groundZones,
@@ -2233,6 +2236,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (unit) void performStructureAttack(unit, hex);
     },
     onHoverWallEdge: setHoveredWallEdge,
+    onHoverStructureHex: setHoveredStructureHex,
     shiftHeld,
     airOnly: spaceHeld,
     onHexHover: (hex, x, y) => setInfoHover({ kind: 'hex', hex, x, y }),

@@ -41,6 +41,8 @@ export interface UseHexGridProps {
   canAttemptStructure?: (unitId: string, hex: Hex) => boolean;
   /** Wall edge under the pointer while dragging (for the overlay hint). */
   onHoverWallEdge?: (edge: EdgeRef | null) => void;
+  /** Structure hex under the pointer while dragging with Shift (the drop target). */
+  onHoverStructureHex?: (hex: Hex | null) => void;
   /** Inspect mode (Shift held): unit hover is suppressed and hex/edge info hover fires. */
   shiftHeld?: boolean;
   /** Air-only view (Space held): tokens/wireframe show only airborne units, so
@@ -90,6 +92,7 @@ export function useHexGrid({
   onAttackStructure,
   canAttemptStructure,
   onHoverWallEdge,
+  onHoverStructureHex,
   shiftHeld = false,
   airOnly = false,
   onHexHover,
@@ -120,6 +123,8 @@ export function useHexGrid({
   const rafIdRef = useRef<number | null>(null);
   /** Last reported hovered wall-edge key (dedupes the overlay-hint callback). */
   const hoveredEdgeKeyRef = useRef<string | null>(null);
+  /** Last reported hovered structure-hex key (dedupes the overlay-hint callback). */
+  const hoveredStructKeyRef = useRef<string | null>(null);
   /** Last reported hex/edge info-hover key (dedupes the tooltip callbacks). */
   const hoveredInfoKeyRef = useRef<string | null>(null);
   const pointerDownRef = useRef<{ unitId: string; x: number; y: number } | null>(null);
@@ -498,7 +503,16 @@ export function useHexGrid({
       hoveredEdgeKeyRef.current = nextEdge?.key ?? null;
       onHoverWallEdge?.(nextEdge);
     }
-  }, [getHexFromScreen, getUnitAtScreen, airOnly, isPanning, panStart, lastHoveredUnit, onUnitHover, onUnitLeave, draggingUnitId, canAttackWallEdge, getWallEdgeAt, onHoverWallEdge, shiftHeld, onHexHover, onHexLeave, onEdgeHover, onEdgeLeave]);
+    // Shift + drag onto a hex structure (gate/tower): report the hex for the overlay
+    // hint (the same gesture routes a Shift-drop to the structure attack).
+    const rawStructHex = draggingUnitId && shiftHeld ? getHexFromScreen(e.clientX, e.clientY) : null;
+    const nextStructHex = rawStructHex && draggingUnitId && canAttemptStructure?.(draggingUnitId, rawStructHex) ? rawStructHex : null;
+    const nextStructKey = nextStructHex ? `${nextStructHex.q},${nextStructHex.r}` : null;
+    if (nextStructKey !== hoveredStructKeyRef.current) {
+      hoveredStructKeyRef.current = nextStructKey;
+      onHoverStructureHex?.(nextStructHex);
+    }
+  }, [getHexFromScreen, getUnitAtScreen, airOnly, isPanning, panStart, lastHoveredUnit, onUnitHover, onUnitLeave, draggingUnitId, canAttackWallEdge, getWallEdgeAt, onHoverWallEdge, onHoverStructureHex, canAttemptStructure, shiftHeld, onHexHover, onHexLeave, onEdgeHover, onEdgeLeave]);
 
   // Pointer leaves the canvas (e.g. onto a modal overlay): drop all hover state so
   // tooltips disappear and a re-entry re-fires the hover callbacks.
@@ -509,10 +523,12 @@ export function useHexGrid({
     }
     hoveredEdgeKeyRef.current = null;
     onHoverWallEdge?.(null);
+    hoveredStructKeyRef.current = null;
+    onHoverStructureHex?.(null);
     hoveredInfoKeyRef.current = null;
     onHexLeave?.();
     onEdgeLeave?.();
-  }, [lastHoveredUnit, onUnitLeave, onHoverWallEdge, onHexLeave, onEdgeLeave]);
+  }, [lastHoveredUnit, onUnitLeave, onHoverWallEdge, onHoverStructureHex, onHexLeave, onEdgeLeave]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const hex = getHexFromScreen(e.clientX, e.clientY);
@@ -583,16 +599,18 @@ export function useHexGrid({
         // "cannot reach" instead of silently falling through to a move.
         const canHitWall = !!wallEdge && (!canAttemptWallEdge || canAttemptWallEdge(draggingUnitId, wallEdge));
         // Structure attacks require Shift at drop (plain drop = move). This is
-        // the same gesture for edge (walls/spikes) and hex (gates/towers).
+        // the same gesture for edge (walls/spikes) and hex (gates/towers). SHIFT
+        // takes priority over a unit occupying the hex: a Shift-drop on a structure
+        // targets the STRUCTURE, not the unit standing on it.
         const shift = e.shiftKey;
-        if (targetUnit && targetUnit.id !== draggingUnitId) {
-          if (onAttack) onAttack(draggingUnitId, targetUnit.id);
-        } else if (!targetUnit && shift && canHitWall && onAttackWall) {
+        if (shift && canHitWall && onAttackWall) {
           // Shift-dropped onto a wall segment: attack it (reach reported there).
           onAttackWall(draggingUnitId, wallEdge!);
-        } else if (!targetUnit && shift && onAttackStructure && canAttemptStructure?.(draggingUnitId, targetHex)) {
+        } else if (shift && onAttackStructure && canAttemptStructure?.(draggingUnitId, targetHex)) {
           // Shift-dropped onto a hex with a structure (gate/tower): attack it.
           onAttackStructure(draggingUnitId, targetHex);
+        } else if (targetUnit && targetUnit.id !== draggingUnitId) {
+          if (onAttack) onAttack(draggingUnitId, targetUnit.id);
         } else if (!targetUnit) {
           // A climbing unit may also "move" within its own hex — that drop means
           // climb DOWN (any other hex is up toward its target).
@@ -607,6 +625,10 @@ export function useHexGrid({
         hoveredEdgeKeyRef.current = null;
         onHoverWallEdge?.(null);
       }
+      if (hoveredStructKeyRef.current !== null) {
+        hoveredStructKeyRef.current = null;
+        onHoverStructureHex?.(null);
+      }
     }
 
     if (mouseDownTarget === 'hex' && !draggingUnitId && !panMovedRef.current) {
@@ -617,7 +639,7 @@ export function useHexGrid({
     setIsPanning(false);
     setPanStart(null);
     setMouseDownTarget('none');
-  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAtScreen, airOnly, onAttack, onAttackWall, canAttemptWallEdge, onAttackStructure, canAttemptStructure, getWallEdgeAt, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
+  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAtScreen, airOnly, onAttack, onAttackWall, canAttemptWallEdge, onAttackStructure, canAttemptStructure, getWallEdgeAt, onHoverWallEdge, onHoverStructureHex, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
 
   const handleRightClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();

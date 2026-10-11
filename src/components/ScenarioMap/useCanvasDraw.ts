@@ -18,7 +18,7 @@ import { FOG_RGB } from '@/packages/world';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/packages/movement';
 import { MapStructures, isHexStructureKey, structureSurfaceAt, climbStepsFromFeet, structureElevation } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
-import { strokeFillText, fillHexPath, MP_COST_GREY, edgeStructureVisuals, mapTextStyles, MONO, drawHexStructure, drawEffectMark, climbLabelText, drawClimbLabel, hexClimbLabels, CLIMB_LABEL_OFFSET } from '@/components/shared/mapFeatureDraw';
+import { strokeFillText, fillHexPath, strokeHexPath, MP_COST_GREY, edgeStructureVisuals, mapTextStyles, MONO, drawHexStructure, drawEffectMark, climbLabelText, drawClimbLabel, hexClimbLabels, CLIMB_LABEL_OFFSET } from '@/components/shared/mapFeatureDraw';
 import { AiOverlayData } from './aiTypes';
 
 interface CanvasDrawDeps {
@@ -46,6 +46,8 @@ interface CanvasDrawDeps {
   templates?: Record<string, StructureTemplate>;
   /** Wall edge highlighted while dragging a unit over it (drag-to-attack). */
   hoveredWallEdge?: EdgeRef | null;
+  /** Hex structure highlighted while Shift-dragging a unit over it (drag-to-attack). */
+  hoveredStructureHex?: Hex | null;
   /** Inspect mode (Shift held): hide all unit/hero tokens and corpse piles,
    *  except `keepVisibleUnitId` (the unit currently being dragged). */
   hideUnits?: boolean;
@@ -89,6 +91,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     structures,
     templates,
     hoveredWallEdge,
+    hoveredStructureHex,
     hideUnits = false,
     keepVisibleUnitId = null,
     hideGroundUnits = false,
@@ -265,6 +268,14 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         drawHexStructure(ctx, { cx, cy, hexRadius: HEX_SIZE * currentZoom, unit: 1, zoom: currentZoom, template: t, instance: inst, getImage: getLoadedImage, drawElevation: false });
       }
       ctx.restore();
+    }
+
+    // Shift-dragging a unit over a hex structure: highlight the drop target (the
+    // Shift-drop routes to a structure attack, not the unit standing there).
+    if (hoveredStructureHex) {
+      const { cx, cy } = hexCenter({ q: hoveredStructureHex.q, r: hoveredStructureHex.r, s: -hoveredStructureHex.q - hoveredStructureHex.r });
+      fillHexPath(ctx, cx, cy, HEX_SIZE * currentZoom, 'rgba(255, 140, 60, 0.22)');
+      strokeHexPath(ctx, cx, cy, HEX_SIZE * currentZoom, 'rgba(255, 140, 60, 0.95)', Math.max(2, 4 * currentZoom));
     }
 
     // Edge walls/barriers: a thick segment along the shared edge, styled by
@@ -874,7 +885,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hideUnits, keepVisibleUnitId, hideGroundUnits, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick, moraleMods]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hoveredStructureHex, hideUnits, keepVisibleUnitId, hideGroundUnits, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick, moraleMods]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;

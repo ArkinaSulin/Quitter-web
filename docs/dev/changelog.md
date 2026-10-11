@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## Shift-drop targets the structure, not the unit on it (2026-10-10)
+**Files:** src/hooks/useHexGrid.ts, src/components/ScenarioMap/{ScenarioMap.tsx,useCanvasDraw.ts}, docs/dev/changelog.md
+
+- **Bug:** a **Shift-drag-drop** onto a hex that has both a structure and a hostile unit
+  attacked the **unit** — the drop router checked `targetUnit` before the structure
+  branches (and gated those on `!targetUnit`). Shift now **prioritises the structure**:
+  edge wall first, then hex structure, then the unit. A plain (no-Shift) drop still
+  attacks the unit; Shift on a unit with no structure under it falls through to the unit.
+- **Overlay hint.** While **Shift**-dragging a unit, the hex structure under the pointer is
+  highlighted (amber hex tint + outline) — `useHexGrid.onHoverStructureHex` →
+  `ScenarioMap.hoveredStructureHex` → `useCanvasDraw`, mirroring the existing wall-edge
+  drag cap.
+- No migration. `tsc` clean, tests pass, build clean.
+
 ## Climb/drop branch fix; decorative structures survive edits; climb hang (2026-10-10)
 **Files:** src/components/StructureEditModal.tsx, src/components/ScenarioMap/useMoveActions.ts, docs/dev/{18-map-structures,changelog}.md, docs/players/player-manual.md
 
