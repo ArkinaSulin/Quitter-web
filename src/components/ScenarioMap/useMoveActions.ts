@@ -19,9 +19,9 @@ import { parseWeapons, damageDiceCount } from '@/packages/units';
 import { SubStep, UnitChange } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
-import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
+import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, perTroopFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
 import { Walls, directionBetween, edgeRef } from '@/packages/movement';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween, structureClimbPerStep10 } from '@/packages/movement';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, structureHasDoor, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween, structureClimbPerStep10 } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
@@ -372,11 +372,28 @@ export function useMoveActions(deps: MoveActionsDeps) {
       : Math.max(0, Math.round((originSurface - curElev) / 10));
     const targetOccupied = units.some(u => u.id !== unit.id && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) === endSurface && u.hex.q === tHex.q && u.hex.r === tHex.r);
     // The structure being climbed is the HIGHER one: the target hex when ascending,
-    // the origin hex when descending.
-    const structHex = ascending ? tHex : unit.hex;
-    const tInst = structures?.[`${structHex.q},${structHex.r}`];
-    const tT = tInst ? structureTemplates?.[tInst.templateId] : undefined;
-    const perStep = structureClimbPerStep10(tT, tInst, { isMounted: !!(unit.mountId || unit.mountName) });
+    // the origin hex when descending. ASCENDING, a crossed EDGE structure OVERRIDES
+    // the destination hex structure (mirrors structureStepClimb) — so a ladder's
+    // per-10-ft cost (e.g. 0) applies to the climb, not the hex structure's.
+    const isMountedNow = !!(unit.mountId || unit.mountName);
+    let perStep: number;
+    if (ascending) {
+      const eDir = directionBetween(unit.hex, tHex);
+      const eRef = eDir >= 0 ? edgeRef(unit.hex.q, unit.hex.r, eDir) : null;
+      const eInst = eRef ? structures?.[eRef.key] : undefined;
+      const eT = eInst ? structureTemplates?.[eInst.templateId] : undefined;
+      let edgePerStep: number | null = null;
+      if (eRef && eInst && eT && !structureDoorState(eInst, eT).openOrBroken) {
+        const outsideIsA = (eInst.outside ?? 'a') === 'a';
+        const fromIsOutside = outsideIsA ? (unit.hex.q === eRef.aq && unit.hex.r === eRef.ar) : (unit.hex.q === eRef.bq && unit.hex.r === eRef.br);
+        edgePerStep = structureClimbPerStep10(eT, eInst, { isMounted: isMountedNow, fromIsOutside });
+      }
+      const destInst = structures?.[`${tHex.q},${tHex.r}`];
+      perStep = edgePerStep ?? structureClimbPerStep10(destInst ? structureTemplates?.[destInst.templateId] : undefined, destInst, { isMounted: isMountedNow });
+    } else {
+      const oInst = structures?.[`${unit.hex.q},${unit.hex.r}`];
+      perStep = structureClimbPerStep10(oInst ? structureTemplates?.[oInst.templateId] : undefined, oInst, { isMounted: isMountedNow });
+    }
     const plan = climbPlan(Math.abs(diff), budget, doneSteps, targetOccupied, perStep);
     if (plan.atTop) { addMessage(`${unit.unitName} is already ${ascending ? 'at the top' : 'down'}`); return; }
     // Over-budget gate (uniform with a move): if the climb can't be paid it asks first
@@ -456,24 +473,31 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (!skipPrompt && entry === 'ground' && !flying && !unit.isCharging && !unit.attachedToUnitId && !unit.climbTo && areHexesAdjacent(unit.hex, targetHex)) {
       const inst = structures?.[`${targetHex.q},${targetHex.r}`];
       const t = inst ? structureTemplates?.[inst.templateId] : undefined;
+      // The destination top (a hex structure's surface). Ascent (top > origin) is
+      // handled by the climb path below; descent by the descent modal; only a LEVEL
+      // crossing with a wall is a climb-over.
+      const destTop = structureSurfaceAt(targetHex, structures, structureTemplates);
       if (inst && t && t.anchor === 'hex') {
         const top = structureElevation(t, inst);
         const canClimb = !unit.mountId && !unit.mountName && top > originSurface;
-        const canPass = structureDoorState(inst, t).openOrBroken;
+        // A "pass through the door" option needs a REAL door (open/broken) — an empty
+        // door pool (door_hp = 0) is not a door.
+        const canPass = structureHasDoor(t) && structureDoorState(inst, t).openOrBroken;
         if (canClimb && canPass) {
           setPendingStructureAction({ unit, targetHex, actions: ['climb', 'pass'], occupant: null, structureName: t.name });
           return;
         }
       }
-      // An EDGE wall taller than the mover blocks the crossing: offer Climb over
-      // (and Pass door when the door is open).
+      // A FREESTANDING edge wall between two LEVEL hexes: offer Climb over (and Pass
+      // door when a real door is open). Ascent/descent onto/off a different surface
+      // never raises this (the climb/descent paths handle them).
       const edgeH = edgeStructureHeightBetween(unit.hex, targetHex, structures, structureTemplates);
-      if (edgeH > originSurface && !unit.mountId && !unit.mountName) {
+      if (edgeH > originSurface && destTop === originSurface && !unit.mountId && !unit.mountName) {
         const eDir = directionBetween(unit.hex, targetHex);
         const eRef = eDir >= 0 ? edgeRef(unit.hex.q, unit.hex.r, eDir) : null;
         const eInst = eRef ? structures?.[eRef.key] : undefined;
         const eT = eInst ? structureTemplates?.[eInst.templateId] : undefined;
-        const doorOpen = !!(eInst && eT && structureDoorState(eInst, eT).openOrBroken);
+        const doorOpen = !!(eInst && eT && structureHasDoor(eT) && structureDoorState(eInst, eT).openOrBroken);
         const actions: ('climb' | 'pass')[] = ['climb'];
         if (doorOpen) actions.push('pass');
         setPendingStructureAction({ unit, targetHex, actions, occupant: null, structureName: eT?.name ?? null, edge: true });
@@ -525,13 +549,26 @@ export function useMoveActions(deps: MoveActionsDeps) {
         && endSurface < originSurface && areHexesAdjacent(unit.hex, targetHex)) {
       const ownInst = structures?.[`${unit.hex.q},${unit.hex.r}`];
       const ownT = ownInst ? structureTemplates?.[ownInst.templateId] : undefined;
+      // A crossed edge structure overrides the hex structure's per-step (mirrors
+      // structureStepClimb / the ascent path).
+      const isMountedNow = !!(unit.mountId || unit.mountName);
+      const eDir = directionBetween(unit.hex, targetHex);
+      const eRef = eDir >= 0 ? edgeRef(unit.hex.q, unit.hex.r, eDir) : null;
+      const eInst = eRef ? structures?.[eRef.key] : undefined;
+      const eT = eInst ? structureTemplates?.[eInst.templateId] : undefined;
+      let perStep: number | null = null;
+      if (eRef && eInst && eT && !structureDoorState(eInst, eT).openOrBroken) {
+        const outsideIsA = (eInst.outside ?? 'a') === 'a';
+        const fromIsOutside = outsideIsA ? (unit.hex.q === eRef.aq && unit.hex.r === eRef.ar) : (unit.hex.q === eRef.bq && unit.hex.r === eRef.br);
+        perStep = structureClimbPerStep10(eT, eInst, { isMounted: isMountedNow, fromIsOutside });
+      }
       setPendingDescent({
         unit, targetHex,
         originHex: { ...unit.hex },
         feet: originSurface - endSurface,
         canClimb: !unit.mountId && !unit.mountName,
         noDrop: freeMove,
-        perStep: structureClimbPerStep10(ownT, ownInst, { isMounted: !!(unit.mountId || unit.mountName) }),
+        perStep: perStep ?? structureClimbPerStep10(ownT, ownInst, { isMounted: isMountedNow }),
       });
       return;
     }
@@ -710,18 +747,18 @@ export function useMoveActions(deps: MoveActionsDeps) {
       ] }], `${unit.unitName} climbs to ${newElev} ft`);
       return;
     }
-    // Full climb-over. Coerce to a drop when a climb-down is unaffordable (never
-    // under free-move — movement is free, so climb-down is always affordable).
+    // The far-side descent: climb down (pay per-step) or drop (fall damage). When a
+    // chosen climb-down is unaffordable, HANG at the top on the far hex (`climbTo`
+    // set) and resolve next action — never coerce to a drop.
     const downCost = steps * perStep;
-    let actual = descent;
-    if (!freeMove && descent === 'climb' && !(unit.isHero ? isHeroMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP) : isMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP))) {
-      actual = 'drop';
-      addMessage(`${unit.unitName} — not enough MP to climb down; dropping instead`);
-    }
-    const used = upCost + (actual === 'climb' ? downCost : 0);
+    const canAffordDown = descent === 'drop' || freeMove || (unit.isHero
+      ? isHeroMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP)
+      : isMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP));
+    const hangAtTop = descent === 'climb' && !canAffordDown;
+    const used = upCost + (descent === 'climb' && !hangAtTop ? downCost : 0);
     const spend = spendOf(used);
     const feathers = unitHasFeatherFall(unit);
-    const dmg = actual === 'drop' && !feathers ? rollFallDamage(H).total : 0;
+    const dmg = descent === 'drop' && !feathers ? perTroopFallDamage(H, unit.currentTroopCount) : 0;
     const newHp = Math.max(0, (unit.currentUnitHp ?? 0) - dmg);
     const newTroops = dmg > 0 ? Math.max(0, Math.ceil(newHp / Math.max(1, unit.troopHp))) : unit.currentTroopCount;
     const subSteps: SubStep[] = [
@@ -734,21 +771,31 @@ export function useMoveActions(deps: MoveActionsDeps) {
       { type: 'MOVE', description: `${unit.unitName} crosses the wall top to (${farHex.q}, ${farHex.r})`, unitId: unit.id, changes: [
         { field: 'hex', from, to: { ...farHex } },
       ] },
-      { type: 'MOVE', description: `${unit.unitName} ${actual === 'climb' ? 'climbs down' : 'drops'} to the ground`, unitId: unit.id, changes: [
-        { field: 'elevation', from: H, to: 0 },
-      ] },
     ];
+    if (hangAtTop) {
+      subSteps.push({ type: 'MOVE', description: `${unit.unitName} holds on the wall top`, unitId: unit.id, changes: [
+        { field: 'climbTo', from: unit.climbTo ?? null, to: `${farHex.q},${farHex.r}` },
+      ] });
+    } else {
+      subSteps.push({ type: 'MOVE', description: `${unit.unitName} ${descent === 'climb' ? 'climbs down' : 'drops'} to the ground`, unitId: unit.id, changes: [
+        { field: 'elevation', from: H, to: 0 },
+      ] });
+    }
     if (dmg > 0) {
       subSteps.push({ type: 'DAMAGE', description: `${unit.unitName} took ${dmg} falling damage`, unitId: unit.id, changes: [
         { field: 'currentUnitHp', from: unit.currentUnitHp, to: newHp },
         { field: 'currentTroopCount', from: unit.currentTroopCount, to: newTroops },
       ] });
     }
-    await execute('MOVE', subSteps, `${unit.unitName} climbs over the wall${dmg > 0 ? ` — ${dmg} damage` : ''}`);
-    offerReactionsFor({ ...unit, hex: { ...farHex } });
-    pruneReactionOffers();
-    await pursuitsRef.current?.(unit, from, farHex);
-    if (dmg > 0 && newHp <= 0) await routeUnit(execute, { ...unit, currentUnitHp: newHp }, 'fell', true, null, 0, units);
+    await execute('MOVE', subSteps, hangAtTop
+      ? `${unit.unitName} climbs to the wall top and holds (no MP to climb down)`
+      : `${unit.unitName} climbs over the wall${dmg > 0 ? ` — ${dmg} damage` : ''}`);
+    if (!hangAtTop) {
+      offerReactionsFor({ ...unit, hex: { ...farHex } });
+      pruneReactionOffers();
+      await pursuitsRef.current?.(unit, from, farHex);
+      if (dmg > 0 && newHp <= 0) await routeUnit(execute, { ...unit, currentUnitHp: newHp }, 'fell', true, null, 0, units);
+    }
   }, [units, structures, structureTemplates, unitMaxMP, execute, addMessage, addError, freeMove, offerReactionsFor, pruneReactionOffers, pursuitsRef]);
 
   /** Resolve a structure-action prompt: Climb onto / Pass door (hex) or Climb over (edge). */

@@ -1,5 +1,31 @@
 # QuiTTER Changelog
 
+## Climb/drop branch fix; decorative structures survive edits; climb hang (2026-10-10)
+**Files:** src/components/StructureEditModal.tsx, src/components/ScenarioMap/useMoveActions.ts, docs/dev/{18-map-structures,changelog}.md, docs/players/player-manual.md
+
+- **Decorative structures no longer self-delete on edit.** `StructureEditModal` removed a
+  structure whenever `hp <= 0`; a decorative structure (`max_hp = 0`, e.g. a ladder) has
+  `hp = 0` by default, so merely changing its elevation deleted it ("Stairs/Ladder
+  removed"). The remove branch now requires a **destructible** template (`max_hp > 0`).
+- **Drag-drop branch by surface difference** (`useMoveActions.handleUnitMove`):
+  - `dest > origin` → **ascent**: climb onto the destination, paying the per-10-ft cost per
+    step (hang when short). No prompt.
+  - `dest < origin` → **descent**: the Climb-down / Drop modal.
+  - `dest == origin` **with an edge wall** → the **climb-over** prompt; otherwise a plain
+    move. (Previously any taller edge structure raised the climb-over prompt, which
+    offered a bogus "climb down" when landing on a structure top.)
+- **`pass` needs a real door.** The prompt's "Pass through the door" option now requires
+  `structureHasDoor` (an empty door pool, `door_hp = 0`, is not a door).
+- **Edge overrides the hex for the CLIMB, not just the move cost.** The ascent (and the
+  descent prompt) now takes the per-10-ft value from the **crossed edge structure** when
+  one is present (mirrors `structureStepClimb`), so a ladder's cost (0, or later 1)
+  applies instead of the destination hex structure's ("HAS NO MOVEMENT TO CLIMB").
+- **`performClimbOver` hangs instead of force-dropping.** Choosing "climb over & climb
+  down" when the descent is unaffordable now **holds at the wall top on the far hex**
+  (`climbTo` set, no damage) instead of coercing to a fall. Its fall damage (drop only)
+  is now **per troop** (`perTroopFallDamage`).
+- No migration. `tsc` clean, tests pass, build clean.
+
 ## Destroyed hex structure ghost fix + clear-whole-asset (2026-10-10)
 **Files:** src/components/ScenarioMap/ScenarioMap.tsx, src/hooks/useGameEngine.ts, src/packages/movement/lib/walls.ts (+ tests/walls.test.ts), supabase/migrations/122_strip_destroyed_structures.sql, docs/dev/{18-map-structures,changelog}.md, docs/players/player-manual.md
 

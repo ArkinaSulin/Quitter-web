@@ -739,6 +739,8 @@ wall editor. Structures are neutral scenery — to attack one, hold **Shift** an
 - If the unit a **hero is riding/attached to is killed or removed**, the hero
   **auto-detaches** — then falls if it is in the air and cannot fly (each step is
   logged in the message panel).
+- Editing a **decorative** structure (one with no HP, e.g. a ladder) never removes it —
+  only a **destructible** structure at 0 HP is destroyed.
 
 ### Climbing down & dropping
 
@@ -746,21 +748,29 @@ Heights change only across an **adjacent edge** — you can't end a multi-hex mo
 on a different surface; move onto/off the edge first, then spend the rest of your
 movement.
 
-To get **up** onto a higher adjacent hex, drop your unit on it (a climb; 4 MP per
-10 ft; if you run out of MP the unit **hangs** partway and continues next action).
+To get **up** onto a higher adjacent hex, drop your unit on it — it climbs, paying the
+per-10-ft cost for each step (if a **ladder/wall crosses the edge**, its cost applies
+instead of the tower's). If you run out of MP the unit **hangs** partway and continues
+next action.
 
 To get **down** off an adjacent lower hex, drop your unit on the hex below and
 choose:
 
-- **Climb down** — pay the structure's **MP per 10 ft** (`x` MP, as authored). If you
-  can't afford the whole descent the unit **hangs** partway and finishes next action,
-  or you can confirm **over budget** (MP/actions may go negative). A **ladder/stairs
-  edge with a climb cost of 0 MP** makes the descent free. **Mounted** units cannot
-  climb down.
-- **Drop** — fall instead: take **1d6 per 10 ft** (a `Feather Fall` effect negates
-  it) and land on the hex below. No MP. You can't drop onto a hex that is already
-  occupied.
+- **Climb down** — pay the structure's **MP per 10 ft** (`x` MP, as authored; a
+  crossed edge's cost overrides). If you can't afford the whole descent the unit
+  **hangs** partway and finishes next action, or you can confirm **over budget**
+  (MP/actions may go negative). A **ladder/stairs edge with a climb cost of 0 MP**
+  makes the descent free. **Mounted** units cannot climb down.
+- **Drop** — fall instead: take **1d6 per 10 ft per troop** (a `Feather Fall` effect
+  negates it) and land on the hex below. No MP. You can't drop onto a hex that is
+  already occupied.
 - **Cancel** — stay put.
+
+A **freestanding wall** between two **level** hexes (neither side higher) instead asks
+**Climb over & climb down** / **Climb over & drop** — the unit crosses at the wall top
+(`height` ft); dropping takes `1d6 per 10 ft per troop`. If you choose climb-down but
+can't afford it, the unit **holds on the far wall top** and finishes next action (it
+never force-drops).
 
 A completed climb-down or drop is a move: enemy archers may react to it, and it
 provokes a pursue only if you vacate a normal (non-raised) kill zone — stepping

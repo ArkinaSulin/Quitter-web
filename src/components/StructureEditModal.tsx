@@ -51,8 +51,10 @@ export function StructureEditModal({ template, instance, onSave, onClose, restri
   const patchMod = (i: number, p: Partial<EffectModifier>) => setMods(m => m.map((x, idx) => (idx === i ? { ...x, ...p } : x)));
 
   const save = () => {
-    // A structure at 0 HP is destroyed — REMOVED from the map (edge and hex alike).
-    if (hp <= 0 && onRemove) {
+    // A DESTRUCTIBLE structure at 0 HP is destroyed — REMOVED from the map (edge and
+    // hex alike). Decorative structures (max_hp = 0, e.g. a ladder) have hp 0 by
+    // default and must NOT be removed by an ordinary edit.
+    if (template.maxHp > 0 && hp <= 0 && onRemove) {
       onRemove();
       onClose();
       return;

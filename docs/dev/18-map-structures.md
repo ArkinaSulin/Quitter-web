@@ -126,19 +126,29 @@ soft-confirms like a move. The wall's authored **height** also drives its
 
 ## Elevation changes are edge-only
 
-A grounded unit's elevation changes **only across an adjacent edge**:
+A grounded unit's elevation changes **only across an adjacent edge**. The drag-drop
+branches on the **surface difference** (`handleUnitMove`):
 
-- **Up** onto an adjacent higher surface → the climb action (`handleClimbMove`,
-  `steps × mp_*` MP, may hang midway).
-- **Down** onto an adjacent lower surface → the **descent modal**
-  (`pendingDescent`: Climb down / Drop / Cancel). Climb down costs `steps × mp_*`
-  and may hang midway; Drop is a fall (`floor(ft/10)`d6, `feather_fall` negates,
-  refused on an occupied hex). Both provoke archer reactions on completion and run
-  the pursue gate (a raised origin never provokes). Mounted units can't climb down
-  (Drop/Cancel only).
-- A multi-hex move whose destination surface differs from the origin is **refused**
-  ("move onto/off the edge first"). `rollFallDamage` (`movement/flying.ts`) is the shared
-  d6/10 ft formula.
+- **`dest > origin`** → the climb action (`handleClimbMove`, `steps × mp_*` MP, may hang
+  midway). The per-10-ft value comes from the **crossed edge structure** when one is on
+  the edge (overrides the destination hex — mirrors `structureStepClimb`), else the
+  destination hex structure.
+- **`dest < origin`** → the **descent modal** (`pendingDescent`: Climb down / Drop /
+  Cancel), its per-step likewise edge-overridden. Climb down costs `steps × mp_*` and may
+  hang midway; Drop is a fall (`perTroopFallDamage`, `feather_fall` negates, refused on
+  an occupied hex).
+- **`dest == origin` + a freestanding edge wall** → the **climb-over** prompt (Climb over
+  & climb down / Climb over & drop); crossing at `origin + edgeHeight`, fall distance
+  `origin + edgeHeight − dest`. An unaffordable climb-down **holds at the top on the far
+  hex** (`climbTo` set) rather than force-dropping.
+- **`dest == origin`, no wall** → a plain move.
+
+`pass` (through a door at ground) requires a **real** door (`structureHasDoor`). Both the
+ascent and the descent provoke archer reactions on completion and run the pursue gate (a
+raised origin never provokes). Mounted units can't climb (Drop/Cancel only). A multi-hex
+move whose destination surface differs from the origin is **refused** ("move onto/off the
+edge first"). `rollFallDamage` (`movement/flying.ts`) is the shared d6/10 ft formula;
+`perTroopFallDamage` multiplies it by the troop count.
 
 ## Attack type is kill-zone-aware
 
