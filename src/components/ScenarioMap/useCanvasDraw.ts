@@ -21,6 +21,38 @@ import { StructureTemplate } from '@/types/structure';
 import { strokeFillText, fillHexPath, strokeHexPath, MP_COST_GREY, edgeStructureVisuals, mapTextStyles, MONO, drawHexStructure, drawEffectMark, climbLabelText, drawClimbLabel, hexClimbLabels, CLIMB_LABEL_OFFSET } from '@/components/shared/mapFeatureDraw';
 import { AiOverlayData } from './aiTypes';
 
+/**
+ * A translucent token-shaped fill drawn at the token's drawn (offset) position —
+ * the hover / drag-target highlight, so an ELEVATED token is highlighted where it
+ * is rendered rather than only on its owner hex. Pure.
+ */
+function drawTokenHighlight(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+  color: string,
+): void {
+  const margin = 6;
+  const fw = w + margin;
+  const fh = h + margin;
+  const r = 8;
+  const x = cx - fw / 2;
+  const y = cy - fh / 2;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + fw, y, x + fw, y + fh, r);
+  ctx.arcTo(x + fw, y + fh, x, y + fh, r);
+  ctx.arcTo(x, y + fh, x, y, r);
+  ctx.arcTo(x, y, x + fw, y, r);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 interface CanvasDrawDeps {
   canvasRef: RefObject<HTMLCanvasElement>;
   units: Unit[];
@@ -65,6 +97,10 @@ interface CanvasDrawDeps {
   aiOverlay?: AiOverlayData | null;
   /** Unit currently hovered on the map — highlights its AI route. */
   aiHoveredUnitId?: string | null;
+  /** Hover / drag-target token highlight: a translucent token-shaped fill drawn at
+   *  the token's elevation OFFSET (not just its owner hex). `color` is the same
+   *  overlay tint as the hex (cyan on hover, green/red/amber on a drag target). */
+  hoverTokenFill?: { id: string; color: string } | null;
 }
 
 export function useCanvasDraw(deps: CanvasDrawDeps) {
@@ -102,6 +138,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     corpseCounts,
     aiOverlay,
     aiHoveredUnitId,
+    hoverTokenFill,
   } = deps;
 
   // Effect artwork is loaded asynchronously; bump a tick once the set decodes so
@@ -555,6 +592,12 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.fill();
         ctx.restore();
       }
+      // Hover / drag-target highlight at the token's OFFSET position — a translucent
+      // token-shaped fill drawn behind the token, so an elevated token is highlighted
+      // where it is rendered (the owner-hex tint stays as-is).
+      if (hoverTokenFill && unit.id === hoverTokenFill.id) {
+        drawTokenHighlight(ctx, tokenCx, tokenCy, tokenWidth, tokenHeight, hoverTokenFill.color);
+      }
       try {
         drawToken({
           unit: { ...unit, currentMoraleModifier: unitMoraleMod },
@@ -885,7 +928,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hoveredStructureHex, hideUnits, keepVisibleUnitId, hideGroundUnits, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick, moraleMods]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hoveredStructureHex, hideUnits, keepVisibleUnitId, hideGroundUnits, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, hoverTokenFill, imageTick, moraleMods]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;

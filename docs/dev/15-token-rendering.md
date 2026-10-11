@@ -90,6 +90,13 @@ Name runs flush along the bottom in white with a dark shadow.
   mover it reacts to (the reaction **target**) gets a bold amber **X**
   (`drawTargetMarker`) on its token; hovering a unit tints its **own hex cyan**
   in addition to its red ZoC front-2.
+- **Hover / drag-target highlight** (`useCanvasDraw.drawTokenHighlight`): the
+  hovered unit (or the drag target — the same `hoveredUnit`, since hover fires
+  during a drag) gets a translucent token-shaped fill drawn at its **elevation
+  offset** (`elevationOffset`, the same math as the token draw), so an elevated
+  token is highlighted where it is *rendered*, not only on its owner hex. The fill
+  reuses the overlay tint colour (cyan on a plain hover; green/red/amber on a drag
+  target) via `ScenarioMap.hoverTokenFill`; the owner-hex tint is unchanged.
 - **Effect pips** render under tokens (buffs/debuffs present, `10`); corpse
   (HP ≤ 0, non-hero) = grayscaled; downed **hero** (HP ≤ 0) grayscales but
   stays interactable.

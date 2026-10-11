@@ -957,6 +957,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     };
   }, []);
 
+  // Hover / drag-target token highlight: a translucent fill at the token's
+  // elevation offset, reusing the SAME overlay colour as the hex tint (cyan on a
+  // plain hover; green/red/amber on a drag target). The owner-hex tint stays.
+  const hoverTokenFill = useMemo(() => {
+    if (!hoveredUnit) return null;
+    const color = overlayMap[`${hoveredUnit.hex.q},${hoveredUnit.hex.r}`];
+    return color ? { id: hoveredUnit.id, color } : null;
+  }, [hoveredUnit, overlayMap]);
+
   const { customDraw, captureAndUploadScreenshot } = useCanvasDraw({
     canvasRef,
     units,
@@ -996,6 +1005,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     corpseCounts,
     aiOverlay,
     aiHoveredUnitId: hoveredUnit?.id ?? null,
+    hoverTokenFill,
   });
 
   // Parting-shot resolver is owned by useCombatActions (declared later); this ref
