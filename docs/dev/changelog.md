@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Charge/Swoop entry spends an action; swoop needs >2 FP (2026-10-11)
+**Files:** src/packages/combat/{lib/chargeStance.ts,tests/chargeStance.test.ts}, src/hooks/useGameEngine.ts, docs/dev/{00-universal-rules,07-movement-economy,08-combat,changelog}.md, docs/players/player-manual.md
+
+- **Entering a charge spends 1 action** (`useGameEngine.charge`, shared by Charge!
+  and Swoop!): the `CHARGE` sub-step already marked `isCharging`/`chargeDistance`
+  and now also deducts one action. The following charge move still spends its pool
+  as before, so a grounded unit charge totals two actions. Not waived by free-move
+  (charging is a combat commitment).
+- **Prerequisites** (`chargeStanceFor`): both Charge! and Swoop! now require
+  `actionsAvailable > 1` (≥ 2); a **swoop** additionally requires
+  `flySpeedAvailable > 2` (the fly pool must carry the full-charge move). A
+  grounded Charge! is otherwise unchanged (`canCharge` + `canFormationCharge`; a
+  hero needs `canCharge` only).
+- Docs + tests updated. No migration. `tsc` clean, tests pass, build clean.
+
 ## Loose charge is a single fan aimed at the target (2026-10-11)
 **Files:** src/packages/primitives/{lib/hexGeometry.ts,tests/hexGeometry.test.ts}, src/packages/movement/{lib/moveCost.ts,tests/moveCost.test.ts}, src/components/ScenarioMap/{useMoveActions.ts,useOverlay.ts,useCombatActions.ts,ScenarioMap.tsx}, docs/dev/{00-universal-rules,07-movement-economy,08-combat,changelog}.md, docs/players/player-manual.md
 

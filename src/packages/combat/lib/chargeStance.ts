@@ -22,7 +22,7 @@ export function isSwooping(unit: Pick<Unit, 'flySpeed' | 'elevation' | 'isChargi
 }
 
 export interface ChargeStanceInput {
-  unit: Pick<Unit, 'isHero' | 'canCharge' | 'currentFormation' | 'isCharging' | 'actionsAvailable' | 'flySpeed' | 'elevation'>;
+  unit: Pick<Unit, 'isHero' | 'canCharge' | 'currentFormation' | 'isCharging' | 'actionsAvailable' | 'flySpeed' | 'flySpeedAvailable' | 'elevation'>;
   /** True when the unit stands above its hex surface (`elevation > surfaceAt(hex)`). */
   airborne: boolean;
   form?: Formation | null;
@@ -41,8 +41,13 @@ export interface ChargeStanceInput {
  */
 export function chargeStanceFor({ unit, airborne, form, chargeEnabled = true }: ChargeStanceInput): ChargeStance | null {
   if (!chargeEnabled) return null;
-  if (unit.isCharging || isUnitRouted(unit) || (unit.actionsAvailable ?? 0) < 1) return null;
-  if (airborne) return canFly(unit) ? 'swoop' : null;
+  // Entering the charging state itself spends an action (see `useGameEngine.charge`),
+  // so the charger needs MORE than one action: one to enter, at least one for the
+  // charge move. So require > 1 (≥ 2) for BOTH Charge! and Swoop!.
+  if (unit.isCharging || isUnitRouted(unit) || (unit.actionsAvailable ?? 0) < 2) return null;
+  // A swoop additionally needs > 2 AVAILABLE fly points (the fly pool must carry the
+  // full-charge move); a hanging climber is airborne but can't fly → nothing.
+  if (airborne) return canFly(unit) && (unit.flySpeedAvailable ?? 0) > 2 ? 'swoop' : null;
   // A hero has no formation arc, so its ground charge is gated on the unit's
   // `canCharge` alone (its corridor is a single wedge aimed at the target; see
   // `movement/moveCost.computeChargeReachable` + `primitives/hexGeometry.facingToward`).

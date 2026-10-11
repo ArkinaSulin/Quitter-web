@@ -565,7 +565,8 @@ whole pool). An **airborne flyer** swoops instead of charging, and because a
 **hero** (like any loose unit) has no facing, its charge — a ground Charge! (if
 it **Can Charge**) or an airborne swoop — is a fan that **points where you aim**
 (the direction you drag onto the target), so a hero can charge or swoop any enemy
-within range.
+within range. Starting a charge needs **more than one action** — entering the
+charge spends **one action** (a swoop likewise needs **more than 2 fly points**).
 
 ![S-15 Charge wedge](screenshots/s-15-charge-wedge.png)
 

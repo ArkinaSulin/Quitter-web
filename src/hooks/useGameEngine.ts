@@ -976,16 +976,17 @@ export function useGameEngine({
 
   const charge = useCallback(
     async (unit: Unit): Promise<void> => {
-      // Charge! only locks the unit into charging state. No MP/action is deducted
-      // here — those are consumed normally during the subsequent charge move.
+      // Entering the charging state costs 1 action (the charge move then spends its
+      // own pool normally). No MP is deducted here — that is consumed by the move.
       const subSteps: SubStep[] = [
         {
           type: 'CHARGE',
-          description: `${unit.unitName} starts a charge`,
+          description: `${unit.unitName} spent an action to start a charge`,
           unitId: unit.id,
           changes: [
             { field: 'isCharging', from: false, to: true },
             { field: 'chargeDistance', from: 0, to: 0 },
+            { field: 'actionsAvailable', from: unit.actionsAvailable, to: unit.actionsAvailable - 1 },
           ],
         },
       ];
