@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Loose charge is a single fan aimed at the target (2026-10-11)
+**Files:** src/packages/primitives/{lib/hexGeometry.ts,tests/hexGeometry.test.ts}, src/packages/movement/{lib/moveCost.ts,tests/moveCost.test.ts}, src/components/ScenarioMap/{useMoveActions.ts,useOverlay.ts,useCombatActions.ts,ScenarioMap.tsx}, docs/dev/{00-universal-rules,07-movement-economy,08-combat,changelog}.md, docs/players/player-manual.md
+
+- A **loose** (facing-less) charger — hero / Scattered — now has a **single
+  front-arc fan aimed at the target hex**, replacing the six-ray asterisk (and the
+  earlier disk). New `primitives/hexGeometry.facingToward(origin, target)` returns
+  the vertex facing whose 60° front sector contains the target; the corridor is
+  then the existing front-wedge BFS for that facing. `computeChargeReachable`
+  drops its `loose` flag — callers pass the facing. The drag overlay aims at the
+  cursor hex (`ScenarioMap` `chargeAimFacing` → `OverlayState.chargeFacing`); the
+  move validation and `buildSwoopDropPlan` aim at the dropped target. Formed
+  chargers keep their own facing. Obstacle / ZoC / terrain rules unchanged (each
+  step is strictly outward, so "no curving").
+- Docs + tests updated. No migration. `tsc` clean, tests pass, build clean.
+
 ## Loose charge corridor is six straight rays, not a disk (2026-10-11)
 **Files:** src/packages/movement/{lib/moveCost.ts,tests/moveCost.test.ts}, docs/dev/{00-universal-rules,07-movement-economy,08-combat,changelog}.md, docs/players/player-manual.md
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { HEX_DIRS, hexDirIndex, frontArcIndices, rearArcIndices, arcOf, frontVertex, rearVertex, rotateLeft, rotateRight } from '@/packages/primitives/lib/hexGeometry';
+import { HEX_DIRS, hexDirIndex, frontArcIndices, rearArcIndices, arcOf, frontVertex, rearVertex, rotateLeft, rotateRight, facingToward } from '@/packages/primitives/lib/hexGeometry';
 import { Hex } from '@/types/gameProtocol';
 
 const h = (q: number, r: number): Hex => ({ q, r, s: -q - r });
@@ -41,5 +41,23 @@ describe('hexGeometry arcs', () => {
     expect(arcOf(h(0, 0), 0, h(0, 1))).toBe('rear');
     expect(arcOf(h(0, 0), 0, h(0, 0))).toBe('front');
     expect(arcOf(h(0, 0), 0, h(3, 0))).toBe('front');
+  });
+});
+
+describe('facingToward', () => {
+  it('returns the vertex facing whose 60° front sector contains the target', () => {
+    expect(facingToward(h(0, 0), h(1, -2))).toBe(0);   // north (inside facing 0)
+    expect(facingToward(h(0, 0), h(2, -3))).toBe(0);
+    expect(facingToward(h(0, 0), h(1, 1))).toBe(2);    // south-east
+    expect(facingToward(h(0, 0), h(-1, -1))).toBe(5);  // north-west
+    expect(facingToward(h(0, 0), h(-2, 1))).toBe(4);   // south-west
+  });
+
+  it("the returned facing's front arc contains the target's direction", () => {
+    for (const dir of HEX_DIRS) {
+      const target = h(dir.q * 3, dir.r * 3);
+      const f = facingToward(h(0, 0), target);
+      expect(frontArcIndices(f)).toContain(hexDirIndex(h(0, 0), h(dir.q, dir.r)));
+    }
   });
 });

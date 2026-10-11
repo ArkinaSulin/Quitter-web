@@ -7,7 +7,7 @@ import { parseSubSteps, CommandLogRow, SubStep } from '@/packages/infra';
 import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel, GroundEffect, EffectKind, hexDistance } from '@/types/gameProtocol';
 import { routRetreatPath, type RoutPath } from '@/packages/morale';
 import { findAttachedHero, heroRideMoveStep, heroDetachStep } from '@/packages/units';
-import { applyMoveCost } from '@/packages/movement';
+import { applyMoveCost, isLooseUnit } from '@/packages/movement';
 import { nextLowerFormation } from '@/packages/movement';
 import { parseWeapons, damageDiceCount, withDamageDiceCount } from '@/packages/units';
 import { canReactWithWeapon } from '@/packages/combat';
@@ -42,7 +42,7 @@ import { PingLayer } from './PingLayer';
 import { TEAM_COLORS, TEAMS, Team } from '@/packages/units';
 import { TeamChip } from '@/components/TokenRenderer/TeamChip';
 import { isUnitRouted, areHexesAdjacent, setHeroMoraleBoostEnabled as setHeroMoraleBoostAmbient, setZocPursuitEnabled as setZocPursuitAmbient } from '@/packages/morale';
-import { isHostile, allianceOf } from '@/packages/primitives';
+import { isHostile, allianceOf, facingToward } from '@/packages/primitives';
 import { canRally } from '@/packages/morale';
 import { computeVisibleHexes, computeFog, hexKey, DEFAULT_SIGHT_RADIUS, FOG_UNSEEN_GM_ALPHA, FOG_UNSEEN_PLAYER_ALPHA } from '@/packages/world';
 import { supabase } from '@/packages/infra/supabase';
@@ -2326,13 +2326,24 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (anyModalOpen) dismissTooltips();
   }, [anyModalOpen, dismissTooltips]);
 
+  // The aim facing for a loose (facing-less) charger's single front wedge — from
+  // its hex toward the cursor hex. Recomputed only when the aim crosses a 60°
+  // sector, so the heavier overlay below recomputes only then.
+  const chargeAimFacing = useMemo(() => {
+    if (!draggingUnitId || !hoveredHex) return null;
+    const u = units.find(x => x.id === draggingUnitId);
+    if (!u || !u.isCharging || !isLooseUnit(u, formationsMap[u.currentFormation])) return null;
+    if (u.hex.q === hoveredHex.q && u.hex.r === hoveredHex.r) return null;
+    return facingToward(u.hex, hoveredHex);
+  }, [draggingUnitId, hoveredHex, units, formationsMap]);
+
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
-    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, hoveredEdge: hoveredWallEdge });
+    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, hoveredEdge: hoveredWallEdge, chargeFacing: chargeAimFacing });
     if (retreatHoverHex) base[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(base);
-  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex]);
+  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex, chargeAimFacing]);
 
   // Center map on initial load
   useEffect(() => {

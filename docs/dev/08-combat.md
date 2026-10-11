@@ -264,7 +264,7 @@ The context menu offers a single charge entry, computed by `chargeStanceFor`
 
 - **Grounded**, charge-capable → **Charge!**: a **non-hero** needs `canCharge` +
   `canFormationCharge(form)`; a **hero** needs `canCharge` only (no formation arc —
-  its corridor is loose/all-direction, like its movement).
+  its single wedge is aimed at the target, below).
 - **Airborne** fly-capable → **Swoop!** (offered to units *and* heroes);
 - a hanging climber is airborne but can't fly → nothing.
 
@@ -273,10 +273,11 @@ the following move/drop decides ground-charge vs swoop, so they share the engine
 handler. The entry is gated by the scenario `mounted_charge_enabled` setting
 (shown as **"Charge and Swoop"**).
 - Moves only through the charge corridor (`07`): a formed unit's front wedge, or —
-  for a **loose** (facing-less) unit — one of its **six straight rays** (any
-  direction, no turning), so a flying hero swoops any target on a straight line and
-  a hero ground-charge may pick any of the six directions. A charge is stopped by
-  enemy kill zones (may end in one, never pass through). Distance accumulates.
+  for a **loose** (facing-less) unit — a **single front wedge aimed at the target
+  hex** (`facingToward(origin, target)` gives the vertex facing whose front sector
+  contains the target), so a hero charges/swoops in the direction you aim. A charge
+  is stopped by enemy kill zones (may end in one, never pass through). Distance
+  accumulates.
 - Attack at distance ≥ `charge_full_distance` (2) → **free double-damage
   attack**, then drop one organization level (`CHARGE_END`). Attack < 2 →
   premature confirm (normal attack, still drops org).

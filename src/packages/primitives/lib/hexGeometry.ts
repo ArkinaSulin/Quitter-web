@@ -47,6 +47,19 @@ export function rearVertex(facing: number): number {
   return (facing + 2) % 6;
 }
 
+/**
+ * The vertex FACING (0..5) whose 60° front sector contains `target`, seen from
+ * `origin` — i.e. the facing you'd need for `target` to be dead ahead. Uses the
+ * map bearing (front normal `-90 + facing·60` on screen, y down). Lets a loose
+ * (facing-less) charger aim its front wedge at a target hex.
+ */
+export function facingToward(origin: Hex, target: Hex): number {
+  const o = hexToPixel(origin, 1);
+  const t = hexToPixel(target, 1);
+  const bearing = (Math.atan2(t.y - o.y, t.x - o.x) * 180) / Math.PI; // -180..180
+  return ((Math.round((bearing + 90) / 60) % 6) + 6) % 6;
+}
+
 /** Rotate a facing 60° left (one `HEX_DIRS` step). */
 export function rotateLeft(facing: number): number {
   return (facing + 5) % 6;

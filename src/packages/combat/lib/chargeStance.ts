@@ -44,9 +44,9 @@ export function chargeStanceFor({ unit, airborne, form, chargeEnabled = true }: 
   if (unit.isCharging || isUnitRouted(unit) || (unit.actionsAvailable ?? 0) < 1) return null;
   if (airborne) return canFly(unit) ? 'swoop' : null;
   // A hero has no formation arc, so its ground charge is gated on the unit's
-  // `canCharge` alone (its corridor is loose → all-direction; see
-  // `movement/moveCost.computeChargeReachable`). Formed units additionally need
-  // `canFormationCharge`.
+  // `canCharge` alone (its corridor is a single wedge aimed at the target; see
+  // `movement/moveCost.computeChargeReachable` + `primitives/hexGeometry.facingToward`).
+  // Formed units additionally need `canFormationCharge`.
   if (unit.isHero) return unit.canCharge ? 'charge' : null;
   if (!unit.canCharge || !canFormationCharge(form)) return null;
   return 'charge';

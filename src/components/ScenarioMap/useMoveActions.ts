@@ -9,7 +9,7 @@ import { computeReachableMap, isMoveAffordable, isHeroMoveAffordable, heroMovePe
 import { isFormationChangeAffordable } from '@/packages/movement';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
 import { isUnitRouted } from '@/packages/morale';
-import { allianceOf, sameAlliance } from '@/packages/primitives';
+import { allianceOf, sameAlliance, facingToward } from '@/packages/primitives';
 import { isMeleeWeapon, isInAnyHostileKillZone, computeWeaponSwitchAc } from '@/packages/combat';
 import { modifierAmount } from '@/packages/effects';
 import { unitIgnoresClimb, unitHasFeatherFall } from '@/packages/effects';
@@ -592,15 +592,15 @@ export function useMoveActions(deps: MoveActionsDeps) {
       const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates);
       const maxMP = originMax;
       const mounted = !!unit.mountId || !!unit.mountName;
-      // A loose (facing-less) unit — e.g. a hero on a flying mount — charges by its
-      // loose rule (every direction); a formed unit keeps its front wedge.
+      // A loose (facing-less) unit — e.g. a hero — has no front of its own, so its
+      // wedge is aimed at the target hex; a formed unit keeps its own facing.
       const loose = isLooseUnit(unit, formationsMap[unit.currentFormation]);
+      const facing = loose ? facingToward(unit.hex, targetHex) : unit.facing;
       const chargeReach = computeChargeReachable(
-        unit, occupied, maxMP,
+        { hex: unit.hex, facing }, occupied, maxMP,
         flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted, waiveClimb }),
         flying ? undefined : makeChargeBlockedEdge(walls, { structures, templates: structureTemplates, zones: groundZones, orgLevel: getOrganizationLevel(unit.currentFormation), isMounted: mounted }),
         threatHexes,
-        loose,
       );
       const cost = chargeReach.get(`${targetHex.q},${targetHex.r}`);
       if (!cost) {

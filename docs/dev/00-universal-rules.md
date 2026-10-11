@@ -37,7 +37,7 @@ instead of re-deriving it.
 | Kill zone / ZoC (unified) | `src/packages/morale/lib/unitMorale.ts` → `imposesKillZone` (the one predicate) | `isInKillZone` (morale/point-blank/AGR), `computeThreatHexes` (overlay), `imposesZocOn` (disengage), `combat/meleeFallback`, `useCombatActions`. |
 | Threat reach (heroes) | `src/packages/morale/lib/unitMorale.ts` → `heroThreatAgainst` | `calcEnemyThreats`. |
 | Rear-threat ×2 | `getThreatMode` (`movement/formationRules`) via `calcEnemyThreats` | tooltip, morale checks. |
-| Charge / Swoop | `src/packages/combat/lib/chargeStance.ts` → `chargeStanceFor` (declare) + `isSwooping` (declared); corridor in `movement/moveCost.ts` → `computeChargeReachable` | `ContextMenu`, `useCombatActions`, `useOverlay`. Grounded Charge! needs `canCharge` (+ `canFormationCharge` for non-heroes); a **hero** needs `canCharge` only. A loose charger charges along one of the six straight rays (no turning); a charge is stopped by threat hexes (`07`). |
+| Charge / Swoop | `src/packages/combat/lib/chargeStance.ts` → `chargeStanceFor` (declare) + `isSwooping` (declared); corridor in `movement/moveCost.ts` → `computeChargeReachable` | `ContextMenu`, `useCombatActions`, `useOverlay`. Grounded Charge! needs `canCharge` (+ `canFormationCharge` for non-heroes); a **hero** needs `canCharge` only. A loose charger's single front wedge is aimed at the target (`facingToward`); a charge is stopped by threat hexes (`07`). |
 | Vertical flyer dominance | `imposesKillZone` + `computeThreatHexes` (with `isAirborne`/`verticalGapDown`) | overlay, pursue, retreat, combat. |
 
 ## Consolidation status

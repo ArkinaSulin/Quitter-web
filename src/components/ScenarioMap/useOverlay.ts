@@ -69,6 +69,9 @@ export interface OverlayState {
   zones?: GroundEffect[];
   /** Wall edge under the pointer while dragging (drag-to-attack hint). */
   hoveredEdge?: EdgeRef | null;
+  /** Aim facing for a loose (facing-less) charger's single front wedge (from the
+   *  cursor hex). Ignored for formed units, which use their own facing. */
+  chargeFacing?: number | null;
 }
 
 export function computeOverlayMap(state: OverlayState): Record<string, string> {
@@ -88,6 +91,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     templates,
     zones,
     hoveredEdge,
+    chargeFacing,
   } = state;
 
   const isMountedOf = (u: Unit) => !!u.mountId || !!u.mountName;
@@ -180,16 +184,16 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       const combined: Record<string, string> = {};
       const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');
       const effectiveMax = flying ? (draggedUnit.flySpeed ?? 0) : computeEffectiveMovement(draggedUnit, movementMult);
-      // A loose (facing-less) charger — e.g. a hero on a flying mount — charges by
-      // its loose rule (every direction); a formed charger keeps its front wedge.
-      // Either way the cone is stopped by enemy kill zones (never passed through).
+      // A loose (facing-less) charger — e.g. a hero — has no front of its own, so
+      // its wedge is aimed at the cursor hex (`chargeFacing`); a formed charger
+      // keeps its own facing. Either way the cone is stopped by enemy kill zones.
       const loose = isLooseUnit(draggedUnit, formationsMap[draggedUnit.currentFormation]);
+      const facing = loose && chargeFacing != null ? chargeFacing : draggedUnit.facing;
       const chargeReach = computeChargeReachable(
-        draggedUnit, occupied, effectiveMax,
+        { hex: draggedUnit.hex, facing }, occupied, effectiveMax,
         flying ? undefined : costOfHexFor(draggedUnit),
         flying ? undefined : chargeBlockedEdgeFor(draggedUnit),
         threatHexes,
-        loose,
       );
       for (const [key, cost] of Array.from(chargeReach.entries())) {
         combined[key] = cost >= getSetting('charge_full_distance', 2) ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';

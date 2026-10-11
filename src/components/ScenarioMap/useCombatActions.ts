@@ -16,7 +16,7 @@ import { getSetting } from '@/packages/infra';
 import { unitAttackCap } from '@/packages/combat';
 import { nextLowerFormation } from '@/packages/movement';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, isHeroMoraleBoostEnabled, isZocPursuitEnabled } from '@/packages/morale';
-import { isHostile, sameAlliance, allianceOf } from '@/packages/primitives';
+import { isHostile, sameAlliance, allianceOf, facingToward } from '@/packages/primitives';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isMeleeReachable, computeWeaponSwitchAc, attackKind, canWeaponAttack } from '@/packages/combat';
 import { meleeElevationFor, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo, isAirborne, computeMoveBudget, computeHeroMoveBudget, structureClimbPerStep10 } from '@/packages/movement';
 import { isSwooping } from '@/packages/combat';
@@ -1062,11 +1062,11 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const budgetUnit = moveBudgetUnit(attacker, 'fly');
     const occupied = computeOccupiedHexes(units, attacker.id, 1);
     const threatHexes = computeThreatHexes(units, attacker.id, alliances, formationsMap, structures, structureTemplates);
-    // A loose (facing-less) flyer — e.g. a hero on a flying mount — charges by its
-    // loose rule (every direction); a formed flyer keeps its front wedge. Either
-    // way the swoop is stopped by enemy kill zones.
+    // A loose (facing-less) flyer — e.g. a hero — has no front of its own, so its
+    // swoop wedge is aimed at the target hex; a formed flyer keeps its own facing.
     const loose = isLooseUnit(attacker, formationsMap[attacker.currentFormation]);
-    const reach = computeChargeReachable(attacker, occupied, maxMP, undefined, undefined, threatHexes, loose);
+    const facing = loose ? facingToward(attacker.hex, target.hex) : attacker.facing;
+    const reach = computeChargeReachable({ hex: attacker.hex, facing }, occupied, maxMP, undefined, undefined, threatHexes);
     const cost = reach.get(`${target.hex.q},${target.hex.r}`);
     if (cost == null) return null;
     if ((attacker.chargeDistance ?? 0) + cost < getSetting('charge_full_distance', 2)) return null;

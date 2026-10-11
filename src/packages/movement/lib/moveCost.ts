@@ -266,11 +266,11 @@ function key(q: number, r: number): string {
  * through — a charge is stopped by an enemy's kill zone. Returns hex key -> step cost
  * (1..maxHexes).
  *
- * Geometry: a charge is a STRAIGHT rush (no turning). A FORMED unit's charge is a
- * front-arc BFS wedge — facing 0 (front dirs (0,-1),(1,-1)) from the origin fans out
- * as 1 hex -> 2, 2 -> 3, etc. A LOOSE unit (hero / Scattered — no facing) has no
- * front, so `loose` charges along the union of the **six straight rays** from the
- * origin (any direction, but no curving).
+ * Geometry: a charge is a front-arc BFS wedge, **no turning** — from the origin into
+ * a fixed facing's 2 front hexes, then from each into its 2 front hexes, etc.
+ * (facing 0: 1 hex -> 2, 2 -> 3, …). Every step moves strictly outward from the
+ * origin. A loose (facing-less) unit passes `facing = facingToward(origin, target)`
+ * so its wedge points at the target; a formed unit passes its own `facing`.
  */
 export function computeChargeReachable(
   unit: { hex: Hex; facing: number },
@@ -280,34 +280,8 @@ export function computeChargeReachable(
   blockedEdge?: BlockedEdgeFn,
   /** ZoC / kill-zone hexes: enterable as a destination, never passed through. */
   threatHexes?: Set<string>,
-  /** Loose unit (no facing): charge along any of the six straight rays. */
-  loose = false,
 ): Map<string, number> {
   const result = new Map<string, number>();
-
-  // A loose (facing-less) charger charges in a straight line: the union of the six
-  // straight rays. Occupied / broken terrain / a threat hex stop the ray.
-  if (loose) {
-    for (const dir of HEX_DIRS) {
-      let pq = unit.hex.q;
-      let pr = unit.hex.r;
-      for (let step = 1; step <= maxHexes; step++) {
-        const nq = unit.hex.q + dir.q * step;
-        const nr = unit.hex.r + dir.r * step;
-        const k = key(nq, nr);
-        if (occupied.has(k)) break;
-        if (blockedEdge && blockedEdge(pq, pr, nq, nr)) break;
-        if (costOfHex && (costOfHex(nq, nr, pq, pr) ?? 1) > 1) break;
-        result.set(k, step);
-        // A charge entered a threat hex: it may end there but not charge onward.
-        if (threatHexes?.has(k)) break;
-        pq = nq;
-        pr = nr;
-      }
-    }
-    return result;
-  }
-
   const dirs = frontArcIndices(unit.facing);
   const visited = new Set<string>([key(unit.hex.q, unit.hex.r)]);
   const queue: { q: number; r: number; cost: number }[] = [

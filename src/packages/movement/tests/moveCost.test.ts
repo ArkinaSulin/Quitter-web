@@ -562,32 +562,6 @@ describe('computeChargeReachable — front-arc BFS wedge', () => {
     expect(map.has('0,-3')).toBe(false); // only reachable through (0,-2)
     expect(map.get('1,-3')).toBe(3); // still reachable via (1,-2)
   });
-
-  it('loose units charge along the six straight rays (no turning)', () => {
-    const map = computeChargeReachable({ hex: h(0, 0), facing: 0 }, new Set(), 2, undefined, undefined, undefined, true);
-    // Six neighbours at cost 1; six straight step-2 hexes at cost 2 (no curves).
-    expect(map.size).toBe(12);
-    for (const [q, r] of [[0, -1], [1, -1], [1, 0], [0, 1], [-1, 1], [-1, 0]]) {
-      expect(map.get(`${q},${r}`)).toBe(1);
-    }
-    for (const [q, r] of [[0, -2], [2, -2], [2, 0], [0, 2], [-2, 2], [-2, 0]]) {
-      expect(map.get(`${q},${r}`)).toBe(2);
-    }
-    // Curve-requiring hexes are NOT on any straight ray.
-    expect(map.has('1,-2')).toBe(false);
-    expect(map.has('1,1')).toBe(false);
-    expect(map.has('2,-1')).toBe(false);
-  });
-
-  it('loose straight rays are stopped by occupied / threat hexes', () => {
-    const occ = computeChargeReachable({ hex: h(0, 0), facing: 0 }, new Set(['0,-1']), 3, undefined, undefined, undefined, true);
-    expect(occ.has('0,-1')).toBe(false);
-    expect(occ.has('0,-2')).toBe(false); // ray blocked at the occupant
-    expect(occ.get('1,-1')).toBe(1); // the other rays survive
-    const thr = computeChargeReachable({ hex: h(0, 0), facing: 0 }, new Set(), 3, undefined, undefined, new Set(['0,-2']), true);
-    expect(thr.get('0,-2')).toBe(2); // enterable as the final step
-    expect(thr.has('0,-3')).toBe(false); // but never passed through
-  });
 });
 
 
