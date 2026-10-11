@@ -23,7 +23,10 @@ BEGIN
   END IF;
   FOR k, v IN SELECT key, value FROM jsonb_each(p_structures) LOOP
     hp := NULLIF(v->>'hp', '')::int;
-    SELECT t.max_hp INTO max_hp FROM map_structure_templates t WHERE t.id = v->>'templateId';
+    max_hp := NULL;
+    IF v ? 'templateId' AND (v->>'templateId') ~ '^[0-9a-fA-F-]{36}$' THEN
+      SELECT t.max_hp INTO max_hp FROM map_structure_templates t WHERE t.id = (v->>'templateId')::uuid;
+    END IF;
     IF hp IS NOT NULL AND hp <= 0 AND COALESCE(max_hp, 0) > 0 THEN
       CONTINUE; -- destroyed, non-decorative → drop
     END IF;
