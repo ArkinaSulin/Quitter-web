@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## Combat message order + clearer attach/ride blocker (2026-10-11)
+**Files:** src/components/ScenarioMap/useCombatActions.ts, docs/dev/{08-combat,changelog}.md
+
+- **Retaliation message order.** `performAttack` now emits the retaliation block
+  as `{retaliator} retaliates` → volley (retaliator's hero joiner, then host) →
+  the receiving hero's `took …` line **last**, mirroring the first-strike block.
+  Previously the hero "took" line was printed BEFORE the retaliator's own volley,
+  so the block read `retaliates → took → volley`. String assembly only — no
+  sub-step / command-log / undo / replay change. Documented in `08-combat.md`.
+- **Clearer attach/ride blocker.** Dragging a same-team hero onto a same-team unit
+  that cannot be attached/ridden now reports the real reason — mount state first
+  (`"X is already mounted"`, `"Y is not large enough to ride"`, …) — instead of
+  the misleading `"cannot attack … — same alliance"`. New `describeAttachBlocker`
+  in `useCombatActions`; the `canAttach` gate, `handleAttachHero` and the context
+  menu are unchanged, and healing a friendly is unaffected (verdict `'ok'`).
+- No migration. `tsc` clean, tests pass, build clean.
+
 ## Charging token silhouettes — formed chevron / loose + hero triangle (2026-10-11)
 **Files:** src/packages/units/{lib/tokenUtils.ts,tests/tokenUtils.test.ts}, src/components/TokenRenderer/drawToken.ts, docs/dev/{15-token-rendering,changelog}.md, docs/players/player-manual.md
 

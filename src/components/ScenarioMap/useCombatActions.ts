@@ -51,6 +51,26 @@ function auraEffects(f: StructureAuraFlags, unitName: string): UnitEffect[] {
   return out;
 }
 
+/**
+ * Why a same-team HERO dropped on a same-team unit could not attach/ride: a
+ * clear reason instead of the misleading friendly-fire "same alliance" message.
+ * Mount state is checked FIRST (the reported case is an already-mounted hero
+ * dragged onto an eligible hero-mount). Mirrors `handleAttachHero`'s gate order.
+ */
+function describeAttachBlocker(hero: Unit, target: Unit, targetHasHero: boolean): string {
+  if (hero.mountId || hero.mountName) return `${hero.unitName} is already mounted`;
+  if (hero.attachedToUnitId) return `${hero.unitName} is already attached`;
+  if (target.attachedToUnitId) return `${target.unitName} is already part of a mounted pair`;
+  if (target.isHero) {
+    if (target.mountId || target.mountName) return `${target.unitName} is already mounted`;
+    if ((target.sizeCategory || 100) <= (hero.sizeCategory || 100)) return `${target.unitName} is not large enough to ride`;
+  }
+  if (targetHasHero) return `${target.unitName} already has a hero attached`;
+  if ((hero.sizeCategory || 100) > getSetting('hero_attach_max_size', 200)) return `${hero.unitName} is too large to attach`;
+  if ((hero.elevation ?? 0) !== (target.elevation ?? 0)) return `${hero.unitName} and ${target.unitName} are at different elevations`;
+  return `${hero.unitName} cannot attach to ${target.unitName}`;
+}
+
 /** A resolved swoop drop: the flyer charge-moves onto the ground target's hex,
  *  dives to melee range, and delivers the free melee charge attack atomically. */
 export interface SwoopDropPlan {
@@ -723,7 +743,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
         ? formatStrikeDetail(retJoiner, attackerHeroWeapon!.attackBonus + formationAtkMod, retIsAttacker ? targetAcCovered : attackerAcCovered, attackerHeroWeapon!.damageDice, isChargingAttack, retJoinerDamage)
         : '';
       // The hero on the receiving side of the retaliation (front-attached). Its
-      // "took" line is placed BEFORE the retaliator's own volley lines.
+      // "took" line is placed AFTER the retaliator's own volley lines (matching the
+      // first-strike block: action → volley → the hero that took it).
       const retaliationHeroHostId = effectiveOutcome.strikerFirst === 'attacker' ? attacker.id : target.id;
       const retaliationHeroUnit = units.find(u => u.attachedToUnitId === retaliationHeroHostId && !u.isDeleted);
       let heroTookLine = '';
@@ -758,17 +779,18 @@ export function useCombatActions(deps: CombatActionsDeps) {
           heroDamage,
         )}${retKilledSuffix}`;
       }
-      // One clause per line: retaliates → the hero that took it → the volley.
+      // One clause per line, mirroring the first strike: retaliates → the volley
+      // (retaliator's hero joiner, then host) → the hero that TOOK it last.
       desc += `\n${retaliator.unitName} retaliates`;
-      if (heroTookLine) desc += `\n${heroTookLine}`;
       if (retJoinerActive) {
         desc += `\n${attackerHeroUnit!.unitName}: ${retJoiner.length} attacks${heroRollNote}, ${retJoinerHits} hits${retJoinerCrits > 0 ? `, ${retJoinerCrits} critical` : ''}, ${retJoinerDamage} damage`;
       }
       desc += `\n${retaliator.unitName}: ${retaliationUnitCount} attacks${retaliationCountNote}${retaliationRollNote}, ${retaliationUnitHits} hits${retaliationUnitCrits > 0 ? `, ${retaliationUnitCrits} critical` : ''}, ${retaliationHostDamage} damage (${troopsKilledRet} troops)`;
+      if (heroTookLine) desc += `\n${heroTookLine}`;
       msgDesc += `\n${retaliator.unitName} retaliates`;
-      if (heroTookVerbose) msgDesc += `\n${heroTookVerbose}`;
       if (retJoinerActive) msgDesc += `\n${attackerHeroUnit!.unitName}: ${retJoiner.length} attacks${heroRollNote}${retJoinerDice}`;
       msgDesc += `\n${retaliator.unitName}: ${retaliationUnitCount} attacks${retaliationCountNote}${retaliationRollNote}${retaliationDice} (${troopsKilledRet} troops)`;
+      if (heroTookVerbose) msgDesc += `\n${heroTookVerbose}`;
     } else if (isRear) {
       desc += `\n${target.unitName} caught from behind — no retaliation`;
       msgDesc += `\n${target.unitName} caught from behind — no retaliation`;
@@ -1291,6 +1313,14 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // anti-intuitive and near-unused; the DM has explicit tools for them).
     const verdict = validateTargetAlliance(attackerGroup, targetGroup, weapon);
     if (verdict === 'friendly-fire') {
+      // A same-team HERO dropped on a same-team unit is an attach/ride attempt,
+      // not an attack — report the real blocker (mount state first) instead of
+      // the misleading friendly-fire message. Healing is verdict 'ok', so a
+      // mounted hero can still heal a friendly (never reaches here).
+      if (attacker.isHero && attacker.team === target.team) {
+        addMessage(describeAttachBlocker(attacker, target, targetHasHero));
+        return;
+      }
       addMessage(`${attacker.unitName} cannot attack ${target.unitName} — same alliance`);
       return;
     }

@@ -211,6 +211,11 @@ the hero's AC/troop HP, the rest against the unit (`executeSplitAttacks`). A
 retaliation and to defender-first-strike paths against an attached attacker
 hero. Outcomes expose `*HeroDamage` + `*HeroAttacks` for the messages.
 
+Each side's message block reads **action → volley → the hero that took it**:
+`{striker} strikes first`, then the hero joiner and host volleys, then the
+receiving hero's `took …` line; the retaliation mirrors it (`{retaliator}
+retaliates` → its hero joiner + host volleys → the hero that took the counter).
+
 The `unit_melee_hero_cap` (0.3) troop cap — "only 30% of troops can reach a
 hero" — applies **only to a LONE hero** (attacker or defender is the hero
 itself). For a **unit with an attached hero**, the 30% split already routes a
