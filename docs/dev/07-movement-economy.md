@@ -88,6 +88,14 @@ Worked example (base move 3): Scattered (eff 4) → Open Order costs
 Phalanx (eff 1) → Scattered (any steps down) = 1. Free for heroes and under
 free move; a Shield-Wall change is blocked while wielding a two-handed weapon.
 
+**The +1 org-level cap** (a unit may rise at most **one** organization level per
+change) lives in `movement/formationRules.canAdoptFormation(current, target,
+unrestricted)` — the single source of truth shared by the context menu and the
+archer-reaction formation picker/action. **Free move passes `unrestricted = true`
+and waives the cap**, so any known formation may be adopted (drops were always
+allowed). Absolute hex/zone `max_org_level_allowed` caps are enforced separately
+(`standingMaxOrg`) and are **not** waived by free move.
+
 An **airborne flyer** pays the change from its **fly pool** (`flyMax` = raw
 `flySpeed`, and the pool is `flySpeedAvailable`) instead of ground MP — e.g. a
 flyer at 5/8 FP with 0 ground MP can still change formation for 4 FP. An elevated

@@ -22,6 +22,18 @@ export function isLooseUnit(unit: Pick<Unit, 'isHero'>, form?: Formation | null)
 }
 
 /**
+ * The relative organization-level rule for adopting a formation in play: a unit
+ * may rise **at most one org level** above its current formation; drops/flat
+ * changes are always allowed. `unrestricted` (free move) waives the cap so any
+ * known formation may be adopted. Absolute hex/zone `max_org_level_allowed`
+ * caps are enforced separately (`standingMaxOrg`) and are unaffected.
+ */
+export function canAdoptFormation(currentFormation: string, targetFormation: string, unrestricted = false): boolean {
+  if (unrestricted) return true;
+  return getOrganizationLevel(targetFormation) <= getOrganizationLevel(currentFormation) + 1;
+}
+
+/**
  * Pass-through eligibility: units that may move THROUGH (and be moved through
  * by) other pass-eligible friendly units — a formation at **org level ≤ 1**
  * (Open Order / Scattered / Routed), or a **hero of Large size or smaller**

@@ -6,7 +6,7 @@ import { Unit, getOrganizationLevel, Formation } from '@/types/gameProtocol';
 import { areHexesAdjacent, isUnitRouted } from '@/packages/morale';
 import { parseWeapons, formatWeaponDisplay } from '@/packages/units';
 import { chargeStanceFor } from '@/packages/combat';
-import { canFly } from '@/packages/movement';
+import { canFly, canAdoptFormation } from '@/packages/movement';
 import { getSetting } from '@/packages/infra';
 import { TEAM_COLORS } from '@/packages/units';
 import { Floating } from './Floating';
@@ -127,8 +127,8 @@ export function ContextMenu({
   const availableFormations = unit.formationAvailability || ['Open Order', 'Close Order', 'Phalanx', 'Shield Wall', 'Scattered'];
 
   // Order formations by organization level, higher on top. Disable any formation
-  // more than +1 org level above the current one (recomputed on every render).
-  const currentOrgLevel = getOrganizationLevel(unit.currentFormation);
+  // more than +1 org level above the current one (recomputed on every render);
+  // free move waives that cap so any known formation may be adopted.
   const activeWeaponIsTwoHanded = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0]?.isTwoHanded || false;
   const formationOptions = [
     { value: 'Open Order' },
@@ -141,7 +141,7 @@ export function ContextMenu({
     .sort((a, b) => getOrganizationLevel(b.value) - getOrganizationLevel(a.value))
     .map(opt => ({
       value: opt.value,
-      disabled: getOrganizationLevel(opt.value) > currentOrgLevel + 1 || (opt.value === 'Shield Wall' && (activeWeaponIsTwoHanded || !unit.isShielded)),
+      disabled: !canAdoptFormation(unit.currentFormation, opt.value, freeMove) || (opt.value === 'Shield Wall' && (activeWeaponIsTwoHanded || !unit.isShielded)),
     }));
 
   const canAttach = unit.isHero && (unit.sizeCategory || 100) <= getSetting('hero_attach_max_size', 200) && !unit.attachedToUnitId && !!onAttachHero;

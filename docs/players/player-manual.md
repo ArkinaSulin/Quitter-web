@@ -551,10 +551,11 @@ Open Order effective max = 4  →  leftover MP is rescaled (floor, ×4/6)
 ```
 
 **Formation change rules:** you can drop any amount, rise at most **one
-organization level per change** (org levels in Appendix C), Phalanx and Shield
-Wall can't charge, Shield Wall is unavailable while you wield a two-handed
-weapon, and a Routed unit may **rally** by changing to a formed formation when
-its morale is above 0 (its Routed state clears).
+organization level per change** (org levels in Appendix C; **free move waives
+this cap** so any known formation may be adopted), Phalanx and Shield Wall
+can't charge, Shield Wall is unavailable while you wield a two-handed weapon,
+and a Routed unit may **rally** by changing to a formed formation when its
+morale is above 0 (its Routed state clears).
 
 ### Charge!
 
@@ -1358,7 +1359,8 @@ at true cost + red message.
 
 Org levels: **0** Routed · Scattered · Hero — **1** Open Order — **2** Close
 Order — **3** Phalanx · Shield Wall. Change cost = half your current pool
-(min 1 MP), leftover rescaled; rise at most +1 level per change.
+(min 1 MP), leftover rescaled; rise at most +1 level per change (**free move
+waives the +1 cap — any known formation may be adopted**).
 
 | Formation | Move | Row cap | Melee at | Ranged at | Charge | Blocks move | vs it: melee / ranged |
 |---|---|---|---|---|---|---|---|

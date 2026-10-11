@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, SizeCategory, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
 import { resolveCombatSequence, wallCoverAgainst } from '@/packages/combat';
-import { applyFormationChange, formationOrgLevels } from '@/packages/movement';
+import { applyFormationChange, formationOrgLevels, canAdoptFormation } from '@/packages/movement';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement, effectiveAc, heroicCapacityBonus } from '@/packages/units';
 import { attackDirection, arcOfTarget } from '@/packages/primitives';
 import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers, canReactWithWeapon } from '@/packages/combat';
@@ -40,6 +40,7 @@ interface ReactionActionsDeps {
   formationsMap: Record<string, Formation>;
   sizeCategories: SizeCategory[];
   archerReactionEnabled: boolean;
+  freeMove: boolean;
   execute: ExecuteFn;
   addMessage: (msg: string, verboseText?: string) => void;
   addError: (msg: string, verboseText?: string) => void;
@@ -68,6 +69,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     formationsMap,
     sizeCategories,
     archerReactionEnabled,
+    freeMove,
     execute,
     addMessage,
     addError,
@@ -288,7 +290,8 @@ export function useReactionActions(deps: ReactionActionsDeps) {
 
   const performReactionFormation = useCallback(async (archer: Unit, formation: string) => {
     // Same limits as the normal formation change: no two-handed Shield Wall, and
-    // at most one organization level above the current formation.
+    // at most one organization level above the current formation (waived under
+    // free move, matching the context menu).
     if (formation === 'Shield Wall') {
       if (!archer.isShielded) {
         addMessage(`${archer.unitName} cannot form Shield Wall without a shield`);
@@ -302,7 +305,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
         return;
       }
     }
-    if (getOrganizationLevel(formation) > getOrganizationLevel(archer.currentFormation) + 1) {
+    if (!canAdoptFormation(archer.currentFormation, formation, freeMove)) {
       addMessage(`${archer.unitName} cannot switch to ${formation} — more than one organization level above the current formation`);
       return;
     }
@@ -335,7 +338,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
         changes,
       },
     ], `${archer.unitName} changed formation to ${formation} (reaction)`);
-  }, [execute, formationsMap, addMessage]);
+  }, [execute, formationsMap, addMessage, freeMove]);
 
   /**
    * End the current reaction session. Any sub-action already set

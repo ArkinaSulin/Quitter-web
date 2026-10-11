@@ -1,5 +1,18 @@
 # QuiTTER Changelog
 
+## Free move waives the +1 formation org-level cap (2026-10-11)
+**Files:** src/packages/movement/lib/{formationRules.ts,tests/formationRules.test.ts}, src/components/ScenarioMap/{ContextMenu.tsx,ScenarioMap.tsx,useReactionActions.ts}, docs/players/player-manual.md, docs/dev/{07-movement-economy,changelog}.md
+
+- Under **free move** a unit may now adopt **any known formation** — the relative
+  "rise at most **one** organization level per change" rule is waived (drops were
+  always allowed). The absolute `max_org_level_allowed` hex/zone cap is **not**
+  waived (still enforced by `standingMaxOrg` at change time).
+- The rule now lives once in `movement/formationRules.canAdoptFormation(current,
+  target, unrestricted)`, replacing three duplicated copies (context menu, the
+  archer-reaction formation picker, and `useReactionActions.performReactionFormation`).
+  `freeMove` is threaded into `useReactionActions` so reaction formation changes
+  follow the same rule. `tsc` clean, tests pass. No migration.
+
 ## Air mode cancels a rider's offset; filter modifiers keep the tooltip (2026-10-11)
 **Files:** src/components/ScenarioMap/{useCanvasDraw.ts,ScenarioMap.tsx}, docs/dev/{15-token-rendering,18-map-structures,19-ui-panels-and-floating,changelog}.md
 

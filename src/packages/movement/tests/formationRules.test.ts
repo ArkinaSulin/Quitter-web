@@ -13,6 +13,7 @@ import {
   isLooseFormation,
   isLooseUnit,
   isPassThroughUnit,
+  canAdoptFormation,
 } from '@/packages/movement/lib/formationRules';
 import { Formation } from '@/types/gameProtocol';
 
@@ -141,5 +142,19 @@ describe('formationRules', () => {
     expect(isPassThroughUnit({ isHero: false, sizeCategory: 100 }, { name: 'Phalanx', organization_level: 3 } as Formation)).toBe(false);
     expect(isPassThroughUnit({ isHero: true, sizeCategory: 200 }, undefined)).toBe(true);
     expect(isPassThroughUnit({ isHero: true, sizeCategory: 300 }, undefined)).toBe(false);
+  });
+
+  it('canAdoptFormation: rise at most one org level, unless unrestricted', () => {
+    // Open Order (1) may rise to Close Order (2) but not Phalanx/Shield Wall (3).
+    expect(canAdoptFormation('Open Order', 'Close Order')).toBe(true);
+    expect(canAdoptFormation('Open Order', 'Phalanx')).toBe(false);
+    expect(canAdoptFormation('Open Order', 'Shield Wall')).toBe(false);
+    // Drops and flat changes are always allowed.
+    expect(canAdoptFormation('Phalanx', 'Open Order')).toBe(true);
+    expect(canAdoptFormation('Close Order', 'Close Order')).toBe(true);
+    expect(canAdoptFormation('Scattered', 'Open Order')).toBe(true);
+    // Free move (unrestricted) waives the relative cap entirely.
+    expect(canAdoptFormation('Open Order', 'Phalanx', true)).toBe(true);
+    expect(canAdoptFormation('Scattered', 'Shield Wall', true)).toBe(true);
   });
 });

@@ -7,7 +7,7 @@ import { parseSubSteps, CommandLogRow, SubStep } from '@/packages/infra';
 import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel, GroundEffect, EffectKind, hexDistance } from '@/types/gameProtocol';
 import { routRetreatPath, type RoutPath } from '@/packages/morale';
 import { findAttachedHero, heroRideMoveStep, heroDetachStep } from '@/packages/units';
-import { applyMoveCost, isLooseUnit } from '@/packages/movement';
+import { applyMoveCost, isLooseUnit, canAdoptFormation } from '@/packages/movement';
 import { nextLowerFormation } from '@/packages/movement';
 import { parseWeapons, damageDiceCount, withDamageDiceCount } from '@/packages/units';
 import { canReactWithWeapon } from '@/packages/combat';
@@ -885,6 +885,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     formationsMap,
     sizeCategories,
     archerReactionEnabled,
+    freeMove,
     execute,
     addMessage,
     addError,
@@ -3368,11 +3369,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       {/* Reaction: formation picker (reached by right-clicking the acting archer
           in locked reaction mode). Follows the same formation-change limits as
           the context menu: only formations in the unit's availability, at most
-          one org level above the current one, and no Shield Wall with a
-          two-handed weapon. Clicking a formation applies AND closes the modal. */}
+          one org level above the current one (waived under free move), and no
+          Shield Wall with a two-handed weapon. Clicking a formation applies AND
+          closes the modal. */}
       {reactionFormationPicker && (() => {
         const archer = reactionFormationPicker;
-        const currentOrgLevel = getOrganizationLevel(archer.currentFormation);
         const activeWeaponIsTwoHanded = parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0]?.isTwoHanded || false;
         const available = archer.formationAvailability && archer.formationAvailability.length > 0
           ? archer.formationAvailability
@@ -3383,7 +3384,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           .sort((a, b) => getOrganizationLevel(b) - getOrganizationLevel(a) || a.localeCompare(b))
           .map(name => ({
             name,
-            disabled: getOrganizationLevel(name) > currentOrgLevel + 1 || (name === 'Shield Wall' && (activeWeaponIsTwoHanded || !archer.isShielded)),
+            disabled: !canAdoptFormation(archer.currentFormation, name, freeMove) || (name === 'Shield Wall' && (activeWeaponIsTwoHanded || !archer.isShielded)),
           }));
         return (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
