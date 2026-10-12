@@ -10,7 +10,7 @@ import { resolveCombatSequence, wallCoverAgainst } from '@/packages/combat';
 import { applyFormationChange, formationOrgLevels, canAdoptFormation } from '@/packages/movement';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement, effectiveAc, heroicCapacityBonus } from '@/packages/units';
 import { attackDirection, arcOfTarget } from '@/packages/primitives';
-import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers, canReactWithWeapon } from '@/packages/combat';
+import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers, canReactWithWeapon, defaultAttackWeaponIndex } from '@/packages/combat';
 import { canRangedTarget } from '@/packages/movement';
 import { hasLineOfSight } from '@/packages/combat';
 import { parseWeapons, damageDiceCount, withDamageDiceCount, Weapon } from '@/packages/units';
@@ -509,7 +509,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     setPendingReactionChoice({
       archer,
       mover,
-      weaponIndex: first.i,
+      weaponIndex: defaultAttackWeaponIndex(archer.activeWeaponIndex ?? 0, usable.map(u => u.i)),
       damageDiceCount: damageDiceCount(weapons[first.i]?.damageDice ?? ''),
     });
   }, [reactionMode, units, addMessage, groundZones, formationsMap, fireReactionWeapon]);

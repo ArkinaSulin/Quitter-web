@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## Attack pickers default to the active weapon; stale free move resets on reopen (2026-10-11)
+**Files:** src/packages/combat/{index.ts,lib/weaponChoice.ts,tests/weaponChoice.test.ts}, src/components/ScenarioMap/{useCombatActions.ts,useReactionActions.ts,useMoveActions.ts,ScenarioMap.tsx}, docs/players/player-manual.md, docs/dev/{06-turn-system,changelog}.md
+
+- **Attack pickers now default to the active weapon.** New pure helper
+  `combat/weaponChoice.defaultAttackWeaponIndex(activeIndex, usableIndices)` —
+  the active weapon when it can reach the target, else the first reachable weapon.
+  Wired into all three `WeaponSelect` modals: the combined weapon + mount/rider
+  picker (`offerAttackChoice`), the archer-reaction picker (`pendingReactionChoice`),
+  and the flyer-drop elevation modal (`beginFlyerDrop`). Previously the first two
+  defaulted to the first *usable* weapon, ignoring the unit's selected weapon.
+- **Free move no longer sticks across a reopen.** On scenario load (turn-state
+  effect), a `free_move = true` left behind on a real turn (`turn_number > 0`) is
+  reset OFF and **persisted** (`updateScenarioField`), so it can't linger and a
+  later realtime full-row `scenarios` UPDATE can't resurrect it. Turn 0 keeps the
+  stored value (permanent free-play default). Skipped in replay. `tsc` clean,
+  tests pass, build clean. No migration.
+
 ## Free move waives the +1 formation org-level cap (2026-10-11)
 **Files:** src/packages/movement/lib/{formationRules.ts,tests/formationRules.test.ts}, src/components/ScenarioMap/{ContextMenu.tsx,ScenarioMap.tsx,useReactionActions.ts}, docs/players/player-manual.md, docs/dev/{07-movement-economy,changelog}.md
 

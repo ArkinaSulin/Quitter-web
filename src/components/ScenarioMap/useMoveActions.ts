@@ -10,9 +10,9 @@ import { isFormationChangeAffordable } from '@/packages/movement';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
 import { isUnitRouted } from '@/packages/morale';
 import { allianceOf, sameAlliance, facingToward } from '@/packages/primitives';
-import { isMeleeWeapon, isInAnyHostileKillZone, computeWeaponSwitchAc } from '@/packages/combat';
+import { isMeleeWeapon, isInAnyHostileKillZone, computeWeaponSwitchAc, canWeaponAttack, defaultAttackWeaponIndex } from '@/packages/combat';
 import { modifierAmount } from '@/packages/effects';
-import { unitIgnoresClimb, unitHasFeatherFall } from '@/packages/effects';
+import { unitIgnoresClimb, unitHasFeatherFall, rangeBonusAt } from '@/packages/effects';
 import { areHexesAdjacent } from '@/packages/morale';
 import { WITHDRAW_ACTION_COST } from '@/packages/movement';
 import { parseWeapons, damageDiceCount } from '@/packages/units';
@@ -1073,17 +1073,22 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const range = elevationSliderRange(unit.elevation ?? 0, reach.cost, true);
     const originSurface = structureSurfaceAt(unit.hex, structures, structureTemplates);
     const endSurface = structureSurfaceAt(occupant.hex, structures, structureTemplates);
+    // Default the attack picker to the ACTIVE weapon when it can reach the
+    // occupant, else the first reachable weapon (mirrors the other pickers).
+    const weapons = parseWeapons(unit.weaponString || '');
+    const rangeBonus = rangeBonusAt(unit, groundZones);
+    const usableIndices = weapons.map((_, i) => i).filter(i => canWeaponAttack(weapons[i], unit, occupant, rangeBonus, structures, structureTemplates));
     setPendingElevation({
       unit, targetHex: occupant.hex, cost: reach.cost, maxMP: reach.maxMP,
       attachedHero: reach.attachedHero, heroMaxMP: reach.heroMaxMP, breakToFormation: undefined,
       range, originAir: isAirborne(unit.elevation, originSurface), originSurface, endSurface, occupant,
       canSwoop: opts.canSwoop, isHostile: opts.isHostile,
-      weaponIndex: unit.activeWeaponIndex ?? 0,
+      weaponIndex: defaultAttackWeaponIndex(unit.activeWeaponIndex ?? 0, usableIndices),
       damageDiceCount: damageDiceCount(parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0]?.damageDice ?? ''),
       mainTarget: 'rider',
     });
     return true;
-  }, [flyerOccupyReach, addMessage, structures, structureTemplates]);
+  }, [flyerOccupyReach, addMessage, structures, structureTemplates, groundZones]);
 
   const confirmElevation = useCallback((newElevation: number) => {
     const p = pendingElevation;

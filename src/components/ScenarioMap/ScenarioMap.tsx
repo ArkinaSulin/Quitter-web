@@ -2660,9 +2660,19 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       .single()
       .then(({ data, error }) => {
         if (cancelled || error || !data) return;
+        const loadedTurn = data.turn_number || 0;
         setCurrentTurnAlliance(data.current_turn_alliance || null);
-        setTurnNumber(data.turn_number || 0);
-        setFreeMove(data.free_move ?? false);
+        setTurnNumber(loadedTurn);
+        // Free move is a permanent default only in Turn 0 free play. A leftover ON
+        // from a mid-game quick session resets OFF when the scenario is (re)opened
+        // so it can't persist indefinitely; persisted so every client agrees (a
+        // realtime full-row update would otherwise resurrect it).
+        if (!replayMode && loadedTurn > 0 && (data.free_move ?? false)) {
+          setFreeMove(false);
+          void updateScenarioField(scenarioId, { free_move: false });
+        } else {
+          setFreeMove(data.free_move ?? false);
+        }
         setArcherReactionEnabled(data.archer_reaction_enabled ?? false);
         setMountedChargeEnabled(data.mounted_charge_enabled ?? true);
         setVerboseCombat(data.verbose_combat ?? false);
@@ -2673,7 +2683,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setZocPursuitEnabled(data.zoc_pursuit_enabled ?? true);
       });
     return () => { cancelled = true; };
-  }, [scenarioId]);
+  }, [scenarioId, replayMode, updateScenarioField]);
 
   useEffect(() => {
     const channel = supabase

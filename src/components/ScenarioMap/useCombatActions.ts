@@ -17,7 +17,7 @@ import { unitAttackCap } from '@/packages/combat';
 import { nextLowerFormation } from '@/packages/movement';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout, computeThreatRating, isInKillZone, isHeroMoraleBoostEnabled, isZocPursuitEnabled } from '@/packages/morale';
 import { isHostile, sameAlliance, allianceOf, facingToward } from '@/packages/primitives';
-import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isMeleeReachable, computeWeaponSwitchAc, attackKind, canWeaponAttack } from '@/packages/combat';
+import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isMeleeReachable, computeWeaponSwitchAc, attackKind, canWeaponAttack, defaultAttackWeaponIndex } from '@/packages/combat';
 import { meleeElevationFor, flyingFormationCap, flyMax, moveBudgetUnit, parseClimbTo, isAirborne, computeMoveBudget, computeHeroMoveBudget, structureClimbPerStep10 } from '@/packages/movement';
 import { isSwooping } from '@/packages/combat';
 import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable, isLooseUnit } from '@/packages/movement';
@@ -1526,7 +1526,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const usable = weapons.map((w, i) => ({ w, i })).filter(({ w }) => canWeaponAttack(w, attacker, target, bonus, structures, structureTemplates));
     const rider = units.find(u => u.attachedToUnitId === targetId && !u.isDeleted && u.attachedPosition === 'rider') ?? null;
     if (usable.length <= 1 && !rider) return false;
-    const weaponIndex = usable[0]?.i ?? (attacker.activeWeaponIndex ?? 0);
+    const weaponIndex = defaultAttackWeaponIndex(attacker.activeWeaponIndex ?? 0, usable.map(u => u.i));
     setPendingAttackChoice({
       attacker,
       target,

@@ -22,6 +22,12 @@
   `current_turn_alliance = friendly`, `turn_number = 1`, `free_move = false`
   (all in one `END_TURN` SCENARIO step so undo restores free play). If the DM
   re-enables free move manually later, ending from there behaves the same.
+- **Free move never survives a reopen outside Turn 0.** On scenario load
+  (`ScenarioMap` turn-state effect) a `free_move = true` left behind on a real
+  turn (`turn_number > 0`) is reset OFF and **persisted** (`updateScenarioField`
+  `{ free_move: false }`) so it can't linger indefinitely — and so a later
+  realtime full-row `scenarios` UPDATE can't resurrect it. At Turn 0 the stored
+  value is kept (the permanent free-play default).
 
 ## The End Turn button
 

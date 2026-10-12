@@ -1274,7 +1274,8 @@ unit's real MP/actions.
 
 - **Turn {n}** / **End Turn (group)** in the top bar; the GM can end any
   alliance's turn.
-- **Free Move** toggle re-opens free placement any time.
+- **Free Move** toggle re-opens free placement any time (it resets **off** when
+  the scenario is reopened, unless it is still Turn 0 free play).
 - **Double-click a unit** to edit its stats live (HP, morale, formation,
   weapons, image…). Edits are undoable commands and broadcast a **red**
   message to everyone.
