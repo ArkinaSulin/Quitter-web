@@ -4,6 +4,7 @@ import { Team, TEAM_COLORS, TEAM_SHAPES, getDotColor, generateDotPositions, getF
 import { ALLIANCE_COLORS, AllianceGroup } from '@/types/gameProtocol';
 import { isUnitRouted } from '@/packages/morale';
 import { getHeroSquareSize } from '@/packages/units';
+import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
 
 const imageCache = new Map<string, HTMLImageElement>();
 
@@ -155,6 +156,9 @@ export interface DrawTokenOptions {
   isAttached?: boolean;
   formationsMap?: Record<string, Formation>;
   sizeCategories?: SizeCategory[];
+  /** Active movement pool for the `actions:MP` badge: ground MP normally, or the
+   *  fly pool (FP) while airborne. Defaults to ground MP when omitted. */
+  movePool?: { value: number; max: number };
 }
 
 export function drawToken(options: DrawTokenOptions): void {
@@ -171,6 +175,14 @@ export function drawToken(options: DrawTokenOptions): void {
     formationsMap,
     sizeCategories,
   } = options;
+
+  // Active movement pool for the `actions:MP` badge: the caller (useCanvasDraw)
+  // passes ground MP or the fly pool (FP) while airborne; otherwise default to
+  // ground MP computed from the formation multiplier.
+  const movePool = options.movePool ?? {
+    value: unit.movementPointsAvailable ?? 0,
+    max: computeEffectiveMovement(unit, getFormationMultiplier(formationsMap ?? {}, unit.currentFormation, 'movement_multiplier')),
+  };
 
   const team = unit.team || 'black';
   const teamColor = TEAM_COLORS[team as Team] || '#333333';
@@ -217,7 +229,7 @@ export function drawToken(options: DrawTokenOptions): void {
   // ---- Hero square token ----
   if (unit.isHero) {
     if (unit.currentUnitHp <= 0) ctx.filter = 'grayscale(100%)';
-    drawHeroSquareToken(ctx, x, y, width, height, unit, heroImage, team, shape, allianceColor, options.isAttached || false);
+    drawHeroSquareToken(ctx, x, y, width, height, unit, heroImage, team, shape, allianceColor, options.isAttached || false, movePool);
     // Routed heroes carry the same white flag as units — the hero square itself
     // never changes, so the flag is the only "this unit actually routed" marker.
     if (isUnitRouted(unit) && unit.currentUnitHp > 0) {
@@ -430,10 +442,12 @@ export function drawToken(options: DrawTokenOptions): void {
       const infoY = y + height / 6;
       const badgeH = height * 0.16;
       const badgeW = badgeH;
-      drawActionBadge(
+      drawActionMoveBadge(
         ctx,
         { left: x + width / 2 - 2 - badgeW, top: infoY - 2 - badgeH, width: badgeW, height: badgeH },
         unit.actionsAvailable,
+        movePool.value,
+        movePool.max,
       );
     }
   }
@@ -741,9 +755,10 @@ export function drawArcherReactionButton(
 }
 
 /**
- * A bold amber X marker centered at (cx,cy) — the reaction TARGET indicator
- * (drawn on the unit that moved, in the same `#f59e0b` as the reactor's halo).
- * Same map-overlay family as `drawArcherReactionButton` (scales with the hex).
+ * Concentric amber target rings centered at (cx,cy) — the reaction TARGET
+ * indicator (drawn on the unit that moved, in the same `#f59e0b` as the reactor's
+ * halo). Same map-overlay family as `drawArcherReactionButton` (scales with the
+ * hex).
  */
 export function drawTargetMarker(
   ctx: CanvasRenderingContext2D,
@@ -754,20 +769,24 @@ export function drawTargetMarker(
 ): void {
   ctx.save();
   const r = size * 0.5;
-  ctx.lineCap = 'round';
-  // Dark outline underneath for contrast on busy tokens, then the amber X.
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
-  ctx.lineWidth = Math.max(4, size * 0.24);
+  const ring = (radius: number, lineWidth: number, stroke: string) => {
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+  };
+  const outline = Math.max(2, size * 0.06);
+  // Dark outline under the amber rings for contrast on busy tokens.
+  ring(r, Math.max(4, size * 0.24), 'rgba(0, 0, 0, 0.55)');
+  ring(r * 0.62, outline + Math.max(2, size * 0.06), 'rgba(0, 0, 0, 0.55)');
+  ring(r, Math.max(2, size * 0.16) - outline, color);
+  ring(r * 0.62, outline, color);
+  // Centre dot.
   ctx.beginPath();
-  ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r);
-  ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r);
-  ctx.stroke();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = Math.max(3, size * 0.16);
-  ctx.beginPath();
-  ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r);
-  ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r);
-  ctx.stroke();
+  ctx.arc(cx, cy, Math.max(1.5, size * 0.1), 0, 2 * Math.PI);
+  ctx.fillStyle = color;
+  ctx.fill();
   ctx.restore();
 }
 
@@ -820,6 +839,7 @@ function drawHeroSquareToken(
   shape: string,
   allianceColor: string,
   isAttached: boolean,
+  movePool: { value: number; max: number },
 ) {
   const teamColor = TEAM_COLORS[team as Team] || '#333333';
   const heroSize = getHeroSquareSize(tokenHeight, unit.sizeCategory || 100);
@@ -880,10 +900,12 @@ function drawHeroSquareToken(
     const hpAreaTop = cy - displaySize / 2 + displaySize * 0.75;
     const badgeH = displaySize * 0.16;
     const badgeW = badgeH;
-    drawActionBadge(
+    drawActionMoveBadge(
       ctx,
       { left: cx + halfSize - 2 - badgeW, top: hpAreaTop - 2 - badgeH, width: badgeW, height: badgeH },
       unit.actionsAvailable,
+      movePool.value,
+      movePool.max,
     );
   }
 
@@ -1008,22 +1030,53 @@ function getActionColor(actions: number): string {
   return '#FFFFFF';
 }
 
-function drawActionBadge(
+/** Leftover-MP colour: red at 0, gold under half the pool, else white. */
+function getMoveColor(mp: number, max: number): string {
+  if (mp <= 0) return '#FF4444';
+  if (max > 0 && mp < 0.5 * max) return '#FFD700';
+  return '#FFFFFF';
+}
+
+/**
+ * The action + movement-pool badge: `"{actions}:{mp}"` (e.g. `2:4`). The action
+ * figure keeps `getActionColor` (white ≥2 / gold 1 / red 0); the movement figure
+ * uses `getMoveColor` (white ≥50% / gold <50% / red 0). The box widens to fit the
+ * text while keeping its right edge anchored to `box.left + box.width`.
+ */
+function drawActionMoveBadge(
   ctx: CanvasRenderingContext2D,
   box: { left: number; top: number; width: number; height: number },
   actions: number,
+  mp: number,
+  mpMax: number,
 ) {
-  const color = getActionColor(actions);
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.fillRect(box.left, box.top, box.width, box.height);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(box.left, box.top, box.width, box.height);
-  ctx.fillStyle = color;
+  const mpShown = Math.max(0, Math.floor(mp));
+  const text = `${actions}:${mpShown}`;
+  const actionColor = getActionColor(actions);
+  const moveColor = getMoveColor(mp, mpMax);
+  ctx.save();
   ctx.font = `bold ${box.height * 0.62}px sans-serif`;
-  ctx.textAlign = 'center';
+  const padX = Math.max(2, box.height * 0.28);
+  const w = Math.max(box.height, Math.ceil(ctx.measureText(text).width) + padX * 2);
+  const left = box.left + box.width - w; // keep the right edge anchored
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(left, box.top, w, box.height);
+  ctx.strokeStyle = actionColor;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(left, box.top, w, box.height);
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(String(actions), box.left + box.width / 2, box.top + box.height / 2);
+  const yMid = box.top + box.height / 2;
+  let x = left + padX;
+  const aStr = String(actions);
+  ctx.fillStyle = actionColor;
+  ctx.fillText(aStr, x, yMid);
+  x += ctx.measureText(aStr).width;
+  ctx.fillStyle = moveColor;
+  ctx.fillText(':', x, yMid);
+  x += ctx.measureText(':').width;
+  ctx.fillText(String(mpShown), x, yMid);
+  ctx.restore();
 }
 
 /**

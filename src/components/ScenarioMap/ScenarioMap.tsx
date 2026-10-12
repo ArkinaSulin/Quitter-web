@@ -393,6 +393,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const unitMaxMP = (unit: Unit) =>
     computeEffectiveMovement(unit, getFormationMultiplier(formationsMap, unit.currentFormation, 'movement_multiplier'));
   const [overlayMap, setOverlayMap] = useState<Record<string, string>>({});
+  // Leftover-MP text on the boundary of the drag preview (see `computeOverlayMap`).
+  const [overlayLabels, setOverlayLabels] = useState<Record<string, string>>({});
 
   // Red flash on the target hex when an attack drop is out of range.
   const [rangeViolationHex, setRangeViolationHex] = useState<Hex | null>(null);
@@ -1026,6 +1028,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     corpseCounts,
     aiOverlay,
     aiHoveredUnitId: hoveredUnit?.id ?? null,
+    overlayLabels,
   });
 
   // Parting-shot resolver is owned by useCombatActions (declared later); this ref
@@ -2410,9 +2413,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
-    const base = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, chargeFacing: chargeAimFacing });
-    if (retreatHoverHex) base[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
-    setOverlayMap(base);
+    const { fills, labels } = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, chargeFacing: chargeAimFacing });
+    if (retreatHoverHex) fills[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
+    setOverlayMap(fills);
+    setOverlayLabels(labels);
   }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex, chargeAimFacing]);
 
   // Center map on initial load

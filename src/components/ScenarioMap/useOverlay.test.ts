@@ -42,7 +42,7 @@ function hoverOverlay(unit: Unit, units: Unit[] = [unit]) {
     rangeViolationHex: null,
     terrainCosts: {},
     walls: {},
-  });
+  }).fills;
 }
 
 function overlayFor(units: Unit[], formationsMap = FORMATIONS) {
@@ -58,7 +58,7 @@ function overlayFor(units: Unit[], formationsMap = FORMATIONS) {
     rangeViolationHex: null,
     terrainCosts: {},
     walls: {},
-  });
+  }).fills;
 }
 
 describe('computeOverlayMap — withdraw rear hexes', () => {
@@ -129,7 +129,7 @@ describe('computeOverlayMap — drag over a hostile target shows range rings', (
       rangeViolationHex: null,
       terrainCosts: {},
       walls: {},
-    });
+    }).fills;
   }
 
   it('shows the white min-ring, amber max-ring, and the amber target hex', () => {
@@ -160,5 +160,37 @@ describe('computeOverlayMap — withdraw highlight affordability', () => {
     const map = overlayFor([mk({ id: 'u', hex: h(0, 0), facing: 0, actionsAvailable: 0, movementPointsAvailable: 0 })]);
     expect(map['0,1']).not.toBe(WHITE);
     expect(map['-1,1']).not.toBe(WHITE);
+  });
+});
+
+function labelsFor(units: Unit[], formationsMap = FORMATIONS) {
+  return computeOverlayMap({
+    reactionMode: null,
+    draggingUnitId: 'u',
+    hoveredUnit: null,
+    units,
+    alliances: ALLIANCES,
+    formationsMap,
+    freeMove: false,
+    backgroundConfig: { imageUrl: '', offsetX: 0, offsetY: 0, scale: 1, gridRadius: 12 },
+    rangeViolationHex: null,
+    terrainCosts: {},
+    walls: {},
+  }).labels;
+}
+
+describe('computeOverlayMap — leftover-MP boundary labels', () => {
+  it('labels a boundary hex (bordering an occupied hex) with the MP left', () => {
+    const labels = labelsFor([
+      mk({ id: 'u', hex: h(0, 0), facing: 0, movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 1 }),
+      mk({ id: 'blocker', hex: h(0, -2), team: 'blue' }),
+    ]);
+    // (0,-1) is reachable (1 MP) and borders the occupied (0,-2) → 3 - 1 = 2 left.
+    expect(labels['0,-1']).toBe('2');
+  });
+
+  it('does not label an interior hex (all neighbours reachable, origin aside)', () => {
+    const labels = labelsFor([mk({ id: 'u', hex: h(0, 0), facing: 0, movementPoints: 3 })]);
+    expect(labels['0,-1']).toBeUndefined();
   });
 });

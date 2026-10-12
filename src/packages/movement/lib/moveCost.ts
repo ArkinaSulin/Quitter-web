@@ -355,6 +355,11 @@ export function computeReachableMap(
   passThrough?: Set<string>,
   /** Optional org-gate context (breaks + budget rescale). */
   org?: OrgMoveOpts,
+  /** Reaction-only: a threat/ZoC hex is a destination only as the FIRST step
+   *  (the mover already stands adjacent) — otherwise the move stops on the last
+   *  non-threat hex and the entry is a separate move (`hops <= 1`). Normal moves
+   *  leave this false (you may stop ON a threat hex). */
+  stopBeforeThreat = false,
 ): Map<string, MovePathEntry> {
   const stepCap = hopCap ?? maxMP;
   const isPass = (k: string): boolean => passThrough?.has(k) ?? false;
@@ -425,6 +430,9 @@ export function computeReachableMap(
     if (s.q === unit.hex.q && s.r === unit.hex.r) return;
     const k = key(s.q, s.r);
     if (isPass(k)) return;
+    // Reaction-only stop-before: a threat hex is only a destination when entered
+    // as the first step (mover already adjacent); otherwise the move stops short.
+    if (stopBeforeThreat && threatHexes.has(k) && s.hops > 1) return;
     const map = s.turned ? greyBest : whiteBest;
     const cur = map.get(k);
     if (improves(cur?.d, cur?.hops, s.d, s.hops)) map.set(k, s);
@@ -458,6 +466,9 @@ export function computeReachableMap(
       const nf = breakOnEntry ? (breakOnEntry(cur.q, cur.r, nq, nr, cur.formation) ?? cur.formation) : cur.formation;
       const nh = cur.hops + 1;
       if ((!allowBeyondBudget && nc > budgetOf(nf)) || nh > stepCapOf(nf)) continue;
+      // Reaction-only stop-before: don't advance a multi-step move onto a threat
+      // hex (must stop before, then enter on the next move).
+      if (stopBeforeThreat && nh > 1 && threatHexes.has(nk)) continue;
       push({ q: nq, r: nr, facing: cur.facing, formation: nf, turned: cur.turned, d: nc, hops: nh, path: [...cur.path, { q: nq, r: nr, s: -nq - nr }] });
     }
 

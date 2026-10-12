@@ -219,8 +219,9 @@ Every token (see Appendix D for the full legend) shows:
 - the **troops** as dots (hollow = dead); cavalry units show triangles;
 - **morale hearts** in the lower band — red hearts filled to your base morale,
   gold hearts above it, hollow hearts for what's missing;
-- an **action badge** (small square with a number: white ≥2 actions, gold 1,
-  red 0);
+- an **action badge** (small box reading **actions:MP**, e.g. `2:4`: white ≥2
+  actions / gold 1 / red 0, then the movement pool — white ≥half, gold under
+  half, red empty; **FP** while a flyer is airborne);
 - the **unit name** along the bottom;
 - a **white flag** = the unit is **Routed** (broken, fleeing — §7);
 - a **hero** token instead shows a portrait + HP bar, no dots/hearts.
@@ -467,6 +468,10 @@ Drag a unit with the mouse. The game shades where it can move:
 - **Red hexes** are enemy **threat hexes** (kill-zone / zone-of-control):
   reachable as a *destination*, never through. **Dropping into one ends your
   move** — any MP left in that pool is spent (you may still use another action).
+- **A number on the edge of the highlighted area** shows how much **MP you'd
+  have left** if you stopped there. If the preview stops short of an enemy
+  threat hex, a wall, an occupied hex, or a climb, the number tells you it's
+  that obstacle stopping you, not an empty move pool.
 - Occupied hexes can't be entered.
 
 ![S-14 Drag overlay](screenshots/s-14-drag-overlay.png)
@@ -1402,8 +1407,9 @@ rear is its weak point. The tooltip shows the split, e.g.
 **Token anatomy** (unit): team-color background at 75% + team border · alliance
 ring · grey team shape · troop dots (hollow = dead; triangles = mounted) ·
 formation extras (pikes/shields/white Routed flag) · morale hearts (red =
-base, gold = boosted, hollow = missing) · action badge (white ≥2, gold 1,
-red 0) · race + unit-type icons · name.
+base, gold = boosted, hollow = missing) · action badge `actions:MP` (white ≥2 /
+gold 1 / red 0, then pool: white ≥half, gold under half, red empty) · race +
+unit-type icons · name.
 **Hero token:** portrait or custom image, HP bar + HP numbers, name; grayscale
 when down; half-size when attached to a host.
 

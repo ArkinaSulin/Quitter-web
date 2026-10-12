@@ -116,12 +116,28 @@ allowBeyondBudget?)` — min-cost Dijkstra over `(hex, facing)` state:
 - **Loose** units (Routed, Scattered, Hero) move any direction at 1 MP/hex —
   always white, no facing.
 - **Threat hexes** are reachable destinations but never passed through;
-  **occupied** hexes are never reachable.
+  **occupied** hexes are never reachable. **Exception — reaction reposition**:
+  with the `stopBeforeThreat` option (used only while reaction mode is active) a
+  threat hex is a destination only as the move's **first step** (the archer
+  already adjacent); otherwise the reposition **stops on the last non-threat
+  hex**, and entering is a separate move. Normal moves/charges are unchanged.
 - **Terrain**: `costOfHex` (painted MP cost, `0..9`) sets entry cost per hex —
   **0 = free**, 1 = clear, 2+ = difficult. Reach is capped by BOTH MP and
   **hex hops ≤ maxMP** so a 0-cost chain can't roam unbounded.
 - `allowBeyondBudget` keeps hexes whose *cost* exceeds `maxMP` (still bounded
   by hops) — the executed move accepts them so soft enforcement can confirm.
+
+### Movement-preview leftover-MP labels
+
+While dragging, `computeOverlayMap` also returns a `labels` map: each reachable,
+droppable (`needsTurn` false) hex **on the boundary** of the reachable region
+(a neighbour that is neither reachable, the origin, nor a pass-through) prints
+the **MP the mover would have left** after paying that hex's entry cost (floored;
+`applyMoveCost`/`applyHeroMoveCost`, matching the tooltip). It marks the hexes
+where movement stops short without running out of MP — a wall / ZoC / occupied
+hex / elevation change / map edge (or a next step it can't afford). Drawn like
+the terrain MP-cost numbers but in white. Covers e.g. the hex just before an
+unaffordable climb, or (in reaction mode) the hex before a kill zone.
 
 ### Zone of control (universal rule)
 

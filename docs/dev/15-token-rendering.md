@@ -64,10 +64,12 @@ Name runs flush along the bottom in white with a dark shadow.
 
 ## Battlefield state markers
 
-- **Action badge** (`drawActionBadge`): a small square (unit: top-right above
-  the info band; hero: above the HP bar, bottom-right) showing remaining
-  actions — white ≥2, gold 1, red 0. Skips attached heroes and units without
-  the field.
+- **Action + movement badge** (`drawActionMoveBadge`): a small box (unit:
+  top-right above the info band; hero: above the HP bar, bottom-right) showing
+  `"{actions}:{mp}"` (e.g. `2:4`). The action figure is white ≥2 / gold 1 / red 0;
+  the movement figure is white ≥50% of the pool / gold <50% / red 0. The pool is
+  ground MP, or the fly pool (FP) while a flyer is airborne (dynamic ground).
+  Skips attached heroes and units without the field.
 - **Elevation badge** (`drawElevationBadge`): a small box in the token's
   top-left showing `${elevation} ft` for an elevated unit. Drawn **inside the
   facing rotation** (so it turns with the token) and in `drawToken` itself, so
@@ -95,8 +97,8 @@ Name runs flush along the bottom in white with a dark shadow.
   box); **structure** mode skips every unit in `getUnitAtScreen`.
   Ground/air split by **raw elevation**. Corpse piles stay visible.
 - **Reaction markers**: the acting archer gets an amber halo (`#f59e0b`); the
-  mover it reacts to (the reaction **target**) gets a bold amber **X**
-  (`drawTargetMarker`) on its token; hovering a unit tints its **own hex cyan**
+  mover it reacts to (the reaction **target**) gets concentric amber **target
+  rings** (`drawTargetMarker`) on its token; hovering a unit tints its **own hex cyan**
   in addition to its red ZoC front-2.
 - **Drag drop-target indicator** (one per drop, all in the DragGhost yellow
   `#facc15`): the **`DragGhost`** dashed oval follows the **mouse-over hitbox** —

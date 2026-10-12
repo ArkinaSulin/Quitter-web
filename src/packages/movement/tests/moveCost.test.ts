@@ -26,6 +26,18 @@ describe('computeReachableMap — threat hexes: stop, not pass-through', () => {
     expect(map.get('0,-1')?.cost).toBe(1); // may stop on it
     expect(map.get('0,-2')).toBeUndefined(); // may not continue through it
   });
+
+  it('stopBeforeThreat: a threat hex is a destination only as the FIRST step', () => {
+    // (0,-2) is two steps away (via the non-threat (0,-1)). Normal reach includes
+    // it; with stopBeforeThreat the move must stop short on (0,-1).
+    const reach = computeReachableMap(formedUnit, 3, new Set(), new Set(['0,-2']), undefined, false, undefined, undefined, undefined, undefined, true);
+    expect(reach.get('0,-1')?.cost).toBe(1);
+    expect(reach.has('0,-2')).toBe(false);
+    // The origin-adjacent threat (one step) is still enterable.
+    const adjacent = computeReachableMap(formedUnit, 3, new Set(), new Set(['0,-1']), undefined, false, undefined, undefined, undefined, undefined, true);
+    expect(adjacent.get('0,-1')?.cost).toBe(1);
+    expect(adjacent.has('0,-2')).toBe(false); // cannot pass through it
+  });
 });
 
 describe('computeReachableMap — formed units', () => {

@@ -1,5 +1,28 @@
 # QuiTTER Changelog
 
+## Reaction stop-before-ZoC, preview MP labels, action:MP badge, target rings (2026-10-11)
+**Files:** src/packages/movement/lib/moveCost.ts (+ test), src/components/ScenarioMap/{useOverlay.ts (+ test),useReactionActions.ts,useCanvasDraw.ts,ScenarioMap.tsx}, src/components/TokenRenderer/drawToken.ts, docs/players/player-manual.md, docs/dev/{07-movement-economy,15-token-rendering,changelog}.md
+
+- **Reaction reposition stops before a ZoC.** `computeReachableMap` gained
+  `stopBeforeThreat`: when set, a threat hex is a destination only as the move's
+  first step (the archer already adjacent) — otherwise it stops on the last
+  non-threat hex and enters on a later move. Wired **only** while reaction mode is
+  active (`getReactionReachable` + the overlay reaction branch, now passing the
+  archer's real `computeThreatHexes`). Normal moves/charges unchanged.
+- **Movement-preview leftover-MP labels.** `computeOverlayMap` now returns
+  `{ fills, labels }`: every reachable, droppable hex on the boundary of the
+  reachable region (a neighbour that is not reachable/origin/pass-through) prints
+  the MP left after its entry cost. Shows where the move stops short *without*
+  running out of MP (wall / ZoC / occupied / elevation change / map edge / an
+  unaffordable next step). Drawn white with a dark outline next to the terrain
+  MP-cost numbers.
+- **Token badge is now `actions:MP`** (`drawActionMoveBadge`): action figure keeps
+  white ≥2 / gold 1 / red 0; the movement figure is white ≥50% / gold <50% / red 0;
+  the pool is ground MP, or **FP** while a flyer is airborne.
+- **Reaction target marker is now concentric amber target rings** (was a bold X),
+  which read as a target rather than "invalid".
+- `tsc` clean, tests pass, build clean. No migration.
+
 ## Float guard exempts wall-gripping climbers (2026-10-11)
 **Files:** src/packages/movement/{lib/mapStructures.ts,tests/mapStructures.test.ts}, docs/players/player-manual.md, docs/dev/{18-map-structures,changelog}.md
 

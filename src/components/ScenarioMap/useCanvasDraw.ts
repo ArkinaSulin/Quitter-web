@@ -10,10 +10,11 @@ import { Unit, Hex, AllianceGroup, Formation, SizeCategory, GroundEffect } from 
 import { drawToken, loadImage, getLoadedImage, drawArcherReactionButton, drawTargetMarker } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier } from '@/packages/morale';
 import { isDeadCorpse } from '@/packages/units';
+import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
 import { corpseDots, FallenMap } from '@/packages/battle';
 import { TEAM_COLORS, Team } from '@/packages/units';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, canFly, isAirborne, MapBackgroundConfig, costShade, hexMpLabelAt, HEX_DIRS } from '@/packages/world';
-import { parseClimbTo, hexDirection } from '@/packages/movement';
+import { parseClimbTo, hexDirection, flyMax } from '@/packages/movement';
 import { FOG_RGB } from '@/packages/world';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/packages/movement';
 import { MapStructures, isHexStructureKey, structureSurfaceAt, climbStepsFromFeet, structureElevation } from '@/packages/movement';
@@ -67,6 +68,8 @@ interface CanvasDrawDeps {
   aiOverlay?: AiOverlayData | null;
   /** Unit currently hovered on the map — highlights its AI route. */
   aiHoveredUnitId?: string | null;
+  /** Leftover-MP text on the boundary of the drag preview (hex key → number). */
+  overlayLabels?: Record<string, string>;
 }
 
 export function useCanvasDraw(deps: CanvasDrawDeps) {
@@ -103,6 +106,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     corpseCounts,
     aiOverlay,
     aiHoveredUnitId,
+    overlayLabels,
   } = deps;
 
   // Effect artwork is loaded asynchronously; bump a tick once the set decodes so
@@ -252,6 +256,23 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const { cx, cy } = hexCenter({ q, r, s: -q - r });
         if (shade) fillHexPath(ctx, cx, cy, HEX_SIZE * currentZoom, shade);
         strokeFillText(ctx, cx, cy, label.text, mpFont, ts.mp.linePx, MP_COST_GREY, 'rgba(0,0,0,0)');
+      }
+      ctx.restore();
+    }
+
+    // Leftover-MP numbers on the drag-preview boundary: how much MP the mover
+    // still has where the preview stops short (a wall / ZoC / elevation / map edge
+    // — or a next step it can't afford), not a running-out-of-MP stop. White with
+    // a dark outline to distinguish it from the grey terrain-cost numbers above.
+    if (overlayLabels && Object.keys(overlayLabels).length > 0) {
+      ctx.save();
+      const labelFont = MONO(ts.mp.fontPx);
+      for (const [key, text] of Object.entries(overlayLabels)) {
+        if (isFogHidden(key)) continue;
+        const [q, r] = key.split(',').map(Number);
+        if (Number.isNaN(q) || Number.isNaN(r)) continue;
+        const { cx, cy } = hexCenter({ q, r, s: -q - r });
+        strokeFillText(ctx, cx, cy, text, labelFont, ts.mp.linePx, '#ffffff', 'rgba(0,0,0,0.85)');
       }
       ctx.restore();
     }
@@ -524,6 +545,19 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       ctx.restore();
     }
 
+    // The movement pool the `actions:MP` badge shows: ground MP normally, or the
+    // fly pool (FP) while a flyer is airborne (dynamic ground = elevation > surface).
+    const movePoolFor = (u: Unit): { value: number; max: number } => {
+      const surface = structureSurfaceAt(u.hex, structures, templates);
+      if (isAirborne(u.elevation, surface) && canFly(u)) {
+        return { value: u.flySpeedAvailable ?? 0, max: flyMax(u) };
+      }
+      return {
+        value: u.movementPointsAvailable ?? 0,
+        max: computeEffectiveMovement(u, getFormationMultiplier(formationsMap, u.currentFormation, 'movement_multiplier')),
+      };
+    };
+
     for (const unit of drawOrder) {
       if (unit.isDeleted || unit.attachedToUnitId || isDeadCorpse(unit)) continue;
       // Target-filter modes hide the non-targetable unit tokens; the dragged unit
@@ -578,6 +612,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           teamAlliances: displayAlliances,
           formationsMap,
           sizeCategories,
+          movePool: movePoolFor(unit),
         });
       } catch (err) {
         console.error('drawToken error:', err);
@@ -898,7 +933,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hoveredStructureHex, targetFilter, keepVisibleUnitIdRef, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, imageTick, moraleMods]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hoveredStructureHex, targetFilter, keepVisibleUnitIdRef, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, overlayLabels, imageTick, moraleMods]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;
@@ -1064,6 +1099,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
             zoom: fitZoom,
             showDetails: true,
             teamAlliances: alliances,
+            formationsMap,
           });
         } catch (err) {
           console.error(`[Screenshot] Error drawing token ${unit.id}:`, err);

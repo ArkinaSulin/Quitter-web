@@ -5,7 +5,7 @@
 // the hovered-unit front-arc tint. Pure function — ScenarioMap feeds it the
 // grid state (draggingUnitId/hoveredUnit come from useHexGrid) in an effect.
 import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
-import { computeReachableMap, computeMovePool, computeMoveBudget, computeHeroMovePool, computeChargeReachable } from '@/packages/movement';
+import { computeReachableMap, computeMovePool, computeMoveBudget, computeHeroMovePool, computeChargeReachable, applyMoveCost, applyHeroMoveCost } from '@/packages/movement';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
 import { getSetting } from '@/packages/infra';
 import { imposesKillZone } from '@/packages/morale';
@@ -71,7 +71,14 @@ export interface OverlayState {
   chargeFacing?: number | null;
 }
 
-export function computeOverlayMap(state: OverlayState): Record<string, string> {
+/** Drag-overlay output: per-hex fill colours, plus optional per-hex text labels
+ *  (the leftover-MP numbers on the boundary of the reachable region). */
+export interface OverlayData {
+  fills: Record<string, string>;
+  labels: Record<string, string>;
+}
+
+export function computeOverlayMap(state: OverlayState): OverlayData {
   const {
     reactionMode,
     draggingUnitId,
@@ -109,6 +116,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     const archer = units.find(u => u.id === reactionMode.archer.id) ?? reactionMode.archer;
     const mover = units.find(u => u.id === reactionMode.moverId && !u.isDeleted) ?? null;
     const combined: Record<string, string> = {};
+    const labels: Record<string, string> = {};
     const moverKey = mover ? `${mover.hex.q},${mover.hex.r}` : null;
     if (moverKey) combined[moverKey] = 'rgba(255, 80, 80, 0.55)'; // persistent target
     if (draggingUnitId === archer.id) {
@@ -125,29 +133,47 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       } else {
         const maxMP = computeEffectiveMovement(archer, getFormationMultiplier(formationsMap, archer.currentFormation, 'movement_multiplier'));
         const budget = reactionMovePool(archer, maxMP);
+        const budgetUnit = moveBudgetUnit(archer, 'ground');
         const occupied = computeOccupiedHexes(units, archer.id);
-        const reachable = computeReachableMap(archer, budget, occupied, new Set(), costOfHexFor(archer), false, blockedEdgeFor(archer), undefined, undefined, org);
+        // A reaction reposition stops BEFORE a hostile kill zone (enter on a later
+        // move) — `stopBeforeThreat`; normal moves are unaffected.
+        const reactionThreats = computeThreatHexes(units, archer.id, alliances, formationsMap, structures, templates);
+        const reachable = computeReachableMap(archer, budget, occupied, reactionThreats, costOfHexFor(archer), false, blockedEdgeFor(archer), undefined, undefined, org, true);
         reachable.forEach((entry, key) => {
           combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
         });
+        // Leftover-MP boundary labels (same rule as a normal move preview).
+        const originKey = `${archer.hex.q},${archer.hex.r}`;
+        reachable.forEach((entry, key) => {
+          if (entry.needsTurn) return;
+          const [q, r] = key.split(',').map(Number);
+          const isBoundary = HEX_DIRS.some(d => {
+            const nk = `${q + d.q},${r + d.r}`;
+            return nk !== originKey && !reachable.has(nk);
+          });
+          if (!isBoundary) return;
+          const rem = archer.isHero ? applyHeroMoveCost(budgetUnit, entry.cost, maxMP) : applyMoveCost(budgetUnit, entry.cost, maxMP);
+          const left = Math.max(0, Math.floor(rem.movementPointsAvailable));
+          if (left > 0) labels[key] = String(left);
+        });
       }
     }
-    return combined;
+    return { fills: combined, labels };
   }
   // Transient red flash on an out-of-range target (blocked drop).
   if (rangeViolationHex) {
-    return { [`${rangeViolationHex.q},${rangeViolationHex.r}`]: 'rgba(255, 80, 80, 0.9)' };
+    return { fills: { [`${rangeViolationHex.q},${rangeViolationHex.r}`]: 'rgba(255, 80, 80, 0.9)' }, labels: {} };
   }
   if (draggingUnitId) {
     const draggedUnit = units.find(u => u.id === draggingUnitId);
-    if (!draggedUnit) return {};
+    if (!draggedUnit) return { fills: {}, labels: {} };
     // A climbing unit moves linearly: the target hex (up) and its own hex (down).
     if (draggedUnit.climbTo) {
       const t = parseClimbTo(draggedUnit.climbTo);
       const combined: Record<string, string> = {};
       if (t) combined[`${t.q},${t.r}`] = 'rgba(255, 255, 255, 0.6)';
       combined[`${draggedUnit.hex.q},${draggedUnit.hex.r}`] = 'rgba(160, 210, 255, 0.6)';
-      return combined;
+      return { fills: combined, labels: {} };
     }
     const surface = structureSurfaceAt(draggedUnit.hex, structures, templates);
     const flying = isAirborne(draggedUnit.elevation, surface);
@@ -170,7 +196,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
           if (!occupied.has(key)) combined[key] = 'rgba(255, 255, 255, 0.5)';
         }
       }
-      return combined;
+      return { fills: combined, labels: {} };
     }
 
     // Charging units show their charge corridor: cost-1 hexes amber (charge
@@ -194,7 +220,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       for (const [key, cost] of Array.from(chargeReach.entries())) {
         combined[key] = cost >= getSetting('charge_full_distance', 2) ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';
       }
-      return combined;
+      return { fills: combined, labels: {} };
     }
 
     // White reachable hexes for the dragged unit — one full pool (an action
@@ -242,13 +268,13 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
       if (!isValidTarget) {
         // Ally — cross-alliance attacks are hard-blocked; show it as invalid.
         combined[targetKey] = 'rgba(255, 80, 80, 0.7)';
-        return combined;
+        return { fills: combined, labels: {} };
       }
       // A swooping flyer hovering a GROUND enemy: the drop offers the charge-drop
       // (move onto the hex + free melee). Amber distinguishes it from a plain shot.
       if (isSwooping(draggedUnit, structureSurfaceAt(draggedUnit.hex, structures, templates)) && (hoveredUnit!.elevation ?? 0) <= 0) {
         combined[targetKey] = 'rgba(255, 140, 60, 0.85)';
-        return combined;
+        return { fills: combined, labels: {} };
       }
       if (isRanged) {
         // Dragging a ranged unit over an enemy target: show range rings, clipped
@@ -280,7 +306,7 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
         // an ADJACENT hex — melee needs the same elevation or the same hex).
         combined[targetKey] = 'rgba(255, 80, 80, 0.7)';
       }
-      return combined;
+      return { fills: combined, labels: {} };
     }
 
     // Movement highlight only (no unit hovered).
@@ -304,11 +330,33 @@ export function computeOverlayMap(state: OverlayState): Record<string, string> {
     }
     for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
 
-    return combined;
+    // Leftover-MP labels: on the BOUNDARY of the reachable region — a reachable hex
+    // with a neighbour that is neither reachable, the origin, nor a pass-through —
+    // where the unit still has MP left. The stop is caused by a wall / ZoC /
+    // occupied / elevation change / map edge (or a next step it can't afford), not
+    // by having no MP at all, so the number reminds the player why it stopped.
+    const labels: Record<string, string> = {};
+    const originKey = `${draggedUnit.hex.q},${draggedUnit.hex.r}`;
+    reachableMap.forEach((entry, key) => {
+      if (entry.needsTurn) return;
+      const [q, r] = key.split(',').map(Number);
+      const isBoundary = HEX_DIRS.some(d => {
+        const nk = `${q + d.q},${r + d.r}`;
+        return nk !== originKey && !reachableMap.has(nk) && !passThrough.has(nk);
+      });
+      if (!isBoundary) return;
+      const remaining = draggedUnit.isHero
+        ? applyHeroMoveCost(budgetUnit, entry.cost, effectiveMax)
+        : applyMoveCost(budgetUnit, entry.cost, effectiveMax);
+      const left = Math.max(0, Math.floor(remaining.movementPointsAvailable));
+      if (left > 0) labels[key] = String(left);
+    });
+
+    return { fills: combined, labels };
   }
   if (hoveredUnit) {
-    return getOverlayForUnit(hoveredUnit, structures, templates);
+    return { fills: getOverlayForUnit(hoveredUnit, structures, templates), labels: {} };
   }
-  return {};
+  return { fills: {}, labels: {} };
 }
 

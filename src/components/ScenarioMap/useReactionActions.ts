@@ -24,7 +24,7 @@ import { isProtectedHero } from '@/packages/units';
 import { UnitChange, SubStep } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { formatStrikeDetail } from '@/packages/units';
-import { computeOccupiedHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts } from '@/packages/world';
+import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts } from '@/packages/world';
 import { Walls } from '@/packages/movement';
 import { MapStructures, doorPassThroughHexes, loosePassThroughHexes, entryBreakFormation } from '@/packages/movement';
 import { attacksBlocked } from '@/packages/combat';
@@ -378,13 +378,16 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     for (const [name, f] of Object.entries(formationsMap)) movementMultipliers[name] = f.movement_multiplier;
     const breakOnEntry = (fq: number, fr: number, tq: number, tr: number, formation: string) =>
       entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, structures, structureTemplates, groundZones);
-    return computeReachableMap(archer, budget, occupied, new Set(), makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted, waiveClimb }), false, makeBlockedEdge(walls, {
+    // A reaction reposition stops BEFORE a hostile kill zone (it must enter on a
+    // later move) — `stopBeforeThreat`. Normal moves are unaffected.
+    const threats = computeThreatHexes(displayUnits, archer.id, alliances, formationsMap, structures, structureTemplates);
+    return computeReachableMap(archer, budget, occupied, threats, makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted, waiveClimb }), false, makeBlockedEdge(walls, {
       structures,
       templates: structureTemplates,
       zones: groundZones,
       isMounted: mounted,
       waiveClimb,
-    }), undefined, passThrough, { movementMultipliers, breakOnEntry, orgLevels: formationOrgLevels(formationsMap) });
+    }), undefined, passThrough, { movementMultipliers, breakOnEntry, orgLevels: formationOrgLevels(formationsMap) }, true);
   }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones, formationsMap, alliances]);
 
   const handleReactionAttack = useCallback(async (
