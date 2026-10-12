@@ -65,6 +65,9 @@ interface MoveActionsDeps {
   /** Scenario "Reactive archery": a threat/ZoC hex is a valid move destination
    *  only as the first step (stop before it). Off = may stop ON it. */
   archerReactionEnabled: boolean;
+  /** Client drag-preview mode: `'one'` = one action's pool per drag (default);
+   *  `'all'` = every remaining action. The executed move's reach matches. */
+  movePreviewMode: 'one' | 'all';
   turnNumber: number;
   execute: ExecuteFn;
   addMessage: (msg: string, verboseText?: string) => void;
@@ -98,6 +101,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     formationsMap,
     freeMove,
     archerReactionEnabled,
+    movePreviewMode,
     turnNumber,
     execute,
     addMessage,
@@ -686,10 +690,18 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // more hexes than its move), but NOT by MP: painted hexes are found at their
     // TRUE entry cost even when that cost exceeds the pool, so affordability (and
     // the soft over-budget confirm) use the real number instead of a hard block.
-    // A fly move's passenger is passive (never caps the host's reach).
-    const hopCap = flying
-      ? Math.max(1, effectiveMax)
-      : Math.max(1, Math.min(effectiveMax, attachedHero && heroMax && !isRider ? heroMax : Infinity));
+    // The preview mode sets the reach: 'one' = a single action's pool, 'all' =
+    // every remaining action; `budget = hopCap` keeps distance ↔ MP consistent.
+    const modePool = (bu: { movementPointsAvailable: number; actionsAvailable: number }, effMax: number, isHero: boolean): number =>
+      movePreviewMode === 'all'
+        ? (isHero ? computeHeroMoveBudget(bu, effMax) : computeMoveBudget(bu, effMax))
+        : (isHero ? computeHeroMovePool(bu, effMax) : computeMovePool(bu, effMax));
+    const moveBudget = modePool(unitBudget, effectiveMax, unit.isHero);
+    let hopCap = Math.max(1, moveBudget);
+    if (!flying && attachedHero && heroMax && !isRider) {
+      const heroPool = modePool(moveBudgetUnit(attachedHero, 'ground'), heroMax, attachedHero.isHero);
+      hopCap = Math.min(hopCap, Math.max(1, heroPool));
+    }
     // Occupied hex structures whose door is open/broken may be TRAVERSED (not
     // stopped on) — pass them to the reachability search.
     const passThrough = new Set<string>(Array.from(loosePass));

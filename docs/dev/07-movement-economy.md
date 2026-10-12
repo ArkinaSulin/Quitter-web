@@ -129,6 +129,26 @@ allowBeyondBudget?)` — min-cost Dijkstra over `(hex, facing)` state:
 - `allowBeyondBudget` keeps hexes whose *cost* exceeds `maxMP` (still bounded
   by hops) — the executed move accepts them so soft enforcement can confirm.
 
+### Drag-preview mode (client)
+
+A per-browser setting (`movePreviewMode`, Scenario Settings — *One action per
+drag* / *All actions per drag*; default **'one'**) picks the drag **reach**, and
+the executed move matches it (`budget = hopCap`, so distance ↔ MP are consistent):
+
+- **one** — exactly ONE action's pool: units `computeMovePool` (a full pool when
+  MP is spent with an action left, else leftover MP), heroes `computeHeroMovePool`
+  (one full move). A 2nd-action hex is not reachable in one drag — drag again.
+- **all** — every remaining action: units `computeMoveBudget`, heroes
+  `computeHeroMoveBudget` (MP + actions × maxMP/5).
+
+Both use `allowBeyondBudget = false` for the **highlight**, so **over-budget hexes
+are never highlighted**; the *drop* still keeps `allowBeyondBudget = true`, so
+dropping on one opens the over-budget confirm + red message (the soft gate stays).
+Droppable (no-turn) hexes are **white**, turn-required hexes the desaturated
+**grey** hint (never droppable), and BOTH **dim as more actions are spent**
+(brightness, colour-blind safe). Withdraw rear hexes are a **dimmer white** (the
+only 2-action action) in both modes.
+
 ### Movement-preview leftover-MP labels
 
 While dragging, `computeOverlayMap` also returns a `labels` map (drawn like the
@@ -143,7 +163,8 @@ pool − step count). **Client toggle** (*Show MP on every move hex*, Scenario
 Settings, per-browser `localStorage`): label **every** reachable hex — white **and**
 grey (turn-required; the turn cost is in `entry.cost`) — plus the **withdraw** rear
 hexes (2 actions spent, MP untouched → the value is the unit's remaining MP). The
-toggle changes only *which* hexes show a number, never the value.
+toggle changes only *which* hexes show a number, never the value. The reach the
+labels follow is the **drag-preview mode** above (one action / all actions).
 
 ### Zone of control (universal rule)
 

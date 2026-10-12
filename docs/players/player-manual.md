@@ -464,7 +464,12 @@ formation (Appendix C).
 Drag a unit with the mouse. The game shades where it can move:
 
 - **White hexes** are reachable **right now** without turning — drop there.
-- **Grey hexes** need a turn first: the hint says "rotate, then move."
+  They dim as more actions are spent (a local **Settings → "Move preview"**
+  choice: **One action per drag** (default) or **All actions per drag** — this
+  device only). In *One action* mode a hex needing a 2nd action isn't shown;
+  drag again for it.
+- **Grey hexes** need a turn first: the hint says "rotate, then move." (Never
+  droppable — only no-turn hexes are.)
 - **Red hexes** are enemy **threat hexes** (kill-zone / zone-of-control):
   reachable as a *destination*, never through. **Dropping into one ends your
   move** — any MP left in that pool is spent (you may still use another action).
@@ -478,7 +483,9 @@ Drag a unit with the mouse. The game shades where it can move:
   shows the same numbers. A local **Settings → "Show MP on every move hex"**
   toggle (this device only) labels *every* reachable hex — including grey
   (turn-required) hexes and the withdraw hexes — instead of just the edge.
-- Occupied hexes can't be entered.
+  **Withdraw** rear hexes are drawn dimmer (they cost 2 actions).
+- Occupied hexes can't be entered. Dropping on a hex you can't afford still asks
+  to confirm (over-budget) — it just isn't highlighted.
 
 ![S-14 Drag overlay](screenshots/s-14-drag-overlay.png)
 

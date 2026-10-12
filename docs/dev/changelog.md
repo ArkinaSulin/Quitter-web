@@ -1,5 +1,25 @@
 # QuiTTER Changelog
 
+## Move-preview mode: one action vs all actions, banded highlight (2026-10-11)
+**Files:** src/components/ScenarioMap/{useOverlay.ts (+ test),useMoveActions.ts,ScenarioMap.tsx}, docs/dev/{07-movement-economy,changelog}.md, docs/players/player-manual.md
+
+- **Consistent drag reach.** The preview previously pooled ALL actions' MP but
+  capped distance at ONE pool, so hexes needing a 2nd action appeared while the
+  2nd action's distance did not. New client setting **`movePreviewMode`**
+  (Scenario Settings — *One action per drag* (default) / *All actions per drag*;
+  per-browser `localStorage`) makes `budget = hopCap`:
+  - **one**: units `computeMovePool`, heroes `computeHeroMovePool` (one move);
+  - **all**: units `computeMoveBudget`, heroes `computeHeroMoveBudget`.
+  `handleUnitMove` uses the same reach, so the drop matches the preview.
+- **Highlight**: droppable (no-turn) hexes are white, turn-required hexes the
+  grey hint (never droppable); BOTH **dim as more actions are spent** (brightness,
+  colour-blind safe). **Over-budget hexes are not highlighted** (`allowBeyondBudget
+  = false` on the preview), but the drop keeps `allowBeyondBudget = true`, so the
+  soft over-budget confirm + red message still fire. Withdraw rear hexes are a
+  **dimmer white** (the only 2-action action).
+- `MoveActionsDeps.movePreviewMode` + `OverlayState.movePreviewMode`; `ScenarioMap`
+  threads the client state. `tsc` clean, tests pass, build clean. No migration.
+
 ## Move-preview MP labels: client toggle, charge corridor, 0 on borders (2026-10-11)
 **Files:** src/components/ScenarioMap/{useOverlay.ts (+ test),ScenarioMap.tsx,TopBar.tsx}, docs/dev/{07-movement-economy,changelog}.md, docs/players/player-manual.md
 

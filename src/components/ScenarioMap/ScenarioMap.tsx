@@ -291,6 +291,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   useEffect(() => {
     if (typeof window !== 'undefined') window.localStorage.setItem('quitter.showAllMoveMp', showAllMoveMp ? '1' : '0');
   }, [showAllMoveMp]);
+  // Client-only drag-preview mode (this device): 'one' action per drag (default)
+  // or 'all' remaining actions. Persisted per browser.
+  const [movePreviewMode, setMovePreviewMode] = useState<'one' | 'all'>(() =>
+    typeof window !== 'undefined' && window.localStorage.getItem('quitter.movePreviewMode') === 'all' ? 'all' : 'one',
+  );
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.localStorage.setItem('quitter.movePreviewMode', movePreviewMode);
+  }, [movePreviewMode]);
 
   // AI opt-outs reset at each turn change — every alliance activation starts fresh.
   const aiLastTurnKeyRef = useRef('');
@@ -1088,6 +1096,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     formationsMap,
     freeMove,
     archerReactionEnabled,
+    movePreviewMode,
     turnNumber,
     execute,
     addMessage,
@@ -2423,11 +2432,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
-    const { fills, labels } = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, chargeFacing: chargeAimFacing, reactiveArchery: archerReactionEnabled, showAllMoveMp });
+    const { fills, labels } = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, chargeFacing: chargeAimFacing, reactiveArchery: archerReactionEnabled, showAllMoveMp, movePreviewMode });
     if (retreatHoverHex) fills[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(fills);
     setOverlayLabels(labels);
-  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex, chargeAimFacing, archerReactionEnabled, showAllMoveMp]);
+  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex, chargeAimFacing, archerReactionEnabled, showAllMoveMp, movePreviewMode]);
 
   // Center map on initial load
   useEffect(() => {
@@ -3463,6 +3472,19 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 </span>
               </span>
             </label>
+            <div className="mb-3">
+              <span className="font-medium text-amber-300 text-sm">Move preview</span>
+              <div className="flex flex-col gap-1 mt-1 text-sm text-gray-200">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="movePreviewMode" checked={movePreviewMode === 'one'} onChange={() => setMovePreviewMode('one')} className="h-3.5 w-3.5 accent-amber-400" />
+                  <span>One action per drag <span className="text-gray-400 text-[11px]">(drag again for the next action)</span></span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="movePreviewMode" checked={movePreviewMode === 'all'} onChange={() => setMovePreviewMode('all')} className="h-3.5 w-3.5 accent-amber-400" />
+                  <span>All actions per drag <span className="text-gray-400 text-[11px]">(bands dim as more actions are spent)</span></span>
+                </label>
+              </div>
+            </div>
             {effectiveIsGM && (<>
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
               <input

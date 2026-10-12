@@ -5,7 +5,7 @@
 // the hovered-unit front-arc tint. Pure function — ScenarioMap feeds it the
 // grid state (draggingUnitId/hoveredUnit come from useHexGrid) in an effect.
 import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
-import { computeReachableMap, computeMovePool, computeMoveBudget, computeHeroMovePool, computeChargeReachable, applyMoveCost, applyHeroMoveCost } from '@/packages/movement';
+import { computeReachableMap, computeMovePool, computeMoveBudget, computeHeroMovePool, computeHeroMoveBudget, computeChargeReachable, applyMoveCost, applyHeroMoveCost } from '@/packages/movement';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
 import { getSetting } from '@/packages/infra';
 import { imposesKillZone } from '@/packages/morale';
@@ -75,6 +75,9 @@ export interface OverlayState {
   /** Client toggle: label EVERY reachable preview hex (white + grey + withdraw)
    *  with its leftover MP, instead of only the movement-border hexes. */
   showAllMoveMp?: boolean;
+  /** Client drag-preview mode: `'one'` = one action's pool per drag (default);
+   *  `'all'` = every remaining action, colour-banded by actions spent. */
+  movePreviewMode?: 'one' | 'all';
 }
 
 /** Drag-overlay output: per-hex fill colours, plus optional per-hex text labels
@@ -82,6 +85,19 @@ export interface OverlayState {
 export interface OverlayData {
   fills: Record<string, string>;
   labels: Record<string, string>;
+}
+
+/**
+ * Drag-preview fill for a reachable move hex. Droppable (no-turn) hexes are
+ * white; turn-required hexes are the desaturated GREY hint (never droppable).
+ * BOTH dim as more actions are spent (colour-blind safe — brightness not hue),
+ * so the droppable/turn distinction reads by saturation even for colour-blind.
+ */
+function moveFill(needsTurn: boolean, actionsSpent: number): string {
+  const alpha = Math.max(0.2, 0.6 - Math.max(0, actionsSpent - 1) * 0.13);
+  return needsTurn
+    ? `rgba(190, 190, 190, ${(alpha * 0.9).toFixed(2)})`
+    : `rgba(255, 255, 255, ${alpha.toFixed(2)})`;
 }
 
 /**
@@ -130,6 +146,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     chargeFacing,
     reactiveArchery = false,
     showAllMoveMp = false,
+    movePreviewMode = 'one',
   } = state;
 
   const isMountedOf = (u: Unit) => !!u.mountId || !!u.mountName;
@@ -263,21 +280,28 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     // units the ground pool. A passenger on a fly move is passive (never caps it).
     const effectiveMax = flying ? (draggedUnit.flySpeed ?? 0) : computeEffectiveMovement(draggedUnit, movementMult);
     const budgetUnit = moveBudgetUnit(draggedUnit, flying ? 'fly' : 'ground');
-    // Heroes show their full conversion potential (MP + actions × maxMP/5);
-    // units show one pool (or leftover MP when no actions) — matching handleUnitMove.
-    // Option 2 movement economy: the highlight pools every remaining action as
-    // the MP budget (so an expensive single step is selectable), but the hex-step
-    // cap stays at ONE move's pool so normal reach is unchanged.
-    let budget = draggedUnit.isHero ? computeHeroMovePool(budgetUnit, effectiveMax) : computeMoveBudget(budgetUnit, effectiveMax);
-    let hopCap = draggedUnit.isHero ? budget : computeMovePool(budgetUnit, effectiveMax);
+    // Preview mode (client):
+    //  - 'one' (default): the reach is exactly ONE action's pool — units
+    //    `computeMovePool` (full pool at 0 MP with an action, else leftover MP),
+    //    heroes `computeHeroMovePool` (one full move, converting actions).
+    //  - 'all': every remaining action — units `computeMoveBudget`, heroes
+    //    `computeHeroMoveBudget`.
+    // `budget = hopCap` so distance ↔ MP stay consistent (no more all-actions MP
+    // with one-pool distance). Over-budget hexes are NOT highlighted
+    // (`allowBeyondBudget = false`) — the soft gate stays on the drop side.
+    const modePool = (bu: { movementPointsAvailable: number; actionsAvailable: number }, effMax: number, isHero: boolean): number =>
+      movePreviewMode === 'all'
+        ? (isHero ? computeHeroMoveBudget(bu, effMax) : computeMoveBudget(bu, effMax))
+        : (isHero ? computeHeroMovePool(bu, effMax) : computeMovePool(bu, effMax));
+    let budget = modePool(budgetUnit, effectiveMax, draggedUnit.isHero);
+    let hopCap = budget;
     const attachedHero = draggedUnit.attachedToUnitId ? undefined : units.find(u => u.attachedToUnitId === draggedUnit.id && !u.isDeleted);
     if (!flying && attachedHero && attachedHero.attachedPosition !== 'rider') {
       const heroMult = getFormationMultiplier(formationsMap, attachedHero.currentFormation, 'movement_multiplier');
       const heroMax = computeEffectiveMovement(attachedHero, heroMult);
-      const heroBudget = attachedHero.isHero ? computeHeroMovePool(attachedHero, heroMax) : computeMoveBudget(attachedHero, heroMax);
-      const heroHop = attachedHero.isHero ? heroBudget : computeMovePool(attachedHero, heroMax);
-      budget = Math.min(budget, heroBudget);
-      hopCap = Math.min(hopCap, heroHop);
+      const heroPool = modePool(moveBudgetUnit(attachedHero, 'ground'), heroMax, attachedHero.isHero);
+      budget = Math.min(budget, heroPool);
+      hopCap = Math.min(hopCap, heroPool);
     }
     const passThrough = new Set<string>(Array.from(loosePassThroughHexes(units, draggedUnit, formationsMap, alliances, flying ? 'fly' : 'ground', surface)));
     if (!flying) for (const k of Array.from(doorPassThroughHexes(structures, templates, occupied))) passThrough.add(k);
@@ -341,24 +365,27 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
       return { fills: combined, labels: {} };
     }
 
-    // Movement highlight only (no unit hovered).
+    // Movement highlight only (no unit hovered). Droppable (no-turn) hexes are
+    // white, banded brighter for fewer actions; turn-required hexes stay grey.
+    const actionsSpentAt = (cost: number): number => {
+      const start = draggedUnit.actionsAvailable ?? 0;
+      const end = draggedUnit.isHero ? applyHeroMoveCost(budgetUnit, cost, effectiveMax) : applyMoveCost(budgetUnit, cost, effectiveMax);
+      return Math.max(0, start - (end.actionsAvailable ?? 0));
+    };
     reachableMap.forEach((entry, key) => {
-      // White = reachable straight ahead (droppable); light grey = needs a turn
-      // first (hint only — the unit must rotate before moving there).
-      combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.5)';
+      combined[key] = moveFill(!!entry.needsTurn, actionsSpentAt(entry.cost));
     });
     // Withdraw: a formed unit may step one hex into an empty rear hex that is NOT
-    // in a threat zone (no face change) — shown white/droppable like a move.
-    // Not offered while airborne. The highlight appears only when the unit can
-    // AFFORD it (2 actions, or free-move); when it can't, dropping on a rear hex
-    // still opens the withdraw confirm (soft — actions may go negative).
+    // in a threat zone (no face change). It is the only 2-ACTION action, so it is
+    // drawn in a DIMMER white to set it apart from a one-action step. Not offered
+    // while airborne; shown only when affordable (2 actions, or free-move).
     const canAffordWithdraw = freeMove || (draggedUnit.actionsAvailable ?? 0) >= WITHDRAW_ACTION_COST;
     let withdrawKeys: string[] = [];
     if (!flying && canAffordWithdraw && canWithdraw(draggedUnit)) {
       const occupied = computeOccupiedHexes(units, draggedUnit.id, surface);
       const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
       withdrawKeys = withdrawDestinations(draggedUnit, occupied, radius, threatHexes).map(hx => `${hx.q},${hx.r}`);
-      for (const key of withdrawKeys) combined[key] = 'rgba(255, 255, 255, 0.5)';
+      for (const key of withdrawKeys) combined[key] = 'rgba(255, 255, 255, 0.32)';
     }
     for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
 

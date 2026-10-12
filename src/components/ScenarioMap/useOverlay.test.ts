@@ -25,7 +25,8 @@ function mk(over: Partial<Unit> = {}): Unit {
 }
 
 const ALLIANCES: Record<string, AllianceGroup> = { blue: 'friendly', red: 'enemy' };
-const WHITE = 'rgba(255, 255, 255, 0.5)';
+const MOVE_WHITE = 'rgba(255, 255, 255, 0.60)'; // droppable, 1st action
+const WITHDRAW = 'rgba(255, 255, 255, 0.32)';   // withdraw (2-action) rear hexes
 const RED = 'rgba(255, 100, 100, 0.5)';
 const CYAN = 'rgba(120, 200, 255, 0.4)';
 
@@ -62,24 +63,24 @@ function overlayFor(units: Unit[], formationsMap = FORMATIONS) {
 }
 
 describe('computeOverlayMap — withdraw rear hexes', () => {
-  it('paints the two rear hexes white (droppable) for a formed unit', () => {
+  it('paints the two rear hexes with the dim withdraw shade for a formed unit', () => {
     const map = overlayFor([mk({ id: 'u', hex: h(0, 0), facing: 0 })]);
-    // Facing 0 → rear dirs 1 (0,1) and 2 (-1,1).
-    expect(map['0,1']).toBe(WHITE);
-    expect(map['-1,1']).toBe(WHITE);
+    // Facing 0 → rear dirs 1 (0,1) and 2 (-1,1). Withdraw is the 2-action action
+    // → dimmer than a one-action step.
+    expect(map['0,1']).toBe(WITHDRAW);
+    expect(map['-1,1']).toBe(WITHDRAW);
   });
 
   it('does not offer withdraw to a loose (Scattered) unit', () => {
     const map = overlayFor([mk({ id: 'u', hex: h(0, 0), facing: 0, currentFormation: 'Scattered' })]);
-    // Scattered moves omnidirectionally, so rear hexes are reachable — but not via
-    // the withdraw special case; assert it is not the generic white *only* by
-    // checking a rear hex is present as a reachable step (it is loose/white).
-    expect(map['0,1']).toBeDefined();
+    // Scattered moves omnidirectionally, so rear hexes are reachable as a normal
+    // (bright) step, not the dim withdraw shade.
+    expect(map['0,1']).toBe(MOVE_WHITE);
   });
 
-  it('a rear hex occupied by another unit is never white', () => {
+  it('a rear hex occupied by another unit is never a withdraw destination', () => {
     const map = overlayFor([mk({ id: 'u', hex: h(0, 0), facing: 0 }), mk({ id: 'b', hex: h(0, 1), team: 'blue' })]);
-    expect(map['0,1']).not.toBe(WHITE);
+    expect(map['0,1']).not.toBe(WITHDRAW);
   });
 });
 
@@ -152,14 +153,14 @@ describe('computeOverlayMap — drag over a hostile target shows range rings', (
 describe('computeOverlayMap — withdraw highlight affordability', () => {
   it('paints the withdraw rear hexes when the unit has 2 actions', () => {
     const map = overlayFor([mk({ id: 'u', hex: h(0, 0), facing: 0, actionsAvailable: 2, movementPointsAvailable: 0 })]);
-    expect(map['0,1']).toBe(WHITE);
-    expect(map['-1,1']).toBe(WHITE);
+    expect(map['0,1']).toBe(WITHDRAW);
+    expect(map['-1,1']).toBe(WITHDRAW);
   });
 
   it('does NOT paint them (no highlight) when the unit cannot afford it', () => {
     const map = overlayFor([mk({ id: 'u', hex: h(0, 0), facing: 0, actionsAvailable: 0, movementPointsAvailable: 0 })]);
-    expect(map['0,1']).not.toBe(WHITE);
-    expect(map['-1,1']).not.toBe(WHITE);
+    expect(map['0,1']).not.toBe(WITHDRAW);
+    expect(map['-1,1']).not.toBe(WITHDRAW);
   });
 });
 
@@ -206,5 +207,48 @@ describe('computeOverlayMap — leftover-MP boundary labels', () => {
     const labels = labelsFor(units);
     expect(labels['0,-2']).toBe('1'); // 3 MP pool, 2 hexes in → 1 left
     expect(labels['0,-3']).toBe('0'); // far border → 0 left
+  });
+});
+
+function movesFor(units: Unit[], mode: 'one' | 'all') {
+  return computeOverlayMap({
+    reactionMode: null,
+    draggingUnitId: 'u',
+    hoveredUnit: null,
+    units,
+    alliances: ALLIANCES,
+    formationsMap: FORMATIONS,
+    freeMove: false,
+    backgroundConfig: { imageUrl: '', offsetX: 0, offsetY: 0, scale: 1, gridRadius: 12 },
+    rangeViolationHex: null,
+    terrainCosts: {},
+    walls: {},
+    movePreviewMode: mode,
+  }).fills;
+}
+
+describe('computeOverlayMap — move preview mode', () => {
+  const GREY = 'rgba(190, 190, 190, 0.54)';
+  // 2 MP per action, 2 actions, 0 MP: one pool = 2 MP → (2,0) (turn + 2 steps = 3)
+  // needs a 2nd action.
+  const unit = () => mk({ id: 'u', hex: h(0, 0), facing: 0, movementPoints: 2, movementPointsAvailable: 0, actionsAvailable: 2 });
+
+  it("'one' (default) excludes hexes that need a 2nd action", () => {
+    const map = movesFor([unit()], 'one');
+    expect(map['0,-1']).toBe(MOVE_WHITE);   // straight, 1 MP, droppable
+    expect(map['1,0']).toBe(GREY);          // turn + step = 2 MP (within one action)
+    expect(map['2,0']).toBeUndefined();     // turn + 2 steps = 3 MP → needs a 2nd action
+  });
+
+  it("'all' includes them, banded brighter for fewer actions", () => {
+    const map = movesFor([unit()], 'all');
+    expect(map['2,0']).toBeDefined();       // 2nd-action hex now reachable
+    const alpha = (c: string) => Number(c.match(/([\d.]+)\)$/)?.[1] ?? '0');
+    expect(alpha(map['2,0'])).toBeLessThan(alpha(map['1,0'])); // more actions → dimmer
+  });
+
+  it('does not highlight an over-budget hex (execution soft gate handles it)', () => {
+    // (4,0) costs 5 MP (turn + 4 steps) > all 4 MP → excluded from the highlight.
+    expect(movesFor([unit()], 'all')['4,0']).toBeUndefined();
   });
 });
