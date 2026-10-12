@@ -27,14 +27,17 @@ interface SettingField {
 interface SettingGroup {
   title: string;
   fields: SettingField[];
+  /** Optional read-only note shown under the group (e.g. a derived value). */
+  note?: string;
 }
 
 const SETTING_GROUPS: SettingGroup[] = [
   {
     title: 'Turn start & actions',
+    note: 'The four turn-start values: unit MP (above), unit actions (above), hero MP = the hero’s full effective max (formation × base — derived, not a setting), hero actions (above).',
     fields: [
       { key: 'actions_per_turn', label: 'Unit actions per turn', hint: 'Actions a non-hero unit starts each turn with (default 2). 1 action = one full move pool.' },
-      { key: 'turn_start_mp', label: 'Unit turn-start MP', hint: 'Materialised MP a non-hero unit starts each turn with (default 0). Units convert actions into full MP pools as they move. Heroes instead start at their full effective MP (this hex/formation max) — not covered by this value.' },
+      { key: 'turn_start_mp', label: 'Unit turn-start MP', hint: 'Materialised MP a non-hero unit starts each turn with (default 0). Units convert actions into full MP pools as they move. Heroes instead start at their full effective MP (their hex/formation max) — not covered by this value.' },
       { key: 'hero_actions_per_turn', label: 'Hero actions per turn', hint: 'Actions a hero starts each turn with (default 5). Each converted action grants maxMP / 5 MP; heroes also start with full effective MP.' },
     ],
   },
@@ -197,6 +200,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                 <div className="space-y-2">
                   {group.fields.map(f => renderRow(f.key, f.label, f.hint))}
                 </div>
+                {group.note && (
+                  <p className="text-[11px] text-gray-500 mt-1">{group.note}</p>
+                )}
               </section>
             );
           })}
