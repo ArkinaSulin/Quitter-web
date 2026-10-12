@@ -205,11 +205,16 @@ flags). Messages state the cause and verbose prints the `[adv]`/`[dis]` pair.
 ## Attached heroes take damage
 
 When the defender has a **front-attached hero** (open position), the volley is
-split: `ceil(total × hero_attack_split)` (0.3 = 30%) attacks resolve against
+split: `round(total × hero_attack_split)` (0.3 = 30%) attacks resolve against
 the hero's AC/troop HP, the rest against the unit (`executeSplitAttacks`). A
-**back-attached (protected) hero** is untouched. The same split applies to
-retaliation and to defender-first-strike paths against an attached attacker
-hero. Outcomes expose `*HeroDamage` + `*HeroAttacks` for the messages.
+**back-attached (Protected)** hero is mostly shielded: the exposure is chosen by
+`attachedDefenderHeroShare(position, isRanged, isRear)` — **frontal/flank melee
+cannot reach it** (0), incoming **ranged** fire uses `protected_hero_range_split`
+(0.1), and any strike (melee or ranged) from the host's **effective rear arc**
+uses the same `hero_attack_split` as a front hero (rear takes precedence over
+ranged). The same split applies to retaliation and to defender-first-strike
+paths against an attached attacker hero, and to the attacking front-hero's own
+volley. Outcomes expose `*HeroDamage` + `*HeroAttacks` for the messages.
 
 Each side's message block reads **action → volley → the hero that took it**:
 `{striker} strikes first`, then the hero joiner and host volleys, then the

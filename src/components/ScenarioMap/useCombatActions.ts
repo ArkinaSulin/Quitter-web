@@ -6,7 +6,7 @@
 // end/overrun helpers. Owns the attack-related soft-enforcement states.
 import { useCallback, useState } from 'react';
 import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance, UnitEffect, GroundEffect, getOrganizationLevel } from '@/types/gameProtocol';
-import { resolveCombatSequence, determineCombatPosition, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome, AttackerHeroProfile, wallCoverAgainst } from '@/packages/combat';
+import { resolveCombatSequence, determineCombatPosition, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome, AttackerHeroProfile, wallCoverAgainst, attachedDefenderHeroShare } from '@/packages/combat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/packages/movement';
 import { isProtectedHero } from '@/packages/units';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/packages/combat';
@@ -286,15 +286,20 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const effectivePos = getEffectivePosition(formationsMap[target.currentFormation], rawPos);
     const isRear = effectivePos === 'rear';
     // Attached heroes only share damage when attached in FRONT (Leader mode); a
-    // back-attached (protected) hero is untouched. A front hero is a damage pool
-    // whether or not it joins the volley. A RIDER (mounted on a larger hero) is a
-    // targetable pool too — the attacker's chosen main target takes the larger
-    // share (mount_main_attack_split, default 0.7), the other the remainder.
+    // back-attached (protected) hero is mostly shielded — it only takes a RANGED
+    // share (protected_hero_range_split) or, when the host is struck from its
+    // effective REAR arc, the same share a front hero takes (hero_attack_split).
+    // The exposure rule lives in `attachedDefenderHeroShare`. A RIDER (mounted on
+    // a larger hero) is a targetable pool too — the attacker's chosen main target
+    // takes the larger share (mount_main_attack_split, default 0.7), the other the
+    // remainder.
     const attachedDefenderHero = (() => {
       const hero = units.find(u => u.attachedToUnitId === target.id && !u.isDeleted);
       if (!hero) return null;
-      if (hero.attachedPosition === 'front') {
-        return { currentAc: hero.currentAc + effectAcBonus(hero, isRanged), troopHp: hero.troopHp };
+      if (hero.attachedPosition === 'front' || hero.attachedPosition === 'back') {
+        const share = attachedDefenderHeroShare(hero.attachedPosition, isRanged, isRear);
+        if (share <= 0) return null;
+        return { currentAc: hero.currentAc + effectAcBonus(hero, isRanged), troopHp: hero.troopHp, share };
       }
       if (hero.attachedPosition === 'rider') {
         const mainShare = hero.mountSplit ?? getSetting('mount_main_attack_split', 0.7);

@@ -1,5 +1,21 @@
 # QuiTTER Changelog
 
+## Protected (back-attached) heroes take partial damage (2026-10-11)
+**Files:** src/packages/combat/lib/unitCombat.ts, src/packages/combat/tests/unitCombat.test.ts, src/components/ScenarioMap/useCombatActions.ts, supabase/migrations/123_protected_hero_splits.sql, docs/players/player-manual.md, docs/dev/{08-combat,02-schema-and-migrations,changelog}.md
+
+- A **back-attached (Protected) hero** is no longer 100% immune. New pure rule
+  `combat/unitCombat.attachedDefenderHeroShare(position, isRanged, isRear)`:
+  frontal/flank melee can't reach it (0), incoming **ranged** fire directs
+  `protected_hero_range_split` (**0.1**) at it, and any strike (melee or ranged)
+  from the host's **effective rear arc** uses the existing `hero_attack_split`
+  (**0.3** — the same share a front/Leader hero takes; rear takes precedence over
+  ranged). Front heroes unchanged (0.3 from any vector).
+- `useCombatActions` builds the defender hero pool via the helper; `unitCombat`
+  now also passes the computed `share` into the attacking front-hero's own volley
+  split (previously always fell back to 0.3).
+- Migration **123** seeds the new `protected_hero_range_split` setting. `tsc`
+  clean, tests pass, build clean. **Apply 123 in Supabase.**
+
 ## Attack pickers default to the active weapon; stale free move resets on reopen (2026-10-11)
 **Files:** src/packages/combat/{index.ts,lib/weaponChoice.ts,tests/weaponChoice.test.ts}, src/components/ScenarioMap/{useCombatActions.ts,useReactionActions.ts,useMoveActions.ts,ScenarioMap.tsx}, docs/players/player-manual.md, docs/dev/{06-turn-system,changelog}.md
 

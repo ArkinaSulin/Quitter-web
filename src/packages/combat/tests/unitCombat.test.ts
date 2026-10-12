@@ -12,6 +12,7 @@ import {
   resolveCombatSequence,
   suppressRetaliation,
   combatRollMode,
+  attachedDefenderHeroShare,
 } from '@/packages/combat/lib/unitCombat';
 import { canMeleeTarget } from '@/packages/movement';
 import { Unit, Hex, Formation, UnitEffect } from '@/types/gameProtocol';
@@ -473,7 +474,7 @@ describe('resolveCombatSequence', () => {
     attackCapMult = 1,
     isRanged = false,
     isRear = false,
-    attachedDefHero: { currentAc: number; troopHp: number } | null = null,
+    attachedDefHero: { currentAc: number; troopHp: number; share?: number } | null = null,
     attachedAtkHero: { currentAc: number; troopHp: number } | null = null,
     attackerForm: Formation | null = null,
     defenderForm: Formation | null = null,
@@ -1058,6 +1059,25 @@ describe('resolveCombatSequence', () => {
     expect(result.firstStrikeHeroDamage).toBeGreaterThanOrEqual(0);
   });
 
+  it('an explicit hero share routes that fraction to the attached hero', () => {
+    const hero10 = { currentAc: 12, troopHp: 8, share: 0.1 };
+    const r10 = callCombat(attacker, defender, aw, dw, 0, 1, false, false, hero10);
+    // 10 attacks × 0.1 = 1 to the hero (a protected hero reached by ranged fire)
+    expect(r10.firstStrikeHeroAttacks.length).toBe(1);
+    const hero30 = { currentAc: 12, troopHp: 8, share: 0.3 };
+    const r30 = callCombat(attacker, defender, aw, dw, 0, 1, false, false, hero30);
+    expect(r30.firstStrikeHeroAttacks.length).toBe(3);
+  });
+
+  it('the attacking front-hero volley honours the defender hero share too', () => {
+    const attackerHero: AttackerHeroProfile = { attackBonus: 5, damageDice: '1d8', numberOfAttacks: 4, range: 1, maxRange: 1 };
+    const small = callCombat(attacker, defender, aw, dw, 0, 1, false, false, { currentAc: 12, troopHp: 8, share: 0.1 }, null, null, null, false, attackerHero);
+    const large = callCombat(attacker, defender, aw, dw, 0, 1, false, false, { currentAc: 12, troopHp: 8, share: 0.5 }, null, null, null, false, attackerHero);
+    // The joiner's own volley (4 attacks) is split by the same share: 0.1 → 0,
+    // 0.5 → 2 rolls at the hero.
+    expect(small.firstStrikeAttackerHeroHeroDamage).toBeLessThan(large.firstStrikeAttackerHeroHeroDamage);
+  });
+
   it('AGR skips when attacker weapon has freeAction', () => {
     const lowAggrAttacker = { ...attacker, aggressiveness: 1 };
     const freeW = { ...aw, freeAction: true };
@@ -1155,5 +1175,28 @@ describe('suppressRetaliation', () => {
   it('keeps retaliation when at the cap flag is false', () => {
     const result = suppressRetaliation(makeOutcome(), false, false, true, false);
     expect(result.retaliationDamage).toBe(5);
+  });
+});
+
+describe('attachedDefenderHeroShare', () => {
+  it('a front (Leader) hero takes the hero_attack_split from any vector', () => {
+    expect(attachedDefenderHeroShare('front', false, false)).toBe(0.3);
+    expect(attachedDefenderHeroShare('front', true, false)).toBe(0.3);
+    expect(attachedDefenderHeroShare('front', false, true)).toBe(0.3);
+  });
+
+  it('a back (protected) hero is only reached from the rear or by ranged fire', () => {
+    // Front/flank melee cannot reach the hero behind the host.
+    expect(attachedDefenderHeroShare('back', false, false)).toBe(0);
+    // Ranged fire finds it for the small protected share.
+    expect(attachedDefenderHeroShare('back', true, false)).toBe(0.1);
+    // Rear takes precedence: any rear strike uses the front-hero share.
+    expect(attachedDefenderHeroShare('back', false, true)).toBe(0.3);
+    expect(attachedDefenderHeroShare('back', true, true)).toBe(0.3);
+  });
+
+  it('a rider share is chosen by the caller, not here', () => {
+    expect(attachedDefenderHeroShare('rider', false, false)).toBe(0);
+    expect(attachedDefenderHeroShare(null, false, false)).toBe(0);
   });
 });

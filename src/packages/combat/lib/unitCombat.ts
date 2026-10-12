@@ -271,6 +271,32 @@ function executeAttacks(
   return { attacks, totalDamage };
 }
 
+/**
+ * Share of a strike's attacks that reach the DEFENDER's attached hero (the unit
+ * + hero volley is split by `executeSplitAttacks`). The hero's attach position
+ * decides how exposed it is:
+ *  - **front** (Leader, open position): the hero takes `hero_attack_split`
+ *    (0.3) from ANY vector.
+ *  - **back** (Protected): only an attack from the host's effective **rear**
+ *    arc — the exposed side — or **ranged** fire finds the hero. Rear takes
+ *    precedence and uses the same `hero_attack_split`; incoming ranged fire uses
+ *    `protected_hero_range_split` (0.1); frontal/flank melee can't reach it (0).
+ *  - **rider**: the mount/rider split is chosen by the caller, not here (0).
+ * A share of `0` means the hero is untouched (the caller passes no hero pool).
+ */
+export function attachedDefenderHeroShare(
+  position: 'front' | 'back' | 'rider' | null,
+  isRanged: boolean,
+  isRear: boolean,
+): number {
+  if (position === 'front') return getSetting('hero_attack_split', 0.3);
+  if (position === 'back') {
+    if (isRear) return getSetting('hero_attack_split', 0.3);
+    if (isRanged) return getSetting('protected_hero_range_split', 0.1);
+  }
+  return 0;
+}
+
 function executeSplitAttacks(
   totalCount: number,
   attackBonus: number,
@@ -520,7 +546,7 @@ export function resolveCombatSequence(
     // The hero rolls at ITS OWN weapon bands + flag effects (mode precomputed).
     const heroMode = attackerHeroRoll?.mode ?? 'normal';
     if (attachedDefenderHero) {
-      const split = executeSplitAttacks(count, heroBonus, attackerHero.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, heroMode);
+      const split = executeSplitAttacks(count, heroBonus, attackerHero.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, heroMode, attachedDefenderHero.share);
       return { attacks: split.attacks, damage: split.unitDamage, heroDamage: split.heroDamage, heroAttacks: split.heroAttacks, count };
     }
     const result = executeAttacks(count, heroBonus, attackerHero.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, heroMode);

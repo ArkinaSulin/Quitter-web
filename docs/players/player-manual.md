@@ -1030,8 +1030,11 @@ and choose:
     its best reaching weapon at range). If it's out of actions it simply sits
     that attack out — no prompt. A **protected (rear)** hero never joins;
   - still makes the host's charge/retaliation share, etc.
-- **Protected mode (rear)** — the hero hides behind the ranks and **cannot be
-  hit at all** until the host falls.
+- **Protected mode (rear)** — the hero hides behind the ranks and is out of
+  reach of frontal/flank melee. It can still be caught: **ranged fire** directs
+  **10%** of an incoming volley at it, and any attack (melee or ranged) that
+  comes in from the host's **rear arc** directs **30%** at it (the same share a
+  front hero takes).
 
 ![S-17 Attach modal](screenshots/s-17-attach-hero.png)
 
