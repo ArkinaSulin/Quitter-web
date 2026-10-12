@@ -135,9 +135,9 @@ A per-browser setting (`movePreviewMode`, Scenario Settings — *One action per
 drag* / *All actions per drag*; default **'one'**) picks the drag **reach**, and
 the executed move matches it (`budget = hopCap`, so distance ↔ MP are consistent):
 
-- **one** — exactly ONE action's pool: units `computeMovePool` (a full pool when
-  MP is spent with an action left, else leftover MP), heroes `computeHeroMovePool`
-  (one full move). A 2nd-action hex is not reachable in one drag — drag again.
+- **one** — exactly ONE action: units `computeMovePool` (a full pool when MP is
+  spent with an action left, else leftover MP), heroes **`floor(current MP)`** (no
+  action conversion). A 2nd-action hex is not reachable in one drag — drag again.
 - **all** — every remaining action: units `computeMoveBudget`, heroes
   `computeHeroMoveBudget` (MP + actions × maxMP/5).
 

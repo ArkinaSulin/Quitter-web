@@ -19,9 +19,11 @@
   **dimmer white** (the only 2-action action).
 - `MoveActionsDeps.movePreviewMode` + `OverlayState.movePreviewMode`; `ScenarioMap`
   threads the client state. `tsc` clean, tests pass, build clean. No migration.
-- **Label format**: hexes within the one-action reach print just the MP left; hexes
-  beyond it print `{actions left}-{MP left}`; withdraw hexes print
-  `{actions left}-{MP left}` too.
+- **Label format**: hexes within the **one-action reach** print just the MP left;
+  hexes beyond it print `{actions left}-{MP left}`; withdraw hexes print
+  `{actions left}-{MP left}` too. The hero *one-action* reach is now
+  **`floor(current MP)`** (no action conversion) — so a hero's action-funded hexes
+  read `x-{MP}` (e.g. `4-0`), matching the label rule.
 
 ## Move-preview MP labels: client toggle, charge corridor, 0 on borders (2026-10-11)
 **Files:** src/components/ScenarioMap/{useOverlay.ts (+ test),ScenarioMap.tsx,TopBar.tsx}, docs/dev/{07-movement-economy,changelog}.md, docs/players/player-manual.md

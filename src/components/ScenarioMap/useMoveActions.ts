@@ -690,17 +690,18 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // more hexes than its move), but NOT by MP: painted hexes are found at their
     // TRUE entry cost even when that cost exceeds the pool, so affordability (and
     // the soft over-budget confirm) use the real number instead of a hard block.
-    // The preview mode sets the reach: 'one' = a single action's pool, 'all' =
-    // every remaining action; `budget = hopCap` keeps distance ↔ MP consistent.
+    // The preview mode sets the reach: 'one' = a single action (units: one pool;
+    // heroes: floor(current MP)), 'all' = every remaining action; `budget = hopCap`
+    // keeps distance ↔ MP consistent.
     const modePool = (bu: { movementPointsAvailable: number; actionsAvailable: number }, effMax: number, isHero: boolean): number =>
       movePreviewMode === 'all'
         ? (isHero ? computeHeroMoveBudget(bu, effMax) : computeMoveBudget(bu, effMax))
-        : (isHero ? computeHeroMovePool(bu, effMax) : computeMovePool(bu, effMax));
+        : (isHero ? Math.max(0, Math.floor(bu.movementPointsAvailable)) : computeMovePool(bu, effMax));
     const moveBudget = modePool(unitBudget, effectiveMax, unit.isHero);
-    let hopCap = Math.max(1, moveBudget);
+    let hopCap = Math.max(0, moveBudget);
     if (!flying && attachedHero && heroMax && !isRider) {
       const heroPool = modePool(moveBudgetUnit(attachedHero, 'ground'), heroMax, attachedHero.isHero);
-      hopCap = Math.min(hopCap, Math.max(1, heroPool));
+      hopCap = Math.min(hopCap, Math.max(0, heroPool));
     }
     // Occupied hex structures whose door is open/broken may be TRAVERSED (not
     // stopped on) — pass them to the reachability search.

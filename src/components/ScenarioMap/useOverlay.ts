@@ -5,7 +5,7 @@
 // the hovered-unit front-arc tint. Pure function — ScenarioMap feeds it the
 // grid state (draggingUnitId/hoveredUnit come from useHexGrid) in an effect.
 import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
-import { computeReachableMap, computeMovePool, computeMoveBudget, computeHeroMovePool, computeHeroMoveBudget, computeChargeReachable, applyMoveCost, applyHeroMoveCost } from '@/packages/movement';
+import { computeReachableMap, computeMovePool, computeMoveBudget, computeHeroMoveBudget, computeChargeReachable, applyMoveCost, applyHeroMoveCost } from '@/packages/movement';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
 import { getSetting } from '@/packages/infra';
 import { imposesKillZone } from '@/packages/morale';
@@ -281,28 +281,29 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     const effectiveMax = flying ? (draggedUnit.flySpeed ?? 0) : computeEffectiveMovement(draggedUnit, movementMult);
     const budgetUnit = moveBudgetUnit(draggedUnit, flying ? 'fly' : 'ground');
     // Preview mode (client):
-    //  - 'one' (default): the reach is exactly ONE action's pool — units
-    //    `computeMovePool` (full pool at 0 MP with an action, else leftover MP),
-    //    heroes `computeHeroMovePool` (one full move, converting actions).
+    //  - 'one' (default): the reach is exactly ONE action — units `computeMovePool`
+    //    (full pool at 0 MP with an action, else leftover MP), heroes floor(MP).
     //  - 'all': every remaining action — units `computeMoveBudget`, heroes
     //    `computeHeroMoveBudget`.
-    // `budget = hopCap` so distance ↔ MP stay consistent (no more all-actions MP
-    // with one-pool distance). Over-budget hexes are NOT highlighted
-    // (`allowBeyondBudget = false`) — the soft gate stays on the drop side.
-    const modePool = (bu: { movementPointsAvailable: number; actionsAvailable: number }, effMax: number, isHero: boolean): number =>
-      movePreviewMode === 'all'
-        ? (isHero ? computeHeroMoveBudget(bu, effMax) : computeMoveBudget(bu, effMax))
-        : (isHero ? computeHeroMovePool(bu, effMax) : computeMovePool(bu, effMax));
-    let budget = modePool(budgetUnit, effectiveMax, draggedUnit.isHero);
-    let hopCap = budget;
+    // `budget = hopCap` so distance ↔ MP stay consistent. Over-budget hexes are NOT
+    // highlighted (`allowBeyondBudget = false`) — the soft gate stays on the drop.
+    const onePool = (bu: { movementPointsAvailable: number; actionsAvailable: number }, isHero: boolean): number =>
+      isHero ? Math.max(0, Math.floor(bu.movementPointsAvailable)) : computeMovePool(bu, effectiveMax);
+    const allPool = (bu: { movementPointsAvailable: number; actionsAvailable: number }, effMax: number, isHero: boolean): number =>
+      isHero ? computeHeroMoveBudget(bu, effMax) : computeMoveBudget(bu, effMax);
     const attachedHero = draggedUnit.attachedToUnitId ? undefined : units.find(u => u.attachedToUnitId === draggedUnit.id && !u.isDeleted);
-    if (!flying && attachedHero && attachedHero.attachedPosition !== 'rider') {
-      const heroMult = getFormationMultiplier(formationsMap, attachedHero.currentFormation, 'movement_multiplier');
-      const heroMax = computeEffectiveMovement(attachedHero, heroMult);
-      const heroPool = modePool(moveBudgetUnit(attachedHero, 'ground'), heroMax, attachedHero.isHero);
-      budget = Math.min(budget, heroPool);
-      hopCap = Math.min(hopCap, heroPool);
+    const heroBudgetUnit = (!flying && attachedHero && attachedHero.attachedPosition !== 'rider') ? moveBudgetUnit(attachedHero, 'ground') : null;
+    const heroEffectiveMax = heroBudgetUnit
+      ? computeEffectiveMovement(attachedHero!, getFormationMultiplier(formationsMap, attachedHero!.currentFormation, 'movement_multiplier'))
+      : 0;
+    let oneBudget = onePool(budgetUnit, draggedUnit.isHero);
+    let allBudget = allPool(budgetUnit, effectiveMax, draggedUnit.isHero);
+    if (heroBudgetUnit) {
+      oneBudget = Math.min(oneBudget, onePool(heroBudgetUnit, attachedHero!.isHero));
+      allBudget = Math.min(allBudget, allPool(heroBudgetUnit, heroEffectiveMax, attachedHero!.isHero));
     }
+    const budget = movePreviewMode === 'all' ? allBudget : oneBudget;
+    const hopCap = budget;
     const passThrough = new Set<string>(Array.from(loosePassThroughHexes(units, draggedUnit, formationsMap, alliances, flying ? 'fly' : 'ground', surface)));
     if (!flying) for (const k of Array.from(doorPassThroughHexes(structures, templates, occupied))) passThrough.add(k);
     const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, flying ? undefined : costOfHexFor(draggedUnit), false, flying ? undefined : blockedEdgeFor(draggedUnit), hopCap, passThrough, flying ? undefined : org, reactiveArchery);
@@ -397,11 +398,12 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     const originKey = `${draggedUnit.hex.q},${draggedUnit.hex.r}`;
     const leftFor = (cost: number) =>
       (draggedUnit.isHero ? applyHeroMoveCost(budgetUnit, cost, effectiveMax) : applyMoveCost(budgetUnit, cost, effectiveMax)).movementPointsAvailable;
-    // One-action reach → just the MP left. Beyond it → `{actions left}-{MP left}`.
+    // A hex inside the ONE-action reach shows just the MP left; beyond it shows
+    // `{actions left}-{MP left}`.
     const label = (cost: number): string => {
       const left = Math.max(0, Math.floor(leftFor(cost)));
+      if (cost <= oneBudget) return String(left);
       const spent = actionsSpentAt(cost);
-      if (spent <= 1) return String(left);
       const actionsLeft = Math.max(0, (draggedUnit.actionsAvailable ?? 0) - spent);
       return `${actionsLeft}-${left}`;
     };

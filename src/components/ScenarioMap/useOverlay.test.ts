@@ -268,9 +268,18 @@ describe('computeOverlayMap — label format', () => {
     expect(labels['2,0']).toBe('0-1'); // 2 actions spent → 0 left, 1 MP left
   });
 
+  it('hero: `{actions left}-{MP left}` beyond the hero\'s current MP', () => {
+    // Hero (maxMP 5 → 1 MP/action), 3 MP + 5 actions: a hex costing 4 spends the
+    // 3 MP + 1 action → 4 actions left, 0 MP left.
+    const units = [mk({ id: 'u', hex: h(0, 0), facing: 0, isHero: true, currentFormation: 'Hero', movementPoints: 5, movementPointsAvailable: 3, actionsAvailable: 5 })];
+    const labels = labelsFor(units, { showAll: true, mode: 'all' });
+    expect(labels['3,0']).toBe('0');   // within current MP → plain MP left
+    expect(labels['4,0']).toBe('4-0'); // 1 action spent → 4 left, 0 MP
+  });
+
   it('withdraw hexes: `{actions left}-{MP left}`', () => {
     const units = [mk({ id: 'u', hex: h(0, 0), facing: 0, movementPoints: 4, movementPointsAvailable: 2, actionsAvailable: 2 })];
     const labels = labelsFor(units, { showAll: true, mode: 'one' });
-    expect(labels['0,1']).toBe('0-2'); // 2 actions spent, MP untouched
+    expect(labels['0,1']).toBe('0-2'); // withdraw = 2 actions, MP untouched
   });
 });
