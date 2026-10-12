@@ -468,6 +468,9 @@ Drag a unit with the mouse. The game shades where it can move:
 - **Red hexes** are enemy **threat hexes** (kill-zone / zone-of-control):
   reachable as a *destination*, never through. **Dropping into one ends your
   move** — any MP left in that pool is spent (you may still use another action).
+  **With Reactive archery ON** you can't reach a red hex at all unless you start
+  right beside it — you stop on the hex before it and enter on a *later* move
+  (so no MP is wasted; it's just split across two moves).
 - **A number on the edge of the highlighted area** shows how much **MP you'd
   have left** if you stopped there. If the preview stops short of an enemy
   threat hex, a wall, an occupied hex, or a climb, the number tells you it's

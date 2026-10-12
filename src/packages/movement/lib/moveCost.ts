@@ -263,8 +263,8 @@ function key(q: number, r: number): string {
  * Charge corridor for a charging unit, up to `maxHexes` (the unit's one-action MP
  * pool). An occupied hex blocks the lane (cannot be entered or passed through). A
  * threat/zone-of-control hex may be ENTERED (the charge ends there) but never passed
- * through — a charge is stopped by an enemy's kill zone. Returns hex key -> step cost
- * (1..maxHexes).
+ * through — a charge is stopped by an enemy's kill zone. With `stopBeforeThreat`
+ * (Reactive archery on) a threat hex is only enterable as the charge's FIRST step.
  *
  * Geometry: a charge is a front-arc BFS wedge, **no turning** — from the origin into
  * a fixed facing's 2 front hexes, then from each into its 2 front hexes, etc.
@@ -280,6 +280,9 @@ export function computeChargeReachable(
   blockedEdge?: BlockedEdgeFn,
   /** ZoC / kill-zone hexes: enterable as a destination, never passed through. */
   threatHexes?: Set<string>,
+  /** Reactive-archery: a threat hex is a destination only as the FIRST step
+   *  (the charger already adjacent) — a multi-step charge stops short of it. */
+  stopBeforeThreat = false,
 ): Map<string, number> {
   const result = new Map<string, number>();
   const dirs = frontArcIndices(unit.facing);
@@ -302,6 +305,9 @@ export function computeChargeReachable(
       if (blockedEdge && blockedEdge(cur.q, cur.r, nq, nr)) continue;
       // A charge cannot enter OR pass through broken terrain (painted MP cost > 1).
       if (costOfHex && (costOfHex(nq, nr, cur.q, cur.r) ?? 1) > 1) continue;
+      // Reactive-archery stop-before: a threat hex is only a destination as the
+      // first step; a multi-step charge stops short of it.
+      if (stopBeforeThreat && cur.cost > 0 && threatHexes?.has(k)) continue;
       visited.add(k);
       const cost = cur.cost + 1;
       result.set(k, cost);

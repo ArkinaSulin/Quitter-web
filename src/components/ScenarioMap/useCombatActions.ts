@@ -110,6 +110,9 @@ interface CombatActionsDeps {
   canAttackTarget?: (attacker: Unit, target: Unit) => boolean;
   /** Free-move: the climb portion of a climb-attack costs no MP. */
   freeMove?: boolean;
+  /** Scenario "Reactive archery": a swoop charge may enter a threat/ZoC hex only
+   *  as its first step (stop before it otherwise). */
+  archerReactionEnabled?: boolean;
 }
 
 export function useCombatActions(deps: CombatActionsDeps) {
@@ -135,6 +138,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     setAttachModal,
     canAttackTarget,
     freeMove = false,
+    archerReactionEnabled = false,
   } = deps;
 
   const [pendingAttack, setPendingAttack] = useState<PendingAttack | null>(null);
@@ -1071,7 +1075,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // swoop wedge is aimed at the target hex; a formed flyer keeps its own facing.
     const loose = isLooseUnit(attacker, formationsMap[attacker.currentFormation]);
     const facing = loose ? facingToward(attacker.hex, target.hex) : attacker.facing;
-    const reach = computeChargeReachable({ hex: attacker.hex, facing }, occupied, maxMP, undefined, undefined, threatHexes);
+    const reach = computeChargeReachable({ hex: attacker.hex, facing }, occupied, maxMP, undefined, undefined, threatHexes, archerReactionEnabled);
     const cost = reach.get(`${target.hex.q},${target.hex.r}`);
     if (cost == null) return null;
     if ((attacker.chargeDistance ?? 0) + cost < getSetting('charge_full_distance', 2)) return null;
@@ -1085,7 +1089,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       maxMP,
       overBudget: !affordable,
     };
-  }, [units, alliances, formationsMap, structures, structureTemplates]);
+  }, [units, alliances, formationsMap, structures, structureTemplates, archerReactionEnabled]);
 
   /** The plan if a swoop drop applies to this pair, else null (used by the UI to
    *  decide whether to prompt). */

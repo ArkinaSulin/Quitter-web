@@ -76,6 +76,9 @@ export interface AiPlanContext {
   maxStepsPerUnit?: number;
   /** Max 60° turns per approach (default 3 — a full 180°, never about-turn). */
   maxTurns?: number;
+  /** Reactive archery: a threat/ZoC hex is a valid destination only as a move's
+   *  first step (the AI stops before it, like the human rule). */
+  reactiveArchery?: boolean;
 }
 
 export function hexKeyOf(hex: { q: number; r: number }): string {
@@ -346,7 +349,7 @@ function maneuverOptions(
   u: Unit,
   working: Unit[],
   enemies: Unit[],
-  ctx: Pick<AiPlanContext, 'alliances' | 'formations' | 'visibleHexes'>,
+  ctx: Pick<AiPlanContext, 'alliances' | 'formations' | 'visibleHexes' | 'reactiveArchery'>,
   costOfHex: ((q: number, r: number, fromQ?: number, fromR?: number) => number) | undefined,
   maxTurns: number,
   scorer: (dest: Hex, foes: Unit[], threat: Set<string>) => number,
@@ -362,7 +365,7 @@ function maneuverOptions(
     const max = effMax(unitAfter, ctx.formations);
     const pool = computeMovePool(unitAfter, max);
     if (pool < 1) return;
-    const reach = computeReachableMap(unitAfter, pool, occ, threat, costOfHex, false, blockedEdge);
+    const reach = computeReachableMap(unitAfter, pool, occ, threat, costOfHex, false, blockedEdge, undefined, undefined, undefined, !!ctx.reactiveArchery);
     reach.forEach((entry, key) => {
       if (entry.needsTurn) return;
       const dest = entry.path[entry.path.length - 1];
@@ -403,7 +406,7 @@ function chooseFleeHex(
   u: Unit,
   working: Unit[],
   enemies: Unit[],
-  ctx: Pick<AiPlanContext, 'alliances' | 'formations' | 'visibleHexes'>,
+  ctx: Pick<AiPlanContext, 'alliances' | 'formations' | 'visibleHexes' | 'reactiveArchery'>,
   costOfHex: ((q: number, r: number, fromQ?: number, fromR?: number) => number) | undefined,
   gridRadius: number | undefined,
   blockedEdge?: BlockedEdgeFn,
@@ -417,7 +420,7 @@ function chooseFleeHex(
   const pool = computeMovePool(u, effMax(u, ctx.formations));
   if (pool < 1) return null;
   const threat = computeThreatHexes(working, u.id, ctx.alliances, ctx.formations);
-  const reach = computeReachableMap(u, pool, occ, threat, costOfHex, false, blockedEdge);
+  const reach = computeReachableMap(u, pool, occ, threat, costOfHex, false, blockedEdge, undefined, undefined, undefined, !!ctx.reactiveArchery);
   const startDist = nearestEnemyDist(u.hex, foes);
   const candidates: PlannedMoveOption[] = [];
   reach.forEach((entry, key) => {

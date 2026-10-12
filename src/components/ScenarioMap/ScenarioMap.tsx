@@ -1079,6 +1079,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     alliances,
     formationsMap,
     freeMove,
+    archerReactionEnabled,
     turnNumber,
     execute,
     addMessage,
@@ -1907,6 +1908,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     canAttackTarget: canAttackInFog,
     groundZones: effectiveZones,
     freeMove,
+    archerReactionEnabled,
   });
   pursuitsRef.current = performPursuits;
 
@@ -2413,11 +2415,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
-    const { fills, labels } = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, chargeFacing: chargeAimFacing });
+    const { fills, labels } = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, chargeFacing: chargeAimFacing, reactiveArchery: archerReactionEnabled });
     if (retreatHoverHex) fills[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(fills);
     setOverlayLabels(labels);
-  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex, chargeAimFacing]);
+  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex, chargeAimFacing, archerReactionEnabled]);
 
   // Center map on initial load
   useEffect(() => {
@@ -2939,6 +2941,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         terrainCosts={zoneMpCosts}
         walls={walls}
         gridRadius={backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS}
+        archerReactionEnabled={archerReactionEnabled}
         unitMaxMP={unitMaxMP}
         performMove={(unit, targetHex, cost, overBudget, maxMP) => completeMove(unit, targetHex, cost, overBudget, maxMP)}
         performAttack={(attacker, target, overBudget) => performAttack(attacker, target, overBudget)}

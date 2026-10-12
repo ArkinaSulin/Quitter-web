@@ -116,11 +116,13 @@ allowBeyondBudget?)` — min-cost Dijkstra over `(hex, facing)` state:
 - **Loose** units (Routed, Scattered, Hero) move any direction at 1 MP/hex —
   always white, no facing.
 - **Threat hexes** are reachable destinations but never passed through;
-  **occupied** hexes are never reachable. **Exception — reaction reposition**:
-  with the `stopBeforeThreat` option (used only while reaction mode is active) a
-  threat hex is a destination only as the move's **first step** (the archer
-  already adjacent); otherwise the reposition **stops on the last non-threat
-  hex**, and entering is a separate move. Normal moves/charges are unchanged.
+  **occupied** hexes are never reachable. **Reactive archery** (the scenario
+  setting): when ON, the `stopBeforeThreat` option is passed everywhere movement
+  destinations are computed (normal move + preview, charges, the reaction
+  reposition, and the AI) — a threat hex is a destination only as the move's
+  **first step** (the mover already adjacent); otherwise the move **stops on the
+  last non-threat hex** and entering is a separate move. When OFF, nothing changes
+  (a threat hex may be stopped on from any distance).
 - **Terrain**: `costOfHex` (painted MP cost, `0..9`) sets entry cost per hex —
   **0 = free**, 1 = clear, 2+ = difficult. Reach is capped by BOTH MP and
   **hex hops ≤ maxMP** so a 0-cost chain can't roam unbounded.
@@ -137,7 +139,7 @@ the **MP the mover would have left** after paying that hex's entry cost (floored
 where movement stops short without running out of MP — a wall / ZoC / occupied
 hex / elevation change / map edge (or a next step it can't afford). Drawn like
 the terrain MP-cost numbers but in white. Covers e.g. the hex just before an
-unaffordable climb, or (in reaction mode) the hex before a kill zone.
+unaffordable climb, or (with Reactive archery on) the hex before a kill zone.
 
 ### Zone of control (universal rule)
 

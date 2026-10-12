@@ -574,6 +574,17 @@ describe('computeChargeReachable — front-arc BFS wedge', () => {
     expect(map.has('0,-3')).toBe(false); // only reachable through (0,-2)
     expect(map.get('1,-3')).toBe(3); // still reachable via (1,-2)
   });
+
+  it('stopBeforeThreat: a threat hex is chargeable only as the FIRST step', () => {
+    // Adjacent threat (first step) is still a destination.
+    const adjacent = computeChargeReachable({ hex: h(0, 0), facing: 0 }, new Set(), 3, undefined, undefined, new Set(['0,-1']), true);
+    expect(adjacent.get('0,-1')).toBe(1);
+    // A threat two steps in is no longer a destination under stopBeforeThreat.
+    const deep = computeChargeReachable({ hex: h(0, 0), facing: 0 }, new Set(), 3, undefined, undefined, new Set(['0,-2']), true);
+    expect(deep.has('0,-2')).toBe(false);
+    expect(deep.get('0,-1')).toBe(1); // stops short, adjacent
+    expect(deep.get('1,-3')).toBe(3); // the other lane is unaffected
+  });
 });
 
 

@@ -69,6 +69,9 @@ export interface OverlayState {
   /** Aim facing for a loose (facing-less) charger's single front wedge (from the
    *  cursor hex). Ignored for formed units, which use their own facing. */
   chargeFacing?: number | null;
+  /** Reactive archery: a threat/ZoC hex is a valid destination only as the move's
+   *  first step (stop before it). Off = may stop ON it from any distance. */
+  reactiveArchery?: boolean;
 }
 
 /** Drag-overlay output: per-hex fill colours, plus optional per-hex text labels
@@ -95,6 +98,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     templates,
     zones,
     chargeFacing,
+    reactiveArchery = false,
   } = state;
 
   const isMountedOf = (u: Unit) => !!u.mountId || !!u.mountName;
@@ -138,7 +142,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
         // A reaction reposition stops BEFORE a hostile kill zone (enter on a later
         // move) — `stopBeforeThreat`; normal moves are unaffected.
         const reactionThreats = computeThreatHexes(units, archer.id, alliances, formationsMap, structures, templates);
-        const reachable = computeReachableMap(archer, budget, occupied, reactionThreats, costOfHexFor(archer), false, blockedEdgeFor(archer), undefined, undefined, org, true);
+        const reachable = computeReachableMap(archer, budget, occupied, reactionThreats, costOfHexFor(archer), false, blockedEdgeFor(archer), undefined, undefined, org, reactiveArchery);
         reachable.forEach((entry, key) => {
           combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
         });
@@ -216,6 +220,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
         flying ? undefined : costOfHexFor(draggedUnit),
         flying ? undefined : chargeBlockedEdgeFor(draggedUnit),
         threatHexes,
+        reactiveArchery,
       );
       for (const [key, cost] of Array.from(chargeReach.entries())) {
         combined[key] = cost >= getSetting('charge_full_distance', 2) ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';
@@ -249,7 +254,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     }
     const passThrough = new Set<string>(Array.from(loosePassThroughHexes(units, draggedUnit, formationsMap, alliances, flying ? 'fly' : 'ground', surface)));
     if (!flying) for (const k of Array.from(doorPassThroughHexes(structures, templates, occupied))) passThrough.add(k);
-    const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, flying ? undefined : costOfHexFor(draggedUnit), false, flying ? undefined : blockedEdgeFor(draggedUnit), hopCap, passThrough, flying ? undefined : org);
+    const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, flying ? undefined : costOfHexFor(draggedUnit), false, flying ? undefined : blockedEdgeFor(draggedUnit), hopCap, passThrough, flying ? undefined : org, reactiveArchery);
 
     const combined: Record<string, string> = {};
 

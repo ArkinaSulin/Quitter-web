@@ -387,7 +387,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       zones: groundZones,
       isMounted: mounted,
       waiveClimb,
-    }), undefined, passThrough, { movementMultipliers, breakOnEntry, orgLevels: formationOrgLevels(formationsMap) }, true);
+    }), undefined, passThrough, { movementMultipliers, breakOnEntry, orgLevels: formationOrgLevels(formationsMap) }, archerReactionEnabled);
   }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones, formationsMap, alliances]);
 
   const handleReactionAttack = useCallback(async (

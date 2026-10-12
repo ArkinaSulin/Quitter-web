@@ -44,6 +44,8 @@ interface AiPanelProps {
   walls: Walls;
   /** Map grid radius (axial ring) — routed flee stops at this rim. */
   gridRadius?: number;
+  /** Scenario "Reactive archery": the AI stops before a ZoC too. */
+  archerReactionEnabled?: boolean;
   unitMaxMP: (unit: Unit) => number;
   performMove: (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number) => Promise<unknown>;
   performAttack: (attacker: Unit, target: Unit, overBudget: boolean) => Promise<unknown>;
@@ -99,6 +101,7 @@ export function AiPanel({
   terrainCosts,
   walls,
   gridRadius,
+  archerReactionEnabled,
   unitMaxMP,
   performMove,
   performAttack,
@@ -111,7 +114,7 @@ export function AiPanel({
   addError,
 }: AiPanelProps) {
   const propsRef = useRef<AiPanelProps | null>(null);
-  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, gridRadius, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, undo, onOverlayChange, onBusyChange, addMessage, addError };
+  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, gridRadius, archerReactionEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, undo, onOverlayChange, onBusyChange, addMessage, addError };
 
   const [plans, setPlans] = useState<AiUnitPlan[] | null>(null);
   const [remaining, setRemaining] = useState<ExecUnit[] | null>(null); // active during Execute
@@ -204,6 +207,7 @@ export function AiPanel({
       terrainCosts,
       walls,
       gridRadius: gridRadius ?? DEFAULT_GRID_RADIUS,
+      reactiveArchery: !!archerReactionEnabled,
     });
     setPlans(next);
     setRemaining(null);

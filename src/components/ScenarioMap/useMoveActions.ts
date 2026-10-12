@@ -62,6 +62,9 @@ interface MoveActionsDeps {
   alliances: Record<string, AllianceGroup>;
   formationsMap: Record<string, Formation>;
   freeMove: boolean;
+  /** Scenario "Reactive archery": a threat/ZoC hex is a valid move destination
+   *  only as the first step (stop before it). Off = may stop ON it. */
+  archerReactionEnabled: boolean;
   turnNumber: number;
   execute: ExecuteFn;
   addMessage: (msg: string, verboseText?: string) => void;
@@ -94,6 +97,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     alliances,
     formationsMap,
     freeMove,
+    archerReactionEnabled,
     turnNumber,
     execute,
     addMessage,
@@ -601,6 +605,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
         flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted, waiveClimb }),
         flying ? undefined : makeChargeBlockedEdge(walls, { structures, templates: structureTemplates, zones: groundZones, orgLevel: getOrganizationLevel(unit.currentFormation), isMounted: mounted }),
         threatHexes,
+        archerReactionEnabled,
       );
       const cost = chargeReach.get(`${targetHex.q},${targetHex.r}`);
       if (!cost) {
@@ -697,9 +702,15 @@ export function useMoveActions(deps: MoveActionsDeps) {
       ? () => null
       : (fq: number, fr: number, tq: number, tr: number, formation: string) =>
           entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, structures, structureTemplates, groundZones);
-    const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true, blockedEdge, hopCap, passThrough, { movementMultipliers, breakOnEntry, orgLevels: formationOrgLevels(formationsMap) });
+    const reachableMap = computeReachableMap(unit, hopCap, occupied, threatHexes, costOfHex, true, blockedEdge, hopCap, passThrough, { movementMultipliers, breakOnEntry, orgLevels: formationOrgLevels(formationsMap) }, archerReactionEnabled);
     const reachEntry = reachableMap.get(`${targetHex.q},${targetHex.r}`);
     if (!reachEntry) {
+      // A threat/ZoC hex is only enterable as the move's first step (Reactive
+      // archery) — otherwise the move must stop on the last non-threat hex.
+      if (archerReactionEnabled && threatHexes.has(`${targetHex.q},${targetHex.r}`)) {
+        addMessage(`${unit.unitName} must move adjacent to the kill zone first, then enter it on a later move`);
+        return;
+      }
       // Beyond the physical hop limit — genuinely can't walk that far.
       addMessage(`${unit.unitName} cannot make that move — (${targetHex.q}, ${targetHex.r}) is out of reach`);
       return;

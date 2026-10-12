@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Fix: ZoC "stop before" is gated by the Reactive archery setting (2026-10-11)
+**Files:** src/packages/movement/lib/moveCost.ts (+ test), src/packages/ai/lib/planner.ts, src/components/ScenarioMap/{useOverlay.ts,useMoveActions.ts,useCombatActions.ts,useReactionActions.ts,AiPanel.tsx,ScenarioMap.tsx}, docs/dev/{07-movement-economy,changelog}.md, docs/players/player-manual.md
+
+- c1eec31 scoped the "threat/ZoC hex is a destination only as the move's first
+  step" rule to reaction mode. It now follows the scenario **Reactive archery**
+  setting (`archer_reaction_enabled`): when ON, the rule applies to **every**
+  movement destination — normal move + preview, charges (`computeChargeReachable`),
+  the reaction reposition, and the **AI** planner. When OFF, nothing changes (a
+  unit may stop on a threat hex from any distance).
+- `useMoveActions` / `useCombatActions` gained `archerReactionEnabled`; `useOverlay`
+  gained `reactiveArchery`; `AiPlanContext` gained `reactiveArchery`; `AiPanel`
+  forwards the setting. A move rejected for a deep ZoC now reports "move adjacent
+  to the kill zone first" instead of "out of reach".
+- `tsc` clean, tests pass, build clean. No migration.
+
 ## Drop the obsolete ship seed (migration 067) (2026-10-11)
 **Files:** supabase/migrations/067_ship_seed.sql (deleted), src/components/ShipEditor/ShipEditor.tsx, src/types/ship.ts, src/packages/ships/tests/shipStats.test.ts, AGENTS.md, docs/dev/{02-schema-and-migrations,16-ship-builder,outstanding,changelog}.md
 
