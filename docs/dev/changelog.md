@@ -20,8 +20,8 @@
 - `MoveActionsDeps.movePreviewMode` + `OverlayState.movePreviewMode`; `ScenarioMap`
   threads the client state. `tsc` clean, tests pass, build clean. No migration.
 - **Label format**: one-action mode prints just the MP left; all-actions mode prints
-  `{action}-{MP left}` (which action funds the hex); withdraw hexes always print
-  `2-{MP left}`.
+  `{action}-{MP left}` (which action funds the hex) with the `1-` prefix omitted;
+  withdraw hexes always print `2-{MP left}`.
 
 ## Move-preview MP labels: client toggle, charge corridor, 0 on borders (2026-10-11)
 **Files:** src/components/ScenarioMap/{useOverlay.ts (+ test),ScenarioMap.tsx,TopBar.tsx}, docs/dev/{07-movement-economy,changelog}.md, docs/players/player-manual.md

@@ -166,7 +166,8 @@ hexes (2 actions spent, MP untouched → the value is the unit's remaining MP). 
 toggle changes only *which* hexes show a number, never the value. The reach the
 labels follow is the **drag-preview mode** above (one action / all actions).
 **Format:** *one-action* mode prints just the MP left; *all-actions* mode prints
-`{action}-{MP left}` (the action number that funds the hex); **withdraw** hexes
+`{action}-{MP left}` (the action number that funds the hex), with the **`1-`
+prefix omitted** so action-1 hexes read as the plain MP number; **withdraw** hexes
 always print `2-{MP left}` (2 actions, MP untouched).
 
 ### Zone of control (universal rule)

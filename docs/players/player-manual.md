@@ -481,8 +481,8 @@ Drag a unit with the mouse. The game shades where it can move:
   an enemy threat hex, a wall, an occupied hex, or a climb, the number tells you
   it's that obstacle stopping you, not an empty move pool. The charge corridor
   shows the same numbers. In **All actions** mode the label reads
-  `{action}-{MP left}` (which action funds the hex); **withdraw** hexes always
-  show `2-{MP left}`. A local **Settings → "Show MP on every move hex"**
+  `{action}-{MP left}` (which action funds the hex), except action 1 which shows
+  just the MP number; **withdraw** hexes always show `2-{MP left}`. A local **Settings → "Show MP on every move hex"**
   toggle (this device only) labels *every* reachable hex — including grey
   (turn-required) hexes and the withdraw hexes — instead of just the edge.
   **Withdraw** rear hexes are drawn dimmer (they cost 2 actions).

@@ -397,11 +397,11 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     const originKey = `${draggedUnit.hex.q},${draggedUnit.hex.r}`;
     const leftFor = (cost: number) =>
       (draggedUnit.isHero ? applyHeroMoveCost(budgetUnit, cost, effectiveMax) : applyMoveCost(budgetUnit, cost, effectiveMax)).movementPointsAvailable;
-    // One-action mode: just the MP left. All-actions mode: `{action}-{MP left}`.
+    // Action 1 reads as just the MP left; action 2+ as `{action}-{MP left}`.
     const label = (cost: number): string => {
       const left = Math.max(0, Math.floor(leftFor(cost)));
-      if (movePreviewMode !== 'all') return String(left);
-      return `${Math.max(1, actionsSpentAt(cost))}-${left}`;
+      const action = Math.max(1, actionsSpentAt(cost));
+      return action <= 1 ? String(left) : `${action}-${left}`;
     };
     const labels = labelsFor(reachableMap, originKey, label, showAllMoveMp, passThrough);
     // Withdraw destinations (2 actions, MP untouched) — always `2-{MP left}`.

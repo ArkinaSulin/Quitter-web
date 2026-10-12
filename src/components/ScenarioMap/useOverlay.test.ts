@@ -261,10 +261,10 @@ describe('computeOverlayMap — label format', () => {
     expect(labels['1,0']).toBe('0'); // turn + step = 2 MP of the one action
   });
 
-  it("all-actions mode: `{action}-{MP left}`", () => {
+  it("all-actions mode: `{action}-{MP left}`, no `1-` prefix", () => {
     const units = [mk({ id: 'u', hex: h(0, 0), facing: 0, movementPoints: 2, movementPointsAvailable: 0, actionsAvailable: 2 })];
     const labels = labelsFor(units, { showAll: true, mode: 'all' });
-    expect(labels['1,0']).toBe('1-0'); // 1st action, 2 MP spent → 0 left
+    expect(labels['1,0']).toBe('0'); // 1st action → plain number
     expect(labels['2,0']).toBe('2-1'); // 2nd action, 3 MP spent → 1 left
   });
 
