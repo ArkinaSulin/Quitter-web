@@ -101,15 +101,15 @@ function moveFill(needsTurn: boolean, actionsSpent: number): string {
 }
 
 /**
- * Leftover-MP labels for a reachable set. `leftFor(cost)` returns the MP the mover
- * keeps after paying `cost` (floored inside). Default: only movement-BORDER hexes
- * (a neighbour that is neither reachable, the origin, nor a pass-through) — and
- * `0` is shown on a border. `showAll`: label every reachable hex (white + grey).
+ * Leftover-MP labels for a reachable set. `label(cost)` returns the text for a
+ * hex. Default: only movement-BORDER hexes (a neighbour that is neither
+ * reachable, the origin, nor a pass-through) — `0` is shown on a border.
+ * `showAll`: label every reachable hex (white + grey).
  */
 function labelsFor(
   reach: Map<string, { cost: number; needsTurn?: boolean }>,
   originKey: string,
-  leftFor: (cost: number) => number,
+  label: (cost: number) => string,
   showAll: boolean,
   passThrough?: Set<string>,
 ): Record<string, string> {
@@ -122,7 +122,7 @@ function labelsFor(
     });
     // Border hexes always label (incl. `0`); interior / grey hexes only when showAll.
     if (!showAll && (!isBorder || entry.needsTurn)) return;
-    labels[key] = String(Math.max(0, Math.floor(leftFor(entry.cost))));
+    labels[key] = label(entry.cost);
   });
   return labels;
 }
@@ -198,7 +198,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
         const originKey = `${archer.hex.q},${archer.hex.r}`;
         const leftFor = (cost: number) =>
           (archer.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP)).movementPointsAvailable;
-        Object.assign(labels, labelsFor(reachable, originKey, leftFor, showAllMoveMp));
+        Object.assign(labels, labelsFor(reachable, originKey, cost => String(Math.max(0, Math.floor(leftFor(cost)))), showAllMoveMp));
       }
     }
     return { fills: combined, labels };
@@ -268,7 +268,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
       // client toggle is on) — the charge spends 1 MP per hex, so left = max - cost.
       const corridorReach = new Map<string, { cost: number }>();
       chargeReach.forEach((cost, key) => corridorReach.set(key, { cost }));
-      const corridorLabels = labelsFor(corridorReach, `${draggedUnit.hex.q},${draggedUnit.hex.r}`, cost => effectiveMax - cost, showAllMoveMp);
+      const corridorLabels = labelsFor(corridorReach, `${draggedUnit.hex.q},${draggedUnit.hex.r}`, cost => String(Math.max(0, Math.floor(effectiveMax - cost))), showAllMoveMp);
       return { fills: combined, labels: corridorLabels };
     }
 
@@ -397,11 +397,17 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     const originKey = `${draggedUnit.hex.q},${draggedUnit.hex.r}`;
     const leftFor = (cost: number) =>
       (draggedUnit.isHero ? applyHeroMoveCost(budgetUnit, cost, effectiveMax) : applyMoveCost(budgetUnit, cost, effectiveMax)).movementPointsAvailable;
-    const labels = labelsFor(reachableMap, originKey, leftFor, showAllMoveMp, passThrough);
-    // Withdraw destinations (2 actions, MP untouched) — labelled when showing all.
+    // One-action mode: just the MP left. All-actions mode: `{action}-{MP left}`.
+    const label = (cost: number): string => {
+      const left = Math.max(0, Math.floor(leftFor(cost)));
+      if (movePreviewMode !== 'all') return String(left);
+      return `${Math.max(1, actionsSpentAt(cost))}-${left}`;
+    };
+    const labels = labelsFor(reachableMap, originKey, label, showAllMoveMp, passThrough);
+    // Withdraw destinations (2 actions, MP untouched) — always `2-{MP left}`.
     if (showAllMoveMp) {
       const leftMp = String(Math.max(0, Math.floor(draggedUnit.movementPointsAvailable)));
-      for (const key of withdrawKeys) labels[key] = leftMp;
+      for (const key of withdrawKeys) labels[key] = `${WITHDRAW_ACTION_COST}-${leftMp}`;
     }
 
     return { fills: combined, labels };

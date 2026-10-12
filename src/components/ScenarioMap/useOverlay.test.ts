@@ -164,7 +164,7 @@ describe('computeOverlayMap — withdraw highlight affordability', () => {
   });
 });
 
-function labelsFor(units: Unit[], opts: { formationsMap?: Record<string, Formation>; showAll?: boolean } = {}) {
+function labelsFor(units: Unit[], opts: { formationsMap?: Record<string, Formation>; showAll?: boolean; mode?: 'one' | 'all' } = {}) {
   return computeOverlayMap({
     reactionMode: null,
     draggingUnitId: 'u',
@@ -178,6 +178,7 @@ function labelsFor(units: Unit[], opts: { formationsMap?: Record<string, Formati
     terrainCosts: {},
     walls: {},
     showAllMoveMp: opts.showAll ?? false,
+    movePreviewMode: opts.mode ?? 'one',
   }).labels;
 }
 
@@ -250,5 +251,26 @@ describe('computeOverlayMap — move preview mode', () => {
   it('does not highlight an over-budget hex (execution soft gate handles it)', () => {
     // (4,0) costs 5 MP (turn + 4 steps) > all 4 MP → excluded from the highlight.
     expect(movesFor([unit()], 'all')['4,0']).toBeUndefined();
+  });
+});
+
+describe('computeOverlayMap — label format', () => {
+  it("one-action mode: plain MP number", () => {
+    const units = [mk({ id: 'u', hex: h(0, 0), facing: 0, movementPoints: 2, movementPointsAvailable: 0, actionsAvailable: 2 })];
+    const labels = labelsFor(units, { showAll: true, mode: 'one' });
+    expect(labels['1,0']).toBe('0'); // turn + step = 2 MP of the one action
+  });
+
+  it("all-actions mode: `{action}-{MP left}`", () => {
+    const units = [mk({ id: 'u', hex: h(0, 0), facing: 0, movementPoints: 2, movementPointsAvailable: 0, actionsAvailable: 2 })];
+    const labels = labelsFor(units, { showAll: true, mode: 'all' });
+    expect(labels['1,0']).toBe('1-0'); // 1st action, 2 MP spent → 0 left
+    expect(labels['2,0']).toBe('2-1'); // 2nd action, 3 MP spent → 1 left
+  });
+
+  it('withdraw hexes: `2-{MP left}`', () => {
+    const units = [mk({ id: 'u', hex: h(0, 0), facing: 0, movementPoints: 4, movementPointsAvailable: 2, actionsAvailable: 2 })];
+    const labels = labelsFor(units, { showAll: true, mode: 'one' });
+    expect(labels['0,1']).toBe('2-2'); // withdraw = 2 actions, MP untouched
   });
 });
