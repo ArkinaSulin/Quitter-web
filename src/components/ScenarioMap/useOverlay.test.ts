@@ -261,16 +261,16 @@ describe('computeOverlayMap — label format', () => {
     expect(labels['1,0']).toBe('0'); // turn + step = 2 MP of the one action
   });
 
-  it("all-actions mode: `{action}-{MP left}`, no `1-` prefix", () => {
+  it('all-actions mode: `{actions left}-{MP left}`, no prefix in the one-action reach', () => {
     const units = [mk({ id: 'u', hex: h(0, 0), facing: 0, movementPoints: 2, movementPointsAvailable: 0, actionsAvailable: 2 })];
     const labels = labelsFor(units, { showAll: true, mode: 'all' });
-    expect(labels['1,0']).toBe('0'); // 1st action → plain number
-    expect(labels['2,0']).toBe('2-1'); // 2nd action, 3 MP spent → 1 left
+    expect(labels['1,0']).toBe('0'); // one-action reach → plain MP
+    expect(labels['2,0']).toBe('0-1'); // 2 actions spent → 0 left, 1 MP left
   });
 
-  it('withdraw hexes: `2-{MP left}`', () => {
+  it('withdraw hexes: `{actions left}-{MP left}`', () => {
     const units = [mk({ id: 'u', hex: h(0, 0), facing: 0, movementPoints: 4, movementPointsAvailable: 2, actionsAvailable: 2 })];
     const labels = labelsFor(units, { showAll: true, mode: 'one' });
-    expect(labels['0,1']).toBe('2-2'); // withdraw = 2 actions, MP untouched
+    expect(labels['0,1']).toBe('0-2'); // 2 actions spent, MP untouched
   });
 });

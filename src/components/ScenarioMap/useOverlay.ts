@@ -397,17 +397,20 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     const originKey = `${draggedUnit.hex.q},${draggedUnit.hex.r}`;
     const leftFor = (cost: number) =>
       (draggedUnit.isHero ? applyHeroMoveCost(budgetUnit, cost, effectiveMax) : applyMoveCost(budgetUnit, cost, effectiveMax)).movementPointsAvailable;
-    // Action 1 reads as just the MP left; action 2+ as `{action}-{MP left}`.
+    // One-action reach → just the MP left. Beyond it → `{actions left}-{MP left}`.
     const label = (cost: number): string => {
       const left = Math.max(0, Math.floor(leftFor(cost)));
-      const action = Math.max(1, actionsSpentAt(cost));
-      return action <= 1 ? String(left) : `${action}-${left}`;
+      const spent = actionsSpentAt(cost);
+      if (spent <= 1) return String(left);
+      const actionsLeft = Math.max(0, (draggedUnit.actionsAvailable ?? 0) - spent);
+      return `${actionsLeft}-${left}`;
     };
     const labels = labelsFor(reachableMap, originKey, label, showAllMoveMp, passThrough);
-    // Withdraw destinations (2 actions, MP untouched) — always `2-{MP left}`.
+    // Withdraw destinations (2 actions, MP untouched) — `{actions left}-{MP left}`.
     if (showAllMoveMp) {
       const leftMp = String(Math.max(0, Math.floor(draggedUnit.movementPointsAvailable)));
-      for (const key of withdrawKeys) labels[key] = `${WITHDRAW_ACTION_COST}-${leftMp}`;
+      const afterWithdraw = Math.max(0, (draggedUnit.actionsAvailable ?? 0) - WITHDRAW_ACTION_COST);
+      for (const key of withdrawKeys) labels[key] = `${afterWithdraw}-${leftMp}`;
     }
 
     return { fills: combined, labels };

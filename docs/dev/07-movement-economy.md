@@ -165,10 +165,10 @@ grey (turn-required; the turn cost is in `entry.cost`) — plus the **withdraw**
 hexes (2 actions spent, MP untouched → the value is the unit's remaining MP). The
 toggle changes only *which* hexes show a number, never the value. The reach the
 labels follow is the **drag-preview mode** above (one action / all actions).
-**Format:** *one-action* mode prints just the MP left; *all-actions* mode prints
-`{action}-{MP left}` (the action number that funds the hex), with the **`1-`
-prefix omitted** so action-1 hexes read as the plain MP number; **withdraw** hexes
-always print `2-{MP left}` (2 actions, MP untouched).
+**Format:** hexes that fall within the **one-action reach** print just the MP left;
+hexes beyond it print `{actions left}-{MP left}` (the actions remaining after the
+move); **withdraw** hexes print `{actions left}-{MP left}` too (2 actions spent,
+MP untouched).
 
 ### Zone of control (universal rule)
 
