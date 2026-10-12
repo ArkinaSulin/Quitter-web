@@ -72,6 +72,9 @@ export interface OverlayState {
   /** Reactive archery: a threat/ZoC hex is a valid destination only as the move's
    *  first step (stop before it). Off = may stop ON it from any distance. */
   reactiveArchery?: boolean;
+  /** Client toggle: label EVERY reachable preview hex (white + grey + withdraw)
+   *  with its leftover MP, instead of only the movement-border hexes. */
+  showAllMoveMp?: boolean;
 }
 
 /** Drag-overlay output: per-hex fill colours, plus optional per-hex text labels
@@ -79,6 +82,33 @@ export interface OverlayState {
 export interface OverlayData {
   fills: Record<string, string>;
   labels: Record<string, string>;
+}
+
+/**
+ * Leftover-MP labels for a reachable set. `leftFor(cost)` returns the MP the mover
+ * keeps after paying `cost` (floored inside). Default: only movement-BORDER hexes
+ * (a neighbour that is neither reachable, the origin, nor a pass-through) — and
+ * `0` is shown on a border. `showAll`: label every reachable hex (white + grey).
+ */
+function labelsFor(
+  reach: Map<string, { cost: number; needsTurn?: boolean }>,
+  originKey: string,
+  leftFor: (cost: number) => number,
+  showAll: boolean,
+  passThrough?: Set<string>,
+): Record<string, string> {
+  const labels: Record<string, string> = {};
+  reach.forEach((entry, key) => {
+    const [q, r] = key.split(',').map(Number);
+    const isBorder = HEX_DIRS.some(d => {
+      const nk = `${q + d.q},${r + d.r}`;
+      return nk !== originKey && !reach.has(nk) && !passThrough?.has(nk);
+    });
+    // Border hexes always label (incl. `0`); interior / grey hexes only when showAll.
+    if (!showAll && (!isBorder || entry.needsTurn)) return;
+    labels[key] = String(Math.max(0, Math.floor(leftFor(entry.cost))));
+  });
+  return labels;
 }
 
 export function computeOverlayMap(state: OverlayState): OverlayData {
@@ -99,6 +129,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     zones,
     chargeFacing,
     reactiveArchery = false,
+    showAllMoveMp = false,
   } = state;
 
   const isMountedOf = (u: Unit) => !!u.mountId || !!u.mountName;
@@ -146,20 +177,11 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
         reachable.forEach((entry, key) => {
           combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
         });
-        // Leftover-MP boundary labels (same rule as a normal move preview).
+        // Leftover-MP labels (same rule as a normal move preview).
         const originKey = `${archer.hex.q},${archer.hex.r}`;
-        reachable.forEach((entry, key) => {
-          if (entry.needsTurn) return;
-          const [q, r] = key.split(',').map(Number);
-          const isBoundary = HEX_DIRS.some(d => {
-            const nk = `${q + d.q},${r + d.r}`;
-            return nk !== originKey && !reachable.has(nk);
-          });
-          if (!isBoundary) return;
-          const rem = archer.isHero ? applyHeroMoveCost(budgetUnit, entry.cost, maxMP) : applyMoveCost(budgetUnit, entry.cost, maxMP);
-          const left = Math.max(0, Math.floor(rem.movementPointsAvailable));
-          if (left > 0) labels[key] = String(left);
-        });
+        const leftFor = (cost: number) =>
+          (archer.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP)).movementPointsAvailable;
+        Object.assign(labels, labelsFor(reachable, originKey, leftFor, showAllMoveMp));
       }
     }
     return { fills: combined, labels };
@@ -225,7 +247,12 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
       for (const [key, cost] of Array.from(chargeReach.entries())) {
         combined[key] = cost >= getSetting('charge_full_distance', 2) ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 180, 60, 0.6)';
       }
-      return { fills: combined, labels: {} };
+      // Leftover-MP labels for the corridor (border only, or every hex when the
+      // client toggle is on) — the charge spends 1 MP per hex, so left = max - cost.
+      const corridorReach = new Map<string, { cost: number }>();
+      chargeReach.forEach((cost, key) => corridorReach.set(key, { cost }));
+      const corridorLabels = labelsFor(corridorReach, `${draggedUnit.hex.q},${draggedUnit.hex.r}`, cost => effectiveMax - cost, showAllMoveMp);
+      return { fills: combined, labels: corridorLabels };
     }
 
     // White reachable hexes for the dragged unit — one full pool (an action
@@ -326,36 +353,29 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     // AFFORD it (2 actions, or free-move); when it can't, dropping on a rear hex
     // still opens the withdraw confirm (soft — actions may go negative).
     const canAffordWithdraw = freeMove || (draggedUnit.actionsAvailable ?? 0) >= WITHDRAW_ACTION_COST;
+    let withdrawKeys: string[] = [];
     if (!flying && canAffordWithdraw && canWithdraw(draggedUnit)) {
       const occupied = computeOccupiedHexes(units, draggedUnit.id, surface);
       const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
-      for (const hx of withdrawDestinations(draggedUnit, occupied, radius, threatHexes)) {
-        combined[`${hx.q},${hx.r}`] = 'rgba(255, 255, 255, 0.5)';
-      }
+      withdrawKeys = withdrawDestinations(draggedUnit, occupied, radius, threatHexes).map(hx => `${hx.q},${hx.r}`);
+      for (const key of withdrawKeys) combined[key] = 'rgba(255, 255, 255, 0.5)';
     }
     for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';
 
-    // Leftover-MP labels: on the BOUNDARY of the reachable region — a reachable hex
-    // with a neighbour that is neither reachable, the origin, nor a pass-through —
-    // where the unit still has MP left. The stop is caused by a wall / ZoC /
-    // occupied / elevation change / map edge (or a next step it can't afford), not
-    // by having no MP at all, so the number reminds the player why it stopped.
-    const labels: Record<string, string> = {};
+    // Leftover-MP labels. Default: the movement BORDER (a reachable hex with a
+    // neighbour that is neither reachable, the origin, nor a pass-through) — `0`
+    // is shown on a border. Client toggle: EVERY reachable hex (white + grey).
+    // The stop is a wall / ZoC / occupied / elevation / map edge (or a next step
+    // it can't afford), not an empty pool, so the number explains why it stopped.
     const originKey = `${draggedUnit.hex.q},${draggedUnit.hex.r}`;
-    reachableMap.forEach((entry, key) => {
-      if (entry.needsTurn) return;
-      const [q, r] = key.split(',').map(Number);
-      const isBoundary = HEX_DIRS.some(d => {
-        const nk = `${q + d.q},${r + d.r}`;
-        return nk !== originKey && !reachableMap.has(nk) && !passThrough.has(nk);
-      });
-      if (!isBoundary) return;
-      const remaining = draggedUnit.isHero
-        ? applyHeroMoveCost(budgetUnit, entry.cost, effectiveMax)
-        : applyMoveCost(budgetUnit, entry.cost, effectiveMax);
-      const left = Math.max(0, Math.floor(remaining.movementPointsAvailable));
-      if (left > 0) labels[key] = String(left);
-    });
+    const leftFor = (cost: number) =>
+      (draggedUnit.isHero ? applyHeroMoveCost(budgetUnit, cost, effectiveMax) : applyMoveCost(budgetUnit, cost, effectiveMax)).movementPointsAvailable;
+    const labels = labelsFor(reachableMap, originKey, leftFor, showAllMoveMp, passThrough);
+    // Withdraw destinations (2 actions, MP untouched) — labelled when showing all.
+    if (showAllMoveMp) {
+      const leftMp = String(Math.max(0, Math.floor(draggedUnit.movementPointsAvailable)));
+      for (const key of withdrawKeys) labels[key] = leftMp;
+    }
 
     return { fills: combined, labels };
   }

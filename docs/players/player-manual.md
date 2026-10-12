@@ -472,9 +472,12 @@ Drag a unit with the mouse. The game shades where it can move:
   right beside it — you stop on the hex before it and enter on a *later* move
   (so no MP is wasted; it's just split across two moves).
 - **A number on the edge of the highlighted area** shows how much **MP you'd
-  have left** if you stopped there. If the preview stops short of an enemy
-  threat hex, a wall, an occupied hex, or a climb, the number tells you it's
-  that obstacle stopping you, not an empty move pool.
+  have left** if you stopped there (`0` included). If the preview stops short of
+  an enemy threat hex, a wall, an occupied hex, or a climb, the number tells you
+  it's that obstacle stopping you, not an empty move pool. The charge corridor
+  shows the same numbers. A local **Settings → "Show MP on every move hex"**
+  toggle (this device only) labels *every* reachable hex — including grey
+  (turn-required) hexes and the withdraw hexes — instead of just the edge.
 - Occupied hexes can't be entered.
 
 ![S-14 Drag overlay](screenshots/s-14-drag-overlay.png)

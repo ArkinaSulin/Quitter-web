@@ -163,19 +163,20 @@ describe('computeOverlayMap — withdraw highlight affordability', () => {
   });
 });
 
-function labelsFor(units: Unit[], formationsMap = FORMATIONS) {
+function labelsFor(units: Unit[], opts: { formationsMap?: Record<string, Formation>; showAll?: boolean } = {}) {
   return computeOverlayMap({
     reactionMode: null,
     draggingUnitId: 'u',
     hoveredUnit: null,
     units,
     alliances: ALLIANCES,
-    formationsMap,
+    formationsMap: opts.formationsMap ?? FORMATIONS,
     freeMove: false,
     backgroundConfig: { imageUrl: '', offsetX: 0, offsetY: 0, scale: 1, gridRadius: 12 },
     rangeViolationHex: null,
     terrainCosts: {},
     walls: {},
+    showAllMoveMp: opts.showAll ?? false,
   }).labels;
 }
 
@@ -192,5 +193,18 @@ describe('computeOverlayMap — leftover-MP boundary labels', () => {
   it('does not label an interior hex (all neighbours reachable, origin aside)', () => {
     const labels = labelsFor([mk({ id: 'u', hex: h(0, 0), facing: 0, movementPoints: 3 })]);
     expect(labels['0,-1']).toBeUndefined();
+  });
+
+  it('labels a turn-required (grey) hex only when showAllMoveMp is on', () => {
+    const units = [mk({ id: 'u', hex: h(0, 0), facing: 0, movementPoints: 4 })];
+    expect(labelsFor(units)['1,0']).toBeUndefined();              // grey, off → unlabelled
+    expect(labelsFor(units, { showAll: true })['1,0']).toBeDefined(); // grey, on → labelled
+  });
+
+  it('labels the charge corridor (0 on its far border)', () => {
+    const units = [mk({ id: 'u', hex: h(0, 0), facing: 0, isCharging: true, movementPoints: 3 })];
+    const labels = labelsFor(units);
+    expect(labels['0,-2']).toBe('1'); // 3 MP pool, 2 hexes in → 1 left
+    expect(labels['0,-3']).toBe('0'); // far border → 0 left
   });
 });

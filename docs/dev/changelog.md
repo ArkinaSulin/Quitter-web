@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## Move-preview MP labels: client toggle, charge corridor, 0 on borders (2026-10-11)
+**Files:** src/components/ScenarioMap/{useOverlay.ts (+ test),ScenarioMap.tsx,TopBar.tsx}, docs/dev/{07-movement-economy,changelog}.md, docs/players/player-manual.md
+
+- **Client toggle** (*Show MP on every move hex*, in the Scenario Settings modal,
+  per-browser `localStorage`): labels EVERY reachable preview hex with its leftover
+  MP — white **and** grey (turn-required; the turn cost is in the entry cost) — plus
+  the withdraw rear hexes (2 actions spent, MP kept). Off keeps the default
+  border-only labels. The ⚙ Settings button is now available to players too, and the
+  modal shows only player-modifiable rows to non-GMs.
+- **`0` is now shown on movement-border hexes** (was filtered out), so a stop short
+  of a wall / ZoC / occupied / elevation / edge reads as "not an empty pool".
+- **Bug fix**: the **charge corridor** now emits the leftover-MP labels (border, or
+  every hex with the toggle on); it previously showed none in the amber
+  short-charge area. `computeOverlayMap` labels are now produced by one shared
+  `labelsFor` helper (normal / charge / reaction branches).
+- The toggle changes only *which* hexes are labelled, never the value (deterministic
+  per unit → hex). No migration.
+
 ## Fix: ZoC "stop before" is gated by the Reactive archery setting (2026-10-11)
 **Files:** src/packages/movement/lib/moveCost.ts (+ test), src/packages/ai/lib/planner.ts, src/components/ScenarioMap/{useOverlay.ts,useMoveActions.ts,useCombatActions.ts,useReactionActions.ts,AiPanel.tsx,ScenarioMap.tsx}, docs/dev/{07-movement-economy,changelog}.md, docs/players/player-manual.md
 

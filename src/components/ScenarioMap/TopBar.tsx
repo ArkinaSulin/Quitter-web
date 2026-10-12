@@ -160,7 +160,7 @@ export function TopBar(props: TopBarProps) {
             {`Free Move: ${freeMove ? 'ON' : 'OFF'}${freeMove && freeMoveRemaining !== null ? ` (0:${String(freeMoveRemaining).padStart(2, '0')})` : ''}`}
           </button>
         )}
-        {editMode && !controlsLocked && (
+        {(isGM || !!myTeam) && !controlsLocked && (
           <button
             onClick={onOpenSettings}
             className="px-3 py-1 rounded shadow-lg text-sm bg-gray-800 hover:bg-gray-700 text-white"

@@ -283,6 +283,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Overlay (checkmarks + preview routes) pushed by the AI panel to the canvas.
   const [aiOverlay, setAiOverlay] = useState<AiOverlayData | null>(null);
   const [showScenarioSettings, setShowScenarioSettings] = useState(false);
+  // Client-only display pref (this device): label EVERY move-preview hex with its
+  // leftover MP, not just the movement-border hexes. Persisted per browser.
+  const [showAllMoveMp, setShowAllMoveMp] = useState<boolean>(() =>
+    typeof window !== 'undefined' && window.localStorage.getItem('quitter.showAllMoveMp') === '1',
+  );
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.localStorage.setItem('quitter.showAllMoveMp', showAllMoveMp ? '1' : '0');
+  }, [showAllMoveMp]);
 
   // AI opt-outs reset at each turn change — every alliance activation starts fresh.
   const aiLastTurnKeyRef = useRef('');
@@ -2415,11 +2423,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
-    const { fills, labels } = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, chargeFacing: chargeAimFacing, reactiveArchery: archerReactionEnabled });
+    const { fills, labels } = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, chargeFacing: chargeAimFacing, reactiveArchery: archerReactionEnabled, showAllMoveMp });
     if (retreatHoverHex) fills[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(fills);
     setOverlayLabels(labels);
-  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex, chargeAimFacing, archerReactionEnabled]);
+  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex, chargeAimFacing, archerReactionEnabled, showAllMoveMp]);
 
   // Center map on initial load
   useEffect(() => {
@@ -3439,6 +3447,23 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[360px]">
             <p className="text-white text-sm mb-4 text-center font-semibold">Scenario Settings</p>
+            {/* Player-modifiable (client-only, this device). */}
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showAllMoveMp}
+                onChange={(e) => setShowAllMoveMp(e.target.checked)}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">Show MP on every move hex</span>
+                <span className="block text-gray-400 text-[11px]">
+                  Label every reachable preview hex with the MP you'd have left — including turn-required and
+                  withdraw hexes. This device only.
+                </span>
+              </span>
+            </label>
+            {effectiveIsGM && (<>
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -3572,6 +3597,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 Sight radius is armed even while fog is off.
               </p>
             </div>
+            </>)}
             <div className="flex justify-end">
               <button
                 onClick={() => setShowScenarioSettings(false)}

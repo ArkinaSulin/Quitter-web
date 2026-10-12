@@ -131,15 +131,19 @@ allowBeyondBudget?)` — min-cost Dijkstra over `(hex, facing)` state:
 
 ### Movement-preview leftover-MP labels
 
-While dragging, `computeOverlayMap` also returns a `labels` map: each reachable,
-droppable (`needsTurn` false) hex **on the boundary** of the reachable region
-(a neighbour that is neither reachable, the origin, nor a pass-through) prints
-the **MP the mover would have left** after paying that hex's entry cost (floored;
-`applyMoveCost`/`applyHeroMoveCost`, matching the tooltip). It marks the hexes
-where movement stops short without running out of MP — a wall / ZoC / occupied
-hex / elevation change / map edge (or a next step it can't afford). Drawn like
-the terrain MP-cost numbers but in white. Covers e.g. the hex just before an
-unaffordable climb, or (with Reactive archery on) the hex before a kill zone.
+While dragging, `computeOverlayMap` also returns a `labels` map (drawn like the
+terrain MP-cost numbers, in white) via the shared `labelsFor` helper. **Default:**
+each reachable **movement-border** hex (a neighbour that is neither reachable, the
+origin, nor a pass-through) prints the **MP the mover would have left** after
+paying that hex's entry cost (floored; `applyMoveCost`/`applyHeroMoveCost`, matching
+the tooltip) — **`0` is shown on a border**, so a stop short of a wall / ZoC /
+occupied hex / elevation change / map edge (or a next step it can't afford) is
+visibly *not* an empty pool. **Charge corridor** hexes label the same way (left =
+pool − step count). **Client toggle** (*Show MP on every move hex*, Scenario
+Settings, per-browser `localStorage`): label **every** reachable hex — white **and**
+grey (turn-required; the turn cost is in `entry.cost`) — plus the **withdraw** rear
+hexes (2 actions spent, MP untouched → the value is the unit's remaining MP). The
+toggle changes only *which* hexes show a number, never the value.
 
 ### Zone of control (universal rule)
 
