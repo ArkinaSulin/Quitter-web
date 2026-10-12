@@ -238,10 +238,15 @@ the defender holds Reach). At melee range it auto-draws its first melee weapon
 target (otherwise it can't join). The hero rolls at **its own** range bands
 (its own disadvantage), and its volley is **doubled while charging**.
 
-A **back-attached (protected)** hero never joins. A front hero **with no action
-left sits out** (no prompt, no negative). A **defending** hero stays a damage
-pool and a hero's volley never joins a *reaction shot*. (A hero **can** itself be
-the reacting archer — lone or front-attached — see **Reactions** below.)
+A **back-attached (protected)** hero never joins, but it **can attack on its
+own** — and reaction-fire — into its host's **rear cone** (`protectedHero.inHostRearCone`:
+the host's two rear-adjacent hexes in melee, its 120° rear bearing sector at
+range). The active-attack gate uses the **host's** origin/facing for a protected
+hero instead of the hero's stale own facing, so its fire is confined to that
+cone. A front hero **with no action left sits out** (no prompt, no negative). A
+**defending** hero stays a damage pool and a hero's volley never joins a
+*reaction shot*. (A hero **can** itself be the reacting archer — lone, front- or
+back-attached — see **Reactions** below.)
 
 ## Retaliation
 
@@ -331,10 +336,11 @@ with an unused reaction and a ranged weapon may fire:
 `findEligibleReactionArchers` (archer reaction logic in `combat/archerReaction.ts`).
 Archer within `range` of the mover's landing hex (and, for formed formations, in
 the archer's **front cone** — `arcOfTarget`); mover hidden/deleted/routed
-excluded; protected (back-attached) heroes never react — but **lone and
-front-attached heroes can** (a front hero's bow is drawn on its host's token and
-clicked there). Owner of the archer clicks the blinking bow → reaction mode
-locks the actor, which **persistently highlights the mover**.
+excluded. **Lone and front-attached heroes can** react (a front hero's bow is
+drawn on its host's token and clicked there), and a **back-attached (protected)**
+hero may react **only into its host's rear cone** (`protectedHero.inHostRearCone`;
+its bow likewise shows on its sub-token). Owner of the archer clicks the blinking
+bow → reaction mode locks the actor, which **persistently highlights the mover**.
 
 A reaction **only ever targets the unit that moved** (`reactionMode.moverId`,
 refreshed to the *latest* mover on each eligible move) — dragging onto any other

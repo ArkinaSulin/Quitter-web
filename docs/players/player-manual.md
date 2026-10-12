@@ -1034,7 +1034,10 @@ and choose:
   reach of frontal/flank melee. It can still be caught: **ranged fire** directs
   **10%** of an incoming volley at it, and any attack (melee or ranged) that
   comes in from the host's **rear arc** directs **30%** at it (the same share a
-  front hero takes).
+  front hero takes). A protected hero does **not** join the host's attacks and
+  exerts no threat, but it **can still fight** — it may attack (and
+  reaction-fire) at any target in the **host's rear cone** (the two hexes
+  behind the host in melee, the rear 120° sector at range).
 
 ![S-17 Attach modal](screenshots/s-17-attach-hero.png)
 

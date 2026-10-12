@@ -2171,10 +2171,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setReactionMode({ archer: unit, moverId: reactionOffers.get(unit.id)! });
         return;
       }
-      // A front-attached hero reacts from its host's click when the host itself
-      // has no offer (its bow is drawn on the hero's sub-token).
+      // A front- or back-attached hero reacts from its host's click when the host
+      // itself has no offer (its bow is drawn on the hero's sub-token). A back
+      // hero only has an offer when the mover is in its host's rear cone.
       const reactingHero = units.find(u =>
-        u.attachedToUnitId === unit.id && u.attachedPosition === 'front' && !u.isDeleted &&
+        u.attachedToUnitId === unit.id && (u.attachedPosition === 'front' || u.attachedPosition === 'back') && !u.isDeleted &&
         !u.archerReactionUsed && reactionOffers.has(u.id) && canReactToUnit(u));
       if (reactingHero) {
         setReactionMode({ archer: reactingHero, moverId: reactionOffers.get(reactingHero.id)! });
@@ -3579,10 +3580,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       {/* Attach Position Modal */}
       {attachModal && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[280px]">
-            <p className="text-white text-sm mb-4 text-center">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[340px] max-w-[92vw]">
+            <p className="text-white text-sm mb-1 text-center">
               {attachModal.hero.unitName} → {attachModal.target.unitName}
             </p>
+            <p className="text-gray-400 text-xs mb-4 text-center">Choose how the hero rides this unit.</p>
             <div className="flex flex-col gap-2">
               {attachModal.canCast && (
                 <button
@@ -3594,24 +3596,33 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               )}
               {attachModal.target.isHero ? (
                 <button
-                  className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm"
+                  className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm text-left"
                   onClick={() => { handleAttachHero(attachModal.hero.id, attachModal.target.id, 'rider'); setAttachModal(null); }}
                 >
-                  Ride (mount)
+                  <span className="font-semibold">Ride (mount)</span>
+                  <span className="block text-[11px] font-normal text-amber-100/80 leading-snug">
+                    The hero mounts a larger hero. Incoming volleys are split between mount and rider by the attacker's chosen main target (70% / 30%).
+                  </span>
                 </button>
               ) : (
                 <>
                   <button
-                    className="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"
+                    className="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm text-left"
                     onClick={() => { handleAttachHero(attachModal.hero.id, attachModal.target.id, 'front'); setAttachModal(null); }}
                   >
-                    Leader mode (Front)
+                    <span className="font-semibold">Leader mode (Front)</span>
+                    <span className="block text-[11px] font-normal text-blue-100/80 leading-snug">
+                      <b>Can:</b> join every attack the host makes (its own weapon, one action) and steady the troops (host attacks ignore AGR). <b>Cannot:</b> avoid danger — it is in the open.
+                    </span>
                   </button>
                   <button
-                    className="bg-teal-700 hover:bg-teal-600 text-white px-4 py-2 rounded-lg text-sm"
+                    className="bg-teal-700 hover:bg-teal-600 text-white px-4 py-2 rounded-lg text-sm text-left"
                     onClick={() => { handleAttachHero(attachModal.hero.id, attachModal.target.id, 'back'); setAttachModal(null); }}
                   >
-                    Protected mode (rear)
+                    <span className="font-semibold">Protected mode (rear)</span>
+                    <span className="block text-[11px] font-normal text-teal-100/80 leading-snug">
+                      <b>Can:</b> attack and reaction-fire into the host's rear cone. <b>Cannot:</b> join the host's attacks, threaten forward, or escape harm — frontal/flank melee misses it, but 10% of ranged fire and 30% of attacks into the rear still reach it.
+                    </span>
                   </button>
                 </>
               )}

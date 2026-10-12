@@ -10,7 +10,7 @@ import { resolveCombatSequence, wallCoverAgainst } from '@/packages/combat';
 import { applyFormationChange, formationOrgLevels, canAdoptFormation } from '@/packages/movement';
 import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement, effectiveAc, heroicCapacityBonus } from '@/packages/units';
 import { attackDirection, arcOfTarget } from '@/packages/primitives';
-import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers, canReactWithWeapon, defaultAttackWeaponIndex } from '@/packages/combat';
+import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers, canReactWithWeapon, defaultAttackWeaponIndex, protectedHeroHost, inHostRearCone } from '@/packages/combat';
 import { canRangedTarget } from '@/packages/movement';
 import { hasLineOfSight } from '@/packages/combat';
 import { parseWeapons, damageDiceCount, withDamageDiceCount, Weapon } from '@/packages/units';
@@ -143,8 +143,16 @@ export function useReactionActions(deps: ReactionActionsDeps) {
         const archer = units.find(u => u.id === archerId);
         const mover = units.find(u => u.id === moverId);
         const weapon = archer ? parseWeapons(archer.weaponString || '')[archer.activeWeaponIndex ?? 0] : null;
-        const inArc = !!archer && !!mover &&
-          canRangedTarget(formationsMap[archer.currentFormation] ?? null, arcOfTarget(archer.hex, archer.facing, mover.hex));
+        // A protected (back-attached) hero only holds its marker when the mover is
+        // in its host's rear cone; everyone else uses their own facing/arcs.
+        const inArc = (() => {
+          if (!archer || !mover) return false;
+          if (isProtectedHero(archer)) {
+            const host = protectedHeroHost(archer, units);
+            return !!host && inHostRearCone(host, mover.hex, true);
+          }
+          return canRangedTarget(formationsMap[archer.currentFormation] ?? null, arcOfTarget(archer.hex, archer.facing, mover.hex));
+        })();
         const reach = weapon ? weapon.range + (archer ? rangeBonusAt(archer, groundZones) : 0) : 0;
         if (!archer || !mover || !weapon || !isRangedCapableWeapon(weapon) || hexDistance(archer.hex, mover.hex) > reach || !inArc) {
           next.delete(archerId);
@@ -400,13 +408,15 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       addMessage('That target is hidden — cannot reaction-shoot');
       return;
     }
-    // A protected hero (attached behind a unit) has no line of sight, so it can't
-    // reaction-shoot. findEligibleReactionArchers already excludes them — this is a
-    // defensive guard in case a stale reaction mode was opened.
+    // A protected hero (attached behind a unit) has no forward line of sight, so
+    // it may only reaction-shoot into its HOST's rear cone. findEligibleReactionArchers
+    // applies the same rule — this is a defensive guard for a stale reaction mode.
     if (isProtectedHero(archer)) {
-      const host = archer.attachedToUnitId ? units.find(u => u.id === archer.attachedToUnitId && !u.isDeleted) : null;
-      addError(`${archer.unitName} is protected behind ${host?.unitName ?? 'its unit'} (no line of sight) — cannot reaction-shoot`);
-      return;
+      const host = protectedHeroHost(archer, units);
+      if (!host || !inHostRearCone(host, target.hex, true)) {
+        addError(`${archer.unitName} is protected behind ${host?.unitName ?? 'its unit'} — can only reaction-fire into its rear cone`);
+        return;
+      }
     }
     if (!isHostile(target.team, archer.team, alliances)) {
       addMessage(`${target.unitName} is not hostile — cannot reaction-shoot`);

@@ -12,3 +12,4 @@ export * from './lib/lineOfSight';
 export * from './lib/chargeStance';
 export * from './lib/chargeOver';
 export * from './lib/weaponChoice';
+export * from './lib/protectedHero';

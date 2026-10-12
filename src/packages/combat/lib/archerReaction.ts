@@ -4,6 +4,7 @@ import { Weapon, parseWeapons } from '@/packages/units';
 import { isUnitRouted } from '@/packages/morale';
 import { isHostile } from '@/packages/primitives';
 import { isProtectedHero } from '@/packages/units';
+import { protectedHeroHost, inHostRearCone } from '@/packages/combat/lib/protectedHero';
 import { canRangedTarget } from '@/packages/movement';
 import { arcOfTarget } from '@/packages/primitives';
 import { computeMovePool, computeHeroMovePool } from '@/packages/movement';
@@ -52,9 +53,9 @@ export function reactionMovePool(
  * action, holds a ranged-capable active weapon, hasn't used its reaction this
  * turn, and stands within that weapon's `range` (not maxRange) of the mover.
  * Formed archers may only react into their front arc (`formationsMap`; absent
- * means all-round). Hidden / deleted / routed units are never eligible on either
- * side, and a hero attached BEHIND a unit (protected — no line of sight) never
- * reacts.
+ * means all-round). A hero attached BEHIND a unit (Protected) has no forward
+ * line of sight — it may only react into its HOST's rear cone. Hidden / deleted /
+ * routed units are never eligible on either side.
  */
 export function findEligibleReactionArchers(
   mover: Unit,
@@ -66,11 +67,17 @@ export function findEligibleReactionArchers(
 ): Unit[] {
   if (mover.hidden) return []; // a hidden mover is concealed — archers never react to it
   return units.filter(o => {
-    if (o.id === mover.id || o.isDeleted || o.hidden || isUnitRouted(o) || isProtectedHero(o)) return false;
+    if (o.id === mover.id || o.isDeleted || o.hidden || isUnitRouted(o)) return false;
     if ((o.currentUnitHp ?? 0) <= 0) return false; // corpses never react
     if (!isHostile(o.team, mover.team, alliances)) return false;
     if ((o.actionsAvailable ?? 0) < 1 || o.archerReactionUsed) return false;
     const weapon = parseWeapons(o.weaponString || '')[o.activeWeaponIndex ?? 0];
-    return canReactWithWeapon(o, mover, weapon, rangeBonus?.(o) ?? 0, formationsMap?.[o.currentFormation] ?? null);
+    if (!canReactWithWeapon(o, mover, weapon, rangeBonus?.(o) ?? 0, formationsMap?.[o.currentFormation] ?? null)) return false;
+    // A protected (back-attached) hero may only fire into its host's rear cone.
+    if (isProtectedHero(o)) {
+      const host = protectedHeroHost(o, units);
+      if (!host || !inHostRearCone(host, mover.hex, true)) return false;
+    }
+    return true;
   });
 }

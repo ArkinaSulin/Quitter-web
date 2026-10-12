@@ -648,10 +648,12 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           ctx.strokeRect(heroCx - tokenWidth / 2 - 2, heroCy - tokenHeight / 2 - 2, tokenWidth + 4, tokenHeight + 4);
           ctx.restore();
         }
-        // A front-attached hero with an available reaction shows its own bow on
-        // its sub-token (attached heroes aren't in the draw order themselves).
+        // An attached hero with an available reaction shows its own bow on its
+        // sub-token (attached heroes aren't in the draw order themselves). A back
+        // (protected) hero only holds an offer when the mover is in the host's
+        // rear cone, so the same marker applies.
         if (
-          attachedHero.attachedPosition === 'front' &&
+          (attachedHero.attachedPosition === 'front' || attachedHero.attachedPosition === 'back') &&
           !reactionMode &&
           reactionOffers.has(attachedHero.id) &&
           !attachedHero.archerReactionUsed &&

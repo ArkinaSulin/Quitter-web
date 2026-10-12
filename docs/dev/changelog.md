@@ -1,5 +1,25 @@
 # QuiTTER Changelog
 
+## Protected heroes fight into the host's rear cone + attach-modal overview (2026-10-11)
+**Files:** src/packages/combat/lib/{protectedHero.ts,archerReaction.ts,index.ts}, src/packages/combat/tests/{protectedHero.test.ts,archerReaction.test.ts}, src/components/ScenarioMap/{useCombatActions.ts,useReactionActions.ts,ScenarioMap.tsx,useCanvasDraw.ts}, docs/players/player-manual.md, docs/dev/{08-combat,changelog}.md
+
+- A **back-attached (Protected) hero can now attack** (and **archer-react**) at
+  any target in its **host's rear cone**, instead of being fully blocked. New
+  pure helper `combat/protectedHero` (`protectedHeroHost` + `inHostRearCone`:
+  host's two rear-adjacent hexes in melee, 120° rear bearing sector at range).
+- The active-attack gate (`useCombatActions.handleAttackRequest`) replaces the
+  blanket "protected — no line of sight" block with a rear-cone allowance, using
+  the **host's** origin/facing (not the hero's stale own facing). Heal/magic stay
+  LoS-free; front-hero auto-join and threat are unchanged (a protected hero never
+  joins, exerts no threat).
+- Reactions: `findEligibleReactionArchers` no longer blanket-excludes protected
+  heroes (rear-cone gated), `useReactionActions` prune + fire guards are
+  rear-aware, and the bow marker now shows on a back hero's sub-token; clicking
+  the host arms its reaction.
+- **Attach modal** now spells out what each position can/cannot do (Leader,
+  Protected, Ride).
+- `tsc` clean, tests pass, build clean. No migration.
+
 ## Protected (back-attached) heroes take partial damage (2026-10-11)
 **Files:** src/packages/combat/lib/unitCombat.ts, src/packages/combat/tests/unitCombat.test.ts, src/components/ScenarioMap/useCombatActions.ts, supabase/migrations/123_protected_hero_splits.sql, docs/players/player-manual.md, docs/dev/{08-combat,02-schema-and-migrations,changelog}.md
 

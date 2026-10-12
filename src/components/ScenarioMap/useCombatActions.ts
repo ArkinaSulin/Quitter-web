@@ -6,7 +6,7 @@
 // end/overrun helpers. Owns the attack-related soft-enforcement states.
 import { useCallback, useState } from 'react';
 import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance, UnitEffect, GroundEffect, getOrganizationLevel } from '@/types/gameProtocol';
-import { resolveCombatSequence, determineCombatPosition, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome, AttackerHeroProfile, wallCoverAgainst, attachedDefenderHeroShare } from '@/packages/combat';
+import { resolveCombatSequence, determineCombatPosition, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome, AttackerHeroProfile, wallCoverAgainst, attachedDefenderHeroShare, protectedHeroHost, inHostRearCone } from '@/packages/combat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/packages/movement';
 import { isProtectedHero } from '@/packages/units';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/packages/combat';
@@ -1403,11 +1403,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
 
-    // A hero attached BEHIND a unit has no line of sight — it cannot make melee or
-    // ranged attacks. Magic and healing are not LoS-gated, so they stay available.
-    if (isProtectedHero(attacker)) {
-      const host = attacker.attachedToUnitId ? units.find(u => u.id === attacker.attachedToUnitId && !u.isDeleted) : null;
-      addError(`${attacker.unitName} is protected behind ${host?.unitName ?? 'its unit'} (no line of sight) — cannot attack`);
+    // A back-attached (Protected) hero sits behind its host with no forward line
+    // of sight. It may only attack into the HOST's REAR cone — computed from the
+    // host's hex/facing, not the hero's stale own facing. Heal/magic (handled
+    // above) stay LoS-free. The cone rule is `inHostRearCone` (combat/protectedHero).
+    const protectedHost = isProtectedHero(attacker) ? protectedHeroHost(attacker, units) : null;
+    if (isProtectedHero(attacker) && !protectedHost) {
+      addError(`${attacker.unitName} is attached to no unit — cannot attack`);
       return;
     }
 
@@ -1415,9 +1417,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // arcs each formation may melee / ranged-attack into. The matrix arcs are
     // relative to the ATTACKER's own body (like threat_arcs / stop_enemy_movement_arcs),
     // so the arc here is where the TARGET sits relative to the attacker's facing —
-    // not the target's facing.
+    // not the target's facing. A protected hero uses its HOST's origin/facing and
+    // is further restricted to the host's rear cone.
     const attackerForm = formationsMap[attacker.currentFormation];
-    const targetPos = determineCombatPosition(target.hex, attacker.hex, attacker.facing);
+    const arcOrigin = protectedHost ? protectedHost.hex : attacker.hex;
+    const arcFacing = protectedHost ? protectedHost.facing : attacker.facing;
+    const targetPos = determineCombatPosition(target.hex, arcOrigin, arcFacing);
     if (!isRangedThisAttack) {
       if (isUnitRouted(attacker)) {
         addMessage(`${attacker.unitName} (Routed) cannot initiate attacks`);
@@ -1426,13 +1431,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
       // The formation's melee-target arcs are the single gate (universal rule):
       // normal formations reach only the front ZoC; Scattered/Hero reach all
       // around. Same-hex (a swooping flyer hovering) resolves to 'front', so any
-      // formation may strike it.
-      if (!canMeleeTarget(attackerForm, targetPos)) {
-        addMessage(`${attacker.unitName} (${attacker.currentFormation}) cannot melee target in that direction`);
+      // formation may strike it. A protected hero instead needs the host's rear cone.
+      if (protectedHost ? !inHostRearCone(protectedHost, target.hex, false) : !canMeleeTarget(attackerForm, targetPos)) {
+        addMessage(`${attacker.unitName}${protectedHost ? ` is protected behind ${protectedHost.unitName}` : ` (${attacker.currentFormation})`} cannot melee target in that direction`);
         return;
       }
-    } else if (!canRangedTarget(attackerForm, arcOfTarget(attacker.hex, attacker.facing, target.hex))) {
-      addMessage(`${attacker.unitName} (${attacker.currentFormation}) cannot ranged-attack target in that direction`);
+    } else if (protectedHost ? !inHostRearCone(protectedHost, target.hex, true) : !canRangedTarget(attackerForm, arcOfTarget(arcOrigin, arcFacing, target.hex))) {
+      addMessage(`${attacker.unitName}${protectedHost ? ` is protected behind ${protectedHost.unitName}` : ` (${attacker.currentFormation})`} cannot ranged-attack target in that direction`);
       return;
     }
 

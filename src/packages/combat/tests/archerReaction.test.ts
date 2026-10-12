@@ -153,12 +153,24 @@ describe('findEligibleReactionArchers', () => {
     expect(findEligibleReactionArchers(mover, [hero], alliances as any).map(u => u.id)).toEqual(['h1']);
   });
 
-  it('excludes a back-attached hero (protected — no line of sight)', () => {
+  it('excludes a back-attached hero with no live host', () => {
     const protectedHero = makeUnit({
       id: 'h1', team: 'red', hex: h(0, 0), weaponString: bow, isHero: true,
       actionsAvailable: 5, attachedToUnitId: 'host', attachedPosition: 'back',
     });
     expect(findEligibleReactionArchers(mover, [protectedHero], alliances as any)).toHaveLength(0);
+  });
+
+  it('a back-attached hero reacts only into its host\'s rear cone', () => {
+    const host = makeUnit({ id: 'host', team: 'red', hex: h(0, 0), facing: 0 });
+    const backHero = makeUnit({
+      id: 'h1', team: 'red', hex: h(0, 0), weaponString: bow, isHero: true, currentFormation: 'Hero',
+      actionsAvailable: 5, attachedToUnitId: 'host', attachedPosition: 'back',
+    });
+    const rearMover = makeUnit({ id: 'm2', team: 'blue', hex: h(0, 2) });   // due "south" = host rear
+    const frontMover = makeUnit({ id: 'm3', team: 'blue', hex: h(0, -2) }); // due "north" = host front
+    expect(findEligibleReactionArchers(rearMover, [host, backHero], alliances as any).map(u => u.id)).toEqual(['h1']);
+    expect(findEligibleReactionArchers(frontMover, [host, backHero], alliances as any)).toHaveLength(0);
   });
 
   it('still includes a front-attached hero (fights openly)', () => {
