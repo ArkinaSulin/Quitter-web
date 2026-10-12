@@ -9,12 +9,13 @@
 ## Data model & migrations
 
 `src/types/ship.ts` defines frames/armors/components/accessories/weapons and
-the `ShipTemplate` rows. Migrations 066 (schema) + 067 (seed) create/seed the
+the `ShipTemplate` rows. Migration 066 (schema) creates the
 `ship_*` template tables; 068 (RLS: read `view_ship_editor`, write
 `ship_editor`), 069 (`ship_crews` roster), 070 (`extra_crew` → `crew_count`)
-still **await DB apply**. `ship_crews`: named/unnamed crew with level + 6
-stats + optional nullable cost; capped at `crew_count`. Access caps (059):
-`can_view_ship_editor` / `can_use_ship_editor` — both admin-only; Lobby's
+still **await DB apply**. (The old 067 ship *seed* was removed — ships are to be
+redesigned, so the catalog starts empty.) `ship_crews`: named/unnamed crew with
+level + 6 stats + optional nullable cost; capped at `crew_count`. Access caps
+(059): `can_view_ship_editor` / `can_use_ship_editor` — both admin-only; Lobby's
 Archfar's Shipyard button routes to `/ship-editor`.
 
 ## The stats engine (`src/packages/ships/lib/shipStats.ts`, v8.1 FINAL)

@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Drop the obsolete ship seed (migration 067) (2026-10-11)
+**Files:** supabase/migrations/067_ship_seed.sql (deleted), src/components/ShipEditor/ShipEditor.tsx, src/types/ship.ts, src/packages/ships/tests/shipStats.test.ts, AGENTS.md, docs/dev/{02-schema-and-migrations,16-ship-builder,outstanding,changelog}.md
+
+- **Removed `067_ship_seed.sql`** (the v8.1 ship catalog seed). Ships are to be
+  redesigned, so the seed data is obsolete; fresh DBs no longer seed the
+  `ship_*` catalog. Already-migrated DBs keep the rows (no teardown migration —
+  the redesign will replace them). Migration numbering keeps the 067 gap.
+- Docs/comments updated: migration table (066 only, 067 marked removed),
+  `16-ship-builder`, `outstanding` working-tree list, `AGENTS.md`; the
+  `src/types/ship.ts` and `shipStats.test.ts` comments no longer cite 067
+  (fixtures are inline — tests unchanged).
+- `ShipEditor` empty-state no longer tells the user to apply the (now removed)
+  seed.
+- `tsc` clean, tests pass, build clean. No new migration.
+
 ## Reaction stop-before-ZoC, preview MP labels, action:MP badge, target rings (2026-10-11)
 **Files:** src/packages/movement/lib/moveCost.ts (+ test), src/components/ScenarioMap/{useOverlay.ts (+ test),useReactionActions.ts,useCanvasDraw.ts,ScenarioMap.tsx}, src/components/TokenRenderer/drawToken.ts, docs/players/player-manual.md, docs/dev/{07-movement-economy,15-token-rendering,changelog}.md
 

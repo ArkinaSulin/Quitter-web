@@ -762,10 +762,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
             {templates.length === 0 && (
               <div className="text-sm text-gray-500 text-center py-4">
                 No ships found. Create one with "New".
-                <div className="text-[10px] text-gray-600 mt-2">
-                  Empty database? Ensure the ship seed (migration 067) is applied — the
-                  tables exist but ship_templates has no rows.
-                </div>
               </div>
             )}
           </div>

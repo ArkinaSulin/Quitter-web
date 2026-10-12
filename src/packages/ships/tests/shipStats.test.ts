@@ -1,6 +1,6 @@
 // src/packages/ships/tests/shipStats.test.ts
-// Oracle: .scratch/shipyard-formula/shipyard.csv (v8.1 FINAL) + migration 067 seeds.
-// Fixtures replicate the 067 catalog rows; expected values are hand-derived from the
+// Oracle: .scratch/shipyard-formula/shipyard.csv (v8.1 FINAL).
+// Fixtures replicate the v8.1 catalog; expected values are hand-derived from the
 // CSV formulas (Wasp/Damselfly/Scorpion/Lamprey/Bombard cross-checked).
 
 import { describe, expect, it } from 'vitest';
@@ -42,7 +42,7 @@ import {
   ShipBuild,
 } from '@/packages/ships/lib/shipStats';
 
-// --- 067 seed fixtures ------------------------------------------------------
+// --- v8.1 catalog fixtures --------------------------------------------------
 
 const FRAMES: ShipFrame[] = [
   { id: 'tiny', massCap: 35, baseHp: 200, deckSpace: 10, topSpeed: 12, maxRudders: 2, baseCost: 5000, hullSpaces: 8 },

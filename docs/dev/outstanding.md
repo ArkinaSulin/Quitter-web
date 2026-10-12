@@ -171,5 +171,4 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
 
 ## Uncommitted working tree (owner's, left untouched)
 - `.scratch/ship-builder/spec.md`, `.scratch/shipyard-formula/{FINDINGS.md,shipyard.csv}`,
-  `.scratch/spelljammer-mod/spec.md`, `src/packages/ships/lib/shipStats.ts`,
-  `supabase/migrations/067_ship_seed.sql`.
+  `.scratch/spelljammer-mod/spec.md`, `src/packages/ships/lib/shipStats.ts`.

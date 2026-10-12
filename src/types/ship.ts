@@ -1,7 +1,7 @@
 // src/types/ship.ts
 // Spelljammer ship-domain types. Mirrors the Shipyard v8.1 FINAL model.
 // Source of truth: .scratch/shipyard-formula/shipyard.csv, .scratch/spelljammer-mod/spec.md,
-// and the ship_* tables from migrations 066/067.
+// and the ship_* tables from migration 066.
 
 export type ShipPoolType = 'mass_x_boxhp' | 'small_anchor' | 'safe' | 'none';
 

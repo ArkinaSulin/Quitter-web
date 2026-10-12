@@ -127,7 +127,8 @@ as applied in the notes — check the live DB before relying on it).
 | 059 | ship editor access caps | ✅ applied |
 | 060 | attack cap + hero actions (`attacks_used`, NUMERIC mp) | ✅ applied |
 | 061–065 | drop is_routing, archer reaction, apply_substeps coalesce fix, mounted charge, verbose combat | ❓ |
-| 066–067 | ship schema + seed | ❓ (code is canonical for ship data) |
+| 066 | ship schema (`ship_*` template tables + `spelljammer_ships`) | ❓ (code is canonical for ship data) |
+| 067 | *(removed)* ship seed — dropped; ships to be redesigned | n/a |
 | 068 | ship RLS | ✅ applied (verified 2026-09-06) |
 | 069 | ship_crews | ✅ applied (verified 2026-09-06) |
 | 070 | extra_crew → crew_count | ✅ applied (verified 2026-09-06) |
