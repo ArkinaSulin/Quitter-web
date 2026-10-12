@@ -3451,12 +3451,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         );
       })()}
 
-      {/* Scenario Settings (GM): per-scenario rule toggles */}
+      {/* Scenario Settings: player-local display (This device) + grouped GM toggles */}
       {showScenarioSettings && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[360px]">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[380px] max-h-[85vh] overflow-y-auto">
             <p className="text-white text-sm mb-4 text-center font-semibold">Scenario Settings</p>
-            {/* Player-modifiable (client-only, this device). */}
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 border-b border-gray-700 pb-0.5">This device</div>
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -3486,6 +3486,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               </div>
             </div>
             {effectiveIsGM && (<>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-4 mb-1 border-b border-gray-700 pb-0.5">Combat &amp; reactions</div>
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -3500,7 +3501,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 <span className="font-medium text-amber-300">Reactive archery</span>
                 <span className="block text-gray-400 text-[11px]">
                   When a unit ends a move within an eligible hostile archer's weapon range, that archer's owner may
-                  shoot, move up to 50%, or change formation (once per turn each).
+                  shoot, move up to 50%, or change formation (once per turn each). While ON, entering a kill zone also
+                  requires stopping next to it first.
                 </span>
               </span>
             </label>
@@ -3523,55 +3525,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={verboseCombat}
-                onChange={async (e) => {
-                  await updateScenarioField(scenarioId, { verbose_combat: e.target.checked });
-                }}
-                className="h-4 w-4 accent-amber-400 mt-0.5"
-              />
-              <span>
-                <span className="font-medium text-amber-300">Verbose combat</span>
-                <span className="block text-gray-400 text-[11px]">
-                  When on, combat descriptions print every dice roll (sorted) so the damage
-                  formulas can be verified from the raw faces.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={aiAssistEnabled}
-                onChange={async (e) => {
-                  await updateScenarioField(scenarioId, { ai_assist_enabled: e.target.checked });
-                }}
-                className="h-4 w-4 accent-amber-400 mt-0.5"
-              />
-              <span>
-                <span className="font-medium text-amber-300">AI assist</span>
-                <span className="block text-gray-400 text-[11px]">
-                  Shows the AI tab: hand teams to a plotted enemy AI (preview, then execute move by move). The GM stays in control of every action.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={heroMoraleBoostEnabled}
-                onChange={async (e) => {
-                  await updateScenarioField(scenarioId, { hero_morale_boost_enabled: e.target.checked });
-                }}
-                className="h-4 w-4 accent-amber-400 mt-0.5"
-              />
-              <span>
-                <span className="font-medium text-amber-300">Hero morale boost</span>
-                <span className="block text-gray-400 text-[11px]">
-                  Heroes grant Commanding Presence to allies within 7 hexes, upgraded to Heroic Inspiration after attacking, and add heroic attack capacity while leading or inspired.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
-              <input
-                type="checkbox"
                 checked={zocPursuitEnabled}
                 onChange={async (e) => {
                   await updateScenarioField(scenarioId, { zoc_pursuit_enabled: e.target.checked });
@@ -3585,8 +3538,28 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 </span>
               </span>
             </label>
+
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-4 mb-1 border-b border-gray-700 pb-0.5">Heroes</div>
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={heroMoraleBoostEnabled}
+                onChange={async (e) => {
+                  await updateScenarioField(scenarioId, { hero_morale_boost_enabled: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">Hero morale and combat boost</span>
+                <span className="block text-gray-400 text-[11px]">
+                  Heroes grant Commanding Presence to allies within 7 hexes, upgraded to Heroic Inspiration after attacking, and add heroic attack capacity while leading or inspired.
+                </span>
+              </span>
+            </label>
+
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-4 mb-1 border-b border-gray-700 pb-0.5">Visibility</div>
             <div className="mb-2">
-              <div className="flex items-center justify-between gap-2 text-sm text-gray-200">
+              <div className="flex items-center gap-3 text-sm text-gray-200">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -3598,8 +3571,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                   />
                   <span className="font-medium text-amber-300">Fog of war</span>
                 </label>
-                <label className="flex items-center gap-2 text-gray-300 cursor-text">
-                  <span>Sight radius</span>
+                <label className="flex items-center gap-2 text-gray-400 text-xs cursor-text ml-auto">
+                  Sight radius
                   <input
                     type="number"
                     min={1}
@@ -3619,6 +3592,41 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 Sight radius is armed even while fog is off.
               </p>
             </div>
+
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-4 mb-1 border-b border-gray-700 pb-0.5">Assist &amp; logs</div>
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={aiAssistEnabled}
+                onChange={async (e) => {
+                  await updateScenarioField(scenarioId, { ai_assist_enabled: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">AI assist</span>
+                <span className="block text-gray-400 text-[11px]">
+                  Shows the AI tab: hand teams to a plotted enemy AI (preview, then execute move by move). The GM stays in control of every action.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={verboseCombat}
+                onChange={async (e) => {
+                  await updateScenarioField(scenarioId, { verbose_combat: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">Verbose combat</span>
+                <span className="block text-gray-400 text-[11px]">
+                  When on, combat descriptions print every dice roll (sorted) so the damage
+                  formulas can be verified from the raw faces.
+                </span>
+              </span>
+            </label>
             </>)}
             <div className="flex justify-end">
               <button

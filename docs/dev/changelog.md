@@ -1,5 +1,25 @@
 # QuiTTER Changelog
 
+## Group the Scenario & Admin settings; drop the dead undo setting (2026-10-11)
+**Files:** src/components/SettingsModal.tsx, src/components/ScenarioMap/ScenarioMap.tsx, src/packages/infra/lib/settingsCache.ts, supabase/migrations/124_drop_undo_stack_size.sql, docs/dev/{02-schema-and-migrations,06-turn-system,changelog}.md
+
+- **Scenario Settings modal** is now grouped: **This device** (client-only:
+  Show MP on every move hex, Move preview) · **Combat & reactions** (Reactive
+  archery, Charge and Swoop, Zone-of-control pursuit) · **Heroes** (renamed
+  "Hero morale and combat boost") · **Visibility** (Fog of war with the **sight
+  radius input moved next to the checkbox**) · **Assist & logs** (AI assist,
+  Verbose combat). GM groups hidden for players.
+- **Admin Game Settings modal** groups rows into **Turn start & actions**,
+  **Combat**, **Movement & turning**, **Heroes**, **Threat & morale**,
+  **Formations & size**, with an **Other** fallback for unknown keys. Each row
+  shows a **friendly name** (+ raw key) and a **tooltip** with a description and
+  example (e.g. `heroic_capacity_multiplier` is a flat **bonus** to the
+  attack-capacity multiplier, not a multiplier).
+- **Dropped the vestigial `undo_stack_size`** setting (and its
+  `DEFAULT_UNDO_STACK_SIZE` code constant): undo/redo is server-side now, so it
+  was dead and could never affect replay. **Apply migration 124.**
+- `tsc` clean, tests pass, build clean.
+
 ## Move-preview mode: one action vs all actions, banded highlight (2026-10-11)
 **Files:** src/components/ScenarioMap/{useOverlay.ts (+ test),useMoveActions.ts,ScenarioMap.tsx}, docs/dev/{07-movement-economy,changelog}.md, docs/players/player-manual.md
 

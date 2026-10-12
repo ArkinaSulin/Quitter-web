@@ -63,14 +63,23 @@
 explicitly (idempotent — avoids double-increment races with the realtime
 UPDATE).
 
-## Scenario settings toggles (GM, Scenario Settings modal)
+## Scenario settings toggles (Scenario Settings modal)
+
+The modal is grouped: a **This device** section (client-only prefs, shown to
+everyone) then GM sections **Combat & reactions**, **Heroes**, **Visibility**,
+**Assist & logs** (GM-only rows hidden for players). Client-only prefs:
+`showAllMoveMp` + `movePreviewMode` (per-browser `localStorage`, see `07`).
 
 `scenarios` columns toggled live (each an `updateScenarioField` + SCENARIO or
 direct scenario update — see `useScenarios.updateScenarioField`):
-- `archer_reaction_enabled` — opportunity fire on/off (see `08`).
+- `archer_reaction_enabled` — opportunity fire on/off (see `08`); while ON it also
+  gates the "stop before entering a kill zone" rule (`07`).
 - `mounted_charge_enabled` — Charge!/Swoop! availability (shown as
   "Charge and Swoop"; see `08`).
+- `hero_morale_boost_enabled` — Hero Commanding Presence / Inspiration (see `09`).
 - `verbose_combat` — per-scenario roll detail in messages (`units/verboseCombat.ts`).
+- `ai_assist_enabled` — the AI tab (see `17`).
+- `zoc_pursuit_enabled` — the ZoC danger layer (see `09`).
 - `fog_of_war` + `sight_radius` — see `11-fog-of-war.md`.
 
 ## Permission gates recap (turn-aware)
