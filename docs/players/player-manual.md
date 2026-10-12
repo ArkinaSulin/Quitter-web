@@ -414,7 +414,9 @@ formation level).
 A turn **cannot end** while any unit/hero is left **floating** (a non-flyer above
 the ground it should stand on — e.g. a hero pulled off a flying mount, or a unit
 orphaned by a removed structure). Resolve it via its context menu: **Drop to
-ground (fall)** — anyone; or **Lower to ground (no damage)** — the DM.
+ground (fall)** — anyone; or **Lower to ground (no damage)** — the DM. A unit
+still **holding a wall it climbed** is not floating (it is braced against the
+structure), so it never blocks the turn.
 
 ---
 

@@ -259,8 +259,11 @@ blocked by any edge structure. The AI planner ignores it for v1.
   `floor(ft/10)`d6 each (`feather_fall` negates). 1 action + attack cap.
 - **Removal & floats**: a structure removed in the editor leaves units floating; at any
   End Turn, non-flying units above their hex surface (`floatingUnits`) drop and take the
-  same fall damage. A **rider whose host is killed/removed auto-detaches** (then falls if
-  airborne & non-flying) — `routeUnit`/`hostLostHeroSteps`.
+  same fall damage. **Climbers are exempt** — a hung climber (`climbTo` set) or one braced
+  against a structure at/above its height (an adjacent hex structure or an edge structure
+  on its own edge), e.g. after a "climb & attack" that leaves it at the wall top. A
+  **rider whose host is killed/removed auto-detaches** (then falls if airborne & non-flying)
+  — `routeUnit`/`hostLostHeroSteps`.
 - **Rendering**: `useCanvasDraw` draws hex structures (black hex outline + artwork
   + HP badge, and a `door N`/`open` badge; tower HP above, door below).
 - **Targeting filters & tooltips**: hold a modifier to filter targets (first

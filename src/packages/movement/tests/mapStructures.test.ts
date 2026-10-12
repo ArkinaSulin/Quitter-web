@@ -422,4 +422,21 @@ describe('floatingUnits (units left unsupported after a structure is removed)', 
     ];
     expect(floatingUnits(list as any, {}, {})).toEqual([]);
   });
+
+  it('exempts a climber braced on an ADJACENT hex structure at its height', () => {
+    const tower = template({ id: 'tower', anchor: 'hex', elevation: 10 });
+    // Unit elevated at 10 in (0,0), gripping the tower on the neighbour (1,0).
+    const climber = unit({ elevation: 10 });
+    expect(floatingUnits([climber] as any, { '1,0': { templateId: 'tower' } }, { tower })).toEqual([]);
+    // A SHORTER structure does not support it → still floating.
+    const short = template({ id: 'short', anchor: 'hex', elevation: 5 });
+    expect(floatingUnits([climber] as any, { '1,0': { templateId: 'short' } }, { short }).map(u => u.id)).toEqual(['u']);
+  });
+
+  it('exempts a climber gripping an EDGE structure on its own edge', () => {
+    const wall = template({ id: 'wall', anchor: 'edge', elevation: 10 });
+    const climber = unit({ elevation: 10 });
+    const key = edgeRef(0, 0, 0).key;
+    expect(floatingUnits([climber] as any, { [key]: { templateId: 'wall' } }, { wall })).toEqual([]);
+  });
 });

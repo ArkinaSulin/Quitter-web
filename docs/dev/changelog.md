@@ -1,5 +1,17 @@
 # QuiTTER Changelog
 
+## Float guard exempts wall-gripping climbers (2026-10-11)
+**Files:** src/packages/movement/{lib/mapStructures.ts,tests/mapStructures.test.ts}, docs/players/player-manual.md, docs/dev/{18-map-structures,changelog}.md
+
+- The End-Turn **floating guard** no longer counts a **climbing** token. `floatingUnits`
+  already skipped hung climbers (`climbTo`); it now also exempts an elevated unit braced
+  against a structure at/above its height — an **adjacent hex structure** or an **edge
+  structure on its own edge**. This fixes the "climb & attack" result (a unit left at the
+  wall top in its own hex with `climbTo` cleared reading as floating and blocking End Turn),
+  and any other wall-grip state.
+- Still flags a unit whose support actually vanished (nothing at its height nearby). No
+  migration. `tsc` clean, tests pass, build clean.
+
 ## Protected heroes fight into the host's rear cone + attach-modal overview (2026-10-11)
 **Files:** src/packages/combat/lib/{protectedHero.ts,archerReaction.ts,index.ts}, src/packages/combat/tests/{protectedHero.test.ts,archerReaction.test.ts}, src/components/ScenarioMap/{useCombatActions.ts,useReactionActions.ts,ScenarioMap.tsx,useCanvasDraw.ts}, docs/players/player-manual.md, docs/dev/{08-combat,changelog}.md
 

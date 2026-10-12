@@ -15,6 +15,7 @@ import { templateDoorMax, structureElevation, structureHasLadder } from '@/packa
 import { GroundEffect, Unit, getOrganizationLevel } from '@/types/gameProtocol';
 import { formationAtOrBelow } from '@/packages/movement/lib/formationCost';
 import { canFly } from '@/packages/movement/lib/flying';
+import { HEX_DIRS } from '@/packages/primitives';
 
 export type MapStructures = Record<string, StructureInstance>;
 
@@ -114,9 +115,38 @@ export function climbStepsFromFeet(feet: number): number {
 }
 
 /**
+ * True when an elevated unit is braced against a structure at (or above) its
+ * height — a CLIMBING hold, not an unsupported float: an ADJACENT hex structure
+ * whose top reaches it, or an EDGE structure on one of its own hex edges. Used
+ * by `floatingUnits` so a wall-gripping climber (e.g. after a "climb & attack"
+ * that leaves it at the top with `climbTo` cleared) is not treated as floating.
+ */
+function gripsStructureAtHeight(
+  unit: Unit,
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+): boolean {
+  const elev = unit.elevation ?? 0;
+  // Adjacent hex structures whose top reaches the unit's height.
+  for (const d of HEX_DIRS) {
+    const inst = structures?.[`${unit.hex.q + d.q},${unit.hex.r + d.r}`];
+    const t = inst ? templates?.[inst.templateId] : undefined;
+    if (inst && t && structureElevation(t, inst) >= elev) return true;
+  }
+  // Edge structures on the unit's own six edges.
+  for (let dir = 0; dir < 6; dir++) {
+    const inst = structures?.[edgeRef(unit.hex.q, unit.hex.r, dir).key];
+    const t = inst ? templates?.[inst.templateId] : undefined;
+    if (inst && t && structureElevation(t, inst) >= elev) return true;
+  }
+  return false;
+}
+
+/**
  * Non-flying units left FLOATING after their support vanished (e.g. a structure was
  * removed): their elevation exceeds their hex's current walkable surface. Hung
- * climbers (`climbTo`) and flyers are excluded — they are still supported. Attached
+ * climbers (`climbTo`), wall-gripping climbers (braced against a structure at
+ * their height), and flyers are excluded — they are still supported. Attached
  * riders follow their host, so only hosts are returned. Resolved at end of turn.
  */
 export function floatingUnits(
@@ -130,7 +160,9 @@ export function floatingUnits(
     if (u.climbTo) continue;
     if (canFly(u)) continue;
     const surf = structureSurfaceAt(u.hex, structures ?? undefined, templates ?? undefined);
-    if ((u.elevation ?? 0) > surf) out.push(u);
+    if ((u.elevation ?? 0) <= surf) continue;
+    if (gripsStructureAtHeight(u, structures, templates)) continue;
+    out.push(u);
   }
   return out;
 }
