@@ -56,16 +56,16 @@ describe('modifierSummary', () => {
   it('shows mode only for mode-honouring kinds', () => {
     expect(modifierSummary({ kind: 'ac', dice: '2', mode: 'melee' })).toBe('ac (melee) +2');
     expect(modifierSummary({ kind: 'advantage' })).toBe('advantage');
-    expect(modifierSummary({ kind: 'block_attacks', mode: 'ranged', direction: 'in' })).toBe('block_attacks (ranged) /in');
+    expect(modifierSummary({ kind: 'block_attacks', mode: 'ranged', direction: 'in' })).toBe('block attacks (ranged) /in');
   });
 
   it('renders the max_org_level_allowed cap as a cap and keeps heal', () => {
-    expect(modifierSummary({ kind: 'max_org_level_allowed', dice: '1' })).toBe('max_org_level_allowed ≤1');
+    expect(modifierSummary({ kind: 'max_org_level_allowed', dice: '1' })).toBe('max org level ≤1');
     expect(modifierSummary({ kind: 'dot', dice: '1d6', healing: true })).toBe('dot 1d6 heal');
   });
 
-  it('prints friendly names for movement points and terrain cost', () => {
-    expect(modifierSummary({ kind: 'movement', dice: '2' })).toBe('movement points +2');
+  it('prints keyword-first labels for stat / zone / flag kinds', () => {
+    expect(modifierSummary({ kind: 'movement', dice: '2' })).toBe('movement +2');
     expect(modifierSummary({ kind: 'mp_cost', dice: '4' })).toBe('terrain cost +4');
     expect(modifierSummary({ kind: 'save_advantage' })).toBe('save advantage');
     expect(modifierSummary({ kind: 'save_disadvantage' })).toBe('save disadvantage');

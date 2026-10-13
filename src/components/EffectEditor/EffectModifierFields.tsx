@@ -5,33 +5,15 @@
 // field accepts a plain number or dice "XdY±Z" (X=0 = flat Z); the flat part is
 // mirrored into `delta` for stat kinds and legacy consumers.
 import React from 'react';
-import { EffectModifier, EffectModifierKind, isFlagModifierKind, honorsMode, modifierUsesSave, EFFECT_MODIFIER_LABELS } from '@/packages/effects';
+import { EffectModifier, EffectModifierKind, isFlagModifierKind, honorsMode, modifierUsesSave, EFFECT_MODIFIER_LABELS, KIND_GROUPS } from '@/packages/effects';
 import { EffectDirection } from '@/packages/effects';
 
-export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
-  { value: 'ac', label: 'AC ±' },
-  { value: 'morale', label: 'Morale ±' },
-  { value: 'movement', label: 'Movement points ±' },
-  { value: 'attack', label: 'Attack roll ±' },
-  { value: 'damage', label: 'Damage ±' },
-  { value: 'save_bonus', label: 'All saving throws ±' },
-  { value: 'dot', label: 'DoT / heal per tick' },
-  { value: 'hp_borrow', label: 'Borrow HP (sleep)' },
-  { value: 'entry', label: EFFECT_MODIFIER_LABELS.entry },
-  { value: 'mp_cost', label: EFFECT_MODIFIER_LABELS.mp_cost },
-  { value: 'max_org_level_allowed', label: EFFECT_MODIFIER_LABELS.max_org_level_allowed },
-  { value: 'range', label: EFFECT_MODIFIER_LABELS.range },
-  { value: 'advantage', label: EFFECT_MODIFIER_LABELS.advantage },
-  { value: 'disadvantage', label: EFFECT_MODIFIER_LABELS.disadvantage },
-  { value: 'grant_advantage', label: EFFECT_MODIFIER_LABELS.grant_advantage },
-  { value: 'grant_disadvantage', label: EFFECT_MODIFIER_LABELS.grant_disadvantage },
-  { value: 'block_attacks', label: EFFECT_MODIFIER_LABELS.block_attacks },
-  { value: 'save_advantage', label: EFFECT_MODIFIER_LABELS.save_advantage },
-  { value: 'save_disadvantage', label: EFFECT_MODIFIER_LABELS.save_disadvantage },
-  { value: 'forced_stop', label: EFFECT_MODIFIER_LABELS.forced_stop },
-  { value: 'ignore_climb', label: EFFECT_MODIFIER_LABELS.ignore_climb },
-  { value: 'feather_fall', label: EFFECT_MODIFIER_LABELS.feather_fall },
-];
+/** Leading indent for an option inside its `<optgroup>` so the grouping reads. */
+const OPT_INDENT = '\u00A0\u00A0\u00A0';
+
+/** Flat kind options (keyword-first), derived from the grouped table in the package. */
+export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] =
+  KIND_GROUPS.flatMap(g => g.kinds.map(k => ({ value: k, label: EFFECT_MODIFIER_LABELS[k] })));
 
 export const DEFAULT_INPUT_CLASS =
   'bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700 focus:border-amber-400 outline-none disabled:opacity-50';
@@ -56,13 +38,19 @@ export function EffectModifierFields({ modifier: m, onChange, readOnly = false, 
   const input = inputClass ?? DEFAULT_INPUT_CLASS;
   const patch = (p: Partial<EffectModifier>) => onChange({ ...m, ...p });
   const flag = isFlagModifierKind(m.kind);
-  const kindOptions = excludeKinds?.length ? KIND_OPTIONS.filter(o => !excludeKinds.includes(o.value)) : KIND_OPTIONS;
+  const kindGroups = KIND_GROUPS
+    .map(g => ({ label: g.label, kinds: excludeKinds?.length ? g.kinds.filter(k => !excludeKinds.includes(k)) : g.kinds }))
+    .filter(g => g.kinds.length > 0);
 
   return (
     <div className="rounded border border-gray-800 p-1.5 space-y-1">
       <div className="flex flex-wrap items-center gap-2">
-        <select className={input + ' !w-40 min-w-0'} value={m.kind} disabled={readOnly} onChange={e => patch({ kind: e.target.value as EffectModifierKind })}>
-          {kindOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <select className={input + ' !w-56 min-w-0'} value={m.kind} disabled={readOnly} onChange={e => patch({ kind: e.target.value as EffectModifierKind })}>
+          {kindGroups.map(g => (
+            <optgroup key={g.label} label={g.label}>
+              {g.kinds.map(k => <option key={k} value={k}>{OPT_INDENT}{EFFECT_MODIFIER_LABELS[k]}</option>)}
+            </optgroup>
+          ))}
         </select>
         {honorsMode(m.kind) && (
           <select

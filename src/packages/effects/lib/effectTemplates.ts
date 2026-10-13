@@ -78,51 +78,62 @@ export function effectAmount(mod: { dice?: string }, rng: () => number = Math.ra
   return rollDice(mod.dice, rng);
 }
 
-/** Human label for a modifier kind (flag kinds carry no amount). */
+/**
+ * Human label for a modifier kind, **keyword-first** (the mechanic first, then a
+ * short hint). One source shared by the kind dropdown (`KIND_GROUPS`) and
+ * `modifierSummary`, so the wording never drifts.
+ */
 export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
-  ac: 'AC',
-  morale: 'Morale',
-  movement: 'Movement points',
-  attack: 'Attack roll',
-  damage: 'Damage',
-  save_bonus: 'All saving throws',
-  dot: 'DoT / heal per tick',
-  hp_borrow: 'Borrow HP (sleep)',
-  entry: 'Damage on entry',
-  mp_cost: 'Terrain cost (hex)',
-  max_org_level_allowed: 'Max org level allowed',
-  range: 'Weapon range +/-',
-  advantage: 'Gain Advantage',
-  disadvantage: 'Suffer Disadvantage',
-  grant_advantage: 'Grant Advantage',
-  grant_disadvantage: 'Grant Disadvantage',
-  block_attacks: 'Block attacks in/out',
-  save_advantage: 'Advantage on saving throws',
-  save_disadvantage: 'Disadvantage on saving throws',
-  forced_stop: 'Forced stop on entry',
-  ignore_climb: 'Ignore climb cost (stairs)',
-  feather_fall: 'Ignore falling damage',
+  ac: 'ac',
+  attack: 'attack',
+  damage: 'damage',
+  morale: 'morale',
+  movement: 'movement',
+  range: 'range',
+  save_bonus: 'save',
+  dot: 'dot',
+  entry: 'entry',
+  hp_borrow: 'hp borrow',
+  advantage: 'advantage',
+  disadvantage: 'disadvantage',
+  grant_advantage: 'grant advantage',
+  grant_disadvantage: 'grant disadvantage',
+  save_advantage: 'save advantage',
+  save_disadvantage: 'save disadvantage',
+  block_attacks: 'block attacks',
+  mp_cost: 'terrain cost',
+  max_org_level_allowed: 'max org level',
+  forced_stop: 'forced stop',
+  ignore_climb: 'ignore climb',
+  feather_fall: 'feather fall',
 };
 
 /**
+ * The kind dropdown's grouping + order (one place). Groups are rendered as
+ * `<optgroup>` headers and each member is indented, so the categories read at a
+ * glance. Every `EffectModifierKind` must appear exactly once.
+ */
+export const KIND_GROUPS: { label: string; kinds: EffectModifierKind[] }[] = [
+  { label: 'Stats', kinds: ['ac', 'attack', 'damage', 'morale', 'movement', 'range', 'save_bonus'] },
+  { label: 'Damage & HP', kinds: ['dot', 'entry', 'hp_borrow'] },
+  { label: 'Roll flags', kinds: ['advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'save_advantage', 'save_disadvantage'] },
+  { label: 'Entry & gates', kinds: ['block_attacks', 'forced_stop', 'max_org_level_allowed'] },
+  { label: 'Traversal', kinds: ['feather_fall', 'ignore_climb', 'mp_cost'] },
+];
+
+/**
  * Short one-line label for a modifier (used in every list/tooltip/summary).
- * One central implementation so the format can never drift:
- *   - `(mode)` shown ONLY for the mode-honouring kinds (ac, advantage,
- *     disadvantage, the grant kinds and block_attacks) — `range` and friends
- *     never print a bogus `(melee)`.
+ * Base text = `EFFECT_MODIFIER_LABELS[kind]` (keyword-first); then:
+ *   - `(mode)` shown ONLY for the mode-honouring kinds (ac, attack, damage,
+ *     advantage, disadvantage, the grant kinds and block_attacks) — `range` and
+ *     friends never print a bogus `(melee)`.
  *   - `/in`·`/out` suffix for `block_attacks`.
  *   - signed amount for stat/aura kinds: `range +2`, `ac -1`; `≤1` for the
  *     `max_org_level_allowed` cap; `heal` suffix preserved.
- *   - flag kinds print just the kind.
+ *   - flag kinds print just the keyword.
  */
 export function modifierSummary(m: EffectModifier): string {
-  let s = m.kind as string;
-  if (m.kind === 'movement') s = 'movement points';
-  else if (m.kind === 'mp_cost') s = 'terrain cost';
-  else if (m.kind === 'save_bonus') s = 'save bonus';
-  else if (m.kind === 'save_advantage') s = 'save advantage';
-  else if (m.kind === 'save_disadvantage') s = 'save disadvantage';
-  else if (m.kind === 'forced_stop') s = 'forced stop';
+  let s = EFFECT_MODIFIER_LABELS[m.kind] ?? (m.kind as string);
   if (honorsMode(m.kind) && m.mode) s += ` (${m.mode})`;
   if (m.kind === 'block_attacks' && m.direction) s += ` /${m.direction}`;
   if (!isFlagModifierKind(m.kind)) {

@@ -102,11 +102,14 @@ right = a `StructurePreview`.
   enter the hex/edge).
 
 The shared `EffectModifierFields` row (Unit editor, Effect editor, structure +
-drop + instance-edit modals) exposes the three flat combat channels — **Attack
-roll ±**, **Damage ±**, **All saving throws ±** — and, for any non-flag modifier,
-an **aura** checkbox plus a **radius** (`r`) box: with aura on, the modifier is a
-hero aura applied to same-alliance allies within `radius` hexes instead of the
-carrier (`08`).
+drop + instance-edit modals) has a **grouped, keyword-first** kind dropdown —
+`<optgroup>`s **Stats** · **Damage & HP** · **Roll flags** · **Entry & gates** ·
+**Traversal**, each member indented (the grouping lives in one place,
+`KIND_GROUPS` + `EFFECT_MODIFIER_LABELS`, which also drive `modifierSummary`).
+New here: the flat combat channels **attack**, **damage**, **save** (keyword-first
+labels), and — for any non-flag modifier — an **aura** checkbox plus a **radius**
+(`r`) box: with aura on, the modifier is a hero aura applied to same-alliance
+allies within `radius` hexes instead of the carrier (`08`).
 
 See `18-map-structures.md` for the model and what is still pending (placement,
 movement/combat consumption, wall unification).

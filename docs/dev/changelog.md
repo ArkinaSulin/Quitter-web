@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## Effect-modifier kinds: grouped, keyword-first dropdown + one label source (2026-10-12)
+**Files:** src/packages/effects/lib/effectTemplates.ts, src/components/EffectEditor/EffectModifierFields.tsx, src/packages/effects/tests/effectTemplates.test.ts, docs/dev/{14-editors,changelog}.md
+
+- The modifier kind `<select>` is now grouped into `<optgroup>`s — **Stats** ·
+  **Damage & HP** · **Roll flags** · **Entry & gates** · **Traversal** — with the
+  members indented, so the categories read at a glance. `terrain cost` now sits in
+  **Traversal** (with `ignore climb` / `feather fall`); `block attacks` +
+  `max org level` + `forced stop` form **Entry & gates**.
+- `EFFECT_MODIFIER_LABELS` is rewritten **keyword-first** and is now the single
+  source for both the dropdown and `modifierSummary` (so effect names in
+  tooltips/logs match the picker). New `KIND_GROUPS` table holds the grouping/order.
+  Summaries shift accordingly: `movement points +2` → `movement +2`,
+  `max_org_level_allowed ≤1` → `max org level ≤1`,
+  `block_attacks (ranged) /in` → `block attacks (ranged) /in` (range/ac/dot/terrain
+  cost/save advantage/forced stop unchanged).
+- Applies everywhere the shared row is used (Unit, Effect, Structure, drop +
+  instance-edit modals). `tsc` clean, tests pass, build clean.
+
 ## Hero auras: flat attack / AC / damage / save from authored effect modifiers (2026-10-12)
 **Files:** src/types/{effects,gameProtocol}.ts, src/packages/effects/lib/{effectTemplates,unitEffects}.ts, src/packages/units/lib/unitStats.ts, src/packages/combat/lib/unitCombat.ts, src/packages/primitives/lib/damage.ts, src/packages/ai/lib/planner.ts, src/components/ScenarioMap/{useCombatActions,useReactionActions,useCastActions}.ts, src/components/ScenarioMap/ScenarioMap.tsx, src/components/EffectEditor/EffectModifierFields.tsx, src/hooks/useSupabaseSync.ts, src/components/SettingsModal.tsx, supabase/migrations/125_drop_heroic_capacity_multiplier.sql, docs/dev/{02,08,09,10,14,17,changelog}.md, docs/players/player-manual.md
 
