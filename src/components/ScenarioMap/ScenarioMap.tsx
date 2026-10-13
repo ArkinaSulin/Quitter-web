@@ -3456,7 +3456,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[380px] max-h-[85vh] overflow-y-auto">
             <p className="text-white text-sm mb-4 text-center font-semibold">Scenario Settings</p>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 border-b border-gray-700 pb-0.5">This device</div>
+            <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2 border-b-2 border-gray-600 pb-1">This device</div>
+            <div className="pl-3">
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -3485,8 +3486,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 </label>
               </div>
             </div>
+            </div>
             {effectiveIsGM && (<>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-4 mb-1 border-b border-gray-700 pb-0.5">Combat &amp; reactions</div>
+            <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mt-5 mb-2 border-b-2 border-gray-600 pb-1">Combat &amp; reactions</div>
+            <div className="pl-3">
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -3538,8 +3541,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 </span>
               </span>
             </label>
+            </div>
 
-            <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-4 mb-1 border-b border-gray-700 pb-0.5">Heroes</div>
+            <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mt-5 mb-2 border-b-2 border-gray-600 pb-1">Heroes</div>
+            <div className="pl-3">
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -3556,44 +3561,46 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 </span>
               </span>
             </label>
+            </div>
 
-            <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-4 mb-1 border-b border-gray-700 pb-0.5">Visibility</div>
-            <div className="mb-2">
-              <div className="flex items-center gap-3 text-sm text-gray-200">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={fogOfWar}
-                    onChange={async (e) => {
-                      await updateScenarioField(scenarioId, { fog_of_war: e.target.checked });
-                    }}
-                    className="h-4 w-4 accent-amber-400"
-                  />
-                  <span className="font-medium text-amber-300">Fog of war</span>
-                </label>
-                <label className="flex items-center gap-2 text-gray-400 text-xs cursor-text ml-auto">
-                  Sight radius
-                  <input
-                    type="number"
-                    min={1}
-                    max={9}
-                    value={sightRadius}
-                    onChange={async (e) => {
-                      const v = Math.max(1, Math.min(9, parseInt(e.target.value) || 2));
-                      setSightRadius(v);
-                      await updateScenarioField(scenarioId, { sight_radius: v });
-                    }}
-                    className="w-14 bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700"
-                  />
-                </label>
-              </div>
+            <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mt-5 mb-2 border-b-2 border-gray-600 pb-1">Visibility</div>
+            <div className="pl-3">
+            <label className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={fogOfWar}
+                onChange={async (e) => {
+                  await updateScenarioField(scenarioId, { fog_of_war: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400"
+              />
+              <span className="font-medium text-amber-300">Fog of war</span>
+            </label>
+            <div className="pl-6 mt-1">
+              <label className="flex items-center gap-2 text-gray-400 text-xs cursor-text">
+                Sight radius
+                <input
+                  type="number"
+                  min={1}
+                  max={9}
+                  value={sightRadius}
+                  onChange={async (e) => {
+                    const v = Math.max(1, Math.min(9, parseInt(e.target.value) || 2));
+                    setSightRadius(v);
+                    await updateScenarioField(scenarioId, { sight_radius: v });
+                  }}
+                  className="w-14 bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700"
+                />
+              </label>
               <p className="text-gray-500 text-[11px] mt-1">
                 Each alliance sees only within sight of its own units; the DM sees through the darkened boundary.
                 Sight radius is armed even while fog is off.
               </p>
             </div>
+            </div>
 
-            <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-4 mb-1 border-b border-gray-700 pb-0.5">Assist &amp; logs</div>
+            <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mt-5 mb-2 border-b-2 border-gray-600 pb-1">Assist &amp; logs</div>
+            <div className="pl-3">
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -3627,6 +3634,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 </span>
               </span>
             </label>
+            </div>
             </>)}
             <div className="flex justify-end">
               <button

@@ -17,6 +17,12 @@
   attack-capacity multiplier, not a multiplier); the **Turn start & actions**
   group lists all four turn-start values (unit 0 MP / 2 actions; hero full-MP /
   5 actions — the hero MP is the derived effective max).
+- **Layout pass**: section headings are bolder (`text-xs font-semibold`); admin
+  rows are one-liners (**label left, value box filling the right half**); the
+  structured band settings (`threat_increment_*`, `row_capacity_by_size`) use an
+  expandable **`▸ Edit JSON`** textarea that pretty-prints (2-space indent) for
+  editing. Scenario rows are **indented** under their headings, and **Sight
+  radius** sits in an indented sub-row **below Fog of war**.
 - **Dropped the vestigial `undo_stack_size`** setting (and its
   `DEFAULT_UNDO_STACK_SIZE` code constant): undo/redo is server-side now, so it
   was dead and could never affect replay. **Apply migration 124.**

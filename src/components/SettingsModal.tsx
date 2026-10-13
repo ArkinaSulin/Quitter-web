@@ -118,6 +118,17 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     setDrafts(d => ({ ...d, [key]: text }));
   }, []);
 
+  // Which structured (JSON array/object) settings are expanded to the indented editor.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const toggleExpanded = useCallback((key: string, raw: string) => {
+    const willOpen = !expanded[key];
+    // Pretty-print on first expand so the indented view is readable.
+    if (willOpen) {
+      try { setDraft(key, JSON.stringify(JSON.parse(raw), null, 2)); } catch { /* keep raw if not valid JSON yet */ }
+    }
+    setExpanded(e => ({ ...e, [key]: willOpen }));
+  }, [expanded, setDraft]);
+
   const handleSave = async () => {
     setError(null);
     const parsed: Record<string, unknown> = {};
@@ -153,22 +164,62 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const renderRow = (key: string, label: string, hint: string | null, keyIsLabel = false) => {
     const r = rowByKey.get(key);
     if (!r) return null;
-    return (
-      <div key={key} className="bg-gray-900/50 border border-gray-700 rounded p-2">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-sm text-yellow-300" title={hint ?? undefined}>
-            {label}
-            {hint && <span className="text-gray-500 ml-1 cursor-help" title={hint}>ⓘ</span>}
-          </span>
-          {!keyIsLabel && <span className="text-[10px] text-gray-500 font-mono">{key}</span>}
+    const isStructured = typeof r.value === 'object' && r.value !== null;
+    const raw = drafts[key] ?? '';
+    const open = !!expanded[key];
+
+    const labelEl = (
+      <div className="w-1/2 min-w-0">
+        <div className="text-sm text-yellow-300 flex items-center gap-1">
+          <span className="truncate" title={hint ?? undefined}>{label}</span>
+          {hint && <span className="text-gray-500 cursor-help shrink-0" title={hint}>ⓘ</span>}
         </div>
-        <input
-          type="text"
-          value={drafts[r.key] ?? ''}
-          onChange={e => setDraft(r.key, e.target.value)}
-          className="w-full mt-1 bg-gray-800 text-white text-sm font-mono rounded px-2 py-1 border border-gray-700 focus:border-amber-400"
-          spellCheck={false}
-        />
+        {!keyIsLabel && <div className="text-[10px] text-gray-500 font-mono truncate">{key}</div>}
+      </div>
+    );
+
+    // JSON array/object settings: an expandable, indented editor.
+    if (isStructured) {
+      return (
+        <div key={key} className="py-1">
+          <div className="flex items-center gap-3">
+            {labelEl}
+            <div className="w-1/2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => toggleExpanded(key, raw)}
+                className="text-xs text-gray-300 hover:text-white font-mono"
+              >
+                {open ? '▾ Hide JSON' : '▸ Edit JSON'}
+              </button>
+            </div>
+          </div>
+          {open && (
+            <textarea
+              value={raw}
+              onChange={e => setDraft(key, e.target.value)}
+              rows={7}
+              spellCheck={false}
+              className="mt-1 w-full bg-gray-800 text-white text-xs font-mono leading-relaxed rounded px-2 py-1 border border-gray-700 focus:border-amber-400"
+            />
+          )}
+        </div>
+      );
+    }
+
+    // Scalar values: label left, a single-line box filling the right half.
+    return (
+      <div key={key} className="flex items-center gap-3 py-1">
+        {labelEl}
+        <div className="w-1/2">
+          <input
+            type="text"
+            value={raw}
+            onChange={e => setDraft(key, e.target.value)}
+            spellCheck={false}
+            className="w-full bg-gray-800 text-white text-sm font-mono rounded px-2 py-1 border border-gray-700 focus:border-amber-400"
+          />
+        </div>
       </div>
     );
   };
@@ -196,8 +247,8 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
             if (rowsInGroup.length === 0) return null;
             return (
               <section key={group.title}>
-                <h3 className="text-[11px] uppercase tracking-wide text-gray-500 mb-1 border-b border-gray-700 pb-0.5">{group.title}</h3>
-                <div className="space-y-2">
+                <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2 border-b-2 border-gray-600 pb-1">{group.title}</h3>
+                <div className="space-y-0.5">
                   {group.fields.map(f => renderRow(f.key, f.label, f.hint))}
                 </div>
                 {group.note && (
@@ -208,8 +259,8 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           })}
           {otherRows.length > 0 && (
             <section>
-              <h3 className="text-[11px] uppercase tracking-wide text-gray-500 mb-1 border-b border-gray-700 pb-0.5">Other</h3>
-              <div className="space-y-2">
+              <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2 border-b-2 border-gray-600 pb-1">Other</h3>
+              <div className="space-y-0.5">
                 {otherRows.map(r => renderRow(r.key, r.key, r.description, true))}
               </div>
             </section>
