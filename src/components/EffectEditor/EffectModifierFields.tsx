@@ -12,6 +12,9 @@ export const KIND_OPTIONS: { value: EffectModifierKind; label: string }[] = [
   { value: 'ac', label: 'AC ±' },
   { value: 'morale', label: 'Morale ±' },
   { value: 'movement', label: 'Movement points ±' },
+  { value: 'attack', label: 'Attack roll ±' },
+  { value: 'damage', label: 'Damage ±' },
+  { value: 'save_bonus', label: 'All saving throws ±' },
   { value: 'dot', label: 'DoT / heal per tick' },
   { value: 'hp_borrow', label: 'Borrow HP (sleep)' },
   { value: 'entry', label: EFFECT_MODIFIER_LABELS.entry },
@@ -106,6 +109,23 @@ export function EffectModifierFields({ modifier: m, onChange, readOnly = false, 
               <input type="checkbox" disabled={readOnly} checked={!!m.healing} onChange={e => patch({ healing: e.target.checked })} />
               heal
             </label>
+            <label className="flex items-center gap-1 text-[11px] text-gray-300 whitespace-nowrap" title="Aura: apply to same-alliance allies within the radius instead of the carrier (hero must be Leading or Inspired).">
+              <input type="checkbox" disabled={readOnly} checked={!!m.aura} onChange={e => patch({ aura: e.target.checked, radius: e.target.checked ? (m.radius ?? 1) : undefined })} />
+              aura
+            </label>
+            {m.aura && (
+              <label className="flex items-center gap-1 text-[11px] text-gray-300 whitespace-nowrap" title="Aura reach in hexes (0 = the carrier's own hex; 1 = the 7 surrounding hexes).">
+                r
+                <input
+                  className={input + ' !w-16'}
+                  type="number"
+                  min={0}
+                  value={m.radius ?? 1}
+                  disabled={readOnly}
+                  onChange={e => patch({ radius: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
+                />
+              </label>
+            )}
           </>
         )}
         {!readOnly && onRemove && (

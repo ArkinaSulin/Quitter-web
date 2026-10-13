@@ -1,10 +1,10 @@
-import { Unit, Formation, SizeCategory, AllianceGroup } from '@/types/gameProtocol';
+import { Unit, Formation, SizeCategory, AllianceGroup, hexDistance } from '@/types/gameProtocol';
 import { parseWeapons } from '@/packages/units/lib/weaponParser';
-import { getBandSetting, getSetting, SettingBand } from '@/packages/infra';
-import { isUnitRouted, withinAdjacencyFootprint, isHeroMoraleBoostEnabled } from '@/packages/morale';
+import { getBandSetting, SettingBand } from '@/packages/infra';
+import { isUnitRouted, isHeroMoraleBoostEnabled } from '@/packages/morale';
 import { sameAlliance } from '@/packages/primitives';
 import { AttackDirection } from '@/packages/primitives';
-import { coverAcBonus, directAcBonus } from '@/packages/effects';
+import { coverAcBonus, directAcBonus, modifierAmount } from '@/packages/effects';
 
 // Code fallback matches migration 042 seed — the unit_size_categories table row wins
 // in getRowCapacity; this is the fallback base for unknown categories.
@@ -92,6 +92,7 @@ export function effectiveAc(
   direction: AttackDirection,
   isRanged = false,
   wallCover = 0,
+  auraAc = 0,
 ): number {
   const dir = unit.isHero || unit.currentFormation === 'Hero' ? 'front' : direction;
   const formationAc = dir === 'rear'
@@ -99,33 +100,85 @@ export function effectiveAc(
     : (isRanged ? (formation?.range_ac_modifier ?? 0) : (formation?.melee_ac_modifier ?? 0));
   const cover = Math.max(formationAc, coverAcBonus(unit, isRanged), wallCover);
   const buff = directAcBonus(unit, isRanged);
-  return (unit.baselineAc || 10) - getShieldPenalty(unit).penalty + cover + buff;
+  return (unit.baselineAc || 10) - getShieldPenalty(unit).penalty + cover + buff + auraAc;
+}
+
+/** A hero-aura contribution to one unit: flat bonuses to its strikes and defence. */
+export interface HeroAuraBonus {
+  /** To-hit bonus for the unit's attacks. */
+  attack: number;
+  /** AC bonus (added on top of formation/cover). */
+  ac: number;
+  /** Flat damage bonus per landed hit (never doubled on a crit). */
+  damage: number;
+  /** Bonus to every saving throw. */
+  save: number;
+}
+
+const ZERO_AURA: HeroAuraBonus = { attack: 0, ac: 0, damage: 0, save: 0 };
+
+/** Same-elevation aura reach, with the source's own hex allowing a ±10 ft
+ *  elevation gap (mirrors `withinAdjacencyFootprint`, generalized to any radius;
+ *  radius 1 = the 8-hex footprint). */
+function withinAuraRadius(
+  src: Pick<Unit, 'hex' | 'elevation'>,
+  victim: Pick<Unit, 'hex' | 'elevation'>,
+  radius: number,
+): boolean {
+  if (src.hex.q === victim.hex.q && src.hex.r === victim.hex.r) {
+    return Math.abs((src.elevation ?? 0) - (victim.elevation ?? 0)) <= 10;
+  }
+  if (hexDistance(src.hex, victim.hex) > radius) return false;
+  return (src.elevation ?? 0) === (victim.elevation ?? 0);
 }
 
 /**
- * Heroic capacity aura: the extra attack-capacity multiplier granted to `unit`
- * when a same-alliance HERO within the 7 hexes is LEADING (attached front) or
- * INSPIRED. Value = the `heroic_capacity_multiplier` setting (decimal, seed 1,
- * added on top of the formation's attack capacity). Heroes never receive it;
- * several heroes do not stack (the single setting value). Gated by the ambient
- * scenario toggle. Returns 0 when nothing applies.
+ * Hero AURA bonus granted to `unit` by nearby allied heroes.
+ *
+ * A hero's `aura` effect modifiers (attack/ac/damage/save_bonus, each with a
+ * `radius`) radiate to same-alliance NON-HERO allies within that radius — heroes
+ * are self-motivated and gain nothing. A hero emits its aura only while LEADING
+ * (front-attached to a host) or INSPIRED. Several heroes do not stack: the best
+ * value per channel wins. `isRanged` scopes the melee/ranged `attack`/`ac`/`damage`
+ * channels. Gated by the ambient `hero_morale_boost_enabled` scenario toggle.
+ * Returns all-zero when nothing applies.
  */
-export function heroicCapacityBonus(
-  unit: Pick<Unit, 'isHero' | 'hex' | 'elevation' | 'team'>,
+export function heroAuraBonus(
+  unit: Pick<Unit, 'id' | 'isHero' | 'hex' | 'elevation' | 'team'>,
   units: Unit[],
   alliances: Record<string, AllianceGroup>,
-): number {
-  if (unit.isHero) return 0;
-  if (!isHeroMoraleBoostEnabled()) return 0;
-  const bonus = getSetting('heroic_capacity_multiplier', 1);
-  if (!bonus) return 0;
+  isRanged = false,
+): HeroAuraBonus {
+  if (unit.isHero) return ZERO_AURA;
+  if (!isHeroMoraleBoostEnabled()) return ZERO_AURA;
+  const best: HeroAuraBonus = { ...ZERO_AURA };
   for (const src of units) {
+    if (src.id === unit.id) continue;
     if (!src.isHero || src.isDeleted || src.hidden || (src.currentUnitHp ?? 0) <= 0) continue;
     if (!sameAlliance(src.team, unit.team, alliances)) continue;
     const leading = !!src.attachedToUnitId && src.attachedPosition === 'front';
     if (!leading && !src.heroicInspirationActive) continue;
-    if (!withinAdjacencyFootprint(src, unit)) continue;
-    return bonus;
+    const hero: HeroAuraBonus = { ...ZERO_AURA };
+    for (const e of src.effects ?? []) {
+      if (!e.aura) continue;
+      if (!withinAuraRadius(src, unit, e.radius ?? 0)) continue;
+      const amt = modifierAmount(e.dice);
+      if (!amt) continue;
+      if (e.kind === 'attack') { if (!modeApplies(e.mode, isRanged)) continue; hero.attack += amt; }
+      else if (e.kind === 'ac') { if (!modeApplies(e.mode, isRanged)) continue; hero.ac += amt; }
+      else if (e.kind === 'damage') { if (!modeApplies(e.mode, isRanged)) continue; hero.damage += amt; }
+      else if (e.kind === 'save_bonus') hero.save += amt;
+    }
+    best.attack = Math.max(best.attack, hero.attack);
+    best.ac = Math.max(best.ac, hero.ac);
+    best.damage = Math.max(best.damage, hero.damage);
+    best.save = Math.max(best.save, hero.save);
   }
-  return 0;
+  return best;
+}
+
+function modeApplies(mode: 'melee' | 'ranged' | undefined, isRanged: boolean): boolean {
+  if (mode === 'melee' && isRanged) return false;
+  if (mode === 'ranged' && !isRanged) return false;
+  return true;
 }

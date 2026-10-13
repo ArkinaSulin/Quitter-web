@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, SizeCategory, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
 import { resolveCombatSequence, wallCoverAgainst } from '@/packages/combat';
 import { applyFormationChange, formationOrgLevels, canAdoptFormation } from '@/packages/movement';
-import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement, effectiveAc, heroicCapacityBonus } from '@/packages/units';
+import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, computeEffectiveMovement, effectiveAc, heroAuraBonus } from '@/packages/units';
 import { attackDirection, arcOfTarget } from '@/packages/primitives';
 import { isRangedCapableWeapon, reactionMovePool, findEligibleReactionArchers, canReactWithWeapon, defaultAttackWeaponIndex, protectedHeroHost, inHostRearCone } from '@/packages/combat';
 import { canRangedTarget } from '@/packages/movement';
@@ -19,7 +19,7 @@ import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { applyHeroMoveCost, applyMoveCost, computeReachableMap, MovePathEntry } from '@/packages/movement';
 import { isUnitRouted, computeEffectiveMoraleModifier, shouldRout } from '@/packages/morale';
 import { isHostile } from '@/packages/primitives';
-import { rangeBonusAt, unitIgnoresClimb } from '@/packages/effects';
+import { rangeBonusAt, unitIgnoresClimb, effectAttackBonus, effectDamageBonus } from '@/packages/effects';
 import { isProtectedHero } from '@/packages/units';
 import { UnitChange, SubStep } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
@@ -193,14 +193,19 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       return;
     }
     const formationAtkMod = getFormationModifier(formationsMap, archer.currentFormation, 'attack_modifier');
-    const attackCapMult = getFormationMultiplier(formationsMap, archer.currentFormation, 'attack_capacity_multiplier') + heroicCapacityBonus(archer, units, alliances);
-    const defAttackCapMult = getFormationMultiplier(formationsMap, mover.currentFormation, 'attack_capacity_multiplier') + heroicCapacityBonus(mover, units, alliances);
+    const attackCapMult = getFormationMultiplier(formationsMap, archer.currentFormation, 'attack_capacity_multiplier');
+    const defAttackCapMult = getFormationMultiplier(formationsMap, mover.currentFormation, 'attack_capacity_multiplier');
     const archerRowCap = getRowCapacity(sizeCategories, archer.sizeCategory);
     const moverRowCap = getRowCapacity(sizeCategories, mover.sizeCategory);
     const moverVisualDpr = getVisualDotsPerRow(formationsMap, moverRowCap, mover.currentFormation);
     // Blocked shot line (any other unit, or an intervening structure whose top the
     // shot's height line does not clear) = indirect shot at disadvantage.
     const indirectShot = !hasLineOfSight(archer.hex, mover.hex, units, new Set([archer.id, mover.id]), structures, structureTemplates, { fromElevation: archer.elevation ?? 0, toElevation: mover.elevation ?? 0 });
+    // Reaction shots are always ranged.
+    const atkAura = heroAuraBonus(archer, units, alliances, true);
+    const defAura = heroAuraBonus(mover, units, alliances, true);
+    const archerBonus = { attack: atkAura.attack + effectAttackBonus(archer, true), damage: atkAura.damage + effectDamageBonus(archer, true), ac: atkAura.ac };
+    const moverBonus = { attack: defAura.attack + effectAttackBonus(mover, true), damage: defAura.damage + effectDamageBonus(mover, true), ac: defAura.ac };
     const outcome = resolveCombatSequence(
       archer, mover,
       { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, numberOfAttacks: weapon.numberOfAttacks, range: weapon.range + rangeBonus, maxRange: weapon.maxRange + rangeBonus },
@@ -214,6 +219,9 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       null,
       walls,
       indirectShot,
+      undefined,
+      archerBonus,
+      moverBonus,
     );
     const hits = outcome.firstStrikeAttacks.filter(a => a.isHit).length;
     const newHp = Math.max(0, mover.currentUnitHp - outcome.firstStrikeDamage);
@@ -245,7 +253,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     }
     const rollNote = outcome.firstStrikeRoll.note;
     const desc = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${rollNote}, ${hits} hits, ${outcome.firstStrikeDamage} damage (${troopsKilled} troops)`;
-    const msg = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${rollNote}${formatStrikeDetail(outcome.firstStrikeAttacks, weapon.attackBonus + formationAtkMod, effectiveAc(mover, formationsMap[mover.currentFormation] ?? null, attackDirection(archer.hex, mover.hex, mover.facing), true, wallCoverAgainst(walls, archer.hex, mover.hex, true)), weapon.damageDice, false, outcome.firstStrikeDamage)} (${troopsKilled} troops)`;
+    const msg = `${archer.unitName} reaction shot at ${mover.unitName} — ${outcome.firstStrikeAttacks.length} attacks${rollNote}${formatStrikeDetail(outcome.firstStrikeAttacks, weapon.attackBonus + formationAtkMod, effectiveAc(mover, formationsMap[mover.currentFormation] ?? null, attackDirection(archer.hex, mover.hex, mover.facing), true, wallCoverAgainst(walls, archer.hex, mover.hex, true), moverBonus.ac), weapon.damageDice, false, outcome.firstStrikeDamage)} (${troopsKilled} troops)`;
     await execute('ARCHER_REACTION', subSteps, desc, { verboseMessage: msg });
     // A reaction hit is an attack — it can break the mover's morale into a rout.
     const moverKilled = newHp <= 0;

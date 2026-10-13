@@ -66,7 +66,6 @@ const SETTING_GROUPS: SettingGroup[] = [
       { key: 'mount_main_attack_split', label: 'Mounted-pair main-target split', hint: 'Fraction of a volley aimed at the chosen MAIN target of a mounted pair (rider vs mount) (default 0.7 = 70%); the other takes the remainder (30%).' },
       { key: 'unit_melee_hero_cap', label: 'Melee-vs-hero troop cap', hint: "Fraction of a unit's troops able to strike a LOCAL hero in MELEE, or to retaliate against a hero attacker (default 0.5 = 50%). Ranged attacks against heroes are uncapped." },
       { key: 'hero_attach_max_size', label: 'Max hero size can attach', hint: 'Largest size_category a hero may attach to (default 200 = Large).' },
-      { key: 'heroic_capacity_multiplier', label: 'Heroic capacity bonus', hint: "Flat BONUS added to a unit's attack-capacity multiplier while a same-alliance hero is Leading (front-attached) or Inspired within 7 hexes (default 1). Example: 1 turns a ×1 formation into ×2 attack capacity (roughly double attacks). Heroes never gain it, and multiple heroes don't stack." },
     ],
   },
   {

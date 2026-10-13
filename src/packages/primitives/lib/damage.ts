@@ -76,16 +76,17 @@ export function clampDamage(raw: number, cap = Number.POSITIVE_INFINITY): number
 
 /**
  * Roll dice and apply the universal clamp in one step. `multiplier` doubles the
- * dice FACES only (crit/charge ×2, both ×4), never the flat bonus. Returns the
- * pre-clamp `raw` (for verbose display) and the clamped `applied` (capped at
- * `cap`, floored at 1).
+ * dice FACES only (crit/charge ×2, both ×4), never the flat bonus. `flatBonus` is
+ * a flat addition (e.g. a hero-aura damage bonus) added AFTER the multiplier, so
+ * it is never doubled. Returns the pre-clamp `raw` (for verbose display) and the
+ * clamped `applied` (capped at `cap`, floored at 1).
  */
 export function rollAppliedDamage(
   diceStr: string,
-  opts: { rng: () => number; multiplier?: number; cap?: number },
+  opts: { rng: () => number; multiplier?: number; cap?: number; flatBonus?: number },
 ): { faces: number[]; bonus: number; raw: number; applied: number } {
-  const { rng, multiplier = 1, cap = Number.POSITIVE_INFINITY } = opts;
+  const { rng, multiplier = 1, cap = Number.POSITIVE_INFINITY, flatBonus = 0 } = opts;
   const { faces, bonus } = rollDamageDetailed(diceStr, rng);
-  const raw = faces.reduce((a, b) => a + b, 0) * multiplier + bonus;
+  const raw = faces.reduce((a, b) => a + b, 0) * multiplier + bonus + flatBonus;
   return { faces, bonus, raw, applied: clampDamage(raw, cap) };
 }

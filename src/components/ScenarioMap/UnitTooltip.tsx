@@ -3,13 +3,13 @@
 import React from 'react';
 import { Unit, AllianceGroup, Formation, GroundEffect } from '@/types/gameProtocol';
 import { computeEffectiveMoraleModifier, exertedThreatRating, calcWounds, calcIsolation, calcEnemyThreats, isUnitRouted, calcMoraleBoostInfo, isHeroMoraleBoostEnabled, HERO_HALF_THREAT_MAX_SIZE } from '@/packages/morale';
-import { computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty, effectiveAc as effectiveAcFor } from '@/packages/units';
+import { computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty, effectiveAc as effectiveAcFor, heroAuraBonus } from '@/packages/units';
 import { parseWeapons } from '@/packages/units';
 import { heroMovePerAction } from '@/packages/movement';
 import { unitAttackCap } from '@/packages/combat';
 import { getSetting } from '@/packages/infra';
 import { isAttackRollEffect, hasPendingZoneEffect } from '@/packages/effects';
-import { modifierAmount } from '@/packages/effects';
+import { modifierAmount, effectAttackBonus } from '@/packages/effects';
 import { Floating } from './Floating';
 
 interface UnitTooltipProps {
@@ -57,9 +57,11 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const heroAura = unit.isHero ? (unit.moraleBoost ?? 0) + (unit.heroicInspirationActive ? 1 : 0) : 0;
   const threatRating = exertedThreatRating(unit);
   const morTotal = unit.baseMorale + effectiveMoraleModifier;
-  const acMelee = effectiveAcFor(unit, formationMod, 'front', false);
-  const acRanged = effectiveAcFor(unit, formationMod, 'front', true);
-  const acRear = effectiveAcFor(unit, formationMod, 'rear', false);
+  const auraAcMelee = heroAuraBonus(unit, units, alliances, false).ac;
+  const auraAcRanged = heroAuraBonus(unit, units, alliances, true).ac;
+  const acMelee = effectiveAcFor(unit, formationMod, 'front', false, 0, auraAcMelee);
+  const acRanged = effectiveAcFor(unit, formationMod, 'front', true, 0, auraAcRanged);
+  const acRear = effectiveAcFor(unit, formationMod, 'rear', false, 0, auraAcMelee);
   const shieldInfo = getShieldPenalty(unit);
   const shieldPenalty = shieldInfo.penalty;
   const effectiveMaxMovement = computeEffectiveMovement(unit, formationMovMult);
@@ -85,10 +87,15 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
             <span className="text-gray-400">Weapons:</span>
             <div className="ml-2 text-gray-300">
               {weapons.map((w, i) => {
-                const effectiveAtk = computeEffectiveAttackBonus(w.attackBonus, formationAtkMod);
+                const isRangedWeapon = (w.range ?? 1) > 1 || (w.maxRange ?? 1) > 1;
+                const auraAtk = heroAuraBonus(unit, units, alliances, isRangedWeapon).attack + effectAttackBonus(unit, isRangedWeapon);
+                const effectiveAtk = computeEffectiveAttackBonus(w.attackBonus, formationAtkMod + auraAtk);
+                const atkBreakdown = showTroops && (formationAtkMod !== 0 || auraAtk !== 0)
+                  ? `${effectiveAtk} atk [base +${w.attackBonus}${formationAtkMod !== 0 ? `, formation +${formationAtkMod}` : ''}${auraAtk !== 0 ? `, aura ${auraAtk >= 0 ? '+' : ''}${auraAtk}` : ''}]`
+                  : `${effectiveAtk} atk`;
                 return (
                   <div key={i}>
-                    {w.name}{w.isTwoHanded && <span className="text-red-400 ml-1" title="Two-handed (no shield, no Shield Wall)">[2H]</span>} (+{showTroops && formationAtkMod !== 0 ? `${effectiveAtk} atk [base +${w.attackBonus}, formation +${formationAtkMod}]` : `${effectiveAtk} atk`}, {w.damageDice}{w.isHealing ? '(h)' : ''}{w.numberOfAttacks > 1 ? `, ${w.numberOfAttacks} att` : ''})
+                    {w.name}{w.isTwoHanded && <span className="text-red-400 ml-1" title="Two-handed (no shield, no Shield Wall)">[2H]</span>} ({atkBreakdown}, {w.damageDice}{w.isHealing ? '(h)' : ''}{w.numberOfAttacks > 1 ? `, ${w.numberOfAttacks} att` : ''})
                   </div>
                 );
               })}

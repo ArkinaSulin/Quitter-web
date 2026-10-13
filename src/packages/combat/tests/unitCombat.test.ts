@@ -500,6 +500,38 @@ describe('resolveCombatSequence', () => {
     expect(result.retaliationDamage).toBe(0);
   });
 
+  it('adds the attacker aura to-hit bonus', () => {
+    const att = { ...attacker, aggressiveness: 100 };
+    const base = resolveCombatSequence(att, defender, aw, dw, 0, 1, 1, rowCap, rowCap, visualDotsPerRow, false, false, null, null, seededRng(7));
+    const aura = resolveCombatSequence(att, defender, aw, dw, 0, 1, 1, rowCap, rowCap, visualDotsPerRow, false, false, null, null, seededRng(7), false, null, null, false, null, null, false, undefined, { attack: 2 });
+    expect(base.firstStrikeAttacks.length).toBeGreaterThan(0);
+    expect(aura.firstStrikeAttacks.map(a => a.attackValue)).toEqual(base.firstStrikeAttacks.map(a => a.attackValue + 2));
+  });
+
+  it('adds a flat aura damage bonus per landed hit (never doubled)', () => {
+    const att = { ...attacker, aggressiveness: 100 };
+    const base = resolveCombatSequence(att, defender, aw, dw, 0, 1, 1, rowCap, rowCap, visualDotsPerRow, false, false, null, null, seededRng(7));
+    const aura = resolveCombatSequence(att, defender, aw, dw, 0, 1, 1, rowCap, rowCap, visualDotsPerRow, false, false, null, null, seededRng(7), false, null, null, false, null, null, false, undefined, { damage: 1 });
+    // Same rolls ⇒ identical hit/miss pattern; each landed hit gains exactly +1
+    // (clamped at troop HP, since a crit can already cap).
+    base.firstStrikeAttacks.forEach((a, i) => {
+      const b = aura.firstStrikeAttacks[i];
+      expect(b.isHit).toBe(a.isHit);
+      expect(b.actualDamage).toBe(a.isHit ? Math.min(a.actualDamage + 1, defender.troopHp) : 0);
+    });
+  });
+
+  it('raises the defender AC with a defender aura bonus', () => {
+    const att = { ...attacker, aggressiveness: 100 };
+    const lowAcDefender = { ...defender, currentAc: 2 };
+    const base = resolveCombatSequence(att, lowAcDefender, aw, dw, 0, 1, 1, rowCap, rowCap, visualDotsPerRow, false, false, null, null, seededRng(7));
+    const aura = resolveCombatSequence(att, lowAcDefender, aw, dw, 0, 1, 1, rowCap, rowCap, visualDotsPerRow, false, false, null, null, seededRng(7), false, null, null, false, null, null, false, undefined, undefined, { ac: 100 });
+    const baseHits = base.firstStrikeAttacks.filter(a => a.isHit).length;
+    const auraHits = aura.firstStrikeAttacks.filter(a => a.isHit).length;
+    expect(baseHits).toBeGreaterThan(0);
+    expect(auraHits).toBeLessThan(baseHits); // AC 100 → only natural-20 crits still land
+  });
+
   it('AGR passes for normal unit with sufficient AGR', () => {
     const result = callCombat(attacker, defender);
     expect(result.aggrPassed).toBe(true);

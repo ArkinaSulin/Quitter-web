@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, UnitEffect, GroundEffect, AllianceGroup } from '@/types/gameProtocol';
-import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, coverAcBonus, directAcBonus, hasPendingZoneEffect, rangeBonusAt, saveRollFlags, expandInheritedEffects, hasEffectKind, unitIgnoresClimb, unitHasFeatherFall } from '@/packages/effects/lib/unitEffects';
+import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, computeZoneReconcile, effectByKey, newEffectKey, effectDamageChanges, resolveEffectDamage, describeEffectDamage, statFieldOf, isStatEffect, isAttackRollEffect, attackRollFlags, effectRangeBonus, effectAcBonus, coverAcBonus, directAcBonus, effectAttackBonus, effectDamageBonus, effectSaveBonus, hasPendingZoneEffect, rangeBonusAt, saveRollFlags, expandInheritedEffects, hasEffectKind, unitIgnoresClimb, unitHasFeatherFall } from '@/packages/effects/lib/unitEffects';
 import { parseDice } from '@/packages/effects/lib/effectTemplates';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
@@ -574,6 +574,37 @@ describe('coverAcBonus / directAcBonus', () => {
       ],
     });
     expect(effectAcBonus(u, false)).toBe(11); // max(5, 9) + 2
+  });
+});
+
+describe('direct attack/damage/save bonus readers (self, non-aura)', () => {
+  it('sums direct attack/damage modifiers, skipping aura/zone', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [
+        ef({ key: 'a', kind: 'attack', dice: '2' }),
+        ef({ key: 'b', kind: 'attack', dice: '1', mode: 'melee' }),
+        ef({ key: 'c', kind: 'attack', dice: '3', mode: 'ranged' }),
+        ef({ key: 'd', kind: 'attack', dice: '9', aura: true, radius: 1 }),
+        ef({ key: 'e', kind: 'damage', dice: '1' }),
+      ],
+    });
+    expect(effectAttackBonus(u, false)).toBe(3); // 2 + 1 (aura 9 skipped)
+    expect(effectAttackBonus(u, true)).toBe(5);  // 2 + 3
+    expect(effectDamageBonus(u, false)).toBe(1);
+  });
+
+  it('directAcBonus skips aura ac', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [ef({ key: 'a', kind: 'ac', dice: '2' }), ef({ key: 'b', kind: 'ac', dice: '5', aura: true, radius: 1 })],
+    });
+    expect(directAcBonus(u, false)).toBe(2);
+  });
+
+  it('sums save_bonus on self', () => {
+    const u = unit('u', 'blue', h(0, 0), {
+      effects: [ef({ key: 'a', kind: 'save_bonus', dice: '1' }), ef({ key: 'b', kind: 'save_bonus', dice: '2' })],
+    });
+    expect(effectSaveBonus(u)).toBe(3);
   });
 });
 

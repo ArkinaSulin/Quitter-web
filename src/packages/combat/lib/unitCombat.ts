@@ -222,6 +222,7 @@ function executeAttacks(
   rng: () => number,
   isCharging: boolean,
   mode: RollMode = 'normal',
+  damageBonus = 0,
 ): { attacks: SingleAttackResult[]; totalDamage: number } {
   const attacks: SingleAttackResult[] = [];
   let totalDamage = 0;
@@ -242,11 +243,12 @@ function executeAttacks(
     if (isHit) {
       // Doubling applies to the DICE ONLY, never the bonus: crit ×2, charge ×2,
       // both ×4. The universal clamp floors a landed hit at 1 and caps it at one
-      // troop's HP (a `1d6-4` that rolls low still deals 1).
+      // troop's HP (a `1d6-4` that rolls low still deals 1). A flat `damageBonus`
+      // (hero aura) is added after the multiplier, so it is never doubled.
       let multiplier = 1;
       if (isCrit) multiplier *= 2;
       if (isCharging) multiplier *= 2;
-      const rolled = rollAppliedDamage(damageDice, { rng, multiplier, cap: targetTroopHp });
+      const rolled = rollAppliedDamage(damageDice, { rng, multiplier, cap: targetTroopHp, flatBonus: damageBonus });
       rawDamage = rolled.raw;
       actualDamage = rolled.applied;
       damageFaces = rolled.faces;
@@ -309,12 +311,13 @@ function executeSplitAttacks(
   isCharging: boolean,
   mode: RollMode = 'normal',
   heroShare = getSetting('hero_attack_split', 0.3),
+  damageBonus = 0,
 ): { attacks: SingleAttackResult[]; unitDamage: number; heroDamage: number; heroAttacks: SingleAttackResult[] } {
   const heroCount = Math.round(totalCount * heroShare);
   const unitCount = totalCount - heroCount;
 
-  const unitResult = executeAttacks(unitCount, attackBonus, damageDice, unitAc, unitTroopHp, rng, isCharging, mode);
-  const heroResult = executeAttacks(heroCount, attackBonus, damageDice, heroAc, heroTroopHp, rng, isCharging, mode);
+  const unitResult = executeAttacks(unitCount, attackBonus, damageDice, unitAc, unitTroopHp, rng, isCharging, mode, damageBonus);
+  const heroResult = executeAttacks(heroCount, attackBonus, damageDice, heroAc, heroTroopHp, rng, isCharging, mode, damageBonus);
 
   return {
     attacks: [...unitResult.attacks, ...heroResult.attacks],
@@ -406,6 +409,11 @@ export function resolveCombatSequence(
   /** Vertical-adjusted effective distance for the long-range band (each 10 ft of
    *  climb = +1 hex; shooting down subtracts). Defaults to the horizontal distance. */
   rangedEffectiveDist?: number,
+  /** Hero AURA bonus on the ATTACKER: to-hit, flat damage, and AC (aura-only; the
+   *  attacker's own effect AC is already inside `effectiveAc`). */
+  attackerBonus: { attack?: number; damage?: number; ac?: number } = {},
+  /** Hero AURA bonus on the DEFENDER's counter-blow (same shape). */
+  defenderBonus: { attack?: number; damage?: number; ac?: number } = {},
 ): CombatOutcome {
   // AGR check: skip if hero, ranged, target routed, rear attack, a free/no-retaliation
   // weapon, when the attacker has a front-attached hero (the hero's presence
@@ -463,8 +471,8 @@ export function resolveCombatSequence(
   // (uniform rule); shields are 360° and stay in `baselineAc`. The shield drops
   // for two-handed weapons / routing are handled inside effectiveAc. The
   // formation term is melee/ranged-aware (`isRanged`).
-  const defenderEffAc = effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing), isRanged, wallCoverAgainst(walls, attacker.hex, defender.hex, isRanged));
-  const attackerEffAc = effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing), isRanged, wallCoverAgainst(walls, defender.hex, attacker.hex, isRanged));
+  const defenderEffAc = effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing), isRanged, wallCoverAgainst(walls, attacker.hex, defender.hex, isRanged), defenderBonus.ac ?? 0);
+  const attackerEffAc = effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing), isRanged, wallCoverAgainst(walls, defender.hex, attacker.hex, isRanged), attackerBonus.ac ?? 0);
 
   // Who strikes first? A defender attacked from the rear, a routed defender, noRetaliation
   // weapons, and ranged attacks all let the attacker strike first (the defender can't react).
@@ -568,16 +576,16 @@ export function resolveCombatSequence(
       attackerCount = cap.count;
       firstStrikeCountNote = firstStrikeCountNote ? `${firstStrikeCountNote}; ${cap.note}` : cap.note;
     }
-    const effBonus = attackerWeapon.attackBonus + formationAttackModifier;
+    const effBonus = attackerWeapon.attackBonus + formationAttackModifier + (attackerBonus.attack ?? 0);
 
     if (attachedDefenderHero) {
-      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, firstStrikeRoll.mode, attachedDefenderHero.share);
+      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, firstStrikeRoll.mode, attachedDefenderHero.share, attackerBonus.damage ?? 0);
       firstStrikeAttacks = split.attacks;
       firstStrikeDamage = split.unitDamage;
       firstStrikeHeroDamage = split.heroDamage;
       firstStrikeHeroAttacks = split.heroAttacks;
     } else {
-      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, firstStrikeRoll.mode);
+      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, firstStrikeRoll.mode, attackerBonus.damage ?? 0);
       firstStrikeAttacks = result.attacks;
       firstStrikeDamage = result.totalDamage;
     }
@@ -611,16 +619,16 @@ export function resolveCombatSequence(
       defenderCount = cap.count;
       firstStrikeCountNote = firstStrikeCountNote ? `${firstStrikeCountNote}; ${cap.note}` : cap.note;
     }
-    const defEffBonus = (defenderWeapon?.attackBonus ?? 0) + formationAttackModifier;
+    const defEffBonus = (defenderWeapon?.attackBonus ?? 0) + formationAttackModifier + (defenderBonus.attack ?? 0);
 
     if (attachedAttackerHero) {
-      const split = executeSplitAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, attachedAttackerHero.currentAc, attachedAttackerHero.troopHp, rng, false, firstStrikeRoll.mode);
+      const split = executeSplitAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, attachedAttackerHero.currentAc, attachedAttackerHero.troopHp, rng, false, firstStrikeRoll.mode, undefined, defenderBonus.damage ?? 0);
       firstStrikeAttacks = split.attacks;
       firstStrikeDamage = split.unitDamage;
       firstStrikeHeroDamage = split.heroDamage;
       firstStrikeHeroAttacks = split.heroAttacks;
     } else {
-      const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, rng, false, firstStrikeRoll.mode);
+      const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, rng, false, firstStrikeRoll.mode, defenderBonus.damage ?? 0);
       firstStrikeAttacks = result.attacks;
       firstStrikeDamage = result.totalDamage;
     }
@@ -647,16 +655,16 @@ export function resolveCombatSequence(
           defenderCount = cap.count;
           retaliationCountNote = retaliationCountNote ? `${retaliationCountNote}; ${cap.note}` : cap.note;
         }
-        const defEffBonus = (defenderWeapon?.attackBonus ?? 0) + formationAttackModifier;
+        const defEffBonus = (defenderWeapon?.attackBonus ?? 0) + formationAttackModifier + (defenderBonus.attack ?? 0);
 
         if (attachedAttackerHero) {
-          const split = executeSplitAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, attachedAttackerHero.currentAc, attachedAttackerHero.troopHp, rng, false, retaliationRoll.mode);
+          const split = executeSplitAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, attachedAttackerHero.currentAc, attachedAttackerHero.troopHp, rng, false, retaliationRoll.mode, undefined, defenderBonus.damage ?? 0);
           retaliationAttacks = split.attacks;
           retaliationDamage = split.unitDamage;
           retaliationHeroDamage = split.heroDamage;
           retaliationHeroAttacks = split.heroAttacks;
         } else {
-          const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, rng, false, retaliationRoll.mode);
+          const result = executeAttacks(defenderCount, defEffBonus, defenderWeapon?.damageDice ?? '1d2', attackerEffAc, attacker.troopHp, rng, false, retaliationRoll.mode, defenderBonus.damage ?? 0);
           retaliationAttacks = result.attacks;
           retaliationDamage = result.totalDamage;
         }
@@ -678,16 +686,16 @@ export function resolveCombatSequence(
       attackerCount = cap.count;
       retaliationCountNote = retaliationCountNote ? `${retaliationCountNote}; ${cap.note}` : cap.note;
     }
-      const effBonus = attackerWeapon.attackBonus + formationAttackModifier;
+      const effBonus = attackerWeapon.attackBonus + formationAttackModifier + (attackerBonus.attack ?? 0);
 
     if (attachedDefenderHero) {
-      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, retaliationRoll.mode, attachedDefenderHero.share);
+      const split = executeSplitAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, attachedDefenderHero.currentAc, attachedDefenderHero.troopHp, rng, isCharging, retaliationRoll.mode, attachedDefenderHero.share, attackerBonus.damage ?? 0);
       retaliationAttacks = split.attacks;
       retaliationDamage = split.unitDamage;
       retaliationHeroDamage = split.heroDamage;
       retaliationHeroAttacks = split.heroAttacks;
     } else {
-      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, retaliationRoll.mode);
+      const result = executeAttacks(attackerCount, effBonus, attackerWeapon.damageDice, defenderEffAc, defender.troopHp, rng, isCharging, retaliationRoll.mode, attackerBonus.damage ?? 0);
       retaliationAttacks = result.attacks;
       retaliationDamage = result.totalDamage;
     }

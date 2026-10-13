@@ -7,6 +7,9 @@ export type EffectModifierKind =
   | 'ac'
   | 'morale'
   | 'movement'
+  | 'attack'
+  | 'damage'
+  | 'save_bonus'
   | 'dot'
   | 'hp_borrow'
   | 'entry'
@@ -50,4 +53,13 @@ export interface EffectModifier {
   mode?: EffectMode;
   /** Block direction (in/out/both); only meaningful for `block_attacks`. */
   direction?: EffectDirection;
+  /**
+   * When true, this modifier is an AURA: it applies to same-alliance ALLIES within
+   * `radius` hexes of the carrier instead of the carrier itself. Emitted only while
+   * the carrier is a HERO that is front-attached (Leading) or Inspired. Absent =
+   * a normal self modifier.
+   */
+  aura?: boolean;
+  /** Aura reach in hexes (same-elevation; own hex up/down within 10 ft). */
+  radius?: number;
 }

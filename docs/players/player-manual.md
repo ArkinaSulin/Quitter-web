@@ -936,8 +936,17 @@ below). This is **Commanding Presence +N**. When the hero lands a
 that way until the start of the hero's next turn (even if the hero then moves to
 the back of its unit). A hero with `N = 0` gives nothing until it attacks (then
 +1). The hero doesn't inspire itself, non-heroes never grant it, and several
-heroes don't stack (strongest only). A **leading or inspired** hero also adds
-the scenario's **heroic attack capacity** to nearby allies' attacks.
+heroes don't stack (strongest only).
+
+**Hero combat aura (attack / AC / damage / saves).** A hero may also radiate a
+**flat combat aura** — authored per hero as `+1 attack`, `+1 AC`, `+1 damage`,
+and/or `+1 to all saving throws`, each with a radius. While the hero is
+**leading (front-attached) or inspired**, every allied **unit** (not heroes —
+they are already self-motivated) within that radius gains the bonus; the strongest
+single hero wins per bonus, and several auras never stack. A **Paladin's** "bonus
+to all saves" is just this aura on the `saving throws` channel. The aura is
+**not** an attack-count bonus — formation capacity alone sets how many die rolls a
+unit makes.
 
 **Example — the "shaky" unit:**
 

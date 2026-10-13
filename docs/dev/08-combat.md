@@ -113,11 +113,10 @@ front; **Scattered** → all sides flank; **Routed** → all sides rear.
 ## Attack counts (how many die rolls)
 
 - **Attacker (unit)**: `min(currentTroopCount, round(rowCapacity ×
-  attack_capacity_multiplier)) × weapon.numberOfAttacks`. The multiplier is
-  `formation.attack_capacity_multiplier + heroic_capacity_multiplier` (a decimal
-  setting, default 1) when a same-alliance **leading or inspired hero** is within
-  7 hexes (`heroicCapacityBonus`); heroes never receive this bonus. Rounded to a
-  whole troop cap so decimal settings stay safe.
+  attack_capacity_multiplier)) × weapon.numberOfAttacks`. The multiplier is the
+  formation's `attack_capacity_multiplier` alone (a hero aura no longer changes
+  capacity — see the **hero aura** below). Rounded to a whole troop cap so
+  decimal settings stay safe.
 - **Retaliator (unit, defending)**: `rows × weapon.numberOfAttacks` where rows
   = `ceil(currentTroopCount / visualDotsPerRow)` — retaliation comes from the
   engaged front rows.
@@ -187,6 +186,31 @@ shot enters through (cube-lerp `primitives/hexLine`). See `13`.
 **Shield Wall** additionally **requires a shield** to form (two-handed weapons
 still block it). Its rear is where the wall is weakest — the formation AC goes to
 0 there while the shield remains.
+
+## Hero aura (flat attack / AC / damage / save)
+
+A hero's **aura** is authored as `aura` effect modifiers on its unit template
+(`unit_templates.effects`, expanded into permanent `UnitEffect`s at spawn — the
+allies store nothing). Channels: `attack` (to-hit), `ac`, `damage` (flat per
+landed hit, **never doubled**), and `save_bonus` (all saving throws). Each
+modifier carries a `radius` in hexes (`0` = the hero's own hex, `1` = the 7
+surrounding hexes; same elevation except the source's own hex ±10 ft) and an
+optional melee/ranged `mode`.
+
+`units/unitStats.heroAuraBonus(unit, units, alliances, isRanged)` returns
+`{attack, ac, damage, save}`: for each same-alliance hero whose aura reaches the
+unit while that hero is **Leading (front-attached) or Inspired**, take the best
+value **per channel** (no cross-hero stacking). Heroes are self-motivated and
+receive no aura. A non-hero unit's own non-aura `attack`/`damage`/`save_bonus`
+effects sum on top (`effectAttackBonus`/`effectDamageBonus`/`effectSaveBonus`);
+self `ac` effects stay in `effectiveAc` via `directAcBonus`, while the aura AC is
+an extra `auraAc` term. Gated by the `hero_morale_boost_enabled` scenario toggle
+(shared with the morale aura, `09`).
+
+Consumers: `resolveCombatSequence` takes per-side `attackerBonus`/`defenderBonus`
+(`{attack, damage, ac}`) so each side's aura lifts its own strikes and AC; the flat
+damage flows `executeAttacks` → `rollAppliedDamage(flatBonus)`. Saves add the aura
+in `troopSaveTotal` (effect DoT/entry) and `useCastActions` (spells).
 
 **Range bands**: `dist ≤ range` full effect · `range < dist ≤ maxRange` =
 **disadvantage** (roll two D20, take the lower; a crit needs the taken roll to

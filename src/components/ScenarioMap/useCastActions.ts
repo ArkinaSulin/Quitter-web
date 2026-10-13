@@ -6,11 +6,12 @@
 import { useCallback, useState } from 'react';
 import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { resolveSpellDamage } from '@/packages/combat';
-import { saveRollFlags } from '@/packages/effects';
+import { saveRollFlags, effectSaveBonus } from '@/packages/effects';
 import { computeEffectiveMoraleModifier, shouldRout } from '@/packages/morale';
 import { allianceOf } from '@/packages/primitives';
 import { SubStep, UnitChange } from '@/packages/infra';
 import { formatSpellRollLine } from '@/packages/units';
+import { heroAuraBonus } from '@/packages/units';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { ExecuteFn, routeUnit } from './routeUnit';
 
@@ -121,9 +122,12 @@ export function useCastActions(deps: CastActionsDeps) {
 
     const flags = saveRollFlags(target);
     const saveMode: 'advantage' | 'disadvantage' | 'normal' = flags.advantage && !flags.disadvantage ? 'advantage' : flags.disadvantage && !flags.advantage ? 'disadvantage' : 'normal';
+    const saveBonus = (cast.targetStats[cast.saveStat.toLowerCase() as keyof typeof cast.targetStats] ?? 0)
+      + effectSaveBonus(target)
+      + heroAuraBonus(target, units, alliances).save;
     const result = resolveSpellDamage({
       damageDice: cast.weapon.damageDice,
-      saveBonus: cast.targetStats[cast.saveStat.toLowerCase() as keyof typeof cast.targetStats] ?? 0,
+      saveBonus,
       saveDC: cast.saveDC,
       halfOnSave: cast.halfOnSave,
       affectedCount: cast.affectedCount,

@@ -101,5 +101,12 @@ right = a `StructurePreview`.
   reusable **`enter_org_max`** gate (only formations at or below an org level may
   enter the hex/edge).
 
+The shared `EffectModifierFields` row (Unit editor, Effect editor, structure +
+drop + instance-edit modals) exposes the three flat combat channels — **Attack
+roll ±**, **Damage ±**, **All saving throws ±** — and, for any non-flag modifier,
+an **aura** checkbox plus a **radius** (`r`) box: with aura on, the modifier is a
+hero aura applied to same-alliance allies within `radius` hexes instead of the
+carrier (`08`).
+
 See `18-map-structures.md` for the model and what is still pending (placement,
 movement/combat consumption, wall unification).

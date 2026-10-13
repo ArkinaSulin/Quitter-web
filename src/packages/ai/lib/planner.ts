@@ -30,7 +30,7 @@ import { rotateLeft, rotateRight } from '@/packages/primitives';
 import { allianceOf as teamAllianceOf } from '@/packages/primitives';
 import { isProtectedHero } from '@/packages/units';
 import { arcsContain, beAttackedModifier, isLooseUnit } from '@/packages/movement';
-import { getRowCapacityBase, effectiveAc, heroicCapacityBonus } from '@/packages/units';
+import { getRowCapacityBase, effectiveAc, heroAuraBonus } from '@/packages/units';
 import { attackDirection, arcOfTarget } from '@/packages/primitives';
 import { unitAttackCap } from '@/packages/combat';
 import { computeReachableMap, computeMovePool, applyMoveCost, applyMpSpend } from '@/packages/movement';
@@ -40,7 +40,7 @@ import { Walls } from '@/packages/movement';
 import type { BlockedEdgeFn } from '@/packages/movement';
 import { determineCombatPosition, combatRollMode, RollMode } from '@/packages/combat';
 import { clampDamage } from '@/packages/primitives';
-import { attackRollFlags } from '@/packages/effects';
+import { attackRollFlags, effectAttackBonus, effectDamageBonus } from '@/packages/effects';
 import { applyFormationChange, isFormationChangeAffordable } from '@/packages/movement';
 import { hasLineOfSight } from '@/packages/combat';
 
@@ -188,7 +188,7 @@ function expectedAttackerCount(attacker: Unit, ctx: Pick<AiPlanContext, 'formati
   const weaponAttacks = weapon?.numberOfAttacks ?? 1;
   if (attacker.isHero) return weaponAttacks;
   const rowCap = getRowCapacityBase(attacker.sizeCategory);
-  const atkCapMult = (form?.attack_capacity_multiplier ?? 1) + heroicCapacityBonus(attacker, ctx.units, ctx.alliances);
+  const atkCapMult = form?.attack_capacity_multiplier ?? 1;
   const cap = Math.min(attacker.currentTroopCount, Math.round(rowCap * atkCapMult));
   return Math.max(1, cap * weaponAttacks);
 }
@@ -204,7 +204,9 @@ export function expectedDamage(
   const weapons = parseWeapons(attacker.weaponString || '');
   const weapon = weapons[attacker.activeWeaponIndex ?? 0] ?? weapons[0];
   const targetForm = ctx.formations[target.currentFormation];
-  const targetAc = effectiveAc(target, targetForm, attackDirection(attacker.hex, target.hex, target.facing), isRanged);
+  const atkAura = heroAuraBonus(attacker, ctx.units, ctx.alliances, isRanged);
+  const defAura = heroAuraBonus(target, ctx.units, ctx.alliances, isRanged);
+  const targetAc = effectiveAc(target, targetForm, attackDirection(attacker.hex, target.hex, target.facing), isRanged, 0, defAura.ac);
   // Roll mode from attack-roll flag effects (any advantage cancels any
   // disadvantage) plus the long-range band.
   const aFlags = attackRollFlags(attacker);
@@ -224,11 +226,11 @@ export function expectedDamage(
     if (dist !== 1) return 0;
     return expectedAttackerCount(attacker, ctx) * hitChance(0, targetAc, rollMode.mode) * 1; // fists 1d1
   }
-  const effBonus = weapon.attackBonus + (ctx.formations[attacker.currentFormation]?.attack_modifier ?? 0);
+  const effBonus = weapon.attackBonus + (ctx.formations[attacker.currentFormation]?.attack_modifier ?? 0) + atkAura.attack + effectAttackBonus(attacker, isRanged);
   const mod = beAttackedModifier(targetForm, isRanged) ?? 1;
   const count = Math.round(expectedAttackerCount(attacker, ctx) * mod);
   const heroCap = !isRanged && !attacker.isHero && target.isHero ? 0.5 : 1;
-  const perHit = clampDamage(diceMean(weapon.damageDice), target.troopHp);
+  const perHit = clampDamage(diceMean(weapon.damageDice) + atkAura.damage + effectDamageBonus(attacker, isRanged), target.troopHp);
   return Math.max(0, Math.round(count * heroCap) * hitChance(effBonus, targetAc, rollMode.mode) * perHit);
 }
 

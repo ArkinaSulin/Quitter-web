@@ -1,5 +1,39 @@
 # QuiTTER Changelog
 
+## Hero auras: flat attack / AC / damage / save from authored effect modifiers (2026-10-12)
+**Files:** src/types/{effects,gameProtocol}.ts, src/packages/effects/lib/{effectTemplates,unitEffects}.ts, src/packages/units/lib/unitStats.ts, src/packages/combat/lib/unitCombat.ts, src/packages/primitives/lib/damage.ts, src/packages/ai/lib/planner.ts, src/components/ScenarioMap/{useCombatActions,useReactionActions,useCastActions}.ts, src/components/ScenarioMap/ScenarioMap.tsx, src/components/EffectEditor/EffectModifierFields.tsx, src/hooks/useSupabaseSync.ts, src/components/SettingsModal.tsx, supabase/migrations/125_drop_heroic_capacity_multiplier.sql, docs/dev/{02,08,09,10,14,17,changelog}.md, docs/players/player-manual.md
+
+- **The hero aura no longer boosts attack CAPACITY.** The old
+  `heroicCapacityBonus` (the `heroic_capacity_multiplier` setting added to the
+  attack-capacity multiplier within 7 hexes) is gone; `computeAttackCount` now
+  uses the formation's `attack_capacity_multiplier` alone.
+- **A hero carries authored AURA effect modifiers.** Any `EffectModifier` gains
+  `aura?: boolean` + `radius?: number`; three new kinds join the model —
+  `attack` (to-hit), `damage` (flat per landed hit, **never doubled**), and
+  `save_bonus` (all saving throws). Authored on `unit_templates.effects` (Unit
+  editor → shared `EffectModifierFields`, which now shows an **aura** checkbox +
+  **radius** box), expanded into permanent `UnitEffect`s at spawn.
+- **`units/unitStats.heroAuraBonus(unit, units, alliances, isRanged)`** returns
+  `{attack, ac, damage, save}`: for each same-alliance hero whose aura reaches the
+  unit while it is **Leading (front-attached) or Inspired**, best value **per
+  channel** (no stacking). Heroes are self-motivated and receive no aura; the
+  toggle stays `hero_morale_boost_enabled`. Radius 0 = the hero's own hex, 1 =
+  the 7 surrounding hexes (same elevation; own hex ±10 ft).
+- **Consumers** — `resolveCombatSequence` takes per-side `attackerBonus` /
+  `defenderBonus` (`{attack, damage, ac}`); the flat damage threads
+  `executeAttacks` → `rollAppliedDamage(flatBonus)` so a crit never doubles it;
+  `effectiveAc` gained an `auraAc` term; saves add the aura in `troopSaveTotal`
+  (DoT/entry) and `useCastActions` (spells). Self (non-aura) `attack`/`damage`/
+  `save_bonus` effects apply to the carrier via `effectAttackBonus` /
+  `effectDamageBonus` / `effectSaveBonus`; `directAcBonus` now skips aura `ac`.
+  The AI planner estimates the aura too.
+- **Paladin perk**: a `save_bonus` aura is the "bonus to all saves" — same
+  mechanism, no special code.
+- **Removed** the `heroic_capacity_multiplier` admin setting; **apply migration
+  125** to drop the row from Supabase. The morale Commanding-Presence /
+  Heroic-Inspiration aura (`calcMoraleBoost`) is **unaffected**.
+- `tsc` clean, 1072 tests pass, `lint:boundaries` 0 errors, `next build` clean.
+
 ## Group the Scenario & Admin settings; drop the dead undo setting (2026-10-11)
 **Files:** src/components/SettingsModal.tsx, src/components/ScenarioMap/ScenarioMap.tsx, src/packages/infra/lib/settingsCache.ts, supabase/migrations/124_drop_undo_stack_size.sql, docs/dev/{02-schema-and-migrations,06-turn-system,changelog}.md
 

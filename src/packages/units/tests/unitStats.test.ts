@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { getShieldPenalty, effectiveAc, heroicCapacityBonus } from '@/packages/units/lib/unitStats';
+import { getShieldPenalty, effectiveAc, heroAuraBonus } from '@/packages/units/lib/unitStats';
 import { setHeroMoraleBoostEnabled } from '@/packages/morale';
 import { Formation } from '@/types/gameProtocol';
 
@@ -107,50 +107,73 @@ describe('effectiveAc', () => {
   });
 });
 
-describe('heroicCapacityBonus', () => {
+describe('heroAuraBonus', () => {
   const alliances = { blue: 'friendly' as const, red: 'enemy' as const };
+  const auraMod = (kind: string, dice: string, radius = 1, mode?: 'melee' | 'ranged') =>
+    ({ key: 'a', name: kind, color: '#fff', kind, dice, aura: true, radius, duration: 1, turnsLeft: 1, ...(mode ? { mode } : {}) }) as any;
   const hero = (over: Record<string, unknown> = {}) => ({
     id: 'h', isHero: true, isDeleted: false, hidden: false, currentUnitHp: 10,
     attachedToUnitId: null, attachedPosition: null, heroicInspirationActive: false,
-    hex: { q: 0, r: 0, s: 0 }, team: 'blue', ...over,
+    hex: { q: 0, r: 0, s: 0 }, elevation: 0, team: 'blue', effects: [], ...over,
   }) as any;
   const ally = (over: Record<string, unknown> = {}) => ({
-    id: 'u', isHero: false, hex: { q: 1, r: 0, s: -1 }, team: 'blue', ...over,
+    id: 'u', isHero: false, hex: { q: 1, r: 0, s: -1 }, elevation: 0, team: 'blue', ...over,
   }) as any;
 
   afterEach(() => setHeroMoraleBoostEnabled(false));
 
-  it('is 0 when the scenario toggle is off', () => {
+  it('is all-zero when the scenario toggle is off', () => {
     setHeroMoraleBoostEnabled(false);
-    expect(heroicCapacityBonus(ally(), [hero({ attachedToUnitId: 'u', attachedPosition: 'front' }), ally()], alliances)).toBe(0);
+    const h = hero({ attachedToUnitId: 'u', attachedPosition: 'front', effects: [auraMod('attack', '1')] });
+    expect(heroAuraBonus(ally(), [h, ally()], alliances)).toEqual({ attack: 0, ac: 0, damage: 0, save: 0 });
   });
 
-  it('adds the setting for a leading hero', () => {
+  it('radiates an attack/AC/damage/save aura from a leading hero to a nearby ally', () => {
     setHeroMoraleBoostEnabled(true);
-    expect(heroicCapacityBonus(ally(), [hero({ attachedToUnitId: 'u', attachedPosition: 'front' }), ally()], alliances)).toBe(1);
+    const h = hero({ attachedToUnitId: 'u', attachedPosition: 'front', effects: [auraMod('attack', '1'), auraMod('ac', '1'), auraMod('damage', '1'), auraMod('save_bonus', '1')] });
+    expect(heroAuraBonus(ally(), [h, ally()], alliances)).toEqual({ attack: 1, ac: 1, damage: 1, save: 1 });
   });
 
-  it('adds for an inspired hero even when protected/moved to the back', () => {
+  it('radiates for an inspired hero even when protected/moved to the back', () => {
     setHeroMoraleBoostEnabled(true);
-    expect(heroicCapacityBonus(ally(), [hero({ attachedToUnitId: 'u', attachedPosition: 'back', heroicInspirationActive: true }), ally()], alliances)).toBe(1);
+    const h = hero({ attachedToUnitId: 'u', attachedPosition: 'back', heroicInspirationActive: true, effects: [auraMod('attack', '1')] });
+    expect(heroAuraBonus(ally(), [h, ally()], alliances).attack).toBe(1);
   });
 
-  it('is 0 for a protected, non-inspired hero', () => {
+  it('is zero for a protected, non-inspired hero', () => {
     setHeroMoraleBoostEnabled(true);
-    expect(heroicCapacityBonus(ally(), [hero({ attachedToUnitId: 'u', attachedPosition: 'back' }), ally()], alliances)).toBe(0);
+    const h = hero({ attachedToUnitId: 'u', attachedPosition: 'back', effects: [auraMod('attack', '1')] });
+    expect(heroAuraBonus(ally(), [h, ally()], alliances).attack).toBe(0);
   });
 
   it('never applies to a hero recipient', () => {
     setHeroMoraleBoostEnabled(true);
-    expect(heroicCapacityBonus(hero(), [hero({ attachedToUnitId: 'x', attachedPosition: 'front' })], alliances)).toBe(0);
+    const h = hero({ attachedToUnitId: 'x', attachedPosition: 'front', effects: [auraMod('attack', '1')] });
+    expect(heroAuraBonus(hero({ hex: { q: 1, r: 0, s: -1 } }), [h], alliances).attack).toBe(0);
   });
 
-  it('uses the 8-hex footprint: not a 10-ft-higher adjacent hex, but the same hex ±10 ft', () => {
+  it('honours the radius (0 = own hex only)', () => {
     setHeroMoraleBoostEnabled(true);
     const inspired = (over: Record<string, unknown> = {}) => hero({ heroicInspirationActive: true, ...over });
-    // Inspired hero one hex away but 10 ft higher → out of the footprint.
-    expect(heroicCapacityBonus(ally({ elevation: 0 }), [inspired({ hex: { q: 0, r: 0, s: 0 }, elevation: 10 })], alliances)).toBe(0);
-    // Inspired hero in the SAME hex, 10 ft up → in the footprint.
-    expect(heroicCapacityBonus(ally({ hex: { q: 0, r: 0, s: 0 }, elevation: 0 }), [inspired({ hex: { q: 0, r: 0, s: 0 }, elevation: 10 })], alliances)).toBe(1);
+    // radius 0 → only the hero's own hex.
+    expect(heroAuraBonus(ally(), [inspired({ effects: [auraMod('attack', '1', 0)] })], alliances).attack).toBe(0);
+    // radius 1 → the adjacent ally is covered.
+    expect(heroAuraBonus(ally(), [inspired({ effects: [auraMod('attack', '1', 1)] })], alliances).attack).toBe(1);
+  });
+
+  it('uses the elevation band: not a 10-ft-higher adjacent hex, but the same hex ±10 ft', () => {
+    setHeroMoraleBoostEnabled(true);
+    const inspired = (over: Record<string, unknown> = {}) => hero({ heroicInspirationActive: true, effects: [auraMod('attack', '1')], ...over });
+    expect(heroAuraBonus(ally({ elevation: 0 }), [inspired({ hex: { q: 0, r: 0, s: 0 }, elevation: 10 })], alliances).attack).toBe(0);
+    expect(heroAuraBonus(ally({ hex: { q: 0, r: 0, s: 0 }, elevation: 0 }), [inspired({ hex: { q: 0, r: 0, s: 0 }, elevation: 10 })], alliances).attack).toBe(1);
+  });
+
+  it('scopes attack/AC/damage auras by melee/ranged and takes the best hero per channel', () => {
+    setHeroMoraleBoostEnabled(true);
+    const meleeOnly = hero({ id: 'h1', attachedToUnitId: 'u', attachedPosition: 'front', effects: [auraMod('attack', '1', 1, 'melee')] });
+    const ranged = hero({ id: 'h2', attachedToUnitId: 'u', attachedPosition: 'front', effects: [auraMod('attack', '2', 1, 'ranged')] });
+    const both = [meleeOnly, ranged, ally()];
+    expect(heroAuraBonus(ally(), both, alliances, false).attack).toBe(1); // melee only
+    expect(heroAuraBonus(ally(), both, alliances, true).attack).toBe(2);  // ranged only
   });
 });

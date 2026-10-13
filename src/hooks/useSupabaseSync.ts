@@ -36,6 +36,8 @@ function parseEffects(raw: any): UnitEffect[] {
       ...(typeof e?.onSaveHalfOrNeg === 'boolean' ? { onSaveHalfOrNeg: e.onSaveHalfOrNeg } : {}),
       ...(e?.mode === 'melee' || e?.mode === 'ranged' ? { mode: e.mode } : {}),
       ...(e?.direction === 'in' || e?.direction === 'out' || e?.direction === 'both' ? { direction: e.direction } : {}),
+      ...(e?.aura === true ? { aura: true } : {}),
+      ...(e?.aura === true && Number.isFinite(Number(e?.radius)) ? { radius: Math.max(0, Math.round(Number(e.radius))) } : {}),
       duration: Number(e?.duration) || 1,
       turnsLeft: Number(e?.turnsLeft) ?? 1,
       casterUnitId: e?.casterUnitId ?? null,

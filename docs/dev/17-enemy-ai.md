@@ -72,7 +72,8 @@ Deterministic, pure, snapshot-in/snapshot-out:
   **engage**.
 - **Ranged targets pick the biggest threat first**: an enemy **within 2 hexes**,
   else a **Phalanx**, else a **Close Order** unit; expected damage (row/attack-cap
-  math, hit chance incl. disadvantage, mean damage capped at troop HP) breaks
+  math, hit chance incl. disadvantage, mean damage capped at troop HP, plus the
+  attacker/defender **hero aura** — `heroAuraBonus`, see `08`) breaks
   ties within a tier.
 - **Melee attacks prefer the best arc**: of the targets at adjacency, the one it
   is attacking from the enemy's **rear**, then **flank**, then front. Movement

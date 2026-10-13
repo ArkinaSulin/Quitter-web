@@ -46,7 +46,7 @@ import { isHostile, allianceOf, facingToward } from '@/packages/primitives';
 import { canRally } from '@/packages/morale';
 import { computeVisibleHexes, computeFog, hexKey, DEFAULT_SIGHT_RADIUS, FOG_UNSEEN_GM_ALPHA, FOG_UNSEEN_PLAYER_ALPHA } from '@/packages/world';
 import { supabase } from '@/packages/infra/supabase';
-import { getFormationMultiplier, computeEffectiveMovement, getRowCapacity, heroicCapacityBonus } from '@/packages/units';
+import { getFormationMultiplier, computeEffectiveMovement, getRowCapacity } from '@/packages/units';
 import { computeAttackCount } from '@/packages/combat';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
@@ -1128,7 +1128,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // eligible attackers (row capacity × capacity multiplier, capped by troops) ×
   // weapon attacks, plus a front-attached hero's own volley. DT gates each roll.
   const structureAttackCount = useCallback((attacker: Unit, weaponAttacks: number): number => {
-    const capMult = getFormationMultiplier(formationsMap, attacker.currentFormation, 'attack_capacity_multiplier') + heroicCapacityBonus(attacker, units, alliances);
+    const capMult = getFormationMultiplier(formationsMap, attacker.currentFormation, 'attack_capacity_multiplier');
     const rowCap = getRowCapacity(sizeCategories, attacker.sizeCategory);
     let count = computeAttackCount(attacker, rowCap, capMult, 0, false, Math.max(1, weaponAttacks || 1));
     const hero = findAttachedHero(attacker, units);

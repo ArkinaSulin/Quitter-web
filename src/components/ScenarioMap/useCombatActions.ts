@@ -22,9 +22,9 @@ import { meleeElevationFor, flyingFormationCap, flyMax, moveBudgetUnit, parseCli
 import { isSwooping } from '@/packages/combat';
 import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable, isLooseUnit } from '@/packages/movement';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay, damageDiceCount, withDamageDiceCount } from '@/packages/units';
-import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroicCapacityBonus } from '@/packages/units';
+import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, heroAuraBonus } from '@/packages/units';
 import { attackDirection, arcOfTarget } from '@/packages/primitives';
-import { attackRollFlags, rangeBonusAt, effectAcBonus } from '@/packages/effects';
+import { attackRollFlags, rangeBonusAt, effectAcBonus, effectAttackBonus, effectDamageBonus } from '@/packages/effects';
 import { hasLineOfSight } from '@/packages/combat';
 import { Walls } from '@/packages/movement';
 import { MapStructures, structureAuraFlags, hasAuraFlags, StructureAuraFlags, structureSurfaceAt } from '@/packages/movement';
@@ -171,8 +171,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const isChargingAttack = options?.isCharging ?? false;
 
     const formationAtkMod = getFormationModifier(formationsMap, attacker.currentFormation, 'attack_modifier');
-    const attackCapMult = getFormationMultiplier(formationsMap, attacker.currentFormation, 'attack_capacity_multiplier') + heroicCapacityBonus(attacker, units, alliances);
-    const defAttackCapMult = getFormationMultiplier(formationsMap, target.currentFormation, 'attack_capacity_multiplier') + heroicCapacityBonus(target, units, alliances);
+    const attackCapMult = getFormationMultiplier(formationsMap, attacker.currentFormation, 'attack_capacity_multiplier');
+    const defAttackCapMult = getFormationMultiplier(formationsMap, target.currentFormation, 'attack_capacity_multiplier');
     const attackerRowCap = getRowCapacity(sizeCategories, attacker.sizeCategory);
     const defenderRowCap = getRowCapacity(sizeCategories, target.sizeCategory);
     const defenderVisualDpr = getVisualDotsPerRow(formationsMap, defenderRowCap, target.currentFormation);
@@ -364,6 +364,20 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const atkDownHex = Math.max(0, Math.floor((((attacker.elevation ?? 0) - (target.elevation ?? 0))) / 10));
     const rangedBandDist = Math.max(1, dist + atkUpHex - atkDownHex);
 
+    // Hero aura + self effect bonuses, per side (mode-scoped to this attack type).
+    const atkAura = heroAuraBonus(effAttacker, units, alliances, isRanged);
+    const defAura = heroAuraBonus(effTarget, units, alliances, isRanged);
+    const attackerBonus = {
+      attack: atkAura.attack + effectAttackBonus(effAttacker, isRanged),
+      damage: atkAura.damage + effectDamageBonus(effAttacker, isRanged),
+      ac: atkAura.ac,
+    };
+    const defenderBonus = {
+      attack: defAura.attack + effectAttackBonus(effTarget, isRanged),
+      damage: defAura.damage + effectDamageBonus(effTarget, isRanged),
+      ac: defAura.ac,
+    };
+
     const outcome = resolveCombatSequence(
       combatAttacker,
       combatTarget,
@@ -388,6 +402,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
       walls,
       indirectShot,
       rangedBandDist,
+      attackerBonus,
+      defenderBonus,
     );
 
     const subSteps: SubStep[] = [];
@@ -633,8 +649,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // Wall cover is a per-attack modifier (not a unit stat): the display shows the
     // same cover-adjusted AC the roll uses, per strike direction (cover is maxed
     // with formation/zone cover inside effectiveAc).
-    const targetAcCovered = effectiveAc(effTarget, formationsMap[effTarget.currentFormation] ?? null, defenderAcDir, isRanged, wallCoverAgainst(walls, attacker.hex, target.hex, isRanged));
-    const attackerAcCovered = effectiveAc(effAttacker, formationsMap[effAttacker.currentFormation] ?? null, attackerAcDir, isRanged, wallCoverAgainst(walls, target.hex, attacker.hex, isRanged));
+    const targetAcCovered = effectiveAc(effTarget, formationsMap[effTarget.currentFormation] ?? null, defenderAcDir, isRanged, wallCoverAgainst(walls, attacker.hex, target.hex, isRanged), defAura.ac);
+    const attackerAcCovered = effectiveAc(effAttacker, formationsMap[effAttacker.currentFormation] ?? null, attackerAcDir, isRanged, wallCoverAgainst(walls, target.hex, attacker.hex, isRanged), atkAura.ac);
     // A formation gives no AC from the rear — call it out instead of a bare number.
     const defenderForm = formationsMap[target.currentFormation];
     const defenderFormAc = (isRanged ? defenderForm?.range_ac_modifier : defenderForm?.melee_ac_modifier) ?? 0;

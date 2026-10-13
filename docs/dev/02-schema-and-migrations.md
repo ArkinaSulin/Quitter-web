@@ -184,6 +184,7 @@ as applied in the notes — check the live DB before relying on it).
 | 121 | rename structure climb columns `mp_foot_in/out`, `mp_mounted_in/out` → `mp_climb_up/down`, `mp_mounted_up/down`; `NOT NULL DEFAULT 4` | ⏳ run in Supabase |
 | 123 | seed `protected_hero_range_split` setting (back-attached hero's ranged volley share) | ⏳ run in Supabase |
 | 124 | drop the vestigial `undo_stack_size` game setting (undo is server-side) | ⏳ run in Supabase |
+| 125 | drop the `heroic_capacity_multiplier` setting (hero aura is now authored effect modifiers) | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

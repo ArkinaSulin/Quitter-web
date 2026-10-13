@@ -85,8 +85,10 @@ effectiveMorale = baseMorale + currentMoraleModifier
   front-attached hero whose host attacks and takes the hero into the volley;
   cleared at the hero's next turn start) the aura upgrades to **Heroic
   Inspiration `n+1`** (even from `n=0`). Non-heroes are inert, the hero does not
-  inspire itself, and several heroes do not stack (max). The same footprint gates
-  the heroic **capacity bonus** (`heroicCapacityBonus`). See `calcMoraleBoost`.
+  inspire itself, and several heroes do not stack (max). The same Leading/Inspired
+  condition and the same scenario toggle gate the hero's **flat combat aura**
+  (attack / AC / damage / save, radius from the modifier — see `08`). See
+  `calcMoraleBoost`.
 
 `shouldRout(unit, …)`: routing is consulted **only after an attack** (combat
 or spell). It routs when `effectiveMorale ≤ 0` — subject to `ignoreMoraleChecks`

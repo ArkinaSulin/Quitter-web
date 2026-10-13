@@ -28,7 +28,7 @@ export function modifierScopeConflict(mods: EffectModifier[]): boolean {
 
 /** Kinds whose meaning depends on whether the attack crosses at adjacency (melee)
  *  or at range. Every other kind ignores `mode`. */
-export const MODE_MODIFIER_KINDS: EffectModifierKind[] = ['ac', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'block_attacks'];
+export const MODE_MODIFIER_KINDS: EffectModifierKind[] = ['ac', 'attack', 'damage', 'advantage', 'disadvantage', 'grant_advantage', 'grant_disadvantage', 'block_attacks'];
 
 export function honorsMode(kind: EffectModifierKind): boolean {
   return MODE_MODIFIER_KINDS.includes(kind);
@@ -83,6 +83,9 @@ export const EFFECT_MODIFIER_LABELS: Record<EffectModifierKind, string> = {
   ac: 'AC',
   morale: 'Morale',
   movement: 'Movement points',
+  attack: 'Attack roll',
+  damage: 'Damage',
+  save_bonus: 'All saving throws',
   dot: 'DoT / heal per tick',
   hp_borrow: 'Borrow HP (sleep)',
   entry: 'Damage on entry',
@@ -116,6 +119,7 @@ export function modifierSummary(m: EffectModifier): string {
   let s = m.kind as string;
   if (m.kind === 'movement') s = 'movement points';
   else if (m.kind === 'mp_cost') s = 'terrain cost';
+  else if (m.kind === 'save_bonus') s = 'save bonus';
   else if (m.kind === 'save_advantage') s = 'save advantage';
   else if (m.kind === 'save_disadvantage') s = 'save disadvantage';
   else if (m.kind === 'forced_stop') s = 'forced stop';
@@ -132,6 +136,7 @@ export function modifierSummary(m: EffectModifier): string {
     }
     if (m.healing) s += ' heal';
   }
+  if (m.aura) s += ` (aura${m.radius != null ? ` ${m.radius}` : ''})`;
   return s;
 }
 
@@ -161,7 +166,7 @@ export interface EffectTemplate {
   updatedAt: string;
 }
 
-const KINDS: EffectModifierKind[] = ['ac', 'morale', 'movement', 'dot', 'hp_borrow', 'entry', 'mp_cost', 'max_org_level_allowed', 'range', ...FLAG_MODIFIER_KINDS];
+const KINDS: EffectModifierKind[] = ['ac', 'morale', 'movement', 'attack', 'damage', 'save_bonus', 'dot', 'hp_borrow', 'entry', 'mp_cost', 'max_org_level_allowed', 'range', ...FLAG_MODIFIER_KINDS];
 
 /** Legacy identifier aliases mapped to their current name on read (no migration). */
 const LEGACY_MODIFIER_KINDS: Record<string, string> = {
@@ -204,6 +209,8 @@ export function parseModifiers(raw: unknown): EffectModifier[] {
     if (typeof (m as any).onSaveHalfOrNeg === 'boolean') out2.onSaveHalfOrNeg = (m as any).onSaveHalfOrNeg;
     if ((m as any).mode === 'melee' || (m as any).mode === 'ranged') out2.mode = (m as any).mode;
     if ((m as any).direction === 'in' || (m as any).direction === 'out' || (m as any).direction === 'both') out2.direction = (m as any).direction;
+    if ((m as any).aura === true) out2.aura = true;
+    if (Number.isFinite((m as any).radius)) out2.radius = Math.max(0, Math.round(Number((m as any).radius)));
     out.push(out2);
   }
   return out;

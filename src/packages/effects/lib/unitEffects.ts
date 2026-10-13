@@ -31,6 +31,9 @@ export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModif
     case 'mp_cost':
     case 'max_org_level_allowed':
     case 'range':
+    case 'attack':
+    case 'damage':
+    case 'save_bonus':
     case 'advantage':
     case 'disadvantage':
     case 'grant_advantage':
@@ -78,8 +81,14 @@ function sameStackKey(a: { kind: string; mode?: string }, b: { kind: string; mod
 /** Does this `ac` effect apply to the given attack type (melee vs ranged)? */
 function acApplies(e: { kind: EffectKind; mode?: 'melee' | 'ranged' }, isRanged: boolean): boolean {
   if (e.kind !== 'ac') return false;
-  if (e.mode === 'melee' && isRanged) return false;
-  if (e.mode === 'ranged' && !isRanged) return false;
+  return modeApplies(e.mode, isRanged);
+}
+
+/** Whether a `mode`-scoped modifier applies to the given attack type (melee vs
+ *  ranged). Absent/`both` = both. Shared by ac / attack / damage. */
+function modeApplies(mode: 'melee' | 'ranged' | undefined, isRanged: boolean): boolean {
+  if (mode === 'melee' && isRanged) return false;
+  if (mode === 'ranged' && !isRanged) return false;
   return true;
 }
 
@@ -105,8 +114,43 @@ export function coverAcBonus(unit: { effects?: Unit['effects'] } | null | undefi
 export function directAcBonus(unit: { effects?: Unit['effects'] } | null | undefined, isRanged: boolean): number {
   let sum = 0;
   for (const e of unit?.effects ?? []) {
-    if (e.zoneHex) continue;
+    if (e.zoneHex || e.aura) continue;
     if (!acApplies(e, isRanged)) continue;
+    sum += modifierAmount(e.dice);
+  }
+  return sum;
+}
+
+/** Sum of a unit's own direct `attack`-roll modifiers (self, non-aura, non-zone),
+ *  scoped by melee/ranged. The hero AURA equivalent is `unitStats.heroAuraBonus`. */
+export function effectAttackBonus(unit: { effects?: Unit['effects'] } | null | undefined, isRanged: boolean): number {
+  let sum = 0;
+  for (const e of unit?.effects ?? []) {
+    if (e.aura || e.zoneHex || e.kind !== 'attack') continue;
+    if (!modeApplies(e.mode, isRanged)) continue;
+    sum += modifierAmount(e.dice);
+  }
+  return sum;
+}
+
+/** Sum of a unit's own direct `damage` modifiers (self, non-aura, non-zone),
+ *  scoped by melee/ranged. */
+export function effectDamageBonus(unit: { effects?: Unit['effects'] } | null | undefined, isRanged: boolean): number {
+  let sum = 0;
+  for (const e of unit?.effects ?? []) {
+    if (e.aura || e.zoneHex || e.kind !== 'damage') continue;
+    if (!modeApplies(e.mode, isRanged)) continue;
+    sum += modifierAmount(e.dice);
+  }
+  return sum;
+}
+
+/** Sum of a unit's own direct `save_bonus` modifiers (self, non-aura, non-zone),
+ *  added to every one of its saving throws. */
+export function effectSaveBonus(unit: { effects?: Unit['effects'] } | null | undefined): number {
+  let sum = 0;
+  for (const e of unit?.effects ?? []) {
+    if (e.aura || e.zoneHex || e.kind !== 'save_bonus') continue;
     sum += modifierAmount(e.dice);
   }
   return sum;
@@ -299,6 +343,8 @@ export function expandInheritedEffects(
       ...(m.onSaveHalfOrNeg !== undefined ? { onSaveHalfOrNeg: m.onSaveHalfOrNeg } : {}),
       ...(m.mode ? { mode: m.mode } : {}),
       ...(m.direction ? { direction: m.direction } : {}),
+      ...(m.aura ? { aura: true } : {}),
+      ...(m.aura && m.radius != null ? { radius: m.radius } : {}),
       duration: 1,
       turnsLeft: 1,
       casterUnitId: null,
@@ -394,7 +440,7 @@ function saveRoll(rng: () => number, flags: SaveRollFlags): number {
 /** One troop's saving throw total: d20 + bonus (compare to the DC). */
 function troopSaveTotal(target: Unit, stat: SaveStatName, rng: () => number): number {
   const bonus = ((target as any)[stat.toLowerCase()] as number) || 0;
-  return saveRoll(rng, saveRollFlags(target)) + bonus;
+  return saveRoll(rng, saveRollFlags(target)) + bonus + effectSaveBonus(target);
 }
 
 function healChanges(target: Unit, amount: number): UnitChange[] {

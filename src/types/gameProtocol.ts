@@ -208,6 +208,7 @@ export interface Unit {
 export type EffectKind =
   | 'ac' | 'morale' | 'movement' | 'dot' | 'hp_borrow' | 'entry' | 'mp_cost'
   | 'max_org_level_allowed' | 'range'
+  | 'attack' | 'damage' | 'save_bonus'
   | 'advantage' | 'disadvantage' | 'grant_advantage' | 'grant_disadvantage'
   | 'block_attacks'
   | 'save_advantage' | 'save_disadvantage'
@@ -253,6 +254,10 @@ export interface UnitEffect {
   mode?: 'melee' | 'ranged';
   /** Block direction for `block_attacks` (absent = both). */
   direction?: 'in' | 'out' | 'both';
+  /** AURA: applies to same-alliance allies within `radius`, not the carrier. */
+  aura?: boolean;
+  /** Aura reach in hexes (set with `aura`). */
+  radius?: number;
   /** Full duration in caster activations (zones too). */
   duration: number;
   /** Remaining caster activations. */
