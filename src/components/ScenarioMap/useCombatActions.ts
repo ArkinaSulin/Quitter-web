@@ -189,11 +189,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
     let defenderSwitchIdx: number | null = null;
     let usedFists = false;
     // Adjacency forces a MELEE weapon only when the combatant stands in the
-    // opponent's kill zone (engaged frontally). Outside it, a ranged weapon may
-    // fire at point-blank; magic always acts at range.
+    // opponent's kill zone (engaged frontally) OR the weapon is below its own
+    // minimum range (a war machine can't fire point-blank). Outside those, a
+    // ranged weapon may fire at point-blank; magic always acts at range.
     const inTargetKillZone = isInKillZone(target, attacker.hex, attacker.elevation, structureSurfaceAt(target.hex, structures, structureTemplates), structures, structureTemplates);
     const inAttackerKillZone = isInKillZone(attacker, target.hex, target.elevation, structureSurfaceAt(attacker.hex, structures, structureTemplates), structures, structureTemplates);
-    if (isAdjacent && weapon.magicDimension <= 0 && inTargetKillZone && !isMeleeWeapon(weapon)) {
+    if (isAdjacent && weapon.magicDimension <= 0 && (inTargetKillZone || dist < (weapon.minRange ?? 0)) && !isMeleeWeapon(weapon)) {
       const attackerWeapons = parseWeapons(attacker.weaponString || '');
       const meleeIdx = findFirstMeleeWeaponIndex(attackerWeapons);
       if (meleeIdx !== -1) {
@@ -997,7 +998,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const rowCap = getRowCapacity(sizeCategories, healer.sizeCategory);
     const capMult = getFormationMultiplier(formationsMap, healer.currentFormation, 'attack_capacity_multiplier');
     const visualDpr = getVisualDotsPerRow(formationsMap, rowCap, healer.currentFormation);
-    const count = computeAttackCount(healer, rowCap, capMult, visualDpr, false, weapon.numberOfAttacks);
+    const count = computeAttackCount(healer, rowCap, capMult, visualDpr, false, weapon.numberOfAttacks, weapon.warMachine ?? false);
     let heal = 0;
     const faces: number[] = [];
     for (let i = 0; i < count; i++) {

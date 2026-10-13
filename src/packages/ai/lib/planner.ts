@@ -186,7 +186,7 @@ function expectedAttackerCount(attacker: Unit, ctx: Pick<AiPlanContext, 'formati
   const weapons = parseWeapons(attacker.weaponString || '');
   const weapon = weapons[attacker.activeWeaponIndex ?? 0] ?? weapons[0];
   const weaponAttacks = weapon?.numberOfAttacks ?? 1;
-  if (attacker.isHero) return weaponAttacks;
+  if (attacker.isHero || (weapon?.warMachine ?? false)) return weaponAttacks;
   const rowCap = getRowCapacityBase(attacker.sizeCategory);
   const atkCapMult = form?.attack_capacity_multiplier ?? 1;
   const cap = Math.min(attacker.currentTroopCount, Math.round(rowCap * atkCapMult));
@@ -222,6 +222,7 @@ export function expectedDamage(
     losDisadvantage: !!weapon && isRanged && !hasLineOfSight(attacker.hex, target.hex, ctx.units, new Set([attacker.id, target.id]), undefined, undefined, { fromElevation: attacker.elevation ?? 0, toElevation: target.elevation ?? 0 }),
   });
   if (weapon?.isHealing || (weapon && isAreaWeapon(weapon))) return 0; // AI doesn't heal/cast in v2
+  if (weapon && dist < (weapon.minRange ?? 0)) return 0; // too close for the weapon's minimum range
   if (!weapon) {
     if (dist !== 1) return 0;
     return expectedAttackerCount(attacker, ctx) * hitChance(0, targetAc, rollMode.mode) * 1; // fists 1d1

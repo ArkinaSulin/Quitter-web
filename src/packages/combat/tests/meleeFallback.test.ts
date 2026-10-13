@@ -249,4 +249,13 @@ describe('canWeaponAttack', () => {
     const target = makeUnit({ hex: h(0, 0) });
     expect(canWeaponAttack(heal, attacker, target)).toBe(false);
   });
+
+  it('honours a minimum range (too-close is out of reach)', () => {
+    const siege = { range: 2, maxRange: 8, magicDimension: 0, isHealing: false, minRange: 2 };
+    const attacker = makeUnit({ hex: h(0, 0), elevation: 0 });
+    const adjacent = makeUnit({ hex: h(1, 0), elevation: 0 });
+    const near = makeUnit({ hex: h(2, 0), elevation: 0 });
+    expect(canWeaponAttack(siege, attacker, adjacent)).toBe(false); // dist 1 < minRange 2
+    expect(canWeaponAttack(siege, attacker, near)).toBe(true);      // dist 2 >= minRange 2
+  });
 });

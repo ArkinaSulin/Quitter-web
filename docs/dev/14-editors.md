@@ -15,16 +15,25 @@ Weapons are **not** stored as JSON — they are a CSV string; weapons separated
 by `;`, fields by `,` (`src/packages/units/lib/weaponParser.ts`):
 
 ```
-Name,AttackBonus,DamageDice,IsHealing,Range,MaxRange,MagicDimension,Reach,NoRetaliation,FreeAction,IsTwoHanded,NumberOfAttacks,OnSaveHalfOrNeg,SavingThrow,Shape
-Longsword,5,1d8,false,1,1,0,false,false,false,false,1,true,Dex,circle
-Greatsword,5,2d6,false,1,1,0,false,false,false,true,1,true,Dex,circle
-Fireball,7,8d6,false,4,6,20,false,false,false,false,1,true,Dex,circle
+Name,AttackBonus,DamageDice,IsHealing,Range,MaxRange,MagicDimension,Reach,NoRetaliation,FreeAction,IsTwoHanded,NumberOfAttacks,OnSaveHalfOrNeg,SavingThrow,Shape,SaveDC,WarMachine,MinRange,MinCrew
+Longsword,5,1d8,false,1,1,0,false,false,false,false,1,true,Dex,circle,10,false,0,0
+Greatsword,5,2d6,false,1,1,0,false,false,false,true,1,true,Dex,circle,10,false,0,0
+Fireball,7,8d6,false,4,6,20,false,false,false,false,1,true,Dex,circle,10,false,0,0
 ```
 
 Parsing tolerates older strings (missing trailing fields default:
 `isHealing false`, `maxRange = range`, `shape circle`, `halfOnSave true`,
-`save Dex`). Field order matters — never insert mid-string without bumping all
-rows (history: 11 → 13 → 14 → 15 fields with migrations 043/044/045/048).
+`save Dex`, `saveDC 10`, `warMachine false`, `minRange 0`, `minCrew 0`). Field
+order matters — never insert mid-string without bumping all rows (history:
+11 → 13 → 14 → 15 → 16 → 17 → 18 → 19 fields; migrations 043/044/045/048, then
+104 `save_dc` and 126 `war_machine`/`min_range`/`min_crew`).
+
+**War machine** (`warMachine`) = a crew-served weapon: it makes
+`numberOfAttacks` attacks per **unit**, not per troop (see `08`). It is ranged, so
+it melees like a bow (personal fallback). **Min range** (hexes) is a hard floor; a
+target closer than it is out of range. **Min crew** is stored for later use (e.g.
+ships) — no rule consumes it yet. All three are edited on the Weapon Editor page
+(`WeaponFields`).
 
 `Weapon` (parser) vs `Weapon` (legacy gameProtocol) vs `WeaponLookup`
 (unit_weapons library table) are three different shapes — mind which one a function

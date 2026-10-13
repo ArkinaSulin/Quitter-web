@@ -1,5 +1,27 @@
 # QuiTTER Changelog
 
+## War-machine weapons: per-unit attacks, min range, min crew (L1) (2026-10-12)
+**Files:** src/packages/units/lib/weaponParser.ts, src/packages/infra/lib/weaponMappers.ts, src/packages/combat/lib/{unitCombat,meleeFallback}.ts, src/packages/ai/lib/planner.ts, src/components/ScenarioMap/{useCombatActions,ScenarioMap}.tsx, src/components/WeaponEditor/WeaponFields.tsx, supabase/migrations/126_weapon_war_machine.sql, docs/dev/{02,08,14,changelog}.md
+
+- **New weapon flag `warMachine`** (crew-served): the whole unit operates ONE
+  machine, so `numberOfAttacks` attacks are made **per unit**, not per troop/row —
+  `computeAttackCount(..., perUnit)` mirrors the hero branch. Passed at every
+  combat call site (+ AI estimate). It is a ranged weapon, so it never melees: the
+  crew falls back to a personal melee weapon / Fists (the existing bow behaviour —
+  no new rule).
+- **`minRange`** (hexes, default 0 = none): a target closer than this is out of
+  range. Enforced in `canWeaponAttack` (UI picker, attack prompt, move-on-occupant)
+  and `weaponIndicesReaching`; the attacker auto-draws a personal weapon when
+  inside the floor (a war machine can't fire point-blank); the AI estimate and the
+  weapon display honour the band.
+- **`minCrew`** (default 0): crew needed to operate it — **stored/displayed only**,
+  no rule consumes it yet (intended for the spelljammer layer).
+- Weapon CSV grows to **19 fields** (17 `warMachine`, 18 `minRange`, 19 `minCrew`),
+  backward compatible; `unit_weapons` gains `war_machine` / `min_range` /
+  `min_crew` (migration 126). Editor: **War Machine** toggle + **Min range** +
+  **Min crew** inputs.
+- `tsc` clean, tests pass, build clean. **Apply migration 126.**
+
 ## Effect-modifier kinds: grouped, keyword-first dropdown + one label source (2026-10-12)
 **Files:** src/packages/effects/lib/effectTemplates.ts, src/components/EffectEditor/EffectModifierFields.tsx, src/packages/effects/tests/effectTemplates.test.ts, docs/dev/{14-editors,changelog}.md
 

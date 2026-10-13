@@ -185,6 +185,7 @@ as applied in the notes — check the live DB before relying on it).
 | 123 | seed `protected_hero_range_split` setting (back-attached hero's ranged volley share) | ⏳ run in Supabase |
 | 124 | drop the vestigial `undo_stack_size` game setting (undo is server-side) | ⏳ run in Supabase |
 | 125 | drop the `heroic_capacity_multiplier` setting (hero aura is now authored effect modifiers) | ⏳ run in Supabase |
+| 126 | war-machine weapon fields: `unit_weapons.war_machine` / `min_range` / `min_crew` | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

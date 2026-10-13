@@ -40,6 +40,9 @@ describe('parseWeapons', () => {
       onSaveHalfOrNeg: true,
       savingThrow: 'Dex',
       saveDC: 10,
+      warMachine: false,
+      minRange: 0,
+      minCrew: 0,
     });
   });
 
@@ -202,7 +205,7 @@ describe('stringifyWeapons', () => {
       { name: 'Spear', attackBonus: 3, damageDice: '1d6+1', isHealing: false, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 },
     ];
 
-    expect(stringifyWeapons(weapons)).toBe('Spear,3,1d6+1,false,1,0,0,false,false,false,false,1,true,Dex,circle,10');
+    expect(stringifyWeapons(weapons)).toBe('Spear,3,1d6+1,false,1,0,0,false,false,false,false,1,true,Dex,circle,10,false,0,0');
   });
 
   it('roundtrips a long-range weapon', () => {
@@ -210,7 +213,7 @@ describe('stringifyWeapons', () => {
       { name: 'Longbow', attackBonus: 3, damageDice: '1d8', isHealing: false, range: 4, maxRange: 8, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: true, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 },
     ];
 
-    expect(stringifyWeapons(weapons)).toBe('Longbow,3,1d8,false,4,8,0,false,true,false,false,1,true,Dex,circle,10');
+    expect(stringifyWeapons(weapons)).toBe('Longbow,3,1d8,false,4,8,0,false,true,false,false,1,true,Dex,circle,10,false,0,0');
   });
 
   it('roundtrips isTwoHanded', () => {
@@ -218,7 +221,7 @@ describe('stringifyWeapons', () => {
       { name: 'Greatsword', attackBonus: 5, damageDice: '2d6', isHealing: false, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: true, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 },
     ];
 
-    expect(stringifyWeapons(weapons)).toBe('Greatsword,5,2d6,false,1,0,0,false,false,false,true,1,true,Dex,circle,10');
+    expect(stringifyWeapons(weapons)).toBe('Greatsword,5,2d6,false,1,0,0,false,false,false,true,1,true,Dex,circle,10,false,0,0');
   });
 
   it('roundtrips a healing weapon', () => {
@@ -226,7 +229,19 @@ describe('stringifyWeapons', () => {
       { name: 'Cure Wounds', attackBonus: 5, damageDice: '1d8', isHealing: true, range: 1, maxRange: 0, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10 },
     ];
 
-    expect(stringifyWeapons(weapons)).toBe('Cure Wounds,5,1d8,true,1,0,0,false,false,false,false,1,true,Dex,circle,10');
+    expect(stringifyWeapons(weapons)).toBe('Cure Wounds,5,1d8,true,1,0,0,false,false,false,false,1,true,Dex,circle,10,false,0,0');
+  });
+
+  it('roundtrips the war-machine fields (warMachine, minRange, minCrew)', () => {
+    const weapons: Weapon[] = [
+      { name: 'Ballista', attackBonus: 3, damageDice: '2d6', isHealing: false, range: 2, maxRange: 8, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: true, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10, warMachine: true, minRange: 2, minCrew: 3 },
+    ];
+    const s = stringifyWeapons(weapons);
+    expect(s).toBe('Ballista,3,2d6,false,2,8,0,false,false,false,true,1,true,Dex,circle,10,true,2,3');
+    const back = parseWeapons(s)[0];
+    expect(back.warMachine).toBe(true);
+    expect(back.minRange).toBe(2);
+    expect(back.minCrew).toBe(3);
   });
 
   it('returns empty string for empty array', () => {
@@ -234,7 +249,7 @@ describe('stringifyWeapons', () => {
   });
 
   it('roundtrips: stringify(parse(input)) === input for canonical input', () => {
-    const input = 'Spear,3,1d6+1,false,1,1,0,false,false,false,false,1,true,Dex,circle,10;Longbow,3,1d8,false,4,8,0,false,true,false,false,1,false,Con,circle,15';
+    const input = 'Spear,3,1d6+1,false,1,1,0,false,false,false,false,1,true,Dex,circle,10,false,0,0;Longbow,3,1d8,false,4,8,0,false,true,false,false,1,false,Con,circle,15,false,0,0';
     expect(stringifyWeapons(parseWeapons(input))).toBe(input);
   });
 });
@@ -302,5 +317,15 @@ describe('weaponIndicesReaching', () => {
   it('returns a single index when only one weapon reaches', () => {
     const weapons = [w({ name: 'Sword', range: 1, maxRange: 1 }), w({ name: 'Longbow', range: 4, maxRange: 8 })];
     expect(weaponIndicesReaching(weapons, 0, 6)).toEqual([1]);
+  });
+
+  it('excludes a weapon whose minRange is above the distance', () => {
+    const weapons = [
+      w({ name: 'Sword', range: 1, maxRange: 1 }),                       // active
+      w({ name: 'Ballista', range: 2, maxRange: 8, minRange: 2 }),       // too far? reaches at 3+
+      w({ name: 'Longbow', range: 4, maxRange: 8 }),                     // reaches everywhere to 8
+    ];
+    expect(weaponIndicesReaching(weapons, 0, 1)).toEqual([2]); // Ballista (min 2) excluded at dist 1
+    expect(weaponIndicesReaching(weapons, 0, 3)).toEqual([1, 2]);
   });
 });

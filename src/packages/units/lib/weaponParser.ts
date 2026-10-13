@@ -26,6 +26,15 @@ export interface Weapon {
   onSaveHalfOrNeg: boolean; // area weapon: successful save takes half damage (true) or none (false)
   savingThrow: SaveStat; // area weapon: which of the 6 ability save bonuses resists it
   saveDC: number; // area weapon: the save DC targets must meet (default 10)
+  /** War machine: a crew-served weapon — the whole unit operates ONE machine, so
+   *  it makes `numberOfAttacks` attacks per UNIT (not per troop/row). Ranged. */
+  warMachine?: boolean;
+  /** Minimum range in hexes: the weapon cannot attack a target closer than this
+   *  (`minRange <= dist <= maxRange`). 0/absent = no minimum. */
+  minRange?: number;
+  /** Crew needed to operate the weapon. Stored for later use (e.g. ships); no
+   *  rule consumes it yet. 0/absent = no requirement. */
+  minCrew?: number;
 }
 
 /** An area-effect weapon is any weapon with a magic dimension (feet). */
@@ -80,6 +89,9 @@ export function blankWeapon(): Weapon {
     onSaveHalfOrNeg: true,
     savingThrow: 'Dex',
     saveDC: 10,
+    warMachine: false,
+    minRange: 0,
+    minCrew: 0,
   };
 }
 
@@ -95,9 +107,10 @@ export function validateWeapon(weapon: Weapon): string | null {
 
 /**
  * Indices of the offensive weapons that can reach `dist` hexes, in arsenal
- * order. Excludes the active weapon and healing weapons. Used to decide whether
- * an out-of-range attack should silently auto-switch (one option) or prompt the
- * player to confirm the first option (two or more).
+ * order. Excludes the active weapon and healing weapons. A weapon with a
+ * `minRange` cannot reach a target closer than it (too-close = out of reach).
+ * Used to decide whether an out-of-range attack should silently auto-switch (one
+ * option) or prompt the player to confirm the first option (two or more).
  */
 export function weaponIndicesReaching(weapons: Weapon[], activeIndex: number, dist: number): number[] {
   const out: number[] = [];
@@ -105,6 +118,7 @@ export function weaponIndicesReaching(weapons: Weapon[], activeIndex: number, di
     if (i === activeIndex) continue;
     const w = weapons[i];
     if (!w || w.isHealing) continue;
+    if (dist < (w.minRange ?? 0)) continue;
     if ((w.maxRange ?? w.range ?? 0) >= dist) out.push(i);
   }
   return out;
@@ -141,9 +155,10 @@ export function validateTargetAlliance(
 
 /**
  * Parse a weapon string into an array of Weapon objects.
- * Format: "Name,AttackBonus,DamageDice,IsHealing,Range,MaxRange,MagicDimension,Reach,NoRetaliation,FreeAction,IsTwoHanded,NumberOfAttacks,OnSaveHalfOrNeg,SavingThrow,Shape,SaveDC"
+ * Format: "Name,AttackBonus,DamageDice,IsHealing,Range,MaxRange,MagicDimension,Reach,NoRetaliation,FreeAction,IsTwoHanded,NumberOfAttacks,OnSaveHalfOrNeg,SavingThrow,Shape,SaveDC,WarMachine,MinRange,MinCrew"
  * Older strings missing the trailing fields parse with defaults (isHealing false,
- * half-on-save true, saving throw Dex, shape circle, save DC 10).
+ * half-on-save true, saving throw Dex, shape circle, save DC 10, warMachine false,
+ * minRange/minCrew 0).
  */
 export function parseWeapons(weaponString: string): Weapon[] {
   if (!weaponString || weaponString.trim() === '') {
@@ -177,6 +192,9 @@ export function parseWeapons(weaponString: string): Weapon[] {
         onSaveHalfOrNeg: parts[12] !== 'false',
         savingThrow: SAVE_STATS.includes(savingThrow) ? savingThrow : 'Dex',
         saveDC: parseInt(parts[15]) || 10,
+        warMachine: parts[16] === 'true',
+        minRange: Math.max(0, parseInt(parts[17]) || 0),
+        minCrew: Math.max(0, parseInt(parts[18]) || 0),
       };
     });
 }
@@ -190,7 +208,7 @@ export function stringifyWeapons(weapons: Weapon[]): string {
   }
   return weapons
     .map(w =>
-      `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicDimension},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'},${w.shape ?? 'circle'},${w.saveDC ?? 10}`
+      `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicDimension},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'},${w.shape ?? 'circle'},${w.saveDC ?? 10},${w.warMachine ? 'true' : 'false'},${w.minRange ?? 0},${w.minCrew ?? 0}`
     )
     .join(';');
 }
@@ -205,19 +223,28 @@ export function formatWeaponDisplay(weapon: Weapon): string {
   const attacks = weapon.numberOfAttacks && weapon.numberOfAttacks > 1 ? ` ${weapon.numberOfAttacks}x` : ' 1x';
   const attack = ` +${weapon.attackBonus}`;
   const dice = `${weapon.damageDice}${weapon.isHealing ? '(h)' : ''}`;
-  const rangeMax = weapon.maxRange && weapon.maxRange > weapon.range ? `${weapon.range}–${weapon.maxRange}` : `${weapon.range}`;
+  const minR = weapon.minRange ?? 0;
+  const maxR = weapon.maxRange ?? weapon.range;
+  const rangeMax = minR > 0
+    ? `${minR}–${maxR}`
+    : (weapon.maxRange && weapon.maxRange > weapon.range ? `${weapon.range}–${weapon.maxRange}` : `${weapon.range}`);
   const range = ` ${rangeMax}hex`;
   const radius = weapon.magicDimension > 0 ? ` ${weapon.magicDimension}ft` : '';
-  return `${weapon.name}${attacks}${attack} ${dice}${range}${radius}`;
+  const tags = `${weapon.warMachine ? ' [WM]' : ''}${(weapon.minCrew ?? 0) > 0 ? ` [crew ${weapon.minCrew}]` : ''}`;
+  return `${weapon.name}${attacks}${attack} ${dice}${range}${radius}${tags}`;
 }
 
 /**
  * Get a short display text for the weapon list.
  */
 export function getWeaponDisplayText(weapon: Weapon): string {
+  const minR = weapon.minRange ?? 0;
   const hasBand = weapon.maxRange && weapon.maxRange > weapon.range;
-  const rangeDisplay = weapon.range === 1 && !hasBand ? 'Adj' : `${weapon.range}${hasBand ? `–${weapon.maxRange}` : ''}h`;
+  const rangeDisplay = minR > 0
+    ? `${minR}–${weapon.maxRange ?? weapon.range}h`
+    : (weapon.range === 1 && !hasBand ? 'Adj' : `${weapon.range}${hasBand ? `–${weapon.maxRange}` : ''}h`);
   const radiusDisplay = weapon.magicDimension > 0 ? `, r${weapon.magicDimension}` : '';
   const attacksDisplay = weapon.numberOfAttacks && weapon.numberOfAttacks > 1 ? `, ${weapon.numberOfAttacks}atk` : '';
-  return `${weapon.name} | +${weapon.attackBonus} | ${weapon.damageDice}${weapon.isHealing ? '(h)' : ''} | ${rangeDisplay}${radiusDisplay}${attacksDisplay}`;
+  const tags = `${weapon.warMachine ? ' | WM' : ''}${(weapon.minCrew ?? 0) > 0 ? ` | crew ${weapon.minCrew}` : ''}`;
+  return `${weapon.name} | +${weapon.attackBonus} | ${weapon.damageDice}${weapon.isHealing ? '(h)' : ''} | ${rangeDisplay}${radiusDisplay}${attacksDisplay}${tags}`;
 }

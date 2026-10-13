@@ -284,6 +284,13 @@ adjacent only. Extra tags: `2H` = two-handed (drops your shield while active,
 no Shield Wall), `F` = free action, `NR` = no retaliation, `(h)` = heals
 instead of hurting. Weapons with a **range** > 1 can shoot (§6).
 
+A **war machine** (`[WM]`) is a crew-served ranged weapon: the whole unit operates
+one machine, so it makes its attacks **per unit** — not per troop — no matter how
+many soldiers remain. It never fights in melee; if an enemy closes in, the crew
+fights back with a personal weapon (or bare fists). A war machine may also have a
+**minimum range** (shown as `2–8hex`): a target closer than that is out of reach.
+`[crew N]` lists the crew it needs (informational for now).
+
 ![S-31 Weapon editor](screenshots/s-31-weapon-editor.png)
 
 ### The on-map tooltip

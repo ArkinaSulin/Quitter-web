@@ -125,6 +125,15 @@ front; **Scattered** → all sides flank; **Routed** → all sides rear.
   (visual `row_capacity_multiplier`, attack `attack_capacity_multiplier`:
   Phalanx ×3, Close Order/Shield Wall ×2 — verify live rows).
 - **Heroes** attack directly: `weapon.numberOfAttacks` rolls (no row math).
+- **War machines** (`weapon.warMachine`, crew-served): fire like a hero —
+  `weapon.numberOfAttacks` attacks per **unit**, no row/troop scaling
+  (`computeAttackCount(..., perUnit)`; passed for both attacker and retaliator).
+  They are ranged, so a war machine never melees — when engaged (or when the
+  target is inside its `minRange`) the crew falls back to a personal melee weapon
+  / Fists. `minRange` (hexes, default 0) is a hard floor: a target closer than it
+  is out of reach (`canWeaponAttack` / `weaponIndicesReaching`), so a siege engine
+  can't fire point-blank. A `minCrew` field is stored for later (ships); no rule
+  consumes it yet.
 - **beAttacked modifiers** (formation of the *target* side) multiply the
   attacker's count: melee vs Scattered ×1.5, Routed ×2.0; ranged vs Open
   Order/Scattered/Routed ×0.5. Notes are attached for the message.

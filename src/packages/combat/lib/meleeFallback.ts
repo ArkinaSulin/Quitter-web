@@ -103,7 +103,7 @@ export function attackKind(
  * DOWN never extends reach). Healing weapons are never usable offensively.
  */
 export function canWeaponAttack(
-  weapon: Pick<Weapon, 'range' | 'maxRange' | 'magicDimension' | 'isHealing'> | null | undefined,
+  weapon: Pick<Weapon, 'range' | 'maxRange' | 'magicDimension' | 'isHealing' | 'minRange'> | null | undefined,
   attacker: Unit,
   target: Unit,
   rangeBonus = 0,
@@ -112,6 +112,8 @@ export function canWeaponAttack(
 ): boolean {
   if (!weapon || weapon.isHealing) return false;
   const dist = hexDistance(attacker.hex, target.hex);
+  // Minimum range: a weapon cannot attack a target closer than its minRange.
+  if (dist < (weapon.minRange ?? 0)) return false;
   const isAdjacent = isMeleeReachable(attacker, target, structures, templates);
   const kind = attackKind(weapon, isAdjacent, isInKillZone(target, attacker.hex, attacker.elevation, 0, structures, templates));
   if (kind === 'none') return false;

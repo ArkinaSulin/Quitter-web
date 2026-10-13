@@ -31,6 +31,9 @@ export function mapWeaponRow(row: any): LibraryWeapon {
     onSaveHalfOrNeg: row?.on_save_half_or_neg ?? true,
     savingThrow: SAVE_STATS.includes(savingThrow) ? savingThrow : 'Dex',
     saveDC: Number(row?.save_dc) || 10,
+    warMachine: !!row?.war_machine,
+    minRange: Math.max(0, Number(row?.min_range) || 0),
+    minCrew: Math.max(0, Number(row?.min_crew) || 0),
     notes: row?.notes || '',
     costGp: Number(row?.cost_gp) || 0,
   };
@@ -56,6 +59,9 @@ export function mapWeaponToRow(w: LibraryWeapon) {
     on_save_half_or_neg: w.onSaveHalfOrNeg !== false,
     saving_throw: w.savingThrow || 'Dex',
     save_dc: Math.max(0, w.saveDC ?? 10),
+    war_machine: !!w.warMachine,
+    min_range: Math.max(0, w.minRange || 0),
+    min_crew: Math.max(0, w.minCrew || 0),
     notes: w.notes || '',
     cost_gp: w.costGp || 0,
   };

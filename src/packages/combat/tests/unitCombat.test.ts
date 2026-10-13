@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   computeRowCapacity,
   computeTotalAttacks,
+  computeAttackCount,
   determineCombatPosition,
   determineRetaliationPosition,
   getEffectiveCombatPosition,
@@ -1230,5 +1231,22 @@ describe('attachedDefenderHeroShare', () => {
   it('a rider share is chosen by the caller, not here', () => {
     expect(attachedDefenderHeroShare('rider', false, false)).toBe(0);
     expect(attachedDefenderHeroShare(null, false, false)).toBe(0);
+  });
+});
+
+describe('computeAttackCount', () => {
+  const unit = (over: Partial<Unit> = {}) => makeUnit({ sizeCategory: 100, currentTroopCount: 80, maxTroopCount: 80, ...over });
+
+  it('scales a normal weapon by the troop rows', () => {
+    // min(80, round(10 * 1)) = 10 attackers × 2 = 20
+    expect(computeAttackCount(unit(), 10, 1, 20, false, 2)).toBe(20);
+  });
+
+  it('makes a war machine fire once per unit (perUnit), not per troop', () => {
+    expect(computeAttackCount(unit(), 10, 1, 20, false, 3, true)).toBe(3);
+  });
+
+  it('heroes already fire per unit', () => {
+    expect(computeAttackCount(unit({ isHero: true }), 10, 1, 20, false, 2)).toBe(2);
   });
 });

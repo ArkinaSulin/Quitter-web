@@ -120,6 +120,12 @@ export function WeaponFields({ value, onChange, meta, onMetaChange, error }: Wea
         <Cell label="Max range"><NumInput value={value.maxRange} min={0} onChange={v => patch({ maxRange: Math.max(0, v) })} /></Cell>
       </div>
 
+      <div className="flex items-end gap-3">
+        <Cell label="Min range"><NumInput value={value.minRange ?? 0} min={0} onChange={v => patch({ minRange: Math.max(0, v) })} /></Cell>
+        <Cell label="Min crew"><NumInput value={value.minCrew ?? 0} min={0} onChange={v => patch({ minCrew: Math.max(0, v) })} /></Cell>
+      </div>
+      <p className="text-xs text-gray-500 -mt-2">Min range: a target closer than this is out of range (default 0 = none). Min crew: crew needed to operate it (stored for later use; no rule yet).</p>
+
       <div className="border-t border-gray-700" />
 
       <div className="flex items-end gap-3">
@@ -138,6 +144,7 @@ export function WeaponFields({ value, onChange, meta, onMetaChange, error }: Wea
       <div className="space-y-3 border-t border-gray-700 pt-3">
         <ToggleRow checked={value.reach} onChange={v => patch({ reach: v })} label="Reach" description="Strikes first against shorter weapons and cancels the opponent's retaliation." />
         <ToggleRow checked={value.isTwoHanded} onChange={v => patch({ isTwoHanded: v })} label="Two-Handed" description="Requires both hands — shield defense is dropped while this is the active weapon." />
+        <ToggleRow checked={!!value.warMachine} onChange={v => patch({ warMachine: v })} label="War Machine" description="Crew-served: the whole unit operates ONE machine, so it makes # Attacks per UNIT (not per troop). Use a ranged weapon." />
         <ToggleRow checked={value.freeAction} onChange={v => patch({ freeAction: v })} label="Free Action" description="Does not cost an action to use." />
         <ToggleRow checked={value.noRetaliation} onChange={v => patch({ noRetaliation: v })} label="No Retaliation" description="Provokes no retaliation and beats reach — fully safe attack." />
       </div>

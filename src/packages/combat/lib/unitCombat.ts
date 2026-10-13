@@ -186,8 +186,10 @@ export interface CombatOutcome {
   attackerHeroRoll: RollModeResult | null;
 }
 
-export function computeAttackCount(unit: Unit, rowCapacity: number, attackCapacityMultiplier: number, visualDotsPerRow: number, isDefenderSide: boolean, weaponAttacks: number): number {
-  if (unit.isHero) return weaponAttacks;
+export function computeAttackCount(unit: Unit, rowCapacity: number, attackCapacityMultiplier: number, visualDotsPerRow: number, isDefenderSide: boolean, weaponAttacks: number, perUnit = false): number {
+  // Heroes and war machines (crew-served weapons) make `weaponAttacks` attacks
+  // per UNIT — no row/troop scaling.
+  if (unit.isHero || perUnit) return weaponAttacks;
   if (isDefenderSide) {
     const rows = Math.ceil(unit.currentTroopCount / visualDotsPerRow);
     return rows * weaponAttacks;
@@ -378,8 +380,8 @@ function mergeRollFlags(base: AttackRollFlags, wall: WallRollFlags): AttackRollF
 export function resolveCombatSequence(
   attacker: Unit,
   defender: Unit,
-  attackerWeapon: { attackBonus: number; damageDice: string; is_reach: boolean; noRetaliation?: boolean; freeAction?: boolean; numberOfAttacks?: number; range?: number; maxRange?: number },
-  defenderWeapon: { attackBonus: number; damageDice: string; is_reach: boolean; numberOfAttacks?: number } | null,
+  attackerWeapon: { attackBonus: number; damageDice: string; is_reach: boolean; noRetaliation?: boolean; freeAction?: boolean; numberOfAttacks?: number; range?: number; maxRange?: number; warMachine?: boolean },
+  defenderWeapon: { attackBonus: number; damageDice: string; is_reach: boolean; numberOfAttacks?: number; warMachine?: boolean } | null,
   formationAttackModifier: number,
   attackCapacityMultiplier: number,
   defenderAttackCapacityMultiplier: number,
@@ -567,7 +569,7 @@ export function resolveCombatSequence(
     // reach the hero in MELEE, so the unit's own attacks are capped. A ranged
     // attack is uncapped — every trooper can shoot the hero.
     const attackerVsHero = !attacker.isHero && defender.isHero;
-    let attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false, attackerWeapon.numberOfAttacks ?? 1);
+    let attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false, attackerWeapon.numberOfAttacks ?? 1, attackerWeapon.warMachine ?? false);
     const atkCountMod = beAttackedModifier(defenderForm, isRanged);
     attackerCount = Math.round(attackerCount * atkCountMod);
     firstStrikeCountNote = beAttackedModifierNote(defenderForm, isRanged);
@@ -604,7 +606,7 @@ export function resolveCombatSequence(
   } else {
     const rawPosition = determineCombatPosition(attacker.hex, defender.hex, defender.facing);
     const retPos = resolveRetaliationPosition(defender, defenderForm, rawPosition);
-        let defenderCount = computeAttackCount(defender, defenderRowCapacity, defenderAttackCapacityMultiplier, defenderVisualDotsPerRow, retPos === 'flank', defenderWeapon?.numberOfAttacks ?? 1);
+        let defenderCount = computeAttackCount(defender, defenderRowCapacity, defenderAttackCapacityMultiplier, defenderVisualDotsPerRow, retPos === 'flank', defenderWeapon?.numberOfAttacks ?? 1, defenderWeapon?.warMachine ?? false);
     // Attacker's formation vulnerability boosts the defender's counterattacks against it.
     const defCountMod = beAttackedModifier(attackerForm, false);
     defenderCount = Math.round(defenderCount * defCountMod);
@@ -641,7 +643,7 @@ export function resolveCombatSequence(
       const rawPosition = determineCombatPosition(attacker.hex, defender.hex, defender.facing);
       const retPos = resolveRetaliationPosition(defender, defenderForm, rawPosition);
       if (retPos !== 'rear') {
-    let defenderCount = computeAttackCount(defender, defenderRowCapacity, defenderAttackCapacityMultiplier, defenderVisualDotsPerRow, retPos === 'flank', defenderWeapon?.numberOfAttacks ?? 1);
+    let defenderCount = computeAttackCount(defender, defenderRowCapacity, defenderAttackCapacityMultiplier, defenderVisualDotsPerRow, retPos === 'flank', defenderWeapon?.numberOfAttacks ?? 1, defenderWeapon?.warMachine ?? false);
         // Attacker's formation vulnerability boosts the defender's retaliation.
         const retMod = beAttackedModifier(attackerForm, false);
         defenderCount = Math.round(defenderCount * retMod);
@@ -673,7 +675,7 @@ export function resolveCombatSequence(
     }
   } else {
     if (!isUnitRouted(attacker)) {
-    let attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false, attackerWeapon.numberOfAttacks ?? 1);
+    let attackerCount = computeAttackCount(attacker, attackerRowCapacity, attackCapacityMultiplier, defenderVisualDotsPerRow, false, attackerWeapon.numberOfAttacks ?? 1, attackerWeapon.warMachine ?? false);
     // Defender's formation vulnerability boosts the attacker's retaliation.
     const retMod = beAttackedModifier(defenderForm, isRanged);
     attackerCount = Math.round(attackerCount * retMod);

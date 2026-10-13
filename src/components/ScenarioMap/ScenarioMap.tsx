@@ -1127,10 +1127,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Number of damage rolls a structure attack lands, mirroring unit combat:
   // eligible attackers (row capacity × capacity multiplier, capped by troops) ×
   // weapon attacks, plus a front-attached hero's own volley. DT gates each roll.
-  const structureAttackCount = useCallback((attacker: Unit, weaponAttacks: number): number => {
+  const structureAttackCount = useCallback((attacker: Unit, weaponAttacks: number, warMachine = false): number => {
     const capMult = getFormationMultiplier(formationsMap, attacker.currentFormation, 'attack_capacity_multiplier');
     const rowCap = getRowCapacity(sizeCategories, attacker.sizeCategory);
-    let count = computeAttackCount(attacker, rowCap, capMult, 0, false, Math.max(1, weaponAttacks || 1));
+    let count = computeAttackCount(attacker, rowCap, capMult, 0, false, Math.max(1, weaponAttacks || 1), warMachine);
     const hero = findAttachedHero(attacker, units);
     if (hero) {
       const hw = parseWeapons(hero.weaponString || '')[hero.activeWeaponIndex ?? 0];
@@ -1173,7 +1173,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (overBudget) addError(`${attacker.unitName} attacked a barrier with no actions left — over budget`);
     if (overCap) addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
 
-    const attacks = structureAttackCount(attacker, weapon.numberOfAttacks ?? 1);
+    const attacks = structureAttackCount(attacker, weapon.numberOfAttacks ?? 1, weapon.warMachine ?? false);
     const result = resolveWallAttack(wall, weapon, Math.random, attacks);
     const to = result.destroyed
       ? null
@@ -1261,7 +1261,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (overBudget) addError(`${attacker.unitName} attacked a structure with no actions left — over budget`);
     if (overCap) addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
 
-    const attacks = structureAttackCount(attacker, weapon.numberOfAttacks ?? 1);
+    const attacks = structureAttackCount(attacker, weapon.numberOfAttacks ?? 1, weapon.warMachine ?? false);
     const result = resolveHexStructureAttack(template, inst, weapon, Math.random, attacks);
     // A destroyed structure (0 HP) is REMOVED from the map (hex and edge alike).
     const to = result.destroyed ? null : { ...inst, hp: result.hpAfter, doorHp: result.doorHpAfter };
