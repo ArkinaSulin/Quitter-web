@@ -136,15 +136,26 @@ export function WeaponFields({ value, onChange, meta, onMetaChange, error }: Wea
       <p className="text-xs text-gray-500 -mt-2">Shape: circle = dimension is radius · cube = side · cone = 60° wedge · line = 5 ft-wide line. Dimension &gt; 0 makes this an area-effect weapon.</p>
 
       <div className="flex items-end gap-3">
-        <div className="pb-1.5"><Toggle checked={value.onSaveHalfOrNeg} onChange={v => patch({ onSaveHalfOrNeg: v })} label={value.onSaveHalfOrNeg ? '1/2 damage' : 'Negate'} /></div>
-        <Cell label="Saving throw"><SelectInput value={value.savingThrow} onChange={v => patch({ savingThrow: v as SaveStat })} options={SAVE_STATS.map(s => ({ value: s, label: s }))} /></Cell>
-        <Cell label="DC"><NumInput value={value.saveDC ?? 10} min={0} onChange={v => patch({ saveDC: Math.max(0, v) })} /></Cell>
+        <Cell label="Saving throw">
+          <SelectInput
+            value={value.savingThrow}
+            onChange={v => patch({ savingThrow: v as Weapon['savingThrow'] })}
+            options={[...SAVE_STATS.map(s => ({ value: s, label: s })), { value: 'none', label: 'No save' }]}
+          />
+        </Cell>
+        {value.savingThrow !== 'none' && (
+          <>
+            <div className="pb-1.5"><Toggle checked={value.onSaveHalfOrNeg} onChange={v => patch({ onSaveHalfOrNeg: v })} label={value.onSaveHalfOrNeg ? '1/2 damage' : 'Negate'} /></div>
+            <Cell label="DC"><NumInput value={value.saveDC ?? 10} min={0} onChange={v => patch({ saveDC: Math.max(0, v) })} /></Cell>
+          </>
+        )}
       </div>
+      {value.savingThrow === 'none' && <p className="text-xs text-gray-500 -mt-2">No save — every covered troop takes full damage (DC and Neg/½ are ignored).</p>}
 
       <div className="space-y-3 border-t border-gray-700 pt-3">
         <ToggleRow checked={value.reach} onChange={v => patch({ reach: v })} label="Reach" description="Strikes first against shorter weapons and cancels the opponent's retaliation." />
         <ToggleRow checked={value.isTwoHanded} onChange={v => patch({ isTwoHanded: v })} label="Two-Handed" description="Requires both hands — shield defense is dropped while this is the active weapon." />
-        <ToggleRow checked={!!value.warMachine} onChange={v => patch({ warMachine: v })} label="War Machine" description="Crew-served: the whole unit operates ONE machine, so it makes # Attacks per UNIT (not per troop). Use a ranged weapon." />
+        <ToggleRow checked={!!value.warMachine} onChange={v => patch(v && !value.magicDimension ? { warMachine: true, magicDimension: 5, shape: 'circle' } : { warMachine: v })} label="War Machine" description="Crew-served: the whole unit operates ONE machine, so it makes # Attacks per UNIT (not per troop). Use a ranged weapon. Defaults to a 5 ft blast (circle)." />
         <ToggleRow checked={value.freeAction} onChange={v => patch({ freeAction: v })} label="Free Action" description="Does not cost an action to use." />
         <ToggleRow checked={value.noRetaliation} onChange={v => patch({ noRetaliation: v })} label="No Retaliation" description="Provokes no retaliation and beats reach — fully safe attack." />
       </div>

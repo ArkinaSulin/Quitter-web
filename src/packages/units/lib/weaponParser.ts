@@ -4,6 +4,11 @@ export type SaveStat = 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha';
 
 export const SAVE_STATS: SaveStat[] = ['Str', 'Dex', 'Con', 'Int', 'Wis', 'Cha'];
 
+/** A weapon's saving-throw choice: one of the 6 ability saves, or `'none'` — an
+ *  area weapon with NO save (every covered troop takes full damage; the DC and
+ *  Neg/half flag are ignored). */
+export type SaveChoice = SaveStat | 'none';
+
 /** Area-effect footprint: circle (radius), cube (side), cone (60° wedge), line (5 ft-wide line). */
 export type AreaShape = 'circle' | 'cube' | 'cone' | 'line';
 
@@ -24,7 +29,7 @@ export interface Weapon {
   isTwoHanded: boolean; // occupies both hands — shield unusable while active, no Shield Wall
   numberOfAttacks: number; // attacks per round this weapon makes (per attack capacity / direct for heroes)
   onSaveHalfOrNeg: boolean; // area weapon: successful save takes half damage (true) or none (false)
-  savingThrow: SaveStat; // area weapon: which of the 6 ability save bonuses resists it
+  savingThrow: SaveChoice; // area weapon: which save resists it, or 'none' (no save)
   saveDC: number; // area weapon: the save DC targets must meet (default 10)
   /** War machine: a crew-served weapon — the whole unit operates ONE machine, so
    *  it makes `numberOfAttacks` attacks per UNIT (not per troop/row). Ranged. */
@@ -171,7 +176,7 @@ export function parseWeapons(weaponString: string): Weapon[] {
     .map(item => {
       const parts = item.split(',').map(p => p.trim());
       const range = parseInt(parts[4]) || 1;
-      const savingThrow = (parts[13] as SaveStat) || 'Dex';
+      const savingThrow = (parts[13] || 'Dex') as SaveChoice;
       const shape = (parts[14] as AreaShape) || 'circle';
       return {
         name: parts[0] || 'Unknown',
@@ -190,7 +195,7 @@ export function parseWeapons(weaponString: string): Weapon[] {
         isTwoHanded: parts[10] === 'true',
         numberOfAttacks: parseInt(parts[11]) || 1,
         onSaveHalfOrNeg: parts[12] !== 'false',
-        savingThrow: SAVE_STATS.includes(savingThrow) ? savingThrow : 'Dex',
+        savingThrow: (SAVE_STATS.includes(savingThrow as SaveStat) || savingThrow === 'none') ? savingThrow : 'Dex',
         saveDC: parseInt(parts[15]) || 10,
         warMachine: parts[16] === 'true',
         minRange: Math.max(0, parseInt(parts[17]) || 0),

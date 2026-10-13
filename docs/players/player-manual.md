@@ -291,6 +291,12 @@ fights back with a personal weapon (or bare fists). A war machine may also have 
 **minimum range** (shown as `2–8hex`): a target closer than that is out of reach.
 `[crew N]` lists the crew it needs (informational for now).
 
+Firing at an enemy **unit** is a **bombardment**: each shot rolls to hit, and
+**every hit becomes one blast marker** you place over the target's troops in the
+targeting window (so landing 3 hits lets you drop 3 blasts). A blast with **No
+save** gives the covered troops no saving throw — they take full damage. Against a
+**hero** or a lone surviving troop, the same shot is a single direct hit instead.
+
 ![S-31 Weapon editor](screenshots/s-31-weapon-editor.png)
 
 ### The on-map tooltip

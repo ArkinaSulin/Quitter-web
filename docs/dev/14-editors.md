@@ -30,10 +30,13 @@ order matters — never insert mid-string without bumping all rows (history:
 
 **War machine** (`warMachine`) = a crew-served weapon: it makes
 `numberOfAttacks` attacks per **unit**, not per troop (see `08`). It is ranged, so
-it melees like a bow (personal fallback). **Min range** (hexes) is a hard floor; a
-target closer than it is out of range. **Min crew** is stored for later use (e.g.
-ships) — no rule consumes it yet. All three are edited on the Weapon Editor page
-(`WeaponFields`).
+it melees like a bow (personal fallback). The toggle also defaults
+`magicDimension = 5` / `shape = circle` (an editable blast). **Min range** (hexes)
+is a hard floor; a target closer than it is out of range. **Min crew** is stored
+for later use (e.g. ships) — no rule consumes it yet. The **Saving throw**
+dropdown gains a **No save** entry (`savingThrow: 'none'`) — an area weapon with
+no save (every covered troop takes full damage; the DC/Neg-half are hidden and
+ignored). All edited on the Weapon Editor page (`WeaponFields`).
 
 `Weapon` (parser) vs `Weapon` (legacy gameProtocol) vs `WeaponLookup`
 (unit_weapons library table) are three different shapes — mind which one a function

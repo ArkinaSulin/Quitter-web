@@ -75,10 +75,11 @@ interface MagicCastModalProps {
   sizeCategories?: SizeCategory[];
   formationsMap?: Record<string, Formation>;
   onCancel: () => void;
-  onPlaceCircle: (circle: MagicCircle, affectedCount: number) => void;
+  onPlaceMarker: (circle: MagicCircle, affectedCount: number) => void;
+  onClearMarkers: () => void;
   onRotate: (rotation: number) => void;
-  onOverrideCount: (n: number) => void;
-  onSetSave: (patch: { saveStat?: SaveStat; saveDC?: number; halfOnSave?: boolean }) => void;
+  onOverrideMarkerCount: (index: number, n: number) => void;
+  onSetSave: (patch: { saveStat?: SaveStat | 'none'; saveDC?: number; halfOnSave?: boolean }) => void;
   onRequestResolve: () => void;
 }
 
@@ -193,9 +194,10 @@ export function MagicCastModal({
   sizeCategories,
   formationsMap,
   onCancel,
-  onPlaceCircle,
+  onPlaceMarker,
+  onClearMarkers,
   onRotate,
-  onOverrideCount,
+  onOverrideMarkerCount,
   onSetSave,
   onRequestResolve,
 }: MagicCastModalProps) {
@@ -236,15 +238,15 @@ export function MagicCastModal({
       formationsMap,
     });
 
-    // Spell area — locked placement or the caster's live cursor preview.
-    const circle = cast.circle || (canPlace ? hover : null);
-    if (circle) {
-      const px = circle.cx * MAGIC_CANVAS_WIDTH;
-      const py = circle.cy * MAGIC_CANVAS_HEIGHT;
-      const pr = circle.r * MAGIC_CANVAS_WIDTH;
-      drawAreaShape(ctx, areaShape, cast.rotation, px, py, pr);
+    // Placed markers + the caster's live cursor preview (only while under max).
+    for (const mk of cast.markers) {
+      drawAreaShape(ctx, areaShape, cast.rotation, mk.circle.cx * MAGIC_CANVAS_WIDTH, mk.circle.cy * MAGIC_CANVAS_HEIGHT, mk.circle.r * MAGIC_CANVAS_WIDTH);
     }
-  }, [cast, hover, canPlace, seed, sizeCategories, formationsMap, areaShape]);
+    const preview = canPlace && cast.markers.length < cast.maxMarkers ? hover : null;
+    if (preview) {
+      drawAreaShape(ctx, areaShape, cast.rotation, preview.cx * MAGIC_CANVAS_WIDTH, preview.cy * MAGIC_CANVAS_HEIGHT, preview.r * MAGIC_CANVAS_WIDTH);
+    }
+  }, [cast.markers, cast.maxMarkers, cast.rotation, hover, canPlace, seed, sizeCategories, formationsMap, areaShape]);
 
   const countCovered = useCallback((cxPx: number, cyPx: number): number => {
     const { positions, dotRadius } = computeSpellCastLayout(cast.snapshot, MAGIC_CANVAS_WIDTH, MAGIC_CANVAS_HEIGHT, seed, sizeCategories, formationsMap);
@@ -283,8 +285,8 @@ export function MagicCastModal({
       cy: cyPx / MAGIC_CANVAS_HEIGHT,
       r: dimensionFraction,
     };
-    onPlaceCircle(circle, countCovered(cxPx, cyPx));
-  }, [canPlace, cast.resolved, dimensionFraction, countCovered, onPlaceCircle]);
+    onPlaceMarker(circle, countCovered(cxPx, cyPx));
+  }, [canPlace, cast.resolved, dimensionFraction, countCovered, onPlaceMarker]);
 
   const handleCanvasWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
     if (areaShape === 'circle') return;
@@ -315,7 +317,8 @@ export function MagicCastModal({
     };
   }, []);
 
-  const okDisabled = !canEdit || cast.resolved || !cast.circle || cast.affectedCount <= 0;
+  const totalAffected = cast.markers.reduce((a, m) => a + m.affectedCount, 0);
+  const okDisabled = !canEdit || cast.resolved || cast.markers.length === 0 || totalAffected <= 0;
   const savedCount = cast.result?.savedCount ?? 0;
   const failedCount = cast.result?.failedCount ?? 0;
 
@@ -357,16 +360,30 @@ export function MagicCastModal({
           )}
         </div>
 
-        {/* Affected count stepper */}
+        {/* Markers (one per hit for a war machine; a single area for a spell) */}
         <div className="px-4 pb-3 flex flex-col items-center gap-1">
-          <div className="text-xs text-gray-400">Troops affected</div>
-          <Stepper
-            value={cast.affectedCount}
-            onChange={(n) => onOverrideCount(n)}
-            disabled={!canEdit || cast.resolved}
-            min={0}
-            max={cast.snapshot.maxTroopCount}
-          />
+          <div className="text-xs text-gray-400">
+            {cast.maxMarkers > 1
+              ? <>Markers {cast.markers.length}/{cast.maxMarkers} · troops affected {totalAffected}</>
+              : <>Troops affected {cast.markers[0]?.affectedCount ?? 0}</>}
+          </div>
+          <div className="flex items-center gap-2">
+            <Stepper
+              value={cast.markers.length > 0 ? cast.markers[cast.markers.length - 1].affectedCount : 0}
+              onChange={(n) => onOverrideMarkerCount(cast.markers.length - 1, n)}
+              disabled={!canEdit || cast.resolved || cast.markers.length === 0}
+              min={0}
+              max={cast.snapshot.maxTroopCount}
+            />
+            {canEdit && !cast.resolved && cast.markers.length > 0 && (
+              <button onClick={onClearMarkers} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-white">
+                Clear
+              </button>
+            )}
+          </div>
+          {cast.maxMarkers > 1 && !cast.resolved && (
+            <div className="text-[11px] text-gray-500">Click the map to place up to {cast.maxMarkers} markers (one per hit)</div>
+          )}
         </div>
 
         {/* Save inputs (hidden for healing — healing isn't resisted) */}
@@ -377,7 +394,7 @@ export function MagicCastModal({
         ) : (
         <div className="px-4 pb-4 space-y-2 border-t border-gray-700 pt-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-400">Saving throw stat</span>
+            <span className="text-xs text-gray-400">Saving throw</span>
             <div className="flex gap-1">
               {SAVE_STATS.map(stat => {
                 const active = cast.saveStat === stat;
@@ -399,30 +416,46 @@ export function MagicCastModal({
                   </button>
                 );
               })}
+              <button
+                disabled={!canEdit || cast.resolved}
+                onClick={() => onSetSave({ saveStat: 'none' })}
+                title="No saving throw — every covered troop takes full damage."
+                className={`px-2 py-1 rounded text-xs font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed ${
+                  cast.saveStat === 'none' ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                No save
+              </button>
             </div>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-400">Save DC</span>
-            <Stepper
-              value={cast.saveDC}
-              onChange={(v) => onSetSave({ saveDC: v })}
-              disabled={!canEdit || cast.resolved}
-              min={0}
-              max={50}
-            />
-          </div>
-          <label className={`flex items-center gap-2 text-xs ${canEdit && !cast.resolved ? 'cursor-pointer' : 'opacity-70'}`}>
-            <input
-              type="checkbox"
-              checked={cast.halfOnSave}
-              disabled={!canEdit || cast.resolved}
-              onChange={(e) => onSetSave({ halfOnSave: e.target.checked })}
-              className="accent-yellow-400"
-            />
-            <span className="text-gray-300">
-              {cast.halfOnSave ? '1/2 damage' : 'Negate'} on successful save
-            </span>
-          </label>
+          {cast.saveStat === 'none' ? (
+            <div className="text-xs text-amber-300">No save — every covered troop takes full damage.</div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">Save DC</span>
+                <Stepper
+                  value={cast.saveDC}
+                  onChange={(v) => onSetSave({ saveDC: v })}
+                  disabled={!canEdit || cast.resolved}
+                  min={0}
+                  max={50}
+                />
+              </div>
+              <label className={`flex items-center gap-2 text-xs ${canEdit && !cast.resolved ? 'cursor-pointer' : 'opacity-70'}`}>
+                <input
+                  type="checkbox"
+                  checked={cast.halfOnSave}
+                  disabled={!canEdit || cast.resolved}
+                  onChange={(e) => onSetSave({ halfOnSave: e.target.checked })}
+                  className="accent-yellow-400"
+                />
+                <span className="text-gray-300">
+                  {cast.halfOnSave ? '1/2 damage' : 'Negate'} on successful save
+                </span>
+              </label>
+            </>
+          )}
         </div>
         )}
 

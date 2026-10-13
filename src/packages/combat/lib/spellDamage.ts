@@ -26,6 +26,9 @@ export interface ResolveSpellDamageInput {
   /** When true the weapon is healing: each affected troop recovers HP instead of
    *  taking damage (no save — healing isn't resisted). */
   isHealing?: boolean;
+  /** When true there is NO saving throw: every affected troop takes the full
+   *  (capped) base damage — the save stat/DC/half flag are all ignored. */
+  noSave?: boolean;
   affectedCount: number;
   troopHp: number;
   /** Saving-throw roll mode (from the target's save advantage/disadvantage effects). */
@@ -51,6 +54,7 @@ export function resolveSpellDamage({
   saveDC,
   halfOnSave,
   isHealing = false,
+  noSave = false,
   affectedCount,
   troopHp,
   saveMode = 'normal',
@@ -68,6 +72,13 @@ export function resolveSpellDamage({
       const heal = clampDamage(baseDamage, troopHp);
       totalDamage += heal;
       perTroop.push({ roll: 0, saveResult: 0, success: true, damage: heal });
+      continue;
+    }
+    if (noSave) {
+      // No saving throw: every covered troop takes the full (capped) damage.
+      const damage = clampDamage(baseDamage, troopHp);
+      totalDamage += damage;
+      perTroop.push({ roll: 0, saveResult: 0, success: false, damage });
       continue;
     }
     const roll = saveMode === 'advantage'

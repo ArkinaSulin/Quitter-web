@@ -418,6 +418,20 @@ restricted to **same-alliance** targets (the hard alliance gate above).
 Morale is checked on damaged targets after the damage lands (a spell can rout).
 Magic costs an action unless `freeAction`.
 
+**No save** (`savingThrow: 'none'`, also the `resolveSpellDamage({ noSave })`
+input): the save stat/DC/Neg-half are all ignored and **every covered troop takes
+full damage**. Set it in the weapon editor's *Saving throw* dropdown.
+
+**War-machine bombardment.** A war machine (`weapon.warMachine`) routed against a
+**troop unit (>1 troop)** in range rolls its `numberOfAttacks` to-hit shots
+(`combat/warMachine.rollWarMachineHits` — nat 1 misses, nat 20 hits, else
+`d20 + attackBonus >= ranged AC`, honouring advantage/disadvantage) and opens the
+magic window with **`maxMarkers` = the hit count** (one AoE marker per hit). The
+caster places up to that many markers over the target's troops; `handleResolveCast`
+resolves **each marker** (`resolveSpellDamage`) and sums the damage into one CAST
+command. Against a **hero** or a **1-troop** unit the same weapon resolves as a
+normal single-target ranged attack (no window).
+
 ## Command shape
 
 An ATTACK command usually carries: optional WEAPON_SELECT sub-steps (auto-draw

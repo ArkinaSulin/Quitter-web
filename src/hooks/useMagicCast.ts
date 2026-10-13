@@ -27,6 +27,14 @@ export interface MagicCircle {
   r: number;
 }
 
+/** One placed area marker (a shape + the troop dots it covers). A normal spell
+ *  has a single marker; a war-machine bombardment places up to `maxMarkers`
+ *  (one per landed shot). */
+export interface MagicMarker {
+  circle: MagicCircle;
+  affectedCount: number;
+}
+
 export interface MagicCastResult {
   baseDamage: number;
   totalDamage: number;
@@ -48,14 +56,15 @@ export interface MagicCastState {
   weapon: Weapon;
   /** Snapshot of the target's troop layout so every client draws the same token. */
   snapshot: SpellCastTokenSnapshot;
-  circle: MagicCircle | null;
+  /** Placed area markers (each = a covered circle + its troop count). */
+  markers: MagicMarker[];
+  /** How many markers may be placed (1 for a normal spell; #hits for a war
+   *  machine bombardment). */
+  maxMarkers: number;
   /** Rotation (degrees) of the area shape (cube/cone; circle is symmetric). */
   rotation: number;
-  /** Number of dots/triangles covered by the area (auto-computed, overridable). */
-  affectedCount: number;
-  countManual: boolean;
-  /** Which of the 6 ability save bonuses the target rolls. */
-  saveStat: SaveStat;
+  /** Which of the 6 ability save bonuses the target rolls, or 'none' (no save). */
+  saveStat: SaveStat | 'none';
   /** The target unit's six ability save bonuses (for display + resolve). */
   targetStats: UnitSaveStats;
   saveDC: number;
@@ -68,12 +77,11 @@ export interface MagicCastState {
 }
 
 type MagicCastEvent =
-  | { type: 'open'; id: string; casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; reaction?: boolean }
+  | { type: 'open'; id: string; casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; maxMarkers?: number; reaction?: boolean }
   | { type: 'cancel'; id: string }
-  | { type: 'place'; id: string; circle: MagicCircle; affectedCount: number }
+  | { type: 'markers'; id: string; markers: MagicMarker[] }
   | { type: 'rotate'; id: string; rotation: number }
-  | { type: 'count'; id: string; affectedCount: number; countManual: boolean }
-  | { type: 'save'; id: string; saveStat: SaveStat; saveDC: number; halfOnSave: boolean }
+  | { type: 'save'; id: string; saveStat: SaveStat | 'none'; saveDC: number; halfOnSave: boolean }
   | { type: 'resolve'; id: string; result: MagicCastResult };
 
 interface MagicCastSync {
@@ -155,11 +163,10 @@ export function useMagicCast(scenarioId: string) {
               weapon: event.weapon,
               snapshot: event.snapshot,
               targetStats: event.targetStats,
-              circle: null,
+              markers: [],
+              maxMarkers: event.maxMarkers ?? 1,
               rotation: 0,
-              affectedCount: 0,
-              countManual: false,
-              saveStat: (event.weapon.savingThrow ?? 'Dex') as SaveStat,
+              saveStat: (event.weapon.savingThrow ?? 'Dex') as SaveStat | 'none',
               saveDC: event.weapon.saveDC ?? 10,
               halfOnSave: event.weapon.onSaveHalfOrNeg ?? true,
               resolved: false,
@@ -172,12 +179,10 @@ export function useMagicCast(scenarioId: string) {
         switch (event.type) {
           case 'cancel':
             return null;
-          case 'place':
-            return { ...prev, circle: event.circle, affectedCount: event.affectedCount, countManual: false };
+          case 'markers':
+            return { ...prev, markers: event.markers };
           case 'rotate':
             return { ...prev, rotation: event.rotation };
-          case 'count':
-            return { ...prev, affectedCount: event.affectedCount, countManual: event.countManual };
           case 'save':
             return { ...prev, saveStat: event.saveStat, saveDC: event.saveDC, halfOnSave: event.halfOnSave };
           case 'resolve':
@@ -218,8 +223,9 @@ export function useMagicCast(scenarioId: string) {
     }
   }, []);
 
-  const openCast = useCallback((opts: { casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; reaction?: boolean }) => {
+  const openCast = useCallback((opts: { casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; maxMarkers?: number; reaction?: boolean }) => {
     const id = crypto.randomUUID();
+    const maxMarkers = Math.max(1, opts.maxMarkers ?? 1);
     const event: MagicCastEvent = {
       type: 'open',
       id,
@@ -231,6 +237,7 @@ export function useMagicCast(scenarioId: string) {
       weapon: opts.weapon,
       snapshot: opts.snapshot,
       targetStats: opts.targetStats,
+      maxMarkers,
       reaction: opts.reaction,
     };
     setCast({
@@ -244,11 +251,10 @@ export function useMagicCast(scenarioId: string) {
       weapon: opts.weapon,
       snapshot: opts.snapshot,
       targetStats: opts.targetStats,
-      circle: null,
+      markers: [],
+      maxMarkers,
       rotation: 0,
-      affectedCount: 0,
-      countManual: false,
-      saveStat: (opts.weapon.savingThrow ?? 'Dex') as SaveStat,
+      saveStat: (opts.weapon.savingThrow ?? 'Dex') as SaveStat | 'none',
       saveDC: opts.weapon.saveDC ?? 10,
       halfOnSave: opts.weapon.onSaveHalfOrNeg ?? true,
       resolved: false,
@@ -265,12 +271,32 @@ export function useMagicCast(scenarioId: string) {
     send({ type: 'cancel', id: current.id });
   }, [send]);
 
-  const placeCircle = useCallback((circle: MagicCircle, affectedCount: number) => {
+  const setMarkers = useCallback((markers: MagicMarker[]) => {
     const current = castRef.current;
     if (!current) return;
-    setCast({ ...current, circle, affectedCount, countManual: false });
-    send({ type: 'place', id: current.id, circle, affectedCount });
+    setCast({ ...current, markers });
+    send({ type: 'markers', id: current.id, markers });
   }, [send]);
+
+  /** Place a marker: append while under `maxMarkers`, else replace the last one. */
+  const placeMarker = useCallback((circle: MagicCircle, affectedCount: number) => {
+    const current = castRef.current;
+    if (!current) return;
+    const markers = current.markers.length < current.maxMarkers
+      ? [...current.markers, { circle, affectedCount }]
+      : (current.markers.length > 0 ? [...current.markers.slice(0, -1), { circle, affectedCount }] : [{ circle, affectedCount }]);
+    setMarkers(markers);
+  }, [setMarkers]);
+
+  const clearMarkers = useCallback(() => setMarkers([]), [setMarkers]);
+
+  /** Update one marker's covered-troop count (the "Troops affected" stepper). */
+  const overrideMarkerCount = useCallback((index: number, affectedCount: number) => {
+    const current = castRef.current;
+    if (!current) return;
+    const clamped = Math.max(0, Math.min(current.snapshot.maxTroopCount, Math.round(affectedCount)));
+    setMarkers(current.markers.map((m, i) => (i === index ? { ...m, affectedCount: clamped } : m)));
+  }, [setMarkers]);
 
   const rotateArea = useCallback((rotation: number) => {
     const current = castRef.current;
@@ -280,15 +306,7 @@ export function useMagicCast(scenarioId: string) {
     send({ type: 'rotate', id: current.id, rotation: norm });
   }, [send]);
 
-  const overrideCount = useCallback((affectedCount: number) => {
-    const current = castRef.current;
-    if (!current) return;
-    const clamped = Math.max(0, Math.min(current.snapshot.maxTroopCount, Math.round(affectedCount)));
-    setCast({ ...current, affectedCount: clamped, countManual: true });
-    send({ type: 'count', id: current.id, affectedCount: clamped, countManual: true });
-  }, [send]);
-
-  const setSave = useCallback((patch: { saveStat?: SaveStat; saveDC?: number; halfOnSave?: boolean }) => {
+  const setSave = useCallback((patch: { saveStat?: SaveStat | 'none'; saveDC?: number; halfOnSave?: boolean }) => {
     const current = castRef.current;
     if (!current) return;
     const next = {
@@ -307,5 +325,5 @@ export function useMagicCast(scenarioId: string) {
     send({ type: 'resolve', id: current.id, result });
   }, [send]);
 
-  return { cast, openCast, cancelCast, placeCircle, rotateArea, overrideCount, setSave, sendResolve };
+  return { cast, openCast, cancelCast, placeMarker, clearMarkers, overrideMarkerCount, rotateArea, setSave, sendResolve };
 }

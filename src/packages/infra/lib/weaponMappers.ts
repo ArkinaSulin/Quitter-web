@@ -12,7 +12,7 @@ export interface LibraryWeapon extends Weapon {
 
 export function mapWeaponRow(row: any): LibraryWeapon {
   const shape = row?.shape as AreaShape;
-  const savingThrow = row?.saving_throw as SaveStat;
+  const savingThrow = (row?.saving_throw as string) || 'Dex';
   return {
     id: row?.id,
     name: row?.name || '',
@@ -29,7 +29,7 @@ export function mapWeaponRow(row: any): LibraryWeapon {
     isTwoHanded: !!row?.is_two_handed,
     numberOfAttacks: Number(row?.number_of_attacks) || 1,
     onSaveHalfOrNeg: row?.on_save_half_or_neg ?? true,
-    savingThrow: SAVE_STATS.includes(savingThrow) ? savingThrow : 'Dex',
+    savingThrow: (SAVE_STATS.includes(savingThrow as SaveStat) || savingThrow === 'none') ? (savingThrow as SaveStat) : 'Dex',
     saveDC: Number(row?.save_dc) || 10,
     warMachine: !!row?.war_machine,
     minRange: Math.max(0, Number(row?.min_range) || 0),

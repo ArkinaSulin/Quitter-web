@@ -45,8 +45,11 @@ export function useCastActions(deps: CastActionsDeps) {
   // damage through the command engine (undoable), then run morale/rout like combat.
   const handleResolveCast = useCallback(async (overBudget: boolean) => {
     const cast = magicCast.cast;
-    if (!cast || cast.resolved || !cast.circle || cast.affectedCount <= 0) return;
+    if (!cast || cast.resolved || cast.markers.length === 0) return;
     if (!isGM && playerId !== cast.casterId) return;
+
+    const totalAffected = cast.markers.reduce((a, m) => a + m.affectedCount, 0);
+    if (totalAffected <= 0) return;
 
     const target = units.find(u => u.id === cast.targetUnitId);
     const caster = units.find(u => u.id === cast.casterUnitId);
@@ -79,7 +82,7 @@ export function useCastActions(deps: CastActionsDeps) {
         saveDC: 0,
         halfOnSave: true,
         isHealing: true,
-        affectedCount: cast.affectedCount,
+        affectedCount: totalAffected,
         troopHp: target.troopHp,
         rng: Math.random,
       });
@@ -113,30 +116,38 @@ export function useCastActions(deps: CastActionsDeps) {
           ],
         });
       }
-      const healDesc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${healResult.baseDamage}, ${cast.affectedCount} troop(s) affected — ${healResult.totalDamage} total healing${troopsRecovered > 0 ? ` (${troopsRecovered} troop(s) recovered)` : ''}`;
+      const healDesc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${healResult.baseDamage}, ${totalAffected} troop(s) affected — ${healResult.totalDamage} total healing${troopsRecovered > 0 ? ` (${troopsRecovered} troop(s) recovered)` : ''}`;
       const healMsg = `${healDesc} ${formatSpellRollLine(healResult, 0)}`;
       await execute('HEAL', healSteps, healDesc, { verboseMessage: healMsg });
       magicCast.sendResolve({ baseDamage: healResult.baseDamage, totalDamage: healResult.totalDamage, troopsKilled: 0, newHp, savedCount: 0, failedCount: 0, description: healDesc });
       return;
     }
 
+    const noSave = cast.saveStat === 'none';
     const flags = saveRollFlags(target);
     const saveMode: 'advantage' | 'disadvantage' | 'normal' = flags.advantage && !flags.disadvantage ? 'advantage' : flags.disadvantage && !flags.advantage ? 'disadvantage' : 'normal';
-    const saveBonus = (cast.targetStats[cast.saveStat.toLowerCase() as keyof typeof cast.targetStats] ?? 0)
+    const saveBonus = (noSave ? 0 : (cast.targetStats[cast.saveStat.toLowerCase() as keyof typeof cast.targetStats] ?? 0))
       + effectSaveBonus(target)
       + heroAuraBonus(target, units, alliances).save;
-    const result = resolveSpellDamage({
+    // One resolve per AoE marker (a war machine places one per hit); the damage
+    // from every marker sums into a single applied blow.
+    const results = cast.markers.map(mk => resolveSpellDamage({
       damageDice: cast.weapon.damageDice,
       saveBonus,
       saveDC: cast.saveDC,
       halfOnSave: cast.halfOnSave,
-      affectedCount: cast.affectedCount,
+      noSave,
+      affectedCount: mk.affectedCount,
       troopHp: target.troopHp,
       saveMode,
       rng: Math.random,
-    });
+    }));
+    const totalDamage = results.reduce((a, r) => a + r.totalDamage, 0);
+    const baseDamage = results[0]?.baseDamage ?? 0;
+    const savedCount = results.reduce((a, r) => a + r.perTroop.filter(t => t.success).length, 0);
+    const failedCount = results.reduce((a, r) => a + r.perTroop.length, 0) - savedCount;
 
-    const newHp = Math.max(0, target.currentUnitHp - result.totalDamage);
+    const newHp = Math.max(0, target.currentUnitHp - totalDamage);
     const newTroops = Math.ceil(newHp / target.troopHp);
     const troopsKilled = target.currentTroopCount - newTroops;
 
@@ -155,10 +166,10 @@ export function useCastActions(deps: CastActionsDeps) {
         changes: casterChanges,
       });
     }
-    if (result.totalDamage > 0) {
+    if (totalDamage > 0) {
       subSteps.push({
         type: 'DAMAGE',
-        description: `${target.unitName} took ${result.totalDamage} damage from ${cast.weapon.name}`,
+        description: `${target.unitName} took ${totalDamage} damage from ${cast.weapon.name}`,
         unitId: target.id,
         changes: [
           { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
@@ -168,10 +179,11 @@ export function useCastActions(deps: CastActionsDeps) {
       });
     }
 
-    const savedCount = result.perTroop.filter(t => t.success).length;
-    const failedCount = result.perTroop.length - savedCount;
-    const desc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${result.baseDamage}, ${cast.affectedCount} troop(s) affected, ${savedCount} saved, ${failedCount} failed — ${result.totalDamage} total damage (${troopsKilled} troop(s))`;
-    const msg = `${desc} ${formatSpellRollLine(result, cast.saveDC)}`;
+    const markerNote = cast.markers.length > 1 ? `${cast.markers.length} markers, ` : '';
+    const saveNote = noSave ? ' (no save)' : `, ${savedCount} saved, ${failedCount} failed`;
+    const verb = cast.weapon.warMachine ? `fires ${cast.weapon.name} at` : `casts ${cast.weapon.name} on`;
+    const desc = `${caster.unitName} ${verb} ${target.unitName} — base ${baseDamage}, ${markerNote}${totalAffected} troop(s) affected${saveNote} — ${totalDamage} total damage (${troopsKilled} troop(s))`;
+    const msg = `${desc} ${results.map(r => formatSpellRollLine(r, cast.saveDC)).join(' · ')}`;
 
     await execute('CAST', subSteps, desc, { verboseMessage: msg });
 
@@ -187,8 +199,8 @@ export function useCastActions(deps: CastActionsDeps) {
     }
 
     magicCast.sendResolve({
-      baseDamage: result.baseDamage,
-      totalDamage: result.totalDamage,
+      baseDamage,
+      totalDamage,
       troopsKilled,
       newHp,
       savedCount,
@@ -199,7 +211,7 @@ export function useCastActions(deps: CastActionsDeps) {
 
   const requestResolveCast = useCallback(() => {
     const cast = magicCast.cast;
-    if (!cast || cast.resolved || !cast.circle || cast.affectedCount <= 0) return;
+    if (!cast || cast.resolved || cast.markers.length === 0) return;
     if (!isGM && playerId !== cast.casterId) return;
     const caster = units.find(u => u.id === cast.casterUnitId);
     if (caster && caster.actionsAvailable < 1 && !cast.weapon.freeAction) {

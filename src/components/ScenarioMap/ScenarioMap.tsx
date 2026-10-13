@@ -4083,9 +4083,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           sizeCategories={sizeCategories}
           formationsMap={formationsMap}
           onCancel={magicCast.cancelCast}
-          onPlaceCircle={magicCast.placeCircle}
+          onPlaceMarker={magicCast.placeMarker}
+          onClearMarkers={magicCast.clearMarkers}
           onRotate={magicCast.rotateArea}
-          onOverrideCount={magicCast.overrideCount}
+          onOverrideMarkerCount={magicCast.overrideMarkerCount}
           onSetSave={magicCast.setSave}
           onRequestResolve={requestResolveCast}
         />

@@ -483,6 +483,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
         cha: mover.cha ?? 0,
       },
       reaction: true,
+      maxMarkers: 1,
     });
   }, [magicCast, playerId, playerName]);
 

@@ -1,5 +1,29 @@
 # QuiTTER Changelog
 
+## War-machine bombardment + no-save area damage (L2) (2026-10-12)
+**Files:** src/packages/combat/lib/{warMachine,spellDamage}.ts (+ tests), src/hooks/useMagicCast.ts, src/components/ScenarioMap/{MagicCastModal,useCastActions,useCombatActions,useReactionActions,ScenarioMap}.tsx, src/packages/{units/lib/weaponParser,infra/lib/weaponMappers}.ts, src/components/WeaponEditor/WeaponFields.tsx, docs/dev/{08,14,changelog}.md, docs/players/player-manual.md
+
+- **Bombardment routing** (`useCombatActions.handleAttackRequest`): a war machine
+  firing at a **troop unit (>1 troop)** in range now rolls its per-unit
+  `numberOfAttacks` to-hit shots (`combat/warMachine.ts#rollWarMachineHits` — nat 1
+  miss, nat 20 hit, else `d20 + attackBonus >= ranged AC`, honouring
+  advantage/disadvantage/LoS/long-range) and opens the magic window with
+  **`maxMarkers` = hits** (one AoE marker per hit). Against a **hero** or a
+  **1-troop** unit it stays a normal single-target ranged attack (no window) —
+  the war machine is no longer "always magic" (it melees like a bow, and the area
+  branch excludes it).
+- **Multi-marker magic window** (`useMagicCast` + `MagicCastModal`): the single
+  `circle`/`affectedCount` became `markers: {circle, affectedCount}[]` + a
+  `maxMarkers` cap; the caster places up to N markers (click adds, "Clear"
+  removes), each live-counted. `handleResolveCast` resolves **every marker**
+  (`resolveSpellDamage`) and sums the damage into one CAST command.
+- **No-save area damage**: `resolveSpellDamage` gained a `noSave` input (every
+  covered troop takes full capped damage, no roll). Authored as a new
+  **`Saving throw = No save`** option (`savingThrow: 'none'`); the modal shows a
+  "No save" button and hides the DC / Neg-half controls.
+- Weapon Editor: the **War machine** toggle now defaults `magicDimension = 5` /
+  `circle`. `tsc` clean, tests pass (1082), build clean. **Apply migration 126.**
+
 ## War-machine weapons: per-unit attacks, min range, min crew (L1) (2026-10-12)
 **Files:** src/packages/units/lib/weaponParser.ts, src/packages/infra/lib/weaponMappers.ts, src/packages/combat/lib/{unitCombat,meleeFallback}.ts, src/packages/ai/lib/planner.ts, src/components/ScenarioMap/{useCombatActions,ScenarioMap}.tsx, src/components/WeaponEditor/WeaponFields.tsx, supabase/migrations/126_weapon_war_machine.sql, docs/dev/{02,08,14,changelog}.md
 

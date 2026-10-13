@@ -32,8 +32,26 @@ describe('resolveSpellDamage', () => {
     expect(result.totalDamage).toBe(result.baseDamage * 5);
   });
 
-  it('applies half (floored) damage on success when halfOnSave is set', () => {
-    // saveBonus huge → every troop succeeds → each takes floor(base/2)
+  it('noSave: every covered troop takes full damage with no roll (DC/half/negate ignored)', () => {
+    const result = resolveSpellDamage({
+      damageDice: '1d6',
+      saveBonus: 1000, // would always save, but noSave ignores it
+      saveDC: 1,
+      halfOnSave: true,
+      noSave: true,
+      affectedCount: 4,
+      troopHp: 100,
+      rng: seededRng(3),
+    });
+    expect(result.perTroop).toHaveLength(4);
+    for (const t of result.perTroop) {
+      expect(t.roll).toBe(0);
+      expect(t.damage).toBe(result.baseDamage);
+    }
+    expect(result.totalDamage).toBe(result.baseDamage * 4);
+  });
+
+  it('applies half (floored) damage on success when halfOnSave is set', () => {    // saveBonus huge → every troop succeeds → each takes floor(base/2)
     const result = resolveSpellDamage({
       damageDice: '1d6',
       saveBonus: 100,

@@ -6,7 +6,7 @@
 // end/overrun helpers. Owns the attack-related soft-enforcement states.
 import { useCallback, useState } from 'react';
 import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance, UnitEffect, GroundEffect, getOrganizationLevel } from '@/types/gameProtocol';
-import { resolveCombatSequence, determineCombatPosition, suppressRetaliation, rollDamageDetailed, computeAttackCount, CombatOutcome, AttackerHeroProfile, wallCoverAgainst, attachedDefenderHeroShare, protectedHeroHost, inHostRearCone } from '@/packages/combat';
+import { resolveCombatSequence, determineCombatPosition, suppressRetaliation, rollDamageDetailed, computeAttackCount, combatRollMode, rollWarMachineHits, CombatOutcome, AttackerHeroProfile, wallCoverAgainst, attachedDefenderHeroShare, protectedHeroHost, inHostRearCone } from '@/packages/combat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/packages/movement';
 import { isProtectedHero } from '@/packages/units';
 import { isChargeOverEligible, computeChargeOverLandingHex } from '@/packages/combat';
@@ -191,10 +191,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // Adjacency forces a MELEE weapon only when the combatant stands in the
     // opponent's kill zone (engaged frontally) OR the weapon is below its own
     // minimum range (a war machine can't fire point-blank). Outside those, a
-    // ranged weapon may fire at point-blank; magic always acts at range.
+    // ranged weapon may fire at point-blank; magic always acts at range. A war
+    // machine is NOT magic here — it melees like a bow (crew falls back).
     const inTargetKillZone = isInKillZone(target, attacker.hex, attacker.elevation, structureSurfaceAt(target.hex, structures, structureTemplates), structures, structureTemplates);
     const inAttackerKillZone = isInKillZone(attacker, target.hex, target.elevation, structureSurfaceAt(attacker.hex, structures, structureTemplates), structures, structureTemplates);
-    if (isAdjacent && weapon.magicDimension <= 0 && (inTargetKillZone || dist < (weapon.minRange ?? 0)) && !isMeleeWeapon(weapon)) {
+    const isMagicWeapon = weapon.magicDimension > 0 && !weapon.warMachine;
+    if (isAdjacent && !isMagicWeapon && (inTargetKillZone || dist < (weapon.minRange ?? 0)) && !isMeleeWeapon(weapon)) {
       const attackerWeapons = parseWeapons(attacker.weaponString || '');
       const meleeIdx = findFirstMeleeWeaponIndex(attackerWeapons);
       if (meleeIdx !== -1) {
@@ -205,7 +207,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
         usedFists = true;
       }
     }
-    const isRanged = weapon.magicDimension > 0 || !isAdjacent
+    const isRanged = isMagicWeapon || !isAdjacent
       || (isAdjacent && !inTargetKillZone && !isMeleeWeapon(weapon));
     // A MELEE exchange also forces the defender's melee weapon when the defender
     // is engaged frontally by the attacker.
@@ -1388,8 +1390,64 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
 
+    // War machine: crew-served (per-unit attacks). Against a HERO or a lone
+    // survivor it resolves as a normal ranged attack (falls through below).
+    // Against a troop unit it BOMBARDS — roll the shots and place one AoE marker
+    // per hit over the target's troops.
+    if (weapon.warMachine && isRangedThisAttack && reachDist >= (weapon.minRange ?? 0) && !target.isHero && target.currentTroopCount > 1) {
+      if (isUnitRouted(attacker)) {
+        addMessage(`${attacker.unitName} (Routed) cannot fire`);
+        return;
+      }
+      const shots = Math.max(1, weapon.numberOfAttacks ?? 1);
+      const attForm = formationsMap[attacker.currentFormation];
+      const atkAura = heroAuraBonus(attacker, units, alliances, true);
+      const defAura = heroAuraBonus(target, units, alliances, true);
+      const attackBonus = weapon.attackBonus + (attForm?.attack_modifier ?? 0) + atkAura.attack + effectAttackBonus(attacker, true);
+      const targetAc = effectiveAc(target, formationsMap[target.currentFormation] ?? null, attackDirection(attacker.hex, target.hex, target.facing), true, wallCoverAgainst(walls, attacker.hex, target.hex, true), defAura.ac);
+      const aFlags = attackRollFlags(attacker);
+      const tFlags = attackRollFlags(target);
+      const rangeDis = reachDist > (weapon.range ?? 1) && reachDist <= (weapon.maxRange ?? weapon.range ?? 1);
+      const losDis = !hasLineOfSight(attacker.hex, target.hex, units, new Set([attacker.id, target.id]), structures, structureTemplates, { fromElevation: attacker.elevation ?? 0, toElevation: target.elevation ?? 0 });
+      const mode = combatRollMode({ attackerAdvantage: aFlags.advantage, attackerDisadvantage: aFlags.disadvantage, targetAdvantage: tFlags.grantAdvantage, targetDisadvantage: tFlags.grantDisadvantage, rangeDisadvantage: rangeDis, losDisadvantage: losDis }).mode;
+      const { hits } = rollWarMachineHits(shots, attackBonus, targetAc, Math.random, mode);
+      if (hits <= 0) {
+        addMessage(`${attacker.unitName} fires ${weapon.name} at ${target.unitName} — all ${shots} shot(s) missed`);
+        return;
+      }
+      magicCast.openCast({
+        casterId: playerId,
+        casterName: playerName,
+        casterUnitId: attacker.id,
+        targetUnitId: target.id,
+        targetUnitName: target.unitName,
+        weapon,
+        snapshot: {
+          team: target.team,
+          currentFormation: target.currentFormation,
+          currentTroopCount: target.currentTroopCount,
+          maxTroopCount: target.maxTroopCount,
+          sizeCategory: target.sizeCategory,
+          visualScale: target.visualScale,
+          mountId: target.mountId,
+          flySpeed: target.flySpeed ?? 0,
+        },
+        targetStats: {
+          str: target.str ?? 0,
+          dex: target.dex ?? 0,
+          con: target.con ?? 0,
+          int: target.int ?? 0,
+          wis: target.wis ?? 0,
+          cha: target.cha ?? 0,
+        },
+        maxMarkers: hits,
+      });
+      addMessage(`${attacker.unitName} fires ${weapon.name} at ${target.unitName} — ${hits}/${shots} hit — place ${hits} blast marker(s)`);
+      return;
+    }
+
     // Area-effect weapons (magic radius > 0) open the shared magic targeting window.
-    if (weapon.magicDimension > 0) {
+    if (weapon.magicDimension > 0 && !weapon.warMachine) {
       if (isUnitRouted(attacker)) {
         addMessage(`${attacker.unitName} (Routed) cannot cast spells`);
         return;
