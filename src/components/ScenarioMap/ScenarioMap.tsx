@@ -3457,7 +3457,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[380px] max-h-[85vh] overflow-y-auto">
             <p className="text-white text-sm mb-4 text-center font-semibold">Scenario Settings</p>
             <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2 border-b-2 border-gray-600 pb-1">This device</div>
-            <div className="pl-3">
+            <div className="pl-6">
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -3489,7 +3489,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             </div>
             {effectiveIsGM && (<>
             <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mt-5 mb-2 border-b-2 border-gray-600 pb-1">Combat &amp; reactions</div>
-            <div className="pl-3">
+            <div className="pl-6">
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -3544,7 +3544,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             </div>
 
             <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mt-5 mb-2 border-b-2 border-gray-600 pb-1">Heroes</div>
-            <div className="pl-3">
+            <div className="pl-6">
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -3564,7 +3564,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             </div>
 
             <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mt-5 mb-2 border-b-2 border-gray-600 pb-1">Visibility</div>
-            <div className="pl-3">
+            <div className="pl-6">
             <label className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer">
               <input
                 type="checkbox"
@@ -3576,7 +3576,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               />
               <span className="font-medium text-amber-300">Fog of war</span>
             </label>
-            <div className="pl-6 mt-1">
+            <div className="pl-12 mt-1">
               <label className="flex items-center gap-2 text-gray-400 text-xs cursor-text">
                 Sight radius
                 <input
@@ -3600,7 +3600,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             </div>
 
             <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mt-5 mb-2 border-b-2 border-gray-600 pb-1">Assist &amp; logs</div>
-            <div className="pl-3">
+            <div className="pl-6">
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
               <input
                 type="checkbox"

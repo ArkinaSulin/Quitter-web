@@ -248,11 +248,11 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
             return (
               <section key={group.title}>
                 <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2 border-b-2 border-gray-600 pb-1">{group.title}</h3>
-                <div className="space-y-0.5">
+                <div className="space-y-0.5 pl-6">
                   {group.fields.map(f => renderRow(f.key, f.label, f.hint))}
                 </div>
                 {group.note && (
-                  <p className="text-[11px] text-gray-500 mt-1">{group.note}</p>
+                  <p className="text-[11px] text-gray-500 mt-1 pl-6">{group.note}</p>
                 )}
               </section>
             );
@@ -260,7 +260,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           {otherRows.length > 0 && (
             <section>
               <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2 border-b-2 border-gray-600 pb-1">Other</h3>
-              <div className="space-y-0.5">
+              <div className="space-y-0.5 pl-6">
                 {otherRows.map(r => renderRow(r.key, r.key, r.description, true))}
               </div>
             </section>
