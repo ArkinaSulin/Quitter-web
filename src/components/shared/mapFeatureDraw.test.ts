@@ -19,6 +19,7 @@ const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => (
   mpMountedUp: 4,
   mpMountedDown: 4,
   doorHp: null,
+  ac: 10,
   maxHp: 30,
   dt: 15,
   modifiers: [],

@@ -55,6 +55,9 @@ export interface StructureTemplate {
   mpClimbDown: number;
   mpMountedUp: number;
   mpMountedDown: number;
+  /** Armor Class: an attacker must beat this with each attack (`d20 + attackBonus
+   *  >= ac`) for the blow to land; a miss deals no damage. Default 10. */
+  ac: number;
   /** Passage gate pool. NULL = no explicit door (app defaults to maxHp). 0 = passable. */
   doorHp: number | null;
   /** Structure pool. <= 0 = destroyed (instance removed). */

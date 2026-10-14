@@ -97,6 +97,17 @@ export function formatStructureAttackRolls(rolls: number[], dt: number, damageDi
 }
 
 /**
+ * To-hit line for a structure attack (the new AC gate): the d20 faces, the
+ * attacker's bonus and the structure AC, and how many beat it (nat 1 misses,
+ * nat 20 hits). e.g. `3 attacks (d20 +5 vs AC 12: 18,7,20 → 2 hit)`.
+ */
+export function formatStructureToHit(toHit: number[], attackBonus: number, ac: number): string {
+  if (!toHit.length) return '0 attacks';
+  const hits = toHit.filter(r => r === 20 || (r !== 1 && r + attackBonus >= ac)).length;
+  return `${toHit.length} attack${toHit.length === 1 ? '' : 's'} (d20 ${attackBonus >= 0 ? '+' : ''}${attackBonus} vs AC ${ac}: ${sorted(toHit).join(',')} → ${hits} hit)`;
+}
+
+/**
  * Full verbose clause for one strike volley (first strike, retaliation, or a
  * reaction shot). Appended after the "N attacks" summary:
  * `, {D20+3 vs 12: 11,12,13,20}. 2 hits {12,13}, 1 critical {20}, 12 damage {1d8+2: 3,5}`

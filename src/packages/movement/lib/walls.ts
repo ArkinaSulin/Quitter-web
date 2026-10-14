@@ -65,6 +65,8 @@ export interface Wall {
   // --- Phase 2: destructibility (per segment) ---
   hp?: number;
   maxHp?: number;
+  /** Armor Class: a to-hit (`d20 + attackBonus >= ac`) is required to damage it. */
+  ac?: number;
   /** Damage Threshold: a single hit below this does nothing; at/above deals full. */
   dt?: number;
   /** Current door pool. Passage across the edge is gated while doorHp > 0. */
@@ -364,6 +366,7 @@ export function parseWalls(raw: any): Walls {
     const wall: Wall = { a: parseFace((v as any).a), b: parseFace((v as any).b) };
     if (isNum((v as any).maxHp)) wall.maxHp = Math.max(0, Math.round((v as any).maxHp));
     if (isNum((v as any).hp)) wall.hp = Math.max(0, Math.round((v as any).hp));
+    if (isNum((v as any).ac)) wall.ac = Math.max(0, Math.round((v as any).ac));
     // An authored maxHp with no explicit hp starts at full health.
     if (wall.maxHp !== undefined && wall.hp === undefined) wall.hp = wall.maxHp;
     if (isNum((v as any).dt)) wall.dt = Math.max(0, Math.round((v as any).dt));

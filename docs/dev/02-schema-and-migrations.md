@@ -186,6 +186,7 @@ as applied in the notes — check the live DB before relying on it).
 | 124 | drop the vestigial `undo_stack_size` game setting (undo is server-side) | ⏳ run in Supabase |
 | 125 | drop the `heroic_capacity_multiplier` setting (hero aura is now authored effect modifiers) | ⏳ run in Supabase |
 | 126 | war-machine weapon fields: `unit_weapons.war_machine` / `min_range` / `min_crew` | ⏳ run in Supabase |
+| 127 | structure Armor Class: `map_structure_templates.ac` (default 10) | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

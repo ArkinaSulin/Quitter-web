@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## Structure AC + thinner line spell shape (2026-10-12)
+**Files:** src/types/structure.ts, src/packages/movement/lib/{structureTemplates,walls,mapStructures}.ts, src/packages/combat/lib/{wallCombat,structureCombat}.ts, src/packages/units/lib/verboseCombat.ts, src/components/StructureEditor/StructureEditor.tsx, src/components/ScenarioMap/{ScenarioMap,MagicCastModal}.tsx, supabase/migrations/127_structure_ac.sql, docs/dev/{02,08,13,14,18,changelog}.md
+
+- **Structures have an Armor Class** (`StructureTemplate.ac`, default 10;
+  migration **127**). Every structure attack (edge wall / hex gate-tower, melee or
+  ranged) now rolls a **to-hit per attack** — `d20 + attackBonus >= ac` (nat 1
+  misses, nat 20 hits; `attackBonus` = weapon `attackBonus` + formation
+  `attack_modifier`) — and a **miss deals nothing**; only hits roll damage into the
+  existing DT/door/HP pools (`resolveWallAttack` / `resolveHexStructureAttack` now
+  return `toHit[]`/`hits`). The runtime `Wall` carries `ac` (set in
+  `structuresToWalls`). Verbose shows `formatStructureToHit` (`3 attacks (d20 +5 vs
+  AC 12: 7,18,20 → 2 hit)`) before the damage clause.
+- **Structure Editor Durability** area gains **AC** as the first field, before Max
+  HP.
+- **Line spell shape halved**: `MagicCastModal`'s line is now **2.5 ft** wide (was
+  5 ft) — drawing and troop count both use the same constant.
+- `tsc` clean, tests pass, build clean. **Apply migration 127.**
+
 ## War-machine bombardment + no-save area damage (L2) (2026-10-12)
 **Files:** src/packages/combat/lib/{warMachine,spellDamage}.ts (+ tests), src/hooks/useMagicCast.ts, src/components/ScenarioMap/{MagicCastModal,useCastActions,useCombatActions,useReactionActions,ScenarioMap}.tsx, src/packages/{units/lib/weaponParser,infra/lib/weaponMappers}.ts, src/components/WeaponEditor/WeaponFields.tsx, docs/dev/{08,14,changelog}.md, docs/players/player-manual.md
 

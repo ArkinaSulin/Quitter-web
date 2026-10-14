@@ -46,7 +46,7 @@ import { isHostile, allianceOf, facingToward } from '@/packages/primitives';
 import { canRally } from '@/packages/morale';
 import { computeVisibleHexes, computeFog, hexKey, DEFAULT_SIGHT_RADIUS, FOG_UNSEEN_GM_ALPHA, FOG_UNSEEN_PLAYER_ALPHA } from '@/packages/world';
 import { supabase } from '@/packages/infra/supabase';
-import { getFormationMultiplier, computeEffectiveMovement, getRowCapacity } from '@/packages/units';
+import { getFormationMultiplier, getFormationModifier, computeEffectiveMovement, getRowCapacity } from '@/packages/units';
 import { computeAttackCount } from '@/packages/combat';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
@@ -59,7 +59,7 @@ import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { getStructureTemplates } from '@/packages/infra';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/packages/combat';
 import { hexStructureAttackKind, resolveHexStructureAttack, isAttackableHexStructure, structureDoorMax } from '@/packages/combat';
-import { formatStructureAttackRolls } from '@/packages/units';
+import { formatStructureAttackRolls, formatStructureToHit } from '@/packages/units';
 import { StructureEditModal, StructureInstancePatch } from '@/components/StructureEditModal';
 import { unitAttackCap } from '@/packages/combat';
 import { newEffectKey, rangeBonusAt } from '@/packages/effects';
@@ -1174,20 +1174,23 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (overCap) addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
 
     const attacks = structureAttackCount(attacker, weapon.numberOfAttacks ?? 1, weapon.warMachine ?? false);
-    const result = resolveWallAttack(wall, weapon, Math.random, attacks);
+    const attackBonus = weapon.attackBonus + getFormationModifier(formationsMap, attacker.currentFormation, 'attack_modifier');
+    const result = resolveWallAttack(wall, weapon, Math.random, attacks, attackBonus);
     const to = result.destroyed
       ? null
       : { ...inst, hp: result.wall.hp, ...(result.doorHpAfter !== undefined ? { doorHp: result.doorHpAfter } : {}) };
 
     const doorNote = result.doorHpAfter !== undefined && result.doorHpAfter > 0 ? ` (door ${result.doorHpAfter}/${wall.doorMax ?? 0})` : '';
-    // Chronological: [attacked → damage past DT] · [outcome].
-    const attackPlain = `${attacker.unitName} attacked the barrier at ${label} → ${result.applied} past DT`;
-    const attackVerbose = `${attacker.unitName} attacked the barrier at ${label} → ${formatStructureAttackRolls(result.rolls, wall.dt ?? 0, weapon.damageDice)}`;
-    const outcome = result.deflected
-      ? `the blow is shrugged off (DT ${wall.dt ?? 0})`
-      : result.destroyed
-        ? 'destroyed'
-        : `${wallHp(result.wall)}/${wall.maxHp} HP left${doorNote}`;
+    // Chronological: [attacked → to-hit → damage past DT] · [outcome].
+    const attackPlain = `${attacker.unitName} attacked the barrier at ${label} → ${result.hits}/${attacks} hit → ${result.applied} past DT`;
+    const attackVerbose = `${attacker.unitName} attacked the barrier at ${label} → ${formatStructureToHit(result.toHit, attackBonus, wall.ac ?? 10)} · ${formatStructureAttackRolls(result.rolls, wall.dt ?? 0, weapon.damageDice)}`;
+    const outcome = result.hits === 0
+      ? `all attacks missed (AC ${wall.ac ?? 10})`
+      : result.deflected
+        ? `the blow is shrugged off (DT ${wall.dt ?? 0})`
+        : result.destroyed
+          ? 'destroyed'
+          : `${wallHp(result.wall)}/${wall.maxHp} HP left${doorNote}`;
     const message = [attackPlain, outcome].join(' · ');
     const verbose = [attackVerbose, outcome].join(' · ');
     await execute('ATTACK', [
@@ -1262,7 +1265,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (overCap) addError(`${attacker.unitName} attacked past the ${cap}-attack cap (${(attacker.attacksUsed ?? 0) + 1}/${cap})`);
 
     const attacks = structureAttackCount(attacker, weapon.numberOfAttacks ?? 1, weapon.warMachine ?? false);
-    const result = resolveHexStructureAttack(template, inst, weapon, Math.random, attacks);
+    const attackBonus = weapon.attackBonus + getFormationModifier(formationsMap, attacker.currentFormation, 'attack_modifier');
+    const result = resolveHexStructureAttack(template, inst, weapon, Math.random, attacks, attackBonus);
     // A destroyed structure (0 HP) is REMOVED from the map (hex and edge alike).
     const to = result.destroyed ? null : { ...inst, hp: result.hpAfter, doorHp: result.doorHpAfter };
 
@@ -1335,16 +1339,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
 
     const doorNow = result.doorHpAfter;
-    // Chronological: [attacked → damage past DT] · [outcome] · [consequences: falls].
-    const attackPlain = `${attacker.unitName} attacked the structure at ${label} → ${result.applied} past DT`;
-    const attackVerbose = `${attacker.unitName} attacked the structure at ${label} → ${formatStructureAttackRolls(result.rolls, template.dt ?? 0, weapon.damageDice)}`;
-    const outcome = result.deflected
-      ? `the blow is shrugged off (DT ${template.dt})`
-      : result.destroyed
-        ? 'destroyed'
-        : result.hitDoor
-          ? `door ${doorNow}/${structureDoorMax(template)} HP left`
-          : `${result.hpAfter}/${template.maxHp} HP left`;
+    // Chronological: [attacked → to-hit → damage past DT] · [outcome] · [falls].
+    const attackPlain = `${attacker.unitName} attacked the structure at ${label} → ${result.hits}/${attacks} hit → ${result.applied} past DT`;
+    const attackVerbose = `${attacker.unitName} attacked the structure at ${label} → ${formatStructureToHit(result.toHit, attackBonus, template.ac ?? 10)} · ${formatStructureAttackRolls(result.rolls, template.dt ?? 0, weapon.damageDice)}`;
+    const outcome = result.hits === 0
+      ? `all attacks missed (AC ${template.ac ?? 10})`
+      : result.deflected
+        ? `the blow is shrugged off (DT ${template.dt})`
+        : result.destroyed
+          ? 'destroyed'
+          : result.hitDoor
+            ? `door ${doorNow}/${structureDoorMax(template)} HP left`
+            : `${result.hpAfter}/${template.maxHp} HP left`;
     const message = [attackPlain, outcome, ...fallNotes].join(' · ');
     const verbose = [attackVerbose, outcome, ...fallNotes].join(' · ');
     await execute('ATTACK', subSteps, `${attacker.unitName} attacked the structure at ${label}`, { message, verboseMessage: verbose });

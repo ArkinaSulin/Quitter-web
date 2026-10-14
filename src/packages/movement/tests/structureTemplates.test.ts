@@ -40,6 +40,8 @@ describe('mapStructureRow', () => {
     expect(t?.mpMountedDown).toBe(2);
     expect(t?.doorHp).toBeNull();
     expect(t?.maxHp).toBe(30);
+    expect(t?.ac).toBe(10); // row omits it -> default AC 10
+    expect(mapStructureRow({ ac: 15 }).ac).toBe(15);
     expect(t?.hexBorder).toBe(true); // default when the row omits it
     expect(t?.modifiers).toEqual([{ kind: 'ac', dice: '2', mode: 'melee' }]);
     expect(templateDoorMax(t)).toBe(30); // null door defaults to maxHp
@@ -76,6 +78,7 @@ describe('mapStructureToRow', () => {
     expect(row.door_hp).toBe(30);
     expect(row.mp_climb_up).toBe(2);
     expect(row.max_hp).toBe(100);
+    expect(row.ac).toBe(10); // base default
     expect(row.mp_climb_down).toBe(4); // base default (NOT NULL DEFAULT 4)
   });
 
@@ -100,6 +103,7 @@ describe('blankStructureTemplate', () => {
     expect(t.maxHp).toBe(30);
     expect(t.dt).toBe(15);
     expect(t.doorHp).toBe(30); // defaults to maxHp (no free passage)
+    expect(t.ac).toBe(10);
     expect(t.anchor).toBe('edge');
     expect(t.modifiers).toEqual([]);
   });

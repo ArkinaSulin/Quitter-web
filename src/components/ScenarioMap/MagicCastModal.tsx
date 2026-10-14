@@ -18,8 +18,8 @@ export const HEX_RADIUS_FRACTION = 1 / 1.6;
  */
 export const SPELL_RADIUS_SCALE = 0.70;
 
-/** Half-width of a `line` shape (5 ft) in canvas pixels. */
-const LINE_HALF_WIDTH_PX = (5 / 25) * HEX_RADIUS_FRACTION * SPELL_RADIUS_SCALE * MAGIC_CANVAS_WIDTH / 2;
+/** Half-width of a `line` shape (2.5 ft) in canvas pixels. */
+const LINE_HALF_WIDTH_PX = (2.5 / 25) * HEX_RADIUS_FRACTION * SPELL_RADIUS_SCALE * MAGIC_CANVAS_WIDTH / 2;
 
 /** Is a dot (px,py) inside the placed area centered at (cx,cy) with size rPx? */
 function pointInArea(shape: AreaShape, rotationDeg: number, cx: number, cy: number, rPx: number, px: number, py: number): boolean {

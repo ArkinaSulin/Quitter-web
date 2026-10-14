@@ -19,7 +19,7 @@ const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => (
   ladder: false,
   hexBorder: true,
   mpClimbUp: 2, mpClimbDown: 4, mpMountedUp: -1, mpMountedDown: 4,
-  doorHp: 30, maxHp: 100, dt: 15, modifiers: [], createdAt: '', updatedAt: '',
+  doorHp: 30, ac: 10, maxHp: 100, dt: 15, modifiers: [], createdAt: '', updatedAt: '',
   ...over,
 });
 
@@ -146,14 +146,29 @@ describe('resolveHexStructureAttack (simultaneous door + HP)', () => {
   });
 
   it('multi-attack sums only the rolls that meet the DT', () => {
-    // Rolling 6, 6, then 4 against DT 5: the two 6s land, the 4 is shrugged
-    // (≥ DT lands), so 12 survives. A deterministic sequence rng.
-    let i = 0; const seq = [6, 6, 4];
-    const rng = () => (seq[i++] - 1) / 6;
+    // 3 attacks: each rolls to-hit (face 10 = hit vs AC 10) then a damage roll
+    // (6, 6, 4 against DT 5) — the two 6s land, the 4 is shrugged.
+    const face = (n: number) => (n - 1) / 6;   // 1d6 → n
+    const d20 = (n: number) => (n - 0.5) / 20; // d20 face n
+    let i = 0; const seq = [d20(10), face(6), d20(10), face(6), d20(10), face(4)];
+    const rng = () => seq[i++];
     const r = resolveHexStructureAttack(template({ dt: 5 }), inst(), bow, rng, 3);
     expect(r.damage).toBe(16);
     expect(r.applied).toBe(12);
     expect(r.rolls).toEqual([6, 6, 4]);
     expect(r.hpAfter).toBe(88);
+  });
+
+  it('requires a to-hit vs the AC (a miss deals nothing; nat 20 hits)', () => {
+    // to-hit face 5 (+0 bonus) < AC 10 → miss for both attacks.
+    let i = 0; const seq = [(5 - 0.5) / 20, (5 - 0.5) / 20];
+    const miss = resolveHexStructureAttack(template(), inst(), bow, () => seq[i++], 2);
+    expect(miss.hits).toBe(0);
+    expect(miss.toHit).toEqual([5, 5]);
+    expect(miss.rolls).toEqual([]);
+    expect(miss.applied).toBe(0);
+    // AC 99 with a nat 20 → hit.
+    const nat20 = resolveHexStructureAttack(template({ ac: 99 }), inst(), bow, () => (20 - 0.5) / 20, 1);
+    expect(nat20.hits).toBe(1);
   });
 });

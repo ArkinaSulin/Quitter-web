@@ -6,6 +6,7 @@ import {
   formatSpellRollLine,
   formatStrikeDetail,
   formatStructureAttackRolls,
+  formatStructureToHit,
 } from '@/packages/units/lib/verboseCombat';
 import type { SingleAttackResult } from '@/packages/combat';
 import type { SpellDamageResult } from '@/packages/combat';
@@ -166,6 +167,18 @@ describe('verboseCombat', () => {
     it('counts a roll equal to the DT as landing (>= DT)', () => {
       expect(formatStructureAttackRolls([5], 5, '1d8'))
         .toBe('1 attack {1d8 vs DT 5: 5 → 1 over DT, 5 damage}');
+    });
+  });
+
+  describe('formatStructureToHit', () => {
+    it('shows the d20 faces, the bonus, the AC and how many hit', () => {
+      // 18 hit, 7 miss (7+2<12), 20 nat-20 hit
+      expect(formatStructureToHit([18, 7, 20], 2, 12))
+        .toBe('3 attacks (d20 +2 vs AC 12: 7,18,20 → 2 hit)');
+    });
+
+    it('a natural 1 always misses', () => {
+      expect(formatStructureToHit([1], 50, 10)).toBe('1 attack (d20 +50 vs AC 10: 1 → 0 hit)');
     });
   });
 });

@@ -543,7 +543,7 @@ export function structuresToWalls(
     const bFace = outsideIsA ? faceFromTemplate(t, mods, 'inside', st.openOrBroken) : faceFromTemplate(t, mods, 'outside', st.openOrBroken);
     const maxHp = t.maxHp;
     const door = instanceDoorState(inst, t);
-    const wall: Wall = { a: aFace, b: bFace, source: 'map' };
+    const wall: Wall = { a: aFace, b: bFace, source: 'map', ac: t.ac };
     if (maxHp > 0) {
       wall.maxHp = maxHp;
       wall.hp = inst.hp ?? maxHp;

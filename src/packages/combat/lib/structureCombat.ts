@@ -7,7 +7,7 @@
 import { Unit, Hex, Formation, hexDistance } from '@/types/gameProtocol';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { determineCombatPosition } from '@/packages/combat/lib/unitCombat';
-import { clampDamage, rollDamage } from '@/packages/primitives';
+import { clampDamage, rollDamage, rollD20 } from '@/packages/primitives';
 import { arcOfTarget } from '@/packages/primitives';
 import { canMeleeTarget, canRangedTarget } from '@/packages/movement';
 import { isUnitRouted } from '@/packages/morale';
@@ -73,8 +73,12 @@ export interface HexStructureAttackResult {
   damage: number;
   /** Damage actually applied (0 when deflected). */
   applied: number;
-  /** Each attack's raw damage roll (before the DT gate), in engine order. */
+  /** Each attack's raw damage roll (before the DT gate), in engine order (hits only). */
   rolls: number[];
+  /** Each attack's d20 to-hit face, in engine order. */
+  toHit: number[];
+  /** Attacks that beat the structure's AC. */
+  hits: number;
   deflected: boolean;
   /** The blow landed while a door still stood. */
   hitDoor: boolean;
@@ -87,10 +91,10 @@ export interface HexStructureAttackResult {
 }
 
 /**
- * Roll `attacks` damage rolls against a hex structure (the unit-combat attack
- * count: row capacity × capacity multiplier × weapon attacks, plus a hero volley)
- * and apply DT + simultaneous door/HP damage. DT gates EACH hit (a hit BELOW DT
- * is shrugged; at/above DT deals full); the surviving hits are summed and applied once.
+ * Resolve `attacks` attacks against a hex structure. Each attack first rolls
+ * to-hit (`d20 + attackBonus >= template.ac`, default AC 10; nat 1 misses, nat 20
+ * hits) — a miss deals nothing. Each HIT rolls weapon damage, gated by DT, then
+ * applies simultaneous door/HP damage.
  */
 export function resolveHexStructureAttack(
   template: StructureTemplate,
@@ -98,16 +102,25 @@ export function resolveHexStructureAttack(
   weapon: HexStructureWeapon,
   rng: () => number,
   attacks = 1,
+  attackBonus = 0,
 ): HexStructureAttackResult {
   const doorCur = structureDoorCurrent(template, instance);
   const doorStanding = !instance.open && doorCur > 0;
   const maxHp = template.maxHp;
   const hp = instance.hp ?? maxHp;
   const dt = template.dt ?? 0;
+  const ac = template.ac ?? 10;
   let damage = 0;
   let applied = 0;
+  let hits = 0;
   const rolls: number[] = [];
+  const toHit: number[] = [];
   for (let i = 0; i < Math.max(1, attacks); i++) {
+    const roll = rollD20(rng);
+    toHit.push(roll);
+    const hit = roll === 1 ? false : roll === 20 ? true : roll + attackBonus >= ac;
+    if (!hit) continue;
+    hits += 1;
     const r = clampDamage(rollDamage(weapon.damageDice, rng));
     rolls.push(r);
     damage += r;
@@ -115,7 +128,7 @@ export function resolveHexStructureAttack(
   }
 
   if (applied <= 0) {
-    return { damage, applied: 0, rolls, deflected: true, hitDoor: doorStanding, doorHpAfter: doorCur, hpAfter: hp, destroyed: false };
+    return { damage, applied: 0, rolls, toHit, hits, deflected: true, hitDoor: doorStanding, doorHpAfter: doorCur, hpAfter: hp, destroyed: false };
   }
   const hpAfter = Math.max(0, hp - applied);
   const doorHpAfter = instance.open ? 0 : Math.max(0, doorCur - applied);
@@ -123,6 +136,8 @@ export function resolveHexStructureAttack(
     damage,
     applied,
     rolls,
+    toHit,
+    hits,
     deflected: false,
     hitDoor: doorStanding,
     doorHpAfter,

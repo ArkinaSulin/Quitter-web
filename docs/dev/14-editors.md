@@ -107,7 +107,9 @@ right = a `StructurePreview`.
 - Hex structures carry an optional **Door HP**
   (`NULL` = no door; the door shares the template DT and resolves door-first,
   then the structure HP).
-- **Durability** `maxHp` (default 30) / `dt` (default 15).
+- **Durability** **AC** (default 10) / `maxHp` (default 30) / `dt` (default 15) —
+  the attacker must beat the AC with each attack (`d20 + attackBonus >= ac`) to
+  damage the structure (`13`). Migration **127** adds `map_structure_templates.ac`.
 - **Modifiers** reuse the effect modifier row (`EffectModifierFields`), so a
   tower can carry `advantage` + `grant_disadvantage` auras, entry damage, or the
   reusable **`enter_org_max`** gate (only formations at or below an org level may

@@ -74,6 +74,7 @@ export function mapStructureRow(row: any): StructureTemplate {
     mpMountedUp: climbMp(row.mp_mounted_up),
     mpMountedDown: climbMp(row.mp_mounted_down),
     doorHp: numOrNull(row.door_hp),
+    ac: row.ac === null || row.ac === undefined ? 10 : Math.max(0, Math.round(num(row.ac))),
     maxHp: Math.max(0, Math.round(num(row.max_hp))),
     dt: Math.max(0, Math.round(num(row.dt))),
     modifiers: parseModifiers(row.modifiers),
@@ -87,7 +88,7 @@ export function mapStructureToRow(t: Pick<StructureTemplate,
   'name' | 'description' | 'anchor' | 'color' | 'imageUrl' | 'battlement' | 'barricade' | 'sinWave' | 'ladder' | 'hexBorder' |
   'elevation' |
   'mpClimbUp' | 'mpClimbDown' | 'mpMountedUp' | 'mpMountedDown' |
-  'doorHp' | 'maxHp' | 'dt' | 'modifiers'>) {
+  'ac' | 'doorHp' | 'maxHp' | 'dt' | 'modifiers'>) {
   const maxHp = Math.max(0, Math.round(num(t.maxHp)));
   // Door pool clamped to [0, maxHp]; null = "no explicit door".
   const door = t.doorHp === null || t.doorHp === undefined
@@ -110,6 +111,7 @@ export function mapStructureToRow(t: Pick<StructureTemplate,
     mp_mounted_up: climbMp(t.mpMountedUp),
     mp_mounted_down: climbMp(t.mpMountedDown),
     door_hp: door,
+    ac: Math.max(0, Math.round(num(t.ac ?? 10))),
     max_hp: maxHp,
     dt: Math.max(0, Math.round(num(t.dt))),
     modifiers: Array.isArray(t.modifiers) ? t.modifiers : [],
@@ -135,6 +137,7 @@ export function blankStructureTemplate(): Omit<StructureTemplate, 'id' | 'create
     mpMountedUp: 4,
     mpMountedDown: 4,
     doorHp: 30,
+    ac: 10,
     maxHp: 30,
     dt: 15,
     modifiers: [],
@@ -142,7 +145,7 @@ export function blankStructureTemplate(): Omit<StructureTemplate, 'id' | 'create
 }
 
 /** Sanitize a draft before saving (clamp, keep negatives, drop blanks). */
-export function sanitizeStructureTemplate<T extends { anchor: StructureAnchor; doorHp: number | null; maxHp: number; dt: number; modifiers: EffectModifier[] }>(t: T): T {
+export function sanitizeStructureTemplate<T extends { anchor: StructureAnchor; doorHp: number | null; ac: number; maxHp: number; dt: number; modifiers: EffectModifier[] }>(t: T): T {
   const maxHp = Math.max(0, Math.round(t.maxHp));
   const doorHp = t.doorHp === null ? null : Math.max(0, Math.min(maxHp, Math.round(t.doorHp)));
   return {
@@ -150,6 +153,7 @@ export function sanitizeStructureTemplate<T extends { anchor: StructureAnchor; d
     maxHp,
     doorHp,
     elevation: clampInt((t as any).elevation, 0, 9990, 0),
+    ac: clampInt(t.ac, 0, 99, 10),
     dt: clampInt(t.dt, 0, 999, 15),
     modifiers: t.modifiers.filter(m => !!m && typeof m.kind === 'string'),
   };

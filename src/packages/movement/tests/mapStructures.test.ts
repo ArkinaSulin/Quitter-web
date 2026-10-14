@@ -26,6 +26,7 @@ const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => (
   mpMountedUp: -1,
   mpMountedDown: 4,
   doorHp: 30,
+  ac: 10,
   maxHp: 30,
   dt: 15,
   modifiers: [{ kind: 'ac', dice: '2', mode: 'melee' }, { kind: 'ac', dice: '2', mode: 'ranged' }],

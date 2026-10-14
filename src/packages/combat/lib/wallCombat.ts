@@ -8,7 +8,7 @@
 import { Unit, Hex, Formation, hexDistance } from '@/types/gameProtocol';
 import { Wall, EdgeRef, applyWallDamage, isDestructibleWall, WallDamageResult } from '@/packages/movement';
 import { determineCombatPosition } from '@/packages/combat/lib/unitCombat';
-import { clampDamage, rollDamage } from '@/packages/primitives';
+import { clampDamage, rollDamage, rollD20 } from '@/packages/primitives';
 import { arcOfTarget } from '@/packages/primitives';
 import { canMeleeTarget, canRangedTarget } from '@/packages/movement';
 import { isUnitRouted } from '@/packages/morale';
@@ -73,34 +73,48 @@ export function wallAttackKind(
 export interface WallAttackResult extends WallDamageResult {
   /** The rolled weapon damage (before the DT gate). */
   damage: number;
-  /** Each attack's raw damage roll (before the DT gate), in engine order. */
+  /** Each attack's raw damage roll (before the DT gate), in engine order (hits only). */
   rolls: number[];
+  /** Each attack's d20 to-hit face, in engine order. */
+  toHit: number[];
+  /** Attacks that beat the wall's AC. */
+  hits: number;
 }
 
 /**
- * Roll `attacks` damage rolls against a wall (the unit-combat attack count: row
- * capacity × capacity multiplier × weapon attacks, plus a hero volley) and apply
- * HP/DT. DT gates EACH hit (a blow BELOW DT is shrugged; at/above DT deals full);
- * the surviving hits are summed and applied once.
+ * Resolve `attacks` attacks against a wall. Each attack first rolls to-hit
+ * (`d20 + attackBonus >= wall.ac`, default AC 10; nat 1 misses, nat 20 hits) —
+ * a miss deals nothing. Each HIT rolls weapon damage, gated by the wall's Damage
+ * Threshold (a blow BELOW DT is shrugged; at/above DT deals full); surviving hits
+ * are summed and applied once.
  */
 export function resolveWallAttack(
   wall: Wall,
   weapon: WallWeapon,
   rng: () => number,
   attacks = 1,
+  attackBonus = 0,
 ): WallAttackResult {
   if (!isDestructibleWall(wall)) {
-    return { wall, applied: 0, destroyed: false, deflected: true, damage: 0, rolls: [] };
+    return { wall, applied: 0, destroyed: false, deflected: true, damage: 0, rolls: [], toHit: [], hits: 0 };
   }
+  const ac = wall.ac ?? 10;
   const dt = Math.max(0, wall.dt ?? 0);
   let damage = 0;
   let surmount = 0;
+  let hits = 0;
   const rolls: number[] = [];
+  const toHit: number[] = [];
   for (let i = 0; i < Math.max(1, attacks); i++) {
+    const roll = rollD20(rng);
+    toHit.push(roll);
+    const hit = roll === 1 ? false : roll === 20 ? true : roll + attackBonus >= ac;
+    if (!hit) continue;
+    hits += 1;
     const r = clampDamage(rollDamage(weapon.damageDice, rng));
     rolls.push(r);
     damage += r;
     if (r >= dt) surmount += r;
   }
-  return { ...applyWallDamage(wall, surmount), damage, rolls };
+  return { ...applyWallDamage(wall, surmount), damage, rolls, toHit, hits };
 }

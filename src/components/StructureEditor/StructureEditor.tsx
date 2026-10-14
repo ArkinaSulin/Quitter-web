@@ -363,6 +363,9 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
               <div className="rounded border border-gray-700 p-2 space-y-2">
                 <p className="text-[10px] uppercase tracking-wide text-gray-500">Durability</p>
                 <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                  <label className="flex items-center gap-1">AC
+                    <NumInput value={draft.ac} readOnly={readOnly} onChange={v => patch({ ac: v ?? 10 })} max={99} />
+                  </label>
                   <label className="flex items-center gap-1">Max HP
                     <NumInput value={draft.maxHp} readOnly={readOnly} onChange={v => patch({ maxHp: v ?? 0 })} max={9999} />
                   </label>

@@ -402,8 +402,8 @@ own turn start). Gated by `archer_reaction_enabled`. Reaction shots ride
 ## Magic & area effects
 
 `combat/spellDamage.ts`: area weapons (`magicDimension > 0`) with a **shape**
-(`circle` = radius · `cube` = side · `cone` = 60° wedge; `magicDimension` in
-feet). The cast window places/rotates the shape on the map; the caster picks
+(`circle` = radius · `cube` = side · `cone` = 60° wedge · `line` = 2.5 ft wide,
+length = `magicDimension`; all in feet). The cast window places/rotates the shape on the map; the caster picks
 the number of affected troops and the save. Resolution rolls the damage dice
 **once** (base), then per affected troop rolls `D20 + saveBonus` against the
 Save DC (`str/dex/con/int/wis/cha`):

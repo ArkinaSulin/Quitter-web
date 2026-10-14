@@ -128,8 +128,11 @@ hides unit/corpse tokens ("inspect mode"). Reach (`combat/wallCombat.wallAttackK
 **melee** when the attacker stands on either edge hex **and faces the wall** within
 its formation's attack arcs (see `08-combat` "Attack arcs"; normal formations must
 face the wall, Scattered/Hero strike any side), else **ranged** when its weapon's
-`maxRange` covers the nearer edge hex (ranged arcs apply). There is **no to-hit roll** —
-reaching the target is the hit; the attack lands the unit-combat **attack count**
+`maxRange` covers the nearer edge hex (ranged arcs apply). Each attack now rolls a
+**to-hit** first — `d20 + attackBonus >= structure AC` (nat 1 misses, nat 20 hits;
+the defender's `ac`, default 10, is edited in the Structure Editor's Durability
+area and carried on the runtime `Wall`/template) — and a **miss deals nothing**.
+Each hit lands the unit-combat **attack count**
 (eligible attackers = row capacity × capacity multiplier, capped by troops, ×
 weapon `numberOfAttacks`, plus a front-attached hero's volley) — DT gates **each
 hit** (a roll **below** DT is shrugged; **at or above** deals full), surviving hits
@@ -137,9 +140,11 @@ are summed, and `applyWallDamage` / `resolveHexStructureAttack`
 apply the total to the HP (and door) pool(s). Attacking costs **1 action** and
 counts toward the attack cap (soft-confirmed when over), with no AGR/retaliation.
 Under **verbose combat** the message is **chronological**:
-`[attacked → damage past DT] · [outcome] · [consequences]` — the dice clause
-(`formatStructureAttackRolls`, e.g. `3 attacks {1d8 vs DT 5: 3,5,7 → 2 over DT, 12 damage}`)
-is verbose-only, and a destroyed structure's collapse-fall notes come last
+`[attacked → to-hit → damage past DT] · [outcome] · [consequences]` — the to-hit
+clause (`formatStructureToHit`, e.g. `3 attacks (d20 +5 vs AC 12: 7,18,20 → 2 hit)`)
+and the dice clause
+(`formatStructureAttackRolls`, e.g. `2 attacks {1d8 vs DT 5: 5,7 → 2 over DT, 12 damage}`)
+are verbose-only, and a destroyed structure's collapse-fall notes come last
 (`fell 10 ft — (1d6: 4) per troop × 20 = 80 HP`). `hp <= 0` removes the segment.
 
 Persistence rides the command log: the command is `ATTACK` with a **`STRUCTURE`**

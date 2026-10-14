@@ -33,10 +33,12 @@ map), exactly like weapons/effects split authored vs placed.
 Instances are keyed by anchor: `"q,r,dir"` for edges, `"q,r"` for hexes
 (`src/packages/movement/lib/mapStructures.ts`). A placed instance may override the template's
 durability (maxHp / hp / dt / doorHp) so the GM can drop a reinforced gate
-without authoring a new template. On assign, edge structures are converted to the
-runtime `Walls` shape via `structuresToWalls` (inside/outside mapped by
-`outside`) so the existing movement/combat/render model is untouched until the
-scenario is migrated (Slice 3).
+without authoring a new template. Each template also carries an **AC** (default
+10, migration **127**): an attacker must beat it (`d20 + attackBonus >= ac`) with
+each attack to damage the structure (`13`). On assign, edge structures are
+converted to the runtime `Walls` shape via `structuresToWalls` (inside/outside
+mapped by `outside`, plus the template `ac`) so the existing
+movement/combat/render model is untouched until the scenario is migrated (Slice 3).
 
 ## Anchors
 

@@ -108,9 +108,24 @@ describe('resolveWallAttack', () => {
 
   it('floors each roll at 1 (a negative-bonus weapon still chips the wall)', () => {
     const weak = { damageDice: '1d6-4', range: 1, maxRange: 1 };
-    const r = resolveWallAttack(wall({ dt: 0 }), weak, () => 0, 1); // 1d6 → 1, raw -3 → 1
+    // to-hit face 11 (hit AC 10), then 1d6-4 → 1 (raw -3 floored to 1)
+    let i = 0; const seq = [(11 - 0.5) / 20, 0];
+    const r = resolveWallAttack(wall({ dt: 0 }), weak, () => seq[i++], 1);
     expect(r.rolls).toEqual([1]);
     expect(r.damage).toBe(1);
     expect(r.applied).toBe(1);
+  });
+
+  it('requires a to-hit vs the wall AC (a miss deals nothing)', () => {
+    // to-hit face 5 (+0 bonus) < AC 10 → miss, no damage roll.
+    const r = resolveWallAttack(wall(), bow, () => (5 - 0.5) / 20, 1);
+    expect(r.hits).toBe(0);
+    expect(r.toHit).toEqual([5]);
+    expect(r.rolls).toEqual([]);
+    expect(r.applied).toBe(0);
+    expect(r.deflected).toBe(true);
+    // A nat 20 always hits even under a high AC.
+    const nat20 = resolveWallAttack(wall({ ac: 99 }), bow, () => (20 - 0.5) / 20, 1, 0);
+    expect(nat20.hits).toBe(1);
   });
 });
