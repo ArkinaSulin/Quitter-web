@@ -384,8 +384,8 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const outcome = resolveCombatSequence(
       combatAttacker,
       combatTarget,
-      { attackBonus: combatWeapon.attackBonus, damageDice: combatWeapon.damageDice, is_reach: combatWeapon.reach, noRetaliation: combatWeapon.noRetaliation, freeAction: combatWeapon.freeAction, numberOfAttacks: combatWeapon.numberOfAttacks, range: combatWeapon.range, maxRange: combatWeapon.maxRange },
-      combatDefWeapon ? { attackBonus: combatDefWeapon.attackBonus, damageDice: combatDefWeapon.damageDice, is_reach: combatDefWeapon.reach, numberOfAttacks: combatDefWeapon.numberOfAttacks } : null,
+      { attackBonus: combatWeapon.attackBonus, damageDice: combatWeapon.damageDice, is_reach: combatWeapon.reach, noRetaliation: combatWeapon.noRetaliation, freeAction: combatWeapon.freeAction, numberOfAttacks: combatWeapon.numberOfAttacks, range: combatWeapon.range, maxRange: combatWeapon.maxRange, warMachine: combatWeapon.warMachine },
+      combatDefWeapon ? { attackBonus: combatDefWeapon.attackBonus, damageDice: combatDefWeapon.damageDice, is_reach: combatDefWeapon.reach, numberOfAttacks: combatDefWeapon.numberOfAttacks, warMachine: combatDefWeapon.warMachine } : null,
       formationAtkMod,
       attackCapMult,
       defAttackCapMult,

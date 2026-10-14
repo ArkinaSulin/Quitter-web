@@ -465,7 +465,7 @@ describe('resolveCombatSequence', () => {
   const visualDotsPerRow = 20;
 
   // Helper to call with default extra params
-  type WeaponArg = { attackBonus: number; damageDice: string; is_reach: boolean; noRetaliation?: boolean; freeAction?: boolean; numberOfAttacks?: number; range?: number; maxRange?: number };
+  type WeaponArg = { attackBonus: number; damageDice: string; is_reach: boolean; noRetaliation?: boolean; freeAction?: boolean; numberOfAttacks?: number; range?: number; maxRange?: number; warMachine?: boolean };
   function callCombat(
     att: Unit,
     def: Unit,
@@ -522,8 +522,7 @@ describe('resolveCombatSequence', () => {
     });
   });
 
-  it('raises the defender AC with a defender aura bonus', () => {
-    const att = { ...attacker, aggressiveness: 100 };
+  it('raises the defender AC with a defender aura bonus', () => {    const att = { ...attacker, aggressiveness: 100 };
     const lowAcDefender = { ...defender, currentAc: 2 };
     const base = resolveCombatSequence(att, lowAcDefender, aw, dw, 0, 1, 1, rowCap, rowCap, visualDotsPerRow, false, false, null, null, seededRng(7));
     const aura = resolveCombatSequence(att, lowAcDefender, aw, dw, 0, 1, 1, rowCap, rowCap, visualDotsPerRow, false, false, null, null, seededRng(7), false, null, null, false, null, null, false, undefined, undefined, { ac: 100 });
@@ -531,6 +530,13 @@ describe('resolveCombatSequence', () => {
     const auraHits = aura.firstStrikeAttacks.filter(a => a.isHit).length;
     expect(baseHits).toBeGreaterThan(0);
     expect(auraHits).toBeLessThan(baseHits); // AC 100 → only natural-20 crits still land
+  });
+
+  it('a war machine makes numberOfAttacks attacks per UNIT (not per troop)', () => {
+    // 80 troops × row cap 10 → a normal weapon would roll 10 × 3 = 30; per-unit = 3.
+    const result = callCombat(attacker, defender, { ...aw, numberOfAttacks: 3, warMachine: true });
+    expect(result.firstStrikeCount).toBe(3);
+    expect(result.firstStrikeAttacks.length).toBe(3);
   });
 
   it('AGR passes for normal unit with sufficient AGR', () => {

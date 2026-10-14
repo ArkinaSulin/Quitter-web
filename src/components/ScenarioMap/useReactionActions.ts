@@ -208,7 +208,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     const moverBonus = { attack: defAura.attack + effectAttackBonus(mover, true), damage: defAura.damage + effectDamageBonus(mover, true), ac: defAura.ac };
     const outcome = resolveCombatSequence(
       archer, mover,
-      { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, numberOfAttacks: weapon.numberOfAttacks, range: weapon.range + rangeBonus, maxRange: weapon.maxRange + rangeBonus },
+      { attackBonus: weapon.attackBonus, damageDice: weapon.damageDice, is_reach: weapon.reach, noRetaliation: weapon.noRetaliation, freeAction: weapon.freeAction, numberOfAttacks: weapon.numberOfAttacks, range: weapon.range + rangeBonus, maxRange: weapon.maxRange + rangeBonus, warMachine: weapon.warMachine },
       null,
       formationAtkMod, attackCapMult, defAttackCapMult,
       archerRowCap, moverRowCap, moverVisualDpr,
