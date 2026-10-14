@@ -103,6 +103,23 @@ export function effectiveAc(
   return (unit.baselineAc || 10) - getShieldPenalty(unit).penalty + cover + buff + auraAc;
 }
 
+/**
+ * War-machine to-hit AC against a unit. A siege bolt/rock ignores ARMOUR, SHIELD
+ * and FORMATION (the shield-wall), so the target defends with its UNARMOURED base
+ * AC only — plus cover (edge wall or hex-structure/zone cover, never stacking) and
+ * direct `ac` effects. No shield penalty, no formation AC, no hero aura. The
+ * unarmoured base may itself exceed 10 (natural armour), so no flat floor is used.
+ */
+export function warMachineAc(
+  unit: Pick<Unit, 'baseAc'> & { effects?: Unit['effects'] },
+  isRanged: boolean,
+  wallCover = 0,
+): number {
+  const base = unit.baseAc ?? 10;
+  const cover = Math.max(wallCover, coverAcBonus(unit, isRanged));
+  return base + cover + directAcBonus(unit, isRanged);
+}
+
 /** A hero-aura contribution to one unit: flat bonuses to its strikes and defence. */
 export interface HeroAuraBonus {
   /** To-hit bonus for the unit's attacks. */

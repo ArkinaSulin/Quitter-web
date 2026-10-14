@@ -2,7 +2,7 @@ import { Unit, Hex, Formation, hexDistance } from '@/types/gameProtocol';
 import { computeThreatRating, isUnitRouted } from '@/packages/morale';
 import { getRetaliationMode, getEffectivePosition, beAttackedModifier, beAttackedModifierNote, Arc } from '@/packages/movement';
 import { getSetting } from '@/packages/infra';
-import { getRowCapacityBase, effectiveAc } from '@/packages/units';
+import { getRowCapacityBase, effectiveAc, warMachineAc } from '@/packages/units';
 import { attackDirection } from '@/packages/primitives';
 import { arcOf, frontArcIndices, hexDirIndex } from '@/packages/primitives';
 import { attackRollFlags, AttackRollFlags } from '@/packages/effects';
@@ -473,8 +473,16 @@ export function resolveCombatSequence(
   // (uniform rule); shields are 360° and stay in `baselineAc`. The shield drops
   // for two-handed weapons / routing are handled inside effectiveAc. The
   // formation term is melee/ranged-aware (`isRanged`).
-  const defenderEffAc = effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing), isRanged, wallCoverAgainst(walls, attacker.hex, defender.hex, isRanged), defenderBonus.ac ?? 0);
-  const attackerEffAc = effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing), isRanged, wallCoverAgainst(walls, defender.hex, attacker.hex, isRanged), attackerBonus.ac ?? 0);
+  const defenderWall = wallCoverAgainst(walls, attacker.hex, defender.hex, isRanged);
+  const attackerWall = wallCoverAgainst(walls, defender.hex, attacker.hex, isRanged);
+  // A war machine ignores armour/shield/formation, so its target defends on the
+  // unarmoured base AC + cover + direct `ac` effects (`warMachineAc`).
+  const defenderEffAc = attackerWeapon.warMachine
+    ? warMachineAc(defender, isRanged, defenderWall)
+    : effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing), isRanged, defenderWall, defenderBonus.ac ?? 0);
+  const attackerEffAc = defenderWeapon?.warMachine
+    ? warMachineAc(attacker, isRanged, attackerWall)
+    : effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing), isRanged, attackerWall, attackerBonus.ac ?? 0);
 
   // Who strikes first? A defender attacked from the rear, a routed defender, noRetaliation
   // weapons, and ranged attacks all let the attacker strike first (the defender can't react).

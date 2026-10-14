@@ -1,5 +1,30 @@
 # QuiTTER Changelog
 
+## War-machine to-hit AC: unarmoured base + cover (migration 128) (2026-10-12)
+**Files:** src/types/gameProtocol.ts, src/hooks/useSupabaseSync.ts, src/packages/units/lib/unitStats.ts, src/packages/combat/lib/unitCombat.ts, src/packages/ai/lib/planner.ts, src/components/ScenarioMap/useCombatActions.ts, supabase/migrations/128_unit_base_ac.sql, docs/dev/{02,08,changelog}.md
+
+- A war machine (huge bolt/rock) ignores **armour, shield and the shield-wall
+  formation**. New `unitStats.warMachineAc(unit, isRanged, wallCover)` = the
+  **unarmoured** base AC (`unit.baseAc`) + `max(wallCover, coverAcBonus)` (edge-wall
+  / hex-structure cover, never stacking) + `directAcBonus` (direct `ac` effects) —
+  no shield penalty, no formation AC, no hero aura, no flat floor.
+- `Unit.baseAc` is carried from the template at spawn (`units.base_ac`, migration
+  **128**; backfilled from `unit_templates.base_ac`). `useSupabaseSync`
+  read/write/spawn updated.
+- Applied wherever a war machine rolls to-hit vs a **unit**: `resolveCombatSequence`
+  (defender AC when `attackerWeapon.warMachine`, attacker AC on retaliation when
+  `defenderWeapon.warMachine`), the bombardment hit-roll, the AI estimate and the
+  verbose AC display. Structures keep their own `ac`.
+- `tsc` clean, tests pass, build clean. **Apply migration 128.**
+
+## Fix: war machine rolls per-unit attacks in resolveCombatSequence callers (2026-10-12)
+**Files:** src/components/ScenarioMap/{useCombatActions,useReactionActions}.ts, src/packages/combat/tests/unitCombat.test.ts
+
+- The weapon literals passed to `resolveCombatSequence` omitted the `warMachine`
+  flag, so `computeAttackCount` read it as false and a war machine vs a hero rolled
+  per-troop (e.g. 30 instead of 3). Thread `warMachine` through both callers; add a
+  `resolveCombatSequence` test asserting the per-unit count.
+
 ## Structure AC + thinner line spell shape (2026-10-12)
 **Files:** src/types/structure.ts, src/packages/movement/lib/{structureTemplates,walls,mapStructures}.ts, src/packages/combat/lib/{wallCombat,structureCombat}.ts, src/packages/units/lib/verboseCombat.ts, src/components/StructureEditor/StructureEditor.tsx, src/components/ScenarioMap/{ScenarioMap,MagicCastModal}.tsx, supabase/migrations/127_structure_ac.sql, docs/dev/{02,08,13,14,18,changelog}.md
 

@@ -133,6 +133,9 @@ export interface Unit {
   currentUnitHp: number;              // was: hp (renamed)
   isShielded: boolean;
   baselineAc: number;                 // new: AC after equipment (copied from template)
+  /** UNARMOURED base AC (copied from the template). A war machine rolls to-hit vs
+   *  this + cover + direct `ac` effects, ignoring armour/shield/formation. */
+  baseAc?: number;
   currentAc: number;                  // dynamic battlefield AC
   weaponString: string;
   movementPoints: number;             // max movement (copied from template)

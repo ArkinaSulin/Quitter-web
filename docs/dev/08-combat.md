@@ -134,6 +134,15 @@ front; **Scattered** → all sides flank; **Routed** → all sides rear.
   is out of reach (`canWeaponAttack` / `weaponIndicesReaching`), so a siege engine
   can't fire point-blank. A `minCrew` field is stored for later (ships); no rule
   consumes it yet.
+- **War-machine AC (vs units)**: a siege bolt/rock ignores armour, shield and the
+  shield-wall formation, so a war machine rolls to-hit against `warMachineAc` =
+  `unit.baseAc` (the **unarmoured** base AC, carried from the template — migration
+  **128**) `+ max(wallCover, coverAcBonus)` (edge-wall / hex-structure cover, never
+  stacking) `+ directAcBonus` (direct `ac` effects). No shield penalty, no
+  formation AC, no hero aura, no flat floor (natural armour can exceed 10). Applied
+  in `resolveCombatSequence` (defender AC when `attackerWeapon.warMachine`; attacker
+  AC when `defenderWeapon.warMachine`), the bombardment hit-roll, the AI estimate and
+  the verbose display. Structures keep their own `ac` (a war machine must beat it).
 - **beAttacked modifiers** (formation of the *target* side) multiply the
   attacker's count: melee vs Scattered ×1.5, Routed ×2.0; ranged vs Open
   Order/Scattered/Routed ×0.5. Notes are attached for the message.
