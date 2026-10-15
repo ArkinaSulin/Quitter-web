@@ -22,7 +22,7 @@ import { meleeElevationFor, flyingFormationCap, flyMax, moveBudgetUnit, parseCli
 import { isSwooping } from '@/packages/combat';
 import { computeChargeReachable, applyMoveCost, applyHeroMoveCost, isMoveAffordable, isHeroMoveAffordable, isLooseUnit } from '@/packages/movement';
 import { parseWeapons, Weapon, validateTargetAlliance, weaponIndicesReaching, formatWeaponDisplay, damageDiceCount, withDamageDiceCount } from '@/packages/units';
-import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, warMachineAc, heroAuraBonus } from '@/packages/units';
+import { getFormationModifier, getFormationMultiplier, getRowCapacity, getVisualDotsPerRow, effectiveAc, acVsWarMachine, heroAuraBonus } from '@/packages/units';
 import { attackDirection, arcOfTarget } from '@/packages/primitives';
 import { attackRollFlags, rangeBonusAt, effectAcBonus, effectAttackBonus, effectDamageBonus } from '@/packages/effects';
 import { hasLineOfSight } from '@/packages/combat';
@@ -653,10 +653,10 @@ export function useCombatActions(deps: CombatActionsDeps) {
     // same cover-adjusted AC the roll uses, per strike direction (cover is maxed
     // with formation/zone cover inside effectiveAc).
     const targetAcCovered = combatWeapon.warMachine
-      ? warMachineAc(effTarget, isRanged, wallCoverAgainst(walls, attacker.hex, target.hex, isRanged))
+      ? acVsWarMachine(effTarget, isRanged, wallCoverAgainst(walls, attacker.hex, target.hex, isRanged))
       : effectiveAc(effTarget, formationsMap[effTarget.currentFormation] ?? null, defenderAcDir, isRanged, wallCoverAgainst(walls, attacker.hex, target.hex, isRanged), defAura.ac);
     const attackerAcCovered = combatDefWeapon?.warMachine
-      ? warMachineAc(effAttacker, isRanged, wallCoverAgainst(walls, target.hex, attacker.hex, isRanged))
+      ? acVsWarMachine(effAttacker, isRanged, wallCoverAgainst(walls, target.hex, attacker.hex, isRanged))
       : effectiveAc(effAttacker, formationsMap[effAttacker.currentFormation] ?? null, attackerAcDir, isRanged, wallCoverAgainst(walls, target.hex, attacker.hex, isRanged), atkAura.ac);
     // A formation gives no AC from the rear — call it out instead of a bare number.
     const defenderForm = formationsMap[target.currentFormation];
@@ -1408,13 +1408,13 @@ export function useCombatActions(deps: CombatActionsDeps) {
       const atkAura = heroAuraBonus(attacker, units, alliances, true);
       const defAura = heroAuraBonus(target, units, alliances, true);
       const attackBonus = weapon.attackBonus + (attForm?.attack_modifier ?? 0) + atkAura.attack + effectAttackBonus(attacker, true);
-      const targetAc = warMachineAc(target, true, wallCoverAgainst(walls, attacker.hex, target.hex, true));
+      const targetAc = acVsWarMachine(target, true, wallCoverAgainst(walls, attacker.hex, target.hex, true));
       const aFlags = attackRollFlags(attacker);
       const tFlags = attackRollFlags(target);
       const rangeDis = reachDist > (weapon.range ?? 1) && reachDist <= (weapon.maxRange ?? weapon.range ?? 1);
       const losDis = !hasLineOfSight(attacker.hex, target.hex, units, new Set([attacker.id, target.id]), structures, structureTemplates, { fromElevation: attacker.elevation ?? 0, toElevation: target.elevation ?? 0 });
       const mode = combatRollMode({ attackerAdvantage: aFlags.advantage, attackerDisadvantage: aFlags.disadvantage, targetAdvantage: tFlags.grantAdvantage, targetDisadvantage: tFlags.grantDisadvantage, rangeDisadvantage: rangeDis, losDisadvantage: losDis }).mode;
-      const { hits } = rollWarMachineHits(shots, attackBonus, targetAc, Math.random, mode);
+      const { hits, rolls: toHitRolls } = rollWarMachineHits(shots, attackBonus, targetAc, Math.random, mode);
       if (hits <= 0) {
         addMessage(`${attacker.unitName} fires ${weapon.name} at ${target.unitName} — all ${shots} shot(s) missed`);
         return;
@@ -1445,6 +1445,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
           cha: target.cha ?? 0,
         },
         maxMarkers: hits,
+        warMachine: { toHit: toHitRolls, attackBonus, ac: targetAc },
       });
       addMessage(`${attacker.unitName} fires ${weapon.name} at ${target.unitName} — ${hits}/${shots} hit — place ${hits} blast marker(s)`);
       return;

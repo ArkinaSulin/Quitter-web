@@ -7,6 +7,7 @@ import {
   formatStrikeDetail,
   formatStructureAttackRolls,
   formatStructureToHit,
+  formatWarMachineToHit,
 } from '@/packages/units/lib/verboseCombat';
 import type { SingleAttackResult } from '@/packages/combat';
 import type { SpellDamageResult } from '@/packages/combat';
@@ -179,6 +180,18 @@ describe('verboseCombat', () => {
 
     it('a natural 1 always misses', () => {
       expect(formatStructureToHit([1], 50, 10)).toBe('1 attack (d20 +50 vs AC 10: 1 → 0 hit)');
+    });
+  });
+
+  describe('formatWarMachineToHit', () => {
+    it('shows the d20 faces, the war-machine AC (ignore note) and the hit count', () => {
+      expect(formatWarMachineToHit([7, 12, 18, 20], 5, 15))
+        .toBe('4 attacks {D20+5 vs AC 15 (ignores armour & shield): 7,12,18,20} → 3 hit');
+    });
+
+    it('a natural 1 misses and a natural 20 hits', () => {
+      expect(formatWarMachineToHit([1, 20], 0, 99))
+        .toBe('2 attacks {D20+0 vs AC 99 (ignores armour & shield): 1,20} → 1 hit');
     });
   });
 });

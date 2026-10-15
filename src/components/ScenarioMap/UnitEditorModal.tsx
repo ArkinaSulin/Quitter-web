@@ -42,6 +42,7 @@ const FIELDS: FieldDef[] = [
   { key: 'maxTroopCount', label: 'Max troops', type: 'number', min: 1 },
   { key: 'level', label: 'Level', type: 'number', min: 1 },
   { key: 'baselineAc', label: 'Baseline AC', type: 'number' },
+  { key: 'baseAc', label: 'Natural AC', type: 'number' },
   { key: 'movementPoints', label: 'Movement (max MP)', type: 'number', min: 0 },
   { key: 'elevation', label: 'Elevation (ft)', type: 'number', min: 0 },
   { key: 'flySpeedAvailable', label: 'Fly points available', type: 'number', min: 0 },
@@ -382,8 +383,9 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
           {/* R3 Armor */}
           <div className="flex items-end gap-2">
             <Cell label="Effective AC"><ReadBox>{`${parsedBaselineAc + meleeAcMod}${rangeAcMod !== meleeAcMod ? ` / ${parsedBaselineAc + rangeAcMod} ranged` : ''}`}</ReadBox></Cell>
-            <Cell label="Base AC"><NumInput value={draft.baselineAc} onChange={v => set('baselineAc', v)} /></Cell>
+            <Cell label="Baseline AC"><NumInput value={draft.baselineAc} onChange={v => set('baselineAc', v)} /></Cell>
             <div className="pb-1"><Toggle checked={!!draft.isShielded} onChange={v => set('isShielded', v)} label="Shield" /></div>
+            <Cell label="Natural AC"><NumInput value={draft.baseAc} onChange={v => set('baseAc', v)} /></Cell>
           </div>
 
           {/* R4 Movement */}

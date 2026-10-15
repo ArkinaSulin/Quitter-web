@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { getShieldPenalty, effectiveAc, heroAuraBonus, warMachineAc } from '@/packages/units/lib/unitStats';
+import { getShieldPenalty, effectiveAc, heroAuraBonus, acVsWarMachine } from '@/packages/units/lib/unitStats';
 import { setHeroMoraleBoostEnabled } from '@/packages/morale';
 import { Formation } from '@/types/gameProtocol';
 
@@ -178,25 +178,25 @@ describe('heroAuraBonus', () => {
   });
 });
 
-describe('warMachineAc', () => {
+describe('acVsWarMachine', () => {
   const u = (over: Record<string, unknown> = {}) => ({ baseAc: 10, effects: [], ...over }) as any;
 
   it('uses the UNARMOURED base AC (armour/formation ignored)', () => {
     // baselineAc (armour) is irrelevant; only baseAc matters.
-    expect(warMachineAc(u({ baseAc: 14, baselineAc: 20 }), false)).toBe(14);
+    expect(acVsWarMachine(u({ baseAc: 14, baselineAc: 20 }), false)).toBe(14);
   });
 
   it('adds wall cover', () => {
-    expect(warMachineAc(u({ baseAc: 14 }), false, 3)).toBe(17);
+    expect(acVsWarMachine(u({ baseAc: 14 }), false, 3)).toBe(17);
   });
 
   it('takes the best of wall vs hex-structure/zone cover (cover never stacks)', () => {
     const zoned = u({ baseAc: 10, effects: [{ kind: 'ac', dice: '5', zoneHex: { q: 0, r: 0, s: 0 } }] });
-    expect(warMachineAc(zoned, false, 3)).toBe(15); // max(3, 5) = 5 → 10 + 5
+    expect(acVsWarMachine(zoned, false, 3)).toBe(15); // max(3, 5) = 5 → 10 + 5
   });
 
   it('adds direct `ac` effects (buffs), ignores the hero aura', () => {
     const buffed = u({ baseAc: 10, effects: [{ kind: 'ac', dice: '2' }] });
-    expect(warMachineAc(buffed, false)).toBe(12);
+    expect(acVsWarMachine(buffed, false)).toBe(12);
   });
 });

@@ -3,7 +3,7 @@
 import React from 'react';
 import { Unit, AllianceGroup, Formation, GroundEffect } from '@/types/gameProtocol';
 import { computeEffectiveMoraleModifier, exertedThreatRating, calcWounds, calcIsolation, calcEnemyThreats, isUnitRouted, calcMoraleBoostInfo, isHeroMoraleBoostEnabled, HERO_HALF_THREAT_MAX_SIZE } from '@/packages/morale';
-import { computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty, effectiveAc as effectiveAcFor, heroAuraBonus } from '@/packages/units';
+import { computeEffectiveMovement, computeEffectiveAttackBonus, getShieldPenalty, effectiveAc as effectiveAcFor, acVsWarMachine, heroAuraBonus } from '@/packages/units';
 import { parseWeapons } from '@/packages/units';
 import { heroMovePerAction } from '@/packages/movement';
 import { unitAttackCap } from '@/packages/combat';
@@ -62,6 +62,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
   const acMelee = effectiveAcFor(unit, formationMod, 'front', false, 0, auraAcMelee);
   const acRanged = effectiveAcFor(unit, formationMod, 'front', true, 0, auraAcRanged);
   const acRear = effectiveAcFor(unit, formationMod, 'rear', false, 0, auraAcMelee);
+  const acVsWm = acVsWarMachine(unit, false, 0);
   const shieldInfo = getShieldPenalty(unit);
   const shieldPenalty = shieldInfo.penalty;
   const effectiveMaxMovement = computeEffectiveMovement(unit, formationMovMult);
@@ -146,6 +147,7 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
           <span className={unit.attacksUsed >= unitAttackCap() ? 'text-red-400' : ''}>{unit.attacksUsed}/{unitAttackCap()} <span className="text-gray-500">(attacks + retaliations)</span></span>
         )}
         <span className="text-gray-400" title="Armor Class (AC): a d20 attack roll + bonuses must equal or beat this to hit. Cover (formation, structure, wall) never stacks — the best wins; unit effects (e.g. Haste) add on top. Formation cover does NOT apply from the REAR; the shield is 360°.">AC:</span><span>{acMelee === acRanged && acRanged === acRear ? `AC: ${acMelee}` : `melee${fmtAcDelta(acMelee - acBase)}: ${acMelee}, [Range${fmtAcDelta(acRanged - acBase)}: ${acRanged}]. [rear${fmtAcDelta(acRear - acBase)}: ${acRear}]`}</span>
+        <span className="text-gray-400" title="War-machine to-hit AC: a siege bolt/rock ignores armour, shield and formation. Only the unarmoured base AC, plus cover and direct AC effects, apply.">AC vs war machine:</span><span>{acVsWm} <span className="text-gray-500">(ignores armour &amp; shield)</span></span>
         {pendingZone && (
           <span className="col-span-2 text-[10px] text-yellow-400">Hex effect will apply at end of turn</span>
         )}

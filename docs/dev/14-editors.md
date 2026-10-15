@@ -72,11 +72,15 @@ Notable data rules the editor encodes:
 Double-clicking a unit opens `UnitEditorModal` (compact): identity/team/image,
 HP row with live derived `{Max HP}/{Troops}`, effective AC, MP left/Max,
 actions, morale (full-effective), formation + mount + can-charge, saves,
-rank/token, weapons via the shared modal. Every edit is an **EDIT_UNIT**
+rank/token, weapons via the shared modal. The Armor row shows **Effective AC**,
+**Baseline AC** (`baselineAc` = base + armour) and — behind the **Shield** toggle
+— **Natural AC** (`baseAc`, the unarmoured base; the value a war machine rolls
+against, see `08`). Every edit is an **EDIT_UNIT**
 command through the log (undoable) and broadcasts a **red** message to the
 room. `updateUnit` maps every editable field to its snake_case column
 (history: several fields silently never persisted because a mapping was
-missing — Max MP was the canonical bug).
+missing — Max MP was the canonical bug; `baseAc → base_ac` was added in migration
+**129**).
 
 ## Size/visual constants
 

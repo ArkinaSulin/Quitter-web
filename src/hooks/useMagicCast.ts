@@ -61,6 +61,9 @@ export interface MagicCastState {
   /** How many markers may be placed (1 for a normal spell; #hits for a war
    *  machine bombardment). */
   maxMarkers: number;
+  /** War-machine bombardment only: the to-hit rolls, attack bonus and AC used to
+   *  decide the marker count (for the combat-style report). */
+  warMachine?: { toHit: number[]; attackBonus: number; ac: number };
   /** Rotation (degrees) of the area shape (cube/cone; circle is symmetric). */
   rotation: number;
   /** Which of the 6 ability save bonuses the target rolls, or 'none' (no save). */
@@ -77,7 +80,7 @@ export interface MagicCastState {
 }
 
 type MagicCastEvent =
-  | { type: 'open'; id: string; casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; maxMarkers?: number; reaction?: boolean }
+  | { type: 'open'; id: string; casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; maxMarkers?: number; warMachine?: { toHit: number[]; attackBonus: number; ac: number }; reaction?: boolean }
   | { type: 'cancel'; id: string }
   | { type: 'markers'; id: string; markers: MagicMarker[] }
   | { type: 'rotate'; id: string; rotation: number }
@@ -165,6 +168,7 @@ export function useMagicCast(scenarioId: string) {
               targetStats: event.targetStats,
               markers: [],
               maxMarkers: event.maxMarkers ?? 1,
+              warMachine: event.warMachine,
               rotation: 0,
               saveStat: (event.weapon.savingThrow ?? 'Dex') as SaveStat | 'none',
               saveDC: event.weapon.saveDC ?? 10,
@@ -223,7 +227,7 @@ export function useMagicCast(scenarioId: string) {
     }
   }, []);
 
-  const openCast = useCallback((opts: { casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; maxMarkers?: number; reaction?: boolean }) => {
+  const openCast = useCallback((opts: { casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; maxMarkers?: number; warMachine?: { toHit: number[]; attackBonus: number; ac: number }; reaction?: boolean }) => {
     const id = crypto.randomUUID();
     const maxMarkers = Math.max(1, opts.maxMarkers ?? 1);
     const event: MagicCastEvent = {
@@ -238,6 +242,7 @@ export function useMagicCast(scenarioId: string) {
       snapshot: opts.snapshot,
       targetStats: opts.targetStats,
       maxMarkers,
+      warMachine: opts.warMachine,
       reaction: opts.reaction,
     };
     setCast({
@@ -253,6 +258,7 @@ export function useMagicCast(scenarioId: string) {
       targetStats: opts.targetStats,
       markers: [],
       maxMarkers,
+      warMachine: opts.warMachine,
       rotation: 0,
       saveStat: (opts.weapon.savingThrow ?? 'Dex') as SaveStat | 'none',
       saveDC: opts.weapon.saveDC ?? 10,

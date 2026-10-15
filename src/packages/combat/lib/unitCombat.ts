@@ -2,7 +2,7 @@ import { Unit, Hex, Formation, hexDistance } from '@/types/gameProtocol';
 import { computeThreatRating, isUnitRouted } from '@/packages/morale';
 import { getRetaliationMode, getEffectivePosition, beAttackedModifier, beAttackedModifierNote, Arc } from '@/packages/movement';
 import { getSetting } from '@/packages/infra';
-import { getRowCapacityBase, effectiveAc, warMachineAc } from '@/packages/units';
+import { getRowCapacityBase, effectiveAc, acVsWarMachine } from '@/packages/units';
 import { attackDirection } from '@/packages/primitives';
 import { arcOf, frontArcIndices, hexDirIndex } from '@/packages/primitives';
 import { attackRollFlags, AttackRollFlags } from '@/packages/effects';
@@ -476,12 +476,12 @@ export function resolveCombatSequence(
   const defenderWall = wallCoverAgainst(walls, attacker.hex, defender.hex, isRanged);
   const attackerWall = wallCoverAgainst(walls, defender.hex, attacker.hex, isRanged);
   // A war machine ignores armour/shield/formation, so its target defends on the
-  // unarmoured base AC + cover + direct `ac` effects (`warMachineAc`).
+  // unarmoured base AC + cover + direct `ac` effects (`acVsWarMachine`).
   const defenderEffAc = attackerWeapon.warMachine
-    ? warMachineAc(defender, isRanged, defenderWall)
+    ? acVsWarMachine(defender, isRanged, defenderWall)
     : effectiveAc(defender, defenderForm, attackDirection(attacker.hex, defender.hex, defender.facing), isRanged, defenderWall, defenderBonus.ac ?? 0);
   const attackerEffAc = defenderWeapon?.warMachine
-    ? warMachineAc(attacker, isRanged, attackerWall)
+    ? acVsWarMachine(attacker, isRanged, attackerWall)
     : effectiveAc(attacker, attackerForm, attackDirection(defender.hex, attacker.hex, attacker.facing), isRanged, attackerWall, attackerBonus.ac ?? 0);
 
   // Who strikes first? A defender attacked from the rear, a routed defender, noRetaliation

@@ -110,7 +110,7 @@ export function effectiveAc(
  * direct `ac` effects. No shield penalty, no formation AC, no hero aura. The
  * unarmoured base may itself exceed 10 (natural armour), so no flat floor is used.
  */
-export function warMachineAc(
+export function acVsWarMachine(
   unit: Pick<Unit, 'baseAc'> & { effects?: Unit['effects'] },
   isRanged: boolean,
   wallCover = 0,

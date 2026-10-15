@@ -30,7 +30,7 @@ import { rotateLeft, rotateRight } from '@/packages/primitives';
 import { allianceOf as teamAllianceOf } from '@/packages/primitives';
 import { isProtectedHero } from '@/packages/units';
 import { arcsContain, beAttackedModifier, isLooseUnit } from '@/packages/movement';
-import { getRowCapacityBase, effectiveAc, warMachineAc, heroAuraBonus } from '@/packages/units';
+import { getRowCapacityBase, effectiveAc, acVsWarMachine, heroAuraBonus } from '@/packages/units';
 import { attackDirection, arcOfTarget } from '@/packages/primitives';
 import { unitAttackCap } from '@/packages/combat';
 import { computeReachableMap, computeMovePool, applyMoveCost, applyMpSpend } from '@/packages/movement';
@@ -207,7 +207,7 @@ export function expectedDamage(
   const atkAura = heroAuraBonus(attacker, ctx.units, ctx.alliances, isRanged);
   const defAura = heroAuraBonus(target, ctx.units, ctx.alliances, isRanged);
   const targetAc = weapon?.warMachine
-    ? warMachineAc(target, isRanged, 0)
+    ? acVsWarMachine(target, isRanged, 0)
     : effectiveAc(target, targetForm, attackDirection(attacker.hex, target.hex, target.facing), isRanged, 0, defAura.ac);
   // Roll mode from attack-roll flag effects (any advantage cancels any
   // disadvantage) plus the long-range band.

@@ -10,7 +10,7 @@ import { saveRollFlags, effectSaveBonus } from '@/packages/effects';
 import { computeEffectiveMoraleModifier, shouldRout } from '@/packages/morale';
 import { allianceOf } from '@/packages/primitives';
 import { SubStep, UnitChange } from '@/packages/infra';
-import { formatSpellRollLine } from '@/packages/units';
+import { formatSpellRollLine, formatWarMachineToHit } from '@/packages/units';
 import { heroAuraBonus } from '@/packages/units';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { ExecuteFn, routeUnit } from './routeUnit';
@@ -179,11 +179,25 @@ export function useCastActions(deps: CastActionsDeps) {
       });
     }
 
-    const markerNote = cast.markers.length > 1 ? `${cast.markers.length} markers, ` : '';
-    const saveNote = noSave ? ' (no save)' : `, ${savedCount} saved, ${failedCount} failed`;
-    const verb = cast.weapon.warMachine ? `fires ${cast.weapon.name} at` : `casts ${cast.weapon.name} on`;
-    const desc = `${caster.unitName} ${verb} ${target.unitName} — base ${baseDamage}, ${markerNote}${totalAffected} troop(s) affected${saveNote} — ${totalDamage} total damage (${troopsKilled} troop(s))`;
-    const msg = `${desc} ${results.map(r => formatSpellRollLine(r, cast.saveDC)).join(' · ')}`;
+    const markers = cast.markers.length;
+    const troopWord = `troop${totalAffected === 1 ? '' : 's'}`;
+    const killedWord = `troop${troopsKilled === 1 ? '' : 's'}`;
+    let desc: string;
+    let msg: string;
+    if (cast.weapon.warMachine) {
+      // War-machine bombardment: combat-style report — to-hit clause (with the
+      // ignore-armour-&-shield note) + blast markers + damage. No save clause.
+      const head = `${caster.unitName} fires ${cast.weapon.name} at ${target.unitName}`;
+      const blast = `${markers} blast marker${markers === 1 ? '' : 's'}, ${totalAffected} ${troopWord} caught, ${totalDamage} damage (${troopsKilled} ${killedWord})`;
+      const toHitClause = cast.warMachine ? formatWarMachineToHit(cast.warMachine.toHit, cast.warMachine.attackBonus, cast.warMachine.ac) : '';
+      desc = `${head} — ${blast}`;
+      msg = `${head} — ${toHitClause ? `${toHitClause} · ` : ''}${blast}`;
+    } else {
+      const markerNote = markers > 1 ? `${markers} markers, ` : '';
+      const saveNote = noSave ? ' (no save)' : `, ${savedCount} saved, ${failedCount} failed`;
+      desc = `${caster.unitName} casts ${cast.weapon.name} on ${target.unitName} — base ${baseDamage}, ${markerNote}${totalAffected} troop(s) affected${saveNote} — ${totalDamage} total damage (${troopsKilled} troop(s))`;
+      msg = `${desc} ${results.map(r => formatSpellRollLine(r, cast.saveDC)).join(' · ')}`;
+    }
 
     await execute('CAST', subSteps, desc, { verboseMessage: msg });
 

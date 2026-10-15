@@ -1,10 +1,30 @@
 # QuiTTER Changelog
 
+## War-machine report + naming + Natural AC field (2026-10-12)
+**Files:** src/packages/units/lib/{unitStats,verboseCombat}.ts (+ tests), src/packages/combat/lib/unitCombat.ts, src/packages/ai/lib/planner.ts, src/hooks/useMagicCast.ts, src/components/ScenarioMap/{useCombatActions,useCastActions,UnitEditorModal,UnitTooltip}.tsx, src/hooks/useSupabaseSync.ts, supabase/migrations/129_unit_field_base_ac.sql, docs/dev/{02,08,14,changelog}.md
+
+- **Rename** `warMachineAc` → **`acVsWarMachine`** (it's the AC a war-machine
+  attack *targets*, not the machine's AC) — pure rename.
+- **Combat-style bombardment report**: the cast window now carries
+  `{ toHit, attackBonus, ac }`; `formatWarMachineToHit` renders
+  `4 attacks {D20+5 vs AC 15 (ignores armour & shield): 7,12,18,20} → 3 hit`, and
+  the war-machine message is `… — <to-hit> · <M> blast markers, <T> troops caught,
+  <D> damage (<K> troops)`. The `saved/failed` clause is suppressed when `No save`
+  (per-weapon as before — no inherent no-save).
+- **Tooltip**: `AC vs war machine: N. (ignores armour & shield)` on the unit tooltip.
+- **On-map Unit Editor modal**: the mislabeled **"Base AC"** is now **"Baseline
+  AC"** (`baselineAc`), and a new **"Natural AC"** field (`baseAc`, the unarmoured
+  base) sits behind the **Shield** toggle. `baseAc → base_ac` added to
+  `unit_field_to_column` (migration **129**).
+- Formula unchanged: `acVsWarMachine = unit.baseAc + max(wallCover, coverAcBonus) +
+  directAcBonus` (armour/shield/formation/aura ignored; cover/effects only when
+  present). `tsc` clean, tests pass, build clean. **Apply migration 129.**
+
 ## War-machine to-hit AC: unarmoured base + cover (migration 128) (2026-10-12)
 **Files:** src/types/gameProtocol.ts, src/hooks/useSupabaseSync.ts, src/packages/units/lib/unitStats.ts, src/packages/combat/lib/unitCombat.ts, src/packages/ai/lib/planner.ts, src/components/ScenarioMap/useCombatActions.ts, supabase/migrations/128_unit_base_ac.sql, docs/dev/{02,08,changelog}.md
 
 - A war machine (huge bolt/rock) ignores **armour, shield and the shield-wall
-  formation**. New `unitStats.warMachineAc(unit, isRanged, wallCover)` = the
+  formation**. New `unitStats.acVsWarMachine(unit, isRanged, wallCover)` = the
   **unarmoured** base AC (`unit.baseAc`) + `max(wallCover, coverAcBonus)` (edge-wall
   / hex-structure cover, never stacking) + `directAcBonus` (direct `ac` effects) —
   no shield penalty, no formation AC, no hero aura, no flat floor.

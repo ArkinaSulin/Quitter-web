@@ -70,7 +70,7 @@ function mapRowToUnit(row: any): Unit {
     currentUnitHp: row.current_unit_hp || 0,
     isShielded: row.is_shielded || false,
     baselineAc: row.baseline_ac || 10,
-    baseAc: row.base_ac ?? undefined,
+    baseAc: row.base_ac ?? 10,
     currentAc: row.current_ac || 10,
     weaponString: row.weapon_string || '',
     movementPoints: row.movement_points || 3,

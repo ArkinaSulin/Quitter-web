@@ -188,6 +188,7 @@ as applied in the notes — check the live DB before relying on it).
 | 126 | war-machine weapon fields: `unit_weapons.war_machine` / `min_range` / `min_crew` | ⏳ run in Supabase |
 | 127 | structure Armor Class: `map_structure_templates.ac` (default 10) | ⏳ run in Supabase |
 | 128 | `units.base_ac` (unarmoured base AC, copied from the template; war-machine to-hit) | ⏳ run in Supabase |
+| 129 | `unit_field_to_column`: add `baseAc → base_ac` (on-map modal "Natural AC") | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

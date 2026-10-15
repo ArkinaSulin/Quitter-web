@@ -135,7 +135,7 @@ front; **Scattered** → all sides flank; **Routed** → all sides rear.
   can't fire point-blank. A `minCrew` field is stored for later (ships); no rule
   consumes it yet.
 - **War-machine AC (vs units)**: a siege bolt/rock ignores armour, shield and the
-  shield-wall formation, so a war machine rolls to-hit against `warMachineAc` =
+  shield-wall formation, so a war machine rolls to-hit against `acVsWarMachine` =
   `unit.baseAc` (the **unarmoured** base AC, carried from the template — migration
   **128**) `+ max(wallCover, coverAcBonus)` (edge-wall / hex-structure cover, never
   stacking) `+ directAcBonus` (direct `ac` effects). No shield penalty, no
@@ -143,6 +143,13 @@ front; **Scattered** → all sides flank; **Routed** → all sides rear.
   in `resolveCombatSequence` (defender AC when `attackerWeapon.warMachine`; attacker
   AC when `defenderWeapon.warMachine`), the bombardment hit-roll, the AI estimate and
   the verbose display. Structures keep their own `ac` (a war machine must beat it).
+  The verbose **bombardment report is combat-style** —
+  `4 attacks {D20+5 vs AC 15 (ignores armour & shield): 7,12,18,20} → 3 hit · M blast
+  markers, T troops caught, D damage` (`formatWarMachineToHit`) — and the shell
+  damage uses the weapon's own save unless it is authored **`No save`** (then the
+  save clause is omitted). The on-map Unit Editor modal exposes the unarmoured base
+  as **Natural AC** (`baseAc`, "AC vs war machine") beside **Baseline AC**
+  (`baselineAc`); `baseAc → base_ac` is a command-log field (migration **129**).
 - **beAttacked modifiers** (formation of the *target* side) multiply the
   attacker's count: melee vs Scattered ×1.5, Routed ×2.0; ranged vs Open
   Order/Scattered/Routed ×0.5. Notes are attached for the message.
