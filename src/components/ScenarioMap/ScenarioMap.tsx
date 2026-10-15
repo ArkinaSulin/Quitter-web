@@ -2845,11 +2845,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // controlsLocked guard + act). The modals render from the pending states.
   const softActions = {
     confirmMove: () => { const pm = pendingMove!; setPendingMove(null); if (controlsLocked) return; if (pm.climb) { void handleClimbMove(pm.unit, pm.targetHex, pm.climb.originSurface, true); return; } const surface = structureSurfaceAt(pm.unit.hex, structures, structureTemplates); const targetSurface = structureSurfaceAt(pm.targetHex, structures, structureTemplates); const airborne = isAirborne(pm.unit.elevation, surface); const max = airborne ? (pm.unit.flySpeed ?? 0) : (pm.breakToFormation ? computeEffectiveMovement(pm.unit, getFormationMultiplier(formationsMap, pm.breakToFormation, 'movement_multiplier')) : unitMaxMP(pm.unit)); const descendElev = !airborne && targetSurface <= surface ? targetSurface : undefined; completeMove(pm.unit, pm.targetHex, pm.cost, true, max, pm.attachedHero, pm.attachedHero ? unitMaxMP(pm.attachedHero) : undefined, pm.breakToFormation, descendElev, surface); },
-    confirmAttack: () => { const pa = pendingAttack!; setPendingAttack(null); if (!controlsLocked) performAttack(pa.attacker, pa.target, true, { mainTarget: pa.mainTarget, damageDice: pa.damageDice }); },
+    confirmAttack: () => { const pa = pendingAttack!; setPendingAttack(null); if (controlsLocked) return; if (pa.bombard) { void handleAttackRequest(pa.attacker.id, pa.target.id, { forceAction: true }); return; } performAttack(pa.attacker, pa.target, true, { mainTarget: pa.mainTarget, damageDice: pa.damageDice }); },
     confirmAttackCap: async () => {
       const pa = pendingAttackCap!;
       setPendingAttackCap(null);
       if (controlsLocked) return;
+      if (pa.bombard) { await handleAttackRequest(pa.attacker.id, pa.target.id, { forceAction: true }); return; }
       if (pa.isCharging) {
         const result = await performAttack(pa.attacker, pa.target, true, { isCharging: true, mainTarget: pa.mainTarget, damageDice: pa.damageDice });
         if (!result) return; // attack aborted (no weapon / AGR fail)

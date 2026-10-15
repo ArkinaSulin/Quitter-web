@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## War-machine firing: whole-turn cost, gate order, verbose miss (2026-10-12)
+**Files:** src/components/ScenarioMap/{useCombatActions,useCastActions,ScenarioMap,SoftEnforcementModals}.tsx, docs/dev/{08-combat,changelog}.md
+
+- **Order fix**: firing a war machine now gates **before** the to-hit roll /
+  magic window — attack cap then actions, soft-confirm (a unit needs `> 1` action,
+  a hero `> 4`), mirroring the normal attack path. A confirmed over-budget/over-cap
+  firing resumes via `handleAttackRequest(..., { forceAction: true })` (new
+  `forceAction` opt + a `bombard` flag on `pendingAttack`/`pendingAttackCap`), not
+  `performAttack`.
+- **Whole-turn firing cost** (hit or miss): a **unit** spends **2 actions** and a
+  **hero spends 5**, and either way **all 5 attacks** (`attacksUsed += 5`, one
+  firing per turn). Applied on a hit in the `CAST` step, or via a no-damage
+  `ATTACK` step on a total miss (a miss is no longer free). `freeAction` waives it.
+- **Verbose miss rolls**: a fully-missed bombardment's message now shows the d20
+  faces + AC in verbose (`… all 3 shot(s) missed 3 attacks {D20+5 vs AC 15 (ignores
+  armour & shield): 3,7,11} → 0 hit`) via `formatWarMachineToHit`; plain unchanged.
+- `tsc` clean, tests pass, build clean.
+
 ## War-machine report + naming + Natural AC field (2026-10-12)
 **Files:** src/packages/units/lib/{unitStats,verboseCombat}.ts (+ tests), src/packages/combat/lib/unitCombat.ts, src/packages/ai/lib/planner.ts, src/hooks/useMagicCast.ts, src/components/ScenarioMap/{useCombatActions,useCastActions,UnitEditorModal,UnitTooltip}.tsx, src/hooks/useSupabaseSync.ts, supabase/migrations/129_unit_field_base_ac.sql, docs/dev/{02,08,14,changelog}.md
 

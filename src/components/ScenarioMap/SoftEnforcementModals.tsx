@@ -28,6 +28,8 @@ export interface PendingAttack {
    *  confirmed attack is identical to the one the player picked. */
   mainTarget?: 'mount' | 'rider';
   damageDice?: string;
+  /** A war-machine firing: resume by re-entering the bombard path, not performAttack. */
+  bombard?: boolean;
 }
 
 export interface PendingAttackCap {
@@ -37,6 +39,8 @@ export interface PendingAttackCap {
   /** Preserved attack options (mount/rider main target, upcast dice). */
   mainTarget?: 'mount' | 'rider';
   damageDice?: string;
+  /** A war-machine firing: resume by re-entering the bombard path. */
+  bombard?: boolean;
 }
 
 export interface PendingHeroAttachConversion {

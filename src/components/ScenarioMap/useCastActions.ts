@@ -153,7 +153,15 @@ export function useCastActions(deps: CastActionsDeps) {
 
     const subSteps: SubStep[] = [];
     const casterChanges: UnitChange[] = [];
-    if (!cast.weapon.freeAction) casterChanges.push({ field: 'actionsAvailable', from: caster.actionsAvailable, to: caster.actionsAvailable - 1 });
+    if (cast.weapon.warMachine && !cast.weapon.freeAction) {
+      // Firing a war machine is a whole-turn action: a unit spends 2 actions, a
+      // hero 5, and it uses ALL 5 attacks (so one firing per turn).
+      const actionCost = caster.isHero ? 5 : 2;
+      casterChanges.push({ field: 'actionsAvailable', from: caster.actionsAvailable, to: caster.actionsAvailable - actionCost });
+      casterChanges.push({ field: 'attacksUsed', from: caster.attacksUsed ?? 0, to: (caster.attacksUsed ?? 0) + 5 });
+    } else if (!cast.weapon.freeAction) {
+      casterChanges.push({ field: 'actionsAvailable', from: caster.actionsAvailable, to: caster.actionsAvailable - 1 });
+    }
     if (cast.reaction) {
       casterChanges.push({ field: 'archerReactionUsed', from: caster.archerReactionUsed ?? false, to: true });
       casterChanges.push({ field: 'attacksUsed', from: caster.attacksUsed ?? 0, to: (caster.attacksUsed ?? 0) + 1 });
@@ -228,7 +236,9 @@ export function useCastActions(deps: CastActionsDeps) {
     if (!cast || cast.resolved || cast.markers.length === 0) return;
     if (!isGM && playerId !== cast.casterId) return;
     const caster = units.find(u => u.id === cast.casterUnitId);
-    if (caster && caster.actionsAvailable < 1 && !cast.weapon.freeAction) {
+    // A war machine is gated BEFORE its window opens (whole-turn firing), so it
+    // never re-prompts here; only spells use the cast over-budget confirm.
+    if (!cast.weapon.warMachine && caster && caster.actionsAvailable < 1 && !cast.weapon.freeAction) {
       setPendingCastOverBudget(true);
       return;
     }

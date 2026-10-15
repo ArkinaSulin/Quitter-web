@@ -30,7 +30,7 @@ import { Walls } from '@/packages/movement';
 import { MapStructures, structureAuraFlags, hasAuraFlags, StructureAuraFlags, structureSurfaceAt } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { attacksBlocked } from '@/packages/combat';
-import { formatStrikeDetail } from '@/packages/units';
+import { formatStrikeDetail, formatWarMachineToHit } from '@/packages/units';
 import { SubStep, UnitChange } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
@@ -93,8 +93,8 @@ interface CombatActionsDeps {
   /** Engine zone view (painted zones + hex-structure zones) for block_attacks. */
   groundZones?: GroundEffect[];
   execute: ExecuteFn;
-  addMessage: (msg: string) => void;
-  addError: (msg: string) => void;
+  addMessage: (msg: string, verboseText?: string) => void;
+  addError: (msg: string, verboseText?: string) => void;
   unitMaxMP: (unit: Unit) => number;
   maybeAutoReturnToRanged: (unit: Unit) => Promise<void>;
   canControlUnit: (unit: Unit) => boolean;
@@ -1229,7 +1229,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     await finishChargeAfterAttack(adjusted, target, result);
   }, [units, buildSwoopDropPlan, performAttack, finishChargeAfterAttack]);
 
-  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; weaponIndex?: number; heroJoin?: boolean; heroOverBudget?: boolean; mainTarget?: 'mount' | 'rider'; damageDice?: string }) => {
+  const handleAttackRequest = useCallback(async (attackerId: string, targetId: string, opts?: { forceCast?: boolean; forceAction?: boolean; weaponIndex?: number; heroJoin?: boolean; heroOverBudget?: boolean; mainTarget?: 'mount' | 'rider'; damageDice?: string }) => {
     let attacker = units.find(u => u.id === attackerId);
     const target = units.find(u => u.id === targetId);
     if (!attacker || !target) return;
@@ -1403,6 +1403,19 @@ export function useCombatActions(deps: CombatActionsDeps) {
         addMessage(`${attacker.unitName} (Routed) cannot fire`);
         return;
       }
+      // Firing a war machine is a whole-turn action. Gate on the attack cap, then
+      // the action pool (soft confirm), BEFORE rolling to-hit / opening the window.
+      // `forceAction` skips the gate when resuming a confirmed firing.
+      if (!opts?.forceAction) {
+        if ((attacker.attacksUsed ?? 0) >= unitAttackCap()) {
+          setPendingAttackCap({ attacker, target, bombard: true, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
+          return;
+        }
+        if (attacker.actionsAvailable < (attacker.isHero ? 5 : 2) && !weapon.freeAction) {
+          setPendingAttack({ attacker, target, bombard: true, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
+          return;
+        }
+      }
       const shots = Math.max(1, weapon.numberOfAttacks ?? 1);
       const attForm = formationsMap[attacker.currentFormation];
       const atkAura = heroAuraBonus(attacker, units, alliances, true);
@@ -1416,7 +1429,20 @@ export function useCombatActions(deps: CombatActionsDeps) {
       const mode = combatRollMode({ attackerAdvantage: aFlags.advantage, attackerDisadvantage: aFlags.disadvantage, targetAdvantage: tFlags.grantAdvantage, targetDisadvantage: tFlags.grantDisadvantage, rangeDisadvantage: rangeDis, losDisadvantage: losDis }).mode;
       const { hits, rolls: toHitRolls } = rollWarMachineHits(shots, attackBonus, targetAc, Math.random, mode);
       if (hits <= 0) {
-        addMessage(`${attacker.unitName} fires ${weapon.name} at ${target.unitName} — all ${shots} shot(s) missed`);
+        const plain = `${attacker.unitName} fires ${weapon.name} at ${target.unitName} — all ${shots} shot(s) missed`;
+        addMessage(plain, `${plain} ${formatWarMachineToHit(toHitRolls, attackBonus, targetAc)}`);
+        // The shot was fired — spend the whole-turn cost even on a total miss.
+        if (!weapon.freeAction) {
+          await execute('ATTACK', [{
+            type: 'ATTACK',
+            description: `${attacker.unitName} fired ${weapon.name} (all missed)`,
+            unitId: attacker.id,
+            changes: [
+              { field: 'actionsAvailable', from: attacker.actionsAvailable, to: attacker.actionsAvailable - (attacker.isHero ? 5 : 2) },
+              { field: 'attacksUsed', from: attacker.attacksUsed ?? 0, to: (attacker.attacksUsed ?? 0) + 5 },
+            ],
+          }], `${attacker.unitName} fires ${weapon.name} (all missed)`);
+        }
         return;
       }
       magicCast.openCast({
