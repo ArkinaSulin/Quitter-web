@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## Climbing scatters a formed unit (2026-10-12)
+**Files:** src/components/ScenarioMap/{climbScatter.ts,useMoveActions,useCombatActions}.ts, docs/dev/{07-movement-economy,changelog}.md, docs/players/player-manual.md
+
+- A **formed** unit (`getOrganizationLevel(currentFormation) > 0`) that climbs breaks
+  to **Scattered** the instant it climbs. New `climbScatterStep(unit)` returns a
+  `FORMATION` sub-step (`currentFormation → Scattered`, `organizationLevel → 0`),
+  **prepended to every climb command** so undo is atomic: `handleClimbMove` (up / down
+  / hang, incl. in-place), `performClimbOver` (climb over a wall), and
+  `performClimbAttack` (the climb-attack also resolves with the Scattered formation).
+- Already-loose units (Scattered / Routed / Hero) are untouched, so climbing never
+  un-routes a routed unit. The unit stays Scattered until reformed.
+- No schema/command-log change (`currentFormation` / `organizationLevel` are already
+  mapped). `tsc` clean, tests pass, build clean.
+
 ## War-machine firing: whole-turn cost, gate order, verbose miss (2026-10-12)
 **Files:** src/components/ScenarioMap/{useCombatActions,useCastActions,ScenarioMap,SoftEnforcementModals}.tsx, docs/dev/{08-combat,changelog}.md
 

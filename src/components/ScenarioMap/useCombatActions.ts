@@ -37,6 +37,7 @@ import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 import { computeOccupiedHexes, computeThreatHexes } from '@/packages/world';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingAttack, PendingAttackCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch } from './SoftEnforcementModals';
+import { climbScatterStep } from './climbScatter';
 import { useMagicCast } from '@/hooks/useMagicCast';
 
 /** Synthetic unit effects carrying a hex structure's aura flags so the combat
@@ -1158,13 +1159,20 @@ export function useCombatActions(deps: CombatActionsDeps) {
       { field: 'movementPointsAvailable', from: attacker.movementPointsAvailable, to: spend.movementPointsAvailable },
       ...(spend.actionsAvailable !== attacker.actionsAvailable ? [{ field: 'actionsAvailable' as const, from: attacker.actionsAvailable, to: spend.actionsAvailable }] : []),
     ];
+    const scatter = climbScatterStep(attacker);
     if (!atTop) {
       // MP short: climb to the last step, no attack.
-      await execute('MOVE', [{ type: 'MOVE', description: `${attacker.unitName} climbs toward the top`, unitId: attacker.id, changes: climbChange }], `${attacker.unitName} climbs to ${newElev} ft`);
+      await execute('MOVE', [
+        ...(scatter ? [scatter] : []),
+        { type: 'MOVE', description: `${attacker.unitName} climbs toward the top`, unitId: attacker.id, changes: climbChange },
+      ], `${attacker.unitName} climbs to ${newElev} ft`);
       return true;
     }
-    const adjusted: Unit = { ...attacker, elevation: newElev, climbTo: null, movementPointsAvailable: spend.movementPointsAvailable, actionsAvailable: spend.actionsAvailable };
-    await performAttack(adjusted, target, false, { prependSubSteps: [{ type: 'MOVE', description: `${attacker.unitName} climbs onto the top`, unitId: attacker.id, changes: climbChange }] });
+    const adjusted: Unit = { ...attacker, elevation: newElev, climbTo: null, movementPointsAvailable: spend.movementPointsAvailable, actionsAvailable: spend.actionsAvailable, ...(scatter ? { currentFormation: 'Scattered', organizationLevel: 0 } : {}) };
+    await performAttack(adjusted, target, false, { prependSubSteps: [
+      ...(scatter ? [scatter] : []),
+      { type: 'MOVE', description: `${attacker.unitName} climbs onto the top`, unitId: attacker.id, changes: climbChange },
+    ] });
     return true;
   }, [units, structures, structureTemplates, unitMaxMP, execute, addError, freeMove, performAttack]);
 

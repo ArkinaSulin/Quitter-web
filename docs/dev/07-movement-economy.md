@@ -317,3 +317,11 @@ negative value is a hard block for that locomotion, bypassed by free move and th
 budget while the hex-step cap stays at one pool ("Option 2", the `hopCap` argument of
 `computeReachableMap`) — an expensive single step is
 selectable without extending normal one-move reach. See `18` for the barriers.
+
+**Climbing scatters a formed unit.** Every climb command (climb up/down, hang,
+climb-over-a-wall, and the climb-attack) prepends a `FORMATION` sub-step that
+breaks a **formed** unit (`getOrganizationLevel(currentFormation) > 0`) to
+`Scattered` (`climbScatterStep`, folded into the climb's `MOVE` command so undo is
+atomic). Already-loose units — Scattered / Routed / Hero (org level 0) — are
+unchanged, so a routed unit is never un-routed by climbing. The unit stays
+Scattered until it reforms.

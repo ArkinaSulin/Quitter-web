@@ -804,6 +804,12 @@ per-10-ft cost for each step (if a **ladder/wall crosses the edge**, its cost ap
 instead of the tower's). If you run out of MP the unit **hangs** partway and continues
 next action.
 
+**Climbing scatters a formed unit.** The instant a **formed** unit (Open Order or
+tighter) starts any climb — up, down, over a wall, or a climb-attack — it breaks to
+**Scattered** (both hands on the ladder, no shield wall) and stays that way until you
+reform it. Units that are already loose (Scattered, Routed, or a Hero) are unchanged
+(so climbing never un-routs a routed unit).
+
 To get **down** off an adjacent lower hex, drop your unit on the hex below and
 choose:
 

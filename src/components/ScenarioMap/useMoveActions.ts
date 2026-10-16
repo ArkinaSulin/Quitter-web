@@ -25,6 +25,7 @@ import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOr
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
+import { climbScatterStep } from './climbScatter';
 
 /** A grounded drop off an adjacent lower surface: Climb down / Drop / Cancel. */
 export interface PendingDescent {
@@ -315,7 +316,11 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const attachedHero = units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted) ?? null;
 
     const run = async (changes: UnitChange[], desc: string) => {
-      const subSteps: SubStep[] = [{ type: 'MOVE', description: desc, unitId: unit.id, changes }];
+      const scatter = climbScatterStep(unit);
+      const subSteps: SubStep[] = [
+        ...(scatter ? [scatter] : []),
+        { type: 'MOVE', description: desc, unitId: unit.id, changes },
+      ];
       const elevChange = changes.find(c => c.field === 'elevation');
       const hexChange = changes.find(c => c.field === 'hex');
       if (attachedHero && elevChange) {
@@ -797,12 +802,16 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const newElev = Math.min(H, curElev + climbSteps * 10);
     // Partial: not enough to reach the top → hang on the near side.
     if (newElev < H) {
-      await execute('MOVE', [{ type: 'MOVE', description: `${unit.unitName} climbs the wall`, unitId: unit.id, changes: [
-        { field: 'elevation', from: curElev, to: newElev },
-        { field: 'climbTo', from: unit.climbTo ?? null, to: `${farHex.q},${farHex.r}` },
-        { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: upSpend.movementPointsAvailable },
-        ...(upSpend.actionsAvailable !== unit.actionsAvailable ? [{ field: 'actionsAvailable' as const, from: unit.actionsAvailable, to: upSpend.actionsAvailable }] : []),
-      ] }], `${unit.unitName} climbs to ${newElev} ft`);
+      const scatter = climbScatterStep(unit);
+      await execute('MOVE', [
+        ...(scatter ? [scatter] : []),
+        { type: 'MOVE', description: `${unit.unitName} climbs the wall`, unitId: unit.id, changes: [
+          { field: 'elevation', from: curElev, to: newElev },
+          { field: 'climbTo', from: unit.climbTo ?? null, to: `${farHex.q},${farHex.r}` },
+          { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: upSpend.movementPointsAvailable },
+          ...(upSpend.actionsAvailable !== unit.actionsAvailable ? [{ field: 'actionsAvailable' as const, from: unit.actionsAvailable, to: upSpend.actionsAvailable }] : []),
+        ] },
+      ], `${unit.unitName} climbs to ${newElev} ft`);
       return;
     }
     // The far-side descent: climb down (pay per-step) or drop (fall damage). When a
@@ -822,7 +831,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const fallBreakdown = `${unit.unitName} fell ${H} ft — ${fallDice} per troop × ${unit.currentTroopCount} = ${dmg} HP`;
     const newHp = Math.max(0, (unit.currentUnitHp ?? 0) - dmg);
     const newTroops = dmg > 0 ? Math.max(0, Math.ceil(newHp / Math.max(1, unit.troopHp))) : unit.currentTroopCount;
+    const scatter = climbScatterStep(unit);
     const subSteps: SubStep[] = [
+      ...(scatter ? [scatter] : []),
       { type: 'MOVE', description: `${unit.unitName} climbs the wall`, unitId: unit.id, changes: [
         { field: 'elevation', from: curElev, to: H },
         { field: 'climbTo', from: unit.climbTo ?? null, to: null },
