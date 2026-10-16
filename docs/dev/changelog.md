@@ -1,5 +1,30 @@
 # QuiTTER Changelog
 
+## War-machine firing on all paths + hero guard; structure instance overrides; UI fixes (2026-10-12)
+**Files:** src/components/ScenarioMap/{useCombatActions,SoftEnforcementModals,ScenarioMap,UnitEditorModal,UnitTooltip}.tsx, src/components/StructureEditModal.tsx, src/types/structure.ts, src/packages/movement/lib/mapStructures.ts, src/packages/combat/lib/structureCombat.ts, docs/dev/{08-combat,14-editors,18-map-structures,changelog}.md
+
+- **War-machine firing cost applies to ALL paths** (bombard AND the direct
+  hero/lone-survivor attack): `performAttack`'s ATTACK step spends `isHero ? 5 : 2`
+  actions and `+5` attacks when `weapon.warMachine`. A single **war-machine gate**
+  now runs before the bombard/direct split (cap → actions, soft confirm); the normal
+  1-action gate is skipped for war machines.
+- **A hero cannot crew a war machine alone**: it always soft-confirms
+  (`pendingAttack` `reason: 'hero-war-machine'`, **amber** when short on actions,
+  else **red**) and a hero's firing is flagged **red** (illegal) if it proceeds.
+- **Structure instance overrides**: a placed structure may now override **AC**,
+  **Max HP** and the four **climb costs** (foot/mounted up/down) — `StructureInstance`
+  fields wired through `structureClimbPerStep10` (reads `inst.mpX ?? template`),
+  `structuresToWalls` (`ac`/`maxHp`) and `structureCombat` (`ac`/`maxHp`);
+  `instanceDoorMax` makes a null template door default to the instance max HP. No DB
+  migration (jsonb).
+- **On-map `StructureEditModal`**: shows **AC**, editable **Max HP**, HP, Door HP,
+  Elevation and the four climb inputs; **bug fixed** — the Door HP input's cap now
+  binds to the **draft** HP, so raising HP raises the door cap live (was frozen at
+  the modal-open HP until reopen).
+- **On-map `UnitEditorModal`**: the Elevation field steps in **10 ft**.
+- **`UnitTooltip` weapon line**: `Name [2H] (N attacks, +B, DICE, melee | range:{minRange}-{range}, max:{maxRange})`.
+- `tsc` clean, tests pass, build clean.
+
 ## Climbing scatters a formed unit (2026-10-12)
 **Files:** src/components/ScenarioMap/{climbScatter.ts,useMoveActions,useCombatActions}.ts, docs/dev/{07-movement-economy,changelog}.md, docs/players/player-manual.md
 

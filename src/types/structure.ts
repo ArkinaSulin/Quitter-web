@@ -74,6 +74,15 @@ export interface StructureInstance {
   templateId: string;
   /** Current structure HP (defaults to template maxHp). */
   hp?: number;
+  /** Per-instance MAX HP override (defaults to the template's maxHp). */
+  maxHp?: number;
+  /** Per-instance AC override (defaults to the template's ac). */
+  ac?: number;
+  /** Per-instance climb-cost overrides (MP per 10 ft; default the template's). */
+  mpClimbUp?: number;
+  mpClimbDown?: number;
+  mpMountedUp?: number;
+  mpMountedDown?: number;
   /** Current door HP (defaults to template doorHp, or maxHp when that is null). */
   doorHp?: number;
   /** Edge structures: which canonical face is the outside. */

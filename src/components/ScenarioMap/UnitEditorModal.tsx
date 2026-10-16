@@ -97,8 +97,8 @@ function Cell({ label, children, widthClass = 'w-16' }: { label: string; childre
   );
 }
 
-function NumInput({ value, onChange, min, max, readOnly }: {
-  value: any; onChange: (v: string) => void; min?: number; max?: number; readOnly?: boolean;
+function NumInput({ value, onChange, min, max, step, readOnly }: {
+  value: any; onChange: (v: string) => void; min?: number; max?: number; step?: number; readOnly?: boolean;
 }) {
   return (
     <input
@@ -107,6 +107,7 @@ function NumInput({ value, onChange, min, max, readOnly }: {
       readOnly={readOnly}
       min={min}
       max={max}
+      step={step}
       onChange={e => onChange(e.target.value)}
       className={`w-full bg-gray-800 text-white text-xs rounded px-2 py-1 border border-gray-700 focus:border-amber-400 ${readOnly ? 'opacity-70 cursor-default' : ''}`}
     />
@@ -397,7 +398,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
 
           {/* Elevation & fly */}
           <div className="flex items-end gap-2">
-            <Cell label="Elevation (ft)"><NumInput value={draft.elevation} min={0} onChange={v => set('elevation', v)} /></Cell>
+            <Cell label="Elevation (ft)"><NumInput value={draft.elevation} min={0} step={10} onChange={v => set('elevation', v)} /></Cell>
             <Cell label="Fly pts left"><NumInput value={draft.flySpeedAvailable} min={0} onChange={v => set('flySpeedAvailable', v)} /></Cell>
             <Cell label="Fly speed"><NumInput value={draft.flySpeed} min={0} onChange={v => set('flySpeed', v)} /></Cell>
           </div>

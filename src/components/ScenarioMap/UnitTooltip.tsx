@@ -91,12 +91,16 @@ function unitInfo(unit: Unit, units: Unit[], alliances: Record<string, AllianceG
                 const isRangedWeapon = (w.range ?? 1) > 1 || (w.maxRange ?? 1) > 1;
                 const auraAtk = heroAuraBonus(unit, units, alliances, isRangedWeapon).attack + effectAttackBonus(unit, isRangedWeapon);
                 const effectiveAtk = computeEffectiveAttackBonus(w.attackBonus, formationAtkMod + auraAtk);
-                const atkBreakdown = showTroops && (formationAtkMod !== 0 || auraAtk !== 0)
-                  ? `${effectiveAtk} atk [base +${w.attackBonus}${formationAtkMod !== 0 ? `, formation +${formationAtkMod}` : ''}${auraAtk !== 0 ? `, aura ${auraAtk >= 0 ? '+' : ''}${auraAtk}` : ''}]`
-                  : `${effectiveAtk} atk`;
+                const atkBreakdown = `${effectiveAtk} atk${showTroops && (formationAtkMod !== 0 || auraAtk !== 0)
+                  ? ` [base +${w.attackBonus}${formationAtkMod !== 0 ? `, formation +${formationAtkMod}` : ''}${auraAtk !== 0 ? `, aura ${auraAtk >= 0 ? '+' : ''}${auraAtk}` : ''}]`
+                  : ''}`;
+                const attacks = w.numberOfAttacks ?? 1;
+                const rangeDesc = !isRangedWeapon
+                  ? 'melee'
+                  : `range:${w.minRange ?? 0}-${w.range ?? 1}, max:${w.maxRange ?? w.range ?? 1}`;
                 return (
                   <div key={i}>
-                    {w.name}{w.isTwoHanded && <span className="text-red-400 ml-1" title="Two-handed (no shield, no Shield Wall)">[2H]</span>} ({atkBreakdown}, {w.damageDice}{w.isHealing ? '(h)' : ''}{w.numberOfAttacks > 1 ? `, ${w.numberOfAttacks} att` : ''})
+                    {w.name}{w.isTwoHanded && <span className="text-red-400 ml-1" title="Two-handed (no shield, no Shield Wall)">[2H]</span>} ({attacks} attack{attacks === 1 ? '' : 's'}, {atkBreakdown}, {w.damageDice}{w.isHealing ? '(h)' : ''}, {rangeDesc})
                   </div>
                 );
               })}

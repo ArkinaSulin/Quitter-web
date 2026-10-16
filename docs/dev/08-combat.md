@@ -150,15 +150,19 @@ front; **Scattered** → all sides flank; **Routed** → all sides rear.
   save clause is omitted). The on-map Unit Editor modal exposes the unarmoured base
   as **Natural AC** (`baseAc`, "AC vs war machine") beside **Baseline AC**
   (`baselineAc`); `baseAc → base_ac` is a command-log field (migration **129**).
-- **War-machine firing cost (whole turn)**: firing (loading/aiming/firing) is a
-  whole-turn action. **Before** rolling to-hit the bombard branch gates on the
-  attack cap then the action pool (soft-confirm, like any attack): a **unit** needs
-  `> 1` action (spends **2**) and a **hero** needs `> 4` (spends **5**); either way
-  it uses **all 5 attacks** (`attacksUsed += 5`, so one firing per turn). The cost
-  is spent on **hit or miss** — a hit-applied `CAST` (or a no-damage `ATTACK` step
-  on a total miss) — and `freeAction` waives it. A confirmed over-budget/over-cap
-  firing resumes via `handleAttackRequest(..., { forceAction: true })` (the
-  `pendingAttack`/`pendingAttackCap` `bombard` flag), not `performAttack`.
+- **War-machine firing cost (whole turn, ALL paths)**: firing (loading/aiming/firing)
+  is a whole-turn action, whether it **bombards** a troop unit or resolves as a
+  direct ranged attack vs a **hero / lone survivor**. **Before** rolling /
+  attacking, `handleAttackRequest` gates on the attack cap, then the action pool
+  (soft-confirm): a **unit** needs 2 actions (spends **2**) and a **hero** needs 5
+  (spends **5**); either way it uses **all 5 attacks** (`attacksUsed += 5`, one
+  firing per turn). The cost is spent on **hit or miss** — the bombard's `CAST`
+  step, a no-damage `ATTACK` step on a total miss, or `performAttack`'s ATTACK step
+  on the direct path. **A hero cannot crew a war machine alone** — it always
+  soft-confirms (`pendingAttack` `reason: 'hero-war-machine'`, amber when short on
+  actions) and is flagged **red** if it proceeds. `freeAction` waives the cost. A
+  confirmed firing resumes via `handleAttackRequest(..., { forceAction: true })`
+  (the `pendingAttack`/`pendingAttackCap` `bombard` flag), not `performAttack`.
 - **beAttacked modifiers** (formation of the *target* side) multiply the
   attacker's count: melee vs Scattered ×1.5, Routed ×2.0; ranged vs Open
   Order/Scattered/Routed ×0.5. Notes are attached for the message.

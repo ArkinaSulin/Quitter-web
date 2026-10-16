@@ -30,6 +30,8 @@ export interface PendingAttack {
   damageDice?: string;
   /** A war-machine firing: resume by re-entering the bombard path, not performAttack. */
   bombard?: boolean;
+  /** Why the prompt fired (e.g. a Hero operating a war machine — illegal). */
+  reason?: 'hero-war-machine';
 }
 
 export interface PendingAttackCap {
@@ -191,16 +193,22 @@ export function SoftEnforcementModals({ pending, actions, cancels, unitMaxMP }: 
         </ConfirmModal>
       )}
 
-      {p.attack && (
-        <ConfirmModal
-          tone="red"
-          title="Attack with no actions?"
-          buttons={[{ label: 'Yes, attack anyway', variant: 'red', onClick: actions.confirmAttack }]}
-          onCancel={cancels.attack}
-        >
-          {p.attack.attacker.unitName} has no actions left, but can still attack {p.attack.target.unitName}.
-        </ConfirmModal>
-      )}
+      {p.attack && (() => {
+        const heroWm = p.attack.reason === 'hero-war-machine';
+        const under = p.attack.attacker.actionsAvailable < 5;
+        return (
+          <ConfirmModal
+            tone={heroWm && under ? 'amber' : 'red'}
+            title={heroWm ? 'Hero cannot crew a war machine?' : 'Attack with no actions?'}
+            buttons={[{ label: heroWm ? 'Fire anyway' : 'Yes, attack anyway', variant: 'red', onClick: actions.confirmAttack }]}
+            onCancel={cancels.attack}
+          >
+            {heroWm
+              ? `${p.attack.attacker.unitName} is a Hero — it cannot operate a war machine alone. Firing uses all 5 actions${under ? ` (only ${p.attack.attacker.actionsAvailable} left — over budget)` : ''}. Fire anyway?`
+              : `${p.attack.attacker.unitName} has no actions left, but can still attack ${p.attack.target.unitName}.`}
+          </ConfirmModal>
+        );
+      })()}
 
       {p.attackCap && (
         <ConfirmModal

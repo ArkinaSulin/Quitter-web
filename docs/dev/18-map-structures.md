@@ -31,14 +31,18 @@ map), exactly like weapons/effects split authored vs placed.
 | **Instance** | `maps.structures` jsonb (library); `scenarios.map_data.structures` snapshot | `{ templateId, hp?, maxHp?, dt?, doorHp?, outside? }` |
 
 Instances are keyed by anchor: `"q,r,dir"` for edges, `"q,r"` for hexes
-(`src/packages/movement/lib/mapStructures.ts`). A placed instance may override the template's
-durability (maxHp / hp / dt / doorHp) so the GM can drop a reinforced gate
-without authoring a new template. Each template also carries an **AC** (default
-10, migration **127**): an attacker must beat it (`d20 + attackBonus >= ac`) with
-each attack to damage the structure (`13`). On assign, edge structures are
-converted to the runtime `Walls` shape via `structuresToWalls` (inside/outside
-mapped by `outside`, plus the template `ac`) so the existing
-movement/combat/render model is untouched until the scenario is migrated (Slice 3).
+(`src/packages/movement/lib/mapStructures.ts`). A placed instance may override the
+template's durability and defence so the GM can drop a reinforced gate without
+authoring a new template: **`maxHp`**, `hp`, `dt`, `doorHp`, **`ac`**, and the four
+**climb costs** (`mpClimbUp/Down` + `mpMountedUp/Down`). Each template carries an
+**AC** (default 10, migration **127**): an attacker must beat it
+(`d20 + attackBonus >= ac`) with each attack to damage the structure (`13`). The
+on-map `StructureEditModal` edits AC / Max HP / HP / Door HP / Elevation / the four
+climb costs / modifiers; `instanceDoorMax` makes a null template door default to the
+**instance's** max HP. On assign, edge structures are converted to the runtime
+`Walls` shape via `structuresToWalls` (inside/outside mapped by `outside`, plus the
+instance `ac`/`maxHp`) so the existing movement/combat/render model is untouched
+until the scenario is migrated (Slice 3).
 
 ## Anchors
 

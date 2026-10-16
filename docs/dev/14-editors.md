@@ -75,12 +75,15 @@ actions, morale (full-effective), formation + mount + can-charge, saves,
 rank/token, weapons via the shared modal. The Armor row shows **Effective AC**,
 **Baseline AC** (`baselineAc` = base + armour) and — behind the **Shield** toggle
 — **Natural AC** (`baseAc`, the unarmoured base; the value a war machine rolls
-against, see `08`). Every edit is an **EDIT_UNIT**
+against, see `08`). Its **Elevation (ft)** field steps in **10 ft** increments. Every
+edit is an **EDIT_UNIT**
 command through the log (undoable) and broadcasts a **red** message to the
 room. `updateUnit` maps every editable field to its snake_case column
 (history: several fields silently never persisted because a mapping was
 missing — Max MP was the canonical bug; `baseAc → base_ac` was added in migration
-**129**).
+**129**). The **`UnitTooltip`** weapon line reads
+`Name [2H] (N attacks, +B, DICE, melee | range:{minRange}-{range}, max:{maxRange})`
+(`B` = effective bonus with a `[base/formation/aura]` breakdown for troop units).
 
 ## Size/visual constants
 

@@ -12,7 +12,7 @@ import { arcOfTarget } from '@/packages/primitives';
 import { canMeleeTarget, canRangedTarget } from '@/packages/movement';
 import { isUnitRouted } from '@/packages/morale';
 import { isRangedCapableWeapon } from '@/packages/combat/lib/archerReaction';
-import { templateDoorMax } from '@/packages/movement';
+import { templateDoorMax, instanceDoorMax } from '@/packages/movement';
 
 export type HexStructureAttackKind = 'melee' | 'ranged' | null;
 
@@ -57,13 +57,13 @@ export function structureDoorMax(t: StructureTemplate): number {
 
 /** Current door HP of a placed instance. */
 export function structureDoorCurrent(t: StructureTemplate, inst: StructureInstance): number {
-  return inst.doorHp ?? templateDoorMax(t);
+  return inst.doorHp ?? instanceDoorMax(inst, t);
 }
 
 /** A hex structure is attackable while a door stands or its HP is destructible. */
 export function isAttackableHexStructure(t: StructureTemplate, inst: StructureInstance): boolean {
   const doorStanding = !inst.open && structureDoorCurrent(t, inst) > 0;
-  const maxHp = t.maxHp;
+  const maxHp = inst.maxHp ?? t.maxHp;
   const hp = inst.hp ?? maxHp;
   return doorStanding || hp > 0;
 }
@@ -106,10 +106,10 @@ export function resolveHexStructureAttack(
 ): HexStructureAttackResult {
   const doorCur = structureDoorCurrent(template, instance);
   const doorStanding = !instance.open && doorCur > 0;
-  const maxHp = template.maxHp;
+  const maxHp = instance.maxHp ?? template.maxHp;
   const hp = instance.hp ?? maxHp;
   const dt = template.dt ?? 0;
-  const ac = template.ac ?? 10;
+  const ac = instance.ac ?? template.ac ?? 10;
   let damage = 0;
   let applied = 0;
   let hits = 0;

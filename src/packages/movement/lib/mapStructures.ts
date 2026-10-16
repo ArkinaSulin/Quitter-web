@@ -178,14 +178,15 @@ export const CLIMB_MP_PER_STEP = 4;
  */
 export function structureClimbPerStep10(
   template: StructureTemplate | null | undefined,
-  _instance?: StructureInstance | null,
+  instance?: StructureInstance | null,
   opts: { isMounted?: boolean; fromIsOutside?: boolean; ascending?: boolean } = {},
 ): number {
   if (!template) return CLIMB_MP_PER_STEP;
   const up = template.anchor === 'edge' ? (opts.fromIsOutside ?? true) : (opts.ascending ?? true);
+  // A placed instance may override the template's per-10-ft climb cost.
   const authored = opts.isMounted
-    ? (up ? template.mpMountedUp : template.mpMountedDown)
-    : (up ? template.mpClimbUp : template.mpClimbDown);
+    ? (up ? (instance?.mpMountedUp ?? template.mpMountedUp) : (instance?.mpMountedDown ?? template.mpMountedDown))
+    : (up ? (instance?.mpClimbUp ?? template.mpClimbUp) : (instance?.mpClimbDown ?? template.mpClimbDown));
   if (authored === null || authored === undefined) return CLIMB_MP_PER_STEP;
   return Math.max(0, authored);
 }
@@ -354,9 +355,15 @@ export function edgeShowsLadder(inst: StructureInstance | null | undefined, t: S
   return structureHasLadder(t, inst);
 }
 
+/** The effective door max of a placed instance: a null template door defaults to
+ *  the instance's (or template's) max HP. */
+export function instanceDoorMax(inst: StructureInstance, t: StructureTemplate): number {
+  return t.doorHp === null ? (inst.maxHp ?? t.maxHp) : t.doorHp;
+}
+
 /** Current door pool of a placed instance (null door defaults to maxHp). */
 export function instanceDoorState(inst: StructureInstance, t: StructureTemplate): { doorMax: number; doorHp: number; open: boolean; standing: boolean } {
-  const doorMax = templateDoorMax(t);
+  const doorMax = instanceDoorMax(inst, t);
   const doorHp = inst.doorHp ?? doorMax;
   const open = inst.open === true;
   return { doorMax, doorHp, open, standing: !open && doorHp > 0 };
@@ -541,9 +548,9 @@ export function structuresToWalls(
     // canonical face IS the outside, so its cost is the `_out` ("enter outside").
     const aFace = outsideIsA ? faceFromTemplate(t, mods, 'outside', st.openOrBroken) : faceFromTemplate(t, mods, 'inside', st.openOrBroken);
     const bFace = outsideIsA ? faceFromTemplate(t, mods, 'inside', st.openOrBroken) : faceFromTemplate(t, mods, 'outside', st.openOrBroken);
-    const maxHp = t.maxHp;
+    const maxHp = inst.maxHp ?? t.maxHp;
     const door = instanceDoorState(inst, t);
-    const wall: Wall = { a: aFace, b: bFace, source: 'map', ac: t.ac };
+    const wall: Wall = { a: aFace, b: bFace, source: 'map', ac: inst.ac ?? t.ac };
     if (maxHp > 0) {
       wall.maxHp = maxHp;
       wall.hp = inst.hp ?? maxHp;

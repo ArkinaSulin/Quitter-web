@@ -12,6 +12,12 @@ import { structureDoorState } from '@/packages/movement';
 
 export interface StructureInstancePatch {
   hp?: number;
+  maxHp?: number;
+  ac?: number;
+  mpClimbUp?: number;
+  mpClimbDown?: number;
+  mpMountedUp?: number;
+  mpMountedDown?: number;
   doorHp?: number;
   open?: boolean;
   outside?: 'a' | 'b';
@@ -41,6 +47,12 @@ const input =
 export function StructureEditModal({ template, instance, onSave, onClose, restricted = false, onToggleDoor, onRemove, onEditEffects }: StructureEditModalProps) {
   const st = structureDoorState(instance, template);
   const [hp, setHp] = useState<number>(st.hpNow);
+  const [maxHp, setMaxHp] = useState<number>(Math.max(0, Math.round(instance.maxHp ?? template.maxHp)));
+  const [ac, setAc] = useState<number>(Math.max(0, Math.round(instance.ac ?? template.ac ?? 10)));
+  const [climbUp, setClimbUp] = useState<number>(instance.mpClimbUp ?? template.mpClimbUp);
+  const [climbDown, setClimbDown] = useState<number>(instance.mpClimbDown ?? template.mpClimbDown);
+  const [climbMUp, setClimbMUp] = useState<number>(instance.mpMountedUp ?? template.mpMountedUp);
+  const [climbMDown, setClimbMDown] = useState<number>(instance.mpMountedDown ?? template.mpMountedDown);
   const [doorHp, setDoorHp] = useState<number>(st.doorNow);
   const [open, setOpen] = useState<boolean>(!!instance.open);
   const [outside, setOutside] = useState<'a' | 'b'>(instance.outside ?? 'a');
@@ -52,14 +64,14 @@ export function StructureEditModal({ template, instance, onSave, onClose, restri
 
   const save = () => {
     // A DESTRUCTIBLE structure at 0 HP is destroyed — REMOVED from the map (edge and
-    // hex alike). Decorative structures (max_hp = 0, e.g. a ladder) have hp 0 by
+    // hex alike). Decorative structures (max HP = 0, e.g. a ladder) have hp 0 by
     // default and must NOT be removed by an ordinary edit.
-    if (template.maxHp > 0 && hp <= 0 && onRemove) {
+    if (maxHp > 0 && hp <= 0 && onRemove) {
       onRemove();
       onClose();
       return;
     }
-    onSave({ hp, doorHp, open, outside, elevation: elev, ladder, modifiers: mods });
+    onSave({ hp, maxHp, ac, mpClimbUp: climbUp, mpClimbDown: climbDown, mpMountedUp: climbMUp, mpMountedDown: climbMDown, doorHp, open, outside, elevation: elev, ladder, modifiers: mods });
     onClose();
   };
 
@@ -89,17 +101,21 @@ export function StructureEditModal({ template, instance, onSave, onClose, restri
         ) : (
           <>
             <div className="flex flex-wrap items-end gap-3 text-xs">
-              <label className="text-gray-400">HP
-                <input type="number" min={0} max={template.maxHp} className={input + ' !w-24 block'} value={hp}
-                  onChange={e => setHp(Math.max(0, Math.min(template.maxHp, Math.round(Number(e.target.value) || 0))))} />
+              <label className="text-gray-400">AC
+                <input type="number" min={0} max={99} className={input + ' !w-20 block'} value={ac}
+                  onChange={e => setAc(Math.max(0, Math.round(Number(e.target.value) || 0)))} />
               </label>
-              <div className="text-gray-400 pb-1">
-                <span className="block">Max HP</span>
-                <span className="text-gray-200 font-semibold">{template.maxHp}</span>
-              </div>
+              <label className="text-gray-400">Max HP
+                <input type="number" min={0} max={9999} className={input + ' !w-24 block'} value={maxHp}
+                  onChange={e => setMaxHp(Math.max(0, Math.round(Number(e.target.value) || 0)))} />
+              </label>
+              <label className="text-gray-400">HP
+                <input type="number" min={0} max={maxHp} className={input + ' !w-24 block'} value={hp}
+                  onChange={e => setHp(Math.max(0, Math.min(maxHp, Math.round(Number(e.target.value) || 0))))} />
+              </label>
               <label className="text-gray-400">Door HP
-                <input type="number" min={0} max={st.hpNow} className={input + ' !w-24 block'} value={doorHp}
-                  onChange={e => setDoorHp(Math.max(0, Math.min(st.hpNow, Math.round(Number(e.target.value) || 0))))} />
+                <input type="number" min={0} max={hp} className={input + ' !w-24 block'} value={doorHp}
+                  onChange={e => setDoorHp(Math.max(0, Math.min(hp, Math.round(Number(e.target.value) || 0))))} />
               </label>
               {st.hasDoor && (
                 <label className="flex items-center gap-2 text-gray-300 pb-1.5">
@@ -117,6 +133,22 @@ export function StructureEditModal({ template, instance, onSave, onClose, restri
               <label className="text-gray-400">Elevation (ft)
                 <input type="number" min={0} step={10} className={input + ' !w-24 block'} value={elev}
                   onChange={e => setElev(Math.max(0, Math.round(Number(e.target.value) || 0)))} />
+              </label>
+              <label className="text-gray-400" title="MP per 10 ft to climb UP (foot). Negative = hard block. Defaults to the template.">Climb up
+                <input type="number" min={-1} max={99} className={input + ' !w-20 block'} value={climbUp}
+                  onChange={e => setClimbUp(Math.round(Number(e.target.value) || 0))} />
+              </label>
+              <label className="text-gray-400" title="MP per 10 ft to climb DOWN (foot).">Climb down
+                <input type="number" min={-1} max={99} className={input + ' !w-20 block'} value={climbDown}
+                  onChange={e => setClimbDown(Math.round(Number(e.target.value) || 0))} />
+              </label>
+              <label className="text-gray-400" title="MP per 10 ft to climb UP (mounted).">Mount up
+                <input type="number" min={-1} max={99} className={input + ' !w-20 block'} value={climbMUp}
+                  onChange={e => setClimbMUp(Math.round(Number(e.target.value) || 0))} />
+              </label>
+              <label className="text-gray-400" title="MP per 10 ft to climb DOWN (mounted).">Mount down
+                <input type="number" min={-1} max={99} className={input + ' !w-20 block'} value={climbMDown}
+                  onChange={e => setClimbMDown(Math.round(Number(e.target.value) || 0))} />
               </label>
               {template.anchor === 'edge' && (
                 <label className="flex items-center gap-2 text-gray-300 pb-1.5" title="Draw the trapezoid ladder on this edge (pure visual).">

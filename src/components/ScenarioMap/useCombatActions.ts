@@ -458,14 +458,18 @@ export function useCombatActions(deps: CombatActionsDeps) {
     }
 
     if (!weapon.freeAction && !isChargingAttack && !options?.pursuit) {
+      // A war machine is a whole-turn weapon: firing it spends 2 actions (a unit)
+      // or 5 (a hero) and ALL 5 attacks, wherever it is resolved.
+      const actionCost = weapon.warMachine ? (attacker.isHero ? 5 : 2) : 1;
+      const attackCost = weapon.warMachine ? 5 : 1;
       subSteps.push({
         type: 'ATTACK',
-        description: `${attacker.unitName} spent an action attacking ${target.unitName}`,
+        description: `${attacker.unitName} ${weapon.warMachine ? 'fired' : 'spent an action attacking'} ${target.unitName}`,
         unitId: attacker.id,
         changes: [
-          { field: 'actionsAvailable', from: attacker.actionsAvailable, to: attacker.actionsAvailable - 1 },
+          { field: 'actionsAvailable', from: attacker.actionsAvailable, to: attacker.actionsAvailable - actionCost },
           // Every ATTACK command counts toward the 5-attack cap (spent even on AGR failure).
-          { field: 'attacksUsed', from: attacker.attacksUsed ?? 0, to: (attacker.attacksUsed ?? 0) + 1 },
+          { field: 'attacksUsed', from: attacker.attacksUsed ?? 0, to: (attacker.attacksUsed ?? 0) + attackCost },
         ],
       });
     } else {
@@ -1402,28 +1406,34 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
 
+    // War machines are crew-served whole-turn weapons: gate on the attack cap, then
+    // the action pool (a unit needs 2 actions, a hero 5), and a Hero operating one
+    // is illegal — all soft-confirmed BEFORE rolling to-hit / opening the window.
+    // `forceAction` (the confirm resume) skips the gate; a hero that got through is
+    // flagged red (illegal).
+    if (weapon.warMachine && isRangedThisAttack && !weapon.freeAction) {
+      if (opts?.forceAction) {
+        if (attacker.isHero) addError(`${attacker.unitName} (a Hero) is crewing a war machine it cannot operate alone`);
+      } else if (isUnitRouted(attacker)) {
+        addMessage(`${attacker.unitName} (Routed) cannot fire`);
+        return;
+      } else if ((attacker.attacksUsed ?? 0) >= unitAttackCap()) {
+        setPendingAttackCap({ attacker, target, bombard: true, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
+        return;
+      } else if (attacker.isHero) {
+        setPendingAttack({ attacker, target, bombard: true, reason: 'hero-war-machine', mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
+        return;
+      } else if (attacker.actionsAvailable < 2) {
+        setPendingAttack({ attacker, target, bombard: true, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
+        return;
+      }
+    }
+
     // War machine: crew-served (per-unit attacks). Against a HERO or a lone
     // survivor it resolves as a normal ranged attack (falls through below).
     // Against a troop unit it BOMBARDS — roll the shots and place one AoE marker
     // per hit over the target's troops.
     if (weapon.warMachine && isRangedThisAttack && reachDist >= (weapon.minRange ?? 0) && !target.isHero && target.currentTroopCount > 1) {
-      if (isUnitRouted(attacker)) {
-        addMessage(`${attacker.unitName} (Routed) cannot fire`);
-        return;
-      }
-      // Firing a war machine is a whole-turn action. Gate on the attack cap, then
-      // the action pool (soft confirm), BEFORE rolling to-hit / opening the window.
-      // `forceAction` skips the gate when resuming a confirmed firing.
-      if (!opts?.forceAction) {
-        if ((attacker.attacksUsed ?? 0) >= unitAttackCap()) {
-          setPendingAttackCap({ attacker, target, bombard: true, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
-          return;
-        }
-        if (attacker.actionsAvailable < (attacker.isHero ? 5 : 2) && !weapon.freeAction) {
-          setPendingAttack({ attacker, target, bombard: true, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
-          return;
-        }
-      }
       const shots = Math.max(1, weapon.numberOfAttacks ?? 1);
       const attForm = formationsMap[attacker.currentFormation];
       const atkAura = heroAuraBonus(attacker, units, alliances, true);
@@ -1597,16 +1607,19 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
 
-    // Soft 5-cap: pause and ask before an attack past the cap.
-    const attackCap = unitAttackCap();
-    if ((attacker.attacksUsed ?? 0) >= attackCap) {
-      setPendingAttackCap({ attacker, target, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
-      return;
-    }
+    // Soft 5-cap: pause and ask before an attack past the cap. A war machine was
+    // already gated (whole-turn) above, so it skips these 1-action thresholds.
+    if (!weapon.warMachine) {
+      const attackCap = unitAttackCap();
+      if ((attacker.attacksUsed ?? 0) >= attackCap) {
+        setPendingAttackCap({ attacker, target, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
+        return;
+      }
 
-    if (attacker.actionsAvailable < 1 && !weapon.freeAction) {
-      setPendingAttack({ attacker, target, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
-      return;
+      if (attacker.actionsAvailable < 1 && !weapon.freeAction) {
+        setPendingAttack({ attacker, target, mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
+        return;
+      }
     }
     await performAttack(attacker, target, false, { mainTarget: opts?.mainTarget, damageDice: opts?.damageDice });
   }, [units, alliances, performAttack, performHeal, addMessage, addError, magicCast, playerId, playerName, formationsMap, unitMaxMP, setAttachModal, canAttackTarget, execute]);
