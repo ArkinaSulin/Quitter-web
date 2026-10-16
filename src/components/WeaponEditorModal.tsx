@@ -105,7 +105,7 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
             <p className="text-xs text-gray-500 mt-2">Click a weapon to populate the form, then modify as needed.</p>
           </div>
         </div>
-        <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-gray-700">
+        <div className="flex justify-center gap-2 pt-4 mt-4 border-t border-gray-700">
           <button
             className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
             onClick={onClose}
