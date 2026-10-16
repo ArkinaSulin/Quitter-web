@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Pin the weapon-edit modal footer (2026-10-12)
+**Files:** src/components/WeaponEditorModal.tsx, docs/dev/changelog.md
+
+- The shared `WeaponEditorModal` (used by the Unit Editor and the on-map Unit
+  Editor Modal) had its **Cancel / Update** buttons inside the weapon form's
+  scroll area, so they sat at the bottom of a tall form. Moved them to a
+  **full-width pinned footer** (`border-t`, below the scrolling body) like the other
+  modals. Layout-only, no logic change.
+
 ## War-machine firing on all paths + hero guard; structure instance overrides; UI fixes (2026-10-12)
 **Files:** src/components/ScenarioMap/{useCombatActions,SoftEnforcementModals,ScenarioMap,UnitEditorModal,UnitTooltip}.tsx, src/components/StructureEditModal.tsx, src/types/structure.ts, src/packages/movement/lib/mapStructures.ts, src/packages/combat/lib/structureCombat.ts, docs/dev/{08-combat,14-editors,18-map-structures,changelog}.md
 

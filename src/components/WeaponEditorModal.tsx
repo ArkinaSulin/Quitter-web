@@ -72,20 +72,6 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
         <div className="flex flex-1 overflow-hidden gap-6">
           <div className="flex-1 overflow-y-auto space-y-4 pr-2">
             <WeaponFields value={weapon} onChange={setWeapon} error={error} />
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
-                onClick={onClose}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
-                onClick={handleSave}
-              >
-                {initial ? 'Update' : 'Add'}
-              </button>
-            </div>
           </div>
           <div className="w-1/2 border-l border-gray-700 pl-4 flex flex-col">
             <label className="block text-sm text-gray-300 mb-2">Weapon Library</label>
@@ -118,6 +104,20 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
             </div>
             <p className="text-xs text-gray-500 mt-2">Click a weapon to populate the form, then modify as needed.</p>
           </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-gray-700">
+          <button
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+            onClick={handleSave}
+          >
+            {initial ? 'Update' : 'Add'}
+          </button>
         </div>
       </div>
     </div>
