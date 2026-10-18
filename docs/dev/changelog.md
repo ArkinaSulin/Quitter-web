@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Fix: AI tab visible to allowed players (2026-10-18)
+**Files:** src/components/ScenarioMap/LeftPanel.tsx, docs/dev/changelog.md
+
+- The AI panel was still marked `requiresGM: true`, and `LeftPanel` filters
+  those tabs out for non-GMs — so players never saw the tab even when
+  `ScenarioMap` passed the access-gated content. Set `requiresGM: false`; access
+  remains solely `canUseAiAssist` (GM, or a team-assigned player whose alliance
+  is the active turn). Spectators (no team) still get nothing.
+
 ## AI assist flags + real-map foundations + Advanced infantry brain (2026-10-18)
 **Files:** supabase/migrations/130_ai_assist_flags.sql, src/types/gameProtocol.ts, src/hooks/useScenarios.ts, src/components/ScenarioMap/{ScenarioMap,AiPanel}.tsx, src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md
 

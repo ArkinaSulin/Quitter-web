@@ -62,7 +62,8 @@ interface LeftPanelProps {
   onSetZoneTemplateId: (id: string | null) => void;
   /** Assigned players may paint effect zones (unassigned spectators cannot). */
   canUseEffects?: boolean;
-  /** Optional AI-assist tab content (rendered for the GM when AI assist is on). */
+  /** Optional AI-assist tab content. ScenarioMap only passes this when the
+   *  viewer may use AI assist (GM, or an assigned player the GM allowed). */
   aiPanelContent?: React.ReactNode;
   /** Scenario "verbose combat" setting — MessagesPanel picks the verbose variant. */
   verboseCombat?: boolean;
@@ -241,7 +242,7 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
           <path d="m14.5 13 .5.5" />
         </svg>
       ),
-      requiresGM: true,
+      requiresGM: false,
       content: aiPanelContent,
     });
   }
