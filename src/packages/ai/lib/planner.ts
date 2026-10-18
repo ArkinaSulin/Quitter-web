@@ -44,7 +44,7 @@ import { arcsContain, beAttackedModifier, isLooseUnit } from '@/packages/movemen
 import { getRowCapacityBase, getVisualDotsPerRow, effectiveAc, acVsWarMachine, heroAuraBonus } from '@/packages/units';
 import { attackDirection, arcOfTarget } from '@/packages/primitives';
 import { unitAttackCap } from '@/packages/combat';
-import { computeReachableMap, computeMovePool, applyMoveCost, applyMpSpend, canAdoptFormation, getFormationChangeMpCost, MapStructures, OrgMoveOpts, CostOfHexFn, doorPassThroughHexes, entryBreakFormation, formationOrgLevels, loosePassThroughHexes, unitStandingSurface } from '@/packages/movement';
+import { computeReachableMap, computeMovePool, computeMoveBudget, applyMoveCost, applyMpSpend, canAdoptFormation, getFormationChangeMpCost, MapStructures, OrgMoveOpts, CostOfHexFn, doorPassThroughHexes, entryBreakFormation, formationOrgLevels, loosePassThroughHexes, unitStandingSurface } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { isMeleeWeapon } from '@/packages/combat';
 import { TerrainCosts, computeThreatHexes, computeOccupiedHexes, makeCostOfHex, makeBlockedEdge } from '@/packages/world';
@@ -438,6 +438,8 @@ const TURN_MARGIN = 8;
 const MELEE_EXPOSURE_WEIGHT = 3;
 /** Any adjacent enemy is worth engaging; safety then decides how. */
 const ADJACENT_ATTACK_BONUS = 20;
+/** A full-budget advance has no action left to attack: do not end in contact. */
+const NO_ATTACK_CONTACT_PENALTY = 100;
 /** Advanced formation changes need this much net-damage improvement. */
 const FORMATION_MARGIN = 8;
 /** Opportunity cost of the formation change, per MP spent. */
@@ -481,6 +483,30 @@ export function pathBypassPenalty(path: Hex[], foes: Unit[], dest: Hex): number 
     }
   }
   return passed.size * BYPASS_PER_ENEMY;
+}
+
+/**
+ * Penalty for turning the unit's flank/rear toward a distant enemy line.
+ * Immediate threats (within 2) are handled by `ownExposureAt`; this keeps the
+ * front toward the nearest non-target enemy even when it is still several hexes
+ * away, so an advance stays coherent.
+ */
+export function lineBearingPenalty(dest: Hex, facing: number, foes: Unit[], excludeId?: string, weight = 1): number {
+  let nearest: Unit | null = null;
+  let best = Infinity;
+  for (const e of foes) {
+    if (e.id === excludeId) continue;
+    if (isUnitRouted(e)) continue;
+    const d = hexDistance(dest, e.hex);
+    if (d <= 2 || d >= best) continue;
+    best = d;
+    nearest = e;
+  }
+  if (!nearest) return 0;
+  const arc = arcOfTarget(dest, facing, nearest.hex);
+  if (arc === 'rear') return 24 * weight;
+  if (arc === 'flank') return 14 * weight;
+  return 0;
 }
 
 
@@ -550,12 +576,22 @@ function bestAdjacentTarget(dest: Hex, foes: Unit[]): { rank: number; target: Un
 /** Destination scorer for melee: prefer adjacency on the enemy's rear/flank,
  *  then closeness. Exposure to flank/rear threats and Advanced crowding/zone
  *  danger are penalties. */
-function meleeDestScore(dest: Hex, foes: Unit[], threat: Set<string>, facing: number, tuning?: DestTuning): number {
+function meleeDestScore(
+  dest: Hex,
+  foes: Unit[],
+  threat: Set<string>,
+  facing: number,
+  canAttackAfterMove: boolean,
+  tuning?: DestTuning,
+): number {
   const adj = bestAdjacentTarget(dest, foes);
+  const targetId = canAttackAfterMove ? adj.target?.id : undefined;
   const near = nearestEnemyDist(dest, foes);
   const threatPenalty = threat.has(hexKeyOf(dest)) ? 8 : 0;
   let score = adj.rank * 30 + (adj.rank > 0 ? ADJACENT_ATTACK_BONUS : 0) + (8 - Math.min(8, near)) - threatPenalty
-    - ownExposureAt(dest, facing, foes, adj.target?.id, MELEE_EXPOSURE_WEIGHT);
+    - ownExposureAt(dest, facing, foes, targetId, MELEE_EXPOSURE_WEIGHT)
+    - lineBearingPenalty(dest, facing, foes, targetId, 1.5);
+  if (!canAttackAfterMove && adj.rank > 0) score -= NO_ATTACK_CONTACT_PENALTY;
   if (tuning?.advanced) {
     score -= dangerAt(dest, foes, 'melee') * 0.6;
     score -= crowdingAt(dest, tuning) * 3;
@@ -572,6 +608,7 @@ function rangedDestScore(
   weaponRange: number,
   weaponMaxRange: number,
   facing: number,
+  _canAttackAfterMove: boolean,
   tuning?: DestTuning,
 ): number {
   const near = nearestEnemyDist(dest, foes);
@@ -588,6 +625,7 @@ function rangedDestScore(
     score = Math.max(0, 10 - near) - threatPenalty;
   }
   score -= ownExposureAt(dest, facing, foes);
+  score -= lineBearingPenalty(dest, facing, foes, undefined, 1);
   if (tuning?.advanced) {
     score -= dangerAt(dest, foes, 'ranged') * 0.7;
     score -= crowdingAt(dest, tuning) * 2;
@@ -651,14 +689,20 @@ function movementContextFor(u: Unit, working: Unit[], ctx: AiPlanContext): Mover
 }
 
 /** Enumerate approaches: up to `maxTurns` 60° turns (each simulated with real
- *  MP accounting) followed by one straight leg, scored by `scorer`. */
+ *  MP accounting) followed by one straight leg, scored by `scorer`.
+ *  `pool` = one action's movement (move + attack); `full` = the whole turn's
+ *  remaining action budget for a coherent advance. */
+type ManeuverBudget = 'pool' | 'full';
+
 function maneuverOptions(
   u: Unit,
   enemies: Unit[],
   ctx: Pick<AiPlanContext, 'alliances' | 'formations' | 'visibleHexes' | 'reactiveArchery'>,
   movement: MoverContext,
   maxTurns: number,
-  scorer: (dest: Hex, foes: Unit[], threat: Set<string>, facing: number) => number,
+  budgetMode: ManeuverBudget,
+  canAttackAfterMove: boolean,
+  scorer: (dest: Hex, foes: Unit[], threat: Set<string>, facing: number, canAttack: boolean) => number,
 ): Maneuver[] {
   const foes = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
   const out: Maneuver[] = [];
@@ -667,20 +711,20 @@ function maneuverOptions(
 
   const evaluate = (turns: { dir: 'left' | 'right' }[], unitAfter: Unit) => {
     const max = effMax(unitAfter, ctx.formations);
-    const pool = computeMovePool(unitAfter, max);
-    if (pool < 1) return;
+    const budget = budgetMode === 'full' ? computeMoveBudget(unitAfter, max) : computeMovePool(unitAfter, max);
+    if (budget < 1) return;
+    const hopCap = budgetMode === 'full' ? Math.max(1, Math.ceil(budget)) : undefined;
     const reach = computeReachableMap(
-      unitAfter, pool, occ, threat, movement.costOfHex, false, movement.blockedEdge,
-      undefined, movement.passThrough, movement.org, !!ctx.reactiveArchery,
+      unitAfter, budget, occ, threat, movement.costOfHex, false, movement.blockedEdge,
+      hopCap, movement.passThrough, movement.org, !!ctx.reactiveArchery,
     );
     reach.forEach((entry, key) => {
       if (entry.needsTurn) return;
       const dest = entry.path[entry.path.length - 1];
       if (!dest) return;
-      const score = scorer(dest, foes, threat, unitAfter.facing)
+      const score = scorer(dest, foes, threat, unitAfter.facing, canAttackAfterMove)
         - pathBypassPenalty(entry.path, foes, dest)
-        - turns.length * TURN_COST
-        - entry.cost;
+        - turns.length * TURN_COST;
       out.push({ turns: [...turns], move: { to: dest, path: entry.path, cost: entry.cost, score, canAttack: false, attackScore: 0 }, postTurnUnit: unitAfter, score });
     });
   };
@@ -790,6 +834,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
     const plan: AiUnitPlan = { unitId: seed.id, steps: [] };
     let u = byId.get(seed.id)!;
     let formationChanged = false;
+    let movementCommitted = false;
     for (let s = 0; s < maxSteps; s++) {
       if ((u.actionsAvailable ?? 0) < 1) break;
       if ((u.attacksUsed ?? 0) >= cap) break;
@@ -811,7 +856,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const enemiesAlive = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
 
       // Stand-off: adopt Scattered when contact looms and we can afford it.
-      if (doctrine === 'ranged' && u.currentFormation !== 'Scattered' && !u.isHero) {
+      if (!movementCommitted && doctrine === 'ranged' && u.currentFormation !== 'Scattered' && !u.isHero) {
         const near = nearestEnemyDist(u.hex, enemiesAlive);
         const canScatter =
           near <= 3 &&
@@ -832,7 +877,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       // formations when a fight is imminent (already in a hostile ZoC, or an
       // enemy is within 2 hexes). Net damage dealt − received, minus the
       // formation-change cost; switch only on a clear margin.
-      if (advanced && !formationChanged && doctrine === 'melee' && !u.isHero && !u.isCharging && !u.climbTo) {
+      if (!movementCommitted && advanced && !formationChanged && doctrine === 'melee' && !u.isHero && !u.isCharging && !u.climbTo) {
         const activeWeapon = activeWeaponOf(u);
         const meleeActive = !activeWeapon || isMeleeWeapon(activeWeapon);
         const airborne = (u.elevation ?? 0) > 0 && !!(u.flySpeed ?? 0);
@@ -944,24 +989,47 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         continue;
       }
 
-      // No profitable attack — maneuver (approach/flank or stand-off band).
+      if (movementCommitted) break;
+
+      // No profitable attack — choose ONE coherent movement maneuver. A
+      // one-pool move that can still attack is preferred; otherwise spend the
+      // whole remaining action budget on one advance.
       const weapon = parseWeapons(u.weaponString || '')[u.activeWeaponIndex ?? 0];
       const weaponRange = weapon?.range ?? 1;
       const weaponMaxRange = Math.max(weaponRange, weapon?.maxRange ?? weaponRange);
       const tuning: DestTuning | undefined = advanced
         ? { advanced, working, mover: u, alliances: ctx.alliances }
         : undefined;
-      const scorer = doctrine === 'ranged'
-        ? (d: Hex, foes: Unit[], threat: Set<string>, facing: number) => rangedDestScore(d, foes, threat, weaponRange, weaponMaxRange, facing, tuning)
-        : (d: Hex, foes: Unit[], threat: Set<string>, facing: number) => meleeDestScore(d, foes, threat, facing, tuning);
-      const options = maneuverOptions(u, enemiesAlive, ctx, movement, doctrine === 'melee' ? maxTurns : Math.min(1, maxTurns), scorer);
-      if (options.length === 0) break;
-      // Prefer a straight advance when it is close to the best turned option —
-      // no need to expose a new facing (and spend MP) for a marginal gain.
-      const bestStraight = options.find(o => o.turns.length === 0);
-      const best = bestStraight && bestStraight.score >= options[0].score - TURN_MARGIN
-        ? bestStraight
-        : options[0];
+      const maxTurnCount = doctrine === 'melee' ? maxTurns : Math.min(1, maxTurns);
+      const makeScorer = (canAttack: boolean) => doctrine === 'ranged'
+        ? (d: Hex, foes: Unit[], threat: Set<string>, facing: number) => rangedDestScore(d, foes, threat, weaponRange, weaponMaxRange, facing, canAttack, tuning)
+        : (d: Hex, foes: Unit[], threat: Set<string>, facing: number) => meleeDestScore(d, foes, threat, facing, canAttack, tuning);
+      const chooseBest = (opts: Maneuver[]): Maneuver | null => {
+        if (opts.length === 0) return null;
+        const straight = opts.find(o => o.turns.length === 0);
+        return straight && straight.score >= opts[0].score - TURN_MARGIN ? straight : opts[0];
+      };
+
+      let best: Maneuver | null = null;
+      // 1) One-pool move that still leaves an action for an attack.
+      if ((u.actionsAvailable ?? 0) >= 2 && (u.attacksUsed ?? 0) < cap) {
+        const poolOptions = maneuverOptions(
+          u, enemiesAlive, ctx, movement, maxTurnCount, 'pool', true, makeScorer(true),
+        );
+        const candidate = chooseBest(poolOptions);
+        if (candidate) {
+          const post = { ...u, hex: candidate.move.to, facing: candidate.postTurnUnit.facing };
+          if (legalTargets(post, enemiesAlive, ctx).length > 0) best = candidate;
+        }
+      }
+      // 2) Otherwise: one coherent full-budget advance, no attack afterwards.
+      if (!best) {
+        const fullOptions = maneuverOptions(
+          u, enemiesAlive, ctx, movement, maxTurnCount, 'full', false, makeScorer(false),
+        );
+        best = chooseBest(fullOptions);
+      }
+      if (!best) break;
       // Replay the simulated turns/move onto the real accounting.
       for (const t of best.turns) {
         if (freeTurn(u, ctx.formations)) {
@@ -978,6 +1046,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       commit(u, updated, u.id);
       u = updated;
       plan.steps.push({ kind: 'move', unitId: u.id, from, to: best.move.to, path: best.move.path, cost: best.move.cost });
+      movementCommitted = true;
     }
     if (plan.steps.length > 0) plans.push(plan);
   }

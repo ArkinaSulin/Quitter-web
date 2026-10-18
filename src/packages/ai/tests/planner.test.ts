@@ -9,6 +9,7 @@ import {
   expectedRetaliation,
   ownExposureAt,
   pathBypassPenalty,
+  lineBearingPenalty,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
@@ -516,6 +517,59 @@ describe('enemyAI smarter tactics', () => {
       attacker.facing,
     );
     expect(ownExposureAt(attack.from, finalFacing, [first, second], attack.targetId)).toBe(0);
+  });
+
+  it('lineBearingPenalty keeps the front toward a distant enemy line', () => {
+    const dest = hex(0, 0);
+    const facing = 0;
+    const farRear = mk({ id: 'rear', team: 'black', hex: hex(0, 3), weaponString: SPEAR });
+    const farFront = mk({ id: 'front', team: 'black', hex: hex(0, -3), weaponString: SPEAR });
+    expect(lineBearingPenalty(dest, facing, [farRear])).toBeGreaterThan(0);
+    expect(lineBearingPenalty(dest, facing, [farFront])).toBe(0);
+  });
+
+  it('test 85 board: one coherent advance per unit, no flank/rear exposure', () => {
+    const starts: [string, number, number][] = [
+      ['N', -3, -4], ['L', -2, -4], ['K', -1, -4], ['J', 0, -4],
+      ['I', 1, -4], ['H', 2, -4], ['M', 3, -4], ['O', 4, -4],
+    ];
+    const blue = starts.map(([id, q, r]) => mk({
+      id, team: 'blue', hex: hex(q, r), facing: 3, movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+    const redStarts: [string, number][] = [
+      ['G', -5], ['O2', -4], ['A', -3], ['B', -2], ['C', -1], ['E', 0], ['F', 1],
+    ];
+    const red = redStarts.map(([id, q]) => mk({
+      id, team: 'black', hex: hex(q, 2), facing: 0, weaponString: SPEAR,
+    }));
+    const plans = planAiMoves(ctxOf([...blue, ...red], ['blue'], 'enemy'));
+    const byId = new Map(plans.map(p => [p.unitId, p]));
+
+    for (const unit of blue) {
+      const plan = byId.get(unit.id);
+      expect(plan, unit.id).toBeDefined();
+      if (!plan) continue;
+      const moves = plan.steps.filter(s => s.kind === 'move');
+      expect(moves.length, unit.id).toBeLessThanOrEqual(1);
+
+      let sawMove = false;
+      let turnedAfterMove = false;
+      for (const s of plan.steps) {
+        if (s.kind === 'move') sawMove = true;
+        else if (s.kind === 'turn' && sawMove) turnedAfterMove = true;
+      }
+      expect(turnedAfterMove, unit.id).toBe(false);
+
+      const finalFacing = plan.steps.reduce(
+        (f, s) => s.kind === 'turn' ? (s.dir === 'left' ? (f + 5) % 6 : (f + 1) % 6) : f,
+        unit.facing,
+      );
+      const lastMove = moves[moves.length - 1];
+      const finalHex = lastMove && lastMove.kind === 'move' ? lastMove.to : unit.hex;
+      const attack = plan.steps.find(s => s.kind === 'attack');
+      const targetId = attack && attack.kind === 'attack' ? attack.targetId : undefined;
+      expect(ownExposureAt(finalHex, finalFacing, red, targetId), unit.id).toBe(0);
+    }
   });
 });
 

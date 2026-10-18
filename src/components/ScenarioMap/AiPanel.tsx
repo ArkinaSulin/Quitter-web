@@ -11,7 +11,7 @@ import { Unit, Hex, AllianceGroup, Formation, GroundEffect, ALLIANCE_COLORS } fr
 import { TEAMS } from '@/packages/units';
 import { planAiMoves, AiUnitPlan, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf } from '@/packages/ai';
 import { isUnitRouted } from '@/packages/morale';
-import { computeReachableMap, computeMovePool } from '@/packages/movement';
+import { computeReachableMap, computeMoveBudget } from '@/packages/movement';
 import { isFormationChangeAffordable } from '@/packages/movement';
 import { computeOccupiedHexes, computeThreatHexes, computeVisibleHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/packages/world';
 import { Walls, MapStructures, doorPassThroughHexes, entryBreakFormation, formationOrgLevels, loosePassThroughHexes, unitStandingSurface } from '@/packages/movement';
@@ -370,7 +370,8 @@ export function AiPanel({
     try {
       if (step.kind === 'move') {
         const maxMP = props.unitMaxMP(live);
-        const pool = computeMovePool(live, maxMP);
+        const budget = computeMoveBudget(live, maxMP);
+        const hopCap = Math.max(1, Math.ceil(budget));
         const originSurface = unitStandingSurface(live, props.structures, props.structureTemplates);
         const occ = computeOccupiedHexes(props.units, live.id, originSurface);
         const threat = computeThreatHexes(props.units, live.id, props.alliances, props.formationsMap, props.structures, props.structureTemplates);
@@ -403,8 +404,8 @@ export function AiPanel({
           breakOnEntry: (fq: number, fr: number, tq: number, tr: number, formation: string) =>
             entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, props.structures, props.structureTemplates, props.groundZones),
         };
-        const entry = computeReachableMap(live, pool, occ, threat, costOf, false, blockedEdge, undefined, passThrough, org, !!props.archerReactionEnabled).get(hexKeyOf(step.to));
-        if (!entry || entry.needsTurn || pool < 1) {
+        const entry = computeReachableMap(live, budget, occ, threat, costOf, false, blockedEdge, hopCap, passThrough, org, !!props.archerReactionEnabled).get(hexKeyOf(step.to));
+        if (!entry || entry.needsTurn || budget < 1) {
           addMessage(`${live.unitName} can no longer reach its plotted hex — skipped`);
         } else {
           setStatusText(`${live.unitName} → moves to (${step.to.q}, ${step.to.r})`);

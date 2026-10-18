@@ -118,6 +118,11 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
 - 🔜 **Full AI mode** (auto whole-turn director: watches turn, runs the plot,
   auto-answers rout/reaction prompts, auto End Turn) on top of the existing
   planner + Execute driver.
+- 🔜 **Pass 2 — aggressive/defensive stance**: AI-tab Aggressive/Defensive
+  toggle (default Aggressive, per preview), with the four profiles
+  (aggressive/defensive × simple/advance), Advanced cohesion via `calcIsolation`
+  scaled by AGR, and the defensive ranged formation posture. Basic/Advanced stay
+  Simple/Advance.
 - 🔜 **Round 2a — archers + artillery**: LOS/indirect-shot polish, focus fire,
   and the war-machine slice (AI-only immobility while operating, fixed facing,
   `expectedWarMachineDamage`, `bombard` steps that pause for marker placement;
@@ -128,10 +133,13 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   higher-AC changes outside a ZoC.
 - ⏳ AI still ignores **flight** and some elevation/climb nuances (structures and
   per-surface occupancy now feed the planner).
+- ✅ **Pass 1** (safety/coherence): one movement maneuver per turn (pooled
+  budget), conditional target exclusion, line-bearing penalty at any distance,
+  no contact without an attack; test-85 red-line regression.
 - ✅ Basic/Advanced flag + player access flag (migration 130); both brains have
   self-preservation (own flank/rear exposure, path bypass, turn economy) and
   formation-aware retaliation; Advanced adds trade/overkill value and ZoC-
-  triggered formation changes (net damage dealt − received, with a margin).
+  triggered formation changes.
 - ✅ v0/v2/v3 shipped: plotting, turns/formation, doctrines, stand-off, cheap
   flanking, routed flee-to-rim, per-unit opt-out, real map context, darkvision fog.
 - ✅ By design: AI **never** controls heroes or hero-hosted units.

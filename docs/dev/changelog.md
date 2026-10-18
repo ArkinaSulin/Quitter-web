@@ -1,5 +1,26 @@
 # QuiTTER Changelog
 
+## AI pass 1: coherent whole-turn movement + line bearing (2026-10-18)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/AiPanel.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md
+
+- **One movement maneuver per unit turn**: if a one-pool move can still reach
+  an attack, the AI moves and attacks; otherwise it spends the whole remaining
+  action budget on one coherent advance (turn at the start, then one straight
+  path). No more move → turn → move. `AiPanel` validates with the pooled budget /
+  hop cap.
+- **No contact without an attack**: a full-budget advance stops one hex short of
+  an enemy rather than ending adjacent with no action left.
+- **Conditional target exclusion**: the adjacent enemy is ignored for exposure
+  only when the unit will actually have an action to attack after the move.
+- **Line-bearing penalty**: the nearest non-target enemy is considered even
+  beyond 2 hexes; turning the flank/rear toward the enemy line is penalized so
+  units stop wrapping around the line while merely advancing.
+- **Red-line regression**: the test 85 board (blue N(-3,-4)…O(4,-4) facing
+  south vs red G(-5,2)…F(1,2) facing north) now has one move per unit, no
+  post-move turns, and zero non-target flank/rear exposure.
+- Stance/cohesion (aggressive/defensive, AGR) is the next layer; this pass is
+  the safety/coherence fix. 31 planner tests, full suite 1105.
+
 ## AI safety: self-exposure, path bypass, formation-aware retaliation + Advanced formation changes (2026-10-18)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md
 

@@ -102,12 +102,21 @@ Deterministic, pure, snapshot-in/snapshot-out:
   approaches try **cheap flanking** — up to a few 60° turns plus a straight leg,
   within the unit's real MP/action budget — landing in the enemy's flank/rear
   hexes; otherwise it closes frontally.
+- **Coherent movement (both brains)**: a unit gets **one movement maneuver per
+  turn**. If a one-pool move can still reach a legal attack, it does that
+  (move + attack). Otherwise it spends the whole remaining action budget on one
+  advance: at most one turn sequence at the start, then one straight path. It
+  never takes a second movement/turn afterward. A full-budget advance also
+  refuses to end in contact when it has no action left to attack — it stops one
+  hex short instead of locking itself into an exposed melee.
 - **Self-preservation (both brains)**:
   - a destination is penalized for OTHER live enemies in the mover's **rear**
-    (heaviest) or **flank** arc; the intended melee target is excluded (standing
-    in its flank to strike it is the point);
-  - a path that passes adjacent to a non-target enemy is penalized, so a unit no
-    longer walks past the first rank to reach a target behind it;
+    (heaviest) or **flank** arc; the intended melee target is excluded only when
+    the unit will actually have an action to attack it after the move;
+  - a path that passes adjacent to a non-target enemy is penalized;
+  - the nearest non-target enemy keeps its **line bearing** even at long range:
+    turning the flank/rear toward the enemy battle line is penalized, so a unit
+    does not wrap around the line while merely advancing;
   - turns carry a real score cost, and a **straight advance wins** when it is
     within a small margin of the best turned option;
   - at adjacency, the estimate uses a melee weapon/fists rather than the active
@@ -132,6 +141,12 @@ Deterministic, pure, snapshot-in/snapshot-out:
     happen at most once per unit plot, must leave an action for an immediate
     attack, and must not spend the movement needed to close. Phase 2 (deferred)
     will also anticipate ranged damage and allow higher-AC changes outside ZoC.
+  - **Stance / cohesion (next layer, not in this build)**: the AI tab will gain
+    an Aggressive/Defensive toggle (default Aggressive). Basic/Advanced remain
+    Simple/Advance. Aggressive profiles seek damage; defensive profiles put
+    self-protection, line bearing and cohesion first. Advanced cohesion uses
+    `calcIsolation` at the destination, scaled linearly by AGR so high-AGR units
+    may range independently for damage.
 - **Never over-budget**: every simulated action uses the real accounting
   functions (`applyMpSpend`, `applyMoveCost`, `applyFormationChange`) so no plan
   raises a soft-enforcement prompt.
