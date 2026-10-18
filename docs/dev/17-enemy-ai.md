@@ -1,27 +1,42 @@
 # 17 — AI Assist (enemy AI plotting tool)
 
-> **Status: shipped (v0).** A GM-only tool — no turn automation. Full-AI mode
-> (an alliance auto-plays its whole turn) is a future layer on the same
-> engine.
+> **Status: shipped (v3).** A GM-only-by-default tool — no turn automation.
+> Full-AI mode (an alliance auto-plays its whole turn) is a future layer on the
+> same engine.
 
 ## What it is
 
 A Scenario-Settings toggle (`scenarios.ai_assist_enabled`, migration 076)
-reveals an **AI** tab in the GM's left panel. The GM drags teams into an
-**AI control box**; every eligible unit on those teams (for the active
-alliance) gets a **checkmark** on the map — a plain **click on a checked token
-toggles that unit's opt-out** (grey badge), so individual units can be
-excluded from the plot. **Preview** runs the pure planner
-and draws the plot (route polylines, crossed-swords on attack targets, ghost
+reveals an **AI** tab in the GM's left panel. Two further flags tune access and
+behaviour (migration **130**):
+
+| Setting | Column | Meaning |
+|---|---|---|
+| **AI assist** | `ai_assist_enabled` | Master switch: shows the AI tab. |
+| **Advanced AI** | `ai_assist_advanced` | OFF = the green-friendly greedy brain (shipped default). ON = retaliation-aware melee, finish/overkill value, kill-zone/spacing penalties, and light target reservation. |
+| **Allow players to use AI assist** | `ai_assist_players` | Non-GM participants may open/use the tab during the active side's turn. The GM still owns all three settings. |
+
+The effective gate is
+`ai_assist_enabled && (effectiveIsGM || ai_assist_players) && !controlsLocked`;
+the same gate controls the token-click opt-out. Replays and DM-offline lock the
+tab. No access-matrix change: server-side `execute_command` already permits
+participant MOVE / ATTACK / ROTATE / FORMATION commands.
+
+The GM drags teams into an **AI control box**; every eligible unit on those teams
+(for the active alliance) gets a **checkmark** on the map — a plain **click on a
+checked token toggles that unit's opt-out** (grey badge), so individual units can
+be excluded from the plot. **Preview** runs the pure planner
+and draws the plot (route polylines, crossed swords on attack targets, ghost
 at the end hex). **Reset** clears it — nothing is written until **Execute**.
 Execute replays the plan **through the normal action path** (`performMove` /
 `performAttack`), one command at a time, with Pause / Step / Resume / Cancel
 remainder controls. Undo stays unit-by-unit; an **Undo Execute** macro rewinds
 the whole batch back to its start.
 
-**AI-assist mode** is deliberately *assist*: the DM triggers Preview/Execute,
-answers normal prompts (routs, at-cap retaliation), and presses End Turn. It
-never auto-acts.
+**AI-assist mode** is deliberately *assist*: the DM (or an allowed player)
+triggers Preview/Execute, answers normal prompts (routs, at-cap retaliation), and
+presses End Turn. It never auto-acts.
+
 
 ## Files
 
@@ -32,8 +47,8 @@ never auto-acts.
 | Overlay types (canvas) | `src/components/ScenarioMap/aiTypes.ts` |
 | Overlay drawing (✓, routes, ghosts) | `useCanvasDraw.ts` (optional `aiOverlay`/`aiHoveredUnitId`) |
 | Left panel tab | `LeftPanel.tsx` (optional `aiPanelContent`) |
-| Scenario wiring | `ScenarioMap.tsx` (settings toggle + `aiOverlay` state + panel node) |
-| Column | `supabase/migrations/076_ai_assist.sql` |
+| Scenario wiring | `ScenarioMap.tsx` (settings toggles + `aiOverlay` state + panel node) |
+| Columns | `supabase/migrations/076_ai_assist.sql`, `130_ai_assist_flags.sql` |
 
 ## Control & eligibility gates (locked)
 
@@ -41,9 +56,9 @@ A unit may be handed to the AI **only when all** of:
 
 - not `isDeleted`, not `hidden`, and `currentUnitHp > 0` (killed/downed out) —
   *and* it never targets deleted/killed/hidden units either;
-- **not a hero** and **not the host of an attached hero** — heroes and
-  hero-mounted units are played by the players/DM, never by the AI (the
-  attached hero token itself is excluded too);
+- **not a hero**, **not an attached hero**, and **not the host of an attached
+  hero** — heroes and hero-mounted units are played by the players/DM, never by
+  the AI;
 - **Routed units ARE eligible** — the planner flees them as far from the
   nearest hostile as their full move allows (`chooseFleeHex`), never attacking;
 - not in the DM's per-unit **opt-out** set (`excludeUnitIds` — clicking the
@@ -54,9 +69,12 @@ A unit may be handed to the AI **only when all** of:
 
 A team only ever attacks units of the **adversarial alliance**
 (`friendly ↔ enemy`; neutral is never auto-attacked or auto-driven). Fog is
-respected: attack targets must lie in the AI side's visible hexes.
+respected: attack targets must lie in the AI side's visible hexes, computed with
+`computeVisibleHexes` (darkvision-aware; hidden units never reveal). The planner
+also treats hidden units as non-blocking scenery for its own occupancy/threat
+model.
 
-## Planner (`planAiMoves`) — v2 "smarter"
+## Planner (`planAiMoves`) — v3
 
 Deterministic, pure, snapshot-in/snapshot-out:
 - Simulates the board on **copies** as it plots, so later units plan against
@@ -66,20 +84,31 @@ Deterministic, pure, snapshot-in/snapshot-out:
   free for Hero/Scattered/Routed; no about-turns — org levels are never dropped)
   and **change formation** (real `applyFormationChange` accounting) — so
   previews can show curved turn glyphs and a formation chip.
+- **Real map context**: per-unit `makeCostOfHex` / `makeBlockedEdge` (structures,
+  walls, zones, mount, `ignore_climb`), per-surface occupancy
+  (`unitStandingSurface` + `computeOccupiedHexes`), structure-aware threat maps,
+  door/loose pass-through, and `enter_org_max` breaks via `entryBreakFormation`.
+  This mirrors the human drag pipeline, so the AI no longer plans through walls,
+  closed structures or org gates.
 - **Doctrine is automatic by weapon type**: ranged-only units **stand off**
   (keep a gap from melee enemies, adopt **Scattered** when contact looms and it
   is affordable) and back away instead of swinging fists; melee/hybrid units
   **engage**.
 - **Ranged targets pick the biggest threat first**: an enemy **within 2 hexes**,
-  else a **Phalanx**, else a **Close Order** unit; expected damage (row/attack-cap
-  math, hit chance incl. disadvantage, mean damage capped at troop HP, plus the
-  attacker/defender **hero aura** — `heroAuraBonus`, see `08`) breaks
-  ties within a tier.
+  else a **Phalanx**, else a **Close Order** unit; value breaks ties within a
+  tier.
 - **Melee attacks prefer the best arc**: of the targets at adjacency, the one it
   is attacking from the enemy's **rear**, then **flank**, then front. Movement
   approaches try **cheap flanking** — up to a few 60° turns plus a straight leg,
   within the unit's real MP/action budget — landing in the enemy's flank/rear
   hexes; otherwise it closes frontally.
+- **Basic vs Advanced**:
+  - **Basic** (default) = raw expected damage, the shipped green-friendly brain.
+  - **Advanced** uses `expectedRetaliation` (the defender's melee weapon at
+    adjacency, or its reaching ranged weapon), so it declines losing trades;
+    adds a finishing bonus; reserves damage per target so a second unit does not
+    overkill a nearly-dead squad; and penalizes destinations crowded by
+    friendlies or covered by extra enemy weapons/kill zones.
 - **Never over-budget**: every simulated action uses the real accounting
   functions (`applyMpSpend`, `applyMoveCost`, `applyFormationChange`) so no plan
   raises a soft-enforcement prompt.
@@ -89,6 +118,25 @@ Deterministic, pure, snapshot-in/snapshot-out:
   map's outer rim** (`gridRadius` in the plan context): a routed unit never
   moves beyond the drawn grid, and one already at/outside the rim (e.g. after
   the GM shrank the grid) stays put — giving the DM a chance to hide it.
+
+## Artillery (Round 2a, planned)
+
+War-machine units are **emplaced** in this game: the weapon is represented by a
+placed structure (AC/HP) and the unit token is the crew, so the AI must not
+reposition the crew once the weapon is set up.
+
+- **Detect** artillery by any parsed weapon with `warMachine` (no new flag).
+- **Immobile while operating**: no move, turn, or formation steps — fire or hold.
+  The rule is **AI-only**; players may still reposition with DM adjudication.
+- **Firing** needs 2 actions and `attacksUsed < 5` (one shot consumes all 5
+  attacks). Damage is estimated with a war-machine-specific helper
+  (`acVsWarMachine`, shot count, min/max range, LoS) rather than the per-troop
+  melee estimate.
+- **Bombard step**: the attack step is marked `bombard`; execution routes it
+  through `handleAttackRequest`, and the batch **pauses for the GM's normal AoE
+  marker placement**, then resumes. No auto-placement rule.
+- **Rout is normal**: the crew flees like any routed unit; the weapon structure
+  is already on the map (no extra marker), so no artillery-specific rout rule.
 
 ## Execute driver (in `AiPanel`)
 
@@ -127,5 +175,6 @@ Deterministic, pure, snapshot-in/snapshot-out:
 ## Non-goals (future layers)
 
 Whole-turn auto-director, auto-answering every prompt, AI charges/magic/
-reactions/hero attach, difficulty knobs, bot accounts. The planner + Execute
-driver here are the foundation those would reuse.
+reactions/hero attach, bot accounts. Difficulty levels beyond Basic/Advanced and
+the Round 2a artillery work are the next layers. The planner + Execute driver
+here are the foundation those would reuse.

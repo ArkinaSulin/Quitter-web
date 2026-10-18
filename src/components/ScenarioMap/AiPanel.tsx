@@ -7,14 +7,16 @@
 // to Pause / Step / Cancel. Undo stays unit-by-unit; "Undo Execute" rewinds the
 // batch back to its start.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Unit, Hex, AllianceGroup, Formation, ALLIANCE_COLORS } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, GroundEffect, ALLIANCE_COLORS } from '@/types/gameProtocol';
 import { TEAMS } from '@/packages/units';
 import { planAiMoves, AiUnitPlan, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf } from '@/packages/ai';
 import { isUnitRouted } from '@/packages/morale';
 import { computeReachableMap, computeMovePool } from '@/packages/movement';
 import { isFormationChangeAffordable } from '@/packages/movement';
-import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/packages/world';
-import { Walls } from '@/packages/movement';
+import { computeOccupiedHexes, computeThreatHexes, computeVisibleHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/packages/world';
+import { Walls, MapStructures, doorPassThroughHexes, entryBreakFormation, formationOrgLevels, loosePassThroughHexes, unitStandingSurface } from '@/packages/movement';
+import { unitIgnoresClimb } from '@/packages/effects';
+import { StructureTemplate } from '@/types/structure';
 import { legalTargets } from '@/packages/ai';
 import { unitAttackCap } from '@/packages/combat';
 import { supabase } from '@/packages/infra/supabase';
@@ -42,6 +44,11 @@ interface AiPanelProps {
   sightRadius: number;
   terrainCosts: TerrainCosts;
   walls: Walls;
+  structures: MapStructures;
+  structureTemplates: Record<string, StructureTemplate>;
+  groundZones: GroundEffect[];
+  /** Tuned brain: retaliation/overkill/zone-aware. OFF = green-friendly greedy. */
+  advanced: boolean;
   /** Map grid radius (axial ring) — routed flee stops at this rim. */
   gridRadius?: number;
   /** Scenario "Reactive archery": the AI stops before a ZoC too. */
@@ -100,6 +107,10 @@ export function AiPanel({
   sightRadius,
   terrainCosts,
   walls,
+  structures,
+  structureTemplates,
+  groundZones,
+  advanced,
   gridRadius,
   archerReactionEnabled,
   unitMaxMP,
@@ -114,7 +125,7 @@ export function AiPanel({
   addError,
 }: AiPanelProps) {
   const propsRef = useRef<AiPanelProps | null>(null);
-  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, gridRadius, archerReactionEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, undo, onOverlayChange, onBusyChange, addMessage, addError };
+  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, structures, structureTemplates, groundZones, advanced, gridRadius, archerReactionEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, undo, onOverlayChange, onBusyChange, addMessage, addError };
 
   const [plans, setPlans] = useState<AiUnitPlan[] | null>(null);
   const [remaining, setRemaining] = useState<ExecUnit[] | null>(null); // active during Execute
@@ -173,23 +184,9 @@ export function AiPanel({
 
   const visibleHexes = useMemo(() => {
     if (!fogOfWarEnabled || !activeGroup) return null;
-    // The AI's own side is the active alliance — its sight is the reveal set.
-    const set = new Set<string>();
-    for (const u of units) {
-      if (u.isDeleted || u.hidden) continue;
-      if (allianceOf(u, alliances) !== activeGroup) continue;
-      const r = Math.max(1, sightRadius);
-      for (let dq = -r; dq <= r; dq++) {
-        for (let dr = -r; dr <= r; dr++) {
-          const ds = -dq - dr;
-          if (Math.abs(ds) > r) continue;
-          if (Math.max(Math.abs(dq), Math.abs(dr), Math.abs(ds)) <= r) {
-            set.add(hexKeyOf({ q: u.hex.q + dq, r: u.hex.r + dr }));
-          }
-        }
-      }
-    }
-    return set;
+    // The AI's own side is the active alliance — its sight (incl. darkvision)
+    // is the reveal set. Hidden units never reveal.
+    return computeVisibleHexes(units, activeGroup, alliances, sightRadius);
   }, [units, alliances, fogOfWarEnabled, sightRadius, activeGroup]);
 
   const handlePreview = () => {
@@ -206,6 +203,10 @@ export function AiPanel({
       visibleHexes: fogOfWarEnabled ? visibleHexes : null,
       terrainCosts,
       walls,
+      structures,
+      structureTemplates,
+      groundZones,
+      advanced,
       gridRadius: gridRadius ?? DEFAULT_GRID_RADIUS,
       reactiveArchery: !!archerReactionEnabled,
     });
@@ -370,10 +371,39 @@ export function AiPanel({
       if (step.kind === 'move') {
         const maxMP = props.unitMaxMP(live);
         const pool = computeMovePool(live, maxMP);
-        const occ = computeOccupiedHexes(props.units, live.id);
-        const threat = computeThreatHexes(props.units, live.id, props.alliances, props.formationsMap);
-        const costOf = makeCostOfHex(props.terrainCosts, props.walls);
-        const entry = computeReachableMap(live, pool, occ, threat, costOf, false, makeBlockedEdge(props.walls)).get(hexKeyOf(step.to));
+        const originSurface = unitStandingSurface(live, props.structures, props.structureTemplates);
+        const occ = computeOccupiedHexes(props.units, live.id, originSurface);
+        const threat = computeThreatHexes(props.units, live.id, props.alliances, props.formationsMap, props.structures, props.structureTemplates);
+        const mounted = !!live.mountId || !!live.mountName;
+        const waiveClimb = unitIgnoresClimb(live, props.groundZones);
+        const costOf = makeCostOfHex(props.terrainCosts, props.walls, {
+          structures: props.structures,
+          templates: props.structureTemplates,
+          isMounted: mounted,
+          waiveClimb,
+        });
+        const blockedEdge = makeBlockedEdge(props.walls, {
+          structures: props.structures,
+          templates: props.structureTemplates,
+          zones: props.groundZones,
+          isMounted: mounted,
+          waiveClimb,
+        });
+        const passThrough = new Set<string>(
+          Array.from(doorPassThroughHexes(props.structures, props.structureTemplates, occ)),
+        );
+        for (const k of Array.from(loosePassThroughHexes(props.units, live, props.formationsMap, props.alliances, 'ground', originSurface))) {
+          passThrough.add(k);
+        }
+        const movementMultipliers: Record<string, number> = {};
+        for (const [name, f] of Object.entries(props.formationsMap)) movementMultipliers[name] = f.movement_multiplier;
+        const org = {
+          movementMultipliers,
+          orgLevels: formationOrgLevels(props.formationsMap),
+          breakOnEntry: (fq: number, fr: number, tq: number, tr: number, formation: string) =>
+            entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, props.structures, props.structureTemplates, props.groundZones),
+        };
+        const entry = computeReachableMap(live, pool, occ, threat, costOf, false, blockedEdge, undefined, passThrough, org, !!props.archerReactionEnabled).get(hexKeyOf(step.to));
         if (!entry || entry.needsTurn || pool < 1) {
           addMessage(`${live.unitName} can no longer reach its plotted hex — skipped`);
         } else {

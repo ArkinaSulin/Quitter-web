@@ -1,5 +1,28 @@
 # QuiTTER Changelog
 
+## AI assist flags + real-map foundations + Advanced infantry brain (2026-10-18)
+**Files:** supabase/migrations/130_ai_assist_flags.sql, src/types/gameProtocol.ts, src/hooks/useScenarios.ts, src/components/ScenarioMap/{ScenarioMap,AiPanel}.tsx, src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md
+
+- **Per-scenario AI flags**: `ai_assist_advanced` (Basic/Advanced brain) and
+  `ai_assist_players` (non-GM participants may use the AI tab). The tab gate is
+  now `ai_assist_enabled && (effectiveIsGM || ai_assist_players) && !controlsLocked`;
+  the GM still owns the settings.
+- **Real-map foundations**: the planner now receives `structures`,
+  `structureTemplates` and `groundZones`, builds per-unit cost/blocked-edge
+  functions (walls, structures, mount, `ignore_climb`), uses per-surface
+  occupancy (`unitStandingSurface`), structure-aware threat maps, door/loose
+  pass-through and `enter_org_max` breaks. AI fog now uses
+  `computeVisibleHexes` (darkvision-aware). The Execute driver validates moves
+  with the same context.
+- **Advanced infantry**: `expectedRetaliation` (defender melee weapon at
+  adjacency / reaching ranged weapon), finishing bonus, per-plot target damage
+  reservation (no overkill by a second unit), and kill-zone/crowding destination
+  penalties. Basic keeps the shipped greedy expected-damage brain.
+- **Heroes stay excluded** as AI drivers (hero token, attached hero, and the
+  host carrying one); they remain valid targets unless back-attached/protected.
+- Docs: `17` rewritten for v3 + the Round 2a artillery plan; player manual notes
+  the Advanced flag and player access. No artillery code yet (2a).
+
 ## Pin the weapon-edit modal footer (2026-10-12)
 **Files:** src/components/WeaponEditorModal.tsx, docs/dev/changelog.md
 

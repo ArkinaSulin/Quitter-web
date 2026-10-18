@@ -118,10 +118,18 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
 - 🔜 **Full AI mode** (auto whole-turn director: watches turn, runs the plot,
   auto-answers rout/reaction prompts, auto End Turn) on top of the existing
   planner + Execute driver.
-- ⏳ AI **charges / magic / reactions / hero attach** (v0 excludes them).
-- ⏳ Difficulty knobs; per-team doctrine toggles (currently auto by weapon type).
-- ✅ v0/v2 shipped: plotting, turns/formation, doctrines, stand-off, cheap
-  flanking, routed flee-to-rim, per-unit opt-out.
+- 🔜 **Round 2a — archers + artillery**: LOS/indirect-shot polish, focus fire,
+  and the war-machine slice (AI-only immobility while operating, fixed facing,
+  `expectedWarMachineDamage`, `bombard` steps that pause for marker placement;
+  routed crew flees normally, the weapon structure stays).
+- ⏳ AI **charges / magic / reactions / hero attach**.
+- ⏳ Per-team doctrine toggles (currently auto by weapon type).
+- ⏳ AI still ignores **flight** and some elevation/climb nuances (structures and
+  per-surface occupancy now feed the planner).
+- ✅ Basic/Advanced flag + player access flag (migration 130); Basic = greedy,
+  Advanced = retaliation/overkill/kill-zone-aware.
+- ✅ v0/v2/v3 shipped: plotting, turns/formation, doctrines, stand-off, cheap
+  flanking, routed flee-to-rim, per-unit opt-out, real map context, darkvision fog.
 - ✅ By design: AI **never** controls heroes or hero-hosted units.
 
 ## Spelljammer module (largest remaining)
@@ -152,8 +160,7 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
 - ✅ Refreshed dev chapters + player manual for the **effects** (dice/saves/entry/
   troop prompt, attack-roll flags), **pursuit/ZoC/Withdraw**, **walls**, and the
   message (verbose) model.
-- 🔜 Still to document: **statistics**, **corpses**, and any remaining **AI assist**
-  changes.
+- 🔜 Still to document: **statistics** and **corpses**.
 - 🔜 Player manual screenshot **S-33** (AI tab) + all S-01…S-32 images pending
   from the GM; then the Word/PDF export pass.
 
@@ -167,7 +174,8 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
   **109** (template fly speed), **110** (`fly_speed_available` numeric), **111**
   (structure/effect elevation).
 - 🔜 **Awaiting apply**: **096** (structure `spikes` + "Archer's Stake" rename),
-  **097** (`structure_images` bucket), **112** (`units.climb_to` — Phase 2b-7).
+  **097** (`structure_images` bucket), **112** (`units.climb_to` — Phase 2b-7),
+  **130** (AI assist `ai_assist_advanced` / `ai_assist_players`).
 
 ## Uncommitted working tree (owner's, left untouched)
 - `.scratch/ship-builder/spec.md`, `.scratch/shipyard-formula/{FINDINGS.md,shipyard.csv}`,

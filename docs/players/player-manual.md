@@ -1305,25 +1305,31 @@ Players can skim it to know what the GM can do.
 knobs like the 5-attack cap, hero actions, threat bands. Change with care;
 there is no per-value validation.)
 
-### AI assist (GM tool)
+### AI assist (GM tool, optionally shared with players)
 
 Enable **AI assist** in Scenario Settings and an **AI** tab appears in the
-left panel. Drag teams into the *AI control box*; eligible units (of the team
+left panel. Two more settings tune it: **Advanced AI** (weighs retaliation,
+finishing blows and overkill instead of the simple greedy plot) and **Allow
+players to use AI assist** (non-GM participants may open the tab on their side's
+turn; the GM still owns the settings). Drag teams into the *AI control box*;
+eligible units (of the team
 on the currently-active alliance) wear a small ✓. **Preview** plots their
 moves (blue routes with crossed swords on attack targets), **Reset** clears
-it — nothing happens until **Execute**. Execute runs the plot one action at a
+it - nothing happens until **Execute**. Execute runs the plot one action at a
 time through the real rules (retaliation, routs and reactions all apply), and
-you can **Pause / Step / Resume / Cancel remainder** anytime — e.g. to let a
+you can **Pause / Step / Resume / Cancel remainder** anytime - e.g. to let a
 player's reaction resolve, then re-Preview against the changed board.
 Everything is undoable unit-by-unit (Ctrl+Z), and **Undo Execute** rewinds the
 last batch. Units the AI can't sensibly move keep their actions for you. AI
 assist never moves hidden, dead or downed units, never attacks what its side
 can't see, and only acts on the marked team's own turn. Click a ✓ token to
-exclude that one unit (it switches to a grey badge) — click again to include
-it; exclusions reset at each End Turn. The plots are tactical: units may
+exclude that one unit (it switches to a grey badge) - click again to include
+it; exclusions reset at each End Turn. **Heroes are never driven by the AI**
+(neither the hero token, an attached hero, nor the unit carrying one) - their
+owners play them manually. The plots are tactical: units may
 **rotate** to face a target, ranged-only units adopt Scattered and keep their
 distance while firing at the biggest threat in reach, and melee units try to
-close into an enemy's flank/rear instead of a frontal rush — always within the
+close into an enemy's flank/rear instead of a frontal rush - always within the
 unit's real MP/actions.
 
 ### During play

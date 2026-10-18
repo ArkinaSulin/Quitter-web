@@ -273,6 +273,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [sightRadius, setSightRadius] = useState(DEFAULT_SIGHT_RADIUS);
   // AI Assist (GM tool): hands teams to a plotted (preview -> execute) enemy AI.
   const [aiAssistEnabled, setAiAssistEnabled] = useState(false);
+  const [aiAssistAdvanced, setAiAssistAdvanced] = useState(false);
+  const [aiAssistPlayers, setAiAssistPlayers] = useState(false);
   // Hero morale boost (Commanding Presence / Heroic Inspiration) + heroic capacity.
   const [heroMoraleBoostEnabled, setHeroMoraleBoostEnabled] = useState(true);
   const [zocPursuitEnabled, setZocPursuitEnabled] = useState(true);
@@ -473,6 +475,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const { getRoleCapabilities } = useScenarioCapabilities();
   const myRole = participantsSync.myParticipant?.role ?? null;
   const myTeam = participantsSync.myParticipant?.team ?? null;
+  // AI assist access: the scenario master switch, plus either the GM or (when
+  // the GM allows it) a team-assigned player on the active side's turn. Replay
+  // and DM-offline stay locked.
+  const canUseAiAssist =
+    aiAssistEnabled && !controlsLocked && (
+      effectiveIsGM ||
+      (aiAssistPlayers && !!myTeam && alliances[myTeam] === currentTurnAlliance)
+    );
   // Assigned players (any role with a team) may paint effect zones; unassigned
   // spectators cannot. Terrain (MP-cost) painting stays GM-only.
   const canPaintZones = effectiveIsGM || !!myTeam;
@@ -695,6 +705,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if ('fog_of_war' in fields) setFogOfWar(!!fields.fog_of_war);
     if ('sight_radius' in fields) setSightRadius(fields.sight_radius ?? DEFAULT_SIGHT_RADIUS);
     if ('ai_assist_enabled' in fields) setAiAssistEnabled(!!fields.ai_assist_enabled);
+    if ('ai_assist_advanced' in fields) setAiAssistAdvanced(!!fields.ai_assist_advanced);
+    if ('ai_assist_players' in fields) setAiAssistPlayers(!!fields.ai_assist_players);
     if ('hero_morale_boost_enabled' in fields) setHeroMoraleBoostEnabled(fields.hero_morale_boost_enabled ?? true);
     if ('zoc_pursuit_enabled' in fields) setZocPursuitEnabled(fields.zoc_pursuit_enabled ?? true);
   }, []);
@@ -2211,7 +2223,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }
       // AI assist: a plain click on an AI-eligible token toggles its opt-out
       // (✓ included <-> grey "skipped" badge). Clicks are ignored mid-Execute.
-      if (effectiveIsGM && aiAssistEnabled && !inReplay && !aiBusy) {
+      if (canUseAiAssist && !aiBusy) {
         const aiHostedBy = new Set<string>();
         for (const u of units) if (u.attachedToUnitId && !u.isDeleted) aiHostedBy.add(u.attachedToUnitId);
         if (
@@ -2685,7 +2697,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let cancelled = false;
     supabase
       .from('scenarios')
-      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled, hero_morale_boost_enabled, zoc_pursuit_enabled')
+      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled, ai_assist_advanced, ai_assist_players, hero_morale_boost_enabled, zoc_pursuit_enabled')
       .eq('id', scenarioId)
       .single()
       .then(({ data, error }) => {
@@ -2709,6 +2721,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setFogOfWar(data.fog_of_war ?? false);
         setSightRadius(data.sight_radius ?? DEFAULT_SIGHT_RADIUS);
         setAiAssistEnabled(data.ai_assist_enabled ?? false);
+        setAiAssistAdvanced(data.ai_assist_advanced ?? false);
+        setAiAssistPlayers(data.ai_assist_players ?? false);
         setHeroMoraleBoostEnabled(data.hero_morale_boost_enabled ?? true);
         setZocPursuitEnabled(data.zoc_pursuit_enabled ?? true);
       });
@@ -2749,6 +2763,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }
           if (row.ai_assist_enabled !== undefined) {
             setAiAssistEnabled(!!row.ai_assist_enabled);
+          }
+          if (row.ai_assist_advanced !== undefined) {
+            setAiAssistAdvanced(!!row.ai_assist_advanced);
+          }
+          if (row.ai_assist_players !== undefined) {
+            setAiAssistPlayers(!!row.ai_assist_players);
           }
           if (row.hero_morale_boost_enabled !== undefined) {
             setHeroMoraleBoostEnabled(row.hero_morale_boost_enabled ?? true);
@@ -2950,7 +2970,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   };
 
   const aiPanelNode =
-    effectiveIsGM && aiAssistEnabled && !inReplay && !controlsLocked ? (
+    canUseAiAssist ? (
       <AiPanel
         scenarioId={scenarioId}
         units={units}
@@ -2964,6 +2984,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         sightRadius={sightRadius}
         terrainCosts={zoneMpCosts}
         walls={walls}
+        structures={structures}
+        structureTemplates={structureTemplates}
+        groundZones={effectiveZones}
+        advanced={aiAssistAdvanced}
         gridRadius={backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS}
         archerReactionEnabled={archerReactionEnabled}
         unitMaxMP={unitMaxMP}
@@ -3621,6 +3645,39 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 <span className="font-medium text-amber-300">AI assist</span>
                 <span className="block text-gray-400 text-[11px]">
                   Shows the AI tab: hand teams to a plotted enemy AI (preview, then execute move by move). The GM stays in control of every action.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={aiAssistAdvanced}
+                onChange={async (e) => {
+                  await updateScenarioField(scenarioId, { ai_assist_advanced: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">Advanced AI</span>
+                <span className="block text-gray-400 text-[11px]">
+                  Trades bullets more carefully: weighs expected retaliation, values finishing a target, avoids
+                  overkill, and steers clear of kill zones. OFF: simple greedy moves for greener tables.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={aiAssistPlayers}
+                onChange={async (e) => {
+                  await updateScenarioField(scenarioId, { ai_assist_players: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">Allow players to use AI assist</span>
+                <span className="block text-gray-400 text-[11px]">
+                  Lets non-GM participants open the AI tab during their side's turn. The GM still owns these settings.
                 </span>
               </span>
             </label>

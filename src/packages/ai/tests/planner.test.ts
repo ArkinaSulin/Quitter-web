@@ -6,12 +6,15 @@ import {
   legalTargets,
   allianceOf,
   hexKeyOf,
+  expectedRetaliation,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
 
 const SPEAR = 'Spear,3,1d8,false,1,1,0,true,false,false,false,1,true,Dex,circle';
 const SHORTBOW = 'Shortbow,2,1d6,false,2,3,0,false,true,true,false,1,true,Dex,circle';
+const DAGGER = 'Dagger,0,1d4,false,1,1,0,false,false,false,false,1,true,Dex,circle';
+const GREATSWORD = 'Greatsword,5,2d6,false,1,1,0,false,false,false,true,1,true,Dex,circle';
 
 function hex(q: number, r: number): Hex {
   return { q, r, s: -q - r };
@@ -272,6 +275,47 @@ describe('enemyAI smarter tactics', () => {
   function dist(a: Hex, b: Hex): number {
     return Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(a.s - b.s));
   }
+
+  it('expectedRetaliation reads the defender melee weapon at adjacency and ignores routed units', () => {
+    const attacker = mk({ id: 'a1', team: 'blue', hex: hex(0, 0), weaponString: DAGGER });
+    const defender = mk({ id: 'd1', team: 'black', hex: hex(0, -1), weaponString: SPEAR });
+    const units = [attacker, defender];
+    expect(expectedRetaliation(defender, attacker, 1, { alliances: ALLIANCES, formations: NO_FORMS, units })).toBeGreaterThan(0);
+    expect(expectedRetaliation({ ...defender, currentFormation: 'Routed' }, attacker, 1, { alliances: ALLIANCES, formations: NO_FORMS, units })).toBe(0);
+    expect(expectedRetaliation(defender, attacker, 3, { alliances: ALLIANCES, formations: NO_FORMS, units })).toBe(0);
+  });
+
+  it('Advanced avoids a losing melee trade that Basic takes', () => {
+    const ai = mk({
+      id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, weaponString: DAGGER,
+      currentTroopCount: 1, maxTroopCount: 1, currentUnitHp: 10, maxUnitHp: 10, actionsAvailable: 2,
+    });
+    const foe = mk({
+      id: 'd1', team: 'black', hex: hex(0, -1), facing: 2, weaponString: GREATSWORD,
+      currentTroopCount: 10, maxTroopCount: 10, troopHp: 10, currentUnitHp: 100, maxUnitHp: 100,
+    });
+    const basic = planAiMoves(ctxOf([ai, foe], ['blue'], 'enemy'));
+    expect(basic[0]?.steps.some(s => s.kind === 'attack')).toBe(true);
+
+    const advanced = planAiMoves(ctxOf([ai, foe], ['blue'], 'enemy', { advanced: true }));
+    expect(advanced[0]?.steps.some(s => s.kind === 'attack') ?? false).toBe(false);
+  });
+
+  it('Advanced reserves damage so a second unit does not overkill the same target', () => {
+    const a1 = mk({ id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, weaponString: SPEAR, actionsAvailable: 2 });
+    const a2 = mk({ id: 'a2', team: 'blue', hex: hex(0, 1), facing: 0, weaponString: SPEAR, actionsAvailable: 2 });
+    const foe = mk({
+      id: 'd1', team: 'black', hex: hex(1, 0), facing: 0,
+      currentTroopCount: 1, maxTroopCount: 1, troopHp: 10, currentUnitHp: 1, maxUnitHp: 10,
+    });
+    const advanced = planAiMoves(ctxOf([a1, a2, foe], ['blue'], 'enemy', { advanced: true }));
+    const advancedAttacks = advanced.flatMap(p => p.steps).filter(s => s.kind === 'attack');
+    expect(advancedAttacks.length).toBe(1);
+
+    const basic = planAiMoves(ctxOf([a1, a2, foe], ['blue'], 'enemy'));
+    const basicAttacks = basic.flatMap(p => p.steps).filter(s => s.kind === 'attack');
+    expect(basicAttacks.length).toBeGreaterThan(1);
+  });
 
   it('ranged picks the biggest threat: within-2 beats Phalanx beats Close Order', () => {
     const archer = mk({ id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, weaponString: LONGBOW, actionsAvailable: 2 });

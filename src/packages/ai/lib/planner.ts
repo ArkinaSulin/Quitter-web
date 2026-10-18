@@ -23,7 +23,7 @@
 //    flanking approaches (up to a few 60° turns) instead of frontal rushes.
 //  - Fog is respected: targets must lie in the AI side's visible hexes.
 //  - Everything is deterministic (tie-breaks by unit id / hex distance).
-import { Unit, Hex, AllianceGroup, Formation, hexDistance } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, GroundEffect, hexDistance } from '@/types/gameProtocol';
 import { parseWeapons, isAreaWeapon } from '@/packages/units';
 import { isUnitRouted } from '@/packages/morale';
 import { rotateLeft, rotateRight } from '@/packages/primitives';
@@ -33,14 +33,15 @@ import { arcsContain, beAttackedModifier, isLooseUnit } from '@/packages/movemen
 import { getRowCapacityBase, effectiveAc, acVsWarMachine, heroAuraBonus } from '@/packages/units';
 import { attackDirection, arcOfTarget } from '@/packages/primitives';
 import { unitAttackCap } from '@/packages/combat';
-import { computeReachableMap, computeMovePool, applyMoveCost, applyMpSpend } from '@/packages/movement';
+import { computeReachableMap, computeMovePool, applyMoveCost, applyMpSpend, MapStructures, OrgMoveOpts, CostOfHexFn, doorPassThroughHexes, entryBreakFormation, formationOrgLevels, loosePassThroughHexes, unitStandingSurface } from '@/packages/movement';
+import { StructureTemplate } from '@/types/structure';
 import { isMeleeWeapon } from '@/packages/combat';
-import { terrainCostOf, TerrainCosts, computeThreatHexes, makeCostOfHex, makeBlockedEdge } from '@/packages/world';
+import { TerrainCosts, computeThreatHexes, computeOccupiedHexes, makeCostOfHex, makeBlockedEdge } from '@/packages/world';
 import { Walls } from '@/packages/movement';
 import type { BlockedEdgeFn } from '@/packages/movement';
 import { determineCombatPosition, combatRollMode, RollMode } from '@/packages/combat';
 import { clampDamage } from '@/packages/primitives';
-import { attackRollFlags, effectAttackBonus, effectDamageBonus } from '@/packages/effects';
+import { attackRollFlags, effectAttackBonus, effectDamageBonus, unitIgnoresClimb } from '@/packages/effects';
 import { applyFormationChange, isFormationChangeAffordable } from '@/packages/movement';
 import { hasLineOfSight } from '@/packages/combat';
 
@@ -70,6 +71,14 @@ export interface AiPlanContext {
   terrainCosts?: TerrainCosts;
   /** Edge walls (per-edge move cost / block / AC). */
   walls?: Walls;
+  /** Placed structures (hex/edge instances) — dynamic ground, doors, climb. */
+  structures?: MapStructures;
+  structureTemplates?: Record<string, StructureTemplate>;
+  /** Painted + structure-derived ground zones (org gates, mp_cost, auras). */
+  groundZones?: GroundEffect[];
+  /** Tuned brain: retaliation-aware melee, finish/overkill value, zone-aware
+   *  positioning, and light target reservation. OFF = green-friendly greedy. */
+  advanced?: boolean;
   /** Grid radius (axial ring). When set, routed flee stops at the outer rim. */
   gridRadius?: number;
   /** Max plot steps per unit (default 5 — enough for turn + move + attack). */
@@ -246,6 +255,117 @@ function nearestEnemyDist(hex: Hex, enemies: Unit[]): number {
   return best;
 }
 
+function activeWeaponOf(u: Unit) {
+  const weapons = parseWeapons(u.weaponString || '');
+  return weapons[u.activeWeaponIndex ?? 0] ?? weapons[0];
+}
+
+/**
+ * Expected damage the defender can put back into the attacker this exchange.
+ * Routed units cannot retaliate; adjacency uses a personal/melee weapon (or
+ * fists), never a ranged weapon's point-blank profile.
+ */
+export function expectedRetaliation(
+  defender: Unit,
+  attacker: Unit,
+  dist: number,
+  ctx: Pick<AiPlanContext, 'formations' | 'units' | 'alliances'>,
+): number {
+  if (isUnitRouted(defender)) return 0;
+  const weapons = parseWeapons(defender.weaponString || '');
+  if (dist === 1) {
+    const meleeIdx = weapons.findIndex(w => isMeleeWeapon(w));
+    if (meleeIdx === -1) {
+      return expectedDamage({ ...defender, weaponString: '', activeWeaponIndex: 0 }, attacker, 1, false, ctx);
+    }
+    return expectedDamage({ ...defender, activeWeaponIndex: meleeIdx }, attacker, 1, false, ctx);
+  }
+  const rangedIdx = weapons.findIndex(w => {
+    if (w.isHealing) return false;
+    const range = w.range ?? 1;
+    const maxRange = Math.max(range, w.maxRange ?? range);
+    return (range > 1 || maxRange > 1) && dist >= (w.minRange ?? 0) && dist <= maxRange;
+  });
+  if (rangedIdx === -1) return 0;
+  return expectedDamage({ ...defender, activeWeaponIndex: rangedIdx }, attacker, dist, true, ctx);
+}
+
+interface AttackValue {
+  dmg: number;
+  score: number;
+}
+
+/**
+ * Attack value used by target selection.
+ * Basic = raw expected damage (the shipped greedy brain).
+ * Advanced = marginal damage after prior reservations, a finishing bonus, and
+ * the expected counter-damage as a penalty.
+ */
+function attackValue(
+  attacker: Unit,
+  target: Unit,
+  dist: number,
+  isRanged: boolean,
+  ctx: Pick<AiPlanContext, 'formations' | 'units' | 'alliances'>,
+  advanced: boolean,
+  reserved: Map<string, number>,
+): AttackValue {
+  const dmg = expectedDamage(attacker, target, dist, isRanged, ctx);
+  if (dmg <= 0) return { dmg: 0, score: 0 };
+  if (!advanced) return { dmg, score: dmg };
+  const already = reserved.get(target.id) ?? 0;
+  const remaining = Math.max(0, (target.currentUnitHp ?? 0) - already);
+  if (remaining <= 0) return { dmg: 0, score: 0 };
+  const effective = Math.min(dmg, remaining);
+  let score = effective;
+  if (effective >= remaining) score += Math.min(15, Math.max(1, remaining * 0.25));
+  const counter = expectedRetaliation(target, attacker, dist, ctx);
+  score -= counter * 0.8;
+  return { dmg, score };
+}
+
+/** Rough danger of ending on `dest`: extra adjacent enemies + shooters. */
+function dangerAt(dest: Hex, foes: Unit[], doctrine: Doctrine): number {
+  let adjacent = 0;
+  let ranged = 0;
+  for (const e of foes) {
+    const d = hexDistance(dest, e.hex);
+    if (d <= 1) {
+      adjacent++;
+      continue;
+    }
+    const w = activeWeaponOf(e);
+    if (!w || w.isHealing) continue;
+    const range = w.range ?? 1;
+    const maxRange = Math.max(range, w.maxRange ?? range);
+    if ((range > 1 || maxRange > 1) && d >= (w.minRange ?? 0) && d <= maxRange) ranged++;
+  }
+  if (doctrine === 'ranged') return adjacent * 12 + ranged * 5;
+  // Melee: one adjacent enemy is the target; only a crowd is a problem.
+  return Math.max(0, adjacent - 1) * 10 + ranged * 3;
+}
+
+/** Extra friendly units adjacent to `dest` (spacing penalty). */
+function crowdingAt(dest: Hex, tuning: DestTuning): number {
+  const group = allianceOf(tuning.mover, tuning.alliances);
+  let friends = 0;
+  for (const f of tuning.working) {
+    if (f.id === tuning.mover.id) continue;
+    if (f.isDeleted || f.hidden || (f.currentUnitHp ?? 0) <= 0) continue;
+    if (allianceOf(f, tuning.alliances) !== group) continue;
+    if (hexDistance(dest, f.hex) <= 1) friends++;
+  }
+  return Math.max(0, friends - 1);
+}
+
+interface DestTuning {
+  advanced: boolean;
+  working: Unit[];
+  mover: Unit;
+  alliances: Record<string, AllianceGroup>;
+}
+
+
 /** Ranged target "biggest threat" tier: within-2 > Phalanx > Close Order > rest. */
 function threatTier(target: Unit, dist: number): number {
   if (dist <= 2) return 3;
@@ -310,12 +430,17 @@ function bestAdjacentArc(dest: Hex, foes: Unit[]): number {
 }
 
 /** Destination scorer for melee: prefer adjacency on the enemy's rear/flank,
- *  then closeness. */
-function meleeDestScore(dest: Hex, foes: Unit[], threat: Set<string>): number {
+ *  then closeness. Advanced adds crowd/zone danger and spacing penalties. */
+function meleeDestScore(dest: Hex, foes: Unit[], threat: Set<string>, tuning?: DestTuning): number {
   const arc = bestAdjacentArc(dest, foes);
   const near = nearestEnemyDist(dest, foes);
   const threatPenalty = threat.has(hexKeyOf(dest)) ? 8 : 0;
-  return arc * 30 + (8 - Math.min(8, near)) - threatPenalty;
+  let score = arc * 30 + (8 - Math.min(8, near)) - threatPenalty;
+  if (tuning?.advanced) {
+    score -= dangerAt(dest, foes, 'melee') * 0.6;
+    score -= crowdingAt(dest, tuning) * 3;
+  }
+  return score;
 }
 
 /** Destination scorer for stand-off ranged: stay ≥ gap from enemies and within
@@ -326,19 +451,26 @@ function rangedDestScore(
   threat: Set<string>,
   weaponRange: number,
   weaponMaxRange: number,
+  tuning?: DestTuning,
 ): number {
   const near = nearestEnemyDist(dest, foes);
   const threatPenalty = threat.has(hexKeyOf(dest)) ? 8 : 0;
   const gap = 2;
+  let score: number;
   if (near >= weaponMaxRange && weaponMaxRange >= 1) {
     // Everything is out of reach — advance.
-    return 30 - near - threatPenalty;
+    score = 30 - near - threatPenalty;
+  } else if (near < gap) {
+    score = -((gap - near) * 12) - threatPenalty; // too close: prefer to back off
+  } else {
+    // Comfortable band [gap .. maxRange]; prefer being a bit further back.
+    score = Math.max(0, 10 - near) - threatPenalty;
   }
-  if (near < gap) {
-    return -((gap - near) * 12) - threatPenalty; // too close: prefer to back off
+  if (tuning?.advanced) {
+    score -= dangerAt(dest, foes, 'ranged') * 0.7;
+    score -= crowdingAt(dest, tuning) * 2;
   }
-  // Comfortable band [gap .. maxRange]; prefer being a bit further back.
-  return Math.max(0, 10 - near) - threatPenalty;
+  return score;
 }
 
 interface Maneuver {
@@ -348,29 +480,77 @@ interface Maneuver {
   score: number;
 }
 
+interface MoverContext {
+  occupied: Set<string>;
+  threat: Set<string>;
+  passThrough: Set<string>;
+  org: OrgMoveOpts;
+  costOfHex?: CostOfHexFn;
+  blockedEdge?: BlockedEdgeFn;
+}
+
+/** Per-unit movement facts mirroring the human drag pipelines: dynamic ground,
+ *  mount/climb gates, walls/structures, org breaks, door/loose pass-through, and
+ *  fog-safe occupancy (hidden units are invisible to the AI). */
+function movementContextFor(u: Unit, working: Unit[], ctx: AiPlanContext): MoverContext {
+  const structures = ctx.structures;
+  const templates = ctx.structureTemplates;
+  const zones = ctx.groundZones;
+  const mounted = !!u.mountId || !!u.mountName;
+  const waiveClimb = unitIgnoresClimb(u, zones);
+  const originSurface = unitStandingSurface(u, structures, templates);
+  const visible = working.filter(w => !w.hidden);
+  const occupied = computeOccupiedHexes(visible, u.id, originSurface);
+  const threat = computeThreatHexes(visible, u.id, ctx.alliances, ctx.formations, structures, templates);
+  const passThrough = new Set<string>(Array.from(doorPassThroughHexes(structures, templates, occupied)));
+  for (const k of Array.from(loosePassThroughHexes(visible, u, ctx.formations, ctx.alliances, 'ground', originSurface))) {
+    passThrough.add(k);
+  }
+  const movementMultipliers: Record<string, number> = {};
+  for (const [name, f] of Object.entries(ctx.formations)) movementMultipliers[name] = f.movement_multiplier;
+  const needsCost = !!ctx.terrainCosts || !!ctx.walls || (!!structures && Object.keys(structures).length > 0);
+  const costOfHex = needsCost
+    ? makeCostOfHex(ctx.terrainCosts ?? null, ctx.walls, { structures, templates, isMounted: mounted, waiveClimb })
+    : undefined;
+  const blockedEdge = makeBlockedEdge(ctx.walls, {
+    structures,
+    templates,
+    zones,
+    isMounted: mounted,
+    waiveClimb,
+  });
+  const org: OrgMoveOpts = {
+    movementMultipliers,
+    orgLevels: formationOrgLevels(ctx.formations),
+    breakOnEntry: (fq, fr, tq, tr, formation) =>
+      entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, structures, templates, zones),
+  };
+  return { occupied, threat, passThrough, org, costOfHex, blockedEdge };
+}
+
 /** Enumerate approaches: up to `maxTurns` 60° turns (each simulated with real
  *  MP accounting) followed by one straight leg, scored by `scorer`. */
 function maneuverOptions(
   u: Unit,
-  working: Unit[],
   enemies: Unit[],
   ctx: Pick<AiPlanContext, 'alliances' | 'formations' | 'visibleHexes' | 'reactiveArchery'>,
-  costOfHex: ((q: number, r: number, fromQ?: number, fromR?: number) => number) | undefined,
+  movement: MoverContext,
   maxTurns: number,
   scorer: (dest: Hex, foes: Unit[], threat: Set<string>) => number,
-  blockedEdge?: BlockedEdgeFn,
 ): Maneuver[] {
   const foes = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
   const out: Maneuver[] = [];
-  const occ = new Set<string>();
-  for (const w of working) if (!w.isDeleted && w.id !== u.id) occ.add(hexKeyOf(w.hex));
-  const threat = computeThreatHexes(working, u.id, ctx.alliances, ctx.formations);
+  const occ = movement.occupied;
+  const threat = movement.threat;
 
   const evaluate = (turns: { dir: 'left' | 'right' }[], unitAfter: Unit) => {
     const max = effMax(unitAfter, ctx.formations);
     const pool = computeMovePool(unitAfter, max);
     if (pool < 1) return;
-    const reach = computeReachableMap(unitAfter, pool, occ, threat, costOfHex, false, blockedEdge, undefined, undefined, undefined, !!ctx.reactiveArchery);
+    const reach = computeReachableMap(
+      unitAfter, pool, occ, threat, movement.costOfHex, false, movement.blockedEdge,
+      undefined, movement.passThrough, movement.org, !!ctx.reactiveArchery,
+    );
     reach.forEach((entry, key) => {
       if (entry.needsTurn) return;
       const dest = entry.path[entry.path.length - 1];
@@ -409,23 +589,21 @@ function maneuverOptions(
  *  strictly safer / legal. */
 function chooseFleeHex(
   u: Unit,
-  working: Unit[],
   enemies: Unit[],
   ctx: Pick<AiPlanContext, 'alliances' | 'formations' | 'visibleHexes' | 'reactiveArchery'>,
-  costOfHex: ((q: number, r: number, fromQ?: number, fromR?: number) => number) | undefined,
+  movement: MoverContext,
   gridRadius: number | undefined,
-  blockedEdge?: BlockedEdgeFn,
 ): { pick: PlannedMoveOption; updated: Unit; path: Hex[] } | null {
   const foes = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
   if (foes.length === 0) return null;
   const ring = (h: { q: number; r: number }) => Math.max(Math.abs(h.q), Math.abs(h.r), Math.abs(h.q + h.r));
   if (gridRadius !== undefined && ring(u.hex) >= gridRadius) return null; // at/over the rim: stay
-  const occ = new Set<string>();
-  for (const w of working) if (!w.isDeleted && w.id !== u.id) occ.add(hexKeyOf(w.hex));
   const pool = computeMovePool(u, effMax(u, ctx.formations));
   if (pool < 1) return null;
-  const threat = computeThreatHexes(working, u.id, ctx.alliances, ctx.formations);
-  const reach = computeReachableMap(u, pool, occ, threat, costOfHex, false, blockedEdge, undefined, undefined, undefined, !!ctx.reactiveArchery);
+  const reach = computeReachableMap(
+    u, pool, movement.occupied, movement.threat, movement.costOfHex, false, movement.blockedEdge,
+    undefined, movement.passThrough, movement.org, !!ctx.reactiveArchery,
+  );
   const startDist = nearestEnemyDist(u.hex, foes);
   const candidates: PlannedMoveOption[] = [];
   reach.forEach((entry, key) => {
@@ -435,7 +613,7 @@ function chooseFleeHex(
     if (gridRadius !== undefined && ring(dest) > gridRadius) return; // never flee off the board
     const d = nearestEnemyDist(dest, foes);
     if (d <= startDist) return; // only strictly safer hexes
-    const threatPenalty = threat.has(key) ? 4 : 0;
+    const threatPenalty = movement.threat.has(key) ? 4 : 0;
     const score = d * 10 - threatPenalty - entry.cost;
     candidates.push({ to: dest, path: entry.path, cost: entry.cost, score, canAttack: false, attackScore: 0 });
   });
@@ -468,11 +646,13 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
   const enemies = working.filter(u =>
     !u.isDeleted && !u.hidden && (u.currentUnitHp ?? 0) > 0 && enemyGroupsOf(group).has(allianceOf(u, ctx.alliances)));
 
-  const costOfHex = (ctx.terrainCosts || ctx.walls) ? makeCostOfHex(ctx.terrainCosts ?? null, ctx.walls) : undefined;
-  const blockedEdge = makeBlockedEdge(ctx.walls);
   const maxSteps = ctx.maxStepsPerUnit ?? 5;
   const maxTurns = ctx.maxTurns ?? 3;
   const cap = unitAttackCap();
+  const advanced = !!ctx.advanced;
+  // Advanced: damage already assigned to a target this plot, so later units see
+  // the overkill waste instead of piling onto a nearly-dead squad.
+  const reserved = new Map<string, number>();
 
   const commit = (u: Unit, updated: Unit, id: string) => {
     byId.set(id, updated);
@@ -488,11 +668,12 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       if ((u.actionsAvailable ?? 0) < 1) break;
       if ((u.attacksUsed ?? 0) >= cap) break;
       const from = u.hex;
+      const movement = movementContextFor(u, working, ctx);
 
       // Routed units can't fight — run as far from hostiles as possible, but
       // stop at the map's outer rim so the DM can hide the broken unit.
       if (isUnitRouted(u)) {
-        const flee = chooseFleeHex(u, working, enemies, ctx, costOfHex, ctx.gridRadius, blockedEdge);
+        const flee = chooseFleeHex(u, enemies, ctx, movement, ctx.gridRadius);
         if (!flee) break;
         commit(u, flee.updated, u.id);
         u = flee.updated;
@@ -523,36 +704,40 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
 
       // Target choice. Melee prefers adjacency on the best arc (rear > flank >
       // front). Ranged/hybrid shots pick the biggest threat first: an enemy
-      // within 2 hexes, else a Phalanx, else a Close Order unit; expected
-      // damage breaks ties within a tier.
+      // within 2 hexes, else a Phalanx, else a Close Order unit; value breaks
+      // ties within a tier. Advanced values marginal damage, finishing blows
+      // and expected retaliation; Basic stays raw expected damage.
       const legal = legalTargets(u, enemiesAlive, ctx);
       const meleeOptions = legal.filter(t => !t.isRanged);
       const rangedOptions = legal.filter(t => t.isRanged);
-      type TargetSel = { unit: Unit; dist: number; score: number };
+      type TargetSel = { unit: Unit; dist: number; score: number; dmg: number; rank: number };
+      const pickMelee = (): TargetSel | null => {
+        let best: TargetSel | null = null;
+        for (const t of meleeOptions) {
+          const v = attackValue(u, t.unit, t.dist, false, ctx, advanced, reserved);
+          if (v.dmg <= 0) continue;
+          const rank = attackArcRank(u.hex, t.unit);
+          if (!best || rank > best.rank || (rank === best.rank && v.score > best.score)) {
+            best = { unit: t.unit, dist: t.dist, score: v.score, dmg: v.dmg, rank };
+          }
+        }
+        return best && (advanced ? best.score > 0 : best.dmg > 0) ? best : null;
+      };
       const pickRanged = (): TargetSel | null => {
         let best: TargetSel | null = null;
         for (const t of rangedOptions) {
+          const v = attackValue(u, t.unit, t.dist, true, ctx, advanced, reserved);
+          if (v.dmg <= 0) continue;
           const tier = threatTier(t.unit, t.dist);
-          const dmg = expectedDamage(u, t.unit, t.dist, true, ctx);
-          if (dmg <= 0) continue;
-          if (!best) { best = { unit: t.unit, dist: t.dist, score: dmg }; continue; }
-          const curTier = threatTier(best.unit, best.dist);
-          if (tier > curTier || (tier === curTier && dmg > best.score)) best = { unit: t.unit, dist: t.dist, score: dmg };
+          if (!best || tier > best.rank || (tier === best.rank && v.score > best.score)) {
+            best = { unit: t.unit, dist: t.dist, score: v.score, dmg: v.dmg, rank: tier };
+          }
         }
-        return best;
+        return best && (advanced ? best.score > 0 : best.dmg > 0) ? best : null;
       };
       let attack: TargetSel | null = null;
       if (doctrine === 'melee' && meleeOptions.length > 0) {
-        let best = meleeOptions[0];
-        for (const t of meleeOptions) {
-          const rank = attackArcRank(u.hex, t.unit);
-          const curRank = attackArcRank(u.hex, best.unit);
-          const dmg = expectedDamage(u, t.unit, t.dist, false, ctx);
-          const curDmg = expectedDamage(u, best.unit, best.dist, false, ctx);
-          if (rank > curRank || (rank === curRank && dmg > curDmg)) best = t;
-        }
-        const dmg = expectedDamage(u, best.unit, best.dist, false, ctx);
-        if (dmg > 0) attack = { unit: best.unit, dist: best.dist, score: dmg };
+        attack = pickMelee();
       } else if (doctrine === 'ranged') {
         attack = pickRanged();
       } else {
@@ -561,6 +746,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
 
       if (attack) {
         plan.steps.push({ kind: 'attack', unitId: u.id, from, targetId: attack.unit.id, target: attack.unit.hex });
+        if (advanced) reserved.set(attack.unit.id, (reserved.get(attack.unit.id) ?? 0) + attack.dmg);
         const updated = { ...u, actionsAvailable: (u.actionsAvailable ?? 0) - 1, attacksUsed: (u.attacksUsed ?? 0) + 1 };
         commit(u, updated, u.id);
         u = updated;
@@ -571,10 +757,13 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const weapon = parseWeapons(u.weaponString || '')[u.activeWeaponIndex ?? 0];
       const weaponRange = weapon?.range ?? 1;
       const weaponMaxRange = Math.max(weaponRange, weapon?.maxRange ?? weaponRange);
+      const tuning: DestTuning | undefined = advanced
+        ? { advanced, working, mover: u, alliances: ctx.alliances }
+        : undefined;
       const scorer = doctrine === 'ranged'
-        ? (d: Hex, foes: Unit[], threat: Set<string>) => rangedDestScore(d, foes, threat, weaponRange, weaponMaxRange)
-        : (d: Hex, foes: Unit[], threat: Set<string>) => meleeDestScore(d, foes, threat);
-      const options = maneuverOptions(u, working, enemiesAlive, ctx, costOfHex, doctrine === 'melee' ? maxTurns : Math.min(1, maxTurns), scorer, blockedEdge);
+        ? (d: Hex, foes: Unit[], threat: Set<string>) => rangedDestScore(d, foes, threat, weaponRange, weaponMaxRange, tuning)
+        : (d: Hex, foes: Unit[], threat: Set<string>) => meleeDestScore(d, foes, threat, tuning);
+      const options = maneuverOptions(u, enemiesAlive, ctx, movement, doctrine === 'melee' ? maxTurns : Math.min(1, maxTurns), scorer);
       if (options.length === 0) break;
       const best = options[0];
       // Replay the simulated turns/move onto the real accounting.
