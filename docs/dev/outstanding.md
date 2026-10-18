@@ -124,10 +124,14 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   routed crew flees normally, the weapon structure stays).
 - ⏳ AI **charges / magic / reactions / hero attach**.
 - ⏳ Per-team doctrine toggles (currently auto by weapon type).
+- ⏳ Advanced formation changes **Phase 2**: anticipate ranged damage and allow
+  higher-AC changes outside a ZoC.
 - ⏳ AI still ignores **flight** and some elevation/climb nuances (structures and
   per-surface occupancy now feed the planner).
-- ✅ Basic/Advanced flag + player access flag (migration 130); Basic = greedy,
-  Advanced = retaliation/overkill/kill-zone-aware.
+- ✅ Basic/Advanced flag + player access flag (migration 130); both brains have
+  self-preservation (own flank/rear exposure, path bypass, turn economy) and
+  formation-aware retaliation; Advanced adds trade/overkill value and ZoC-
+  triggered formation changes (net damage dealt − received, with a margin).
 - ✅ v0/v2/v3 shipped: plotting, turns/formation, doctrines, stand-off, cheap
   flanking, routed flee-to-rim, per-unit opt-out, real map context, darkvision fog.
 - ✅ By design: AI **never** controls heroes or hero-hosted units.

@@ -1309,7 +1309,9 @@ there is no per-value validation.)
 
 Enable **AI assist** in Scenario Settings and an **AI** tab appears in the
 left panel. Two more settings tune it: **Advanced AI** (weighs retaliation,
-finishing blows and overkill instead of the simple greedy plot) and **Allow
+finishing blows and overkill instead of the simple greedy plot, and may change
+formation before a fight when the damage trade-off is worth the movement) and
+**Allow
 players to use AI assist** (non-GM participants may open the tab on their side's
 turn; the GM still owns the settings). Drag teams into the *AI control box*;
 eligible units (of the team

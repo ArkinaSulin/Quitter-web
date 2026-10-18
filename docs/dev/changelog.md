@@ -1,5 +1,29 @@
 # QuiTTER Changelog
 
+## AI safety: self-exposure, path bypass, formation-aware retaliation + Advanced formation changes (2026-10-18)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md
+
+- **Self-preservation in both brains**: destination scoring now penalizes live
+  enemies in the mover's rear (heaviest) / flank arcs (excluding the intended
+  melee target), and penalizes a path that walks adjacent to a non-target enemy.
+  Turns carry a real score cost, and a straight advance wins when it is close to
+  the best turned option, so units stop turning/flanking needlessly and stop
+  circling past the first rank.
+- **Formation-aware retaliation**: `expectedRetaliation` now respects the
+  defender's `retaliate_arcs` (`none` / `rows` / `full`), `retaliate_vs_ranged`,
+  `noRetaliation`, and the attacker's `be_attacked_*` vulnerability. Flank
+  retaliation uses the rows-based defensive count.
+- **Melee fallback estimate**: at adjacency the AI estimates with a melee
+  weapon/fists instead of the active ranged weapon's point-blank profile.
+- **Advanced formation changes**: in/near a hostile ZoC, a melee unit compares
+  its available formations by net damage (dealt − received) minus the
+  formation-change cost; switches only on a margin, at most once per plot,
+  keeping the attack action and the movement needed to close. Basic never
+  changes formation except the existing ranged→Scattered stand-off.
+- Tests cover own-exposure, path bypass, formation retaliation, the no-needless-
+  turn case, the no-rear-exposure approach, and the Advanced formation trade-off
+  (29 planner tests).
+
 ## Fix: AI tab visible to allowed players (2026-10-18)
 **Files:** src/components/ScenarioMap/LeftPanel.tsx, docs/dev/changelog.md
 

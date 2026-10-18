@@ -102,13 +102,36 @@ Deterministic, pure, snapshot-in/snapshot-out:
   approaches try **cheap flanking** — up to a few 60° turns plus a straight leg,
   within the unit's real MP/action budget — landing in the enemy's flank/rear
   hexes; otherwise it closes frontally.
+- **Self-preservation (both brains)**:
+  - a destination is penalized for OTHER live enemies in the mover's **rear**
+    (heaviest) or **flank** arc; the intended melee target is excluded (standing
+    in its flank to strike it is the point);
+  - a path that passes adjacent to a non-target enemy is penalized, so a unit no
+    longer walks past the first rank to reach a target behind it;
+  - turns carry a real score cost, and a **straight advance wins** when it is
+    within a small margin of the best turned option;
+  - at adjacency, the estimate uses a melee weapon/fists rather than the active
+    ranged weapon's point-blank profile.
+- **Formation-aware retaliation (both brains)**: `expectedRetaliation` respects
+  the defender's `retaliate_arcs` (`none` → no counter-blow; `rows` → the
+  defensive rows-based count `ceil(troops / visualDotsPerRow)`; `full` → normal),
+  `retaliate_vs_ranged`, `noRetaliation`, and the attacker's `be_attacked_*`
+  vulnerability.
 - **Basic vs Advanced**:
-  - **Basic** (default) = raw expected damage, the shipped green-friendly brain.
-  - **Advanced** uses `expectedRetaliation` (the defender's melee weapon at
-    adjacency, or its reaching ranged weapon), so it declines losing trades;
-    adds a finishing bonus; reserves damage per target so a second unit does not
-    overkill a nearly-dead squad; and penalizes destinations crowded by
-    friendlies or covered by extra enemy weapons/kill zones.
+  - **Basic** (default) = raw expected damage plus the safety/retaliation fixes
+    above. No formation shopping.
+  - **Advanced** additionally weighs expected retaliation, adds a finishing
+    bonus, reserves damage per target so a second unit does not overkill a
+    nearly-dead squad, and penalizes destinations crowded by friendlies or
+    covered by extra enemy weapons/kill zones.
+  - **Advanced formation changes**: when a melee unit is already in a hostile
+    ZoC or an enemy is within 2 hexes, it compares its available formations
+    (`canAdoptFormation`, `isFormationChangeAffordable`, Shield Wall shield/2H
+    restrictions). The score is expected damage dealt − expected retaliation
+    received, minus the formation-change MP cost; it must clear a margin, may
+    happen at most once per unit plot, must leave an action for an immediate
+    attack, and must not spend the movement needed to close. Phase 2 (deferred)
+    will also anticipate ranged damage and allow higher-AC changes outside ZoC.
 - **Never over-budget**: every simulated action uses the real accounting
   functions (`applyMpSpend`, `applyMoveCost`, `applyFormationChange`) so no plan
   raises a soft-enforcement prompt.

@@ -7,6 +7,8 @@ import {
   allianceOf,
   hexKeyOf,
   expectedRetaliation,
+  ownExposureAt,
+  pathBypassPenalty,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
@@ -89,8 +91,42 @@ const ALLIANCES: Record<string, AllianceGroup> = {
 };
 const NO_FORMS: Record<string, Formation> = {};
 
+const BASE_FORM: Formation = {
+  id: 'form-open',
+  name: 'Open Order',
+  melee_ac_modifier: 0,
+  range_ac_modifier: 0,
+  movement_multiplier: 1,
+  attack_modifier: 0,
+  morale_modifier: 0,
+  row_capacity_multiplier: 1,
+  attack_capacity_multiplier: 1,
+  melee_target_arcs: ['front', 'flank', 'rear'],
+  ranged_target_arcs: ['front', 'flank', 'rear'],
+  threat_arcs: ['front'],
+  double_threat_arcs: [],
+  retaliate_arcs: { front: 'full', flank: 'rows', rear: 'none' },
+  retaliate_vs_ranged: true,
+  can_charge: false,
+  stop_enemy_movement_arcs: ['front'],
+  charge_through_arcs: [],
+  be_attacked_melee_modifier: 1,
+  be_attacked_range_modifier: 1,
+  organization_level: 1,
+};
+
 function ctxOf(units: Unit[], teams: string[], activeAlliance: AllianceGroup | null, over: Partial<AiPlanContext> = {}): AiPlanContext {
   return { units, alliances: ALLIANCES, formations: NO_FORMS, teams, activeAlliance, ...over };
+}
+
+function ctxWithForms(
+  units: Unit[],
+  teams: string[],
+  activeAlliance: AllianceGroup | null,
+  formations: Record<string, Formation>,
+  over: Partial<AiPlanContext> = {},
+): AiPlanContext {
+  return { units, alliances: ALLIANCES, formations, teams, activeAlliance, ...over };
 }
 
 describe('enemyAI gates', () => {
@@ -278,7 +314,7 @@ describe('enemyAI smarter tactics', () => {
 
   it('expectedRetaliation reads the defender melee weapon at adjacency and ignores routed units', () => {
     const attacker = mk({ id: 'a1', team: 'blue', hex: hex(0, 0), weaponString: DAGGER });
-    const defender = mk({ id: 'd1', team: 'black', hex: hex(0, -1), weaponString: SPEAR });
+    const defender = mk({ id: 'd1', team: 'black', hex: hex(0, -1), facing: 3, weaponString: SPEAR });
     const units = [attacker, defender];
     expect(expectedRetaliation(defender, attacker, 1, { alliances: ALLIANCES, formations: NO_FORMS, units })).toBeGreaterThan(0);
     expect(expectedRetaliation({ ...defender, currentFormation: 'Routed' }, attacker, 1, { alliances: ALLIANCES, formations: NO_FORMS, units })).toBe(0);
@@ -291,13 +327,18 @@ describe('enemyAI smarter tactics', () => {
       currentTroopCount: 1, maxTroopCount: 1, currentUnitHp: 10, maxUnitHp: 10, actionsAvailable: 2,
     });
     const foe = mk({
-      id: 'd1', team: 'black', hex: hex(0, -1), facing: 2, weaponString: GREATSWORD,
+      id: 'd1', team: 'black', hex: hex(0, -1), facing: 3, weaponString: GREATSWORD,
       currentTroopCount: 10, maxTroopCount: 10, troopHp: 10, currentUnitHp: 100, maxUnitHp: 100,
     });
-    const basic = planAiMoves(ctxOf([ai, foe], ['blue'], 'enemy'));
+    // Rear retaliation is enabled too, so fleeing to the back arc is not a free
+    // way to dodge the losing trade.
+    const forms: Record<string, Formation> = {
+      'Open Order': { ...BASE_FORM, retaliate_arcs: { front: 'full', flank: 'full', rear: 'full' } },
+    };
+    const basic = planAiMoves(ctxWithForms([ai, foe], ['blue'], 'enemy', forms));
     expect(basic[0]?.steps.some(s => s.kind === 'attack')).toBe(true);
 
-    const advanced = planAiMoves(ctxOf([ai, foe], ['blue'], 'enemy', { advanced: true }));
+    const advanced = planAiMoves(ctxWithForms([ai, foe], ['blue'], 'enemy', forms, { advanced: true }));
     expect(advanced[0]?.steps.some(s => s.kind === 'attack') ?? false).toBe(false);
   });
 
@@ -315,6 +356,84 @@ describe('enemyAI smarter tactics', () => {
     const basic = planAiMoves(ctxOf([a1, a2, foe], ['blue'], 'enemy'));
     const basicAttacks = basic.flatMap(p => p.steps).filter(s => s.kind === 'attack');
     expect(basicAttacks.length).toBeGreaterThan(1);
+  });
+
+  it('formation retaliation respects retaliate_arcs (none / rows / full)', () => {
+    const defender = mk({ id: 'd1', team: 'black', hex: hex(0, 0), facing: 0, weaponString: SPEAR });
+    const frontAttacker = mk({ id: 'a1', team: 'blue', hex: hex(0, -1), weaponString: SPEAR });
+    const flankAttacker = mk({ id: 'a2', team: 'blue', hex: hex(1, 0), weaponString: SPEAR });
+    const forms: Record<string, Formation> = {
+      'Open Order': { ...BASE_FORM, retaliate_arcs: { front: 'full', flank: 'rows', rear: 'none' } },
+    };
+    const ctx = { formations: forms, units: [defender, frontAttacker, flankAttacker], alliances: ALLIANCES };
+    const front = expectedRetaliation(defender, frontAttacker, 1, ctx);
+    const flank = expectedRetaliation(defender, flankAttacker, 1, ctx);
+    expect(front).toBeGreaterThan(0);
+    expect(flank).toBeGreaterThan(0);
+    expect(flank).toBeLessThan(front); // rows-based count
+
+    const none: Record<string, Formation> = {
+      'Open Order': { ...BASE_FORM, retaliate_arcs: { front: 'none', flank: 'none', rear: 'none' } },
+    };
+    expect(expectedRetaliation(defender, frontAttacker, 1, { ...ctx, formations: none })).toBe(0);
+
+    const noRangedRetaliation: Record<string, Formation> = {
+      'Open Order': { ...BASE_FORM, retaliate_vs_ranged: false },
+    };
+    expect(expectedRetaliation(defender, frontAttacker, 2, { ...ctx, formations: noRangedRetaliation })).toBe(0);
+  });
+
+  it('ownExposureAt penalizes flank/rear threats but not routed or out-of-reach units', () => {
+    const dest = hex(0, 0);
+    const facing = 0;
+    const rear = mk({ id: 'rear', team: 'black', hex: hex(0, 1), weaponString: SPEAR });
+    const flank = mk({ id: 'flank', team: 'black', hex: hex(1, 0), weaponString: SPEAR });
+    const front = mk({ id: 'front', team: 'black', hex: hex(0, -1), weaponString: SPEAR });
+    const rearPenalty = ownExposureAt(dest, facing, [rear]);
+    const flankPenalty = ownExposureAt(dest, facing, [flank]);
+    expect(rearPenalty).toBeGreaterThan(flankPenalty);
+    expect(flankPenalty).toBeGreaterThan(0);
+    expect(ownExposureAt(dest, facing, [front])).toBe(0);
+    expect(ownExposureAt(dest, facing, [{ ...rear, currentFormation: 'Routed' }])).toBe(0);
+
+    const farMelee = mk({ id: 'far', team: 'black', hex: hex(0, 2), weaponString: SPEAR });
+    expect(ownExposureAt(dest, facing, [farMelee])).toBe(0);
+    const farRanged = mk({ id: 'far-r', team: 'black', hex: hex(0, 2), weaponString: SHORTBOW });
+    expect(ownExposureAt(dest, facing, [farRanged])).toBeGreaterThan(0);
+  });
+
+  it('pathBypassPenalty charges walking past a non-target enemy', () => {
+    const dest = hex(0, -4);
+    const path = [hex(0, 0), hex(0, -1), hex(0, -2), hex(0, -3), dest];
+    const bypassed = mk({ id: 'bypassed', team: 'black', hex: hex(1, -1), weaponString: SPEAR });
+    const atDest = mk({ id: 'at-dest', team: 'black', hex: hex(-1, -4), weaponString: SPEAR });
+    expect(pathBypassPenalty(path, [bypassed], dest)).toBeGreaterThan(0);
+    expect(pathBypassPenalty(path, [atDest], dest)).toBe(0);
+    expect(pathBypassPenalty(path, [{ ...bypassed, currentFormation: 'Routed' }], dest)).toBe(0);
+    expect(pathBypassPenalty([hex(0, 0), hex(0, -1)], [bypassed], hex(0, -1))).toBe(0);
+  });
+
+  it('Advanced changes formation for a better melee trade; Basic does not', () => {
+    const forms: Record<string, Formation> = {
+      'Open Order': { ...BASE_FORM, attack_capacity_multiplier: 1 },
+      'Close Order': { ...BASE_FORM, id: 'form-close', name: 'Close Order', organization_level: 2, attack_capacity_multiplier: 2 },
+    };
+    const ai = mk({
+      id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, weaponString: SPEAR,
+      currentTroopCount: 20, maxTroopCount: 20, troopHp: 10, currentUnitHp: 200, maxUnitHp: 200,
+      actionsAvailable: 2, movementPoints: 3, movementPointsAvailable: 0,
+      currentFormation: 'Open Order', formationAvailability: ['Open Order', 'Close Order'],
+    });
+    const foe = mk({
+      id: 'd1', team: 'black', hex: hex(0, -1), facing: 3, weaponString: SPEAR,
+      currentTroopCount: 10, maxTroopCount: 10, troopHp: 10, currentUnitHp: 100, maxUnitHp: 100,
+    });
+    const advanced = planAiMoves(ctxWithForms([ai, foe], ['blue'], 'enemy', forms, { advanced: true }));
+    const formation = advanced[0]?.steps.find(s => s.kind === 'formation');
+    expect(formation && formation.kind === 'formation' ? formation.formation : null).toBe('Close Order');
+
+    const basic = planAiMoves(ctxWithForms([ai, foe], ['blue'], 'enemy', forms));
+    expect(basic[0]?.steps.some(s => s.kind === 'formation') ?? false).toBe(false);
   });
 
   it('ranged picks the biggest threat: within-2 beats Phalanx beats Close Order', () => {
@@ -370,6 +489,33 @@ describe('enemyAI smarter tactics', () => {
     expect(moves.length).toBeGreaterThan(0);
     const lastMove = moves[moves.length - 1];
     if (lastMove && lastMove.kind === 'move') expect(dist(lastMove.to, foe.hex)).toBe(1);
+  });
+
+  it('melee units advance straight at a front-arc enemy without a needless turn', () => {
+    const attacker = mk({ id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, movementPoints: 4, actionsAvailable: 2, weaponString: SPEAR });
+    const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, -3), facing: 0 });
+    const plan = planAiMoves(ctxOf([attacker, foe], ['blue'], 'enemy'));
+    const steps = plan[0].steps;
+    expect(steps.some(s => s.kind === 'turn')).toBe(false);
+    const moves = steps.filter(s => s.kind === 'move');
+    expect(moves.length).toBeGreaterThan(0);
+    const lastMove = moves[moves.length - 1];
+    if (lastMove && lastMove.kind === 'move') expect(dist(lastMove.to, foe.hex)).toBe(1);
+  });
+
+  it('does not finish an approach with a non-target enemy in its flank/rear', () => {
+    const attacker = mk({ id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, movementPoints: 4, actionsAvailable: 2, weaponString: SPEAR });
+    const first = mk({ id: 'e1', team: 'black', hex: hex(0, -3), facing: 3 });
+    const second = mk({ id: 'e2', team: 'black', hex: hex(0, -4), facing: 3 });
+    const plan = planAiMoves(ctxOf([attacker, first, second], ['blue'], 'enemy'));
+    const attack = plan[0].steps.find(s => s.kind === 'attack');
+    expect(attack).toBeDefined();
+    if (!attack || attack.kind !== 'attack') return;
+    const finalFacing = plan[0].steps.reduce(
+      (f, s) => s.kind === 'turn' ? (s.dir === 'left' ? (f + 5) % 6 : (f + 1) % 6) : f,
+      attacker.facing,
+    );
+    expect(ownExposureAt(attack.from, finalFacing, [first, second], attack.targetId)).toBe(0);
   });
 });
 
