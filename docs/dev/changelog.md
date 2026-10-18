@@ -1,5 +1,27 @@
 # QuiTTER Changelog
 
+## AI movement revision: multi-maneuver, no contact tax (2026-10-18)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/AiPanel.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md
+
+- **Removed `NO_ATTACK_CONTACT_PENALTY`.** Melee contact is symmetric (attacker
+  attacks, defender retaliates at the same magnitude); the Advanced
+  retaliation/trade model handles the exchange. A charge-specific setup penalty
+  can be added with charges in Round 3.
+- **Restored multi-maneuver movement.** Each maneuver uses one action's pool;
+  a unit may move/turn repeatedly across its actions (the mounted
+  move-turn-move-turn-charge path is no longer artificially capped). Removed
+  `movementCommitted` and the full-budget single-move path.
+- **No-attack turn surcharge**: turns that do not set up an attack/charge pay
+  `NO_ATTACK_TURN_COST` extra; attack/charge turns use the normal cost.
+- **Per-unit step budget**: `max(5, ceil(computeMoveBudget(unit, effectiveMax)))`
+  (6-MP mounted → 12; heavy infantry 2 MP → 4→5), replacing the flat 5.
+- **Contact exposure strengthened** (melee exposure weight 3→5) so the test-85 M
+  unit no longer ends beside F with F in its flank; safe front contact is still
+  allowed and uses the movement.
+- `AiPanel` is back to one-pool move validation.
+- Tests: multiple-maneuver allowance, test-85 board with no flank/rear exposure
+  and no contact tax; 32 planner tests, full suite 1106.
+
 ## AI pass 1: coherent whole-turn movement + line bearing (2026-10-18)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/AiPanel.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md
 

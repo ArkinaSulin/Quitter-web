@@ -102,13 +102,17 @@ Deterministic, pure, snapshot-in/snapshot-out:
   approaches try **cheap flanking** — up to a few 60° turns plus a straight leg,
   within the unit's real MP/action budget — landing in the enemy's flank/rear
   hexes; otherwise it closes frontally.
-- **Coherent movement (both brains)**: a unit gets **one movement maneuver per
-  turn**. If a one-pool move can still reach a legal attack, it does that
-  (move + attack). Otherwise it spends the whole remaining action budget on one
-  advance: at most one turn sequence at the start, then one straight path. It
-  never takes a second movement/turn afterward. A full-budget advance also
-  refuses to end in contact when it has no action left to attack — it stops one
-  hex short instead of locking itself into an exposed melee.
+- **Multi-maneuver movement (both brains)**: each maneuver spends one action's
+  movement pool; the unit may repeat move/turn legs across its remaining actions
+  (a mounted unit can eventually do move → turn → move → turn → charge). A turn
+  that does **not** set up an attack/charge pays an extra score surcharge; a turn
+  that does is normal. There is **no generic "no contact" penalty** — melee
+  contact is symmetric, and the Advanced retaliation/trade model values the
+  exchange. A charge-specific setup penalty can be added in Round 3 if needed.
+  The step budget is per unit: `max(5, ceil(computeMoveBudget(unit, effectiveMax)))`
+  (a 6-MP mounted unit gets 12, heavy infantry 2 MP gets 4→5), enough for the
+  whole action budget's hexes plus turns/attacks.
+
 - **Self-preservation (both brains)**:
   - a destination is penalized for OTHER live enemies in the mover's **rear**
     (heaviest) or **flank** arc; the intended melee target is excluded only when

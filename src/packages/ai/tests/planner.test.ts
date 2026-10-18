@@ -528,7 +528,7 @@ describe('enemyAI smarter tactics', () => {
     expect(lineBearingPenalty(dest, facing, [farFront])).toBe(0);
   });
 
-  it('test 85 board: one coherent advance per unit, no flank/rear exposure', () => {
+  it('test 85 board: no flank/rear exposure while advancing in multiple maneuvers', () => {
     const starts: [string, number, number][] = [
       ['N', -3, -4], ['L', -2, -4], ['K', -1, -4], ['J', 0, -4],
       ['I', 1, -4], ['H', 2, -4], ['M', 3, -4], ['O', 4, -4],
@@ -550,15 +550,7 @@ describe('enemyAI smarter tactics', () => {
       expect(plan, unit.id).toBeDefined();
       if (!plan) continue;
       const moves = plan.steps.filter(s => s.kind === 'move');
-      expect(moves.length, unit.id).toBeLessThanOrEqual(1);
-
-      let sawMove = false;
-      let turnedAfterMove = false;
-      for (const s of plan.steps) {
-        if (s.kind === 'move') sawMove = true;
-        else if (s.kind === 'turn' && sawMove) turnedAfterMove = true;
-      }
-      expect(turnedAfterMove, unit.id).toBe(false);
+      expect(moves.length, unit.id).toBeGreaterThanOrEqual(1);
 
       const finalFacing = plan.steps.reduce(
         (f, s) => s.kind === 'turn' ? (s.dir === 'left' ? (f + 5) % 6 : (f + 1) % 6) : f,
@@ -569,7 +561,16 @@ describe('enemyAI smarter tactics', () => {
       const attack = plan.steps.find(s => s.kind === 'attack');
       const targetId = attack && attack.kind === 'attack' ? attack.targetId : undefined;
       expect(ownExposureAt(finalHex, finalFacing, red, targetId), unit.id).toBe(0);
+      expect(finalHex.r, unit.id).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  it('allows multiple movement maneuvers in one turn', () => {
+    const attacker = mk({ id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, movementPoints: 1, actionsAvailable: 2, weaponString: SPEAR });
+    const foe = mk({ id: 'e1', team: 'black', hex: hex(0, -3), facing: 0 });
+    const plan = planAiMoves(ctxOf([attacker, foe], ['blue'], 'enemy'));
+    const moves = plan[0].steps.filter(s => s.kind === 'move');
+    expect(moves.length).toBeGreaterThanOrEqual(2);
   });
 });
 

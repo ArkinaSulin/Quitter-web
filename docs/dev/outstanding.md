@@ -133,9 +133,10 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   higher-AC changes outside a ZoC.
 - ⏳ AI still ignores **flight** and some elevation/climb nuances (structures and
   per-surface occupancy now feed the planner).
-- ✅ **Pass 1** (safety/coherence): one movement maneuver per turn (pooled
-  budget), conditional target exclusion, line-bearing penalty at any distance,
-  no contact without an attack; test-85 red-line regression.
+- ✅ **Pass 1** (safety/coherence): multi-maneuver one-pool movement (mounted
+  move/turn/charge path allowed), no generic contact tax, no-attack turn
+  surcharge, conditional target exclusion, line-bearing penalty at any distance,
+  per-unit step budget; test-85 red-line regression.
 - ✅ Basic/Advanced flag + player access flag (migration 130); both brains have
   self-preservation (own flank/rear exposure, path bypass, turn economy) and
   formation-aware retaliation; Advanced adds trade/overkill value and ZoC-
