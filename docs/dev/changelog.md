@@ -1,6 +1,24 @@
 # QuiTTER Changelog
 
-## AI pass 2b: aggressive/defensive profiles (2026-10-18)
+## Session wrap-up: AI assist Pass 1 + 2a + 2b (2026-10-18)
+**Commits:** `009a6b1` (Pass 2a), `f4e3695` (Pass 2b); Pass 1 landed in earlier AI commits.
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/AiPanel.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, supabase/migrations/130_ai_assist_flags.sql
+
+- **State:** Pass 1 (multi-maneuver movement, safety/coherence), Pass 2a
+  (line assignment, leftover MP, stance, cohesion), and Pass 2b
+  (aggressive/defensive profiles) are shipped. Migration 130 is applied; no
+  migration was added for 2a/2b. `npm run check` passes — tsc, **1111 tests**
+  (37 planner), depcruise, production build.
+- **Next session (in order):** playtest 2a/2b; **Round 2a archers + artillery**
+  (LOS/indirect-shot polish, focus fire, war machines); **Round 3 mounted
+  charges**; **Round 4 full coordination**; **Round 5 full auto-turn**. The AI
+  still ignores ZoC scatter/pursue, flight, and some elevation nuances, and
+  never controls heroes. See `docs/dev/outstanding.md` §AI assist and
+  `docs/dev/17-enemy-ai.md`.
+- **No data model change for stance:** Aggressive/Defensive is per-preview local
+  state in the AI tab; the Basic/Advanced flags remain the scenario columns.
+
+## AI pass 2b: aggressive/defensive profiles (2026-10-18, f4e3695)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md
 
 - **Aggressive simple**: the line assignment + raw damage; equal-damage target
@@ -18,7 +36,7 @@
 - Mounted charges remain Round 3; the multi-maneuver structure already permits
   the approach path. Tests: low-AC priority, defensive Close Order posture,
   cluster speed cap; full suite 1111.
-## AI pass 2a: line assignment, leftover MP, stance toggle (2026-10-18)
+## AI pass 2a: line assignment, leftover MP, stance toggle (2026-10-18, 009a6b1)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/AiPanel.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md
 
 - **Leftover-MP fix**: units remain plottable with 0 actions but materialized MP;
@@ -37,8 +55,8 @@
 - Tests: line assignment is order-independent; yellow G-L → A-F plan ends
   q1..6 at r0 (all 4 MP used); 0-action/2-MP unit moves; 34 planner tests,
   full suite 1108.
-- Pass 2b (aggressive advanced targeting, defensive ranged formation posture,
-  cluster move, charges) remains next.
+- Pass 2b followed in `f4e3695` (aggressive advanced targeting, defensive ranged
+  formation posture, cluster speed cap); mounted charges remain Round 3.
 
 ## AI movement revision: multi-maneuver, no contact tax (2026-10-18)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/AiPanel.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md

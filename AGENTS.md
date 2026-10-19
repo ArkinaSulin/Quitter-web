@@ -11,18 +11,42 @@
 ## Work Summary (Anchored)
 
 Newest work first; the authoritative, per-session record is `docs/dev/changelog.md`.
-The most recent sessions added **map structures** (migrations 093–095: template
-library + Structure Editor, edge/hex instances, door-first combat, tower auras,
-`range` bonuses, gate open/close, **Shift + drop** attacks and Shift-held
-inspect-mode hex/edge tooltips), the **Map Editor Effects tab** with *permanent*
-authored board effects, **archer rules** (front-only ranged arc + indirect-shot
-LoS, 091), and **destructible wall segments** (092). Earlier: edge walls (089),
-the Zone-of-control pursue + Withdraw economy (090) with a hero command leash,
-attack-roll effects (088), the movement economy ("1 action = 1 full MP pool"),
-combat, effects, fog, and reusable maps. Here's the state:
+The most recent sessions built the **enemy-AI assist** — Pass 1 safety/coherence
+plus Pass 2a line/leftover-MP/stance and Pass 2b aggressive/defensive profiles
+(commits `009a6b1`, `f4e3695`; migration 130). Prior sessions added **map
+structures** (migrations 093–095: template library + Structure Editor, edge/hex
+instances, door-first combat, tower auras, `range` bonuses, gate open/close,
+**Shift + drop** attacks and Shift-held inspect-mode hex/edge tooltips), the
+**Map Editor Effects tab** with *permanent* authored board effects, **archer
+rules** (front-only ranged arc + indirect-shot LoS, 091), and **destructible wall
+segments** (092). Earlier: edge walls (089), the Zone-of-control pursue +
+Withdraw economy (090) with a hero command leash, attack-roll effects (088), the
+movement economy ("1 action = 1 full MP pool"), combat, effects, fog, and
+reusable maps. Here's the state:
 
 ### Completed
 
+- **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`)**:
+  scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);
+  Basic uses **Simple**, Advanced uses **Advance**; the AI tab has a per-preview
+  **Aggressive (default) / Defensive** stance toggle (local state, no DB column).
+  **Pass 1**: multi-maneuver one-pool movement (mounted move/turn/charge path
+  allowed), no generic contact tax, no-attack turn surcharge, conditional target
+  exclusion, line-bearing penalty, per-unit step budget
+  `max(5, ceil(computeMoveBudget))`. **Pass 2a**: leftover-MP movement with a
+  scored hold; line-order target/lane assignment (order-independent) and
+  assigned-lane plan order; neutral hex-hash tie-break; cohesion (1–2-hex line +
+  8-hex isolation) scaled by AGR; test-85 red-line and yellow/black 6-vs-6
+  regressions. **Pass 2b**: aggressive simple self-protect tie-break; aggressive
+  advance low-AC/isolated priority + non-lethal melee-lock penalty; defensive
+  simple 1.6× safety weighting + stronger ranged ZoC; defensive ranged posture
+  (Close far/no fire → Open/Scattered under fire → Scattered before melee);
+  defensive cluster capped to the slowest member (slowest planned first).
+  `npm run check`: tsc, **1111 tests** (37 planner), depcruise, build. No new
+  migration for 2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted
+  charges, Round 4 full coordination, Round 5 full auto-turn; AI still ignores
+  ZoC scatter/pursue, flight, and some elevation nuances. See
+  `docs/dev/outstanding.md` + `docs/dev/17-enemy-ai.md`.
 - **`ignore_climb` + `feather_fall` effects; `stairs` retired (migration 113)**: two new amount-less effect kinds authorable in every `EffectModifierFields` surface — **`ignore_climb`** (unit / edge structure / ground zone; waives the climb/elevation cost) and **`feather_fall`** (unit; ignores falling damage). `structureClimbCostBetween` takes a `waiveClimb` mover flag and returns 0 when the crossed edge carries `ignore_climb` (`structureWaivesClimb`); `makeCostOfHex`/`makeBlockedEdge` thread it from every mover call site (move, charge, reactions, overlay), and `handleClimbMove` makes an ignoring unit's climb free. Fall damage (`routeUnit` rout-off-wall, `confirmHeroFall`) is skipped when the faller has `feather_fall`. The old edge `stairs` boolean is **removed** (types, editors, label lists, `structureIsStairs`); the trapezoid-ladder graphic now draws for any edge structure carrying `ignore_climb`. Migration 113 backfills `stairs = true` → `{"kind":"ignore_climb"}` (templates + placed instances) and drops the column. `tsc` clean, 856 tests pass. **Apply 113 in Supabase.**
 - **Structure elevation (Phase 2b, migrations 111–112)**: structures carry a top **`elevation`** (default 10; 0 = decorative) + edge **`stairs`**; effects carry `elevation`. **Dynamic ground**: a unit is *flying* only when `elevation > surfaceAt(hex)` (`structureSurfaceAt`), else *grounded*; `movePoolMode`/`moveBudgetUnit` take a surface; `computeOccupiedHexes(units, excludeId, surface=0)` is per-surface. **Climb**: 10-ft steps @ 4 MP (`climbPlan`, `climb_to`), `height/2.5`; stairs waive; mounted can't climb. **Hanging**: a unit climbs adjacent higher hexes staying in its origin hex; `climb_to` target + rising `elevation`; linear (up=target / down=own hex); hover +10 ft if ground occupied; can't retaliate; attacks/ZoC only at the wall top; rout = free-fall (d6/10 ft) + standard picker. **Flight blocking**: `flightBlockedHexes` (structure top > flyer → blocked; destination excluded so the elevation modal clears it; else "structure blocked flight passage"). **Ranged vertical**: reach `dist + climb` (down never extends); band `dist + up − down`. **Rendering**: constant offsets (non-flyer = half, flyer = full; climber toward target), structure/effect elevation badges (north vertex), stair trapezoid-ladder (variant C). Editors (Structure/Effect + placed modal) expose elevation/stairs. `tsc` clean, 851 tests, build clean. **Apply 111/112 in Supabase.**
 - **Viewport-bound floating UI (`Floating`) + draggable-modal clamp**: new `src/components/ScenarioMap/Floating.tsx` (portal to `document.body` + `position: fixed` + measured viewport clamp + optional flip + z-index) is now the single primitive for every tooltip/menu — fixes left-panel tooltips trapped by `PanelsContainer`'s `backdrop-blur` (a `backdrop-filter` containing block for `fixed`) and clipped by its `overflow-hidden`. Migrated `UnitTooltip`/`MapInfoTooltip`/`UnitTemplateTooltip`/structure+effect tooltips/`ContextMenu` (measured, flips up, scroll cap)/Messages menu; hover handlers pass viewport coords; removed hard-coded clamps. `UnitEditorModal` draggable but clamped by measured size (no cropped bottom). Standard documented in `docs/dev/19-ui-panels-and-floating.md`. `tsc` clean, 840 tests, build clean. No migration.
@@ -80,7 +104,7 @@ combat, effects, fog, and reusable maps. Here's the state:
 
 ### Pending
 
-- **AI vs the new ZoC rules**: the enemy-AI planner ignores the scatter/pursue economy for v1 (it accounts for terrain/walls, not the pursue reaction).
+- **AI assist remaining** (Pass 1 + 2a + 2b shipped): Round 2a archers + artillery, Round 3 mounted charges, Round 4 full coordination, Round 5 full auto-turn; the planner still ignores ZoC scatter/pursue, flight, and some elevation nuances, and never controls heroes. See `docs/dev/outstanding.md`.
 - **Spelljammer module implementation** (docs + access caps + shipyard builder done; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`) applied to the DB.
 - Migration `013_turn_tracking.sql` — applied to the DB (done).
 - Migrations 010/011/012 — user applied to the DB.

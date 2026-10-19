@@ -115,6 +115,13 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
 - ⏳ Rout-modal/eventual AI handling of the new pursue (AI planner ignores it for v1).
 
 ## AI assist
+- 📌 **Current status (2026-10-18):** Pass 1 + 2a + 2b are shipped (`009a6b1`,
+  `f4e3695`); migration 130 is applied, and 2a/2b added no migration. Next
+  session: playtest 2a/2b, then work the remaining rounds in order — **2a
+  archers + artillery → 3 mounted charges → 4 full coordination → 5 full
+  auto-turn**. Files: `src/packages/ai/lib/planner.ts`,
+  `src/packages/ai/tests/planner.test.ts`, `src/components/ScenarioMap/AiPanel.tsx`;
+  design in `docs/dev/17-enemy-ai.md`.
 - 🔜 **Full AI mode** (auto whole-turn director: watches turn, runs the plot,
   auto-answers rout/reaction prompts, auto End Turn) on top of the existing
   planner + Execute driver.
@@ -132,7 +139,7 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   and the war-machine slice (AI-only immobility while operating, fixed facing,
   `expectedWarMachineDamage`, `bombard` steps that pause for marker placement;
   routed crew flees normally, the weapon structure stays).
-- ⏳ AI **charges / magic / reactions / hero attach**.
+- ⏳ **Round 3 mounted charges**, then AI magic / reactions / hero attach.
 - ⏳ Per-team doctrine toggles (currently auto by weapon type).
 - ⏳ Advanced formation changes **Phase 2**: anticipate ranged damage and allow
   higher-AC changes outside a ZoC.
@@ -191,10 +198,19 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
 - ✅ Applied (owner-confirmed, Phase 2 aerial/elevation): **108** (elevation/fly),
   **109** (template fly speed), **110** (`fly_speed_available` numeric), **111**
   (structure/effect elevation).
+- ✅ Applied (owner-confirmed, AI assist): **130** (`ai_assist_advanced` /
+  `ai_assist_players`).
 - 🔜 **Awaiting apply**: **096** (structure `spikes` + "Archer's Stake" rename),
-  **097** (`structure_images` bucket), **112** (`units.climb_to` — Phase 2b-7),
-  **130** (AI assist `ai_assist_advanced` / `ai_assist_players`).
+  **097** (`structure_images` bucket), **112** (`units.climb_to` — Phase 2b-7).
 
 ## Uncommitted working tree (owner's, left untouched)
-- `.scratch/ship-builder/spec.md`, `.scratch/shipyard-formula/{FINDINGS.md,shipyard.csv}`,
-  `.scratch/spelljammer-mod/spec.md`, `src/packages/ships/lib/shipStats.ts`.
+- Last checked 2026-10-18 after the AI commits (`009a6b1`, `f4e3695`): the AI
+  code/tests/docs are clean and pushed. Owner-dirty files remain:
+  `.scratch/ship-builder/spec.md`,
+  `.scratch/shipyard-formula/{FINDINGS.md,shipyard.csv}`,
+  `.scratch/spelljammer-mod/spec.md`,
+  `.scratch/screen-capture/` (untracked), plus unrelated edits in
+  `src/components/shared/mapFeatureDraw.ts`,
+  `src/packages/infra/lib/templateMappers.ts`,
+  `src/packages/movement/tests/moveCost.test.ts`, and
+  `src/packages/units/lib/tokenUtils.ts`. Do not stage these with AI work.

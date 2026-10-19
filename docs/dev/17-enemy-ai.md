@@ -1,8 +1,12 @@
 # 17 — AI Assist (enemy AI plotting tool)
 
-> **Status: shipped (v3).** A GM-only-by-default tool — no turn automation.
-> Full-AI mode (an alliance auto-plays its whole turn) is a future layer on the
-> same engine.
+> **Status: shipped (v3 + Pass 1/2a/2b).** A GM-only-by-default tool — no turn
+> automation. Pass 1 (movement/safety), Pass 2a (line assignment, leftover MP,
+> stance, cohesion) and Pass 2b (aggressive/defensive profiles) are in
+> `src/packages/ai/lib/planner.ts` (commits `009a6b1`, `f4e3695`). Full-AI mode
+> (an alliance auto-plays its whole turn) remains a future layer on the same
+> engine. Remaining rounds and the next-session order are in
+> `docs/dev/outstanding.md` §AI assist.
 
 ## What it is
 
@@ -243,7 +247,10 @@ reposition the crew once the weapon is set up.
 
 ## Non-goals (future layers)
 
-Whole-turn auto-director, auto-answering every prompt, AI charges/magic/
-reactions/hero attach, bot accounts. Difficulty levels beyond Basic/Advanced and
-the Round 2a artillery work are the next layers. The planner + Execute driver
-here are the foundation those would reuse.
+Whole-turn auto-director (Round 5), auto-answering every prompt, AI magic/
+reactions/hero attach, bot accounts. The next layers, in order, are **Round 2a
+archers + artillery** (including the war-machine slice below), **Round 3 mounted
+charges**, **Round 4 full coordination**, and **Round 5 full auto-turn**;
+difficulty levels beyond Basic/Advanced also remain. The planner + Execute driver
+here are the foundation those would reuse. The planner still ignores ZoC
+scatter/pursue, flight, and some elevation nuances, and never controls heroes.
