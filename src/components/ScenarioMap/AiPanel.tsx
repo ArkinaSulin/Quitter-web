@@ -133,6 +133,7 @@ export function AiPanel({
   // A batch finished executing and can be undone with "Undo Execute".
   const [batchDone, setBatchDone] = useState(false);
   const [statusText, setStatusText] = useState('');
+  const [stance, setStance] = useState<'aggressive' | 'defensive'>('aggressive');
   const [phaseTick, setPhaseTick] = useState(0); // bump to refresh derived UI/overlay
   const remainingRef = useRef<ExecUnit[]>([]);
   const baselineRef = useRef<string | null>(null);
@@ -164,7 +165,7 @@ export function AiPanel({
       setRemaining(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiTeams, aiExcluded]);
+  }, [aiTeams, aiExcluded, stance]);
 
   // Publish the overlay whenever the eligible set, opt-outs, or routes change.
   useEffect(() => {
@@ -207,6 +208,7 @@ export function AiPanel({
       structureTemplates,
       groundZones,
       advanced,
+      stance,
       gridRadius: gridRadius ?? DEFAULT_GRID_RADIUS,
       reactiveArchery: !!archerReactionEnabled,
     });
@@ -503,6 +505,24 @@ export function AiPanel({
           (friendly → enemy, enemy → friendly).
         </p>
       )}
+
+      <div className="flex items-center gap-1.5">
+        <span className="text-[11px] uppercase tracking-wider text-gray-500">Stance</span>
+        {(['aggressive', 'defensive'] as const).map(s => (
+          <button
+            key={s}
+            className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold capitalize ${
+              stance === s
+                ? 'border-amber-400 text-amber-200 bg-amber-400/10'
+                : 'border-gray-700 text-gray-400 hover:border-gray-500'
+            }`}
+            onClick={() => setStance(s)}
+            title={s === 'aggressive' ? 'Seek damage; looser line' : 'Self-protect; tighter line'}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
 
       {/* Team chips: drag into the control box (or click). */}
       <div>

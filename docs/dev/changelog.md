@@ -1,5 +1,27 @@
 # QuiTTER Changelog
 
+## AI pass 2a: line assignment, leftover MP, stance toggle (2026-10-18)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/AiPanel.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md
+
+- **Leftover-MP fix**: units remain plottable with 0 actions but materialized MP;
+  a final move can spend it. Attacks still require an action. Holding position
+  is a scored option, so the AI no longer moves/turns just because MP remains.
+- **Line-order target assignment**: visible enemies and units sort by q and pair
+  left-to-right, with adjacent value swaps. Units plan in assigned-lane order;
+  the destination score strongly prefers the assigned target's frontage lane
+  (target q, front row). This fixes the all-right drift and the unengaged line
+  ends (test-85 red line; yellow/black 6-vs-6 board).
+- **Neutral tie-break**: score ties use a deterministic hex hash instead of BFS
+  insertion order, removing the east/right bias.
+- **Stance toggle**: AI tab Aggressive (default) / Defensive, per preview. A
+  cohesion term (1–2-hex line proximity + 8-hex isolation) is loose in
+  Aggressive and tighter in Defensive, scaled linearly by AGR.
+- Tests: line assignment is order-independent; yellow G-L → A-F plan ends
+  q1..6 at r0 (all 4 MP used); 0-action/2-MP unit moves; 34 planner tests,
+  full suite 1108.
+- Pass 2b (aggressive advanced targeting, defensive ranged formation posture,
+  cluster move, charges) remains next.
+
 ## AI movement revision: multi-maneuver, no contact tax (2026-10-18)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/AiPanel.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md
 

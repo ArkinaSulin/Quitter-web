@@ -36,7 +36,7 @@
 //  - Everything is deterministic (tie-breaks by unit id / hex distance).
 import { Unit, Hex, AllianceGroup, Formation, GroundEffect, hexDistance } from '@/types/gameProtocol';
 import { parseWeapons, isAreaWeapon } from '@/packages/units';
-import { isUnitRouted } from '@/packages/morale';
+import { isUnitRouted, calcIsolation } from '@/packages/morale';
 import { rotateLeft, rotateRight } from '@/packages/primitives';
 import { allianceOf as teamAllianceOf } from '@/packages/primitives';
 import { isProtectedHero } from '@/packages/units';
@@ -90,6 +90,9 @@ export interface AiPlanContext {
   /** Tuned brain: retaliation-aware melee, finish/overkill value, zone-aware
    *  positioning, and light target reservation. OFF = green-friendly greedy. */
   advanced?: boolean;
+  /** Aggressive (default) pursues damage; defensive prioritizes self-protection,
+   *  line cohesion and exposure avoidance. Per-preview AI-tab toggle. */
+  stance?: 'aggressive' | 'defensive';
   /** Grid radius (axial ring). When set, routed flee stops at the outer rim. */
   gridRadius?: number;
   /** Max plot steps per unit (default 5 — enough for turn + move + attack). */
@@ -117,6 +120,89 @@ export function enemyGroupsOf(group: AllianceGroup): Set<AllianceGroup> {
   return new Set<AllianceGroup>();
 }
 
+function frontageSort<T extends { hex: Hex; id: string }>(a: T, b: T): number {
+  return a.hex.q - b.hex.q || a.hex.r - b.hex.r || a.id.localeCompare(b.id);
+}
+
+/** Deterministic, direction-neutral tie-break (no BFS-east bias). */
+function hexTieHash(h: Hex): number {
+  return (((h.q * 73856093) ^ (h.r * 19349663)) >>> 0);
+}
+
+function assignmentTargetValue(
+  target: Unit,
+  units: Unit[],
+  alliances: Record<string, AllianceGroup>,
+  advanced: boolean,
+): number {
+  const ac = target.currentAc ?? target.baselineAc ?? 14;
+  const hpFrac = (target.maxUnitHp ?? 0) > 0
+    ? Math.max(0, Math.min(1, (target.currentUnitHp ?? 0) / Math.max(1, target.maxUnitHp)))
+    : 1;
+  let value = Math.max(0, (20 - ac) * 0.4) + (1 - hpFrac) * 8;
+  if (advanced && calcIsolation(target, units, alliances)) value += 8;
+  return value;
+}
+
+function assignmentPairCost(
+  unit: Unit,
+  target: Unit,
+  units: Unit[],
+  alliances: Record<string, AllianceGroup>,
+  advanced: boolean,
+): number {
+  return hexDistance(unit.hex, target.hex) * 10 - assignmentTargetValue(target, units, alliances, advanced);
+}
+
+/**
+ * Line-order target assignment: sort both sides by frontage (q), pair
+ * left-to-right, then allow adjacent value swaps. This is a *preference*; the
+ * per-unit planner may still retarget when the board changes.
+ */
+export function assignTargets(
+  units: Unit[],
+  enemies: Unit[],
+  alliances: Record<string, AllianceGroup>,
+  advanced = false,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  const foes = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0 && !isProtectedHero(e));
+  if (units.length === 0 || foes.length === 0) return out;
+  const sortedUnits = [...units].sort(frontageSort);
+  const sortedFoes = [...foes].sort(frontageSort);
+
+  if (sortedUnits.length <= sortedFoes.length) {
+    const offset = Math.floor((sortedFoes.length - sortedUnits.length) / 2);
+    sortedUnits.forEach((u, i) => out.set(u.id, sortedFoes[offset + i].id));
+  } else {
+    sortedFoes.forEach((f, i) => out.set(sortedUnits[i].id, f.id));
+    // Extra units double up on the nearest assigned target (by q).
+    for (let i = sortedFoes.length; i < sortedUnits.length; i++) {
+      const u = sortedUnits[i];
+      let best = sortedFoes[0];
+      for (const f of sortedFoes) if (Math.abs(f.hex.q - u.hex.q) < Math.abs(best.hex.q - u.hex.q)) best = f;
+      out.set(u.id, best.id);
+    }
+  }
+
+  // Adjacent local swaps for value (never leaves the line uncovered).
+  const byId = new Map(foes.map(f => [f.id, f]));
+  for (let i = 0; i < sortedUnits.length - 1; i++) {
+    const u1 = sortedUnits[i];
+    const u2 = sortedUnits[i + 1];
+    const t1 = byId.get(out.get(u1.id) ?? '');
+    const t2 = byId.get(out.get(u2.id) ?? '');
+    if (!t1 || !t2 || t1.id === t2.id) continue;
+    const current = assignmentPairCost(u1, t1, units, alliances, advanced) + assignmentPairCost(u2, t2, units, alliances, advanced);
+    const swapped = assignmentPairCost(u1, t2, units, alliances, advanced) + assignmentPairCost(u2, t1, units, alliances, advanced);
+    if (swapped < current - 12) {
+      out.set(u1.id, t2.id);
+      out.set(u2.id, t1.id);
+    }
+  }
+  return out;
+}
+
 /** True when a unit is eligible to be handed to the AI at this moment.
  *  Heroes (and units with an attached hero) are NEVER AI-controlled — players
  *  and the DM play those. Routed units ARE eligible — the planner flees them. */
@@ -134,7 +220,7 @@ export function isAiControllable(
   if (!ctx.teams.includes(unit.team)) return false;
   if (ctx.activeAlliance === null) return false; // free play — no plotting
   if (allianceOf(unit, ctx.alliances) !== ctx.activeAlliance) return false;
-  if ((unit.actionsAvailable ?? 0) < 1) return false;
+  if ((unit.actionsAvailable ?? 0) < 1 && (unit.movementPointsAvailable ?? 0) < 1) return false;
   return true;
 }
 
@@ -424,6 +510,41 @@ interface DestTuning {
   working: Unit[];
   mover: Unit;
   alliances: Record<string, AllianceGroup>;
+  assignedTarget: Unit | null;
+  stance: 'aggressive' | 'defensive';
+}
+
+/** Loose (aggressive) / tight (defensive) line cohesion, scaled by AGR. */
+function cohesionAt(dest: Hex, tuning: DestTuning): number {
+  const mover = tuning.mover;
+  const group = allianceOf(mover, tuning.alliances);
+  let nearest = Infinity;
+  for (const f of tuning.working) {
+    if (f.id === mover.id || f.isDeleted || f.hidden || (f.currentUnitHp ?? 0) <= 0) continue;
+    if (allianceOf(f, tuning.alliances) !== group) continue;
+    const d = hexDistance(dest, f.hex);
+    if (d < nearest) nearest = d;
+  }
+  if (!Number.isFinite(nearest)) return 0;
+  const moved = { ...mover, hex: dest };
+  const units = tuning.working.map(w => (w.id === mover.id ? moved : w));
+  const isolated = calcIsolation(moved, units, tuning.alliances);
+  let raw = nearest <= 2 ? 1 : nearest <= 3 ? -0.5 : -1;
+  if (isolated) raw -= 1;
+  const base = tuning.stance === 'defensive' ? 18 : 6;
+  const agr = Math.max(1, Math.min(10, mover.aggressiveness ?? 5));
+  const factor = 1 - 0.75 * (agr - 1) / 9;
+  return raw * base * factor;
+}
+
+/** Bonus for acting on the line-assigned target/lane. */
+const ASSIGNMENT_BONUS = 12;
+
+/** The lane hex in front of the assigned target, on the mover's side. */
+function assignedLaneHex(target: Unit, mover: Unit): Hex {
+  const rowDir = target.hex.r > mover.hex.r ? -1 : target.hex.r < mover.hex.r ? 1 : 0;
+  const r = target.hex.r + rowDir;
+  return { q: target.hex.q, r, s: -target.hex.q - r };
 }
 
 /** Score weights for self-preservation (tuned against test 85's two cases). */
@@ -582,16 +703,28 @@ function meleeDestScore(
   threat: Set<string>,
   facing: number,
   canAttackAfterMove: boolean,
-  tuning?: DestTuning,
+  tuning: DestTuning,
 ): number {
   const adj = bestAdjacentTarget(dest, foes);
   const targetId = canAttackAfterMove ? adj.target?.id : undefined;
   const near = nearestEnemyDist(dest, foes);
   const threatPenalty = threat.has(hexKeyOf(dest)) ? 8 : 0;
+  const assignedBonus = tuning.assignedTarget && adj.target?.id === tuning.assignedTarget.id
+    ? ASSIGNMENT_BONUS
+    : 0;
+  const laneBonus = tuning.assignedTarget
+    ? (() => {
+        const lane = assignedLaneHex(tuning.assignedTarget!, tuning.mover);
+        return Math.max(0, 28 - hexDistance(dest, lane) * 6) - Math.abs(dest.q - lane.q) * 2;
+      })()
+    : 0;
   let score = adj.rank * 30 + (adj.rank > 0 ? ADJACENT_ATTACK_BONUS : 0) + (8 - Math.min(8, near)) - threatPenalty
     - ownExposureAt(dest, facing, foes, targetId, MELEE_EXPOSURE_WEIGHT)
-    - lineBearingPenalty(dest, facing, foes, targetId, 1.5);
-  if (tuning?.advanced) {
+    - lineBearingPenalty(dest, facing, foes, targetId, 1.5)
+    + cohesionAt(dest, tuning)
+    + assignedBonus
+    + laneBonus;
+  if (tuning.advanced) {
     score -= dangerAt(dest, foes, 'melee') * 0.6;
     score -= crowdingAt(dest, tuning) * 3;
   }
@@ -608,7 +741,7 @@ function rangedDestScore(
   weaponMaxRange: number,
   facing: number,
   _canAttackAfterMove: boolean,
-  tuning?: DestTuning,
+  tuning: DestTuning,
 ): number {
   const near = nearestEnemyDist(dest, foes);
   const threatPenalty = threat.has(hexKeyOf(dest)) ? 8 : 0;
@@ -625,7 +758,11 @@ function rangedDestScore(
   }
   score -= ownExposureAt(dest, facing, foes);
   score -= lineBearingPenalty(dest, facing, foes, undefined, 1);
-  if (tuning?.advanced) {
+  score += cohesionAt(dest, tuning);
+  if (tuning.assignedTarget && hexDistance(dest, tuning.assignedTarget.hex) <= weaponMaxRange) {
+    score += ASSIGNMENT_BONUS;
+  }
+  if (tuning.advanced) {
     score -= dangerAt(dest, foes, 'ranged') * 0.7;
     score -= crowdingAt(dest, tuning) * 2;
   }
@@ -707,6 +844,19 @@ function maneuverOptions(
   const evaluate = (turns: { dir: 'left' | 'right' }[], unitAfter: Unit) => {
     const max = effMax(unitAfter, ctx.formations);
     const pool = computeMovePool(unitAfter, max);
+    // Holding position is always an option (including with 0 MP/actions). This
+    // is what lets a unit spend leftover MP only when the destination is better
+    // than staying put.
+    const stayLeads = canAttackAfterMove
+      && legalTargets(unitAfter, foes, { alliances: ctx.alliances, formations: ctx.formations, visibleHexes: ctx.visibleHexes }).length > 0;
+    const stayScore = scorer(unitAfter.hex, foes, threat, unitAfter.facing, stayLeads)
+      - turns.length * (TURN_COST + (stayLeads ? 0 : NO_ATTACK_TURN_COST));
+    out.push({
+      turns: [...turns],
+      move: { to: unitAfter.hex, path: [], cost: 0, score: stayScore, canAttack: false, attackScore: 0 },
+      postTurnUnit: unitAfter,
+      score: stayScore,
+    });
     if (pool < 1) return;
     const reach = computeReachableMap(
       unitAfter, pool, occ, threat, movement.costOfHex, false, movement.blockedEdge,
@@ -746,7 +896,11 @@ function maneuverOptions(
     }
   };
   recurse([], u);
-  out.sort((a, b) => b.score - a.score);
+  out.sort((a, b) =>
+    b.score - a.score
+    || hexTieHash(a.move.to) - hexTieHash(b.move.to)
+    || a.move.to.q - b.move.to.q
+    || a.move.to.r - b.move.to.r);
   return out;
 }
 
@@ -815,6 +969,15 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
   const maxTurns = ctx.maxTurns ?? 3;
   const cap = unitAttackCap();
   const advanced = !!ctx.advanced;
+  const stance = ctx.stance ?? 'aggressive';
+  // Line-order target assignment: covers the enemy line left-to-right instead
+  // of every unit chasing the nearest target. This is a preference; the unit
+  // may still retarget if the assigned target becomes invalid.
+  const assignments = assignTargets(controllable, enemies, ctx.alliances, advanced);
+  const foesById = new Map(enemies.map(e => [e.id, e]));
+  const laneQOf = (unit: Unit) => foesById.get(assignments.get(unit.id) ?? '')?.hex.q ?? unit.hex.q;
+  const planned = [...controllable].sort((a, b) =>
+    laneQOf(a) - laneQOf(b) || a.hex.q - b.hex.q || a.id.localeCompare(b.id));
   // Advanced: damage already assigned to a target this plot, so later units see
   // the overkill waste instead of piling onto a nearly-dead squad.
   const reserved = new Map<string, number>();
@@ -826,7 +989,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
   };
 
   const plans: AiUnitPlan[] = [];
-  for (const seed of controllable) {
+  for (const seed of planned) {
     const plan: AiUnitPlan = { unitId: seed.id, steps: [] };
     let u = byId.get(seed.id)!;
     let formationChanged = false;
@@ -834,11 +997,14 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
     // turns/attacks): a 6-MP mounted unit gets 12, heavy infantry 2 MP gets 4.
     const initialBudget = computeMoveBudget(u, effMax(u, ctx.formations));
     const maxStepsForUnit = Math.max(ctx.maxStepsPerUnit ?? 5, Math.ceil(initialBudget));
+    const assignedTargetId = assignments.get(u.id) ?? null;
+    const assignedTarget = assignedTargetId ? enemies.find(e => e.id === assignedTargetId) ?? null : null;
     for (let s = 0; s < maxStepsForUnit; s++) {
-      if ((u.actionsAvailable ?? 0) < 1) break;
+      if ((u.actionsAvailable ?? 0) < 1 && (u.movementPointsAvailable ?? 0) < 1) break;
       if ((u.attacksUsed ?? 0) >= cap) break;
       const from = u.hex;
       const movement = movementContextFor(u, working, ctx);
+      const canAct = (u.actionsAvailable ?? 0) >= 1;
 
       // Routed units can't fight — run as far from hostiles as possible, but
       // stop at the map's outer rim so the DM can hide the broken unit.
@@ -855,7 +1021,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const enemiesAlive = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
 
       // Stand-off: adopt Scattered when contact looms and we can afford it.
-      if (doctrine === 'ranged' && u.currentFormation !== 'Scattered' && !u.isHero) {
+      if (canAct && doctrine === 'ranged' && u.currentFormation !== 'Scattered' && !u.isHero) {
         const near = nearestEnemyDist(u.hex, enemiesAlive);
         const canScatter =
           near <= 3 &&
@@ -876,7 +1042,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       // formations when a fight is imminent (already in a hostile ZoC, or an
       // enemy is within 2 hexes). Net damage dealt − received, minus the
       // formation-change cost; switch only on a clear margin.
-      if (advanced && !formationChanged && doctrine === 'melee' && !u.isHero && !u.isCharging && !u.climbTo) {
+      if (canAct && advanced && !formationChanged && doctrine === 'melee' && !u.isHero && !u.isCharging && !u.climbTo) {
         const activeWeapon = activeWeaponOf(u);
         const meleeActive = !activeWeapon || isMeleeWeapon(activeWeapon);
         const airborne = (u.elevation ?? 0) > 0 && !!(u.flySpeed ?? 0);
@@ -951,9 +1117,10 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         for (const t of meleeOptions) {
           const v = attackValue(u, t.unit, t.dist, false, ctx, advanced, reserved);
           if (v.dmg <= 0) continue;
+          const score = v.score + (assignedTargetId === t.unit.id ? ASSIGNMENT_BONUS : 0);
           const rank = attackArcRank(u.hex, t.unit);
-          if (!best || rank > best.rank || (rank === best.rank && v.score > best.score)) {
-            best = { unit: t.unit, dist: t.dist, score: v.score, dmg: v.dmg, rank };
+          if (!best || rank > best.rank || (rank === best.rank && score > best.score)) {
+            best = { unit: t.unit, dist: t.dist, score, dmg: v.dmg, rank };
           }
         }
         return best && (advanced ? best.score > 0 : best.dmg > 0) ? best : null;
@@ -963,9 +1130,10 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         for (const t of rangedOptions) {
           const v = attackValue(u, t.unit, t.dist, true, ctx, advanced, reserved);
           if (v.dmg <= 0) continue;
+          const score = v.score + (assignedTargetId === t.unit.id ? ASSIGNMENT_BONUS : 0);
           const tier = threatTier(t.unit, t.dist);
-          if (!best || tier > best.rank || (tier === best.rank && v.score > best.score)) {
-            best = { unit: t.unit, dist: t.dist, score: v.score, dmg: v.dmg, rank: tier };
+          if (!best || tier > best.rank || (tier === best.rank && score > best.score)) {
+            best = { unit: t.unit, dist: t.dist, score, dmg: v.dmg, rank: tier };
           }
         }
         return best && (advanced ? best.score > 0 : best.dmg > 0) ? best : null;
@@ -979,7 +1147,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         attack = pickRanged(); // hybrid: no adjacency, so shoot from range
       }
 
-      if (attack) {
+      if (attack && canAct) {
         plan.steps.push({ kind: 'attack', unitId: u.id, from, targetId: attack.unit.id, target: attack.unit.hex });
         if (advanced) reserved.set(attack.unit.id, (reserved.get(attack.unit.id) ?? 0) + attack.dmg);
         const updated = { ...u, actionsAvailable: (u.actionsAvailable ?? 0) - 1, attacksUsed: (u.attacksUsed ?? 0) + 1 };
@@ -994,9 +1162,14 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const weapon = parseWeapons(u.weaponString || '')[u.activeWeaponIndex ?? 0];
       const weaponRange = weapon?.range ?? 1;
       const weaponMaxRange = Math.max(weaponRange, weapon?.maxRange ?? weaponRange);
-      const tuning: DestTuning | undefined = advanced
-        ? { advanced, working, mover: u, alliances: ctx.alliances }
-        : undefined;
+      const tuning: DestTuning = {
+        advanced,
+        working,
+        mover: u,
+        alliances: ctx.alliances,
+        assignedTarget,
+        stance,
+      };
       const maxTurnCount = doctrine === 'melee' ? maxTurns : Math.min(1, maxTurns);
       const canAttackAfterMove = (u.actionsAvailable ?? 0) >= 2 && (u.attacksUsed ?? 0) < cap;
       const scorer = doctrine === 'ranged'
@@ -1022,6 +1195,8 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         plan.steps.push({ kind: 'turn', unitId: u.id, from: u.hex, dir: t.dir });
       }
       const applied = applyMoveCost(u, best.move.cost, effMax(u, ctx.formations));
+      // A hold (no move) still applies any in-place turn above, then stops.
+      if (best.move.to.q === from.q && best.move.to.r === from.r && best.move.path.length === 0) break;
       const updated = { ...u, hex: best.move.to, movementPointsAvailable: applied.movementPointsAvailable, actionsAvailable: applied.actionsAvailable };
       commit(u, updated, u.id);
       u = updated;

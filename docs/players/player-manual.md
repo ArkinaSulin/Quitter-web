@@ -1313,8 +1313,10 @@ finishing blows and overkill instead of the simple greedy plot, and may change
 formation before a fight when the damage trade-off is worth the movement) and
 **Allow
 players to use AI assist** (non-GM participants may open the tab on their side's
-turn; the GM still owns the settings). Drag teams into the *AI control box*;
-eligible units (of the team
+turn; the GM still owns the settings). Inside the AI tab, the
+**Aggressive / Defensive** stance switch applies to the next Preview (default
+Aggressive; Defensive sticks closer together and protects flanks first). Drag
+teams into the *AI control box*; eligible units (of the team
 on the currently-active alliance) wear a small ✓. **Preview** plots their
 moves (blue routes with crossed swords on attack targets), **Reset** clears
 it - nothing happens until **Execute**. Execute runs the plot one action at a

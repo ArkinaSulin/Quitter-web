@@ -10,6 +10,7 @@ import {
   ownExposureAt,
   pathBypassPenalty,
   lineBearingPenalty,
+  assignTargets,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
@@ -278,7 +279,7 @@ describe('enemyAI planAiMoves', () => {
 
   it('moves never leave the unit\'s own team or target allies, and respect the action cap', () => {
     const ai = mk({ id: 'u1', team: 'blue', hex: hex(0, 0), facing: 0, actionsAvailable: 1, movementPoints: 2 });
-    const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, 4), facing: 2 });
+    const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, -4), facing: 2 });
     const plans = planAiMoves(ctxOf([ai, foe], ['blue'], 'enemy'));
     expect(plans.length).toBe(1);
     const move = plans[0].steps.find(s => s.kind === 'move');
@@ -493,7 +494,7 @@ describe('enemyAI smarter tactics', () => {
   });
 
   it('melee units advance straight at a front-arc enemy without a needless turn', () => {
-    const attacker = mk({ id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, movementPoints: 4, actionsAvailable: 2, weaponString: SPEAR });
+    const attacker = mk({ id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, movementPoints: 4, actionsAvailable: 1, weaponString: SPEAR });
     const foe = mk({ id: 'foe1', team: 'black', hex: hex(0, -3), facing: 0 });
     const plan = planAiMoves(ctxOf([attacker, foe], ['blue'], 'enemy'));
     const steps = plan[0].steps;
@@ -571,6 +572,43 @@ describe('enemyAI smarter tactics', () => {
     const plan = planAiMoves(ctxOf([attacker, foe], ['blue'], 'enemy'));
     const moves = plan[0].steps.filter(s => s.kind === 'move');
     expect(moves.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('uses leftover MP even with 0 actions', () => {
+    const ai = mk({
+      id: 'u1', team: 'blue', hex: hex(0, 0), facing: 0,
+      movementPoints: 3, movementPointsAvailable: 2, actionsAvailable: 0,
+    });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -4), facing: 0 });
+    const plans = planAiMoves(ctxOf([ai, foe], ['blue'], 'enemy'));
+    expect(plans.length).toBe(1);
+    expect(plans[0].steps.some(s => s.kind === 'move')).toBe(true);
+  });
+
+  it('line assignment pairs black G-L to yellow A-F left-to-right (order-independent)', () => {
+    const blackStarts: [string, number][] = [['G', -2], ['H', -1], ['I', 0], ['J', 1], ['K', 2], ['L', 3]];
+    const yellowStarts: [string, number][] = [['A', 1], ['B', 2], ['C', 3], ['D', 4], ['E', 5], ['F', 6]];
+    const black = blackStarts.map(([id, q]) => mk({
+      id, team: 'black', hex: hex(q, 4), facing: 0, movementPoints: 2, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+    const yellow = yellowStarts.map(([id, q]) => mk({
+      id, team: 'blue', hex: hex(q, -2), facing: 3, weaponString: SPEAR,
+    }));
+    const expected: Record<string, string> = { G: 'A', H: 'B', I: 'C', J: 'D', K: 'E', L: 'F' };
+    expect(Object.fromEntries(assignTargets(black, yellow, ALLIANCES))).toEqual(expected);
+    expect(Object.fromEntries(assignTargets([...black].reverse(), yellow, ALLIANCES))).toEqual(expected);
+
+    const plans = planAiMoves(ctxOf([...black, ...yellow], ['black'], 'friendly'));
+    // Deterministic planning order follows the assigned lanes, not the input array.
+    expect(plans.map(p => p.unitId)).toEqual(['G', 'H', 'I', 'J', 'K', 'L']);
+    for (const unit of black) {
+      const plan = plans.find(p => p.unitId === unit.id)!;
+      const moves = plan.steps.filter(s => s.kind === 'move');
+      const last = moves[moves.length - 1];
+      const final = last && last.kind === 'move' ? last.to : unit.hex;
+      expect(final.q, unit.id).toBe(blackStarts.find(([id]) => id === unit.id)![1] + 3);
+      expect(final.r, unit.id).toBe(0);
+    }
   });
 });
 

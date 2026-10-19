@@ -112,6 +112,18 @@ Deterministic, pure, snapshot-in/snapshot-out:
   The step budget is per unit: `max(5, ceil(computeMoveBudget(unit, effectiveMax)))`
   (a 6-MP mounted unit gets 12, heavy infantry 2 MP gets 4→5), enough for the
   whole action budget's hexes plus turns/attacks.
+- **Leftover MP and holding**: a unit remains plottable while it has actions
+  **or** materialized MP. With 0 actions it may still spend leftover MP on a
+  final move, but attacks require an action. Holding position is always a
+  scored option, so a unit does not move/turn merely because it has MP left.
+- **Line-order assignment (both brains)**: visible enemies and controllable
+  units are sorted by frontage (q), paired **left-to-right** (strict line
+  coverage), with adjacent value swaps allowed. The assignment is a preference:
+  units plan in assigned-lane order (not input-array order) and score the
+  assigned target's **lane** (target q, front row toward the mover) strongly;
+  they may retarget if it becomes invalid. The extra unit doubles up where
+  useful. A deterministic hex **hash** breaks score ties, removing the old
+  BFS-east/right bias.
 
 - **Self-preservation (both brains)**:
   - a destination is penalized for OTHER live enemies in the mover's **rear**
@@ -145,12 +157,13 @@ Deterministic, pure, snapshot-in/snapshot-out:
     happen at most once per unit plot, must leave an action for an immediate
     attack, and must not spend the movement needed to close. Phase 2 (deferred)
     will also anticipate ranged damage and allow higher-AC changes outside ZoC.
-  - **Stance / cohesion (next layer, not in this build)**: the AI tab will gain
-    an Aggressive/Defensive toggle (default Aggressive). Basic/Advanced remain
-    Simple/Advance. Aggressive profiles seek damage; defensive profiles put
-    self-protection, line bearing and cohesion first. Advanced cohesion uses
-    `calcIsolation` at the destination, scaled linearly by AGR so high-AGR units
-    may range independently for damage.
+  - **Stance / cohesion**: the AI tab has an **Aggressive / Defensive** toggle
+    (default **Aggressive**, per preview; local state). Basic/Advanced remain
+    Simple/Advance. Aggressive seeks damage with a loose line; Defensive puts
+    self-protection, line bearing and cohesion first. A destination within
+    1–2 hexes of a friendly earns cohesion; gaps beyond 2 are penalized, plus
+    the 8-hex `calcIsolation` term. The cohesion weight is scaled linearly by
+    AGR: low-AGR units stick, high-AGR units may range independently for damage.
 - **Never over-budget**: every simulated action uses the real accounting
   functions (`applyMpSpend`, `applyMoveCost`, `applyFormationChange`) so no plan
   raises a soft-enforcement prompt.

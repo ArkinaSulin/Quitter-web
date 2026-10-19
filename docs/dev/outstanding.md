@@ -118,11 +118,15 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
 - 🔜 **Full AI mode** (auto whole-turn director: watches turn, runs the plot,
   auto-answers rout/reaction prompts, auto End Turn) on top of the existing
   planner + Execute driver.
-- 🔜 **Pass 2 — aggressive/defensive stance**: AI-tab Aggressive/Defensive
-  toggle (default Aggressive, per preview), with the four profiles
-  (aggressive/defensive × simple/advance), Advanced cohesion via `calcIsolation`
-  scaled by AGR, and the defensive ranged formation posture. Basic/Advanced stay
-  Simple/Advance.
+- ✅ **Pass 2a** shipped: line-order target/lane assignment (order-independent),
+  assigned-lane plan order, neutral hex-hash tie-break, leftover-MP movement
+  with a scored hold, Aggressive/Defensive AI-tab stance, cohesion (1–2-hex line
+  + 8-hex isolation) scaled by AGR. Test-85 red-line and yellow/black 6-vs-6
+  regressions.
+- 🔜 **Pass 2b — aggressive/defensive profiles**: aggressive advance target
+  priority (isolated/low AC, melee-lock avoidance), defensive ranged formation
+  posture (close → Open/Scattered when shot at → Scattered before melee), cluster
+  move at slowest speed. Charges remain Round 3.
 - 🔜 **Round 2a — archers + artillery**: LOS/indirect-shot polish, focus fire,
   and the war-machine slice (AI-only immobility while operating, fixed facing,
   `expectedWarMachineDamage`, `bombard` steps that pause for marker placement;
