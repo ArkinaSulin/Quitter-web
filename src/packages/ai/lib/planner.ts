@@ -1,13 +1,13 @@
-// src/packages/ai/lib/planner.ts
+﻿// src/packages/ai/lib/planner.ts
 // Pure "enemy AI assist" decision layer. Given a snapshot of the board and the
 // teams handed to the AI, produce an ordered plot (per-unit move/attack/
 // turn/formation steps) that the GM can preview and then execute through the
 // NORMAL action path.
 //
-// Design rules (v4 — safety + formations):
+// Design rules (v4 â€” safety + formations):
 //  - Gated out of AI control: deleted, killed (HP <= 0), hidden units, hero-
 //    hosted/attached units, and units whose alliance is not the active turn.
-//    Routed units ARE plotted — they flee as far from hostiles as possible,
+//    Routed units ARE plotted â€” they flee as far from hostiles as possible,
 //    stopping at the map rim (gridRadius).
 //  - A unit only ever attacks adversarial alliances (friendly<->enemy; neutral
 //    is never auto-attacked or auto-driven). No friendly fire by construction.
@@ -20,18 +20,18 @@
 //    decide none / rows (defensive count) / full, plus retaliate_vs_ranged and
 //    the attacker's be_attacked vulnerability.
 //  - Plans stay strictly within budget (never a soft-enforcement prompt): moves
-//    use the reachable map + real MP accounting; rotations cost 1 MP/60° for
+//    use the reachable map + real MP accounting; rotations cost 1 MP/60Â° for
 //    formed units (free for Hero/Scattered/Routed) via applyMpSpend; attacks
 //    require an action and stay under the attack cap. No about-turns (org loss).
 //  - Doctrine is automatic by weapon type: ranged-only units stand off (keep
 //    distance, adopt Scattered near contact); melee/hybrid units engage.
 //  - Advanced adds expected-retaliation trade value, a finishing/overkill bonus,
 //    target reservation, and (in/near a hostile ZoC) formation changes scored by
-//    net damage dealt − received minus the change cost.
+//    net damage dealt âˆ’ received minus the change cost.
 //  - Ranged targets pick the biggest threat first: an enemy within 2 hexes,
 //    else a Phalanx, else a Close Order unit; value breaks ties.
 //  - Melee prefers the best attack arc (rear > flank > front) and tries cheap
-//    flanking approaches (up to a few 60° turns) instead of frontal rushes.
+//    flanking approaches (up to a few 60Â° turns) instead of frontal rushes.
 //  - Fog is respected: targets must lie in the AI side's visible hexes.
 //  - Everything is deterministic (tie-breaks by unit id / hex distance).
 import { Unit, Hex, AllianceGroup, Formation, GroundEffect, hexDistance } from '@/types/gameProtocol';
@@ -75,14 +75,14 @@ export interface AiPlanContext {
   teams: string[];
   /** Units the DM opted out of AI control (kept on the board, never plotted). */
   excludeUnitIds?: string[];
-  /** Current turn's alliance (null = free play — never plot). */
+  /** Current turn's alliance (null = free play â€” never plot). */
   activeAlliance: AllianceGroup | null;
   /** Fog reveal for the AI side (hex keys). null/undefined = no fog. */
   visibleHexes?: Set<string> | null;
   terrainCosts?: TerrainCosts;
   /** Edge walls (per-edge move cost / block / AC). */
   walls?: Walls;
-  /** Placed structures (hex/edge instances) — dynamic ground, doors, climb. */
+  /** Placed structures (hex/edge instances) â€” dynamic ground, doors, climb. */
   structures?: MapStructures;
   structureTemplates?: Record<string, StructureTemplate>;
   /** Painted + structure-derived ground zones (org gates, mp_cost, auras). */
@@ -95,9 +95,9 @@ export interface AiPlanContext {
   stance?: 'aggressive' | 'defensive';
   /** Grid radius (axial ring). When set, routed flee stops at the outer rim. */
   gridRadius?: number;
-  /** Max plot steps per unit (default 5 — enough for turn + move + attack). */
+  /** Max plot steps per unit (default 5 â€” enough for turn + move + attack). */
   maxStepsPerUnit?: number;
-  /** Max 60° turns per approach (default 3 — a full 180°, never about-turn). */
+  /** Max 60Â° turns per approach (default 3 â€” a full 180Â°, never about-turn). */
   maxTurns?: number;
   /** Reactive archery: a threat/ZoC hex is a valid destination only as a move's
    *  first step (the AI stops before it, like the human rule). */
@@ -204,8 +204,8 @@ export function assignTargets(
 }
 
 /** True when a unit is eligible to be handed to the AI at this moment.
- *  Heroes (and units with an attached hero) are NEVER AI-controlled — players
- *  and the DM play those. Routed units ARE eligible — the planner flees them. */
+ *  Heroes (and units with an attached hero) are NEVER AI-controlled â€” players
+ *  and the DM play those. Routed units ARE eligible â€” the planner flees them. */
 export function isAiControllable(
   unit: Unit,
   ctx: Pick<AiPlanContext, 'alliances' | 'teams' | 'activeAlliance'>,
@@ -216,9 +216,9 @@ export function isAiControllable(
   if (unit.hidden) return false; // hidden units are never AI-controlled
   if ((unit.currentUnitHp ?? 0) <= 0) return false; // killed / downed
   if (unit.attachedToUnitId) return false; // attached hero rides its host
-  if (hostedBy.has(unit.id)) return false; // host of an attached hero — people play these too
+  if (hostedBy.has(unit.id)) return false; // host of an attached hero â€” people play these too
   if (!ctx.teams.includes(unit.team)) return false;
-  if (ctx.activeAlliance === null) return false; // free play — no plotting
+  if (ctx.activeAlliance === null) return false; // free play â€” no plotting
   if (allianceOf(unit, ctx.alliances) !== ctx.activeAlliance) return false;
   if ((unit.actionsAvailable ?? 0) < 1 && (unit.movementPointsAvailable ?? 0) < 1) return false;
   return true;
@@ -427,13 +427,15 @@ export function expectedRetaliation(
 interface AttackValue {
   dmg: number;
   score: number;
+  counter: number;
 }
 
 /**
  * Attack value used by target selection.
  * Basic = raw expected damage (the shipped greedy brain).
  * Advanced = marginal damage after prior reservations, a finishing bonus, and
- * the expected counter-damage as a penalty.
+ * the expected counter-damage as a penalty. Aggressive advance also values
+ * isolated / low-AC targets and avoids non-lethal melee locks.
  */
 function attackValue(
   attacker: Unit,
@@ -442,20 +444,28 @@ function attackValue(
   isRanged: boolean,
   ctx: Pick<AiPlanContext, 'formations' | 'units' | 'alliances'>,
   advanced: boolean,
+  stance: 'aggressive' | 'defensive',
   reserved: Map<string, number>,
 ): AttackValue {
   const dmg = expectedDamage(attacker, target, dist, isRanged, ctx);
-  if (dmg <= 0) return { dmg: 0, score: 0 };
-  if (!advanced) return { dmg, score: dmg };
+  if (dmg <= 0) return { dmg: 0, score: 0, counter: 0 };
+  const counter = expectedRetaliation(target, attacker, dist, ctx);
+  if (!advanced) return { dmg, score: dmg, counter };
   const already = reserved.get(target.id) ?? 0;
   const remaining = Math.max(0, (target.currentUnitHp ?? 0) - already);
-  if (remaining <= 0) return { dmg: 0, score: 0 };
+  if (remaining <= 0) return { dmg: 0, score: 0, counter };
   const effective = Math.min(dmg, remaining);
   let score = effective;
   if (effective >= remaining) score += Math.min(15, Math.max(1, remaining * 0.25));
-  const counter = expectedRetaliation(target, attacker, dist, ctx);
   score -= counter * 0.8;
-  return { dmg, score };
+  if (stance === 'aggressive') {
+    if (calcIsolation(target, ctx.units, ctx.alliances)) score += 6;
+    const ac = target.currentAc ?? target.baselineAc ?? 14;
+    score += Math.max(0, (16 - ac) * 0.5);
+    // Don't lock into a melee the target is expected to survive and answer.
+    if (!isRanged && dist === 1 && effective < remaining && counter > 0) score -= 10;
+  }
+  return { dmg, score, counter };
 }
 
 /** Net expected exchange at adjacency under a candidate formation. */
@@ -469,6 +479,57 @@ function formationExchangeScore(
   const dealt = expectedDamage(candidate, target, 1, false, ctx);
   const received = expectedRetaliation(target, candidate, 1, ctx);
   return dealt - received;
+}
+
+/** Expected incoming ranged damage against `unit` from every visible shooter. */
+function incomingRangedDamage(
+  unit: Unit,
+  enemies: Unit[],
+  ctx: Pick<AiPlanContext, 'formations' | 'units' | 'alliances'>,
+): number {
+  let total = 0;
+  for (const e of enemies) {
+    if (e.isDeleted || e.hidden || (e.currentUnitHp ?? 0) <= 0 || isProtectedHero(e)) continue;
+    const w = activeWeaponOf(e);
+    if (!w || w.isHealing) continue;
+    const range = w.range ?? 1;
+    const maxRange = Math.max(range, w.maxRange ?? range);
+    if (!(range > 1 || maxRange > 1)) continue;
+    const d = hexDistance(unit.hex, e.hex);
+    if (d < (w.minRange ?? 0) || d > maxRange) continue;
+    total += expectedDamage(e, unit, d, true, ctx);
+  }
+  return total;
+}
+
+/** Defensive ranged posture: close when safe/far, open/scattered under fire,
+ *  scattered when melee is imminent. */
+function formationRangedScore(
+  u: Unit,
+  formation: string,
+  target: Unit,
+  dist: number,
+  enemies: Unit[],
+  ctx: Pick<AiPlanContext, 'formations' | 'units' | 'alliances'>,
+  stance: 'aggressive' | 'defensive',
+): number {
+  const candidate = { ...u, currentFormation: formation };
+  const dealt = expectedDamage(candidate, target, dist, true, ctx);
+  const incoming = incomingRangedDamage(candidate, enemies, ctx);
+  const nearMelee = nearestEnemyDist(candidate.hex, enemies) <= 2;
+  const cap = ctx.formations[formation]?.attack_capacity_multiplier ?? 1;
+  const rangedVulnerability = ctx.formations[formation]?.be_attacked_range_modifier ?? 1;
+  let score = dealt * 0.4 - incoming * 1.1;
+  if (stance === 'defensive') {
+    if (nearMelee) {
+      score += formation === 'Scattered' ? 25 : formation === 'Open Order' ? 10 : -8;
+    } else if (incoming > 0) {
+      score += (1 - rangedVulnerability) * 30;
+    } else {
+      score += (cap - 1) * 20;
+    }
+  }
+  return score;
 }
 
 /** Rough danger of ending on `dest`: extra adjacent enemies + shooters. */
@@ -674,6 +735,26 @@ function effMax(u: Unit, formations: Record<string, Formation>): number {
   return Math.max(1, Math.floor((u.movementPoints ?? 0) * mult));
 }
 
+/** Defensive advance: a cluster may not outrun its slowest member. */
+function clusterSpeedCap(
+  u: Unit,
+  working: Unit[],
+  ctx: AiPlanContext,
+  stance: 'aggressive' | 'defensive',
+  advanced: boolean,
+): number {
+  if (!advanced || stance !== 'defensive') return Infinity;
+  const group = allianceOf(u, ctx.alliances);
+  let cap = effMax(u, ctx.formations);
+  for (const f of working) {
+    if (f.id === u.id || f.isDeleted || f.hidden || (f.currentUnitHp ?? 0) <= 0) continue;
+    if (allianceOf(f, ctx.alliances) !== group) continue;
+    if (hexDistance(u.hex, f.hex) > 2) continue;
+    cap = Math.min(cap, effMax(f, ctx.formations));
+  }
+  return cap;
+}
+
 interface PlannedMoveOption {
   to: Hex;
   path: Hex[];
@@ -709,6 +790,7 @@ function meleeDestScore(
   const targetId = canAttackAfterMove ? adj.target?.id : undefined;
   const near = nearestEnemyDist(dest, foes);
   const threatPenalty = threat.has(hexKeyOf(dest)) ? 8 : 0;
+  const safety = tuning.stance === 'defensive' ? 1.6 : 1;
   const assignedBonus = tuning.assignedTarget && adj.target?.id === tuning.assignedTarget.id
     ? ASSIGNMENT_BONUS
     : 0;
@@ -719,8 +801,8 @@ function meleeDestScore(
       })()
     : 0;
   let score = adj.rank * 30 + (adj.rank > 0 ? ADJACENT_ATTACK_BONUS : 0) + (8 - Math.min(8, near)) - threatPenalty
-    - ownExposureAt(dest, facing, foes, targetId, MELEE_EXPOSURE_WEIGHT)
-    - lineBearingPenalty(dest, facing, foes, targetId, 1.5)
+    - ownExposureAt(dest, facing, foes, targetId, MELEE_EXPOSURE_WEIGHT * safety)
+    - lineBearingPenalty(dest, facing, foes, targetId, 1.5 * safety)
     + cohesionAt(dest, tuning)
     + assignedBonus
     + laneBonus;
@@ -731,7 +813,7 @@ function meleeDestScore(
   return score;
 }
 
-/** Destination scorer for stand-off ranged: stay ≥ gap from enemies and within
+/** Destination scorer for stand-off ranged: stay â‰¥ gap from enemies and within
  *  the active weapon's reach of the fight; otherwise advance toward it. */
 function rangedDestScore(
   dest: Hex,
@@ -744,11 +826,12 @@ function rangedDestScore(
   tuning: DestTuning,
 ): number {
   const near = nearestEnemyDist(dest, foes);
-  const threatPenalty = threat.has(hexKeyOf(dest)) ? 8 : 0;
+  const safety = tuning.stance === 'defensive' ? 1.6 : 1;
+  const threatPenalty = threat.has(hexKeyOf(dest)) ? (tuning.stance === 'defensive' ? 16 : 8) : 0;
   const gap = 2;
   let score: number;
   if (near >= weaponMaxRange && weaponMaxRange >= 1) {
-    // Everything is out of reach — advance.
+    // Everything is out of reach â€” advance.
     score = 30 - near - threatPenalty;
   } else if (near < gap) {
     score = -((gap - near) * 12) - threatPenalty; // too close: prefer to back off
@@ -756,8 +839,8 @@ function rangedDestScore(
     // Comfortable band [gap .. maxRange]; prefer being a bit further back.
     score = Math.max(0, 10 - near) - threatPenalty;
   }
-  score -= ownExposureAt(dest, facing, foes);
-  score -= lineBearingPenalty(dest, facing, foes, undefined, 1);
+  score -= ownExposureAt(dest, facing, foes, undefined, safety);
+  score -= lineBearingPenalty(dest, facing, foes, undefined, 1 * safety);
   score += cohesionAt(dest, tuning);
   if (tuning.assignedTarget && hexDistance(dest, tuning.assignedTarget.hex) <= weaponMaxRange) {
     score += ASSIGNMENT_BONUS;
@@ -824,7 +907,7 @@ function movementContextFor(u: Unit, working: Unit[], ctx: AiPlanContext): Mover
   return { occupied, threat, passThrough, org, costOfHex, blockedEdge };
 }
 
-/** Enumerate approaches: up to `maxTurns` 60° turns (each simulated with real
+/** Enumerate approaches: up to `maxTurns` 60Â° turns (each simulated with real
  *  MP accounting) followed by one straight leg, scored by `scorer`. A turn that
  *  does not lead to an attack/charge pays `NO_ATTACK_TURN_COST` extra. */
 function maneuverOptions(
@@ -835,6 +918,7 @@ function maneuverOptions(
   maxTurns: number,
   canAttackAfterMove: boolean,
   scorer: (dest: Hex, foes: Unit[], threat: Set<string>, facing: number, canAttack: boolean) => number,
+  speedCap = Infinity,
 ): Maneuver[] {
   const foes = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
   const out: Maneuver[] = [];
@@ -843,7 +927,7 @@ function maneuverOptions(
 
   const evaluate = (turns: { dir: 'left' | 'right' }[], unitAfter: Unit) => {
     const max = effMax(unitAfter, ctx.formations);
-    const pool = computeMovePool(unitAfter, max);
+    const pool = Math.min(computeMovePool(unitAfter, max), speedCap);
     // Holding position is always an option (including with 0 MP/actions). This
     // is what lets a unit spend leftover MP only when the destination is better
     // than staying put.
@@ -945,7 +1029,7 @@ function chooseFleeHex(
 }
 
 /**
- * Build the plot for the current turn's AI units. Mutates nothing — works on
+ * Build the plot for the current turn's AI units. Mutates nothing â€” works on
  * copies so later callers (and tests) see the same snapshot.
  */
 export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
@@ -976,8 +1060,12 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
   const assignments = assignTargets(controllable, enemies, ctx.alliances, advanced);
   const foesById = new Map(enemies.map(e => [e.id, e]));
   const laneQOf = (unit: Unit) => foesById.get(assignments.get(unit.id) ?? '')?.hex.q ?? unit.hex.q;
+  const speedOf = (unit: Unit) => effMax(unit, ctx.formations);
   const planned = [...controllable].sort((a, b) =>
-    laneQOf(a) - laneQOf(b) || a.hex.q - b.hex.q || a.id.localeCompare(b.id));
+    laneQOf(a) - laneQOf(b)
+    || (advanced && stance === 'defensive' ? speedOf(a) - speedOf(b) : 0)
+    || a.hex.q - b.hex.q
+    || a.id.localeCompare(b.id));
   // Advanced: damage already assigned to a target this plot, so later units see
   // the overkill waste instead of piling onto a nearly-dead squad.
   const reserved = new Map<string, number>();
@@ -1006,7 +1094,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const movement = movementContextFor(u, working, ctx);
       const canAct = (u.actionsAvailable ?? 0) >= 1;
 
-      // Routed units can't fight — run as far from hostiles as possible, but
+      // Routed units can't fight â€” run as far from hostiles as possible, but
       // stop at the map's outer rim so the DM can hide the broken unit.
       if (isUnitRouted(u)) {
         const flee = chooseFleeHex(u, enemies, ctx, movement, ctx.gridRadius);
@@ -1038,9 +1126,66 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         }
       }
 
+      // Defensive advance, ranged posture: close when safe/far for maximum
+      // attacks, Open/Scattered under incoming ranged fire, Scattered when
+      // melee is imminent (all-direction disengage).
+      if (canAct && advanced && stance === 'defensive' && !formationChanged && doctrine === 'ranged' && !u.isHero && !u.isCharging && !u.climbTo) {
+        const w = activeWeaponOf(u);
+        const range = w?.range ?? 1;
+        const maxR = Math.max(range, w?.maxRange ?? range);
+        const formationFoes = enemiesAlive.filter(e => !isProtectedHero(e));
+        const near = nearestEnemyDist(u.hex, formationFoes);
+        if (w && formationFoes.length > 0 && near <= Math.max(maxR, 2) + 2) {
+          const target = formationFoes
+            .slice()
+            .sort((a, b) => hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex) || a.id.localeCompare(b.id))[0];
+          const dist = hexDistance(u.hex, target.hex);
+          const oldMax = effMax(u, ctx.formations);
+          const currentNet = formationRangedScore(u, u.currentFormation, target, dist, enemiesAlive, ctx, stance);
+          const candidates = new Set<string>([u.currentFormation, ...(u.formationAvailability ?? [])]);
+          let bestF: string | null = null;
+          let bestNet = currentNet;
+          for (const f of Array.from(candidates)) {
+            if (f === u.currentFormation) continue;
+            const form = ctx.formations[f];
+            if (!form) continue;
+            if (!canAdoptFormation(u.currentFormation, f)) continue;
+            if (!isFormationChangeAffordable(u, oldMax)) continue;
+            if (f === 'Shield Wall') {
+              if (!u.isShielded) continue;
+              if (w.isTwoHanded) continue;
+            }
+            const newMax = effMax({ ...u, currentFormation: f }, ctx.formations);
+            const applied = applyFormationChange(u, oldMax, newMax);
+            if (applied.actionsAvailable < 1 && dist <= maxR) continue; // keep the shot
+            const net = formationRangedScore(u, f, target, dist, enemiesAlive, ctx, stance)
+              - getFormationChangeMpCost(oldMax) * FORMATION_COST_WEIGHT;
+            if (net > bestNet + FORMATION_MARGIN) {
+              bestNet = net;
+              bestF = f;
+            }
+          }
+          if (bestF) {
+            const newMax = effMax({ ...u, currentFormation: bestF }, ctx.formations);
+            const applied = applyFormationChange(u, oldMax, newMax);
+            const updated = {
+              ...u,
+              currentFormation: bestF,
+              movementPointsAvailable: applied.movementPointsAvailable,
+              actionsAvailable: applied.actionsAvailable,
+            };
+            commit(u, updated, u.id);
+            u = updated;
+            formationChanged = true;
+            plan.steps.push({ kind: 'formation', unitId: u.id, from, formation: bestF });
+            continue;
+          }
+        }
+      }
+
       // Advanced formation choice: melee units compare their available
       // formations when a fight is imminent (already in a hostile ZoC, or an
-      // enemy is within 2 hexes). Net damage dealt − received, minus the
+      // enemy is within 2 hexes). Net damage dealt âˆ’ received, minus the
       // formation-change cost; switch only on a clear margin.
       if (canAct && advanced && !formationChanged && doctrine === 'melee' && !u.isHero && !u.isCharging && !u.climbTo) {
         const activeWeapon = activeWeaponOf(u);
@@ -1111,16 +1256,22 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const legal = legalTargets(u, enemiesAlive, ctx);
       const meleeOptions = legal.filter(t => !t.isRanged);
       const rangedOptions = legal.filter(t => t.isRanged);
-      type TargetSel = { unit: Unit; dist: number; score: number; dmg: number; rank: number };
+      type TargetSel = { unit: Unit; dist: number; score: number; dmg: number; counter: number; rank: number };
       const pickMelee = (): TargetSel | null => {
         let best: TargetSel | null = null;
         for (const t of meleeOptions) {
-          const v = attackValue(u, t.unit, t.dist, false, ctx, advanced, reserved);
+          const v = attackValue(u, t.unit, t.dist, false, ctx, advanced, stance, reserved);
           if (v.dmg <= 0) continue;
           const score = v.score + (assignedTargetId === t.unit.id ? ASSIGNMENT_BONUS : 0);
           const rank = attackArcRank(u.hex, t.unit);
-          if (!best || rank > best.rank || (rank === best.rank && score > best.score)) {
-            best = { unit: t.unit, dist: t.dist, score, dmg: v.dmg, rank };
+          const better = !best || rank > best.rank
+            || (rank === best.rank && (
+              advanced
+                ? score > best.score
+                : v.dmg > best.dmg || (v.dmg === best.dmg && v.counter < best.counter)
+            ));
+          if (better) {
+            best = { unit: t.unit, dist: t.dist, score, dmg: v.dmg, counter: v.counter, rank };
           }
         }
         return best && (advanced ? best.score > 0 : best.dmg > 0) ? best : null;
@@ -1128,12 +1279,18 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const pickRanged = (): TargetSel | null => {
         let best: TargetSel | null = null;
         for (const t of rangedOptions) {
-          const v = attackValue(u, t.unit, t.dist, true, ctx, advanced, reserved);
+          const v = attackValue(u, t.unit, t.dist, true, ctx, advanced, stance, reserved);
           if (v.dmg <= 0) continue;
           const score = v.score + (assignedTargetId === t.unit.id ? ASSIGNMENT_BONUS : 0);
           const tier = threatTier(t.unit, t.dist);
-          if (!best || tier > best.rank || (tier === best.rank && score > best.score)) {
-            best = { unit: t.unit, dist: t.dist, score, dmg: v.dmg, rank: tier };
+          const better = !best || tier > best.rank
+            || (tier === best.rank && (
+              advanced
+                ? score > best.score
+                : v.dmg > best.dmg || (v.dmg === best.dmg && v.counter < best.counter)
+            ));
+          if (better) {
+            best = { unit: t.unit, dist: t.dist, score, dmg: v.dmg, counter: v.counter, rank: tier };
           }
         }
         return best && (advanced ? best.score > 0 : best.dmg > 0) ? best : null;
@@ -1156,7 +1313,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         continue;
       }
 
-      // No profitable attack — one-pool movement maneuver. Multiple maneuvers
+      // No profitable attack â€” one-pool movement maneuver. Multiple maneuvers
       // are allowed across the turn (mount a move/turn/move/charge sequence);
       // turns that do not set up an attack/charge pay the surcharge.
       const weapon = parseWeapons(u.weaponString || '')[u.activeWeaponIndex ?? 0];
@@ -1172,11 +1329,12 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       };
       const maxTurnCount = doctrine === 'melee' ? maxTurns : Math.min(1, maxTurns);
       const canAttackAfterMove = (u.actionsAvailable ?? 0) >= 2 && (u.attacksUsed ?? 0) < cap;
+      const speedCap = clusterSpeedCap(u, working, ctx, stance, advanced);
       const scorer = doctrine === 'ranged'
         ? (d: Hex, foes: Unit[], threat: Set<string>, facing: number, canAttack: boolean) => rangedDestScore(d, foes, threat, weaponRange, weaponMaxRange, facing, canAttack, tuning)
         : (d: Hex, foes: Unit[], threat: Set<string>, facing: number, canAttack: boolean) => meleeDestScore(d, foes, threat, facing, canAttack, tuning);
       const options = maneuverOptions(
-        u, enemiesAlive, ctx, movement, maxTurnCount, canAttackAfterMove, scorer,
+        u, enemiesAlive, ctx, movement, maxTurnCount, canAttackAfterMove, scorer, speedCap,
       );
       if (options.length === 0) break;
       const bestStraight = options.find(o => o.turns.length === 0);
@@ -1194,7 +1352,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         commit(u, u, u.id);
         plan.steps.push({ kind: 'turn', unitId: u.id, from: u.hex, dir: t.dir });
       }
-      const applied = applyMoveCost(u, best.move.cost, effMax(u, ctx.formations));
+      const applied = applyMoveCost(u, best.move.cost, Math.min(effMax(u, ctx.formations), speedCap));
       // A hold (no move) still applies any in-place turn above, then stops.
       if (best.move.to.q === from.q && best.move.to.r === from.r && best.move.path.length === 0) break;
       const updated = { ...u, hex: best.move.to, movementPointsAvailable: applied.movementPointsAvailable, actionsAvailable: applied.actionsAvailable };
@@ -1206,3 +1364,5 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
   }
   return plans;
 }
+
+

@@ -1315,7 +1315,10 @@ formation before a fight when the damage trade-off is worth the movement) and
 players to use AI assist** (non-GM participants may open the tab on their side's
 turn; the GM still owns the settings). Inside the AI tab, the
 **Aggressive / Defensive** stance switch applies to the next Preview (default
-Aggressive; Defensive sticks closer together and protects flanks first). Drag
+Aggressive; Defensive sticks closer together and protects flanks first).
+Aggressive seeks damage; Defensive ranged units use Close Order when safe and
+Open/Scattered under fire, and defensive clusters move at their slowest
+member's speed. Drag
 teams into the *AI control box*; eligible units (of the team
 on the currently-active alliance) wear a small ✓. **Preview** plots their
 moves (blue routes with crossed swords on attack targets), **Reset** clears

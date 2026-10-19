@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## AI pass 2b: aggressive/defensive profiles (2026-10-18)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md
+
+- **Aggressive simple**: the line assignment + raw damage; equal-damage target
+  choices break toward lower expected retaliation (self-protect tie-break).
+- **Aggressive advance**: low-AC/isolated target priority and a non-lethal melee
+  lock penalty (skip a melee the target is expected to survive and answer).
+  Existing retaliation/overkill/formation evaluation retained.
+- **Defensive simple**: exposure/line safety weighted 1.6×, stronger ZoC
+  penalties for ranged; melee cohesion/line first, then damage.
+- **Defensive advance ranged posture**: Close Order when far and not under fire
+  (max attack capacity), Open/Scattered when taking ranged fire, Scattered when
+  melee is imminent. Formation changes use the existing affordance/margin rules.
+- **Defensive cluster movement**: the cluster is capped to its slowest member's
+  effective speed; the slowest unit is planned first so faster units follow.
+- Mounted charges remain Round 3; the multi-maneuver structure already permits
+  the approach path. Tests: low-AC priority, defensive Close Order posture,
+  cluster speed cap; full suite 1111.
 ## AI pass 2a: line assignment, leftover MP, stance toggle (2026-10-18)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/AiPanel.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md
 

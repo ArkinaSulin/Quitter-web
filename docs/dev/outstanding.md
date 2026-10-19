@@ -123,10 +123,11 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   with a scored hold, Aggressive/Defensive AI-tab stance, cohesion (1–2-hex line
   + 8-hex isolation) scaled by AGR. Test-85 red-line and yellow/black 6-vs-6
   regressions.
-- 🔜 **Pass 2b — aggressive/defensive profiles**: aggressive advance target
-  priority (isolated/low AC, melee-lock avoidance), defensive ranged formation
-  posture (close → Open/Scattered when shot at → Scattered before melee), cluster
-  move at slowest speed. Charges remain Round 3.
+- ✅ **Pass 2b** shipped: aggressive advance low-AC/isolated target priority +
+  non-lethal melee-lock avoidance; defensive safety weighting and ranged ZoC
+  avoidance; defensive ranged formation posture (Close far/no fire → Open/
+  Scattered under fire → Scattered before melee); defensive cluster speed capped
+  to the slowest member (slowest planned first). Charges remain Round 3.
 - 🔜 **Round 2a — archers + artillery**: LOS/indirect-shot polish, focus fire,
   and the war-machine slice (AI-only immobility while operating, fixed facing,
   `expectedWarMachineDamage`, `bombard` steps that pause for marker placement;

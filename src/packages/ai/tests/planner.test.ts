@@ -610,6 +610,59 @@ describe('enemyAI smarter tactics', () => {
       expect(final.r, unit.id).toBe(0);
     }
   });
+
+  it('aggressive advance prefers a low-AC target', () => {
+    const ai = mk({ id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, actionsAvailable: 2, weaponString: SPEAR });
+    const highAc = mk({ id: 'hi', team: 'black', hex: hex(0, -1), facing: 3, currentAc: 20, baselineAc: 20 });
+    const lowAc = mk({ id: 'lo', team: 'black', hex: hex(1, -1), facing: 3, currentAc: 10, baselineAc: 10 });
+    const plan = planAiMoves(ctxOf([ai, highAc, lowAc], ['blue'], 'enemy', { advanced: true, stance: 'aggressive' }));
+    const attack = plan[0]?.steps.find(s => s.kind === 'attack');
+    expect(attack && attack.kind === 'attack' ? attack.targetId : null).toBe('lo');
+  });
+
+  it('defensive advance ranged picks Close Order when far and not under fire', () => {
+    const forms: Record<string, Formation> = {
+      'Open Order': { ...BASE_FORM, attack_capacity_multiplier: 1 },
+      'Close Order': { ...BASE_FORM, id: 'form-close', name: 'Close Order', organization_level: 2, attack_capacity_multiplier: 2 },
+      Scattered: {
+        ...BASE_FORM, id: 'form-scat', name: 'Scattered', organization_level: 0,
+        movement_multiplier: 1.5, be_attacked_range_modifier: 0.5, attack_capacity_multiplier: 1,
+        melee_target_arcs: ['front', 'flank', 'rear'], ranged_target_arcs: ['front', 'flank', 'rear'],
+      },
+    };
+    const archer = mk({
+      id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, weaponString: LONGBOW,
+      movementPoints: 3, actionsAvailable: 2,
+      currentFormation: 'Open Order', formationAvailability: ['Open Order', 'Close Order', 'Scattered'],
+    });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -5), facing: 3, weaponString: SPEAR });
+    const plan = planAiMoves(ctxWithForms([archer, foe], ['blue'], 'enemy', forms, { advanced: true, stance: 'defensive' }));
+    const formation = plan[0]?.steps.find(s => s.kind === 'formation');
+    expect(formation && formation.kind === 'formation' ? formation.formation : null).toBe('Close Order');
+  });
+
+  it('defensive advance cluster moves at the slowest member speed', () => {
+    const fast = mk({
+      id: 'fast', team: 'blue', hex: hex(0, 0), facing: 0,
+      movementPoints: 6, actionsAvailable: 2, weaponString: SPEAR,
+    });
+    const slow = mk({
+      id: 'slow', team: 'blue', hex: hex(1, 0), facing: 0,
+      movementPoints: 2, actionsAvailable: 2, weaponString: SPEAR,
+    });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -4), facing: 0, weaponString: SPEAR });
+    const plan = planAiMoves(ctxOf([fast, slow, foe], ['blue'], 'enemy', { advanced: true, stance: 'defensive' }));
+    const fastPlan = plan.find(p => p.unitId === 'fast')!;
+    const moves = fastPlan.steps.filter(s => s.kind === 'move');
+    expect(moves.length).toBeGreaterThan(0);
+    let total = 0;
+    for (const m of moves) {
+      if (m.kind !== 'move') continue;
+      total += m.cost;
+      expect(m.cost, 'move cost').toBeLessThanOrEqual(2);
+    }
+    expect(total).toBeLessThanOrEqual(4);
+  });
 });
 
 describe('enemyAI allianceOf', () => {

@@ -157,13 +157,27 @@ Deterministic, pure, snapshot-in/snapshot-out:
     happen at most once per unit plot, must leave an action for an immediate
     attack, and must not spend the movement needed to close. Phase 2 (deferred)
     will also anticipate ranged damage and allow higher-AC changes outside ZoC.
-  - **Stance / cohesion**: the AI tab has an **Aggressive / Defensive** toggle
-    (default **Aggressive**, per preview; local state). Basic/Advanced remain
-    Simple/Advance. Aggressive seeks damage with a loose line; Defensive puts
-    self-protection, line bearing and cohesion first. A destination within
-    1–2 hexes of a friendly earns cohesion; gaps beyond 2 are penalized, plus
-    the 8-hex `calcIsolation` term. The cohesion weight is scaled linearly by
-    AGR: low-AGR units stick, high-AGR units may range independently for damage.
+  - **Basic vs Advanced + stance**: Basic = Simple, Advanced = Advance; the
+    AI-tab **Aggressive / Defensive** toggle selects the posture (default
+    Aggressive, per preview, local state).
+  - **Aggressive simple**: max damage via the line assignment; safety only as a
+    tie-break (equal damage → lower expected counter-blow). Mounted charges
+    come with Round 3.
+  - **Aggressive advance**: adds retaliation/overkill value, prioritizes
+    **isolated / low-AC** targets, and avoids a non-lethal **melee lock** when
+    the target is expected to survive and answer. Formation consideration uses
+    the melee formation evaluator above. Mounted charges come with Round 3.
+  - **Defensive simple**: safety weights exposure/line above damage; ranged
+    units avoid destinations that force them into an enemy ZoC (reactive
+    archery's stop-before is respected); melee units stay together and never
+    present a flank/rear; then damage.
+  - **Defensive advance**: ranged formation posture — **Close Order** when far
+    and not under ranged fire (max attacks), **Open/Scattered** when taking
+    ranged fire (lower `be_attacked_range_modifier`), **Scattered** when melee
+    is imminent (all-direction disengage). A defensive cluster's movement is
+    capped to its **slowest member's effective speed** and the slowest unit is
+    planned first so the fast units can follow. AGR scales cohesion linearly
+    (low AGR sticks, high AGR may range).
 - **Never over-budget**: every simulated action uses the real accounting
   functions (`applyMpSpend`, `applyMoveCost`, `applyFormationChange`) so no plan
   raises a soft-enforcement prompt.
