@@ -1,5 +1,24 @@
 # QuiTTER Changelog
 
+## AI defensive advance completes in one plan (2026-10-19)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- **Forced melee progress**: when scoring chooses a hold for a melee unit that
+  still has actions/MP and is not at contact, the planner takes the best no-turn
+  move closer to its assigned lane (or nearest enemy). This stops a Defensive
+  line from spending one maneuver, emitting a hold, and requiring a second
+  Preview/Execute for the same turn.
+- **Post-move attack accounting**: `maneuverOptions` now applies
+  `applyMoveCost` before checking `leadsToAttack`, so an MP-funded move that
+  leaves one action can still attack. The old `actionsAvailable >= 2` gate was
+  the main reason a unit with 1 action / 1 MP looked unable to act and held.
+- **Stable defensive cluster cap**: `clusterSpeedCap` measures nearby members
+  from the initial plan snapshot, not the mutating working state, so a fast unit
+  (M) cannot escape the slowest-member cap and run ahead of the line.
+- **Regression**: exact 6-vs-6 staggered board (K/M/I/H/J/L row −2; G/E/C/B/D/F
+  row 3), Basic Aggressive and Defensive, asserts the full row-2 advance in one
+  plan with no turns. 43 planner tests; full `npm run check` passes (1117 tests).
+
 ## AI strict no-turn policy (2026-10-18)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/AiPanel.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md
 

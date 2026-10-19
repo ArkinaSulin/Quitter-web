@@ -125,6 +125,19 @@ Deterministic, pure, snapshot-in/snapshot-out:
   **or** materialized MP. With 0 actions it may still spend leftover MP on a
   final move, but attacks require an action. Holding position is always a
   scored option, so a unit does not move/turn merely because it has MP left.
+  **Melee full-turn advance**: if a melee unit still has actions/MP, is not
+  adjacent to an enemy, and the scoring chooses a hold, it instead takes the
+  best no-turn destination closer to its assigned lane (or nearest enemy). This
+  prevents a defensive line from stopping after one maneuver and needing a
+  second Preview/Execute to finish the turn.
+- **Real post-move attack accounting**: `maneuverOptions` applies
+  `applyMoveCost` before checking `leadsToAttack`, so a move can spend leftover
+  MP and still leave the action needed for an attack. This replaces the old
+  `actionsAvailable >= 2` approximation.
+- **Stable defensive cluster cap**: the slowest-member speed cap is measured
+  from the **initial** positions for the whole plan, not the mutating working
+  state. A fast unit cannot escape the cap once the slow members move, and the
+  line stays together.
 - **Line-order assignment (both brains)**: visible enemies and controllable
   units are sorted by frontage (q), paired **left-to-right** (strict line
   coverage), with adjacent value swaps allowed. The assignment is a preference:

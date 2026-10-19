@@ -749,6 +749,49 @@ describe('enemyAI smarter tactics', () => {
     expect(attackIndex).toBeGreaterThanOrEqual(0);
     expect(plan.steps.slice(attackIndex + 1).some(s => s.kind === 'turn')).toBe(false);
   });
+
+  function staggeredBoard() {
+    const blueStarts = [['K', -3], ['M', -2], ['I', -1], ['H', 0], ['J', 1], ['L', 2]] as const;
+    const redStarts = [['G', -5], ['E', -4], ['C', -3], ['B', -2], ['D', -1], ['F', 0]] as const;
+    const blue = blueStarts.map(([id, q]) => mk({
+      id, team: 'blue', hex: hex(q, -2), facing: 3,
+      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+    const red = redStarts.map(([id, q]) => mk({
+      id, team: 'black', hex: hex(q, 3), facing: 0,
+      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+    return { blue, red, blueStarts };
+  }
+
+  function expectStaggeredAdvance(stance: 'aggressive' | 'defensive') {
+    const { blue, red, blueStarts } = staggeredBoard();
+    const plans = planAiMoves(ctxOf([...blue, ...red], ['blue'], 'enemy', {
+      advanced: false,
+      stance,
+    }));
+    expect(plans).toHaveLength(blue.length);
+    for (const unit of blue) {
+      const plan = plans.find(p => p.unitId === unit.id);
+      expect(plan, unit.id).toBeDefined();
+      if (!plan) continue;
+      expect(plan.steps.some(s => s.kind === 'turn'), `${unit.id} turned`).toBe(false);
+      const moves = plan.steps.filter(s => s.kind === 'move');
+      expect(moves.length, `${unit.id} moved`).toBeGreaterThan(0);
+      const last = moves[moves.length - 1];
+      const finalHex = last && last.kind === 'move' ? last.to : unit.hex;
+      const startQ = blueStarts.find(([id]) => id === unit.id)![1];
+      expect(finalHex, `${unit.id} final hex`).toEqual(hex(startQ - 2, 2));
+    }
+  }
+
+  it('basic defensive advances the full staggered line in one plan', () => {
+    expectStaggeredAdvance('defensive');
+  });
+
+  it('basic aggressive advances the full staggered line in one plan', () => {
+    expectStaggeredAdvance('aggressive');
+  });
 });
 
 describe('enemyAI allianceOf', () => {

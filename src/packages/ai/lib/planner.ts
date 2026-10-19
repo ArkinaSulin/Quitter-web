@@ -736,18 +736,19 @@ function effMax(u: Unit, formations: Record<string, Formation>): number {
 /** Defensive advance: a cluster may not outrun its slowest member. */
 function clusterSpeedCap(
   u: Unit,
-  working: Unit[],
+  initialUnits: Unit[],
   ctx: AiPlanContext,
   stance: 'aggressive' | 'defensive',
   advanced: boolean,
 ): number {
   if (!advanced || stance !== 'defensive') return Infinity;
   const group = allianceOf(u, ctx.alliances);
+  const self = initialUnits.find(f => f.id === u.id) ?? u;
   let cap = effMax(u, ctx.formations);
-  for (const f of working) {
+  for (const f of initialUnits) {
     if (f.id === u.id || f.isDeleted || f.hidden || (f.currentUnitHp ?? 0) <= 0) continue;
     if (allianceOf(f, ctx.alliances) !== group) continue;
-    if (hexDistance(u.hex, f.hex) > 2) continue;
+    if (hexDistance(self.hex, f.hex) > 2) continue;
     cap = Math.min(cap, effMax(f, ctx.formations));
   }
   return cap;
@@ -916,7 +917,7 @@ function maneuverOptions(
   ctx: Pick<AiPlanContext, 'alliances' | 'formations' | 'visibleHexes' | 'reactiveArchery'>,
   movement: MoverContext,
   maxTurns: number,
-  canAttackAfterMove: boolean,
+  attackCap: number,
   scorer: (dest: Hex, foes: Unit[], threat: Set<string>, facing: number, canAttack: boolean) => number,
   speedCap = Infinity,
 ): Maneuver[] {
@@ -924,6 +925,8 @@ function maneuverOptions(
   const out: Maneuver[] = [];
   const occ = movement.occupied;
   const threat = movement.threat;
+  const canAttackNow = (unit: Unit): boolean =>
+    (unit.actionsAvailable ?? 0) >= 1 && (unit.attacksUsed ?? 0) < attackCap;
 
   const evaluate = (turns: { dir: 'left' | 'right' }[], unitAfter: Unit) => {
     const max = effMax(unitAfter, ctx.formations);
@@ -931,7 +934,7 @@ function maneuverOptions(
     // Holding position is always an option (including with 0 MP/actions). This
     // is what lets a unit spend leftover MP only when the destination is better
     // than staying put.
-    const stayLeads = canAttackAfterMove
+    const stayLeads = canAttackNow(unitAfter)
       && legalTargets(unitAfter, foes, { alliances: ctx.alliances, formations: ctx.formations, visibleHexes: ctx.visibleHexes }).length > 0;
     const stayScore = scorer(unitAfter.hex, foes, threat, unitAfter.facing, stayLeads)
       - turns.length * (TURN_COST + (stayLeads ? 0 : NO_ATTACK_TURN_COST));
@@ -951,8 +954,16 @@ function maneuverOptions(
       if (entry.needsTurn) return;
       const dest = entry.path[entry.path.length - 1];
       if (!dest) return;
-      const post = { ...unitAfter, hex: dest };
-      const leadsToAttack = canAttackAfterMove
+      // Use the real post-move action accounting: a move can consume leftover
+      // MP and still leave the action needed for an attack.
+      const applied = applyMoveCost(unitAfter, entry.cost, Math.min(max, speedCap));
+      const post = {
+        ...unitAfter,
+        hex: dest,
+        movementPointsAvailable: applied.movementPointsAvailable,
+        actionsAvailable: applied.actionsAvailable,
+      };
+      const leadsToAttack = canAttackNow(post)
         && legalTargets(post, foes, { alliances: ctx.alliances, formations: ctx.formations, visibleHexes: ctx.visibleHexes }).length > 0;
       const score = scorer(dest, foes, threat, unitAfter.facing, leadsToAttack)
         - pathBypassPenalty(entry.path, foes, dest)
@@ -1046,6 +1057,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
   if (controllable.length === 0) return [];
 
   const working = units.map(u => ({ ...u }));
+  const initialUnits = units.map(u => ({ ...u }));
   const byId = new Map(working.map(u => [u.id, u]));
   const group = ctx.activeAlliance;
   const enemies = working.filter(u =>
@@ -1331,13 +1343,12 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         stance,
       };
       const maxTurnCount = doctrine === 'melee' ? maxTurns : Math.min(1, maxTurns);
-      const canAttackAfterMove = (u.actionsAvailable ?? 0) >= 2 && (u.attacksUsed ?? 0) < cap;
-      const speedCap = clusterSpeedCap(u, working, ctx, stance, advanced);
+      const speedCap = clusterSpeedCap(u, initialUnits, ctx, stance, advanced);
       const scorer = doctrine === 'ranged'
         ? (d: Hex, foes: Unit[], threat: Set<string>, facing: number, canAttack: boolean) => rangedDestScore(d, foes, threat, weaponRange, weaponMaxRange, facing, canAttack, tuning)
         : (d: Hex, foes: Unit[], threat: Set<string>, facing: number, canAttack: boolean) => meleeDestScore(d, foes, threat, facing, canAttack, tuning);
       const options = maneuverOptions(
-        u, enemiesAlive, ctx, movement, maxTurnCount, canAttackAfterMove, scorer, speedCap,
+        u, enemiesAlive, ctx, movement, maxTurnCount, cap, scorer, speedCap,
       );
       if (options.length === 0) break;
       // Strict turn rule: a rotation is only allowed when no 0-turn option
@@ -1353,7 +1364,35 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       // that can become unaffordable at execution.
       if (hasAttacked) candidates = candidates.filter(o => o.turns.length === 0);
       if (candidates.length === 0) break;
-      const best = candidates[0];
+      let best = candidates[0];
+      // A melee unit that still has actions/MP and is not at contact must keep
+      // advancing. Otherwise a defensive line can stop after one maneuver and
+      // need a second Execute to finish the same turn.
+      const isHold = best.turns.length === 0
+        && best.move.path.length === 0
+        && best.move.to.q === from.q
+        && best.move.to.r === from.r;
+      const nearest = nearestEnemyDist(u.hex, enemiesAlive);
+      const hasBudget = ((u.actionsAvailable ?? 0) >= 1 || (u.movementPointsAvailable ?? 0) >= 1);
+      if (isHold && doctrine === 'melee' && !hasAttacked && nearest > 1 && hasBudget) {
+        const goal = assignedTarget
+          ? assignedLaneHex(assignedTarget, u)
+          : enemiesAlive
+            .slice()
+            .sort((a, b) => hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex) || a.id.localeCompare(b.id))[0]
+            ?.hex;
+        if (goal) {
+          const progress = options.filter(o =>
+            o.turns.length === 0
+            && o.move.path.length > 0
+            && hexDistance(o.move.to, goal) < hexDistance(u.hex, goal));
+          progress.sort((a, b) =>
+            hexDistance(a.move.to, goal) - hexDistance(b.move.to, goal)
+            || Math.abs(a.move.to.q - goal.q) - Math.abs(b.move.to.q - goal.q)
+            || b.score - a.score);
+          if (progress.length > 0) best = progress[0];
+        }
+      }
       // Replay the simulated turns/move onto the real accounting.
       for (const t of best.turns) {
         if (freeTurn(u, ctx.formations)) {

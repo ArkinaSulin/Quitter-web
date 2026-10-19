@@ -44,10 +44,14 @@ reusable maps. Here's the state:
   defensive cluster capped to the slowest member (slowest planned first).
   **Strict no-turn policy**: a 0-turn attack/charge always beats a rotation;
   turns are allowed only when they enable an attack/charge, and no turn is
-  planned after an attack (AGR failure still spends the action). The executor
-  drops a unit's remaining steps if a turn becomes unaffordable. `npm run check`:
-  tsc, **1115 tests** (41 planner), depcruise, build. No new migration for
-  2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted charges, Round
+  planned after an attack (AGR failure still spends the action). Defensive melee
+  advances finish in one plan: a melee unit outside contact with actions/MP left
+  takes the best no-turn progress move instead of holding, post-move attack
+  checks use real `applyMoveCost` accounting, and the defensive cluster cap is
+  measured from the initial plan snapshot so a fast member cannot escape it. The
+  executor drops a unit's remaining steps if a turn becomes unaffordable.
+  `npm run check`: tsc, **1117 tests** (43 planner), depcruise, build. No new
+  migration for 2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted charges, Round
   4 full coordination, Round 5 full auto-turn; AI still ignores ZoC
   scatter/pursue, flight, and some elevation nuances. See
   `docs/dev/outstanding.md` + `docs/dev/17-enemy-ai.md`.
