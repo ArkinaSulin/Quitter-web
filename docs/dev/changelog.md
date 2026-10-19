@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## AI strict no-turn policy (2026-10-18)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/AiPanel.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md
+
+- **Strict turn rule**: `Maneuver` now records `leadsToAttack`; if any 0-turn
+  option can attack/charge, all turned options are discarded. Otherwise only
+  turns that immediately enable an attack/charge survive. Lane, cohesion and
+  line-bearing scores only choose among no-turn options. After an attack, no
+  further turn is planned for that unit (a failed AGR still spends the action).
+- **Executor hardening**: an unaffordable turn now logs once and drops that
+  unit's remaining steps instead of continuing a stale move/attack sequence.
+- **Regressions**: the exact A–F/G–L board (Aggressive and Defensive), a
+  mixed-facing board where a straight attack must beat the assigned diagonal
+  lane, and a no-turn-after-attack case. 41 planner tests; full `npm run check`
+  passes (1115 tests).
+
 ## Session wrap-up: AI assist Pass 1 + 2a + 2b (2026-10-18)
 **Commits:** `009a6b1` (Pass 2a), `f4e3695` (Pass 2b); Pass 1 landed in earlier AI commits.
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/AiPanel.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, supabase/migrations/130_ai_assist_flags.sql

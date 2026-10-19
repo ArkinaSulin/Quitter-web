@@ -116,10 +116,12 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
 
 ## AI assist
 - 📌 **Current status (2026-10-18):** Pass 1 + 2a + 2b are shipped (`009a6b1`,
-  `f4e3695`); migration 130 is applied, and 2a/2b added no migration. Next
-  session: playtest 2a/2b, then work the remaining rounds in order — **2a
-  archers + artillery → 3 mounted charges → 4 full coordination → 5 full
-  auto-turn**. Files: `src/packages/ai/lib/planner.ts`,
+  `f4e3695`), plus the **strict no-turn policy**: a 0-turn attack/charge always
+  beats a rotation; turns are only allowed when they enable an attack/charge, and
+  no turn is planned after an attack. Migration 130 is applied, and 2a/2b added
+  no migration. Next session: playtest 2a/2b, then work the remaining rounds in
+  order — **2a archers + artillery → 3 mounted charges → 4 full coordination → 5
+  full auto-turn**. Files: `src/packages/ai/lib/planner.ts`,
   `src/packages/ai/tests/planner.test.ts`, `src/components/ScenarioMap/AiPanel.tsx`;
   design in `docs/dev/17-enemy-ai.md`.
 - 🔜 **Full AI mode** (auto whole-turn director: watches turn, runs the plot,

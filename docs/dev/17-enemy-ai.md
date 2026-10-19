@@ -108,14 +108,19 @@ Deterministic, pure, snapshot-in/snapshot-out:
   hexes; otherwise it closes frontally.
 - **Multi-maneuver movement (both brains)**: each maneuver spends one action's
   movement pool; the unit may repeat move/turn legs across its remaining actions
-  (a mounted unit can eventually do move → turn → move → turn → charge). A turn
-  that does **not** set up an attack/charge pays an extra score surcharge; a turn
-  that does is normal. There is **no generic "no contact" penalty** — melee
-  contact is symmetric, and the Advanced retaliation/trade model values the
-  exchange. A charge-specific setup penalty can be added in Round 3 if needed.
-  The step budget is per unit: `max(5, ceil(computeMoveBudget(unit, effectiveMax)))`
-  (a 6-MP mounted unit gets 12, heavy infantry 2 MP gets 4→5), enough for the
-  whole action budget's hexes plus turns/attacks.
+  (a mounted unit can eventually do move → turn → move → turn → charge).
+  **Strict turn rule**: if any **0-turn** option can attack/charge, every turned
+  option is discarded. Otherwise a turn is allowed only when it immediately
+  enables an attack/charge. Lane assignment, cohesion and line bearing may choose
+  among no-turn options but **never** justify a rotation. After a unit attacks,
+  no further turn is plotted for that activation (an AGR failure still spends the
+  attack action, so a follow-up turn could otherwise be unaffordable).
+  There is **no generic "no contact" penalty** — melee contact is symmetric, and
+  the Advanced retaliation/trade model values the exchange. A charge-specific
+  setup penalty can be added in Round 3 if needed. The step budget is per unit:
+  `max(5, ceil(computeMoveBudget(unit, effectiveMax)))` (a 6-MP mounted unit gets
+  12, heavy infantry 2 MP gets 4→5), enough for the whole action budget's hexes
+  plus turns/attacks.
 - **Leftover MP and holding**: a unit remains plottable while it has actions
   **or** materialized MP. With 0 actions it may still spend leftover MP on a
   final move, but attacks require an action. Holding position is always a
@@ -137,8 +142,8 @@ Deterministic, pure, snapshot-in/snapshot-out:
   - the nearest non-target enemy keeps its **line bearing** even at long range:
     turning the flank/rear toward the enemy battle line is penalized, so a unit
     does not wrap around the line while merely advancing;
-  - turns carry a real score cost, and a **straight advance wins** when it is
-    within a small margin of the best turned option;
+  - turns are gated by the **strict turn rule** above: a no-turn attack always
+    wins, and lane/line scores only break ties among no-turn options;
   - at adjacency, the estimate uses a melee weapon/fists rather than the active
     ranged weapon's point-blank profile.
 - **Formation-aware retaliation (both brains)**: `expectedRetaliation` respects
@@ -184,7 +189,9 @@ Deterministic, pure, snapshot-in/snapshot-out:
     (low AGR sticks, high AGR may range).
 - **Never over-budget**: every simulated action uses the real accounting
   functions (`applyMpSpend`, `applyMoveCost`, `applyFormationChange`) so no plan
-  raises a soft-enforcement prompt.
+  raises a soft-enforcement prompt. If a planned step still becomes unaffordable
+  at execution (e.g. a reaction changed the live state), the executor reports it
+  once and drops that unit's remaining steps instead of running a stale sequence.
 - Routed units instead **flee**: each step picks the reachable hex strictly
   farthest from the nearest hostile (enemy kill-zone landings penalized), for
   as many actions as they have — they never attack. The run **stops at the

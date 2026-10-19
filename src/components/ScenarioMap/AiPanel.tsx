@@ -427,7 +427,8 @@ export function AiPanel({
       } else if (step.kind === 'turn') {
         const freeRotate = live.isHero || live.currentFormation === 'Scattered' || isUnitRouted(live);
         if (!freeRotate && (live.movementPointsAvailable ?? 0) < 1 && (live.actionsAvailable ?? 0) < 1) {
-          addMessage(`${live.unitName} cannot afford the turn — skipped`);
+          addMessage(`${live.unitName} cannot afford the turn — remaining steps skipped`);
+          head.steps.length = 0;
         } else {
           setStatusText(`${live.unitName} → turns ${step.dir}`);
           await props.rotateUnit(live, step.dir, props.unitMaxMP(live));

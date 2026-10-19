@@ -663,6 +663,92 @@ describe('enemyAI smarter tactics', () => {
     }
     expect(total).toBeLessThanOrEqual(4);
   });
+
+  function strikeLine(facingOf: (id: string) => number) {
+    const starts = [['A', 1], ['B', 2], ['C', 3], ['D', 4], ['E', 5], ['F', 6]] as const;
+    const enemyStarts = [['G', -1], ['H', 0], ['I', 1], ['J', 2], ['K', 3], ['L', 4]] as const;
+    const attackers = starts.map(([id, q]) => mk({
+      id, team: 'blue', hex: hex(q, -2), facing: facingOf(id),
+      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+    const enemies = enemyStarts.map(([id, q]) => mk({
+      id, team: 'black', hex: hex(q, 0), facing: 0,
+      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+    return { attackers, enemies, all: [...attackers, ...enemies] };
+  }
+
+  function expectNoNeedlessTurns(
+    plans: ReturnType<typeof planAiMoves>,
+    attackers: Unit[],
+    enemies: Unit[],
+  ) {
+    const byId = new Map([...attackers, ...enemies].map(u => [u.id, u]));
+    for (const unit of attackers) {
+      const plan = plans.find(p => p.unitId === unit.id);
+      expect(plan, unit.id).toBeDefined();
+      if (!plan) continue;
+      expect(plan.steps.some(s => s.kind === 'turn'), `${unit.id} turned`).toBe(false);
+      const moves = plan.steps.filter(s => s.kind === 'move');
+      expect(moves.length, `${unit.id} moved`).toBeGreaterThan(0);
+      const last = moves[moves.length - 1];
+      const finalHex = last && last.kind === 'move' ? last.to : unit.hex;
+      expect(
+        Math.min(...enemies.map(e => dist(finalHex, e.hex))),
+        `${unit.id} ended adjacent`,
+      ).toBe(1);
+      const attack = plan.steps.find(s => s.kind === 'attack');
+      expect(attack, `${unit.id} attacked`).toBeDefined();
+      if (attack && attack.kind === 'attack') {
+        const target = byId.get(attack.targetId);
+        expect(target, `${unit.id} target id`).toBeDefined();
+        if (target) expect(dist(attack.from, target.hex), `${unit.id} attack range`).toBe(1);
+      }
+    }
+  }
+
+  it('strict turn rule: no rotation when a 0-turn attack exists (Aggressive)', () => {
+    const { attackers, enemies, all } = strikeLine(() => 3);
+    const plans = planAiMoves(ctxOf(all, ['blue'], 'enemy', { advanced: true, stance: 'aggressive' }));
+    expectNoNeedlessTurns(plans, attackers, enemies);
+  });
+
+  it('strict turn rule: no rotation when a 0-turn attack exists (Defensive)', () => {
+    const { attackers, enemies, all } = strikeLine(() => 3);
+    const plans = planAiMoves(ctxOf(all, ['blue'], 'enemy', { advanced: true, stance: 'defensive' }));
+    expectNoNeedlessTurns(plans, attackers, enemies);
+  });
+
+  it('strict turn rule: prefers a straight attack over a diagonal assigned lane', () => {
+    // C faces south-east and has a straight-ahead attack, while its assigned
+    // target is diagonal. The straight attack must win without a rotation.
+    const { attackers, all } = strikeLine(id => (id === 'C' || id === 'E' || id === 'F' ? 2 : 3));
+    const plans = planAiMoves(ctxOf(all, ['blue'], 'enemy', { advanced: false, stance: 'aggressive' }));
+    const cPlan = plans.find(p => p.unitId === 'C')!;
+    expect(cPlan.steps.some(s => s.kind === 'turn')).toBe(false);
+    const attack = cPlan.steps.find(s => s.kind === 'attack');
+    expect(attack).toBeDefined();
+    if (attack && attack.kind === 'attack') {
+      const target = all.find(u => u.id === attack.targetId)!;
+      expect(dist(attack.from, target.hex)).toBe(1);
+    }
+  });
+
+  it('strict turn rule: never plans a turn after an attack', () => {
+    const ai = mk({
+      id: 'ai', team: 'blue', hex: hex(0, 0), facing: 0,
+      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+    });
+    const front = mk({ id: 'front', team: 'black', hex: hex(0, -1), facing: 3, weaponString: SPEAR });
+    const rear = mk({ id: 'rear', team: 'black', hex: hex(0, 1), facing: 0, weaponString: SPEAR });
+    const plan = planAiMoves(ctxOf([ai, front, rear], ['blue'], 'enemy', {
+      advanced: true,
+      stance: 'aggressive',
+    }))[0];
+    const attackIndex = plan.steps.findIndex(s => s.kind === 'attack');
+    expect(attackIndex).toBeGreaterThanOrEqual(0);
+    expect(plan.steps.slice(attackIndex + 1).some(s => s.kind === 'turn')).toBe(false);
+  });
 });
 
 describe('enemyAI allianceOf', () => {

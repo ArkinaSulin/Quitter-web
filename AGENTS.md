@@ -42,10 +42,14 @@ reusable maps. Here's the state:
   simple 1.6× safety weighting + stronger ranged ZoC; defensive ranged posture
   (Close far/no fire → Open/Scattered under fire → Scattered before melee);
   defensive cluster capped to the slowest member (slowest planned first).
-  `npm run check`: tsc, **1111 tests** (37 planner), depcruise, build. No new
-  migration for 2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted
-  charges, Round 4 full coordination, Round 5 full auto-turn; AI still ignores
-  ZoC scatter/pursue, flight, and some elevation nuances. See
+  **Strict no-turn policy**: a 0-turn attack/charge always beats a rotation;
+  turns are allowed only when they enable an attack/charge, and no turn is
+  planned after an attack (AGR failure still spends the action). The executor
+  drops a unit's remaining steps if a turn becomes unaffordable. `npm run check`:
+  tsc, **1115 tests** (41 planner), depcruise, build. No new migration for
+  2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted charges, Round
+  4 full coordination, Round 5 full auto-turn; AI still ignores ZoC
+  scatter/pursue, flight, and some elevation nuances. See
   `docs/dev/outstanding.md` + `docs/dev/17-enemy-ai.md`.
 - **`ignore_climb` + `feather_fall` effects; `stairs` retired (migration 113)**: two new amount-less effect kinds authorable in every `EffectModifierFields` surface — **`ignore_climb`** (unit / edge structure / ground zone; waives the climb/elevation cost) and **`feather_fall`** (unit; ignores falling damage). `structureClimbCostBetween` takes a `waiveClimb` mover flag and returns 0 when the crossed edge carries `ignore_climb` (`structureWaivesClimb`); `makeCostOfHex`/`makeBlockedEdge` thread it from every mover call site (move, charge, reactions, overlay), and `handleClimbMove` makes an ignoring unit's climb free. Fall damage (`routeUnit` rout-off-wall, `confirmHeroFall`) is skipped when the faller has `feather_fall`. The old edge `stairs` boolean is **removed** (types, editors, label lists, `structureIsStairs`); the trapezoid-ladder graphic now draws for any edge structure carrying `ignore_climb`. Migration 113 backfills `stairs = true` → `{"kind":"ignore_climb"}` (templates + placed instances) and drops the column. `tsc` clean, 856 tests pass. **Apply 113 in Supabase.**
 - **Structure elevation (Phase 2b, migrations 111–112)**: structures carry a top **`elevation`** (default 10; 0 = decorative) + edge **`stairs`**; effects carry `elevation`. **Dynamic ground**: a unit is *flying* only when `elevation > surfaceAt(hex)` (`structureSurfaceAt`), else *grounded*; `movePoolMode`/`moveBudgetUnit` take a surface; `computeOccupiedHexes(units, excludeId, surface=0)` is per-surface. **Climb**: 10-ft steps @ 4 MP (`climbPlan`, `climb_to`), `height/2.5`; stairs waive; mounted can't climb. **Hanging**: a unit climbs adjacent higher hexes staying in its origin hex; `climb_to` target + rising `elevation`; linear (up=target / down=own hex); hover +10 ft if ground occupied; can't retaliate; attacks/ZoC only at the wall top; rout = free-fall (d6/10 ft) + standard picker. **Flight blocking**: `flightBlockedHexes` (structure top > flyer → blocked; destination excluded so the elevation modal clears it; else "structure blocked flight passage"). **Ranged vertical**: reach `dist + climb` (down never extends); band `dist + up − down`. **Rendering**: constant offsets (non-flyer = half, flyer = full; climber toward target), structure/effect elevation badges (north vertex), stair trapezoid-ladder (variant C). Editors (Structure/Effect + placed modal) expose elevation/stairs. `tsc` clean, 851 tests, build clean. **Apply 111/112 in Supabase.**

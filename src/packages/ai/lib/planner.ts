@@ -613,8 +613,6 @@ const EXPOSURE_REAR = 30;
 const EXPOSURE_FLANK = 18;
 const BYPASS_PER_ENEMY = 8;
 const TURN_COST = 6;
-/** A 0-turn option within this margin of the best turned option wins. */
-const TURN_MARGIN = 8;
 /** Melee exposure is weighted more heavily: the point is to avoid a second
  *  adjacent enemy punishing the attack. */
 const MELEE_EXPOSURE_WEIGHT = 5;
@@ -857,6 +855,8 @@ interface Maneuver {
   move: PlannedMoveOption;
   postTurnUnit: Unit;
   score: number;
+  /** True when an attack/charge is available after this maneuver. */
+  leadsToAttack: boolean;
 }
 
 interface MoverContext {
@@ -940,6 +940,7 @@ function maneuverOptions(
       move: { to: unitAfter.hex, path: [], cost: 0, score: stayScore, canAttack: false, attackScore: 0 },
       postTurnUnit: unitAfter,
       score: stayScore,
+      leadsToAttack: stayLeads,
     });
     if (pool < 1) return;
     const reach = computeReachableMap(
@@ -956,7 +957,7 @@ function maneuverOptions(
       const score = scorer(dest, foes, threat, unitAfter.facing, leadsToAttack)
         - pathBypassPenalty(entry.path, foes, dest)
         - turns.length * (TURN_COST + (leadsToAttack ? 0 : NO_ATTACK_TURN_COST));
-      out.push({ turns: [...turns], move: { to: dest, path: entry.path, cost: entry.cost, score, canAttack: false, attackScore: 0 }, postTurnUnit: unitAfter, score });
+      out.push({ turns: [...turns], move: { to: dest, path: entry.path, cost: entry.cost, score, canAttack: false, attackScore: 0 }, postTurnUnit: unitAfter, score, leadsToAttack });
     });
   };
 
@@ -1081,6 +1082,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
     const plan: AiUnitPlan = { unitId: seed.id, steps: [] };
     let u = byId.get(seed.id)!;
     let formationChanged = false;
+    let hasAttacked = false;
     // One step per hex the unit could spend across its remaining actions (plus
     // turns/attacks): a 6-MP mounted unit gets 12, heavy infantry 2 MP gets 4.
     const initialBudget = computeMoveBudget(u, effMax(u, ctx.formations));
@@ -1310,6 +1312,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         const updated = { ...u, actionsAvailable: (u.actionsAvailable ?? 0) - 1, attacksUsed: (u.attacksUsed ?? 0) + 1 };
         commit(u, updated, u.id);
         u = updated;
+        hasAttacked = true;
         continue;
       }
 
@@ -1337,10 +1340,20 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         u, enemiesAlive, ctx, movement, maxTurnCount, canAttackAfterMove, scorer, speedCap,
       );
       if (options.length === 0) break;
-      const bestStraight = options.find(o => o.turns.length === 0);
-      const best = bestStraight && bestStraight.score >= options[0].score - TURN_MARGIN
-        ? bestStraight
-        : options[0];
+      // Strict turn rule: a rotation is only allowed when no 0-turn option
+      // reaches an attack/charge. It never buys lane/cohesion/line bearing.
+      const straightAttacks = options.filter(o => o.turns.length === 0 && o.leadsToAttack);
+      let candidates: Maneuver[];
+      if (straightAttacks.length > 0) {
+        candidates = straightAttacks;
+      } else {
+        candidates = options.filter(o => o.turns.length === 0 || o.leadsToAttack);
+      }
+      // AGR failure still spends the attack action; never plan a follow-up turn
+      // that can become unaffordable at execution.
+      if (hasAttacked) candidates = candidates.filter(o => o.turns.length === 0);
+      if (candidates.length === 0) break;
+      const best = candidates[0];
       // Replay the simulated turns/move onto the real accounting.
       for (const t of best.turns) {
         if (freeTurn(u, ctx.formations)) {
