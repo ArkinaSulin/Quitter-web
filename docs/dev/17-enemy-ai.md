@@ -80,7 +80,7 @@ model.
 
 ## Planner (`planAiMoves`) — v3
 
-Deterministic, pure, snapshot-in/snapshot-out:
+Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, while the committed plan is logged and replayed through undo/redo:
 - Simulates the board on **copies** as it plots, so later units plan against
   the evolving positions/occupancy and two units never target the same hex.
 - Steps can be **move, attack, turn (60°), or formation**. A unit may now
@@ -115,6 +115,10 @@ Deterministic, pure, snapshot-in/snapshot-out:
   among no-turn options but **never** justify a rotation. After a unit attacks,
   no further turn is plotted for that activation (an AGR failure still spends the
   attack action, so a follow-up turn could otherwise be unaffordable).
+  **Scattered free turns** are exempt: they cost 0 MP/action and no attack
+  surcharge, so the unit may use the full facing circle for positioning,
+  exposure, the next attack, or reaction coverage (including a post-move facing
+  when it does not attack).
   There is **no generic "no contact" penalty** — melee contact is symmetric, and
   the Advanced retaliation/trade model values the exchange. A charge-specific
   setup penalty can be added in Round 3 if needed. The step budget is per unit:
@@ -138,14 +142,39 @@ Deterministic, pure, snapshot-in/snapshot-out:
   from the **initial** positions for the whole plan, not the mutating working
   state. A fast unit cannot escape the cap once the slow members move, and the
   line stays together.
-- **Line-order assignment (both brains)**: visible enemies and controllable
-  units are sorted by frontage (q), paired **left-to-right** (strict line
-  coverage), with adjacent value swaps allowed. The assignment is a preference:
-  units plan in assigned-lane order (not input-array order) and score the
-  assigned target's **lane** (target q, front row toward the mover) strongly;
-  they may retarget if it becomes invalid. The extra unit doubles up where
-  useful. A deterministic hex **hash** breaks score ties, removing the old
-  BFS-east/right bias.
+- **Battle roles (both brains)**: `assignBattleRoles` generates candidate
+  contiguous frontage windows of `enemies.length` units and scores each by
+  coverage, connection/isolation, flank/rear reach, extra movement speed, own
+  exposure, and stance. The window may shift left/right, so the whole line can
+  cover one end while two adjacent surplus units flank the other. Surplus units
+  prefer fast troops for flanking. Roles are `frontage`, `flank`, `rear`,
+  `reserve`, `ranged`, and `structure`. Near-equal candidates use **`Math.random`**
+  jitter; consistency comes from the command log/undo-redo, not from forcing the
+  same choice on every Preview. `assignTargets` remains as the simple 6-vs-6
+  line-assignment helper.
+- **Aggressive surplus**: rear first when reachable (no AGR, no retaliation,
+  doubled threat → faster rout), else flank. Flankers wait until the target is
+  **melee-locked** by a friendly, never take a redundant front attack, and never
+  front-charge. They may rotate only when it enables a flank/rear attack.
+- **Defensive surplus**: defaults to **second rank / reserve**, connected to the
+  line; it can patch a routing hole. A connected flank is taken only when safe.
+- **Ranged support**: ranged-only units are excluded from frontage/flank roles.
+  They stand off, never voluntarily enter melee contact, shoot with both actions
+  when possible, and retreat/kite when closed on. Scattered is the escape/transit
+  formation.
+- **Structure defenders**: a unit on a standing hex structure or on the inside hex
+  of a standing edge structure holds it in **all stances**. It may attack,
+  rotate, and change formation, but never voluntarily moves out; it is excluded
+  from frontage/flank roles. Routed units flee normally; a destroyed/removed
+  structure releases the hold.
+- **Ranged reaction awareness**: when archer reaction is enabled, ranged hold
+  positions score clear reaction lanes (snap-shot `range`, front arc, LoS, no
+  friendly/obstacle blocker). Reaction uses only actions left after the unit
+  stands and holds — the planner does **not** reserve an action or trade away an
+  attack for it. Safe repositioning for a clear lane is allowed; moving into
+  contact is not.
+- **Line-order compatibility**: 6-vs-6 style assignments still pair sorted units
+  and enemies left-to-right with adjacent value swaps via `assignTargets`.
 
 - **Self-preservation (both brains)**:
   - a destination is penalized for OTHER live enemies in the mover's **rear**
@@ -171,14 +200,21 @@ Deterministic, pure, snapshot-in/snapshot-out:
     bonus, reserves damage per target so a second unit does not overkill a
     nearly-dead squad, and penalizes destinations crowded by friendlies or
     covered by extra enemy weapons/kill zones.
-  - **Advanced formation changes**: when a melee unit is already in a hostile
-    ZoC or an enemy is within 2 hexes, it compares its available formations
+  - **Advanced formation changes (role-aware)**: near contact or in a hostile
+    ZoC, melee units upgrade to the **highest available organisation level**
     (`canAdoptFormation`, `isFormationChangeAffordable`, Shield Wall shield/2H
-    restrictions). The score is expected damage dealt − expected retaliation
-    received, minus the formation-change MP cost; it must clear a margin, may
-    happen at most once per unit plot, must leave an action for an immediate
-    attack, and must not spend the movement needed to close. Phase 2 (deferred)
-    will also anticipate ranged damage and allow higher-AC changes outside ZoC.
+    restrictions). Frontage/reserve/structure units prioritise that upgrade even
+    if it costs the attack; flankers attack first and upgrade only when no attack
+    is available. Flankers may chain two upgrades in one action
+    (Scattered → Open → Close) when the budget covers both. Defensive units
+    prioritise the highest formation over speed. Ranged units use Scattered only
+    as an escape/transit formation and otherwise stand off.
+  - **Rear attack value**: `attackValue` discounts front/flank priority by an
+    approximate AGR pass chance; rear attacks are guaranteed (no AGR), have no
+    retaliation, and carry a rout-threat bonus.
+  - **Reaction fire**: archer-reaction hold positions score clear snapshot lanes
+    (`range`, arc, LoS); the planner uses only actions left after the unit holds
+    and never sacrifices an attack for reaction eligibility.
   - **Basic vs Advanced + stance**: Basic = Simple, Advanced = Advance; the
     AI-tab **Aggressive / Defensive** toggle selects the posture (default
     Aggressive, per preview, local state).

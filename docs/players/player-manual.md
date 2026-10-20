@@ -1309,16 +1309,18 @@ there is no per-value validation.)
 
 Enable **AI assist** in Scenario Settings and an **AI** tab appears in the
 left panel. Two more settings tune it: **Advanced AI** (weighs retaliation,
-finishing blows and overkill instead of the simple greedy plot, and may change
-formation before a fight when the damage trade-off is worth the movement) and
-**Allow
+finishing blows and overkill instead of the simple greedy plot, and upgrades
+frontage formations to the highest available organisation level before contact)
+and **Allow
 players to use AI assist** (non-GM participants may open the tab on their side's
 turn; the GM still owns the settings). Inside the AI tab, the
 **Aggressive / Defensive** stance switch applies to the next Preview (default
 Aggressive; Defensive sticks closer together and protects flanks first).
-Aggressive seeks damage; Defensive ranged units use Close Order when safe and
-Open/Scattered under fire, and defensive clusters move at their slowest
-member's speed. Drag
+Aggressive uses surplus units to flank or attack from the rear (rear attacks
+skip AGR and put extra rout pressure); flankers wait for the frontage to lock a
+target. Defensive surplus holds second rank and patches rout holes. Ranged-only
+units stand off, avoid contact, and use only leftover actions for reaction fire.
+Structure defenders hold their structure in either stance unless routed. Drag
 teams into the *AI control box*; eligible units (of the team
 on the currently-active alliance) wear a small ✓. **Preview** plots their
 moves (blue routes with crossed swords on attack targets), **Reset** clears
@@ -1333,11 +1335,13 @@ can't see, and only acts on the marked team's own turn. Click a ✓ token to
 exclude that one unit (it switches to a grey badge) - click again to include
 it; exclusions reset at each End Turn. **Heroes are never driven by the AI**
 (neither the hero token, an attached hero, nor the unit carrying one) - their
-owners play them manually. The plots are tactical: units may
-**rotate** to face a target, ranged-only units adopt Scattered and keep their
-distance while firing at the biggest threat in reach, and melee units try to
-close into an enemy's flank/rear instead of a frontal rush - always within the
-unit's real MP/actions.
+owners play them manually. The plots are tactical: melee units shift their
+frontage, send fast surplus units around an end into a flank/rear, and wait for
+the frontage to lock a target. Ranged-only units keep their distance while
+firing at the biggest threat in reach and use Scattered only to escape. When a
+unit stands and holds, any actions it does not spend can become reaction fire -
+the AI never reserves an action or skips an attack for that. All of this stays
+within the unit's real MP/actions.
 
 ### During play
 

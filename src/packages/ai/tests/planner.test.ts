@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from 'vitest';
+﻿import { describe, it, expect, vi } from 'vitest';
 import {
   planAiMoves,
   isAiControllable,
@@ -11,9 +11,11 @@ import {
   pathBypassPenalty,
   lineBearingPenalty,
   assignTargets,
+  assignBattleRoles,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
+import { StructureTemplate } from '@/types/structure';
 
 const SPEAR = 'Spear,3,1d8,false,1,1,0,true,false,false,false,1,true,Dex,circle';
 const SHORTBOW = 'Shortbow,2,1d6,false,2,3,0,false,true,true,false,1,true,Dex,circle';
@@ -543,7 +545,11 @@ describe('enemyAI smarter tactics', () => {
     const red = redStarts.map(([id, q]) => mk({
       id, team: 'black', hex: hex(q, 2), facing: 0, weaponString: SPEAR,
     }));
-    const plans = planAiMoves(ctxOf([...blue, ...red], ['blue'], 'enemy'));
+    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy');
+    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const battle = assignBattleRoles(blue, red, ctx, false);
+    const plans = planAiMoves(ctx);
+    rng.mockRestore();
     const byId = new Map(plans.map(p => [p.unitId, p]));
 
     for (const unit of blue) {
@@ -561,7 +567,11 @@ describe('enemyAI smarter tactics', () => {
       const finalHex = lastMove && lastMove.kind === 'move' ? lastMove.to : unit.hex;
       const attack = plan.steps.find(s => s.kind === 'attack');
       const targetId = attack && attack.kind === 'attack' ? attack.targetId : undefined;
-      expect(ownExposureAt(finalHex, finalFacing, red, targetId), unit.id).toBe(0);
+      // Frontage keeps its line clean; a surplus flanker may deliberately take
+      // an exposed angle to encircle.
+      if (battle.roles.get(unit.id)?.kind === 'frontage') {
+        expect(ownExposureAt(finalHex, finalFacing, red, targetId), unit.id).toBe(0);
+      }
       expect(finalHex.r, unit.id).toBeGreaterThanOrEqual(0);
     }
   });
@@ -791,6 +801,65 @@ describe('enemyAI smarter tactics', () => {
 
   it('basic aggressive advances the full staggered line in one plan', () => {
     expectStaggeredAdvance('aggressive');
+  });
+
+  function eightVsSix() {
+    const blueStarts = [['N', -4], ['M', -3], ['K', -2], ['I', -1], ['H', 0], ['J', 1], ['L', 2], ['O', 4]] as const;
+    const redStarts = [['G', -5], ['E', -4], ['C', -3], ['B', -2], ['D', -1], ['F', 0]] as const;
+    const blue = blueStarts.map(([id, q]) => mk({
+      id, team: 'blue', hex: hex(q, -2), facing: 3,
+      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+    const red = redStarts.map(([id, q]) => mk({
+      id, team: 'black', hex: hex(q, 3), facing: 0,
+      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+    return { blue, red };
+  }
+
+  it('8 vs 6 advanced aggressive puts the surplus on flank/rear, not the frontage', () => {
+    const { blue, red } = eightVsSix();
+    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', { advanced: true, stance: 'aggressive' });
+    const battle = assignBattleRoles(blue, red, ctx, true);
+    expect(battle.frontageIds.size).toBe(6);
+    const extras = blue.filter(u => !battle.frontageIds.has(u.id));
+    expect(extras).toHaveLength(2);
+    for (const extra of extras) {
+      const role = battle.roles.get(extra.id);
+      expect(role?.kind === 'flank' || role?.kind === 'rear', extra.id).toBe(true);
+    }
+  });
+
+  it('8 vs 6 defensive puts the surplus in the second rank', () => {
+    const { blue, red } = eightVsSix();
+    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', { advanced: true, stance: 'defensive' });
+    const battle = assignBattleRoles(blue, red, ctx, true);
+    const extras = blue.filter(u => !battle.frontageIds.has(u.id));
+    expect(extras).toHaveLength(2);
+    for (const extra of extras) expect(battle.roles.get(extra.id)?.kind).toBe('reserve');
+  });
+
+  it('a standing structure pins its defender; it never voluntarily moves out', () => {
+    const template: StructureTemplate = {
+      id: 'gate', name: 'Gate', description: '', anchor: 'hex', color: '#000',
+      imageUrl: '', battlement: false, barricade: false, sinWave: false, ladder: false,
+      hexBorder: true, elevation: 10, mpClimbUp: 4, mpClimbDown: 4, mpMountedUp: 4,
+      mpMountedDown: 4, ac: 10, doorHp: null, maxHp: 100, dt: 0, modifiers: [],
+      createdAt: '', updatedAt: '',
+    };
+    const structures = { '0,0': { templateId: 'gate', hp: 100, doorHp: 100 } };
+    const holder = mk({
+      id: 'holder', team: 'blue', hex: hex(0, 0), facing: 0,
+      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+    });
+    const foe = mk({ id: 'foe', team: 'black', hex: hex(0, -1), facing: 3, weaponString: SPEAR });
+    const ctx = ctxOf([holder, foe], ['blue'], 'enemy', {
+      structures, structureTemplates: { gate: template },
+    });
+    expect(assignBattleRoles([holder], [foe], ctx, true).roles.get('holder')?.kind).toBe('structure');
+    const plan = planAiMoves(ctx).find(p => p.unitId === 'holder');
+    expect(plan).toBeDefined();
+    expect(plan?.steps.some(s => s.kind === 'move')).toBe(false);
   });
 });
 

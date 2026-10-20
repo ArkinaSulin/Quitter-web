@@ -50,7 +50,17 @@ reusable maps. Here's the state:
   checks use real `applyMoveCost` accounting, and the defensive cluster cap is
   measured from the initial plan snapshot so a fast member cannot escape it. The
   executor drops a unit's remaining steps if a turn becomes unaffordable.
-  `npm run check`: tsc, **1117 tests** (43 planner), depcruise, build. No new
+  **Battle roles**: candidate frontage windows can shift; fast surplus units get
+  flank/rear (aggressive) or second-rank reserve (defensive) roles; near-equal
+  plans use `Math.random` (undo/redo preserves the committed plan). Aggressive
+  rear attacks skip AGR and add rout-threat value; flankers wait for a melee
+  lock. Ranged-only units stand off and never enter contact; archer-reaction
+  holds score clear LoS/range/arc lanes using only leftover actions. Structure
+  defenders hold a standing hex/edge structure in every stance unless routed.
+  Advanced frontage/structure/reserve upgrade to the highest available org level
+  before contact; flankers attack first and may chain two formation upgrades
+  (Scattered → Open → Close) in one action; Scattered turns are free.
+  `npm run check`: tsc, **1120 tests** (46 planner), depcruise, build. No new
   migration for 2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted charges, Round
   4 full coordination, Round 5 full auto-turn; AI still ignores ZoC
   scatter/pursue, flight, and some elevation nuances. See

@@ -1,5 +1,37 @@
 # QuiTTER Changelog
 
+## AI battle roles: flanking, structure hold, ranged support (2026-10-19)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- **Battle-role assignment**: candidate frontage windows can shift left/right;
+  surplus units become flank/rear/reserve/structure/ranged roles. Fast units are
+  preferred for flanking; near-equal plans use `Math.random` (consistency comes
+  from the command log and undo/redo).
+- **Aggressive**: rear first when reachable (no AGR, no retaliation, doubled
+  rout threat), otherwise flank; no redundant front attack or front charge;
+  flankers wait for a friendly melee lock.
+- **Defensive**: surplus defaults to second rank/reserve, connected; connected
+  flank only when safe.
+- **Structure hold**: a unit on a standing hex structure or the inside hex of a
+  standing edge structure never voluntarily leaves it in any stance; it can
+  attack/rotate/change formation. Routed units flee; destroyed structures release
+  the hold.
+- **Ranged support**: ranged-only units are excluded from frontage/flank roles,
+  keep stand-off, avoid contact, use both actions to shoot, and use Scattered as
+  their escape/transit formation. Archer-reaction hold positions score clear
+  LoS/range/arc lanes without reserving actions.
+- **Formation**: Advanced frontage/reserve/structure upgrade to the highest
+  available org level before contact even at the cost of an attack; flankers
+  attack first, may chain two upgrades in one action, and use Scattered → Open →
+  Close. Defensive prioritises formation over speed; Scattered turns are free and
+  cost no attack surcharge.
+- **Rear/AGR valuation**: active front/flank attacks are discounted by an
+  approximate AGR pass chance; rear attacks are guaranteed and get a rout-threat
+  bonus.
+- **Tests**: 8-vs-6 aggressive flank/rear vs defensive reserve, structure hold,
+  plus the existing 6-vs-6/strict-turn/defensive-line regressions. 46 planner
+  tests; full `npm run check` passes (1120 tests).
+
 ## AI defensive advance completes in one plan (2026-10-19)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 

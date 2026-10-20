@@ -120,7 +120,10 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   beats a rotation; turns are only allowed when they enable an attack/charge, and
   no turn is planned after an attack. Defensive melee advances now finish in one
   plan (forced progress + real post-move attack accounting + stable initial
-  cluster cap). Migration 130 is applied, and 2a/2b added no migration. Next
+  cluster cap). Battle roles now add shiftable frontage windows, fast flank/rear
+  surplus, defensive second-rank reserve, ranged stand-off/reaction lanes, and
+  all-stance structure hold; Advanced formation upgrades are role-aware.
+  Migration 130 is applied, and 2a/2b added no migration. Next
   session: playtest 2a/2b, then work the remaining rounds in
   order — **2a archers + artillery → 3 mounted charges → 4 full coordination → 5
   full auto-turn**. Files: `src/packages/ai/lib/planner.ts`,
