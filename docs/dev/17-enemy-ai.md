@@ -147,7 +147,9 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   coverage, connection/isolation, flank/rear reach, extra movement speed, own
   exposure, and stance. The window may shift left/right, so the whole line can
   cover one end while two adjacent surplus units flank the other. Surplus units
-  prefer fast troops for flanking. Roles are `frontage`, `flank`, `rear`,
+  strongly prefer fast troops for flanking (e.g. 4-MP wolf riders over 3-MP
+  warriors), and a surplus pair stays on the same end when possible to reduce
+  isolation. Roles are `frontage`, `flank`, `rear`,
   `reserve`, `ranged`, and `structure`. Near-equal candidates use **`Math.random`**
   jitter; consistency comes from the command log/undo-redo, not from forcing the
   same choice on every Preview. `assignTargets` remains as the simple 6-vs-6

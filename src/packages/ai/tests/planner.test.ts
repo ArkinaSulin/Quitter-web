@@ -839,6 +839,34 @@ describe('enemyAI smarter tactics', () => {
     for (const extra of extras) expect(battle.roles.get(extra.id)?.kind).toBe('reserve');
   });
 
+  it('prefers fast surplus units for flanking and keeps the pair on one end', () => {
+    const blueStarts: [string, number, number][] = [
+      ['O', -3, 4], ['P', -2, 4], ['G', 0, 3], ['H', 1, 3],
+      ['I', 2, 3], ['J', 3, 3], ['K', 4, 3], ['L', 6, 3],
+    ];
+    const blue = blueStarts.map(([id, q, mp]) => mk({
+      id, team: 'blue', hex: hex(q, -8), facing: 3,
+      movementPoints: mp, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+    const red = [-4, -3, -2, -1, 0, 1].map((q, i) => mk({
+      id: `r${i}`, team: 'black', hex: hex(q, 0), facing: 3, weaponString: SPEAR,
+    }));
+    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', { advanced: true, stance: 'aggressive' });
+    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const battle = assignBattleRoles(blue, red, ctx, true);
+    rng.mockRestore();
+
+    expect(Array.from(battle.frontageIds).sort()).toEqual(['G', 'H', 'I', 'J', 'K', 'L']);
+    const extras = blue.filter(u => !battle.frontageIds.has(u.id));
+    expect(extras.map(u => u.id).sort()).toEqual(['O', 'P']);
+    const extraRoles = extras.map(u => battle.roles.get(u.id));
+    for (const role of extraRoles) {
+      expect(role?.kind === 'flank' || role?.kind === 'rear').toBe(true);
+    }
+    const sides = extraRoles.map(role => role && 'side' in role ? role.side : null);
+    expect(sides[0]).toBe(sides[1]);
+  });
+
   it('a standing structure pins its defender; it never voluntarily moves out', () => {
     const template: StructureTemplate = {
       id: 'gate', name: 'Gate', description: '', anchor: 'hex', color: '#000',

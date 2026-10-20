@@ -1,5 +1,18 @@
 # QuiTTER Changelog
 
+## AI role speed preference: fast surplus flankers (2026-10-19)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
+
+- `assignBattleRoles` now weights surplus movement speed heavily (`effMax * 8`),
+  so 4-MP wolf riders are reserved for flank/rear roles while 3-MP goblin
+  warriors hold the frontage. The speed gap outweighs window-centre and random
+  jitter.
+- A surplus pair is kept on the same end when possible (+8), reducing isolation
+  and letting the two flankers support each other.
+- Regression: goblin 6 warriors (3 MP) + 2 wolf riders (4 MP) vs 6 enemies;
+  frontage is the six warriors, extras are the two riders on the same end.
+- 47 planner tests; full `npm run check` passes (1121 tests).
+
 ## AI battle roles: flanking, structure hold, ranged support (2026-10-19)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 

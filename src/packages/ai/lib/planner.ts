@@ -321,10 +321,15 @@ export function assignBattleRoles(
       score += Math.max(0, 4 - connected) * 8;
       if (stance === 'defensive' && connected > 2) score -= 50;
       if (calcIsolation(extra, units, ctx.alliances)) score -= stance === 'defensive' ? 80 : 15;
-      score += effMax(extra, ctx.formations) * 2;
+      // Speed is a primary flanker trait: fast riders must not be spent as
+      // frontage while slower warriors become surplus.
+      score += effMax(extra, ctx.formations) * 8;
       score -= hexDistance(extra.hex, target.hex) * 2;
       if (stance === 'aggressive') score += 10;
     }
+    // Keep a surplus pair on one end when possible; adjacent flankers are less
+    // isolated and can support each other.
+    if (extras.length > 1 && seenSide.size === 1) score += 8;
 
     // A small random jitter makes near-equal plans vary. The executed plan is
     // logged, so undo/redo remains consistent regardless of the roll.
