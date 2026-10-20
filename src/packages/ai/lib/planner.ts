@@ -796,16 +796,25 @@ function sideHexes(target: Unit, side: 'left' | 'right', arc: 'flank' | 'rear'):
 }
 
 /** Approach lane for a battle role. Structure/reserve keep their own lane. */
-function roleLaneHex(role: AiBattleRole, target: Unit | null, mover: Unit): Hex | null {
+function roleLaneHex(
+  role: AiBattleRole,
+  target: Unit | null,
+  mover: Unit,
+  locked = true,
+): Hex | null {
   if (!target) return null;
   if (role.kind === 'frontage') return assignedLaneHex(target, mover);
-  if (role.kind === 'flank') {
-    const sides = sideHexes(target, role.side, 'flank');
-    return sides.length > 0 ? sides.sort((a, b) => hexDistance(mover.hex, a) - hexDistance(mover.hex, b))[0] : assignedLaneHex(target, mover);
-  }
-  if (role.kind === 'rear') {
-    const sides = sideHexes(target, role.side, 'rear');
-    return sides.length > 0 ? sides.sort((a, b) => hexDistance(mover.hex, a) - hexDistance(mover.hex, b))[0] : assignedLaneHex(target, mover);
+  if (role.kind === 'flank' || role.kind === 'rear') {
+    const sides = sideHexes(target, role.side, role.kind === 'rear' ? 'rear' : 'flank');
+    const final = sides.length > 0
+      ? sides.sort((a, b) => hexDistance(mover.hex, a) - hexDistance(mover.hex, b))[0]
+      : assignedLaneHex(target, mover);
+    if (locked) return final;
+    // Stage one ring outside the final arc until the frontage locks the target:
+    // the flanker must not enter the enemy ZoC early.
+    const dq = final.q - target.hex.q;
+    const dr = final.r - target.hex.r;
+    return { q: target.hex.q + dq * 2, r: target.hex.r + dr * 2, s: -(target.hex.q + dq * 2) - (target.hex.r + dr * 2) };
   }
   if (role.kind === 'reserve') {
     const lane = assignedLaneHex(target, mover);
@@ -1674,7 +1683,9 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const weapon = parseWeapons(u.weaponString || '')[u.activeWeaponIndex ?? 0];
       const weaponRange = weapon?.range ?? 1;
       const weaponMaxRange = Math.max(weaponRange, weapon?.maxRange ?? weaponRange);
-      const lane = roleLaneHex(role ?? { kind: 'frontage', targetId: '' }, assignedTarget, u);
+      const lockedNow = targetIsLocked(assignedTargetId);
+      const unlockedFlank = (role?.kind === 'flank' || role?.kind === 'rear') && !lockedNow;
+      const lane = roleLaneHex(role ?? { kind: 'frontage', targetId: '' }, assignedTarget, u, lockedNow);
       const tuning: DestTuning = {
         advanced,
         working,
@@ -1696,9 +1707,14 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const scorer = doctrine === 'ranged'
         ? (d: Hex, foes: Unit[], threat: Set<string>, facing: number, canAttack: boolean) => rangedDestScore(d, foes, threat, weaponRange, weaponMaxRange, facing, canAttack, tuning)
         : (d: Hex, foes: Unit[], threat: Set<string>, facing: number, canAttack: boolean) => meleeDestScore(d, foes, threat, facing, canAttack, tuning);
-      const options = maneuverOptions(
+      let options = maneuverOptions(
         u, enemiesAlive, ctx, movement, maxTurnCount, cap, scorer, speedCap,
       );
+      // An unlocked flanker stages outside enemy melee reach; it must not let
+      // the enemy ZoC-lock it before the frontage engages.
+      if (unlockedFlank) {
+        options = options.filter(o => nearestEnemyDist(o.move.to, enemiesAlive) > 1);
+      }
       if (options.length === 0) break;
       // Strict turn rule: a rotation is only allowed when no 0-turn option
       // reaches an attack/charge. It never buys lane/cohesion/line bearing.

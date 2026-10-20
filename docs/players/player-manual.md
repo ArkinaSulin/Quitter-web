@@ -1317,8 +1317,9 @@ turn; the GM still owns the settings). Inside the AI tab, the
 **Aggressive / Defensive** stance switch applies to the next Preview (default
 Aggressive; Defensive sticks closer together and protects flanks first).
 Aggressive uses surplus units to flank or attack from the rear (rear attacks
-skip AGR and put extra rout pressure); flankers wait for the frontage to lock a
-target. Defensive surplus holds second rank and patches rout holes. Ranged-only
+skip AGR and put extra rout pressure); flankers stage outside enemy ZoC and
+wait for the frontage to lock a target before closing. Defensive surplus holds
+second rank and patches rout holes. Ranged-only
 units stand off, avoid contact, and use only leftover actions for reaction fire.
 Structure defenders hold their structure in either stance unless routed. Drag
 teams into the *AI control box*; eligible units (of the team

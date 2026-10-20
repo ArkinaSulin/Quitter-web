@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## AI flanker staging outside enemy ZoC (2026-10-19)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- Unlocked flank/rear units now use a **staging lane two rings outside** the
+  final flank/rear arc instead of walking onto the target's adjacent hex.
+- Adjacent enemy/ZoC destinations are discarded while the target is not
+  melee-locked, so a flanker cannot be ZoC-locked before the frontage engages.
+- Once the target is locked, the role switches to the final flank/rear lane and
+  may attack. Spare MP swings wider around the end rather than drifting to the
+  front.
+- Regression: goblin frontage + wolf riders where the frontage is not yet locked;
+  both riders stage at distance >1 from every enemy and no attack is planned.
+- 48 planner tests; full `npm run check` passes (1122 tests).
+
 ## AI role speed preference: fast surplus flankers (2026-10-19)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
 

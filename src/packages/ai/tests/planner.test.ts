@@ -867,6 +867,36 @@ describe('enemyAI smarter tactics', () => {
     expect(sides[0]).toBe(sides[1]);
   });
 
+  it('unlocked flankers stage outside enemy reach and never block the frontage', () => {
+    const blue = [
+      ['O', -3, 4], ['P', -2, 4], ['G', 0, 2], ['H', 1, 2],
+      ['I', 2, 2], ['J', 3, 2], ['K', 4, 2], ['L', 6, 2],
+    ].map(([id, q, mp]) => mk({
+      id: id as string, team: 'blue', hex: hex(q as number, -8), facing: 3,
+      movementPoints: mp as number, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+    const red = [-4, -3, -2, -1, 0, 1].map((q, i) => mk({
+      id: `r${i}`, team: 'black', hex: hex(q, 0), facing: 0, weaponString: SPEAR,
+    }));
+    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', { advanced: true, stance: 'aggressive' });
+    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const battle = assignBattleRoles(blue, red, ctx, true);
+    const plans = planAiMoves(ctx);
+    rng.mockRestore();
+
+    for (const id of ['O', 'P']) {
+      expect(battle.roles.get(id)?.kind === 'flank' || battle.roles.get(id)?.kind === 'rear').toBe(true);
+      const plan = plans.find(p => p.unitId === id);
+      expect(plan, id).toBeDefined();
+      if (!plan) continue;
+      const moves = plan.steps.filter(s => s.kind === 'move');
+      const last = moves[moves.length - 1];
+      const finalHex = last && last.kind === 'move' ? last.to : blue.find(u => u.id === id)!.hex;
+      expect(Math.min(...red.map(e => dist(finalHex, e.hex))), id).toBeGreaterThan(1);
+      expect(plan.steps.some(s => s.kind === 'attack'), id).toBe(false);
+    }
+  });
+
   it('a standing structure pins its defender; it never voluntarily moves out', () => {
     const template: StructureTemplate = {
       id: 'gate', name: 'Gate', description: '', anchor: 'hex', color: '#000',

@@ -54,14 +54,15 @@ reusable maps. Here's the state:
   (e.g. 4-MP wolf riders over 3-MP warriors) get flank/rear (aggressive) or
   second-rank reserve (defensive) roles, with a same-end pair bonus; near-equal
   plans use `Math.random` (undo/redo preserves the committed plan). Aggressive
-  rear attacks skip AGR and add rout-threat value; flankers wait for a melee
-  lock. Ranged-only units stand off and never enter contact; archer-reaction
+  rear attacks skip AGR and add rout-threat value; flankers stage two rings
+  outside the enemy ZoC until the frontage locks a target, then switch to the
+  final flank/rear lane. Ranged-only units stand off and never enter contact; archer-reaction
   holds score clear LoS/range/arc lanes using only leftover actions. Structure
   defenders hold a standing hex/edge structure in every stance unless routed.
   Advanced frontage/structure/reserve upgrade to the highest available org level
   before contact; flankers attack first and may chain two formation upgrades
   (Scattered → Open → Close) in one action; Scattered turns are free.
-  `npm run check`: tsc, **1121 tests** (47 planner), depcruise, build. No new
+  `npm run check`: tsc, **1122 tests** (48 planner), depcruise, build. No new
   migration for 2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted charges, Round
   4 full coordination, Round 5 full auto-turn; AI still ignores ZoC
   scatter/pursue, flight, and some elevation nuances. See
