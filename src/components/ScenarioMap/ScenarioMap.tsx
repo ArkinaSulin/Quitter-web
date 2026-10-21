@@ -1956,15 +1956,72 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     console.info('[RoutFlow] begin', routed.unitName, path.dest ? 'move' : 'none');
     try {
       const cur = unitsRef.current;
-      const live = cur.find(u => u.id === routed.id);
-      if (!live || live.isDeleted) { console.warn('[RoutFlow] unit gone', routed.id); return; }
-      const vacated = { ...live.hex };
-      const didMove = !!path.dest;
+      const start = cur.find(u => u.id === routed.id);
+      if (!start || start.isDeleted) { console.warn('[RoutFlow] unit gone', routed.id); return; }
+      const vacated = { ...start.hex };
+      const sim = cur.map(u => ({ ...u }));
+      let live = sim.find(u => u.id === routed.id)!;
 
-      if (didMove) {
-        const dest = path.dest!;
-        if (path.through.length > 0) {
-          const names = path.through.map(id => cur.find(u => u.id === id)?.unitName ?? 'a friendly unit').join(', ');
+      const throughAll: string[] = [];
+      let finalDest: Hex | null = null;
+      let blockedReason = path.reason;
+
+      // Re-evaluate after every hop. The pure path may pass through friendlies to
+      // reach an empty hex, but if a new empty opens up after one push-through we
+      // stop there instead of executing the old precomputed tail.
+      for (let hop = 0; hop < 64; hop++) {
+        let stepPath: RoutPath;
+        try {
+          stepPath = routRetreatPath({
+            routed: live,
+            units: sim,
+            alliances,
+            formationsMap,
+            structures,
+            templates: structureTemplates,
+            attacker,
+            attackerFrom: null,
+            gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
+          });
+        } catch (err) {
+          console.error('[RoutFlow] step error:', err);
+          break;
+        }
+        blockedReason = stepPath.reason ?? blockedReason;
+        if (!stepPath.dest) break;
+        if (stepPath.through.length === 0) {
+          finalDest = stepPath.dest;
+          break;
+        }
+        const hopHex = stepPath.path[0];
+        const throughId = stepPath.through[0];
+        if (!hopHex || !throughId) break;
+        const through = sim.find(u => u.id === throughId);
+        const subSteps: SubStep[] = [{
+          type: 'MOVE',
+          description: `${live.unitName} routs through ${through?.unitName ?? 'a friendly unit'}`,
+          unitId: live.id,
+          changes: [{ field: 'hex', from: live.hex, to: hopHex }],
+        }];
+        if (through && stepPath.scatters.includes(throughId)) {
+          subSteps.push({
+            type: 'FORMATION',
+            description: `${through.unitName} disrupted by the rout — Scattered`,
+            unitId: through.id,
+            changes: [{ field: 'currentFormation', from: through.currentFormation, to: 'Scattered' }],
+          });
+          through.currentFormation = 'Scattered';
+        }
+        await execute('MOVE', subSteps, `${live.unitName} routs!`, { chained: true });
+        live.hex = hopHex;
+        throughAll.push(throughId);
+      }
+
+      const didMove = !!finalDest || throughAll.length > 0;
+      if (finalDest) {
+        const dest = finalDest;
+        if (throughAll.length > 0) {
+          const names = throughAll.map(id => cur.find(u => u.id === id)?.unitName ?? 'a friendly unit').join(', ');
           addMessage(`${live.unitName} routs through ${names} to (${dest.q}, ${dest.r}).`);
         }
         const subSteps: SubStep[] = [{
@@ -1973,17 +2030,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           unitId: live.id,
           changes: [{ field: 'hex', from: live.hex, to: dest }],
         }];
-        // Every Open Order friendly pushed through is disrupted to Scattered.
-        for (const id of path.scatters) {
-          const u = cur.find(x => x.id === id);
-          if (!u) continue;
-          subSteps.push({
-            type: 'FORMATION',
-            description: `${u.unitName} disrupted by the rout — Scattered`,
-            unitId: u.id,
-            changes: [{ field: 'currentFormation', from: u.currentFormation, to: 'Scattered' }],
-          });
-        }
         const hero = findAttachedHero(live, cur);
         if (hero) {
           if (heroChoice === 'stay') {
@@ -1993,9 +2039,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }
         }
         await execute('MOVE', subSteps, `${live.unitName} routs!`, { chained: true });
+        live.hex = dest;
         addMessage(`${live.unitName} routed to (${dest.q}, ${dest.r})`);
       } else {
-        addMessage(`${live.unitName} has nowhere to retreat: ${path.reason ?? 'no legal hex'}. It stands, routed.`);
+        addMessage(`${live.unitName} has nowhere to retreat: ${blockedReason ?? 'no legal hex'}. It stands, routed.`);
         addMessage(`${live.unitName} cannot move — it will face a FREE pursue attack if an enemy is in reach.`);
       }
 
@@ -2004,10 +2051,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // the friendly that let it pass; the roll preference prefers `attacker`.
       // A router with no legal retreat (`!didMove`) is CORNERED — every eligible
       // ZoC unit strikes it in place.
-      await performPursuits(live, vacated, didMove ? path.dest! : vacated, {
+      await performPursuits(live, vacated, didMove ? live.hex : vacated, {
         attacker: attacker ?? null,
         cornered: !didMove,
-        throughUnitId: path.through[0] ?? undefined,
+        throughUnitId: throughAll[0] ?? undefined,
         deferRouting: true,
       });
     } finally {

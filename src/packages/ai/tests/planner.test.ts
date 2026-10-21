@@ -16,6 +16,7 @@ import {
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { StructureTemplate } from '@/types/structure';
+import { arcOfTarget } from '@/packages/primitives';
 
 const SPEAR = 'Spear,3,1d8,false,1,1,0,true,false,false,false,1,true,Dex,circle';
 const SHORTBOW = 'Shortbow,2,1d6,false,2,3,0,false,true,true,false,1,true,Dex,circle';
@@ -894,6 +895,12 @@ describe('enemyAI smarter tactics', () => {
       const finalHex = last && last.kind === 'move' ? last.to : blue.find(u => u.id === id)!.hex;
       expect(Math.min(...red.map(e => dist(finalHex, e.hex))), id).toBeGreaterThan(1);
       expect(plan.steps.some(s => s.kind === 'attack'), id).toBe(false);
+      const finalFacing = plan.steps.reduce(
+        (f, s) => s.kind === 'turn' ? (s.dir === 'left' ? (f + 5) % 6 : (f + 1) % 6) : f,
+        blue.find(u => u.id === id)!.facing,
+      );
+      const nearest = red.slice().sort((a, b) => dist(finalHex, a.hex) - dist(finalHex, b.hex))[0];
+      expect(arcOfTarget(finalHex, finalFacing, nearest.hex), id).toBe('front');
     }
   });
 

@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## AI rout re-evaluation and staged facing (2026-10-19)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md, docs/players/player-manual.md, AGENTS.md
+
+- Rout execution now re-evaluates `routRetreatPath` after every pushed-through
+  friendly and stops at the first empty safe hex, instead of executing a stale
+  multi-hop tail. `routRetreatPath` priority order is unchanged
+  (away → away flank → pass-through → hostile-side flank empty last).
+- Routed AI movement now maximises distance from the hostile **mass** first;
+  nearest-hostile distance is only a secondary tie-break.
+- Unlocked flankers stage two rings outside the target, then use spare MP to
+  face the enemy line so they are not caught side-on.
+- Tests: staged riders end facing the nearest enemy; 48 planner tests; full
+  `npm run check` passes (1122 tests).
+
 ## AI flanker staging outside enemy ZoC (2026-10-19)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 

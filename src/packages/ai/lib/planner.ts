@@ -37,7 +37,7 @@
 import { Unit, Hex, AllianceGroup, Formation, GroundEffect, hexDistance } from '@/types/gameProtocol';
 import { parseWeapons, isAreaWeapon } from '@/packages/units';
 import { isUnitRouted, calcIsolation, computeThreatRating } from '@/packages/morale';
-import { rotateLeft, rotateRight, HEX_DIRS } from '@/packages/primitives';
+import { rotateLeft, rotateRight, HEX_DIRS, facingToward } from '@/packages/primitives';
 import { allianceOf as teamAllianceOf } from '@/packages/primitives';
 import { isProtectedHero } from '@/packages/units';
 import { arcsContain, beAttackedModifier, isLooseUnit } from '@/packages/movement';
@@ -810,8 +810,22 @@ function roleLaneHex(
       ? sides.sort((a, b) => hexDistance(mover.hex, a) - hexDistance(mover.hex, b))[0]
       : assignedLaneHex(target, mover);
     if (locked) return final;
-    // Stage one ring outside the final arc until the frontage locks the target:
-    // the flanker must not enter the enemy ZoC early.
+    // Stage two rings outside the target until the frontage locks: the flanker
+    // must not enter the enemy ZoC early. Pick the ring-2 hex on the correct
+    // side closest to the mover so it can keep a little MP for facing.
+    const ring2 = new Map<string, Hex>();
+    for (const a of adjacentHexes(target.hex)) {
+      for (const b of adjacentHexes(a)) {
+        if (hexDistance(target.hex, b) !== 2) continue;
+        if (role.side === 'left' ? b.q >= target.hex.q : b.q <= target.hex.q) continue;
+        ring2.set(`${b.q},${b.r}`, b);
+      }
+    }
+    const candidates = Array.from(ring2.values());
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => hexDistance(mover.hex, a) - hexDistance(mover.hex, b));
+      return candidates[0];
+    }
     const dq = final.q - target.hex.q;
     const dr = final.r - target.hex.r;
     return { q: target.hex.q + dq * 2, r: target.hex.r + dr * 2, s: -(target.hex.q + dq * 2) - (target.hex.r + dr * 2) };
@@ -1278,6 +1292,8 @@ function chooseFleeHex(
     undefined, movement.passThrough, movement.org, !!ctx.reactiveArchery,
   );
   const startDist = nearestEnemyDist(u.hex, foes);
+  const distanceSum = (hex: Hex) => foes.reduce((n, e) => n + hexDistance(hex, e.hex), 0);
+  const startMass = distanceSum(u.hex);
   const candidates: PlannedMoveOption[] = [];
   reach.forEach((entry, key) => {
     if (entry.needsTurn) return;
@@ -1285,9 +1301,13 @@ function chooseFleeHex(
     if (!dest) return;
     if (gridRadius !== undefined && ring(dest) > gridRadius) return; // never flee off the board
     const d = nearestEnemyDist(dest, foes);
-    if (d <= startDist) return; // only strictly safer hexes
+    const mass = distanceSum(dest);
+    // Furthest from the enemy MASS beats a slightly better nearest-hostile
+    // distance. Only require that the move does not get closer overall.
+    if (mass < startMass) return;
+    if (mass === startMass && d <= startDist) return;
     const threatPenalty = movement.threat.has(key) ? 4 : 0;
-    const score = d * 10 - threatPenalty - entry.cost;
+    const score = mass * 10 + d * 2 - threatPenalty - entry.cost;
     candidates.push({ to: dest, path: entry.path, cost: entry.cost, score, canAttack: false, attackScore: 0 });
   });
   if (candidates.length === 0) return null;
@@ -1372,6 +1392,22 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
     for (const f of working) {
       if (f.id === target.id || f.isDeleted || f.hidden || (f.currentUnitHp ?? 0) <= 0) continue;
       if (allianceOf(f, ctx.alliances) !== ctx.activeAlliance) continue;
+      if (hexDistance(f.hex, target.hex) <= 1) return true;
+    }
+    return false;
+  };
+
+  /** Lock used for flanker staging: only frontage/structure units count. The
+   *  flanker itself ending adjacent must not make it think the frontage engaged. */
+  const targetLockedByFrontage = (targetId: string | null): boolean => {
+    if (!targetId) return false;
+    const target = working.find(e => e.id === targetId);
+    if (!target) return false;
+    for (const f of working) {
+      if (f.id === target.id || f.isDeleted || f.hidden || (f.currentUnitHp ?? 0) <= 0) continue;
+      if (allianceOf(f, ctx.alliances) !== ctx.activeAlliance) continue;
+      const roleOfF = battle.roles.get(f.id);
+      if (!battle.frontageIds.has(f.id) && roleOfF?.kind !== 'structure') continue;
       if (hexDistance(f.hex, target.hex) <= 1) return true;
     }
     return false;
@@ -1683,7 +1719,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const weapon = parseWeapons(u.weaponString || '')[u.activeWeaponIndex ?? 0];
       const weaponRange = weapon?.range ?? 1;
       const weaponMaxRange = Math.max(weaponRange, weapon?.maxRange ?? weaponRange);
-      const lockedNow = targetIsLocked(assignedTargetId);
+      const lockedNow = targetLockedByFrontage(assignedTargetId);
       const unlockedFlank = (role?.kind === 'flank' || role?.kind === 'rear') && !lockedNow;
       const lane = roleLaneHex(role ?? { kind: 'frontage', targetId: '' }, assignedTarget, u, lockedNow);
       const tuning: DestTuning = {
@@ -1784,6 +1820,45 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       u = updated;
       plan.steps.push({ kind: 'move', unitId: u.id, from, to: best.move.to, path: best.move.path, cost: best.move.cost });
     }
+
+    // Flankers that are still staging should end facing the enemy line so an
+    // interception does not catch them side-on. This is a defensive facing turn,
+    // not a new attack; it uses leftover budget only.
+    if (
+      !hasAttacked
+      && (role?.kind === 'flank' || role?.kind === 'rear')
+      && !targetLockedByFrontage(assignedTargetId)
+      && plan.steps.some(s => s.kind === 'move')
+      && !plan.steps.some(s => s.kind === 'attack')
+    ) {
+      const goal = enemies
+        .filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0)
+        .sort((a, b) => hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex) || a.id.localeCompare(b.id))[0]
+        ?? assignedTarget;
+      if (goal) {
+        const desired = facingToward(u.hex, goal.hex);
+        let diff = (desired - u.facing + 6) % 6;
+        if (diff > 3) diff -= 6;
+        const dir: 'left' | 'right' = diff > 0 ? 'right' : 'left';
+        for (let i = 0; i < Math.abs(diff); i++) {
+          if (!freeTurn(u, ctx.formations) && !canPayMp(u, 1)) break;
+          if (freeTurn(u, ctx.formations)) {
+            u = { ...u, facing: dir === 'left' ? rotateLeft(u.facing) : rotateRight(u.facing) };
+          } else {
+            const { movementPointsAvailable, actionsAvailable } = applyMpSpend(u, 1, effMax(u, ctx.formations));
+            u = {
+              ...u,
+              facing: dir === 'left' ? rotateLeft(u.facing) : rotateRight(u.facing),
+              movementPointsAvailable,
+              actionsAvailable,
+            };
+          }
+          commit(u, u, u.id);
+          plan.steps.push({ kind: 'turn', unitId: u.id, from: u.hex, dir });
+        }
+      }
+    }
+
     if (plan.steps.length > 0) plans.push(plan);
   }
   return plans;

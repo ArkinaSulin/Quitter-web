@@ -55,8 +55,10 @@ reusable maps. Here's the state:
   second-rank reserve (defensive) roles, with a same-end pair bonus; near-equal
   plans use `Math.random` (undo/redo preserves the committed plan). Aggressive
   rear attacks skip AGR and add rout-threat value; flankers stage two rings
-  outside the enemy ZoC until the frontage locks a target, then switch to the
-  final flank/rear lane. Ranged-only units stand off and never enter contact; archer-reaction
+  outside the enemy ZoC, face the enemy line, and wait for the frontage lock
+  before switching to the final flank/rear lane. Rout paths re-evaluate after
+  each pushed-through friendly and rout movement maximises hostile-mass
+  distance. Ranged-only units stand off and never enter contact; archer-reaction
   holds score clear LoS/range/arc lanes using only leftover actions. Structure
   defenders hold a standing hex/edge structure in every stance unless routed.
   Advanced frontage/structure/reserve upgrade to the highest available org level

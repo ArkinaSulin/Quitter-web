@@ -159,9 +159,9 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   **melee-locked** by a friendly, never take a redundant front attack, and never
   front-charge. They may rotate only when it enables a flank/rear attack.
   While unlocked they stage **two rings outside** the target's flank/rear arc;
-  adjacent enemy/ZoC destinations are discarded, and spare MP is used to swing
-  wider around the end while staying connected. Once the target is locked they
-  switch to the final flank/rear lane and may attack.
+  adjacent enemy/ZoC destinations are discarded, and spare MP is used to face
+  the enemy line and swing wider around the end while staying connected. Once
+  the target is locked they switch to the final flank/rear lane and may attack.
 - **Defensive surplus**: defaults to **second rank / reserve**, connected to the
   line; it can patch a routing hole. A connected flank is taken only when safe.
 - **Ranged support**: ranged-only units are excluded from frontage/flank roles.
@@ -247,8 +247,11 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   raises a soft-enforcement prompt. If a planned step still becomes unaffordable
   at execution (e.g. a reaction changed the live state), the executor reports it
   once and drops that unit's remaining steps instead of running a stale sequence.
-- Routed units instead **flee**: each step picks the reachable hex strictly
-  farthest from the nearest hostile (enemy kill-zone landings penalized), for
+- Routed units instead **flee**: each step maximises distance from the hostile
+  **mass** first (enemy kill-zone landings penalized), with nearest-hostile
+  distance as a secondary tie-break. A rout path is re-evaluated after every
+  pushed-through friendly, so it stops at the first empty safe hex instead of
+  executing a stale tail. They flee for
   as many actions as they have — they never attack. The run **stops at the
   map's outer rim** (`gridRadius` in the plan context): a routed unit never
   moves beyond the drawn grid, and one already at/outside the rim (e.g. after
