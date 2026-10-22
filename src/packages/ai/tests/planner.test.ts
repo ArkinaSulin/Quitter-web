@@ -868,6 +868,34 @@ describe('enemyAI smarter tactics', () => {
     expect(sides[0]).toBe(sides[1]);
   });
 
+  it('second-rank enemies do not consume frontage slots', () => {
+    const blue = [
+      ['O', -3, 4], ['P', -2, 4], ['G', 0, 3], ['H', 1, 3],
+      ['I', 2, 3], ['J', 3, 3], ['K', 4, 3], ['L', 6, 3],
+    ].map(([id, q, mp]) => mk({
+      id: id as string, team: 'blue', hex: hex(q as number, -8), facing: 3,
+      movementPoints: mp as number, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+    const front = [-4, -3, -2, -1, 0, 1].map((q, i) => mk({
+      id: `F${i}`, team: 'black', hex: hex(q, 0), facing: 0, weaponString: SPEAR,
+    }));
+    const reserve = [-3, -2].map((q, i) => mk({
+      id: `Q${i}`, team: 'black', hex: hex(q, 2), facing: 0, weaponString: SPEAR,
+    }));
+    const ctx = ctxOf([...blue, ...front, ...reserve], ['blue'], 'enemy', { advanced: true, stance: 'aggressive' });
+    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const battle = assignBattleRoles(blue, [...front, ...reserve], ctx, true);
+    rng.mockRestore();
+
+    expect(Array.from(battle.frontageIds).sort()).toEqual(['G', 'H', 'I', 'J', 'K', 'L']);
+    const extras = blue.filter(u => !battle.frontageIds.has(u.id));
+    expect(extras.map(u => u.id).sort()).toEqual(['O', 'P']);
+    for (const id of Array.from(battle.frontageIds)) {
+      const role = battle.roles.get(id);
+      expect(role && 'targetId' in role ? role.targetId.startsWith('Q') : true, id).toBe(false);
+    }
+  });
+
   it('unlocked flankers stage outside enemy reach and never block the frontage', () => {
     const blue = [
       ['O', -3, 4], ['P', -2, 4], ['G', 0, 2], ['H', 1, 2],

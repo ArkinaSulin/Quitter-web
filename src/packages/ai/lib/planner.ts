@@ -256,9 +256,20 @@ export function assignBattleRoles(
 ): BattleAssignment {
   const roles = new Map<string, AiBattleRole>();
   const frontageIds = new Set<string>();
-  const foes = enemies
+  const allFoes = enemies
     .filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0 && !isProtectedHero(e))
     .sort(frontageSort);
+  // Pair only the enemies in the forward band. A second-rank reserve does not
+  // consume a frontage slot (and must not hide a real surplus/flanker).
+  let foes = allFoes;
+  if (allFoes.length > 1 && units.length > 0) {
+    const nearestToOwn = allFoes.map(e =>
+      Math.min(...units.map(u => hexDistance(e.hex, u.hex))),
+    );
+    const closest = Math.min(...nearestToOwn);
+    const front = allFoes.filter((_, i) => nearestToOwn[i] <= closest + 1);
+    if (front.length > 0) foes = front;
+  }
   const stance = ctx.stance ?? 'aggressive';
 
   for (const u of units) {

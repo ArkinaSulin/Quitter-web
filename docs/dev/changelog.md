@@ -1,5 +1,17 @@
 # QuiTTER Changelog
 
+## AI front-line-only pairing (2026-10-19)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md, AGENTS.md
+
+- `assignBattleRoles` now filters pairing to the enemy **forward band**
+  (`distance <= nearest + 1`). Second-rank reserves (e.g. Q/R behind A–F) do not
+  consume frontage slots, so a real surplus (O/P wolf riders) is detected and
+  assigned to flank/rear instead of being pulled into the frontage.
+- Reserves remain visible/valid targets; only the pairing/surplus count changes.
+- Regression: yellow A–F front + Q/R reserve vs red G–L + O/P; frontage is G–L,
+  extras O/P, no frontage target on Q/R. 50 planner tests; full `npm run check`
+  passes (1124 tests).
+
 ## AI flanker safety and reserve interception (2026-10-19)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md, docs/players/player-manual.md, AGENTS.md
 

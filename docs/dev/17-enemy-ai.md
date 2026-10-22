@@ -142,10 +142,13 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   from the **initial** positions for the whole plan, not the mutating working
   state. A fast unit cannot escape the cap once the slow members move, and the
   line stays together.
-- **Battle roles (both brains)**: `assignBattleRoles` generates candidate
-  contiguous frontage windows of `enemies.length` units and scores each by
+- **Battle roles (both brains)**: `assignBattleRoles` first keeps only the
+  **forward band** of enemies (distance <= nearest + 1 ring); second-rank
+  reserves do not consume frontage slots. It then generates candidate
+  contiguous frontage windows of that front-line count and scores each by
   coverage, connection/isolation, flank/rear reach, extra movement speed, own
-  exposure, and stance. The window may shift left/right, so the whole line can
+  exposure, and stance. Reserves remain valid targets but do not affect the
+  pairing/surplus count. The window may shift left/right, so the whole line can
   cover one end while two adjacent surplus units flank the other. Surplus units
   strongly prefer fast troops for flanking (e.g. 4-MP wolf riders over 3-MP
   warriors), and a surplus pair stays on the same end when possible to reduce

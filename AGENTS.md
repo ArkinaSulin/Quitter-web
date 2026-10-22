@@ -50,7 +50,8 @@ reusable maps. Here's the state:
   checks use real `applyMoveCost` accounting, and the defensive cluster cap is
   measured from the initial plan snapshot so a fast member cannot escape it. The
   executor drops a unit's remaining steps if a turn becomes unaffordable.
-  **Battle roles**: candidate frontage windows can shift; fast surplus units
+  **Battle roles**: front-line-only pairing (enemy reserves one ring behind do
+  not consume frontage slots), candidate windows can shift; fast surplus units
   (e.g. 4-MP wolf riders over 3-MP warriors) get flank/rear (aggressive) or
   second-rank reserve (defensive) roles, with a same-end pair bonus; near-equal
   plans use `Math.random` (undo/redo preserves the committed plan). Aggressive
@@ -66,7 +67,7 @@ reusable maps. Here's the state:
   Advanced frontage/structure/reserve upgrade to the highest available org level
   before contact; flankers attack first and may chain two formation upgrades
   (Scattered → Open → Close) in one action; Scattered turns are free.
-  `npm run check`: tsc, **1123 tests** (49 planner), depcruise, build. No new
+  `npm run check`: tsc, **1124 tests** (50 planner), depcruise, build. No new
   migration for 2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted charges, Round
   4 full coordination, Round 5 full auto-turn; AI still ignores ZoC
   scatter/pursue, flight, and some elevation nuances. See

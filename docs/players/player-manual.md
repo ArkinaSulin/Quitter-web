@@ -1317,8 +1317,9 @@ turn; the GM still owns the settings). Inside the AI tab, the
 **Aggressive / Defensive** stance switch applies to the next Preview (default
 Aggressive; Defensive sticks closer together and protects flanks first).
 Aggressive uses surplus units to flank or attack from the rear (rear attacks
-skip AGR and put extra rout pressure); flankers stage outside enemy ZoC, never
-closer than the main body, face the enemy line, and wait for the frontage to
+skip AGR and put extra rout pressure); pairing counts only the enemy forward
+band, so a second-rank reserve does not hide a real flanker. Flankers stage
+outside enemy ZoC, never closer than the main body, face the enemy line, and wait for the frontage to
 lock a target before closing. Defensive surplus holds second rank, patches rout
 holes, and intercepts an approaching enemy flanker after facing it. Rout paths are
 re-evaluated after each pushed-through friendly and prefer the first empty safe
