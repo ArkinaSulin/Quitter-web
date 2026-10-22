@@ -1324,8 +1324,9 @@ start of the turn, circle at least three hexes out, and close only when they can
 strike a flank or rear; they never get ahead of the main body or front-charge.
 Defensive melee units turn once to face an adjacent flank/rear threat before
 attacking, even if that costs the attack, so they do not oscillate. If the front
-lines match exactly and there is no rear reserve, one end unit is kept back and
-moves to the reserve station instead of waiting on the flank. Defensive surplus
+lines match exactly and the line is engaged, every spare not in an enemy ZoC is
+kept back and moves to a reserve station instead of waiting on the flank. If no
+leading unit is engaged, the line advances normally. Defensive surplus
 holds the rear
 rank at a central
 station about two hexes behind the line, may wait Scattered for a fast reaction,

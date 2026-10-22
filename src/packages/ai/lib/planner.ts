@@ -305,13 +305,16 @@ export function assignBattleRoles(
 
   // Defensive doctrine keeps the rear rank as reserves; only the leading rank
   // can become frontage, even when the hostile forward band is larger. When the
-  // front rank exactly matches the enemy front and no rear-rank reserve exists,
-  // one end unit is kept back as a reserve instead of waiting unused on the end.
+  // leading rank exactly matches the enemy front line and the line is engaged,
+  // every leading unit not in an enemy ZoC is kept back as a reserve. Frontage
+  // covers the line from the left; the rightmost spares become the reserves.
   const frontPool = stance === 'defensive' ? leadingRank(melee, foes) : melee;
   const rearRankExists = stance === 'defensive' && melee.length > frontPool.length;
   let count = Math.min(frontPool.length, foes.length);
   if (stance === 'defensive' && !rearRankExists && frontPool.length > 1 && frontPool.length === foes.length) {
-    count = frontPool.length - 1;
+    const engaged = frontPool.filter(u =>
+      allFoes.some(e => hexDistance(u.hex, e.hex) <= 1)).length;
+    if (engaged > 0) count = Math.max(1, Math.min(engaged, foes.length));
   }
   let best: { score: number; roles: Map<string, AiBattleRole>; frontageIds: Set<string> } | null = null;
 

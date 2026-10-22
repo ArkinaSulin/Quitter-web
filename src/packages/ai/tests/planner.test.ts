@@ -1142,10 +1142,10 @@ describe('enemyAI anti-idle and defensive facing', () => {
 
   it('pushes an end unit into reserve when the front lines match', () => {
     const blue = [-2, -1, 0, 1, 2, 3].map((q, i) => mk({
-      id: `b${i}`, team: 'blue', hex: hex(q, -2), facing: 3,
+      id: `b${i}`, team: 'blue', hex: hex(q, -1), facing: 3,
       movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
     }));
-    const red = [-2, -1, 0, 1, 2, 3].map((q, i) => mk({
+    const red = [-4, -3, -2, -1, 0, 1].map((q, i) => mk({
       id: `r${i}`, team: 'black', hex: hex(q, 0), facing: 0, weaponString: SPEAR,
     }));
     const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', {

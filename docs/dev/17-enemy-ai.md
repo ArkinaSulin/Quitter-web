@@ -196,11 +196,13 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   the new facing. This facing decision is made **once per activation** to avoid
   oscillating between two flank threats.
 - **Defensive surplus (reserve)**: defaults to the **rear rank**, anchored to the
-  nearest front-line unit. If the leading rank exactly matches the enemy front
-  line and there is no rear-rank reserve, one **end unit is kept back** as a
-  reserve instead of waiting unused on the end; frontage covers the enemy line
-  from the left and the rightmost spare becomes the reserve. The reserve moves to
-  its central station rather than holding on the end. It holds a **central
+  nearest front-line unit. When the leading rank exactly matches the enemy front
+  line **and the line is engaged**, every leading unit not in an enemy ZoC is
+  kept back as a reserve. Frontage covers the line from the left using the
+  engaged count; the rightmost spare(s) become reserves and move to their
+  central stations instead of waiting on the ends. If no leading unit is engaged,
+  the line advances normally and no rotation is applied. The reserves move to
+  their central stations rather than holding on the ends. They hold a **central
   second-rank station about two hexes behind the line**, staggered deeper for
   extra reserves to avoid congestion. A very long line is split into contiguous
   sectors, one reserve group per reachable section (a single group for a short

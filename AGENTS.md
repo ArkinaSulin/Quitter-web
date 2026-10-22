@@ -66,8 +66,10 @@ reusable maps. Here's the state:
   not get ahead of the main body. Defensive reserves hold a **central station ~2
   hexes behind the line** (staggered, and split into sector groups on a very long
   line), optionally in **Scattered** while uncommitted. When the leading rank
-  exactly matches the enemy front and no rear reserve exists, one end unit is
-  kept back as a reserve and moves to its station instead of waiting on the end.
+  exactly matches the enemy front and the line is engaged, every leading unit
+  not in an enemy ZoC is kept back as a reserve; frontage covers from the left
+  and the rightmost spare(s) move to their stations instead of waiting on the
+  ends. With no engaged leading unit the line advances normally.
   They react to the whole
   line: rear/flank threats in the hostile forward band first, then surplus
   front-line pairings (only when `enemyFront > ownFront + 1`; exactly one

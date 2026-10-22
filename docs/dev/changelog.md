@@ -9,10 +9,11 @@
   a **≥3-hex ring** and circle. This stops wolf riders getting ahead of the main
   body and being melee-locked before the frontage engages.
 - Defensive reserve rotation: when the leading rank exactly matches the enemy
-  front line and no rear-rank reserve exists, one **end unit** is kept back as a
-  reserve. Frontage covers the enemy line from the left; the rightmost spare
-  becomes the reserve and moves to its central station instead of waiting on the
-  end.
+  front line **and the line is engaged**, every leading unit not in an enemy ZoC
+  is kept back as a reserve. Frontage covers the enemy line from the left using
+  the engaged count; the rightmost spare(s) become reserves and move to their
+  central stations instead of waiting on the ends. With no engaged leading unit,
+  the line advances normally and no rotation is applied.
 - Defensive facing is now decided **once per activation**. This stops a unit
   oscillating right/left/right when two adjacent enemies threaten its flanks; it
   faces the most dangerous exposed side, then acts.
