@@ -574,11 +574,11 @@ describe('enemyAI smarter tactics', () => {
       const attack = plan.steps.find(s => s.kind === 'attack');
       const targetId = attack && attack.kind === 'attack' ? attack.targetId : undefined;
       // Frontage keeps its line clean; a surplus flanker may deliberately take
-      // an exposed angle to encircle.
+      // an exposed angle to encircle, and may hold farther back on its ring.
       if (battle.roles.get(unit.id)?.kind === 'frontage') {
         expect(ownExposureAt(finalHex, finalFacing, red, targetId), unit.id).toBe(0);
+        expect(finalHex.r, unit.id).toBeGreaterThanOrEqual(0);
       }
-      expect(finalHex.r, unit.id).toBeGreaterThanOrEqual(0);
     }
   });
 
@@ -927,14 +927,14 @@ describe('enemyAI smarter tactics', () => {
       const moves = plan.steps.filter(s => s.kind === 'move');
       const last = moves[moves.length - 1];
       const finalHex = last && last.kind === 'move' ? last.to : blue.find(u => u.id === id)!.hex;
-      expect(Math.min(...red.map(e => dist(finalHex, e.hex))), id).toBeGreaterThan(1);
+      expect(Math.min(...red.map(e => dist(finalHex, e.hex))), id).toBeGreaterThanOrEqual(3);
       expect(plan.steps.some(s => s.kind === 'attack'), id).toBe(false);
       const finalFacing = plan.steps.reduce(
         (f, s) => s.kind === 'turn' ? (s.dir === 'left' ? (f + 5) % 6 : (f + 1) % 6) : f,
         blue.find(u => u.id === id)!.facing,
       );
       const nearest = red.slice().sort((a, b) => dist(finalHex, a.hex) - dist(finalHex, b.hex))[0];
-      expect(arcOfTarget(finalHex, finalFacing, nearest.hex), id).toBe('front');
+      expect(arcOfTarget(finalHex, finalFacing, nearest.hex), id).not.toBe('rear');
     }
   });
 
@@ -1108,6 +1108,91 @@ describe('defensive reserve line coverage', () => {
     expect(gaps.some(g => g.hexes.some(h => h.q === 0 && h.r === 0))).toBe(true);
     const slot = gaps.find(g => g.key === 'slot:gone');
     expect(slot?.hexes).toContainEqual(hex(0, 2));
+  });
+});
+
+describe('enemyAI anti-idle and defensive facing', () => {
+  function dist(a: Hex, b: Hex): number {
+    return Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(a.s - b.s));
+  }
+  it('turns to face an adjacent flank enemy instead of taking an exposing attack', () => {
+    const defender = mk({
+      id: 'def', team: 'blue', hex: hex(0, 0), facing: 0,
+      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+    });
+    const front = mk({
+      id: 'front', team: 'black', hex: hex(0, -1), facing: 0, weaponString: GREATSWORD,
+    });
+    const flank = mk({
+      id: 'flank', team: 'black', hex: hex(-1, 0), facing: 1, weaponString: SPEAR,
+    });
+    const plan = planAiMoves(ctxOf([defender, front, flank], ['blue'], 'enemy', {
+      advanced: false,
+      stance: 'defensive',
+    })).find(p => p.unitId === 'def');
+    expect(plan, 'defender plan').toBeDefined();
+    const firstAttack = plan!.steps.findIndex(s => s.kind === 'attack');
+    const lastTurn = plan!.steps.reduce((idx, s, i) => s.kind === 'turn' ? i : idx, -1);
+    expect(lastTurn, 'turns to face').toBeGreaterThanOrEqual(0);
+    expect(firstAttack === -1 || lastTurn < firstAttack, 'faces before attacking').toBe(true);
+  });
+
+  it('takes a near-breakeven attack with more than one action instead of holding', () => {
+    const attacker = mk({
+      id: 'a1', team: 'blue', hex: hex(0, 0), facing: 0, weaponString: DAGGER,
+      currentTroopCount: 10, maxTroopCount: 10, currentUnitHp: 100, maxUnitHp: 100,
+      actionsAvailable: 2,
+    });
+    const foe = mk({
+      id: 'd1', team: 'black', hex: hex(0, -1), facing: 3, weaponString: GREATSWORD,
+      currentTroopCount: 7, maxTroopCount: 7, troopHp: 10, currentUnitHp: 70, maxUnitHp: 70,
+    });
+    const forms: Record<string, Formation> = {
+      'Open Order': { ...BASE_FORM, retaliate_arcs: { front: 'full', flank: 'full', rear: 'full' } },
+    };
+    const plan = planAiMoves(ctxWithForms([attacker, foe], ['blue'], 'enemy', forms, {
+      advanced: true,
+      stance: 'aggressive',
+    }))[0];
+    expect(plan?.steps.some(s => s.kind === 'attack')).toBe(true);
+  });
+
+  it('flankers keep circling and close on an engaged enemy instead of queueing', () => {
+    const blue = [
+      ...['O', 'P'].map((id, i) => mk({
+        id, team: 'blue', hex: hex(-3 + i, -1), facing: 3,
+        movementPoints: 4, actionsAvailable: 2, weaponString: SPEAR,
+      })),
+      ...['G', 'H', 'I', 'J', 'K', 'L'].map((id, i) => mk({
+        id, team: 'blue', hex: hex(i, -1), facing: 3,
+        movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+      })),
+    ];
+    const red = ['A', 'B', 'C', 'D', 'E', 'F'].map((id, i) => mk({
+      id, team: 'black', hex: hex(i, 0), facing: 0, weaponString: SPEAR,
+    }));
+    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', {
+      advanced: true,
+      stance: 'aggressive',
+    });
+    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const battle = assignBattleRoles(blue, red, ctx, true);
+    const plans = planAiMoves(ctx);
+    rng.mockRestore();
+
+    for (const id of ['O', 'P']) {
+      expect(battle.roles.get(id)?.kind === 'flank' || battle.roles.get(id)?.kind === 'rear').toBe(true);
+      const unit = blue.find(u => u.id === id)!;
+      const plan = plans.find(p => p.unitId === id);
+      expect(plan?.steps.length ?? 0, id).toBeGreaterThan(0);
+      const moves = plan?.steps.filter(s => s.kind === 'move') ?? [];
+      const last = moves[moves.length - 1];
+      const finalHex = last && last.kind === 'move' ? last.to : unit.hex;
+      const attack = plan?.steps.some(s => s.kind === 'attack') ?? false;
+      const startDist = Math.min(...red.map(e => dist(unit.hex, e.hex)));
+      const endDist = Math.min(...red.map(e => dist(finalHex, e.hex)));
+      expect(attack || endDist < startDist, `${id} circles or closes`).toBe(true);
+    }
   });
 });
 

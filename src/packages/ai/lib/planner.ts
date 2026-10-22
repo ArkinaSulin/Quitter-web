@@ -883,7 +883,13 @@ function roleLaneHex(
     }
     const candidates = Array.from(ring3.values());
     if (candidates.length > 0) {
-      candidates.sort((a, b) => hexDistance(mover.hex, a) - hexDistance(mover.hex, b));
+      const ringRank = (h: Hex): number => {
+        const arc = arcOfTarget(target.hex, target.facing, h);
+        return arc === 'rear' ? 0 : arc === 'flank' ? 1 : 2;
+      };
+      candidates.sort((a, b) =>
+        ringRank(a) - ringRank(b)
+        || hexDistance(mover.hex, a) - hexDistance(mover.hex, b));
       return candidates[0];
     }
     const dq = final.q - target.hex.q;
@@ -915,6 +921,15 @@ const NO_ATTACK_TURN_COST = 10;
 const FORMATION_MARGIN = 8;
 /** Opportunity cost of the formation change, per MP spent. */
 const FORMATION_COST_WEIGHT = 2;
+
+/** Adjacent enemies (excluding `excludeId`) in the unit's flank or rear arc. */
+function adjacentExposedEnemies(unit: Unit, foes: Unit[], excludeId?: string): Unit[] {
+  return foes.filter(e =>
+    e.id !== excludeId
+    && !isUnitRouted(e)
+    && hexDistance(unit.hex, e.hex) <= 1
+    && arcOfTarget(unit.hex, unit.facing, e.hex) !== 'front');
+}
 
 /** Penalty for ending with a live enemy in the mover's flank/rear arc. The
  *  intended melee target is excluded (standing in its flank to strike it is the
@@ -1443,6 +1458,40 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
     if (idx >= 0) working[idx] = updated;
   };
 
+  /** Rotate `unit` toward `toward`, spending free turns or MP/actions, and log
+   *  the turns on `unitPlan`. Stops early if the next turn is unaffordable. */
+  const turnTowardHex = (
+    unit: Unit,
+    toward: Hex,
+    unitPlan: AiUnitPlan,
+  ): { unit: Unit; turned: boolean } => {
+    let u = unit;
+    const desired = facingToward(u.hex, toward);
+    let diff = (desired - u.facing + 6) % 6;
+    if (diff > 3) diff -= 6;
+    const dir: 'left' | 'right' = diff > 0 ? 'right' : 'left';
+    let turned = false;
+    for (let i = 0; i < Math.abs(diff); i++) {
+      if (!freeTurn(u, ctx.formations) && !canPayMp(u, 1)) break;
+      const from = u.hex;
+      if (freeTurn(u, ctx.formations)) {
+        u = { ...u, facing: dir === 'left' ? rotateLeft(u.facing) : rotateRight(u.facing) };
+      } else {
+        const { movementPointsAvailable, actionsAvailable } = applyMpSpend(u, 1, effMax(u, ctx.formations));
+        u = {
+          ...u,
+          facing: dir === 'left' ? rotateLeft(u.facing) : rotateRight(u.facing),
+          movementPointsAvailable,
+          actionsAvailable,
+        };
+      }
+      commit(u, u, u.id);
+      unitPlan.steps.push({ kind: 'turn', unitId: u.id, from, dir });
+      turned = true;
+    }
+    return { unit: u, turned };
+  };
+
   /** A target is melee-locked when any friendly is already adjacent. Structure
    *  defenders can provide that lock too. */
   const targetIsLocked = (targetId: string | null): boolean => {
@@ -1451,6 +1500,20 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
     if (!target) return false;
     for (const f of working) {
       if (f.id === target.id || f.isDeleted || f.hidden || (f.currentUnitHp ?? 0) <= 0) continue;
+      if (allianceOf(f, ctx.alliances) !== ctx.activeAlliance) continue;
+      if (hexDistance(f.hex, target.hex) <= 1) return true;
+    }
+    return false;
+  };
+
+  /** Another friendly (not `excludeId`) is adjacent to the target. */
+  const targetIsLockedByOther = (targetId: string | null, excludeId: string): boolean => {
+    if (!targetId) return false;
+    const target = working.find(e => e.id === targetId);
+    if (!target) return false;
+    for (const f of working) {
+      if (f.id === target.id || f.id === excludeId) continue;
+      if (f.isDeleted || f.hidden || (f.currentUnitHp ?? 0) <= 0) continue;
       if (allianceOf(f, ctx.alliances) !== ctx.activeAlliance) continue;
       if (hexDistance(f.hex, target.hex) <= 1) return true;
     }
@@ -1645,30 +1708,9 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
           }
           if (interceptTarget && !reserveFaced) {
             reserveFaced = true;
-            const pick = interceptTarget;
-            const desired = facingToward(u.hex, pick.hex);
-            let diff = (desired - u.facing + 6) % 6;
-            if (diff > 3) diff -= 6;
-            const dir: 'left' | 'right' = diff > 0 ? 'right' : 'left';
-            let turned = false;
-            for (let i = 0; i < Math.abs(diff); i++) {
-              if (!freeTurn(u, ctx.formations) && !canPayMp(u, 1)) break;
-              if (freeTurn(u, ctx.formations)) {
-                u = { ...u, facing: dir === 'left' ? rotateLeft(u.facing) : rotateRight(u.facing) };
-              } else {
-                const { movementPointsAvailable, actionsAvailable } = applyMpSpend(u, 1, effMax(u, ctx.formations));
-                u = {
-                  ...u,
-                  facing: dir === 'left' ? rotateLeft(u.facing) : rotateRight(u.facing),
-                  movementPointsAvailable,
-                  actionsAvailable,
-                };
-              }
-              commit(u, u, u.id);
-              plan.steps.push({ kind: 'turn', unitId: u.id, from: u.hex, dir });
-              turned = true;
-            }
-            if (turned) continue;
+            const faced = turnTowardHex(u, interceptTarget.hex, plan);
+            u = faced.unit;
+            if (faced.turned) continue;
           }
         }
       }
@@ -1676,6 +1718,27 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const reserveHolding = role?.kind === 'reserve' && stance === 'defensive'
         && !interceptTarget && !patchHex
         && nearestEnemyDist(u.hex, enemiesAlive) > 1;
+      const flankRoleEarly = role?.kind === 'flank' || role?.kind === 'rear';
+
+      // A flanker does not wait in a queue behind one assigned target. If its
+      // target is not engaged by another friendly, it retargets to the closest
+      // engaged enemy; with no engaged enemy it circles the closest one.
+      if (flankRoleEarly) {
+        const engaged = enemiesAlive.filter(e => targetIsLockedByOther(e.id, u.id));
+        const pool = engaged.length > 0 ? engaged : enemiesAlive;
+        const closest = pool
+          .slice()
+          .sort((a, b) =>
+            hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex)
+            || a.id.localeCompare(b.id))[0] ?? null;
+        const currentLocked = assignedTargetId
+          ? targetIsLockedByOther(assignedTargetId, u.id)
+          : false;
+        if (closest && (!assignedTargetId || !currentLocked)) {
+          assignedTargetId = closest.id;
+          assignedTarget = closest;
+        }
+      }
 
       // Ranged units avoid contact at all costs. Scattered is the escape/transit
       // formation (loose, all-direction, faster); this is the one formation
@@ -1911,7 +1974,6 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       // within 2 hexes, else a Phalanx, else a Close Order unit; value breaks
       // ties within a tier. Advanced values marginal damage, finishing blows
       // and expected retaliation; Basic stays raw expected damage.
-      const locked = targetIsLocked(assignedTargetId);
       const legal = legalTargets(u, enemiesAlive, ctx);
       const meleeOptions = legal.filter(t => !t.isRanged);
       const rangedOptions = legal.filter(t => t.isRanged);
@@ -1923,9 +1985,9 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
           if (v.dmg <= 0) continue;
           const score = v.score + (assignedTargetId === t.unit.id ? ASSIGNMENT_BONUS : 0);
           const rank = attackArcRank(u.hex, t.unit);
-          // Flankers wait for the frontage to lock the target and never spend
-          // their attack on a redundant front arc.
-          if ((role?.kind === 'flank' || role?.kind === 'rear') && (!locked || rank === 1)) continue;
+          // Flankers never spend an attack on a redundant front arc, but they
+          // no longer wait for a queue: any reachable flank/rear attack counts.
+          if ((role?.kind === 'flank' || role?.kind === 'rear') && rank === 1) continue;
           const better = !best || rank > best.rank
             || (rank === best.rank && (
               advanced
@@ -1960,13 +2022,15 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       let attack: TargetSel | null = null;
       if (!reserveHolding) {
         if (doctrine === 'melee' && meleeOptions.length > 0) {
-          // On the final action, take a near-breakeven adjacent attack rather than
-          // idling; still avoid a clearly losing trade. Flankers keep waiting.
-          const lastActionFloor = (u.actionsAvailable ?? 0) === 1
+          // Adjacent frontage/reserve/structure units take a near-breakeven
+          // attack rather than idling, even with multiple actions. Flankers
+          // keep their stricter positive-score gate.
+          const adjacent = nearestEnemyDist(u.hex, enemiesAlive) <= 1;
+          const nearBreakevenFloor = (adjacent || (u.actionsAvailable ?? 0) === 1)
             && (role?.kind === 'frontage' || role?.kind === 'reserve' || role?.kind === 'structure')
             ? -8
             : 0;
-          attack = pickMelee(lastActionFloor);
+          attack = pickMelee(nearBreakevenFloor);
         } else if (doctrine === 'ranged') {
           attack = pickRanged();
         } else {
@@ -1975,6 +2039,24 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       }
 
       if (attack && canAct) {
+        // Defensive melee: don't accept an attack that leaves another adjacent
+        // enemy in our flank/rear. Turn to face the most dangerous one instead,
+        // even if that costs the attack this step.
+        if (stance === 'defensive' && doctrine === 'melee' && !u.isHero) {
+          const exposed = adjacentExposedEnemies(u, enemiesAlive, attack.unit.id);
+          if (exposed.length > 0) {
+            const threat = exposed.slice().sort((a, b) => {
+              const ra = arcOfTarget(u.hex, u.facing, a.hex) === 'rear' ? 2 : 1;
+              const rb = arcOfTarget(u.hex, u.facing, b.hex) === 'rear' ? 2 : 1;
+              return rb - ra
+                || computeThreatRating(b) - computeThreatRating(a)
+                || a.id.localeCompare(b.id);
+            })[0];
+            const faced = turnTowardHex(u, threat.hex, plan);
+            u = faced.unit;
+            if (faced.turned) continue;
+          }
+        }
         plan.steps.push({ kind: 'attack', unitId: u.id, from, targetId: attack.unit.id, target: attack.unit.hex });
         if (advanced) reserved.set(attack.unit.id, (reserved.get(attack.unit.id) ?? 0) + attack.dmg);
         const updated = { ...u, actionsAvailable: (u.actionsAvailable ?? 0) - 1, attacksUsed: (u.attacksUsed ?? 0) + 1 };
@@ -1993,8 +2075,9 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const weapon = parseWeapons(u.weaponString || '')[u.activeWeaponIndex ?? 0];
       const weaponRange = weapon?.range ?? 1;
       const weaponMaxRange = Math.max(weaponRange, weapon?.maxRange ?? weaponRange);
-      const lockedNow = targetLockedByFrontage(assignedTargetId);
-      const unlockedFlank = (role?.kind === 'flank' || role?.kind === 'rear') && !lockedNow;
+      const lockedNow = flankRoleEarly
+        ? targetIsLockedByOther(assignedTargetId, u.id)
+        : targetLockedByFrontage(assignedTargetId);
       const stationLane = role?.kind === 'reserve'
         ? placementCache.get(u.id)?.station ?? null
         : null;
@@ -2033,10 +2116,15 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       let options = maneuverOptions(
         u, enemiesAlive, ctx, movement, maxTurnCount, cap, scorer, speedCap,
       );
-      // An unlocked flanker stages outside enemy melee reach; it must not let
-      // the enemy ZoC-lock it before the frontage engages.
-      if (unlockedFlank) {
-        options = options.filter(o => nearestEnemyDist(o.move.to, enemiesAlive) > 1);
+      // Flankers stage on a ring of at least three hexes; they may close only
+      // when the destination enables a flank/rear attack. This prevents them
+      // settling at two hexes and getting engaged before they can strike.
+      if (flankRoleEarly) {
+        options = options.filter(o => {
+          const flankAttack = enemiesAlive.some(e =>
+            hexDistance(o.move.to, e.hex) === 1 && attackArcRank(o.move.to, e) > 1);
+          return flankAttack || nearestEnemyDist(o.move.to, enemiesAlive) >= 3;
+        });
       }
       if (options.length === 0) break;
       // Strict turn rule: a rotation is only allowed when no 0-turn option
@@ -2049,7 +2137,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         candidates = options;
       } else if (free) {
         candidates = options;
-      } else if (flankRole) {
+      } else if (flankRoleEarly) {
         candidates = options.filter(o => o.turns.length === 0 || o.leadsToAttack);
       } else if (straightAttacks.length > 0) {
         candidates = straightAttacks;
@@ -2083,23 +2171,50 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         const nearest = nearestEnemyDist(u.hex, enemiesAlive);
         const hasBudget = ((u.actionsAvailable ?? 0) >= 1 || (u.movementPointsAvailable ?? 0) >= 1);
         if (isHold && doctrine === 'melee' && (role?.kind !== 'reserve' || !!interceptTarget || !!patchHex) && !hasAttacked && nearest > 1 && hasBudget) {
-          const goal = lane
-            ?? (assignedTarget
-              ? assignedLaneHex(assignedTarget, u)
-              : enemiesAlive
+          if (flankRoleEarly && !lockedNow) {
+            // Unlocked flanker: keep circling instead of waiting in place. Aim
+            // for a ring-3+ position that improves the final flank/rear angle.
+            const target = assignedTarget
+              ?? enemiesAlive
                 .slice()
                 .sort((a, b) => hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex) || a.id.localeCompare(b.id))[0]
-                ?.hex);
-          if (goal) {
-            const progress = options.filter(o =>
-              o.turns.length === 0
-              && o.move.path.length > 0
-              && hexDistance(o.move.to, goal) < hexDistance(u.hex, goal));
-            progress.sort((a, b) =>
-              hexDistance(a.move.to, goal) - hexDistance(b.move.to, goal)
-              || Math.abs(a.move.to.q - goal.q) - Math.abs(b.move.to.q - goal.q)
-              || b.score - a.score);
-            if (progress.length > 0) best = progress[0];
+              ?? null;
+            const finalLane = target ? roleLaneHex(role!, target, u, true) : null;
+            const moving = options.filter(o => o.move.path.length > 0);
+            if (moving.length > 0) {
+              const progress = finalLane
+                ? moving.filter(o => hexDistance(o.move.to, finalLane) < hexDistance(u.hex, finalLane))
+                : [];
+              const pool = progress.length > 0 ? progress : moving;
+              pool.sort((a, b) =>
+                (finalLane ? hexDistance(a.move.to, finalLane) - hexDistance(b.move.to, finalLane) : 0)
+                || b.score - a.score);
+              best = pool[0];
+            }
+          } else {
+            const goals: Hex[] = [];
+            if (lane) goals.push(lane);
+            if (assignedTarget) goals.push(assignedLaneHex(assignedTarget, u));
+            const nearestFoe = enemiesAlive
+              .slice()
+              .sort((a, b) => hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex) || a.id.localeCompare(b.id))[0];
+            if (nearestFoe) goals.push(assignedLaneHex(nearestFoe, u));
+            // If the assigned lane is already reached or blocked, fall back to
+            // the nearest reachable enemy instead of holding indefinitely.
+            for (const goal of goals) {
+              const progress = options.filter(o =>
+                o.turns.length === 0
+                && o.move.path.length > 0
+                && hexDistance(o.move.to, goal) < hexDistance(u.hex, goal));
+              progress.sort((a, b) =>
+                hexDistance(a.move.to, goal) - hexDistance(b.move.to, goal)
+                || Math.abs(a.move.to.q - goal.q) - Math.abs(b.move.to.q - goal.q)
+                || b.score - a.score);
+              if (progress.length > 0) {
+                best = progress[0];
+                break;
+              }
+            }
           }
         }
       }
@@ -2129,7 +2244,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
     if (
       !hasAttacked
       && (role?.kind === 'flank' || role?.kind === 'rear')
-      && !targetLockedByFrontage(assignedTargetId)
+      && !targetIsLockedByOther(assignedTargetId, u.id)
       && plan.steps.some(s => s.kind === 'move')
       && !plan.steps.some(s => s.kind === 'attack')
     ) {
@@ -2138,26 +2253,8 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         .sort((a, b) => hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex) || a.id.localeCompare(b.id))[0]
         ?? assignedTarget;
       if (goal) {
-        const desired = facingToward(u.hex, goal.hex);
-        let diff = (desired - u.facing + 6) % 6;
-        if (diff > 3) diff -= 6;
-        const dir: 'left' | 'right' = diff > 0 ? 'right' : 'left';
-        for (let i = 0; i < Math.abs(diff); i++) {
-          if (!freeTurn(u, ctx.formations) && !canPayMp(u, 1)) break;
-          if (freeTurn(u, ctx.formations)) {
-            u = { ...u, facing: dir === 'left' ? rotateLeft(u.facing) : rotateRight(u.facing) };
-          } else {
-            const { movementPointsAvailable, actionsAvailable } = applyMpSpend(u, 1, effMax(u, ctx.formations));
-            u = {
-              ...u,
-              facing: dir === 'left' ? rotateLeft(u.facing) : rotateRight(u.facing),
-              movementPointsAvailable,
-              actionsAvailable,
-            };
-          }
-          commit(u, u, u.id);
-          plan.steps.push({ kind: 'turn', unitId: u.id, from: u.hex, dir });
-        }
+        const faced = turnTowardHex(u, goal.hex, plan);
+        u = faced.unit;
       }
     }
 

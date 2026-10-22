@@ -133,9 +133,16 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   scored option, so a unit does not move/turn merely because it has MP left.
   **Melee full-turn advance**: if a melee unit still has actions/MP, is not
   adjacent to an enemy, and the scoring chooses a hold, it instead takes the
-  best no-turn destination closer to its assigned lane (or nearest enemy). This
-  prevents a defensive line from stopping after one maneuver and needing a
-  second Preview/Execute to finish the turn.
+  best no-turn destination closer to its assigned lane. If that lane is already
+  reached, blocked, or unreachable, it falls back to the **nearest reachable
+  enemy's lane** rather than holding indefinitely. This prevents a defensive
+  line from stopping after one maneuver and needing a second Preview/Execute to
+  finish the turn.
+- **Anti-idle attack floor**: frontage/structure units and committed reserves
+  take the best near-breakeven adjacent attack (score above `-8`) whenever they
+  are adjacent, not only on their last action. A clearly losing trade is still
+  refused, and an uncommitted reserve still holds. This stops a 2-action unit
+  from refusing a marginal attack and then doing nothing.
 - **Real post-move attack accounting**: `maneuverOptions` applies
   `applyMoveCost` before checking `leadsToAttack`, so a move can spend leftover
   MP and still leave the action needed for an attack. This replaces the old
@@ -171,14 +178,19 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
 - **Aggressive surplus**: rear first when reachable (no AGR, no retaliation,
   doubled threat → faster rout), else flank. There is **no reserve role in
   aggressive stance**; every unpaired unit becomes a flanker/rear attacker.
-  Flankers wait until the target is
-  **melee-locked** by a friendly, never take a redundant front attack, and never
-  front-charge. They may rotate only when it enables a flank/rear attack.
-  While unlocked they stage **three rings outside** the target (or behind the
-  main body), never closer to the enemy than the frontage; adjacent enemy/ZoC
-  destinations are discarded, and spare MP is used to face the enemy line and
-  swing wider around the end while staying connected. Once the target is locked
-  they switch to the final flank/rear lane and may attack.
+  Flankers **do not queue** behind one assigned target: if that target is not
+  engaged by another friendly, they retarget to the closest engaged enemy (or
+  the closest enemy when none is engaged). They stage on a **ring of at least
+  three hexes from every hostile**; a destination closer than 3 is allowed only
+  when it enables a flank/rear attack. While waiting they keep circling toward
+  the target's flank/rear rather than holding on one ring hex. They may attack
+  any enemy from its flank/rear arc, never spend an attack on a front arc, and
+  never front-charge. This prevents a fast wolf rider settling at 2 hexes and
+  getting engaged before it can strike.
+- **Defensive facing**: a defensive melee unit does not accept an attack that
+  leaves another adjacent enemy in its flank or rear. It first turns to face the
+  most dangerous exposed enemy, even if that costs the attack, then acts from
+  the new facing.
 - **Defensive surplus (reserve)**: defaults to the **rear rank**, anchored to the
   nearest front-line unit. It holds a **central second-rank station about two
   hexes behind the line**, staggered deeper for extra reserves to avoid
@@ -257,10 +269,11 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   - **Rear attack value**: `attackValue` discounts front/flank priority by an
     approximate AGR pass chance; rear attacks are guaranteed (no AGR), have no
     retaliation, and carry a rout-threat bonus.
-  - **Last action**: frontage/structure units and committed reserves with one
-    action left take a near-breakeven adjacent attack (score above `-8`) rather
-    than idling; an uncommitted reserve keeps holding, a clearly losing trade is
-    still refused, and flankers keep waiting for their arc.
+  - **Adjacent / last action**: frontage/structure units and committed reserves
+    take a near-breakeven adjacent attack (score above `-8`) rather than idling,
+    even with multiple actions left; an uncommitted reserve keeps holding. A
+    clearly losing trade is still refused. Flankers do not wait for their arc
+    indefinitely: they retarget/circle and may attack any flank/rear, as above.
   - **Reaction fire**: archer-reaction hold positions score clear snapshot lanes
     (`range`, arc, LoS); the planner uses only actions left after the unit holds
     and never sacrifices an attack for reaction eligibility.

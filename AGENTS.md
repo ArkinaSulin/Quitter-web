@@ -57,20 +57,25 @@ reusable maps. Here's the state:
   plans use `Math.random` (undo/redo preserves the committed plan). Defensive
   frontage is the **leading rank**, so rear-rank units stay reserves. Aggressive
   rear attacks skip AGR and add rout-threat value; there is **no reserve in
-  aggressive stance**, every unpaired unit flanks. Flankers stage three rings
-  out (or behind the main body), never closer than the frontage, face the enemy
-  line, and wait for the frontage lock before switching to the final flank/rear
-  lane. Defensive reserves hold a **central station ~2 hexes behind the line**
-  (staggered, and split into sector groups on a very long line), optionally in
-  **Scattered** while uncommitted. They react to the whole line: rear/flank
-  threats in the hostile forward band first, then surplus front-line pairings
-  (only when `enemyFront > ownFront + 1`; exactly one unpaired is ignored), then
-  interior gaps and routed/dead frontage slots. Paired front-arc enemies already
-  adjacent to the line are left to the frontage; a reacting reserve is exempt
-  from the defensive speed cap. A frontage/structure or committed-reserve unit
-  on its last action takes a near-breakeven adjacent attack instead of idling;
-  an uncommitted reserve keeps holding and never advances on the line. Rout
-  paths re-evaluate after
+  aggressive stance**, every unpaired unit flanks. Flankers **do not queue**:
+  they retarget to the closest engaged enemy, stage at least **three hexes** from
+  every hostile, keep circling toward the flank/rear, and may attack any enemy
+  from its flank/rear (never front); a closer destination is allowed only when it
+  enables a flank/rear strike. Defensive reserves hold a **central station ~2
+  hexes behind the line** (staggered, and split into sector groups on a very long
+  line), optionally in **Scattered** while uncommitted. They react to the whole
+  line: rear/flank threats in the hostile forward band first, then surplus
+  front-line pairings (only when `enemyFront > ownFront + 1`; exactly one
+  unpaired is ignored), then interior gaps and routed/dead frontage slots.
+  Paired front-arc enemies already adjacent to the line are left to the
+  frontage; a reacting reserve is exempt from the defensive speed cap.
+  **Anti-idle**: a frontage/structure/committed-reserve unit adjacent to an enemy
+  takes the best near-breakeven attack (`-8` floor) even with multiple actions;
+  if its assigned lane is blocked/unreachable it advances toward the nearest
+  reachable enemy instead of holding. A **defensive melee unit** turns to face
+  the most dangerous adjacent flank/rear enemy before an attack that would
+  expose it, even if that costs the attack. An uncommitted reserve keeps holding
+  and never advances on the line. Rout paths re-evaluate after
   each pushed-through friendly and rout movement maximises hostile-mass
   distance. Ranged-only units stand off and never enter contact; archer-reaction
   holds score clear LoS/range/arc lanes using only leftover actions. Structure
@@ -79,7 +84,7 @@ reusable maps. Here's the state:
   available org level before contact; flankers attack first and may chain two
   formation upgrades (Scattered → Open → Close) in one action; Scattered turns
   are free.
-  `npm run check`: tsc, **1130 tests** (56 planner), depcruise, build. No new
+  `npm run check`: tsc, **1133 tests** (59 planner), depcruise, build. No new
   migration for 2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted charges, Round
   4 full coordination, Round 5 full auto-turn; AI still ignores ZoC
   scatter/pursue, flight, and some elevation nuances. See

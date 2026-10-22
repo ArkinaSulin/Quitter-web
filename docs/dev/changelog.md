@@ -1,5 +1,28 @@
 # QuiTTER Changelog
 
+## AI anti-idle, flanker circling, defensive facing (2026-10-21)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
+
+- Fixed the frontage/reserve **hold loophole**: the near-breakeven `-8` attack
+  floor now applies whenever a frontage/structure/committed-reserve unit is
+  adjacent, not only on its last action. If a melee unit's assigned lane is
+  reached, blocked, or unreachable, the full-turn advance falls back to the
+  nearest reachable enemy's lane instead of holding.
+- Fixed the **flanker queue**: flankers retarget to the closest enemy engaged by
+  another friendly (or the closest enemy when none is engaged), stage at least
+  **three hexes** from every hostile, keep circling toward the flank/rear, and
+  may attack any enemy from a flank/rear arc. A destination closer than 3 is
+  only allowed when it enables a flank/rear attack, so a fast wolf rider cannot
+  settle at 2 hexes and get engaged.
+- Added **defensive attack-exposure facing**: a defensive melee unit turns to
+  face the most dangerous adjacent flank/rear enemy before committing an attack
+  that would expose it, even if that costs the attack.
+- Refactored the repeated facing loops into one `turnTowardHex` helper.
+- No role/reserve rule changes: no mandatory reserve, no pull-back for an
+  engaged reserve, and the redo-message spam is out of scope.
+- Verification: `npm run check` passes (tsc, 1133 tests / 59 planner, depcruise,
+  build).
+
 ## AI reserve covers the whole battle line (2026-10-21)
 **Files:** src/packages/ai/lib/{planner,battleLine,reserve}.ts, src/packages/ai/index.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
 

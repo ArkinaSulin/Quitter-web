@@ -1318,17 +1318,20 @@ turn; the GM still owns the settings). Inside the AI tab, the
 Aggressive; Defensive sticks closer together and protects flanks first).
 Aggressive uses surplus units to flank or attack from the rear (rear attacks
 skip AGR and put extra rout pressure); pairing counts only the enemy forward
-band, so a second-rank reserve does not hide a real flanker. Flankers stage
-outside enemy ZoC, never closer than the main body, face the enemy line, and wait for the frontage to
-lock a target before closing. Defensive surplus holds the rear rank at a central
+band, so a second-rank reserve does not hide a real flanker. Flankers do not
+wait in a queue: they retarget to the closest engaged enemy, circle at least
+three hexes out, and close only when they can strike a flank or rear; they never
+front-charge. Defensive melee units turn to face an adjacent flank/rear threat
+before attacking, even if that costs the attack. Defensive surplus holds the rear
+rank at a central
 station about two hexes behind the line, may wait Scattered for a fast reaction,
 and patches routing holes. Only the enemy forward band matters: an unpaired
 front-line enemy pulls a reserve only when the enemy line outnumbers ours by more
-than one. A real flanker—behind the line or beyond its ends—is faced and
+than one. A real flanker-behind the line or beyond its ends-is faced and
 intercepted from its flank/rear anywhere along the line. Paired front-arc
 enemies already in contact are left to the frontage. A frontage/structure or
-committed-reserve unit on its last action takes a near-breakeven adjacent
-attack rather than idling. Rout paths are
+committed-reserve unit adjacent to an enemy takes a near-breakeven attack rather
+than idling. Rout paths are
 re-evaluated after each pushed-through friendly and prefer the first empty safe
 hex. Ranged-only
 units stand off, avoid contact, and use only leftover actions for reaction fire.
