@@ -1,5 +1,26 @@
 # QuiTTER Changelog
 
+## AI flanker main-body gate, reserve rotation, facing stability (2026-10-21)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
+
+- Flankers no longer exploit a frontage lock created by the **same plan's**
+  advance. They only retarget/close/attack when the target was locked by a
+  frontage/structure unit at the **start** of the plan. Otherwise they remain on
+  a **≥3-hex ring** and circle. This stops wolf riders getting ahead of the main
+  body and being melee-locked before the frontage engages.
+- Defensive reserve rotation: when the leading rank exactly matches the enemy
+  front line and no rear-rank reserve exists, one **end unit** is kept back as a
+  reserve. Frontage covers the enemy line from the left; the rightmost spare
+  becomes the reserve and moves to its central station instead of waiting on the
+  end.
+- Defensive facing is now decided **once per activation**. This stops a unit
+  oscillating right/left/right when two adjacent enemies threaten its flanks; it
+  faces the most dangerous exposed side, then acts.
+- Added tests for the end-unit reserve rotation, the main-body engagement gate,
+  and non-oscillating facing.
+- Verification: `npm run check` passes (tsc, 1136 tests / 62 planner, depcruise,
+  build).
+
 ## AI anti-idle, flanker circling, defensive facing (2026-10-21)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
 

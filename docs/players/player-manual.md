@@ -1319,10 +1319,14 @@ Aggressive; Defensive sticks closer together and protects flanks first).
 Aggressive uses surplus units to flank or attack from the rear (rear attacks
 skip AGR and put extra rout pressure); pairing counts only the enemy forward
 band, so a second-rank reserve does not hide a real flanker. Flankers do not
-wait in a queue: they retarget to the closest engaged enemy, circle at least
-three hexes out, and close only when they can strike a flank or rear; they never
-front-charge. Defensive melee units turn to face an adjacent flank/rear threat
-before attacking, even if that costs the attack. Defensive surplus holds the rear
+wait in a queue: they retarget to a target already locked by the frontage at the
+start of the turn, circle at least three hexes out, and close only when they can
+strike a flank or rear; they never get ahead of the main body or front-charge.
+Defensive melee units turn once to face an adjacent flank/rear threat before
+attacking, even if that costs the attack, so they do not oscillate. If the front
+lines match exactly and there is no rear reserve, one end unit is kept back and
+moves to the reserve station instead of waiting on the flank. Defensive surplus
+holds the rear
 rank at a central
 station about two hexes behind the line, may wait Scattered for a fast reaction,
 and patches routing holes. Only the enemy forward band matters: an unpaired

@@ -178,27 +178,35 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
 - **Aggressive surplus**: rear first when reachable (no AGR, no retaliation,
   doubled threat → faster rout), else flank. There is **no reserve role in
   aggressive stance**; every unpaired unit becomes a flanker/rear attacker.
-  Flankers **do not queue** behind one assigned target: if that target is not
-  engaged by another friendly, they retarget to the closest engaged enemy (or
-  the closest enemy when none is engaged). They stage on a **ring of at least
-  three hexes from every hostile**; a destination closer than 3 is allowed only
-  when it enables a flank/rear attack. While waiting they keep circling toward
-  the target's flank/rear rather than holding on one ring hex. They may attack
-  any enemy from its flank/rear arc, never spend an attack on a front arc, and
-  never front-charge. This prevents a fast wolf rider settling at 2 hexes and
-  getting engaged before it can strike.
+  Flankers **do not queue** behind one assigned target: if that target was not
+  locked by a frontage/structure unit **at the start of the plan**, they retarget
+  to the closest frontage-locked enemy (or the closest enemy when none is
+  engaged). They stage on a **ring of at least three hexes from every hostile**;
+  a destination closer than 3 is allowed only when it enables a flank/rear
+  attack on an enemy already locked by the main body. A same-plan frontage
+  advance does not count — flankers wait for the next turn. While waiting they
+  keep circling toward the target's flank/rear rather than holding on one ring
+  hex. They may attack a frontage-locked enemy from its flank/rear arc, never
+  spend an attack on a front arc, and never front-charge. This prevents a fast
+  wolf rider getting ahead of the main force, settling at 2 hexes, and being
+  melee-locked before the frontage engages.
 - **Defensive facing**: a defensive melee unit does not accept an attack that
   leaves another adjacent enemy in its flank or rear. It first turns to face the
   most dangerous exposed enemy, even if that costs the attack, then acts from
-  the new facing.
+  the new facing. This facing decision is made **once per activation** to avoid
+  oscillating between two flank threats.
 - **Defensive surplus (reserve)**: defaults to the **rear rank**, anchored to the
-  nearest front-line unit. It holds a **central second-rank station about two
-  hexes behind the line**, staggered deeper for extra reserves to avoid
-  congestion. A very long line is split into contiguous sectors, one reserve
-  group per reachable section (a single group for a short line), and a group only
-  reacts to threats/holes in its sector. In Advanced it may wait in **Scattered**
-  while uncommitted for free turns/loose reaction movement, upgrading only when
-  it commits.
+  nearest front-line unit. If the leading rank exactly matches the enemy front
+  line and there is no rear-rank reserve, one **end unit is kept back** as a
+  reserve instead of waiting unused on the end; frontage covers the enemy line
+  from the left and the rightmost spare becomes the reserve. The reserve moves to
+  its central station rather than holding on the end. It holds a **central
+  second-rank station about two hexes behind the line**, staggered deeper for
+  extra reserves to avoid congestion. A very long line is split into contiguous
+  sectors, one reserve group per reachable section (a single group for a short
+  line), and a group only reacts to threats/holes in its sector. In Advanced it
+  may wait in **Scattered** while uncommitted for free turns/loose reaction
+  movement, upgrading only when it commits.
   - **Threat priority**: rear > flank > surplus front > hole.
   - **Flank/rear threats**: a hostile forward-band unit is a threat when it is
     **behind the line's forward plane** or **outside the line's lateral span**.

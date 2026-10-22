@@ -58,12 +58,17 @@ reusable maps. Here's the state:
   frontage is the **leading rank**, so rear-rank units stay reserves. Aggressive
   rear attacks skip AGR and add rout-threat value; there is **no reserve in
   aggressive stance**, every unpaired unit flanks. Flankers **do not queue**:
-  they retarget to the closest engaged enemy, stage at least **three hexes** from
-  every hostile, keep circling toward the flank/rear, and may attack any enemy
+  they retarget to the closest enemy locked by a frontage/structure unit **at
+  the start of the plan**, stage at least **three hexes** from every hostile,
+  keep circling toward the flank/rear, and may attack a frontage-locked enemy
   from its flank/rear (never front); a closer destination is allowed only when it
-  enables a flank/rear strike. Defensive reserves hold a **central station ~2
+  enables such a strike. A same-plan frontage advance does not count, so they do
+  not get ahead of the main body. Defensive reserves hold a **central station ~2
   hexes behind the line** (staggered, and split into sector groups on a very long
-  line), optionally in **Scattered** while uncommitted. They react to the whole
+  line), optionally in **Scattered** while uncommitted. When the leading rank
+  exactly matches the enemy front and no rear reserve exists, one end unit is
+  kept back as a reserve and moves to its station instead of waiting on the end.
+  They react to the whole
   line: rear/flank threats in the hostile forward band first, then surplus
   front-line pairings (only when `enemyFront > ownFront + 1`; exactly one
   unpaired is ignored), then interior gaps and routed/dead frontage slots.
@@ -74,7 +79,8 @@ reusable maps. Here's the state:
   if its assigned lane is blocked/unreachable it advances toward the nearest
   reachable enemy instead of holding. A **defensive melee unit** turns to face
   the most dangerous adjacent flank/rear enemy before an attack that would
-  expose it, even if that costs the attack. An uncommitted reserve keeps holding
+  expose it, even if that costs the attack; the facing decision is made once per
+  activation so it cannot oscillate. An uncommitted reserve keeps holding
   and never advances on the line. Rout paths re-evaluate after
   each pushed-through friendly and rout movement maximises hostile-mass
   distance. Ranged-only units stand off and never enter contact; archer-reaction
@@ -84,7 +90,7 @@ reusable maps. Here's the state:
   available org level before contact; flankers attack first and may chain two
   formation upgrades (Scattered → Open → Close) in one action; Scattered turns
   are free.
-  `npm run check`: tsc, **1133 tests** (59 planner), depcruise, build. No new
+  `npm run check`: tsc, **1136 tests** (62 planner), depcruise, build. No new
   migration for 2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted charges, Round
   4 full coordination, Round 5 full auto-turn; AI still ignores ZoC
   scatter/pursue, flight, and some elevation nuances. See

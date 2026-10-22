@@ -731,9 +731,12 @@ describe('enemyAI smarter tactics', () => {
   });
 
   it('strict turn rule: no rotation when a 0-turn attack exists (Defensive)', () => {
-    const { attackers, enemies, all } = strikeLine(() => 3);
-    const plans = planAiMoves(ctxOf(all, ['blue'], 'enemy', { advanced: true, stance: 'defensive' }));
-    expectNoNeedlessTurns(plans, attackers, enemies);
+    const { attackers, enemies } = strikeLine(() => 3);
+    // 5 vs 6 keeps every attacker on the front rank (no spare reserve), which
+    // is what this turn-rule test is about.
+    const front = attackers.slice(0, 5);
+    const plans = planAiMoves(ctxOf([...front, ...enemies], ['blue'], 'enemy', { advanced: true, stance: 'defensive' }));
+    expectNoNeedlessTurns(plans, front, enemies);
   });
 
   it('strict turn rule: prefers a straight attack over a diagonal assigned lane', () => {
@@ -1135,6 +1138,86 @@ describe('enemyAI anti-idle and defensive facing', () => {
     const lastTurn = plan!.steps.reduce((idx, s, i) => s.kind === 'turn' ? i : idx, -1);
     expect(lastTurn, 'turns to face').toBeGreaterThanOrEqual(0);
     expect(firstAttack === -1 || lastTurn < firstAttack, 'faces before attacking').toBe(true);
+  });
+
+  it('pushes an end unit into reserve when the front lines match', () => {
+    const blue = [-2, -1, 0, 1, 2, 3].map((q, i) => mk({
+      id: `b${i}`, team: 'blue', hex: hex(q, -2), facing: 3,
+      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+    const red = [-2, -1, 0, 1, 2, 3].map((q, i) => mk({
+      id: `r${i}`, team: 'black', hex: hex(q, 0), facing: 0, weaponString: SPEAR,
+    }));
+    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', {
+      advanced: true,
+      stance: 'defensive',
+    });
+    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const battle = assignBattleRoles(blue, red, ctx, true);
+    const plans = planAiMoves(ctx);
+    rng.mockRestore();
+
+    const extras = blue.filter(u => !battle.frontageIds.has(u.id));
+    expect(extras).toHaveLength(1);
+    expect(battle.roles.get(extras[0].id)?.kind).toBe('reserve');
+    const plan = plans.find(p => p.unitId === extras[0].id);
+    expect(plan?.steps.some(s => s.kind === 'move'), 'reserve leaves the end for its station').toBe(true);
+  });
+
+  it('does not close before the main body is engaged', () => {
+    const blue = [
+      ...['O', 'P'].map((id, i) => mk({
+        id, team: 'blue', hex: hex(-3 + i, -1), facing: 3,
+        movementPoints: 4, actionsAvailable: 2, weaponString: SPEAR,
+      })),
+      ...['G', 'H', 'I', 'J', 'K', 'L'].map((id, i) => mk({
+        id, team: 'blue', hex: hex(i, -1), facing: 3,
+        movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+      })),
+    ];
+    const red = ['A', 'B', 'C', 'D', 'E', 'F'].map((id, i) => mk({
+      id, team: 'black', hex: hex(i, 1), facing: 0, weaponString: SPEAR,
+    }));
+    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', {
+      advanced: true,
+      stance: 'aggressive',
+    });
+    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const plans = planAiMoves(ctx);
+    rng.mockRestore();
+
+    for (const id of ['O', 'P']) {
+      const unit = blue.find(u => u.id === id)!;
+      const plan = plans.find(p => p.unitId === id);
+      expect(plan?.steps.some(s => s.kind === 'attack'), id).toBe(false);
+      const moves = plan?.steps.filter(s => s.kind === 'move') ?? [];
+      const last = moves[moves.length - 1];
+      const finalHex = last && last.kind === 'move' ? last.to : unit.hex;
+      expect(Math.min(...red.map(e => dist(finalHex, e.hex))), id).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('faces once instead of oscillating between two adjacent flank enemies', () => {
+    const defender = mk({
+      id: 'def', team: 'blue', hex: hex(0, 0), facing: 0,
+      movementPoints: 6, actionsAvailable: 2, weaponString: SPEAR,
+    });
+    const front = mk({
+      id: 'front', team: 'black', hex: hex(0, -1), facing: 0, weaponString: GREATSWORD,
+    });
+    const left = mk({
+      id: 'left', team: 'black', hex: hex(-1, 0), facing: 1, weaponString: SPEAR,
+    });
+    const right = mk({
+      id: 'right', team: 'black', hex: hex(1, 0), facing: 4, weaponString: SPEAR,
+    });
+    const plan = planAiMoves(ctxOf([defender, front, left, right], ['blue'], 'enemy', {
+      advanced: false,
+      stance: 'defensive',
+    })).find(p => p.unitId === 'def');
+    const turns = plan?.steps.filter(s => s.kind === 'turn') ?? [];
+    expect(turns.length, 'turns to face').toBeGreaterThan(0);
+    expect(new Set(turns.map(t => t.kind === 'turn' ? t.dir : null)).size, 'one facing direction').toBe(1);
   });
 
   it('takes a near-breakeven attack with more than one action instead of holding', () => {

@@ -126,8 +126,10 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   1`), forward-band-only targeting, flank/rear reaction, routing-hole patching,
   and cluster-cap exemption while reacting. Follow-up anti-idle pass: adjacent
   near-breakeven attacks (multi-action), nearest-reachable-enemy fallback when a
-  lane is blocked, flankers retargeting/circling at ≥3 hexes with any-flank/rear
-  attacks, and defensive attack-exposure facing. Migration 130 is applied; no
+  lane is blocked, flankers retargeting/circling at ≥3 hexes and closing only
+  after a start-of-plan frontage lock, end-unit reserve rotation when the front
+  lines match, and one-shot defensive attack-exposure facing. Migration 130 is
+  applied; no
   migration was needed for these fixes. The AI
   package is the source of truth: `src/packages/ai/lib/{planner,battleLine,reserve}.ts`,
   `src/packages/ai/tests/planner.test.ts`, `src/components/ScenarioMap/AiPanel.tsx`;
