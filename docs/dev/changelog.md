@@ -1,5 +1,17 @@
 # QuiTTER Changelog
 
+## AI flanker safety and reserve interception (2026-10-19)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md, docs/players/player-manual.md, AGENTS.md
+
+- Unlocked flankers now stage at **ring 3** (or behind the main body) rather than
+  ring 2, so they are never closer to the enemy than the frontage until homing in.
+  They still face the enemy line with spare MP and never enter early ZoC.
+- Defensive reserve: if an unengaged enemy flanker comes within 6 hexes, the
+  reserve faces it first, then commits to intercept toe-to-toe or to its
+  flank/rear when reachable; it holds if that would open a frontage hole.
+- Tests: 49 planner tests, including a reserve face-and-intercept case; full
+  `npm run check` passes (1123 tests).
+
 ## AI rout re-evaluation and staged facing (2026-10-19)
 **Files:** src/components/ScenarioMap/ScenarioMap.tsx, src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md, docs/players/player-manual.md, AGENTS.md
 

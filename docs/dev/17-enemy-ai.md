@@ -158,12 +158,16 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   doubled threat → faster rout), else flank. Flankers wait until the target is
   **melee-locked** by a friendly, never take a redundant front attack, and never
   front-charge. They may rotate only when it enables a flank/rear attack.
-  While unlocked they stage **two rings outside** the target's flank/rear arc;
-  adjacent enemy/ZoC destinations are discarded, and spare MP is used to face
-  the enemy line and swing wider around the end while staying connected. Once
-  the target is locked they switch to the final flank/rear lane and may attack.
+  While unlocked they stage **three rings outside** the target (or behind the
+  main body), never closer to the enemy than the frontage; adjacent enemy/ZoC
+  destinations are discarded, and spare MP is used to face the enemy line and
+  swing wider around the end while staying connected. Once the target is locked
+  they switch to the final flank/rear lane and may attack.
 - **Defensive surplus**: defaults to **second rank / reserve**, connected to the
   line; it can patch a routing hole. A connected flank is taken only when safe.
+  If an unengaged enemy flanker closes within 6 hexes, the reserve first faces
+  it, then commits to intercept it toe-to-toe (or its flank/rear when reachable)
+  instead of idling; it holds if intercepting would open a hole.
 - **Ranged support**: ranged-only units are excluded from frontage/flank roles.
   They stand off, never voluntarily enter melee contact, shoot with both actions
   when possible, and retreat/kite when closed on. Scattered is the escape/transit

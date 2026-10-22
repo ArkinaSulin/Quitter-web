@@ -904,6 +904,38 @@ describe('enemyAI smarter tactics', () => {
     }
   });
 
+  it('a defensive reserve faces and intercepts an approaching enemy', () => {
+    const blue = [-4, -3, -2, -1, 0].map((q, i) => mk({
+      id: `b${i}`, team: 'blue', hex: hex(q, -2), facing: 3,
+      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+    const red = [-4, -3, -2, -1].map((q, i) => mk({
+      id: `e${i}`, team: 'black', hex: hex(q, 0), facing: 0, weaponString: SPEAR,
+    }));
+    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', { advanced: true, stance: 'defensive' });
+    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const battle = assignBattleRoles(blue, red, ctx, true);
+    const plans = planAiMoves(ctx);
+    rng.mockRestore();
+
+    const reserve = blue.find(u => battle.roles.get(u.id)?.kind === 'reserve');
+    expect(reserve, 'reserve role').toBeDefined();
+    if (!reserve) return;
+    const plan = plans.find(p => p.unitId === reserve.id);
+    expect(plan, reserve.id).toBeDefined();
+    if (!plan) return;
+    expect(plan.steps.some(s => s.kind === 'move'), 'commits to intercept').toBe(true);
+    const finalFacing = plan.steps.reduce(
+      (f, s) => s.kind === 'turn' ? (s.dir === 'left' ? (f + 5) % 6 : (f + 1) % 6) : f,
+      reserve.facing,
+    );
+    const moves = plan.steps.filter(s => s.kind === 'move');
+    const last = moves[moves.length - 1];
+    const finalHex = last && last.kind === 'move' ? last.to : reserve.hex;
+    const nearest = red.slice().sort((a, b) => dist(finalHex, a.hex) - dist(finalHex, b.hex))[0];
+    expect(arcOfTarget(finalHex, finalFacing, nearest.hex), 'faces intercept').toBe('front');
+  });
+
   it('a standing structure pins its defender; it never voluntarily moves out', () => {
     const template: StructureTemplate = {
       id: 'gate', name: 'Gate', description: '', anchor: 'hex', color: '#000',

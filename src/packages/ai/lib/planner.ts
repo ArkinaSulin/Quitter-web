@@ -810,18 +810,20 @@ function roleLaneHex(
       ? sides.sort((a, b) => hexDistance(mover.hex, a) - hexDistance(mover.hex, b))[0]
       : assignedLaneHex(target, mover);
     if (locked) return final;
-    // Stage two rings outside the target until the frontage locks: the flanker
-    // must not enter the enemy ZoC early. Pick the ring-2 hex on the correct
-    // side closest to the mover so it can keep a little MP for facing.
-    const ring2 = new Map<string, Hex>();
+    // Stage three rings outside the target until the frontage locks: the
+    // flanker must stay farther back than the main body. Pick the ring-3 hex on
+    // the correct side closest to the mover so it can keep MP for facing.
+    const ring3 = new Map<string, Hex>();
     for (const a of adjacentHexes(target.hex)) {
       for (const b of adjacentHexes(a)) {
-        if (hexDistance(target.hex, b) !== 2) continue;
-        if (role.side === 'left' ? b.q >= target.hex.q : b.q <= target.hex.q) continue;
-        ring2.set(`${b.q},${b.r}`, b);
+        for (const c of adjacentHexes(b)) {
+          if (hexDistance(target.hex, c) !== 3) continue;
+          if (role.side === 'left' ? c.q >= target.hex.q : c.q <= target.hex.q) continue;
+          ring3.set(`${c.q},${c.r}`, c);
+        }
       }
     }
-    const candidates = Array.from(ring2.values());
+    const candidates = Array.from(ring3.values());
     if (candidates.length > 0) {
       candidates.sort((a, b) => hexDistance(mover.hex, a) - hexDistance(mover.hex, b));
       return candidates[0];
@@ -1424,8 +1426,10 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
     // turns/attacks): a 6-MP mounted unit gets 12, heavy infantry 2 MP gets 4.
     const initialBudget = computeMoveBudget(u, effMax(u, ctx.formations));
     const maxStepsForUnit = Math.max(ctx.maxStepsPerUnit ?? 5, Math.ceil(initialBudget));
-    const assignedTargetId = targetIdOf(u.id);
-    const assignedTarget = assignedTargetId ? enemies.find(e => e.id === assignedTargetId) ?? null : null;
+    let assignedTargetId = targetIdOf(u.id);
+    let assignedTarget = assignedTargetId ? enemies.find(e => e.id === assignedTargetId) ?? null : null;
+    let interceptTarget: Unit | null = null;
+    let reserveFaced = false;
     for (let s = 0; s < maxStepsForUnit; s++) {
       if ((u.actionsAvailable ?? 0) < 1 && (u.movementPointsAvailable ?? 0) < 1) break;
       if ((u.attacksUsed ?? 0) >= cap) break;
@@ -1446,6 +1450,52 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
 
       const doctrine = unitDoctrine(u);
       const enemiesAlive = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
+
+      // Defensive reserve: if an unengaged enemy flanker closes in, face it and
+      // commit to the intercept instead of idling in the second rank.
+      if (role?.kind === 'reserve' && stance === 'defensive' && !hasAttacked) {
+        const frontage = Array.from(battle.frontageIds)
+          .map(id => working.find(w => w.id === id))
+          .filter((f): f is Unit => !!f && !f.isDeleted && !f.hidden && (f.currentUnitHp ?? 0) > 0);
+        const unengaged = enemiesAlive.filter(e => {
+          if (interceptTarget && e.id === interceptTarget.id) return true;
+          return !frontage.some(f => hexDistance(f.hex, e.hex) <= 1);
+        });
+        const pick = unengaged
+          .filter(e => hexDistance(u.hex, e.hex) <= 6)
+          .sort((a, b) => hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex) || a.id.localeCompare(b.id))[0] ?? null;
+        interceptTarget = pick;
+        if (pick) {
+          assignedTargetId = pick.id;
+          assignedTarget = pick;
+          if (!reserveFaced) {
+            reserveFaced = true;
+            const desired = facingToward(u.hex, pick.hex);
+            let diff = (desired - u.facing + 6) % 6;
+            if (diff > 3) diff -= 6;
+            const dir: 'left' | 'right' = diff > 0 ? 'right' : 'left';
+            let turned = false;
+            for (let i = 0; i < Math.abs(diff); i++) {
+              if (!freeTurn(u, ctx.formations) && !canPayMp(u, 1)) break;
+              if (freeTurn(u, ctx.formations)) {
+                u = { ...u, facing: dir === 'left' ? rotateLeft(u.facing) : rotateRight(u.facing) };
+              } else {
+                const { movementPointsAvailable, actionsAvailable } = applyMpSpend(u, 1, effMax(u, ctx.formations));
+                u = {
+                  ...u,
+                  facing: dir === 'left' ? rotateLeft(u.facing) : rotateRight(u.facing),
+                  movementPointsAvailable,
+                  actionsAvailable,
+                };
+              }
+              commit(u, u, u.id);
+              plan.steps.push({ kind: 'turn', unitId: u.id, from: u.hex, dir });
+              turned = true;
+            }
+            if (turned) continue;
+          }
+        }
+      }
 
       // Ranged units avoid contact at all costs. Scattered is the escape/transit
       // formation (loose, all-direction, faster); this is the one formation
@@ -1721,7 +1771,9 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const weaponMaxRange = Math.max(weaponRange, weapon?.maxRange ?? weaponRange);
       const lockedNow = targetLockedByFrontage(assignedTargetId);
       const unlockedFlank = (role?.kind === 'flank' || role?.kind === 'rear') && !lockedNow;
-      const lane = roleLaneHex(role ?? { kind: 'frontage', targetId: '' }, assignedTarget, u, lockedNow);
+      const lane = interceptTarget
+        ? assignedLaneHex(interceptTarget, u)
+        : roleLaneHex(role ?? { kind: 'frontage', targetId: '' }, assignedTarget, u, lockedNow);
       const tuning: DestTuning = {
         advanced,
         working,
@@ -1781,7 +1833,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         && best.move.to.r === from.r;
       const nearest = nearestEnemyDist(u.hex, enemiesAlive);
       const hasBudget = ((u.actionsAvailable ?? 0) >= 1 || (u.movementPointsAvailable ?? 0) >= 1);
-      if (isHold && doctrine === 'melee' && role?.kind !== 'reserve' && !hasAttacked && nearest > 1 && hasBudget) {
+      if (isHold && doctrine === 'melee' && (role?.kind !== 'reserve' || !!interceptTarget) && !hasAttacked && nearest > 1 && hasBudget) {
         const goal = lane
           ?? (assignedTarget
             ? assignedLaneHex(assignedTarget, u)
