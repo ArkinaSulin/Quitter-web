@@ -64,8 +64,12 @@ export type AiStep =
   | { kind: 'turn'; unitId: string; from: Hex; dir: 'left' | 'right' }
   | { kind: 'formation'; unitId: string; from: Hex; formation: string };
 
+export type AiPlanRoleKind = 'frontage' | 'flank' | 'rear' | 'reserve' | 'ranged' | 'structure';
+
 export interface AiUnitPlan {
   unitId: string;
+  /** Battle role used for this plot (debug/preview marker). */
+  roleKind?: AiPlanRoleKind | null;
   steps: AiStep[];
 }
 
@@ -327,6 +331,31 @@ export function assignBattleRoles(
   const count = Math.min(frontagePool.length, foes.length);
   const foeCentreQ = foes.reduce((sum, f) => sum + f.hex.q, 0) / foes.length;
   const foeSpan = foes[foes.length - 1].hex.q - foes[0].hex.q;
+
+  // Aggressive: the fastest surplus units should flank when they can be
+  // removed without breaking the frontage line. This prevents fast wolf riders
+  // being spent as frontage while slower warriors become the surplus.
+  const aggressiveForced = (() => {
+    if (stance !== 'aggressive') return null;
+    const extraCount = melee.length - count;
+    if (extraCount <= 0) return null;
+    const fastest = [...melee]
+      .sort((a, b) =>
+        effMax(b, ctx.formations) - effMax(a, ctx.formations)
+        || a.hex.q - b.hex.q
+        || a.id.localeCompare(b.id))
+      .slice(0, extraCount);
+    const fastestIds = new Set(fastest.map(u => u.id));
+    const remaining = melee
+      .filter(u => !fastestIds.has(u.id))
+      .sort(frontageSort);
+    if (remaining.length !== count) return null;
+    for (let i = 0; i + 1 < remaining.length; i++) {
+      if (hexDistance(remaining[i].hex, remaining[i + 1].hex) > 1) return null;
+    }
+    return { mainIds: new Set(remaining.map(u => u.id)) };
+  })();
+
   let best: { score: number; roles: Map<string, AiBattleRole>; frontageIds: Set<string> } | null = null;
 
   for (let start = 0; start + count <= frontagePool.length; start++) {
@@ -341,6 +370,10 @@ export function assignBattleRoles(
     });
 
     let score = 100 + count * 20;
+    if (aggressiveForced && main.length === count
+      && main.every(u => aggressiveForced.mainIds.has(u.id))) {
+      score += 10000;
+    }
     const centre = (frontagePool.length - count) / 2;
     score -= Math.abs(start - centre) * 3;
     // Shift the whole line laterally to align with the enemy front span.
@@ -399,7 +432,7 @@ export function assignBattleRoles(
       if (calcIsolation(extra, units, ctx.alliances)) score -= stance === 'defensive' ? 80 : 15;
       // Speed is a primary flanker trait: fast riders must not be spent as
       // frontage while slower warriors become surplus.
-      score += effMax(extra, ctx.formations) * 8;
+      score += effMax(extra, ctx.formations) * (stance === 'aggressive' ? 20 : 8);
       score -= anchorDistance * 2;
       if (stance === 'aggressive') score += 10;
     }
@@ -1549,10 +1582,6 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
   };
   const targetLockedByFrontage = (targetId: string | null): boolean =>
     targetLockedByFrontageIn(working, targetId);
-  /** Only a frontage lock that existed at the start of the plan counts for
-   *  flanker engagement; a same-plan advance must not pull flankers forward. */
-  const targetLockedByFrontageInitial = (targetId: string | null): boolean =>
-    targetLockedByFrontageIn(initialUnits, targetId);
 
   const initialHexes = new Map(initialUnits.map(w => [w.id, w.hex]));
   const placementCache = new Map<string, ReservePlacement>();
@@ -1643,12 +1672,13 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
 
   const plans: AiUnitPlan[] = [];
   for (const seed of planned) {
-    const plan: AiUnitPlan = { unitId: seed.id, steps: [] };
+    const plan: AiUnitPlan = { unitId: seed.id, roleKind: null, steps: [] };
     let u = byId.get(seed.id)!;
     let formationUpgrades = 0;
     let hasAttacked = false;
     let defensiveFaced = false;
     const role = battle.roles.get(u.id) ?? null;
+    plan.roleKind = role?.kind ?? null;
     // One step per hex the unit could spend across its remaining actions (plus
     // turns/attacks): a 6-MP mounted unit gets 12, heavy infantry 2 MP gets 4.
     const initialBudget = computeMoveBudget(u, effMax(u, ctx.formations));
@@ -1736,7 +1766,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       // enemy locked by a frontage/structure unit; with none engaged it circles
       // the closest enemy at a safe distance.
       if (flankRoleEarly) {
-        const engaged = enemiesAlive.filter(e => targetLockedByFrontageInitial(e.id));
+        const engaged = enemiesAlive.filter(e => targetLockedByFrontage(e.id));
         const pool = engaged.length > 0 ? engaged : enemiesAlive;
         const closest = pool
           .slice()
@@ -1744,7 +1774,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
             hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex)
             || a.id.localeCompare(b.id))[0] ?? null;
         const currentLocked = assignedTargetId
-          ? targetLockedByFrontageInitial(assignedTargetId)
+          ? targetLockedByFrontage(assignedTargetId)
           : false;
         if (closest && (!assignedTargetId || !currentLocked)) {
           assignedTargetId = closest.id;
@@ -2001,7 +2031,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
           // engage before the main body: the target must be locked by a
           // frontage/structure unit.
           if ((role?.kind === 'flank' || role?.kind === 'rear')
-            && (rank === 1 || !targetLockedByFrontageInitial(t.unit.id))) continue;
+            && (rank === 1 || !targetLockedByFrontage(t.unit.id))) continue;
           const better = !best || rank > best.rank
             || (rank === best.rank && (
               advanced
@@ -2090,9 +2120,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const weapon = parseWeapons(u.weaponString || '')[u.activeWeaponIndex ?? 0];
       const weaponRange = weapon?.range ?? 1;
       const weaponMaxRange = Math.max(weaponRange, weapon?.maxRange ?? weaponRange);
-      const lockedNow = flankRoleEarly
-        ? targetLockedByFrontageInitial(assignedTargetId)
-        : targetLockedByFrontage(assignedTargetId);
+      const lockedNow = targetLockedByFrontage(assignedTargetId);
       const stationLane = role?.kind === 'reserve'
         ? placementCache.get(u.id)?.station ?? null
         : null;
@@ -2131,18 +2159,21 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       let options = maneuverOptions(
         u, enemiesAlive, ctx, movement, maxTurnCount, cap, scorer, speedCap,
       );
-      // Flankers stage on a ring of at least three hexes; they may close only
-      // when the destination enables a flank/rear attack on an enemy already
-      // locked by the main body. This prevents them engaging before the
-      // frontline and settling at two hexes.
-      if (flankRoleEarly) {
-        options = options.filter(o => {
-          const flankAttack = enemiesAlive.some(e =>
-            hexDistance(o.move.to, e.hex) === 1
-            && attackArcRank(o.move.to, e) > 1
-            && targetLockedByFrontageInitial(e.id));
-          return flankAttack || nearestEnemyDist(o.move.to, enemiesAlive) >= 3;
-        });
+      // Until the main body locks the target, flankers stay on a ring of at
+      // least three hexes and never closer to the enemy than the friendly front
+      // line. Once the frontage locks (even during this plan), they may dash to
+      // the target's flank/rear.
+      if (flankRoleEarly && !lockedNow) {
+        const lineUnits = working.filter(w =>
+          battle.frontageIds.has(w.id)
+          && !w.isDeleted && !w.hidden && (w.currentUnitHp ?? 0) > 0
+          && !isUnitRouted(w));
+        const frontLineDist = lineUnits.length > 0
+          ? Math.min(...lineUnits.map(l => nearestEnemyDist(l.hex, enemiesAlive)))
+          : 0;
+        const minDist = Math.max(3, frontLineDist);
+        options = options.filter(o =>
+          nearestEnemyDist(o.move.to, enemiesAlive) >= minDist);
       }
       if (options.length === 0) break;
       // Strict turn rule: a rotation is only allowed when no 0-turn option
@@ -2262,7 +2293,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
     if (
       !hasAttacked
       && (role?.kind === 'flank' || role?.kind === 'rear')
-      && !targetLockedByFrontageInitial(assignedTargetId)
+      && !targetLockedByFrontage(assignedTargetId)
       && plan.steps.some(s => s.kind === 'move')
       && !plan.steps.some(s => s.kind === 'attack')
     ) {

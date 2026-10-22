@@ -62,13 +62,18 @@ reusable maps. Here's the state:
   and not engaged behaves as a reserve; an engaged/melee-locked reserve is front
   line until freed, then returns to reserve duty. Aggressive
   rear attacks skip AGR and add rout-threat value; there is **no reserve in
-  aggressive stance**, every unpaired unit flanks. Flankers **do not queue**:
-  they retarget to the closest enemy locked by a frontage/structure unit **at
-  the start of the plan**, stage at least **three hexes** from every hostile,
-  keep circling toward the flank/rear, and may attack a frontage-locked enemy
-  from its flank/rear (never front); a closer destination is allowed only when it
-  enables such a strike. A same-plan frontage advance does not count, so they do
-  not get ahead of the main body. Defensive reserves hold a **central station ~2
+  aggressive stance**, every unpaired unit flanks. **Fastest surplus units are
+  forced to flank/rear when removing them leaves a contiguous frontage** (e.g.
+  wolf riders O/P flank, G–L keep the line); interior fast units stay frontage
+  if pulling them out would break contiguity, and the scoring strongly prefers
+  fast end units as extras. Flankers **do not queue**: they retarget to the
+  closest enemy locked by a frontage/structure unit, stage **at least three
+  hexes from every hostile and never closer than the friendly front line**, and
+  keep circling behind it. Once the main body locks a target — **including a
+  same-plan lock** — they dash to its flank/rear and may attack that turn. They
+  never attack a front arc and never front-charge. During Preview/Execute tokens
+  carry debug role badges (`F` frontage, `K` flanker, `B` rear, `R` reserve,
+  `A` ranged, `S` structure). Defensive reserves hold a **central station ~2
   hexes behind the line** (staggered, and split into sector groups on a very long
   line), optionally in **Scattered** while uncommitted. Reserves never take a
   normal front-line pairing slot; their mission is to face flank/rear threats
@@ -93,7 +98,7 @@ reusable maps. Here's the state:
   available org level before contact; flankers attack first and may chain two
   formation upgrades (Scattered → Open → Close) in one action; Scattered turns
   are free.
-  `npm run check`: tsc, **1136 tests** (62 planner), depcruise, build. No new
+  `npm run check`: tsc, **1137 tests** (63 planner), depcruise, build. No new
   migration for 2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted charges, Round
   4 full coordination, Round 5 full auto-turn; AI still ignores ZoC
   scatter/pursue, flight, and some elevation nuances. See

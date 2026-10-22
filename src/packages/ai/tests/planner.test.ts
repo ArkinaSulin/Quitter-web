@@ -1153,39 +1153,6 @@ describe('enemyAI anti-idle and defensive facing', () => {
     expect(firstAttack === -1 || lastTurn < firstAttack, 'faces before attacking').toBe(true);
   });
 
-  it('does not close before the main body is engaged', () => {
-    const blue = [
-      ...['O', 'P'].map((id, i) => mk({
-        id, team: 'blue', hex: hex(-3 + i, -1), facing: 3,
-        movementPoints: 4, actionsAvailable: 2, weaponString: SPEAR,
-      })),
-      ...['G', 'H', 'I', 'J', 'K', 'L'].map((id, i) => mk({
-        id, team: 'blue', hex: hex(i, -1), facing: 3,
-        movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
-      })),
-    ];
-    const red = ['A', 'B', 'C', 'D', 'E', 'F'].map((id, i) => mk({
-      id, team: 'black', hex: hex(i, 1), facing: 0, weaponString: SPEAR,
-    }));
-    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', {
-      advanced: true,
-      stance: 'aggressive',
-    });
-    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
-    const plans = planAiMoves(ctx);
-    rng.mockRestore();
-
-    for (const id of ['O', 'P']) {
-      const unit = blue.find(u => u.id === id)!;
-      const plan = plans.find(p => p.unitId === id);
-      expect(plan?.steps.some(s => s.kind === 'attack'), id).toBe(false);
-      const moves = plan?.steps.filter(s => s.kind === 'move') ?? [];
-      const last = moves[moves.length - 1];
-      const finalHex = last && last.kind === 'move' ? last.to : unit.hex;
-      expect(Math.min(...red.map(e => dist(finalHex, e.hex))), id).toBeGreaterThanOrEqual(3);
-    }
-  });
-
   it('faces once instead of oscillating between two adjacent flank enemies', () => {
     const defender = mk({
       id: 'def', team: 'blue', hex: hex(0, 0), facing: 0,
@@ -1237,7 +1204,7 @@ describe('enemyAI anti-idle and defensive facing', () => {
       })),
       ...['G', 'H', 'I', 'J', 'K', 'L'].map((id, i) => mk({
         id, team: 'blue', hex: hex(i, -1), facing: 3,
-        movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+        movementPoints: 0, actionsAvailable: 2, weaponString: SPEAR,
       })),
     ];
     const red = ['A', 'B', 'C', 'D', 'E', 'F'].map((id, i) => mk({
@@ -1264,6 +1231,82 @@ describe('enemyAI anti-idle and defensive facing', () => {
       const startDist = Math.min(...red.map(e => dist(unit.hex, e.hex)));
       const endDist = Math.min(...red.map(e => dist(finalHex, e.hex)));
       expect(attack || endDist < startDist, `${id} circles or closes`).toBe(true);
+    }
+  });
+});
+
+describe('aggressive flanker roles and dash', () => {
+  function dist(a: Hex, b: Hex): number {
+    return Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(a.s - b.s));
+  }
+
+  it('forces the fastest end units to flank and keeps them behind the line', () => {
+    const blue = [
+      ...['O', 'P'].map((id, i) => mk({
+        id, team: 'blue', hex: hex(-4 + i, -4), facing: 3,
+        movementPoints: 4, actionsAvailable: 2, weaponString: SPEAR,
+      })),
+      ...['G', 'H', 'I', 'J', 'K', 'L'].map((id, i) => mk({
+        id, team: 'blue', hex: hex(-2 + i, -5), facing: 3,
+        movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+      })),
+    ];
+    const red = ['A', 'B', 'C', 'D', 'E', 'F'].map((id, i) => mk({
+      id, team: 'black', hex: hex(-4 + i, 0), facing: 0, weaponString: SPEAR,
+    }));
+    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', {
+      advanced: true,
+      stance: 'aggressive',
+    });
+    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const battle = assignBattleRoles(blue, red, ctx, true);
+    const plans = planAiMoves(ctx);
+    rng.mockRestore();
+
+    for (const id of ['O', 'P']) {
+      const role = battle.roles.get(id)?.kind;
+      expect(role === 'flank' || role === 'rear', id).toBe(true);
+      const plan = plans.find(p => p.unitId === id);
+      expect(plan?.roleKind, `${id} role marker`).toBe(role);
+      const attack = plan?.steps.find(s => s.kind === 'attack');
+      if (attack) {
+        const target = red.find(e => e.id === attack.targetId)!;
+        expect(arcOfTarget(attack.from, target.facing, target.hex), `${id} strikes flank/rear`).not.toBe('front');
+      }
+    }
+    for (const id of ['G', 'H', 'I', 'J', 'K', 'L']) {
+      expect(battle.roles.get(id)?.kind, id).toBe('frontage');
+      expect(plans.find(p => p.unitId === id)?.roleKind, `${id} marker`).toBe('frontage');
+    }
+  });
+
+  it('dashes the same turn the frontage locks', () => {
+    const blue = [
+      ...['O', 'P'].map((id, i) => mk({
+        id, team: 'blue', hex: hex(-4 + i, -1), facing: 3,
+        movementPoints: 6, actionsAvailable: 2, weaponString: SPEAR,
+      })),
+      ...['G', 'H', 'I', 'J', 'K', 'L'].map((id, i) => mk({
+        id, team: 'blue', hex: hex(-2 + i, -2), facing: 3,
+        movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+      })),
+    ];
+    const red = ['A', 'B', 'C', 'D', 'E', 'F'].map((id, i) => mk({
+      id, team: 'black', hex: hex(-2 + i, 0), facing: 0, weaponString: SPEAR,
+    }));
+    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', {
+      advanced: true,
+      stance: 'aggressive',
+    });
+    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const battle = assignBattleRoles(blue, red, ctx, true);
+    const plans = planAiMoves(ctx);
+    rng.mockRestore();
+
+    for (const id of ['O', 'P']) {
+      expect(battle.roles.get(id)?.kind === 'flank' || battle.roles.get(id)?.kind === 'rear').toBe(true);
+      const plan = plans.find(p => p.unitId === id);
+      expect(plan?.steps.some(s => s.kind === 'attack' || s.kind === 'move'), `${id} dashes`).toBe(true);
     }
   });
 });

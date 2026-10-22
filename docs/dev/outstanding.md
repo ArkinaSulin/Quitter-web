@@ -126,8 +126,12 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   1`), forward-band-only targeting, flank/rear reaction, routing-hole patching,
   and cluster-cap exemption while reacting. Follow-up anti-idle pass: adjacent
   near-breakeven attacks (multi-action), nearest-reachable-enemy fallback when a
-  lane is blocked, flankers retargeting/circling at ≥3 hexes and closing only
-  after a start-of-plan frontage lock, whole-line pairing before reserves (short leading ranks promote rear units; true surplus stays reserve), and one-shot defensive attack-exposure facing. Migration 130 is
+  lane is blocked, fastest surplus units forced to flank when contiguity is
+  kept, flankers retargeting/circling at ≥3 hexes and never closer than the
+  friendly line, closing after the frontage locks (same-turn dash allowed),
+  whole-line pairing before reserves (short leading ranks promote rear units;
+  true surplus stays reserve), one-shot defensive attack-exposure facing, and
+  debug role badges (F/K/B/R/A/S) during AI Preview. Migration 130 is
   applied; no
   migration was needed for these fixes. The AI
   package is the source of truth: `src/packages/ai/lib/{planner,battleLine,reserve}.ts`,

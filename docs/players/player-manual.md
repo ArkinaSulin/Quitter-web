@@ -1318,10 +1318,14 @@ turn; the GM still owns the settings). Inside the AI tab, the
 Aggressive; Defensive sticks closer together and protects flanks first).
 Aggressive uses surplus units to flank or attack from the rear (rear attacks
 skip AGR and put extra rout pressure); pairing counts only the enemy forward
-band, so a second-rank reserve does not hide a real flanker. Flankers do not
-wait in a queue: they retarget to a target already locked by the frontage at the
-start of the turn, circle at least three hexes out, and close only when they can
-strike a flank or rear; they never get ahead of the main body or front-charge.
+band, so a second-rank reserve does not hide a real flanker. The fastest surplus
+units are used as flankers when the remaining front rank stays contiguous, so
+fast riders do not take frontage from slower warriors. Flankers do not wait in a
+queue: they retarget to a target locked by the frontage, circle at least three
+hexes out and never closer than the friendly front line, then dash to the flank
+or rear as soon as the frontage locks — including later in the same turn. They
+never charge the front. During AI preview/execute each token shows a role badge:
+F frontage, K flanker, B rear, R reserve, A ranged, S structure.
 Defensive melee units turn once to face an adjacent flank/rear threat before
 attacking, even if that costs the attack, so they do not oscillate. Defensive
 stance pairs the whole enemy front line first: the front rank shifts laterally

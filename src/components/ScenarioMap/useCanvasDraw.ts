@@ -767,7 +767,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     // AI-selected units, grey opt-out badges on AI-excluded-but-eligible units,
     // and preview/execute routes (polyline + crossed swords for attacks + a
     // ghost at the final hex). Routes dim unless hovered.
-    if (aiOverlay && (aiOverlay.checkedUnitIds.length > 0 || aiOverlay.excludedUnitIds.length > 0 || aiOverlay.routes.length > 0)) {
+    if (aiOverlay && (aiOverlay.checkedUnitIds.length > 0 || aiOverlay.excludedUnitIds.length > 0 || aiOverlay.routes.length > 0 || Object.keys(aiOverlay.roles ?? {}).length > 0)) {
       const byId = new Map(displayUnits.map(u => [u.id, u]));
       // Checkmarks: fixed on-screen size (does not grow with zoom).
       const badgeR = 9;
@@ -796,6 +796,40 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.stroke();
         ctx.restore();
       }
+      // Debug role badge (top-left): F frontage, K flanker, B rear, R reserve,
+      // A ranged, S structure.
+      const roleStyle: Record<string, { label: string; color: string }> = {
+        frontage: { label: 'F', color: '#60a5fa' },
+        flank: { label: 'K', color: '#f59e0b' },
+        rear: { label: 'B', color: '#ef4444' },
+        reserve: { label: 'R', color: '#34d399' },
+        ranged: { label: 'A', color: '#a78bfa' },
+        structure: { label: 'S', color: '#94a3b8' },
+      };
+      for (const [id, role] of Object.entries(aiOverlay.roles ?? {})) {
+        if (!roleStyle[role]) continue;
+        const u = byId.get(id);
+        if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
+        const pos = hexToPixel(u.hex, HEX_SIZE);
+        const bx = pos.x * currentZoom + offsetX - tokenWidth * 0.46;
+        const by = pos.y * currentZoom + offsetY - tokenHeight * 0.52;
+        const style = roleStyle[role];
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(bx, by, badgeR, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(17,24,39,0.92)';
+        ctx.fill();
+        ctx.strokeStyle = style.color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = style.color;
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(style.label, bx, by + 0.5);
+        ctx.restore();
+      }
+
       // Opt-out badge (AI-eligible unit the DM excluded): grey circle + minus.
       for (const id of aiOverlay.excludedUnitIds ?? []) {
         const u = byId.get(id);

@@ -15,6 +15,9 @@ export interface AiRouteVisual {
   formation?: string;
 }
 
+/** Battle-role badge shown on a token during AI preview/execute. */
+export type AiRoleMarker = 'frontage' | 'flank' | 'rear' | 'reserve' | 'ranged' | 'structure';
+
 /** Everything the canvas needs to draw for the AI assist UI. */
 export interface AiOverlayData {
   /** Units wearing the "selected for AI" checkmark. */
@@ -23,4 +26,6 @@ export interface AiOverlayData {
   excludedUnitIds: string[];
   /** Preview/execute routes to draw (empty when idle). */
   routes: AiRouteVisual[];
+  /** Debug role badge per unit id. */
+  roles?: Record<string, AiRoleMarker>;
 }

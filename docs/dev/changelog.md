@@ -1,5 +1,25 @@
 # QuiTTER Changelog
 
+## AI aggressive flanker assignment, same-turn dash, role markers (2026-10-21)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/{AiPanel,aiTypes,useCanvasDraw}.ts(x), docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
+
+- Aggressive stance now **forces the fastest surplus units into flank/rear
+  roles** when removing them leaves a contiguous frontage line. In the playtest
+  shape, wolf riders O/P flank while the slower G-L keep the front-to-front
+  pairing. If a fast unit is interior, it is not pulled out if that would break
+  contiguity; the scoring still strongly prefers fast end units as extras.
+- Flankers stage at **>=3 hexes from every hostile and never closer than the
+  friendly front line**; if they start ahead they move back. Once the frontage
+  locks a target - including a lock created **during the same plan** - they dash
+  to its flank/rear and may attack that turn. No front-arc attacks or front
+  charges.
+- Added **debug role badges** during AI Preview/Execute: `F` frontage, `K`
+  flanker, `B` rear, `R` reserve, `A` ranged, `S` structure, with a legend in the
+  AI panel. This makes future role-assignment playtests auditable at a glance.
+- Added tests for forced fastest-end flankers, same-turn dash, and role markers.
+- Verification: `npm run check` passes (tsc, 1137 tests / 63 planner, depcruise,
+  build).
+
 ## AI pairs the whole line before committing reserves (2026-10-21)
 **Files:** src/packages/ai/lib/{planner,reserve}.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
 

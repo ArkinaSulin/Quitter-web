@@ -185,18 +185,25 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
 - **Aggressive surplus**: rear first when reachable (no AGR, no retaliation,
   doubled threat → faster rout), else flank. There is **no reserve role in
   aggressive stance**; every unpaired unit becomes a flanker/rear attacker.
-  Flankers **do not queue** behind one assigned target: if that target was not
-  locked by a frontage/structure unit **at the start of the plan**, they retarget
-  to the closest frontage-locked enemy (or the closest enemy when none is
-  engaged). They stage on a **ring of at least three hexes from every hostile**;
-  a destination closer than 3 is allowed only when it enables a flank/rear
-  attack on an enemy already locked by the main body. A same-plan frontage
-  advance does not count — flankers wait for the next turn. While waiting they
-  keep circling toward the target's flank/rear rather than holding on one ring
-  hex. They may attack a frontage-locked enemy from its flank/rear arc, never
-  spend an attack on a front arc, and never front-charge. This prevents a fast
-  wolf rider getting ahead of the main force, settling at 2 hexes, and being
-  melee-locked before the frontage engages.
+  **Fastest surplus first**: when removing the fastest surplus units leaves a
+  contiguous frontage line, those units are forced to flank/rear so slower
+  warriors keep the front-to-front pairing (e.g. wolf riders O/P flank while
+  G–L hold the line). If a fast unit is interior, the contiguity check prevents
+  it being pulled out; scoring still strongly prefers fast end units as extras.
+  Flankers **do not queue** behind one assigned target: if that target is not
+  locked by a frontage/structure unit, they retarget to the closest
+  frontage-locked enemy (or the closest enemy when none is engaged). Until the
+  main body locks the target they stage on a **ring of at least three hexes from
+  every hostile and never closer than the friendly front line**; if they start
+  ahead they move back out. Once the frontage locks — **including a lock created
+  during this same plan** — they dash to the target's flank/rear and may attack
+  that turn. They never spend an attack on a front arc and never front-charge.
+  This prevents fast wolf riders being used as frontage, getting ahead of the
+  main body, or being melee-locked before the frontage engages.
+- **Role markers (debug)**: during AI Preview/Execute each token carries a small
+  top-left badge — `F` frontage, `K` flanker, `B` rear attacker, `R` reserve,
+  `A` ranged, `S` structure. The AI panel shows the legend. This makes role
+  assignment auditable in playtests.
 - **Defensive facing**: a defensive melee unit does not accept an attack that
   leaves another adjacent enemy in its flank or rear. It first turns to face the
   most dangerous exposed enemy, even if that costs the attack, then acts from

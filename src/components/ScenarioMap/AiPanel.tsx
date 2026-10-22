@@ -20,7 +20,7 @@ import { StructureTemplate } from '@/types/structure';
 import { legalTargets } from '@/packages/ai';
 import { unitAttackCap } from '@/packages/combat';
 import { supabase } from '@/packages/infra/supabase';
-import { AiOverlayData } from './aiTypes';
+import { AiOverlayData, AiRoleMarker } from './aiTypes';
 
 type AiStep = AiUnitPlan['steps'][number];
 
@@ -172,10 +172,15 @@ export function AiPanel({
     const excludedIds = eligible.filter(id => aiExcluded[id]);
     const active: { unitId: string; steps: AiStep[] }[] = remaining ?? (plans ?? []);
     const routes = buildRoutes(units, active);
+    const roles: Record<string, AiRoleMarker> = {};
+    for (const p of plans ?? []) {
+      if (p.roleKind) roles[p.unitId] = p.roleKind;
+    }
     onOverlayChange({
       checkedUnitIds: eligible.filter(id => !aiExcluded[id]),
       excludedUnitIds: excludedIds,
       routes,
+      roles,
     });
     return () => onOverlayChange(null);
   }, [units, eligible, aiExcluded, plans, remaining, phaseTick, onOverlayChange]);
@@ -619,6 +624,17 @@ export function AiPanel({
             </button>
           )}
         </div>
+      )}
+
+      {plans && (
+        <p className="text-[10px] text-gray-400 leading-tight">
+          Role badges: <span className="text-blue-300">F frontage</span> ·{' '}
+          <span className="text-amber-300">K flanker</span> ·{' '}
+          <span className="text-red-300">B rear</span> ·{' '}
+          <span className="text-emerald-300">R reserve</span> ·{' '}
+          <span className="text-violet-300">A ranged</span> ·{' '}
+          <span className="text-gray-300">S structure</span>
+        </p>
       )}
 
       {executing && (
