@@ -1,5 +1,37 @@
 # QuiTTER Changelog
 
+## Session backup: AI battle roles + playtest fixes (2026-10-19)
+**Commits:** `34c96de`, `b831808`, `68e3a86`, `7a828b6`, `90fa3df`, `a6469cc`; this backup commit also includes the reserve-hold/last-action fix.
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/{ScenarioMap,AiPanel}.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
+
+- Shipped the AI battle-role system: front-line-only pairing, fast flank/rear
+  surplus, ring-3 staging + enemy-line facing, structure hold, ranged
+  stand-off/reaction lanes, defensive reserve hold/intercept, front/flank AGR
+  valuation, and role-aware formation upgrades.
+- Rout fixes: each pushed-through hop is re-evaluated; empty-before-pass priority
+  is unchanged; routed movement maximises hostile-mass distance.
+- Latest playtest fix: reserve holds second rank until an enemy flanker is within
+  3 hexes, then intercepts from flank/rear; frontage/reserve on the last action
+  takes a near-breakeven attack (`-8`) instead of idling.
+- **Next session:** playtest latest AI roles/staging/reserve, then Round 2a
+  archers + artillery, Round 3 mounted charges, Round 4 coordination, Round 5
+  auto-turn. Separate known issue: turn counter appeared desynced/broken.
+- Verification: `npm run check` passes (tsc, 1124 tests / 50 planner, depcruise,
+  build).
+
+## AI reserve holds longer and intercepts from the flank (2026-10-19)
+**Files:** src/packages/ai/lib/planner.ts, docs/dev/{17-enemy-ai,changelog}.md, docs/players/player-manual.md, AGENTS.md
+
+- Defensive reserve no longer commits on a 6-hex trigger. It keeps its
+  second-rank position until an unengaged enemy flanker is within **3 hexes**,
+  then faces it and intercepts from the enemy's flank/rear where possible
+  (front only as a blocker). This avoids early frontage crowding and losing the
+  reserve's initial counter-attack angle.
+- On its **last action**, a frontage/reserve/structure unit takes a
+  near-breakeven adjacent attack (Advanced score above `-8`) instead of idling;
+  clearly losing trades are still refused.
+- Docs updated; `npm run check` passes (1124 tests).
+
 ## AI front-line-only pairing (2026-10-19)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md, AGENTS.md
 

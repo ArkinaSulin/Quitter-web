@@ -168,9 +168,10 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   they switch to the final flank/rear lane and may attack.
 - **Defensive surplus**: defaults to **second rank / reserve**, connected to the
   line; it can patch a routing hole. A connected flank is taken only when safe.
-  If an unengaged enemy flanker closes within 6 hexes, the reserve first faces
-  it, then commits to intercept it toe-to-toe (or its flank/rear when reachable)
-  instead of idling; it holds if intercepting would open a hole.
+  It holds its second-rank position until an unengaged enemy flanker closes
+  within **3 hexes**; then it faces the threat and commits from the enemy's
+  flank/rear where possible (front only as a blocker), rather than crowding the
+  frontage. It holds if intercepting would open a hole.
 - **Ranged support**: ranged-only units are excluded from frontage/flank roles.
   They stand off, never voluntarily enter melee contact, shoot with both actions
   when possible, and retreat/kite when closed on. Scattered is the escape/transit
@@ -225,6 +226,9 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   - **Rear attack value**: `attackValue` discounts front/flank priority by an
     approximate AGR pass chance; rear attacks are guaranteed (no AGR), have no
     retaliation, and carry a rout-threat bonus.
+  - **Last action**: frontage/reserve/structure units with one action left take a
+    near-breakeven adjacent attack (score above `-8`) rather than idling; a
+    clearly losing trade is still refused, and flankers keep waiting for their arc.
   - **Reaction fire**: archer-reaction hold positions score clear snapshot lanes
     (`range`, arc, LoS); the planner uses only actions left after the unit holds
     and never sacrifices an attack for reaction eligibility.

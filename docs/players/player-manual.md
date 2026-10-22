@@ -1321,7 +1321,9 @@ skip AGR and put extra rout pressure); pairing counts only the enemy forward
 band, so a second-rank reserve does not hide a real flanker. Flankers stage
 outside enemy ZoC, never closer than the main body, face the enemy line, and wait for the frontage to
 lock a target before closing. Defensive surplus holds second rank, patches rout
-holes, and intercepts an approaching enemy flanker after facing it. Rout paths are
+holes, and waits until an enemy flanker is close before facing and intercepting
+from its flank/rear. A unit on its last action takes a near-breakeven adjacent
+attack rather than idling. Rout paths are
 re-evaluated after each pushed-through friendly and prefer the first empty safe
 hex. Ranged-only
 units stand off, avoid contact, and use only leftover actions for reaction fire.

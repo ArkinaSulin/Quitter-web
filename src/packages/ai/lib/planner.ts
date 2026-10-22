@@ -1473,7 +1473,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
           return !frontage.some(f => hexDistance(f.hex, e.hex) <= 1);
         });
         const pick = unengaged
-          .filter(e => hexDistance(u.hex, e.hex) <= 6)
+          .filter(e => hexDistance(u.hex, e.hex) <= 3)
           .sort((a, b) => hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex) || a.id.localeCompare(b.id))[0] ?? null;
         interceptTarget = pick;
         if (pick) {
@@ -1711,7 +1711,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const meleeOptions = legal.filter(t => !t.isRanged);
       const rangedOptions = legal.filter(t => t.isRanged);
       type TargetSel = { unit: Unit; dist: number; score: number; dmg: number; counter: number; rank: number };
-      const pickMelee = (): TargetSel | null => {
+      const pickMelee = (forceFloor = 0): TargetSel | null => {
         let best: TargetSel | null = null;
         for (const t of meleeOptions) {
           const v = attackValue(u, t.unit, t.dist, false, ctx, advanced, stance, reserved);
@@ -1731,7 +1731,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
             best = { unit: t.unit, dist: t.dist, score, dmg: v.dmg, counter: v.counter, rank };
           }
         }
-        return best && (advanced ? best.score > 0 : best.dmg > 0) ? best : null;
+        return best && (advanced ? best.score > forceFloor : best.dmg > 0) ? best : null;
       };
       const pickRanged = (): TargetSel | null => {
         let best: TargetSel | null = null;
@@ -1754,7 +1754,13 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       };
       let attack: TargetSel | null = null;
       if (doctrine === 'melee' && meleeOptions.length > 0) {
-        attack = pickMelee();
+        // On the final action, take a near-breakeven adjacent attack rather than
+        // idling; still avoid a clearly losing trade. Flankers keep waiting.
+        const lastActionFloor = (u.actionsAvailable ?? 0) === 1
+          && (role?.kind === 'frontage' || role?.kind === 'reserve' || role?.kind === 'structure')
+          ? -8
+          : 0;
+        attack = pickMelee(lastActionFloor);
       } else if (doctrine === 'ranged') {
         attack = pickRanged();
       } else {
@@ -1783,7 +1789,12 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const lockedNow = targetLockedByFrontage(assignedTargetId);
       const unlockedFlank = (role?.kind === 'flank' || role?.kind === 'rear') && !lockedNow;
       const lane = interceptTarget
-        ? assignedLaneHex(interceptTarget, u)
+        ? roleLaneHex(
+            { kind: 'flank', targetId: interceptTarget.id, side: u.hex.q <= interceptTarget.hex.q ? 'left' : 'right' },
+            interceptTarget,
+            u,
+            true,
+          )
         : roleLaneHex(role ?? { kind: 'frontage', targetId: '' }, assignedTarget, u, lockedNow);
       const tuning: DestTuning = {
         advanced,

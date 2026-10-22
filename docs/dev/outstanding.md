@@ -115,20 +115,20 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
 - ⏳ Rout-modal/eventual AI handling of the new pursue (AI planner ignores it for v1).
 
 ## AI assist
-- 📌 **Current status (2026-10-18):** Pass 1 + 2a + 2b are shipped (`009a6b1`,
-  `f4e3695`), plus the **strict no-turn policy**: a 0-turn attack/charge always
-  beats a rotation; turns are only allowed when they enable an attack/charge, and
-  no turn is planned after an attack. Defensive melee advances now finish in one
-  plan (forced progress + real post-move attack accounting + stable initial
-  cluster cap). Battle roles now add shiftable frontage windows, fast flank/rear
-  surplus, defensive second-rank reserve, ranged stand-off/reaction lanes, and
-  all-stance structure hold; Advanced formation upgrades are role-aware.
-  Migration 130 is applied, and 2a/2b added no migration. Next
-  session: playtest 2a/2b, then work the remaining rounds in
-  order — **2a archers + artillery → 3 mounted charges → 4 full coordination → 5
-  full auto-turn**. Files: `src/packages/ai/lib/planner.ts`,
+- 📌 **Current status (2026-10-19):** Pass 1 + 2a + 2b plus the post-playtest
+  fixes are shipped through `a6469cc` (strict no-turn, defensive one-plan
+  advance, battle roles, front-line-only pairing, fast flankers, ring-3 staging
+  + facing, structure hold, ranged stand-off/reaction, reserve hold/intercept,
+  rout re-evaluation + hostile-mass flee, last-action attack fallback).
+  Migration 130 is applied; no migration was needed for these fixes. The AI
+  package is the source of truth: `src/packages/ai/lib/planner.ts`,
   `src/packages/ai/tests/planner.test.ts`, `src/components/ScenarioMap/AiPanel.tsx`;
   design in `docs/dev/17-enemy-ai.md`.
+- **Next session:** playtest the latest role/staging/reserve behaviour, then the
+  remaining rounds in order — **2a archers + artillery → 3 mounted charges → 4
+  full coordination → 5 full auto-turn**. Known separate bug from playtest: the
+  **turn counter** appeared to be broken/desynced; reproduce before changing
+  turn advancement.
 - 🔜 **Full AI mode** (auto whole-turn director: watches turn, runs the plot,
   auto-answers rout/reaction prompts, auto End Turn) on top of the existing
   planner + Execute driver.

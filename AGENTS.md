@@ -58,8 +58,10 @@ reusable maps. Here's the state:
   rear attacks skip AGR and add rout-threat value; flankers stage three rings
   out (or behind the main body), never closer than the frontage, face the enemy
   line, and wait for the frontage lock before switching to the final flank/rear
-  lane. Defensive reserve intercepts a closing enemy flanker after facing it.
-  Rout paths re-evaluate after
+  lane. Defensive reserve holds second rank until an enemy flanker is within
+  3 hexes, then faces and intercepts from its flank/rear rather than the
+  frontage. A frontage/reserve unit on its last action takes a near-breakeven
+  adjacent attack instead of idling. Rout paths re-evaluate after
   each pushed-through friendly and rout movement maximises hostile-mass
   distance. Ranged-only units stand off and never enter contact; archer-reaction
   holds score clear LoS/range/arc lanes using only leftover actions. Structure
@@ -130,6 +132,7 @@ reusable maps. Here's the state:
 ### Pending
 
 - **AI assist remaining** (Pass 1 + 2a + 2b shipped): Round 2a archers + artillery, Round 3 mounted charges, Round 4 full coordination, Round 5 full auto-turn; the planner still ignores ZoC scatter/pursue, flight, and some elevation nuances, and never controls heroes. See `docs/dev/outstanding.md`.
+- **Turn counter desync reported in playtest** (separate from AI roles): reproduce with End Turn / undo-redo before changing turn advancement.
 - **Spelljammer module implementation** (docs + access caps + shipyard builder done; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`) applied to the DB.
 - Migration `013_turn_tracking.sql` — applied to the DB (done).
 - Migrations 010/011/012 — user applied to the DB.
