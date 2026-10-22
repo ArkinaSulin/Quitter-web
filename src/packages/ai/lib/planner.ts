@@ -55,6 +55,8 @@ import { clampDamage } from '@/packages/primitives';
 import { attackRollFlags, effectAttackBonus, effectDamageBonus, unitIgnoresClimb } from '@/packages/effects';
 import { applyFormationChange, isFormationChangeAffordable } from '@/packages/movement';
 import { hasLineOfSight } from '@/packages/combat';
+import { BattleLine, computeBattleLine, isFlankOrRearThreat, leadingRank, findLineGaps, projectPoint } from './battleLine';
+import { ReservePlacement, assignReservePlacements, reserveThreatKind, sectorOfProjection } from './reserve';
 
 export type AiStep =
   | { kind: 'move'; unitId: string; from: Hex; to: Hex; path: Hex[]; cost: number }
@@ -214,6 +216,12 @@ export type AiBattleRole =
 export interface BattleAssignment {
   roles: Map<string, AiBattleRole>;
   frontageIds: Set<string>;
+  /** Enemies in the hostile forward band that are paired with a frontage unit. */
+  frontFoeIds: Set<string>;
+  /** Hostile forward-band units with no frontage pairing. */
+  unpairedFoeIds: Set<string>;
+  ownFrontCount: number;
+  enemyFrontCount: number;
 }
 
 /** The standing structure a unit is defending, if any. A hex structure uses its
@@ -284,14 +292,27 @@ export function assignBattleRoles(
     && !u.isDeleted && !u.hidden && (u.currentUnitHp ?? 0) > 0
   ).sort(frontageSort);
 
-  if (melee.length === 0 || foes.length === 0) return { roles, frontageIds };
+  if (melee.length === 0 || foes.length === 0) {
+    return {
+      roles,
+      frontageIds,
+      frontFoeIds: new Set(),
+      unpairedFoeIds: new Set(foes.map(f => f.id)),
+      ownFrontCount: 0,
+      enemyFrontCount: foes.length,
+    };
+  }
 
-  const count = Math.min(melee.length, foes.length);
+  // Defensive doctrine keeps the rear rank as reserves; only the leading rank
+  // can become frontage, even when the hostile forward band is larger.
+  const frontPool = stance === 'defensive' ? leadingRank(melee, foes) : melee;
+  const count = Math.min(frontPool.length, foes.length);
   let best: { score: number; roles: Map<string, AiBattleRole>; frontageIds: Set<string> } | null = null;
 
-  for (let start = 0; start + count <= melee.length; start++) {
-    const main = melee.slice(start, start + count);
-    const extras = [...melee.slice(0, start), ...melee.slice(start + count)];
+  for (let start = 0; start + count <= frontPool.length; start++) {
+    const main = frontPool.slice(start, start + count);
+    const mainIds = new Set(main.map(m => m.id));
+    const extras = melee.filter(m => !mainIds.has(m.id));
     const candidate = new Map<string, AiBattleRole>();
     const candidateFrontage = new Set<string>();
     main.forEach((u, i) => {
@@ -300,10 +321,11 @@ export function assignBattleRoles(
     });
 
     let score = 100 + count * 20;
-    const centre = (melee.length - count) / 2;
+    const centre = (frontPool.length - count) / 2;
     score -= Math.abs(start - centre) * 3;
 
     const seenSide = new Map<'left' | 'right', number>();
+    const usedAnchors = new Set<string>();
     for (const extra of extras) {
       const side: 'left' | 'right' = extra.hex.q < main[0].hex.q ? 'left' : 'right';
       const target = side === 'left' ? foes[0] : foes[foes.length - 1];
@@ -311,18 +333,36 @@ export function assignBattleRoles(
       seenSide.set(side, sideIndex + 1);
 
       // Aggressive surplus looks for the rear first; a second unit on the same
-      // end covers the flank. Defensive surplus belongs in the second rank.
-      const role: AiBattleRole = stance === 'aggressive'
-        ? (advanced
+      // end covers the flank. Defensive surplus belongs in the second rank,
+      // anchored to the closest front-line unit so it keeps a central, mobile
+      // position instead of being dragged to a far end.
+      let role: AiBattleRole;
+      let anchorDistance = 0;
+      if (stance === 'aggressive') {
+        role = advanced
           ? { kind: sideIndex % 2 === 0 ? 'rear' : 'flank', targetId: target.id, side }
-          : { kind: 'flank', targetId: target.id, side })
-        : {
-            kind: 'reserve',
-            targetId: target.id,
-            behindUnitId: main.find(m => candidate.get(m.id)?.kind === 'frontage'
-              && (candidate.get(m.id) as { targetId?: string }).targetId === target.id)?.id
-              ?? main[0].id,
-          };
+          : { kind: 'flank', targetId: target.id, side };
+        anchorDistance = hexDistance(extra.hex, target.hex);
+      } else {
+        const nearest = main
+          .filter(m => !usedAnchors.has(m.id))
+          .sort((a, b) =>
+            hexDistance(extra.hex, a.hex) - hexDistance(extra.hex, b.hex)
+            || a.hex.q - b.hex.q
+            || a.id.localeCompare(b.id))[0]
+          ?? main.slice().sort((a, b) =>
+            hexDistance(extra.hex, a.hex) - hexDistance(extra.hex, b.hex)
+            || a.hex.q - b.hex.q
+            || a.id.localeCompare(b.id))[0];
+        const anchorTarget = candidate.get(nearest.id);
+        role = {
+          kind: 'reserve',
+          targetId: anchorTarget && 'targetId' in anchorTarget ? anchorTarget.targetId : target.id,
+          behindUnitId: nearest.id,
+        };
+        usedAnchors.add(nearest.id);
+        anchorDistance = hexDistance(extra.hex, nearest.hex);
+      }
       candidate.set(extra.id, role);
 
       const friends = units
@@ -335,12 +375,12 @@ export function assignBattleRoles(
       // Speed is a primary flanker trait: fast riders must not be spent as
       // frontage while slower warriors become surplus.
       score += effMax(extra, ctx.formations) * 8;
-      score -= hexDistance(extra.hex, target.hex) * 2;
+      score -= anchorDistance * 2;
       if (stance === 'aggressive') score += 10;
     }
     // Keep a surplus pair on one end when possible; adjacent flankers are less
     // isolated and can support each other.
-    if (extras.length > 1 && seenSide.size === 1) score += 8;
+    if (stance === 'aggressive' && extras.length > 1 && seenSide.size === 1) score += 8;
 
     // A small random jitter makes near-equal plans vary. The executed plan is
     // logged, so undo/redo remains consistent regardless of the roll.
@@ -353,7 +393,14 @@ export function assignBattleRoles(
     Array.from(best.roles.entries()).forEach(([id, role]) => roles.set(id, role));
     Array.from(best.frontageIds).forEach(id => frontageIds.add(id));
   }
-  return { roles, frontageIds };
+  return {
+    roles,
+    frontageIds,
+    frontFoeIds: new Set(foes.slice(0, count).map(f => f.id)),
+    unpairedFoeIds: new Set(foes.slice(count).map(f => f.id)),
+    ownFrontCount: count,
+    enemyFrontCount: foes.length,
+  };
 }
 
 /** True when a unit is eligible to be handed to the AI at this moment.
@@ -1426,6 +1473,101 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
     return false;
   };
 
+  const initialHexes = new Map(initialUnits.map(w => [w.id, w.hex]));
+  const surplusDispatch = battle.enemyFrontCount > battle.ownFrontCount + 1;
+  const placementCache = new Map<string, ReservePlacement>();
+  const claimedThreats = new Map<string, string>();
+  const claimedGaps = new Map<string, string>();
+
+  const currentLineUnits = (): Unit[] => working.filter(w =>
+    battle.frontageIds.has(w.id)
+    && !w.isDeleted && !w.hidden && (w.currentUnitHp ?? 0) > 0
+    && !isUnitRouted(w));
+  const currentLine = (foes: Unit[]): BattleLine | null => computeBattleLine(currentLineUnits(), foes);
+
+  const placementFor = (u: Unit, line: BattleLine): ReservePlacement | null => {
+    let placement = placementCache.get(u.id) ?? null;
+    if (!placement) {
+      const reserves = working.filter(w =>
+        battle.roles.get(w.id)?.kind === 'reserve'
+        && !w.isDeleted && !w.hidden && (w.currentUnitHp ?? 0) > 0
+        && !isUnitRouted(w));
+      const reachOf = (x: Unit) => Math.max(3, Math.floor(computeMoveBudget(x, effMax(x, ctx.formations))));
+      const placements = assignReservePlacements(reserves, line, reachOf);
+      placements.forEach((value, id) => placementCache.set(id, value));
+      placement = placementCache.get(u.id) ?? null;
+    }
+    return placement;
+  };
+
+  const visibleToAi = (e: Unit): boolean => !ctx.visibleHexes || ctx.visibleHexes.has(hexKeyOf(e.hex));
+
+  const pickReserveThreat = (
+    u: Unit,
+    line: BattleLine,
+    placement: ReservePlacement,
+    foes: Unit[],
+    current: Unit | null,
+  ): { target: Unit; score: number } | null => {
+    const radius = Math.max(3, line.length);
+    let best: { target: Unit; score: number } | null = null;
+    for (const e of foes) {
+      if (!battle.frontFoeIds.has(e.id) && !battle.unpairedFoeIds.has(e.id)) continue;
+      if (!visibleToAi(e)) continue;
+      const dLine = Math.min(...line.units.map(l => hexDistance(e.hex, l.hex)));
+      if (dLine > radius) continue;
+      const proj = projectPoint(e.hex, line);
+      if (sectorOfProjection(proj.t, line, placement.groupCount) !== placement.group) continue;
+      const rear = proj.du < 0;
+      const flanking = isFlankOrRearThreat(e, line);
+      const unpaired = battle.unpairedFoeIds.has(e.id);
+      const paired = battle.frontFoeIds.has(e.id);
+      const adjacentToLine = line.units.some(l => hexDistance(e.hex, l.hex) <= 1);
+      const kind = reserveThreatKind({
+        rear,
+        flanking,
+        paired,
+        unpaired,
+        surplusDispatch,
+        adjacentToLine,
+      });
+      if (!kind) continue;
+      const owner = claimedThreats.get(e.id);
+      if (owner && owner !== u.id) continue;
+      const kindScore = kind === 'rear' ? 120 : kind === 'flank' ? 80 : 40;
+      let score = kindScore + (radius - dLine) * 6 - hexDistance(u.hex, e.hex) * 2;
+      if (current?.id === e.id) score += 40;
+      if (!best || score > best.score) best = { target: e, score };
+    }
+    return best;
+  };
+
+  const pickReserveGap = (
+    u: Unit,
+    line: BattleLine,
+    placement: ReservePlacement,
+  ): { gapKey: string; hex: Hex; score: number } | null => {
+    const occupied = new Set(working
+      .filter(w => !w.isDeleted && !w.hidden)
+      .map(w => hexKeyOf(w.hex)));
+    const gaps = findLineGaps(line, battle.frontageIds, initialHexes, occupied);
+    let best: { gapKey: string; hex: Hex; score: number } | null = null;
+    for (const gap of gaps) {
+      if (gap.hexes.length === 0) continue;
+      if (sectorOfProjection(projectPoint(gap.center, line).t, line, placement.groupCount) !== placement.group) continue;
+      const owner = claimedGaps.get(gap.key);
+      if (owner && owner !== u.id) continue;
+      const hex = gap.hexes
+        .slice()
+        .sort((a, b) =>
+          hexDistance(u.hex, a) - hexDistance(u.hex, b)
+          || hexTieHash(a) - hexTieHash(b))[0];
+      const score = gap.width * 20 - hexDistance(u.hex, hex) * 3;
+      if (!best || score > best.score) best = { gapKey: gap.key, hex, score };
+    }
+    return best;
+  };
+
   const plans: AiUnitPlan[] = [];
   for (const seed of planned) {
     const plan: AiUnitPlan = { unitId: seed.id, steps: [] };
@@ -1440,6 +1582,8 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
     let assignedTargetId = targetIdOf(u.id);
     let assignedTarget = assignedTargetId ? enemies.find(e => e.id === assignedTargetId) ?? null : null;
     let interceptTarget: Unit | null = null;
+    let patchHex: Hex | null = null;
+    let gapKey: string | null = null;
     let reserveFaced = false;
     for (let s = 0; s < maxStepsForUnit; s++) {
       if ((u.actionsAvailable ?? 0) < 1 && (u.movementPointsAvailable ?? 0) < 1) break;
@@ -1462,25 +1606,46 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const doctrine = unitDoctrine(u);
       const enemiesAlive = enemies.filter(e => !e.isDeleted && !e.hidden && (e.currentUnitHp ?? 0) > 0);
 
-      // Defensive reserve: if an unengaged enemy flanker closes in, face it and
-      // commit to the intercept instead of idling in the second rank.
+      // Defensive reserve: cover the whole battle line. Real flank/rear
+      // threats come first, then surplus front-line pairings (only when the
+      // hostile forward band outnumbers us by more than one), then holes.
       if (role?.kind === 'reserve' && stance === 'defensive' && !hasAttacked) {
-        const frontage = Array.from(battle.frontageIds)
-          .map(id => working.find(w => w.id === id))
-          .filter((f): f is Unit => !!f && !f.isDeleted && !f.hidden && (f.currentUnitHp ?? 0) > 0);
-        const unengaged = enemiesAlive.filter(e => {
-          if (interceptTarget && e.id === interceptTarget.id) return true;
-          return !frontage.some(f => hexDistance(f.hex, e.hex) <= 1);
-        });
-        const pick = unengaged
-          .filter(e => hexDistance(u.hex, e.hex) <= 3)
-          .sort((a, b) => hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex) || a.id.localeCompare(b.id))[0] ?? null;
-        interceptTarget = pick;
-        if (pick) {
-          assignedTargetId = pick.id;
-          assignedTarget = pick;
-          if (!reserveFaced) {
+        const line = currentLine(enemiesAlive);
+        const placement = line ? placementFor(u, line) : null;
+        if (line && placement) {
+          const threat = pickReserveThreat(u, line, placement, enemiesAlive, interceptTarget);
+          const gap = threat ? null : pickReserveGap(u, line, placement);
+          if (threat) {
+            if (gapKey) {
+              claimedGaps.delete(gapKey);
+              gapKey = null;
+            }
+            patchHex = null;
+            if (interceptTarget?.id !== threat.target.id) {
+              if (interceptTarget) claimedThreats.delete(interceptTarget.id);
+              interceptTarget = threat.target;
+              assignedTargetId = threat.target.id;
+              assignedTarget = threat.target;
+              reserveFaced = false;
+            }
+            claimedThreats.set(threat.target.id, u.id);
+          } else if (gap) {
+            if (interceptTarget) claimedThreats.delete(interceptTarget.id);
+            interceptTarget = null;
+            if (gapKey && gapKey !== gap.gapKey) claimedGaps.delete(gapKey);
+            gapKey = gap.gapKey;
+            claimedGaps.set(gap.gapKey, u.id);
+            patchHex = gap.hex;
+          } else {
+            if (interceptTarget) claimedThreats.delete(interceptTarget.id);
+            if (gapKey) claimedGaps.delete(gapKey);
+            interceptTarget = null;
+            patchHex = null;
+            gapKey = null;
+          }
+          if (interceptTarget && !reserveFaced) {
             reserveFaced = true;
+            const pick = interceptTarget;
             const desired = facingToward(u.hex, pick.hex);
             let diff = (desired - u.facing + 6) % 6;
             if (diff > 3) diff -= 6;
@@ -1507,6 +1672,10 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
           }
         }
       }
+
+      const reserveHolding = role?.kind === 'reserve' && stance === 'defensive'
+        && !interceptTarget && !patchHex
+        && nearestEnemyDist(u.hex, enemiesAlive) > 1;
 
       // Ranged units avoid contact at all costs. Scattered is the escape/transit
       // formation (loose, all-direction, faster); this is the one formation
@@ -1585,11 +1754,47 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         }
       }
 
-      // Role-aware formation upgrade. Frontage/reserve/structure prioritise the
-      // highest available organisation level before contact, even at the cost
-      // of an attack. Flankers attack first; upgrade only when no attack is
-      // currently available (waiting for melee lock).
-      if (canAct && advanced && formationUpgrades < 2 && doctrine === 'melee' && !u.isHero && !u.isCharging && !u.climbTo) {
+      // Advanced defensive reserves wait loose (Scattered) for a fast reaction
+      // while they are uncommitted. Once committed, the normal role upgrade
+      // below applies again.
+      if (
+        canAct && advanced && stance === 'defensive' && role?.kind === 'reserve'
+        && !interceptTarget && !patchHex && formationUpgrades < 1
+        && !u.isHero && !u.isCharging && !u.climbTo
+        && u.currentFormation !== 'Scattered' && u.currentFormation !== 'Hero'
+      ) {
+        const near = nearestEnemyDist(u.hex, enemiesAlive);
+        const canScatter = near > 1
+          && (u.formationAvailability ?? []).includes('Scattered')
+          && canAdoptFormation(u.currentFormation, 'Scattered')
+          && isFormationChangeAffordable(u, effMax(u, ctx.formations));
+        if (canScatter) {
+          const newMax = effMax({ ...u, currentFormation: 'Scattered' }, ctx.formations);
+          const applied = applyFormationChange(u, effMax(u, ctx.formations), newMax);
+          const updated = {
+            ...u,
+            currentFormation: 'Scattered',
+            movementPointsAvailable: applied.movementPointsAvailable,
+            actionsAvailable: applied.actionsAvailable,
+          };
+          commit(u, updated, u.id);
+          u = updated;
+          formationUpgrades++;
+          plan.steps.push({ kind: 'formation', unitId: u.id, from, formation: 'Scattered' });
+          continue;
+        }
+      }
+
+      // Role-aware formation upgrade. Frontage/structure prioritise the highest
+      // available organisation level before contact, even at the cost of an
+      // attack. A committed reserve upgrades too; an uncommitted reserve keeps
+      // its loose waiting posture. Flankers attack first; upgrade only when no
+      // attack is currently available (waiting for melee lock).
+      if (
+        canAct && advanced && formationUpgrades < 2 && doctrine === 'melee'
+        && !u.isHero && !u.isCharging && !u.climbTo
+        && !(role?.kind === 'reserve' && !interceptTarget && !patchHex)
+      ) {
         const near = nearestEnemyDist(u.hex, enemiesAlive);
         const inZoc = movement.threat.has(hexKeyOf(u.hex));
         const isFlank = role?.kind === 'flank' || role?.kind === 'rear';
@@ -1753,18 +1958,20 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
         return best && (advanced ? best.score > 0 : best.dmg > 0) ? best : null;
       };
       let attack: TargetSel | null = null;
-      if (doctrine === 'melee' && meleeOptions.length > 0) {
-        // On the final action, take a near-breakeven adjacent attack rather than
-        // idling; still avoid a clearly losing trade. Flankers keep waiting.
-        const lastActionFloor = (u.actionsAvailable ?? 0) === 1
-          && (role?.kind === 'frontage' || role?.kind === 'reserve' || role?.kind === 'structure')
-          ? -8
-          : 0;
-        attack = pickMelee(lastActionFloor);
-      } else if (doctrine === 'ranged') {
-        attack = pickRanged();
-      } else {
-        attack = pickRanged(); // hybrid: no adjacency, so shoot from range
+      if (!reserveHolding) {
+        if (doctrine === 'melee' && meleeOptions.length > 0) {
+          // On the final action, take a near-breakeven adjacent attack rather than
+          // idling; still avoid a clearly losing trade. Flankers keep waiting.
+          const lastActionFloor = (u.actionsAvailable ?? 0) === 1
+            && (role?.kind === 'frontage' || role?.kind === 'reserve' || role?.kind === 'structure')
+            ? -8
+            : 0;
+          attack = pickMelee(lastActionFloor);
+        } else if (doctrine === 'ranged') {
+          attack = pickRanged();
+        } else {
+          attack = pickRanged(); // hybrid: no adjacency, so shoot from range
+        }
       }
 
       if (attack && canAct) {
@@ -1788,6 +1995,9 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const weaponMaxRange = Math.max(weaponRange, weapon?.maxRange ?? weaponRange);
       const lockedNow = targetLockedByFrontage(assignedTargetId);
       const unlockedFlank = (role?.kind === 'flank' || role?.kind === 'rear') && !lockedNow;
+      const stationLane = role?.kind === 'reserve'
+        ? placementCache.get(u.id)?.station ?? null
+        : null;
       const lane = interceptTarget
         ? roleLaneHex(
             { kind: 'flank', targetId: interceptTarget.id, side: u.hex.q <= interceptTarget.hex.q ? 'left' : 'right' },
@@ -1795,7 +2005,7 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
             u,
             true,
           )
-        : roleLaneHex(role ?? { kind: 'frontage', targetId: '' }, assignedTarget, u, lockedNow);
+        : patchHex ?? stationLane ?? roleLaneHex(role ?? { kind: 'frontage', targetId: '' }, assignedTarget, u, lockedNow);
       const tuning: DestTuning = {
         advanced,
         working,
@@ -1813,7 +2023,10 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const maxTurnCount = freeTurn(u, ctx.formations)
         ? 6
         : doctrine === 'melee' ? maxTurns : Math.min(1, maxTurns);
-      const speedCap = clusterSpeedCap(u, initialUnits, ctx, stance, advanced);
+      const reactingReserve = role?.kind === 'reserve' && (!!interceptTarget || !!patchHex);
+      const speedCap = reactingReserve
+        ? Infinity
+        : clusterSpeedCap(u, initialUnits, ctx, stance, advanced);
       const scorer = doctrine === 'ranged'
         ? (d: Hex, foes: Unit[], threat: Set<string>, facing: number, canAttack: boolean) => rangedDestScore(d, foes, threat, weaponRange, weaponMaxRange, facing, canAttack, tuning)
         : (d: Hex, foes: Unit[], threat: Set<string>, facing: number, canAttack: boolean) => meleeDestScore(d, foes, threat, facing, canAttack, tuning);
@@ -1832,7 +2045,9 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       const flankRole = role?.kind === 'flank' || role?.kind === 'rear';
       const straightAttacks = options.filter(o => o.turns.length === 0 && o.leadsToAttack);
       let candidates: Maneuver[];
-      if (free) {
+      if (reserveHolding) {
+        candidates = options;
+      } else if (free) {
         candidates = options;
       } else if (flankRole) {
         candidates = options.filter(o => o.turns.length === 0 || o.leadsToAttack);
@@ -1846,33 +2061,46 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       if (hasAttacked && !free) candidates = candidates.filter(o => o.turns.length === 0);
       if (candidates.length === 0) break;
       let best = candidates[0];
-      // A melee unit that still has actions/MP and is not at contact must keep
-      // advancing. Otherwise a defensive line can stop after one maneuver and
-      // need a second Execute to finish the same turn.
-      const isHold = best.turns.length === 0
-        && best.move.path.length === 0
-        && best.move.to.q === from.q
-        && best.move.to.r === from.r;
-      const nearest = nearestEnemyDist(u.hex, enemiesAlive);
-      const hasBudget = ((u.actionsAvailable ?? 0) >= 1 || (u.movementPointsAvailable ?? 0) >= 1);
-      if (isHold && doctrine === 'melee' && (role?.kind !== 'reserve' || !!interceptTarget) && !hasAttacked && nearest > 1 && hasBudget) {
-        const goal = lane
-          ?? (assignedTarget
-            ? assignedLaneHex(assignedTarget, u)
-            : enemiesAlive
-              .slice()
-              .sort((a, b) => hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex) || a.id.localeCompare(b.id))[0]
-              ?.hex);
-        if (goal) {
-          const progress = options.filter(o =>
-            o.turns.length === 0
-            && o.move.path.length > 0
-            && hexDistance(o.move.to, goal) < hexDistance(u.hex, goal));
-          progress.sort((a, b) =>
-            hexDistance(a.move.to, goal) - hexDistance(b.move.to, goal)
-            || Math.abs(a.move.to.q - goal.q) - Math.abs(b.move.to.q - goal.q)
-            || b.score - a.score);
-          if (progress.length > 0) best = progress[0];
+      if (reserveHolding) {
+        // An uncommitted reserve only returns to its central station; it does
+        // not advance on the enemy line, attack, or leave a hole behind.
+        const station = placementCache.get(u.id)?.station ?? null;
+        if (!station || hexDistance(u.hex, station) <= 1) break;
+        const moves = candidates.filter(o => o.move.path.length > 0);
+        if (moves.length === 0) break;
+        best = moves.slice().sort((a, b) =>
+          hexDistance(a.move.to, station) - hexDistance(b.move.to, station)
+          || a.turns.length - b.turns.length
+          || b.score - a.score)[0];
+      } else {
+        // A melee unit that still has actions/MP and is not at contact must keep
+        // advancing. Otherwise a defensive line can stop after one maneuver and
+        // need a second Execute to finish the same turn.
+        const isHold = best.turns.length === 0
+          && best.move.path.length === 0
+          && best.move.to.q === from.q
+          && best.move.to.r === from.r;
+        const nearest = nearestEnemyDist(u.hex, enemiesAlive);
+        const hasBudget = ((u.actionsAvailable ?? 0) >= 1 || (u.movementPointsAvailable ?? 0) >= 1);
+        if (isHold && doctrine === 'melee' && (role?.kind !== 'reserve' || !!interceptTarget || !!patchHex) && !hasAttacked && nearest > 1 && hasBudget) {
+          const goal = lane
+            ?? (assignedTarget
+              ? assignedLaneHex(assignedTarget, u)
+              : enemiesAlive
+                .slice()
+                .sort((a, b) => hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex) || a.id.localeCompare(b.id))[0]
+                ?.hex);
+          if (goal) {
+            const progress = options.filter(o =>
+              o.turns.length === 0
+              && o.move.path.length > 0
+              && hexDistance(o.move.to, goal) < hexDistance(u.hex, goal));
+            progress.sort((a, b) =>
+              hexDistance(a.move.to, goal) - hexDistance(b.move.to, goal)
+              || Math.abs(a.move.to.q - goal.q) - Math.abs(b.move.to.q - goal.q)
+              || b.score - a.score);
+            if (progress.length > 0) best = progress[0];
+          }
         }
       }
       // Replay the simulated turns/move onto the real accounting.

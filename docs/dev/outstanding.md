@@ -115,13 +115,18 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
 - ⏳ Rout-modal/eventual AI handling of the new pursue (AI planner ignores it for v1).
 
 ## AI assist
-- 📌 **Current status (2026-10-19):** Pass 1 + 2a + 2b plus the post-playtest
+- 📌 **Current status (2026-10-21):** Pass 1 + 2a + 2b plus the post-playtest
   fixes are shipped through `a6469cc` (strict no-turn, defensive one-plan
   advance, battle roles, front-line-only pairing, fast flankers, ring-3 staging
   + facing, structure hold, ranged stand-off/reaction, reserve hold/intercept,
-  rout re-evaluation + hostile-mass flee, last-action attack fallback).
-  Migration 130 is applied; no migration was needed for these fixes. The AI
-  package is the source of truth: `src/packages/ai/lib/planner.ts`,
+  rout re-evaluation + hostile-mass flee, last-action attack fallback). The
+  reserve was then reworked into a whole-line reaction force: leading-rank
+  frontage, rear-rank reserves at a central ~2-hex station, sector groups for
+  long lines, Scattered waiting, surplus-only pairing (`enemyFront > ownFront +
+  1`), forward-band-only targeting, flank/rear reaction, routing-hole patching,
+  and cluster-cap exemption while reacting. Migration 130 is applied; no
+  migration was needed for these fixes. The AI
+  package is the source of truth: `src/packages/ai/lib/{planner,battleLine,reserve}.ts`,
   `src/packages/ai/tests/planner.test.ts`, `src/components/ScenarioMap/AiPanel.tsx`;
   design in `docs/dev/17-enemy-ai.md`.
 - **Next session:** playtest the latest role/staging/reserve behaviour, then the

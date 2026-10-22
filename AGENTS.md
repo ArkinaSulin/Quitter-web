@@ -53,23 +53,33 @@ reusable maps. Here's the state:
   **Battle roles**: front-line-only pairing (enemy reserves one ring behind do
   not consume frontage slots), candidate windows can shift; fast surplus units
   (e.g. 4-MP wolf riders over 3-MP warriors) get flank/rear (aggressive) or
-  second-rank reserve (defensive) roles, with a same-end pair bonus; near-equal
-  plans use `Math.random` (undo/redo preserves the committed plan). Aggressive
-  rear attacks skip AGR and add rout-threat value; flankers stage three rings
+  rear-rank reserve (defensive) roles, with a same-end pair bonus; near-equal
+  plans use `Math.random` (undo/redo preserves the committed plan). Defensive
+  frontage is the **leading rank**, so rear-rank units stay reserves. Aggressive
+  rear attacks skip AGR and add rout-threat value; there is **no reserve in
+  aggressive stance**, every unpaired unit flanks. Flankers stage three rings
   out (or behind the main body), never closer than the frontage, face the enemy
   line, and wait for the frontage lock before switching to the final flank/rear
-  lane. Defensive reserve holds second rank until an enemy flanker is within
-  3 hexes, then faces and intercepts from its flank/rear rather than the
-  frontage. A frontage/reserve unit on its last action takes a near-breakeven
-  adjacent attack instead of idling. Rout paths re-evaluate after
+  lane. Defensive reserves hold a **central station ~2 hexes behind the line**
+  (staggered, and split into sector groups on a very long line), optionally in
+  **Scattered** while uncommitted. They react to the whole line: rear/flank
+  threats in the hostile forward band first, then surplus front-line pairings
+  (only when `enemyFront > ownFront + 1`; exactly one unpaired is ignored), then
+  interior gaps and routed/dead frontage slots. Paired front-arc enemies already
+  adjacent to the line are left to the frontage; a reacting reserve is exempt
+  from the defensive speed cap. A frontage/structure or committed-reserve unit
+  on its last action takes a near-breakeven adjacent attack instead of idling;
+  an uncommitted reserve keeps holding and never advances on the line. Rout
+  paths re-evaluate after
   each pushed-through friendly and rout movement maximises hostile-mass
   distance. Ranged-only units stand off and never enter contact; archer-reaction
   holds score clear LoS/range/arc lanes using only leftover actions. Structure
   defenders hold a standing hex/edge structure in every stance unless routed.
-  Advanced frontage/structure/reserve upgrade to the highest available org level
-  before contact; flankers attack first and may chain two formation upgrades
-  (Scattered → Open → Close) in one action; Scattered turns are free.
-  `npm run check`: tsc, **1124 tests** (50 planner), depcruise, build. No new
+  Advanced frontage/structure and committed reserves upgrade to the highest
+  available org level before contact; flankers attack first and may chain two
+  formation upgrades (Scattered → Open → Close) in one action; Scattered turns
+  are free.
+  `npm run check`: tsc, **1130 tests** (56 planner), depcruise, build. No new
   migration for 2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted charges, Round
   4 full coordination, Round 5 full auto-turn; AI still ignores ZoC
   scatter/pursue, flight, and some elevation nuances. See

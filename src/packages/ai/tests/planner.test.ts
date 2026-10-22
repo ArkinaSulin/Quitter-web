@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   planAiMoves,
   isAiControllable,
@@ -12,6 +12,11 @@ import {
   lineBearingPenalty,
   assignTargets,
   assignBattleRoles,
+  computeBattleLine,
+  isFlankOrRearThreat,
+  findLineGaps,
+  assignReservePlacements,
+  reserveThreatKind,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
@@ -662,7 +667,8 @@ describe('enemyAI smarter tactics', () => {
       movementPoints: 2, actionsAvailable: 2, weaponString: SPEAR,
     });
     const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -4), facing: 0, weaponString: SPEAR });
-    const plan = planAiMoves(ctxOf([fast, slow, foe], ['blue'], 'enemy', { advanced: true, stance: 'defensive' }));
+    const foe2 = mk({ id: 'f2', team: 'black', hex: hex(1, -4), facing: 0, weaponString: SPEAR });
+    const plan = planAiMoves(ctxOf([fast, slow, foe, foe2], ['blue'], 'enemy', { advanced: true, stance: 'defensive' }));
     const fastPlan = plan.find(p => p.unitId === 'fast')!;
     const moves = fastPlan.steps.filter(s => s.kind === 'move');
     expect(moves.length).toBeGreaterThan(0);
@@ -932,38 +938,6 @@ describe('enemyAI smarter tactics', () => {
     }
   });
 
-  it('a defensive reserve faces and intercepts an approaching enemy', () => {
-    const blue = [-4, -3, -2, -1, 0].map((q, i) => mk({
-      id: `b${i}`, team: 'blue', hex: hex(q, -2), facing: 3,
-      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
-    }));
-    const red = [-4, -3, -2, -1].map((q, i) => mk({
-      id: `e${i}`, team: 'black', hex: hex(q, 0), facing: 0, weaponString: SPEAR,
-    }));
-    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', { advanced: true, stance: 'defensive' });
-    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
-    const battle = assignBattleRoles(blue, red, ctx, true);
-    const plans = planAiMoves(ctx);
-    rng.mockRestore();
-
-    const reserve = blue.find(u => battle.roles.get(u.id)?.kind === 'reserve');
-    expect(reserve, 'reserve role').toBeDefined();
-    if (!reserve) return;
-    const plan = plans.find(p => p.unitId === reserve.id);
-    expect(plan, reserve.id).toBeDefined();
-    if (!plan) return;
-    expect(plan.steps.some(s => s.kind === 'move'), 'commits to intercept').toBe(true);
-    const finalFacing = plan.steps.reduce(
-      (f, s) => s.kind === 'turn' ? (s.dir === 'left' ? (f + 5) % 6 : (f + 1) % 6) : f,
-      reserve.facing,
-    );
-    const moves = plan.steps.filter(s => s.kind === 'move');
-    const last = moves[moves.length - 1];
-    const finalHex = last && last.kind === 'move' ? last.to : reserve.hex;
-    const nearest = red.slice().sort((a, b) => dist(finalHex, a.hex) - dist(finalHex, b.hex))[0];
-    expect(arcOfTarget(finalHex, finalFacing, nearest.hex), 'faces intercept').toBe('front');
-  });
-
   it('a standing structure pins its defender; it never voluntarily moves out', () => {
     const template: StructureTemplate = {
       id: 'gate', name: 'Gate', description: '', anchor: 'hex', color: '#000',
@@ -985,6 +959,155 @@ describe('enemyAI smarter tactics', () => {
     const plan = planAiMoves(ctx).find(p => p.unitId === 'holder');
     expect(plan).toBeDefined();
     expect(plan?.steps.some(s => s.kind === 'move')).toBe(false);
+  });
+});
+
+describe('defensive reserve line coverage', () => {
+  function dist(a: Hex, b: Hex): number {
+    return Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(a.s - b.s));
+  }
+  function blue(qs: number[], r: number, prefix = 'b'): Unit[] {
+    return qs.map((q, i) => mk({
+      id: `${prefix}${i}`, team: 'blue', hex: hex(q, r), facing: 3,
+      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
+    }));
+  }
+  function red(qs: number[], r: number, prefix = 'r'): Unit[] {
+    return qs.map((q, i) => mk({
+      id: `${prefix}${i}`, team: 'black', hex: hex(q, r), facing: 0, weaponString: SPEAR,
+    }));
+  }
+  function plansOf(units: Unit[], enemies: Unit[], over: Partial<AiPlanContext> = {}) {
+    const ctx = ctxOf([...units, ...enemies], ['blue'], 'enemy', {
+      advanced: true,
+      stance: 'defensive',
+      ...over,
+    });
+    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    try {
+      return { ctx, battle: assignBattleRoles(units, enemies, ctx, true), plans: planAiMoves(ctx) };
+    } finally {
+      rng.mockRestore();
+    }
+  }
+
+  it('ignores a single unpaired front-line enemy and reacts to real flankers', () => {
+    expect(reserveThreatKind({ rear: false, flanking: false, paired: false, unpaired: true, surplusDispatch: false, adjacentToLine: false })).toBeNull();
+    expect(reserveThreatKind({ rear: false, flanking: false, paired: false, unpaired: true, surplusDispatch: true, adjacentToLine: false })).toBe('surplus');
+    expect(reserveThreatKind({ rear: true, flanking: true, paired: true, unpaired: false, surplusDispatch: false, adjacentToLine: true })).toBe('rear');
+    expect(reserveThreatKind({ rear: false, flanking: true, paired: true, unpaired: false, surplusDispatch: false, adjacentToLine: true })).toBeNull();
+    expect(reserveThreatKind({ rear: false, flanking: true, paired: true, unpaired: false, surplusDispatch: false, adjacentToLine: false })).toBe('flank');
+  });
+
+  it('pairs reserves with surplus front-line enemies when outnumbered by more than one', () => {
+    const own = [...blue([-2, -1, 0, 1, 2], -2), ...blue([-1, 1], -4, 'bR')];
+    const foe = red([-4, -3, -2, -1, 0, 1, 2], 0);
+    const { battle, plans } = plansOf(own, foe);
+    const reserves = own.filter(u => battle.roles.get(u.id)?.kind === 'reserve');
+    expect(reserves).toHaveLength(2);
+    const unpaired = foe.filter(u => battle.unpairedFoeIds.has(u.id));
+    expect(unpaired).toHaveLength(2);
+    for (const reserve of reserves) {
+      const plan = plans.find(p => p.unitId === reserve.id);
+      expect(plan?.steps.length ?? 0, reserve.id).toBeGreaterThan(0);
+      const moves = plan?.steps.filter(s => s.kind === 'move') ?? [];
+      const last = moves[moves.length - 1];
+      const final = last && last.kind === 'move' ? last.to : reserve.hex;
+      const start = Math.min(...unpaired.map(e => dist(reserve.hex, e.hex)));
+      const end = Math.min(...unpaired.map(e => dist(final, e.hex)));
+      expect(end, reserve.id).toBeLessThan(start);
+    }
+  });
+
+  it('intercepts a flanker beyond its own 3-hex radius', () => {
+    const own = [...blue([-2, -1, 0, 1, 2, 3], -2), ...blue([0], -4, 'bR')];
+    const foe = [...red([-3, -2, -1, 0, 1], 0), ...red([5], -1, 'rF')];
+    const { plans } = plansOf(own, foe);
+    const reserve = own.find(u => u.id === 'bR0')!;
+    const plan = plans.find(p => p.unitId === reserve.id);
+    expect(plan?.steps.some(s => s.kind === 'move'), 'reserve moved').toBe(true);
+    const moves = plan?.steps.filter(s => s.kind === 'move') ?? [];
+    const last = moves[moves.length - 1];
+    const final = last && last.kind === 'move' ? last.to : reserve.hex;
+    const flanker = foe.find(u => u.id === 'rF0')!;
+    expect(dist(final, flanker.hex), 'closer to the flanker').toBeLessThan(dist(reserve.hex, flanker.hex));
+    const finalFacing = plan!.steps.reduce(
+      (f, s) => s.kind === 'turn' ? (s.dir === 'left' ? (f + 5) % 6 : (f + 1) % 6) : f,
+      reserve.facing,
+    );
+    expect(arcOfTarget(final, finalFacing, flanker.hex), 'faces the flanker').toBe('front');
+  });
+
+  it('patches a routing hole when no threat is present', () => {
+    const front = blue([-2, -1, 0, 1, 2], -2).map(u => (
+      u.id === 'b2' ? { ...u, currentFormation: 'Routed' } : u
+    ));
+    const own = [...front, ...blue([0], -4, 'bR')];
+    const foe = red([-2, -1, 0, 1, 2], 0);
+    const { plans } = plansOf(own, foe);
+    const reserve = own.find(u => u.id === 'bR0')!;
+    const plan = plans.find(p => p.unitId === reserve.id);
+    const moves = plan?.steps.filter(s => s.kind === 'move') ?? [];
+    const last = moves[moves.length - 1];
+    const final = last && last.kind === 'move' ? last.to : reserve.hex;
+    expect(final.r, 'moved toward the line').toBeGreaterThan(reserve.hex.r);
+    expect(final.q, 'moved into the broken line').toBeGreaterThanOrEqual(-2);
+    expect(final.q, 'moved into the broken line').toBeLessThanOrEqual(0);
+  });
+
+  it('keeps an uncommitted advanced reserve in Scattered', () => {
+    const own = blue([-2, -1, 0, 1, 2], -2).map(u => ({
+      ...u, formationAvailability: ['Scattered'],
+    }));
+    const foe = red([-2, -1, 0, 1], 5);
+    const { battle, plans } = plansOf(own, foe);
+    const reserve = own.find(u => battle.roles.get(u.id)?.kind === 'reserve');
+    expect(reserve).toBeDefined();
+    const plan = plans.find(p => p.unitId === reserve!.id);
+    expect(plan?.steps.some(s => s.kind === 'formation' && s.formation === 'Scattered')).toBe(true);
+  });
+
+  it('uses one central station per short line and splits a long line into sectors', () => {
+    const short = blue([-2, -1, 0, 1, 2], 0);
+    const shortFoe = red([0], 2);
+    const shortLine = computeBattleLine(short, shortFoe)!;
+    const shortPlacement = assignReservePlacements(blue([0], -4, 's'), shortLine, () => 6).get('s0')!;
+    expect(shortPlacement.groupCount).toBe(1);
+    expect(dist(shortPlacement.station, hex(0, 0))).toBe(2);
+
+    const long = blue([-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6], 0);
+    const longFoe = red([-2, -1, 0, 1, 2], 2);
+    const longLine = computeBattleLine(long, longFoe)!;
+    const placements = assignReservePlacements(blue([-4, 4], -4, 'l'), longLine, () => 6);
+    const left = placements.get('l0')!;
+    const right = placements.get('l1')!;
+    expect(left.groupCount).toBe(2);
+    expect(left.group).not.toBe(right.group);
+    expect(left.station).not.toEqual(right.station);
+  });
+
+  it('classifies front, flank and rear threats and finds interior gaps', () => {
+    const own = blue([-2, -1, 0, 1, 2], 0);
+    const foe = red([0], 2);
+    const line = computeBattleLine(own, foe)!;
+    const front = red([0], 2, 'front')[0];
+    const rear = red([0], -2, 'rear')[0];
+    const flank = red([5], 1, 'flank')[0];
+    expect(isFlankOrRearThreat(front, line)).toBe(false);
+    expect(isFlankOrRearThreat(rear, line)).toBe(true);
+    expect(isFlankOrRearThreat(flank, line)).toBe(true);
+
+    const gapped = blue([-2, -1, 1, 2], 0, 'g');
+    const gappedLine = computeBattleLine(gapped, foe)!;
+    const gaps = findLineGaps(
+      gappedLine,
+      new Set([...gapped.map(u => u.id), 'gone']),
+      new Map([...gapped.map(u => [u.id, u.hex] as const), ['gone', hex(0, 2)] as const]),
+      new Set(),
+    );
+    expect(gaps.some(g => g.hexes.some(h => h.q === 0 && h.r === 0))).toBe(true);
+    const slot = gaps.find(g => g.key === 'slot:gone');
+    expect(slot?.hexes).toContainEqual(hex(0, 2));
   });
 });
 

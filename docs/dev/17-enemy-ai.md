@@ -47,6 +47,8 @@ presses End Turn. It never auto-acts.
 | Concern | File |
 |---|---|
 | Pure planner + gates | `src/packages/ai/lib/planner.ts` (+ `ai/planner.test.ts`, `index.ts`) |
+| Battle-line geometry / threat + gap helpers | `src/packages/ai/lib/battleLine.ts` |
+| Reserve sectors, stations, threat priority | `src/packages/ai/lib/reserve.ts` |
 | Panel (UI + Execute driver + undo macro) | `src/components/ScenarioMap/AiPanel.tsx` |
 | Overlay types (canvas) | `src/components/ScenarioMap/aiTypes.ts` |
 | Overlay drawing (✓, routes, ghosts) | `useCanvasDraw.ts` (optional `aiOverlay`/`aiHoveredUnitId`) |
@@ -144,10 +146,13 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   line stays together.
 - **Battle roles (both brains)**: `assignBattleRoles` first keeps only the
   **forward band** of enemies (distance <= nearest + 1 ring); second-rank
-  reserves do not consume frontage slots. It then generates candidate
-  contiguous frontage windows of that front-line count and scores each by
+  reserves do not consume frontage slots. Aggressive stance then generates
+  candidate contiguous frontage windows over all melee units and scores each by
   coverage, connection/isolation, flank/rear reach, extra movement speed, own
-  exposure, and stance. Reserves remain valid targets but do not affect the
+  exposure, and stance. Defensive stance first restricts the frontage pool to the
+  **leading rank** (nearest to the hostile forward band, within one hex of the
+  closest distance), so rear-rank units stay reserves even when the enemy forward
+  band is larger. Reserves remain valid targets but do not affect the
   pairing/surplus count. The window may shift left/right, so the whole line can
   cover one end while two adjacent surplus units flank the other. Surplus units
   strongly prefer fast troops for flanking (e.g. 4-MP wolf riders over 3-MP
@@ -157,8 +162,16 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   jitter; consistency comes from the command log/undo-redo, not from forcing the
   same choice on every Preview. `assignTargets` remains as the simple 6-vs-6
   line-assignment helper.
+  - **Forward-band rule**: only hostile front-line units count. Anything behind
+    that band is ignored by pairing and by the reserve, even when it is visible.
+  - **Unpaired units**: a hostile forward-band unit with no frontage pairing is
+    `surplus`. A defensive reserve is dispatched to pair with surplus units only
+    when `enemyFront > ownFront + 1` (at least two unpaired). Exactly one unpaired
+    front-line unit is ignored.
 - **Aggressive surplus**: rear first when reachable (no AGR, no retaliation,
-  doubled threat → faster rout), else flank. Flankers wait until the target is
+  doubled threat → faster rout), else flank. There is **no reserve role in
+  aggressive stance**; every unpaired unit becomes a flanker/rear attacker.
+  Flankers wait until the target is
   **melee-locked** by a friendly, never take a redundant front attack, and never
   front-charge. They may rotate only when it enables a flank/rear attack.
   While unlocked they stage **three rings outside** the target (or behind the
@@ -166,12 +179,27 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   destinations are discarded, and spare MP is used to face the enemy line and
   swing wider around the end while staying connected. Once the target is locked
   they switch to the final flank/rear lane and may attack.
-- **Defensive surplus**: defaults to **second rank / reserve**, connected to the
-  line; it can patch a routing hole. A connected flank is taken only when safe.
-  It holds its second-rank position until an unengaged enemy flanker closes
-  within **3 hexes**; then it faces the threat and commits from the enemy's
-  flank/rear where possible (front only as a blocker), rather than crowding the
-  frontage. It holds if intercepting would open a hole.
+- **Defensive surplus (reserve)**: defaults to the **rear rank**, anchored to the
+  nearest front-line unit. It holds a **central second-rank station about two
+  hexes behind the line**, staggered deeper for extra reserves to avoid
+  congestion. A very long line is split into contiguous sectors, one reserve
+  group per reachable section (a single group for a short line), and a group only
+  reacts to threats/holes in its sector. In Advanced it may wait in **Scattered**
+  while uncommitted for free turns/loose reaction movement, upgrading only when
+  it commits.
+  - **Threat priority**: rear > flank > surplus front > hole.
+  - **Flank/rear threats**: a hostile forward-band unit is a threat when it is
+    **behind the line's forward plane** or **outside the line's lateral span**.
+    A paired front-arc enemy already adjacent to the line is left to its frontage
+    unit; an unpaired adjacent enemy still counts. Detection range is the whole
+    line: `max(3, line length)` measured from the line, not from the reserve. The
+    reserve faces and intercepts from the enemy's flank/rear where possible.
+  - **Holes**: with no threat, the reserve patches interior gaps and routed/dead
+    frontage slots, including an exposed end.
+  - **Reaction speed**: a reserve moving to a threat or hole is exempt from the
+    defensive slowest-member cluster cap. An uncommitted reserve still obeys the
+    cap and only returns to its station; it never advances on the enemy line or
+    attacks a front-arc enemy.
 - **Ranged support**: ranged-only units are excluded from frontage/flank roles.
   They stand off, never voluntarily enter melee contact, shoot with both actions
   when possible, and retreat/kite when closed on. Scattered is the escape/transit
@@ -217,18 +245,22 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   - **Advanced formation changes (role-aware)**: near contact or in a hostile
     ZoC, melee units upgrade to the **highest available organisation level**
     (`canAdoptFormation`, `isFormationChangeAffordable`, Shield Wall shield/2H
-    restrictions). Frontage/reserve/structure units prioritise that upgrade even
-    if it costs the attack; flankers attack first and upgrade only when no attack
-    is available. Flankers may chain two upgrades in one action
-    (Scattered → Open → Close) when the budget covers both. Defensive units
-    prioritise the highest formation over speed. Ranged units use Scattered only
-    as an escape/transit formation and otherwise stand off.
+    restrictions). Frontage/structure units and **committed** reserves prioritise
+    that upgrade even if it costs the attack; flankers attack first and upgrade
+    only when no attack is available. An uncommitted defensive reserve instead
+    holds **Scattered** (free turns/loose reaction movement) and only upgrades
+    after it commits to a threat or hole. Flankers may chain two upgrades in one
+    action (Scattered → Open → Close) when the budget covers both. Defensive units
+    prioritise the highest formation over speed, except the uncommitted reserve
+    waiting loose. Ranged units use Scattered only as an escape/transit formation
+    and otherwise stand off.
   - **Rear attack value**: `attackValue` discounts front/flank priority by an
     approximate AGR pass chance; rear attacks are guaranteed (no AGR), have no
     retaliation, and carry a rout-threat bonus.
-  - **Last action**: frontage/reserve/structure units with one action left take a
-    near-breakeven adjacent attack (score above `-8`) rather than idling; a
-    clearly losing trade is still refused, and flankers keep waiting for their arc.
+  - **Last action**: frontage/structure units and committed reserves with one
+    action left take a near-breakeven adjacent attack (score above `-8`) rather
+    than idling; an uncommitted reserve keeps holding, a clearly losing trade is
+    still refused, and flankers keep waiting for their arc.
   - **Reaction fire**: archer-reaction hold positions score clear snapshot lanes
     (`range`, arc, LoS); the planner uses only actions left after the unit holds
     and never sacrifices an attack for reaction eligibility.

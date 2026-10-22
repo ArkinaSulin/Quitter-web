@@ -1320,9 +1320,14 @@ Aggressive uses surplus units to flank or attack from the rear (rear attacks
 skip AGR and put extra rout pressure); pairing counts only the enemy forward
 band, so a second-rank reserve does not hide a real flanker. Flankers stage
 outside enemy ZoC, never closer than the main body, face the enemy line, and wait for the frontage to
-lock a target before closing. Defensive surplus holds second rank, patches rout
-holes, and waits until an enemy flanker is close before facing and intercepting
-from its flank/rear. A unit on its last action takes a near-breakeven adjacent
+lock a target before closing. Defensive surplus holds the rear rank at a central
+station about two hexes behind the line, may wait Scattered for a fast reaction,
+and patches routing holes. Only the enemy forward band matters: an unpaired
+front-line enemy pulls a reserve only when the enemy line outnumbers ours by more
+than one. A real flanker—behind the line or beyond its ends—is faced and
+intercepted from its flank/rear anywhere along the line. Paired front-arc
+enemies already in contact are left to the frontage. A frontage/structure or
+committed-reserve unit on its last action takes a near-breakeven adjacent
 attack rather than idling. Rout paths are
 re-evaluated after each pushed-through friendly and prefer the first empty safe
 hex. Ranged-only

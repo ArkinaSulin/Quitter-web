@@ -1,5 +1,39 @@
 # QuiTTER Changelog
 
+## AI reserve covers the whole battle line (2026-10-21)
+**Files:** src/packages/ai/lib/{planner,battleLine,reserve}.ts, src/packages/ai/index.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
+
+- Defensive frontage is now the **leading rank** (nearest to the hostile forward
+  band, within one hex of the closest distance), so rear-rank units stay reserves
+  even when the enemy front line is larger and a "supposed reserve" can no longer
+  skip over into a frontage pairing.
+- Defensive reserves hold a **central station ~2 hexes behind the line**,
+  staggered for multiple reserves. A very long line splits into contiguous sector
+  groups, one per reachable section. Advanced uncommitted reserves may wait in
+  **Scattered** for free turns/loose reaction movement and upgrade only when they
+  commit.
+- Only the **hostile forward band** is considered. An unpaired front-line enemy
+  pulls a reserve only when `enemyFront > ownFront + 1` (at least two surplus);
+  exactly one unpaired enemy is ignored. Everything behind the hostile front line
+  is ignored.
+- **Flank/rear threats** are forward-band enemies behind the line's forward plane
+  or outside its lateral span, detected within `max(3, line length)` of the line,
+  not the reserve. A paired front-arc enemy already adjacent to the line is left
+  to its frontage unit; an unpaired adjacent enemy still counts. Priority is rear
+  > flank > surplus front > hole.
+- With no threat the reserve patches interior gaps and routed/dead frontage slots,
+  including an exposed end. A reserve moving to a threat/hole is exempt from the
+  defensive slowest-member speed cap; an uncommitted reserve only returns to its
+  station and never advances on the enemy line or attacks a front-arc enemy.
+- New pure helpers: `src/packages/ai/lib/battleLine.ts` (line geometry, threat
+  classification, gaps) and `src/packages/ai/lib/reserve.ts` (sector groups,
+  stations, threat priority). The shared line geometry leaves room for a future
+  flanker/charge helper.
+- Added 7 planner tests (surplus dispatch, long-range flanker, routing hole,
+  Scattered hold, sectors/station, threat/gap classification) and replaced the
+  old 3-hex intercept test. Verification: `npm run check` passes (tsc, 1130
+  tests / 56 planner, depcruise, build).
+
 ## Session backup: AI battle roles + playtest fixes (2026-10-19)
 **Commits:** `34c96de`, `b831808`, `68e3a86`, `7a828b6`, `90fa3df`, `a6469cc`; this backup commit also includes the reserve-hold/last-action fix.
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/{ScenarioMap,AiPanel}.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
