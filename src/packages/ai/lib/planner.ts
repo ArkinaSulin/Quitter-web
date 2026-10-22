@@ -56,7 +56,7 @@ import { attackRollFlags, effectAttackBonus, effectDamageBonus, unitIgnoresClimb
 import { applyFormationChange, isFormationChangeAffordable } from '@/packages/movement';
 import { hasLineOfSight } from '@/packages/combat';
 import { BattleLine, computeBattleLine, isFlankOrRearThreat, leadingRank, findLineGaps, projectPoint } from './battleLine';
-import { ReservePlacement, assignReservePlacements, reserveThreatKind, sectorOfProjection } from './reserve';
+import { ReservePlacement, assignReservePlacements, sectorOfProjection } from './reserve';
 
 export type AiStep =
   | { kind: 'move'; unitId: string; from: Hex; to: Hex; path: Hex[]; cost: number }
@@ -303,26 +303,34 @@ export function assignBattleRoles(
     };
   }
 
-  // Defensive doctrine keeps the rear rank as reserves; only the leading rank
-  // can become frontage, even when the hostile forward band is larger. When the
-  // leading rank exactly matches the enemy front line and the line is engaged,
-  // every leading unit not in an enemy ZoC is kept back as a reserve. Frontage
-  // covers the line from the left; the rightmost spares become the reserves.
-  const frontPool = stance === 'defensive' ? leadingRank(melee, foes) : melee;
-  const rearRankExists = stance === 'defensive' && melee.length > frontPool.length;
-  let count = Math.min(frontPool.length, foes.length);
-  if (stance === 'defensive' && !rearRankExists && frontPool.length > 1 && frontPool.length === foes.length) {
-    const engaged = frontPool.filter(u =>
-      allFoes.some(e => hexDistance(u.hex, e.hex) <= 1)).length;
-    if (engaged > 0) count = Math.max(1, Math.min(engaged, foes.length));
+  // Defensive doctrine pairs the whole enemy front line first: use the leading
+  // rank, and only promote rear-rank units when the leading rank is short of
+  // the enemy front count. Roles are not permanent — a unit not paired and not
+  // engaged is a reserve, and an engaged reserve fights as front line until
+  // freed. True surplus after full coverage becomes reserves.
+  const nearestFoeDist = (u: Unit): number =>
+    Math.min(...foes.map(f => hexDistance(u.hex, f.hex)));
+  const leading = stance === 'defensive' ? leadingRank(melee, foes) : melee;
+  let frontagePool = leading;
+  if (stance === 'defensive' && leading.length < foes.length) {
+    const leadingIds = new Set(leading.map(u => u.id));
+    const rear = melee
+      .filter(u => !leadingIds.has(u.id))
+      .sort((a, b) =>
+        nearestFoeDist(a) - nearestFoeDist(b)
+        || a.hex.q - b.hex.q
+        || a.id.localeCompare(b.id));
+    frontagePool = [...leading, ...rear]
+      .slice(0, Math.min(melee.length, foes.length))
+      .sort(frontageSort);
   }
+  const count = Math.min(frontagePool.length, foes.length);
+  const foeCentreQ = foes.reduce((sum, f) => sum + f.hex.q, 0) / foes.length;
+  const foeSpan = foes[foes.length - 1].hex.q - foes[0].hex.q;
   let best: { score: number; roles: Map<string, AiBattleRole>; frontageIds: Set<string> } | null = null;
 
-  for (let start = 0; start + count <= frontPool.length; start++) {
-    // Cover the enemy line from the left and leave the rightmost own unit as the
-    // reserve, rather than letting the spare unit wait alone on the far end.
-    if (stance === 'defensive' && foes.length > count && start > 0) continue;
-    const main = frontPool.slice(start, start + count);
+  for (let start = 0; start + count <= frontagePool.length; start++) {
+    const main = frontagePool.slice(start, start + count);
     const mainIds = new Set(main.map(m => m.id));
     const extras = melee.filter(m => !mainIds.has(m.id));
     const candidate = new Map<string, AiBattleRole>();
@@ -333,8 +341,13 @@ export function assignBattleRoles(
     });
 
     let score = 100 + count * 20;
-    const centre = (frontPool.length - count) / 2;
+    const centre = (frontagePool.length - count) / 2;
     score -= Math.abs(start - centre) * 3;
+    // Shift the whole line laterally to align with the enemy front span.
+    const mainCentreQ = main.reduce((sum, u) => sum + u.hex.q, 0) / main.length;
+    const mainSpan = main[main.length - 1].hex.q - main[0].hex.q;
+    score -= Math.abs(mainCentreQ - foeCentreQ) * 8;
+    score -= Math.abs(mainSpan - foeSpan) * 2;
 
     const seenSide = new Map<'left' | 'right', number>();
     const usedAnchors = new Set<string>();
@@ -1542,7 +1555,6 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
     targetLockedByFrontageIn(initialUnits, targetId);
 
   const initialHexes = new Map(initialUnits.map(w => [w.id, w.hex]));
-  const surplusDispatch = battle.enemyFrontCount > battle.ownFrontCount + 1;
   const placementCache = new Map<string, ReservePlacement>();
   const claimedThreats = new Map<string, string>();
   const claimedGaps = new Map<string, string>();
@@ -1588,22 +1600,15 @@ export function planAiMoves(ctx: AiPlanContext): AiUnitPlan[] {
       if (sectorOfProjection(proj.t, line, placement.groupCount) !== placement.group) continue;
       const rear = proj.du < 0;
       const flanking = isFlankOrRearThreat(e, line);
-      const unpaired = battle.unpairedFoeIds.has(e.id);
+      if (!flanking) continue;
       const paired = battle.frontFoeIds.has(e.id);
       const adjacentToLine = line.units.some(l => hexDistance(e.hex, l.hex) <= 1);
-      const kind = reserveThreatKind({
-        rear,
-        flanking,
-        paired,
-        unpaired,
-        surplusDispatch,
-        adjacentToLine,
-      });
-      if (!kind) continue;
+      // A paired front-arc enemy already in contact is the frontage's job.
+      if (paired && !rear && adjacentToLine) continue;
       const owner = claimedThreats.get(e.id);
       if (owner && owner !== u.id) continue;
-      const kindScore = kind === 'rear' ? 120 : kind === 'flank' ? 80 : 40;
-      let score = kindScore + (radius - dLine) * 6 - hexDistance(u.hex, e.hex) * 2;
+      const kind = rear ? 120 : 80;
+      let score = kind + (radius - dLine) * 6 - hexDistance(u.hex, e.hex) * 2;
       if (current?.id === e.id) score += 40;
       if (!best || score > best.score) best = { target: e, score };
     }

@@ -1,5 +1,24 @@
 # QuiTTER Changelog
 
+## AI pairs the whole line before committing reserves (2026-10-21)
+**Files:** src/packages/ai/lib/{planner,reserve}.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
+
+- Defensive frontage now **pairs every hostile forward-band unit first**: it uses
+  the leading rank, promotes rear-rank melee units only when the leading rank is
+  short, and shifts the frontage window laterally to the enemy front span. Only
+  true surplus after full coverage becomes a reserve. This keeps F in the line
+  and stops R taking a frontage slot while the line could simply shift left.
+- Retired the equal-count unengaged-spare rotation and the `surplusDispatch`
+  reserve pairing. Reserves no longer advance to pair normal front-line enemies;
+  their mission is flank/rear threats and frontage holes. If the leading rank is
+  short, reserves are promoted into the frontage directly.
+- Roles are dynamic: a unit that is not paired and not engaged is a reserve; an
+  engaged/melee-locked reserve is treated as front line until freed, then returns
+  to reserve duty. No unit is permanently a reserve or permanently front line.
+- Added tests for whole-line pairing with reserves held back, lateral line shift,
+  and promotion of rear reserves only when the leading rank is short.
+- Verification: `npm run check` passes (tsc, tests, depcruise, build).
+
 ## AI flanker main-body gate, reserve rotation, facing stability (2026-10-21)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
 

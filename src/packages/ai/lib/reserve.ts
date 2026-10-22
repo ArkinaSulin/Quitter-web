@@ -11,25 +11,6 @@ export interface ReservePlacement {
 
 const MIN_SECTOR_SPAN = 6;
 
-export type ReserveThreatKind = 'rear' | 'flank' | 'surplus' | null;
-
-export interface ReserveThreatInput {
-  rear: boolean;
-  flanking: boolean;
-  paired: boolean;
-  unpaired: boolean;
-  surplusDispatch: boolean;
-  adjacentToLine: boolean;
-}
-
-export function reserveThreatKind(input: ReserveThreatInput): ReserveThreatKind {
-  if (input.rear) return 'rear';
-  if (input.paired && input.adjacentToLine) return null;
-  if (input.flanking) return 'flank';
-  if (input.unpaired && input.surplusDispatch) return 'surplus';
-  return null;
-}
-
 export function sectorOfProjection(t: number, line: BattleLine, groupCount: number): number {
   const span = line.maxT - line.minT;
   if (groupCount <= 1 || span <= 1e-6) return 0;

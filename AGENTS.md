@@ -55,7 +55,12 @@ reusable maps. Here's the state:
   (e.g. 4-MP wolf riders over 3-MP warriors) get flank/rear (aggressive) or
   rear-rank reserve (defensive) roles, with a same-end pair bonus; near-equal
   plans use `Math.random` (undo/redo preserves the committed plan). Defensive
-  frontage is the **leading rank**, so rear-rank units stay reserves. Aggressive
+  frontage **pairs the whole enemy front line first**: it uses the leading rank,
+  promotes rear-rank melee units only when the leading rank is short, and shifts
+  the frontage window laterally to the enemy front span. Only true surplus after
+  full coverage becomes a reserve. Roles are dynamic: a unit that is not paired
+  and not engaged behaves as a reserve; an engaged/melee-locked reserve is front
+  line until freed, then returns to reserve duty. Aggressive
   rear attacks skip AGR and add rout-threat value; there is **no reserve in
   aggressive stance**, every unpaired unit flanks. Flankers **do not queue**:
   they retarget to the closest enemy locked by a frontage/structure unit **at
@@ -65,17 +70,13 @@ reusable maps. Here's the state:
   enables such a strike. A same-plan frontage advance does not count, so they do
   not get ahead of the main body. Defensive reserves hold a **central station ~2
   hexes behind the line** (staggered, and split into sector groups on a very long
-  line), optionally in **Scattered** while uncommitted. When the leading rank
-  exactly matches the enemy front and the line is engaged, every leading unit
-  not in an enemy ZoC is kept back as a reserve; frontage covers from the left
-  and the rightmost spare(s) move to their stations instead of waiting on the
-  ends. With no engaged leading unit the line advances normally.
-  They react to the whole
-  line: rear/flank threats in the hostile forward band first, then surplus
-  front-line pairings (only when `enemyFront > ownFront + 1`; exactly one
-  unpaired is ignored), then interior gaps and routed/dead frontage slots.
-  Paired front-arc enemies already adjacent to the line are left to the
-  frontage; a reacting reserve is exempt from the defensive speed cap.
+  line), optionally in **Scattered** while uncommitted. Reserves never take a
+  normal front-line pairing slot; their mission is to face flank/rear threats
+  and fill frontage gaps/holes. They react to the whole
+  line: rear/flank threats in the hostile forward band first, then interior gaps
+  and routed/dead frontage slots. Paired front-arc enemies already adjacent to
+  the line are left to the frontage; a reacting reserve is exempt from the
+  defensive speed cap.
   **Anti-idle**: a frontage/structure/committed-reserve unit adjacent to an enemy
   takes the best near-breakeven attack (`-8` floor) even with multiple actions;
   if its assigned lane is blocked/unreachable it advances toward the nearest

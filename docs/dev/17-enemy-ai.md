@@ -171,10 +171,17 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   line-assignment helper.
   - **Forward-band rule**: only hostile front-line units count. Anything behind
     that band is ignored by pairing and by the reserve, even when it is visible.
-  - **Unpaired units**: a hostile forward-band unit with no frontage pairing is
-    `surplus`. A defensive reserve is dispatched to pair with surplus units only
-    when `enemyFront > ownFront + 1` (at least two unpaired). Exactly one unpaired
-    front-line unit is ignored.
+  - **Whole-line pairing**: defensive stance pairs **every** enemy forward-band
+    unit first. It uses the leading rank and, only when the leading rank is short
+    of the enemy front count, promotes rear-rank melee units into the frontage to
+    fill the shortfall. The frontage window shifts laterally to align with the
+    enemy front span, so the whole line moves left/right as a block instead of a
+    reserve taking one slot while an end unit waits. Only true surplus after full
+    coverage becomes a reserve.
+  - **Dynamic roles**: roles are not permanent. A unit that is not paired and not
+    engaged behaves as a reserve. A reserve that is already engaged/melee-locked
+    is treated as front line until it is freed; once freed and with no
+    threat/hole objective it returns to reserve station duty.
 - **Aggressive surplus**: rear first when reachable (no AGR, no retaliation,
   doubled threat → faster rout), else flank. There is **no reserve role in
   aggressive stance**; every unpaired unit becomes a flanker/rear attacker.
@@ -195,25 +202,22 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   most dangerous exposed enemy, even if that costs the attack, then acts from
   the new facing. This facing decision is made **once per activation** to avoid
   oscillating between two flank threats.
-- **Defensive surplus (reserve)**: defaults to the **rear rank**, anchored to the
-  nearest front-line unit. When the leading rank exactly matches the enemy front
-  line **and the line is engaged**, every leading unit not in an enemy ZoC is
-  kept back as a reserve. Frontage covers the line from the left using the
-  engaged count; the rightmost spare(s) become reserves and move to their
-  central stations instead of waiting on the ends. If no leading unit is engaged,
-  the line advances normally and no rotation is applied. The reserves move to
-  their central stations rather than holding on the ends. They hold a **central
-  second-rank station about two hexes behind the line**, staggered deeper for
-  extra reserves to avoid congestion. A very long line is split into contiguous
-  sectors, one reserve group per reachable section (a single group for a short
-  line), and a group only reacts to threats/holes in its sector. In Advanced it
-  may wait in **Scattered** while uncommitted for free turns/loose reaction
-  movement, upgrading only when it commits.
-  - **Threat priority**: rear > flank > surplus front > hole.
+- **Defensive surplus (reserve)**: a unit is a reserve when it is **not paired
+  and not engaged**. Reserves never take a normal front-line pairing slot while
+  the leading rank can cover the enemy line; their mission is to face flankers
+  and fill frontage gaps/holes. A reserve that is already engaged/melee-locked is
+  treated as front line until freed; once freed it returns to reserve duty.
+  Reserves hold a **central second-rank station about two hexes behind the
+  line**, staggered deeper for extra reserves to avoid congestion, instead of
+  waiting on an end. A very long line is split into contiguous sectors, one
+  reserve group per reachable section (a single group for a short line), and a
+  group only reacts to threats/holes in its sector. In Advanced it may wait in
+  **Scattered** while uncommitted for free turns/loose reaction movement.
+  - **Threat priority**: rear > flank > hole.
   - **Flank/rear threats**: a hostile forward-band unit is a threat when it is
     **behind the line's forward plane** or **outside the line's lateral span**.
     A paired front-arc enemy already adjacent to the line is left to its frontage
-    unit; an unpaired adjacent enemy still counts. Detection range is the whole
+    unit. Detection range is the whole
     line: `max(3, line length)` measured from the line, not from the reserve. The
     reserve faces and intercepts from the enemy's flank/rear where possible.
   - **Holes**: with no threat, the reserve patches interior gaps and routed/dead

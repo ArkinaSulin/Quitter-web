@@ -16,7 +16,6 @@ import {
   isFlankOrRearThreat,
   findLineGaps,
   assignReservePlacements,
-  reserveThreatKind,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
@@ -994,34 +993,48 @@ describe('defensive reserve line coverage', () => {
     }
   }
 
-  it('ignores a single unpaired front-line enemy and reacts to real flankers', () => {
-    expect(reserveThreatKind({ rear: false, flanking: false, paired: false, unpaired: true, surplusDispatch: false, adjacentToLine: false })).toBeNull();
-    expect(reserveThreatKind({ rear: false, flanking: false, paired: false, unpaired: true, surplusDispatch: true, adjacentToLine: false })).toBe('surplus');
-    expect(reserveThreatKind({ rear: true, flanking: true, paired: true, unpaired: false, surplusDispatch: false, adjacentToLine: true })).toBe('rear');
-    expect(reserveThreatKind({ rear: false, flanking: true, paired: true, unpaired: false, surplusDispatch: false, adjacentToLine: true })).toBeNull();
-    expect(reserveThreatKind({ rear: false, flanking: true, paired: true, unpaired: false, surplusDispatch: false, adjacentToLine: false })).toBe('flank');
-  });
-
-  it('pairs reserves with surplus front-line enemies when outnumbered by more than one', () => {
-    const own = [...blue([-2, -1, 0, 1, 2], -2), ...blue([-1, 1], -4, 'bR')];
-    const foe = red([-4, -3, -2, -1, 0, 1, 2], 0);
+  it('pairs the whole front line and keeps true reserves back', () => {
+    const own = [
+      ...blue([-2, -1, 0, 1, 2, 3], -1),
+      ...blue([-1, 1], 3, 'bR'),
+    ];
+    const foe = red([-2, -1, 0, 1, 2, 3], 0);
     const { battle, plans } = plansOf(own, foe);
-    const reserves = own.filter(u => battle.roles.get(u.id)?.kind === 'reserve');
-    expect(reserves).toHaveLength(2);
-    const unpaired = foe.filter(u => battle.unpairedFoeIds.has(u.id));
-    expect(unpaired).toHaveLength(2);
-    for (const reserve of reserves) {
-      const plan = plans.find(p => p.unitId === reserve.id);
-      expect(plan?.steps.length ?? 0, reserve.id).toBeGreaterThan(0);
-      const moves = plan?.steps.filter(s => s.kind === 'move') ?? [];
-      const last = moves[moves.length - 1];
-      const final = last && last.kind === 'move' ? last.to : reserve.hex;
-      const start = Math.min(...unpaired.map(e => dist(reserve.hex, e.hex)));
-      const end = Math.min(...unpaired.map(e => dist(final, e.hex)));
-      expect(end, reserve.id).toBeLessThan(start);
+    const frontage = own.filter(u => battle.frontageIds.has(u.id));
+    expect(frontage).toHaveLength(6);
+    expect(frontage.map(u => u.id).sort()).toEqual(['b0', 'b1', 'b2', 'b3', 'b4', 'b5']);
+    for (const reserve of own.filter(u => u.id.startsWith('bR'))) {
+      expect(battle.roles.get(reserve.id)?.kind).toBe('reserve');
     }
+    // The right-end front unit (F-like) is not rotated back.
+    expect(battle.roles.get('b5')?.kind).toBe('frontage');
+    expect(plans.find(p => p.unitId === 'b5')?.steps.length ?? 0).toBeGreaterThan(0);
   });
 
+  it('shifts the front line laterally to cover an offset enemy line', () => {
+    const own = blue([-2, -1, 0, 1, 2, 3], -1);
+    const foe = red([-4, -3, -2, -1, 0, 1], 0);
+    const { battle, plans } = plansOf(own, foe);
+    expect(battle.frontageIds.size).toBe(6);
+    const f = own.find(u => u.id === 'b5')!;
+    const plan = plans.find(p => p.unitId === f.id);
+    const moves = plan?.steps.filter(s => s.kind === 'move') ?? [];
+    const last = moves[moves.length - 1];
+    const final = last && last.kind === 'move' ? last.to : f.hex;
+    expect(final.q, 'right end shifts left with the line').toBeLessThan(f.hex.q);
+  });
+
+  it('promotes rear reserves only when the leading rank is short', () => {
+    const own = [
+      ...blue([-2, -1, 0, 1, 2], -1),
+      ...blue([-1, 1], 3, 'bR'),
+    ];
+    const foe = red([-2, -1, 0, 1, 2, 3], 0);
+    const { battle } = plansOf(own, foe);
+    expect(battle.frontageIds.size).toBe(6);
+    const promoted = own.filter(u => u.id.startsWith('bR') && battle.frontageIds.has(u.id));
+    expect(promoted).toHaveLength(1);
+  });
   it('intercepts a flanker beyond its own 3-hex radius', () => {
     const own = [...blue([-2, -1, 0, 1, 2, 3], -2), ...blue([0], -4, 'bR')];
     const foe = [...red([-3, -2, -1, 0, 1], 0), ...red([5], -1, 'rF')];
@@ -1138,30 +1151,6 @@ describe('enemyAI anti-idle and defensive facing', () => {
     const lastTurn = plan!.steps.reduce((idx, s, i) => s.kind === 'turn' ? i : idx, -1);
     expect(lastTurn, 'turns to face').toBeGreaterThanOrEqual(0);
     expect(firstAttack === -1 || lastTurn < firstAttack, 'faces before attacking').toBe(true);
-  });
-
-  it('pushes an end unit into reserve when the front lines match', () => {
-    const blue = [-2, -1, 0, 1, 2, 3].map((q, i) => mk({
-      id: `b${i}`, team: 'blue', hex: hex(q, -1), facing: 3,
-      movementPoints: 3, actionsAvailable: 2, weaponString: SPEAR,
-    }));
-    const red = [-4, -3, -2, -1, 0, 1].map((q, i) => mk({
-      id: `r${i}`, team: 'black', hex: hex(q, 0), facing: 0, weaponString: SPEAR,
-    }));
-    const ctx = ctxOf([...blue, ...red], ['blue'], 'enemy', {
-      advanced: true,
-      stance: 'defensive',
-    });
-    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
-    const battle = assignBattleRoles(blue, red, ctx, true);
-    const plans = planAiMoves(ctx);
-    rng.mockRestore();
-
-    const extras = blue.filter(u => !battle.frontageIds.has(u.id));
-    expect(extras).toHaveLength(1);
-    expect(battle.roles.get(extras[0].id)?.kind).toBe('reserve');
-    const plan = plans.find(p => p.unitId === extras[0].id);
-    expect(plan?.steps.some(s => s.kind === 'move'), 'reserve leaves the end for its station').toBe(true);
   });
 
   it('does not close before the main body is engaged', () => {

@@ -1323,16 +1323,15 @@ wait in a queue: they retarget to a target already locked by the frontage at the
 start of the turn, circle at least three hexes out, and close only when they can
 strike a flank or rear; they never get ahead of the main body or front-charge.
 Defensive melee units turn once to face an adjacent flank/rear threat before
-attacking, even if that costs the attack, so they do not oscillate. If the front
-lines match exactly and the line is engaged, every spare not in an enemy ZoC is
-kept back and moves to a reserve station instead of waiting on the flank. If no
-leading unit is engaged, the line advances normally. Defensive surplus
-holds the rear
-rank at a central
-station about two hexes behind the line, may wait Scattered for a fast reaction,
-and patches routing holes. Only the enemy forward band matters: an unpaired
-front-line enemy pulls a reserve only when the enemy line outnumbers ours by more
-than one. A real flanker-behind the line or beyond its ends-is faced and
+attacking, even if that costs the attack, so they do not oscillate. Defensive
+stance pairs the whole enemy front line first: the front rank shifts laterally
+to cover it, and rear reserves join only when the leading rank is short. Any
+unit not paired and not engaged is a reserve; an engaged reserve is treated as
+front line until freed, then returns to reserve duty. Reserves do not take normal
+front-line pairing slots: they face flankers and patch frontage holes, holding a
+central station about two hexes behind the line, and may wait Scattered for a
+fast reaction. Only the enemy forward band matters. A real flanker-behind the
+line or beyond its ends-is faced and
 intercepted from its flank/rear anywhere along the line. Paired front-arc
 enemies already in contact are left to the frontage. A frontage/structure or
 committed-reserve unit adjacent to an enemy takes a near-breakeven attack rather
