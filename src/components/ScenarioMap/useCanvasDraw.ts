@@ -799,12 +799,12 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       // Debug role badge (top-left): F frontage, K flanker, B rear, R reserve,
       // A ranged, S structure.
       const roleStyle: Record<string, { label: string; color: string }> = {
-        frontage: { label: 'F', color: '#60a5fa' },
-        flank: { label: 'K', color: '#f59e0b' },
-        rear: { label: 'B', color: '#ef4444' },
-        reserve: { label: 'R', color: '#34d399' },
-        ranged: { label: 'A', color: '#a78bfa' },
-        structure: { label: 'S', color: '#94a3b8' },
+        M: { label: 'M', color: '#60a5fa' },
+        A: { label: 'A', color: '#ef4444' },
+        C: { label: 'C', color: '#f59e0b' },
+        S: { label: 'S', color: '#a78bfa' },
+        R: { label: 'R', color: '#34d399' },
+        G: { label: 'G', color: '#94a3b8' },
       };
       for (const [id, role] of Object.entries(aiOverlay.roles ?? {})) {
         if (!roleStyle[role]) continue;

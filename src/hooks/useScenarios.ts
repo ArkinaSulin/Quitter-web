@@ -34,6 +34,7 @@ function mapScenario(row: any): Scenario {
     zocPursuitEnabled: row.zoc_pursuit_enabled ?? true,
     aiAssistAdvanced: !!row.ai_assist_advanced,
     aiAssistPlayers: !!row.ai_assist_players,
+    aiRoleMarkers: !!row.ai_role_markers,
   };
 }
 

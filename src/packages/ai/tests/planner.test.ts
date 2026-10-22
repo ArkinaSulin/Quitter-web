@@ -16,6 +16,11 @@ import {
   isFlankOrRearThreat,
   findLineGaps,
   assignReservePlacements,
+  buildAiRoleMarkers,
+  averageMeleeDamagePerAction,
+  isHighDamageUnit,
+  roleMarkerFor,
+  visibleRoleMarkers,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
@@ -1308,6 +1313,69 @@ describe('aggressive flanker roles and dash', () => {
       const plan = plans.find(p => p.unitId === id);
       expect(plan?.steps.some(s => s.kind === 'attack' || s.kind === 'move'), `${id} dashes`).toBe(true);
     }
+  });
+});
+
+describe('AI role markers', () => {
+  const weapon = (name: string, dice: string, attacks = 1) =>
+    `${name},0,${dice},false,1,1,0,true,false,false,false,${attacks},true,Dex,circle`;
+
+  function board(weaponString: string) {
+    const blue = mk({
+      id: 'b1', team: 'blue', hex: hex(0, 0), facing: 0, weaponString,
+    });
+    const red = mk({ id: 'r1', team: 'black', hex: hex(0, -1), facing: 0, weaponString: SPEAR });
+    return { blue, red };
+  }
+
+  it('classifies high damage above the 1d8+2 average', () => {
+    const cases: [string, string, number, boolean][] = [
+      ['standard', weapon('Standard', '1d8+2'), 1, false],
+      ['d12', weapon('D12', 'd12'), 1, false],
+      ['2d6', weapon('Greatsword', '2d6'), 1, true],
+      ['2x d6', weapon('Twin', '1d6', 2), 1, true],
+      ['2x d4', weapon('Paired', '1d4', 2), 1, false],
+      ['1d10+2', weapon('Heavy', '1d10+2'), 1, true],
+    ];
+    for (const [label, weaponString, attacks, expected] of cases) {
+      const { blue } = board(weaponString);
+      const avg = averageMeleeDamagePerAction(blue);
+      expect(avg, label).toBeGreaterThan(0);
+      expect(isHighDamageUnit(blue), label).toBe(expected);
+      expect(averageMeleeDamagePerAction({ ...blue, activeWeaponIndex: 0 }), label).toBe(avg);
+      expect(attacks, label).toBe(1);
+    }
+  });
+
+  it('maps frontage high damage to A and normal frontage to M', () => {
+    for (const [weaponString, expected] of [
+      [weapon('Standard', '1d8+2'), 'M'],
+      [weapon('Greatsword', '2d6'), 'A'],
+    ] as const) {
+      const { blue, red } = board(weaponString);
+      const ctx = ctxOf([blue, red], ['blue'], 'enemy', { advanced: false, stance: 'aggressive' });
+      const markers = buildAiRoleMarkers([blue], [red], ctx, false);
+      expect(markers[blue.id]).toBe(expected);
+    }
+  });
+
+  it('maps flank, ranged, reserve and structure roles to C/S/R/G', () => {
+    const { blue } = board(weapon('Standard', '1d8+2'));
+    expect(roleMarkerFor('flank', blue)).toBe('C');
+    expect(roleMarkerFor('rear', blue)).toBe('C');
+    expect(roleMarkerFor('ranged', blue)).toBe('S');
+    expect(roleMarkerFor('reserve', blue)).toBe('R');
+    expect(roleMarkerFor('structure', blue)).toBe('G');
+  });
+
+  it('shows all roles to the GM and only own-team roles to a player', () => {
+    const a = mk({ id: 'a', team: 'blue', hex: hex(0, 0) });
+    const b = mk({ id: 'b', team: 'black', hex: hex(1, 0) });
+    const markers = { a: 'M', b: 'C' } as const;
+    expect(visibleRoleMarkers(markers, [a, b], true, null)).toEqual({ a: 'M', b: 'C' });
+    expect(visibleRoleMarkers(markers, [a, b], false, 'blue')).toEqual({ a: 'M' });
+    expect(visibleRoleMarkers(markers, [a, b], false, 'black')).toEqual({ b: 'C' });
+    expect(visibleRoleMarkers(markers, [a, b], false, null)).toEqual({});
   });
 });
 

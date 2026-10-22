@@ -16,7 +16,7 @@ export interface AiRouteVisual {
 }
 
 /** Battle-role badge shown on a token during AI preview/execute. */
-export type AiRoleMarker = 'frontage' | 'flank' | 'rear' | 'reserve' | 'ranged' | 'structure';
+export type AiRoleMarker = 'M' | 'A' | 'C' | 'S' | 'R' | 'G';
 
 /** Everything the canvas needs to draw for the AI assist UI. */
 export interface AiOverlayData {

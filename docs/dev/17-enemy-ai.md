@@ -200,10 +200,22 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   that turn. They never spend an attack on a front arc and never front-charge.
   This prevents fast wolf riders being used as frontage, getting ahead of the
   main body, or being melee-locked before the frontage engages.
-- **Role markers (debug)**: during AI Preview/Execute each token carries a small
-  top-left badge — `F` frontage, `K` flanker, `B` rear attacker, `R` reserve,
-  `A` ranged, `S` structure. The AI panel shows the legend. This makes role
-  assignment auditable in playtests.
+- **Role markers (scenario flag)**: `scenarios.ai_role_markers` (migration
+  131) overlays the current battle role on AI-controlled tokens whenever the
+  flag is on — independent of Preview/Execute. `M` frontline melee, `A`
+  high-damage frontline/shock (display-only; the Shock behaviour is not
+  implemented yet), `C` flank/rear flanker, `S` skirmisher/ranged, `R` reserve,
+  `G` structure/garrison. The DM/effective GM sees all markers; a player sees
+  only markers on units in their own team (DM in player mode is treated as a
+  player). Roles are recomputed from current positions and hostile numbers, not
+  stored per unit.
+  - **High damage (A)**: use the active melee weapon's average damage per
+    attack action = `numberOfAttacks × (dice average + flat bonus)`. The standard
+    benchmark is `1d8+2` = **6.5**; strictly above 6.5 is high damage. `A`
+    replaces `M` only when the unit is currently frontage. `isTwoHanded` is not
+    used.
+  - The AI panel shows the legend. This makes role assignment auditable in
+    playtests.
 - **Defensive facing**: a defensive melee unit does not accept an attack that
   leaves another adjacent enemy in its flank or rear. It first turns to face the
   most dangerous exposed enemy, even if that costs the attack, then acts from

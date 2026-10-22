@@ -65,6 +65,36 @@ export function rollDamage(diceStr: string, rng: () => number): number {
 }
 
 /**
+ * Average value of a damage-dice string (same notation as `rollDamageDetailed`):
+ * each `NdM` contributes `N * (M + 1) / 2`, plus flat bonuses. Returns 0 for
+ * strings with no die or invalid notation.
+ */
+export function averageDamageDice(diceStr: string): number {
+  const s = (diceStr || '').trim();
+  const tokens = s.match(/[+-]?\s*(?:\d*d\d+|\d+)/g);
+  if (!tokens || tokens.map(t => t.replace(/\s+/g, '')).join('') !== s.replace(/\s+/g, '')) {
+    return 0;
+  }
+  let total = 0;
+  let sawDie = false;
+  for (const raw of tokens) {
+    const tok = raw.replace(/\s+/g, '');
+    const dm = tok.match(/^([+-]?)(\d*)d(\d+)$/);
+    if (dm) {
+      sawDie = true;
+      const count = parseInt(dm[2] || '1');
+      const sides = parseInt(dm[3]);
+      total += count * ((sides + 1) / 2);
+    } else {
+      const fm = tok.match(/^([+-]?)(\d+)$/);
+      if (!fm) return 0;
+      total += (fm[1] === '-' ? -1 : 1) * parseInt(fm[2]);
+    }
+  }
+  return sawDie ? total : 0;
+}
+
+/**
  * THE damage clamp — a landed amount is never below `MIN_DAMAGE` (1) and never
  * above `cap` (default: no cap). Use for damage AND healing amounts. A full
  * saving-throw NEGATE is not a landed amount, so callers pass 0 through untouched

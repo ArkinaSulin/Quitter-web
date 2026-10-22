@@ -127,14 +127,14 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   and cluster-cap exemption while reacting. Follow-up anti-idle pass: adjacent
   near-breakeven attacks (multi-action), nearest-reachable-enemy fallback when a
   lane is blocked, fastest surplus units forced to flank when contiguity is
-  kept, flankers retargeting/circling at ≥3 hexes and never closer than the
+  kept, flankers retargeting/circling at >=3 hexes and never closer than the
   friendly line, closing after the frontage locks (same-turn dash allowed),
   whole-line pairing before reserves (short leading ranks promote rear units;
   true surplus stays reserve), one-shot defensive attack-exposure facing, and
-  debug role badges (F/K/B/R/A/S) during AI Preview. Migration 130 is
-  applied; no
-  migration was needed for these fixes. The AI
-  package is the source of truth: `src/packages/ai/lib/{planner,battleLine,reserve}.ts`,
+  persistent role markers M/A/C/S/R/G behind the `ai_role_markers` flag (DM all,
+  players own team). Migration 130 is applied; **131 (`ai_role_markers`)
+  awaits apply**. The AI package is the source of truth:
+  `src/packages/ai/lib/{planner,battleLine,reserve,roleMarkers}.ts`,
   `src/packages/ai/tests/planner.test.ts`, `src/components/ScenarioMap/AiPanel.tsx`;
   design in `docs/dev/17-enemy-ai.md`.
 - **Next session:** playtest the latest role/staging/reserve behaviour, then the

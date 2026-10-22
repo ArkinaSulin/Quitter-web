@@ -3,3 +3,4 @@
 export * from './lib/planner';
 export * from './lib/battleLine';
 export * from './lib/reserve';
+export * from './lib/roleMarkers';

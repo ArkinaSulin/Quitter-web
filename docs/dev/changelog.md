@@ -1,5 +1,26 @@
 # QuiTTER Changelog
 
+## AI role-marker scenario flag (2026-10-21)
+**Files:** supabase/migrations/131_ai_role_markers.sql, src/packages/ai/lib/roleMarkers.ts, src/packages/ai/index.ts, src/packages/ai/tests/planner.test.ts, src/packages/primitives/lib/damage.ts, src/types/gameProtocol.ts, src/hooks/useScenarios.ts, src/components/ScenarioMap/{ScenarioMap,AiPanel,aiTypes,useCanvasDraw}.tsx/.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
+
+- New scenario flag `ai_role_markers` overlays persistent role badges on
+  AI-controlled tokens: **M** frontline melee, **A** high-damage
+  frontline/shock (display-only), **C** flanker, **S** skirmisher/ranged,
+  **R** reserve, **G** structure/garrison. Roles are recomputed from current
+  positions and hostile numbers, independent of Preview/Execute.
+- High damage is measured from the active melee weapon's average damage per
+  attack action (`numberOfAttacks * (dice average + flat)`). Standard is
+  `1d8+2` = 6.5; strictly above 6.5 is A. `A` replaces `M` only for frontage.
+  `isTwoHanded` is intentionally not used.
+- Visibility: DM/effective GM sees all roles; a player sees only roles for units
+  in their own team; DM in player mode is treated as a player.
+- Added `averageDamageDice` to the primitives damage parser and
+  `buildAiRoleMarkers`/`visibleRoleMarkers`/`roleMarkerFor` helpers in the AI
+  package. The AI stance is lifted to `ScenarioMap` so persistent roles use the
+  selected Aggressive/Defensive posture.
+- Verification: `npm run check` passes (tsc, 1141 tests / 67 planner, depcruise,
+  build). **Apply migration 131 in Supabase.**
+
 ## AI aggressive flanker assignment, same-turn dash, role markers (2026-10-21)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/{AiPanel,aiTypes,useCanvasDraw}.ts(x), docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
 

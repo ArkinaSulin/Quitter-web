@@ -1324,8 +1324,10 @@ fast riders do not take frontage from slower warriors. Flankers do not wait in a
 queue: they retarget to a target locked by the frontage, circle at least three
 hexes out and never closer than the friendly front line, then dash to the flank
 or rear as soon as the frontage locks — including later in the same turn. They
-never charge the front. During AI preview/execute each token shows a role badge:
-F frontage, K flanker, B rear, R reserve, A ranged, S structure.
+never charge the front. When the scenario setting **Show AI role markers** is
+on, AI-controlled tokens carry a persistent role badge: M melee, A high-damage
+assault, C flanker, S skirmisher/ranged, R reserve, G garrison. The DM sees all;
+a player sees only their own team; DM in player mode is treated as a player.
 Defensive melee units turn once to face an adjacent flank/rear threat before
 attacking, even if that costs the attack, so they do not oscillate. Defensive
 stance pairs the whole enemy front line first: the front rank shifts laterally

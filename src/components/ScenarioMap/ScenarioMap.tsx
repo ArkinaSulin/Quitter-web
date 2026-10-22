@@ -30,7 +30,7 @@ import { isUnitInteractable } from '@/packages/units';
 import { LeftPanel } from './LeftPanel';
 import { AiPanel } from './AiPanel';
 import { AiOverlayData } from './aiTypes';
-import { isAiControllable } from '@/packages/ai';
+import { isAiControllable, buildAiRoleMarkers, visibleRoleMarkers, enemyGroupsOf, AiRoleMarker } from '@/packages/ai';
 import { ContextMenu } from './ContextMenu';
 import { WeaponSelect } from './WeaponSelect';
 import { MountTargetChoice } from './MountTargetChoice';
@@ -275,6 +275,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [aiAssistEnabled, setAiAssistEnabled] = useState(false);
   const [aiAssistAdvanced, setAiAssistAdvanced] = useState(false);
   const [aiAssistPlayers, setAiAssistPlayers] = useState(false);
+  const [aiRoleMarkers, setAiRoleMarkers] = useState(false);
+  const [aiStance, setAiStance] = useState<'aggressive' | 'defensive'>('aggressive');
   // Hero morale boost (Commanding Presence / Heroic Inspiration) + heroic capacity.
   const [heroMoraleBoostEnabled, setHeroMoraleBoostEnabled] = useState(true);
   const [zocPursuitEnabled, setZocPursuitEnabled] = useState(true);
@@ -707,6 +709,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if ('ai_assist_enabled' in fields) setAiAssistEnabled(!!fields.ai_assist_enabled);
     if ('ai_assist_advanced' in fields) setAiAssistAdvanced(!!fields.ai_assist_advanced);
     if ('ai_assist_players' in fields) setAiAssistPlayers(!!fields.ai_assist_players);
+    if ('ai_role_markers' in fields) setAiRoleMarkers(!!fields.ai_role_markers);
     if ('hero_morale_boost_enabled' in fields) setHeroMoraleBoostEnabled(fields.hero_morale_boost_enabled ?? true);
     if ('zoc_pursuit_enabled' in fields) setZocPursuitEnabled(fields.zoc_pursuit_enabled ?? true);
   }, []);
@@ -1014,6 +1017,44 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     };
   }, []);
 
+  // Persistent AI role overlay (display-only): recomputed from current positions
+  // whenever the scenario flag is on, independently of Preview/Execute.
+  const aiRoleOverlay = useMemo<Record<string, AiRoleMarker>>(() => {
+    if (!aiRoleMarkers || !aiAssistEnabled || !currentTurnAlliance || aiTeams.length === 0) return {};
+    const hostedBy = new Set<string>();
+    for (const u of units) if (u.attachedToUnitId && !u.isDeleted) hostedBy.add(u.attachedToUnitId);
+    const controllable = units.filter(u =>
+      !aiExcluded[u.id]
+      && isAiControllable(u, { alliances, teams: aiTeams, activeAlliance: currentTurnAlliance }, hostedBy));
+    const enemyGroups = enemyGroupsOf(currentTurnAlliance);
+    const enemies = units.filter(u =>
+      !u.isDeleted && !u.hidden && (u.currentUnitHp ?? 0) > 0
+      && enemyGroups.has(allianceOf(u.team, alliances)));
+    const markers = buildAiRoleMarkers(controllable, enemies, {
+      units,
+      alliances,
+      formations: formationsMap,
+      teams: aiTeams,
+      activeAlliance: currentTurnAlliance,
+      structures,
+      structureTemplates,
+      stance: aiStance,
+      advanced: aiAssistAdvanced,
+    }, aiAssistAdvanced);
+    return visibleRoleMarkers(markers, units, effectiveIsGM, myTeam);
+  }, [aiRoleMarkers, aiAssistEnabled, currentTurnAlliance, aiTeams, aiExcluded, units, alliances, formationsMap, structures, structureTemplates, aiStance, aiAssistAdvanced, effectiveIsGM, myTeam]);
+
+  const mergedAiOverlay = useMemo<AiOverlayData | null>(() => {
+    const roles = aiRoleOverlay;
+    if (!aiOverlay && Object.keys(roles).length === 0) return null;
+    return {
+      checkedUnitIds: aiOverlay?.checkedUnitIds ?? [],
+      excludedUnitIds: aiOverlay?.excludedUnitIds ?? [],
+      routes: aiOverlay?.routes ?? [],
+      roles,
+    };
+  }, [aiOverlay, aiRoleOverlay]);
+
   // The currently dragged unit id, exposed to `useCanvasDraw` (called before
   // `useHexGrid` owns the state) so its token stays visible in every filter mode.
   const draggedUnitIdRef = useRef<string | null>(null);
@@ -1054,7 +1095,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     scenarioId,
     updateScreenshot,
     corpseCounts,
-    aiOverlay,
+    aiOverlay: mergedAiOverlay,
     aiHoveredUnitId: hoveredUnit?.id ?? null,
     overlayLabels,
   });
@@ -2744,7 +2785,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let cancelled = false;
     supabase
       .from('scenarios')
-      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled, ai_assist_advanced, ai_assist_players, hero_morale_boost_enabled, zoc_pursuit_enabled')
+      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled, ai_assist_advanced, ai_assist_players, ai_role_markers, hero_morale_boost_enabled, zoc_pursuit_enabled')
       .eq('id', scenarioId)
       .single()
       .then(({ data, error }) => {
@@ -2770,6 +2811,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setAiAssistEnabled(data.ai_assist_enabled ?? false);
         setAiAssistAdvanced(data.ai_assist_advanced ?? false);
         setAiAssistPlayers(data.ai_assist_players ?? false);
+        setAiRoleMarkers(data.ai_role_markers ?? false);
         setHeroMoraleBoostEnabled(data.hero_morale_boost_enabled ?? true);
         setZocPursuitEnabled(data.zoc_pursuit_enabled ?? true);
       });
@@ -2816,6 +2858,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }
           if (row.ai_assist_players !== undefined) {
             setAiAssistPlayers(!!row.ai_assist_players);
+          }
+          if (row.ai_role_markers !== undefined) {
+            setAiRoleMarkers(!!row.ai_role_markers);
           }
           if (row.hero_morale_boost_enabled !== undefined) {
             setHeroMoraleBoostEnabled(row.hero_morale_boost_enabled ?? true);
@@ -3035,6 +3080,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         structureTemplates={structureTemplates}
         groundZones={effectiveZones}
         advanced={aiAssistAdvanced}
+        stance={aiStance}
+        onStanceChange={setAiStance}
+        roleMarkersEnabled={aiRoleMarkers}
         gridRadius={backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS}
         archerReactionEnabled={archerReactionEnabled}
         unitMaxMP={unitMaxMP}
@@ -3725,6 +3773,23 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 <span className="font-medium text-amber-300">Allow players to use AI assist</span>
                 <span className="block text-gray-400 text-[11px]">
                   Lets non-GM participants open the AI tab during their side's turn. The GM still owns these settings.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={aiRoleMarkers}
+                onChange={async (e) => {
+                  await updateScenarioField(scenarioId, { ai_role_markers: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">Show AI role markers</span>
+                <span className="block text-gray-400 text-[11px]">
+                  Overlays the current AI battle role on AI-controlled tokens: M melee, A high-damage assault, C flanker,
+                  S skirmisher/ranged, R reserve, G garrison. The DM sees all; players see only their own team.
                 </span>
               </span>
             </label>

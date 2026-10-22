@@ -20,7 +20,7 @@ import { StructureTemplate } from '@/types/structure';
 import { legalTargets } from '@/packages/ai';
 import { unitAttackCap } from '@/packages/combat';
 import { supabase } from '@/packages/infra/supabase';
-import { AiOverlayData, AiRoleMarker } from './aiTypes';
+import { AiOverlayData } from './aiTypes';
 
 type AiStep = AiUnitPlan['steps'][number];
 
@@ -49,6 +49,11 @@ interface AiPanelProps {
   groundZones: GroundEffect[];
   /** Tuned brain: retaliation/overkill/zone-aware. OFF = green-friendly greedy. */
   advanced: boolean;
+  /** Preview stance, owned by ScenarioMap so role markers can use it while idle. */
+  stance: 'aggressive' | 'defensive';
+  /** Scenario flag: show the persistent role-marker legend. */
+  roleMarkersEnabled?: boolean;
+  onStanceChange: (stance: 'aggressive' | 'defensive') => void;
   /** Map grid radius (axial ring) — routed flee stops at this rim. */
   gridRadius?: number;
   /** Scenario "Reactive archery": the AI stops before a ZoC too. */
@@ -111,6 +116,9 @@ export function AiPanel({
   structureTemplates,
   groundZones,
   advanced,
+  stance,
+  onStanceChange,
+  roleMarkersEnabled,
   gridRadius,
   archerReactionEnabled,
   unitMaxMP,
@@ -125,7 +133,7 @@ export function AiPanel({
   addError,
 }: AiPanelProps) {
   const propsRef = useRef<AiPanelProps | null>(null);
-  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, structures, structureTemplates, groundZones, advanced, gridRadius, archerReactionEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, undo, onOverlayChange, onBusyChange, addMessage, addError };
+  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, structures, structureTemplates, groundZones, advanced, stance, onStanceChange, roleMarkersEnabled, gridRadius, archerReactionEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, undo, onOverlayChange, onBusyChange, addMessage, addError };
 
   const [plans, setPlans] = useState<AiUnitPlan[] | null>(null);
   const [remaining, setRemaining] = useState<ExecUnit[] | null>(null); // active during Execute
@@ -133,7 +141,6 @@ export function AiPanel({
   // A batch finished executing and can be undone with "Undo Execute".
   const [batchDone, setBatchDone] = useState(false);
   const [statusText, setStatusText] = useState('');
-  const [stance, setStance] = useState<'aggressive' | 'defensive'>('aggressive');
   const [phaseTick, setPhaseTick] = useState(0); // bump to refresh derived UI/overlay
   const remainingRef = useRef<ExecUnit[]>([]);
   const baselineRef = useRef<string | null>(null);
@@ -172,15 +179,10 @@ export function AiPanel({
     const excludedIds = eligible.filter(id => aiExcluded[id]);
     const active: { unitId: string; steps: AiStep[] }[] = remaining ?? (plans ?? []);
     const routes = buildRoutes(units, active);
-    const roles: Record<string, AiRoleMarker> = {};
-    for (const p of plans ?? []) {
-      if (p.roleKind) roles[p.unitId] = p.roleKind;
-    }
     onOverlayChange({
       checkedUnitIds: eligible.filter(id => !aiExcluded[id]),
       excludedUnitIds: excludedIds,
       routes,
-      roles,
     });
     return () => onOverlayChange(null);
   }, [units, eligible, aiExcluded, plans, remaining, phaseTick, onOverlayChange]);
@@ -522,7 +524,7 @@ export function AiPanel({
                 ? 'border-amber-400 text-amber-200 bg-amber-400/10'
                 : 'border-gray-700 text-gray-400 hover:border-gray-500'
             }`}
-            onClick={() => setStance(s)}
+            onClick={() => onStanceChange(s)}
             title={s === 'aggressive' ? 'Seek damage; looser line' : 'Self-protect; tighter line'}
           >
             {s}
@@ -626,15 +628,9 @@ export function AiPanel({
         </div>
       )}
 
-      {plans && (
+      {(plans || roleMarkersEnabled) && (
         <p className="text-[10px] text-gray-400 leading-tight">
-          Role badges: <span className="text-blue-300">F frontage</span> ·{' '}
-          <span className="text-amber-300">K flanker</span> ·{' '}
-          <span className="text-red-300">B rear</span> ·{' '}
-          <span className="text-emerald-300">R reserve</span> ·{' '}
-          <span className="text-violet-300">A ranged</span> ·{' '}
-          <span className="text-gray-300">S structure</span>
-        </p>
+          Role badges: <span className="text-blue-300">M melee</span> | <span className="text-red-300">A assault</span> | <span className="text-amber-300">C flanker</span> | <span className="text-violet-300">S skirmisher</span> | <span className="text-emerald-300">R reserve</span> | <span className="text-gray-300">G garrison</span></p>
       )}
 
       {executing && (

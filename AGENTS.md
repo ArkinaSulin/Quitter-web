@@ -72,8 +72,14 @@ reusable maps. Here's the state:
   keep circling behind it. Once the main body locks a target — **including a
   same-plan lock** — they dash to its flank/rear and may attack that turn. They
   never attack a front arc and never front-charge. During Preview/Execute tokens
-  carry debug role badges (`F` frontage, `K` flanker, `B` rear, `R` reserve,
-  `A` ranged, `S` structure). Defensive reserves hold a **central station ~2
+  carry persistent role badges when the scenario flag `ai_role_markers` is on:
+  `M` frontline melee, `A` high-damage frontline/shock (display-only), `C`
+  flanker, `S` skirmisher/ranged, `R` reserve, `G` structure/garrison. High
+  damage = active melee weapon average per attack action above 6.5 (`1d8+2`),
+  using `numberOfAttacks × (dice average + flat)`; `A` replaces `M` only for
+  frontage. DM/effective GM sees all; players see their own team only; DM in
+  player mode is a player. Roles are recomputed from current positions/hostile
+  numbers, independent of Preview/Execute. Defensive reserves hold a **central station ~2
   hexes behind the line** (staggered, and split into sector groups on a very long
   line), optionally in **Scattered** while uncommitted. Reserves never take a
   normal front-line pairing slot; their mission is to face flank/rear threats
@@ -98,7 +104,7 @@ reusable maps. Here's the state:
   available org level before contact; flankers attack first and may chain two
   formation upgrades (Scattered → Open → Close) in one action; Scattered turns
   are free.
-  `npm run check`: tsc, **1137 tests** (63 planner), depcruise, build. No new
+  `npm run check`: tsc, **1141 tests** (67 planner), depcruise, build. No new
   migration for 2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted charges, Round
   4 full coordination, Round 5 full auto-turn; AI still ignores ZoC
   scatter/pursue, flight, and some elevation nuances. See
