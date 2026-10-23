@@ -137,6 +137,13 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   `src/packages/ai/lib/{planner,battleLine,reserve,roleMarkers}.ts`,
   `src/packages/ai/tests/planner.test.ts`, `src/components/ScenarioMap/AiPanel.tsx`;
   design in `docs/dev/17-enemy-ai.md`.
+- **Role-marker overlay prerequisites/known gaps:** apply migration 131; the
+  toggle is Scenario Settings -> Assist & logs -> **Show AI role markers**.
+  Badges require AI assist on, at least one team in the AI control box, and a
+  Turn 1+ active alliance. `aiTeams`/`aiExcluded` are session-local, so badges
+  disappear after reload; persist them and add an empty-state hint. Taxonomy and
+  fill-in role forms live in `.scratch/ai-role-system/notes.md`. Shock/A
+  behaviour is deferred (A is display-only).
 - **Next session:** playtest the latest role/staging/reserve behaviour, then the
   remaining rounds in order — **2a archers + artillery → 3 mounted charges → 4
   full coordination → 5 full auto-turn**. Known separate bug from playtest: the

@@ -76,10 +76,13 @@ reusable maps. Here's the state:
   `M` frontline melee, `A` high-damage frontline/shock (display-only), `C`
   flanker, `S` skirmisher/ranged, `R` reserve, `G` structure/garrison. High
   damage = active melee weapon average per attack action above 6.5 (`1d8+2`),
-  using `numberOfAttacks × (dice average + flat)`; `A` replaces `M` only for
+  using `numberOfAttacks * (dice average + flat)`; `A` replaces `M` only for
   frontage. DM/effective GM sees all; players see their own team only; DM in
   player mode is a player. Roles are recomputed from current positions/hostile
-  numbers, independent of Preview/Execute. Defensive reserves hold a **central station ~2
+  numbers, independent of Preview/Execute. The overlay requires migration 131,
+  AI assist on, at least one team in the AI control box, and a Turn 1+ active
+  alliance; `aiTeams`/`aiExcluded` are session-local (persistence and an
+  empty-state hint are next). Defensive reserves hold a **central station ~2
   hexes behind the line** (staggered, and split into sector groups on a very long
   line), optionally in **Scattered** while uncommitted. Reserves never take a
   normal front-line pairing slot; their mission is to face flank/rear threats

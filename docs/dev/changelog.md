@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Session wrap: AI role markers + next-session role design (2026-10-21)
+**Files:** .scratch/ai-role-system/notes.md, docs/dev/{changelog,outstanding}.md, docs/dev/17-enemy-ai.md, AGENTS.md
+
+- Recorded the current role taxonomy and fill-in forms in
+  `.scratch/ai-role-system/notes.md`: M frontline anchor, A shock (behaviour
+  deferred), C flanker, S skirmisher, R reserve, G garrison; hero no overlay,
+  air deferred.
+- Documented the overlay prerequisites/troubleshooting: migration 131 applied,
+  AI assist enabled, at least one team in the AI control box, Turn 1+ active
+  alliance, and DM/player visibility rules. AI team assignments are currently
+  session-local, so the overlay disappears after reload even with the flag on.
+- Next session: decide persistence for `ai_teams`/`ai_excluded`, add an
+  empty-state hint, verify the marker overlay, then fill the role forms and
+  implement Shock/A behaviour only after the design is settled.
+
 ## AI role-marker scenario flag (2026-10-21)
 **Files:** supabase/migrations/131_ai_role_markers.sql, src/packages/ai/lib/roleMarkers.ts, src/packages/ai/index.ts, src/packages/ai/tests/planner.test.ts, src/packages/primitives/lib/damage.ts, src/types/gameProtocol.ts, src/hooks/useScenarios.ts, src/components/ScenarioMap/{ScenarioMap,AiPanel,aiTypes,useCanvasDraw}.tsx/.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md
 
