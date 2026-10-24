@@ -771,18 +771,19 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const byId = new Map(displayUnits.map(u => [u.id, u]));
       // Checkmarks: fixed on-screen size (does not grow with zoom).
       const badgeR = 9;
-      // Large faint role letter over the troop circles (upper 2/3), drawn under
-      // the checkmarks/routes so those stay readable.
-      const roleStyle: Record<string, { label: string; color: string }> = {
-        M: { label: 'M', color: '#60a5fa' },
-        A: { label: 'A', color: '#ef4444' },
-        C: { label: 'C', color: '#f59e0b' },
-        S: { label: 'S', color: '#a78bfa' },
-        R: { label: 'R', color: '#34d399' },
-        G: { label: 'G', color: '#94a3b8' },
+      // Large white role letter over the troop circles (upper 2/3), drawn under
+      // the checkmarks/routes so those stay readable. White + dark outline reads
+      // across every team colour.
+      const roleLabel: Record<string, string> = {
+        M: 'M',
+        A: 'A',
+        C: 'C',
+        S: 'S',
+        R: 'R',
+        G: 'G',
       };
       for (const [id, role] of Object.entries(aiOverlay.roles ?? {})) {
-        if (!roleStyle[role]) continue;
+        if (!roleLabel[role]) continue;
         const u = byId.get(id);
         if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
         const pos = hexToPixel(u.hex, HEX_SIZE);
@@ -796,19 +797,19 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
             );
         const cx = pos.x * currentZoom + offsetX + elev.dx * currentZoom;
         const cy = pos.y * currentZoom + offsetY + elev.dy * currentZoom;
-        const style = roleStyle[role];
+        const label = roleLabel[role];
         const fontSize = Math.max(14, Math.min(tokenWidth, tokenHeight) * 0.5);
         const textY = cy - tokenHeight * 0.16;
         ctx.save();
-        ctx.globalAlpha = 0.34;
+        ctx.globalAlpha = 0.6;
         ctx.font = `bold ${fontSize}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.lineWidth = Math.max(2, fontSize * 0.06);
-        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-        ctx.fillStyle = style.color;
-        ctx.strokeText(style.label, cx, textY);
-        ctx.fillText(style.label, cx, textY);
+        ctx.lineWidth = Math.max(2, fontSize * 0.08);
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeText(label, cx, textY);
+        ctx.fillText(label, cx, textY);
         ctx.restore();
       }
       for (const id of aiOverlay.checkedUnitIds) {

@@ -11,7 +11,7 @@ The overlay is display-only. The **Shock/A behaviour is NOT implemented yet.**
   scenario/user (`quitter.showAiRoleOverlay:<scenarioId>:<userId>`); default off.
 - There is **no** scenario-level role-marker flag anymore. Migration 132 drops
   the old `scenarios.ai_role_markers` column (131 is superseded).
-- Markers: large faint role letter over the **upper 2/3 of the token**, over the
+- Markers: large white role letter (dark outline) over the **upper 2/3 of the token**, over the
   troop circles (elevation-aware). M/A/C/S/R/G.
   - M = frontline melee anchor
   - A = high-damage frontage / shock (display-only)

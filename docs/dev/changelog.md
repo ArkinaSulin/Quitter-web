@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## White AI role letters for contrast (2026-10-21)
+**Files:** src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{17-enemy-ai,changelog}.md, docs/players/player-manual.md, AGENTS.md, .scratch/ai-role-system/notes.md
+
+- Role overlay letters are now **white with a dark outline** at 0.6 opacity
+  instead of per-role colours at 0.34. This reads across all six team colours
+  (especially light/yellow and blue); the AI-panel legend keeps its role colours.
+- Verification: `npm run check` passes (tsc, 1142 tests / 68 planner, depcruise,
+  build).
+
 ## Per-player Advanced-AI role overlay (2026-10-21)
 **Files:** src/components/ScenarioMap/{ScenarioMap,useCanvasDraw}.tsx/.ts, src/packages/ai/lib/roleMarkers.ts, src/packages/ai/tests/planner.test.ts, src/types/gameProtocol.ts, src/hooks/useScenarios.ts, supabase/migrations/132_drop_ai_role_markers.sql, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md, .scratch/ai-role-system/notes.md
 
