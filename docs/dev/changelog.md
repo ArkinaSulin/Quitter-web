@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## Basic AI: fix blocked flank veto, full facing search, Scattered escape (2026-10-23)
+**Files:** src/packages/ai/lib/{board,planner}.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- **Flank safety is adjacency-only.** `isFlankedAt` was treating every hostile on
+  the map as a flank/rear threat, so the enemy line to the north vetoed all
+  lateral moves toward the flank archers. Only an adjacent non-target hostile
+  can now block a destination.
+- **No artificial turn cap.** Formed units evaluate all six facings via the
+  shortest rotation (≤3 steps); loose units move omnidirectionally with free
+  turns.
+- **Scattered escape fallback:** a fully upgraded unit with no useful action
+  may drop to Scattered and loose-move toward a target (or the move that best
+  opens space), so it no longer holds when a legal move exists. The normal
+  upgrade rule re-forms it later.
+- Not-fully-upgraded staging now also retargets across candidates.
+- Verification: `npm run check` passes (tsc, 1103 tests, depcruise, build).
+
 ## Basic AI: engage ZoC, retarget blocked melee, pass-through stop-aware (2026-10-23)
 **Files:** src/packages/ai/lib/{board,planner}.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md
 

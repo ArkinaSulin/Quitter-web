@@ -193,11 +193,10 @@ function bestManeuver(
   rt: Runtime,
   mode: 'ground' | 'fly',
   score: (m: Maneuver, threat: Set<string>) => number,
-  maxTurns = 2,
 ): Maneuver | null {
   const complex = rt.complexes.get(unit.id) ?? null;
   const movement = movementContextFor(unit, rt.working, rt.ctx, mode, complex);
-  const list = maneuversFor(unit, rt.working, rt.ctx, maxTurns, mode, complex);
+  const list = maneuversFor(unit, rt.working, rt.ctx, mode, complex);
   let best: ScoredManeuver | null = null;
   for (const m of list) {
     const s = score(m, movement.threat);
@@ -230,6 +229,75 @@ function isEngagedByFriendly(target: Unit, self: Unit, rt: Runtime): boolean {
     && isAdjacent(f.hex, target.hex));
 }
 
+/**
+ * Last-resort movement for a unit that has no useful action. Dropping to
+ * Scattered makes movement omnidirectional (free turns), which lets a boxed-in
+ * Open Order unit slip out through/around friendly units instead of holding.
+ */
+function planEscape(
+  unit: Unit,
+  plan: AiUnitPlan,
+  rt: Runtime,
+  kind: 'melee' | 'ranged' | 'mounted',
+): Unit {
+  let u = unit;
+  const candidates = rt.candidates(u, kind);
+
+  const findMove = (mover: Unit): { move: Maneuver; target: Unit | null } | null => {
+    // First try a loose move toward a target (progress), allowing a ZoC step
+    // because the unit is already committed and fully formed.
+    for (const target of candidates) {
+      const m = bestManeuver(mover, rt, 'ground', (man, threat) => {
+        if (man.path.length === 0) return -Infinity;
+        if (isFlankedAt(man.dest, man.facing, rt.enemies, target.id)) return -Infinity;
+        const d = hexDistance(man.dest, target.hex);
+        return -d * 100 - man.cost * 2 - man.turns.length * 2
+          - (threat.has(hexKeyOf(man.dest)) ? 20 : 0);
+      });
+      if (m) return { move: m, target };
+    }
+    // No progress possible: take the legal move that best opens space.
+    const open = bestManeuver(mover, rt, 'ground', (man) => {
+      if (man.path.length === 0) return -Infinity;
+      if (isFlankedAt(man.dest, man.facing, rt.enemies, null)) return -Infinity;
+      const crowd = rt.working.filter(w =>
+        w.id !== mover.id && !w.isDeleted && !w.hidden && hexDistance(w.hex, man.dest) <= 1).length;
+      const hostile = rt.enemies.filter(e => hexDistance(e.hex, man.dest) <= 1).length;
+      return -crowd * 10 - hostile * 20 - man.cost * 2 - man.turns.length * 2;
+    });
+    return open ? { move: open, target: null } : null;
+  };
+
+  if (u.currentFormation !== 'Scattered') {
+    // Probe the Scattered move first so we never spend an action on a formation
+    // change that cannot be followed by a move.
+    if (!canAdopt(u, 'Scattered', rt.ctx)) return u;
+    const oldMax = effectiveMax(u, rt.ctx.formations);
+    const newMax = effectiveMax({ ...u, currentFormation: 'Scattered' }, rt.ctx.formations);
+    const applied = applyFormationChange(u, oldMax, newMax);
+    if (applied.actionsAvailable < 0) return u;
+    const probe: Unit = {
+      ...u,
+      currentFormation: 'Scattered',
+      organizationLevel: 0,
+      movementPointsAvailable: applied.movementPointsAvailable,
+      actionsAvailable: applied.actionsAvailable,
+    };
+    const found = findMove(probe);
+    if (!found) return u;
+    plan.steps.push({ kind: 'formation', unitId: u.id, from: u.hex, formation: 'Scattered' });
+    u = probe;
+    rt.commit(u);
+    if (found.target && found.target.id !== (rt.byUnit.get(u.id) ?? null)) rt.setTarget(u.id, found.target.id);
+    return pushMove(plan, u, found.move, rt.ctx);
+  }
+
+  const found = findMove(u);
+  if (!found) return u;
+  if (found.target && found.target.id !== (rt.byUnit.get(u.id) ?? null)) rt.setTarget(u.id, found.target.id);
+  return pushMove(plan, u, found.move, rt.ctx);
+}
+
 function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
   if (isUnitRouted(unit)) return planRouted(unit, plan, rt);
   let u = unit;
@@ -239,32 +307,46 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
   for (let guard = 0; guard < 16; guard++) {
     // Formation has absolute priority: never attack before fully upgraded.
     if (!isFullyUpgraded(u, rt.ctx)) {
-      const target = candidates[0];
-      if (!target) break;
-      const distance = hexDistance(u.hex, target.hex);
-      if (distance > 3) {
+      const ordered = candidates
+        .slice()
+        .sort((a, b) => (a.id === markedId ? 0 : 1) - (b.id === markedId ? 0 : 1)
+          || hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex)
+          || a.id.localeCompare(b.id));
+      if (ordered.length === 0) break;
+      const nearest = ordered.reduce((a, b) =>
+        hexDistance(u.hex, a.hex) <= hexDistance(u.hex, b.hex) ? a : b);
+      // At 2-3 hexes: stop and finish the formation upgrade.
+      if (hexDistance(u.hex, nearest.hex) <= 3) {
+        const upgrade = nextFormationUpgrade(u, rt.ctx);
+        if (upgrade) {
+          plan.steps.push({ kind: 'formation', unitId: u.id, from: u.hex, formation: upgrade.formation });
+          u = upgrade.updated;
+          rt.commit(u);
+          continue;
+        }
+        // No upgrade available this activation: hold and finish next turn.
+        break;
+      }
+      // Still far: stage toward the closest target that has a safe, non-ZoC
+      // staging move (alternates included).
+      let moved: Unit | null = null;
+      for (const target of ordered) {
         const m = bestManeuver(u, rt, 'ground', (candidate, threat) => {
           if (candidate.path.length === 0) return -Infinity;
           if (isFlankedAt(candidate.dest, candidate.facing, rt.enemies, target.id)) return -Infinity;
-          // Not ready: never advance into a hostile ZoC before full formation.
           if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
           const d = hexDistance(candidate.dest, target.hex);
           return -Math.abs(d - 3) * 100 - candidate.cost * 2 - candidate.turns.length * 2;
         });
-        if (!m) break;
-        u = pushMove(plan, u, m, rt.ctx);
-        rt.commit(u);
-        continue;
+        if (!m) continue;
+        if (target.id !== markedId) rt.setTarget(u.id, target.id);
+        moved = pushMove(plan, u, m, rt.ctx);
+        break;
       }
-      const upgrade = nextFormationUpgrade(u, rt.ctx);
-      if (upgrade) {
-        plan.steps.push({ kind: 'formation', unitId: u.id, from: u.hex, formation: upgrade.formation });
-        u = upgrade.updated;
-        rt.commit(u);
-        continue;
-      }
-      // No upgrade available this activation: hold and finish next turn.
-      break;
+      if (!moved) break;
+      u = moved;
+      rt.commit(u);
+      continue;
     }
 
     const legal = legalTargets(u, rt.enemies, rt.ctx);
@@ -367,6 +449,7 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     u = moved;
     rt.commit(u);
   }
+  if (plan.steps.length === 0) u = planEscape(u, plan, rt, 'melee');
   return u;
 }
 
@@ -448,6 +531,7 @@ function planRanged(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     u = pushMove(plan, u, m, rt.ctx);
     rt.commit(u);
   }
+  if (plan.steps.length === 0) u = planEscape(u, plan, rt, 'ranged');
   return u;
 }
 
@@ -583,6 +667,7 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     u = upgrade.updated;
     rt.commit(u);
   }
+  if (plan.steps.length === 0) u = planEscape(u, plan, rt, 'mounted');
   return u;
 }
 

@@ -86,9 +86,14 @@ per-type badges (e.g. `M2 A4 F1 C1`); marks reset each Preview.
 
 ### Destination safety / facing
 
-- A mover never ends its advance on a hex where any non-target hostile would be
-  in its flank/rear at the final facing. If the marked target has no safe
-  approach, the next valid target is tried (and the mark updates).
+- A mover never ends its advance on a hex where an **adjacent** non-target
+  hostile would be in its flank/rear at the final facing. (Distant enemies never
+  veto a move; only adjacent units can flank/rear-attack in melee.) If the marked
+  target has no safe approach, the next valid target is tried (and the mark
+  updates).
+- Facing has no artificial cap: formed units consider all six facings using the
+  shortest rotation (at most three 60-degree steps). Loose units
+  (Scattered/Routed/Hero) move omnidirectionally with free turns.
 - Adjacent facing chooses: **min hostile ZoC sources in flank/rear → max
   hostiles in our front arc** (more enemies ZoC-locked) → cheapest rotation →
   current facing.
@@ -98,8 +103,12 @@ per-type badges (e.g. `M2 A4 F1 C1`); marks reset each Preview.
   upgrades first.
 - If the marked target has no free adjacent hex (all blocked by friendlies or
   terrain), the unit retargets through its candidate list, then stages at 2–3
-  hexes, then takes the best progress move toward another target. It only holds
-  when no legal move exists.
+  hexes, then takes the best progress move toward another target.
+- **Escape fallback:** if a fully upgraded unit still has no useful action, it drops
+  to **Scattered** (when available/affordable) and uses loose omnidirectional
+  movement to get out of the pocket — toward a target, or the move that best
+  opens space. It holds only when no legal move exists. Next activation the
+  normal upgrade rule re-forms it to Open.
 - Pass-through is used everywhere: an Open Order/Scattered/Routed mover may
   **traverse** another pass-eligible friendly hex, but never stop on it. Target
   path costs and candidate ordering exclude pass-through hexes as destinations,
@@ -232,7 +241,8 @@ validation accounts for the air slot and real terrain/walls/structures.
 `src/packages/ai/tests/planner.test.ts` covers gates, legal targets, independent
 marks/caps, melee upgrade priority, multi-attack, ranged 6-hex posture and
 Close-Order short-bow shots, melee staging, ZoC engagement by fully upgraded
-melee, Open-Order pass-through, stop-aware target costs, structure-complex
+melee, adjacency-only flank safety, full facing search (180-degree turns),
+Open-Order pass-through, stop-aware target costs, structure-complex
 confinement (footprint, enclosed courtyard, flyer exemption), and hardened
 mounted charge / flying swoop gates (scenario toggle, `canCharge`, fly points,
 no flyer swoop without FP).

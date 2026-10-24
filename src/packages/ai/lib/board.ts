@@ -318,7 +318,9 @@ export function isTargetReachable(map: Map<string, number>, target: Hex, noStop?
   return Number.isFinite(targetPathCost(map, target, noStop));
 }
 
-/** True when `dest` puts any non-target hostile in our flank/rear. */
+/** True when `dest` puts an **adjacent** non-target hostile in our flank/rear.
+ *  Only adjacent units can flank/rear-attack in melee; distant enemies never
+ *  veto an approach. */
 export function isFlankedAt(
   dest: Hex,
   facing: number,
@@ -328,6 +330,7 @@ export function isFlankedAt(
   for (const foe of foes) {
     if (foe.id === intendedTargetId) continue;
     if (isUnitRouted(foe)) continue;
+    if (hexDistance(dest, foe.hex) !== 1) continue;
     const arc = arcOfTarget(dest, facing, foe.hex);
     if (arc === 'flank' || arc === 'rear') return true;
   }
@@ -499,7 +502,6 @@ export function maneuversFor(
   unit: Unit,
   working: Unit[],
   ctx: AiPlanContext,
-  maxTurns = 2,
   mode: 'ground' | 'fly' = 'ground',
   complex?: StructureComplex | null,
 ): Maneuver[] {
@@ -538,38 +540,19 @@ export function maneuversFor(
     });
   };
 
-  const recurse = (state: Unit, turns: { dir: 'left' | 'right' }[]) => {
-    evaluate(state, turns);
-    if (turns.length >= maxTurns) return;
-    for (const dir of ['left', 'right'] as const) {
-      const free = isLoose(state, ctx.formations);
-      let next: Unit | null;
-      if (free) {
-        next = { ...state, facing: dir === 'left' ? rotateLeft(state.facing) : rotateRight(state.facing) };
-      } else if (mode === 'fly') {
-        const applied = applyMpSpend({ movementPointsAvailable: state.flySpeedAvailable ?? 0, actionsAvailable: state.actionsAvailable }, 1, flyMax(state));
-        if (applied.actionsAvailable < 0) continue;
-        next = {
-          ...state,
-          facing: dir === 'left' ? rotateLeft(state.facing) : rotateRight(state.facing),
-          flySpeedAvailable: applied.movementPointsAvailable,
-          actionsAvailable: applied.actionsAvailable,
-        };
-      } else {
-        const applied = applyMpSpend(state, 1, effectiveMax(state, ctx.formations));
-        if (applied.actionsAvailable < 0) continue;
-        next = {
-          ...state,
-          facing: dir === 'left' ? rotateLeft(state.facing) : rotateRight(state.facing),
-          movementPointsAvailable: applied.movementPointsAvailable,
-          actionsAvailable: applied.actionsAvailable,
-        };
-      }
-      if (next) recurse(next, [...turns, { dir }]);
+  // No artificial turn cap: a formed unit may face any of the six directions
+  // (the shortest rotation is at most three 60-degree steps). Loose units move
+  // omnidirectionally, so no turn is needed to choose a direction.
+  if (isLoose(unit, ctx.formations)) {
+    evaluate(unit, []);
+  } else {
+    for (let facing = 0; facing < 6; facing++) {
+      const turns = rotationPath(unit.facing, facing);
+      const turned = applyTurns(unit, turns, ctx);
+      if (!turned) continue;
+      evaluate(turned, turns);
     }
-  };
-
-  recurse(unit, []);
+  }
   return out;
 }
 

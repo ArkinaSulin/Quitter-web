@@ -44,7 +44,8 @@ reusable maps. Here's the state:
   (flyers exempt); flying/mounted charges use the canonical `chargeStanceFor`
   gate and the scenario **Charge and Swoop** toggle. Fully upgraded melee may
   enter hostile ZoC to attack; blocked marks retarget (engage → stage →
-  progress) and pass-through hexes are traversal-only. No migration.
+  progress), flank safety is adjacency-only, formed units consider all six
+  facings, and a boxed-in unit can drop to Scattered to loose-move. No migration.
   `npm run check` passes.
 - **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
   scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);

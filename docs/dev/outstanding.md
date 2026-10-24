@@ -142,7 +142,9 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
 - ✅ **Basic engagement retargeting (2026-10-23):** fully upgraded melee may
   enter hostile ZoC to attack a formed line; blocked marks retarget through
   engage → stage → progress; pass-through hexes are traversal-only (not valid
-  stopping points); mounted staging/charge also retargets.
+  stopping points); flank safety is adjacency-only; formed units consider all six
+  facings; a boxed-in unit can drop to Scattered and loose-move. Mounted
+  staging/charge also retargets.
 - 🔜 **Advanced AI is paused.** Scenario column `ai_assist_advanced` is kept for
   the later rebuild; its checkbox and the old Stance toggle are hidden. Rebuild
   Advanced **on top of** the Basic planner (shared board/marks/approach helpers)

@@ -7,6 +7,7 @@ import {
   allianceOf,
   assignMarks,
   targetPathCost,
+  isFlankedAt,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
@@ -384,5 +385,37 @@ describe('Basic AI engagement retargeting and pass-through', () => {
     for (const m of moves) {
       expect(m.path.some(h => (h.q === 0 && h.r === -1) || (h.q === 0 && h.r === -2))).toBe(false);
     }
+  });
+});
+
+describe('Basic AI facing, flank safety and escape', () => {
+  it('only adjacent hostiles count as flanking', () => {
+    const farFoe = mk({ id: 'far', team: 'black', hex: hex(0, 2) });
+    const nearFoe = mk({ id: 'near', team: 'black', hex: hex(0, 1) });
+    // Facing 0 (north): a unit to the south is rear.
+    expect(isFlankedAt(hex(0, 0), 0, [farFoe], null)).toBe(false);
+    expect(isFlankedAt(hex(0, 0), 0, [nearFoe], null)).toBe(true);
+  });
+
+  it('turns a full 180 degrees to engage a target behind it', () => {
+    const unit = mk({ id: 'm1', team: 'blue', hex: hex(0, 0), facing: 0, currentFormation: 'Close Order', organizationLevel: 2, movementPoints: 3 });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(0, 2), facing: 0 });
+    const result = planAiMoves(ctxOf([unit, foe]));
+    const steps = stepsOf(result, 'm1');
+    expect(steps.some(s => s.kind === 'move' && s.to.r > 0)).toBe(true);
+    expect(steps.some(s => s.kind === 'attack')).toBe(true);
+  });
+
+  it('still moves when a formed turn would spend the last action', () => {
+    const unit = mk({
+      id: 'm1', team: 'blue', hex: hex(0, 0), facing: 0,
+      currentFormation: 'Open Order', organizationLevel: 1,
+      formationAvailability: ['Open Order'],
+      movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 1,
+    });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(0, 2), facing: 0 });
+    const result = planAiMoves(ctxOf([unit, foe]));
+    const steps = stepsOf(result, 'm1');
+    expect(steps.some(s => s.kind === 'move' && s.to.r > 0)).toBe(true);
   });
 });
