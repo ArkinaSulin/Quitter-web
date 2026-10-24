@@ -246,20 +246,25 @@ leave it. Flyers are exempt.
 ### Structure-top access (melee)
 
 A hostile standing on a structure top is a valid melee target, even when it is
-inside a multi-hex complex.
+inside a multi-hex complex. The takeover rule is **vacant tops first**:
 
 - The planner resolves the target's connected hex-structure footprint and finds
-  **free top hexes** (no unit standing on that surface) — the “gaps”.
-- For each gap it finds an adjacent **base hex** the unit can reach, then scores
-  `path to base + climb steps + top distance to target`.
-- It plans **move to base → `climb` into the gap → top move → attack** across
-  activations. A climb that cannot finish this activation stops there and
-  continues next turn from `climbTo`.
+  **free top hexes** (no unit standing on that surface).
+- While a complex has any free top hex, melee units are assigned there **one per
+  hex**, choosing the **quickest access** (`path to base + climb cost + landing`).
+  These units get a **climb objective**, not a defender mark.
+- Defenders are marked normally only after **all vacant tops are taken or
+  unavailable** (then the normal dynamic defender cap applies).
+- A vacant-objective unit plans **move to base → `climb` → land**. It ignores
+  defenders until it is on top. If the assigned top becomes **enemy-occupied**
+  during the climb, it `climbAttack`s that occupant and fights until it
+  routs/defeats, then lands. A **friendly-occupied** top switches to the nearest
+  other free top.
+- If no free top exists, defender-marked units climb-attack the defender on its
+  own top (no landing required) until it routs/defeats.
 - **Melee only.** Mounted units never climb; flying units keep their direct
   swoop/10-ft attack.
-- A perimeter top target can still use the existing `climbAttack`. If every top
-  hex is occupied (no gap) and the target is interior, the unit stages at the
-  base and keeps the target without making an illegal climb.
+- Once landed, the unit enters the **on-top hold-and-fight** doctrine below.
 
 ### On-top hold-and-fight
 

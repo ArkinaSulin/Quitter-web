@@ -704,3 +704,38 @@ describe('Basic AI climb affordability', () => {
     expect(stepsOf(result, 'c')).toHaveLength(0);
   });
 });
+
+describe('Basic AI structure takeover priority', () => {
+  const tower = {
+    '0,0': { templateId: 'tower' },
+    '1,0': { templateId: 'tower' },
+  } as unknown as AiPlanContext['structures'];
+  const templates = {
+    tower: { id: 'tower', name: 'Tower', anchor: 'hex', elevation: 10, mpClimbUp: 6, mpMountedUp: 6 },
+  } as unknown as AiPlanContext['structureTemplates'];
+
+  it('prefers a vacant top over marking the structure defender', () => {
+    const defender = mk({ id: 'd', team: 'black', hex: hex(0, 0), elevation: 10, currentFormation: 'Close Order', organizationLevel: 2 });
+    const climber = mk({
+      id: 'c', team: 'blue', hex: hex(1, 1), facing: 0,
+      currentFormation: 'Close Order', organizationLevel: 2, formationAvailability: ['Close Order'],
+      movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const result = planAiMoves({ ...ctxOf([climber, defender]), structures: tower, structureTemplates: templates });
+    const steps = stepsOf(result, 'c');
+    expect(steps.some(s => s.kind === 'climb' && s.to.q === 1 && s.to.r === 0)).toBe(true);
+    expect(result.marks.some(m => m.byUnitId === 'c')).toBe(false);
+  });
+
+  it('uses defender marks when no vacant top remains', () => {
+    const defender = mk({ id: 'd', team: 'black', hex: hex(0, 0), elevation: 10, currentFormation: 'Close Order', organizationLevel: 2 });
+    const blocker = mk({ id: 'b', team: 'black', hex: hex(1, 0), elevation: 10, currentFormation: 'Close Order', organizationLevel: 2 });
+    const climber = mk({
+      id: 'c', team: 'blue', hex: hex(1, 1), facing: 0,
+      currentFormation: 'Close Order', organizationLevel: 2, formationAvailability: ['Close Order'],
+      movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const result = planAiMoves({ ...ctxOf([climber, defender, blocker]), structures: tower, structureTemplates: templates });
+    expect(result.marks.some(m => m.byUnitId === 'c')).toBe(true);
+  });
+});

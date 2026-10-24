@@ -168,6 +168,10 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   hold/face instead of a retreat to a farther target.
 - ✅ **Climb budget (2026-10-24):** climbs use strict move capacity and require an
   action; the AI executor re-checks live state so actions/MP never go negative.
+- ✅ **Vacant structure-top takeover (2026-10-24):** melee units take vacant
+  top hexes first (one per hex, quickest access), then mark defenders only when
+  no free top remains. A vacant exit that becomes occupied is fought until it
+  routs, then landed.
 - 🔜 **Advanced AI is paused.** Scenario column `ai_assist_advanced` is kept for
   the later rebuild; its checkbox and the old Stance toggle are hidden. Rebuild
   Advanced **on top of** the Basic planner (shared board/marks/approach helpers)

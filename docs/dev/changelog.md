@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## AI: vacant structure tops first; defender marks only after (2026-10-24)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- Melee structure takeover now assigns units to **vacant top hexes first**
+  (one unit per hex, quickest access). Those units get a climb objective and do
+  not mark defenders.
+- Defender marks are assigned only after all vacant tops are taken/unavailable;
+  the normal dynamic defender cap then applies.
+- If a vacant exit is occupied en route, the climber fights the occupant until
+  it routs/defeats, then lands. A friendly occupant switches to the nearest free
+  top.
+- If no free top exists, defender-marked units climb-attack the defender on its
+  own top.
+- Verification: `npm run check` passes (tsc, 1129 tests, depcruise, build).
+
 ## AI: climbing requires a real action + MP budget (2026-10-24)
 **Files:** src/packages/ai/lib/planner.ts, src/components/ScenarioMap/{AiPanel,useCombatActions}.tsx/.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 
