@@ -92,6 +92,19 @@ per-type badges (e.g. `M2 A4 F1 C1`); marks reset each Preview.
 - Adjacent facing chooses: **min hostile ZoC sources in flank/rear → max
   hostiles in our front arc** (more enemies ZoC-locked) → cheapest rotation →
   current facing.
+- A **fully upgraded** melee unit may step into a hostile ZoC to engage (a formed
+  enemy line projects ZoC onto every attack hex). A unit that is **not fully
+  upgraded** still never advances into a hostile ZoC; it stages outside and
+  upgrades first.
+- If the marked target has no free adjacent hex (all blocked by friendlies or
+  terrain), the unit retargets through its candidate list, then stages at 2–3
+  hexes, then takes the best progress move toward another target. It only holds
+  when no legal move exists.
+- Pass-through is used everywhere: an Open Order/Scattered/Routed mover may
+  **traverse** another pass-eligible friendly hex, but never stop on it. Target
+  path costs and candidate ordering exclude pass-through hexes as destinations,
+  so a target whose only adjacent hexes are occupied by pass-through friendlies
+  is correctly treated as not directly attackable.
 
 ### Structure-complex confinement (non-flyers only)
 
@@ -129,8 +142,9 @@ leave it. Flyers are exempt.
      target.
    - Not adjacent: `path > movementPoints × 2` and org > 1 → Open Order, then
      advance; `path < movementPoints` → face, advance to a safe adjacent hex,
-     attack; otherwise advance one pool toward the target. Never hold when a
-     legal advance exists.
+     attack; otherwise advance one pool toward the target. Try every candidate
+     in order (engage -> stage at 2-3 -> progress), so a blocked mark retargets
+     instead of holding. Never hold when a legal advance exists.
    - Leftover MP advances toward the next target; a melee unit never voluntarily
      disengages.
 
@@ -217,10 +231,11 @@ validation accounts for the air slot and real terrain/walls/structures.
 
 `src/packages/ai/tests/planner.test.ts` covers gates, legal targets, independent
 marks/caps, melee upgrade priority, multi-attack, ranged 6-hex posture and
-Close-Order short-bow shots, melee staging, structure-complex confinement
-(footprint, enclosed courtyard, flyer exemption), and hardened mounted charge /
-flying swoop gates (scenario toggle, `canCharge`, fly points, no flyer swoop
-without FP).
+Close-Order short-bow shots, melee staging, ZoC engagement by fully upgraded
+melee, Open-Order pass-through, stop-aware target costs, structure-complex
+confinement (footprint, enclosed courtyard, flyer exemption), and hardened
+mounted charge / flying swoop gates (scenario toggle, `canCharge`, fly points,
+no flyer swoop without FP).
 Run `npm run check` (tsc, vitest, depcruise, build) and
 `npm run lint:boundaries`.
 

@@ -300,18 +300,22 @@ export function distanceMap(
   return out;
 }
 
-/** Cheapest path cost to the target hex or one of its neighbours. */
-export function targetPathCost(map: Map<string, number>, target: Hex): number {
-  let best = map.get(hexKeyOf(target)) ?? Infinity;
+/** Cheapest path cost to the target hex or one of its neighbours. `noStop`
+ *  excludes pass-through hexes as stopping/adjacent points (they remain usable
+ *  for traversal, just never as a destination). */
+export function targetPathCost(map: Map<string, number>, target: Hex, noStop?: Set<string>): number {
+  const targetKey = hexKeyOf(target);
+  let best = noStop?.has(targetKey) ? Infinity : (map.get(targetKey) ?? Infinity);
   for (const dir of HEX_DIRS) {
     const k = `${target.q + dir.q},${target.r + dir.r}`;
+    if (noStop?.has(k)) continue;
     best = Math.min(best, map.get(k) ?? Infinity);
   }
   return best;
 }
 
-export function isTargetReachable(map: Map<string, number>, target: Hex): boolean {
-  return Number.isFinite(targetPathCost(map, target));
+export function isTargetReachable(map: Map<string, number>, target: Hex, noStop?: Set<string>): boolean {
+  return Number.isFinite(targetPathCost(map, target, noStop));
 }
 
 /** True when `dest` puts any non-target hostile in our flank/rear. */

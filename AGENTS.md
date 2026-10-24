@@ -42,7 +42,9 @@ reusable maps. Here's the state:
   columns kept for a future rebuild. **Follow-up:** non-flying units starting in
   a hex-structure footprint or edge-wall enclosure cannot cross the perimeter
   (flyers exempt); flying/mounted charges use the canonical `chargeStanceFor`
-  gate and the scenario **Charge and Swoop** toggle. No migration.
+  gate and the scenario **Charge and Swoop** toggle. Fully upgraded melee may
+  enter hostile ZoC to attack; blocked marks retarget (engage → stage →
+  progress) and pass-through hexes are traversal-only. No migration.
   `npm run check` passes.
 - **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
   scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);

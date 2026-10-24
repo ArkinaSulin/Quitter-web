@@ -39,6 +39,7 @@ interface Runtime {
   byId: Map<string, Unit>;
   byUnit: Map<string, string>;
   groundMaps: Map<string, Map<string, number>>;
+  passThroughMaps: Map<string, Set<string>>;
   complexes: Map<string, StructureComplex | null>;
   commit: (unit: Unit) => void;
   setTarget: (unitId: string, targetId: string) => void;
@@ -245,8 +246,10 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
         const m = bestManeuver(u, rt, 'ground', (candidate, threat) => {
           if (candidate.path.length === 0) return -Infinity;
           if (isFlankedAt(candidate.dest, candidate.facing, rt.enemies, target.id)) return -Infinity;
+          // Not ready: never advance into a hostile ZoC before full formation.
+          if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
           const d = hexDistance(candidate.dest, target.hex);
-          return -Math.abs(d - 3) * 100 - candidate.cost * 2 - candidate.turns.length * 2 - (threat.has(hexKeyOf(candidate.dest)) ? 60 : 0);
+          return -Math.abs(d - 3) * 100 - candidate.cost * 2 - candidate.turns.length * 2;
         });
         if (!m) break;
         u = pushMove(plan, u, m, rt.ctx);
@@ -292,43 +295,75 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
       continue;
     }
 
-    // No adjacent target: advance using the marked target (or the next valid one).
-    const attempt = candidates
-      .slice()
-      .sort((a, b) => (a.id === markedId ? -1 : 0) - (b.id === markedId ? -1 : 0));
-    const target = attempt[0];
-    if (!target) break;
-    const pathCost = targetPathCost(rt.groundMaps.get(u.id) ?? new Map(), target.hex);
+    // No adjacent target: try every candidate in path order. A blocked marked
+    // target must not stop the unit from finding an alternate one.
+    const map = rt.groundMaps.get(u.id) ?? new Map<string, number>();
+    const noStop = rt.passThroughMaps.get(u.id);
     const printed = Math.max(1, u.movementPoints ?? 1);
+    const ordered = candidates
+      .map(t => ({ t, cost: targetPathCost(map, t.hex, noStop) }))
+      .sort((a, b) => {
+        const am = a.t.id === markedId ? 0 : 1;
+        const bm = b.t.id === markedId ? 0 : 1;
+        return am - bm || a.cost - b.cost || a.t.id.localeCompare(b.t.id);
+      });
+    if (ordered.length === 0) break;
 
     // Far travel: open up, then close the distance.
-    if (Number.isFinite(pathCost) && pathCost > printed * 2 && getOrganizationLevel(u.currentFormation) > 1) {
-      if (canAdopt(u, 'Open Order', rt.ctx)) {
-        const opened = pushFormation(plan, u, 'Open Order', rt.ctx);
-        if (opened) { u = opened; rt.commit(u); continue; }
-      }
+    const far = ordered.find(o => Number.isFinite(o.cost) && o.cost > printed * 2);
+    if (far && getOrganizationLevel(u.currentFormation) > 1 && canAdopt(u, 'Open Order', rt.ctx)) {
+      const opened = pushFormation(plan, u, 'Open Order', rt.ctx);
+      if (opened) { u = opened; rt.commit(u); continue; }
     }
 
-    const desired = pathCost < printed ? 1 : 3;
-    let moved: Unit | null = null;
-    for (const candidate of attempt) {
+    const tryMove = (
+      candidate: Unit,
+      mode: 'engage' | 'stage' | 'progress',
+    ): Unit | null => {
       const m = bestManeuver(u, rt, 'ground', (man, threat) => {
         if (man.path.length === 0) return -Infinity;
         if (isFlankedAt(man.dest, man.facing, rt.enemies, candidate.id)) return -Infinity;
-        if (desired === 1 && threat.has(hexKeyOf(man.dest))) return -Infinity;
         const d = hexDistance(man.dest, candidate.hex);
-        if (desired === 1 && d !== 1) return -Infinity;
-        const distanceScore = desired === 1 ? -Math.abs(d - 1) * 100 : -Math.abs(d - 3) * 80;
-        return distanceScore - man.cost * 2 - man.turns.length * 2
-          - (desired === 3 && threat.has(hexKeyOf(man.dest)) ? 40 : 0);
+        if (mode === 'engage' && d !== 1) return -Infinity;
+        // Staging/progress stay outside a hostile ZoC; fully upgraded melee may
+        // enter it to attack (the Shield Wall engagement case).
+        if (mode !== 'engage' && threat.has(hexKeyOf(man.dest))) return -Infinity;
+        const distanceScore = mode === 'engage'
+          ? 0
+          : mode === 'stage'
+            ? -Math.abs(d - 3) * 100
+            : -d * 100;
+        return distanceScore - man.cost * 2 - man.turns.length * 2;
       });
-      if (m) {
-        if (candidate.id !== markedId) rt.setTarget(u.id, candidate.id);
-        moved = pushMove(plan, u, m, rt.ctx);
-        break;
+      if (!m) return null;
+      if (candidate.id !== markedId) rt.setTarget(u.id, candidate.id);
+      return pushMove(plan, u, m, rt.ctx);
+    };
+
+    let moved: Unit | null = null;
+    // 1) Engage: reach a free hex adjacent to a target whose path fits one pool.
+    for (const { t, cost } of ordered) {
+      if (!Number.isFinite(cost) || cost >= printed) continue;
+      moved = tryMove(t, 'engage');
+      if (moved) break;
+    }
+    // 2) Stage at 2-3 hexes when every adjacent hex is occupied/unreachable.
+    if (!moved) {
+      for (const { t } of ordered) {
+        moved = tryMove(t, 'stage');
+        if (moved) break;
+      }
+    }
+    // 3) Progress: advance toward the best alternate target.
+    if (!moved) {
+      for (const { t } of ordered) {
+        moved = tryMove(t, 'progress');
+        if (moved) break;
       }
     }
     if (!moved) break;
+    // A zero-cost move can loop; require the manoeuvre to change hex.
+    if (moved.hex.q === u.hex.q && moved.hex.r === u.hex.r) break;
     u = moved;
     rt.commit(u);
   }
@@ -420,13 +455,13 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
   if (isUnitRouted(unit)) return planRouted(unit, plan, rt);
   let u = unit;
   const markedId = rt.byUnit.get(u.id) ?? null;
-  const candidates = rt.candidates(u, 'mounted');
-  const target = candidates.find(t => t.id === markedId) ?? candidates[0];
-  if (!target) return u;
+  const ordered = rt.candidates(u, 'mounted')
+    .slice()
+    .sort((a, b) => (a.id === markedId ? 0 : 1) - (b.id === markedId ? 0 : 1) || a.id.localeCompare(b.id));
+  if (ordered.length === 0) return u;
 
   const split = getOrganizationLevel(u.currentFormation) >= 2;
   const ring = split ? 2 : 4;
-  const engaged = isEngagedByFriendly(target, u, rt);
   const movement = movementContextFor(u, rt.working, rt.ctx, 'ground', rt.complexes.get(u.id) ?? null);
   const pool = effectiveMax(u, rt.ctx.formations);
   const chargeEnabled = rt.ctx.chargeEnabled !== false;
@@ -437,9 +472,11 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     chargeEnabled,
   }) === 'charge';
 
-  const chargeDestination = (state: Unit): { hex: Hex; cost: number; turns: { dir: 'left' | 'right' }[] } | null => {
+  const chargeDestination = (
+    state: Unit,
+    target: Unit,
+  ): { hex: Hex; cost: number; turns: { dir: 'left' | 'right' }[] } | null => {
     if (!canChargeNow) return null;
-    if (!engaged) return null;
     const dests: { hex: Hex; cost: number; arc: string; turns: { dir: 'left' | 'right' }[] }[] = [];
     // A charge is a forward wedge; try the current facing and one cheap rotation
     // either way (a mounted unit stages facing the target).
@@ -467,63 +504,78 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     return dests[0] ?? null;
   };
 
-  const charge = chargeDestination(u);
-  if (charge) {
+  const applyCharge = (
+    target: Unit,
+    charge: { hex: Hex; cost: number; turns: { dir: 'left' | 'right' }[] },
+  ): Unit => {
     const turned = pushTurns(plan, u, charge.turns, rt.ctx);
-    if (turned) {
-      u = turned;
+    if (!turned) return u;
+    u = turned;
+    rt.commit(u);
+    plan.steps.push({ kind: 'charge', unitId: u.id, from: u.hex });
+    u = { ...u, isCharging: true, chargeDistance: 0, actionsAvailable: (u.actionsAvailable ?? 0) - 1 };
+    rt.commit(u);
+    plan.steps.push({ kind: 'move', unitId: u.id, from: u.hex, to: charge.hex, path: [charge.hex], cost: charge.cost });
+    const spent = applyManeuver(u, {
+      mode: 'ground', turns: [], unit: u, dest: charge.hex, path: [charge.hex], cost: charge.cost, facing: u.facing,
+    }, rt.ctx);
+    u = { ...spent, chargeDistance: charge.cost };
+    rt.commit(u);
+    // The free charge attack.
+    const legal = legalTargets(u, rt.enemies, rt.ctx).filter(t => t.unit.id === target.id && !t.isRanged);
+    if (legal.length > 0) u = pushAttack(plan, u, target, true);
+    plan.steps.push({ kind: 'chargeEnd', unitId: u.id, from: u.hex });
+    u = { ...u, isCharging: false, chargeDistance: 0 };
+    rt.commit(u);
+    // Second action: disengage to the safest reachable hex, then form up.
+    const retreat = bestManeuver(u, rt, 'ground', (candidate, threat) => {
+      if (candidate.path.length === 0) return -Infinity;
+      if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
+      const nearest = rt.enemies.length > 0
+        ? Math.min(...rt.enemies.map(e => hexDistance(candidate.dest, e.hex)))
+        : 0;
+      return nearest * 100 - candidate.cost * 2 - candidate.turns.length * 2;
+    });
+    if (retreat) {
+      u = pushMove(plan, u, retreat, rt.ctx);
       rt.commit(u);
-      plan.steps.push({ kind: 'charge', unitId: u.id, from: u.hex });
-      u = { ...u, isCharging: true, chargeDistance: 0, actionsAvailable: (u.actionsAvailable ?? 0) - 1 };
+    }
+    const upgrade = nextFormationUpgrade(u, rt.ctx);
+    if (upgrade) {
+      plan.steps.push({ kind: 'formation', unitId: u.id, from: u.hex, formation: upgrade.formation });
+      u = upgrade.updated;
       rt.commit(u);
-      plan.steps.push({ kind: 'move', unitId: u.id, from: u.hex, to: charge.hex, path: [charge.hex], cost: charge.cost });
-      const spent = applyManeuver(u, {
-        mode: 'ground', turns: [], unit: u, dest: charge.hex, path: [charge.hex], cost: charge.cost, facing: u.facing,
-      }, rt.ctx);
-      u = { ...spent, chargeDistance: charge.cost };
-      rt.commit(u);
-      // The free charge attack.
-      const legal = legalTargets(u, rt.enemies, rt.ctx).filter(t => t.unit.id === target.id && !t.isRanged);
-      if (legal.length > 0) u = pushAttack(plan, u, target, true);
-      plan.steps.push({ kind: 'chargeEnd', unitId: u.id, from: u.hex });
-      u = { ...u, isCharging: false, chargeDistance: 0 };
-      rt.commit(u);
-      // Second action: disengage to the safest reachable hex, then form up.
-      const retreat = bestManeuver(u, rt, 'ground', (candidate, threat) => {
-        if (candidate.path.length === 0) return -Infinity;
-        if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
-        const nearest = rt.enemies.length > 0
-          ? Math.min(...rt.enemies.map(e => hexDistance(candidate.dest, e.hex)))
-          : 0;
-        return nearest * 100 - candidate.cost * 2 - candidate.turns.length * 2;
-      });
-      if (retreat) {
-        u = pushMove(plan, u, retreat, rt.ctx);
-        rt.commit(u);
-      }
-      const upgrade = nextFormationUpgrade(u, rt.ctx);
-      if (upgrade) {
-        plan.steps.push({ kind: 'formation', unitId: u.id, from: u.hex, formation: upgrade.formation });
-        u = upgrade.updated;
-        rt.commit(u);
-      }
-      return u;
+    }
+    return u;
+  };
+
+  // Try a legal charge against any engaged candidate, not only the marked one.
+  if (canChargeNow) {
+    for (const target of ordered) {
+      if (!isEngagedByFriendly(target, u, rt)) continue;
+      const charge = chargeDestination(u, target);
+      if (!charge) continue;
+      if (target.id !== markedId) rt.setTarget(u.id, target.id);
+      return applyCharge(target, charge);
     }
   }
 
-  // Not charging: stage on the ring around the engaged target.
-  const staged = bestManeuver(u, rt, 'ground', (candidate, threat) => {
-    if (candidate.path.length === 0) return -Infinity;
-    if (isFlankedAt(candidate.dest, candidate.facing, rt.enemies, target.id)) return -Infinity;
-    if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
-    const d = hexDistance(candidate.dest, target.hex);
-    const arc = arcOfTarget(target.hex, target.facing, candidate.dest);
-    const arcBonus = arc === 'rear' ? 15 : arc === 'flank' ? 8 : 0;
-    return -Math.abs(d - ring) * 100 + arcBonus - candidate.cost * 2 - candidate.turns.length * 2;
-  });
-  if (staged) {
+  // Not charging: stage on the ring around the best reachable target.
+  for (const target of ordered) {
+    const staged = bestManeuver(u, rt, 'ground', (candidate, threat) => {
+      if (candidate.path.length === 0) return -Infinity;
+      if (isFlankedAt(candidate.dest, candidate.facing, rt.enemies, target.id)) return -Infinity;
+      if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
+      const d = hexDistance(candidate.dest, target.hex);
+      const arc = arcOfTarget(target.hex, target.facing, candidate.dest);
+      const arcBonus = arc === 'rear' ? 15 : arc === 'flank' ? 8 : 0;
+      return -Math.abs(d - ring) * 100 + arcBonus - candidate.cost * 2 - candidate.turns.length * 2;
+    });
+    if (!staged) continue;
+    if (target.id !== markedId) rt.setTarget(u.id, target.id);
     u = pushMove(plan, u, staged, rt.ctx);
     rt.commit(u);
+    break;
   }
   const upgrade = nextFormationUpgrade(u, rt.ctx);
   if (upgrade) {
@@ -670,20 +722,24 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
   // Marking uses the board before any unit has acted. Non-flyers are confined
   // to their structure complex, so their distance maps stop at the perimeter.
   const complexes = new Map<string, StructureComplex | null>();
+  const passThroughMaps = new Map<string, Set<string>>();
   const groundMaps = new Map<string, Map<string, number>>();
   for (const u of controllable) {
     const complex = archetypeOf(u) === 'flying' ? null : structureComplexFor(u, ctx);
     complexes.set(u.id, complex);
-    groundMaps.set(u.id, distanceMap(u, { ...ctx, units: working }, 'ground', movementContextFor(u, working, ctx, 'ground', complex)));
+    const movement = movementContextFor(u, working, ctx, 'ground', complex);
+    passThroughMaps.set(u.id, movement.passThrough);
+    groundMaps.set(u.id, distanceMap(u, { ...ctx, units: working }, 'ground', movement));
   }
   const flyDistance = (u: Unit, t: Unit) => hexDistance(u.hex, t.hex);
   const { marks, byUnit } = assignMarks({
     units: controllable,
     enemies,
     archetypeOf,
-    reachable: (u, t) => archetypeOf(u) === 'flying' || isTargetReachable(groundMaps.get(u.id) ?? new Map(), t.hex),
+    reachable: (u, t) => archetypeOf(u) === 'flying'
+      || isTargetReachable(groundMaps.get(u.id) ?? new Map(), t.hex, passThroughMaps.get(u.id)),
     distance: (u, t) => archetypeOf(u) === 'melee' || archetypeOf(u) === 'mounted'
-      ? targetPathCost(groundMaps.get(u.id) ?? new Map(), t.hex)
+      ? targetPathCost(groundMaps.get(u.id) ?? new Map(), t.hex, passThroughMaps.get(u.id))
       : flyDistance(u, t),
   });
 
@@ -694,6 +750,7 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
     byId,
     byUnit: new Map(byUnit),
     groundMaps,
+    passThroughMaps,
     complexes,
     commit: (unit) => {
       const idx = working.findIndex(w => w.id === unit.id);
@@ -703,6 +760,7 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
     setTarget: (unitId, targetId) => { rt.byUnit.set(unitId, targetId); },
     candidates: (unit, kind) => {
       const map = groundMaps.get(unit.id) ?? new Map<string, number>();
+      const noStop = passThroughMaps.get(unit.id);
       let pool = enemies.filter(t => (kind === 'flying' || kind === 'ranged' ? true : isGroundTarget(t, ctx)));
       if (kind === 'melee' || kind === 'mounted') {
         const complex = complexes.get(unit.id) ?? null;
@@ -719,8 +777,8 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
       return pool
         .slice()
         .sort((a, b) => {
-          const da = kind === 'flying' || kind === 'ranged' ? hexDistance(unit.hex, a.hex) : targetPathCost(map, a.hex);
-          const db = kind === 'flying' || kind === 'ranged' ? hexDistance(unit.hex, b.hex) : targetPathCost(map, b.hex);
+          const da = kind === 'flying' || kind === 'ranged' ? hexDistance(unit.hex, a.hex) : targetPathCost(map, a.hex, noStop);
+          const db = kind === 'flying' || kind === 'ranged' ? hexDistance(unit.hex, b.hex) : targetPathCost(map, b.hex, noStop);
           return da - db || hexDistance(unit.hex, a.hex) - hexDistance(unit.hex, b.hex) || a.id.localeCompare(b.id);
         });
     },
@@ -736,8 +794,8 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
       const mb = groundMaps.get(b.id) ?? new Map<string, number>();
       const ta = rt.byUnit.get(a.id);
       const tb = rt.byUnit.get(b.id);
-      const da = ta ? targetPathCost(ma, rt.byId.get(ta)?.hex ?? a.hex) : Infinity;
-      const db = tb ? targetPathCost(mb, rt.byId.get(tb)?.hex ?? b.hex) : Infinity;
+      const da = ta ? targetPathCost(ma, rt.byId.get(ta)?.hex ?? a.hex, passThroughMaps.get(a.id)) : Infinity;
+      const db = tb ? targetPathCost(mb, rt.byId.get(tb)?.hex ?? b.hex, passThroughMaps.get(b.id)) : Infinity;
       if (da !== db) return da - db;
     }
     return a.id.localeCompare(b.id);

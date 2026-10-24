@@ -6,6 +6,7 @@ import {
   legalTargets,
   allianceOf,
   assignMarks,
+  targetPathCost,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
@@ -342,5 +343,46 @@ describe('Basic AI flying swoop hardening', () => {
     const steps = stepsOf(result, 'fly1');
     expect(steps.some(s => s.kind === 'charge')).toBe(false);
     expect(steps.some(s => s.kind === 'swoop')).toBe(false);
+  });
+});
+
+describe('Basic AI engagement retargeting and pass-through', () => {
+  const openOnly = { currentFormation: 'Open Order', organizationLevel: 1, formationAvailability: ['Open Order'] };
+
+  it('does not treat pass-through friendlies as stopping points', () => {
+    const map = new Map<string, number>([['0,-1', 1], ['0,-2', 2], ['1,-3', 3]]);
+    expect(targetPathCost(map, hex(0, -3), new Set(['0,-1', '0,-2']))).toBe(3);
+    expect(targetPathCost(map, hex(0, -3), new Set(['0,-1', '0,-2', '1,-3']))).toBe(Infinity);
+  });
+
+  it('lets a fully upgraded melee unit step into a hostile ZoC to attack', () => {
+    const unit = mk({ id: 'm1', team: 'blue', hex: hex(0, 0), facing: 0, currentFormation: 'Close Order', organizationLevel: 2 });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -2), facing: 3, currentFormation: 'Close Order', organizationLevel: 2 });
+    const result = planAiMoves(ctxOf([unit, foe]));
+    const steps = stepsOf(result, 'm1');
+    expect(steps.some(s => s.kind === 'move' && s.to.q === 0 && s.to.r === -1)).toBe(true);
+    expect(steps.some(s => s.kind === 'attack')).toBe(true);
+  });
+
+  it('paths through Open Order friendlies to reach a free adjacent hex', () => {
+    const rear = mk({ id: 'm1', team: 'blue', hex: hex(0, 0), facing: 0, movementPoints: 6, ...openOnly });
+    const b1 = mk({ id: 'b1', team: 'blue', hex: hex(0, -1), isHero: true, ...openOnly });
+    const b2 = mk({ id: 'b2', team: 'blue', hex: hex(0, -2), isHero: true, ...openOnly });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -3), facing: 0 });
+    const result = planAiMoves(ctxOf([rear, b1, b2, foe]));
+    const moves = stepsOf(result, 'm1').filter(s => s.kind === 'move');
+    expect(moves.some(m => m.path.some(h => (h.q === 0 && h.r === -1) || (h.q === 0 && h.r === -2)))).toBe(true);
+  });
+
+  it('does not path through Close Order friendlies', () => {
+    const rear = mk({ id: 'm1', team: 'blue', hex: hex(0, 0), facing: 0, movementPoints: 6, ...openOnly });
+    const b1 = mk({ id: 'b1', team: 'blue', hex: hex(0, -1), currentFormation: 'Close Order', organizationLevel: 2, formationAvailability: ['Close Order'] });
+    const b2 = mk({ id: 'b2', team: 'blue', hex: hex(0, -2), currentFormation: 'Close Order', organizationLevel: 2, formationAvailability: ['Close Order'] });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -3), facing: 0 });
+    const result = planAiMoves({ ...ctxOf([rear, b1, b2, foe]), excludeUnitIds: ['b1', 'b2'] });
+    const moves = stepsOf(result, 'm1').filter(s => s.kind === 'move');
+    for (const m of moves) {
+      expect(m.path.some(h => (h.q === 0 && h.r === -1) || (h.q === 0 && h.r === -2))).toBe(false);
+    }
   });
 });

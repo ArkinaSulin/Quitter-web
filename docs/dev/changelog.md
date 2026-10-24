@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Basic AI: engage ZoC, retarget blocked melee, pass-through stop-aware (2026-10-23)
+**Files:** src/packages/ai/lib/{board,planner}.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md
+
+- Fully upgraded melee may now step **into a hostile ZoC** to attack a formed
+  line (the Shield Wall case). Not-fully-upgraded units still stage outside ZoC
+  and upgrade first.
+- Melee approach is now per-candidate: **engage (adjacent) → stage (2-3) →
+  progress**, so a target blocked by friendlies retargets instead of holding.
+  Same retargeting applies to mounted staging/charge candidates.
+- Target path costs and candidate ordering now exclude **pass-through** hexes as
+  stopping points; Open Order can still traverse Open Order friendlies, but a
+  target whose only adjacent hexes are occupied by pass-through friendlies is
+  correctly treated as not directly attackable.
+- Verification: `npm run check` passes (tsc, 1100 tests, depcruise, build).
+
 ## Basic AI: structure-complex confinement + flying/mounted hardening (2026-10-23)
 **Files:** src/packages/ai/lib/{board,planner,types}.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/{AiPanel,ScenarioMap}.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 
