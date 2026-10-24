@@ -207,8 +207,8 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   scenario/user (`quitter.showAiRoleOverlay:<scenarioId>:<userId>`) and defaults
   off. It replaced the old scenario-level `ai_role_markers` flag; migration 132
   drops that column.
-  - Badges: a **large white role letter with a dark outline over the upper 2/3
-    of the token** (over
+  - Badges: a **large white role letter with a dark outline centered on the
+    token** (over
     the troop circles): `M` frontline melee, `A` high-damage frontline/shock
     (display-only; Shock behaviour pending), `C` flank/rear flanker, `S`
     skirmisher/ranged, `R` reserve, `G` structure/garrison. The DM/effective GM

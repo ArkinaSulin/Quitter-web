@@ -74,7 +74,7 @@ reusable maps. Here's the state:
   never attack a front arc and never front-charge. During play, each viewer may enable **Scenario Settings -> This device ->
 Show AI role overlay** (device-local, default off) when **Advanced AI** is on
 and the viewer is DM/effective GM or players are allowed. The overlay draws a
-large white role letter (dark outline) over the upper 2/3 of AI tokens: `M` frontline melee,
+large white role letter (dark outline) centered on AI tokens: `M` frontline melee,
 `A` high-damage frontline/shock (display-only), `C` flanker,
 `S` skirmisher/ranged, `R` reserve, `G` structure/garrison. High damage =
 active melee weapon average per attack action above 6.5 (`1d8+2`), using

@@ -799,7 +799,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const cy = pos.y * currentZoom + offsetY + elev.dy * currentZoom;
         const label = roleLabel[role];
         const fontSize = Math.max(14, Math.min(tokenWidth, tokenHeight) * 0.5);
-        const textY = cy - tokenHeight * 0.16;
+        const textY = cy;
         ctx.save();
         ctx.globalAlpha = 0.6;
         ctx.font = `bold ${fontSize}px sans-serif`;

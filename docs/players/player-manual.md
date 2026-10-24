@@ -1326,7 +1326,7 @@ hexes out and never closer than the friendly front line, then dash to the flank
 or rear as soon as the frontage locks - including later in the same turn. They
 never charge the front. Each player can enable **Scenario Settings -> This
 device -> Show AI role overlay** (Advanced AI only). It draws a large white role
-letter with a dark outline over the token's troop circles: M melee, A high-damage assault, C flanker,
+letter with a dark outline centered on the token's troop circles: M melee, A high-damage assault, C flanker,
 S skirmisher/ranged, R reserve, G garrison. The option is available only when
 Advanced AI is on and the DM allowed players to use AI assist; the DM sees all,
 a player sees only their own team, and DM in player mode is treated as a player.

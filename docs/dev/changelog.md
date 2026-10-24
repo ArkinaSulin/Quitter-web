@@ -1,11 +1,18 @@
 # QuiTTER Changelog
 
+## Center AI role letters on tokens (2026-10-21)
+**Files:** src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{17-enemy-ai,changelog}.md, docs/players/player-manual.md, AGENTS.md, .scratch/ai-role-system/notes.md
+
+- Moved the white AI role letter from the upper 2/3 of the token to the token center.
+- Verification: `npm run check` passes (tsc, 1142 tests / 68 planner, depcruise,
+  build).
+
 ## White AI role letters for contrast (2026-10-21)
 **Files:** src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{17-enemy-ai,changelog}.md, docs/players/player-manual.md, AGENTS.md, .scratch/ai-role-system/notes.md
 
 - Role overlay letters are now **white with a dark outline** at 0.6 opacity
-  instead of per-role colours at 0.34. This reads across all six team colours
-  (especially light/yellow and blue); the AI-panel legend keeps its role colours.
+  instead of per-role colours at 0.34. This reads across all six team colours (especially light/yellow and blue); the AI-panel legend
+  keeps its role colours.
 - Verification: `npm run check` passes (tsc, 1142 tests / 68 planner, depcruise,
   build).
 
