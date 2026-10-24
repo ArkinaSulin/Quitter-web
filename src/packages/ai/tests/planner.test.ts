@@ -210,8 +210,10 @@ describe('Basic AI melee', () => {
     const unit = mk({ id: 'm1', team: 'blue', hex: hex(0, 0), currentFormation: 'Close Order', organizationLevel: 2 });
     const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -1) });
     const result = planAiMoves(ctxOf([unit, foe]));
-    const attacks = stepsOf(result, 'm1').filter(s => s.kind === 'attack');
+    const steps = stepsOf(result, 'm1');
+    const attacks = steps.filter(s => s.kind === 'attack');
     expect(attacks.length).toBe(2);
+    expect(steps.some(s => s.kind === 'move')).toBe(false);
   });
 });
 

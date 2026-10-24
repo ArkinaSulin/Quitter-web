@@ -163,6 +163,9 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   obstacle) and lands; routed hanging units drop down. Units on a structure/wall
   top hold and fight, moving only within the same structure and never abandoning
   the wall.
+- ✅ **No post-attack drift (2026-10-24):** melee units hold the hex they attacked
+  from (second attacks allowed) and adjacent-but-unattackable enemies cause a
+  hold/face instead of a retreat to a farther target.
 - 🔜 **Advanced AI is paused.** Scenario column `ai_assist_advanced` is kept for
   the later rebuild; its checkbox and the old Stance toggle are hidden. Rebuild
   Advanced **on top of** the Basic planner (shared board/marks/approach helpers)

@@ -565,6 +565,7 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
   const markedId = rt.byUnit.get(unit.id) ?? null;
   const candidates = rt.candidates(u, 'melee');
   let lockedTarget: Unit | null = null;
+  let hasAttacked = false;
 
   // Climb lock: a hanging unit commits to the target at climbTo. No moves,
   // formation changes, retargeting or escape while it is on the wall.
@@ -668,9 +669,13 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
         break;
       }
       u = pushAttack(plan, u, target);
+      hasAttacked = true;
       rt.commit(u);
       continue;
     }
+
+    // Never reposition after an attack: hold the ground you attacked from.
+    if (hasAttacked) break;
 
     if (climbable.length > 0) {
       const target = climbable
@@ -681,6 +686,13 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
         break;
       }
       plan.steps.push({ kind: 'climbAttack', unitId: u.id, from: u.hex, targetId: target.id, target: target.hex });
+      break;
+    }
+
+    // Adjacent but not attackable/climbable (wall, elevation, etc.): hold/face
+    // rather than walking away from the enemy.
+    if (adjacent.length > 0) {
+      u = faceAdjacentHostiles(u, plan, rt);
       break;
     }
 

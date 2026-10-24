@@ -1,5 +1,16 @@
 # QuiTTER Changelog
 
+## AI: no post-attack movement; hold adjacent unreachable enemies (2026-10-24)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- A melee unit that has attacked no longer repositions in the same activation.
+  It may make a second attack with remaining actions, but it holds the hex it
+  fought from (prevents e.g. a flanking unit attacking AGR-failing and then
+  walking away).
+- A unit adjacent to an enemy it cannot legally attack or climb holds and faces
+  instead of moving away to a farther target.
+- Verification: `npm run check` passes (tsc, 1126 tests, depcruise, build).
+
 ## AI: hard hanging lock + structure defenders hold the wall (2026-10-24)
 **Files:** src/packages/ai/lib/{types,planner}.ts, src/components/ScenarioMap/{AiPanel,ScenarioMap,useMoveActions}.tsx/.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 

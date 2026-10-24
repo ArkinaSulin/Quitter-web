@@ -60,7 +60,8 @@ reusable maps. Here's the state:
   UI stays responsive, Cancel/Reset terminates immediately, and a 30s watchdog
   only reports a genuine hang. A hanging unit is hard-locked to its top exit
   (free top first, then weakest threat) and routed hanging units drop down;
-  structure-top defenders hold the wall and fight. No migration.
+  structure-top defenders hold the wall and fight. Melee units do not reposition
+  after an attack and hold against adjacent unreachable enemies. No migration.
   `npm run check` passes.
 - **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
   scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);

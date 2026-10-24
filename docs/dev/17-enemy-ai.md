@@ -128,6 +128,10 @@ per-type badges (e.g. `M2 A4 F1 C1`); marks reset each Preview.
   facing. An adjacent enemy **overrides the locked/further target**: the unit
   turns to face it, then attacks if it has an action. While an adjacent enemy
   exists, no far-travel/Open Order downgrade or formation-up approach runs.
+- **No reposition after an attack.** Once a melee unit attacks, it holds the hex
+  it attacked from (it may attack again with remaining actions, but never move
+  away). A unit adjacent to an enemy it cannot legally attack or climb (wall,
+  elevation, etc.) also holds and faces instead of walking away.
 - A **not-fully-upgraded** unit still prioritizes formation-up, but after the
   last affordable change it uses leftover MP to turn and cover adjacent hostiles
   with its ZoC (no attack until fully upgraded).
