@@ -200,8 +200,8 @@ export function AiPanel({
 
   // Report execution busy-ness up so ScenarioMap ignores canvas toggles mid-run.
   useEffect(() => {
-    onBusyChange?.(stage === 'running' || stage === 'paused');
-  }, [stage, onBusyChange]);
+    onBusyChange?.(stage === 'running' || stage === 'paused' || thinking);
+  }, [stage, thinking, onBusyChange]);
 
   // Opt-out or team changes invalidate the current idle plot.
   useEffect(() => {
