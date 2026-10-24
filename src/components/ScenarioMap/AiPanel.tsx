@@ -11,7 +11,7 @@ import { Unit, Hex, AllianceGroup, Formation, GroundEffect, ALLIANCE_COLORS } fr
 import { TEAMS } from '@/packages/units';
 import { planAiMoves, AiUnitPlan, AiMark, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf, nextLegalTarget } from '@/packages/ai';
 import { isUnitRouted } from '@/packages/morale';
-import { computeReachableMap, computeMovePool, movePoolMode, flyMax, moveBudgetUnit, isHorizontalClimbMove } from '@/packages/movement';
+import { computeReachableMap, computeMovePool, movePoolMode, flyMax, moveBudgetUnit, isHorizontalClimbMove, structureSurfaceAt } from '@/packages/movement';
 import { isFormationChangeAffordable } from '@/packages/movement';
 import { computeOccupiedHexes, computeThreatHexes, computeVisibleHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/packages/world';
 import { Walls, MapStructures, doorPassThroughHexes, entryBreakFormation, formationOrgLevels, loosePassThroughHexes, unitStandingSurface } from '@/packages/movement';
@@ -66,7 +66,6 @@ interface AiPanelProps {
   performClimbAttack: (attackerId: string, targetId: string) => Promise<boolean>;
   handleClimbMove: (unit: Unit, targetHex: Hex, originSurface: number) => Promise<unknown>;
   performDescentDrop: (unit: Unit, targetHex: Hex, feet: number) => Promise<unknown>;
-  performClimbLand: (unit: Unit, topHex: Hex) => Promise<unknown>;
   selectWeapon: (unit: Unit, weaponIndex: number) => Promise<unknown>;
   undo: () => Promise<unknown>;
   onOverlayChange: (o: AiOverlayData | null) => void;
@@ -97,7 +96,7 @@ function buildRoutes(
       if (s.kind === 'formation') formation = s.formation;
       if (s.kind === 'climbAttack') attacks.push({ from: s.from, targetHex: s.target });
       if (s.kind === 'climb') waypoints.push(s.to);
-      if (s.kind === 'land') waypoints.push(s.to);
+      if (s.kind === 'drop') waypoints.push(s.to);
       if (s.kind === 'swoop') {
         waypoints.push(s.target);
         attacks.push({ from: s.from, targetHex: s.target });
@@ -141,7 +140,6 @@ export function AiPanel({
   performClimbAttack,
   handleClimbMove,
   performDescentDrop,
-  performClimbLand,
   selectWeapon,
   undo,
   onOverlayChange,
@@ -150,7 +148,7 @@ export function AiPanel({
   addError,
 }: AiPanelProps) {
   const propsRef = useRef<AiPanelProps | null>(null);
-  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, structures, structureTemplates, groundZones, gridRadius, archerReactionEnabled, chargeEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, charge, performChargeEnd, performSwoopDrop, performClimbAttack, handleClimbMove, performDescentDrop, performClimbLand, selectWeapon, undo, onOverlayChange, onBusyChange, addMessage, addError };
+  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, structures, structureTemplates, groundZones, gridRadius, archerReactionEnabled, chargeEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, charge, performChargeEnd, performSwoopDrop, performClimbAttack, handleClimbMove, performDescentDrop, selectWeapon, undo, onOverlayChange, onBusyChange, addMessage, addError };
 
   const [plans, setPlans] = useState<AiUnitPlan[] | null>(null);
   const [remaining, setRemaining] = useState<ExecUnit[] | null>(null); // active during Execute
@@ -606,12 +604,10 @@ export function AiPanel({
         setStatusText(`${live.unitName} → climbs to the structure top`);
         const originSurface = unitStandingSurface(live, props.structures, props.structureTemplates);
         await props.handleClimbMove(live, step.to, originSurface);
-      } else if (step.kind === 'land') {
-        setStatusText(`${live.unitName} → lands on the structure top`);
-        await props.performClimbLand(live, step.to);
       } else if (step.kind === 'drop') {
-        setStatusText(`${live.unitName} → drops down`);
-        await props.performDescentDrop(live, step.to, step.feet);
+        setStatusText(`${live.unitName} → drops from the wall`);
+        const feet = Math.max(0, (live.elevation ?? 0) - structureSurfaceAt(step.to, props.structures, props.structureTemplates));
+        await props.performDescentDrop(live, step.to, feet);
       } else if (step.kind === 'charge') {
         setStatusText(`${live.unitName} → charges`);
         await props.charge(live);

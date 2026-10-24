@@ -1015,17 +1015,15 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const { total, faces } = feather ? { total: 0, faces: [] as number[] } : rollFallDamage(feet);
     const newHp = Math.max(0, (unit.currentUnitHp ?? 0) - total);
     const newTroops = total > 0 ? Math.max(0, Math.ceil(newHp / Math.max(1, unit.troopHp))) : unit.currentTroopCount;
-    const changes: UnitChange[] = [
-      { field: 'hex', from: { ...unit.hex }, to: { ...targetHex } },
-      { field: 'elevation', from: unit.elevation ?? 0, to: endSurface },
-    ];
-    if (unit.climbTo) changes.push({ field: 'climbTo', from: unit.climbTo, to: null });
     const subSteps: SubStep[] = [
       {
         type: 'MOVE',
         description: `${unit.unitName} dropped ${feet} ft onto (${targetHex.q}, ${targetHex.r})`,
         unitId: unit.id,
-        changes,
+        changes: [
+          { field: 'hex', from: { ...unit.hex }, to: { ...targetHex } },
+          { field: 'elevation', from: unit.elevation ?? 0, to: endSurface },
+        ],
       },
     ];
     if (total > 0) {
@@ -1055,29 +1053,6 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (!p) return;
     await performDescentDrop(p.unit, p.targetHex, p.feet, p.originHex);
   }, [pendingDescent, performDescentDrop]);
-
-  /** Land a hanging unit on the free top hex it has already climbed to. */
-  const performClimbLand = useCallback(async (unit: Unit, topHex: Hex) => {
-    const top = structureSurfaceAt(topHex, structures, structureTemplates);
-    const cur = unit.elevation ?? 0;
-    if (cur < top) { addMessage(`${unit.unitName} has not reached the top yet`); return; }
-    const occupied = units.some(u =>
-      u.id !== unit.id && !u.isDeleted && !u.attachedToUnitId &&
-      (u.elevation ?? 0) >= top && u.hex.q === topHex.q && u.hex.r === topHex.r,
-    );
-    if (occupied) { addMessage(`${unit.unitName} cannot land — the top is occupied`); return; }
-    const changes: UnitChange[] = [
-      { field: 'hex', from: { ...unit.hex }, to: { ...topHex } },
-      { field: 'elevation', from: cur, to: top },
-    ];
-    if (unit.climbTo) changes.push({ field: 'climbTo', from: unit.climbTo, to: null });
-    await execute('MOVE', [{
-      type: 'MOVE',
-      description: `${unit.unitName} lands on top of (${topHex.q}, ${topHex.r})`,
-      unitId: unit.id,
-      changes,
-    }], `${unit.unitName} lands on the structure top`);
-  }, [structures, structureTemplates, units, execute, addMessage]);
 
   const cancelDescent = useCallback(() => setPendingDescent(null), []);
 
@@ -1278,6 +1253,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     setPendingDescent,
     confirmDescentClimb,
     confirmDescentDrop,
+    performDescentDrop,
     cancelDescent,
     pendingFormation,
     setPendingFormation,
@@ -1304,8 +1280,6 @@ export function useMoveActions(deps: MoveActionsDeps) {
     performMove,
     completeMove,
     handleClimbMove,
-    performDescentDrop,
-    performClimbLand,
     handleUnitMove,
     handleChangeFormation,
     handleMoveTeam,

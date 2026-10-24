@@ -203,46 +203,39 @@ leave it. Flyers are exempt.
    - Leftover MP advances toward the next target; a melee unit never voluntarily
      disengages.
 
-### Climbing (ground units) — hard lock
+### Climbing (ground units)
 
-A unit is **climbing/hanging** when `climbTo` is set, or when it is a non-flyer
-above its hex's surface. This is the unit's least-preferred state: Scattered only,
-vertical movement only, and no normal fighting. Until it routs, it has exactly
-one mission:
-
-> **Climb to the top and land, or defeat the weakest-threat obstacle at the
-> chosen exit, then land.**
-
-- **Free top first.** Choose a free top hex; if the chosen exit becomes
-  friendly-occupied, switch to the nearest free top exit.
-- If no free top, climb-attack the **lowest `computeThreatRating`** enemy at the
-  chosen exit; after it is defeated/routed/gone, climb and land.
-- Once the unit is at top elevation over the wall and the top is free, it
-  **lands** (`land` step); if an enemy is still at the top, it may attack it
-  normally (same elevation) before landing.
-- **Nothing else**: no moves, formations, escapes, lower-target attacks, ranged
-  shots from below, retargeting, or waiting by choice. If a full climb step is
-  unaffordable, hold.
-- **Routed hanging units drop down immediately** (fastest exit; fall damage,
-  `feather_fall` exempt), then flee next activation. If the drop hex is
-  occupied, climb down instead; if that is impossible, hold.
-- Horizontal movement along the wall remains invalid for AI and manual
-  movement. The climb is vertical-only and advance is cost-sequenced.
+- A unit is **climbing/hanging** when `climbTo` is set, or when it is a non-flyer
+  above its hex's surface. While climbing it may only move **up** toward the
+  climb target or **down** to its own hex. Horizontal movement along the wall is
+  invalid for the AI **and** for manual drag/drop.
+- A unit that has finished the climb and stands on a real structure top
+  (`elevation === surface`, `climbTo` cleared) moves normally along that top.
+- Manual movement shows: *"{unit} cannot climb horizontally along the wall —
+  climb up or down first."* The same guard runs in the AI executor (stale
+  plans) and in `performMove`.
+- A climbing/hanging unit is under a **hard lock until it routs**: it only
+  climbs to its chosen top exit and lands. It does not move, change formation,
+  retarget, escape, or attack anything except the weakest obstacle at that exit.
+- Exit choice: free top hex **first**; otherwise the top obstacle with the
+  lowest `computeThreatRating`. Once chosen, it is persisted via `climbTo`. If
+  the exit becomes friendly-occupied, switch to the nearest free top exit.
+- An enemy at the exit is attacked with `climbAttack` before landing; after the
+  obstacle is defeated/moves, the climb continues and the unit lands.
+- **Routed** hanging units drop down instead (fastest exit) and then flee; if the
+  drop hex is occupied, climb down as a fallback.
+- No attack or retaliation happens until the unit reaches the same level as the
+  structure top.
+- The planner uses the structure's real per-10-ft climb cost. It only emits a
+  climb when a full step is affordable from the unit's remaining budget; if not,
+  it holds.
+- **Never plan move + climb in the same activation** when the climb needs all
+  actions. A unit that must move to the base does so this activation and climbs
+  next activation.
 - The wall may consume both actions per 10 ft; there is **no action reservation
-  for an attack**.
-
-### Structure hold-and-fight (on top)
-
-A non-flying, non-routed unit on a structure/wall top or inside a structure
-complex **holds and fights**:
-
-- Shoot/attack from the current hex whenever a legal attack exists.
-- No kiting, no retreat off the structure, no abandoning the wall to chase a
-  ground target.
-- If no attack exists, hold and face the nearest approach.
-- Movement only within the same structure/complex when it improves a shot or
-  reaches an enemy on the same top.
-- Flying units are exempt; mounted units cannot climb.
+  for an attack**. A 20-ft wall therefore takes two activations (10 ft each),
+  attacking only once at the top.
+- Once landed, the unit enters the **on-top hold-and-fight** doctrine below.
 
 ### Structure-top access (melee)
 
@@ -261,6 +254,21 @@ inside a multi-hex complex.
 - A perimeter top target can still use the existing `climbAttack`. If every top
   hex is occupied (no gap) and the target is interior, the unit stages at the
   base and keeps the target without making an illegal climb.
+
+### On-top hold-and-fight
+
+A non-flying unit standing on a structure/wall top or inside a structure complex
+does not abandon it:
+
+- If a legal attack exists from the current hex, attack.
+  - Ranged keeps shooting from the wall; no reposition to max range.
+  - Melee attacks adjacent top enemies.
+- If no attack exists, hold and face the nearest approach.
+- Movement is allowed only **within the same structure/complex** and only when it
+  improves the fight (a shot/LoS lane, or an adjacent top enemy).
+- Never move off the structure to chase a ground target below and never kite
+  backward. Structure defenders do not use the Scattered escape fallback.
+- Flying units are exempt; mounted units cannot climb.
 
 ### Ranged
 
@@ -325,9 +333,8 @@ twice (each swoop costs a charge action).
 | Step | Executor |
 |---|---|---|
 | `climbAttack` | `performClimbAttack` |
-| `climb` | `handleClimbMove` (climb into a free top gap / continue a climb, no attack) |
-| `land` | `performClimbLand` (move onto a free top after reaching its elevation) |
-| `drop` | `performDescentDrop` (routed hanging unit drops down; fall damage) |
+| `climb` | `handleClimbMove` (climb into a free top gap, no attack) |
+| `drop` | `performDescentDrop` (routed hanging units drop down) |
 | `charge` | `useGameEngine.charge` |
 | `swoop` | `performSwoopDrop` (atomic charge-move + dive + free attack) |
 | `chargeEnd` | `performChargeEnd` |
@@ -351,12 +358,12 @@ marks/caps (including the dynamic melee cap up to 6), melee upgrade priority,
 multi-attack, ranged 6-hex posture and Close-Order short-bow shots, melee
 staging, ZoC engagement by fully upgraded melee, geometric adjacency (all six
 hexes), formation-up leftover-MP facing, climb commitment and 20-ft sequencing,
-structure-top gap access and free-gap climbs, hard hanging lock / weakest-exit
-climb-attacks / routed drops / landing, structure hold-and-fight,
-routed-target fallback and mid-execution retargeting, adjacency-only flank safety,
-full facing search (180-degree turns), Open-Order pass-through, stop-aware target
-costs, structure-complex confinement (footprint, enclosed courtyard, flyer
-exemption),
+the hard hanging lock (free top first, weakest top obstacle, routed drop),
+structure-top gap access and free-gap climbs, on-top hold-and-fight, routed
+target fallback and mid-execution retargeting, adjacency-only flank safety,
+full facing search (180-degree turns), Open-Order pass-through, stop-aware
+target costs, structure-complex confinement (footprint, enclosed courtyard,
+flyer exemption),
 and hardened mounted charge / flying swoop
 gates (scenario toggle, `canCharge`, fly points, no flyer swoop without FP).
 Run `npm run check` (tsc, vitest, depcruise, build) and

@@ -1072,6 +1072,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingDescent,
     confirmDescentClimb,
     confirmDescentDrop,
+    performDescentDrop,
     cancelDescent,
     pendingFormation,
     setPendingFormation,
@@ -1098,8 +1099,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     completeMove,
     handleUnitMove,
     handleClimbMove,
-    performDescentDrop,
-    performClimbLand,
     handleChangeFormation,
     handleMoveTeam,
     handleAttachHero,
@@ -3053,7 +3052,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         performClimbAttack={(attackerId, targetId) => performClimbAttack(attackerId, targetId)}
         handleClimbMove={(unit, targetHex, originSurface) => handleClimbMove(unit, targetHex, originSurface)}
         performDescentDrop={(unit, targetHex, feet) => performDescentDrop(unit, targetHex, feet)}
-        performClimbLand={(unit, topHex) => performClimbLand(unit, topHex)}
         selectWeapon={(unit, index) => selectWeapon(unit, index)}
         undo={undo}
         onOverlayChange={setAiOverlay}

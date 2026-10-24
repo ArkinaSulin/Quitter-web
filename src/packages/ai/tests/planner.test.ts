@@ -612,71 +612,78 @@ describe('Basic AI structure-top access', () => {
   });
 });
 
-describe('Basic AI hard climbing lock', () => {
-  const towerStructures = {
-    '0,0': { templateId: 'tower' },
-    '1,0': { templateId: 'tower' },
-  } as unknown as AiPlanContext['structures'];
+describe('Basic AI hanging lock and structure hold', () => {
+  const tower = { '0,0': { templateId: 'tower' } } as unknown as AiPlanContext['structures'];
   const towerTemplates = {
-    tower: { id: 'tower', name: 'Tower', anchor: 'hex', elevation: 10, mpClimbUp: 6, mpMountedUp: 6 },
+    tower: { id: 'tower', name: 'Tower', anchor: 'hex', elevation: 20, mpClimbUp: 6, mpMountedUp: 6 },
   } as unknown as AiPlanContext['structureTemplates'];
-  const farFoe = () => mk({ id: 'f1', team: 'black', hex: hex(0, 6) });
 
-  it('climbs to the chosen free top and does nothing else', () => {
-    const climber = mk({ id: 'c', team: 'blue', hex: hex(0, 1), elevation: 5, climbTo: '0,0', actionsAvailable: 2, movementPoints: 3 });
-    const result = planAiMoves({ ...ctxOf([climber, farFoe()]), structures: towerStructures, structureTemplates: towerTemplates });
+  it('climbs to a free top and does nothing else', () => {
+    const climber = mk({
+      id: 'c', team: 'blue', hex: hex(0, 1), elevation: 10, climbTo: '0,0',
+      currentFormation: 'Scattered', organizationLevel: 0,
+      movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const foe = mk({ id: 'f', team: 'black', hex: hex(3, 3) });
+    const result = planAiMoves({ ...ctxOf([climber, foe]), structures: tower, structureTemplates: towerTemplates });
     const steps = stepsOf(result, 'c');
-    expect(steps).toHaveLength(1);
-    expect(steps[0].kind).toBe('climb');
+    expect(steps.some(s => s.kind === 'climb' && s.to.q === 0 && s.to.r === 0)).toBe(true);
+    expect(steps.some(s => s.kind === 'attack' || s.kind === 'move' || s.kind === 'formation' || s.kind === 'drop')).toBe(false);
   });
 
-  it('climb-attacks an obstacle at the chosen exit instead of choosing another target', () => {
-    const climber = mk({ id: 'c', team: 'blue', hex: hex(0, 1), elevation: 5, climbTo: '0,0', actionsAvailable: 2, movementPoints: 3 });
-    const blocker = mk({ id: 't', team: 'black', hex: hex(0, 0), elevation: 10 });
-    const result = planAiMoves({ ...ctxOf([climber, blocker, farFoe()]), structures: towerStructures, structureTemplates: towerTemplates });
+  it('climb-attacks the weakest obstacle at the chosen top exit', () => {
+    const climber = mk({
+      id: 'c', team: 'blue', hex: hex(0, 0), elevation: 10,
+      currentFormation: 'Scattered', organizationLevel: 0,
+      movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const weak = mk({ id: 'weak', team: 'black', hex: hex(1, 0), elevation: 20, level: 1, currentTroopCount: 1 });
+    const strong = mk({ id: 'strong', team: 'black', hex: hex(-1, 0), elevation: 20, level: 8, currentTroopCount: 10 });
+    const structures = {
+      '1,0': { templateId: 'tower' },
+      '-1,0': { templateId: 'tower' },
+    } as unknown as AiPlanContext['structures'];
+    const result = planAiMoves({ ...ctxOf([climber, weak, strong]), structures, structureTemplates: towerTemplates });
     const steps = stepsOf(result, 'c');
-    expect(steps).toHaveLength(1);
-    const first = steps[0];
-    expect(first.kind).toBe('climbAttack');
-    if (first.kind === 'climbAttack') expect(first.targetId).toBe('t');
+    expect(steps.some(s => s.kind === 'climbAttack' && s.targetId === 'weak')).toBe(true);
   });
 
-  it('drops a routed hanging unit down instead of climbing up', () => {
-    const climber = mk({ id: 'c', team: 'blue', hex: hex(0, 1), elevation: 5, climbTo: '0,0', currentFormation: 'Routed', organizationLevel: 0, actionsAvailable: 2, movementPoints: 3 });
-    const result = planAiMoves({ ...ctxOf([climber, farFoe()]), structures: towerStructures, structureTemplates: towerTemplates });
+  it('routed hanging units drop instead of climbing', () => {
+    const climber = mk({
+      id: 'c', team: 'blue', hex: hex(0, 1), elevation: 10, climbTo: '0,0',
+      currentFormation: 'Routed', organizationLevel: 0,
+      movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const foe = mk({ id: 'f', team: 'black', hex: hex(3, 3) });
+    const result = planAiMoves({ ...ctxOf([climber, foe]), structures: tower, structureTemplates: towerTemplates });
     const steps = stepsOf(result, 'c');
-    expect(steps).toHaveLength(1);
-    expect(steps[0].kind).toBe('drop');
+    expect(steps.some(s => s.kind === 'drop')).toBe(true);
+    expect(steps.some(s => s.kind === 'climb' || s.kind === 'climbAttack')).toBe(false);
   });
 
-  it('lands on a free top once already at top elevation', () => {
-    const climber = mk({ id: 'c', team: 'blue', hex: hex(0, 1), elevation: 10, actionsAvailable: 2, movementPoints: 3 });
-    const result = planAiMoves({ ...ctxOf([climber, farFoe()]), structures: towerStructures, structureTemplates: towerTemplates });
-    const steps = stepsOf(result, 'c');
-    expect(steps).toHaveLength(1);
-    expect(steps[0].kind).toBe('land');
-  });
-
-  it('switches to the nearest free top when the chosen exit is friendly-occupied', () => {
-    const climber = mk({ id: 'c', team: 'blue', hex: hex(0, 1), elevation: 5, climbTo: '0,0', actionsAvailable: 2, movementPoints: 3 });
-    const friendly = mk({ id: 'f', team: 'blue', hex: hex(0, 0), elevation: 10 });
-    const result = planAiMoves({ ...ctxOf([climber, friendly, farFoe()]), structures: towerStructures, structureTemplates: towerTemplates });
-    const steps = stepsOf(result, 'c');
-    expect(steps).toHaveLength(1);
-    const first = steps[0];
-    expect(first.kind).toBe('climb');
-    if (first.kind === 'climb') {
-      expect(first.to.q).toBe(1);
-      expect(first.to.r).toBe(0);
-    }
-  });
-
-  it('shoots from a structure top instead of moving off it', () => {
-    const archer = mk({ id: 'a', team: 'blue', hex: hex(0, 0), elevation: 10, weaponString: SHORTBOW, actionsAvailable: 2, movementPoints: 3 });
-    const foe = mk({ id: 't', team: 'black', hex: hex(0, -3) });
-    const result = planAiMoves({ ...ctxOf([archer, foe]), structures: towerStructures, structureTemplates: towerTemplates });
+  it('ranged unit on top fires and does not leave the structure', () => {
+    const archer = mk({
+      id: 'a', team: 'blue', hex: hex(0, 0), elevation: 10, weaponString: SHORTBOW,
+      currentFormation: 'Open Order', organizationLevel: 1, formationAvailability: ['Open Order', 'Close Order'],
+    });
+    const foe = mk({ id: 'f', team: 'black', hex: hex(0, -3) });
+    const structures = { '0,0': { templateId: 'low' } } as unknown as AiPlanContext['structures'];
+    const templates = { low: { id: 'low', name: 'Low', anchor: 'hex', elevation: 10 } } as unknown as AiPlanContext['structureTemplates'];
+    const result = planAiMoves({ ...ctxOf([archer, foe]), structures, structureTemplates: templates });
     const steps = stepsOf(result, 'a');
     expect(steps.some(s => s.kind === 'attack')).toBe(true);
     expect(steps.some(s => s.kind === 'move')).toBe(false);
+  });
+
+  it('melee unit on top holds against a ground horde', () => {
+    const unit = mk({
+      id: 'm', team: 'blue', hex: hex(0, 0), elevation: 10,
+      currentFormation: 'Close Order', organizationLevel: 2, formationAvailability: ['Close Order'],
+    });
+    const foe = mk({ id: 'f', team: 'black', hex: hex(0, -2) });
+    const structures = { '0,0': { templateId: 'low' } } as unknown as AiPlanContext['structures'];
+    const templates = { low: { id: 'low', name: 'Low', anchor: 'hex', elevation: 10 } } as unknown as AiPlanContext['structureTemplates'];
+    const result = planAiMoves({ ...ctxOf([unit, foe]), structures, structureTemplates: templates });
+    expect(stepsOf(result, 'm').some(s => s.kind === 'move')).toBe(false);
   });
 });

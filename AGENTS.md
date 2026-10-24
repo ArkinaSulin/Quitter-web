@@ -53,15 +53,15 @@ reusable maps. Here's the state:
   hostiles; climbing is committed and cost-sequenced with no action reservation,
   and is **vertical-only** (no horizontal movement along a wall; a finished
   structure top moves normally). Melee finds free top gaps and climbs into a
-  complex to fight interior top targets; mounted/flying are exempt. A hanging unit
-  is hard-locked to climb to the top and land, or defeat the lowest-threat exit
-  obstacle then land; routed hanging units drop down. On-top units hold and fight
-  from the wall (no kiting/retreat; same-complex movement only). Routed
+  complex to fight interior top targets; mounted/flying are exempt. Routed
   enemies are fallback-only: ignored while any non-routed enemy exists;
   mid-execution attacks retarget to the next legal non-routed unit. **Preview**
   runs the full plot in a one-shot Web Worker with hydrated game settings; the
   UI stays responsive, Cancel/Reset terminates immediately, and a 30s watchdog
-  only reports a genuine hang. No migration. `npm run check` passes.
+  only reports a genuine hang. A hanging unit is hard-locked to its top exit
+  (free top first, then weakest threat) and routed hanging units drop down;
+  structure-top defenders hold the wall and fight. No migration.
+  `npm run check` passes.
 - **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
   scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);
   Basic uses **Simple**, Advanced uses **Advance**; the AI tab has a per-preview
