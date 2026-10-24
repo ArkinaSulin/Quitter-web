@@ -11,6 +11,7 @@ export * from './lib/attackCap';
 export * from './lib/lineOfSight';
 export * from './lib/chargeStance';
 export * from './lib/chargeOver';
+export * from './lib/swoop';
 export * from './lib/weaponChoice';
 export * from './lib/protectedHero';
 export * from './lib/warMachine';

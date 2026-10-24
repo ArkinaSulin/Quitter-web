@@ -1,418 +1,203 @@
-# 17 — AI Assist (enemy AI plotting tool)
+# 17 - AI Assist (Basic enemy brain)
 
-> **Status: shipped (v3 + Pass 1/2a/2b).** A GM-only-by-default tool — no turn
-> automation. Pass 1 (movement/safety), Pass 2a (line assignment, leftover MP,
-> stance, cohesion) and Pass 2b (aggressive/defensive profiles) are in
-> `src/packages/ai/lib/planner.ts` (commits `009a6b1`, `f4e3695`). Full-AI mode
-> (an alliance auto-plays its whole turn) remains a future layer on the same
-> engine. Remaining rounds and the next-session order are in
-> `docs/dev/outstanding.md` §AI assist.
+> **Status: Basic rewrite shipped (2026-10-23).** The old battle-role/frontage/
+> reserve planner was replaced with a small rule-based brain. Preview/Execute,
+> per-unit opt-out, undo and the GM-only gates are unchanged. **Advanced AI is
+> paused**; its scenario column is kept for a later rebuild on top of Basic.
 
 ## What it is
 
-A Scenario-Settings toggle (`scenarios.ai_assist_enabled`, migration 076)
-reveals an **AI** tab in the GM's left panel. Two further flags tune access and
-behaviour (migration **130**):
+A Scenario-Settings toggle (`scenarios.ai_assist_enabled`, migration 076) reveals
+an **AI** tab. Two further flags remain:
 
 | Setting | Column | Meaning |
 |---|---|---|
 | **AI assist** | `ai_assist_enabled` | Master switch: shows the AI tab. |
-| **Advanced AI** | `ai_assist_advanced` | OFF = the green-friendly greedy brain (shipped default). ON = retaliation-aware melee, finish/overkill value, kill-zone/spacing penalties, and light target reservation. |
-| **Allow players to use AI assist** | `ai_assist_players` | Non-GM participants may open/use the tab during the active side's turn. The GM still owns all three settings. |
+| **Allow players to use AI assist** | `ai_assist_players` | Non-GM participants may use the tab during the active side's turn. |
+| **Advanced AI** | `ai_assist_advanced` | **Paused.** Hidden from the UI; kept for the future rebuild. |
 
 The effective gate is
-`ai_assist_enabled && (effectiveIsGM || ai_assist_players) && !controlsLocked`;
-the same gate controls the token-click opt-out. Replays and DM-offline lock the
-tab. No access-matrix change: server-side `execute_command` already permits
-participant MOVE / ATTACK / ROTATE / FORMATION commands.
+`ai_assist_enabled && (effectiveIsGM || ai_assist_players) && !controlsLocked`.
+Replays and DM-offline lock the tab. Server-side `execute_command` already
+permits the MOVE / ATTACK / ROTATE / FORMATION / CHARGE / ELEVATE / weapon
+commands used by the executor.
 
-The GM drags teams into an **AI control box**; every eligible unit on those teams
-(for the active alliance) gets a **checkmark** on the map — a plain **click on a
-checked token toggles that unit's opt-out** (grey badge), so individual units can
-be excluded from the plot. **Preview** runs the pure planner
-and draws the plot (route polylines, crossed swords on attack targets, ghost
-at the end hex). **Reset** clears it — nothing is written until **Execute**.
-Execute replays the plan **through the normal action path** (`performMove` /
-`performAttack`), one command at a time, with Pause / Step / Resume / Cancel
-remainder controls. Undo stays unit-by-unit; an **Undo Execute** macro rewinds
-the whole batch back to its start.
+The GM drops teams into an **AI control box**. Eligible units get a checkmark;
+click a checked token to opt that unit out (grey badge). **Preview** runs the
+pure planner and draws routes, attacks and independent target marks. **Execute**
+replays the plot through the normal action path one command at a time, with
+Pause / Step / Resume / Cancel and an **Undo Execute** macro.
 
-**AI-assist mode** is deliberately *assist*: the DM (or an allowed player)
-triggers Preview/Execute, answers normal prompts (routs, at-cap retaliation), and
-presses End Turn. It never auto-acts.
-
+AI assist is deliberately *assist*: the DM (or an allowed player) triggers
+Preview/Execute, answers prompts, and presses End Turn.
 
 ## Files
 
 | Concern | File |
 |---|---|
-| Pure planner + gates | `src/packages/ai/lib/planner.ts` (+ `ai/planner.test.ts`, `index.ts`) |
-| Battle-line geometry / threat + gap helpers | `src/packages/ai/lib/battleLine.ts` |
-| Reserve sectors, stations, threat priority | `src/packages/ai/lib/reserve.ts` |
+| Public types + plan result | `src/packages/ai/lib/types.ts` |
+| Board model, archetypes, pathing, safe destinations, ZoC facing | `src/packages/ai/lib/board.ts` |
+| Independent target marks | `src/packages/ai/lib/marks.ts` |
+| Planner + four doctrines | `src/packages/ai/lib/planner.ts` |
+| Shared pure swoop validation | `src/packages/combat/lib/swoop.ts` |
 | Panel (UI + Execute driver + undo macro) | `src/components/ScenarioMap/AiPanel.tsx` |
-| Overlay types (canvas) | `src/components/ScenarioMap/aiTypes.ts` |
-| Overlay drawing (✓, routes, ghosts) | `useCanvasDraw.ts` (optional `aiOverlay`/`aiHoveredUnitId`) |
-| Left panel tab | `LeftPanel.tsx` (optional `aiPanelContent`) |
-| Scenario wiring | `ScenarioMap.tsx` (settings toggles + `aiOverlay` state + panel node) |
+| Overlay types | `src/components/ScenarioMap/aiTypes.ts` |
+| Canvas overlay (routes/marks) | `useCanvasDraw.ts` |
+| Scenario wiring / access gates | `ScenarioMap.tsx` |
 | Columns | `supabase/migrations/076_ai_assist.sql`, `130_ai_assist_flags.sql` |
 
-## Control & eligibility gates (locked)
+## Eligibility (unchanged)
 
-A unit may be handed to the AI **only when all** of:
+A unit is AI-controlled only when **all** hold:
 
-- not `isDeleted`, not `hidden`, and `currentUnitHp > 0` (killed/downed out) —
-  *and* it never targets deleted/killed/hidden units either;
-- **not a hero**, **not an attached hero**, and **not the host of an attached
-  hero** — heroes and hero-mounted units are played by the players/DM, never by
-  the AI;
-- **Routed units ARE eligible** — the planner flees them as far from the
-  nearest hostile as their full move allows (`chooseFleeHex`), never attacking;
-- not in the DM's per-unit **opt-out** set (`excludeUnitIds` — clicking the
-  token toggles it; opt-outs clear at each End Turn);
-- its **team is in the AI control box** AND its **alliance equals the current
-  turn alliance** (`currentTurnAlliance`); free play (null turn) never plots;
-- `actionsAvailable >= 1`.
+- not deleted, not hidden, HP > 0;
+- not a hero, not an attached hero, and not the host of an attached hero;
+- not in the DM's per-unit opt-out set (cleared at each End Turn);
+- its team is in the AI control box and its alliance equals the current turn
+  alliance (free play never plots);
+- `actionsAvailable >= 1` or leftover MP.
 
-A team only ever attacks units of the **adversarial alliance**
-(`friendly ↔ enemy`; neutral is never auto-attacked or auto-driven). Fog is
-respected: attack targets must lie in the AI side's visible hexes, computed with
-`computeVisibleHexes` (darkvision-aware; hidden units never reveal). The planner
-also treats hidden units as non-blocking scenery for its own occupancy/threat
-model.
+Routed units are eligible and flee. The AI only attacks the adversarial alliance
+(friendly ↔ enemy); fog is respected and hidden units never reveal.
 
-## Planner (`planAiMoves`) — v3
+## Basic rules
 
-Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, while the committed plan is logged and replayed through undo/redo:
-- Simulates the board on **copies** as it plots, so later units plan against
-  the evolving positions/occupancy and two units never target the same hex.
-- Steps can be **move, attack, turn (60°), or formation**. A unit may now
-  **rotate** to face an objective (1 MP/60° for formed units via `applyMpSpend`,
-  free for Hero/Scattered/Routed; no about-turns — org levels are never dropped)
-  and **change formation** (real `applyFormationChange` accounting) — so
-  previews can show curved turn glyphs and a formation chip.
-- **Real map context**: per-unit `makeCostOfHex` / `makeBlockedEdge` (structures,
-  walls, zones, mount, `ignore_climb`), per-surface occupancy
-  (`unitStandingSurface` + `computeOccupiedHexes`), structure-aware threat maps,
-  door/loose pass-through, and `enter_org_max` breaks via `entryBreakFormation`.
-  This mirrors the human drag pipeline, so the AI no longer plans through walls,
-  closed structures or org gates.
-- **Doctrine is automatic by weapon type**: ranged-only units **stand off**
-  (keep a gap from melee enemies, adopt **Scattered** when contact looms and it
-  is affordable) and back away instead of swinging fists; melee/hybrid units
-  **engage**.
-- **Ranged targets pick the biggest threat first**: an enemy **within 2 hexes**,
-  else a **Phalanx**, else a **Close Order** unit; value breaks ties within a
-  tier.
-- **Melee attacks prefer the best arc**: of the targets at adjacency, the one it
-  is attacking from the enemy's **rear**, then **flank**, then front. Movement
-  approaches try **cheap flanking** — up to a few 60° turns plus a straight leg,
-  within the unit's real MP/action budget — landing in the enemy's flank/rear
-  hexes; otherwise it closes frontally.
-- **Multi-maneuver movement (both brains)**: each maneuver spends one action's
-  movement pool; the unit may repeat move/turn legs across its remaining actions
-  (a mounted unit can eventually do move → turn → move → turn → charge).
-  **Strict turn rule**: if any **0-turn** option can attack/charge, every turned
-  option is discarded. Otherwise a turn is allowed only when it immediately
-  enables an attack/charge. Lane assignment, cohesion and line bearing may choose
-  among no-turn options but **never** justify a rotation. After a unit attacks,
-  no further turn is plotted for that activation (an AGR failure still spends the
-  attack action, so a follow-up turn could otherwise be unaffordable).
-  **Scattered free turns** are exempt: they cost 0 MP/action and no attack
-  surcharge, so the unit may use the full facing circle for positioning,
-  exposure, the next attack, or reaction coverage (including a post-move facing
-  when it does not attack).
-  There is **no generic "no contact" penalty** — melee contact is symmetric, and
-  the Advanced retaliation/trade model values the exchange. A charge-specific
-  setup penalty can be added in Round 3 if needed. The step budget is per unit:
-  `max(5, ceil(computeMoveBudget(unit, effectiveMax)))` (a 6-MP mounted unit gets
-  12, heavy infantry 2 MP gets 4→5), enough for the whole action budget's hexes
-  plus turns/attacks.
-- **Leftover MP and holding**: a unit remains plottable while it has actions
-  **or** materialized MP. With 0 actions it may still spend leftover MP on a
-  final move, but attacks require an action. Holding position is always a
-  scored option, so a unit does not move/turn merely because it has MP left.
-  **Melee full-turn advance**: if a melee unit still has actions/MP, is not
-  adjacent to an enemy, and the scoring chooses a hold, it instead takes the
-  best no-turn destination closer to its assigned lane. If that lane is already
-  reached, blocked, or unreachable, it falls back to the **nearest reachable
-  enemy's lane** rather than holding indefinitely. This prevents a defensive
-  line from stopping after one maneuver and needing a second Preview/Execute to
-  finish the turn.
-- **Anti-idle attack floor**: frontage/structure units and committed reserves
-  take the best near-breakeven adjacent attack (score above `-8`) whenever they
-  are adjacent, not only on their last action. A clearly losing trade is still
-  refused, and an uncommitted reserve still holds. This stops a 2-action unit
-  from refusing a marginal attack and then doing nothing.
-- **Real post-move attack accounting**: `maneuverOptions` applies
-  `applyMoveCost` before checking `leadsToAttack`, so a move can spend leftover
-  MP and still leave the action needed for an attack. This replaces the old
-  `actionsAvailable >= 2` approximation.
-- **Stable defensive cluster cap**: the slowest-member speed cap is measured
-  from the **initial** positions for the whole plan, not the mutating working
-  state. A fast unit cannot escape the cap once the slow members move, and the
-  line stays together.
-- **Battle roles (both brains)**: `assignBattleRoles` first keeps only the
-  **forward band** of enemies (distance <= nearest + 1 ring); second-rank
-  reserves do not consume frontage slots. Aggressive stance then generates
-  candidate contiguous frontage windows over all melee units and scores each by
-  coverage, connection/isolation, flank/rear reach, extra movement speed, own
-  exposure, and stance. Defensive stance first restricts the frontage pool to the
-  **leading rank** (nearest to the hostile forward band, within one hex of the
-  closest distance), so rear-rank units stay reserves even when the enemy forward
-  band is larger. Reserves remain valid targets but do not affect the
-  pairing/surplus count. The window may shift left/right, so the whole line can
-  cover one end while two adjacent surplus units flank the other. Surplus units
-  strongly prefer fast troops for flanking (e.g. 4-MP wolf riders over 3-MP
-  warriors), and a surplus pair stays on the same end when possible to reduce
-  isolation. Roles are `frontage`, `flank`, `rear`,
-  `reserve`, `ranged`, and `structure`. Near-equal candidates use **`Math.random`**
-  jitter; consistency comes from the command log/undo-redo, not from forcing the
-  same choice on every Preview. `assignTargets` remains as the simple 6-vs-6
-  line-assignment helper.
-  - **Forward-band rule**: only hostile front-line units count. Anything behind
-    that band is ignored by pairing and by the reserve, even when it is visible.
-  - **Whole-line pairing**: defensive stance pairs **every** enemy forward-band
-    unit first. It uses the leading rank and, only when the leading rank is short
-    of the enemy front count, promotes rear-rank melee units into the frontage to
-    fill the shortfall. The frontage window shifts laterally to align with the
-    enemy front span, so the whole line moves left/right as a block instead of a
-    reserve taking one slot while an end unit waits. Only true surplus after full
-    coverage becomes a reserve.
-  - **Dynamic roles**: roles are not permanent. A unit that is not paired and not
-    engaged behaves as a reserve. A reserve that is already engaged/melee-locked
-    is treated as front line until it is freed; once freed and with no
-    threat/hole objective it returns to reserve station duty.
-- **Aggressive surplus**: rear first when reachable (no AGR, no retaliation,
-  doubled threat → faster rout), else flank. There is **no reserve role in
-  aggressive stance**; every unpaired unit becomes a flanker/rear attacker.
-  **Fastest surplus first**: when removing the fastest surplus units leaves a
-  contiguous frontage line, those units are forced to flank/rear so slower
-  warriors keep the front-to-front pairing (e.g. wolf riders O/P flank while
-  G–L hold the line). If a fast unit is interior, the contiguity check prevents
-  it being pulled out; scoring still strongly prefers fast end units as extras.
-  Flankers **do not queue** behind one assigned target: if that target is not
-  locked by a frontage/structure unit, they retarget to the closest
-  frontage-locked enemy (or the closest enemy when none is engaged). Until the
-  main body locks the target they stage on a **ring of at least three hexes from
-  every hostile and never closer than the friendly front line**; if they start
-  ahead they move back out. Once the frontage locks — **including a lock created
-  during this same plan** — they dash to the target's flank/rear and may attack
-  that turn. They never spend an attack on a front arc and never front-charge.
-  This prevents fast wolf riders being used as frontage, getting ahead of the
-  main body, or being melee-locked before the frontage engages.
-- **Role markers (per-player overlay, Advanced AI only)**: each participant can
-  enable **Scenario Settings -> This device -> Show AI role overlay**. The option
-  is available only when **Advanced AI** is on and the viewer is the DM/effective
-  GM or **Allow players to use AI assist** is on. The choice is device-local per
-  scenario/user (`quitter.showAiRoleOverlay:<scenarioId>:<userId>`) and defaults
-  off. It replaced the old scenario-level `ai_role_markers` flag; migration 132
-  drops that column.
-  - Badges: a **large white role letter with a dark outline centered on the
-    token** (over
-    the troop circles): `M` frontline melee, `A` high-damage frontline/shock
-    (display-only; Shock behaviour pending), `C` flank/rear flanker, `S`
-    skirmisher/ranged, `R` reserve, `G` structure/garrison. The DM/effective GM
-    sees all; a player sees only units in their own team (DM in player mode is a
-    player). Roles are recomputed from current positions and hostile numbers, not
-    stored per unit.
-  - **High damage (A)**: use the active melee weapon's average damage per
-    attack action = `numberOfAttacks * (dice average + flat bonus)`. Standard
-    benchmark is `1d8+2` = **6.5**; strictly above 6.5 is high damage. `A`
-    replaces `M` only when the unit is currently frontage. `isTwoHanded` is not
-    used.
-  - **Prerequisites / troubleshooting**: AI assist + Advanced AI on, at least one
-    team in the AI control box, and a Turn 1+ active alliance. `aiTeams`/
-    `aiExcluded` are currently session-local, so markers disappear after reload;
-    persist them and add an empty-state hint next. The AI panel shows the legend.
-- **Defensive facing**: a defensive melee unit does not accept an attack that
-  leaves another adjacent enemy in its flank or rear. It first turns to face the
-  most dangerous exposed enemy, even if that costs the attack, then acts from
-  the new facing. This facing decision is made **once per activation** to avoid
-  oscillating between two flank threats.
-- **Defensive surplus (reserve)**: a unit is a reserve when it is **not paired
-  and not engaged**. Reserves never take a normal front-line pairing slot while
-  the leading rank can cover the enemy line; their mission is to face flankers
-  and fill frontage gaps/holes. A reserve that is already engaged/melee-locked is
-  treated as front line until freed; once freed it returns to reserve duty.
-  Reserves hold a **central second-rank station about two hexes behind the
-  line**, staggered deeper for extra reserves to avoid congestion, instead of
-  waiting on an end. A very long line is split into contiguous sectors, one
-  reserve group per reachable section (a single group for a short line), and a
-  group only reacts to threats/holes in its sector. In Advanced it may wait in
-  **Scattered** while uncommitted for free turns/loose reaction movement.
-  - **Threat priority**: rear > flank > hole.
-  - **Flank/rear threats**: a hostile forward-band unit is a threat when it is
-    **behind the line's forward plane** or **outside the line's lateral span**.
-    A paired front-arc enemy already adjacent to the line is left to its frontage
-    unit. Detection range is the whole
-    line: `max(3, line length)` measured from the line, not from the reserve. The
-    reserve faces and intercepts from the enemy's flank/rear where possible.
-  - **Holes**: with no threat, the reserve patches interior gaps and routed/dead
-    frontage slots, including an exposed end.
-  - **Reaction speed**: a reserve moving to a threat or hole is exempt from the
-    defensive slowest-member cluster cap. An uncommitted reserve still obeys the
-    cap and only returns to its station; it never advances on the enemy line or
-    attacks a front-arc enemy.
-- **Ranged support**: ranged-only units are excluded from frontage/flank roles.
-  They stand off, never voluntarily enter melee contact, shoot with both actions
-  when possible, and retreat/kite when closed on. Scattered is the escape/transit
-  formation.
-- **Structure defenders**: a unit on a standing hex structure or on the inside hex
-  of a standing edge structure holds it in **all stances**. It may attack,
-  rotate, and change formation, but never voluntarily moves out; it is excluded
-  from frontage/flank roles. Routed units flee normally; a destroyed/removed
-  structure releases the hold.
-- **Ranged reaction awareness**: when archer reaction is enabled, ranged hold
-  positions score clear reaction lanes (snap-shot `range`, front arc, LoS, no
-  friendly/obstacle blocker). Reaction uses only actions left after the unit
-  stands and holds — the planner does **not** reserve an action or trade away an
-  attack for it. Safe repositioning for a clear lane is allowed; moving into
-  contact is not.
-- **Line-order compatibility**: 6-vs-6 style assignments still pair sorted units
-  and enemies left-to-right with adjacent value swaps via `assignTargets`.
+### Board scan
 
-- **Self-preservation (both brains)**:
-  - a destination is penalized for OTHER live enemies in the mover's **rear**
-    (heaviest) or **flank** arc; the intended melee target is excluded only when
-    the unit will actually have an action to attack it after the move;
-  - a path that passes adjacent to a non-target enemy is penalized;
-  - the nearest non-target enemy keeps its **line bearing** even at long range:
-    turning the flank/rear toward the enemy battle line is penalized, so a unit
-    does not wrap around the line while merely advancing;
-  - turns are gated by the **strict turn rule** above: a no-turn attack always
-    wins, and lane/line scores only break ties among no-turn options;
-  - at adjacency, the estimate uses a melee weapon/fists rather than the active
-    ranged weapon's point-blank profile.
-- **Formation-aware retaliation (both brains)**: `expectedRetaliation` respects
-  the defender's `retaliate_arcs` (`none` → no counter-blow; `rows` → the
-  defensive rows-based count `ceil(troops / visualDotsPerRow)`; `full` → normal),
-  `retaliate_vs_ranged`, `noRetaliation`, and the attacker's `be_attacked_*`
-  vulnerability.
-- **Basic vs Advanced**:
-  - **Basic** (default) = raw expected damage plus the safety/retaliation fixes
-    above. No formation shopping.
-  - **Advanced** additionally weighs expected retaliation, adds a finishing
-    bonus, reserves damage per target so a second unit does not overkill a
-    nearly-dead squad, and penalizes destinations crowded by friendlies or
-    covered by extra enemy weapons/kill zones.
-  - **Advanced formation changes (role-aware)**: near contact or in a hostile
-    ZoC, melee units upgrade to the **highest available organisation level**
-    (`canAdoptFormation`, `isFormationChangeAffordable`, Shield Wall shield/2H
-    restrictions). Frontage/structure units and **committed** reserves prioritise
-    that upgrade even if it costs the attack; flankers attack first and upgrade
-    only when no attack is available. An uncommitted defensive reserve instead
-    holds **Scattered** (free turns/loose reaction movement) and only upgrades
-    after it commits to a threat or hole. Flankers may chain two upgrades in one
-    action (Scattered → Open → Close) when the budget covers both. Defensive units
-    prioritise the highest formation over speed, except the uncommitted reserve
-    waiting loose. Ranged units use Scattered only as an escape/transit formation
-    and otherwise stand off.
-  - **Rear attack value**: `attackValue` discounts front/flank priority by an
-    approximate AGR pass chance; rear attacks are guaranteed (no AGR), have no
-    retaliation, and carry a rout-threat bonus.
-  - **Adjacent / last action**: frontage/structure units and committed reserves
-    take a near-breakeven adjacent attack (score above `-8`) rather than idling,
-    even with multiple actions left; an uncommitted reserve keeps holding. A
-    clearly losing trade is still refused. Flankers do not wait for their arc
-    indefinitely: they retarget/circle and may attack any flank/rear, as above.
-  - **Reaction fire**: archer-reaction hold positions score clear snapshot lanes
-    (`range`, arc, LoS); the planner uses only actions left after the unit holds
-    and never sacrifices an attack for reaction eligibility.
-  - **Basic vs Advanced + stance**: Basic = Simple, Advanced = Advance; the
-    AI-tab **Aggressive / Defensive** toggle selects the posture (default
-    Aggressive, per preview, local state).
-  - **Aggressive simple**: max damage via the line assignment; safety only as a
-    tie-break (equal damage → lower expected counter-blow). Mounted charges
-    come with Round 3.
-  - **Aggressive advance**: adds retaliation/overkill value, prioritizes
-    **isolated / low-AC** targets, and avoids a non-lethal **melee lock** when
-    the target is expected to survive and answer. Formation consideration uses
-    the melee formation evaluator above. Mounted charges come with Round 3.
-  - **Defensive simple**: safety weights exposure/line above damage; ranged
-    units avoid destinations that force them into an enemy ZoC (reactive
-    archery's stop-before is respected); melee units stay together and never
-    present a flank/rear; then damage.
-  - **Defensive advance**: ranged formation posture — **Close Order** when far
-    and not under ranged fire (max attacks), **Open/Scattered** when taking
-    ranged fire (lower `be_attacked_range_modifier`), **Scattered** when melee
-    is imminent (all-direction disengage). A defensive cluster's movement is
-    capped to its **slowest member's effective speed** and the slowest unit is
-    planned first so the fast units can follow. AGR scales cohesion linearly
-    (low AGR sticks, high AGR may range).
-- **Never over-budget**: every simulated action uses the real accounting
-  functions (`applyMpSpend`, `applyMoveCost`, `applyFormationChange`) so no plan
-  raises a soft-enforcement prompt. If a planned step still becomes unaffordable
-  at execution (e.g. a reaction changed the live state), the executor reports it
-  once and drops that unit's remaining steps instead of running a stale sequence.
-- Routed units instead **flee**: each step maximises distance from the hostile
-  **mass** first (enemy kill-zone landings penalized), with nearest-hostile
-  distance as a secondary tie-break. A rout path is re-evaluated after every
-  pushed-through friendly, so it stops at the first empty safe hex instead of
-  executing a stale tail. They flee for
-  as many actions as they have — they never attack. The run **stops at the
-  map's outer rim** (`gridRadius` in the plan context): a routed unit never
-  moves beyond the drawn grid, and one already at/outside the rim (e.g. after
-  the GM shrank the grid) stays put — giving the DM a chance to hide it.
+One snapshot per Preview. Each unit gets a cached ground distance map (real
+terrain, walls, structures, doors, loose pass-through, org gates, fog). All
+thresholds use the printed **`unit.movementPoints`**; move pools use the
+formation-scaled effective max.
 
-## Artillery (Round 2a, planned)
+### Marks (independent per archetype)
 
-War-machine units are **emplaced** in this game: the weapon is represented by a
-placed structure (AC/HP) and the unit token is the crew, so the AI must not
-reposition the crew once the weapon is set up.
+Assigned before planning: **flying → ranged → melee (closest first) → mounted**.
 
-- **Detect** artillery by any parsed weapon with `warMachine` (no new flag).
-- **Immobile while operating**: no move, turn, or formation steps — fire or hold.
-  The rule is **AI-only**; players may still reposition with DM adjudication.
-- **Firing** needs 2 actions and `attacksUsed < 5` (one shot consumes all 5
-  attacks). Damage is estimated with a war-machine-specific helper
-  (`acVsWarMachine`, shot count, min/max range, LoS) rather than the per-troop
-  melee estimate.
-- **Bombard step**: the attack step is marked `bombard`; execution routes it
-  through `handleAttackRequest`, and the batch **pauses for the GM's normal AoE
-  marker placement**, then resumes. No auto-placement rule.
-- **Rout is normal**: the crew flees like any routed unit; the weapon structure
-  is already on the map (no extra marker), so no artillery-specific rout rule.
+| Archetype | Mark rule |
+|---|---|
+| Melee | closest reachable ground/structure/grounded flyer; **2 melee marks** per target; overflow only when every candidate already has 2. |
+| Ranged | closest hostile (including airborne); **no cap**. |
+| Flying | closest hostile not already marked by another flyer; **1 flying mark**. |
+| Mounted | closest reachable ground/grounded flyer that has a **non-mounted** friendly mark and no other mounted mark; falls back to its closest reachable target. |
 
-## Execute driver (in `AiPanel`)
+Marks from one archetype never consume another's slots. A target marked by
+archers/flying can still be marked and charged by a mounted unit. Overlay draws
+per-type badges (e.g. `M2 A4 F1 C1`); marks reset each Preview.
 
-- Steps are validated **just-in-time** against live state: a unit that died/
-  routed/was blocked, or a target that vanished/left range, is **skipped with
-  a message** ("X was routed — skipped"). Leftover units keep their actions
-  for the DM or a new batch.
-- Pause / Step / Resume / Cancel remainder turn Execute into a controllable
-  session (player reactions and rout prompts resolve between steps).
-- Rout decisions still route to the DM (existing flow: a routed team with no
-  non-GM owner is orchestrated by the GM), so an AI unit that routs mid-execute
-  shows the DM the normal retreat card.
-- Steps emit through the real `performMove` / `performAttack` / `rotateUnit` /
-  `changeFormation` callbacks — the same code a human invokes — so facing, cost,
-  retaliation, morale, reactions and rout chains behave identically and land in
-  the command log.
+### Destination safety / facing
 
-## Undo
+- A mover never ends its advance on a hex where any non-target hostile would be
+  in its flank/rear at the final facing. If the marked target has no safe
+  approach, the next valid target is tried (and the mark updates).
+- Adjacent facing chooses: **min hostile ZoC sources in flank/rear → max
+  hostiles in our front arc** (more enemies ZoC-locked) → cheapest rotation →
+  current facing.
 
-- **Default: unit-by-unit.** Every AI action is a normal command (with its
-  chained rout/pursuit consequences); Ctrl+Z reverts the last one.
-- **Undo Execute macro:** records the live top `scenario_command_log` id *before* the
-  batch, then loops the server-validated `undo()` while the current top id
-  differs from that baseline (stops at any foreign boundary, e.g. a player's
-  reaction that isn't part of the batch). No schema or RPC changes.
+### Melee
 
-## Invariants
+1. Routed → flee.
+2. **Not fully upgraded** (`current org < highest reachable org`): never attack.
+   - distance > 3: move to a safe staging hex at 3 (fallback 2), outside ZoC;
+   - distance ≤ 3 (including adjacent/ZoC-locked): hold and upgrade one org
+     step, over as many activations as needed.
+3. **Fully upgraded**:
+   - Adjacent: face with the ZoC rule, attack the legal adjacent target with the
+     **least morale**, and continue attacking while actions remain.
+   - Higher structure target: `climbAttack`; a ladder/`ignore_climb` edge within
+     2 hexes is a future refinement.
+   - Airborne-only adjacency: ignore and re-mark the closest reachable ground
+     target.
+   - Not adjacent: `path > movementPoints × 2` and org > 1 → Open Order, then
+     advance; `path < movementPoints` → face, advance to a safe adjacent hex,
+     attack; otherwise advance one pool toward the target. Never hold when a
+     legal advance exists.
+   - Leftover MP advances toward the next target; a melee unit never voluntarily
+     disengages.
 
-- The planner never produces friendly fire, out-of-fog targets, over-budget
-  moves, or over-cap attacks (asserted in tests).
-- Hidden/deleted/killed units are invisible to the AI both as *drivers* and as
-  *targets*.
-- Nothing is logged until Execute; Preview→Reset is free.
-- AI commands ride the normal log → Messages, Replay and Undo debug all work.
+### Ranged
 
-## Non-goals (future layers)
+- Archetype test: the **primary weapon (`weapons[0]`)** has `maxRange > 1`.
+- Posture: any hostile within **6 hexes** → **Scattered**; otherwise **Open
+  Order**; target in range and no hostile within 6 → **Close Order** before
+  shooting. (6 keeps a short bow's range-7 shot in Close Order.)
+- Face the target when in range but outside the firing arc.
+- Shoot while actions remain (re-targeting if the target dies); otherwise
+  reposition to exactly `maxRange` (back off if too close, advance if too far)
+  preferring safe destinations. Never hold when a legal reposition exists.
+- If the active weapon is not the primary ranged weapon, a free `weapon` step
+  switches first.
 
-Whole-turn auto-director (Round 5), auto-answering every prompt, AI magic/
-reactions/hero attach, bot accounts. The next layers, in order, are **Round 2a
-archers + artillery** (including the war-machine slice below), **Round 3 mounted
-charges**, **Round 4 full coordination**, and **Round 5 full auto-turn**;
-difficulty levels beyond Basic/Advanced also remain. The planner + Execute driver
-here are the foundation those would reuse. The planner still ignores ZoC
-scatter/pursue, flight, and some elevation nuances, and never controls heroes.
+### Flying
+
+- Elevation is **free but movement-bound**: a move may climb at most
+  **+10 ft per hex moved**; descending is free. There is no standalone free
+  elevate step. A flyer climbs by moving with an `elevation` target.
+- Mark the closest hostile not already flyer-marked. Face it, then
+  `charge` → `swoop` (the atomic dive + free melee attack).
+- After each swoop: retreat with remaining FP to **≥2 hexes from every hostile**
+  and set elevation **20 ft** on that retreat move. Repeat `charge` → `swoop`
+  if an action remains.
+- No swoop available → fly toward the target, still ending ≥2 hexes away at
+  20 ft when possible.
+
+### Mounted
+
+- Mark a target with a non-mounted friendly mark and no other mounted mark;
+  fallback to closest reachable.
+- Staging ring: radius **4** hexes (Close/high org speed → **2**),
+  tangent/rear-flank, outside ZoC, reachable this activation.
+- Charge only when:
+  - it is the **first action**;
+  - the target is engaged by a friendly;
+  - the approach is **flank/rear**;
+  - the destination is outside hostile ZoC;
+  - corridor/destination is clear of other mounted units.
+- After the charge attack: remaining action/MP disengages to the farthest safe
+  hex from all hostiles, then upgrades to the highest affordable org formation.
+- Not charging: stage on the ring and upgrade; no hold when a staging move
+  exists.
+
+### Multiple actions
+
+Every doctrine spends as many actions/MP/FP as useful: melee and ranged attack
+twice when they have two actions. Mounted is the designed exception (charge
+first action → free charge attack → second action disengages). Flying may swoop
+twice (each swoop costs a charge action).
+
+## Executor steps
+
+`move | turn | formation | attack` remain. Added:
+
+| Step | Executor |
+|---|---|---|
+| `climbAttack` | `performClimbAttack` |
+| `charge` | `useGameEngine.charge` |
+| `swoop` | `performSwoopDrop` (atomic charge-move + dive + free attack) |
+| `chargeEnd` | `performChargeEnd` |
+| `weapon` | `selectWeapon` |
+| `move.elevation` | passed through `performMove` (fly climb/descent) |
+
+The fly pool is selected by origin/end elevation in the executor; move
+validation accounts for the air slot and real terrain/walls/structures.
+
+## Access / display
+
+- DM/effective GM sees all marks; players see their own team; DM in player mode
+  is a player.
+- No role overlay setting in Basic. Marks are part of the preview.
+- No migration was added by the Basic rewrite.
+
+## Tests
+
+`src/packages/ai/tests/planner.test.ts` covers gates, legal targets, independent
+marks/caps, melee upgrade priority, multi-attack, ranged 6-hex posture and
+Close-Order short-bow shots, melee staging, flying plans and mounted staging.
+Run `npm run check` (tsc, vitest, depcruise, build) and
+`npm run lint:boundaries`.
+
+## Advanced (paused)
+
+Rebuild Advanced **on top of** Basic, reusing `board.ts` / `marks.ts` and the
+approach helpers. Do not revive the deleted role planner. Candidate additions:
+retaliation/overkill value, focus fire, line coordination, artillery steps, AI
+magic/reactions/hero attach, full auto-turn.

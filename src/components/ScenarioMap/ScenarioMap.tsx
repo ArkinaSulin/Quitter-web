@@ -30,7 +30,7 @@ import { isUnitInteractable } from '@/packages/units';
 import { LeftPanel } from './LeftPanel';
 import { AiPanel } from './AiPanel';
 import { AiOverlayData } from './aiTypes';
-import { isAiControllable, buildAiRoleMarkers, visibleRoleMarkers, enemyGroupsOf, aiRoleOverlayAvailable, AiRoleMarker } from '@/packages/ai';
+import { isAiControllable } from '@/packages/ai';
 import { ContextMenu } from './ContextMenu';
 import { WeaponSelect } from './WeaponSelect';
 import { MountTargetChoice } from './MountTargetChoice';
@@ -275,25 +275,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [aiAssistEnabled, setAiAssistEnabled] = useState(false);
   const [aiAssistAdvanced, setAiAssistAdvanced] = useState(false);
   const [aiAssistPlayers, setAiAssistPlayers] = useState(false);
-  const [aiStance, setAiStance] = useState<'aggressive' | 'defensive'>('aggressive');
   // Hero morale boost (Commanding Presence / Heroic Inspiration) + heroic capacity.
   const [heroMoraleBoostEnabled, setHeroMoraleBoostEnabled] = useState(true);
   const [zocPursuitEnabled, setZocPursuitEnabled] = useState(true);
-  // Per-viewer AI role overlay (Advanced AI only). Device-local per scenario/user.
-  const [showAiRoleOverlay, setShowAiRoleOverlay] = useState<boolean>(() => {
-    if (typeof window === 'undefined' || !currentUser?.id) return false;
-    return window.localStorage.getItem(`quitter.showAiRoleOverlay:${scenarioId}:${currentUser.id}`) === '1';
-  });
-  useEffect(() => {
-    if (typeof window === 'undefined' || !currentUser?.id) return;
-    setShowAiRoleOverlay(
-      window.localStorage.getItem(`quitter.showAiRoleOverlay:${scenarioId}:${currentUser.id}`) === '1',
-    );
-  }, [scenarioId, currentUser?.id]);
-  useEffect(() => {
-    if (typeof window === 'undefined' || !currentUser?.id) return;
-    window.localStorage.setItem(`quitter.showAiRoleOverlay:${scenarioId}:${currentUser.id}`, showAiRoleOverlay ? '1' : '0');
-  }, [showAiRoleOverlay, scenarioId, currentUser?.id]);
   // AI selection state lives here so canvas clicks can toggle per-unit opt-out.
   const [aiTeams, setAiTeams] = useState<string[]>([]);
   const [aiExcluded, setAiExcluded] = useState<Record<string, boolean>>({});
@@ -1030,48 +1014,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     };
   }, []);
 
-  // Persistent AI role overlay (display-only): Advanced AI only, per device.
-  const roleOverlayAvailable = aiRoleOverlayAvailable({
-    aiAssistEnabled,
-    advanced: aiAssistAdvanced,
-    isGM: effectiveIsGM,
-    playersAllowed: aiAssistPlayers,
-  });
-  const aiRoleOverlay = useMemo<Record<string, AiRoleMarker>>(() => {
-    if (!showAiRoleOverlay || !roleOverlayAvailable || !currentTurnAlliance || aiTeams.length === 0) return {};
-    const hostedBy = new Set<string>();
-    for (const u of units) if (u.attachedToUnitId && !u.isDeleted) hostedBy.add(u.attachedToUnitId);
-    const controllable = units.filter(u =>
-      !aiExcluded[u.id]
-      && isAiControllable(u, { alliances, teams: aiTeams, activeAlliance: currentTurnAlliance }, hostedBy));
-    const enemyGroups = enemyGroupsOf(currentTurnAlliance);
-    const enemies = units.filter(u =>
-      !u.isDeleted && !u.hidden && (u.currentUnitHp ?? 0) > 0
-      && enemyGroups.has(allianceOf(u.team, alliances)));
-    const markers = buildAiRoleMarkers(controllable, enemies, {
-      units,
-      alliances,
-      formations: formationsMap,
-      teams: aiTeams,
-      activeAlliance: currentTurnAlliance,
-      structures,
-      structureTemplates,
-      stance: aiStance,
-      advanced: aiAssistAdvanced,
-    }, aiAssistAdvanced);
-    return visibleRoleMarkers(markers, units, effectiveIsGM, myTeam);
-  }, [showAiRoleOverlay, roleOverlayAvailable, currentTurnAlliance, aiTeams, aiExcluded, units, alliances, formationsMap, structures, structureTemplates, aiStance, aiAssistAdvanced, effectiveIsGM, myTeam]);
-
-  const mergedAiOverlay = useMemo<AiOverlayData | null>(() => {
-    const roles = aiRoleOverlay;
-    if (!aiOverlay && Object.keys(roles).length === 0) return null;
-    return {
-      checkedUnitIds: aiOverlay?.checkedUnitIds ?? [],
-      excludedUnitIds: aiOverlay?.excludedUnitIds ?? [],
-      routes: aiOverlay?.routes ?? [],
-      roles,
-    };
-  }, [aiOverlay, aiRoleOverlay]);
+  // AI assist overlay comes straight from the panel (route + marks).
+  const mergedAiOverlay = aiOverlay;
 
   // The currently dragged unit id, exposed to `useCanvasDraw` (called before
   // `useHexGrid` owns the state) so its token stays visible in every filter mode.
@@ -3093,17 +3037,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         structures={structures}
         structureTemplates={structureTemplates}
         groundZones={effectiveZones}
-        advanced={aiAssistAdvanced}
-        stance={aiStance}
-        onStanceChange={setAiStance}
-        roleMarkersEnabled={showAiRoleOverlay && roleOverlayAvailable}
         gridRadius={backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS}
         archerReactionEnabled={archerReactionEnabled}
         unitMaxMP={unitMaxMP}
-        performMove={(unit, targetHex, cost, overBudget, maxMP) => completeMove(unit, targetHex, cost, overBudget, maxMP)}
-        performAttack={(attacker, target, overBudget) => performAttack(attacker, target, overBudget)}
+        performMove={(unit, targetHex, cost, overBudget, maxMP, elevation) => completeMove(unit, targetHex, cost, overBudget, maxMP, undefined, undefined, undefined, elevation)}
+        performAttack={(attacker, target, overBudget, options) => performAttack(attacker, target, overBudget, options)}
         rotateUnit={(unit, dir, maxMP) => rotateUnit(unit, dir, maxMP)}
         changeFormation={(unit, formation, fm) => changeFormation(unit, formation, fm)}
+        charge={(unit) => charge(unit)}
+        performChargeEnd={(unit, dropOrg) => performChargeEnd(unit, dropOrg)}
+        performSwoopDrop={(attackerId, targetId) => performSwoopDrop(attackerId, targetId)}
+        performClimbAttack={(attackerId, targetId) => performClimbAttack(attackerId, targetId)}
+        selectWeapon={(unit, index) => selectWeapon(unit, index)}
         undo={undo}
         onOverlayChange={setAiOverlay}
         onBusyChange={setAiBusy}
@@ -3613,23 +3558,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 </span>
               </span>
             </label>
-            {roleOverlayAvailable && (
-              <label className="flex items-start gap-2 text-sm text-gray-200 mb-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showAiRoleOverlay}
-                  onChange={(e) => setShowAiRoleOverlay(e.target.checked)}
-                  className="h-4 w-4 accent-amber-400 mt-0.5"
-                />
-                <span>
-                  <span className="font-medium text-amber-300">Show AI role overlay</span>
-                  <span className="block text-gray-400 text-[11px]">
-                    Advanced AI only. Large faint role letter (M/A/C/S/R/G) over the troop circles. DM sees all; players
-                    see their own team. This device only.
-                  </span>
-                </span>
-              </label>
-            )}
             <div className="mb-3">
               <span className="font-medium text-amber-300 text-sm">Move preview</span>
               <div className="flex flex-col gap-1 mt-1 text-sm text-gray-200">
@@ -3771,23 +3699,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 <span className="font-medium text-amber-300">AI assist</span>
                 <span className="block text-gray-400 text-[11px]">
                   Shows the AI tab: hand teams to a plotted enemy AI (preview, then execute move by move). The GM stays in control of every action.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={aiAssistAdvanced}
-                onChange={async (e) => {
-                  await updateScenarioField(scenarioId, { ai_assist_advanced: e.target.checked });
-                }}
-                className="h-4 w-4 accent-amber-400 mt-0.5"
-              />
-              <span>
-                <span className="font-medium text-amber-300">Advanced AI</span>
-                <span className="block text-gray-400 text-[11px]">
-                  Trades bullets more carefully: weighs expected retaliation, values finishing a target, avoids
-                  overkill, and steers clear of kill zones. OFF: simple greedy moves for greener tables.
                 </span>
               </span>
             </label>

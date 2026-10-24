@@ -9,7 +9,7 @@ import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance, UnitEff
 import { resolveCombatSequence, determineCombatPosition, suppressRetaliation, rollDamageDetailed, computeAttackCount, combatRollMode, rollWarMachineHits, CombatOutcome, AttackerHeroProfile, wallCoverAgainst, attachedDefenderHeroShare, protectedHeroHost, inHostRearCone } from '@/packages/combat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/packages/movement';
 import { isProtectedHero } from '@/packages/units';
-import { isChargeOverEligible, computeChargeOverLandingHex } from '@/packages/combat';
+import { isChargeOverEligible, computeChargeOverLandingHex, buildSwoopDropPlan as buildSwoopPlan, SwoopDropPlan } from '@/packages/combat';
 import { pursuitCandidates, hostilesLeftZoc, imposesZocOn, canMeleeAttack } from '@/packages/morale';
 import { selectPursuer, pursuitScatters } from '@/packages/morale';
 import { getSetting } from '@/packages/infra';
@@ -74,13 +74,7 @@ function describeAttachBlocker(hero: Unit, target: Unit, targetHasHero: boolean)
 
 /** A resolved swoop drop: the flyer charge-moves onto the ground target's hex,
  *  dives to melee range, and delivers the free melee charge attack atomically. */
-export interface SwoopDropPlan {
-  landHex: Hex;
-  elevation: number;
-  cost: number;
-  maxMP: number;
-  overBudget: boolean;
-}
+export type { SwoopDropPlan } from '@/packages/combat';
 
 interface CombatActionsDeps {
   units: Unit[];
@@ -1083,41 +1077,18 @@ export function useCombatActions(deps: CombatActionsDeps) {
 
   /**
    * Resolve the swoop drop for `attacker` onto `target`, or null when it does not
-   * apply: attacker must be an already-declared SWOOP (airborne + charging), the
-   * target a GROUND unit, the target hex a legal forward-charge destination (in
-   * the charge wedge, no other flyer there), the total charge distance at least a
-   * full charge, and no attached hero (the flyer drops alone — v1).
+   * apply (see `@/packages/combat` `buildSwoopDropPlan`).
    */
-  const buildSwoopDropPlan = useCallback((attacker: Unit, target: Unit): SwoopDropPlan | null => {
-    if (!isSwooping(attacker, structureSurfaceAt(attacker.hex, structures, structureTemplates)) || isAirborne(target.elevation, structureSurfaceAt(target.hex, structures, structureTemplates))) return null;
-    if (target.isDeleted || target.id === attacker.id) return null;
-    // v1: the flyer drops alone (an attached hero would need its own MOVE/ELEVATE
-    // sub-steps and a mid-command state snapshot).
-    if (units.some(u => u.attachedToUnitId === attacker.id && !u.isDeleted)) return null;
-    // A swoop is an airborne charge: it draws from the fly pool (raw flySpeed).
-    const maxMP = flyMax(attacker);
-    const budgetUnit = moveBudgetUnit(attacker, 'fly');
-    const occupied = computeOccupiedHexes(units, attacker.id, 1);
-    const threatHexes = computeThreatHexes(units, attacker.id, alliances, formationsMap, structures, structureTemplates);
-    // A loose (facing-less) flyer — e.g. a hero — has no front of its own, so its
-    // swoop wedge is aimed at the target hex; a formed flyer keeps its own facing.
-    const loose = isLooseUnit(attacker, formationsMap[attacker.currentFormation]);
-    const facing = loose ? facingToward(attacker.hex, target.hex) : attacker.facing;
-    const reach = computeChargeReachable({ hex: attacker.hex, facing }, occupied, maxMP, undefined, undefined, threatHexes, archerReactionEnabled);
-    const cost = reach.get(`${target.hex.q},${target.hex.r}`);
-    if (cost == null) return null;
-    if ((attacker.chargeDistance ?? 0) + cost < getSetting('charge_full_distance', 2)) return null;
-    const affordable = attacker.isHero
-      ? isHeroMoveAffordable(budgetUnit, cost, maxMP)
-      : isMoveAffordable(budgetUnit, cost, maxMP);
-    return {
-      landHex: { ...target.hex },
-      elevation: meleeElevationFor(attacker.elevation ?? 0, target.elevation ?? 0),
-      cost,
-      maxMP,
-      overBudget: !affordable,
-    };
-  }, [units, alliances, formationsMap, structures, structureTemplates, archerReactionEnabled]);
+  const buildSwoopDropPlan = useCallback((attacker: Unit, target: Unit): SwoopDropPlan | null =>
+    buildSwoopPlan(attacker, target, {
+      units,
+      alliances,
+      formations: formationsMap,
+      structures,
+      structureTemplates,
+      archerReactionEnabled,
+    }),
+  [units, alliances, formationsMap, structures, structureTemplates, archerReactionEnabled]);
 
   /** The plan if a swoop drop applies to this pair, else null (used by the UI to
    *  decide whether to prompt). */

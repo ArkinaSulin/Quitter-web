@@ -9,9 +9,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, GroundEffect, ALLIANCE_COLORS } from '@/types/gameProtocol';
 import { TEAMS } from '@/packages/units';
-import { planAiMoves, AiUnitPlan, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf } from '@/packages/ai';
+import { planAiMoves, AiUnitPlan, AiMark, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf } from '@/packages/ai';
 import { isUnitRouted } from '@/packages/morale';
-import { computeReachableMap, computeMovePool } from '@/packages/movement';
+import { computeReachableMap, computeMovePool, movePoolMode, flyMax, moveBudgetUnit } from '@/packages/movement';
 import { isFormationChangeAffordable } from '@/packages/movement';
 import { computeOccupiedHexes, computeThreatHexes, computeVisibleHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/packages/world';
 import { Walls, MapStructures, doorPassThroughHexes, entryBreakFormation, formationOrgLevels, loosePassThroughHexes, unitStandingSurface } from '@/packages/movement';
@@ -47,22 +47,20 @@ interface AiPanelProps {
   structures: MapStructures;
   structureTemplates: Record<string, StructureTemplate>;
   groundZones: GroundEffect[];
-  /** Tuned brain: retaliation/overkill/zone-aware. OFF = green-friendly greedy. */
-  advanced: boolean;
-  /** Preview stance, owned by ScenarioMap so role markers can use it while idle. */
-  stance: 'aggressive' | 'defensive';
-  /** Scenario flag: show the persistent role-marker legend. */
-  roleMarkersEnabled?: boolean;
-  onStanceChange: (stance: 'aggressive' | 'defensive') => void;
   /** Map grid radius (axial ring) — routed flee stops at this rim. */
   gridRadius?: number;
   /** Scenario "Reactive archery": the AI stops before a ZoC too. */
   archerReactionEnabled?: boolean;
   unitMaxMP: (unit: Unit) => number;
-  performMove: (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number) => Promise<unknown>;
-  performAttack: (attacker: Unit, target: Unit, overBudget: boolean) => Promise<unknown>;
+  performMove: (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, elevation?: number) => Promise<unknown>;
+  performAttack: (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean }) => Promise<unknown>;
   rotateUnit: (unit: Unit, dir: 'left' | 'right', maxMP: number) => Promise<unknown>;
   changeFormation: (unit: Unit, formation: string, formationsMap: Record<string, Formation>) => Promise<unknown>;
+  charge: (unit: Unit) => Promise<unknown>;
+  performChargeEnd: (unit: Unit, dropOrg: boolean) => Promise<unknown>;
+  performSwoopDrop: (attackerId: string, targetId: string) => Promise<unknown>;
+  performClimbAttack: (attackerId: string, targetId: string) => Promise<boolean>;
+  selectWeapon: (unit: Unit, weaponIndex: number) => Promise<unknown>;
   undo: () => Promise<unknown>;
   onOverlayChange: (o: AiOverlayData | null) => void;
   onBusyChange?: (busy: boolean) => void;
@@ -90,6 +88,11 @@ function buildRoutes(
       if (s.kind === 'attack') attacks.push({ from: s.from, targetHex: s.target });
       if (s.kind === 'turn') turns.push({ hex: s.from, dir: s.dir });
       if (s.kind === 'formation') formation = s.formation;
+      if (s.kind === 'climbAttack') attacks.push({ from: s.from, targetHex: s.target });
+      if (s.kind === 'swoop') {
+        waypoints.push(s.target);
+        attacks.push({ from: s.from, targetHex: s.target });
+      }
     }
     routes.push({ unitId: p.unitId, waypoints, attacks, turns, formation });
   }
@@ -115,10 +118,6 @@ export function AiPanel({
   structures,
   structureTemplates,
   groundZones,
-  advanced,
-  stance,
-  onStanceChange,
-  roleMarkersEnabled,
   gridRadius,
   archerReactionEnabled,
   unitMaxMP,
@@ -126,6 +125,11 @@ export function AiPanel({
   performAttack,
   rotateUnit,
   changeFormation,
+  charge,
+  performChargeEnd,
+  performSwoopDrop,
+  performClimbAttack,
+  selectWeapon,
   undo,
   onOverlayChange,
   onBusyChange,
@@ -133,7 +137,7 @@ export function AiPanel({
   addError,
 }: AiPanelProps) {
   const propsRef = useRef<AiPanelProps | null>(null);
-  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, structures, structureTemplates, groundZones, advanced, stance, onStanceChange, roleMarkersEnabled, gridRadius, archerReactionEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, undo, onOverlayChange, onBusyChange, addMessage, addError };
+  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, structures, structureTemplates, groundZones, gridRadius, archerReactionEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, charge, performChargeEnd, performSwoopDrop, performClimbAttack, selectWeapon, undo, onOverlayChange, onBusyChange, addMessage, addError };
 
   const [plans, setPlans] = useState<AiUnitPlan[] | null>(null);
   const [remaining, setRemaining] = useState<ExecUnit[] | null>(null); // active during Execute
@@ -147,6 +151,7 @@ export function AiPanel({
   const busyRef = useRef(false);
   const cancelRef = useRef(false);
   const autoRef = useRef(false);
+  const marksRef = useRef<AiMark[]>([]);
 
   const toggleTeam = (team: string) =>
     onSetAiTeams(aiTeams.includes(team) ? aiTeams.filter(t => t !== team) : [...aiTeams, team]);
@@ -172,7 +177,7 @@ export function AiPanel({
       setRemaining(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiTeams, aiExcluded, stance]);
+  }, [aiTeams, aiExcluded]);
 
   // Publish the overlay whenever the eligible set, opt-outs, or routes change.
   useEffect(() => {
@@ -183,6 +188,7 @@ export function AiPanel({
       checkedUnitIds: eligible.filter(id => !aiExcluded[id]),
       excludedUnitIds: excludedIds,
       routes,
+      marks: plans || remaining ? marksRef.current : [],
     });
     return () => onOverlayChange(null);
   }, [units, eligible, aiExcluded, plans, remaining, phaseTick, onOverlayChange]);
@@ -201,7 +207,7 @@ export function AiPanel({
     if (!activeGroup) return;
     setStatusText('AI thinking…');
     setBatchDone(false);
-    const next = planAiMoves({
+    const result = planAiMoves({
       units,
       alliances,
       formations: formationsMap,
@@ -214,11 +220,11 @@ export function AiPanel({
       structures,
       structureTemplates,
       groundZones,
-      advanced,
-      stance,
       gridRadius: gridRadius ?? DEFAULT_GRID_RADIUS,
       reactiveArchery: !!archerReactionEnabled,
     });
+    const next = result.plans;
+    marksRef.current = result.marks;
     setPlans(next);
     setRemaining(null);
     setStage('idle');
@@ -378,10 +384,14 @@ export function AiPanel({
     }
     try {
       if (step.kind === 'move') {
-        const maxMP = props.unitMaxMP(live);
-        const budget = computeMovePool(live, maxMP);
         const originSurface = unitStandingSurface(live, props.structures, props.structureTemplates);
-        const occ = computeOccupiedHexes(props.units, live.id, originSurface);
+        const endElevation = step.elevation ?? (live.elevation ?? 0);
+        const mode = movePoolMode(live, endElevation, originSurface);
+        const maxMP = mode === 'fly' ? flyMax(live) : props.unitMaxMP(live);
+        const budgetUnit = mode === 'fly' ? moveBudgetUnit(live, 'fly') : live;
+        const budget = computeMovePool(budgetUnit, maxMP);
+        const occSurface = mode === 'fly' ? Math.max(1, originSurface) : originSurface;
+        const occ = computeOccupiedHexes(props.units, live.id, occSurface);
         const threat = computeThreatHexes(props.units, live.id, props.alliances, props.formationsMap, props.structures, props.structureTemplates);
         const mounted = !!live.mountId || !!live.mountName;
         const waiveClimb = unitIgnoresClimb(live, props.groundZones);
@@ -401,7 +411,7 @@ export function AiPanel({
         const passThrough = new Set<string>(
           Array.from(doorPassThroughHexes(props.structures, props.structureTemplates, occ)),
         );
-        for (const k of Array.from(loosePassThroughHexes(props.units, live, props.formationsMap, props.alliances, 'ground', originSurface))) {
+        for (const k of Array.from(loosePassThroughHexes(props.units, live, props.formationsMap, props.alliances, mode === 'fly' ? 'fly' : 'ground', originSurface))) {
           passThrough.add(k);
         }
         const movementMultipliers: Record<string, number> = {};
@@ -412,12 +422,15 @@ export function AiPanel({
           breakOnEntry: (fq: number, fr: number, tq: number, tr: number, formation: string) =>
             entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, props.structures, props.structureTemplates, props.groundZones),
         };
-        const entry = computeReachableMap(live, budget, occ, threat, costOf, false, blockedEdge, undefined, passThrough, org, !!props.archerReactionEnabled).get(hexKeyOf(step.to));
+        const reachUnit = mode === 'fly'
+          ? { ...live, movementPoints: flyMax(live), movementPointsAvailable: live.flySpeedAvailable ?? 0 }
+          : live;
+        const entry = computeReachableMap(reachUnit, budget, occ, threat, costOf, false, blockedEdge, undefined, passThrough, org, !!props.archerReactionEnabled).get(hexKeyOf(step.to));
         if (!entry || entry.needsTurn || budget < 1) {
           addMessage(`${live.unitName} can no longer reach its plotted hex — skipped`);
         } else {
           setStatusText(`${live.unitName} → moves to (${step.to.q}, ${step.to.r})`);
-          await props.performMove(live, step.to, entry.cost, false, maxMP);
+          await props.performMove(live, step.to, entry.cost, false, maxMP, step.elevation);
         }
       } else if (step.kind === 'attack') {
         const target = props.units.find(u => u.id === step.targetId);
@@ -429,11 +442,11 @@ export function AiPanel({
           addMessage(isUnitRouted(live) ? `${live.unitName} is routing — it cannot attack` : `${live.unitName} can no longer attack its target — skipped`);
         } else {
           setStatusText(`${live.unitName} → attacks ${target.unitName}`);
-          await props.performAttack(live, target, false);
+          await props.performAttack(live, target, false, { isCharging: !!step.charge });
         }
       } else if (step.kind === 'turn') {
         const freeRotate = live.isHero || live.currentFormation === 'Scattered' || isUnitRouted(live);
-        if (!freeRotate && (live.movementPointsAvailable ?? 0) < 1 && (live.actionsAvailable ?? 0) < 1) {
+        if (!freeRotate && (live.movementPointsAvailable ?? 0) < 1 && (live.flySpeedAvailable ?? 0) < 1 && (live.actionsAvailable ?? 0) < 1) {
           addMessage(`${live.unitName} cannot afford the turn — remaining steps skipped`);
           head.steps.length = 0;
         } else {
@@ -454,6 +467,20 @@ export function AiPanel({
           setStatusText(`${live.unitName} → forms ${f}`);
           await props.changeFormation(live, f, props.formationsMap);
         }
+      } else if (step.kind === 'climbAttack') {
+        setStatusText(`${live.unitName} → climbs to attack`);
+        await props.performClimbAttack(live.id, step.targetId);
+      } else if (step.kind === 'charge') {
+        setStatusText(`${live.unitName} → charges`);
+        await props.charge(live);
+      } else if (step.kind === 'swoop') {
+        setStatusText(`${live.unitName} → swoops on its target`);
+        await props.performSwoopDrop(live.id, step.targetId);
+      } else if (step.kind === 'chargeEnd') {
+        await props.performChargeEnd(live, false);
+      } else if (step.kind === 'weapon') {
+        setStatusText(`${live.unitName} → switches weapon`);
+        await props.selectWeapon(live, step.weaponIndex);
       }
     } catch (err) {
       console.error('AiPanel executeOne error', err);
@@ -515,21 +542,8 @@ export function AiPanel({
       )}
 
       <div className="flex items-center gap-1.5">
-        <span className="text-[11px] uppercase tracking-wider text-gray-500">Stance</span>
-        {(['aggressive', 'defensive'] as const).map(s => (
-          <button
-            key={s}
-            className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold capitalize ${
-              stance === s
-                ? 'border-amber-400 text-amber-200 bg-amber-400/10'
-                : 'border-gray-700 text-gray-400 hover:border-gray-500'
-            }`}
-            onClick={() => onStanceChange(s)}
-            title={s === 'aggressive' ? 'Seek damage; looser line' : 'Self-protect; tighter line'}
-          >
-            {s}
-          </button>
-        ))}
+        <span className="text-[11px] uppercase tracking-wider text-gray-500">Basic rules</span>
+        <span className="text-[10px] text-gray-400">melee · ranged · flying · mounted</span>
       </div>
 
       {/* Team chips: drag into the control box (or click). */}
@@ -628,9 +642,12 @@ export function AiPanel({
         </div>
       )}
 
-      {(plans || roleMarkersEnabled) && (
+      {plans && (
         <p className="text-[10px] text-gray-400 leading-tight">
-          Role badges: <span className="text-blue-300">M melee</span> | <span className="text-red-300">A assault</span> | <span className="text-amber-300">C flanker</span> | <span className="text-violet-300">S skirmisher</span> | <span className="text-emerald-300">R reserve</span> | <span className="text-gray-300">G garrison</span></p>
+          Target marks: <span className="text-amber-300">M</span> melee (<span className="text-amber-300">2</span>/target) |
+          <span className="text-amber-300"> A</span> archer | <span className="text-amber-300">F</span> flying (1/target) |
+          <span className="text-amber-300"> C</span> mounted (1/target). Counts are independent per type.
+        </p>
       )}
 
       {executing && (

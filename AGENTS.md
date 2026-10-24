@@ -26,7 +26,21 @@ reusable maps. Here's the state:
 
 ### Completed
 
-- **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`)**:
+- **Basic AI rewrite (2026-10-23)**: the battle-role/frontage/reserve planner was
+  **replaced** by a small rule-based brain (`src/packages/ai/lib/{types,board,
+  marks,planner}.ts`). Independent per-archetype marks (melee 2/target, ranged
+  unlimited, flying 1, mounted 1 + a non-mounted friendly mark); melee stages at
+  2–3 hexes and upgrades before attacking; ranged scatters within 6, travels
+  Open and closes to shoot; flying climbs by movement (10 ft/hex, descent free),
+  swoops and retreats to 20 ft/≥2 hexes; mounted stages on a 4-hex ring (2 in
+  Close Order) and charges only on its first action into a flank/rear outside
+  ZoC. Units spend all actions (melee/ranged attack twice; mounted is the
+  charge → free attack → disengage exception). Executor gained
+  `climbAttack`/`charge`/`swoop`/`chargeEnd`/`weapon` and move `elevation`;
+  pure swoop validation moved to `combat/lib/swoop.ts`. Deleted
+  `battleLine.ts`/`reserve.ts`/`roleMarkers.ts`; Advanced AI + Stance UI hidden,
+  columns kept for a future rebuild. No migration. `npm run check` passes.
+- **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
   scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);
   Basic uses **Simple**, Advanced uses **Advance**; the AI tab has a per-preview
   **Aggressive (default) / Defensive** stance toggle (local state, no DB column).

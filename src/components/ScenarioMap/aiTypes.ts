@@ -1,22 +1,20 @@
 // Shared types between the AI-assist panel, the map overlay state and the
 // canvas renderer.
 import { Hex } from '@/types/gameProtocol';
+import type { AiMark } from '@/packages/ai';
 
-/** One unit's plotted route for preview rendering (start → waypoints → end). */
+/** One unit's plotted route for preview rendering (start -> waypoints -> end). */
 export interface AiRouteVisual {
   unitId: string;
   /** Start + every landing hex, in order (polyline waypoints). */
   waypoints: Hex[];
-  /** Attacks plotted along the route: hex the attacker fires from → target hex. */
+  /** Attacks plotted along the route: hex the attacker fires from -> target hex. */
   attacks: { from: Hex; targetHex: Hex }[];
-  /** 60° turns plotted along the route (drawn as curved glyphs). */
+  /** 60-degree turns plotted along the route (drawn as curved glyphs). */
   turns?: { hex: Hex; dir: 'left' | 'right' }[];
   /** Formation the unit will adopt first (drawn as a chip). */
   formation?: string;
 }
-
-/** Battle-role badge shown on a token during AI preview/execute. */
-export type AiRoleMarker = 'M' | 'A' | 'C' | 'S' | 'R' | 'G';
 
 /** Everything the canvas needs to draw for the AI assist UI. */
 export interface AiOverlayData {
@@ -26,6 +24,6 @@ export interface AiOverlayData {
   excludedUnitIds: string[];
   /** Preview/execute routes to draw (empty when idle). */
   routes: AiRouteVisual[];
-  /** Debug role badge per unit id. */
-  roles?: Record<string, AiRoleMarker>;
+  /** Independent per-archetype target marks. */
+  marks?: AiMark[];
 }

@@ -767,25 +767,21 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     // AI-selected units, grey opt-out badges on AI-excluded-but-eligible units,
     // and preview/execute routes (polyline + crossed swords for attacks + a
     // ghost at the final hex). Routes dim unless hovered.
-    if (aiOverlay && (aiOverlay.checkedUnitIds.length > 0 || aiOverlay.excludedUnitIds.length > 0 || aiOverlay.routes.length > 0 || Object.keys(aiOverlay.roles ?? {}).length > 0)) {
+    if (aiOverlay && (aiOverlay.checkedUnitIds.length > 0 || aiOverlay.excludedUnitIds.length > 0 || aiOverlay.routes.length > 0 || (aiOverlay.marks?.length ?? 0) > 0)) {
       const byId = new Map(displayUnits.map(u => [u.id, u]));
       // Checkmarks: fixed on-screen size (does not grow with zoom).
       const badgeR = 9;
-      // Large white role letter over the troop circles (upper 2/3), drawn under
-      // the checkmarks/routes so those stay readable. White + dark outline reads
-      // across every team colour.
-      const roleLabel: Record<string, string> = {
-        M: 'M',
-        A: 'A',
-        C: 'C',
-        S: 'S',
-        R: 'R',
-        G: 'G',
-      };
-      for (const [id, role] of Object.entries(aiOverlay.roles ?? {})) {
-        if (!roleLabel[role]) continue;
+      // Independent per-archetype target marks (melee / archer / flying / mounted).
+      const markLetter: Record<string, string> = { melee: 'M', ranged: 'A', flying: 'F', mounted: 'C' };
+      const byTarget = new Map<string, Record<string, number>>();
+      for (const mark of aiOverlay.marks ?? []) {
+        const counts = byTarget.get(mark.targetId) ?? {};
+        counts[mark.kind] = (counts[mark.kind] ?? 0) + 1;
+        byTarget.set(mark.targetId, counts);
+      }
+      byTarget.forEach((counts, id) => {
         const u = byId.get(id);
-        if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
+        if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) return;
         const pos = hexToPixel(u.hex, HEX_SIZE);
         const climbTarget = parseClimbTo(u.climbTo);
         const elev = targetFilter === 'air'
@@ -796,22 +792,25 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
               climbTarget ? hexDirection(u.hex, climbTarget, HEX_SIZE) : undefined,
             );
         const cx = pos.x * currentZoom + offsetX + elev.dx * currentZoom;
-        const cy = pos.y * currentZoom + offsetY + elev.dy * currentZoom;
-        const label = roleLabel[role];
-        const fontSize = Math.max(14, Math.min(tokenWidth, tokenHeight) * 0.5);
-        const textY = cy;
+        const cy = pos.y * currentZoom + offsetY + elev.dy * currentZoom - tokenHeight * 0.5;
+        const text = (['melee', 'ranged', 'flying', 'mounted'] as const)
+          .filter(k => counts[k])
+          .map(k => `${markLetter[k]}${counts[k]}`)
+          .join(' ');
+        if (!text) return;
+        const fontSize = Math.max(9, Math.min(13, tokenWidth * 0.22));
         ctx.save();
-        ctx.globalAlpha = 0.6;
+        ctx.globalAlpha = 0.9;
         ctx.font = `bold ${fontSize}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.lineWidth = Math.max(2, fontSize * 0.08);
-        ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeText(label, cx, textY);
-        ctx.fillText(label, cx, textY);
+        ctx.lineWidth = Math.max(2, fontSize * 0.18);
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillStyle = '#fde68a';
+        ctx.strokeText(text, cx, cy);
+        ctx.fillText(text, cx, cy);
         ctx.restore();
-      }
+      });
       for (const id of aiOverlay.checkedUnitIds) {
         const u = byId.get(id);
         if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;

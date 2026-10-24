@@ -115,76 +115,39 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
 - ⏳ Rout-modal/eventual AI handling of the new pursue (AI planner ignores it for v1).
 
 ## AI assist
-- 📌 **Current status (2026-10-21):** Pass 1 + 2a + 2b plus the post-playtest
-  fixes are shipped through `a6469cc` (strict no-turn, defensive one-plan
-  advance, battle roles, front-line-only pairing, fast flankers, ring-3 staging
-  + facing, structure hold, ranged stand-off/reaction, reserve hold/intercept,
-  rout re-evaluation + hostile-mass flee, last-action attack fallback). The
-  reserve was then reworked into a whole-line reaction force: leading-rank
-  frontage, rear-rank reserves at a central ~2-hex station, sector groups for
-  long lines, Scattered waiting, surplus-only pairing (`enemyFront > ownFront +
-  1`), forward-band-only targeting, flank/rear reaction, routing-hole patching,
-  and cluster-cap exemption while reacting. Follow-up anti-idle pass: adjacent
-  near-breakeven attacks (multi-action), nearest-reachable-enemy fallback when a
-  lane is blocked, fastest surplus units forced to flank when contiguity is
-  kept, flankers retargeting/circling at >=3 hexes and never closer than the
-  friendly line, closing after the frontage locks (same-turn dash allowed),
-  whole-line pairing before reserves (short leading ranks promote rear units;
-  true surplus stays reserve), one-shot defensive attack-exposure facing, and
-  per-player Advanced-AI role overlay (device-local; DM all, players own team).
-  Migration 130 is applied; **131 is superseded by 132
-  (`132_drop_ai_role_markers`, drops the old column) awaiting apply**. The AI
-  package is the source of truth:
-  `src/packages/ai/lib/{planner,battleLine,reserve,roleMarkers}.ts`,
-  `src/packages/ai/tests/planner.test.ts`, `src/components/ScenarioMap/AiPanel.tsx`;
+- 📌 **Current status (2026-10-23):** the role/battle-line planner was **replaced
+  by the Basic brain**. The AI tab is unchanged (Preview → Execute, opt-out,
+  undo); the decision layer is now four small doctrines driven by independent
+  per-archetype target marks. Legacy files `battleLine.ts`, `reserve.ts` and
+  `roleMarkers.ts` were removed. Source of truth:
+  `src/packages/ai/lib/{planner,board,marks,types}.ts`,
+  `src/packages/ai/tests/planner.test.ts`,
+  `src/packages/combat/lib/swoop.ts`, `src/components/ScenarioMap/AiPanel.tsx`;
   design in `docs/dev/17-enemy-ai.md`.
-- **Role-overlay prerequisites/known gaps:** apply migration 132; the option is
-  Scenario Settings -> This device -> **Show AI role overlay**. It is available
-  only with Advanced AI on and DM/allow-players access. Badges require at least
-  one team in the AI control box and a Turn 1+ active alliance.
-  `aiTeams`/`aiExcluded` are session-local, so badges disappear after reload;
-  persist them and add an empty-state hint. Taxonomy and fill-in role forms live
-  in `.scratch/ai-role-system/notes.md`. Shock/A behaviour is deferred (A is
-  display-only).
-- **Next session:** playtest the latest role/staging/reserve behaviour, then the
-  remaining rounds in order — **2a archers + artillery → 3 mounted charges → 4
-  full coordination → 5 full auto-turn**. Known separate bug from playtest: the
-  **turn counter** appeared to be broken/desynced; reproduce before changing
-  turn advancement.
+- ✅ **Basic rules shipped:** active-alliance/team/opt-out gates; hero and
+  hero-hosted exclusion; marks (melee 2/target, ranged unlimited, flying 1,
+  mounted 1 + a non-mounted friendly mark); melee formation priority (stage at
+  2–3 hexes, upgrade to max org, never attack before fully upgraded); safe
+  destinations (never advance into a flank/rear); ZoC facing (min flank/rear →
+  max front); multiple actions/attacks per activation; ranged Scattered within
+  6, Open otherwise, Close to shoot; 10-ft-per-hex free climb bound with free
+  descent; flying charge + swoop and a 20-ft / ≥2-hex retreat; mounted ring
+  staging, first-action flank/rear charge, disengage, formation upgrade.
+- 🔜 **Advanced AI is paused.** Scenario column `ai_assist_advanced` is kept for
+  the later rebuild; its checkbox and the old Stance toggle are hidden. Rebuild
+  Advanced **on top of** the Basic planner (shared board/marks/approach helpers)
+  instead of reviving the deleted role planner.
+- 🔜 **Next session:** playtest Basic on real maps (especially mounted charge
+  corridors, flying swoop/retreat and melee staging), then layer Advanced
+  (retaliation value, focus fire, line coordination, full auto-turn). Known
+  separate bug from playtest: the **turn counter** appeared to be
+  broken/desynced; reproduce before changing turn advancement.
 - 🔜 **Full AI mode** (auto whole-turn director: watches turn, runs the plot,
   auto-answers rout/reaction prompts, auto End Turn) on top of the existing
   planner + Execute driver.
-- ✅ **Pass 2a** shipped: line-order target/lane assignment (order-independent),
-  assigned-lane plan order, neutral hex-hash tie-break, leftover-MP movement
-  with a scored hold, Aggressive/Defensive AI-tab stance, cohesion (1–2-hex line
-  + 8-hex isolation) scaled by AGR. Test-85 red-line and yellow/black 6-vs-6
-  regressions.
-- ✅ **Pass 2b** shipped: aggressive advance low-AC/isolated target priority +
-  non-lethal melee-lock avoidance; defensive safety weighting and ranged ZoC
-  avoidance; defensive ranged formation posture (Close far/no fire → Open/
-  Scattered under fire → Scattered before melee); defensive cluster speed capped
-  to the slowest member (slowest planned first). Charges remain Round 3.
-- 🔜 **Round 2a — archers + artillery**: LOS/indirect-shot polish, focus fire,
-  and the war-machine slice (AI-only immobility while operating, fixed facing,
-  `expectedWarMachineDamage`, `bombard` steps that pause for marker placement;
-  routed crew flees normally, the weapon structure stays).
-- ⏳ **Round 3 mounted charges**, then AI magic / reactions / hero attach.
-- ⏳ Per-team doctrine toggles (currently auto by weapon type).
-- ⏳ Advanced formation changes **Phase 2**: anticipate ranged damage and allow
-  higher-AC changes outside a ZoC.
-- ⏳ AI still ignores **flight** and some elevation/climb nuances (structures and
-  per-surface occupancy now feed the planner).
-- ✅ **Pass 1** (safety/coherence): multi-maneuver one-pool movement (mounted
-  move/turn/charge path allowed), no generic contact tax, no-attack turn
-  surcharge, conditional target exclusion, line-bearing penalty at any distance,
-  per-unit step budget; test-85 red-line regression.
-- ✅ Basic/Advanced flag + player access flag (migration 130); both brains have
-  self-preservation (own flank/rear exposure, path bypass, turn economy) and
-  formation-aware retaliation; Advanced adds trade/overkill value and ZoC-
-  triggered formation changes.
-- ✅ v0/v2/v3 shipped: plotting, turns/formation, doctrines, stand-off, cheap
-  flanking, routed flee-to-rim, per-unit opt-out, real map context, darkvision fog.
-- ✅ By design: AI **never** controls heroes or hero-hosted units.
+- ⏳ **Basic follow-ups:** ladder-edge selection for climb targets, artillery /
+  war-machine steps, AI magic/reactions/hero attach, and per-team doctrine
+  toggles. AI still never controls heroes or hero-hosted units.
 
 ## Spelljammer module (largest remaining)
 Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.md`,

@@ -1,5 +1,29 @@
 # QuiTTER Changelog
 
+## Basic AI rewrite: simple archetype rules + independent marks (2026-10-23)
+**Files:** src/packages/ai/{index.ts,lib/{types,board,marks,planner}.ts,tests/planner.test.ts}, src/packages/combat/{index.ts,lib/swoop.ts}, src/components/ScenarioMap/{AiPanel.tsx,aiTypes.ts,useCanvasDraw.ts,useCombatActions.ts,ScenarioMap.tsx}, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- Replaced the battle-role/frontage/reserve planner with a small rule-based
+  **Basic** brain. Deleted `battleLine.ts`, `reserve.ts` and `roleMarkers.ts`.
+- **Independent target marks per archetype:** melee 2/target, ranged unlimited,
+  flying 1, mounted 1 + a non-mounted friendly mark. Targets can carry marks
+  from several archetypes at once; the preview draws per-type badges.
+- **Melee** stages at 2–3 hexes and upgrades to max org before attacking, never
+  advances into a flank/rear, and chooses facings by min flank/rear ZoC sources
+  then max front sources. **Ranged** scatters inside 6 hexes, travels Open, and
+  closes only to shoot (short bow at range 7 works in Close Order). **Flying**
+  climbs by movement (10 ft/hex, descent free), swoops, then retreats to 20 ft
+  and ≥2 hexes. **Mounted** stages on a 4-hex ring (2 in Close Order) and
+  charges only on its first action into a flank/rear outside ZoC.
+- Units use all actions/MP/FP: melee/ranged make two attacks when possible;
+  mounted is the designed charge → free attack → disengage exception.
+- Added executor steps `climbAttack`, `charge`, `swoop`, `chargeEnd`, `weapon`
+  and a move `elevation`; extracted the pure swoop validation to
+  `combat/lib/swoop.ts`.
+- Hidden the paused Advanced AI / Stance UI; kept `ai_assist_advanced` for the
+  future rebuild. No migration.
+- Verification: `npm run check` passes (tsc, 1087 tests, depcruise, build).
+
 ## Center AI role letters on tokens (2026-10-21)
 **Files:** src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{17-enemy-ai,changelog}.md, docs/players/player-manual.md, AGENTS.md, .scratch/ai-role-system/notes.md
 
