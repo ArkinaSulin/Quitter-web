@@ -366,6 +366,9 @@ export function computeReachableMap(
    *  non-threat hex and the entry is a separate move (`hops <= 1`). Normal moves
    *  leave this false (you may stop ON a threat hex). */
   stopBeforeThreat = false,
+  /** Skip turn states (the caller already pre-rotated to the chosen facing).
+   *  Used by the AI maneuver search to shrink the state space. */
+  forwardOnly = false,
 ): Map<string, MovePathEntry> {
   const stepCap = hopCap ?? maxMP;
   const isPass = (k: string): boolean => passThrough?.has(k) ?? false;
@@ -480,7 +483,7 @@ export function computeReachableMap(
 
     // Turns: 60° ±1 (1 MP each) and a 180° about-turn (setting cost). Formed
     // units only; loose move omnidirectionally and never turn.
-    if (!looseHere) {
+    if (!looseHere && !forwardOnly) {
       const blockedFacing = aboutTurnBlocked(cur.formation) ? (unit.facing + 3) % 6 : -1;
       for (const nf of [rotateLeft(cur.facing), rotateRight(cur.facing)]) {
         if (nf === blockedFacing) continue;

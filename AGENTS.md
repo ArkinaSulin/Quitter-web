@@ -55,8 +55,10 @@ reusable maps. Here's the state:
   structure top moves normally). Melee finds free top gaps and climbs into a
   complex to fight interior top targets; mounted/flying are exempt. Routed
   enemies are fallback-only: ignored while any non-routed enemy exists;
-  mid-execution attacks retarget to the next legal non-routed unit. No migration.
-  `npm run check` passes.
+  mid-execution attacks retarget to the next legal non-routed unit. **Preview**
+  runs the full plot in a one-shot Web Worker with hydrated game settings; the
+  UI stays responsive, Cancel/Reset terminates immediately, and a 30s watchdog
+  only reports a genuine hang. No migration. `npm run check` passes.
 - **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
   scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);
   Basic uses **Simple**, Advanced uses **Advance**; the AI tab has a per-preview

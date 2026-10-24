@@ -12,6 +12,12 @@ export function invalidateSettingsCache(): void {
   inflight = null;
 }
 
+/** Seed the in-memory settings cache from an external snapshot (worker). */
+export function hydrateSettingsCache(settings: Record<string, unknown> | null | undefined): void {
+  cache = settings ? { ...settings } : {};
+  inflight = null;
+}
+
 /** Fetch all settings rows into the in-memory cache (idempotent, shared). */
 export async function loadSettings(): Promise<Record<string, unknown>> {
   if (cache) return cache;

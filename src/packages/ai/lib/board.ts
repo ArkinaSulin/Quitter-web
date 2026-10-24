@@ -535,7 +535,7 @@ export function maneuversFor(
     if (pool < 1) return;
     const reach = computeReachableMap(
       reachUnit(state), pool, movement.occupied, movement.threat, movement.costOfHex, false,
-      movement.blockedEdge, undefined, movement.passThrough, movement.org, !!ctx.reactiveArchery,
+      movement.blockedEdge, undefined, movement.passThrough, movement.org, !!ctx.reactiveArchery, true,
     );
     reach.forEach((entry, key) => {
       if (entry.needsTurn) return;

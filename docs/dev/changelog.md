@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## AI Preview: one-shot worker + planner optimization (2026-10-24)
+**Files:** src/workers/{aiPlanner.worker.ts,aiPlanner.types.ts}, src/packages/infra/lib/settingsCache.ts, src/components/ScenarioMap/AiPanel.tsx, src/packages/ai/lib/{planner,board}.ts, src/packages/movement/lib/moveCost.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- Preview now runs `planAiMoves` in a **one-shot Web Worker**, with the game-settings
+  snapshot hydrated in the worker. The main thread stays responsive and no longer
+  disconnects from Supabase while planning.
+- The worker returns the **full plot** (no truncation). Preview shows “AI thinking”,
+  can be cancelled, and the worker is terminated immediately on reset/unmount/new
+  Preview. A 30s watchdog only reports a genuine hang.
+- Planner optimizations (same rules): one maneuver list shared across engage /
+  stage / progress; forward-only reachable maps after pre-rotation; cached
+  structure complexes, top-access routes and base reverse maps; fewer per-unit
+  plan iterations.
+- Verification: `npm run check` passes (tsc, 1121 tests, depcruise, worker build).
+
 ## AI: melee climbs into free structure-top gaps (2026-10-24)
 **Files:** src/packages/ai/lib/{types,planner}.ts, src/components/ScenarioMap/{AiPanel,ScenarioMap}.tsx, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 

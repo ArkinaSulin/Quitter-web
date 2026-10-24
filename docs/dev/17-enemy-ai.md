@@ -44,7 +44,26 @@ Preview/Execute, answers prompts, and presses End Turn.
 | Overlay types | `src/components/ScenarioMap/aiTypes.ts` |
 | Canvas overlay (routes/marks) | `useCanvasDraw.ts` |
 | Scenario wiring / access gates | `ScenarioMap.tsx` |
+| One-shot Preview worker | `src/workers/aiPlanner.worker.ts` |
+| Worker request/response types | `src/workers/aiPlanner.types.ts` |
 | Columns | `supabase/migrations/076_ai_assist.sql`, `130_ai_assist_flags.sql` |
+
+## Preview execution and performance
+
+- **Preview runs in a one-shot Web Worker.** The main thread sends the `AiPlanContext`
+  and an `admin_game_settings` snapshot (hydrated into the worker's settings cache),
+  so movement/combat helpers use the same values as the UI. The full plot is
+  computed off-thread; the canvas and Supabase realtime stay responsive.
+- The worker returns the **complete plot** (no truncation/partial plot). The panel
+  shows “AI thinking…” and disables Preview while it runs; Cancel/Reset, panel
+  close and a new Preview terminate the worker immediately. Late results from a
+  terminated worker are ignored.
+- A **30-second watchdog** terminates a hung worker and shows an error; it is a
+  safety net, not a partial-result mode.
+- Planner optimizations (same rules): one maneuver list shared across
+  engage/stage/progress; forward-only reach after pre-rotation; cached structure
+  complexes, top-access routes and base reverse maps; reduced per-unit plan
+  iterations.
 
 ## Eligibility (unchanged)
 

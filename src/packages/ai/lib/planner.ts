@@ -42,6 +42,9 @@ interface Runtime {
   passThroughMaps: Map<string, Set<string>>;
   complexes: Map<string, StructureComplex | null>;
   reverseMaps: Map<string, Map<string, number>>;
+  reverseHexMaps: Map<string, Map<string, number>>;
+  complexByHex: Map<string, StructureComplex | null>;
+  topAccessCache: Map<string, TopAccess | null>;
   commit: (unit: Unit) => void;
   setTarget: (unitId: string, targetId: string) => void;
   candidates: (unit: Unit, kind: AiArchetype) => Unit[];
@@ -270,6 +273,17 @@ function reverseMapFor(rt: Runtime, unit: Unit, target: Unit): Map<string, numbe
   return map;
 }
 
+function reverseHexMapFor(rt: Runtime, unit: Unit, hex: Hex): Map<string, number> {
+  const key = `${unit.id}|${hexKeyOf(hex)}`;
+  const cached = rt.reverseHexMaps.get(key);
+  if (cached) return cached;
+  const complex = rt.complexes.get(unit.id) ?? null;
+  const movement = movementContextFor(unit, rt.working, rt.ctx, 'ground', complex);
+  const map = reverseDistanceMap(hex, unit, { ...rt.ctx, units: rt.working }, 'ground', movement);
+  rt.reverseHexMaps.set(key, map);
+  return map;
+}
+
 /**
  * Last-resort movement for a unit that has no useful action. Dropping to
  * Scattered makes movement omnidirectional (free turns), which lets a boxed-in
@@ -388,14 +402,36 @@ function isOccupiedAt(rt: Runtime, hex: Hex, surface: number, excludeId: string)
  * Find the best way for a non-mounted melee unit to reach a target standing on
  * a structure top: a base hex + a free top hex ("gap") to climb into.
  */
+function complexForHex(rt: Runtime, hex: Hex): StructureComplex | null {
+  const key = hexKeyOf(hex);
+  if (rt.complexByHex.has(key)) return rt.complexByHex.get(key) ?? null;
+  const complex = structureComplexFor({ hex }, rt.ctx);
+  rt.complexByHex.set(key, complex);
+  return complex;
+}
+
 function topAccessFor(unit: Unit, target: Unit, rt: Runtime): TopAccess | null {
-  if (unit.mountId || unit.mountName || unit.isCharging) return null;
+  const cacheKey = `${unit.id}|${target.id}|${hexKeyOf(unit.hex)}`;
+  if (rt.topAccessCache.has(cacheKey)) return rt.topAccessCache.get(cacheKey) ?? null;
   const topSurface = surfaceAt(target.hex, rt.ctx);
-  if (topSurface <= unitSurface(unit, rt.ctx)) return null;
-  const complex = structureComplexFor({ hex: target.hex }, rt.ctx);
-  if (!complex) return null;
+  if (topSurface <= unitSurface(unit, rt.ctx)) {
+    rt.topAccessCache.set(cacheKey, null);
+    return null;
+  }
+  if (unit.mountId || unit.mountName || unit.isCharging) {
+    rt.topAccessCache.set(cacheKey, null);
+    return null;
+  }
+  const complex = complexForHex(rt, target.hex);
+  if (!complex) {
+    rt.topAccessCache.set(cacheKey, null);
+    return null;
+  }
   const map = rt.groundMaps.get(unit.id);
-  if (!map) return null;
+  if (!map) {
+    rt.topAccessCache.set(cacheKey, null);
+    return null;
+  }
 
   let best: TopAccess | null = null;
   for (const key of Array.from(complex.hexes)) {
@@ -423,6 +459,7 @@ function topAccessFor(unit: Unit, target: Unit, rt: Runtime): TopAccess | null {
       }
     }
   }
+  rt.topAccessCache.set(cacheKey, best);
   return best;
 }
 
@@ -443,7 +480,7 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     return u;
   }
 
-  for (let guard = 0; guard < 16; guard++) {
+  for (let guard = 0; guard < 8; guard++) {
     // Formation has absolute priority: never attack before fully upgraded.
     if (!isFullyUpgraded(u, rt.ctx)) {
       const ordered = candidates
@@ -581,30 +618,36 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
 
     const tryTarget = (candidate: Unit): Unit | null => {
       const reverse = reverseMapFor(rt, u, candidate);
-      const tryMode = (mode: 'engage' | 'stage' | 'progress'): Unit | null => {
-        const m = bestManeuver(u, rt, 'ground', (man, threat) => {
-          if (man.path.length === 0) return -Infinity;
-          if (isFlankedAt(man.dest, man.facing, rt.enemies, candidate.id)) return -Infinity;
-          const remaining = reverse.get(hexKeyOf(man.dest)) ?? Infinity;
-          if (!Number.isFinite(remaining)) return -Infinity;
-          const d = hexDistance(man.dest, candidate.hex);
-          if (mode === 'engage') {
-            if (d !== 1) return -Infinity;
-            return -remaining * 100 - man.cost * 2 - man.turns.length * 2;
-          }
-          if (mode === 'stage') {
-            // Stay outside ZoC until the unit is committed to the final approach.
-            if (threat.has(hexKeyOf(man.dest))) return -Infinity;
-            return -Math.abs(remaining - 3) * 100 - man.cost * 2 - man.turns.length * 2;
-          }
-          return -remaining * 100 - man.cost * 2 - man.turns.length * 2
-            - (threat.has(hexKeyOf(man.dest)) ? 20 : 0);
-        });
-        if (!m) return null;
-        if (candidate.id !== (rt.byUnit.get(u.id) ?? null)) rt.setTarget(u.id, candidate.id);
-        return pushMove(plan, u, m, rt.ctx);
-      };
-      return tryMode('engage') ?? tryMode('stage') ?? tryMode('progress');
+      const complex = rt.complexes.get(u.id) ?? null;
+      const movement = movementContextFor(u, rt.working, rt.ctx, 'ground', complex);
+      const list = maneuversFor(u, rt.working, rt.ctx, 'ground', complex);
+      type Pick = { maneuver: Maneuver; score: number };
+      let engage: Pick | null = null;
+      let stage: Pick | null = null;
+      let progress: Pick | null = null;
+      for (const man of list) {
+        if (man.path.length === 0) continue;
+        if (isFlankedAt(man.dest, man.facing, rt.enemies, candidate.id)) continue;
+        const remaining = reverse.get(hexKeyOf(man.dest)) ?? Infinity;
+        if (!Number.isFinite(remaining)) continue;
+        const d = hexDistance(man.dest, candidate.hex);
+        const baseScore = -man.cost * 2 - man.turns.length * 2;
+        const inZoc = movement.threat.has(hexKeyOf(man.dest));
+        if (d === 1) {
+          const score = -remaining * 100 + baseScore;
+          if (!engage || score > engage.score) engage = { maneuver: man, score };
+        }
+        if (!inZoc) {
+          const score = -Math.abs(remaining - 3) * 100 + baseScore;
+          if (!stage || score > stage.score) stage = { maneuver: man, score };
+        }
+        const pScore = -remaining * 100 + baseScore - (inZoc ? 20 : 0);
+        if (!progress || pScore > progress.score) progress = { maneuver: man, score: pScore };
+      }
+      const best = engage ?? stage ?? progress;
+      if (!best) return null;
+      if (candidate.id !== (rt.byUnit.get(u.id) ?? null)) rt.setTarget(u.id, candidate.id);
+      return pushMove(plan, u, best.maneuver, rt.ctx);
     };
 
     const planTop = (target: Unit, access: TopAccess): { unit: Unit; stop: boolean } | null => {
@@ -624,7 +667,7 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
             movementPointsAvailable: applied.movementPointsAvailable,
             actionsAvailable: applied.actionsAvailable,
           };
-          const c = structureComplexFor({ hex: target.hex }, rt.ctx);
+          const c = complexForHex(rt, target.hex);
           if (c) rt.complexes.set(u.id, c);
           return { unit: updated, stop: false };
         }
@@ -639,8 +682,7 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
       }
 
       // Move toward the chosen base hex.
-      const movement = movementContextFor(u, rt.working, rt.ctx, 'ground', rt.complexes.get(u.id) ?? null);
-      const reverse = reverseDistanceMap(access.baseHex, u, { ...rt.ctx, units: rt.working }, 'ground', movement);
+      const reverse = reverseHexMapFor(rt, u, access.baseHex);
       const m = bestManeuver(u, rt, 'ground', (man) => {
         if (man.path.length === 0) return -Infinity;
         if (isFlankedAt(man.dest, man.facing, rt.enemies, null)) return -Infinity;
@@ -1109,6 +1151,9 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
     passThroughMaps,
     complexes,
     reverseMaps: new Map(),
+    reverseHexMaps: new Map(),
+    complexByHex: new Map(),
+    topAccessCache: new Map(),
     commit: (unit) => {
       const idx = working.findIndex(w => w.id === unit.id);
       if (idx >= 0) working[idx] = unit;

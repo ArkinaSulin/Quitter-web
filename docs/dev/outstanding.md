@@ -153,6 +153,11 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   a finished structure top is normal ground). Melee also finds **free top gaps**
   and climbs into a complex to fight interior top targets; mounted/flying are
   exempt. Mounted staging/charge also retargets.
+- ✅ **AI Preview worker (2026-10-24):** Preview runs the full planner in a
+  one-shot Web Worker with a hydrated settings snapshot, so the UI and Supabase
+  realtime stay responsive. Cancel/reset terminates immediately; a 30s watchdog
+  reports a genuine hang. Planner optimizations: shared maneuver list across
+  modes, forward-only reach, cached complexes/top-access/base maps.
 - 🔜 **Advanced AI is paused.** Scenario column `ai_assist_advanced` is kept for
   the later rebuild; its checkbox and the old Stance toggle are hidden. Rebuild
   Advanced **on top of** the Basic planner (shared board/marks/approach helpers)

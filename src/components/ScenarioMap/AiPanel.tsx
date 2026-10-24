@@ -20,6 +20,8 @@ import { StructureTemplate } from '@/types/structure';
 import { legalTargets } from '@/packages/ai';
 import { unitAttackCap } from '@/packages/combat';
 import { supabase } from '@/packages/infra/supabase';
+import { loadSettings, hydrateSettingsCache } from '@/packages/infra';
+import type { AiPlannerRequest, AiPlannerResponse } from '../../workers/aiPlanner.types';
 import { AiOverlayData } from './aiTypes';
 
 type AiStep = AiUnitPlan['steps'][number];
@@ -151,6 +153,7 @@ export function AiPanel({
   // A batch finished executing and can be undone with "Undo Execute".
   const [batchDone, setBatchDone] = useState(false);
   const [statusText, setStatusText] = useState('');
+  const [thinking, setThinking] = useState(false);
   const [phaseTick, setPhaseTick] = useState(0); // bump to refresh derived UI/overlay
   const remainingRef = useRef<ExecUnit[]>([]);
   const baselineRef = useRef<string | null>(null);
@@ -158,6 +161,30 @@ export function AiPanel({
   const cancelRef = useRef(false);
   const autoRef = useRef(false);
   const marksRef = useRef<AiMark[]>([]);
+  const workerRef = useRef<Worker | null>(null);
+  const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewIdRef = useRef(0);
+
+  const stopPreview = () => {
+    previewIdRef.current += 1;
+    workerRef.current?.terminate();
+    workerRef.current = null;
+    if (watchdogRef.current) {
+      clearTimeout(watchdogRef.current);
+      watchdogRef.current = null;
+    }
+    setThinking(false);
+  };
+
+  useEffect(() => () => {
+    previewIdRef.current += 1;
+    workerRef.current?.terminate();
+    workerRef.current = null;
+    if (watchdogRef.current) {
+      clearTimeout(watchdogRef.current);
+      watchdogRef.current = null;
+    }
+  }, []);
 
   const toggleTeam = (team: string) =>
     onSetAiTeams(aiTeams.includes(team) ? aiTeams.filter(t => t !== team) : [...aiTeams, team]);
@@ -200,7 +227,7 @@ export function AiPanel({
   }, [units, eligible, aiExcluded, plans, remaining, phaseTick, onOverlayChange]);
 
   const activeGroup = currentTurnAlliance;
-  const canPlot = activeGroup !== null && aiTeams.length > 0 && stage === 'idle';
+  const canPlot = activeGroup !== null && aiTeams.length > 0 && stage === 'idle' && !thinking;
 
   const visibleHexes = useMemo(() => {
     if (!fogOfWarEnabled || !activeGroup) return null;
@@ -209,11 +236,12 @@ export function AiPanel({
     return computeVisibleHexes(units, activeGroup, alliances, sightRadius);
   }, [units, alliances, fogOfWarEnabled, sightRadius, activeGroup]);
 
-  const handlePreview = () => {
-    if (!activeGroup) return;
+  const handlePreview = async () => {
+    if (!activeGroup || thinking) return;
+    setThinking(true);
     setStatusText('AI thinking…');
     setBatchDone(false);
-    const result = planAiMoves({
+    const ctx = {
       units,
       alliances,
       formations: formationsMap,
@@ -229,21 +257,92 @@ export function AiPanel({
       gridRadius: gridRadius ?? DEFAULT_GRID_RADIUS,
       reactiveArchery: !!archerReactionEnabled,
       chargeEnabled,
-    });
-    const next = result.plans;
-    marksRef.current = result.marks;
-    setPlans(next);
-    setRemaining(null);
-    setStage('idle');
-    setStatusText(next.length > 0 ? `Plot ready: ${next.length} unit(s) will act` : 'No unit has a useful action');
+    };
+    const applyResult = (result: { plans: AiUnitPlan[]; marks: AiMark[] }, elapsedMs?: number) => {
+      marksRef.current = result.marks;
+      setPlans(result.plans);
+      setRemaining(null);
+      setStage('idle');
+      setStatusText(result.plans.length > 0
+        ? `Plot ready: ${result.plans.length} unit(s)${elapsedMs != null ? ` (${elapsedMs} ms)` : ''}`
+        : 'No unit has a useful action');
+    };
+
+    let settings: Record<string, unknown> = {};
+    const requestId = previewIdRef.current + 1;
+    previewIdRef.current = requestId;
+    try {
+      settings = await loadSettings();
+    } catch {
+      settings = {};
+    }
+    if (previewIdRef.current !== requestId) return; // reset while settings loaded
+
+    try {
+      if (typeof Worker === 'undefined') {
+        hydrateSettingsCache(settings);
+        applyResult(planAiMoves(ctx));
+        setThinking(false);
+        return;
+      }
+      const worker = new Worker(new URL('../../workers/aiPlanner.worker.ts', import.meta.url));
+      workerRef.current = worker;
+      watchdogRef.current = setTimeout(() => {
+        if (workerRef.current !== worker) return;
+        worker.terminate();
+        workerRef.current = null;
+        watchdogRef.current = null;
+        setThinking(false);
+        addError('AI preview timed out after 30 seconds — try fewer AI teams or a smaller map.');
+        setStatusText('AI preview timed out.');
+      }, 30_000);
+      worker.onmessage = (event: MessageEvent<AiPlannerResponse>) => {
+        if (previewIdRef.current !== requestId) return;
+        const { result, error, elapsedMs } = event.data;
+        worker.terminate();
+        workerRef.current = null;
+        if (watchdogRef.current) {
+          clearTimeout(watchdogRef.current);
+          watchdogRef.current = null;
+        }
+        setThinking(false);
+        if (error || !result) {
+          addError(`AI preview failed: ${error ?? 'no result'}`);
+          setStatusText('AI preview failed.');
+          return;
+        }
+        applyResult(result, elapsedMs);
+      };
+      worker.onerror = (event) => {
+        if (previewIdRef.current !== requestId) return;
+        worker.terminate();
+        workerRef.current = null;
+        if (watchdogRef.current) {
+          clearTimeout(watchdogRef.current);
+          watchdogRef.current = null;
+        }
+        setThinking(false);
+        addError(`AI preview failed: ${event.message || 'worker error'}`);
+        setStatusText('AI preview failed.');
+      };
+      const request: AiPlannerRequest = { id: requestId, ctx, settings };
+      worker.postMessage(request);
+    } catch (err) {
+      setThinking(false);
+      addError(`AI preview failed: ${err instanceof Error ? err.message : String(err)}`);
+      setStatusText('AI preview failed.');
+    }
   };
 
   const handleReset = () => {
+    stopPreview();
     setPlans(null);
     setRemaining(null);
     setStage('idle');
     setStatusText('');
-  };  const topLiveId = async (): Promise<string | null> => {
+  };
+
+  const topLiveId = async (): Promise<string | null> => {
     try {
       const { data } = await supabase
         .from('scenario_command_log')
@@ -646,14 +745,14 @@ export function AiPanel({
           <button
             className={`${btn} bg-emerald-700 hover:bg-emerald-600 text-white`}
             disabled={!canPlot}
-            onClick={handlePreview}
+            onClick={() => void handlePreview()}
             title="Compute the plot and draw routes"
           >
             Preview
           </button>
-          {plans && (
+          {(plans || thinking) && (
             <button className={`${btn} bg-gray-700 hover:bg-gray-600 text-gray-100`} onClick={handleReset}>
-              Reset
+              {thinking ? 'Cancel' : 'Reset'}
             </button>
           )}
           {plans && (
