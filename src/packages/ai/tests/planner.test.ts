@@ -9,6 +9,7 @@ import {
   targetPathCost,
   isFlankedAt,
   reverseDistanceMap,
+  nextLegalTarget,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
@@ -518,5 +519,46 @@ describe('Basic AI adjacency, formation-up facing and climbing', () => {
     const steps = stepsOf(result, 'c');
     expect(steps.some(s => s.kind === 'climbAttack')).toBe(true);
     expect(steps.some(s => s.kind === 'move' || s.kind === 'formation')).toBe(false);
+  });
+});
+
+describe('Basic AI routed-target fallback', () => {
+  const routed = (o: Partial<Unit> & { id: string; team: string; hex: Hex }) =>
+    mk({ ...o, currentFormation: 'Routed', organizationLevel: 0 });
+
+  it('ignores an adjacent routed enemy while any non-routed enemy exists', () => {
+    const unit = mk({ id: 'm1', team: 'blue', hex: hex(0, 0), currentFormation: 'Close Order', organizationLevel: 2, formationAvailability: ['Close Order'] });
+    const routedFoe = routed({ id: 'r1', team: 'black', hex: hex(1, 0) });
+    const liveFoe = mk({ id: 'f1', team: 'black', hex: hex(2, 4) });
+    const result = planAiMoves(ctxOf([unit, routedFoe, liveFoe]));
+    const steps = stepsOf(result, 'm1');
+    expect(steps.some(s => s.kind === 'attack')).toBe(false);
+    expect(result.marks.every(m => m.targetId === 'f1')).toBe(true);
+  });
+
+  it('attacks routed enemies only when every enemy is routed', () => {
+    const unit = mk({ id: 'm1', team: 'blue', hex: hex(0, 0), currentFormation: 'Close Order', organizationLevel: 2, formationAvailability: ['Close Order'] });
+    const routedFoe = routed({ id: 'r1', team: 'black', hex: hex(1, 0) });
+    const result = planAiMoves(ctxOf([unit, routedFoe]));
+    const steps = stepsOf(result, 'm1');
+    expect(steps.some(s => s.kind === 'attack' && s.targetId === 'r1')).toBe(true);
+    expect(result.marks.some(m => m.targetId === 'r1')).toBe(true);
+  });
+
+  it('nextLegalTarget skips routed while a non-routed enemy exists', () => {
+    const attacker = mk({ id: 'a', team: 'blue', hex: hex(0, 0), currentFormation: 'Close Order', organizationLevel: 2 });
+    const routedFoe = routed({ id: 'r1', team: 'black', hex: hex(1, 0) });
+    const farFoe = mk({ id: 'f1', team: 'black', hex: hex(2, 4) });
+    const ctx = { alliances: ALLIANCES, formations: FORMS, visibleHexes: null };
+    expect(nextLegalTarget(attacker, [attacker, routedFoe, farFoe], ctx)).toBeNull();
+    expect(nextLegalTarget(attacker, [attacker, routedFoe], ctx)?.unit.id).toBe('r1');
+  });
+
+  it('nextLegalTarget orders by closest, then lowest morale', () => {
+    const attacker = mk({ id: 'a', team: 'blue', hex: hex(0, 0), currentFormation: 'Close Order', organizationLevel: 2 });
+    const high = mk({ id: 'high', team: 'black', hex: hex(1, 0), baseMorale: 9 });
+    const low = mk({ id: 'low', team: 'black', hex: hex(0, 1), baseMorale: 3 });
+    const pick = nextLegalTarget(attacker, [attacker, high, low], { alliances: ALLIANCES, formations: FORMS, visibleHexes: null });
+    expect(pick?.unit.id).toBe('low');
   });
 });

@@ -9,7 +9,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, GroundEffect, ALLIANCE_COLORS } from '@/types/gameProtocol';
 import { TEAMS } from '@/packages/units';
-import { planAiMoves, AiUnitPlan, AiMark, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf } from '@/packages/ai';
+import { planAiMoves, AiUnitPlan, AiMark, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf, nextLegalTarget } from '@/packages/ai';
 import { isUnitRouted } from '@/packages/morale';
 import { computeReachableMap, computeMovePool, movePoolMode, flyMax, moveBudgetUnit } from '@/packages/movement';
 import { isFormationChangeAffordable } from '@/packages/movement';
@@ -437,8 +437,25 @@ export function AiPanel({
           await props.performMove(live, step.to, entry.cost, false, maxMP, step.elevation);
         }
       } else if (step.kind === 'attack') {
-        const target = props.units.find(u => u.id === step.targetId);
+        let target = props.units.find(u => u.id === step.targetId);
         const cap = unitAttackCap();
+        // A target that routed after the plot is not finished off while any
+        // non-routed enemy exists. Pick the next legal non-routed target (or a
+        // routed fallback only when every enemy is routed).
+        if (target && isUnitRouted(target)) {
+          const next = nextLegalTarget(live, props.units, {
+            alliances: props.alliances,
+            formations: props.formationsMap,
+            visibleHexes: props.fogOfWarEnabled ? visibleHexesRef.current : null,
+          });
+          if (next) {
+            target = next.unit;
+            addMessage(`${live.unitName} retargets ${target.unitName} — the original target routed`);
+          } else {
+            addMessage(`${live.unitName} skips its attack — the target routed and no non-routed target is legal`);
+            target = undefined;
+          }
+        }
         const legal = target && !target.isDeleted && !target.hidden && (target.currentUnitHp ?? 0) > 0
           ? legalTargets(live, [target], { alliances: props.alliances, formations: props.formationsMap, visibleHexes: props.fogOfWarEnabled ? visibleHexesRef.current : null })
           : [];

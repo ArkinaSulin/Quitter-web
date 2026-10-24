@@ -84,6 +84,19 @@ Marks from one archetype never consume another's slots. A target marked by
 archers/flying can still be marked and charged by a mounted unit. Overlay draws
 per-type badges (e.g. `M2 A4 F1 C1`); marks reset each Preview.
 
+### Routed targets (fallback only)
+
+- While **any valid non-routed enemy exists**, routed enemies are ignored for
+  marks, approach, attacks, ranged shots, charges, swoops and escape targeting.
+- The unit keeps pursuing the non-routed pool even if the closest one is blocked
+  or far.
+- If **every** remaining enemy is routed, routed enemies become the active pool
+  and are selected normally (closest, then lowest morale).
+- Target ordering is **closest path/distance, then lowest morale**, then id.
+- If a planned attack target routes mid-execution, the executor skips it and
+  selects the next legal **non-routed** target. If none is legal, the attack is
+  skipped — a routed unit is only attacked when no non-routed enemy exists.
+
 ### Destination safety / facing
 
 - A mover never ends its advance on a hex where an **adjacent** non-target
@@ -272,6 +285,7 @@ marks/caps (including the dynamic melee cap up to 6), melee upgrade priority,
 multi-attack, ranged 6-hex posture and Close-Order short-bow shots, melee
 staging, ZoC engagement by fully upgraded melee, geometric adjacency (all six
 hexes), formation-up leftover-MP facing, climb commitment and 20-ft sequencing,
+routed-target fallback and mid-execution retargeting,
 adjacency-only flank safety, full facing search (180-degree turns), Open-Order
 pass-through, stop-aware target costs, structure-complex confinement (footprint,
 enclosed courtyard, flyer exemption), and hardened mounted charge / flying swoop

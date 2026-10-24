@@ -141,7 +141,8 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   planner respects fly-point availability for swoops.
 - ✅ **Basic engagement retargeting (2026-10-23):** fully upgraded melee may
   enter hostile ZoC to attack a formed line; adjacency is geometric (all six
-  hexes) and overrides farther/locked targets; blocked marks retarget through
+  hexes) and overrides farther/locked targets; routed enemies are fallback-only
+  (ignored while any non-routed enemy exists); blocked marks retarget through
   engage → stage → progress; pass-through hexes are traversal-only (not valid
   stopping points); flank safety is adjacency-only; formed units consider all six
   facings; a boxed-in unit can drop to Scattered and loose-move. Melee mark cap

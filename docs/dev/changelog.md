@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## Basic AI: routed targets are fallback-only (2026-10-23)
+**Files:** src/packages/ai/lib/{planner,marks,board}.ts, src/components/ScenarioMap/AiPanel.tsx, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- AI target selection now uses **non-routed enemies first**. Routed enemies are
+  ignored for marks, approach, attacks, ranged shots, charges, swoops and escape
+  while any valid non-routed enemy exists.
+- Routed enemies become the active pool only when **every** remaining enemy is
+  routed (finish-the-battle fallback).
+- Target ordering is **closest, then lowest morale**, then id.
+- Mid-execution: if a planned target routes, the executor selects the next legal
+  non-routed target; if none is legal, the attack is skipped. Routed fallback
+  applies only when no non-routed enemy exists.
+- Verification: `npm run check` passes (tsc, 1114 tests, depcruise, build).
+
 ## Basic AI: adjacency wins, formation-up facing, climb commitment (2026-10-23)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 

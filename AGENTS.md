@@ -28,8 +28,9 @@ reusable maps. Here's the state:
 
 - **Basic AI rewrite (2026-10-23)**: the battle-role/frontage/reserve planner was
   **replaced** by a small rule-based brain (`src/packages/ai/lib/{types,board,
-  marks,planner}.ts`). Independent per-archetype marks (melee 2/target, ranged
-  unlimited, flying 1, mounted 1 + a non-mounted friendly mark); melee stages at
+  marks,planner}.ts`). Independent per-archetype marks (melee dynamic up to 6,
+  ranged unlimited, flying 1, mounted 1 + a non-mounted friendly mark); melee
+  stages at
   2–3 hexes and upgrades before attacking; ranged scatters within 6, travels
   Open and closes to shoot; flying climbs by movement (10 ft/hex, descent free),
   swoops and retreats to 20 ft/≥2 hexes; mounted stages on a 4-hex ring (2 in
@@ -50,7 +51,9 @@ reusable maps. Here's the state:
   path cost and the target is locked per activation. Adjacency is all six hexes
   and overrides farther targets; formation-up uses leftover MP to face adjacent
   hostiles; climbing is committed and cost-sequenced with no action reservation.
-  No migration. `npm run check` passes.
+  Routed enemies are fallback-only: ignored while any non-routed enemy exists;
+  mid-execution attacks retarget to the next legal non-routed unit. No migration.
+  `npm run check` passes.
 - **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
   scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);
   Basic uses **Simple**, Advanced uses **Advance**; the AI tab has a per-preview

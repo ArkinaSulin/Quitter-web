@@ -104,6 +104,34 @@ export function legalTargets(
   return out;
 }
 
+/**
+ * The next legal attack target for a live unit.
+ *  - If any valid non-routed enemy exists, routed targets are ignored.
+ *  - Routed targets are only eligible when every enemy is routed.
+ * Order: closest, then lowest morale, then id.
+ */
+export function nextLegalTarget(
+  attacker: Unit,
+  units: Unit[],
+  ctx: Pick<AiPlanContext, 'alliances' | 'formations' | 'visibleHexes'>,
+): { unit: Unit; dist: number; isRanged: boolean } | null {
+  const legal = legalTargets(attacker, units, ctx);
+  if (legal.length === 0) return null;
+  const groups = enemyGroupsOf(allianceOf(attacker, ctx.alliances));
+  const hasNonRouted = units.some(u =>
+    !u.isDeleted && !u.hidden && (u.currentUnitHp ?? 0) > 0
+    && !isProtectedHero(u)
+    && groups.has(allianceOf(u, ctx.alliances))
+    && !isUnitRouted(u));
+  const pool = hasNonRouted ? legal.filter(t => !isUnitRouted(t.unit)) : legal;
+  if (pool.length === 0) return null;
+  return pool
+    .slice()
+    .sort((a, b) => a.dist - b.dist
+      || moraleOf(a.unit) - moraleOf(b.unit)
+      || a.unit.id.localeCompare(b.unit.id))[0];
+}
+
 function moraleOf(unit: Unit): number {
   return (unit.baseMorale ?? 0) + (unit.currentMoraleModifier ?? 0);
 }
@@ -355,6 +383,7 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
         .slice()
         .sort((a, b) => (a.id === markedId ? 0 : 1) - (b.id === markedId ? 0 : 1)
           || hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex)
+          || moraleOf(a) - moraleOf(b)
           || a.id.localeCompare(b.id));
       if (ordered.length === 0) break;
       const nearest = ordered.reduce((a, b) =>
@@ -465,7 +494,7 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
       .sort((a, b) => {
         const am = a.t.id === markedId ? 0 : 1;
         const bm = b.t.id === markedId ? 0 : 1;
-        return am - bm || a.cost - b.cost || a.t.id.localeCompare(b.t.id);
+        return am - bm || a.cost - b.cost || moraleOf(a.t) - moraleOf(b.t) || a.t.id.localeCompare(b.t.id);
       });
     if (ordered.length === 0) break;
 
@@ -876,7 +905,10 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
   if (controllable.length === 0) return { plans: [], marks: [] };
 
   const byId = new Map(working.map(u => [u.id, u]));
-  const enemies = enemyPool(ctx, working);
+  const allEnemies = enemyPool(ctx, working);
+  const primaryEnemies = allEnemies.filter(e => !isUnitRouted(e));
+  // Routed units are only eligible when no non-routed enemy exists at all.
+  const enemies = primaryEnemies.length > 0 ? primaryEnemies : allEnemies.filter(isUnitRouted);
   if (enemies.length === 0) return { plans: [], marks: [] };
 
   const meleeUnits = controllable.filter(u => archetypeOf(u) === 'melee');
@@ -963,7 +995,8 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
         .sort((a, b) => {
           const da = kind === 'flying' || kind === 'ranged' ? hexDistance(unit.hex, a.hex) : targetPathCost(map, a.hex, noStop);
           const db = kind === 'flying' || kind === 'ranged' ? hexDistance(unit.hex, b.hex) : targetPathCost(map, b.hex, noStop);
-          return da - db || hexDistance(unit.hex, a.hex) - hexDistance(unit.hex, b.hex) || a.id.localeCompare(b.id);
+          return da - db || moraleOf(a) - moraleOf(b)
+            || hexDistance(unit.hex, a.hex) - hexDistance(unit.hex, b.hex) || a.id.localeCompare(b.id);
         });
     },
   };

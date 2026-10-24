@@ -29,6 +29,8 @@ export interface MarkResult {
 
 const ORDER: AiArchetype[] = ['flying', 'ranged', 'melee', 'mounted'];
 
+const moraleOf = (u: Unit) => (u.baseMorale ?? 0) + (u.currentMoraleModifier ?? 0);
+
 export function assignMarks(opts: MarkOptions): MarkResult {
   const { units, enemies, archetypeOf, reachable, distance } = opts;
   const marks: AiMark[] = [];
@@ -47,6 +49,8 @@ export function assignMarks(opts: MarkOptions): MarkResult {
       const nearest = (u: Unit) => enemies.reduce((best, t) => Math.min(best, distance(u, t)), Infinity);
       const d = nearest(a) - nearest(b);
       if (d !== 0) return d;
+      const m = moraleOf(a) - moraleOf(b);
+      if (m !== 0) return m;
     }
     return a.id.localeCompare(b.id);
   });
@@ -58,7 +62,10 @@ export function assignMarks(opts: MarkOptions): MarkResult {
       : enemies.filter(t => reachable(unit, t));
     const candidates = (pool.length > 0 ? pool : enemies.filter(t => kind === 'ranged' || kind === 'flying'))
       .slice()
-      .sort((a, b) => distance(unit, a) - distance(unit, b) || hexDistance(unit.hex, a.hex) - hexDistance(unit.hex, b.hex) || a.id.localeCompare(b.id));
+      .sort((a, b) => distance(unit, a) - distance(unit, b)
+        || moraleOf(a) - moraleOf(b)
+        || hexDistance(unit.hex, a.hex) - hexDistance(unit.hex, b.hex)
+        || a.id.localeCompare(b.id));
     if (candidates.length === 0) continue;
 
     let chosen: Unit | null = null;
