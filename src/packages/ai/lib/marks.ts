@@ -1,7 +1,7 @@
 // src/packages/ai/lib/marks.ts
 // Target marking for the Basic AI. Counts are independent per archetype:
-//   melee  -> at most 2 melee marks per target (overflow only when every
-//             available target is already saturated)
+//   melee  -> cap = free/reachable adjacent hexes around the target (max 6),
+//             so several units can surround a battleline-end target
 //   ranged -> unlimited
 //   flying -> at most 1 flying mark per target
 //   mounted-> at most 1 mounted mark, and only on a target already marked by a
@@ -17,6 +17,8 @@ export interface MarkOptions {
   reachable: (unit: Unit, target: Unit) => boolean;
   /** Planning distance: path cost for melee/mounted, hexes otherwise. */
   distance: (unit: Unit, target: Unit) => number;
+  /** Dynamic melee cap: standable adjacent hexes some melee unit can reach. */
+  meleeCap?: (target: Unit) => number;
 }
 
 export interface MarkResult {
@@ -35,7 +37,6 @@ export function assignMarks(opts: MarkOptions): MarkResult {
     marks.filter(m => m.targetId === targetId && m.kind === kind).length;
   const nonMountedCount = (targetId: string) =>
     marks.filter(m => m.targetId === targetId && m.kind !== 'mounted').length;
-  const totalMarks = () => marks.length;
 
   const queue = [...units].sort((a, b) => {
     const oa = ORDER.indexOf(archetypeOf(a));
@@ -62,7 +63,8 @@ export function assignMarks(opts: MarkOptions): MarkResult {
 
     let chosen: Unit | null = null;
     if (kind === 'melee') {
-      chosen = candidates.find(t => count(t.id, 'melee') < 2) ?? candidates[0];
+      // No overflow beyond the target's surrounding hex capacity.
+      chosen = candidates.find(t => count(t.id, 'melee') < (opts.meleeCap?.(t) ?? 2)) ?? null;
     } else if (kind === 'flying') {
       chosen = candidates.find(t => count(t.id, 'flying') === 0) ?? candidates[0];
     } else if (kind === 'mounted') {
@@ -77,10 +79,5 @@ export function assignMarks(opts: MarkOptions): MarkResult {
     byUnit.set(unit.id, chosen.id);
   }
 
-  // A melee unit is allowed to overflow a saturated target only when every
-  // available target already has 2 melee marks. The greedy pass above already
-  // prefers unsaturated targets; if it had to choose a saturated one, at least
-  // one mark beyond 2 exists. Keep the marks as assigned.
-  void totalMarks;
   return { marks, byUnit };
 }

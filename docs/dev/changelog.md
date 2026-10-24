@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Basic AI: dynamic melee marks + path-distance target locking (2026-10-23)
+**Files:** src/packages/ai/lib/{board,marks,planner}.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- Melee mark cap is now **dynamic**: the number of free adjacent hexes around
+  the target that some melee unit can reach (max 6). Up to six melee units can
+  surround a battleline-end target; there is no overflow beyond the cap.
+- Melee approach/stage/progress/escape are scored by **remaining path cost**
+  (reverse Dijkstra from the target with the real movement rules), so units
+  follow detours around a line instead of veering past the target.
+- The melee target is **locked for the activation**; retargeting happens only
+  when the locked target has no legal move. This removes mid-plan oscillation.
+- The escape fallback is now target-directed; the generic open-space wander is
+  gone (detours are allowed, hold only when no route exists).
+- Verification: `npm run check` passes (tsc, 1106 tests, depcruise, build).
+
 ## Basic AI: fix blocked flank veto, full facing search, Scattered escape (2026-10-23)
 **Files:** src/packages/ai/lib/{board,planner}.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 

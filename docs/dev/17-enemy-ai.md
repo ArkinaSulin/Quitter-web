@@ -75,7 +75,7 @@ Assigned before planning: **flying → ranged → melee (closest first) → moun
 
 | Archetype | Mark rule |
 |---|---|
-| Melee | closest reachable ground/structure/grounded flyer; **2 melee marks** per target; overflow only when every candidate already has 2. |
+| Melee | closest reachable ground/structure/grounded flyer; **cap = free adjacent hexes some melee unit can reach (max 6)**; no overflow, so several units can surround a battleline-end target. |
 | Ranged | closest hostile (including airborne); **no cap**. |
 | Flying | closest hostile not already marked by another flyer; **1 flying mark**. |
 | Mounted | closest reachable ground/grounded flyer that has a **non-mounted** friendly mark and no other mounted mark; falls back to its closest reachable target. |
@@ -104,11 +104,17 @@ per-type badges (e.g. `M2 A4 F1 C1`); marks reset each Preview.
 - If the marked target has no free adjacent hex (all blocked by friendlies or
   terrain), the unit retargets through its candidate list, then stages at 2–3
   hexes, then takes the best progress move toward another target.
-- **Escape fallback:** if a fully upgraded unit still has no useful action, it drops
-  to **Scattered** (when available/affordable) and uses loose omnidirectional
-  movement to get out of the pocket — toward a target, or the move that best
-  opens space. It holds only when no legal move exists. Next activation the
-  normal upgrade rule re-forms it to Open.
+- Approach/stage/progress destinations are scored by **remaining path cost to
+  the target** (reverse Dijkstra using the same movement rules), not straight-line
+  distance. Detours around a battleline are followed; the unit does not veer past
+  the target.
+- The target is **locked for the activation**; the unit re-evaluates only when
+  the locked target has no legal move left. This prevents mid-plan oscillation.
+- **Escape fallback:** if a fully upgraded unit still has no useful action, it
+  drops to **Scattered** (when available/affordable) and takes a **target-directed**
+  loose move using the same remaining-path score. The old open-space wander is
+  gone; detours are allowed, and the unit holds only when no route exists. Next
+  activation the normal upgrade rule re-forms it to Open.
 - Pass-through is used everywhere: an Open Order/Scattered/Routed mover may
   **traverse** another pass-eligible friendly hex, but never stop on it. Target
   path costs and candidate ordering exclude pass-through hexes as destinations,
@@ -239,11 +245,12 @@ validation accounts for the air slot and real terrain/walls/structures.
 ## Tests
 
 `src/packages/ai/tests/planner.test.ts` covers gates, legal targets, independent
-marks/caps, melee upgrade priority, multi-attack, ranged 6-hex posture and
-Close-Order short-bow shots, melee staging, ZoC engagement by fully upgraded
-melee, adjacency-only flank safety, full facing search (180-degree turns),
-Open-Order pass-through, stop-aware target costs, structure-complex
-confinement (footprint, enclosed courtyard, flyer exemption), and hardened
+marks/caps (including the dynamic melee cap up to 6), melee upgrade priority,
+multi-attack, ranged 6-hex posture and Close-Order short-bow shots, melee
+staging, ZoC engagement by fully upgraded melee, adjacency-only flank safety,
+full facing search (180-degree turns), Open-Order pass-through, stop-aware target
+costs, structure-complex confinement (footprint, enclosed courtyard, flyer
+exemption), and hardened
 mounted charge / flying swoop gates (scenario toggle, `canCharge`, fly points,
 no flyer swoop without FP).
 Run `npm run check` (tsc, vitest, depcruise, build) and

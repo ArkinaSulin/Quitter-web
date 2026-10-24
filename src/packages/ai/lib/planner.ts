@@ -25,7 +25,7 @@ import {
   Maneuver, StructureComplex, allianceOf, applyManeuver, applyTurns, archetypeOf, chooseFacing, distanceMap,
   effectiveMax, enemyGroupsOf, enemyPool, hexKeyOf, hexesWithin, isFlankedAt, isFullyUpgraded, isGroundTarget,
   isTargetReachable, maneuversFor, movementContextFor, nextFormationUpgrade,
-  primaryMaxRange, structureComplexFor, surfaceAt, targetPathCost, unitIsAirborne, unitSurface,
+  primaryMaxRange, reverseDistanceMap, structureComplexFor, surfaceAt, targetPathCost, unitIsAirborne, unitSurface,
 } from './board';
 import { assignMarks } from './marks';
 
@@ -41,6 +41,7 @@ interface Runtime {
   groundMaps: Map<string, Map<string, number>>;
   passThroughMaps: Map<string, Set<string>>;
   complexes: Map<string, StructureComplex | null>;
+  reverseMaps: Map<string, Map<string, number>>;
   commit: (unit: Unit) => void;
   setTarget: (unitId: string, targetId: string) => void;
   candidates: (unit: Unit, kind: AiArchetype) => Unit[];
@@ -229,6 +230,18 @@ function isEngagedByFriendly(target: Unit, self: Unit, rt: Runtime): boolean {
     && isAdjacent(f.hex, target.hex));
 }
 
+/** Remaining path cost from any hex to `target`, cached per unit/target. */
+function reverseMapFor(rt: Runtime, unit: Unit, target: Unit): Map<string, number> {
+  const key = `${unit.id}|${target.id}`;
+  const cached = rt.reverseMaps.get(key);
+  if (cached) return cached;
+  const complex = rt.complexes.get(unit.id) ?? null;
+  const movement = movementContextFor(unit, rt.working, rt.ctx, 'ground', complex);
+  const map = reverseDistanceMap(target.hex, unit, { ...rt.ctx, units: rt.working }, 'ground', movement);
+  rt.reverseMaps.set(key, map);
+  return map;
+}
+
 /**
  * Last-resort movement for a unit that has no useful action. Dropping to
  * Scattered makes movement omnidirectional (free turns), which lets a boxed-in
@@ -244,28 +257,21 @@ function planEscape(
   const candidates = rt.candidates(u, kind);
 
   const findMove = (mover: Unit): { move: Maneuver; target: Unit | null } | null => {
-    // First try a loose move toward a target (progress), allowing a ZoC step
-    // because the unit is already committed and fully formed.
+    // A loose move toward a target, scored by the remaining path to it so
+    // detours are followed and the unit does not wander into open space.
     for (const target of candidates) {
+      const reverse = reverseMapFor(rt, mover, target);
       const m = bestManeuver(mover, rt, 'ground', (man, threat) => {
         if (man.path.length === 0) return -Infinity;
         if (isFlankedAt(man.dest, man.facing, rt.enemies, target.id)) return -Infinity;
-        const d = hexDistance(man.dest, target.hex);
-        return -d * 100 - man.cost * 2 - man.turns.length * 2
+        const remaining = reverse.get(hexKeyOf(man.dest)) ?? Infinity;
+        if (!Number.isFinite(remaining)) return -Infinity;
+        return -remaining * 100 - man.cost * 2 - man.turns.length * 2
           - (threat.has(hexKeyOf(man.dest)) ? 20 : 0);
       });
       if (m) return { move: m, target };
     }
-    // No progress possible: take the legal move that best opens space.
-    const open = bestManeuver(mover, rt, 'ground', (man) => {
-      if (man.path.length === 0) return -Infinity;
-      if (isFlankedAt(man.dest, man.facing, rt.enemies, null)) return -Infinity;
-      const crowd = rt.working.filter(w =>
-        w.id !== mover.id && !w.isDeleted && !w.hidden && hexDistance(w.hex, man.dest) <= 1).length;
-      const hostile = rt.enemies.filter(e => hexDistance(e.hex, man.dest) <= 1).length;
-      return -crowd * 10 - hostile * 20 - man.cost * 2 - man.turns.length * 2;
-    });
-    return open ? { move: open, target: null } : null;
+    return null;
   };
 
   if (u.currentFormation !== 'Scattered') {
@@ -303,6 +309,7 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
   let u = unit;
   const markedId = rt.byUnit.get(unit.id) ?? null;
   const candidates = rt.candidates(u, 'melee');
+  let lockedTarget: Unit | null = null;
 
   for (let guard = 0; guard < 16; guard++) {
     // Formation has absolute priority: never attack before fully upgraded.
@@ -331,12 +338,14 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
       // staging move (alternates included).
       let moved: Unit | null = null;
       for (const target of ordered) {
+        const reverse = reverseMapFor(rt, u, target);
         const m = bestManeuver(u, rt, 'ground', (candidate, threat) => {
           if (candidate.path.length === 0) return -Infinity;
           if (isFlankedAt(candidate.dest, candidate.facing, rt.enemies, target.id)) return -Infinity;
           if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
-          const d = hexDistance(candidate.dest, target.hex);
-          return -Math.abs(d - 3) * 100 - candidate.cost * 2 - candidate.turns.length * 2;
+          const remaining = reverse.get(hexKeyOf(candidate.dest)) ?? Infinity;
+          if (!Number.isFinite(remaining)) return -Infinity;
+          return -Math.abs(remaining - 3) * 100 - candidate.cost * 2 - candidate.turns.length * 2;
         });
         if (!m) continue;
         if (target.id !== markedId) rt.setTarget(u.id, target.id);
@@ -398,50 +407,47 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
       if (opened) { u = opened; rt.commit(u); continue; }
     }
 
-    const tryMove = (
-      candidate: Unit,
-      mode: 'engage' | 'stage' | 'progress',
-    ): Unit | null => {
-      const m = bestManeuver(u, rt, 'ground', (man, threat) => {
-        if (man.path.length === 0) return -Infinity;
-        if (isFlankedAt(man.dest, man.facing, rt.enemies, candidate.id)) return -Infinity;
-        const d = hexDistance(man.dest, candidate.hex);
-        if (mode === 'engage' && d !== 1) return -Infinity;
-        // Staging/progress stay outside a hostile ZoC; fully upgraded melee may
-        // enter it to attack (the Shield Wall engagement case).
-        if (mode !== 'engage' && threat.has(hexKeyOf(man.dest))) return -Infinity;
-        const distanceScore = mode === 'engage'
-          ? 0
-          : mode === 'stage'
-            ? -Math.abs(d - 3) * 100
-            : -d * 100;
-        return distanceScore - man.cost * 2 - man.turns.length * 2;
-      });
-      if (!m) return null;
-      if (candidate.id !== markedId) rt.setTarget(u.id, candidate.id);
-      return pushMove(plan, u, m, rt.ctx);
+    const tryTarget = (candidate: Unit): Unit | null => {
+      const reverse = reverseMapFor(rt, u, candidate);
+      const tryMode = (mode: 'engage' | 'stage' | 'progress'): Unit | null => {
+        const m = bestManeuver(u, rt, 'ground', (man, threat) => {
+          if (man.path.length === 0) return -Infinity;
+          if (isFlankedAt(man.dest, man.facing, rt.enemies, candidate.id)) return -Infinity;
+          const remaining = reverse.get(hexKeyOf(man.dest)) ?? Infinity;
+          if (!Number.isFinite(remaining)) return -Infinity;
+          const d = hexDistance(man.dest, candidate.hex);
+          if (mode === 'engage') {
+            if (d !== 1) return -Infinity;
+            return -remaining * 100 - man.cost * 2 - man.turns.length * 2;
+          }
+          if (mode === 'stage') {
+            // Stay outside ZoC until the unit is committed to the final approach.
+            if (threat.has(hexKeyOf(man.dest))) return -Infinity;
+            return -Math.abs(remaining - 3) * 100 - man.cost * 2 - man.turns.length * 2;
+          }
+          return -remaining * 100 - man.cost * 2 - man.turns.length * 2
+            - (threat.has(hexKeyOf(man.dest)) ? 20 : 0);
+        });
+        if (!m) return null;
+        if (candidate.id !== (rt.byUnit.get(u.id) ?? null)) rt.setTarget(u.id, candidate.id);
+        return pushMove(plan, u, m, rt.ctx);
+      };
+      return tryMode('engage') ?? tryMode('stage') ?? tryMode('progress');
     };
 
+    // Plan against one locked target. Retarget only when it has no legal move.
     let moved: Unit | null = null;
-    // 1) Engage: reach a free hex adjacent to a target whose path fits one pool.
-    for (const { t, cost } of ordered) {
-      if (!Number.isFinite(cost) || cost >= printed) continue;
-      moved = tryMove(t, 'engage');
-      if (moved) break;
-    }
-    // 2) Stage at 2-3 hexes when every adjacent hex is occupied/unreachable.
+    if (lockedTarget) moved = tryTarget(lockedTarget);
     if (!moved) {
-      for (const { t } of ordered) {
-        moved = tryMove(t, 'stage');
-        if (moved) break;
+      const pool: { t: Unit; cost: number }[] = lockedTarget
+        ? ordered.filter(o => o.t.id !== lockedTarget!.id)
+        : ordered;
+      for (const entry of pool) {
+        const t = entry.t;
+        moved = tryTarget(t);
+        if (moved) { lockedTarget = t; break; }
       }
-    }
-    // 3) Progress: advance toward the best alternate target.
-    if (!moved) {
-      for (const { t } of ordered) {
-        moved = tryMove(t, 'progress');
-        if (moved) break;
-      }
+      if (!moved) lockedTarget = null;
     }
     if (!moved) break;
     // A zero-cost move can loop; require the manoeuvre to change hex.
@@ -804,6 +810,14 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
   const enemies = enemyPool(ctx, working);
   if (enemies.length === 0) return { plans: [], marks: [] };
 
+  const meleeUnits = controllable.filter(u => archetypeOf(u) === 'melee');
+  const groundOccupied = new Set<string>();
+  for (const u of working) {
+    if (u.isDeleted || u.hidden || u.attachedToUnitId || (u.currentUnitHp ?? 0) <= 0) continue;
+    if ((u.elevation ?? 0) !== 0) continue;
+    groundOccupied.add(hexKeyOf(u.hex));
+  }
+
   // Marking uses the board before any unit has acted. Non-flyers are confined
   // to their structure complex, so their distance maps stop at the perimeter.
   const complexes = new Map<string, StructureComplex | null>();
@@ -826,6 +840,21 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
     distance: (u, t) => archetypeOf(u) === 'melee' || archetypeOf(u) === 'mounted'
       ? targetPathCost(groundMaps.get(u.id) ?? new Map(), t.hex, passThroughMaps.get(u.id))
       : flyDistance(u, t),
+    meleeCap: (target) => {
+      let count = 0;
+      for (const dir of HEX_DIRS) {
+        const adj = { q: target.hex.q + dir.q, r: target.hex.r + dir.r, s: -target.hex.q - dir.q - target.hex.r - dir.r };
+        const key = hexKeyOf(adj);
+        if (groundOccupied.has(key)) continue; // occupied / pass-through = not standable
+        const reachable = meleeUnits.some(m => {
+          const map = groundMaps.get(m.id);
+          if (!map || !map.has(key)) return false;
+          return !passThroughMaps.get(m.id)?.has(key);
+        });
+        if (reachable) count++;
+      }
+      return Math.min(6, count);
+    },
   });
 
   const rt: Runtime = {
@@ -837,6 +866,7 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
     groundMaps,
     passThroughMaps,
     complexes,
+    reverseMaps: new Map(),
     commit: (unit) => {
       const idx = working.findIndex(w => w.id === unit.id);
       if (idx >= 0) working[idx] = unit;

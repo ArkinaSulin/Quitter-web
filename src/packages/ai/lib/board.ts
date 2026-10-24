@@ -300,6 +300,19 @@ export function distanceMap(
   return out;
 }
 
+/** Path cost from every reachable hex TO `target`, using the mover's movement
+ *  rules (terrain, walls, structures, occupancy, pass-through). Used to score
+ *  approaches by remaining path rather than straight-line distance. */
+export function reverseDistanceMap(
+  target: Hex,
+  unit: Unit,
+  ctx: AiPlanContext,
+  mode: 'ground' | 'fly' = 'ground',
+  movement?: MovementContext,
+): Map<string, number> {
+  return distanceMap({ ...unit, hex: target }, ctx, mode, movement);
+}
+
 /** Cheapest path cost to the target hex or one of its neighbours. `noStop`
  *  excludes pass-through hexes as stopping/adjacent points (they remain usable
  *  for traversal, just never as a destination). */

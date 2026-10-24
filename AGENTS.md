@@ -45,7 +45,9 @@ reusable maps. Here's the state:
   gate and the scenario **Charge and Swoop** toggle. Fully upgraded melee may
   enter hostile ZoC to attack; blocked marks retarget (engage → stage →
   progress), flank safety is adjacency-only, formed units consider all six
-  facings, and a boxed-in unit can drop to Scattered to loose-move. No migration.
+  facings, and a boxed-in unit can drop to Scattered to loose-move. Melee mark
+  cap is dynamic (up to 6 reachable surrounding hexes); approaches use remaining
+  path cost and the target is locked per activation. No migration.
   `npm run check` passes.
 - **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
   scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);

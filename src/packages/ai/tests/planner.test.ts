@@ -8,6 +8,7 @@ import {
   assignMarks,
   targetPathCost,
   isFlankedAt,
+  reverseDistanceMap,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
@@ -417,5 +418,40 @@ describe('Basic AI facing, flank safety and escape', () => {
     const result = planAiMoves(ctxOf([unit, foe]));
     const steps = stepsOf(result, 'm1');
     expect(steps.some(s => s.kind === 'move' && s.to.r > 0)).toBe(true);
+  });
+});
+
+describe('Basic AI dynamic melee mark cap', () => {
+  it('honours a dynamic cap instead of overflowing', () => {
+    const target = mk({ id: 't', team: 'black', hex: hex(0, 0) });
+    const units = Array.from({ length: 8 }, (_, i) => mk({ id: `m${i}`, team: 'blue', hex: hex(2 + i, 0) }));
+    const result = assignMarks({
+      units,
+      enemies: [target],
+      archetypeOf: () => 'melee',
+      reachable: () => true,
+      distance: (u, t) => Math.abs(u.hex.q - t.hex.q) + Math.abs(u.hex.r - t.hex.r),
+      meleeCap: () => 6,
+    });
+    expect(result.marks.filter(m => m.targetId === 't').length).toBe(6);
+  });
+
+  it('lets six melee units mark a target with six open surrounding hexes', () => {
+    const target = mk({ id: 't', team: 'black', hex: hex(0, 0) });
+    const positions: Hex[] = [hex(2, 0), hex(0, 2), hex(-2, 0), hex(0, -2), hex(2, -2), hex(-2, 2)];
+    const units = positions.map((h, i) => mk({ id: `m${i}`, team: 'blue', hex: h, movementPoints: 3 }));
+    const result = planAiMoves(ctxOf([...units, target]));
+    const marks = result.marks.filter(m => m.targetId === 't' && m.kind === 'melee');
+    expect(marks.length).toBe(6);
+  });
+});
+
+describe('Basic AI reverse path distance', () => {
+  it('measures the remaining path cost back to the target', () => {
+    const unit = mk({ id: 'm1', team: 'blue', hex: hex(0, 0) });
+    const target = mk({ id: 't', team: 'black', hex: hex(0, 2), currentFormation: 'Scattered', organizationLevel: 0 });
+    const map = reverseDistanceMap(target.hex, unit, ctxOf([unit, target]), 'ground');
+    expect(map.get('0,1')).toBe(1);
+    expect(map.get('0,0')).toBe(2);
   });
 });
