@@ -1,5 +1,16 @@
 # QuiTTER Changelog
 
+## AI: per-unit roster + stacked badge fix (2026-10-24)
+**Files:** src/components/ScenarioMap/{AiPanel.tsx,ScenarioMap.tsx,useCanvasDraw.ts}, docs/dev/changelog.md
+
+- AI checked/skipped badges now follow each token's **elevation/climb offset**
+  and are **hidden when the active target filter hides the token** (air mode no
+  longer shows the ground unit's badge at the shared hex centre).
+- Added a per-unit **AI roster** in the panel (name, team, ground/air ft, hex)
+  with independent checkboxes, so stacked ground/air units can be enabled or
+  disabled separately. Canvas token clicks and roster rows share one
+  `toggleAiExcluded(unitId)` callback.
+
 ## AI: vacant structure tops first; defender marks only after (2026-10-24)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 

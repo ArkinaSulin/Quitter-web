@@ -311,6 +311,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTurnAlliance, turnNumber]);
 
+  // One per-unit AI opt-out toggle, shared by canvas token clicks and the AI
+  // panel roster. Keyed by unit id, so stacked ground/air units stay independent.
+  const toggleAiExcluded = useCallback((unitId: string) => {
+    setAiExcluded(prev => {
+      const next = { ...prev };
+      if (next[unitId]) delete next[unitId];
+      else next[unitId] = true;
+      return next;
+    });
+  }, []);
+
   // Command-log rows → corpse piles + battle statistics (derived, undo-safe).
   const commandRows = useCommandLogRows(scenarioId);
   const corpseCounts = useMemo(() => buildFallen(commandRows), [commandRows]);
@@ -2281,12 +2292,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           !unit.isDeleted &&
           isAiControllable(unit, { alliances, teams: aiTeams, activeAlliance: currentTurnAlliance }, aiHostedBy)
         ) {
-          setAiExcluded(prev => {
-            const next = { ...prev };
-            if (next[unit.id]) delete next[unit.id];
-            else next[unit.id] = true;
-            return next;
-          });
+          toggleAiExcluded(unit.id);
         }
       }
     },
@@ -3030,6 +3036,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         aiTeams={aiTeams}
         onSetAiTeams={setAiTeams}
         aiExcluded={aiExcluded}
+        onToggleAiExcluded={toggleAiExcluded}
         currentTurnAlliance={currentTurnAlliance}
         fogOfWarEnabled={fogOfWar}
         sightRadius={sightRadius}

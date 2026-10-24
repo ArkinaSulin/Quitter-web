@@ -769,6 +769,18 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     // ghost at the final hex). Routes dim unless hovered.
     if (aiOverlay && (aiOverlay.checkedUnitIds.length > 0 || aiOverlay.excludedUnitIds.length > 0 || aiOverlay.routes.length > 0 || (aiOverlay.marks?.length ?? 0) > 0)) {
       const byId = new Map(displayUnits.map(u => [u.id, u]));
+      // Match the token's drawn position: elevation offset (NE) or a climber's
+      // toward-target offset; air mode centres tokens.
+      const overlayOffset = (u: Unit) => {
+        const climbTarget = parseClimbTo(u.climbTo);
+        return targetFilter === 'air'
+          ? { dx: 0, dy: 0 }
+          : elevationOffset(
+              u.elevation, HEX_SIZE,
+              canFly(u) && !climbTarget,
+              climbTarget ? hexDirection(u.hex, climbTarget, HEX_SIZE) : undefined,
+            );
+      };
       // Checkmarks: fixed on-screen size (does not grow with zoom).
       const badgeR = 9;
       // Independent per-archetype target marks (melee / archer / flying / mounted).
@@ -783,14 +795,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const u = byId.get(id);
         if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) return;
         const pos = hexToPixel(u.hex, HEX_SIZE);
-        const climbTarget = parseClimbTo(u.climbTo);
-        const elev = targetFilter === 'air'
-          ? { dx: 0, dy: 0 }
-          : elevationOffset(
-              u.elevation, HEX_SIZE,
-              canFly(u) && !climbTarget,
-              climbTarget ? hexDirection(u.hex, climbTarget, HEX_SIZE) : undefined,
-            );
+        const elev = overlayOffset(u);
         const cx = pos.x * currentZoom + offsetX + elev.dx * currentZoom;
         const cy = pos.y * currentZoom + offsetY + elev.dy * currentZoom - tokenHeight * 0.5;
         const text = (['melee', 'ranged', 'flying', 'mounted'] as const)
@@ -814,9 +819,12 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       for (const id of aiOverlay.checkedUnitIds) {
         const u = byId.get(id);
         if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
+        // Do not paint a badge for a token the active filter hides.
+        if (!unitMatchesFilter(u, targetFilter)) continue;
         const pos = hexToPixel(u.hex, HEX_SIZE);
-        const bx = pos.x * currentZoom + offsetX + tokenWidth * 0.46;
-        const by = pos.y * currentZoom + offsetY - tokenHeight * 0.52;
+        const elev = overlayOffset(u);
+        const bx = pos.x * currentZoom + offsetX + elev.dx * currentZoom + tokenWidth * 0.46;
+        const by = pos.y * currentZoom + offsetY + elev.dy * currentZoom - tokenHeight * 0.52;
         ctx.save();
         ctx.beginPath();
         ctx.arc(bx, by, badgeR, 0, 2 * Math.PI);
@@ -841,9 +849,11 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       for (const id of aiOverlay.excludedUnitIds ?? []) {
         const u = byId.get(id);
         if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
+        if (!unitMatchesFilter(u, targetFilter)) continue;
         const pos = hexToPixel(u.hex, HEX_SIZE);
-        const bx = pos.x * currentZoom + offsetX + tokenWidth * 0.46;
-        const by = pos.y * currentZoom + offsetY - tokenHeight * 0.52;
+        const elev = overlayOffset(u);
+        const bx = pos.x * currentZoom + offsetX + elev.dx * currentZoom + tokenWidth * 0.46;
+        const by = pos.y * currentZoom + offsetY + elev.dy * currentZoom - tokenHeight * 0.52;
         ctx.save();
         ctx.beginPath();
         ctx.arc(bx, by, badgeR, 0, 2 * Math.PI);

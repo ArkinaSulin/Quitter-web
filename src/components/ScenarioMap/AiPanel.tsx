@@ -41,6 +41,8 @@ interface AiPanelProps {
   onSetAiTeams: (teams: string[]) => void;
   /** Per-unit opt-out map (owned by ScenarioMap). */
   aiExcluded: Record<string, boolean>;
+  /** Toggle one unit's AI opt-out (shared with canvas token clicks). */
+  onToggleAiExcluded: (unitId: string) => void;
   currentTurnAlliance: AllianceGroup | null;
   fogOfWarEnabled: boolean;
   sightRadius: number;
@@ -118,6 +120,7 @@ export function AiPanel({
   aiTeams,
   onSetAiTeams,
   aiExcluded,
+  onToggleAiExcluded,
   currentTurnAlliance,
   fogOfWarEnabled,
   sightRadius,
@@ -148,7 +151,7 @@ export function AiPanel({
   addError,
 }: AiPanelProps) {
   const propsRef = useRef<AiPanelProps | null>(null);
-  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, structures, structureTemplates, groundZones, gridRadius, archerReactionEnabled, chargeEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, charge, performChargeEnd, performSwoopDrop, performClimbAttack, handleClimbMove, performDescentDrop, selectWeapon, undo, onOverlayChange, onBusyChange, addMessage, addError };
+  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, onToggleAiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, structures, structureTemplates, groundZones, gridRadius, archerReactionEnabled, chargeEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, charge, performChargeEnd, performSwoopDrop, performClimbAttack, handleClimbMove, performDescentDrop, selectWeapon, undo, onOverlayChange, onBusyChange, addMessage, addError };
 
   const [plans, setPlans] = useState<AiUnitPlan[] | null>(null);
   const [remaining, setRemaining] = useState<ExecUnit[] | null>(null); // active during Execute
@@ -200,6 +203,13 @@ export function AiPanel({
       .filter(u => isAiControllable(u, { alliances, teams: aiTeams, activeAlliance: currentTurnAlliance }, hostedBy))
       .map(u => u.id);
   }, [units, alliances, aiTeams, currentTurnAlliance]);
+
+  // The same eligible set as objects, for the per-unit roster (stacked ground /
+  // air units must be independently togglable).
+  const eligibleUnits = useMemo(() => {
+    const byId = new Map(units.map(u => [u.id, u]));
+    return eligible.map(id => byId.get(id)).filter((u): u is Unit => !!u);
+  }, [eligible, units]);
 
   // Report execution busy-ness up so ScenarioMap ignores canvas toggles mid-run.
   useEffect(() => {
@@ -756,9 +766,42 @@ export function AiPanel({
         </div>
 
       {eligible.length > 0 && (
-        <p className="text-emerald-300/90 text-[11px]">
-          {eligible.filter(id => !aiExcluded[id]).length} checked · {eligible.filter(id => aiExcluded[id]).length} skipped — click a ✓ token to toggle.
-        </p>
+        <div className="space-y-1">
+          <p className="text-emerald-300/90 text-[11px]">
+            {eligible.filter(id => !aiExcluded[id]).length} checked / {eligible.filter(id => aiExcluded[id]).length} skipped - click a token or a roster row to toggle.
+          </p>
+          <div className="max-h-44 overflow-y-auto rounded border border-gray-700 bg-gray-900/40 p-1 space-y-0.5">
+            {eligibleUnits.map(u => {
+              const airborne = (u.elevation ?? 0) > 0;
+              const checked = !aiExcluded[u.id];
+              return (
+                <label
+                  key={u.id}
+                  className={`flex items-center gap-2 rounded px-1.5 py-1 ${executing || thinking ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-800/70 cursor-pointer'}`}
+                  title={`${u.unitName} - ${u.team} at ${u.hex.q},${u.hex.r} (${airborne ? `air ${u.elevation} ft` : 'ground'})`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={executing || thinking}
+                    onChange={() => onToggleAiExcluded(u.id)}
+                    className="accent-emerald-500"
+                  />
+                  <span className={`flex-1 truncate ${checked ? 'text-gray-200' : 'text-gray-500 line-through'}`}>
+                    {u.unitName}
+                  </span>
+                  <span className="text-gray-500">{u.team}</span>
+                  <span className={`shrink-0 text-[10px] ${airborne ? 'text-sky-300/80' : 'text-gray-500'}`}>
+                    {airborne ? `Air ${u.elevation} ft` : 'Ground'}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-gray-600">
+                    {u.hex.q},{u.hex.r}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* Plot controls */}
