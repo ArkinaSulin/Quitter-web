@@ -22,7 +22,7 @@ import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
 import { rangeBonusAt, unitIgnoresClimb } from '@/packages/effects';
 import { canWithdraw, withdrawDestinations, WITHDRAW_ACTION_COST } from '@/packages/movement';
-import { moveBudgetUnit, parseClimbTo, isAirborne } from '@/packages/movement';
+import { moveBudgetUnit, parseClimbTo, isAirborne, isClimbingUnit } from '@/packages/movement';
 import { isSwooping } from '@/packages/combat';
 
 /** Hovered unit's imposed kill-zone/ZoC tint: its two front hexes at the same
@@ -210,8 +210,8 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
   if (draggingUnitId) {
     const draggedUnit = units.find(u => u.id === draggingUnitId);
     if (!draggedUnit) return { fills: {}, labels: {} };
-    // A climbing unit moves linearly: the target hex (up) and its own hex (down).
-    if (draggedUnit.climbTo) {
+    // A climbing/hanging unit moves linearly: the target hex (up) and its own hex (down).
+    if (isClimbingUnit(draggedUnit, structures, templates)) {
       const t = parseClimbTo(draggedUnit.climbTo);
       const combined: Record<string, string> = {};
       if (t) combined[`${t.q},${t.r}`] = 'rgba(255, 255, 255, 0.6)';

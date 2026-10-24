@@ -184,11 +184,19 @@ leave it. Flyers are exempt.
    - Leftover MP advances toward the next target; a melee unit never voluntarily
      disengages.
 
-### Climbing (melee)
+### Climbing (ground units)
 
-- A unit on a wall (`climbTo` set) is **locked** to that climb target: it plans
-  only the next `climbAttack`, never a move, formation change, retarget or
-  escape.
+- A unit is **climbing/hanging** when `climbTo` is set, or when it is a non-flyer
+  above its hex's surface. While climbing it may only move **up** toward the
+  climb target or **down** to its own hex. Horizontal movement along the wall is
+  invalid for the AI **and** for manual drag/drop.
+- A unit that has finished the climb and stands on a real structure top
+  (`elevation === surface`, `climbTo` cleared) moves normally along that top.
+- Manual movement shows: *"{unit} cannot climb horizontally along the wall —
+  climb up or down first."* The same guard runs in the AI executor (stale
+  plans) and in `performMove`.
+- A climbing unit is **locked** to that climb target: the planner emits only the
+  next `climbAttack`, never a move, formation change, retarget or escape.
 - The planner uses the structure's real per-10-ft climb cost. It only emits a
   climb when a full step is affordable from the unit's remaining budget; if not,
   it holds.

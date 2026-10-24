@@ -149,7 +149,9 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   is dynamic (up to 6 reachable surrounding hexes), approaches use remaining path
   cost, and the target is locked per activation. Formation-up units use leftover
   MP to face adjacent hostiles; climbing is committed and cost-sequenced (no
-  action reservation). Mounted staging/charge also retargets.
+  action reservation) and **vertical-only** (no horizontal moves along a wall;
+  a finished structure top is normal ground). Mounted staging/charge also
+  retargets.
 - 🔜 **Advanced AI is paused.** Scenario column `ai_assist_advanced` is kept for
   the later rebuild; its checkbox and the old Stance toggle are hidden. Rebuild
   Advanced **on top of** the Basic planner (shared board/marks/approach helpers)

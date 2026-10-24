@@ -11,7 +11,7 @@ import { Unit, Hex, AllianceGroup, Formation, GroundEffect, ALLIANCE_COLORS } fr
 import { TEAMS } from '@/packages/units';
 import { planAiMoves, AiUnitPlan, AiMark, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf, nextLegalTarget } from '@/packages/ai';
 import { isUnitRouted } from '@/packages/morale';
-import { computeReachableMap, computeMovePool, movePoolMode, flyMax, moveBudgetUnit } from '@/packages/movement';
+import { computeReachableMap, computeMovePool, movePoolMode, flyMax, moveBudgetUnit, isHorizontalClimbMove } from '@/packages/movement';
 import { isFormationChangeAffordable } from '@/packages/movement';
 import { computeOccupiedHexes, computeThreatHexes, computeVisibleHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/packages/world';
 import { Walls, MapStructures, doorPassThroughHexes, entryBreakFormation, formationOrgLevels, loosePassThroughHexes, unitStandingSurface } from '@/packages/movement';
@@ -388,6 +388,9 @@ export function AiPanel({
     }
     try {
       if (step.kind === 'move') {
+        if (isHorizontalClimbMove(live, step.to, props.structures, props.structureTemplates)) {
+          addMessage(`${live.unitName} cannot climb horizontally along the wall — climb up or down first`);
+        } else {
         const originSurface = unitStandingSurface(live, props.structures, props.structureTemplates);
         const endElevation = step.elevation ?? (live.elevation ?? 0);
         const mode = movePoolMode(live, endElevation, originSurface);
@@ -435,6 +438,7 @@ export function AiPanel({
         } else {
           setStatusText(`${live.unitName} → moves to (${step.to.q}, ${step.to.r})`);
           await props.performMove(live, step.to, entry.cost, false, maxMP, step.elevation);
+        }
         }
       } else if (step.kind === 'attack') {
         let target = props.units.find(u => u.id === step.targetId);

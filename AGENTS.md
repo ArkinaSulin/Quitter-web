@@ -50,10 +50,11 @@ reusable maps. Here's the state:
   cap is dynamic (up to 6 reachable surrounding hexes); approaches use remaining
   path cost and the target is locked per activation. Adjacency is all six hexes
   and overrides farther targets; formation-up uses leftover MP to face adjacent
-  hostiles; climbing is committed and cost-sequenced with no action reservation.
-  Routed enemies are fallback-only: ignored while any non-routed enemy exists;
-  mid-execution attacks retarget to the next legal non-routed unit. No migration.
-  `npm run check` passes.
+  hostiles; climbing is committed and cost-sequenced with no action reservation,
+  and is **vertical-only** (no horizontal movement along a wall; a finished
+  structure top moves normally). Routed enemies are fallback-only: ignored while
+  any non-routed enemy exists; mid-execution attacks retarget to the next legal
+  non-routed unit. No migration. `npm run check` passes.
 - **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
   scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);
   Basic uses **Simple**, Advanced uses **Advance**; the AI tab has a per-preview

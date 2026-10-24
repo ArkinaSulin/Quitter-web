@@ -58,6 +58,37 @@ export function unitStandingSurface(
   return (unit.elevation ?? 0) > 0 ? structureSurfaceAt(unit.hex, structures, templates) : 0;
 }
 
+/** A non-flying unit that is on a wall: either mid-climb (`climbTo` set) or
+ *  hanging above its hex's surface. Such a unit may only climb up/down in place;
+ *  horizontal movement along the wall is illegal. A unit standing on a real
+ *  structure top (elevation === surface) is NOT climbing and may move normally. */
+export function isClimbingUnit(
+  unit: { hex: { q: number; r: number }; climbTo?: string | null; elevation?: number | null; flySpeed?: number | null },
+  structures: MapStructures | undefined,
+  templates: Record<string, StructureTemplate> | undefined,
+): boolean {
+  if (canFly({ flySpeed: unit.flySpeed ?? 0 })) return false;
+  if (unit.climbTo) return true;
+  return (unit.elevation ?? 0) > structureSurfaceAt(unit.hex, structures, templates);
+}
+
+/** True when a climbing/hanging unit tries to move to a hex other than its own
+ *  (down) or its `climbTo` target (up). */
+export function isHorizontalClimbMove(
+  unit: { hex: { q: number; r: number }; climbTo?: string | null; elevation?: number | null; flySpeed?: number | null },
+  targetHex: { q: number; r: number },
+  structures: MapStructures | undefined,
+  templates: Record<string, StructureTemplate> | undefined,
+): boolean {
+  if (!isClimbingUnit(unit, structures, templates)) return false;
+  if (targetHex.q === unit.hex.q && targetHex.r === unit.hex.r) return false;
+  if (unit.climbTo) {
+    const [q, r] = unit.climbTo.split(',').map(Number);
+    if (targetHex.q === q && targetHex.r === r) return false;
+  }
+  return true;
+}
+
 /** The ground floor a GROUND move onto `hex` lands on: 0 when there is no blocking
  *  structure or its door is open/broken (the doorway); otherwise the structure top,
  *  which the different-surface guard rejects (you must climb instead). */

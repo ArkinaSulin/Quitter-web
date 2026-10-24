@@ -16,7 +16,7 @@ import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel 
 import { parseWeapons, isProtectedHero } from '@/packages/units';
 import { unitAttackCap, isMeleeWeapon, buildSwoopDropPlan, chargeStanceFor, isMeleeReachable } from '@/packages/combat';
 import { isUnitRouted } from '@/packages/morale';
-import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveBudget, structureClimbPerStep10 } from '@/packages/movement';
+import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveBudget, structureClimbPerStep10, isClimbingUnit } from '@/packages/movement';
 import { HEX_DIRS, arcOfTarget, facingToward, rotateLeft, rotateRight } from '@/packages/primitives';
 import {
   AiArchetype, AiMark, AiPlanContext, AiPlanResult, AiUnitPlan,
@@ -1024,6 +1024,18 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
     if (!live || live.isDeleted) continue;
     const archetype = archetypeOf(live);
     const plan: AiUnitPlan = { unitId: live.id, archetype, steps: [] };
+    // A climbing/hanging unit may only climb up or down in place. Do not plan
+    // horizontal moves, formation changes or escapes for it.
+    if (isClimbingUnit(live, ctx.structures, ctx.structureTemplates)) {
+      if (!isUnitRouted(live) && live.climbTo) {
+        const target = rt.enemies.find(e => hexKeyOf(e.hex) === live.climbTo);
+        if (target && canAffordClimb(live, target, rt)) {
+          plan.steps.push({ kind: 'climbAttack', unitId: live.id, from: live.hex, targetId: target.id, target: target.hex });
+        }
+      }
+      if (plan.steps.length > 0) plans.push(plan);
+      continue;
+    }
     try {
       if (archetype === 'flying') planFlying(live, plan, rt);
       else if (archetype === 'ranged') planRanged(live, plan, rt);

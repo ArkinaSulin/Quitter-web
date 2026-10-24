@@ -1,5 +1,18 @@
 # QuiTTER Changelog
 
+## Movement: climbing is vertical-only (2026-10-24)
+**Files:** src/packages/movement/lib/mapStructures.ts, src/packages/movement/tests/climbingUnit.test.ts, src/components/ScenarioMap/{useMoveActions,useOverlay,AiPanel}.tsx/.ts, src/packages/ai/lib/planner.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- A climbing/hanging unit (`climbTo`, or a non-flyer above its hex surface) may
+  now only move up/down in place. Horizontal movement along a wall is invalid.
+- Added shared `isClimbingUnit` / `isHorizontalClimbMove` guards used by manual
+  movement, the drag overlay, `performMove`, the AI planner and the AI executor.
+- Manual/drop message: “{unit} cannot climb horizontally along the wall — climb
+  up or down first.”
+- A unit standing on a finished structure top (`elevation === surface`) still
+  moves normally along the top.
+- Verification: `npm run check` passes (tsc, 1118 tests, depcruise, build).
+
 ## Basic AI: routed targets are fallback-only (2026-10-23)
 **Files:** src/packages/ai/lib/{planner,marks,board}.ts, src/components/ScenarioMap/AiPanel.tsx, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 

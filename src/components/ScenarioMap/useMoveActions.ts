@@ -21,7 +21,7 @@ import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
 import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
 import { Walls, directionBetween, edgeRef } from '@/packages/movement';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, structureHasDoor, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween, structureClimbPerStep10 } from '@/packages/movement';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, structureHasDoor, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween, structureClimbPerStep10, isClimbingUnit, isHorizontalClimbMove } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
@@ -197,6 +197,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
   }, [displayUnits, displayAlliances, turnNumber, execute]);
 
   const performMove = useCallback(async (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, breakToFormation?: string, elevation?: number, surface?: number) => {
+    if (isHorizontalClimbMove(unit, targetHex, structures, structureTemplates)) {
+      addError(`${unit.unitName} cannot climb horizontally along the wall — climb up or down first.`);
+      return;
+    }
     if (overBudget) {
       const actionNote = unit.isHero
         ? `${Math.ceil(cost / heroMovePerAction(maxMP))} action(s) at ${heroMovePerAction(maxMP)} MP/action`
@@ -219,7 +223,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // every client; this optimistic add is just for the mover's own snappiness).
     offerReactionsFor({ ...unit, hex: targetHex });
     pruneReactionOffers();
-  }, [units, alliances, formationsMap, moveUnitRecorded, addError, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers]);
+  }, [units, alliances, formationsMap, structures, structureTemplates, moveUnitRecorded, addError, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers]);
 
   // An attached hero dragged away separates from its host (drag-away = the only
   // way to detach) — the move's undo chain also undoes the separation.
@@ -542,13 +546,13 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // Climb / hang movement (mounted units cannot climb). A climbing unit moves
     // linearly: up toward `climbTo`, or down (its own hex). A grounded non-mounted
     // unit dropped on an adjacent HIGHER-surface hex climbs instead of moving.
-    if (unit.climbTo) {
+    if (isClimbingUnit(unit, structures, structureTemplates)) {
       if (unit.mountId || unit.mountName) { addMessage(`${unit.unitName} (mounted) cannot climb`); return; }
       const t = parseClimbTo(unit.climbTo);
       const up = !!t && targetHex.q === t.q && targetHex.r === t.r;
       const down = targetHex.q === unit.hex.q && targetHex.r === unit.hex.r;
       if (up || down) { await handleClimbMove(unit, targetHex, originSurface); return; }
-      addMessage(`${unit.unitName} is climbing — it can only climb up toward (${t?.q}, ${t?.r}) or down`);
+      addError(`${unit.unitName} cannot climb horizontally along the wall — climb up or down first.`);
       return;
     }
     if (!flying && !unit.isCharging && !unit.mountId && !unit.mountName && !unit.attachedToUnitId && endSurface > originSurface && areHexesAdjacent(unit.hex, targetHex)) {
