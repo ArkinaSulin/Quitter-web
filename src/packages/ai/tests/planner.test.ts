@@ -289,8 +289,13 @@ describe('Basic AI structure complex confinement', () => {
     const flyer = mk({ id: 'fly1', team: 'blue', hex: hex(0, 0), flySpeed: 6, elevation: 20 });
     const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -4) });
     const result = planAiMoves({ ...ctxOf([flyer, foe]), structures: structs(['0,0', '0,-1']), structureTemplates: {} });
-    const moves = stepsOf(result, 'fly1').filter(s => s.kind === 'move');
-    expect(moves.some(m => !['0,0', '0,-1'].includes(`${m.to.q},${m.to.r}`))).toBe(true);
+    const steps = stepsOf(result, 'fly1');
+    const outside = ['0,0', '0,-1'];
+    const left = steps.some(s =>
+      (s.kind === 'move' && !outside.includes(`${s.to.q},${s.to.r}`)) ||
+      (s.kind === 'swoop' && !outside.includes(`${s.target.q},${s.target.r}`)),
+    );
+    expect(left).toBe(true);
   });
 });
 
@@ -309,6 +314,19 @@ describe('Basic AI mounted charge hardening', () => {
     expect(steps.some(s => s.kind === 'swoop')).toBe(false);
     expect(steps.some(s => s.kind === 'attack' && s.charge)).toBe(true);
     expect(steps.some(s => s.kind === 'chargeEnd')).toBe(true);
+  });
+
+  it('may turn first, then charge if the remaining pool still pays for it', () => {
+    const result = planAiMoves(ctxOf(chargeUnits({ facing: 3 })));
+    const steps = stepsOf(result, 'c1');
+    expect(steps.some(s => s.kind === 'turn')).toBe(true);
+    expect(steps.some(s => s.kind === 'charge')).toBe(true);
+  });
+
+  it('does not plan a turn-then-charge it cannot afford', () => {
+    const result = planAiMoves(ctxOf(chargeUnits({ facing: 3, movementPoints: 2 })));
+    const steps = stepsOf(result, 'c1');
+    expect(steps.some(s => s.kind === 'charge')).toBe(false);
   });
 
   it('does not charge when the Charge and Swoop toggle is off', () => {
@@ -336,10 +354,23 @@ describe('Basic AI flying swoop hardening', () => {
     expect(steps.some(s => s.kind === 'swoop')).toBe(true);
   });
 
-  it('does not swoop without fly points', () => {
+  it('swoops a grounded target with no materialized fly points', () => {
     const result = planAiMoves(ctxOf(flyerUnits({ flySpeedAvailable: 0 })));
     const steps = stepsOf(result, 'fly1');
-    expect(steps.some(s => s.kind === 'charge')).toBe(false);
+    expect(steps.some(s => s.kind === 'charge')).toBe(true);
+    expect(steps.some(s => s.kind === 'swoop')).toBe(true);
+  });
+
+  it('may turn first, then swoop if the remaining pool still pays for it', () => {
+    const result = planAiMoves(ctxOf(flyerUnits({ flySpeedAvailable: 0, facing: 3 })));
+    const steps = stepsOf(result, 'fly1');
+    expect(steps.some(s => s.kind === 'turn')).toBe(true);
+    expect(steps.some(s => s.kind === 'swoop')).toBe(true);
+  });
+
+  it('does not plan a turn-then-swoop it cannot afford', () => {
+    const result = planAiMoves(ctxOf(flyerUnits({ flySpeed: 2, flySpeedAvailable: 0, facing: 3 })));
+    const steps = stepsOf(result, 'fly1');
     expect(steps.some(s => s.kind === 'swoop')).toBe(false);
   });
 

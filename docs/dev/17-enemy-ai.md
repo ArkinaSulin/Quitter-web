@@ -302,12 +302,14 @@ does not abandon it:
 - Mark the closest hostile not already flyer-marked. Face it, then
   `charge` → `swoop` (the atomic dive + free melee attack).
 - Scenarios gate this through the canonical `chargeStanceFor` rule: airborne,
-  fly-capable, **flySpeedAvailable > 2**, 2+ actions, and the scenario
-  **Charge and Swoop** toggle on. A flyer with no materialized fly points simply
-  flies this activation instead of swooping.
-- After each swoop: retreat with remaining FP to **≥2 hexes from every hostile**
-  and set elevation **20 ft** on that retreat move. Repeat `charge` → `swoop`
-  if the canonical gate still allows it.
+  fly-capable, **at least 1 action**, and the scenario **Charge and Swoop**
+  toggle on. There is no fly-point threshold; the charge move may convert the
+  remaining action into a fly pool. Re-check the gate **after** a facing turn,
+  because the turn may spend the action/fly points needed for the charge.
+- A swoop may therefore be declared on the first or a later action; the planner
+  picks the cheapest available candidate. One swoop per activation.
+- After the swoop: retreat with remaining FP to **≥2 hexes from every hostile**
+  and set elevation **20 ft** on that retreat move.
 - No swoop available → fly toward the target, still ending ≥2 hexes away at
   20 ft when possible.
 
@@ -318,24 +320,28 @@ does not abandon it:
 - Staging ring: radius **4** hexes (Close/high org speed → **2**),
   tangent/rear-flank, outside ZoC, reachable this activation.
 - Charge only when the canonical `chargeStanceFor` gate allows it
-  (`canCharge`, a charge-capable formation, 2+ actions, scenario **Charge and
-  Swoop** on), and:
-  - it is the **first action**;
+  (`canCharge`, a charge-capable formation, **at least 1 action**, scenario
+  **Charge and Swoop** on), and:
+  - the post-turn state can still enter the charge and pay for the charge move;
   - the target is engaged by a friendly;
   - the approach is **flank/rear**;
   - the destination is outside hostile ZoC;
   - corridor/destination is clear of other mounted units.
+- The charge may be the **first or a later action**: try the current facing, then
+  rotations. If a turn is needed, take it and charge only when the remaining
+  MP/action still covers the move; otherwise stage instead of losing the round.
 - After the charge attack: remaining action/MP disengages to the farthest safe
   hex from all hostiles, then upgrades to the highest affordable org formation.
+  One charge per activation.
 - Not charging: stage on the ring and upgrade; no hold when a staging move
   exists.
 
 ### Multiple actions
 
 Every doctrine spends as many actions/MP/FP as useful: melee and ranged attack
-twice when they have two actions. Mounted is the designed exception (charge
-first action → free charge attack → second action disengages). Flying may swoop
-twice (each swoop costs a charge action).
+twice when they have two actions. Mounted and flying charges may use the first or
+a later action, but at most **one charge/swoop per activation**; remaining
+resources go to disengage/evasion.
 
 ## Executor steps
 
@@ -376,7 +382,8 @@ full facing search (180-degree turns), Open-Order pass-through, stop-aware
 target costs, structure-complex confinement (footprint, enclosed courtyard,
 flyer exemption),
 and hardened mounted charge / flying swoop
-gates (scenario toggle, `canCharge`, fly points, no flyer swoop without FP).
+gates (scenario toggle, `canCharge`, 1+ action; no fly-point threshold), with
+turn-then-charge revalidation and one charge/swoop per activation.
 Run `npm run check` (tsc, vitest, depcruise, build) and
 `npm run lint:boundaries`.
 

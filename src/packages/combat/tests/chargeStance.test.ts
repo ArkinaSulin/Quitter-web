@@ -29,14 +29,11 @@ describe('chargeStanceFor', () => {
     expect(chargeStanceFor(base())).toBe('charge');
   });
 
-  it('airborne flyer with >2 available FP → swoop (unit or hero)', () => {
+  it('airborne flyer → swoop regardless of materialized FP (unit or hero)', () => {
     expect(chargeStanceFor(base({ unit: unit({ flySpeed: 4, flySpeedAvailable: 4, elevation: 20 }), airborne: true }))).toBe('swoop');
     expect(chargeStanceFor(base({ unit: unit({ isHero: true, flySpeed: 4, flySpeedAvailable: 4, elevation: 20 }), airborne: true }))).toBe('swoop');
-  });
-
-  it('airborne flyer with ≤2 available FP → none (needs >2 FP)', () => {
-    expect(chargeStanceFor(base({ unit: unit({ flySpeed: 4, flySpeedAvailable: 2, elevation: 20 }), airborne: true }))).toBeNull();
-    expect(chargeStanceFor(base({ unit: unit({ flySpeed: 4, flySpeedAvailable: 0, elevation: 20 }), airborne: true }))).toBeNull();
+    expect(chargeStanceFor(base({ unit: unit({ flySpeed: 4, flySpeedAvailable: 2, elevation: 20 }), airborne: true }))).toBe('swoop');
+    expect(chargeStanceFor(base({ unit: unit({ flySpeed: 4, flySpeedAvailable: 0, elevation: 20 }), airborne: true }))).toBe('swoop');
   });
 
   it('airborne non-flyer (a hanging climber) → none', () => {
@@ -62,9 +59,11 @@ describe('chargeStanceFor', () => {
     expect(chargeStanceFor(base({ unit: unit({ actionsAvailable: 0 }) }))).toBeNull();
   });
 
-  it('needs MORE than 1 action (entry costs one) — for BOTH charge and swoop', () => {
-    expect(chargeStanceFor(base({ unit: unit({ actionsAvailable: 1 }) }))).toBeNull(); // ground
-    expect(chargeStanceFor(base({ unit: unit({ actionsAvailable: 1, flySpeed: 4, flySpeedAvailable: 4, elevation: 20 }), airborne: true }))).toBeNull(); // swoop
+  it('needs at least 1 action (entry costs one) - charge may use a later action', () => {
+    expect(chargeStanceFor(base({ unit: unit({ actionsAvailable: 1 }) }))).toBe('charge');
+    expect(chargeStanceFor(base({ unit: unit({ actionsAvailable: 1, flySpeed: 4, flySpeedAvailable: 4, elevation: 20 }), airborne: true }))).toBe('swoop');
+    expect(chargeStanceFor(base({ unit: unit({ actionsAvailable: 1, flySpeed: 4, flySpeedAvailable: 0, elevation: 20 }), airborne: true }))).toBe('swoop');
+    expect(chargeStanceFor(base({ unit: unit({ actionsAvailable: 0 }) }))).toBeNull();
   });
 });
 

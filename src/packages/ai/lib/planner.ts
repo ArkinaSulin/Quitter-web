@@ -16,7 +16,7 @@ import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel 
 import { parseWeapons, isProtectedHero } from '@/packages/units';
 import { unitAttackCap, isMeleeWeapon, buildSwoopDropPlan, chargeStanceFor, isMeleeReachable } from '@/packages/combat';
 import { isUnitRouted, computeThreatRating } from '@/packages/morale';
-import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveCapacity, structureClimbPerStep10, isClimbingUnit, applyMoveCost, climbPlan, canFly } from '@/packages/movement';
+import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveCapacity, structureClimbPerStep10, isClimbingUnit, applyMoveCost, moveBudgetUnit, climbPlan, canFly } from '@/packages/movement';
 import { HEX_DIRS, arcOfTarget, facingToward, rotateLeft, rotateRight } from '@/packages/primitives';
 import {
   AiArchetype, AiMark, AiPlanContext, AiPlanResult, AiUnitPlan,
@@ -1130,21 +1130,15 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
   const movement = movementContextFor(u, rt.working, rt.ctx, 'ground', rt.complexes.get(u.id) ?? null);
   const pool = effectiveMax(u, rt.ctx.formations);
   const chargeEnabled = rt.ctx.chargeEnabled !== false;
-  const canChargeNow = chargeStanceFor({
-    unit: u,
-    airborne: false,
-    form: rt.ctx.formations[u.currentFormation],
-    chargeEnabled,
-  }) === 'charge';
 
   const chargeDestination = (
     state: Unit,
     target: Unit,
   ): { hex: Hex; cost: number; turns: { dir: 'left' | 'right' }[] } | null => {
-    if (!canChargeNow) return null;
     const dests: { hex: Hex; cost: number; arc: string; turns: { dir: 'left' | 'right' }[] }[] = [];
-    // A charge is a forward wedge; try the current facing and one cheap rotation
-    // either way (a mounted unit stages facing the target).
+    // A charge is a forward wedge, but the unit may turn first (the turn's MP /
+    // action cost is paid), then charge with a later action. Try the current
+    // facing and up to two cheap rotations in either direction.
     const tries: { turns: { dir: 'left' | 'right' }[]; unit: Unit }[] = [{ turns: [], unit: state }];
     for (let i = 1; i <= 2; i++) {
       const seq: { dir: 'left' | 'right' }[] = Array.from({ length: i }, () => ({ dir: 'left' as const }));
@@ -1155,8 +1149,28 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
       if (r) tries.push({ turns: rseq, unit: r });
     }
     for (const { turns, unit: candidate } of tries) {
+      // Re-check AFTER the turn: the turn may have spent the action or MP needed
+      // to enter the charge. Charge entry itself spends one action.
+      if (chargeStanceFor({
+        unit: candidate,
+        airborne: false,
+        form: rt.ctx.formations[candidate.currentFormation],
+        chargeEnabled,
+      }) !== 'charge') continue;
+      const charged: Unit = {
+        ...candidate,
+        isCharging: true,
+        chargeDistance: 0,
+        actionsAvailable: (candidate.actionsAvailable ?? 0) - 1,
+      };
+      const capacity = computeMoveCapacity({
+        movementPointsAvailable: charged.movementPointsAvailable,
+        actionsAvailable: charged.actionsAvailable,
+      }, pool);
+      if (capacity <= 0) continue;
       const charge = computeChargeHexes(candidate, rt, pool);
       charge.forEach((cost, key) => {
+        if (cost > capacity) return;
         const hex = parseKey(key);
         if (!isAdjacent(hex, target.hex)) return;
         const arc = arcOfTarget(target.hex, target.facing, hex);
@@ -1192,7 +1206,7 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     plan.steps.push({ kind: 'chargeEnd', unitId: u.id, from: u.hex });
     u = { ...u, isCharging: false, chargeDistance: 0 };
     rt.commit(u);
-    // Second action: disengage to the safest reachable hex, then form up.
+    // Evade with any remaining actions / MP after the charge.
     const retreat = bestManeuver(u, rt, 'ground', (candidate, threat) => {
       if (candidate.path.length === 0) return -Infinity;
       if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
@@ -1215,14 +1229,14 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
   };
 
   // Try a legal charge against any engaged candidate, not only the marked one.
-  if (canChargeNow) {
-    for (const target of ordered) {
-      if (!isEngagedByFriendly(target, u, rt)) continue;
-      const charge = chargeDestination(u, target);
-      if (!charge) continue;
-      if (target.id !== markedId) rt.setTarget(u.id, target.id);
-      return applyCharge(target, charge);
-    }
+  // A charge may be declared on a later action (after a turn), so re-evaluate
+  // eligibility per candidate instead of gating on the pre-turn state.
+  for (const target of ordered) {
+    if (!isEngagedByFriendly(target, u, rt)) continue;
+    const charge = chargeDestination(u, target);
+    if (!charge) continue;
+    if (target.id !== markedId) rt.setTarget(u.id, target.id);
+    return applyCharge(target, charge);
   }
 
   // Not charging: stage on the ring around the best reachable target.
@@ -1256,8 +1270,13 @@ function planFlying(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
   if (isUnitRouted(unit)) return planRouted(unit, plan, rt);
   let u = unit;
   const markedId = rt.byUnit.get(u.id) ?? null;
-  const candidates = rt.candidates(u, 'flying');
-  let target: Unit | null = candidates.find(t => t.id === markedId) ?? candidates[0] ?? null;
+  const candidates = rt
+    .candidates(u, 'flying')
+    .slice()
+    .sort((a, b) => (a.id === markedId ? 0 : 1) - (b.id === markedId ? 0 : 1) || a.id.localeCompare(b.id));
+  // Prefer a grounded target we can actually swoop; fall back to the marked one.
+  let target: Unit | null =
+    candidates.find(c => isGroundTarget(c, rt.ctx)) ?? candidates[0] ?? null;
   if (!target) return u;
 
   const airborne = unitIsAirborne(u, rt.ctx);
@@ -1274,51 +1293,74 @@ function planFlying(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     rt.commit(u);
   }
 
-  // Swoop up to twice (each swoop = charge action + free attack). The canonical
-  // charge/swoop gate decides whether a swoop is legal (airborne, fly points,
-  // actions, "Charge and Swoop" scenario toggle).
+  // One swoop per activation (one charge). A swoop may be declared on the first
+  // or a later action; re-check the gate AFTER any facing turn, because the turn
+  // may spend the action/flight points needed to charge. The charge-move
+  // affordability is validated target-specifically by buildSwoopDropPlan.
   const chargeEnabled = rt.ctx.chargeEnabled !== false;
-  for (let swoops = 0; swoops < 2; swoops++) {
-    if (!target) break;
-    const stance = chargeStanceFor({
-      unit: u,
-      airborne: unitIsAirborne(u, rt.ctx),
-      form: rt.ctx.formations[u.currentFormation],
-      chargeEnabled,
-    });
-    if (stance !== 'swoop') break;
-    // Face the target so the charge wedge points at it.
-    const faceTurns = turnsTo(u.facing, facingToward(u.hex, target.hex));
-    if (faceTurns.length > 0) {
-      const faced = pushTurns(plan, u, faceTurns, rt.ctx);
-      if (!faced) break;
-      u = faced;
+  const swoopContext = {
+    units: rt.working,
+    alliances: rt.ctx.alliances,
+    formations: rt.ctx.formations,
+    structures: rt.ctx.structures,
+    structureTemplates: rt.ctx.structureTemplates,
+    archerReactionEnabled: rt.ctx.reactiveArchery,
+  };
+  const trySwoop = (): boolean => {
+    for (const candidate of candidates) {
+      if (candidate.isDeleted || !isGroundTarget(candidate, rt.ctx)) continue;
+      if (chargeStanceFor({
+        unit: u,
+        airborne: unitIsAirborne(u, rt.ctx),
+        form: rt.ctx.formations[u.currentFormation],
+        chargeEnabled,
+      }) !== 'swoop') return false;
+      const faceTurns = turnsTo(u.facing, facingToward(u.hex, candidate.hex));
+      const faced = faceTurns.length > 0 ? applyTurns(u, faceTurns, rt.ctx) : u;
+      if (!faced) continue;
+      if (chargeStanceFor({
+        unit: faced,
+        airborne: unitIsAirborne(faced, rt.ctx),
+        form: rt.ctx.formations[faced.currentFormation],
+        chargeEnabled,
+      }) !== 'swoop') continue;
+      const charged: Unit = {
+        ...faced,
+        isCharging: true,
+        chargeDistance: 0,
+        actionsAvailable: (faced.actionsAvailable ?? 0) - 1,
+      };
+      const swoopPlan = buildSwoopDropPlan(charged, candidate, swoopContext);
+      if (!swoopPlan || swoopPlan.overBudget) continue;
+      const spend = applyMoveCost(
+        moveBudgetUnit(charged, 'fly'),
+        swoopPlan.cost,
+        swoopPlan.maxMP,
+      );
+      let next = u;
+      if (faceTurns.length > 0) {
+        const turned = pushTurns(plan, next, faceTurns, rt.ctx);
+        if (!turned) continue;
+        next = turned;
+      }
+      plan.steps.push({ kind: 'charge', unitId: next.id, from: next.hex });
+      plan.steps.push({ kind: 'swoop', unitId: next.id, from: next.hex, targetId: candidate.id, target: candidate.hex });
+      u = {
+        ...next,
+        hex: swoopPlan.landHex,
+        elevation: swoopPlan.elevation,
+        flySpeedAvailable: spend.movementPointsAvailable,
+        actionsAvailable: spend.actionsAvailable,
+        isCharging: false,
+        chargeDistance: 0,
+      };
       rt.commit(u);
+      target = candidate;
+      return true;
     }
-    const charged: Unit = { ...u, isCharging: true, chargeDistance: 0, actionsAvailable: (u.actionsAvailable ?? 0) - 1 };
-    const swoopPlan = buildSwoopDropPlan(charged, target, {
-      units: rt.working,
-      alliances: rt.ctx.alliances,
-      formations: rt.ctx.formations,
-      structures: rt.ctx.structures,
-      structureTemplates: rt.ctx.structureTemplates,
-      archerReactionEnabled: rt.ctx.reactiveArchery,
-    });
-    if (!swoopPlan) break;
-    plan.steps.push({ kind: 'charge', unitId: u.id, from: u.hex });
-    plan.steps.push({ kind: 'swoop', unitId: u.id, from: u.hex, targetId: target!.id, target: target!.hex });
-    u = {
-      ...charged,
-      hex: swoopPlan.landHex,
-      elevation: swoopPlan.elevation,
-      flySpeedAvailable: Math.max(0, (u.flySpeedAvailable ?? 0) - swoopPlan.cost),
-      isCharging: false,
-      chargeDistance: 0,
-    };
-    rt.commit(u);
-    target = candidates.find(t => t.id !== target!.id) ?? null;
-    if (!target) break;
-  }
+    return false;
+  };
+  trySwoop();
 
   // End the activation at 20 ft and at least 2 hexes from every hostile. If a
   // next target exists, stay 2 hexes from it so the next swoop is available.

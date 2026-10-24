@@ -1,5 +1,25 @@
 # QuiTTER Changelog
 
+## Charge/swoop: 1-action gate, later-action charges, 2-hex validation (2026-10-24)
+**Files:** src/packages/combat/{lib/chargeStance.ts,tests/chargeStance.test.ts}, src/packages/ai/{lib/planner.ts,tests/planner.test.ts}, docs/dev/{00-universal-rules,07-movement-economy,08-combat,17-enemy-ai,changelog}.md, AGENTS.md
+
+- `chargeStanceFor` now requires **at least 1 action** (not 2), so a charge/swoop
+  may be declared on the first **or a later** action. The airborne
+  `flySpeedAvailable > 2` gate is removed; the target-specific charge/swoop move
+  already enforces the **2-hex full-charge distance** and affordability.
+- **Mounted AI:** `planMounted` re-evaluates the gate after each facing-turn
+  preview, computes the post-turn charge capacity, and only plans a turn-then-
+  charge when it can pay for the move. It no longer plans an illegal charge that
+  drives actions negative. After charging, remaining resources disengage/evade.
+- **Flying AI:** one swoop per activation; tries grounded candidates, re-checks
+  after facing turns, rejects over-budget plans, and simulates the actual
+  `applyMoveCost` spend so the planned FP/actions match execution. A flyer with
+  0 materialized FP can charge+swoop (the remaining action funds the fly pool).
+- Tests: mounted turn+charge and unaffordable turn+charge; flying 0-FP swoop,
+  turn+charge, unaffordable turn+swoop; charge stance 1-action cases.
+- Verification: `npm run check` passes (tsc, 1132 tests, depcruise, build). No
+  migration.
+
 ## AI: per-unit roster + stacked badge fix (2026-10-24)
 **Files:** src/components/ScenarioMap/{AiPanel.tsx,ScenarioMap.tsx,useCanvasDraw.ts}, docs/dev/changelog.md
 

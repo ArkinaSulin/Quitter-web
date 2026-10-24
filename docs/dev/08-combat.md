@@ -337,16 +337,21 @@ The context menu offers a single charge entry, computed by `chargeStanceFor`
 - **Grounded**, charge-capable → **Charge!**: a **non-hero** needs `canCharge` +
   `canFormationCharge(form)`; a **hero** needs `canCharge` only (no formation arc —
   its single wedge is aimed at the target, below).
-- **Airborne** fly-capable → **Swoop!** (offered to units *and* heroes) — needs
-  **`flySpeedAvailable > 2`** (the fly pool must carry a full-charge move);
+- **Airborne** fly-capable → **Swoop!** (offered to units *and* heroes) — no
+  fly-point threshold; the following drop validates the full-charge distance and
+  cost;
 - a hanging climber is airborne but can't fly → nothing.
 
-**Both** require `actionsAvailable > 1` (≥ 2) and, on entry, **spend 1 action**
-(the charge move then spends its pool as usual, so a grounded unit charge totals
-two actions). They mark `isCharging` + `chargeDistance = 0` and lock
-rotate/formation; the following move/drop decides ground-charge vs swoop, so they
-share the engine handler. The entry is gated by the scenario `mounted_charge_enabled`
-setting (shown as **"Charge and Swoop"**).
+**Both** require **at least 1 action** and, on entry, **spend 1 action**. A charge
+may therefore be declared on the first or a later action; the charge move then
+spends its normal pool. The target-specific move/drop enforces the
+`charge_full_distance` (2 hexes) and affordability. They mark `isCharging` +
+`chargeDistance = 0` and lock rotate/formation; the following move/drop decides
+ground-charge vs swoop, so they share the engine handler. The AI plots at most
+one charge per activation; remaining actions/MP after the charge are used for
+evasion.
+The entry is gated by the scenario `mounted_charge_enabled` setting (shown as
+**"Charge and Swoop"**).
 - Moves only through the charge corridor (`07`): a formed unit's front wedge, or —
   for a **loose** (facing-less) unit — a **single front wedge aimed at the target
   hex** (`facingToward(origin, target)` gives the vertex facing whose front sector
