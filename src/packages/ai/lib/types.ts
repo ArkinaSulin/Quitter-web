@@ -32,6 +32,8 @@ export type AiStep =
   | { kind: 'weapon'; unitId: string; from: Hex; weaponIndex: number }
   | { kind: 'climbAttack'; unitId: string; from: Hex; targetId: string; target: Hex }
   | { kind: 'climb'; unitId: string; from: Hex; to: Hex }
+  | { kind: 'land'; unitId: string; from: Hex; to: Hex }
+  | { kind: 'drop'; unitId: string; from: Hex; to: Hex; feet: number }
   | { kind: 'charge'; unitId: string; from: Hex }
   | { kind: 'swoop'; unitId: string; from: Hex; targetId: string; target: Hex }
   | { kind: 'chargeEnd'; unitId: string; from: Hex };

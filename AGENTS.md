@@ -53,7 +53,10 @@ reusable maps. Here's the state:
   hostiles; climbing is committed and cost-sequenced with no action reservation,
   and is **vertical-only** (no horizontal movement along a wall; a finished
   structure top moves normally). Melee finds free top gaps and climbs into a
-  complex to fight interior top targets; mounted/flying are exempt. Routed
+  complex to fight interior top targets; mounted/flying are exempt. A hanging unit
+  is hard-locked to climb to the top and land, or defeat the lowest-threat exit
+  obstacle then land; routed hanging units drop down. On-top units hold and fight
+  from the wall (no kiting/retreat; same-complex movement only). Routed
   enemies are fallback-only: ignored while any non-routed enemy exists;
   mid-execution attacks retarget to the next legal non-routed unit. **Preview**
   runs the full plot in a one-shot Web Worker with hydrated game settings; the

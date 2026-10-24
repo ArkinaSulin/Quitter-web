@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## AI: hard climbing lock, routed drops, structure hold (2026-10-24)
+**Files:** src/packages/ai/lib/{types,planner}.ts, src/components/ScenarioMap/{AiPanel,ScenarioMap,useMoveActions}.tsx/.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- While climbing/hanging, a non-routed unit now has one mission until it routs:
+  climb to the top and land, or defeat the lowest-threat obstacle at the chosen
+  exit, then land. No moves, formations, escapes, lower-target attacks or
+  retargeting.
+- Free top exits are preferred; if the chosen exit becomes friendly-occupied the
+  unit switches to the nearest free top. Enemy exits choose the lowest
+  `computeThreatRating` obstacle.
+- Routed hanging units **drop down immediately** (`drop` step, fall damage),
+  then flee; if the drop hex is occupied they climb down instead.
+- Added `land` (move onto a free top once at its elevation) and `drop` executor
+  steps. Hit/retaliation still requires reaching the structure level.
+- On-top structure units hold and fight: shoot/attack from the wall, hold/face if
+  no attack, never kite/retreat off the structure; same-complex movement only.
+- Verification: `npm run check` passes (tsc, 1127 tests, depcruise, build).
+
 ## AI Preview: one-shot worker + planner optimization (2026-10-24)
 **Files:** src/workers/{aiPlanner.worker.ts,aiPlanner.types.ts}, src/packages/infra/lib/settingsCache.ts, src/components/ScenarioMap/AiPanel.tsx, src/packages/ai/lib/{planner,board}.ts, src/packages/movement/lib/moveCost.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 

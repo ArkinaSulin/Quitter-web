@@ -158,6 +158,12 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   realtime stay responsive. Cancel/reset terminates immediately; a 30s watchdog
   reports a genuine hang. Planner optimizations: shared maneuver list across
   modes, forward-only reach, cached complexes/top-access/base maps.
+- ✅ **AI climbing lock + structure hold (2026-10-24):** a hanging unit has one
+  mission until routed: climb to the top and land, or defeat the lowest-threat
+  obstacle at the chosen exit, then land. Free top exits first; friendly-blocked
+  exits switch to the nearest free top. Routed hanging units drop down. On-top
+  units hold and fight from the wall (no kiting/retreat); same-complex movement
+  only.
 - 🔜 **Advanced AI is paused.** Scenario column `ai_assist_advanced` is kept for
   the later rebuild; its checkbox and the old Stance toggle are hidden. Rebuild
   Advanced **on top of** the Basic planner (shared board/marks/approach helpers)
