@@ -207,6 +207,24 @@ leave it. Flyers are exempt.
   for an attack**. A 20-ft wall therefore takes two activations (10 ft each),
   attacking only once at the top.
 
+### Structure-top access (melee)
+
+A hostile standing on a structure top is a valid melee target, even when it is
+inside a multi-hex complex.
+
+- The planner resolves the target's connected hex-structure footprint and finds
+  **free top hexes** (no unit standing on that surface) — the “gaps”.
+- For each gap it finds an adjacent **base hex** the unit can reach, then scores
+  `path to base + climb steps + top distance to target`.
+- It plans **move to base → `climb` into the gap → top move → attack** across
+  activations. A climb that cannot finish this activation stops there and
+  continues next turn from `climbTo`.
+- **Melee only.** Mounted units never climb; flying units keep their direct
+  swoop/10-ft attack.
+- A perimeter top target can still use the existing `climbAttack`. If every top
+  hex is occupied (no gap) and the target is interior, the unit stages at the
+  base and keeps the target without making an illegal climb.
+
 ### Ranged
 
 - Archetype test: the **primary weapon (`weapons[0]`)** has `maxRange > 1`.
@@ -270,6 +288,7 @@ twice (each swoop costs a charge action).
 | Step | Executor |
 |---|---|---|
 | `climbAttack` | `performClimbAttack` |
+| `climb` | `handleClimbMove` (climb into a free top gap, no attack) |
 | `charge` | `useGameEngine.charge` |
 | `swoop` | `performSwoopDrop` (atomic charge-move + dive + free attack) |
 | `chargeEnd` | `performChargeEnd` |
@@ -293,10 +312,11 @@ marks/caps (including the dynamic melee cap up to 6), melee upgrade priority,
 multi-attack, ranged 6-hex posture and Close-Order short-bow shots, melee
 staging, ZoC engagement by fully upgraded melee, geometric adjacency (all six
 hexes), formation-up leftover-MP facing, climb commitment and 20-ft sequencing,
-routed-target fallback and mid-execution retargeting,
-adjacency-only flank safety, full facing search (180-degree turns), Open-Order
-pass-through, stop-aware target costs, structure-complex confinement (footprint,
-enclosed courtyard, flyer exemption), and hardened mounted charge / flying swoop
+structure-top gap access and free-gap climbs, routed-target fallback and
+mid-execution retargeting, adjacency-only flank safety, full facing search
+(180-degree turns), Open-Order pass-through, stop-aware target costs,
+structure-complex confinement (footprint, enclosed courtyard, flyer exemption),
+and hardened mounted charge / flying swoop
 gates (scenario toggle, `canCharge`, fly points, no flyer swoop without FP).
 Run `npm run check` (tsc, vitest, depcruise, build) and
 `npm run lint:boundaries`.

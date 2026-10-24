@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## AI: melee climbs into free structure-top gaps (2026-10-24)
+**Files:** src/packages/ai/lib/{types,planner}.ts, src/components/ScenarioMap/{AiPanel,ScenarioMap}.tsx, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- Melee AI now treats an enemy on a structure top as a reachable target by
+  finding **free top hexes** (gaps) in the target’s complex, moving to a base
+  hex, climbing into the gap, then moving on top and attacking.
+- Added the `climb` executor step (`handleClimbMove`) separate from
+  `climbAttack`; free-gap climbs can span activations.
+- Melee only: mounted never climbs; flying keeps its direct swoop/10-ft attack.
+- If every top hex is occupied (no gap) and the target is interior, the unit
+  stages at the base instead of making an illegal climb; perimeter targets keep
+  `climbAttack`.
+- Verification: `npm run check` passes (tsc, 1121 tests, depcruise, build).
+
 ## Movement: climbing is vertical-only (2026-10-24)
 **Files:** src/packages/movement/lib/mapStructures.ts, src/packages/movement/tests/climbingUnit.test.ts, src/components/ScenarioMap/{useMoveActions,useOverlay,AiPanel}.tsx/.ts, src/packages/ai/lib/planner.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 

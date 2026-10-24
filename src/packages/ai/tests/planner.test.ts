@@ -562,3 +562,52 @@ describe('Basic AI routed-target fallback', () => {
     expect(pick?.unit.id).toBe('low');
   });
 });
+
+describe('Basic AI structure-top access', () => {
+  const towerStructures = {
+    '0,0': { templateId: 'tower' },
+    '1,0': { templateId: 'tower' },
+    '2,0': { templateId: 'tower' },
+  } as unknown as AiPlanContext['structures'];
+  const towerTemplates = {
+    tower: { id: 'tower', name: 'Tower', anchor: 'hex', elevation: 10, mpClimbUp: 6, mpMountedUp: 6 },
+  } as unknown as AiPlanContext['structureTemplates'];
+
+  it('climbs into a free top gap to reach an interior top target', () => {
+    const target = mk({ id: 't', team: 'black', hex: hex(2, 0), elevation: 10, currentFormation: 'Close Order', organizationLevel: 2 });
+    const climber = mk({
+      id: 'c', team: 'blue', hex: hex(0, 1), facing: 0,
+      currentFormation: 'Close Order', organizationLevel: 2, formationAvailability: ['Close Order'],
+      movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const result = planAiMoves({ ...ctxOf([climber, target]), structures: towerStructures, structureTemplates: towerTemplates });
+    const steps = stepsOf(result, 'c');
+    expect(steps.some(s => s.kind === 'climb' && (s.to.q === 0 || s.to.q === 1) && s.to.r === 0)).toBe(true);
+  });
+
+  it('does not climb when every top hex is occupied', () => {
+    const target = mk({ id: 't', team: 'black', hex: hex(2, 0), elevation: 10, currentFormation: 'Close Order', organizationLevel: 2 });
+    const blocker = mk({ id: 'b', team: 'blue', hex: hex(0, 0), elevation: 10, currentFormation: 'Close Order', organizationLevel: 2 });
+    const blocker2 = mk({ id: 'b2', team: 'blue', hex: hex(1, 0), elevation: 10, currentFormation: 'Close Order', organizationLevel: 2 });
+    const climber = mk({
+      id: 'c', team: 'blue', hex: hex(0, 1), facing: 0,
+      currentFormation: 'Close Order', organizationLevel: 2, formationAvailability: ['Close Order'],
+      movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const result = planAiMoves({ ...ctxOf([climber, target, blocker, blocker2]), structures: towerStructures, structureTemplates: towerTemplates });
+    expect(stepsOf(result, 'c').some(s => s.kind === 'climb')).toBe(false);
+  });
+
+  it('continues a free-gap climb from an existing climbTo', () => {
+    const target = mk({ id: 't', team: 'black', hex: hex(1, 0), elevation: 20, currentFormation: 'Close Order', organizationLevel: 2 });
+    const climber = mk({
+      id: 'c', team: 'blue', hex: hex(0, 1), facing: 0, elevation: 10, climbTo: '0,0',
+      currentFormation: 'Close Order', organizationLevel: 2, formationAvailability: ['Close Order'],
+      movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const structures = { '0,0': { templateId: 'high' }, '1,0': { templateId: 'high' } } as unknown as AiPlanContext['structures'];
+    const templates = { high: { id: 'high', name: 'High Tower', anchor: 'hex', elevation: 20, mpClimbUp: 6, mpMountedUp: 6 } } as unknown as AiPlanContext['structureTemplates'];
+    const result = planAiMoves({ ...ctxOf([climber, target]), structures, structureTemplates: templates });
+    expect(stepsOf(result, 'c').some(s => s.kind === 'climb' && s.to.q === 0 && s.to.r === 0)).toBe(true);
+  });
+});

@@ -3049,6 +3049,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         performChargeEnd={(unit, dropOrg) => performChargeEnd(unit, dropOrg)}
         performSwoopDrop={(attackerId, targetId) => performSwoopDrop(attackerId, targetId)}
         performClimbAttack={(attackerId, targetId) => performClimbAttack(attackerId, targetId)}
+        handleClimbMove={(unit, targetHex, originSurface) => handleClimbMove(unit, targetHex, originSurface)}
         selectWeapon={(unit, index) => selectWeapon(unit, index)}
         undo={undo}
         onOverlayChange={setAiOverlay}

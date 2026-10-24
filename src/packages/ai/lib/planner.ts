@@ -16,7 +16,7 @@ import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel 
 import { parseWeapons, isProtectedHero } from '@/packages/units';
 import { unitAttackCap, isMeleeWeapon, buildSwoopDropPlan, chargeStanceFor, isMeleeReachable } from '@/packages/combat';
 import { isUnitRouted } from '@/packages/morale';
-import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveBudget, structureClimbPerStep10, isClimbingUnit } from '@/packages/movement';
+import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveBudget, structureClimbPerStep10, isClimbingUnit, applyMoveCost, climbPlan } from '@/packages/movement';
 import { HEX_DIRS, arcOfTarget, facingToward, rotateLeft, rotateRight } from '@/packages/primitives';
 import {
   AiArchetype, AiMark, AiPlanContext, AiPlanResult, AiUnitPlan,
@@ -348,15 +348,82 @@ function faceAdjacentHostiles(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
 }
 
 /** Can the unit afford one full 10-ft climb step toward an elevated target? */
-function canAffordClimb(unit: Unit, target: Unit, rt: Runtime): boolean {
-  const top = surfaceAt(target.hex, rt.ctx);
+/** Can the unit afford one full climb step toward `climbHex`? */
+function canAffordClimbTo(unit: Unit, climbHex: Hex, rt: Runtime): boolean {
+  if (unit.mountId || unit.mountName) return false;
+  const top = surfaceAt(climbHex, rt.ctx);
   const cur = unit.elevation ?? 0;
-  if (top <= unitSurface(unit, rt.ctx) || cur >= top) return false;
-  const inst = rt.ctx.structures?.[`${target.hex.q},${target.hex.r}`];
+  if (top <= cur) return false;
+  const inst = rt.ctx.structures?.[hexKeyOf(climbHex)];
   const template = inst ? rt.ctx.structureTemplates?.[inst.templateId] : undefined;
   const perStep = structureClimbPerStep10(template, inst, { isMounted: false });
+  if (perStep < 0) return false;
   const budget = computeMoveBudget(unit, effectiveMax(unit, rt.ctx.formations));
   return perStep <= 0 || budget >= perStep;
+}
+
+function canAffordClimb(unit: Unit, target: Unit, rt: Runtime): boolean {
+  return canAffordClimbTo(unit, target.hex, rt);
+}
+
+interface TopAccess {
+  topHex: Hex;
+  baseHex: Hex;
+  topSurface: number;
+  baseSurface: number;
+  perStep: number;
+  climbSteps: number;
+  total: number;
+}
+
+function isOccupiedAt(rt: Runtime, hex: Hex, surface: number, excludeId: string): boolean {
+  return rt.working.some(w =>
+    w.id !== excludeId && !w.isDeleted && !w.hidden && !w.attachedToUnitId
+    && (w.currentUnitHp ?? 0) > 0
+    && hexKeyOf(w.hex) === hexKeyOf(hex)
+    && (w.elevation ?? 0) >= surface);
+}
+
+/**
+ * Find the best way for a non-mounted melee unit to reach a target standing on
+ * a structure top: a base hex + a free top hex ("gap") to climb into.
+ */
+function topAccessFor(unit: Unit, target: Unit, rt: Runtime): TopAccess | null {
+  if (unit.mountId || unit.mountName || unit.isCharging) return null;
+  const topSurface = surfaceAt(target.hex, rt.ctx);
+  if (topSurface <= unitSurface(unit, rt.ctx)) return null;
+  const complex = structureComplexFor({ hex: target.hex }, rt.ctx);
+  if (!complex) return null;
+  const map = rt.groundMaps.get(unit.id);
+  if (!map) return null;
+
+  let best: TopAccess | null = null;
+  for (const key of Array.from(complex.hexes)) {
+    const [q, r] = key.split(',').map(Number);
+    const topHex: Hex = { q, r, s: -q - r };
+    const surface = surfaceAt(topHex, rt.ctx);
+    if (surface <= unitSurface(unit, rt.ctx)) continue;
+    if (isOccupiedAt(rt, topHex, surface, unit.id)) continue;
+    const inst = rt.ctx.structures?.[key];
+    const template = inst ? rt.ctx.structureTemplates?.[inst.templateId] : undefined;
+    const perStep = structureClimbPerStep10(template, inst, { isMounted: false });
+    if (perStep < 0) continue;
+    for (const d of HEX_DIRS) {
+      const baseHex: Hex = { q: q + d.q, r: r + d.r, s: -q - d.q - r - d.r };
+      const baseKey = hexKeyOf(baseHex);
+      const baseSurface = surfaceAt(baseHex, rt.ctx);
+      if (baseSurface >= surface) continue;
+      if (isOccupiedAt(rt, baseHex, baseSurface, unit.id)) continue;
+      const baseCost = map.get(baseKey) ?? Infinity;
+      if (!Number.isFinite(baseCost)) continue;
+      const climbSteps = Math.max(1, Math.ceil((surface - baseSurface) / 10));
+      const total = baseCost + climbSteps * Math.max(0, perStep) + hexDistance(topHex, target.hex);
+      if (!best || total < best.total) {
+        best = { topHex, baseHex, topSurface: surface, baseSurface, perStep, climbSteps, total };
+      }
+    }
+  }
+  return best;
 }
 
 function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
@@ -489,8 +556,15 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     const map = rt.groundMaps.get(u.id) ?? new Map<string, number>();
     const noStop = rt.passThroughMaps.get(u.id);
     const printed = Math.max(1, u.movementPoints ?? 1);
+    const topAccess = new Map<string, TopAccess>();
     const ordered = candidates
-      .map(t => ({ t, cost: targetPathCost(map, t.hex, noStop) }))
+      .map(t => {
+        const normal = targetPathCost(map, t.hex, noStop);
+        const onTop = surfaceAt(t.hex, rt.ctx) > unitSurface(u, rt.ctx);
+        const access = onTop ? topAccessFor(u, t, rt) : null;
+        if (access) topAccess.set(t.id, access);
+        return { t, cost: access ? Math.min(normal, access.total) : normal };
+      })
       .sort((a, b) => {
         const am = a.t.id === markedId ? 0 : 1;
         const bm = b.t.id === markedId ? 0 : 1;
@@ -533,17 +607,83 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
       return tryMode('engage') ?? tryMode('stage') ?? tryMode('progress');
     };
 
+    const planTop = (target: Unit, access: TopAccess): { unit: Unit; stop: boolean } | null => {
+      if (hexKeyOf(u.hex) === hexKeyOf(access.baseHex)) {
+        if (!canAffordClimbTo(u, access.topHex, rt)) return null;
+        const budget = computeMoveBudget(u, effectiveMax(u, rt.ctx.formations));
+        const planClimb = climbPlan(access.topSurface - access.baseSurface, budget, 0, false, access.perStep);
+        if (planClimb.steps <= 0) return null;
+        const applied = applyMoveCost(u, planClimb.cost, effectiveMax(u, rt.ctx.formations));
+        plan.steps.push({ kind: 'climb', unitId: u.id, from: u.hex, to: access.topHex });
+        if (planClimb.complete) {
+          const updated: Unit = {
+            ...u,
+            hex: access.topHex,
+            elevation: access.topSurface,
+            climbTo: null,
+            movementPointsAvailable: applied.movementPointsAvailable,
+            actionsAvailable: applied.actionsAvailable,
+          };
+          const c = structureComplexFor({ hex: target.hex }, rt.ctx);
+          if (c) rt.complexes.set(u.id, c);
+          return { unit: updated, stop: false };
+        }
+        const updated: Unit = {
+          ...u,
+          elevation: access.baseSurface + planClimb.steps * 10,
+          climbTo: hexKeyOf(access.topHex),
+          movementPointsAvailable: applied.movementPointsAvailable,
+          actionsAvailable: applied.actionsAvailable,
+        };
+        return { unit: updated, stop: true };
+      }
+
+      // Move toward the chosen base hex.
+      const movement = movementContextFor(u, rt.working, rt.ctx, 'ground', rt.complexes.get(u.id) ?? null);
+      const reverse = reverseDistanceMap(access.baseHex, u, { ...rt.ctx, units: rt.working }, 'ground', movement);
+      const m = bestManeuver(u, rt, 'ground', (man) => {
+        if (man.path.length === 0) return -Infinity;
+        if (isFlankedAt(man.dest, man.facing, rt.enemies, null)) return -Infinity;
+        const remaining = reverse.get(hexKeyOf(man.dest)) ?? Infinity;
+        if (!Number.isFinite(remaining)) return -Infinity;
+        return -remaining * 100 - man.cost * 2 - man.turns.length * 2;
+      });
+      if (!m) return null;
+      return { unit: pushMove(plan, u, m, rt.ctx), stop: false };
+    };
+
     // Plan against one locked target. Retarget only when it has no legal move.
     let moved: Unit | null = null;
-    if (lockedTarget) moved = tryTarget(lockedTarget);
+    let stopAfter = false;
+    if (lockedTarget) {
+      const access = topAccess.get(lockedTarget.id);
+      if (access) {
+        const top = planTop(lockedTarget, access);
+        if (top) { moved = top.unit; stopAfter = top.stop; }
+      } else {
+        moved = tryTarget(lockedTarget);
+      }
+    }
     if (!moved) {
       const pool: { t: Unit; cost: number }[] = lockedTarget
         ? ordered.filter(o => o.t.id !== lockedTarget!.id)
         : ordered;
       for (const entry of pool) {
         const t = entry.t;
-        moved = tryTarget(t);
-        if (moved) { lockedTarget = t; break; }
+        const access = topAccess.get(t.id);
+        if (access) {
+          const top = planTop(t, access);
+          if (top) {
+            moved = top.unit;
+            stopAfter = top.stop;
+            lockedTarget = t;
+            if (t.id !== (rt.byUnit.get(u.id) ?? null)) rt.setTarget(u.id, t.id);
+            break;
+          }
+        } else {
+          moved = tryTarget(t);
+          if (moved) { lockedTarget = t; break; }
+        }
       }
       if (!moved) lockedTarget = null;
     }
@@ -552,6 +692,7 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     if (moved.hex.q === u.hex.q && moved.hex.r === u.hex.r) break;
     u = moved;
     rt.commit(u);
+    if (stopAfter) break;
   }
   if (plan.steps.length === 0) u = planEscape(u, plan, rt, 'melee');
   return u;
@@ -1031,6 +1172,12 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
         const target = rt.enemies.find(e => hexKeyOf(e.hex) === live.climbTo);
         if (target && canAffordClimb(live, target, rt)) {
           plan.steps.push({ kind: 'climbAttack', unitId: live.id, from: live.hex, targetId: target.id, target: target.hex });
+        } else if (!target) {
+          const [q, r] = live.climbTo.split(',').map(Number);
+          const climbHex: Hex = { q, r, s: -q - r };
+          if (canAffordClimbTo(live, climbHex, rt)) {
+            plan.steps.push({ kind: 'climb', unitId: live.id, from: live.hex, to: climbHex });
+          }
         }
       }
       if (plan.steps.length > 0) plans.push(plan);
