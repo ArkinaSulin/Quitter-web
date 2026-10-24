@@ -9,6 +9,7 @@ import {
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
+import { edgeRef } from '@/packages/movement';
 
 const SPEAR = 'Spear,3,1d8,false,1,1,0,true,false,false,false,1,true,Dex,circle';
 const SHORTBOW = 'Shortbow,2,1d6,false,2,3,0,false,true,true,false,1,true,Dex,circle';
@@ -99,7 +100,7 @@ function form(name: string, org: number, mult = 1): Formation {
     double_threat_arcs: [],
     retaliate_arcs: { front: 'full', flank: 'rows', rear: 'none' },
     retaliate_vs_ranged: true,
-    can_charge: false,
+    can_charge: org >= 1,
     stop_enemy_movement_arcs: ['front'],
     charge_through_arcs: [],
     be_attacked_melee_modifier: 1,
@@ -255,5 +256,91 @@ describe('Basic AI approach and special archetypes', () => {
     const steps = stepsOf(result, 'c1');
     expect(steps.some(s => s.kind === 'move')).toBe(true);
     expect(steps.some(s => s.kind === 'charge')).toBe(false);
+  });
+});
+
+describe('Basic AI structure complex confinement', () => {
+  const structs = (keys: string[]) => Object.fromEntries(keys.map(k => [k, { templateId: 't' }])) as unknown as AiPlanContext['structures'];
+
+  it('keeps a footprint unit on its connected hex structures', () => {
+    const unit = mk({ id: 'm1', team: 'blue', hex: hex(0, 0), currentFormation: 'Close Order', organizationLevel: 2 });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -4) });
+    const result = planAiMoves({ ...ctxOf([unit, foe]), structures: structs(['0,0', '0,-1']), structureTemplates: {} });
+    const moves = stepsOf(result, 'm1').filter(s => s.kind === 'move');
+    for (const m of moves) expect(['0,0', '0,-1']).toContain(`${m.to.q},${m.to.r}`);
+  });
+
+  it('keeps a courtyard unit inside its edge-wall enclosure', () => {
+    const unit = mk({ id: 'm1', team: 'blue', hex: hex(0, 0), currentFormation: 'Close Order', organizationLevel: 2 });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -4) });
+    const keys: string[] = [];
+    for (let d = 0; d < 6; d++) keys.push(edgeRef(0, 0, d).key);
+    const result = planAiMoves({ ...ctxOf([unit, foe]), structures: structs(keys), structureTemplates: {} });
+    expect(stepsOf(result, 'm1').filter(s => s.kind === 'move')).toHaveLength(0);
+  });
+
+  it('lets a flyer leave the footprint', () => {
+    const flyer = mk({ id: 'fly1', team: 'blue', hex: hex(0, 0), flySpeed: 6, elevation: 20 });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -4) });
+    const result = planAiMoves({ ...ctxOf([flyer, foe]), structures: structs(['0,0', '0,-1']), structureTemplates: {} });
+    const moves = stepsOf(result, 'fly1').filter(s => s.kind === 'move');
+    expect(moves.some(m => !['0,0', '0,-1'].includes(`${m.to.q},${m.to.r}`))).toBe(true);
+  });
+});
+
+describe('Basic AI mounted charge hardening', () => {
+  const chargeUnits = (over: Partial<Unit> = {}) => {
+    const mount = mk({ id: 'c1', team: 'blue', hex: hex(0, 0), facing: 0, mountId: 'horse', mountName: 'Horse', canCharge: true, movementPoints: 6, actionsAvailable: 2, ...over });
+    const target = mk({ id: 'f1', team: 'black', hex: hex(0, -3), facing: 0 });
+    const friend = mk({ id: 'f2', team: 'blue', hex: hex(1, -3) });
+    return [mount, target, friend];
+  };
+
+  it('charges an engaged target from the rear on its first action', () => {
+    const result = planAiMoves(ctxOf(chargeUnits()));
+    const steps = stepsOf(result, 'c1');
+    expect(steps.some(s => s.kind === 'charge')).toBe(true);
+    expect(steps.some(s => s.kind === 'swoop')).toBe(false);
+    expect(steps.some(s => s.kind === 'attack' && s.charge)).toBe(true);
+    expect(steps.some(s => s.kind === 'chargeEnd')).toBe(true);
+  });
+
+  it('does not charge when the Charge and Swoop toggle is off', () => {
+    const result = planAiMoves({ ...ctxOf(chargeUnits()), chargeEnabled: false });
+    expect(stepsOf(result, 'c1').some(s => s.kind === 'charge')).toBe(false);
+  });
+
+  it('does not charge when the unit cannot charge', () => {
+    const result = planAiMoves(ctxOf(chargeUnits({ canCharge: false })));
+    expect(stepsOf(result, 'c1').some(s => s.kind === 'charge')).toBe(false);
+  });
+});
+
+describe('Basic AI flying swoop hardening', () => {
+  const flyerUnits = (over: Partial<Unit> = {}) => {
+    const flyer = mk({ id: 'fly1', team: 'blue', hex: hex(0, -1), facing: 0, flySpeed: 6, flySpeedAvailable: 6, elevation: 20, actionsAvailable: 2, ...over });
+    const target = mk({ id: 'f1', team: 'black', hex: hex(0, -3), facing: 0 });
+    return [flyer, target];
+  };
+
+  it('swoops a grounded target when airborne with fly points', () => {
+    const result = planAiMoves(ctxOf(flyerUnits()));
+    const steps = stepsOf(result, 'fly1');
+    expect(steps.some(s => s.kind === 'charge')).toBe(true);
+    expect(steps.some(s => s.kind === 'swoop')).toBe(true);
+  });
+
+  it('does not swoop without fly points', () => {
+    const result = planAiMoves(ctxOf(flyerUnits({ flySpeedAvailable: 0 })));
+    const steps = stepsOf(result, 'fly1');
+    expect(steps.some(s => s.kind === 'charge')).toBe(false);
+    expect(steps.some(s => s.kind === 'swoop')).toBe(false);
+  });
+
+  it('does not swoop when the Charge and Swoop toggle is off', () => {
+    const result = planAiMoves({ ...ctxOf(flyerUnits()), chargeEnabled: false });
+    const steps = stepsOf(result, 'fly1');
+    expect(steps.some(s => s.kind === 'charge')).toBe(false);
+    expect(steps.some(s => s.kind === 'swoop')).toBe(false);
   });
 });

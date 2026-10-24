@@ -3039,6 +3039,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         groundZones={effectiveZones}
         gridRadius={backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS}
         archerReactionEnabled={archerReactionEnabled}
+        chargeEnabled={mountedChargeEnabled}
         unitMaxMP={unitMaxMP}
         performMove={(unit, targetHex, cost, overBudget, maxMP, elevation) => completeMove(unit, targetHex, cost, overBudget, maxMP, undefined, undefined, undefined, elevation)}
         performAttack={(attacker, target, overBudget, options) => performAttack(attacker, target, overBudget, options)}

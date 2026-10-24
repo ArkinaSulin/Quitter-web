@@ -14,18 +14,18 @@
 //    flying 1/target, mounted 1/target + a non-mounted friendly mark.
 import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
 import { parseWeapons, isProtectedHero } from '@/packages/units';
-import { unitAttackCap, isMeleeWeapon, buildSwoopDropPlan } from '@/packages/combat';
+import { unitAttackCap, isMeleeWeapon, buildSwoopDropPlan, chargeStanceFor } from '@/packages/combat';
 import { isUnitRouted } from '@/packages/morale';
 import { arcsContain, computeChargeReachable, applyFormationChange } from '@/packages/movement';
-import { arcOfTarget, facingToward, rotateLeft, rotateRight } from '@/packages/primitives';
+import { HEX_DIRS, arcOfTarget, facingToward, rotateLeft, rotateRight } from '@/packages/primitives';
 import {
   AiArchetype, AiMark, AiPlanContext, AiPlanResult, AiUnitPlan,
 } from './types';
 import {
-  Maneuver, allianceOf, applyManeuver, applyTurns, archetypeOf, chooseFacing, distanceMap,
+  Maneuver, StructureComplex, allianceOf, applyManeuver, applyTurns, archetypeOf, chooseFacing, distanceMap,
   effectiveMax, enemyGroupsOf, enemyPool, hexKeyOf, hexesWithin, isFlankedAt, isFullyUpgraded, isGroundTarget,
   isTargetReachable, maneuversFor, movementContextFor, nextFormationUpgrade,
-  primaryMaxRange, surfaceAt, targetPathCost, unitIsAirborne, unitSurface,
+  primaryMaxRange, structureComplexFor, surfaceAt, targetPathCost, unitIsAirborne, unitSurface,
 } from './board';
 import { assignMarks } from './marks';
 
@@ -39,6 +39,7 @@ interface Runtime {
   byId: Map<string, Unit>;
   byUnit: Map<string, string>;
   groundMaps: Map<string, Map<string, number>>;
+  complexes: Map<string, StructureComplex | null>;
   commit: (unit: Unit) => void;
   setTarget: (unitId: string, targetId: string) => void;
   candidates: (unit: Unit, kind: AiArchetype) => Unit[];
@@ -176,7 +177,7 @@ function pushAttack(plan: AiUnitPlan, unit: Unit, target: Unit, charge = false):
   plan.steps.push({ kind: 'attack', unitId: unit.id, from: unit.hex, targetId: target.id, target: target.hex, ...(charge ? { charge: true } : {}) });
   return {
     ...unit,
-    actionsAvailable: (unit.actionsAvailable ?? 0) - 1,
+    actionsAvailable: charge ? (unit.actionsAvailable ?? 0) : (unit.actionsAvailable ?? 0) - 1,
     attacksUsed: (unit.attacksUsed ?? 0) + 1,
   };
 }
@@ -193,8 +194,9 @@ function bestManeuver(
   score: (m: Maneuver, threat: Set<string>) => number,
   maxTurns = 2,
 ): Maneuver | null {
-  const movement = movementContextFor(unit, rt.working, rt.ctx, mode);
-  const list = maneuversFor(unit, rt.working, rt.ctx, maxTurns, mode);
+  const complex = rt.complexes.get(unit.id) ?? null;
+  const movement = movementContextFor(unit, rt.working, rt.ctx, mode, complex);
+  const list = maneuversFor(unit, rt.working, rt.ctx, maxTurns, mode, complex);
   let best: ScoredManeuver | null = null;
   for (const m of list) {
     const s = score(m, movement.threat);
@@ -263,7 +265,10 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     }
 
     const legal = legalTargets(u, rt.enemies, rt.ctx);
-    const adjacent = legal.filter(t => !t.isRanged && t.dist <= 1);
+    const complex = rt.complexes.get(u.id) ?? null;
+    const adjacent = legal.filter(t => !t.isRanged && t.dist <= 1)
+      .filter(t => surfaceAt(t.unit.hex, rt.ctx) <= unitSurface(u, rt.ctx)
+        || !complex || complex.hexes.has(hexKeyOf(t.unit.hex)));
     if (adjacent.length > 0) {
       if (!canAct(u)) break;
       const facing = chooseFacing(u, rt.enemies, rt.ctx);
@@ -422,11 +427,18 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
   const split = getOrganizationLevel(u.currentFormation) >= 2;
   const ring = split ? 2 : 4;
   const engaged = isEngagedByFriendly(target, u, rt);
-  const movement = movementContextFor(u, rt.working, rt.ctx, 'ground');
+  const movement = movementContextFor(u, rt.working, rt.ctx, 'ground', rt.complexes.get(u.id) ?? null);
   const pool = effectiveMax(u, rt.ctx.formations);
+  const chargeEnabled = rt.ctx.chargeEnabled !== false;
+  const canChargeNow = chargeStanceFor({
+    unit: u,
+    airborne: false,
+    form: rt.ctx.formations[u.currentFormation],
+    chargeEnabled,
+  }) === 'charge';
 
   const chargeDestination = (state: Unit): { hex: Hex; cost: number; turns: { dir: 'left' | 'right' }[] } | null => {
-    if ((state.actionsAvailable ?? 0) < 2) return null;
+    if (!canChargeNow) return null;
     if (!engaged) return null;
     const dests: { hex: Hex; cost: number; arc: string; turns: { dir: 'left' | 'right' }[] }[] = [];
     // A charge is a forward wedge; try the current facing and one cheap rotation
@@ -544,10 +556,19 @@ function planFlying(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     rt.commit(u);
   }
 
-  // Swoop up to twice (each swoop = charge action + free attack).
+  // Swoop up to twice (each swoop = charge action + free attack). The canonical
+  // charge/swoop gate decides whether a swoop is legal (airborne, fly points,
+  // actions, "Charge and Swoop" scenario toggle).
+  const chargeEnabled = rt.ctx.chargeEnabled !== false;
   for (let swoops = 0; swoops < 2; swoops++) {
-    if ((u.actionsAvailable ?? 0) < 1) break;
     if (!target) break;
+    const stance = chargeStanceFor({
+      unit: u,
+      airborne: unitIsAirborne(u, rt.ctx),
+      form: rt.ctx.formations[u.currentFormation],
+      chargeEnabled,
+    });
+    if (stance !== 'swoop') break;
     // Face the target so the charge wedge points at it.
     const faceTurns = turnsTo(u.facing, facingToward(u.hex, target.hex));
     if (faceTurns.length > 0) {
@@ -557,14 +578,14 @@ function planFlying(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
       rt.commit(u);
     }
     const charged: Unit = { ...u, isCharging: true, chargeDistance: 0, actionsAvailable: (u.actionsAvailable ?? 0) - 1 };
-    const swoopPlan = target ? buildSwoopDropPlan(charged, target, {
+    const swoopPlan = buildSwoopDropPlan(charged, target, {
       units: rt.working,
       alliances: rt.ctx.alliances,
       formations: rt.ctx.formations,
       structures: rt.ctx.structures,
       structureTemplates: rt.ctx.structureTemplates,
       archerReactionEnabled: rt.ctx.reactiveArchery,
-    }) : null;
+    });
     if (!swoopPlan) break;
     plan.steps.push({ kind: 'charge', unitId: u.id, from: u.hex });
     plan.steps.push({ kind: 'swoop', unitId: u.id, from: u.hex, targetId: target!.id, target: target!.hex });
@@ -616,7 +637,7 @@ function turnsTo(from: number, to: number): { dir: 'left' | 'right' }[] {
 }
 
 function computeChargeHexes(unit: Unit, rt: Runtime, maxHexes: number): Map<string, number> {
-  const movement = movementContextFor(unit, rt.working, rt.ctx, 'ground');
+  const movement = movementContextFor(unit, rt.working, rt.ctx, 'ground', rt.complexes.get(unit.id) ?? null);
   return computeChargeReachable(
     { hex: unit.hex, facing: unit.facing },
     movement.occupied,
@@ -646,10 +667,14 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
   const enemies = enemyPool(ctx, working);
   if (enemies.length === 0) return { plans: [], marks: [] };
 
-  // Marking uses the board before any unit has acted.
+  // Marking uses the board before any unit has acted. Non-flyers are confined
+  // to their structure complex, so their distance maps stop at the perimeter.
+  const complexes = new Map<string, StructureComplex | null>();
   const groundMaps = new Map<string, Map<string, number>>();
   for (const u of controllable) {
-    groundMaps.set(u.id, distanceMap(u, { ...ctx, units: working }, 'ground', movementContextFor(u, working, ctx, 'ground')));
+    const complex = archetypeOf(u) === 'flying' ? null : structureComplexFor(u, ctx);
+    complexes.set(u.id, complex);
+    groundMaps.set(u.id, distanceMap(u, { ...ctx, units: working }, 'ground', movementContextFor(u, working, ctx, 'ground', complex)));
   }
   const flyDistance = (u: Unit, t: Unit) => hexDistance(u.hex, t.hex);
   const { marks, byUnit } = assignMarks({
@@ -669,6 +694,7 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
     byId,
     byUnit: new Map(byUnit),
     groundMaps,
+    complexes,
     commit: (unit) => {
       const idx = working.findIndex(w => w.id === unit.id);
       if (idx >= 0) working[idx] = unit;
@@ -677,8 +703,20 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
     setTarget: (unitId, targetId) => { rt.byUnit.set(unitId, targetId); },
     candidates: (unit, kind) => {
       const map = groundMaps.get(unit.id) ?? new Map<string, number>();
-      return enemies
-        .filter(t => (kind === 'flying' || kind === 'ranged' ? true : isGroundTarget(t, ctx)))
+      let pool = enemies.filter(t => (kind === 'flying' || kind === 'ranged' ? true : isGroundTarget(t, ctx)));
+      if (kind === 'melee' || kind === 'mounted') {
+        const complex = complexes.get(unit.id) ?? null;
+        if (complex) {
+          // Prefer enemies inside the complex or immediately on its perimeter;
+          // only fall back to exterior targets when there are none.
+          const insideOrPerimeter = pool.filter(t => {
+            if (complex.hexes.has(hexKeyOf(t.hex))) return true;
+            return HEX_DIRS.some(d => complex.hexes.has(`${t.hex.q + d.q},${t.hex.r + d.r}`));
+          });
+          if (insideOrPerimeter.length > 0) pool = insideOrPerimeter;
+        }
+      }
+      return pool
         .slice()
         .sort((a, b) => {
           const da = kind === 'flying' || kind === 'ranged' ? hexDistance(unit.hex, a.hex) : targetPathCost(map, a.hex);

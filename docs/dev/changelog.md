@@ -1,5 +1,25 @@
 # QuiTTER Changelog
 
+## Basic AI: structure-complex confinement + flying/mounted hardening (2026-10-23)
+**Files:** src/packages/ai/lib/{board,planner,types}.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/{AiPanel,ScenarioMap}.tsx, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- **Structure-complex confinement (non-flyers):** melee/ranged/mounted units
+  starting on a connected hex-structure footprint — or inside an area fully
+  bounded by edge structures — may not cross the perimeter. Any edge structure
+  is a boundary, including open/broken doors and gates. Flyers are exempt.
+  Enforcement wraps the movement `blockedEdge` (reach maps, distance maps,
+  charge corridors, maneuvers); confined melee/mounted units prefer targets
+  inside/on the perimeter, while ranged may still shoot outside.
+- **Flying hardening:** swoops now use the canonical `chargeStanceFor` gate
+  (airborne, fly points > 2, 2+ actions, scenario **Charge and Swoop**), so a
+  flyer without materialized FP flies instead of planning an illegal swoop.
+  Charge attacks are simulated as free actions.
+- **Mounted hardening:** charges use the same canonical gate (adds `canCharge`
+  + charge-capable formation), keep the engaged/flank-rear/ZoC/corridor checks,
+  and still `chargeEnd` + disengage + upgrade after the attack.
+- `AiPlanContext` gained `chargeEnabled`, passed from the scenario setting.
+- Verification: `npm run check` passes (tsc, 1096 tests, depcruise, build).
+
 ## Basic AI rewrite: simple archetype rules + independent marks (2026-10-23)
 **Files:** src/packages/ai/{index.ts,lib/{types,board,marks,planner}.ts,tests/planner.test.ts}, src/packages/combat/{index.ts,lib/swoop.ts}, src/components/ScenarioMap/{AiPanel.tsx,aiTypes.ts,useCanvasDraw.ts,useCombatActions.ts,ScenarioMap.tsx}, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 

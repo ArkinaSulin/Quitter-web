@@ -51,6 +51,8 @@ interface AiPanelProps {
   gridRadius?: number;
   /** Scenario "Reactive archery": the AI stops before a ZoC too. */
   archerReactionEnabled?: boolean;
+  /** Scenario "Charge and Swoop" toggle. */
+  chargeEnabled?: boolean;
   unitMaxMP: (unit: Unit) => number;
   performMove: (unit: Unit, targetHex: Hex, cost: number, overBudget: boolean, maxMP: number, elevation?: number) => Promise<unknown>;
   performAttack: (attacker: Unit, target: Unit, overBudget: boolean, options?: { isCharging?: boolean }) => Promise<unknown>;
@@ -120,6 +122,7 @@ export function AiPanel({
   groundZones,
   gridRadius,
   archerReactionEnabled,
+  chargeEnabled,
   unitMaxMP,
   performMove,
   performAttack,
@@ -137,7 +140,7 @@ export function AiPanel({
   addError,
 }: AiPanelProps) {
   const propsRef = useRef<AiPanelProps | null>(null);
-  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, structures, structureTemplates, groundZones, gridRadius, archerReactionEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, charge, performChargeEnd, performSwoopDrop, performClimbAttack, selectWeapon, undo, onOverlayChange, onBusyChange, addMessage, addError };
+  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, structures, structureTemplates, groundZones, gridRadius, archerReactionEnabled, chargeEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, charge, performChargeEnd, performSwoopDrop, performClimbAttack, selectWeapon, undo, onOverlayChange, onBusyChange, addMessage, addError };
 
   const [plans, setPlans] = useState<AiUnitPlan[] | null>(null);
   const [remaining, setRemaining] = useState<ExecUnit[] | null>(null); // active during Execute
@@ -222,6 +225,7 @@ export function AiPanel({
       groundZones,
       gridRadius: gridRadius ?? DEFAULT_GRID_RADIUS,
       reactiveArchery: !!archerReactionEnabled,
+      chargeEnabled,
     });
     const next = result.plans;
     marksRef.current = result.marks;

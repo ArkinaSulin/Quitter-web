@@ -93,6 +93,26 @@ per-type badges (e.g. `M2 A4 F1 C1`); marks reset each Preview.
   hostiles in our front arc** (more enemies ZoC-locked) → cheapest rotation →
   current facing.
 
+### Structure-complex confinement (non-flyers only)
+
+Melee, ranged and mounted AI units that start in a **structure complex** may not
+leave it. Flyers are exempt.
+
+- **Footprint (priority):** a unit on a hex structure is confined to the
+  connected footprint of adjacent hex-structure tiles.
+- **Enclosure:** a unit not on a hex structure but inside an area fully bounded
+  by **edge structures** is confined to that region. Any edge structure counts
+  as the perimeter, including open/broken doors and gates.
+- A flood fill that reaches the map’s outer grid ring is not treated as an
+  enclosure.
+- Enforcement is a perimeter-aware `blockedEdge` wrapper used by every movement
+  path (reach maps, distance maps, charge corridors, maneuvers). The unit can
+  move freely inside; every inside/outside crossing is illegal.
+- Routed non-flyers flee inside the perimeter.
+- Confined melee/mounted units prefer enemies inside or on the perimeter; ranged
+  units may still shoot outside but reposition only inside.
+
+
 ### Melee
 
 1. Routed → flee.
@@ -134,9 +154,13 @@ per-type badges (e.g. `M2 A4 F1 C1`); marks reset each Preview.
   elevate step. A flyer climbs by moving with an `elevation` target.
 - Mark the closest hostile not already flyer-marked. Face it, then
   `charge` → `swoop` (the atomic dive + free melee attack).
+- Scenarios gate this through the canonical `chargeStanceFor` rule: airborne,
+  fly-capable, **flySpeedAvailable > 2**, 2+ actions, and the scenario
+  **Charge and Swoop** toggle on. A flyer with no materialized fly points simply
+  flies this activation instead of swooping.
 - After each swoop: retreat with remaining FP to **≥2 hexes from every hostile**
   and set elevation **20 ft** on that retreat move. Repeat `charge` → `swoop`
-  if an action remains.
+  if the canonical gate still allows it.
 - No swoop available → fly toward the target, still ending ≥2 hexes away at
   20 ft when possible.
 
@@ -146,7 +170,9 @@ per-type badges (e.g. `M2 A4 F1 C1`); marks reset each Preview.
   fallback to closest reachable.
 - Staging ring: radius **4** hexes (Close/high org speed → **2**),
   tangent/rear-flank, outside ZoC, reachable this activation.
-- Charge only when:
+- Charge only when the canonical `chargeStanceFor` gate allows it
+  (`canCharge`, a charge-capable formation, 2+ actions, scenario **Charge and
+  Swoop** on), and:
   - it is the **first action**;
   - the target is engaged by a friendly;
   - the approach is **flank/rear**;
@@ -191,7 +217,10 @@ validation accounts for the air slot and real terrain/walls/structures.
 
 `src/packages/ai/tests/planner.test.ts` covers gates, legal targets, independent
 marks/caps, melee upgrade priority, multi-attack, ranged 6-hex posture and
-Close-Order short-bow shots, melee staging, flying plans and mounted staging.
+Close-Order short-bow shots, melee staging, structure-complex confinement
+(footprint, enclosed courtyard, flyer exemption), and hardened mounted charge /
+flying swoop gates (scenario toggle, `canCharge`, fly points, no flyer swoop
+without FP).
 Run `npm run check` (tsc, vitest, depcruise, build) and
 `npm run lint:boundaries`.
 

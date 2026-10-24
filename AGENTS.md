@@ -39,7 +39,11 @@ reusable maps. Here's the state:
   `climbAttack`/`charge`/`swoop`/`chargeEnd`/`weapon` and move `elevation`;
   pure swoop validation moved to `combat/lib/swoop.ts`. Deleted
   `battleLine.ts`/`reserve.ts`/`roleMarkers.ts`; Advanced AI + Stance UI hidden,
-  columns kept for a future rebuild. No migration. `npm run check` passes.
+  columns kept for a future rebuild. **Follow-up:** non-flying units starting in
+  a hex-structure footprint or edge-wall enclosure cannot cross the perimeter
+  (flyers exempt); flying/mounted charges use the canonical `chargeStanceFor`
+  gate and the scenario **Charge and Swoop** toggle. No migration.
+  `npm run check` passes.
 - **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
   scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);
   Basic uses **Simple**, Advanced uses **Advance**; the AI tab has a per-preview

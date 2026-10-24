@@ -63,6 +63,8 @@ export interface AiPlanContext {
   stance?: 'aggressive' | 'defensive';
   gridRadius?: number;
   reactiveArchery?: boolean;
+  /** Scenario "Charge and Swoop" toggle (default true). */
+  chargeEnabled?: boolean;
 }
 
 export interface AiPlanResult {

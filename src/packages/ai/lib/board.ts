@@ -29,6 +29,8 @@ import {
   CostOfHexFn,
   BlockedEdgeFn,
   Walls,
+  edgeRef,
+  isHexStructureKey,
 } from '@/packages/movement';
 import { computeOccupiedHexes, computeThreatHexes, makeBlockedEdge, makeCostOfHex, TerrainCosts } from '@/packages/world';
 import { StructureTemplate } from '@/types/structure';
@@ -122,6 +124,75 @@ export function unitIsAirborne(unit: Unit, ctx: Pick<AiPlanContext, 'structures'
   return isAirborne(unit.elevation, unitSurface(unit, ctx));
 }
 
+/** A non-flying unit's bounded home: a connected building floor or a walled
+ *  courtyard. Movement may never cross its perimeter. */
+export interface StructureComplex {
+  kind: 'footprint' | 'enclosure';
+  hexes: Set<string>;
+}
+
+function ringOf(hex: Hex): number {
+  return Math.max(Math.abs(hex.q), Math.abs(hex.r), Math.abs(hex.q + hex.r));
+}
+
+/**
+ * The structure complex a non-flying unit must stay inside, or null.
+ *  - A unit standing on a hex structure is confined to the connected
+ *    hex-structure footprint (building floors).
+ *  - Otherwise, a unit inside an area fully bounded by edge structures is
+ *    confined to that enclosed region. Any edge structure counts as the
+ *    perimeter, including open/broken doors and gates.
+ *  - A flood fill that reaches the map's outer ring is not enclosed.
+ * Flyers are handled by the caller (never confined).
+ */
+export function structureComplexFor(
+  unit: Pick<Unit, 'hex'>,
+  ctx: Pick<AiPlanContext, 'structures' | 'structureTemplates' | 'gridRadius'>,
+): StructureComplex | null {
+  const structures = ctx.structures;
+  if (!structures) return null;
+  const start = hexKeyOf(unit.hex);
+
+  // 1) Connected hex-structure footprint.
+  if (isHexStructureKey(start) && structures[start]) {
+    const hexes = new Set<string>([start]);
+    const queue: Hex[] = [unit.hex];
+    while (queue.length > 0) {
+      const cur = queue.pop()!;
+      for (const dir of HEX_DIRS) {
+        const next = { q: cur.q + dir.q, r: cur.r + dir.r, s: -cur.q - dir.q - cur.r - dir.r };
+        const key = hexKeyOf(next);
+        if (hexes.has(key)) continue;
+        if (!isHexStructureKey(key) || !structures[key]) continue;
+        hexes.add(key);
+        queue.push(next);
+      }
+    }
+    return { kind: 'footprint', hexes };
+  }
+
+  // 2) Edge-wall enclosure (a walled courtyard). Any edge structure is a
+  //    perimeter, regardless of door state.
+  const maxRing = Math.max(6, ctx.gridRadius ?? 20);
+  const hexes = new Set<string>([start]);
+  const queue: Hex[] = [unit.hex];
+  let reachedRim = false;
+  while (queue.length > 0) {
+    const cur = queue.pop()!;
+    if (ringOf(cur) >= maxRing) { reachedRim = true; break; }
+    for (let dir = 0; dir < 6; dir++) {
+      const d = HEX_DIRS[dir];
+      const next = { q: cur.q + d.q, r: cur.r + d.r, s: -cur.q - d.q - cur.r - d.r };
+      const key = hexKeyOf(next);
+      if (hexes.has(key)) continue;
+      if (structures[edgeRef(cur.q, cur.r, dir).key]) continue; // perimeter
+      hexes.add(key);
+      queue.push(next);
+    }
+  }
+  return reachedRim ? null : { kind: 'enclosure', hexes };
+}
+
 /** Living, visible, adversarial units (heroes excluded, matching legalTargets). */
 export function enemyPool(ctx: AiPlanContext, working: Unit[]): Unit[] {
   if (!ctx.activeAlliance) return [];
@@ -137,7 +208,13 @@ export function isGroundTarget(unit: Unit, ctx: Pick<AiPlanContext, 'structures'
   return !isAirborne(unit.elevation, surfaceAt(unit.hex, ctx));
 }
 
-export function movementContextFor(unit: Unit, working: Unit[], ctx: AiPlanContext, mode: 'ground' | 'fly' = 'ground'): MovementContext {
+export function movementContextFor(
+  unit: Unit,
+  working: Unit[],
+  ctx: AiPlanContext,
+  mode: 'ground' | 'fly' = 'ground',
+  complex?: StructureComplex | null,
+): MovementContext {
   const structures = ctx.structures;
   const templates = ctx.structureTemplates;
   const zones = ctx.groundZones;
@@ -158,9 +235,19 @@ export function movementContextFor(unit: Unit, working: Unit[], ctx: AiPlanConte
   const costOfHex = makeCostOfHex(ctx.terrainCosts ?? null, ctx.walls, {
     structures, templates, isMounted: mounted, waiveClimb,
   });
-  const blockedEdge = makeBlockedEdge(ctx.walls, {
+  const rawBlockedEdge = makeBlockedEdge(ctx.walls, {
     structures, templates, zones, isMounted: mounted, waiveClimb,
   });
+  // A complex perimeter is impassable in both directions, even through an open
+  // door/gate. Interior edges keep the normal wall/structure rules.
+  const blockedEdge = complex
+    ? (fq: number, fr: number, tq: number, tr: number) => {
+        const fromIn = complex.hexes.has(`${fq},${fr}`);
+        const toIn = complex.hexes.has(`${tq},${tr}`);
+        if (fromIn !== toIn) return true;
+        return rawBlockedEdge?.(fq, fr, tq, tr) ?? false;
+      }
+    : rawBlockedEdge;
   const org: OrgMoveOpts = {
     movementMultipliers,
     orgLevels: formationOrgLevels(ctx.formations),
@@ -410,8 +497,9 @@ export function maneuversFor(
   ctx: AiPlanContext,
   maxTurns = 2,
   mode: 'ground' | 'fly' = 'ground',
+  complex?: StructureComplex | null,
 ): Maneuver[] {
-  const movement = movementContextFor(unit, working, ctx, mode);
+  const movement = movementContextFor(unit, working, ctx, mode, complex);
   const out: Maneuver[] = [];
   const poolOf = (u: Unit): number => {
     if (mode === 'fly') {

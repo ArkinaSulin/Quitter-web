@@ -133,6 +133,12 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   6, Open otherwise, Close to shoot; 10-ft-per-hex free climb bound with free
   descent; flying charge + swoop and a 20-ft / ≥2-hex retreat; mounted ring
   staging, first-action flank/rear charge, disengage, formation upgrade.
+- ✅ **Basic structure confinement + charge hardening (2026-10-23):** non-flying
+  AI units starting in a hex-structure footprint or an edge-wall enclosure may
+  not cross the perimeter (flyers exempt; open doors still count as the
+  boundary). Flying/mounted charges now use the canonical `chargeStanceFor` gate
+  (including the scenario **Charge and Swoop** toggle and `canCharge`), and the
+  planner respects fly-point availability for swoops.
 - 🔜 **Advanced AI is paused.** Scenario column `ai_assist_advanced` is kept for
   the later rebuild; its checkbox and the old Stance toggle are hidden. Rebuild
   Advanced **on top of** the Basic planner (shared board/marks/approach helpers)
