@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## Basic AI: adjacency wins, formation-up facing, climb commitment (2026-10-23)
+**Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- **Adjacency is all six hexes and facing-independent.** An adjacent enemy now
+  overrides the locked/farther target: the unit turns to face it and attacks.
+  This fixes D ignoring T in its flank and P shuffling around D’s rear.
+- **Formation-up + leftover MP:** a not-fully-upgraded unit still upgrades first,
+  then spends leftover MP turning to cover adjacent hostiles with its ZoC.
+- **No action reservation:** a wall may consume both actions per 10 ft.
+- **Climb commitment:** a unit with `climbTo` only climbs toward that target; the
+  planner checks the real per-step cost, never plans move + climb in one
+  activation, and does not descend/oscillate. 20-ft walls take two activations.
+- Verification: `npm run check` passes (tsc, 1110 tests, depcruise, build).
+
 ## Basic AI: dynamic melee marks + path-distance target locking (2026-10-23)
 **Files:** src/packages/ai/lib/{board,marks,planner}.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 

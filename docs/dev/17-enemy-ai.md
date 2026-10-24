@@ -91,6 +91,14 @@ per-type badges (e.g. `M2 A4 F1 C1`); marks reset each Preview.
   veto a move; only adjacent units can flank/rear-attack in melee.) If the marked
   target has no safe approach, the next valid target is tried (and the mark
   updates).
+- **Adjacency is all six surrounding hexes** (including the front two ZoC
+  hexes) and is detected geometrically, independent of the unit's current
+  facing. An adjacent enemy **overrides the locked/further target**: the unit
+  turns to face it, then attacks if it has an action. While an adjacent enemy
+  exists, no far-travel/Open Order downgrade or formation-up approach runs.
+- A **not-fully-upgraded** unit still prioritizes formation-up, but after the
+  last affordable change it uses leftover MP to turn and cover adjacent hostiles
+  with its ZoC (no attack until fully upgraded).
 - Facing has no artificial cap: formed units consider all six facings using the
   shortest rotation (at most three 60-degree steps). Loose units
   (Scattered/Routed/Hero) move omnidirectionally with free turns.
@@ -162,6 +170,21 @@ leave it. Flyers are exempt.
      instead of holding. Never hold when a legal advance exists.
    - Leftover MP advances toward the next target; a melee unit never voluntarily
      disengages.
+
+### Climbing (melee)
+
+- A unit on a wall (`climbTo` set) is **locked** to that climb target: it plans
+  only the next `climbAttack`, never a move, formation change, retarget or
+  escape.
+- The planner uses the structure's real per-10-ft climb cost. It only emits a
+  climb when a full step is affordable from the unit's remaining budget; if not,
+  it holds.
+- **Never plan move + climb in the same activation** when the climb needs all
+  actions. A unit that must move to the base does so this activation and climbs
+  next activation.
+- The wall may consume both actions per 10 ft; there is **no action reservation
+  for an attack**. A 20-ft wall therefore takes two activations (10 ft each),
+  attacking only once at the top.
 
 ### Ranged
 
@@ -247,12 +270,12 @@ validation accounts for the air slot and real terrain/walls/structures.
 `src/packages/ai/tests/planner.test.ts` covers gates, legal targets, independent
 marks/caps (including the dynamic melee cap up to 6), melee upgrade priority,
 multi-attack, ranged 6-hex posture and Close-Order short-bow shots, melee
-staging, ZoC engagement by fully upgraded melee, adjacency-only flank safety,
-full facing search (180-degree turns), Open-Order pass-through, stop-aware target
-costs, structure-complex confinement (footprint, enclosed courtyard, flyer
-exemption), and hardened
-mounted charge / flying swoop gates (scenario toggle, `canCharge`, fly points,
-no flyer swoop without FP).
+staging, ZoC engagement by fully upgraded melee, geometric adjacency (all six
+hexes), formation-up leftover-MP facing, climb commitment and 20-ft sequencing,
+adjacency-only flank safety, full facing search (180-degree turns), Open-Order
+pass-through, stop-aware target costs, structure-complex confinement (footprint,
+enclosed courtyard, flyer exemption), and hardened mounted charge / flying swoop
+gates (scenario toggle, `canCharge`, fly points, no flyer swoop without FP).
 Run `npm run check` (tsc, vitest, depcruise, build) and
 `npm run lint:boundaries`.
 

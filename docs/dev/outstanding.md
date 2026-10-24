@@ -140,13 +140,15 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   (including the scenario **Charge and Swoop** toggle and `canCharge`), and the
   planner respects fly-point availability for swoops.
 - ✅ **Basic engagement retargeting (2026-10-23):** fully upgraded melee may
-  enter hostile ZoC to attack a formed line; blocked marks retarget through
+  enter hostile ZoC to attack a formed line; adjacency is geometric (all six
+  hexes) and overrides farther/locked targets; blocked marks retarget through
   engage → stage → progress; pass-through hexes are traversal-only (not valid
   stopping points); flank safety is adjacency-only; formed units consider all six
   facings; a boxed-in unit can drop to Scattered and loose-move. Melee mark cap
   is dynamic (up to 6 reachable surrounding hexes), approaches use remaining path
-  cost, and the target is locked per activation. Mounted staging/charge also
-  retargets.
+  cost, and the target is locked per activation. Formation-up units use leftover
+  MP to face adjacent hostiles; climbing is committed and cost-sequenced (no
+  action reservation). Mounted staging/charge also retargets.
 - 🔜 **Advanced AI is paused.** Scenario column `ai_assist_advanced` is kept for
   the later rebuild; its checkbox and the old Stance toggle are hidden. Rebuild
   Advanced **on top of** the Basic planner (shared board/marks/approach helpers)

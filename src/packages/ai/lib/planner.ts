@@ -14,9 +14,9 @@
 //    flying 1/target, mounted 1/target + a non-mounted friendly mark.
 import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
 import { parseWeapons, isProtectedHero } from '@/packages/units';
-import { unitAttackCap, isMeleeWeapon, buildSwoopDropPlan, chargeStanceFor } from '@/packages/combat';
+import { unitAttackCap, isMeleeWeapon, buildSwoopDropPlan, chargeStanceFor, isMeleeReachable } from '@/packages/combat';
 import { isUnitRouted } from '@/packages/morale';
-import { arcsContain, computeChargeReachable, applyFormationChange } from '@/packages/movement';
+import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveBudget, structureClimbPerStep10 } from '@/packages/movement';
 import { HEX_DIRS, arcOfTarget, facingToward, rotateLeft, rotateRight } from '@/packages/primitives';
 import {
   AiArchetype, AiMark, AiPlanContext, AiPlanResult, AiUnitPlan,
@@ -304,12 +304,49 @@ function planEscape(
   return pushMove(plan, u, found.move, rt.ctx);
 }
 
+/** Adjacent hostiles in ANY of the six surrounding hexes (facing-independent). */
+function adjacentFoes(unit: Unit, rt: Runtime): Unit[] {
+  return rt.enemies.filter(f => isAdjacent(unit.hex, f.hex) && isGroundTarget(f, rt.ctx));
+}
+
+/** Spend leftover MP turning to cover adjacent hostiles with the front arc/ZoC. */
+function faceAdjacentHostiles(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
+  const foes = adjacentFoes(unit, rt);
+  if (foes.length === 0) return unit;
+  const choice = chooseFacing(unit, foes, rt.ctx);
+  if (choice.turns.length === 0) return unit;
+  const turned = pushTurns(plan, unit, choice.turns, rt.ctx);
+  return turned ?? unit;
+}
+
+/** Can the unit afford one full 10-ft climb step toward an elevated target? */
+function canAffordClimb(unit: Unit, target: Unit, rt: Runtime): boolean {
+  const top = surfaceAt(target.hex, rt.ctx);
+  const cur = unit.elevation ?? 0;
+  if (top <= unitSurface(unit, rt.ctx) || cur >= top) return false;
+  const inst = rt.ctx.structures?.[`${target.hex.q},${target.hex.r}`];
+  const template = inst ? rt.ctx.structureTemplates?.[inst.templateId] : undefined;
+  const perStep = structureClimbPerStep10(template, inst, { isMounted: false });
+  const budget = computeMoveBudget(unit, effectiveMax(unit, rt.ctx.formations));
+  return perStep <= 0 || budget >= perStep;
+}
+
 function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
   if (isUnitRouted(unit)) return planRouted(unit, plan, rt);
   let u = unit;
   const markedId = rt.byUnit.get(unit.id) ?? null;
   const candidates = rt.candidates(u, 'melee');
   let lockedTarget: Unit | null = null;
+
+  // Climb lock: a hanging unit commits to the target at climbTo. No moves,
+  // formation changes, retargeting or escape while it is on the wall.
+  if (u.climbTo) {
+    const target = rt.enemies.find(e => hexKeyOf(e.hex) === u.climbTo);
+    if (!target) return u;
+    if (!canAffordClimb(u, target, rt)) return u;
+    plan.steps.push({ kind: 'climbAttack', unitId: u.id, from: u.hex, targetId: target.id, target: target.hex });
+    return u;
+  }
 
   for (let guard = 0; guard < 16; guard++) {
     // Formation has absolute priority: never attack before fully upgraded.
@@ -331,7 +368,9 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
           rt.commit(u);
           continue;
         }
-        // No upgrade available this activation: hold and finish next turn.
+        // No upgrade available this activation: use leftover MP to cover any
+        // adjacent hostiles, then finish next turn.
+        u = faceAdjacentHostiles(u, plan, rt);
         break;
       }
       // Still far: stage toward the closest target that has a safe, non-ZoC
@@ -352,38 +391,68 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
         moved = pushMove(plan, u, m, rt.ctx);
         break;
       }
-      if (!moved) break;
+      if (!moved) {
+        u = faceAdjacentHostiles(u, plan, rt);
+        break;
+      }
       u = moved;
       rt.commit(u);
       continue;
     }
 
-    const legal = legalTargets(u, rt.enemies, rt.ctx);
     const complex = rt.complexes.get(u.id) ?? null;
-    const adjacent = legal.filter(t => !t.isRanged && t.dist <= 1)
-      .filter(t => surfaceAt(t.unit.hex, rt.ctx) <= unitSurface(u, rt.ctx)
-        || !complex || complex.hexes.has(hexKeyOf(t.unit.hex)));
-    if (adjacent.length > 0) {
-      if (!canAct(u)) break;
+    const adjacent = adjacentFoes(u, rt);
+    const strike = adjacent.filter(t =>
+      surfaceAt(t.hex, rt.ctx) <= unitSurface(u, rt.ctx)
+      && isMeleeReachable(u, t, rt.ctx.structures, rt.ctx.structureTemplates));
+    const climbable = adjacent.filter(t =>
+      surfaceAt(t.hex, rt.ctx) > unitSurface(u, rt.ctx)
+      && (!complex || complex.hexes.has(hexKeyOf(t.hex))));
+
+    if (strike.length > 0) {
+      const target = strike
+        .slice()
+        .sort((a, b) => moraleOf(a) - moraleOf(b) || hexDistance(u.hex, a.hex) - hexDistance(u.hex, b.hex) || a.id.localeCompare(b.id))[0];
+      if (!canAct(u)) {
+        u = faceAdjacentHostiles(u, plan, rt);
+        break;
+      }
+      // Face the adjacent target (any of the six sides counts as adjacent).
       const facing = chooseFacing(u, rt.enemies, rt.ctx);
       if (facing.turns.length > 0) {
         const turned = pushTurns(plan, u, facing.turns, rt.ctx);
-        if (!turned) break;
-        u = turned;
+        if (turned) u = turned;
         rt.commit(u);
       }
-      if (!canAct(u)) break;
-      const target = adjacent
-        .slice()
-        .sort((a, b) => moraleOf(a.unit) - moraleOf(b.unit) || a.dist - b.dist || a.unit.id.localeCompare(b.unit.id))[0].unit;
-      // A higher structure target next to us: climb onto it.
-      if (surfaceAt(target.hex, rt.ctx) > unitSurface(u, rt.ctx)) {
-        plan.steps.push({ kind: 'climbAttack', unitId: u.id, from: u.hex, targetId: target.id, target: target.hex });
+      let legal = legalTargets(u, [target], rt.ctx);
+      if (legal.length === 0) {
+        const direct = turnsTo(u.facing, facingToward(u.hex, target.hex));
+        if (direct.length > 0) {
+          const turned = pushTurns(plan, u, direct, rt.ctx);
+          if (turned) u = turned;
+          rt.commit(u);
+        }
+        legal = legalTargets(u, [target], rt.ctx);
+      }
+      if (!canAct(u) || legal.length === 0) {
+        u = faceAdjacentHostiles(u, plan, rt);
         break;
       }
       u = pushAttack(plan, u, target);
       rt.commit(u);
       continue;
+    }
+
+    if (climbable.length > 0) {
+      const target = climbable
+        .slice()
+        .sort((a, b) => moraleOf(a) - moraleOf(b) || a.id.localeCompare(b.id))[0];
+      if (!canAffordClimb(u, target, rt)) {
+        u = faceAdjacentHostiles(u, plan, rt);
+        break;
+      }
+      plan.steps.push({ kind: 'climbAttack', unitId: u.id, from: u.hex, targetId: target.id, target: target.hex });
+      break;
     }
 
     // No adjacent target: try every candidate in path order. A blocked marked

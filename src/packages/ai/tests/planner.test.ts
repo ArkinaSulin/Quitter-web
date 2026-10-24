@@ -455,3 +455,68 @@ describe('Basic AI reverse path distance', () => {
     expect(map.get('0,0')).toBe(2);
   });
 });
+
+describe('Basic AI adjacency, formation-up facing and climbing', () => {
+  const SHIELD: Formation = { ...form('Shield Wall', 3), melee_target_arcs: ['front'] };
+
+  it('turns and attacks an adjacent enemy in its flank/rear (D vs T)', () => {
+    const d = mk({
+      id: 'd', team: 'blue', hex: hex(1, 2), facing: 3,
+      currentFormation: 'Shield Wall', organizationLevel: 3, formationAvailability: ['Shield Wall'],
+    });
+    const t = mk({ id: 't', team: 'black', hex: hex(0, 2) });
+    const result = planAiMoves({ ...ctxOf([d, t]), formations: { ...FORMS, 'Shield Wall': SHIELD } });
+    const steps = stepsOf(result, 'd');
+    expect(steps.some(s => s.kind === 'attack')).toBe(true);
+    expect(steps.some(s => s.kind === 'formation')).toBe(false);
+  });
+
+  it('uses leftover MP to face an adjacent hostile after forming up', () => {
+    const unit = mk({
+      id: 'm1', team: 'blue', hex: hex(0, 0), facing: 0,
+      currentFormation: 'Scattered', organizationLevel: 0,
+      formationAvailability: ['Scattered', 'Open Order', 'Close Order'],
+      movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 1,
+    });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(1, 0) });
+    const result = planAiMoves(ctxOf([unit, foe]));
+    const steps = stepsOf(result, 'm1');
+    expect(steps.some(s => s.kind === 'formation')).toBe(true);
+    expect(steps.some(s => s.kind === 'turn')).toBe(true);
+    expect(steps.some(s => s.kind === 'attack')).toBe(false);
+  });
+
+  it('climbs a 20-ft wall one 10-ft step per activation (no move+climb)', () => {
+    const structures = { '0,0': { templateId: 'tower' } } as unknown as AiPlanContext['structures'];
+    const templates = {
+      tower: { id: 'tower', name: 'Tower', anchor: 'hex', elevation: 20, mpClimbUp: 6, mpMountedUp: 6 },
+    } as unknown as AiPlanContext['structureTemplates'];
+    const target = mk({ id: 't', team: 'black', hex: hex(0, 0), elevation: 20, currentFormation: 'Close Order', organizationLevel: 2 });
+    const climber = mk({
+      id: 'c', team: 'blue', hex: hex(1, 0), facing: 3,
+      currentFormation: 'Close Order', organizationLevel: 2, formationAvailability: ['Close Order'],
+      movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const result = planAiMoves({ ...ctxOf([climber, target]), structures, structureTemplates: templates });
+    const steps = stepsOf(result, 'c');
+    expect(steps.some(s => s.kind === 'climbAttack')).toBe(true);
+    expect(steps.some(s => s.kind === 'move')).toBe(false);
+  });
+
+  it('locks a hanging climber onto its climb target', () => {
+    const structures = { '0,0': { templateId: 'tower' } } as unknown as AiPlanContext['structures'];
+    const templates = {
+      tower: { id: 'tower', name: 'Tower', anchor: 'hex', elevation: 20, mpClimbUp: 6, mpMountedUp: 6 },
+    } as unknown as AiPlanContext['structureTemplates'];
+    const target = mk({ id: 't', team: 'black', hex: hex(0, 0), elevation: 20, currentFormation: 'Close Order', organizationLevel: 2 });
+    const climber = mk({
+      id: 'c', team: 'blue', hex: hex(1, 0), facing: 3, elevation: 10, climbTo: '0,0',
+      currentFormation: 'Close Order', organizationLevel: 2, formationAvailability: ['Close Order'],
+      movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const result = planAiMoves({ ...ctxOf([climber, target]), structures, structureTemplates: templates });
+    const steps = stepsOf(result, 'c');
+    expect(steps.some(s => s.kind === 'climbAttack')).toBe(true);
+    expect(steps.some(s => s.kind === 'move' || s.kind === 'formation')).toBe(false);
+  });
+});

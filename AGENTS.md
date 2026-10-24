@@ -47,8 +47,10 @@ reusable maps. Here's the state:
   progress), flank safety is adjacency-only, formed units consider all six
   facings, and a boxed-in unit can drop to Scattered to loose-move. Melee mark
   cap is dynamic (up to 6 reachable surrounding hexes); approaches use remaining
-  path cost and the target is locked per activation. No migration.
-  `npm run check` passes.
+  path cost and the target is locked per activation. Adjacency is all six hexes
+  and overrides farther targets; formation-up uses leftover MP to face adjacent
+  hostiles; climbing is committed and cost-sequenced with no action reservation.
+  No migration. `npm run check` passes.
 - **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
   scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);
   Basic uses **Simple**, Advanced uses **Advance**; the AI tab has a per-preview
