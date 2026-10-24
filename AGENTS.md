@@ -61,8 +61,9 @@ reusable maps. Here's the state:
   only reports a genuine hang. A hanging unit is hard-locked to its top exit
   (free top first, then weakest threat) and routed hanging units drop down;
   structure-top defenders hold the wall and fight. Melee units do not reposition
-  after an attack and hold against adjacent unreachable enemies. No migration.
-  `npm run check` passes.
+  after an attack and hold against adjacent unreachable enemies. Climbs require a
+  real action + strict MP capacity; the executor blocks negative actions/MP.
+  No migration. `npm run check` passes.
 - **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
   scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);
   Basic uses **Simple**, Advanced uses **Advance**; the AI tab has a per-preview

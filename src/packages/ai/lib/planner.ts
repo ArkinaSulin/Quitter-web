@@ -16,7 +16,7 @@ import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel 
 import { parseWeapons, isProtectedHero } from '@/packages/units';
 import { unitAttackCap, isMeleeWeapon, buildSwoopDropPlan, chargeStanceFor, isMeleeReachable } from '@/packages/combat';
 import { isUnitRouted, computeThreatRating } from '@/packages/morale';
-import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveBudget, structureClimbPerStep10, isClimbingUnit, applyMoveCost, climbPlan, canFly } from '@/packages/movement';
+import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveCapacity, structureClimbPerStep10, isClimbingUnit, applyMoveCost, climbPlan, canFly } from '@/packages/movement';
 import { HEX_DIRS, arcOfTarget, facingToward, rotateLeft, rotateRight } from '@/packages/primitives';
 import {
   AiArchetype, AiMark, AiPlanContext, AiPlanResult, AiUnitPlan,
@@ -367,6 +367,7 @@ function faceAdjacentHostiles(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
 /** Can the unit afford one full climb step toward `climbHex`? */
 function canAffordClimbTo(unit: Unit, climbHex: Hex, rt: Runtime): boolean {
   if (unit.mountId || unit.mountName) return false;
+  if ((unit.actionsAvailable ?? 0) < 1) return false;
   const top = surfaceAt(climbHex, rt.ctx);
   const cur = unit.elevation ?? 0;
   if (top <= cur) return false;
@@ -374,7 +375,7 @@ function canAffordClimbTo(unit: Unit, climbHex: Hex, rt: Runtime): boolean {
   const template = inst ? rt.ctx.structureTemplates?.[inst.templateId] : undefined;
   const perStep = structureClimbPerStep10(template, inst, { isMounted: false });
   if (perStep < 0) return false;
-  const budget = computeMoveBudget(unit, effectiveMax(unit, rt.ctx.formations));
+  const budget = computeMoveCapacity(unit, effectiveMax(unit, rt.ctx.formations));
   return perStep <= 0 || budget >= perStep;
 }
 
@@ -769,7 +770,7 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     const planTop = (target: Unit, access: TopAccess): { unit: Unit; stop: boolean } | null => {
       if (hexKeyOf(u.hex) === hexKeyOf(access.baseHex)) {
         if (!canAffordClimbTo(u, access.topHex, rt)) return null;
-        const budget = computeMoveBudget(u, effectiveMax(u, rt.ctx.formations));
+        const budget = computeMoveCapacity(u, effectiveMax(u, rt.ctx.formations));
         const planClimb = climbPlan(access.topSurface - access.baseSurface, budget, 0, false, access.perStep);
         if (planClimb.steps <= 0) return null;
         const applied = applyMoveCost(u, planClimb.cost, effectiveMax(u, rt.ctx.formations));
@@ -1350,7 +1351,8 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
         const occupied = isOccupiedAt(rt, live.hex, originSurface, live.id);
         if (feet > 0 && !occupied) {
           plan.steps.push({ kind: 'drop', unitId: live.id, from: live.hex, to: live.hex });
-        } else if (computeMoveBudget(live, effectiveMax(live, ctx.formations)) > 0) {
+        } else if ((live.actionsAvailable ?? 0) >= 1
+          && computeMoveCapacity(live, effectiveMax(live, ctx.formations)) > 0) {
           plan.steps.push({ kind: 'climb', unitId: live.id, from: live.hex, to: live.hex });
         }
       } else {

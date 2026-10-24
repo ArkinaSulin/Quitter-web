@@ -11,7 +11,7 @@ import { Unit, Hex, AllianceGroup, Formation, GroundEffect, ALLIANCE_COLORS } fr
 import { TEAMS } from '@/packages/units';
 import { planAiMoves, AiUnitPlan, AiMark, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf, nextLegalTarget } from '@/packages/ai';
 import { isUnitRouted } from '@/packages/morale';
-import { computeReachableMap, computeMovePool, movePoolMode, flyMax, moveBudgetUnit, isHorizontalClimbMove, structureSurfaceAt } from '@/packages/movement';
+import { computeReachableMap, computeMovePool, movePoolMode, flyMax, moveBudgetUnit, isHorizontalClimbMove, structureSurfaceAt, structureClimbPerStep10 } from '@/packages/movement';
 import { isFormationChangeAffordable } from '@/packages/movement';
 import { computeOccupiedHexes, computeThreatHexes, computeVisibleHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/packages/world';
 import { Walls, MapStructures, doorPassThroughHexes, entryBreakFormation, formationOrgLevels, loosePassThroughHexes, unitStandingSurface } from '@/packages/movement';
@@ -472,6 +472,17 @@ export function AiPanel({
     setRemaining([]);
   };
 
+  const canAffordClimbStep = (unit: Unit, to: Hex): boolean => {
+    const actions = unit.actionsAvailable ?? 0;
+    if (actions < 1) return false;
+    const maxMP = propsRef.current?.unitMaxMP(unit) ?? 1;
+    const capacity = (unit.movementPointsAvailable ?? 0) + Math.max(0, actions) * maxMP;
+    const inst = propsRef.current?.structures?.[`${to.q},${to.r}`];
+    const template = inst ? propsRef.current?.structureTemplates?.[inst.templateId] : undefined;
+    const perStep = structureClimbPerStep10(template, inst, { isMounted: false });
+    return perStep <= 0 || capacity >= perStep;
+  };
+
   /** Validate + run ONE planned step against live state. Removes it either way. */
   const executeOne = async () => {
     const props = propsRef.current;
@@ -601,9 +612,13 @@ export function AiPanel({
         setStatusText(`${live.unitName} → climbs to attack`);
         await props.performClimbAttack(live.id, step.targetId);
       } else if (step.kind === 'climb') {
-        setStatusText(`${live.unitName} → climbs to the structure top`);
-        const originSurface = unitStandingSurface(live, props.structures, props.structureTemplates);
-        await props.handleClimbMove(live, step.to, originSurface);
+        if (!canAffordClimbStep(live, step.to)) {
+          addError(`${live.unitName} cannot afford the climb — no action/MP left`);
+        } else {
+          setStatusText(`${live.unitName} → climbs to the structure top`);
+          const originSurface = unitStandingSurface(live, props.structures, props.structureTemplates);
+          await props.handleClimbMove(live, step.to, originSurface);
+        }
       } else if (step.kind === 'drop') {
         setStatusText(`${live.unitName} → drops from the wall`);
         const feet = Math.max(0, (live.elevation ?? 0) - structureSurfaceAt(step.to, props.structures, props.structureTemplates));

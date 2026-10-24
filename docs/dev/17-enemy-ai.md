@@ -230,9 +230,11 @@ leave it. Flyers are exempt.
   drop hex is occupied, climb down as a fallback.
 - No attack or retaliation happens until the unit reaches the same level as the
   structure top.
-- The planner uses the structure's real per-10-ft climb cost. It only emits a
-  climb when a full step is affordable from the unit's remaining budget; if not,
-  it holds.
+- The planner uses the structure's real per-10-ft climb cost and **strict move
+  capacity** (MP + remaining actions × pool; no soft-enforcement fudge). It
+  requires at least one action and enough capacity for the next step; otherwise
+  it holds. The AI executor repeats this check, so a stale plan can never push
+  actions/MP below zero.
 - **Never plan move + climb in the same activation** when the climb needs all
   actions. A unit that must move to the base does so this activation and climbs
   next activation.

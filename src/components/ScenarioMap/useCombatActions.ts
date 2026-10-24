@@ -1123,6 +1123,15 @@ export function useCombatActions(deps: CombatActionsDeps) {
     const steps = freeMove ? (need - done) : (perStep <= 0 ? (need - done) : Math.min(need - done, Math.max(0, Math.floor(budget / perStep))));
     if (steps <= 0) { addError(`${attacker.unitName} has no movement to climb`); return true; }
     const cost = steps * perStep;
+    if (!freeMove) {
+      const affordable = attacker.isHero
+        ? isHeroMoveAffordable(budgetUnit, cost, maxMP)
+        : isMoveAffordable(budgetUnit, cost, maxMP);
+      if ((attacker.actionsAvailable ?? 0) < 1 || !affordable) {
+        addError(`${attacker.unitName} cannot afford the climb — no action/MP left`);
+        return true;
+      }
+    }
     const spend = freeMove
       ? { movementPointsAvailable: attacker.movementPointsAvailable, actionsAvailable: attacker.actionsAvailable }
       : (attacker.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP));

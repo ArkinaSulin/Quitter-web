@@ -689,3 +689,18 @@ describe('Basic AI hanging lock and structure hold', () => {
     expect(stepsOf(result, 'm').some(s => s.kind === 'move')).toBe(false);
   });
 });
+
+describe('Basic AI climb affordability', () => {
+  it('does not climb without an action and MP to pay', () => {
+    const tower = { '0,0': { templateId: 'tower' } } as unknown as AiPlanContext['structures'];
+    const templates = { tower: { id: 'tower', name: 'Tower', anchor: 'hex', elevation: 20, mpClimbUp: 6, mpMountedUp: 6 } } as unknown as AiPlanContext['structureTemplates'];
+    const climber = mk({
+      id: 'c', team: 'blue', hex: hex(0, 1), elevation: 10, climbTo: '0,0',
+      currentFormation: 'Scattered', organizationLevel: 0,
+      movementPoints: 3, movementPointsAvailable: 0, actionsAvailable: 1,
+    });
+    const foe = mk({ id: 'f', team: 'black', hex: hex(3, 3) });
+    const result = planAiMoves({ ...ctxOf([climber, foe]), structures: tower, structureTemplates: templates });
+    expect(stepsOf(result, 'c')).toHaveLength(0);
+  });
+});

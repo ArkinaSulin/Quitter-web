@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## AI: climbing requires a real action + MP budget (2026-10-24)
+**Files:** src/packages/ai/lib/planner.ts, src/components/ScenarioMap/{AiPanel,useCombatActions}.tsx/.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
+
+- Climb affordability now uses **strict move capacity** (MP + remaining actions ×
+  pool, without the soft-enforcement spare pool) and requires at least one
+  action. Units no longer climb with 0 actions or push actions to −1.
+- The AI executor re-checks the live unit before `climb` and `climbAttack`, so
+  stale plans are skipped with an “cannot afford the climb” message.
+- Verification: `npm run check` passes (tsc, 1127 tests, depcruise, build).
+
 ## AI: no post-attack movement; hold adjacent unreachable enemies (2026-10-24)
 **Files:** src/packages/ai/lib/planner.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog,outstanding}.md, AGENTS.md
 
