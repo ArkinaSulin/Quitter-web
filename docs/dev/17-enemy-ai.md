@@ -200,25 +200,29 @@ Snapshot-in/snapshot-out; near-equal battle-role choices use `Math.random`, whil
   that turn. They never spend an attack on a front arc and never front-charge.
   This prevents fast wolf riders being used as frontage, getting ahead of the
   main body, or being melee-locked before the frontage engages.
-- **Role markers (scenario flag)**: `scenarios.ai_role_markers` (migration
-  131) overlays the current battle role on AI-controlled tokens whenever the
-  flag is on - independent of Preview/Execute. `M` frontline melee, `A`
-  high-damage frontline/shock (display-only; the Shock behaviour is not
-  implemented yet), `C` flank/rear flanker, `S` skirmisher/ranged, `R` reserve,
-  `G` structure/garrison. The DM/effective GM sees all markers; a player sees
-  only markers on units in their own team (DM in player mode is treated as a
-  player). Roles are recomputed from current positions and hostile numbers, not
-  stored per unit.
+- **Role markers (per-player overlay, Advanced AI only)**: each participant can
+  enable **Scenario Settings -> This device -> Show AI role overlay**. The option
+  is available only when **Advanced AI** is on and the viewer is the DM/effective
+  GM or **Allow players to use AI assist** is on. The choice is device-local per
+  scenario/user (`quitter.showAiRoleOverlay:<scenarioId>:<userId>`) and defaults
+  off. It replaced the old scenario-level `ai_role_markers` flag; migration 132
+  drops that column.
+  - Badges: a **large faint role letter over the upper 2/3 of the token** (over
+    the troop circles): `M` frontline melee, `A` high-damage frontline/shock
+    (display-only; Shock behaviour pending), `C` flank/rear flanker, `S`
+    skirmisher/ranged, `R` reserve, `G` structure/garrison. The DM/effective GM
+    sees all; a player sees only units in their own team (DM in player mode is a
+    player). Roles are recomputed from current positions and hostile numbers, not
+    stored per unit.
   - **High damage (A)**: use the active melee weapon's average damage per
-    attack action = `numberOfAttacks * (dice average + flat bonus)`. The standard
+    attack action = `numberOfAttacks * (dice average + flat bonus)`. Standard
     benchmark is `1d8+2` = **6.5**; strictly above 6.5 is high damage. `A`
     replaces `M` only when the unit is currently frontage. `isTwoHanded` is not
     used.
-  - **Prerequisites / troubleshooting**: the flag must be applied in Supabase,
-    AI assist must be on, at least one team must be in the AI control box, and
-    there must be a Turn 1+ active alliance. `aiTeams`/`aiExcluded` are currently
-    session-local, so markers disappear after reload; persist them and add an
-    empty-state hint next. The AI panel shows the legend.
+  - **Prerequisites / troubleshooting**: AI assist + Advanced AI on, at least one
+    team in the AI control box, and a Turn 1+ active alliance. `aiTeams`/
+    `aiExcluded` are currently session-local, so markers disappear after reload;
+    persist them and add an empty-state hint next. The AI panel shows the legend.
 - **Defensive facing**: a defensive melee unit does not accept an attack that
   leaves another adjacent enemy in its flank or rear. It first turns to face the
   most dangerous exposed enemy, even if that costs the attack, then acts from

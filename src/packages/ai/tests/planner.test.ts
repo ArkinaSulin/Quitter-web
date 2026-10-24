@@ -21,6 +21,7 @@ import {
   isHighDamageUnit,
   roleMarkerFor,
   visibleRoleMarkers,
+  aiRoleOverlayAvailable,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
@@ -1376,6 +1377,15 @@ describe('AI role markers', () => {
     expect(visibleRoleMarkers(markers, [a, b], false, 'blue')).toEqual({ a: 'M' });
     expect(visibleRoleMarkers(markers, [a, b], false, 'black')).toEqual({ b: 'C' });
     expect(visibleRoleMarkers(markers, [a, b], false, null)).toEqual({});
+  });
+
+  it('offers the role overlay only for Advanced AI and allowed viewers', () => {
+    const base = { aiAssistEnabled: true, advanced: true, isGM: false, playersAllowed: true };
+    expect(aiRoleOverlayAvailable({ ...base, advanced: false })).toBe(false);
+    expect(aiRoleOverlayAvailable({ ...base, aiAssistEnabled: false })).toBe(false);
+    expect(aiRoleOverlayAvailable({ ...base, isGM: true })).toBe(true);
+    expect(aiRoleOverlayAvailable({ ...base, isGM: false, playersAllowed: true })).toBe(true);
+    expect(aiRoleOverlayAvailable({ ...base, isGM: false, playersAllowed: false })).toBe(false);
   });
 });
 

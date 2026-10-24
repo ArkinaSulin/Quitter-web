@@ -6,6 +6,16 @@ import { AiBattleRole, AiPlanContext, assignBattleRoles } from './planner';
 
 export type AiRoleMarker = 'M' | 'A' | 'C' | 'S' | 'R' | 'G';
 
+/** Per-viewer availability of the role overlay (Advanced AI only). */
+export function aiRoleOverlayAvailable(opts: {
+  aiAssistEnabled: boolean;
+  advanced: boolean;
+  isGM: boolean;
+  playersAllowed: boolean;
+}): boolean {
+  return opts.aiAssistEnabled && opts.advanced && (opts.isGM || opts.playersAllowed);
+}
+
 /** Standard single attack benchmark: 1d8+2 = 6.5 average. */
 export const STANDARD_DAMAGE_AVERAGE = 6.5;
 

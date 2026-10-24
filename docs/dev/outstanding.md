@@ -131,19 +131,21 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   friendly line, closing after the frontage locks (same-turn dash allowed),
   whole-line pairing before reserves (short leading ranks promote rear units;
   true surplus stays reserve), one-shot defensive attack-exposure facing, and
-  persistent role markers M/A/C/S/R/G behind the `ai_role_markers` flag (DM all,
-  players own team). Migration 130 is applied; **131 (`ai_role_markers`)
-  awaits apply**. The AI package is the source of truth:
+  per-player Advanced-AI role overlay (device-local; DM all, players own team).
+  Migration 130 is applied; **131 is superseded by 132
+  (`132_drop_ai_role_markers`, drops the old column) awaiting apply**. The AI
+  package is the source of truth:
   `src/packages/ai/lib/{planner,battleLine,reserve,roleMarkers}.ts`,
   `src/packages/ai/tests/planner.test.ts`, `src/components/ScenarioMap/AiPanel.tsx`;
   design in `docs/dev/17-enemy-ai.md`.
-- **Role-marker overlay prerequisites/known gaps:** apply migration 131; the
-  toggle is Scenario Settings -> Assist & logs -> **Show AI role markers**.
-  Badges require AI assist on, at least one team in the AI control box, and a
-  Turn 1+ active alliance. `aiTeams`/`aiExcluded` are session-local, so badges
-  disappear after reload; persist them and add an empty-state hint. Taxonomy and
-  fill-in role forms live in `.scratch/ai-role-system/notes.md`. Shock/A
-  behaviour is deferred (A is display-only).
+- **Role-overlay prerequisites/known gaps:** apply migration 132; the option is
+  Scenario Settings -> This device -> **Show AI role overlay**. It is available
+  only with Advanced AI on and DM/allow-players access. Badges require at least
+  one team in the AI control box and a Turn 1+ active alliance.
+  `aiTeams`/`aiExcluded` are session-local, so badges disappear after reload;
+  persist them and add an empty-state hint. Taxonomy and fill-in role forms live
+  in `.scratch/ai-role-system/notes.md`. Shock/A behaviour is deferred (A is
+  display-only).
 - **Next session:** playtest the latest role/staging/reserve behaviour, then the
   remaining rounds in order — **2a archers + artillery → 3 mounted charges → 4
   full coordination → 5 full auto-turn**. Known separate bug from playtest: the
@@ -227,7 +229,7 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
   (structure/effect elevation).
 - ✅ Applied (owner-confirmed, AI assist): **130** (`ai_assist_advanced` /
   `ai_assist_players`).
-- 🔜 **Awaiting apply**: **096** (structure `spikes` + "Archer's Stake" rename),
+- ?? **Awaiting apply**: **132** (drops the old `ai_role_markers` column), **096** (structure `spikes` + "Archer's Stake" rename),
   **097** (`structure_images` bucket), **112** (`units.climb_to` — Phase 2b-7).
 
 ## Uncommitted working tree (owner's, left untouched)

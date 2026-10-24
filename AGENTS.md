@@ -71,18 +71,21 @@ reusable maps. Here's the state:
   hexes from every hostile and never closer than the friendly front line**, and
   keep circling behind it. Once the main body locks a target — **including a
   same-plan lock** — they dash to its flank/rear and may attack that turn. They
-  never attack a front arc and never front-charge. During Preview/Execute tokens
-  carry persistent role badges when the scenario flag `ai_role_markers` is on:
-  `M` frontline melee, `A` high-damage frontline/shock (display-only), `C`
-  flanker, `S` skirmisher/ranged, `R` reserve, `G` structure/garrison. High
-  damage = active melee weapon average per attack action above 6.5 (`1d8+2`),
-  using `numberOfAttacks * (dice average + flat)`; `A` replaces `M` only for
-  frontage. DM/effective GM sees all; players see their own team only; DM in
-  player mode is a player. Roles are recomputed from current positions/hostile
-  numbers, independent of Preview/Execute. The overlay requires migration 131,
-  AI assist on, at least one team in the AI control box, and a Turn 1+ active
-  alliance; `aiTeams`/`aiExcluded` are session-local (persistence and an
-  empty-state hint are next). Defensive reserves hold a **central station ~2
+  never attack a front arc and never front-charge. During play, each viewer may enable **Scenario Settings -> This device ->
+Show AI role overlay** (device-local, default off) when **Advanced AI** is on
+and the viewer is DM/effective GM or players are allowed. The overlay draws a
+large faint role letter over the upper 2/3 of AI tokens: `M` frontline melee,
+`A` high-damage frontline/shock (display-only), `C` flanker,
+`S` skirmisher/ranged, `R` reserve, `G` structure/garrison. High damage =
+active melee weapon average per attack action above 6.5 (`1d8+2`), using
+`numberOfAttacks * (dice average + flat)`; `A` replaces `M` only for frontage.
+DM/effective GM sees all; players see their own team only; DM in player mode is
+a player. Roles are recomputed from current positions/hostile numbers,
+independent of Preview/Execute. Requires an AI team in the AI control box and
+a Turn 1+ active alliance; `aiTeams`/`aiExcluded` are session-local
+(persistence and an empty-state hint are next). Migration 132 drops the old
+`ai_role_markers` scenario column.
+Defensive reserves hold a **central station ~2
   hexes behind the line** (staggered, and split into sector groups on a very long
   line), optionally in **Scattered** while uncommitted. Reserves never take a
   normal front-line pairing slot; their mission is to face flank/rear threats
@@ -107,7 +110,7 @@ reusable maps. Here's the state:
   available org level before contact; flankers attack first and may chain two
   formation upgrades (Scattered → Open → Close) in one action; Scattered turns
   are free.
-  `npm run check`: tsc, **1141 tests** (67 planner), depcruise, build. No new
+  `npm run check`: tsc, **1142 tests** (68 planner), depcruise, build. No new
   migration for 2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted charges, Round
   4 full coordination, Round 5 full auto-turn; AI still ignores ZoC
   scatter/pursue, flight, and some elevation nuances. See

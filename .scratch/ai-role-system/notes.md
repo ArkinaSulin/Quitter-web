@@ -5,9 +5,14 @@ The overlay is display-only. The **Shock/A behaviour is NOT implemented yet.**
 
 ## What shipped
 
-- Scenario flag `scenarios.ai_role_markers` (migration 131, default false).
-- Toggle: Scenario Settings -> Assist & logs -> **Show AI role markers**.
-- Badges: top-left of AI-controlled tokens during the active turn.
+- Per-player, device-local option: **Scenario Settings -> This device -> Show AI
+  role overlay**. Available only when **Advanced AI** is on and the viewer is
+  DM/effective GM or **Allow players to use AI assist** is on. Stored per
+  scenario/user (`quitter.showAiRoleOverlay:<scenarioId>:<userId>`); default off.
+- There is **no** scenario-level role-marker flag anymore. Migration 132 drops
+  the old `scenarios.ai_role_markers` column (131 is superseded).
+- Markers: large faint role letter over the **upper 2/3 of the token**, over the
+  troop circles (elevation-aware). M/A/C/S/R/G.
   - M = frontline melee anchor
   - A = high-damage frontage / shock (display-only)
   - C = flank/rear flanker
@@ -18,10 +23,9 @@ The overlay is display-only. The **Shock/A behaviour is NOT implemented yet.**
 - Visibility: DM/effective GM sees all; a player sees only units in their own
   team; DM in player mode is treated as a player.
 - Roles recomputed from current positions/hostile numbers, independent of
-  Preview/Execute.
+  Preview/Execute. **Advanced AI only.**
 - AI stance lifted from `AiPanel` to `ScenarioMap` so persistent roles use the
   selected Aggressive/Defensive posture.
-
 ## High-damage (A) rule
 
 Do **not** use `isTwoHanded`.
@@ -44,19 +48,21 @@ Examples: `1d8+2`/`d12` = M; `2d6`, `2x d6`, `1d10+2` = A if frontage;
 
 Check in this order:
 
-1. **Migration 131 applied?** If the checkbox does not stay checked, the column
-   is missing.
-2. **AI assist enabled?** The overlay is gated on `ai_assist_enabled`.
-3. **At least one team in the AI control box?** `aiTeams` is currently
+1. **Advanced AI on?** The overlay is Advanced-AI only.
+2. **Did you enable the local option?** Scenario Settings -> This device ->
+   Show AI role overlay. It is available only for DM or allowed players.
+3. **Migration 132 applied?** It drops the old `ai_role_markers` column; no
+   role flag is needed now.
+4. **AI assist enabled?** The overlay is gated on `ai_assist_enabled`.
+5. **At least one team in the AI control box?** `aiTeams` is currently
    **session-local**, not persisted. After reload it is empty.
-4. **Turn 1+ with an active alliance?** Free play / Turn 0 has no active
+6. **Turn 1+ with an active alliance?** Free play / Turn 0 has no active
    alliance and therefore no roles.
-5. **Active alliance has AI-controlled units?** Roles are only computed for the
+7. **Active alliance has AI-controlled units?** Roles are only computed for the
    current side.
-6. **Visibility:** player mode filters to own team. If the AI controls the other
+8. **Visibility:** player mode filters to own team. If the AI controls the other
    team, that player sees none.
-7. Unit filters/fog can hide tokens; clear filters and use DM view to test.
-
+9. Unit filters/fog can hide tokens; clear filters and use DM view to test.
 ## Known gaps for next session
 
 - **Persist `ai_teams`** (and probably `ai_excluded`) on the scenario, or role
@@ -258,7 +264,7 @@ AGR threshold for shock/focus: [N]
 
 ## Next-session checklist
 
-1. Apply migration 131 in Supabase.
+1. Apply migration 132 in Supabase (drops the old role-marker column).
 2. Verify the marker toggle stays checked and badges appear:
    - AI assist on, AI team assigned, Turn 1+, DM view.
 3. Decide persistence for `ai_teams` / `ai_excluded`.

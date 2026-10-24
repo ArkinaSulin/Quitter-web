@@ -771,6 +771,46 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const byId = new Map(displayUnits.map(u => [u.id, u]));
       // Checkmarks: fixed on-screen size (does not grow with zoom).
       const badgeR = 9;
+      // Large faint role letter over the troop circles (upper 2/3), drawn under
+      // the checkmarks/routes so those stay readable.
+      const roleStyle: Record<string, { label: string; color: string }> = {
+        M: { label: 'M', color: '#60a5fa' },
+        A: { label: 'A', color: '#ef4444' },
+        C: { label: 'C', color: '#f59e0b' },
+        S: { label: 'S', color: '#a78bfa' },
+        R: { label: 'R', color: '#34d399' },
+        G: { label: 'G', color: '#94a3b8' },
+      };
+      for (const [id, role] of Object.entries(aiOverlay.roles ?? {})) {
+        if (!roleStyle[role]) continue;
+        const u = byId.get(id);
+        if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
+        const pos = hexToPixel(u.hex, HEX_SIZE);
+        const climbTarget = parseClimbTo(u.climbTo);
+        const elev = targetFilter === 'air'
+          ? { dx: 0, dy: 0 }
+          : elevationOffset(
+              u.elevation, HEX_SIZE,
+              canFly(u) && !climbTarget,
+              climbTarget ? hexDirection(u.hex, climbTarget, HEX_SIZE) : undefined,
+            );
+        const cx = pos.x * currentZoom + offsetX + elev.dx * currentZoom;
+        const cy = pos.y * currentZoom + offsetY + elev.dy * currentZoom;
+        const style = roleStyle[role];
+        const fontSize = Math.max(14, Math.min(tokenWidth, tokenHeight) * 0.5);
+        const textY = cy - tokenHeight * 0.16;
+        ctx.save();
+        ctx.globalAlpha = 0.34;
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = Math.max(2, fontSize * 0.06);
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillStyle = style.color;
+        ctx.strokeText(style.label, cx, textY);
+        ctx.fillText(style.label, cx, textY);
+        ctx.restore();
+      }
       for (const id of aiOverlay.checkedUnitIds) {
         const u = byId.get(id);
         if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
@@ -794,39 +834,6 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.lineTo(bx - 1.2, by + 3.6);
         ctx.lineTo(bx + 4.8, by - 3.4);
         ctx.stroke();
-        ctx.restore();
-      }
-      // Debug role badge (top-left): F frontage, K flanker, B rear, R reserve,
-      // A ranged, S structure.
-      const roleStyle: Record<string, { label: string; color: string }> = {
-        M: { label: 'M', color: '#60a5fa' },
-        A: { label: 'A', color: '#ef4444' },
-        C: { label: 'C', color: '#f59e0b' },
-        S: { label: 'S', color: '#a78bfa' },
-        R: { label: 'R', color: '#34d399' },
-        G: { label: 'G', color: '#94a3b8' },
-      };
-      for (const [id, role] of Object.entries(aiOverlay.roles ?? {})) {
-        if (!roleStyle[role]) continue;
-        const u = byId.get(id);
-        if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
-        const pos = hexToPixel(u.hex, HEX_SIZE);
-        const bx = pos.x * currentZoom + offsetX - tokenWidth * 0.46;
-        const by = pos.y * currentZoom + offsetY - tokenHeight * 0.52;
-        const style = roleStyle[role];
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(bx, by, badgeR, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(17,24,39,0.92)';
-        ctx.fill();
-        ctx.strokeStyle = style.color;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.fillStyle = style.color;
-        ctx.font = 'bold 10px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(style.label, bx, by + 0.5);
         ctx.restore();
       }
 

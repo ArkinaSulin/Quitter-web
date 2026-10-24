@@ -351,8 +351,6 @@ export interface Scenario {
   aiAssistAdvanced: boolean;
   /** AI assist: non-GM participants may open/use the AI tab in this scenario. */
   aiAssistPlayers: boolean;
-  /** AI assist: overlay persistent role markers on AI-controlled tokens. */
-  aiRoleMarkers: boolean;
 }
 
 // --- Participant ---

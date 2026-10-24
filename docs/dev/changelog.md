@@ -1,5 +1,25 @@
 # QuiTTER Changelog
 
+## Per-player Advanced-AI role overlay (2026-10-21)
+**Files:** src/components/ScenarioMap/{ScenarioMap,useCanvasDraw}.tsx/.ts, src/packages/ai/lib/roleMarkers.ts, src/packages/ai/tests/planner.test.ts, src/types/gameProtocol.ts, src/hooks/useScenarios.ts, supabase/migrations/132_drop_ai_role_markers.sql, docs/dev/{17-enemy-ai,changelog,outstanding}.md, docs/players/player-manual.md, AGENTS.md, .scratch/ai-role-system/notes.md
+
+- Replaced the scenario-level `ai_role_markers` GM flag with a **per-viewer,
+  device-local** option: Scenario Settings -> This device -> **Show AI role
+  overlay**. It is available only when **Advanced AI** is on and the viewer is
+  the DM/effective GM or **Allow players to use AI assist** is on. Choice is
+  stored per scenario/user and defaults off.
+- Role markers are **Advanced AI only** and are now drawn as a **large faint
+  role letter over the upper 2/3 of the token**, on top of the troop circles,
+  with elevation-aware positioning. The AI checkmark/routes draw above them.
+- Visibility is unchanged: DM/effective GM sees all; a player sees only their
+  own team; DM in player mode is a player.
+- Added `aiRoleOverlayAvailable` helper + tests for the Advanced/GM/allow-players
+  gate.
+- Migration 132 drops the now-unused `scenarios.ai_role_markers` column (safe
+  whether or not 131 was applied).
+- Verification: `npm run check` passes (tsc, 1142 tests / 68 planner, depcruise,
+  build). **Apply migration 132 in Supabase.**
+
 ## Session wrap: AI role markers + next-session role design (2026-10-21)
 **Files:** .scratch/ai-role-system/notes.md, docs/dev/{changelog,outstanding}.md, docs/dev/17-enemy-ai.md, AGENTS.md
 

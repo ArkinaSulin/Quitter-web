@@ -1324,12 +1324,14 @@ fast riders do not take frontage from slower warriors. Flankers do not wait in a
 queue: they retarget to a target locked by the frontage, circle at least three
 hexes out and never closer than the friendly front line, then dash to the flank
 or rear as soon as the frontage locks - including later in the same turn. They
-never charge the front. When the scenario setting **Show AI role markers** is
-on, AI-controlled tokens carry a persistent role badge: M melee, A high-damage
-assault, C flanker, S skirmisher/ranged, R reserve, G garrison. The DM sees all;
-a player sees only their own team; DM in player mode is treated as a player.
-Markers require AI assist, at least one team in the AI control box, and a Turn
-1+ active alliance. Defensive melee units turn once to face an adjacent flank/rear threat before
+never charge the front. Each player can enable **Scenario Settings -> This
+device -> Show AI role overlay** (Advanced AI only). It draws a large faint role
+letter over the token's troop circles: M melee, A high-damage assault, C flanker,
+S skirmisher/ranged, R reserve, G garrison. The option is available only when
+Advanced AI is on and the DM allowed players to use AI assist; the DM sees all,
+a player sees only their own team, and DM in player mode is treated as a player.
+Markers require an AI team in the AI control box and a Turn 1+ active alliance.
+Defensive melee units turn once to face an adjacent flank/rear threat before
 attacking, even if that costs the attack, so they do not oscillate. Defensive
 stance pairs the whole enemy front line first: the front rank shifts laterally
 to cover it, and rear reserves join only when the leading rank is short. Any
