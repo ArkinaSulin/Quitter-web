@@ -346,9 +346,6 @@ export interface Scenario {
   /** ZoC danger layer: leaving a hostile kill zone scatters the mover + provokes
    *  an aggression-gated pursue. When false, no scatter/pursue/OA. Default true. */
   zocPursuitEnabled: boolean;
-  /** AI assist: use the tuned planner (retaliation-aware, finish/overkill value,
-   *  light target reservation) instead of the green-friendly greedy default. */
-  aiAssistAdvanced: boolean;
   /** AI assist: non-GM participants may open/use the AI tab in this scenario. */
   aiAssistPlayers: boolean;
 }

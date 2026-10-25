@@ -34,7 +34,7 @@ import { formatStrikeDetail, formatWarMachineToHit } from '@/packages/units';
 import { SubStep, UnitChange } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
-import { computeOccupiedHexes, computeThreatHexes } from '@/packages/world';
+import { computeOccupiedHexes, computeThreatHexes, isHexOnGrid } from '@/packages/world';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingAttack, PendingAttackCap, PendingChargeAttack, PendingChargeThrough, PendingWeaponSwitch } from './SoftEnforcementModals';
 import { climbScatterStep } from './climbScatter';
@@ -108,6 +108,8 @@ interface CombatActionsDeps {
   /** Scenario "Reactive archery": a swoop charge may enter a threat/ZoC hex only
    *  as its first step (stop before it otherwise). */
   archerReactionEnabled?: boolean;
+  /** Axial playable radius; off-grid tokens are out of play. */
+  gridRadius?: number;
 }
 
 export function useCombatActions(deps: CombatActionsDeps) {
@@ -137,6 +139,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
     canAttackTarget,
     freeMove = false,
     archerReactionEnabled = false,
+    gridRadius,
   } = deps;
 
   const [pendingAttack, setPendingAttack] = useState<PendingAttack | null>(null);
@@ -1089,16 +1092,18 @@ export function useCombatActions(deps: CombatActionsDeps) {
    * Resolve the swoop drop for `attacker` onto `target`, or null when it does not
    * apply (see `@/packages/combat` `buildSwoopDropPlan`).
    */
-  const buildSwoopDropPlan = useCallback((attacker: Unit, target: Unit): SwoopDropPlan | null =>
-    buildSwoopPlan(attacker, target, {
+  const buildSwoopDropPlan = useCallback((attacker: Unit, target: Unit): SwoopDropPlan | null => {
+    if (gridRadius != null && (!isHexOnGrid(attacker.hex, gridRadius) || !isHexOnGrid(target.hex, gridRadius))) return null;
+    return buildSwoopPlan(attacker, target, {
       units,
       alliances,
       formations: formationsMap,
       structures,
       structureTemplates,
       archerReactionEnabled,
-    }),
-  [units, alliances, formationsMap, structures, structureTemplates, archerReactionEnabled]);
+    });
+  },
+  [units, alliances, formationsMap, structures, structureTemplates, archerReactionEnabled, gridRadius]);
 
   /** The plan if a swoop drop applies to this pair, else null (used by the UI to
    *  decide whether to prompt). */
@@ -1244,6 +1249,10 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
     if (!canControlUnit(attacker)) return;
+    if (gridRadius != null && (!isHexOnGrid(attacker.hex, gridRadius) || !isHexOnGrid(target.hex, gridRadius))) {
+      addError('Off-grid tokens are outside the playable area - they cannot be targeted or attack.');
+      return;
+    }
 
     // A climbing unit may only attack the defender at the TOP of the wall it is
     // climbing (and only once it has reached that elevation).

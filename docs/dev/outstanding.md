@@ -2,7 +2,26 @@
 
 Living roadmap of what is **not built yet**, for the next session. Shipped work
 goes in `docs/dev/changelog.md`; this file is the forward-looking list.
-Statuses: 🔜 next / ⏳ later / 🚧 blocked / ✅ done-here-listed-for-context.
+Statuses: next / later / blocked / done-here-listed-for-context.
+
+## Recently shipped (2026-10-24)
+- Charge/swoop: 1+ action gate, later-action declaration, action -> full pool
+  conversion, free attack, AGR-failure end/drop, no air swoop. Swoop doubles
+  damage like a charge.
+- Mounted AI: outer-rim marks, 5/3 friendly-kill-zone safety (target excluded),
+  closest valid charge-start points (start need not be rear), multi-turn routing,
+  rear-only final-front-arc charges, hold only at a valid start, no normal melee
+  fallback.
+- Flying AI: airborne target priority; ranged at max/current range, otherwise
+  paid melee; no air charge/swoop; pursues air targets instead of ground;
+  flying marks prefer airborne.
+- Off-grid tokens (option 2): moves/withdraw/rout may leave the grid; non-DM
+  players and AI cannot control off-grid tokens, and off-grid tokens cannot be
+  targeted or attack. DM/effective GM is exempt for recovery. AI may plan a move
+  to off-grid, then the unit drops out of eligibility.
+- Advanced AI/Stance removed/cancelled; Basic is the only planner. Manual
+  one-charge-per-activation was scrapped (AI still plots one).
+- AI roster: stacked ground/air units independently toggleable.
 
 ## Effects engine
 - ✅ Zone **entry** damage, zone **mp_cost**, **dice** amounts (`XdY±Z`; X=0 flat),
@@ -90,8 +109,9 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   - **ZoC "only at the wall top"**: currently a climbing unit exerts ZoC only
     against movers at its exact elevation (the 2b-6 rule); the explicit
     wall-top gate wasn't added separately — verify in play it reads correctly.
-  - **Enemy AI** ignores elevation / climb / flight-blocking entirely (v1), same as
-    structure auras.
+  - **Enemy AI** now climbs structure tops, holds walls, flies (swoop/air
+    superiority) and air-fights; some elevation/flight-blocking nuances remain
+    to verify in play.
 
 ## Edge walls (migration 089) — unified into map structures
 - ✅ **Edge walls are authored as structures** (see "Map structures"): the runtime
@@ -125,20 +145,33 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   `src/packages/combat/lib/swoop.ts`, `src/components/ScenarioMap/AiPanel.tsx`;
   design in `docs/dev/17-enemy-ai.md`.
 - ✅ **Basic rules shipped:** active-alliance/team/opt-out gates; hero and
-  hero-hosted exclusion; marks (melee 2/target, ranged unlimited, flying 1,
+  hero-hosted exclusion; marks (melee up to 6/target, ranged unlimited, flying 1,
   mounted 1 + a non-mounted friendly mark); melee formation priority (stage at
   2–3 hexes, upgrade to max org, never attack before fully upgraded); safe
   destinations (never advance into a flank/rear); ZoC facing (min flank/rear →
   max front); multiple actions/attacks per activation; ranged Scattered within
   6, Open otherwise, Close to shoot; 10-ft-per-hex free climb bound with free
-  descent; flying charge + swoop and a 20-ft / ≥2-hex retreat; mounted ring
-  staging, first-action flank/rear charge, disengage, formation upgrade.
+  descent.
+- ✅ **Flying (current):** airborne targets take priority; flying marks prefer
+  airborne; ranged weapon first (fire in range, else close/retreat to max range),
+  otherwise paid melee after an approach at the target elevation; no air
+  charge/swoop; ground targets still use swoop (doubled damage) and a 20-ft /
+  ≥2-hex retreat; air targets are pursued instead of switching to ground.
+- ✅ **Mounted (current):** rim-only marks; 5/3 friendly-kill-zone safety gate
+  (target excluded); closest valid charge-start point within `pool + 1` (start
+  need not be rear); multi-turn tangent routing; rear-only landing that is legal
+  from the final front arc; hold only at a valid start; no normal melee fallback.
+- ✅ **Charge/swoop (current):** 1+ action gate; a charge consumes one action and
+  converts it to a full movement pool; free attack needs no action; AGR failure
+  ends the charge and drops org; AI plots at most one charge/swoop per activation.
+- ✅ **Off-grid (current):** option 2 — moves/withdraw/rout may leave the grid;
+  non-DM players and AI cannot control off-grid tokens; DM/effective GM exempt.
 - ✅ **Basic structure confinement + charge hardening (2026-10-23):** non-flying
   AI units starting in a hex-structure footprint or an edge-wall enclosure may
   not cross the perimeter (flyers exempt; open doors still count as the
-  boundary). Flying/mounted charges now use the canonical `chargeStanceFor` gate
-  (including the scenario **Charge and Swoop** toggle and `canCharge`), and the
-  planner respects fly-point availability for swoops.
+  boundary). Flying/mounted charges use the canonical `chargeStanceFor` gate
+  (including the scenario **Charge and Swoop** toggle, `canCharge`, and the
+  1-action entry); no fly-point threshold remains.
 - ✅ **Basic engagement retargeting (2026-10-23):** fully upgraded melee may
   enter hostile ZoC to attack a formed line; adjacency is geometric (all six
   hexes) and overrides farther/locked targets; routed enemies are fallback-only
@@ -172,21 +205,14 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   top hexes first (one per hex, quickest access), then mark defenders only when
   no free top remains. A vacant exit that becomes occupied is fought until it
   routs, then landed.
-- 🔜 **Advanced AI is paused.** Scenario column `ai_assist_advanced` is kept for
-  the later rebuild; its checkbox and the old Stance toggle are hidden. Rebuild
-  Advanced **on top of** the Basic planner (shared board/marks/approach helpers)
-  instead of reviving the deleted role planner.
-- 🔜 **Next session:** playtest Basic on real maps (especially mounted charge
-  corridors, flying swoop/retreat and melee staging), then layer Advanced
-  (retaliation value, focus fire, line coordination, full auto-turn). Known
-  separate bug from playtest: the **turn counter** appeared to be
+- 🔜 **Next session:** playtest the shipped mounted/air/charge/off-grid rules on
+  real maps. Known separate bug: the **turn counter** appeared
   broken/desynced; reproduce before changing turn advancement.
-- 🔜 **Full AI mode** (auto whole-turn director: watches turn, runs the plot,
-  auto-answers rout/reaction prompts, auto End Turn) on top of the existing
-  planner + Execute driver.
-- ⏳ **Basic follow-ups:** ladder-edge selection for climb targets, artillery /
-  war-machine steps, AI magic/reactions/hero attach, and per-team doctrine
-  toggles. AI still never controls heroes or hero-hosted units.
+- ⏳ **Basic follow-ups:** archers/artillery; AI
+  magic/reactions/hero attach; ZoC scatter/pursue; some elevation nuances; and
+  per-team doctrine toggles. Off-grid attackability is fixed (off-grid tokens
+  cannot be targeted or attack). AI still never controls heroes or
+  hero-hosted units.
 
 ## Spelljammer module (largest remaining)
 Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.md`,
@@ -229,8 +255,8 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
 - ✅ Applied (owner-confirmed, Phase 2 aerial/elevation): **108** (elevation/fly),
   **109** (template fly speed), **110** (`fly_speed_available` numeric), **111**
   (structure/effect elevation).
-- ✅ Applied (owner-confirmed, AI assist): **130** (`ai_assist_advanced` /
-  `ai_assist_players`).
+- ✅ Applied (owner-confirmed, AI assist): **130** (legacy
+  `ai_assist_advanced` / `ai_assist_players`; Advanced AI is cancelled).
 - ?? **Awaiting apply**: **132** (drops the old `ai_role_markers` column), **096** (structure `spikes` + "Archer's Stake" rename),
   **097** (`structure_images` bucket), **112** (`units.climb_to` — Phase 2b-7).
 

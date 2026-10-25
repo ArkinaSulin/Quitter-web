@@ -1,16 +1,27 @@
 # QuiTTER Changelog
 
+## Advanced AI removed (2026-10-24)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, src/hooks/useScenarios.ts, src/types/gameProtocol.ts, src/packages/ai/lib/types.ts, docs/dev/{17-enemy-ai,outstanding,changelog}.md, AGENTS.md
+
+- The Advanced AI project is cancelled. Removed its dead scenario state/type
+  plumbing and the unused `advanced`/`stance` planner fields. The
+  `ai_assist_advanced` DB column remains only for compatibility.
+- Removed all associated roadmap/outstanding tasks and the Advanced section from
+  the AI chapter.
+
 ## Off-grid tokens are out of play (option 2) (2026-10-24)
-**Files:** src/packages/{world/lib/mapGeometry.ts,world/tests/mapGeometry.test.ts,movement/lib/withdraw.ts,movement/tests/withdraw.test.ts,morale/lib/routedRetreat.ts,morale/tests/routedRetreat.test.ts,ai/lib/planner.ts,ai/tests/planner.test.ts}, src/components/ScenarioMap/{ScenarioMap.tsx,AiPanel.tsx,useOverlay.ts}, docs/dev/{07-movement-economy,17-enemy-ai,changelog}.md, AGENTS.md
+**Files:** src/packages/{world/lib/mapGeometry.ts,world/tests/mapGeometry.test.ts,movement/lib/withdraw.ts,movement/tests/withdraw.test.ts,morale/lib/routedRetreat.ts,morale/tests/routedRetreat.test.ts,ai/lib/planner.ts,ai/tests/planner.test.ts}, src/components/ScenarioMap/{ScenarioMap.tsx,AiPanel.tsx,useOverlay.ts,useCombatActions.ts,useReactionActions.ts}, docs/dev/{07-movement-economy,17-enemy-ai,changelog}.md, AGENTS.md
 
 - Added `isHexOnGrid` (axial `max(|q|,|r|,|s|) <= gridRadius`).
 - Non-DM players cannot grab/control an off-grid token; DM/effective GM is
   exempt. A unit may still be moved **to** an off-grid hex.
 - AI no longer controls off-grid units, but may plan a move that ends off-grid;
   the unit drops out of AI eligibility afterward.
+- Off-grid tokens cannot be targeted or attack by anyone; manual and reaction
+  attacks are blocked and the AI enemy pool excludes them.
 - `withdrawDestinations` and `routRetreatPath` no longer clamp to the grid rim, so
   withdraw/rout may leave play. No action/MP zeroing; control is blocked instead.
-- Verification: `npm run check` passes (tsc, 1145 tests, depcruise, build). No
+- Verification: `npm run check` passes (tsc, 1146 tests, depcruise, build). No
   migration.
 
 ## AI flying: airborne priority + air-to-air attacks (2026-10-24)

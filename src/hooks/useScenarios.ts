@@ -32,7 +32,6 @@ function mapScenario(row: any): Scenario {
     deletionLocked: !!row.deletion_locked,
     dmHeartbeatAt: row.dm_heartbeat_at || null,
     zocPursuitEnabled: row.zoc_pursuit_enabled ?? true,
-    aiAssistAdvanced: !!row.ai_assist_advanced,
     aiAssistPlayers: !!row.ai_assist_players,
   };
 }

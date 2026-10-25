@@ -13,7 +13,7 @@ import { planAiMoves, AiUnitPlan, AiMark, isAiControllable, allianceOf, enemyGro
 import { isUnitRouted } from '@/packages/morale';
 import { computeReachableMap, computeMovePool, movePoolMode, flyMax, moveBudgetUnit, isHorizontalClimbMove, structureSurfaceAt, structureClimbPerStep10 } from '@/packages/movement';
 import { isFormationChangeAffordable } from '@/packages/movement';
-import { computeOccupiedHexes, computeThreatHexes, computeVisibleHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, DEFAULT_GRID_RADIUS } from '@/packages/world';
+import { computeOccupiedHexes, computeThreatHexes, computeVisibleHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, DEFAULT_GRID_RADIUS, isHexOnGrid } from '@/packages/world';
 import { Walls, MapStructures, doorPassThroughHexes, entryBreakFormation, formationOrgLevels, loosePassThroughHexes, unitStandingSurface } from '@/packages/movement';
 import { unitIgnoresClimb } from '@/packages/effects';
 import { StructureTemplate } from '@/types/structure';
@@ -569,11 +569,12 @@ export function AiPanel({
       } else if (step.kind === 'attack') {
         let target = props.units.find(u => u.id === step.targetId);
         const cap = unitAttackCap();
+        const inPlay = (u: Unit) => props.gridRadius == null || isHexOnGrid(u.hex, props.gridRadius);
         // A target that routed after the plot is not finished off while any
         // non-routed enemy exists. Pick the next legal non-routed target (or a
         // routed fallback only when every enemy is routed).
         if (target && isUnitRouted(target)) {
-          const next = nextLegalTarget(live, props.units, {
+          const next = nextLegalTarget(live, props.units.filter(inPlay), {
             alliances: props.alliances,
             formations: props.formationsMap,
             visibleHexes: props.fogOfWarEnabled ? visibleHexesRef.current : null,
@@ -586,7 +587,7 @@ export function AiPanel({
             target = undefined;
           }
         }
-        const legal = target && !target.isDeleted && !target.hidden && (target.currentUnitHp ?? 0) > 0
+        const legal = target && inPlay(target) && !target.isDeleted && !target.hidden && (target.currentUnitHp ?? 0) > 0
           ? legalTargets(live, [target], { alliances: props.alliances, formations: props.formationsMap, visibleHexes: props.fogOfWarEnabled ? visibleHexesRef.current : null })
           : [];
         // A charge attack is free: declaration converted an action into MP and

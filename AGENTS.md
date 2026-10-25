@@ -51,8 +51,8 @@ reusable maps. Here's the state:
   Executor gained
   `climbAttack`/`charge`/`swoop`/`chargeEnd`/`weapon` and move `elevation`;
   pure swoop validation moved to `combat/lib/swoop.ts`. Deleted
-  `battleLine.ts`/`reserve.ts`/`roleMarkers.ts`; Advanced AI + Stance UI hidden,
-  columns kept for a future rebuild. **Follow-up:** non-flying units starting in
+  `battleLine.ts`/`reserve.ts`/`roleMarkers.ts`; the Advanced AI project was
+  cancelled (DB column retained only for compatibility). **Follow-up:** non-flying units starting in
   a hex-structure footprint or edge-wall enclosure cannot cross the perimeter
   (flyers exempt); flying/mounted charges use the canonical `chargeStanceFor`
   gate and the scenario **Charge and Swoop** toggle. Fully upgraded melee may
@@ -81,12 +81,13 @@ reusable maps. Here's the state:
 - **Off-grid tokens are out of play (option 2)**: `isHexOnGrid` uses the axial
   `max(|q|,|r|,|s|) <= gridRadius` rule. Normal moves, withdraws, routs, and AI
   plans may cross the rim; afterward non-DM players and the AI cannot control
-  the token (DM/effective GM is exempt). `withdrawDestinations` and
+  the token, and off-grid tokens cannot be targeted or attack (DM/effective GM
+  is exempt for recovery only). `withdrawDestinations` and
   `routRetreatPath` no longer clamp to the rim. No migration.
-- **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
-  scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);
-  Basic uses **Simple**, Advanced uses **Advance**; the AI tab has a per-preview
-  **Aggressive (default) / Defensive** stance toggle (local state, no DB column).
+- **Historical AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`,
+  `f4e3695`; superseded by the Basic rewrite):** the Advanced/stance path was
+  removed. The legacy `ai_assist_advanced` / `ai_assist_players` columns remain
+  DB-only.
   **Pass 1**: multi-maneuver one-pool movement (mounted move/turn/charge path
   allowed), no generic contact tax, no-attack turn surcharge, conditional target
   exclusion, line-bearing penalty, per-unit step budget
@@ -128,20 +129,7 @@ reusable maps. Here's the state:
   hexes from every hostile and never closer than the friendly front line**, and
   keep circling behind it. Once the main body locks a target — **including a
   same-plan lock** — they dash to its flank/rear and may attack that turn. They
-  never attack a front arc and never front-charge. During play, each viewer may enable **Scenario Settings -> This device ->
-Show AI role overlay** (device-local, default off) when **Advanced AI** is on
-and the viewer is DM/effective GM or players are allowed. The overlay draws a
-large white role letter (dark outline) centered on AI tokens: `M` frontline melee,
-`A` high-damage frontline/shock (display-only), `C` flanker,
-`S` skirmisher/ranged, `R` reserve, `G` structure/garrison. High damage =
-active melee weapon average per attack action above 6.5 (`1d8+2`), using
-`numberOfAttacks * (dice average + flat)`; `A` replaces `M` only for frontage.
-DM/effective GM sees all; players see their own team only; DM in player mode is
-a player. Roles are recomputed from current positions/hostile numbers,
-independent of Preview/Execute. Requires an AI team in the AI control box and
-a Turn 1+ active alliance; `aiTeams`/`aiExcluded` are session-local
-(persistence and an empty-state hint are next). Migration 132 drops the old
-`ai_role_markers` scenario column.
+  never attack a front arc and never front-charge.
 Defensive reserves hold a **central station ~2
   hexes behind the line** (staggered, and split into sector groups on a very long
   line), optionally in **Scattered** while uncommitted. Reserves never take a
@@ -163,15 +151,14 @@ Defensive reserves hold a **central station ~2
   distance. Ranged-only units stand off and never enter contact; archer-reaction
   holds score clear LoS/range/arc lanes using only leftover actions. Structure
   defenders hold a standing hex/edge structure in every stance unless routed.
-  Advanced frontage/structure and committed reserves upgrade to the highest
+  Frontage/structure and committed reserves upgrade to the highest
   available org level before contact; flankers attack first and may chain two
   formation upgrades (Scattered → Open → Close) in one action; Scattered turns
   are free.
   `npm run check`: tsc, **1142 tests** (68 planner), depcruise, build. No new
-  migration for 2a/2b. Remaining: Round 2a archers + artillery, Round 3 mounted charges, Round
-  4 full coordination, Round 5 full auto-turn; AI still ignores ZoC
-  scatter/pursue, flight, and some elevation nuances. See
-  `docs/dev/outstanding.md` + `docs/dev/17-enemy-ai.md`.
+  migration for 2a/2b. Superseded by the Basic rewrite; mounted charges, air
+  superiority, and off-grid handling are now shipped. Remaining work is listed
+  in `docs/dev/outstanding.md` and `docs/dev/17-enemy-ai.md`.
 - **`ignore_climb` + `feather_fall` effects; `stairs` retired (migration 113)**: two new amount-less effect kinds authorable in every `EffectModifierFields` surface — **`ignore_climb`** (unit / edge structure / ground zone; waives the climb/elevation cost) and **`feather_fall`** (unit; ignores falling damage). `structureClimbCostBetween` takes a `waiveClimb` mover flag and returns 0 when the crossed edge carries `ignore_climb` (`structureWaivesClimb`); `makeCostOfHex`/`makeBlockedEdge` thread it from every mover call site (move, charge, reactions, overlay), and `handleClimbMove` makes an ignoring unit's climb free. Fall damage (`routeUnit` rout-off-wall, `confirmHeroFall`) is skipped when the faller has `feather_fall`. The old edge `stairs` boolean is **removed** (types, editors, label lists, `structureIsStairs`); the trapezoid-ladder graphic now draws for any edge structure carrying `ignore_climb`. Migration 113 backfills `stairs = true` → `{"kind":"ignore_climb"}` (templates + placed instances) and drops the column. `tsc` clean, 856 tests pass. **Apply 113 in Supabase.**
 - **Structure elevation (Phase 2b, migrations 111–112)**: structures carry a top **`elevation`** (default 10; 0 = decorative) + edge **`stairs`**; effects carry `elevation`. **Dynamic ground**: a unit is *flying* only when `elevation > surfaceAt(hex)` (`structureSurfaceAt`), else *grounded*; `movePoolMode`/`moveBudgetUnit` take a surface; `computeOccupiedHexes(units, excludeId, surface=0)` is per-surface. **Climb**: 10-ft steps @ 4 MP (`climbPlan`, `climb_to`), `height/2.5`; stairs waive; mounted can't climb. **Hanging**: a unit climbs adjacent higher hexes staying in its origin hex; `climb_to` target + rising `elevation`; linear (up=target / down=own hex); hover +10 ft if ground occupied; can't retaliate; attacks/ZoC only at the wall top; rout = free-fall (d6/10 ft) + standard picker. **Flight blocking**: `flightBlockedHexes` (structure top > flyer → blocked; destination excluded so the elevation modal clears it; else "structure blocked flight passage"). **Ranged vertical**: reach `dist + climb` (down never extends); band `dist + up − down`. **Rendering**: constant offsets (non-flyer = half, flyer = full; climber toward target), structure/effect elevation badges (north vertex), stair trapezoid-ladder (variant C). Editors (Structure/Effect + placed modal) expose elevation/stairs. `tsc` clean, 851 tests, build clean. **Apply 111/112 in Supabase.**
 - **Viewport-bound floating UI (`Floating`) + draggable-modal clamp**: new `src/components/ScenarioMap/Floating.tsx` (portal to `document.body` + `position: fixed` + measured viewport clamp + optional flip + z-index) is now the single primitive for every tooltip/menu — fixes left-panel tooltips trapped by `PanelsContainer`'s `backdrop-blur` (a `backdrop-filter` containing block for `fixed`) and clipped by its `overflow-hidden`. Migrated `UnitTooltip`/`MapInfoTooltip`/`UnitTemplateTooltip`/structure+effect tooltips/`ContextMenu` (measured, flips up, scroll cap)/Messages menu; hover handlers pass viewport coords; removed hard-coded clamps. `UnitEditorModal` draggable but clamped by measured size (no cropped bottom). Standard documented in `docs/dev/19-ui-panels-and-floating.md`. `tsc` clean, 840 tests, build clean. No migration.
@@ -229,7 +216,11 @@ Defensive reserves hold a **central station ~2
 
 ### Pending
 
-- **AI assist remaining** (Pass 1 + 2a + 2b shipped): Round 2a archers + artillery, Round 3 mounted charges, Round 4 full coordination, Round 5 full auto-turn; the planner still ignores ZoC scatter/pursue, flight, and some elevation nuances, and never controls heroes. See `docs/dev/outstanding.md`.
+- **AI assist remaining**: archers + artillery, AI magic/reactions/hero attach,
+  ZoC scatter/pursue, some elevation nuances, and per-team doctrine toggles; the
+  AI never controls heroes. Mounted charges, air-to-air combat, charge action
+  conversion, vacant structure tops, and off-grid handling are shipped. See
+  `docs/dev/outstanding.md`.
 - **Turn counter desync reported in playtest** (separate from AI roles): reproduce with End Turn / undo-redo before changing turn advancement.
 - **Spelljammer module implementation** (docs + access caps + shipyard builder done; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`) applied to the DB.
 - Migration `013_turn_tracking.sql` — applied to the DB (done).

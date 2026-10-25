@@ -288,6 +288,7 @@ Normal moves, withdraws, routs, and AI plans may cross the rim. Once a token is
 off-grid it is **out of play**:
 
 - non-DM players cannot grab, select-action, attack, or move it;
+- off-grid tokens cannot be targeted or attacked by anyone;
 - the AI does not control off-grid tokens;
 - the DM/effective GM is exempt and can recover it.
 

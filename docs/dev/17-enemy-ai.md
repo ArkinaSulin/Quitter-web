@@ -2,19 +2,18 @@
 
 > **Status: Basic rewrite shipped (2026-10-23).** The old battle-role/frontage/
 > reserve planner was replaced with a small rule-based brain. Preview/Execute,
-> per-unit opt-out, undo and the GM-only gates are unchanged. **Advanced AI is
-> paused**; its scenario column is kept for a later rebuild on top of Basic.
+> per-unit opt-out, undo and the GM-only gates are unchanged. The Advanced AI
+> project was cancelled; use the Basic brain only.
 
 ## What it is
 
 A Scenario-Settings toggle (`scenarios.ai_assist_enabled`, migration 076) reveals
-an **AI** tab. Two further flags remain:
+an **AI** tab. One further flag remains:
 
 | Setting | Column | Meaning |
 |---|---|---|
 | **AI assist** | `ai_assist_enabled` | Master switch: shows the AI tab. |
 | **Allow players to use AI assist** | `ai_assist_players` | Non-GM participants may use the tab during the active side's turn. |
-| **Advanced AI** | `ai_assist_advanced` | **Paused.** Hidden from the UI; kept for the future rebuild. |
 
 The effective gate is
 `ai_assist_enabled && (effectiveIsGM || ai_assist_players) && !controlsLocked`.
@@ -32,8 +31,9 @@ AI assist is deliberately *assist*: the DM (or an allowed player) triggers
 Preview/Execute, answers prompts, and presses End Turn.
 
 **Off-grid tokens** (outside `gridRadius`) are not AI-eligible. An AI plan may
-move a unit off-grid; from the next Preview onward it is out of play and the AI
-will not control it. The DM can still recover it manually.
+move a unit off-grid; from the next Preview onward it is out of play, cannot be
+targeted or attack, and the AI will not control it. The DM can still recover it
+manually.
 
 ## Files
 
@@ -426,10 +426,3 @@ gates (scenario toggle, `canCharge`, 1+ action; no fly-point threshold), with
 turn-then-charge revalidation and one charge/swoop per activation.
 Run `npm run check` (tsc, vitest, depcruise, build) and
 `npm run lint:boundaries`.
-
-## Advanced (paused)
-
-Rebuild Advanced **on top of** Basic, reusing `board.ts` / `marks.ts` and the
-approach helpers. Do not revive the deleted role planner. Candidate additions:
-retaliation/overkill value, focus fire, line coordination, artillery steps, AI
-magic/reactions/hero attach, full auto-turn.

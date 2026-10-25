@@ -1697,7 +1697,8 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
   if (controllable.length === 0) return { plans: [], marks: [] };
 
   const byId = new Map(working.map(u => [u.id, u]));
-  const allEnemies = enemyPool(ctx, working);
+  const allEnemies = enemyPool(ctx, working)
+    .filter(e => ctx.gridRadius == null || isHexOnGrid(e.hex, ctx.gridRadius));
   const primaryEnemies = allEnemies.filter(e => !isUnitRouted(e));
   // Routed units are only eligible when no non-routed enemy exists at all.
   const enemies = primaryEnemies.length > 0 ? primaryEnemies : allEnemies.filter(isUnitRouted);

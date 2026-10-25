@@ -148,6 +148,14 @@ describe('Basic AI gates', () => {
     expect(isAiControllable({ ...ai, hex: hex(3, 0) }, { alliances: ALLIANCES, teams: ['blue'], activeAlliance: 'enemy', gridRadius: 3 }, hosted)).toBe(true);
   });
 
+  it('does not target off-grid enemies', () => {
+    const unit = mk({ id: 'u1', team: 'blue', hex: hex(0, 0) });
+    const offGrid = mk({ id: 'f1', team: 'black', hex: hex(4, 0) });
+    const result = planAiMoves({ ...ctxOf([unit, offGrid]), gridRadius: 3 });
+    expect(result.marks).toHaveLength(0);
+    expect(result.plans).toHaveLength(0);
+  });
+
   it('allianceOf resolves through the alliance map', () => {
     expect(allianceOf({ team: 'blue' }, ALLIANCES)).toBe('enemy');
   });

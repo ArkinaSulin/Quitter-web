@@ -273,7 +273,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [sightRadius, setSightRadius] = useState(DEFAULT_SIGHT_RADIUS);
   // AI Assist (GM tool): hands teams to a plotted (preview -> execute) enemy AI.
   const [aiAssistEnabled, setAiAssistEnabled] = useState(false);
-  const [aiAssistAdvanced, setAiAssistAdvanced] = useState(false);
   const [aiAssistPlayers, setAiAssistPlayers] = useState(false);
   // Hero morale boost (Commanding Presence / Heroic Inspiration) + heroic capacity.
   const [heroMoraleBoostEnabled, setHeroMoraleBoostEnabled] = useState(true);
@@ -720,7 +719,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if ('fog_of_war' in fields) setFogOfWar(!!fields.fog_of_war);
     if ('sight_radius' in fields) setSightRadius(fields.sight_radius ?? DEFAULT_SIGHT_RADIUS);
     if ('ai_assist_enabled' in fields) setAiAssistEnabled(!!fields.ai_assist_enabled);
-    if ('ai_assist_advanced' in fields) setAiAssistAdvanced(!!fields.ai_assist_advanced);
     if ('ai_assist_players' in fields) setAiAssistPlayers(!!fields.ai_assist_players);
     if ('hero_morale_boost_enabled' in fields) setHeroMoraleBoostEnabled(fields.hero_morale_boost_enabled ?? true);
     if ('zoc_pursuit_enabled' in fields) setZocPursuitEnabled(fields.zoc_pursuit_enabled ?? true);
@@ -952,6 +950,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     magicCast,
     playerId,
     playerName,
+    gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
   });
 
   // A reaction that opened the spell window ends the locked reaction session once
@@ -1970,6 +1969,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     groundZones: effectiveZones,
     freeMove,
     archerReactionEnabled,
+    gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
   });
   pursuitsRef.current = performPursuits;
 
@@ -2763,7 +2763,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let cancelled = false;
     supabase
       .from('scenarios')
-      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled, ai_assist_advanced, ai_assist_players, hero_morale_boost_enabled, zoc_pursuit_enabled')
+      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled, ai_assist_players, hero_morale_boost_enabled, zoc_pursuit_enabled')
       .eq('id', scenarioId)
       .single()
       .then(({ data, error }) => {
@@ -2787,7 +2787,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setFogOfWar(data.fog_of_war ?? false);
         setSightRadius(data.sight_radius ?? DEFAULT_SIGHT_RADIUS);
         setAiAssistEnabled(data.ai_assist_enabled ?? false);
-        setAiAssistAdvanced(data.ai_assist_advanced ?? false);
         setAiAssistPlayers(data.ai_assist_players ?? false);
         setHeroMoraleBoostEnabled(data.hero_morale_boost_enabled ?? true);
         setZocPursuitEnabled(data.zoc_pursuit_enabled ?? true);
@@ -2829,9 +2828,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }
           if (row.ai_assist_enabled !== undefined) {
             setAiAssistEnabled(!!row.ai_assist_enabled);
-          }
-          if (row.ai_assist_advanced !== undefined) {
-            setAiAssistAdvanced(!!row.ai_assist_advanced);
           }
           if (row.ai_assist_players !== undefined) {
             setAiAssistPlayers(!!row.ai_assist_players);

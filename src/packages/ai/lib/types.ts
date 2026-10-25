@@ -60,9 +60,6 @@ export interface AiPlanContext {
   structures?: MapStructures;
   structureTemplates?: Record<string, StructureTemplate>;
   groundZones?: GroundEffect[];
-  /** Reserved for the future Advanced brain. Unused by Basic. */
-  advanced?: boolean;
-  stance?: 'aggressive' | 'defensive';
   gridRadius?: number;
   reactiveArchery?: boolean;
   /** Scenario "Charge and Swoop" toggle (default true). */

@@ -24,7 +24,7 @@ import { isProtectedHero } from '@/packages/units';
 import { UnitChange, SubStep } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { formatStrikeDetail } from '@/packages/units';
-import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts } from '@/packages/world';
+import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, isHexOnGrid } from '@/packages/world';
 import { Walls } from '@/packages/movement';
 import { MapStructures, doorPassThroughHexes, loosePassThroughHexes, entryBreakFormation } from '@/packages/movement';
 import { attacksBlocked } from '@/packages/combat';
@@ -58,6 +58,8 @@ interface ReactionActionsDeps {
   magicCast: ReturnType<typeof useMagicCast>;
   playerId: string;
   playerName: string;
+  /** Axial playable radius; off-grid tokens are out of play. */
+  gridRadius?: number;
 }
 
 export function useReactionActions(deps: ReactionActionsDeps) {
@@ -84,6 +86,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     magicCast,
     playerId,
     playerName,
+    gridRadius,
   } = deps;
 
   const [reactionOffers, setReactionOffers] = useState<Map<string, string>>(new Map()); // archerId -> moverId
@@ -416,7 +419,11 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       return;
     }
     if (target.hidden) {
-      addMessage('That target is hidden — cannot reaction-shoot');
+      addMessage('That target is hidden - cannot reaction-shoot');
+      return;
+    }
+    if (gridRadius != null && (!isHexOnGrid(archer.hex, gridRadius) || !isHexOnGrid(target.hex, gridRadius))) {
+      addError('Off-grid tokens are outside the playable area - they cannot be targeted or attack.');
       return;
     }
     // A protected hero (attached behind a unit) has no forward line of sight, so
