@@ -822,12 +822,15 @@ export function useCombatActions(deps: CombatActionsDeps) {
       if (retJoinerActive) msgDesc += `\n${attackerHeroUnit!.unitName}: ${retJoiner.length} attacks${heroRollNote}${retJoinerDice}`;
       msgDesc += `\n${retaliator.unitName}: ${retaliationUnitCount} attacks${retaliationCountNote}${retaliationRollNote}${retaliationDice} (${troopsKilledRet} troops)`;
       if (heroTookVerbose) msgDesc += `\n${heroTookVerbose}`;
-    } else if (isRear) {
-      desc += `\n${target.unitName} caught from behind — no retaliation`;
-      msgDesc += `\n${target.unitName} caught from behind — no retaliation`;
+    } else if (isUnitRouted(target)) {
+      desc += `\n${target.unitName} is routed - no retaliation`;
+      msgDesc += `\n${target.unitName} is routed - no retaliation`;
     } else if (!isRanged && !weapon.noRetaliation && !reachSymmetric && (retaliatorKilled || retaliatorRouted)) {
-      desc += `\n${retaliator.unitName} ${retaliatorKilled ? 'killed' : 'routed'} by the first strike — no retaliation`;
-      msgDesc += `\n${retaliator.unitName} ${retaliatorKilled ? 'killed' : 'routed'} by the first strike — no retaliation`;
+      desc += `\n${retaliator.unitName} ${retaliatorKilled ? 'killed' : 'routed'} by the first strike - no retaliation`;
+      msgDesc += `\n${retaliator.unitName} ${retaliatorKilled ? 'killed' : 'routed'} by the first strike - no retaliation`;
+    } else if (isRear) {
+      desc += `\n${target.unitName} caught from behind - no retaliation`;
+      msgDesc += `\n${target.unitName} caught from behind - no retaliation`;
     }
 
     // Morale check for the attacker after taking damage (from the defender's first strike

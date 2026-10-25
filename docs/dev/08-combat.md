@@ -313,10 +313,12 @@ back-attached — see **Reactions** below.)
 ## Retaliation
 
 After the first strike (unless ordered-suppressed): the defender retaliates if
-its effective position ≠ rear and the weapon/formation rules allow
+its effective position ≥ rear and the weapon/formation rules allow
 (`retaliate_vs_ranged` controls ranged; `noRetaliation` weapons and rear
 attacks never provoke). No AGR roll for retaliation (reflexive). Count per the
-retaliation table above.
+retaliation table above. Message precedence: an already-routed target reports
+**"routed - no retaliation"**; only a non-routed rear target reports
+**"caught from behind - no retaliation"**.
 
 ## Attack cap (units AND heroes)
 
@@ -342,9 +344,12 @@ The context menu offers a single charge entry, computed by `chargeStanceFor`
   cost;
 - a hanging climber is airborne but can't fly → nothing.
 
-**Both** require **at least 1 action** and, on entry, **spend 1 action**. A charge
-may therefore be declared on the first or a later action; the charge move then
-spends its normal pool. The target-specific move/drop enforces the
+**Both** require **at least 1 action** and, on entry, **consume 1 action,
+converting it into a full movement pool added to the current MP** (ground or fly
+for a swoop; a hero converts at the normal hero per-action rate). A charge may
+therefore be declared on the first or a later action;
+the charge move then spends that pool normally, and the free attack needs no
+extra action. The target-specific move/drop enforces the
 `charge_full_distance` (2 hexes) and affordability. They mark `isCharging` +
 `chargeDistance = 0` and lock rotate/formation; the following move/drop decides
 ground-charge vs swoop, so they share the engine handler. The AI plots at most

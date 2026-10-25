@@ -41,11 +41,13 @@ export interface ChargeStanceInput {
  */
 export function chargeStanceFor({ unit, airborne, form, chargeEnabled = true }: ChargeStanceInput): ChargeStance | null {
   if (!chargeEnabled) return null;
-  // Entering the charging state itself spends one action (see
-  // `useGameEngine.charge`). A charge may therefore be declared on the first OR a
-  // later action, as long as at least one action remains. The target-specific
-  // move validation enforces the full-charge distance and affordability; a
-  // charge move cannot enter a hex costing > 1 MP, so it can never cost > 2 MP.
+  // Entering the charging state consumes one action and converts it into a full
+  // movement pool (see `useGameEngine.charge`). The action is therefore used by
+  // the charge move + free attack, not lost. A charge may be declared on the
+  // first OR a later action as long as at least one action remains. The
+  // target-specific move validation enforces the full-charge distance and
+  // affordability; a charge move cannot enter a hex costing > 1 MP, so it can
+  // never cost > 2 MP.
   if (unit.isCharging || isUnitRouted(unit) || (unit.actionsAvailable ?? 0) < 1) return null;
   // A hanging climber is airborne but can't fly, so it gets nothing (it can't
   // charge along the ground mid-climb).

@@ -303,8 +303,8 @@ does not abandon it:
   `charge` → `swoop` (the atomic dive + free melee attack).
 - Scenarios gate this through the canonical `chargeStanceFor` rule: airborne,
   fly-capable, **at least 1 action**, and the scenario **Charge and Swoop**
-  toggle on. There is no fly-point threshold; the charge move may convert the
-  remaining action into a fly pool. Re-check the gate **after** a facing turn,
+  toggle on. There is no fly-point threshold; the charge consumes one action
+  and converts it into a full fly pool added to current FP. Re-check the gate **after** a facing turn,
   because the turn may spend the action/fly points needed for the charge.
 - A swoop may therefore be declared on the first or a later action; the planner
   picks the cheapest available candidate. One swoop per activation.
@@ -339,6 +339,8 @@ does not abandon it:
 - Charge only when the canonical `chargeStanceFor` gate allows it
   (`canCharge`, a charge-capable formation, **at least 1 action**, scenario
   **Charge and Swoop** on), and:
+  - the charge consumes one action and converts it into a full ground MP pool
+    added to current MP;
   - the post-turn state can still enter the charge and pay for the charge move;
   - the charge is at least `charge_full_distance` (2) hexes;
   - the target is engaged by a friendly;

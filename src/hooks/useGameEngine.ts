@@ -7,7 +7,7 @@ import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/uni
 import { applyFormationChange } from '@/packages/movement';
 import { nextLowerFormation } from '@/packages/movement';
 import { flyingFormationCap, movePoolMode, flyMax, moveBudgetUnit, passengerDrain, usesFlyPool } from '@/packages/movement';
-import { applyMoveCost, applyMpSpend, applyHeroMoveCost } from '@/packages/movement';
+import { applyMoveCost, applyMpSpend, applyHeroMoveCost, heroMovePerAction } from '@/packages/movement';
 import { getSetting } from '@/packages/infra';
 import { parseWeapons } from '@/packages/units';
 import { isUnitRouted } from '@/packages/morale';
@@ -975,18 +975,30 @@ export function useGameEngine({
   );
 
   const charge = useCallback(
-    async (unit: Unit): Promise<void> => {
-      // Entering the charging state costs 1 action (the charge move then spends its
-      // own pool normally). No MP is deducted here — that is consumed by the move.
+    async (
+      unit: Unit,
+      opts?: { maxMP?: number; flyMax?: number; airborne?: boolean },
+    ): Promise<void> => {
+      // A charge always consumes one action, converted into a full movement pool
+      // added to the current pool. This bounds charges by the action count while
+      // the charge move itself spends the converted MP; the free attack is free.
+      const airborne = !!opts?.airborne;
+      const rawPool = airborne ? (opts?.flyMax ?? flyMax(unit)) : (opts?.maxMP ?? unit.movementPoints);
+      // Units convert one action into a full pool; heroes use their normal
+      // prorated action conversion so a hero charge cannot grant a full extra move.
+      const pool = Math.max(0, unit.isHero ? heroMovePerAction(rawPool) : rawPool);
+      const field = airborne ? 'flySpeedAvailable' : 'movementPointsAvailable';
+      const from = airborne ? (unit.flySpeedAvailable ?? 0) : unit.movementPointsAvailable;
       const subSteps: SubStep[] = [
         {
           type: 'CHARGE',
-          description: `${unit.unitName} spent an action to start a charge`,
+          description: `${unit.unitName} started a charge (1 action -> ${pool} ${airborne ? 'fly' : 'move'} MP)`,
           unitId: unit.id,
           changes: [
             { field: 'isCharging', from: false, to: true },
             { field: 'chargeDistance', from: 0, to: 0 },
             { field: 'actionsAvailable', from: unit.actionsAvailable, to: unit.actionsAvailable - 1 },
+            { field, from, to: from + pool },
           ],
         },
       ];

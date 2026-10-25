@@ -17,7 +17,7 @@ import { parseWeapons, isProtectedHero } from '@/packages/units';
 import { unitAttackCap, isMeleeWeapon, buildSwoopDropPlan, chargeStanceFor, isMeleeReachable } from '@/packages/combat';
 import { isUnitRouted, computeThreatRating } from '@/packages/morale';
 import { getSetting } from '@/packages/infra';
-import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveCapacity, structureClimbPerStep10, isClimbingUnit, applyMoveCost, moveBudgetUnit, climbPlan, canFly } from '@/packages/movement';
+import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveCapacity, structureClimbPerStep10, isClimbingUnit, applyMoveCost, moveBudgetUnit, climbPlan, canFly, flyMax } from '@/packages/movement';
 import { HEX_DIRS, arcOfTarget, facingToward, rotateLeft, rotateRight } from '@/packages/primitives';
 import {
   AiArchetype, AiMark, AiPlanContext, AiPlanResult, AiUnitPlan,
@@ -1185,7 +1185,8 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     }
     for (const { turns, unit: candidate } of tries) {
       // Re-check AFTER the turn: the turn may have spent the action or MP needed
-      // to enter the charge. Charge entry itself spends one action.
+      // to enter the charge. Charge entry consumes one action and converts it
+      // into a full movement pool (added to the current MP).
       if (chargeStanceFor({
         unit: candidate,
         airborne: false,
@@ -1197,6 +1198,7 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
         isCharging: true,
         chargeDistance: 0,
         actionsAvailable: (candidate.actionsAvailable ?? 0) - 1,
+        movementPointsAvailable: (candidate.movementPointsAvailable ?? 0) + pool,
       };
       const capacity = computeMoveCapacity({
         movementPointsAvailable: charged.movementPointsAvailable,
@@ -1231,7 +1233,13 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     u = turned;
     rt.commit(u);
     plan.steps.push({ kind: 'charge', unitId: u.id, from: u.hex });
-    u = { ...u, isCharging: true, chargeDistance: 0, actionsAvailable: (u.actionsAvailable ?? 0) - 1 };
+    u = {
+      ...u,
+      isCharging: true,
+      chargeDistance: 0,
+      actionsAvailable: (u.actionsAvailable ?? 0) - 1,
+      movementPointsAvailable: (u.movementPointsAvailable ?? 0) + pool,
+    };
     rt.commit(u);
     plan.steps.push({ kind: 'move', unitId: u.id, from: u.hex, to: charge.hex, path: [charge.hex], cost: charge.cost });
     const spent = applyManeuver(u, {
@@ -1514,6 +1522,7 @@ function planFlying(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
         isCharging: true,
         chargeDistance: 0,
         actionsAvailable: (faced.actionsAvailable ?? 0) - 1,
+        flySpeedAvailable: (faced.flySpeedAvailable ?? 0) + flyMax(faced),
       };
       const swoopPlan = buildSwoopDropPlan(charged, candidate, swoopContext);
       if (!swoopPlan || swoopPlan.overBudget) continue;

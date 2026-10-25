@@ -361,6 +361,13 @@ describe('Basic AI mounted charge hardening', () => {
     expect(steps.some(s => s.kind === 'chargeEnd')).toBe(true);
   });
 
+  it('charges with a single action by converting it to MP', () => {
+    const result = planAiMoves(ctxOf(chargeUnits({ actionsAvailable: 1, movementPointsAvailable: 0 })));
+    const steps = stepsOf(result, 'c1');
+    expect(steps.some(s => s.kind === 'charge')).toBe(true);
+    expect(steps.some(s => s.kind === 'attack' && s.charge)).toBe(true);
+  });
+
   it('may turn first, then charge if the remaining pool still pays for it', () => {
     const result = planAiMoves(ctxOf(chargeUnits({ facing: 3 })));
     const steps = stepsOf(result, 'c1');
@@ -368,10 +375,10 @@ describe('Basic AI mounted charge hardening', () => {
     expect(steps.some(s => s.kind === 'charge')).toBe(true);
   });
 
-  it('does not plan a turn-then-charge it cannot afford', () => {
+  it('converts the charge action into MP even with a small pool', () => {
     const result = planAiMoves(ctxOf(chargeUnits({ facing: 3, movementPoints: 2 })));
     const steps = stepsOf(result, 'c1');
-    expect(steps.some(s => s.kind === 'charge')).toBe(false);
+    expect(steps.some(s => s.kind === 'charge')).toBe(true);
   });
 
   it('does not charge into a flank when the rear approaches are blocked', () => {
@@ -423,6 +430,13 @@ describe('Basic AI flying swoop hardening', () => {
     expect(steps.some(s => s.kind === 'swoop')).toBe(true);
   });
 
+  it('swoops with a single action by converting it to fly MP', () => {
+    const result = planAiMoves(ctxOf(flyerUnits({ actionsAvailable: 1, flySpeedAvailable: 0, facing: 5 })));
+    const steps = stepsOf(result, 'fly1');
+    expect(steps.some(s => s.kind === 'charge')).toBe(true);
+    expect(steps.some(s => s.kind === 'swoop')).toBe(true);
+  });
+
   it('may turn first, then swoop if the remaining pool still pays for it', () => {
     const result = planAiMoves(ctxOf(flyerUnits({ flySpeedAvailable: 0, facing: 3 })));
     const steps = stepsOf(result, 'fly1');
@@ -430,10 +444,10 @@ describe('Basic AI flying swoop hardening', () => {
     expect(steps.some(s => s.kind === 'swoop')).toBe(true);
   });
 
-  it('does not plan a turn-then-swoop it cannot afford', () => {
+  it('converts the swoop action into fly MP even with a small pool', () => {
     const result = planAiMoves(ctxOf(flyerUnits({ flySpeed: 2, flySpeedAvailable: 0, facing: 3 })));
     const steps = stepsOf(result, 'fly1');
-    expect(steps.some(s => s.kind === 'swoop')).toBe(false);
+    expect(steps.some(s => s.kind === 'swoop')).toBe(true);
   });
 
   it('does not swoop when the Charge and Swoop toggle is off', () => {

@@ -589,7 +589,10 @@ export function AiPanel({
         const legal = target && !target.isDeleted && !target.hidden && (target.currentUnitHp ?? 0) > 0
           ? legalTargets(live, [target], { alliances: props.alliances, formations: props.formationsMap, visibleHexes: props.fogOfWarEnabled ? visibleHexesRef.current : null })
           : [];
-        if (isUnitRouted(live) || !target || legal.length === 0 || (live.actionsAvailable ?? 0) < 1 || (live.attacksUsed ?? 0) >= cap) {
+        // A charge attack is free: declaration converted an action into MP and
+        // the move spent it. Do not require another action for this attack.
+        const freeChargeAttack = !!step.charge && live.isCharging;
+        if (isUnitRouted(live) || !target || legal.length === 0 || (!freeChargeAttack && (live.actionsAvailable ?? 0) < 1) || (live.attacksUsed ?? 0) >= cap) {
           addMessage(isUnitRouted(live) ? `${live.unitName} is routing — it cannot attack` : `${live.unitName} can no longer attack its target — skipped`);
         } else {
           setStatusText(`${live.unitName} → attacks ${target.unitName}`);

@@ -283,9 +283,11 @@ threat zone isn't a retreat). Heroes/Scattered/Routed are loose — no withdraw
 ## Charge (movement-side)
 
 Initiating a charge (`chargeStanceFor` → `useGameEngine.charge`) needs **at
-least 1 action** and **spends 1 action on entry** (the charge move then spends its
-pool normally). It may therefore be the first or a later action; a **swoop** has
-no additional fly-point threshold (see `08`). `computeChargeReachable` — the
+least 1 action** and **consumes 1 action on entry, converting it into a full
+movement pool added to the current MP** (the ground pool, or the fly pool for a
+swoop; a hero converts at its normal per-action rate). It may therefore be the
+first or a later action; a **swoop** has no
+additional fly-point threshold (see `08`). `computeChargeReachable` — the
 charge corridor, a **front-arc BFS wedge** (no turning), bounded by one action's
 MP pool (`maxHexes`). A **formed** unit uses its
 own **facing**; a **loose** unit (Hero / Scattered — no facing, per the loose rule

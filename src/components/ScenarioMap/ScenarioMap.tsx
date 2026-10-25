@@ -769,6 +769,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     requestEntryTroops,
   });
 
+  // Charge conversion needs the current formation pool and whether this is an
+  // airborne swoop (fly pool) rather than a grounded charge (move pool).
+  const chargeWithPool = useCallback((unit: Unit) => {
+    const airborne = isAirborne(unit.elevation, structureSurfaceAt(unit.hex, structures, structureTemplates));
+    return charge(unit, { airborne, maxMP: unitMaxMP(unit), flyMax: flyMax(unit) });
+  }, [charge, structures, structureTemplates, formationsMap]);
+
   // Player door toggle: command-logged (undo/realtime ride the STRUCTURE sub-step).
   const toggleStructureDoor = useCallback(async (key: string, open: boolean) => {
     const inst = structures[key];
@@ -3053,7 +3060,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         performAttack={(attacker, target, overBudget, options) => performAttack(attacker, target, overBudget, options)}
         rotateUnit={(unit, dir, maxMP) => rotateUnit(unit, dir, maxMP)}
         changeFormation={(unit, formation, fm) => changeFormation(unit, formation, fm)}
-        charge={(unit) => charge(unit)}
+        charge={(unit) => chargeWithPool(unit)}
         performChargeEnd={(unit, dropOrg) => performChargeEnd(unit, dropOrg)}
         performSwoopDrop={(attackerId, targetId) => performSwoopDrop(attackerId, targetId)}
         performClimbAttack={(attackerId, targetId) => performClimbAttack(attackerId, targetId)}
@@ -3231,7 +3238,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onRotate180={() => requestRotate(contextMenuUnit, 'left', 3)}
           freeMove={freeMove}
           onChangeFormation={(formation) => handleChangeFormation(contextMenuUnit, formation)}
-          onCharge={() => charge(contextMenuUnit)}
+          onCharge={() => chargeWithPool(contextMenuUnit)}
           chargeEnabled={mountedChargeEnabled}
           isAirborne={!contextMenuUnit.attachedToUnitId && isAirborne(contextMenuUnit.elevation, structureSurfaceAt(contextMenuUnit.hex, structures, structureTemplates))}
           onSwapHeroPosition={(hero) => handleSwapHeroPosition(hero)}

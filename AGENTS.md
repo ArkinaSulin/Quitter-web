@@ -39,10 +39,12 @@ reusable maps. Here's the state:
   landing must be rear-adjacent), with a hard 5-hex safety
   gate (3 when the hostile is in a friendly kill zone; target excluded), holds
   only at a valid start, ends facing the next charge lane, and only rear-charges
-  when the landing is legal from its final front arc. A charge/swoop may be the
-  first or a later action (1+ action; no fly-point threshold), with the gate
-  re-checked after any facing turn; at most one charge/swoop per activation, then
-  remaining resources disengage/evade. Units spend all actions (melee/ranged
+  when the landing is legal from its final front arc. A charge/swoop consumes
+  **1 action converted to a full movement pool** (ground or fly) added to current
+  MP; it may be the first or a later action (1+ action; no fly-point threshold),
+  with the gate re-checked after any facing turn. The free attack needs no extra
+  action. The AI plots at most one charge/swoop per activation, then remaining
+  resources disengage/evade. Units spend all actions (melee/ranged
   attack twice; mounted is the charge → free attack → disengage exception).
   Executor gained
   `climbAttack`/`charge`/`swoop`/`chargeEnd`/`weapon` and move `elevation`;

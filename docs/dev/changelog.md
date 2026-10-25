@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## Charge/swoop action conversion + free charge attack + routed message (2026-10-24)
+**Files:** src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ScenarioMap.tsx,AiPanel.tsx,useCombatActions.ts}, src/packages/combat/lib/chargeStance.ts, src/packages/ai/{lib/planner.ts,tests/planner.test.ts}, docs/dev/{00-universal-rules,07-movement-economy,08-combat,17-enemy-ai,changelog}.md, AGENTS.md
+
+- A charge/swoop declaration now always consumes **1 action and converts it into
+  a full movement pool** (ground pool, or fly pool for a swoop) added to current
+  MP. This bounds charges by the action count while the charge move spends the
+  converted MP. The free attack needs no extra action.
+- `ScenarioMap` passes the correct ground/fly pool and airborne state to the
+  engine; the AI planner uses the same conversion in mounted `chargeDestination`
+  / `applyCharge` and flying `trySwoop`.
+- The AI executor no longer skips a charge attack when the move consumed the
+  last action (`step.charge` is free).
+- No-retaliation messages now prefer “target is routed” over the effective-rear
+  “caught from behind” text.
+- Verification: `npm run check` passes (tsc, 1139 tests, depcruise, build). No
+  migration.
+
 ## AI mounted: charge-start points + multi-turn rear routes (2026-10-24)
 **Files:** src/packages/ai/{lib/planner.ts,tests/planner.test.ts}, docs/dev/{17-enemy-ai,changelog}.md, AGENTS.md
 
