@@ -1,5 +1,12 @@
 # QuiTTER Changelog
 
+## Morale legend: Fearless row (2026-10-25)
+**Files:** src/components/shared/StatValueHint.tsx, docs/players/player-manual.md, docs/dev/changelog.md
+
+- The morale legend now lists `x — Fearless` under `10 — Fanatical` (bypasses
+  morale checks). The player manual table matches.
+- Verification: `npm run check` (tsc, 1157 tests, depcruise, build). No migration.
+
 ## Aggressiveness / morale value hints (2026-10-25)
 **Files:** src/components/shared/StatValueHint.tsx, src/components/UnitEditor.tsx, src/components/ScenarioMap/UnitEditorModal.tsx, docs/players/player-manual.md, docs/dev/{14-editors,changelog}.md
 

@@ -289,6 +289,7 @@ and every unit you later drop from the **Unit Selector** is a copy of it.
 | 8 | Seasoned / Relentless | Devoted |
 | 9 | Elite / Monstrous | Fanatical |
 | 10 | Elite / Monstrous | Fanatical |
+| x | — | Fearless (bypasses morale checks) |
 
 ### Weapons
 

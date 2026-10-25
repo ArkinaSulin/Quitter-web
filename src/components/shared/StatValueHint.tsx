@@ -92,6 +92,12 @@ export function StatValueHint({ kind, value }: { kind: StatHintKind; value: numb
                   <td>{entry}</td>
                 </tr>
               ))}
+              {kind === 'morale' && (
+                <tr className="text-yellow-300">
+                  <td className="pr-2 text-right text-gray-500">x</td>
+                  <td>Fearless</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </Floating>
