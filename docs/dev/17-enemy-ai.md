@@ -315,26 +315,35 @@ does not abandon it:
 
 ### Mounted
 
-- Mark a target with a non-mounted friendly mark and no other mounted mark;
-  fallback to closest reachable.
-- Staging ring: radius **4** hexes (Close/high org speed → **2**),
-  tangent/rear-flank, outside ZoC, reachable this activation.
+- Mark a **rim target** with a non-mounted friendly mark and no other mounted
+  mark. A rim target has an adjacent hex that is empty and touches at most one
+  other enemy. Interior targets are never marked or charged.
+- Staging circle: radius **`pool + 1`**, the farthest ring from which a full
+  charge can reach an adjacent target in one charge move. The path is scored to
+  stay on/outside that circle, keep **>=5 hexes from every hostile** where
+  possible, and end in the target's **rear** arc.
 - Charge only when the canonical `chargeStanceFor` gate allows it
   (`canCharge`, a charge-capable formation, **at least 1 action**, scenario
   **Charge and Swoop** on), and:
   - the post-turn state can still enter the charge and pay for the charge move;
+  - the charge is at least `charge_full_distance` (2) hexes;
   - the target is engaged by a friendly;
-  - the approach is **flank/rear**;
-  - the destination is outside hostile ZoC;
-  - corridor/destination is clear of other mounted units.
+  - the approach is **rear only**, with no flank fallback;
+  - the landing hex is outside hostile ZoC and on the formation's outer edge
+    (empty, touching at most one other enemy);
+  - the target is in the charger's **front melee arc from the landing hex**
+    with the final facing.
 - The charge may be the **first or a later action**: try the current facing, then
   rotations. If a turn is needed, take it and charge only when the remaining
-  MP/action still covers the move; otherwise stage instead of losing the round.
-- After the charge attack: remaining action/MP disengages to the farthest safe
-  hex from all hostiles, then upgrades to the highest affordable org formation.
-  One charge per activation.
-- Not charging: stage on the ring and upgrade; no hold when a staging move
-  exists.
+  MP/action still covers the move.
+- No normal melee fallback. If no legal charge exists, stage instead.
+- End the staging move with **face changes** toward the validated next-turn
+  charge lane. Prefer a no-turn charge next activation; only choose a
+  destination that leaves enough MP/action for those end turns.
+- After the charge attack: remaining action/MP disengages to the safest hex
+  (prefer >=5 from every hostile), then upgrades to the highest affordable org
+  formation. One charge per activation.
+- If already on the right rim, safe, rear-facing and lined up: hold.
 
 ### Multiple actions
 

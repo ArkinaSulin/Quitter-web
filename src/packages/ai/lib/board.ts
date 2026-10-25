@@ -350,6 +350,36 @@ export function isFlankedAt(
   return false;
 }
 
+/**
+ * An outer-rim approach hex: empty, adjacent to `target`, and touching **at most
+ * one other enemy** (target excluded). Used for mounted staging/landing so the
+ * cavalry stays on the formation's outside instead of charging into its middle.
+ */
+export function isOuterApproachHex(
+  hex: Hex,
+  target: Unit,
+  occupied: Set<string>,
+  foes: Unit[],
+): boolean {
+  if (occupied.has(hexKeyOf(hex))) return false;
+  let otherFoes = 0;
+  for (const foe of foes) {
+    if (foe.id === target.id || foe.isDeleted || foe.hidden || foe.attachedToUnitId) continue;
+    if (hexDistance(hex, foe.hex) === 1) otherFoes++;
+    if (otherFoes > 1) return false;
+  }
+  return true;
+}
+
+/** A target is on the hostile formation's outer rim when it has an outer-rim approach hex. */
+export function isOuterRimTarget(target: Unit, occupied: Set<string>, foes: Unit[]): boolean {
+  for (const dir of HEX_DIRS) {
+    const h = { q: target.hex.q + dir.q, r: target.hex.r + dir.r, s: -target.hex.q - dir.q - target.hex.r - dir.r };
+    if (isOuterApproachHex(h, target, occupied, foes)) return true;
+  }
+  return false;
+}
+
 /** Hostiles whose current front arc / vertical domination covers `unit.hex`. */
 export function zocSourcesAt(unit: Unit, foes: Unit[], ctx: Pick<AiPlanContext, 'structures' | 'structureTemplates'>): Unit[] {
   const targetElev = unit.elevation ?? 0;

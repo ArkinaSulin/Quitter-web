@@ -19,6 +19,8 @@ export interface MarkOptions {
   distance: (unit: Unit, target: Unit) => number;
   /** Dynamic melee cap: standable adjacent hexes some melee unit can reach. */
   meleeCap?: (target: Unit) => number;
+  /** Mounted doctrine: only target units on the hostile formation's outer rim. */
+  mountedEligible?: (target: Unit) => boolean;
 }
 
 export interface MarkResult {
@@ -57,29 +59,32 @@ export function assignMarks(opts: MarkOptions): MarkResult {
 
   for (const unit of queue) {
     const kind = archetypeOf(unit);
-    const pool = kind === 'ranged' || kind === 'flying'
+    const basePool = kind === 'ranged' || kind === 'flying'
       ? enemies
       : enemies.filter(t => reachable(unit, t));
-    const candidates = (pool.length > 0 ? pool : enemies.filter(t => kind === 'ranged' || kind === 'flying'))
+    // Mounted doctrine: outer-rim targets only. No fallback to the interior.
+    const pool = (kind === 'mounted' && opts.mountedEligible
+      ? basePool.filter(t => opts.mountedEligible!(t))
+      : basePool)
       .slice()
       .sort((a, b) => distance(unit, a) - distance(unit, b)
         || moraleOf(a) - moraleOf(b)
         || hexDistance(unit.hex, a.hex) - hexDistance(unit.hex, b.hex)
         || a.id.localeCompare(b.id));
-    if (candidates.length === 0) continue;
+    if (pool.length === 0) continue;
 
     let chosen: Unit | null = null;
     if (kind === 'melee') {
       // No overflow beyond the target's surrounding hex capacity.
-      chosen = candidates.find(t => count(t.id, 'melee') < (opts.meleeCap?.(t) ?? 2)) ?? null;
+      chosen = pool.find(t => count(t.id, 'melee') < (opts.meleeCap?.(t) ?? 2)) ?? null;
     } else if (kind === 'flying') {
-      chosen = candidates.find(t => count(t.id, 'flying') === 0) ?? candidates[0];
+      chosen = pool.find(t => count(t.id, 'flying') === 0) ?? pool[0];
     } else if (kind === 'mounted') {
-      chosen = candidates.find(t => count(t.id, 'mounted') === 0 && nonMountedCount(t.id) > 0)
-        ?? candidates.find(t => count(t.id, 'mounted') === 0)
-        ?? candidates[0];
+      chosen = pool.find(t => count(t.id, 'mounted') === 0 && nonMountedCount(t.id) > 0)
+        ?? pool.find(t => count(t.id, 'mounted') === 0)
+        ?? pool[0];
     } else {
-      chosen = candidates[0];
+      chosen = pool[0];
     }
     if (!chosen) continue;
     marks.push({ targetId: chosen.id, byUnitId: unit.id, kind });

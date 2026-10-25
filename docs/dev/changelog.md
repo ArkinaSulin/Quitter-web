@@ -1,5 +1,24 @@
 # QuiTTER Changelog
 
+## AI mounted: rim targets, radius-5+ staging, legal rear charges (2026-10-24)
+**Files:** src/packages/ai/{lib/{board,marks,planner}.ts,tests/planner.test.ts}, docs/dev/{17-enemy-ai,changelog}.md, AGENTS.md
+
+- Mounted charges now reject destinations where the target is not in the
+  charger's **final front melee arc**; the previous planner could charge
+  adjacent, fail `legalTargets`, and emit an orphan `chargeEnd`.
+- Destinations are **rear-only**, at least `charge_full_distance` (2) hexes, and
+  must be an outer-rim approach (empty, touching at most one other enemy).
+- Mounted marks/targets are **outer-rim only**; interior targets are ignored.
+- When no charge is available, the unit stages on the largest ring from which a
+  full charge can land in one action (`pool + 1`), keeps >=5 from every hostile
+  where possible, prefers tangent/outside paths, and appends end-of-move turns
+  validated against the next activation's charge lane. If no staged lane is
+  valid it takes the safest reachable hex; no normal melee fallback.
+- Tests: blocked rear approaches do not charge; a staging move ends with a
+  facing turn toward the next lane; existing charge tests still pass.
+- Verification: `npm run check` passes (tsc, 1134 tests, depcruise, build). No
+  migration.
+
 ## Charge/swoop: 1-action gate, later-action charges, 2-hex validation (2026-10-24)
 **Files:** src/packages/combat/{lib/chargeStance.ts,tests/chargeStance.test.ts}, src/packages/ai/{lib/planner.ts,tests/planner.test.ts}, docs/dev/{00-universal-rules,07-movement-economy,08-combat,17-enemy-ai,changelog}.md, AGENTS.md
 

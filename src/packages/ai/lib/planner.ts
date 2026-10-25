@@ -16,6 +16,7 @@ import { Unit, Hex, AllianceGroup, Formation, hexDistance, getOrganizationLevel 
 import { parseWeapons, isProtectedHero } from '@/packages/units';
 import { unitAttackCap, isMeleeWeapon, buildSwoopDropPlan, chargeStanceFor, isMeleeReachable } from '@/packages/combat';
 import { isUnitRouted, computeThreatRating } from '@/packages/morale';
+import { getSetting } from '@/packages/infra';
 import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveCapacity, structureClimbPerStep10, isClimbingUnit, applyMoveCost, moveBudgetUnit, climbPlan, canFly } from '@/packages/movement';
 import { HEX_DIRS, arcOfTarget, facingToward, rotateLeft, rotateRight } from '@/packages/primitives';
 import {
@@ -24,6 +25,7 @@ import {
 import {
   Maneuver, StructureComplex, allianceOf, applyManeuver, applyTurns, archetypeOf, chooseFacing, distanceMap,
   effectiveMax, enemyGroupsOf, enemyPool, hexKeyOf, hexesWithin, isFlankedAt, isFullyUpgraded, isGroundTarget,
+  isOuterApproachHex, isOuterRimTarget,
   isTargetReachable, maneuversFor, movementContextFor, nextFormationUpgrade,
   primaryMaxRange, reverseDistanceMap, structureComplexFor, surfaceAt, targetPathCost, unitIsAirborne, unitSurface,
 } from './board';
@@ -1120,27 +1122,46 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
   if (isStructureBound(unit, rt)) return faceAdjacentHostiles(unit, plan, rt);
   let u = unit;
   const markedId = rt.byUnit.get(u.id) ?? null;
+  const movement = movementContextFor(u, rt.working, rt.ctx, 'ground', rt.complexes.get(u.id) ?? null);
   const ordered = rt.candidates(u, 'mounted')
+    .filter(t => isOuterRimTarget(t, movement.occupied, rt.enemies))
     .slice()
     .sort((a, b) => (a.id === markedId ? 0 : 1) - (b.id === markedId ? 0 : 1) || a.id.localeCompare(b.id));
-  if (ordered.length === 0) return u;
-
-  const split = getOrganizationLevel(u.currentFormation) >= 2;
-  const ring = split ? 2 : 4;
-  const movement = movementContextFor(u, rt.working, rt.ctx, 'ground', rt.complexes.get(u.id) ?? null);
   const pool = effectiveMax(u, rt.ctx.formations);
   const chargeEnabled = rt.ctx.chargeEnabled !== false;
+  const chargeFull = getSetting('charge_full_distance', 2);
+  // The farthest ring from which a full charge can reach an adjacent target in
+  // one charge move: one action's pool plus the target's own ring.
+  const maxRadius = pool + 1;
+  const nearestHostile = (hex: Hex): number => rt.enemies.length === 0
+    ? Infinity
+    : Math.min(...rt.enemies.map(e => hexDistance(hex, e.hex)));
+
+  // With no rim target, hold when safe; otherwise move to the hex farthest from
+  // every hostile. Mounted units never chase into the middle of a formation.
+  const safestMove = (): Unit => {
+    if (rt.enemies.length === 0 || nearestHostile(u.hex) >= 5) return u;
+    const m = bestManeuver(u, rt, 'ground', (candidate, threat) => {
+      if (candidate.path.length === 0) return -Infinity;
+      if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
+      return nearestHostile(candidate.dest) * 100 - candidate.cost * 2 - candidate.turns.length * 2;
+    });
+    if (!m) return u;
+    u = pushMove(plan, u, m, rt.ctx);
+    rt.commit(u);
+    return u;
+  };
+  if (ordered.length === 0) return safestMove();
 
   const chargeDestination = (
     state: Unit,
     target: Unit,
+    allowTurns = true,
   ): { hex: Hex; cost: number; turns: { dir: 'left' | 'right' }[] } | null => {
     const dests: { hex: Hex; cost: number; arc: string; turns: { dir: 'left' | 'right' }[] }[] = [];
-    // A charge is a forward wedge, but the unit may turn first (the turn's MP /
-    // action cost is paid), then charge with a later action. Try the current
-    // facing and up to two cheap rotations in either direction.
+    // A mounted charge may turn first, then charge with a later action.
     const tries: { turns: { dir: 'left' | 'right' }[]; unit: Unit }[] = [{ turns: [], unit: state }];
-    for (let i = 1; i <= 2; i++) {
+    for (let i = 1; allowTurns && i <= 2; i++) {
       const seq: { dir: 'left' | 'right' }[] = Array.from({ length: i }, () => ({ dir: 'left' as const }));
       const l = applyTurns(state, seq, rt.ctx);
       if (l) tries.push({ turns: seq, unit: l });
@@ -1170,16 +1191,20 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
       if (capacity <= 0) continue;
       const charge = computeChargeHexes(candidate, rt, pool);
       charge.forEach((cost, key) => {
-        if (cost > capacity) return;
+        if (cost > capacity || cost < chargeFull) return;
         const hex = parseKey(key);
         if (!isAdjacent(hex, target.hex)) return;
-        const arc = arcOfTarget(target.hex, target.facing, hex);
-        if (arc !== 'flank' && arc !== 'rear') return;
+        // Mounted: rear only, outside the enemy formation's middle.
+        if (arcOfTarget(target.hex, target.facing, hex) !== 'rear') return;
         if (movement.threat.has(key)) return;
-        dests.push({ hex, cost, arc, turns });
+        if (!isOuterApproachHex(hex, target, movement.occupied, rt.enemies)) return;
+        // The target must be attackable from the landing hex with the final facing.
+        const landing = { ...candidate, hex };
+        if (!legalTargets(landing, rt.enemies, rt.ctx).some(t => t.unit.id === target.id && !t.isRanged)) return;
+        dests.push({ hex, cost, arc: 'rear', turns });
       });
     }
-    dests.sort((a, b) => (a.arc === 'rear' ? -1 : 0) - (b.arc === 'rear' ? -1 : 0) || a.cost - b.cost);
+    dests.sort((a, b) => a.cost - b.cost);
     return dests[0] ?? null;
   };
 
@@ -1200,20 +1225,19 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     }, rt.ctx);
     u = { ...spent, chargeDistance: charge.cost };
     rt.commit(u);
-    // The free charge attack.
+    // The free charge attack. The destination filter guarantees this is legal;
+    // keep the check as a defensive guard against no-attack charges.
     const legal = legalTargets(u, rt.enemies, rt.ctx).filter(t => t.unit.id === target.id && !t.isRanged);
     if (legal.length > 0) u = pushAttack(plan, u, target, true);
     plan.steps.push({ kind: 'chargeEnd', unitId: u.id, from: u.hex });
     u = { ...u, isCharging: false, chargeDistance: 0 };
     rt.commit(u);
-    // Evade with any remaining actions / MP after the charge.
+    // Evade with any remaining actions / MP after the charge, preferring >=5
+    // hexes from every hostile.
     const retreat = bestManeuver(u, rt, 'ground', (candidate, threat) => {
       if (candidate.path.length === 0) return -Infinity;
       if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
-      const nearest = rt.enemies.length > 0
-        ? Math.min(...rt.enemies.map(e => hexDistance(candidate.dest, e.hex)))
-        : 0;
-      return nearest * 100 - candidate.cost * 2 - candidate.turns.length * 2;
+      return nearestHostile(candidate.dest) * 100 - candidate.cost * 2 - candidate.turns.length * 2;
     });
     if (retreat) {
       u = pushMove(plan, u, retreat, rt.ctx);
@@ -1228,9 +1252,8 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     return u;
   };
 
-  // Try a legal charge against any engaged candidate, not only the marked one.
-  // A charge may be declared on a later action (after a turn), so re-evaluate
-  // eligibility per candidate instead of gating on the pre-turn state.
+  // Try a legal rear charge against any engaged rim candidate. A charge may be
+  // declared on a later action, so re-evaluate after each candidate's turns.
   for (const target of ordered) {
     if (!isEngagedByFriendly(target, u, rt)) continue;
     const charge = chargeDestination(u, target);
@@ -1239,22 +1262,78 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     return applyCharge(target, charge);
   }
 
-  // Not charging: stage on the ring around the best reachable target.
+  // No charge: stage on the radius-`maxRadius` circle around a rim target. The
+  // path is scored to stay outside, keep >=5 from hostiles where possible, and
+  // the end-of-move turns face a validated next-activation charge lane.
+  interface StageCandidate {
+    target: Unit;
+    move: Maneuver;
+    endTurns: { dir: 'left' | 'right' }[];
+    score: number;
+  }
+  let bestStage: StageCandidate | null = null;
+  const complex = rt.complexes.get(u.id) ?? null;
+  const maneuvers = maneuversFor(u, rt.working, rt.ctx, 'ground', complex);
   for (const target of ordered) {
-    const staged = bestManeuver(u, rt, 'ground', (candidate, threat) => {
-      if (candidate.path.length === 0) return -Infinity;
-      if (isFlankedAt(candidate.dest, candidate.facing, rt.enemies, target.id)) return -Infinity;
-      if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
-      const d = hexDistance(candidate.dest, target.hex);
-      const arc = arcOfTarget(target.hex, target.facing, candidate.dest);
-      const arcBonus = arc === 'rear' ? 15 : arc === 'flank' ? 8 : 0;
-      return -Math.abs(d - ring) * 100 + arcBonus - candidate.cost * 2 - candidate.turns.length * 2;
-    });
-    if (!staged) continue;
-    if (target.id !== markedId) rt.setTarget(u.id, target.id);
-    u = pushMove(plan, u, staged, rt.ctx);
-    rt.commit(u);
-    break;
+    for (const move of maneuvers) {
+      // A pure turn in place is handled by the end-of-move turns below.
+      if (move.path.length === 0 && move.turns.length > 0) continue;
+      const dest = move.dest;
+      if (movement.threat.has(hexKeyOf(dest))) continue;
+      if (arcOfTarget(target.hex, target.facing, dest) !== 'rear') continue;
+      const post = applyManeuver(move.unit, move, rt.ctx);
+      let bestFace: { endTurns: { dir: 'left' | 'right' }[]; facing: number } | null = null;
+      for (let facing = 0; facing < 6; facing++) {
+        const endTurns = turnsTo(post.facing, facing);
+        const faced = applyTurns(post, endTurns, rt.ctx);
+        if (!faced) continue;
+        // Next activation starts at 0 MP / 2 actions. Require a no-turn charge
+        // lane into the target from this staging hex and final facing.
+        const next = {
+          ...faced,
+          movementPointsAvailable: 0,
+          actionsAvailable: 2,
+          isCharging: false,
+          chargeDistance: 0,
+        };
+        if (!chargeDestination(next, target, false)) continue;
+        if (isFlankedAt(dest, facing, rt.enemies, target.id)) continue;
+        if (!bestFace || endTurns.length < bestFace.endTurns.length) {
+          bestFace = { endTurns, facing };
+        }
+      }
+      if (!bestFace) continue;
+      const d = hexDistance(dest, target.hex);
+      const nearestDest = nearestHostile(dest);
+      const inspected = move.path.length > 0 ? move.path : [dest];
+      const minTarget = Math.min(...inspected.map(p => hexDistance(p, target.hex)));
+      const minHostile = Math.min(...inspected.map(nearestHostile));
+      // Safety dominates; then hold the radius circle; then prefer rear and
+      // cheaper movement. Unsafe destinations are still considered as a last
+      // resort so the unit always takes the safest reachable option.
+      let score = -Math.abs(d - maxRadius) * 1000;
+      if (nearestDest < 5) score -= (5 - nearestDest) * 1_000_000;
+      if (minHostile < 5) score -= (5 - minHostile) * 100_000;
+      if (minTarget < maxRadius) score -= (maxRadius - minTarget) * 10_000;
+      score += Math.min(nearestDest, 10) * 100;
+      score -= move.cost * 2 + move.turns.length * 2 + bestFace.endTurns.length * 30;
+      if (target.id === markedId) score += 1;
+      if (!bestStage || score > bestStage.score) {
+        bestStage = { target, move, endTurns: bestFace.endTurns, score };
+      }
+    }
+  }
+
+  if (!bestStage) return safestMove();
+  if (bestStage.target.id !== markedId) rt.setTarget(u.id, bestStage.target.id);
+  u = pushMove(plan, u, bestStage.move, rt.ctx);
+  rt.commit(u);
+  if (bestStage.endTurns.length > 0) {
+    const faced = pushTurns(plan, u, bestStage.endTurns, rt.ctx);
+    if (faced) {
+      u = faced;
+      rt.commit(u);
+    }
   }
   const upgrade = nextFormationUpgrade(u, rt.ctx);
   if (upgrade) {
@@ -1262,7 +1341,6 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     u = upgrade.updated;
     rt.commit(u);
   }
-  if (plan.steps.length === 0) u = planEscape(u, plan, rt, 'mounted');
   return u;
 }
 
@@ -1475,6 +1553,7 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
       }
       return Math.min(6, count);
     },
+    mountedEligible: (target) => isOuterRimTarget(target, groundOccupied, enemies),
   });
 
   const rt: Runtime = {

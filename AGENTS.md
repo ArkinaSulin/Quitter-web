@@ -33,13 +33,14 @@ reusable maps. Here's the state:
   stages at
   2–3 hexes and upgrades before attacking; ranged scatters within 6, travels
   Open and closes to shoot; flying climbs by movement (10 ft/hex, descent free),
-  swoops and retreats to 20 ft/≥2 hexes; mounted stages on a 4-hex ring (2 in
-  Close Order) and charges into a flank/rear outside ZoC. A charge/swoop may be
-  the first or a later action (1+ action; no fly-point threshold), with the gate
-  re-checked after any facing turn; at most one charge/swoop per activation, then
-  remaining resources disengage/evade. Units spend all actions (melee/ranged
-  attack twice; mounted is the charge → free attack → disengage exception).
-  Executor gained
+  swoops and retreats to 20 ft/≥2 hexes; mounted marks only outer-rim targets,
+  stages on the max one-action charge ring (pool + 1) with ≥5 from hostiles and
+  end-of-move facing toward the next charge lane, and only rear-charges when the
+  landing is legal from its final front arc. A charge/swoop may be the first or
+  a later action (1+ action; no fly-point threshold), with the gate re-checked
+  after any facing turn; at most one charge/swoop per activation, then remaining
+  resources disengage/evade. Units spend all actions (melee/ranged attack twice;
+  mounted is the charge → free attack → disengage exception). Executor gained
   `climbAttack`/`charge`/`swoop`/`chargeEnd`/`weapon` and move `elevation`;
   pure swoop validation moved to `combat/lib/swoop.ts`. Deleted
   `battleLine.ts`/`reserve.ts`/`roleMarkers.ts`; Advanced AI + Stance UI hidden,

@@ -307,6 +307,17 @@ describe('Basic AI mounted charge hardening', () => {
     return [mount, target, friend];
   };
 
+  it('stages on the charge-radius ring and turns at the end to face the lane', () => {
+    const mount = mk({ id: 'c1', team: 'blue', hex: hex(0, 0), facing: 0, mountId: 'horse', mountName: 'Horse', canCharge: true, movementPoints: 6 });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(3, -6), facing: 0 });
+    const result = planAiMoves(ctxOf([mount, foe]));
+    const steps = stepsOf(result, 'c1');
+    const moveIdx = steps.findIndex(s => s.kind === 'move');
+    expect(moveIdx).toBeGreaterThanOrEqual(0);
+    expect(steps.slice(moveIdx + 1).some(s => s.kind === 'turn')).toBe(true);
+    expect(steps.some(s => s.kind === 'charge' || s.kind === 'chargeEnd')).toBe(false);
+  });
+
   it('charges an engaged target from the rear on its first action', () => {
     const result = planAiMoves(ctxOf(chargeUnits()));
     const steps = stepsOf(result, 'c1');
@@ -327,6 +338,23 @@ describe('Basic AI mounted charge hardening', () => {
     const result = planAiMoves(ctxOf(chargeUnits({ facing: 3, movementPoints: 2 })));
     const steps = stepsOf(result, 'c1');
     expect(steps.some(s => s.kind === 'charge')).toBe(false);
+  });
+
+  it('does not charge into a flank when the rear approaches are blocked', () => {
+    // The target faces north; both rear neighbours are occupied, so only flank
+    // landings remain. Mounted charges are rear-only.
+    const mount = mk({
+      id: 'c1', team: 'blue', hex: hex(2, 0), facing: 3,
+      mountId: 'horse', mountName: 'Horse', canCharge: true, movementPoints: 6, actionsAvailable: 2,
+    });
+    const target = mk({ id: 'f1', team: 'black', hex: hex(0, 0), facing: 0 });
+    const engaged = mk({ id: 'f2', team: 'blue', hex: hex(1, 0) });
+    const rearA = mk({ id: 'f3', team: 'blue', hex: hex(0, 1) });
+    const rearB = mk({ id: 'f4', team: 'blue', hex: hex(-1, 1) });
+    const result = planAiMoves(ctxOf([mount, target, engaged, rearA, rearB]));
+    const steps = stepsOf(result, 'c1');
+    expect(steps.some(s => s.kind === 'charge')).toBe(false);
+    expect(steps.some(s => s.kind === 'chargeEnd')).toBe(false);
   });
 
   it('does not charge when the Charge and Swoop toggle is off', () => {
