@@ -50,7 +50,11 @@ Routed, charge) + team colors + Change Image.
 
 The **Morale & command** row shows a current-value descriptor under both
 Aggressiveness and Base morale (`StatValueHint`), plus a `?` tooltip with the
-full 1–10 bands. The in-scenario `UnitEditorModal` shows the same hint row.
+full 1–10 bands. When **Fearless** is enabled the morale value is replaced by a
+highlighted `Fearless`; heroes also show `Fearless` for Aggressiveness because
+they skip the AGR check (normal fearless units still use AGR). The in-scenario
+`UnitEditorModal` shows the same hint row and makes those ignored inputs
+read-only.
 
 Notable data rules the editor encodes:
 - **Hero toggle** forces troop count 1, Fearless on, no formation economy in

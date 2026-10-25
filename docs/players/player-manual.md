@@ -289,7 +289,11 @@ and every unit you later drop from the **Unit Selector** is a copy of it.
 | 8 | Seasoned / Relentless | Devoted |
 | 9 | Elite / Monstrous | Fanatical |
 | 10 | Elite / Monstrous | Fanatical |
-| x | — | Fearless (bypasses morale checks) |
+| x | Fearless (heroes bypass the AGR check) | Fearless (bypasses morale checks) |
+
+> Fearless does **not** bypass the AGR check for normal units — their
+> Aggressiveness still applies. Heroes skip the AGR check entirely.
+> The Fearless morale entry applies whenever the Fearless flag is enabled.
 
 ### Weapons
 

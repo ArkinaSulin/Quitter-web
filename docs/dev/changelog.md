@@ -1,5 +1,18 @@
 # QuiTTER Changelog
 
+## Fearless-aware stat hints (2026-10-25)
+**Files:** src/components/shared/StatValueHint.tsx, src/components/UnitEditor.tsx, src/components/ScenarioMap/UnitEditorModal.tsx, docs/players/player-manual.md, docs/dev/{14-editors,changelog}.md
+
+- Fearless replaces the displayed Base morale with a highlighted `Fearless`
+  (morale checks are bypassed).
+- Aggressiveness is unchanged for normal fearless units (the AGR check still
+  applies); heroes show `Fearless` for Aggressiveness because they skip AGR.
+- The `x — Fearless` legend row appears for Morale always and for Aggressiveness
+  only on heroes; it highlights only when the bypass applies.
+- The in-scenario modal now makes Aggressiveness read-only for heroes and Base
+  morale read-only while Fearless is enabled, matching the main editor.
+- No migration. Verification: `npm run check` (tsc, tests, depcruise, build).
+
 ## Morale legend: Fearless row (2026-10-25)
 **Files:** src/components/shared/StatValueHint.tsx, docs/players/player-manual.md, docs/dev/changelog.md
 

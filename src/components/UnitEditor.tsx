@@ -1183,8 +1183,8 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                     <div className="pb-1"><Toggle checked={formData.commandPursuitPermit || false} onChange={(v) => updateFormData('commandPursuitPermit', v)} label="Command: allow pursue" disabled={!formData.isHero} /></div>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
-                    <StatValueHint kind="aggressiveness" value={formData.aggressiveness || 3} />
-                    <StatValueHint kind="morale" value={formData.baseMorale || 3} />
+                    <StatValueHint kind="aggressiveness" value={formData.aggressiveness || 3} fearless={!!formData.ignoreMoraleChecks} hero={!!formData.isHero} />
+                    <StatValueHint kind="morale" value={formData.baseMorale || 3} fearless={!!formData.ignoreMoraleChecks} hero={!!formData.isHero} />
                   </div>
 
                   {/* Saving throws */}

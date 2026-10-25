@@ -42,11 +42,23 @@ export function statDescriptor(kind: StatHintKind, value: number): string {
   return STAT_LABELS[kind][clampStatValue(value) - 1];
 }
 
-export function StatValueHint({ kind, value }: { kind: StatHintKind; value: number }) {
+export function StatValueHint({
+  kind,
+  value,
+  fearless = false,
+  hero = false,
+}: {
+  kind: StatHintKind;
+  value: number;
+  fearless?: boolean;
+  hero?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const label = kind === 'aggressiveness' ? 'Aggressiveness' : 'Morale';
   const shown = clampStatValue(value);
+  const ignoreValue = kind === 'morale' ? fearless : hero;
+  const showFearlessRow = kind === 'morale' || hero;
 
   const openAt = (x: number, y: number) => {
     setPos({ x, y });
@@ -56,7 +68,11 @@ export function StatValueHint({ kind, value }: { kind: StatHintKind; value: numb
   return (
     <span className="inline-flex items-center gap-1 text-[10px] text-gray-400">
       <span className="uppercase tracking-wide text-gray-500">{label}</span>
-      <span className="text-gray-300">{shown} — {statDescriptor(kind, shown)}</span>
+      <span className="text-gray-300">
+        {ignoreValue
+          ? <span className="text-yellow-300">Fearless</span>
+          : `${shown} — ${statDescriptor(kind, shown)}`}
+      </span>
       <button
         type="button"
         aria-label={`Show ${label.toLowerCase()} legend`}
@@ -92,8 +108,8 @@ export function StatValueHint({ kind, value }: { kind: StatHintKind; value: numb
                   <td>{entry}</td>
                 </tr>
               ))}
-              {kind === 'morale' && (
-                <tr className="text-yellow-300">
+              {showFearlessRow && (
+                <tr className={ignoreValue ? 'text-yellow-300' : 'text-gray-300'}>
                   <td className="pr-2 text-right text-gray-500">x</td>
                   <td>Fearless</td>
                 </tr>
