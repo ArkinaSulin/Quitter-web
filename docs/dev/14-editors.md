@@ -48,6 +48,10 @@ takes.
 Token Preview + test sliders (casualty %, morale modifier, formation incl.
 Routed, charge) + team colors + Change Image.
 
+The **Morale & command** row shows a current-value descriptor under both
+Aggressiveness and Base morale (`StatValueHint`), plus a `?` tooltip with the
+full 1–10 bands. The in-scenario `UnitEditorModal` shows the same hint row.
+
 Notable data rules the editor encodes:
 - **Hero toggle** forces troop count 1, Fearless on, no formation economy in
   play; **Gargantuan** forces hero, troops 1, formations disabled.

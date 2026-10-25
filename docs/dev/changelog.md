@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Aggressiveness / morale value hints (2026-10-25)
+**Files:** src/components/shared/StatValueHint.tsx, src/components/UnitEditor.tsx, src/components/ScenarioMap/UnitEditorModal.tsx, docs/players/player-manual.md, docs/dev/{14-editors,changelog}.md
+
+- Both unit editors now show the current value descriptor for Aggressiveness
+  and Base morale under the Morale & command row.
+- Each stat has a `?` tooltip with the full 1–10 legend: Untrained / Peaceful,
+  Undertrained / Timid, Aggressive / Ferocious, Seasoned / Relentless,
+  Elite / Monstrous; Frightened, Scared, Confident, Resolute, Devoted,
+  Fanatical.
+- Tooltips use the shared `Floating` primitive, so they stay inside the viewport
+  and are not clipped by the editor panels.
+- Player manual now documents the same value bands.
+- No migration. Verification: `npm run check` (tsc, tests, depcruise, build).
+
+
 ## Halloween Siege minigame (2026-10-25)
 **Files:** supabase/migrations/133_halloween_siege.sql, src/packages/world/lib/halloweenSiege.ts, src/packages/world/tests/halloweenSiege.test.ts, src/packages/world/index.ts, src/hooks/useUnitTemplates.ts, src/hooks/useSupabaseSync.ts, src/components/ScenarioMap/{ScenarioMap,TopBar,HalloweenSiegeWindow,UnitSelector}.tsx, docs/dev/{20-halloween-siege,README,02-schema-and-migrations,changelog}.md
 

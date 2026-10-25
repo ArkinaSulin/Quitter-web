@@ -14,6 +14,7 @@ import { Team } from '@/packages/units';
 import { mapTemplate, mapTemplateToRow } from '@/packages/infra';
 import { raceIconFromName } from '@/packages/infra';
 import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
+import { StatValueHint } from '@/components/shared/StatValueHint';
 
 const SIZE_LABELS: Record<number, string> = {
   75: 'Small',
@@ -1180,6 +1181,10 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                     <div className="pb-1"><Toggle checked={formData.ignoreMoraleChecks || false} onChange={(v) => updateFormData('ignoreMoraleChecks', v)} label="Fearless" /></div>
                     <Cell label="Morale boost"><NumInput value={formData.moraleBoost || 0} min={0} max={9} disabled={!formData.isHero} onChange={(v) => updateFormData('moraleBoost', Math.max(0, Math.min(9, v || 0)))} /></Cell>
                     <div className="pb-1"><Toggle checked={formData.commandPursuitPermit || false} onChange={(v) => updateFormData('commandPursuitPermit', v)} label="Command: allow pursue" disabled={!formData.isHero} /></div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
+                    <StatValueHint kind="aggressiveness" value={formData.aggressiveness || 3} />
+                    <StatValueHint kind="morale" value={formData.baseMorale || 3} />
                   </div>
 
                   {/* Saving throws */}

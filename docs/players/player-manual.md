@@ -275,6 +275,21 @@ and every unit you later drop from the **Unit Selector** is a copy of it.
 | **Hero** | A named character token, not a block of troops. | §8. |
 | **Equip / Weekly cost** | Gold for the template (campaign bookkeeping). | Not used in battle. |
 
+**Aggressiveness / morale value bands**
+
+| Value | Aggressiveness | Morale |
+|---|---|---|
+| 1 | Untrained / Peaceful | Frightened |
+| 2 | Untrained / Peaceful | Frightened |
+| 3 | Undertrained / Timid | Scared |
+| 4 | Undertrained / Timid | Confident |
+| 5 | Aggressive / Ferocious | Resolute |
+| 6 | Aggressive / Ferocious | Resolute |
+| 7 | Seasoned / Relentless | Devoted |
+| 8 | Seasoned / Relentless | Devoted |
+| 9 | Elite / Monstrous | Fanatical |
+| 10 | Elite / Monstrous | Fanatical |
+
 ### Weapons
 
 A unit lists its weapons (the **active** one is used in combat and shown with

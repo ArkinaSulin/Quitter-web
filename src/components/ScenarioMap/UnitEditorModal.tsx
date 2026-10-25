@@ -16,6 +16,7 @@ import { WeaponEditorModal } from '@/components/WeaponEditorModal';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { supabase } from '@/packages/infra/supabase';
 import { getSetting } from '@/packages/infra';
+import { StatValueHint } from '@/components/shared/StatValueHint';
 
 const SIZE_LABELS: Record<number, string> = {
   75: 'Small',
@@ -417,6 +418,10 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
             <div className="pb-1"><Toggle checked={!!draft.ignoreMoraleChecks} onChange={v => set('ignoreMoraleChecks', v)} label="Fearless" /></div>
             <Cell label="Morale boost"><NumInput value={draft.moraleBoost} min={0} readOnly={!unit.isHero} onChange={v => set('moraleBoost', v)} /></Cell>
             <div className="pb-1"><Toggle checked={!!draft.commandPursuitPermit} onChange={v => set('commandPursuitPermit', v)} label="Command: allow pursue" disabled={!unit.isHero} /></div>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
+            <StatValueHint kind="aggressiveness" value={draft.aggressiveness} />
+            <StatValueHint kind="morale" value={draft.baseMorale} />
           </div>
 
           {/* R7 Formation + Charging + Mount + Can charge */}
