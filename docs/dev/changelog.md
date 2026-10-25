@@ -1,5 +1,16 @@
 # QuiTTER Changelog
 
+## Charge AGR failure ends the charge and drops org (2026-10-24)
+**Files:** src/components/ScenarioMap/{useCombatActions.ts,AiPanel.tsx}, docs/dev/{08-combat,changelog}.md
+
+- A charge attack that fails its AGR check now finishes the charge immediately:
+  clears `isCharging`, resets `chargeDistance`, and drops one organization level
+  via `performChargeEnd(..., true)`.
+- The AI executor skips its later `chargeEnd` step when the failed attack already
+  ended the charge, avoiding a duplicate log.
+- Verification: `npm run check` passes (tsc, 1139 tests, depcruise, build). No
+  migration.
+
 ## Charge/swoop action conversion + free charge attack + routed message (2026-10-24)
 **Files:** src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ScenarioMap.tsx,AiPanel.tsx,useCombatActions.ts}, src/packages/combat/lib/chargeStance.ts, src/packages/ai/{lib/planner.ts,tests/planner.test.ts}, docs/dev/{00-universal-rules,07-movement-economy,08-combat,17-enemy-ai,changelog}.md, AGENTS.md
 

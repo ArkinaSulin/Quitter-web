@@ -4,7 +4,7 @@
 // the full combat resolution (auto-draw, AGR, first strike, retaliation with
 // the soft 5-cap stash, morale/rout), healing weapons, and the charge
 // end/overrun helpers. Owns the attack-related soft-enforcement states.
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Unit, AllianceGroup, Formation, SizeCategory, Hex, hexDistance, UnitEffect, GroundEffect, getOrganizationLevel } from '@/types/gameProtocol';
 import { resolveCombatSequence, determineCombatPosition, suppressRetaliation, rollDamageDetailed, computeAttackCount, combatRollMode, rollWarMachineHits, CombatOutcome, AttackerHeroProfile, wallCoverAgainst, attachedDefenderHeroShare, protectedHeroHost, inHostRearCone } from '@/packages/combat';
 import { canMeleeTarget, canRangedTarget, getEffectivePosition } from '@/packages/movement';
@@ -111,6 +111,9 @@ interface CombatActionsDeps {
 }
 
 export function useCombatActions(deps: CombatActionsDeps) {
+  // Late-bound so the AGR-failure branch (declared before performChargeEnd) can
+  // finish a failed charge without a dependency cycle.
+  const performChargeEndRef = useRef<((attacker: Unit, dropOrg: boolean) => Promise<void>) | null>(null);
   const {
     units,
     alliances,
@@ -521,6 +524,9 @@ export function useCombatActions(deps: CombatActionsDeps) {
         ...(options?.chained ? { chained: true } : {}),
         verboseMessage: aggrFailVerbose,
       });
+      if (isChargingAttack && attacker.isCharging) {
+        await performChargeEndRef.current?.(attacker, true);
+      }
       return;
     }
 
@@ -1061,6 +1067,7 @@ export function useCombatActions(deps: CombatActionsDeps) {
       changes,
     }], `${attacker.unitName} ended its charge${dropText}`, { chained: true });
   }, [execute]);
+  performChargeEndRef.current = performChargeEnd;
 
   /** After a charge attack: offer the ride-over (2 MP, own undo), else end the charge. */
   const finishChargeAfterAttack = useCallback(async (attacker: Unit, target: Unit, result?: { attackerRouted: boolean; attackerKilled: boolean; defenderRouted: boolean; defenderKilled: boolean }) => {

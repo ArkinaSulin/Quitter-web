@@ -643,7 +643,9 @@ export function AiPanel({
         setStatusText(`${live.unitName} → swoops on its target`);
         await props.performSwoopDrop(live.id, step.targetId);
       } else if (step.kind === 'chargeEnd') {
-        await props.performChargeEnd(live, false);
+        // An AGR-failed charge already ended itself (and dropped org) inside
+        // performAttack; avoid a duplicate CHARGE_END log.
+        if (live.isCharging) await props.performChargeEnd(live, false);
       } else if (step.kind === 'weapon') {
         setStatusText(`${live.unitName} → switches weapon`);
         await props.selectWeapon(live, step.weaponIndex);

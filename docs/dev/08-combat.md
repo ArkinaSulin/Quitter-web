@@ -366,6 +366,8 @@ The entry is gated by the scenario `mounted_charge_enabled` setting (shown as
 - Attack at distance ≥ `charge_full_distance` (2) → **free double-damage
   attack**, then drop one organization level (`CHARGE_END`). Attack < 2 →
   premature confirm (normal attack, still drops org).
+- A charge attack that fails its AGR check still **ends the charge**: clear
+  `isCharging`, reset `chargeDistance`, and drop one organization level.
 - After a full-charge attack that didn't break/kill the charger, **charge-over**
   may be offered (`combat/chargeOver.ts`): target charge-through-able from the
   approach arc, in front arc (skipped for a **loose** charger — all-around),
