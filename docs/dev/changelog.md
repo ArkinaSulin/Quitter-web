@@ -1,5 +1,29 @@
 # QuiTTER Changelog
 
+## Halloween Siege minigame (2026-10-25)
+**Files:** supabase/migrations/133_halloween_siege.sql, src/packages/world/lib/halloweenSiege.ts, src/packages/world/tests/halloweenSiege.test.ts, src/packages/world/index.ts, src/hooks/useUnitTemplates.ts, src/hooks/useSupabaseSync.ts, src/components/ScenarioMap/{ScenarioMap,TopBar,HalloweenSiegeWindow,UnitSelector}.tsx, docs/dev/{20-halloween-siege,README,02-schema-and-migrations,changelog}.md
+
+- DM-only **Scenario Settings → Minigames → Halloween Siege** config window:
+  `turnsPerWave`, Add wave, per-wave monster count, editable percentages, and a
+  drag/drop monster picker. A wave cannot be saved unless its percentages total
+  exactly 100%.
+- Weighted waves spawn on Enemy turns at the current grid rim, split round-robin
+  across every team assigned to the **enemy** alliance. One **break turn**
+  (no spawn) follows each wave; there is no trailing break after the last wave.
+- New public top-bar badge: `wave: 2 turn: 1/3` during a wave and
+  `wave: 2 turn: break` during a break (the upcoming wave is named). Visible to
+  all players; hidden in free play and replay.
+- End Turn is blocked with a DM error while the siege is active and no team is
+  assigned to the Enemy alliance.
+- Spawns use the normal client insert + one `PLACE` command per unit, so undo
+  and replay continue to work. `scenarios.halloween_siege` stores the config and
+  arming/marker data (migration 133; **apply in Supabase**).
+- Shared `fetchUnitTemplates()` / `useUnitTemplates()`; the rapid multi-spawn
+  serial counter in `useSupabaseSync` now increments synchronously so a wave gets
+  unique A/B/C… names.
+- Verification: `npm run check` passes (tsc, 1157 tests, depcruise, build).
+
+
 ## Advanced AI removed (2026-10-24)
 **Files:** src/components/ScenarioMap/ScenarioMap.tsx, src/hooks/useScenarios.ts, src/types/gameProtocol.ts, src/packages/ai/lib/types.ts, docs/dev/{17-enemy-ai,outstanding,changelog}.md, AGENTS.md
 

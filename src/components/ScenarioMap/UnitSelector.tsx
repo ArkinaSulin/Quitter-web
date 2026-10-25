@@ -1,11 +1,9 @@
 // src/components/ScenarioMap/UnitSelector.tsx
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/packages/infra/supabase';
-import { UnitTemplate, UnitType, Race } from '@/types/gameProtocol';
-import { Team } from '@/packages/units';
-import { mapTemplate } from '@/packages/infra';
+import React, { useState } from 'react';
+import { UnitTemplate } from '@/types/gameProtocol';
+import { useUnitTemplates } from '@/hooks/useUnitTemplates';
 import { UnitTemplateTooltip } from './UnitTemplateTooltip';
 
 interface UnitSelectorProps {
@@ -13,42 +11,11 @@ interface UnitSelectorProps {
   onUnitDragStart: (template: UnitTemplate) => void;
 }
 
-export function UnitSelector({ scenarioId, onUnitDragStart }: UnitSelectorProps) {
-  const [templates, setTemplates] = useState<UnitTemplate[]>([]);
-  const [loading, setLoading] = useState(true);
+export function UnitSelector({ onUnitDragStart }: UnitSelectorProps) {
+  const { templates, loading, error } = useUnitTemplates();
   const [searchTerm, setSearchTerm] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [hoveredTemplate, setHoveredTemplate] = useState<UnitTemplate | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
-
-  const fetchTemplates = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data, error } = await supabase
-        .from('unit_templates')
-        .select(`
-          *,
-          unit_races(name, icon_url, base_hd, size_category, visual_scale, can_charge),
-          unit_types(name, icon_url),
-          unit_armors(name),
-          unit_mounts(name, can_charge)
-        `)
-        .order('unit_name');
-
-      if (error) throw error;
-      setTemplates((data || []).map(mapTemplate));
-    } catch (err: any) {
-      console.error('Failed to load templates:', err);
-      setError(err.message || 'Failed to load templates');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTemplates();
-  }, [fetchTemplates]);
 
   const filtered = templates.filter(t =>
     t.unitName.toLowerCase().includes(searchTerm.toLowerCase())

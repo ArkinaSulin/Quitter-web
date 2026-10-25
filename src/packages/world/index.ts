@@ -6,3 +6,4 @@ export * from './lib/turnState';
 export * from './lib/scenarioPermissions';
 export * from './lib/librarySelection';
 export * from './lib/mapGeometry';
+export * from './lib/halloweenSiege';

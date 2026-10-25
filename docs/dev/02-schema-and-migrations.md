@@ -61,7 +61,7 @@ tables.
 | `user_profile_last_change` (view) | Admin-panel read model: profile + latest `admin_role_changes` row + changer name | see `03` |
 | `user_has_access(permission)` | SECURITY DEFINER helper returning whether the caller's role grants `permission` | used inside RLS policies |
 | `admin_game_settings` | Game-wide JSONB key/value balance constants | RLS: select authenticated, write admin |
-| `scenarios` | One battle. `name`, creator, password_hash, `map_data` jsonb, screenshot, `turn_number`, `current_turn_alliance`, `free_move`, `room_open`, deletion-request columns, `dm_heartbeat_at` | creator is the GM |
+| `scenarios` | One battle. `name`, creator, password_hash, `map_data` jsonb, screenshot, `turn_number`, `current_turn_alliance`, `free_move`, `room_open`, deletion-request columns, `dm_heartbeat_at`, `halloween_siege` jsonb | creator is the GM |
 | `scenario_participants` | user ↔ scenario: `role` (GM/AssistGM/SuperPlayer/Player), `team` | team drives control |
 | `scenario_team_alliance` | team → alliance group (`friendly`/`enemy`/`neutral`) per scenario | realtime-published |
 | `scenario_role_access_rights` | Per-scenario-role permission matrix (Player…AssistGM) | see `03` |
@@ -189,6 +189,10 @@ as applied in the notes — check the live DB before relying on it).
 | 127 | structure Armor Class: `map_structure_templates.ac` (default 10) | ⏳ run in Supabase |
 | 128 | `units.base_ac` (unarmoured base AC, copied from the template; war-machine to-hit) | ⏳ run in Supabase |
 | 129 | `unit_field_to_column`: add `baseAc → base_ac` (on-map modal "Natural AC") | ⏳ run in Supabase |
+| 130 | AI assist flags (`scenarios.ai_assist_enabled` / `ai_assist_players`; legacy `ai_assist_advanced` retained) | ⏳ run in Supabase |
+| 131 | AI role markers (advanced AI, later removed) | ⏳ run in Supabase |
+| 132 | drop the AI role marker column | ⏳ run in Supabase |
+| 133 | Halloween Siege: `scenarios.halloween_siege` jsonb (wave config + arming/marker) | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

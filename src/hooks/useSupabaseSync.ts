@@ -249,8 +249,8 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
   const [error, setError] = useState<string | null>(null);
   const [sizeCategories, setSizeCategories] = useState<SizeCategory[]>([]);
   const callbackRef = useRef<(payload: any) => void>();
-  const unitsRef = useRef(units);
-  unitsRef.current = units;
+  const nextSerialRef = useRef(0);
+  nextSerialRef.current = Math.max(nextSerialRef.current, units.length);
 
   // 1. Load units on mount
   useEffect(() => {
@@ -409,7 +409,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     // regardless of template / team / alliance, so "Human Soldier A" and
     // "Human Guard A" can never collide. Soft-deleted units stay in state, so
     // the count is monotonic and serials are never reused.
-    const instanceNumber = unitsRef.current.length + 1;
+    const instanceNumber = ++nextSerialRef.current;
 
     // Inherited template effects (design-time, permanent) + materialized stat deltas.
     const inherited = expandInheritedEffects(template.effects, template.movementPoints || 3);

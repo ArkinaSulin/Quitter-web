@@ -3,6 +3,7 @@
 // GM settings/replay buttons, and Exit to Lobby.
 import { AllianceGroup } from '@/types/gameProtocol';
 import { allianceOf } from '@/packages/primitives';
+import { SiegePhase } from '@/packages/world';
 
 interface TopBarProps {
   roleLabel: string;
@@ -34,6 +35,7 @@ interface TopBarProps {
   /** Show the Scenario Stats button (GM in live play; anyone in replay). */
   showStats: boolean;
   onOpenStats: () => void;
+  halloweenSiegeStatus?: SiegePhase | null;
 }
 
 export function TopBar(props: TopBarProps) {
@@ -65,6 +67,7 @@ export function TopBar(props: TopBarProps) {
     goToLobby,
     showStats,
     onOpenStats,
+    halloweenSiegeStatus,
   } = props;
 
   // The DM keeps End Turn (and replay exit) even while playing as a player; the
@@ -117,6 +120,19 @@ export function TopBar(props: TopBarProps) {
           </button>
         )}
         <span className="text-white text-sm font-mono">Turn {displayTurnNumber}</span>
+        {halloweenSiegeStatus && (
+          <span className={`px-2 py-0.5 rounded text-xs font-mono ${
+            halloweenSiegeStatus.kind === 'break'
+              ? 'bg-amber-900/80 text-amber-200'
+              : 'bg-[#D55E00]/80 text-white'
+          }`}>
+            {halloweenSiegeStatus.kind === 'break'
+              ? `wave: ${halloweenSiegeStatus.waveNumber} turn: break`
+              : halloweenSiegeStatus.kind === 'wave'
+                ? `wave: ${halloweenSiegeStatus.waveNumber} turn: ${halloweenSiegeStatus.turnInWave}/${halloweenSiegeStatus.turnsPerWave}`
+                : ''}
+          </span>
+        )}
         {!controlsLocked && (() => {
           // Alliance-wide End Turn: from turn 1 on, any player whose alliance holds
           // the turn may advance it; free play (null alliance) stays GM-only. A

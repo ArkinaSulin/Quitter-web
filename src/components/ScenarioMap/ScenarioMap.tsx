@@ -14,6 +14,7 @@ import { canReactWithWeapon } from '@/packages/combat';
 import { getFormations } from '@/packages/infra';
 import { loadSettings, getSetting } from '@/packages/infra';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
+import { fetchUnitTemplates } from '@/hooks/useUnitTemplates';
 import { useScenarios, DM_HEARTBEAT_INTERVAL_MS, DM_HEARTBEAT_STALE_MS, DM_HEARTBEAT_POLL_MS } from '@/hooks/useScenarios';
 import { computeReachableMap } from '@/packages/movement';
 import { getFormationChangeMpCost } from '@/packages/movement';
@@ -65,6 +66,17 @@ import { unitAttackCap } from '@/packages/combat';
 import { newEffectKey, rangeBonusAt } from '@/packages/effects';
 import { canWeaponAttack } from '@/packages/combat';
 import { MapEntity } from '@/packages/world';
+import { getActiveGroups, advanceTurn } from '@/packages/world';
+import {
+  defaultHalloweenSiegeConfig,
+  isHalloweenSiegeConfigValid,
+  parseHalloweenSiegeConfig,
+  planSiegeSpawn,
+  siegePhaseForTurn,
+  type HalloweenSiegeConfig,
+  type SiegePhase,
+} from '@/packages/world';
+import { HalloweenSiegeWindow } from './HalloweenSiegeWindow';
 import { AddEffectModal } from './AddEffectModal';
 import { EffectFormModal, EffectFormValue } from './EffectFormModal';
 import { EffectCatalogTemplate, templateById } from '@/packages/effects';
@@ -284,6 +296,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Overlay (checkmarks + preview routes) pushed by the AI panel to the canvas.
   const [aiOverlay, setAiOverlay] = useState<AiOverlayData | null>(null);
   const [showScenarioSettings, setShowScenarioSettings] = useState(false);
+  const [halloweenSiege, setHalloweenSiege] = useState<HalloweenSiegeConfig | null>(null);
+  const [showHalloweenSiege, setShowHalloweenSiege] = useState(false);
+  const siegeSpawnTurnRef = useRef<number | null>(null);
   // Client-only display pref (this device): label EVERY move-preview hex with its
   // leftover MP, not just the movement-border hexes. Persisted per browser.
   const [showAllMoveMp, setShowAllMoveMp] = useState<boolean>(() =>
@@ -1719,6 +1734,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
   };
 
+  const siegeEnemyTeams = useMemo(
+    () => TEAMS.filter(team => allianceOf(team, alliances) === 'enemy'),
+    [alliances],
+  );
+
   const performEndTurn = useCallback(async () => {
     if (isEndingTurn) return;
     // Block End Turn while any non-flying unit/hero is left floating (e.g. a hero
@@ -1728,6 +1748,24 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (floaters.length > 0) {
       addError(`Cannot end turn — resolve floating unit(s) first: ${floaters.map(u => u.unitName).join(', ')}`);
       return;
+    }
+    if (halloweenSiege?.enabled && halloweenSiege.nextSpawnAtTurn != null) {
+      const phase = siegePhaseForTurn(halloweenSiege, currentTurnAlliance === null ? turnNumber + 1 : turnNumber);
+      if (phase.kind !== 'complete') {
+        if (siegeEnemyTeams.length === 0) {
+          addError('Halloween Siege: assign at least one team to the Enemy alliance before ending the turn.');
+          return;
+        }
+        const { next: nextAlliance, wrapped: willWrap } = advanceTurn(currentTurnAlliance, getActiveGroups(alliances));
+        const upcomingTurnNumber = (currentTurnAlliance === null || willWrap) ? turnNumber + 1 : turnNumber;
+        if (nextAlliance === 'enemy') {
+          const upcomingPhase = siegePhaseForTurn(halloweenSiege, upcomingTurnNumber);
+          if (upcomingPhase.kind === 'wave' && !isHalloweenSiegeConfigValid(halloweenSiege)) {
+            addError('Halloween Siege: the wave configuration is invalid — open the minigame and save a valid setup.');
+            return;
+          }
+        }
+      }
     }
     setIsEndingTurn(true);
     try {
@@ -1774,12 +1812,130 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     } finally {
       setIsEndingTurn(false);
     }
-  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, freeMove, isEndingTurn, effectiveZones, persistMapData, scenarioId, structures, structureTemplates, addError]);
+  }, [endTurn, currentTurnAlliance, alliances, units, formationsMap, turnNumber, freeMove, isEndingTurn, effectiveZones, persistMapData, scenarioId, structures, structureTemplates, addError, halloweenSiege, siegeEnemyTeams]);
 
   const handleEndTurn = useCallback(async () => {
     if (isEndingTurn) return;
     await performEndTurn();
   }, [isEndingTurn, performEndTurn]);
+
+  const saveHalloweenSiege = useCallback(async (next: HalloweenSiegeConfig | null): Promise<boolean> => {
+    setHalloweenSiege(next);
+    const ok = await updateScenarioField(scenarioId, { halloween_siege: next });
+    if (!ok) addError('Failed to save Halloween Siege settings.');
+    return ok;
+  }, [scenarioId, updateScenarioField, addError]);
+
+  const handleSaveHalloweenSiege = useCallback((next: HalloweenSiegeConfig) => {
+    void saveHalloweenSiege(next).then(ok => {
+      if (ok) setShowHalloweenSiege(false);
+    });
+  }, [saveHalloweenSiege]);
+
+  const handleToggleHalloweenSiege = useCallback(async (enabled: boolean) => {
+    const base = halloweenSiege ?? defaultHalloweenSiegeConfig();
+    const next = { ...base, enabled };
+    const ok = await saveHalloweenSiege(next);
+    if (ok && enabled && (!isHalloweenSiegeConfigValid(next) || next.nextSpawnAtTurn == null)) {
+      setShowHalloweenSiege(true);
+    }
+  }, [halloweenSiege, saveHalloweenSiege]);
+
+  const siegeStatus = useMemo<SiegePhase | null>(() => {
+    if (!halloweenSiege?.enabled || halloweenSiege.nextSpawnAtTurn == null) return null;
+    if (currentTurnAlliance == null || replayMode || inReplay) return null;
+    const phase = siegePhaseForTurn(halloweenSiege, turnNumber);
+    return phase.kind === 'wave' || phase.kind === 'break' ? phase : null;
+  }, [halloweenSiege, currentTurnAlliance, turnNumber, replayMode, inReplay]);
+
+  const siegeSettingsLabel = useMemo(() => {
+    if (!halloweenSiege?.enabled) return 'Off';
+    if (halloweenSiege.nextSpawnAtTurn == null) return 'Configure and save to arm';
+    if (currentTurnAlliance == null) return 'Armed — starts on the first Enemy turn';
+    const phase = siegePhaseForTurn(halloweenSiege, turnNumber);
+    if (phase.kind === 'before') return 'Armed — waiting for the first Enemy turn';
+    if (phase.kind === 'complete') return 'Siege complete';
+    if (phase.kind === 'break') return `Break — Wave ${phase.waveNumber} next`;
+    return `Wave ${phase.waveNumber} — turn ${phase.turnInWave}/${phase.turnsPerWave}`;
+  }, [halloweenSiege, currentTurnAlliance, turnNumber]);
+
+  const spawnHalloweenWave = useCallback(async (
+    config: HalloweenSiegeConfig,
+    phase: Extract<SiegePhase, { kind: 'wave' }>,
+  ) => {
+    const wave = config.waves[phase.waveIndex];
+    if (!wave) return;
+    const enemyTeams = TEAMS.filter(team => allianceOf(team, alliances) === 'enemy');
+    if (enemyTeams.length === 0) {
+      addError('Halloween Siege: no team is assigned to the Enemy alliance — assign one in the Alliances tab.');
+      return;
+    }
+
+    const marked: HalloweenSiegeConfig = { ...config, lastSpawnedTurn: turnNumber };
+    await saveHalloweenSiege(marked);
+
+    try {
+      const templates = await fetchUnitTemplates();
+      const byId = new Map(templates.map(template => [template.id, template]));
+      const entries = wave.entries.filter(entry => {
+        const template = byId.get(entry.templateId);
+        return !!template && !template.isHero && entry.percent > 0;
+      });
+      const plan = planSiegeSpawn({
+        wave: { ...wave, entries },
+        enemyTeams,
+        gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
+        occupied: computeOccupiedHexes(units, undefined, 0),
+      });
+      if (plan.length === 0) {
+        addError(`Halloween Siege — Wave ${phase.waveNumber}: no free rim hex or valid monster template.`);
+        return;
+      }
+
+      let spawned = 0;
+      const teamCounts: Record<string, number> = {};
+      for (const row of plan) {
+        const template = byId.get(row.templateId);
+        if (!template) continue;
+        const unit = await addUnitFromTemplate(template, row.hex, row.team);
+        if (!unit) continue;
+        await placeUnit(unit);
+        spawned += 1;
+        teamCounts[row.team] = (teamCounts[row.team] ?? 0) + 1;
+      }
+
+      if (spawned === 0) {
+        addError(`Halloween Siege — Wave ${phase.waveNumber}: failed to spawn any monsters.`);
+        return;
+      }
+
+      const split = Object.entries(teamCounts).map(([team, count]) => `${team} ${count}`).join(' · ');
+      addMessage(
+        `Halloween Siege — Wave ${phase.waveNumber}: ${spawned} monster${spawned === 1 ? '' : 's'} spawned${split ? ` (${split})` : ''}.`,
+      );
+      if (spawned < wave.count) {
+        addError(`Halloween Siege — Wave ${phase.waveNumber}: only ${spawned}/${wave.count} monsters could be placed.`);
+      }
+    } catch (err) {
+      console.error('[HalloweenSiege] spawn failed', err);
+      addError(`Halloween Siege — Wave ${phase.waveNumber}: spawn failed.`);
+    }
+  }, [alliances, turnNumber, saveHalloweenSiege, backgroundConfig, units, addUnitFromTemplate, placeUnit, addMessage, addError]);
+
+  useEffect(() => {
+    if (!effectiveIsGM || replayMode || inReplay) return;
+    const config = halloweenSiege;
+    if (!config?.enabled || config.nextSpawnAtTurn == null) return;
+    if (currentTurnAlliance !== 'enemy') return;
+    const phase = siegePhaseForTurn(config, turnNumber);
+    if (phase.kind !== 'wave') return;
+    if (config.lastSpawnedTurn === turnNumber) return;
+    if (siegeSpawnTurnRef.current === turnNumber) return;
+    siegeSpawnTurnRef.current = turnNumber;
+    void spawnHalloweenWave(config, phase).finally(() => {
+      if (siegeSpawnTurnRef.current === turnNumber) siegeSpawnTurnRef.current = null;
+    });
+  }, [effectiveIsGM, replayMode, inReplay, halloweenSiege, currentTurnAlliance, turnNumber, spawnHalloweenWave]);
 
   const clearFreeMoveTimer = useCallback(() => {
     if (freeMoveTimeoutRef.current) { clearTimeout(freeMoveTimeoutRef.current); freeMoveTimeoutRef.current = null; }
@@ -2465,7 +2621,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   const anyModalOpen = !!(
     contextMenuUnit || withdrawConfirm || effectMenuUnit || retreatPick ||
-    reactionFormationPicker || showScenarioSettings || attachModal ||
+    reactionFormationPicker || showScenarioSettings || showHalloweenSiege || attachModal ||
     pendingMountTarget || pendingAttackChoice || pendingReactionChoice || pendingElevation || pendingHeroFall ||
     pendingStructureAction || pendingClimbAttack ||
     pendingLeaveHero || showGmTeamPick || magicCast.cast || editUnit || effectDrop ||
@@ -2763,7 +2919,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let cancelled = false;
     supabase
       .from('scenarios')
-      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled, ai_assist_players, hero_morale_boost_enabled, zoc_pursuit_enabled')
+      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled, ai_assist_players, hero_morale_boost_enabled, zoc_pursuit_enabled, halloween_siege')
       .eq('id', scenarioId)
       .single()
       .then(({ data, error }) => {
@@ -2790,6 +2946,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setAiAssistPlayers(data.ai_assist_players ?? false);
         setHeroMoraleBoostEnabled(data.hero_morale_boost_enabled ?? true);
         setZocPursuitEnabled(data.zoc_pursuit_enabled ?? true);
+        setHalloweenSiege(parseHalloweenSiegeConfig(data.halloween_siege));
       });
     return () => { cancelled = true; };
   }, [scenarioId, replayMode, updateScenarioField]);
@@ -2837,6 +2994,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }
           if (row.zoc_pursuit_enabled !== undefined) {
             setZocPursuitEnabled(row.zoc_pursuit_enabled ?? true);
+          }
+          if (row.halloween_siege !== undefined) {
+            setHalloweenSiege(parseHalloweenSiegeConfig(row.halloween_siege));
           }
           if (row.map_data !== undefined) {
             // Ignore a reordered/pre-delete snapshot (older than what we last applied)
@@ -3107,6 +3267,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         goToLobby={goToLobby}
         showStats={(isGM && !inReplay && !replayMode) || inReplay || replayMode}
         onOpenStats={() => setShowStats(true)}
+        halloweenSiegeStatus={siegeStatus}
       />
 
       {/* Floating Left Panel — hidden in replay or when the DM is gone */}
@@ -3752,6 +3913,40 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               </span>
             </label>
             </div>
+
+            <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mt-5 mb-2 border-b-2 border-gray-600 pb-1">Minigames</div>
+            <div className="pl-6">
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={halloweenSiege?.enabled ?? false}
+                onChange={async (e) => {
+                  await handleToggleHalloweenSiege(e.target.checked);
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">Halloween Siege</span>
+                <span className="block text-gray-400 text-[11px]">
+                  Wave-based monster assault: spawns weighted monster waves at the grid rim on Enemy turns, with one break turn between waves.
+                </span>
+              </span>
+            </label>
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                onClick={() => setShowHalloweenSiege(true)}
+                className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1 rounded text-xs"
+              >
+                Configure Halloween Siege…
+              </button>
+              <span className="text-[11px] text-gray-400">{siegeSettingsLabel}</span>
+            </div>
+            {halloweenSiege?.enabled && siegeEnemyTeams.length === 0 && (
+              <p className="text-amber-300 text-[11px] mt-1">
+                Assign at least one team to the Enemy alliance in Alliances — End Turn is blocked until then.
+              </p>
+            )}
+            </div>
             </>)}
             <div className="flex justify-end">
               <button
@@ -3763,6 +3958,17 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             </div>
           </div>
         </div>
+      )}
+
+      {showHalloweenSiege && (
+        <HalloweenSiegeWindow
+          config={halloweenSiege}
+          currentTurnAlliance={currentTurnAlliance}
+          turnNumber={turnNumber}
+          enemyTeams={siegeEnemyTeams}
+          onSave={handleSaveHalloweenSiege}
+          onClose={() => setShowHalloweenSiege(false)}
+        />
       )}
 
       {/* Attach Position Modal */}

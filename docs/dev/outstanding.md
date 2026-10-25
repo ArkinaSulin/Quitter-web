@@ -23,6 +23,14 @@ Statuses: next / later / blocked / done-here-listed-for-context.
   one-charge-per-activation was scrapped (AI still plots one).
 - AI roster: stacked ground/air units independently toggleable.
 
+## Halloween Siege (migration 133)
+Shipped: DM wave config, weighted Enemy-turn spawns at the grid rim, between-wave
+break turns, public wave/turn badge, End Turn guard when no Enemy team exists.
+- later: make wave spawns atomic (server-side INSERT in `apply_substeps`) so the
+  whole wave is one undoable command and `lastSpawnedTurn` rides the log.
+- later: optional "Spawn current wave now" recovery after a failed/undone spawn.
+- later: allow neutral-alliance monsters if/when the AI planner targets neutral.
+
 ## Effects engine
 - ✅ Zone **entry** damage, zone **mp_cost**, **dice** amounts (`XdY±Z`; X=0 flat),
   **healing** flag, per-troop **saves** (stat/DC/half-or-negate), **per-troop HP cap**.
