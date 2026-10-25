@@ -31,6 +31,10 @@ Pause / Step / Resume / Cancel and an **Undo Execute** macro.
 AI assist is deliberately *assist*: the DM (or an allowed player) triggers
 Preview/Execute, answers prompts, and presses End Turn.
 
+**Off-grid tokens** (outside `gridRadius`) are not AI-eligible. An AI plan may
+move a unit off-grid; from the next Preview onward it is out of play and the AI
+will not control it. The DM can still recover it manually.
+
 ## Files
 
 | Concern | File |

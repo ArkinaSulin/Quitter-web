@@ -24,12 +24,12 @@ export function canWithdraw(unit: Unit): boolean {
   return !unit.isHero && getOrganizationLevel(unit.currentFormation) > 0;
 }
 
-/** Legal withdraw destinations: the rear hexes that are empty, on the board, and
- *  NOT inside an enemy kill zone (retreating into a threat zone isn't a retreat). */
+/** Legal withdraw destinations: the rear hexes that are empty and NOT inside an
+ *  enemy kill zone (retreating into a threat zone isn't a retreat). Off-grid
+ *  rear hexes are allowed; the unit then becomes out of play. */
 export function withdrawDestinations(
   unit: Unit,
   occupied: Set<string>,
-  gridRadius: number,
   threatHexes?: Set<string> | null,
 ): Hex[] {
   if (!canWithdraw(unit)) return [];
@@ -37,6 +37,6 @@ export function withdrawDestinations(
     const k = `${h.q},${h.r}`;
     if (occupied.has(k)) return false;
     if (threatHexes?.has(k)) return false;
-    return Math.max(Math.abs(h.q), Math.abs(h.r), Math.abs(h.s)) <= gridRadius;
+    return true;
   });
 }

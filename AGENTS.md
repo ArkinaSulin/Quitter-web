@@ -78,6 +78,11 @@ reusable maps. Here's the state:
   Melee structure takeover assigns vacant top hexes first (quickest access), then
   defender marks only after vacancies are exhausted. No migration.
   `npm run check` passes.
+- **Off-grid tokens are out of play (option 2)**: `isHexOnGrid` uses the axial
+  `max(|q|,|r|,|s|) <= gridRadius` rule. Normal moves, withdraws, routs, and AI
+  plans may cross the rim; afterward non-DM players and the AI cannot control
+  the token (DM/effective GM is exempt). `withdrawDestinations` and
+  `routRetreatPath` no longer clamp to the rim. No migration.
 - **AI assist Pass 1 + 2a + 2b (migration 130, commits `009a6b1`, `f4e3695`; superseded by the Basic rewrite)**:
   scenario flags `ai_assist_advanced` / `ai_assist_players` (130, applied);
   Basic uses **Simple**, Advanced uses **Advance**; the AI tab has a per-preview

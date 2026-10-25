@@ -26,6 +26,11 @@ export { TOKEN_WIDTH, TOKEN_HEIGHT, getAttachedHeroPos, getHeroSquareSize } from
 
 export const DEFAULT_GRID_RADIUS = 12;
 
+/** Is `hex` inside the playable axial grid (max(|q|,|r|,|s|) <= gridRadius)? */
+export function isHexOnGrid(hex: Hex, gridRadius: number): boolean {
+  return Math.max(Math.abs(hex.q), Math.abs(hex.r), Math.abs(hex.s)) <= gridRadius;
+}
+
 /** Painted per-hex terrain entry costs: "q,r" -> MP cost to ENTER (0 free, 1 default, 2..9 costly). */
 export type TerrainCosts = Record<string, number>;
 

@@ -144,6 +144,8 @@ describe('Basic AI gates', () => {
     expect(isAiControllable({ ...ai, attachedToUnitId: 'host' }, { alliances: ALLIANCES, teams: ['blue'], activeAlliance: 'enemy' }, hosted)).toBe(false);
     expect(isAiControllable({ ...ai, hidden: true }, { alliances: ALLIANCES, teams: ['blue'], activeAlliance: 'enemy' }, hosted)).toBe(false);
     expect(isAiControllable(ai, { alliances: ALLIANCES, teams: ['blue'], activeAlliance: null }, hosted)).toBe(false);
+    expect(isAiControllable({ ...ai, hex: hex(4, 0) }, { alliances: ALLIANCES, teams: ['blue'], activeAlliance: 'enemy', gridRadius: 3 }, hosted)).toBe(false);
+    expect(isAiControllable({ ...ai, hex: hex(3, 0) }, { alliances: ALLIANCES, teams: ['blue'], activeAlliance: 'enemy', gridRadius: 3 }, hosted)).toBe(true);
   });
 
   it('allianceOf resolves through the alliance map', () => {

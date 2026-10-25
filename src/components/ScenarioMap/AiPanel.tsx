@@ -200,9 +200,9 @@ export function AiPanel({
     const hostedBy = new Set<string>();
     for (const u of units) if (u.attachedToUnitId && !u.isDeleted) hostedBy.add(u.attachedToUnitId);
     return units
-      .filter(u => isAiControllable(u, { alliances, teams: aiTeams, activeAlliance: currentTurnAlliance }, hostedBy))
+      .filter(u => isAiControllable(u, { alliances, teams: aiTeams, activeAlliance: currentTurnAlliance, gridRadius }, hostedBy))
       .map(u => u.id);
-  }, [units, alliances, aiTeams, currentTurnAlliance]);
+  }, [units, alliances, aiTeams, currentTurnAlliance, gridRadius]);
 
   // The same eligible set as objects, for the per-unit roster (stacked ground /
   // air units must be independently togglable).

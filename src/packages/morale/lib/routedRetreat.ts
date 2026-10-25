@@ -152,10 +152,6 @@ function classify(hex: Hex, kill: Set<string>, occ: Map<string, Unit>, ctx: Rout
   return getOrganizationLevel(u.currentFormation) >= 2 ? 'blocked' : 'pass';
 }
 
-function inBounds(hex: Hex, radius: number): boolean {
-  return Math.max(Math.abs(hex.q), Math.abs(hex.r), Math.abs(hex.s)) <= radius;
-}
-
 /**
  * Compute the routed unit's retreat, walking away from the threat.
  *
@@ -165,11 +161,10 @@ function inBounds(hex: Hex, radius: number): boolean {
  *  2. else hex 3 or 5 (prefer the one NOT adjacent to a hostile; random tie);
  *  3. else push THROUGH a friendly org <= 1 (scattering an Open Order one);
  *  4. else hex 2 or 6 (fewest hostiles adjacent).
- * Stepping through a friendly repeats from the new hex — UNBOUNDED (grid-radius
- * bounded) — until an empty safe hex is reached.
+ * Stepping through a friendly repeats from the new hex - UNBOUNDED - until an
+ * empty safe hex is reached (it may leave the grid, losing control).
  */
 export function routRetreatPath(ctx: RoutContext): RoutPath {
-  const radius = ctx.gridRadius ?? 12;
   const rnd = ctx.rnd ?? Math.random;
   const kill = enemyKillZone(ctx);
   const occ = new Map<string, Unit>();
@@ -192,7 +187,7 @@ export function routRetreatPath(ctx: RoutContext): RoutPath {
     const dirs = [away, (away + 1) % 6, (away + 5) % 6, (away + 2) % 6, (away + 4) % 6];
     const neigh = neighborsOf(pos);
     const info: NeighborInfo[] = dirs.map((d, i) => ({ dir: d, hex: neigh[d], kind: classify(neigh[d], kill, occ, ctx), unit: occ.get(key(neigh[d].q, neigh[d].r)) }));
-    const ok = (n: NeighborInfo) => inBounds(n.hex, radius) && !visited.has(key(n.hex.q, n.hex.r));
+    const ok = (n: NeighborInfo) => !visited.has(key(n.hex.q, n.hex.r));
 
     // 1) away (4) empty-safe.
     if (info[0].kind === 'empty' && ok(info[0])) return { dest: info[0].hex, scatters, through, path };

@@ -29,17 +29,16 @@ describe('canWithdraw', () => {
 describe('withdrawDestinations', () => {
   it('keeps empty, in-bounds rear hexes', () => {
     const u = mk({ hex: h(0, 0), facing: 0 }); // rear = (0,1),(-1,1)
-    expect(withdrawDestinations(u, new Set(['0,1']), 12)).toEqual([h(-1, 1)]);
-    expect(withdrawDestinations(u, new Set(), 12)).toEqual([h(0, 1), h(-1, 1)]);
+    expect(withdrawDestinations(u, new Set(['0,1']))).toEqual([h(-1, 1)]);
+    expect(withdrawDestinations(u, new Set())).toEqual([h(0, 1), h(-1, 1)]);
   });
-  it('excludes off-board rear hexes', () => {
+  it('allows off-board rear hexes (the unit leaves play)', () => {
     const u = mk({ hex: h(0, 0), facing: 0 });
-    // radius 0: only (0,0) is in bounds, so neither rear hex qualifies.
-    expect(withdrawDestinations(u, new Set(), 0)).toEqual([]);
+    expect(withdrawDestinations(u, new Set())).toEqual([h(0, 1), h(-1, 1)]);
   });
   it('excludes rear hexes inside an enemy kill zone (no retreat into danger)', () => {
     const u = mk({ hex: h(0, 0), facing: 0 });
-    expect(withdrawDestinations(u, new Set(), 12, new Set(['0,1']))).toEqual([h(-1, 1)]);
-    expect(withdrawDestinations(u, new Set(), 12, new Set(['0,1', '-1,1']))).toEqual([]);
+    expect(withdrawDestinations(u, new Set(), new Set(['0,1']))).toEqual([h(-1, 1)]);
+    expect(withdrawDestinations(u, new Set(), new Set(['0,1', '-1,1']))).toEqual([]);
   });
 });

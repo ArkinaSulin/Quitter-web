@@ -17,6 +17,7 @@ import { parseWeapons, isProtectedHero } from '@/packages/units';
 import { unitAttackCap, isMeleeWeapon, buildSwoopDropPlan, chargeStanceFor, isMeleeReachable } from '@/packages/combat';
 import { isUnitRouted, computeThreatRating } from '@/packages/morale';
 import { getSetting } from '@/packages/infra';
+import { isHexOnGrid } from '@/packages/world';
 import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveCapacity, structureClimbPerStep10, isClimbingUnit, applyMoveCost, moveBudgetUnit, climbPlan, canFly, flyMax } from '@/packages/movement';
 import { HEX_DIRS, arcOfTarget, facingToward, rotateLeft, rotateRight } from '@/packages/primitives';
 import {
@@ -56,7 +57,7 @@ interface Runtime {
 /** True when a unit may be handed to the AI. Routed units ARE eligible (they flee). */
 export function isAiControllable(
   unit: Unit,
-  ctx: Pick<AiPlanContext, 'alliances' | 'teams' | 'activeAlliance'>,
+  ctx: Pick<AiPlanContext, 'alliances' | 'teams' | 'activeAlliance' | 'gridRadius'>,
   hostedBy: Set<string>,
 ): boolean {
   if (unit.isDeleted) return false;
@@ -68,6 +69,7 @@ export function isAiControllable(
   if (!ctx.teams.includes(unit.team)) return false;
   if (ctx.activeAlliance === null) return false;
   if (allianceOf(unit, ctx.alliances) !== ctx.activeAlliance) return false;
+  if (ctx.gridRadius != null && !isHexOnGrid(unit.hex, ctx.gridRadius)) return false;
   if ((unit.actionsAvailable ?? 0) < 1 && (unit.movementPointsAvailable ?? 0) < 1) return false;
   return true;
 }

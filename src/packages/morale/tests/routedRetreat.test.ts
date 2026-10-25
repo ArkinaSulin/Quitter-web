@@ -40,6 +40,13 @@ describe('routRetreatPath — away axis', () => {
     const res = routRetreatPath(ctxOf(routed, [routed, enemy]));
     expect(res.dest).toEqual(h(-1, 0));
   });
+
+  it('may leave the grid when the away hex is off-grid', () => {
+    const routed = unit('r', 'blue', h(0, 0), { currentFormation: 'Routed' });
+    const attacker = unit('a', 'red', h(3, 0));
+    const res = routRetreatPath({ ...ctxOf(routed, [routed, attacker], attacker), gridRadius: 0 });
+    expect(res.dest).toEqual(h(-1, 0));
+  });
 });
 
 describe('routRetreatPath — away blocked, away-side flanks (3/5) first', () => {

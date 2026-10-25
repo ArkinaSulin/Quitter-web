@@ -384,8 +384,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     let withdrawKeys: string[] = [];
     if (!flying && canAffordWithdraw && canWithdraw(draggedUnit)) {
       const occupied = computeOccupiedHexes(units, draggedUnit.id, surface);
-      const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
-      withdrawKeys = withdrawDestinations(draggedUnit, occupied, radius, threatHexes).map(hx => `${hx.q},${hx.r}`);
+      withdrawKeys = withdrawDestinations(draggedUnit, occupied, threatHexes).map(hx => `${hx.q},${hx.r}`);
       for (const key of withdrawKeys) combined[key] = 'rgba(255, 255, 255, 0.32)';
     }
     for (const key of Array.from(threatHexes)) combined[key] = 'rgba(255, 100, 100, 0.5)';

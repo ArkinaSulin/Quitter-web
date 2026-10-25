@@ -275,10 +275,24 @@ confirm. on drop an **always-on confirm** states the cost before applying —
 It
 **never scatters and never provokes** a pursue; archer reactions still fire off
 the MOVE. **Free under `free_move`**; short on actions it may go negative via
-the same confirm (soft enforcement, shown red). The destination must be an empty,
-in-bounds rear hex that is **NOT inside an enemy kill zone** (retreating into a
-threat zone isn't a retreat). Heroes/Scattered/Routed are loose — no withdraw
-(their rear hexes are ordinary move hexes). See `09`.
+the same confirm (soft enforcement, shown red). The destination must be an empty
+rear hex that is **NOT inside an enemy kill zone** (retreating into a threat
+zone isn't a retreat). An off-grid rear hex is allowed; the unit then leaves
+play and cannot be controlled by non-DM players. Heroes/Scattered/Routed are
+loose - no withdraw (their rear hexes are ordinary move hexes). See `09`.
+
+## Out of play (off-grid tokens)
+
+A hex is playable when `max(|q|, |r|, |s|) <= gridRadius` (`isHexOnGrid`).
+Normal moves, withdraws, routs, and AI plans may cross the rim. Once a token is
+off-grid it is **out of play**:
+
+- non-DM players cannot grab, select-action, attack, or move it;
+- the AI does not control off-grid tokens;
+- the DM/effective GM is exempt and can recover it.
+
+There is no separate action/MP zeroing: control is blocked instead. This keeps
+undo/realtime recovery simple.
 
 ## Charge (movement-side)
 

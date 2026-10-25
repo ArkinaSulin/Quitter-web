@@ -50,7 +50,7 @@ import { getFormationMultiplier, getFormationModifier, computeEffectiveMovement,
 import { computeAttackCount } from '@/packages/combat';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
-import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes, mpCostOverrides } from '@/packages/world';
+import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes, mpCostOverrides, isHexOnGrid } from '@/packages/world';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST, isRotationAffordable } from '@/packages/movement';
 import { canReachStructure, canFly, parseClimbTo, isAirborne, flyMax, elevationOffset, hexDirection } from '@/packages/movement';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/packages/movement';
@@ -522,6 +522,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     currentTurnAlliance,
     freeMove,
     isGM,
+    gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
   });
   permRef.current = {
     caps: getRoleCapabilities(effectiveRole),
@@ -530,9 +531,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     currentTurnAlliance,
     freeMove,
     isGM: effectiveIsGM,
+    gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
   };
   const canControlUnit = useCallback((unit: Unit): boolean => {
-    const { caps, team, alliances: al, currentTurnAlliance: turn, freeMove: fm, isGM: gm } = permRef.current;
+    const { caps, team, alliances: al, currentTurnAlliance: turn, freeMove: fm, isGM: gm, gridRadius: radius } = permRef.current;
+    // Off-grid tokens are out of play for non-DM players; the DM can recover them.
+    if (!gm && !isHexOnGrid(unit.hex, radius)) return false;
     // The GM (scenario creator) can always override any gate. From turn 1 on,
     // non-GM players may only act during their own alliance's turn, and only on
     // that alliance's units (see canActOnUnit).
@@ -2228,8 +2232,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             if (isAirborne(u.elevation, structureSurfaceAt(u.hex, structures, structureTemplates)) && !freeMove && canWithdraw(u) && !u.isCharging) {
               const occupied = computeOccupiedHexes(units, unitId);
               const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates);
-              const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
-              const dests = withdrawDestinations(u, occupied, radius, threatHexes);
+              const dests = withdrawDestinations(u, occupied, threatHexes);
               if (dests.some(hx => hx.q === targetHex.q && hx.r === targetHex.r)) {
                 addError('Cannot withdraw during flight.');
                 return;
@@ -2241,8 +2244,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             if (!freeMove && canWithdraw(u) && !u.isCharging) {
               const occupied = computeOccupiedHexes(units, unitId);
               const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates);
-              const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
-              const dests = withdrawDestinations(u, occupied, radius, threatHexes);
+              const dests = withdrawDestinations(u, occupied, threatHexes);
               if (dests.some(hx => hx.q === targetHex.q && hx.r === targetHex.r)) {
                 setWithdrawConfirm({ unit: u, dest: targetHex });
                 return;
@@ -2297,7 +2299,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         for (const u of units) if (u.attachedToUnitId && !u.isDeleted) aiHostedBy.add(u.attachedToUnitId);
         if (
           !unit.isDeleted &&
-          isAiControllable(unit, { alliances, teams: aiTeams, activeAlliance: currentTurnAlliance }, aiHostedBy)
+          isAiControllable(unit, { alliances, teams: aiTeams, activeAlliance: currentTurnAlliance, gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS }, aiHostedBy)
         ) {
           toggleAiExcluded(unit.id);
         }

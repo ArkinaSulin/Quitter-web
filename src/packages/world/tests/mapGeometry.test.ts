@@ -1,7 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { hexMpLabelAt, makeCostOfHex, mpCostOverrides, mpPairText, computeOccupiedHexes, tokenDrawOrder } from '@/packages/world/lib/mapGeometry';
+import { hexMpLabelAt, makeCostOfHex, mpCostOverrides, mpPairText, computeOccupiedHexes, tokenDrawOrder, isHexOnGrid } from '@/packages/world/lib/mapGeometry';
 import { StructureTemplate } from '@/types/structure';
 import { GroundEffect } from '@/types/gameProtocol';
+
+describe('isHexOnGrid', () => {
+  it('uses the axial max coordinate', () => {
+    expect(isHexOnGrid({ q: 0, r: 0, s: 0 }, 3)).toBe(true);
+    expect(isHexOnGrid({ q: 3, r: -3, s: 0 }, 3)).toBe(true);
+    expect(isHexOnGrid({ q: 4, r: -2, s: -2 }, 3)).toBe(false);
+    expect(isHexOnGrid({ q: -2, r: 4, s: -2 }, 3)).toBe(false);
+  });
+});
 
 const template = (over: Partial<StructureTemplate> = {}): StructureTemplate => ({
   id: 't1',
