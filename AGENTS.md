@@ -34,9 +34,11 @@ reusable maps. Here's the state:
   2–3 hexes and upgrades before attacking; ranged scatters within 6, travels
   Open and closes to shoot; flying climbs by movement (10 ft/hex, descent free),
   swoops and retreats to 20 ft/≥2 hexes; mounted marks only outer-rim targets,
-  stages on the max one-action charge ring (pool + 1) with ≥5 from hostiles and
-  end-of-move facing toward the next charge lane, and only rear-charges when the
-  landing is legal from its final front arc. A charge/swoop may be the first or
+  stages on the max one-action charge ring (pool + 1) with a hard 5-hex safety
+  gate (3 when the hostile is in a friendly kill zone; target excluded), circles
+  to a safe rear approach when no lane is ready, ends facing the next charge
+  lane, and only rear-charges when the landing is legal from its final front
+  arc. A charge/swoop may be the first or
   a later action (1+ action; no fly-point threshold), with the gate re-checked
   after any facing turn; at most one charge/swoop per activation, then remaining
   resources disengage/evade. Units spend all actions (melee/ranged attack twice;

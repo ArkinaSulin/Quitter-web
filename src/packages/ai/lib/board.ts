@@ -380,6 +380,26 @@ export function isOuterRimTarget(target: Unit, occupied: Set<string>, foes: Unit
   return false;
 }
 
+/** Is `hostile` inside the kill zone (ZoC) of any friendly unit? */
+export function isInFriendlyKillZone(
+  hostile: Unit,
+  self: Unit,
+  units: Unit[],
+  ctx: Pick<AiPlanContext, 'alliances' | 'structures' | 'structureTemplates'>,
+): boolean {
+  const group = allianceOf(self, ctx.alliances);
+  return units.some(f =>
+    !f.isDeleted && !f.hidden && !f.attachedToUnitId && (f.currentUnitHp ?? 0) > 0
+    && allianceOf(f, ctx.alliances) === group
+    && imposesKillZone(f, hostile.hex, {
+      targetElevation: hostile.elevation ?? 0,
+      ownSurface: unitSurface(f, ctx),
+      structures: ctx.structures,
+      templates: ctx.structureTemplates,
+    }),
+  );
+}
+
 /** Hostiles whose current front arc / vertical domination covers `unit.hex`. */
 export function zocSourcesAt(unit: Unit, foes: Unit[], ctx: Pick<AiPlanContext, 'structures' | 'structureTemplates'>): Unit[] {
   const targetElev = unit.elevation ?? 0;

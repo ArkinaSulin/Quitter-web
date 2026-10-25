@@ -10,9 +10,10 @@ import {
   isFlankedAt,
   reverseDistanceMap,
   nextLegalTarget,
+  isInFriendlyKillZone,
   AiPlanContext,
 } from '@/packages/ai';
-import { Unit, Hex, AllianceGroup, Formation } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, hexDistance } from '@/types/gameProtocol';
 import { edgeRef } from '@/packages/movement';
 
 const SPEAR = 'Spear,3,1d8,false,1,1,0,true,false,false,false,1,true,Dex,circle';
@@ -306,6 +307,29 @@ describe('Basic AI mounted charge hardening', () => {
     const friend = mk({ id: 'f2', team: 'blue', hex: hex(1, -3) });
     return [mount, target, friend];
   };
+
+  it('uses the friendly kill zone for the 3-hex safety radius', () => {
+    const friend = mk({ id: 'k', team: 'blue', hex: hex(1, 2), facing: 0 });
+    const locked = mk({ id: 'c', team: 'black', hex: hex(2, 1) });
+    const ctx = ctxOf([friend, locked]);
+    expect(isInFriendlyKillZone(locked, friend, [friend, locked], ctx)).toBe(true);
+    const turned = { ...friend, facing: 3 };
+    expect(isInFriendlyKillZone(locked, turned, [turned, locked], ctx)).toBe(false);
+  });
+
+  it('moves out of a locked hostile kill-zone radius instead of holding', () => {
+    const mount = mk({ id: 'c1', team: 'blue', hex: hex(2, 3), facing: 0, mountId: 'horse', mountName: 'Horse', canCharge: true, movementPoints: 6 });
+    const locked = mk({ id: 'c', team: 'black', hex: hex(2, 1) });
+    const target = mk({ id: 'b', team: 'black', hex: hex(-1, 1), facing: 3 });
+    const friend = mk({ id: 'k', team: 'blue', hex: hex(1, 2), facing: 0 });
+    const engaged = mk({ id: 'j', team: 'blue', hex: hex(-2, 1) });
+    const result = planAiMoves({ ...ctxOf([mount, locked, target, friend, engaged]), chargeEnabled: false });
+    const moves = stepsOf(result, 'c1').filter(s => s.kind === 'move');
+    expect(moves.length).toBeGreaterThan(0);
+    for (const m of moves) {
+      expect(hexDistance(m.to, locked.hex)).toBeGreaterThanOrEqual(3);
+    }
+  });
 
   it('stages on the charge-radius ring and turns at the end to face the lane', () => {
     const mount = mk({ id: 'c1', team: 'blue', hex: hex(0, 0), facing: 0, mountId: 'horse', mountName: 'Horse', canCharge: true, movementPoints: 6 });

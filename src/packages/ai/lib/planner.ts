@@ -25,7 +25,7 @@ import {
 import {
   Maneuver, StructureComplex, allianceOf, applyManeuver, applyTurns, archetypeOf, chooseFacing, distanceMap,
   effectiveMax, enemyGroupsOf, enemyPool, hexKeyOf, hexesWithin, isFlankedAt, isFullyUpgraded, isGroundTarget,
-  isOuterApproachHex, isOuterRimTarget,
+  isOuterApproachHex, isOuterRimTarget, isInFriendlyKillZone,
   isTargetReachable, maneuversFor, movementContextFor, nextFormationUpgrade,
   primaryMaxRange, reverseDistanceMap, structureComplexFor, surfaceAt, targetPathCost, unitIsAirborne, unitSurface,
 } from './board';
@@ -1133,18 +1133,32 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
   // The farthest ring from which a full charge can reach an adjacent target in
   // one charge move: one action's pool plus the target's own ring.
   const maxRadius = pool + 1;
+  // A hostile inside any friendly kill zone is unlikely to move; allow the
+  // mounted unit to stage at 3 hexes instead of 5. Otherwise keep the full
+  // safety radius. This is the SAME kill-zone predicate used by ZoC/morale.
+  const safetyRules = rt.enemies.map(e => ({
+    id: e.id,
+    hex: e.hex,
+    radius: isInFriendlyKillZone(e, u, rt.working, rt.ctx) ? 3 : 5,
+  }));
+  const safetyMargin = (hex: Hex, excludeId?: string): number => {
+    const rules = excludeId ? safetyRules.filter(r => r.id !== excludeId) : safetyRules;
+    return rules.length === 0
+      ? Infinity
+      : Math.min(...rules.map(r => hexDistance(hex, r.hex) - r.radius));
+  };
   const nearestHostile = (hex: Hex): number => rt.enemies.length === 0
     ? Infinity
     : Math.min(...rt.enemies.map(e => hexDistance(hex, e.hex)));
 
-  // With no rim target, hold when safe; otherwise move to the hex farthest from
-  // every hostile. Mounted units never chase into the middle of a formation.
+  // With no rim target, hold when safe; otherwise move to the hex with the
+  // greatest safety margin. Mounted units never chase into a formation.
   const safestMove = (): Unit => {
-    if (rt.enemies.length === 0 || nearestHostile(u.hex) >= 5) return u;
+    if (rt.enemies.length === 0 || safetyMargin(u.hex) >= 0) return u;
     const m = bestManeuver(u, rt, 'ground', (candidate, threat) => {
       if (candidate.path.length === 0) return -Infinity;
       if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
-      return nearestHostile(candidate.dest) * 100 - candidate.cost * 2 - candidate.turns.length * 2;
+      return safetyMargin(candidate.dest) * 100 - candidate.cost * 2 - candidate.turns.length * 2;
     });
     if (!m) return u;
     u = pushMove(plan, u, m, rt.ctx);
@@ -1232,12 +1246,12 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     plan.steps.push({ kind: 'chargeEnd', unitId: u.id, from: u.hex });
     u = { ...u, isCharging: false, chargeDistance: 0 };
     rt.commit(u);
-    // Evade with any remaining actions / MP after the charge, preferring >=5
-    // hexes from every hostile.
+    // Evade with any remaining actions / MP after the charge, preferring the
+    // greatest safety margin (3 near locked hostiles, otherwise 5).
     const retreat = bestManeuver(u, rt, 'ground', (candidate, threat) => {
       if (candidate.path.length === 0) return -Infinity;
       if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
-      return nearestHostile(candidate.dest) * 100 - candidate.cost * 2 - candidate.turns.length * 2;
+      return safetyMargin(candidate.dest) * 100 + nearestHostile(candidate.dest) - candidate.cost * 2 - candidate.turns.length * 2;
     });
     if (retreat) {
       u = pushMove(plan, u, retreat, rt.ctx);
@@ -1280,6 +1294,11 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
       if (move.path.length === 0 && move.turns.length > 0) continue;
       const dest = move.dest;
       if (movement.threat.has(hexKeyOf(dest))) continue;
+      const inspected = move.path.length > 0 ? move.path : [dest];
+      // Hard safety: every staged/path hex must satisfy each hostile's radius.
+      // The intended charge target is excluded; its ring distance is scored below.
+      if (safetyMargin(dest, target.id) < 0) continue;
+      if (inspected.some(p => safetyMargin(p, target.id) < 0)) continue;
       if (arcOfTarget(target.hex, target.facing, dest) !== 'rear') continue;
       const post = applyManeuver(move.unit, move, rt.ctx);
       let bestFace: { endTurns: { dir: 'left' | 'right' }[]; facing: number } | null = null;
@@ -1302,20 +1321,29 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
           bestFace = { endTurns, facing };
         }
       }
-      if (!bestFace) continue;
+      const ideal = !!bestFace;
+      // If no next-turn lane exists yet, still circle to a safe rear position
+      // and face the target; never hold here (only an ideal stage may hold).
+      if (!bestFace) {
+        if (move.path.length === 0) continue;
+        const facing = facingToward(dest, target.hex);
+        const endTurns = turnsTo(post.facing, facing);
+        const faced = applyTurns(post, endTurns, rt.ctx);
+        if (!faced) continue;
+        if (isFlankedAt(dest, facing, rt.enemies, target.id)) continue;
+        bestFace = { endTurns, facing };
+      }
       const d = hexDistance(dest, target.hex);
-      const nearestDest = nearestHostile(dest);
-      const inspected = move.path.length > 0 ? move.path : [dest];
       const minTarget = Math.min(...inspected.map(p => hexDistance(p, target.hex)));
-      const minHostile = Math.min(...inspected.map(nearestHostile));
-      // Safety dominates; then hold the radius circle; then prefer rear and
-      // cheaper movement. Unsafe destinations are still considered as a last
-      // resort so the unit always takes the safest reachable option.
-      let score = -Math.abs(d - maxRadius) * 1000;
-      if (nearestDest < 5) score -= (5 - nearestDest) * 1_000_000;
-      if (minHostile < 5) score -= (5 - minHostile) * 100_000;
-      if (minTarget < maxRadius) score -= (maxRadius - minTarget) * 10_000;
-      score += Math.min(nearestDest, 10) * 100;
+      const minMargin = Math.min(...inspected.map(p => safetyMargin(p, target.id)));
+      // An ideal staged/lane position outranks a mere approach; among equals
+      // prefer the radius circle, greater safety margin and cheaper movement.
+      // Paths that cut inside the circle are penalised.
+      let score = ideal ? 1_000_000 : 0;
+      score += Math.min(safetyMargin(dest, target.id), 4) * 10_000;
+      score += Math.min(minMargin, 4) * 2_000;
+      score -= Math.abs(d - maxRadius) * 100;
+      if (minTarget < maxRadius) score -= (maxRadius - minTarget) * 50;
       score -= move.cost * 2 + move.turns.length * 2 + bestFace.endTurns.length * 30;
       if (target.id === markedId) score += 1;
       if (!bestStage || score > bestStage.score) {

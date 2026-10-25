@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## AI mounted: kill-zone safety radius + circling approach (2026-10-24)
+**Files:** src/packages/ai/{lib/{board,planner}.ts,tests/planner.test.ts}, docs/dev/{17-enemy-ai,changelog}.md, AGENTS.md
+
+- Staging safety is now a hard, per-hostile gate: **5 hexes** normally, relaxed
+  to **3** when the hostile is inside any friendly unit's kill zone (ZoC). The
+  charge target itself is excluded; its distance is governed by the staging ring.
+- Added the missing **circling approach** phase: a mounted unit that is safe but
+  not yet on a validated staging lane moves to a safe rear approach instead of
+  holding. Hold only at an ideal staged/lane position. If no safe approach
+  exists it picks the largest safety-margin hex.
+- Added a shared `isInFriendlyKillZone` helper using the canonical
+  `imposesKillZone` predicate.
+- Tests: kill-zone relaxation, and a mounted unit inside a locked hostile's
+  3-hex radius moves out instead of holding.
+- Verification: `npm run check` passes (tsc, 1136 tests, depcruise, build). No
+  migration.
+
 ## AI mounted: rim targets, radius-5+ staging, legal rear charges (2026-10-24)
 **Files:** src/packages/ai/{lib/{board,marks,planner}.ts,tests/planner.test.ts}, docs/dev/{17-enemy-ai,changelog}.md, AGENTS.md
 

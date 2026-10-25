@@ -320,8 +320,16 @@ does not abandon it:
   other enemy. Interior targets are never marked or charged.
 - Staging circle: radius **`pool + 1`**, the farthest ring from which a full
   charge can reach an adjacent target in one charge move. The path is scored to
-  stay on/outside that circle, keep **>=5 hexes from every hostile** where
-  possible, and end in the target's **rear** arc.
+  stay on/outside that circle and end in the target's **rear** arc.
+- **Safety is a hard gate:** every staged/path hex must be >=5 hexes from every
+  **other** hostile, or >=3 when that hostile is inside the kill zone (ZoC) of
+  any friendly unit. The intended charge target is excluded from this gate; its
+  ring distance is governed by the staging radius instead. A hostile in a
+  friendly kill zone is treated as melee-locked.
+- If no complete next-turn lane exists, the unit still **circles** to a safe
+  rear approach rather than holding. Hold only when already safe, on the staging
+  geometry, rear-facing and lined up; otherwise take the safe approach. If no
+  safe approach exists, choose the reachable hex with the largest safety margin.
 - Charge only when the canonical `chargeStanceFor` gate allows it
   (`canCharge`, a charge-capable formation, **at least 1 action**, scenario
   **Charge and Swoop** on), and:
@@ -341,7 +349,7 @@ does not abandon it:
   charge lane. Prefer a no-turn charge next activation; only choose a
   destination that leaves enough MP/action for those end turns.
 - After the charge attack: remaining action/MP disengages to the safest hex
-  (prefer >=5 from every hostile), then upgrades to the highest affordable org
+  (same 5/3 safety thresholds), then upgrades to the highest affordable org
   formation. One charge per activation.
 - If already on the right rim, safe, rear-facing and lined up: hold.
 
