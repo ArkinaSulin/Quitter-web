@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## AI flying: airborne priority + air-to-air attacks (2026-10-24)
+**Files:** src/packages/ai/{lib/{marks,planner}.ts,tests/planner.test.ts}, docs/dev/{17-enemy-ai,changelog}.md, AGENTS.md
+
+- Flying AI now prioritizes airborne hostiles. Marks prefer airborne targets
+  when any exist, and the planner pursues them instead of falling through to a
+  ground swoop.
+- Air-to-air uses a ranged weapon when possible (fire if already in range,
+  otherwise close to max range) and normal paid melee otherwise; there is no
+  air charge/swoop by design. Melee approach moves end at the target elevation.
+- If no air attack is reachable this activation, the flyer closes on the air
+  target instead of switching to ground. Ground swoop behaviour is unchanged.
+- Swoop remains a charge attack and deals doubled damage.
+- Tests: air priority/mark, adjacent air melee, move+air melee, ranged air fire,
+  and air pursuit without a ground swoop.
+- Verification: `npm run check` passes (tsc, 1143 tests, depcruise, build). No
+  migration.
+
 ## Charge AGR failure ends the charge and drops org (2026-10-24)
 **Files:** src/components/ScenarioMap/{useCombatActions.ts,AiPanel.tsx}, docs/dev/{08-combat,changelog}.md
 

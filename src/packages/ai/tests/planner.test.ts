@@ -456,6 +456,46 @@ describe('Basic AI flying swoop hardening', () => {
     expect(steps.some(s => s.kind === 'charge')).toBe(false);
     expect(steps.some(s => s.kind === 'swoop')).toBe(false);
   });
+
+  it('prioritizes an airborne target and attacks it in melee', () => {
+    const flyer = mk({ id: 'fly1', team: 'blue', hex: hex(0, 0), facing: 0, flySpeed: 6, flySpeedAvailable: 0, elevation: 20, actionsAvailable: 2 });
+    const air = mk({ id: 'a1', team: 'black', hex: hex(0, -1), facing: 0, flySpeed: 6, elevation: 20 });
+    const ground = mk({ id: 'g1', team: 'black', hex: hex(1, 0), facing: 0 });
+    const result = planAiMoves(ctxOf([flyer, air, ground]));
+    const steps = stepsOf(result, 'fly1');
+    expect(result.marks.find(m => m.kind === 'flying' && m.byUnitId === 'fly1')?.targetId).toBe('a1');
+    expect(steps.some(s => s.kind === 'attack' && s.targetId === 'a1')).toBe(true);
+    expect(steps.some(s => s.kind === 'charge' || s.kind === 'swoop')).toBe(false);
+  });
+
+  it('flies adjacent to an airborne target and attacks it', () => {
+    const flyer = mk({ id: 'fly1', team: 'blue', hex: hex(0, 0), facing: 0, flySpeed: 6, flySpeedAvailable: 0, elevation: 20, actionsAvailable: 2 });
+    const air = mk({ id: 'a1', team: 'black', hex: hex(0, -2), facing: 0, flySpeed: 6, elevation: 20 });
+    const result = planAiMoves(ctxOf([flyer, air]));
+    const steps = stepsOf(result, 'fly1');
+    expect(steps.some(s => s.kind === 'move')).toBe(true);
+    expect(steps.some(s => s.kind === 'attack' && s.targetId === 'a1')).toBe(true);
+    expect(steps.some(s => s.kind === 'swoop')).toBe(false);
+  });
+
+  it('fires at an airborne target when a ranged weapon is available', () => {
+    const flyer = mk({ id: 'fly1', team: 'blue', hex: hex(0, 0), facing: 0, flySpeed: 6, flySpeedAvailable: 0, elevation: 20, actionsAvailable: 2, weaponString: SHORTBOW });
+    const air = mk({ id: 'a1', team: 'black', hex: hex(0, -2), facing: 0, flySpeed: 6, elevation: 20 });
+    const result = planAiMoves(ctxOf([flyer, air]));
+    const steps = stepsOf(result, 'fly1');
+    expect(steps.some(s => s.kind === 'attack' && s.targetId === 'a1')).toBe(true);
+    expect(steps.some(s => s.kind === 'swoop')).toBe(false);
+  });
+
+  it('keeps pursuing an airborne target it cannot reach this activation', () => {
+    const flyer = mk({ id: 'fly1', team: 'blue', hex: hex(0, 0), facing: 0, flySpeed: 6, flySpeedAvailable: 0, elevation: 20, actionsAvailable: 2 });
+    const air = mk({ id: 'a1', team: 'black', hex: hex(0, -9), facing: 0, flySpeed: 6, elevation: 20 });
+    const ground = mk({ id: 'g1', team: 'black', hex: hex(0, -1), facing: 0 });
+    const result = planAiMoves(ctxOf([flyer, air, ground]));
+    const steps = stepsOf(result, 'fly1');
+    expect(steps.some(s => s.kind === 'move')).toBe(true);
+    expect(steps.some(s => s.kind === 'swoop' || s.kind === 'charge')).toBe(false);
+  });
 });
 
 describe('Basic AI engagement retargeting and pass-through', () => {

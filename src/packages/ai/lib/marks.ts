@@ -21,6 +21,8 @@ export interface MarkOptions {
   meleeCap?: (target: Unit) => number;
   /** Mounted doctrine: only target units on the hostile formation's outer rim. */
   mountedEligible?: (target: Unit) => boolean;
+  /** Flying doctrine: prefer airborne targets when any are available. */
+  flyingAirborne?: (target: Unit) => boolean;
 }
 
 export interface MarkResult {
@@ -62,10 +64,14 @@ export function assignMarks(opts: MarkOptions): MarkResult {
     const basePool = kind === 'ranged' || kind === 'flying'
       ? enemies
       : enemies.filter(t => reachable(unit, t));
+    const airPool = kind === 'flying' && opts.flyingAirborne
+      ? basePool.filter(t => opts.flyingAirborne!(t))
+      : [];
+    const effectiveBase = airPool.length > 0 ? airPool : basePool;
     // Mounted doctrine: outer-rim targets only. No fallback to the interior.
     const pool = (kind === 'mounted' && opts.mountedEligible
-      ? basePool.filter(t => opts.mountedEligible!(t))
-      : basePool)
+      ? effectiveBase.filter(t => opts.mountedEligible!(t))
+      : effectiveBase)
       .slice()
       .sort((a, b) => distance(unit, a) - distance(unit, b)
         || moraleOf(a) - moraleOf(b)

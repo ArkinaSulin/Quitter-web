@@ -32,8 +32,10 @@ reusable maps. Here's the state:
   ranged unlimited, flying 1, mounted 1 + a non-mounted friendly mark); melee
   stages at
   2–3 hexes and upgrades before attacking; ranged scatters within 6, travels
-  Open and closes to shoot; flying climbs by movement (10 ft/hex, descent free),
-  swoops and retreats to 20 ft/≥2 hexes; mounted marks only outer-rim targets,
+  Open and closes to shoot; flying prioritizes airborne targets (ranged at max
+  range, else paid melee; no air swoop), otherwise climbs by movement
+  (10 ft/hex, descent free), swoops ground targets and retreats to 20 ft/≥2
+  hexes; mounted marks only outer-rim targets,
   scans for a legal rear charge each activation, otherwise paths to the closest
   valid charge-start point within pool + 1 (start need not be rear; only the
   landing must be rear-adjacent), with a hard 5-hex safety

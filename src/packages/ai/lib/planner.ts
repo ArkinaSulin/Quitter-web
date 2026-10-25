@@ -1467,9 +1467,14 @@ function planFlying(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     .candidates(u, 'flying')
     .slice()
     .sort((a, b) => (a.id === markedId ? 0 : 1) - (b.id === markedId ? 0 : 1) || a.id.localeCompare(b.id));
-  // Prefer a grounded target we can actually swoop; fall back to the marked one.
+  // Air superiority first: the marked airborne target, else the nearest one.
+  const airTarget =
+    candidates.find(c => c.id === markedId && !isGroundTarget(c, rt.ctx))
+    ?? candidates.find(c => !isGroundTarget(c, rt.ctx))
+    ?? null;
+  // Otherwise prefer a grounded target we can swoop.
   let target: Unit | null =
-    candidates.find(c => isGroundTarget(c, rt.ctx)) ?? candidates[0] ?? null;
+    airTarget ?? candidates.find(c => isGroundTarget(c, rt.ctx)) ?? candidates[0] ?? null;
   if (!target) return u;
 
   const airborne = unitIsAirborne(u, rt.ctx);
@@ -1484,6 +1489,78 @@ function planFlying(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     const nextElev = Math.min(20, elevation + 10 * Math.max(1, climb.path.length));
     u = pushMove(plan, u, climb, rt.ctx, nextElev);
     rt.commit(u);
+  }
+
+  if (airTarget) {
+    // No air charge/swoop by design: fire at range if possible, otherwise melee.
+    if (primaryMaxRange(u) > 1 && (u.activeWeaponIndex ?? 0) !== 0) {
+      plan.steps.push({ kind: 'weapon', unitId: u.id, from: u.hex, weaponIndex: 0 });
+      u = { ...u, activeWeaponIndex: 0 };
+      rt.commit(u);
+    }
+    const primaryRanged = primaryMaxRange(u) > 1;
+    const maxRange = Math.max(1, primaryMaxRange(u));
+    const targetElev = airTarget.elevation ?? 0;
+    const legalNow = legalTargets(u, [airTarget], rt.ctx);
+    if (canAct(u) && legalNow.length > 0) {
+      u = pushAttack(plan, u, airTarget);
+      rt.commit(u);
+      return u;
+    }
+
+    // In range but facing the wrong way: turn, then attack.
+    if (canAct(u) && hexDistance(u.hex, airTarget.hex) <= maxRange) {
+      const turns = turnsTo(u.facing, facingToward(u.hex, airTarget.hex));
+      if (turns.length > 0) {
+        const turned = pushTurns(plan, u, turns, rt.ctx);
+        if (turned) {
+          u = turned;
+          rt.commit(u);
+          if (legalTargets(u, [airTarget], rt.ctx).length > 0 && canAct(u)) {
+            u = pushAttack(plan, u, airTarget);
+            rt.commit(u);
+            return u;
+          }
+        }
+      }
+    }
+
+    // Find a fly destination that makes the target attackable. Set elevation to
+    // the target altitude so adjacent melee satisfies the same-elevation rule.
+    const desiredRange = primaryRanged ? maxRange : 1;
+    let best: { move: Maneuver; score: number } | null = null;
+    for (const move of maneuversFor(u, rt.working, rt.ctx, 'fly', rt.complexes.get(u.id) ?? null)) {
+      if (move.path.length === 0) continue;
+      const sim = { ...u, hex: move.dest, elevation: targetElev };
+      if (legalTargets(sim, [airTarget], rt.ctx).length === 0) continue;
+      const post = applyManeuver(move.unit, move, rt.ctx);
+      if ((post.actionsAvailable ?? 0) < 1) continue; // need an action for the attack
+      const d = hexDistance(move.dest, airTarget.hex);
+      const score = -Math.abs(d - desiredRange) * 100 - move.cost * 2 - move.turns.length * 2;
+      if (!best || score > best.score) best = { move, score };
+    }
+    if (best) {
+      u = pushMove(plan, u, best.move, rt.ctx, targetElev);
+      rt.commit(u);
+      if (legalTargets(u, [airTarget], rt.ctx).length > 0 && canAct(u)) {
+        u = pushAttack(plan, u, airTarget);
+        rt.commit(u);
+      }
+      return u;
+    }
+
+    // No reachable attack: close at the target altitude instead of falling
+    // through to a ground swoop/retreat.
+    const approach = bestManeuver(u, rt, 'fly', (move) => {
+      if (move.path.length === 0) return -Infinity;
+      const d = hexDistance(move.dest, airTarget.hex);
+      return -Math.abs(d - desiredRange) * 100 - move.cost * 2 - move.turns.length * 2;
+    });
+    if (approach) {
+      u = pushMove(plan, u, approach, rt.ctx, targetElev);
+      rt.commit(u);
+    }
+    return u;
   }
 
   // One swoop per activation (one charge). A swoop may be declared on the first
@@ -1670,6 +1747,7 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
       return Math.min(6, count);
     },
     mountedEligible: (target) => isOuterRimTarget(target, groundOccupied, enemies),
+    flyingAirborne: (target) => !isGroundTarget(target, ctx),
   });
 
   const rt: Runtime = {

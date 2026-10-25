@@ -299,8 +299,19 @@ does not abandon it:
 - Elevation is **free but movement-bound**: a move may climb at most
   **+10 ft per hex moved**; descending is free. There is no standalone free
   elevate step. A flyer climbs by moving with an `elevation` target.
-- Mark the closest hostile not already flyer-marked. Face it, then
-  `charge` → `swoop` (the atomic dive + free melee attack).
+- **Air superiority first.** If any airborne hostile exists, mark/target it
+  before any ground target. Marks prefer airborne units when available.
+- Against an airborne target:
+  - use a ranged weapon if possible; fire immediately when already in range,
+    otherwise close/retreat to max range and fire;
+  - otherwise use **normal paid melee** after moving adjacent at the target's
+    elevation (adjacent melee requires the same elevation);
+  - there is **no air charge/swoop by design**;
+  - if it cannot attack this activation, keep pursuing/closing on the air
+    target and do not fall back to a ground swoop.
+- Ground targets: mark the closest hostile not already flyer-marked, face it,
+  then `charge` → `swoop` (the atomic dive + free melee charge attack). Swoop
+  damage is **doubled**, like any charge.
 - Scenarios gate this through the canonical `chargeStanceFor` rule: airborne,
   fly-capable, **at least 1 action**, and the scenario **Charge and Swoop**
   toggle on. There is no fly-point threshold; the charge consumes one action
