@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## AI mounted: charge-start points + multi-turn rear routes (2026-10-24)
+**Files:** src/packages/ai/{lib/planner.ts,tests/planner.test.ts}, docs/dev/{17-enemy-ai,changelog}.md, AGENTS.md
+
+- Removed the incorrect requirement that the **charge-start/staging hex** be in
+  the target's rear arc. Only the **landing** must be rear-adjacent; the charge
+  corridor may not turn during the move, but the unit may turn before declaring.
+- Scanning is per activation across all rim targets. If no charge is legal now,
+  the unit finds the **closest valid charge-start point** within `pool + 1`
+  (path cost), routes toward it over multiple turns (never entering hostile ZoC),
+  and ends facing the next charge lane.
+- Fixes the "only I moves, everyone else holds" behaviour: a safe but unstaged
+  unit now paths/circles; it holds only when already at a valid charge start.
+- Added a source-side charge regression (start outside the target rear arc with
+  a straight lane to a rear landing).
+- Verification: `npm run check` passes (tsc, 1137 tests, depcruise, build). No
+  migration.
+
 ## AI mounted: kill-zone safety radius + circling approach (2026-10-24)
 **Files:** src/packages/ai/{lib/{board,planner}.ts,tests/planner.test.ts}, docs/dev/{17-enemy-ai,changelog}.md, AGENTS.md
 

@@ -256,12 +256,12 @@ describe('Basic AI approach and special archetypes', () => {
     expect(steps.some(s => s.kind === 'move' || s.kind === 'swoop')).toBe(true);
   });
 
-  it('plans a mounted staging move when no charge is available', () => {
+  it('holds at a valid charge start when no charge is available', () => {
     const mount = mk({ id: 'c1', team: 'blue', hex: hex(0, 0), mountId: 'horse', mountName: 'Horse', canCharge: true, movementPoints: 6 });
     const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -6) });
     const result = planAiMoves(ctxOf([mount, foe]));
     const steps = stepsOf(result, 'c1');
-    expect(steps.some(s => s.kind === 'move')).toBe(true);
+    expect(steps.some(s => s.kind === 'move')).toBe(false);
     expect(steps.some(s => s.kind === 'charge')).toBe(false);
   });
 });
@@ -331,15 +331,25 @@ describe('Basic AI mounted charge hardening', () => {
     }
   });
 
-  it('stages on the charge-radius ring and turns at the end to face the lane', () => {
+  it('routes around a target that is too close and turns to face the lane', () => {
     const mount = mk({ id: 'c1', team: 'blue', hex: hex(0, 0), facing: 0, mountId: 'horse', mountName: 'Horse', canCharge: true, movementPoints: 6 });
-    const foe = mk({ id: 'f1', team: 'black', hex: hex(3, -6), facing: 0 });
+    const foe = mk({ id: 'f1', team: 'black', hex: hex(0, -1), facing: 0 });
     const result = planAiMoves(ctxOf([mount, foe]));
     const steps = stepsOf(result, 'c1');
     const moveIdx = steps.findIndex(s => s.kind === 'move');
     expect(moveIdx).toBeGreaterThanOrEqual(0);
     expect(steps.slice(moveIdx + 1).some(s => s.kind === 'turn')).toBe(true);
     expect(steps.some(s => s.kind === 'charge' || s.kind === 'chargeEnd')).toBe(false);
+  });
+
+  it('charges from a side start with a straight lane to a rear landing', () => {
+    const mount = mk({ id: 'c1', team: 'blue', hex: hex(1, 4), facing: 0, mountId: 'horse', mountName: 'Horse', canCharge: true, movementPoints: 6, actionsAvailable: 2 });
+    const target = mk({ id: 'b', team: 'black', hex: hex(-1, 1), facing: 3 });
+    const engaged = mk({ id: 'j', team: 'blue', hex: hex(-2, 1) });
+    const result = planAiMoves(ctxOf([mount, target, engaged]));
+    const steps = stepsOf(result, 'c1');
+    expect(steps.some(s => s.kind === 'charge')).toBe(true);
+    expect(steps.some(s => s.kind === 'attack' && s.charge)).toBe(true);
   });
 
   it('charges an engaged target from the rear on its first action', () => {

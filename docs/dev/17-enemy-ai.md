@@ -318,25 +318,31 @@ does not abandon it:
 - Mark a **rim target** with a non-mounted friendly mark and no other mounted
   mark. A rim target has an adjacent hex that is empty and touches at most one
   other enemy. Interior targets are never marked or charged.
-- Staging circle: radius **`pool + 1`**, the farthest ring from which a full
-  charge can reach an adjacent target in one charge move. The path is scored to
-  stay on/outside that circle and end in the target's **rear** arc.
+- Charge-start point: **any** safe hex within `pool + 1` from which a
+  straight charge corridor (no turn **during** the move) reaches one of the
+  target's **two rear-adjacent hexes** and can attack from the final front arc.
+  The start itself does **not** need to be in the target's rear arc; turning
+  before declaring the charge is allowed.
 - **Safety is a hard gate:** every staged/path hex must be >=5 hexes from every
   **other** hostile, or >=3 when that hostile is inside the kill zone (ZoC) of
   any friendly unit. The intended charge target is excluded from this gate; its
-  ring distance is governed by the staging radius instead. A hostile in a
-  friendly kill zone is treated as melee-locked.
-- If no complete next-turn lane exists, the unit still **circles** to a safe
-  rear approach rather than holding. Hold only when already safe, on the staging
-  geometry, rear-facing and lined up; otherwise take the safe approach. If no
-  safe approach exists, choose the reachable hex with the largest safety margin.
+  ring distance is governed by the start radius instead. A hostile in a friendly
+  kill zone is treated as melee-locked.
+- Each activation scans all rim targets. If a legal charge exists now, take it;
+  otherwise choose the **closest valid charge-start point** by actual path cost.
+  If it is not reachable this activation, pathfind toward it over multiple turns
+  (within the start radius, never stepping into hostile ZoC). Intermediate hexes
+  do not need to be in the rear arc.
+- If already at a valid charge-start point, hold. Otherwise do not hold merely
+  because the current hex is safe; circle/path toward the start. If no safe
+  route exists, choose the reachable hex with the largest safety margin.
 - Charge only when the canonical `chargeStanceFor` gate allows it
   (`canCharge`, a charge-capable formation, **at least 1 action**, scenario
   **Charge and Swoop** on), and:
   - the post-turn state can still enter the charge and pay for the charge move;
   - the charge is at least `charge_full_distance` (2) hexes;
   - the target is engaged by a friendly;
-  - the approach is **rear only**, with no flank fallback;
+  - the landing is one of the target's **rear-adjacent**, no flank fallback;
   - the landing hex is outside hostile ZoC and on the formation's outer edge
     (empty, touching at most one other enemy);
   - the target is in the charger's **front melee arc from the landing hex**
@@ -345,13 +351,13 @@ does not abandon it:
   rotations. If a turn is needed, take it and charge only when the remaining
   MP/action still covers the move.
 - No normal melee fallback. If no legal charge exists, stage instead.
-- End the staging move with **face changes** toward the validated next-turn
+- End the staging/route move with **face changes** toward the validated next-turn
   charge lane. Prefer a no-turn charge next activation; only choose a
   destination that leaves enough MP/action for those end turns.
 - After the charge attack: remaining action/MP disengages to the safest hex
   (same 5/3 safety thresholds), then upgrades to the highest affordable org
   formation. One charge per activation.
-- If already on the right rim, safe, rear-facing and lined up: hold.
+- If already at a valid charge-start point and lined up: hold.
 
 ### Multiple actions
 

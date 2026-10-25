@@ -1276,9 +1276,9 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     return applyCharge(target, charge);
   }
 
-  // No charge: stage on the radius-`maxRadius` circle around a rim target. The
-  // path is scored to stay outside, keep >=5 from hostiles where possible, and
-  // the end-of-move turns face a validated next-activation charge lane.
+  // No charge: find a valid charge-start point. The START itself need not be in
+  // the target rear arc; only the landing must be rear-adjacent. Prefer the
+  // closest valid start and face its future charge lane.
   interface StageCandidate {
     target: Unit;
     move: Maneuver;
@@ -1296,10 +1296,9 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
       if (movement.threat.has(hexKeyOf(dest))) continue;
       const inspected = move.path.length > 0 ? move.path : [dest];
       // Hard safety: every staged/path hex must satisfy each hostile's radius.
-      // The intended charge target is excluded; its ring distance is scored below.
+      // The intended charge target is excluded; only the landing needs its rear.
       if (safetyMargin(dest, target.id) < 0) continue;
       if (inspected.some(p => safetyMargin(p, target.id) < 0)) continue;
-      if (arcOfTarget(target.hex, target.facing, dest) !== 'rear') continue;
       const post = applyManeuver(move.unit, move, rt.ctx);
       let bestFace: { endTurns: { dir: 'left' | 'right' }[]; facing: number } | null = null;
       for (let facing = 0; facing < 6; facing++) {
@@ -1321,29 +1320,20 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
           bestFace = { endTurns, facing };
         }
       }
-      const ideal = !!bestFace;
-      // If no next-turn lane exists yet, still circle to a safe rear position
-      // and face the target; never hold here (only an ideal stage may hold).
-      if (!bestFace) {
-        if (move.path.length === 0) continue;
-        const facing = facingToward(dest, target.hex);
-        const endTurns = turnsTo(post.facing, facing);
-        const faced = applyTurns(post, endTurns, rt.ctx);
-        if (!faced) continue;
-        if (isFlankedAt(dest, facing, rt.enemies, target.id)) continue;
-        bestFace = { endTurns, facing };
-      }
+      if (!bestFace) continue;
       const d = hexDistance(dest, target.hex);
       const minTarget = Math.min(...inspected.map(p => hexDistance(p, target.hex)));
       const minMargin = Math.min(...inspected.map(p => safetyMargin(p, target.id)));
-      // An ideal staged/lane position outranks a mere approach; among equals
-      // prefer the radius circle, greater safety margin and cheaper movement.
+      // Prefer the radius circle, greater safety margin and cheaper movement.
       // Paths that cut inside the circle are penalised.
-      let score = ideal ? 1_000_000 : 0;
+      let score = 1_000_000;
+      // Closest valid start first; holding at the current valid start wins.
+      score -= move.cost * 10_000;
+      if (move.path.length === 0) score += 1_000_000;
       score += Math.min(safetyMargin(dest, target.id), 4) * 10_000;
       score += Math.min(minMargin, 4) * 2_000;
-      score -= Math.abs(d - maxRadius) * 100;
-      if (minTarget < maxRadius) score -= (maxRadius - minTarget) * 50;
+      score -= Math.abs(d - maxRadius) * 10;
+      if (minTarget < maxRadius) score -= (maxRadius - minTarget) * 5;
       score -= move.cost * 2 + move.turns.length * 2 + bestFace.endTurns.length * 30;
       if (target.id === markedId) score += 1;
       if (!bestStage || score > bestStage.score) {
@@ -1352,7 +1342,96 @@ function planMounted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     }
   }
 
-  if (!bestStage) return safestMove();
+  if (!bestStage) {
+    // Nothing is reachable this activation. Find the closest valid charge-start
+    // point around any target and pathfind toward it over multiple turns.
+    interface StartGoal { target: Unit; hex: Hex; facing: number; cost: number }
+    let bestGoal: StartGoal | null = null;
+    const startCosts = distanceMap(u, { ...rt.ctx, units: rt.working }, 'ground', movement);
+    for (const target of ordered) {
+      for (let dq = -maxRadius; dq <= maxRadius; dq++) {
+        for (let dr = -maxRadius; dr <= maxRadius; dr++) {
+          const hex = { q: target.hex.q + dq, r: target.hex.r + dr, s: -target.hex.q - dq - target.hex.r - dr };
+          const dist = hexDistance(hex, target.hex);
+          if (dist < 1 || dist > maxRadius) continue;
+          const key = hexKeyOf(hex);
+          if (movement.occupied.has(key) || movement.threat.has(key)) continue;
+          if (safetyMargin(hex, target.id) < 0) continue;
+          const mapCost = startCosts.get(key);
+          if (mapCost === undefined || !Number.isFinite(mapCost)) continue;
+          let facing = -1;
+          for (let f = 0; f < 6; f++) {
+            const next: Unit = {
+              ...u,
+              hex,
+              facing: f,
+              movementPointsAvailable: 0,
+              actionsAvailable: 2,
+              isCharging: false,
+              chargeDistance: 0,
+            };
+            if (chargeDestination(next, target, false)) { facing = f; break; }
+          }
+          if (facing < 0) continue;
+          const better = !bestGoal
+            || mapCost < bestGoal.cost
+            || (mapCost === bestGoal.cost && target.id === markedId && bestGoal.target.id !== markedId);
+          if (better) bestGoal = { target, hex, facing, cost: mapCost };
+        }
+      }
+    }
+    if (bestGoal) {
+      // Already at a valid start: hold.
+      if (bestGoal.cost === 0) return u;
+      const reverse = reverseDistanceMap(
+        bestGoal.hex, u, { ...rt.ctx, units: rt.working }, 'ground', movement,
+      );
+      const currentRemaining = reverse.get(hexKeyOf(u.hex)) ?? Infinity;
+      let bestRoute: { move: Maneuver; endTurns: { dir: 'left' | 'right' }[]; score: number } | null = null;
+      for (const move of maneuvers) {
+        if (move.path.length === 0 && move.turns.length > 0) continue;
+        const dest = move.dest;
+        if (movement.threat.has(hexKeyOf(dest))) continue;
+        const inspected = move.path.length > 0 ? move.path : [dest];
+        if (safetyMargin(dest, bestGoal.target.id) < 0) continue;
+        if (inspected.some(p => safetyMargin(p, bestGoal.target!.id) < 0)) continue;
+        const remaining = reverse.get(hexKeyOf(dest)) ?? Infinity;
+        if (!Number.isFinite(remaining)) continue;
+        if (Number.isFinite(currentRemaining) && remaining >= currentRemaining) continue;
+        const post = applyManeuver(move.unit, move, rt.ctx);
+        const facing = facingToward(dest, bestGoal.hex);
+        const endTurns = turnsTo(post.facing, facing);
+        const faced = applyTurns(post, endTurns, rt.ctx);
+        if (!faced) continue;
+        const score = -remaining * 1_000
+          + Math.min(safetyMargin(dest, bestGoal.target.id), 4) * 1_000
+          - move.cost * 2 - move.turns.length * 2 - endTurns.length * 30;
+        if (!bestRoute || score > bestRoute.score) {
+          bestRoute = { move, endTurns, score };
+        }
+      }
+      if (bestRoute) {
+        if (bestGoal.target.id !== markedId) rt.setTarget(u.id, bestGoal.target.id);
+        u = pushMove(plan, u, bestRoute.move, rt.ctx);
+        rt.commit(u);
+        if (bestRoute.endTurns.length > 0) {
+          const faced = pushTurns(plan, u, bestRoute.endTurns, rt.ctx);
+          if (faced) {
+            u = faced;
+            rt.commit(u);
+          }
+        }
+        const upgrade = nextFormationUpgrade(u, rt.ctx);
+        if (upgrade) {
+          plan.steps.push({ kind: 'formation', unitId: u.id, from: u.hex, formation: upgrade.formation });
+          u = upgrade.updated;
+          rt.commit(u);
+        }
+        return u;
+      }
+    }
+    return safestMove();
+  }
   if (bestStage.target.id !== markedId) rt.setTarget(u.id, bestStage.target.id);
   u = pushMove(plan, u, bestStage.move, rt.ctx);
   rt.commit(u);
