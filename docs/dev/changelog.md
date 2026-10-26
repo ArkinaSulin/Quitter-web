@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## Routed flyers flee with the fly pool (2026-10-25)
+**Files:** src/packages/ai/lib/{planner,board}.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md
+
+- `planRouted` now chooses `fly` for an airborne flyer (including flying mounts)
+  and `ground` for grounded units/mounts, instead of always using ground
+  maneuvers. Routed flyers flee at their current altitude.
+- AI eligibility now counts leftover `flySpeedAvailable` as a move resource, so
+  a routed flyer with fly points but no actions/ground MP is still controlled.
+- Routed escape scores distance to the **nearest** non-routed hostile first, then
+  total distance, and heavily penalizes ending on or crossing a hostile hex;
+  overflight is a last resort.
+- AI fly maneuvers/distance maps now ignore ground terrain costs and edge walls
+  (matching manual flight); air occupancy and threat still apply.
+- Added tests for 0-MP flyers, fly-vs-ground pools, flying mounts, ground mounts,
+  fly-point eligibility, and fleeing over difficult terrain.
+- Verification: `npm run check` (tsc, tests, depcruise, build). No migration.
+
 ## Fix hero/attached-hero movement with 0 MP but actions (2026-10-25)
 **Files:** src/components/ScenarioMap/{useMoveActions.ts,useOverlay.ts,useOverlay.test.ts}, docs/dev/{07-movement-economy,changelog}.md, docs/players/player-manual.md
 

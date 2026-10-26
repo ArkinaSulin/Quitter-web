@@ -70,7 +70,9 @@ export function isAiControllable(
   if (ctx.activeAlliance === null) return false;
   if (allianceOf(unit, ctx.alliances) !== ctx.activeAlliance) return false;
   if (ctx.gridRadius != null && !isHexOnGrid(unit.hex, ctx.gridRadius)) return false;
-  if ((unit.actionsAvailable ?? 0) < 1 && (unit.movementPointsAvailable ?? 0) < 1) return false;
+  if ((unit.actionsAvailable ?? 0) < 1
+    && (unit.movementPointsAvailable ?? 0) < 1
+    && (unit.flySpeedAvailable ?? 0) < 1) return false;
   return true;
 }
 
@@ -248,11 +250,26 @@ function bestManeuver(
 }
 
 function planRouted(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
-  const m = bestManeuver(unit, rt, 'ground', (candidate, threat) => {
+  const mode = canFly(unit) && unitIsAirborne(unit, rt.ctx) ? 'fly' : 'ground';
+  const m = bestManeuver(unit, rt, mode, (candidate, threat) => {
     if (candidate.path.length === 0) return -Infinity;
     if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
-    const mass = rt.enemies.reduce((n, e) => n + hexDistance(candidate.dest, e.hex), 0);
-    return mass * 10 - candidate.cost;
+    let nearest = Infinity;
+    let mass = 0;
+    let overHostile = false;
+    for (const enemy of rt.enemies) {
+      const distance = hexDistance(candidate.dest, enemy.hex);
+      nearest = Math.min(nearest, distance);
+      mass += distance;
+      if (distance === 0) overHostile = true;
+    }
+    if (!Number.isFinite(nearest)) return -candidate.cost;
+    const crossesHostile = rt.enemies.length > 0 && candidate.path.some(hex =>
+      !(hex.q === unit.hex.q && hex.r === unit.hex.r) &&
+      rt.enemies.some(enemy => hexDistance(hex, enemy.hex) === 0),
+    );
+    const penalty = overHostile ? 1_000_000 : crossesHostile ? 100_000 : 0;
+    return nearest * 1000 + mass * 10 - penalty - candidate.cost;
   });
   if (!m) return unit;
   return pushMove(plan, unit, m, rt.ctx);

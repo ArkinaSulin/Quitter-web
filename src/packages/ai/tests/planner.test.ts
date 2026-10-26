@@ -896,3 +896,89 @@ describe('Basic AI structure takeover priority', () => {
     expect(result.marks.some(m => m.byUnitId === 'c')).toBe(true);
   });
 });
+
+describe('Basic AI routed-unit escape', () => {
+  const routedFlyer = (over: Partial<Unit> = {}) => mk({
+    id: 'rfly', team: 'blue', hex: hex(0, 0), elevation: 20,
+    currentFormation: 'Routed', organizationLevel: 0,
+    movementPoints: 1, movementPointsAvailable: 0,
+    flySpeed: 6, flySpeedAvailable: 6, actionsAvailable: 2,
+    ...over,
+  });
+  const foe = (over: Partial<Unit> = {}) => mk({ id: 'f1', team: 'black', hex: hex(0, -5), ...over });
+
+  it('counts materialized fly points as an AI move resource', () => {
+    const ctx = { alliances: ALLIANCES, teams: ['blue'], activeAlliance: 'enemy' as const };
+    const base = mk({
+      id: 'f', team: 'blue', hex: hex(0, 0),
+      actionsAvailable: 0, movementPointsAvailable: 0, flySpeedAvailable: 5,
+    });
+    expect(isAiControllable(base, ctx, new Set())).toBe(true);
+    expect(isAiControllable({ ...base, flySpeedAvailable: 0 }, ctx, new Set())).toBe(false);
+  });
+
+  it('lets a routed airborne flyer flee with only fly points', () => {
+    const flyer = routedFlyer({ actionsAvailable: 0, movementPointsAvailable: 0 });
+    const target = foe();
+    const steps = stepsOf(planAiMoves(ctxOf([flyer, target])), 'rfly');
+    const move = steps.find(step => step.kind === 'move');
+    expect(move?.kind).toBe('move');
+    if (move?.kind === 'move') {
+      expect(hexDistance(move.to, target.hex)).toBeGreaterThan(hexDistance(flyer.hex, target.hex) + 1);
+    }
+    expect(steps.some(step => step.kind === 'attack' || step.kind === 'charge' || step.kind === 'swoop')).toBe(false);
+  });
+
+  it('uses the fly pool instead of a 1-point ground pool when fleeing', () => {
+    const flyer = routedFlyer();
+    const target = foe();
+    const steps = stepsOf(planAiMoves(ctxOf([flyer, target])), 'rfly');
+    const move = steps.find(step => step.kind === 'move');
+    expect(move?.kind).toBe('move');
+    if (move?.kind === 'move') {
+      expect(hexDistance(move.to, target.hex)).toBeGreaterThan(hexDistance(flyer.hex, target.hex) + 1);
+    }
+  });
+
+  it('lets a routed flying mount use the fly pool', () => {
+    const flyer = routedFlyer({ mountId: 'pegasus', mountName: 'Pegasus' });
+    const target = foe();
+    const steps = stepsOf(planAiMoves(ctxOf([flyer, target])), 'rfly');
+    const move = steps.find(step => step.kind === 'move');
+    expect(move?.kind).toBe('move');
+    if (move?.kind === 'move') {
+      expect(hexDistance(move.to, target.hex)).toBeGreaterThan(hexDistance(flyer.hex, target.hex) + 1);
+    }
+  });
+
+  it('keeps a routed ground mount on ground movement and lets it flee', () => {
+    const rider = mk({
+      id: 'rmount', team: 'blue', hex: hex(0, 0), elevation: 0,
+      currentFormation: 'Routed', organizationLevel: 0,
+      mountId: 'horse', mountName: 'Horse',
+      movementPoints: 6, movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const target = foe();
+    const steps = stepsOf(planAiMoves(ctxOf([rider, target])), 'rmount');
+    const move = steps.find(step => step.kind === 'move');
+    expect(move?.kind).toBe('move');
+    if (move?.kind === 'move') {
+      expect(hexDistance(move.to, target.hex)).toBeGreaterThan(hexDistance(rider.hex, target.hex));
+    }
+    expect(steps.some(step => step.kind === 'attack' || step.kind === 'charge' || step.kind === 'swoop')).toBe(false);
+  });
+
+  it('lets a routed flyer ignore difficult ground terrain', () => {
+    const flyer = routedFlyer();
+    const target = foe();
+    const terrainCosts = Object.fromEntries([
+      hex(0, -1), hex(1, -1), hex(1, 0), hex(0, 1), hex(-1, 1), hex(-1, 0),
+    ].map(h => [`${h.q},${h.r}`, 9]));
+    const steps = stepsOf(planAiMoves({ ...ctxOf([flyer, target]), terrainCosts }), 'rfly');
+    const move = steps.find(step => step.kind === 'move');
+    expect(move?.kind).toBe('move');
+    if (move?.kind === 'move') {
+      expect(hexDistance(move.to, target.hex)).toBeGreaterThan(hexDistance(flyer.hex, target.hex) + 1);
+    }
+  });
+});

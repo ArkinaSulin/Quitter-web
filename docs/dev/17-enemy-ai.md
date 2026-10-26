@@ -78,10 +78,12 @@ A unit is AI-controlled only when **all** hold:
 - not in the DM's per-unit opt-out set (cleared at each End Turn);
 - its team is in the AI control box and its alliance equals the current turn
   alliance (free play never plots);
-- `actionsAvailable >= 1` or leftover MP.
+- `actionsAvailable >= 1`, leftover ground MP, or leftover **fly MP**. 
 
-Routed units are eligible and flee. The AI only attacks the adversarial alliance
-(friendly ↔ enemy); fog is respected and hidden units never reveal.
+Routed units are eligible and flee. **Airborne flyers flee with the fly pool** at
+their current altitude (they are not forced to land); ground units flee on the
+ground, and flying mounts use the fly pool. The AI only attacks the adversarial
+alliance (friendly ↔ enemy); fog is respected and hidden units never reveal.
 
 ## Basic rules
 
@@ -119,6 +121,20 @@ per-type badges (e.g. `M2 A4 F1 C1`); marks reset each Preview.
 - If a planned attack target routes mid-execution, the executor skips it and
   selects the next legal **non-routed** target. If none is legal, the attack is
   skipped — a routed unit is only attacked when no non-routed enemy exists.
+
+### Routed escape
+
+- Every archetype delegates a routed unit to the same escape plan.
+- **Movement mode:** an airborne flyer (including a flying mount) uses the
+  **fly** pool at its current altitude; a grounded unit/mount uses the ground
+  pool. Remaining actions convert to fly MP exactly like normal flying.
+- **Flee score:** maximize the distance to the **nearest** non-routed hostile
+  first, then the sum of distances to all hostiles; subtract the move cost.
+- **Overflight is a last resort:** ending on a hostile's hex, or crossing one on
+  the path (excluding the starting hex), carries a large penalty. The unit only
+  does it when no clean escape exists.
+- **Fly pathing matches manual flight:** AI fly maneuvers ignore ground terrain
+  costs and edge walls/barriers; air occupancy and threat/kill zones still apply.
 
 ### Destination safety / facing
 
@@ -184,7 +200,8 @@ leave it. Flyers are exempt.
 - Enforcement is a perimeter-aware `blockedEdge` wrapper used by every movement
   path (reach maps, distance maps, charge corridors, maneuvers). The unit can
   move freely inside; every inside/outside crossing is illegal.
-- Routed non-flyers flee inside the perimeter.
+- Routed non-flyers flee inside the perimeter; flyers (including flying mounts)
+  flee through the air and are not confined.
 - Confined melee/mounted units prefer enemies inside or on the perimeter; ranged
   units may still shoot outside but reposition only inside.
 

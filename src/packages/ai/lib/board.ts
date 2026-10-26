@@ -286,7 +286,7 @@ export function distanceMap(
       const next = { q: cur.hex.q + dir.q, r: cur.hex.r + dir.r, s: -cur.hex.q - dir.q - cur.hex.r - dir.r };
       const k = hexKeyOf(next);
       if (blocked(k)) continue;
-      if (m.blockedEdge && m.blockedEdge(cur.hex.q, cur.hex.r, next.q, next.r)) continue;
+      if (mode !== 'fly' && m.blockedEdge && m.blockedEdge(cur.hex.q, cur.hex.r, next.q, next.r)) continue;
       const raw = mode === 'fly' ? 1 : (m.costOfHex?.(next.q, next.r, cur.hex.q, cur.hex.r) ?? 1);
       if (!Number.isFinite(raw) || raw < 0) continue;
       const step = Math.max(0, Math.round(raw));
@@ -584,8 +584,11 @@ export function maneuversFor(
     out.push({ mode, turns: [...turns], unit: state, dest: state.hex, path: [], cost: 0, facing: state.facing });
     if (pool < 1) return;
     const reach = computeReachableMap(
-      reachUnit(state), pool, movement.occupied, movement.threat, movement.costOfHex, false,
-      movement.blockedEdge, undefined, movement.passThrough, movement.org, !!ctx.reactiveArchery, true,
+      reachUnit(state), pool, movement.occupied, movement.threat,
+      mode === 'fly' ? undefined : movement.costOfHex,
+      false,
+      mode === 'fly' ? undefined : movement.blockedEdge,
+      undefined, movement.passThrough, movement.org, !!ctx.reactiveArchery, true,
     );
     reach.forEach((entry, key) => {
       if (entry.needsTurn) return;
