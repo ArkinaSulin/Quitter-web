@@ -850,7 +850,8 @@ function topAccessFor(unit: Unit, target: Unit, rt: Runtime): TopAccess | null {
     if (isOccupiedAt(rt, topHex, surface, unit.id)) continue;
     const access = topAccessToHex(unit, topHex, rt);
     if (!access) continue;
-    const total = access.total + hexDistance(topHex, target.hex);
+    const atBase = hexKeyOf(access.baseHex) === hexKeyOf(unit.hex) ? -1_000 : 0;
+    const total = access.total + hexDistance(topHex, target.hex) + atBase;
     if (!best || total < best.total) best = { ...access, total };
   }
   // No free top: when the only way up is the defender's own top, climb-attack it.

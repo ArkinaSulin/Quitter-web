@@ -309,7 +309,8 @@ inside a multi-hex complex. The takeover rule is **vacant tops first**:
   defenders until it is on top. If the assigned top becomes **enemy-occupied**
   during the climb, it `climbAttack`s that occupant and fights until it
   routs/defeats, then lands. A **friendly-occupied** top switches to the nearest
-  other free top.
+  other free top. A unit already at a base prefers that access instead of pacing
+  to another base.
 - If no free top exists, defender-marked units climb-attack the defender on its
   own top (no landing required) until it routs/defeats.
 - **Melee only.** Mounted units never climb; flying units keep their direct
