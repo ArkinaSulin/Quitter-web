@@ -1,5 +1,25 @@
 # QuiTTER Changelog
 
+## Fix hero/attached-hero movement with 0 MP but actions (2026-10-25)
+**Files:** src/components/ScenarioMap/{useMoveActions.ts,useOverlay.ts,useOverlay.test.ts}, docs/dev/{07-movement-economy,changelog}.md, docs/players/player-manual.md
+
+- The one-action drag reach for heroes now uses `computeHeroMovePool` instead
+  of raw `floor(MP)`, so a hero (or an attached hero passenger) with 0 MP and
+  remaining actions can convert actions to MP instead of being told the hex is
+  "out of reach".
+- The drag overlay and the executed move use the same pool. Action-funded hero
+  hexes still label `{actions left}-{MP left}`; only materialized-MP hexes show a
+  plain MP number.
+- Regression tests cover a 0-MP hero, an attached hero passenger cap, no-action
+  zero reach, and the action-funded label format.
+- Verification: `npm run check` (tsc, tests, depcruise, build). No migration.
+
+## Halloween Siege banner label swap (2026-10-25)
+**Files:** src/components/ScenarioMap/TopBar.tsx, docs/dev/{20-halloween-siege,changelog}.md
+
+- Break banner now reads `turn: break` while waiting; the armed state reads
+  `turn: Will start`.
+
 ## Halloween Siege: DM-armed waves, completion message, right-aligned buttons (2026-10-25)
 **Files:** src/packages/world/lib/halloweenSiege.ts, src/packages/world/tests/halloweenSiege.test.ts, src/components/ScenarioMap/{ScenarioMap,TopBar,HalloweenSiegeWindow}.tsx, docs/dev/{20-halloween-siege,README,changelog}.md
 

@@ -283,3 +283,51 @@ describe('computeOverlayMap — label format', () => {
     expect(labels['0,1']).toBe('0-2'); // withdraw = 2 actions, MP untouched
   });
 });
+
+describe('computeOverlayMap - hero convertible movement', () => {
+  it('highlights the one-action reach for a hero with 0 MP and actions', () => {
+    const hero = mk({
+      id: 'u', isHero: true, currentFormation: 'Hero', movementPoints: 5,
+      movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const map = overlayFor([hero]);
+    expect(map['0,-1']).toBe(MOVE_WHITE);
+    expect(map['0,-2']).toBeDefined();
+  });
+
+  it('caps an attached hero passenger by its convertible pool', () => {
+    const host = mk({
+      id: 'u', hex: h(0, 0), facing: 0, movementPoints: 5,
+      movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const hero = mk({
+      id: 'h', hex: h(0, 0), isHero: true, currentFormation: 'Hero', movementPoints: 5,
+      movementPointsAvailable: 0, actionsAvailable: 1,
+      attachedToUnitId: 'u', attachedPosition: 'back',
+    });
+    const map = overlayFor([host, hero]);
+    expect(map['0,-1']).toBe(MOVE_WHITE);
+    expect(map['0,-2']).toBeUndefined();
+  });
+
+  it('stays empty when the hero has no MP and no actions', () => {
+    const hero = mk({
+      id: 'u', isHero: true, currentFormation: 'Hero', movementPoints: 5,
+      movementPointsAvailable: 0, actionsAvailable: 0,
+    });
+    const map = overlayFor([hero]);
+    expect(map['0,-1']).toBeUndefined();
+  });
+});
+
+describe('computeOverlayMap - hero action-funded labels', () => {
+  it('labels action-funded hexes `{actions left}-{MP left}` in one-action mode', () => {
+    const units = [mk({
+      id: 'u', hex: h(0, 0), facing: 0, isHero: true, currentFormation: 'Hero',
+      movementPoints: 5, movementPointsAvailable: 0, actionsAvailable: 2,
+    })];
+    const labels = labelsFor(units, { showAll: true, mode: 'one' });
+    expect(labels['0,-1']).toBe('1-0');
+    expect(labels['0,-2']).toBe('0-0');
+  });
+});

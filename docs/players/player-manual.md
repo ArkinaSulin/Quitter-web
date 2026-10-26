@@ -499,8 +499,9 @@ Drag a unit with the mouse. The game shades where it can move:
 - **White hexes** are reachable **right now** without turning — drop there.
   They dim as more actions are spent (a local **Settings → "Move preview"**
   choice: **One action per drag** (default) or **All actions per drag** — this
-  device only). In *One action* mode a hex needing a 2nd action isn't shown;
-  drag again for it.
+  device only). In *One action* mode a unit hex needing a 2nd action isn't shown;
+  drag again for it. Heroes can convert actions to MP within the drag reach, and
+  those action-funded hexes are labelled `actions left-MP left`.
 - **Grey hexes** need a turn first: the hint says "rotate, then move." (Never
   droppable — only no-turn hexes are.)
 - **Red hexes** are enemy **threat hexes** (kill-zone / zone-of-control):
