@@ -1138,6 +1138,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setPendingStructureAction,
     confirmStructureAction,
     confirmClimbOver,
+    performClimbOver,
     maybeAutoReturnToRanged,
     completeMove,
     handleUnitMove,
@@ -3312,6 +3313,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         performSwoopDrop={(attackerId, targetId) => performSwoopDrop(attackerId, targetId)}
         performClimbAttack={(attackerId, targetId) => performClimbAttack(attackerId, targetId)}
         handleClimbMove={(unit, targetHex, originSurface) => handleClimbMove(unit, targetHex, originSurface)}
+        performClimbOver={(unitId, farHex, descent) => performClimbOver(unitId, farHex, descent)}
         performDescentDrop={(unit, targetHex, feet) => performDescentDrop(unit, targetHex, feet)}
         selectWeapon={(unit, index) => selectWeapon(unit, index)}
         undo={undo}

@@ -42,9 +42,10 @@ export function fallSteps(unit: Unit, to = 0): { steps: SubStep[]; note: string;
     const total = perTroop * Math.max(0, unit.currentTroopCount);
     if (total > 0) {
       const dice = n > 0 ? `(${n}d6: ${roll.faces.join(',')})` : '';
-      const breakdown = `${dice} per troop × ${unit.currentTroopCount} = ${total} HP`.trim();
       newHp = Math.max(0, newHp - total);
       newTroops = Math.max(0, Math.ceil(newHp / Math.max(1, unit.troopHp)));
+      const troopsLost = Math.max(0, unit.currentTroopCount - newTroops);
+      const breakdown = `${dice} per troop × ${unit.currentTroopCount} = ${total} HP (${troopsLost} troop${troopsLost === 1 ? '' : 's'} lost)`.trim();
       steps.push({
         type: 'DAMAGE',
         description: `${unit.unitName} fell ${feet} ft — ${breakdown}`,

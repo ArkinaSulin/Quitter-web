@@ -1,5 +1,32 @@
 # QuiTTER Changelog
 
+## AI units climb over edge walls; climb-over resume costs fixed (2026-10-26)
+**Files:** src/packages/ai/lib/{types,board,planner}.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/{AiPanel,ScenarioMap}.tsx, src/components/ScenarioMap/useMoveActions.ts, docs/dev/{17-enemy-ai,18-map-structures,changelog}.md
+
+- Basic AI ground melee units now detect a target made ground-unreachable by a
+  closed edge-wall enclosure and deliberately **climb over**, never voluntarily
+  drop. Open/broken gates and normal ground routes still win.
+- Added `climbOver` to the AI step union, edge-wall/no-climb helpers, and a
+  planner wall objective: move to the wall base, then climb next activation; a
+  20-ft wall may hang and finish later. Mounted/charging units and hero hosts
+  never climb; adjacent enemies across a wall do not suppress the objective.
+- `performClimbOver` is exposed to the AI executor. Resuming a top-hanging
+  climb now charges only the remaining up steps, and descent charges only the
+  remaining drop (not the full wall again).
+- Added edge-wall planner tests (climb, approach, affordability, mounted, hang,
+  20-ft resume, open gate).
+- Verification: `npm run check` (tsc, tests, depcruise, build). No migration.
+
+## Fall-damage messages report troops lost (2026-10-25)
+**Files:** src/components/ScenarioMap/{useMoveActions.ts,routeUnit.ts,routeUnit.test.ts}, docs/dev/{13-map-entities-terrain,changelog}.md
+
+- Fall-damage messages/descriptions now append the number of troops lost, e.g.
+  `fell 20 ft — (2d6: 5,4) per troop × 65 = 585 HP (58 troops lost)`.
+- Covers the climb-over drop, host-loss/rout falls (`fallSteps`), and airborne
+  hero dismount falls.
+- Added a deterministic `fallSteps` regression test for the troop-loss text.
+- Verification: `npm run check` (tsc, tests, depcruise, build). No migration.
+
 ## Halloween Siege completion toast + premature-marker fix (2026-10-25)
 **Files:** src/packages/world/lib/halloweenSiege.ts, src/packages/world/tests/halloweenSiege.test.ts, src/components/ScenarioMap/{ScenarioMap,HalloweenSiegeWindow}.tsx, src/hooks/useScenarioToast.ts, docs/dev/{20-halloween-siege,19-ui-panels-and-floating,changelog}.md
 

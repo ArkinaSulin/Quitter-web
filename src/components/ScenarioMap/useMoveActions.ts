@@ -797,10 +797,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
       : (unit.isHero ? applyHeroMoveCost(budgetUnit, cost, maxMP) : applyMoveCost(budgetUnit, cost, maxMP));
     const curElev = unit.elevation ?? 0;
     const doneSteps = Math.max(0, Math.round((curElev - originSurface) / 10));
-    const needSteps = Math.max(1, steps - doneSteps);
-    const affordSteps = freeMove ? needSteps : Math.max(0, Math.floor(budget / perStep));
-    const climbSteps = Math.min(needSteps, affordSteps);
-    if (climbSteps <= 0) { addError(`${unit.unitName} has no movement to climb`); return; }
+    const remainingUpSteps = Math.max(0, steps - doneSteps);
+    const affordSteps = freeMove ? remainingUpSteps : Math.max(0, Math.floor(budget / perStep));
+    const climbSteps = Math.min(remainingUpSteps, affordSteps);
+    if (remainingUpSteps > 0 && climbSteps <= 0) { addError(`${unit.unitName} has no movement to climb`); return; }
     const upCost = climbSteps * perStep;
     const upSpend = spendOf(upCost);
     const newElev = Math.min(H, curElev + climbSteps * 10);
@@ -821,7 +821,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // The far-side descent: climb down (pay per-step) or drop (fall damage). When a
     // chosen climb-down is unaffordable, HANG at the top on the far hex (`climbTo`
     // set) and resolve next action — never coerce to a drop.
-    const downCost = steps * perStep;
+    const endSurface = structureSurfaceAt(farHex, structures, structureTemplates);
+    const downSteps = Math.max(0, Math.round((newElev - endSurface) / 10));
+    const downCost = downSteps * perStep;
     const canAffordDown = descent === 'drop' || freeMove || (unit.isHero
       ? isHeroMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP)
       : isMoveAffordable({ movementPointsAvailable: upSpend.movementPointsAvailable, actionsAvailable: upSpend.actionsAvailable }, downCost, maxMP));
@@ -832,9 +834,10 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const fallRoll = descent === 'drop' && !feathers ? rollFallDamage(H) : null;
     const dmg = (fallRoll ? fallRoll.total : 0) * unit.currentTroopCount;
     const fallDice = fallRoll ? `(${Math.max(0, Math.floor(H / 10))}d6: ${fallRoll.faces.join(',')})` : '';
-    const fallBreakdown = `${unit.unitName} fell ${H} ft — ${fallDice} per troop × ${unit.currentTroopCount} = ${dmg} HP`;
     const newHp = Math.max(0, (unit.currentUnitHp ?? 0) - dmg);
     const newTroops = dmg > 0 ? Math.max(0, Math.ceil(newHp / Math.max(1, unit.troopHp))) : unit.currentTroopCount;
+    const troopsLost = Math.max(0, unit.currentTroopCount - newTroops);
+    const fallBreakdown = `${unit.unitName} fell ${H} ft — ${fallDice} per troop × ${unit.currentTroopCount} = ${dmg} HP (${troopsLost} troop${troopsLost === 1 ? '' : 's'} lost)`;
     const scatter = climbScatterStep(unit);
     const subSteps: SubStep[] = [
       ...(scatter ? [scatter] : []),
@@ -854,7 +857,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       ] });
     } else {
       subSteps.push({ type: 'MOVE', description: `${unit.unitName} ${descent === 'climb' ? 'climbs down' : 'drops'} to the ground`, unitId: unit.id, changes: [
-        { field: 'elevation', from: H, to: 0 },
+        { field: 'elevation', from: H, to: descent === 'climb' ? endSurface : 0 },
       ] });
     }
     if (dmg > 0) {
@@ -1210,6 +1213,8 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
     const newHp = Math.max(0, (hero.currentUnitHp ?? 0) - total);
     const newTroops = Math.max(0, Math.ceil(newHp / Math.max(1, hero.troopHp)));
+    const troopsLost = Math.max(0, (hero.currentTroopCount ?? 0) - newTroops);
+    const lossText = total > 0 ? ` (${troopsLost} troop${troopsLost === 1 ? '' : 's'} lost)` : '';
     const subSteps: SubStep[] = [
       {
         type: 'ELEVATE',
@@ -1230,7 +1235,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     if (total > 0) {
       subSteps.push({
         type: 'DAMAGE',
-        description: `${hero.unitName} took ${total} falling damage`,
+        description: `${hero.unitName} took ${total} falling damage${lossText}`,
         unitId: hero.id,
         changes: [
           { field: 'currentUnitHp', from: hero.currentUnitHp, to: newHp },
@@ -1239,7 +1244,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       });
     }
     const roll = n > 0 ? ` (${n}d6: ${[...faces].sort((a, b) => a - b).join(',')})` : '';
-    await execute('DETACH_HERO', subSteps, `${hero.unitName} fell ${p.elevation} ft${total > 0 ? ` — ${total} damage` : ''}${roll}`);
+    await execute('DETACH_HERO', subSteps, `${hero.unitName} fell ${p.elevation} ft${total > 0 ? ` — ${total} damage${lossText}` : ''}${roll}`);
     if (newHp <= 0) await routeUnit(execute, { ...hero, currentUnitHp: newHp }, 'fell', true, null, 0, units);
     setActiveHeroId(null);
   }, [pendingHeroFall, execute, setActiveHeroId]);
@@ -1276,6 +1281,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     setPendingStructureAction,
     confirmStructureAction,
     confirmClimbOver,
+    performClimbOver,
     maybeAutoReturnToRanged,
     performMove,
     completeMove,

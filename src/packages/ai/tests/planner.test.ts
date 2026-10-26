@@ -15,6 +15,7 @@ import {
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation, hexDistance } from '@/types/gameProtocol';
 import { edgeRef } from '@/packages/movement';
+import { HEX_DIRS } from '@/packages/primitives';
 
 const SPEAR = 'Spear,3,1d8,false,1,1,0,true,false,false,false,1,true,Dex,circle';
 const SHORTBOW = 'Shortbow,2,1d6,false,2,3,0,false,true,true,false,1,true,Dex,circle';
@@ -980,5 +981,115 @@ describe('Basic AI routed-unit escape', () => {
     if (move?.kind === 'move') {
       expect(hexDistance(move.to, target.hex)).toBeGreaterThan(hexDistance(flyer.hex, target.hex) + 1);
     }
+  });
+});
+
+describe('Basic AI edge-wall climb-over', () => {
+  const wallTemplates = {
+    wall: { id: 'wall', name: 'Wall', anchor: 'edge', elevation: 10, mpClimbUp: 4, mpClimbDown: 4 },
+  } as unknown as AiPlanContext['structureTemplates'];
+  const highWallTemplates = {
+    wall: { id: 'wall', name: 'Wall', anchor: 'edge', elevation: 20, mpClimbUp: 4, mpClimbDown: 4 },
+  } as unknown as AiPlanContext['structureTemplates'];
+
+  function walledBox(inside: Hex[]): AiPlanContext['structures'] {
+    const insideKeys = new Set(inside.map(h => `${h.q},${h.r}`));
+    const structures: Record<string, { templateId: string; open?: boolean }> = {};
+    for (const h of inside) {
+      for (let dir = 0; dir < 6; dir++) {
+        const d = HEX_DIRS[dir];
+        const next = { q: h.q + d.q, r: h.r + d.r, s: -h.q - d.q - h.r - d.r };
+        if (insideKeys.has(`${next.q},${next.r}`)) continue;
+        structures[edgeRef(h.q, h.r, dir).key] = { templateId: 'wall' };
+      }
+    }
+    return structures as unknown as AiPlanContext['structures'];
+  }
+
+  const inside = [hex(0, 0), ...HEX_DIRS.map(d => hex(d.q, d.r))];
+  const target = () => mk({ id: 't', team: 'black', hex: hex(0, 0) });
+  const climber = (over: Partial<Unit> = {}) => mk({
+    id: 'm', team: 'blue', hex: hex(0, 2), currentFormation: 'Close Order',
+    organizationLevel: 2, formationAvailability: ['Close Order'],
+    movementPoints: 4, movementPointsAvailable: 0, actionsAvailable: 2,
+    ...over,
+  });
+
+  it('plans a climb-over when an enemy is walled in and the unit is at the wall', () => {
+    const result = planAiMoves({
+      ...ctxOf([climber(), target()]),
+      structures: walledBox(inside),
+      structureTemplates: wallTemplates,
+    });
+    const steps = stepsOf(result, 'm');
+    expect(steps.some(s => s.kind === 'climbOver' && s.to.q === 0 && s.to.r === 1)).toBe(true);
+    expect(steps.some(s => s.kind === 'drop')).toBe(false);
+  });
+
+  it('moves to the wall base first when it is not adjacent', () => {
+    const result = planAiMoves({
+      ...ctxOf([climber({ hex: hex(0, 3) }), target()]),
+      structures: walledBox(inside),
+      structureTemplates: wallTemplates,
+    });
+    const steps = stepsOf(result, 'm');
+    expect(steps.some(s => s.kind === 'move' && s.to.q === 0 && s.to.r === 2)).toBe(true);
+    expect(steps.some(s => s.kind === 'climbOver')).toBe(false);
+  });
+
+  it('does not climb without enough action/MP for a climb step', () => {
+    const result = planAiMoves({
+      ...ctxOf([climber({ actionsAvailable: 1, movementPoints: 2 }), target()]),
+      structures: walledBox(inside),
+      structureTemplates: wallTemplates,
+    });
+    expect(stepsOf(result, 'm').some(s => s.kind === 'climbOver')).toBe(false);
+  });
+
+  it('never climbs with a mounted unit', () => {
+    const result = planAiMoves({
+      ...ctxOf([climber({ mountId: 'horse', mountName: 'Horse' }), target()]),
+      structures: walledBox(inside),
+      structureTemplates: wallTemplates,
+    });
+    expect(stepsOf(result, 'm').some(s => s.kind === 'climbOver')).toBe(false);
+  });
+
+  it('does not climb out of its own enclosure to chase an outside target', () => {
+    const result = planAiMoves({
+      ...ctxOf([climber({ hex: hex(0, 1) }), mk({ id: 't', team: 'black', hex: hex(0, 3) })]),
+      structures: walledBox(inside),
+      structureTemplates: wallTemplates,
+    });
+    expect(stepsOf(result, 'm').some(s => s.kind === 'climbOver')).toBe(false);
+  });
+
+  it('continues a hanging wall climb next activation', () => {
+    const result = planAiMoves({
+      ...ctxOf([climber({ elevation: 10, climbTo: '0,1' }), target()]),
+      structures: walledBox(inside),
+      structureTemplates: wallTemplates,
+    });
+    expect(stepsOf(result, 'm').some(s => s.kind === 'climbOver' && s.to.q === 0 && s.to.r === 1)).toBe(true);
+  });
+
+  it('continues a 20-ft climb from the top with enough capacity', () => {
+    const result = planAiMoves({
+      ...ctxOf([climber({ elevation: 20, climbTo: '0,1' }), target()]),
+      structures: walledBox(inside),
+      structureTemplates: highWallTemplates,
+    });
+    expect(stepsOf(result, 'm').some(s => s.kind === 'climbOver' && s.to.q === 0 && s.to.r === 1)).toBe(true);
+  });
+
+  it('uses an open gate instead of climbing', () => {
+    const structures = walledBox(inside) as unknown as Record<string, { templateId: string; open?: boolean }>;
+    structures[edgeRef(0, 1, 1).key] = { templateId: 'wall', open: true };
+    const result = planAiMoves({
+      ...ctxOf([climber(), target()]),
+      structures: structures as unknown as AiPlanContext['structures'],
+      structureTemplates: wallTemplates,
+    });
+    expect(stepsOf(result, 'm').some(s => s.kind === 'climbOver')).toBe(false);
   });
 });

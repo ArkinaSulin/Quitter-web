@@ -18,16 +18,16 @@ import { unitAttackCap, isMeleeWeapon, buildSwoopDropPlan, chargeStanceFor, isMe
 import { isUnitRouted, computeThreatRating } from '@/packages/morale';
 import { getSetting } from '@/packages/infra';
 import { isHexOnGrid } from '@/packages/world';
-import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveCapacity, structureClimbPerStep10, isClimbingUnit, applyMoveCost, moveBudgetUnit, climbPlan, canFly, flyMax } from '@/packages/movement';
+import { arcsContain, computeChargeReachable, applyFormationChange, computeMoveCapacity, structureClimbPerStep10, isClimbingUnit, applyMoveCost, moveBudgetUnit, climbPlan, canFly, flyMax, edgeStructureHeightBetween, structureClimbCostBetween } from '@/packages/movement';
 import { HEX_DIRS, arcOfTarget, facingToward, rotateLeft, rotateRight } from '@/packages/primitives';
 import {
   AiArchetype, AiMark, AiPlanContext, AiPlanResult, AiUnitPlan,
 } from './types';
 import {
   Maneuver, StructureComplex, allianceOf, applyManeuver, applyTurns, archetypeOf, chooseFacing, distanceMap,
-  effectiveMax, enemyGroupsOf, enemyPool, hexKeyOf, hexesWithin, isFlankedAt, isFullyUpgraded, isGroundTarget,
+  effectiveMax, enemyGroupsOf, enemyPool, edgeWalls, hexKeyOf, hexesWithin, isFlankedAt, isFullyUpgraded, isGroundTarget,
   isOuterApproachHex, isOuterRimTarget, isInFriendlyKillZone,
-  isTargetReachable, maneuversFor, movementContextFor, nextFormationUpgrade,
+  isTargetReachable, maneuversFor, movementContextFor, nextFormationUpgrade, noClimbDistanceMap,
   primaryMaxRange, reverseDistanceMap, structureComplexFor, surfaceAt, targetPathCost, unitIsAirborne, unitSurface,
 } from './board';
 import { assignMarks } from './marks';
@@ -405,6 +405,135 @@ function canAffordClimb(unit: Unit, target: Unit, rt: Runtime): boolean {
   return canAffordClimbTo(unit, target.hex, rt);
 }
 
+interface WallClimbAccess {
+  target: Unit;
+  nearHex: Hex;
+  farHex: Hex;
+  height: number;
+  steps: number;
+  perStep: number;
+  nearCost: number;
+  score: number;
+}
+
+function wallClimbForTarget(unit: Unit, target: Unit, rt: Runtime): WallClimbAccess | null {
+  if (unit.mountId || unit.mountName || unit.isCharging) return null;
+  if (rt.working.some(f => f.attachedToUnitId === unit.id && !f.isDeleted)) return null;
+  const noStop = rt.passThroughMaps.get(unit.id);
+  const noClimb = noClimbDistanceMap(unit, rt.working, rt.ctx, 'ground', rt.complexes.get(unit.id) ?? null);
+  const ownComplex = rt.complexes.get(unit.id) ?? null;
+  const surface = unitSurface(unit, rt.ctx);
+  let best: WallClimbAccess | null = null;
+  const marked = rt.byUnit.get(unit.id) === target.id;
+  for (const wall of edgeWalls(rt.ctx)) {
+    if (wall.height <= surface) continue;
+    const sides: [Hex, Hex][] = [[wall.a, wall.b], [wall.b, wall.a]];
+    for (const [nearHex, farHex] of sides) {
+      if (surfaceAt(nearHex, rt.ctx) !== surface || surfaceAt(farHex, rt.ctx) !== surface) continue;
+      if (ownComplex && !ownComplex.hexes.has(hexKeyOf(farHex))) continue;
+      if (isOccupiedAt(rt, farHex, surface, unit.id)) continue;
+      if (hexKeyOf(nearHex) !== hexKeyOf(unit.hex) && isOccupiedAt(rt, nearHex, surface, unit.id)) continue;
+      const nearKey = hexKeyOf(nearHex);
+      if (noStop?.has(nearKey) && hexKeyOf(unit.hex) !== nearKey) continue;
+      const nearCost = noClimb.get(nearKey);
+      if (nearCost === undefined) continue;
+      const upTotal = structureClimbCostBetween(nearHex, farHex, rt.ctx.structures, rt.ctx.structureTemplates, false, false);
+      if (upTotal < 0) continue;
+      const farUnit = { ...unit, hex: farHex, elevation: surface };
+      const complex = structureComplexFor({ hex: farHex }, rt.ctx);
+      const movement = movementContextFor(farUnit, rt.working, rt.ctx, 'ground', complex);
+      const farMap = distanceMap(farUnit, { ...rt.ctx, units: rt.working }, 'ground', movement);
+      const farCost = targetPathCost(farMap, target.hex, movement.passThrough);
+      if (!Number.isFinite(farCost)) continue;
+      const score = (marked ? -1_000_000 : 0) + nearCost + farCost;
+      if (!best || score < best.score) {
+        best = {
+          target,
+          nearHex,
+          farHex,
+          height: wall.height,
+          steps: wall.steps,
+          perStep: upTotal / wall.steps,
+          nearCost,
+          score,
+        };
+      }
+    }
+  }
+  return best;
+}
+
+function noClimbMeleeReachable(unit: Unit, target: Unit, map: Map<string, number>, noStop: Set<string> | undefined, rt: Runtime): boolean {
+  for (const d of HEX_DIRS) {
+    const neighbor: Hex = { q: target.hex.q + d.q, r: target.hex.r + d.r, s: target.hex.s + d.s };
+    const key = hexKeyOf(neighbor);
+    if (noStop?.has(key)) continue;
+    if (!map.has(key)) continue;
+    if (isMeleeReachable({ hex: neighbor, elevation: surfaceAt(neighbor, rt.ctx) }, target, rt.ctx.structures, rt.ctx.structureTemplates)) return true;
+  }
+  return false;
+}
+
+function bestWallClimb(unit: Unit, rt: Runtime): WallClimbAccess | null {
+  const noClimb = noClimbDistanceMap(unit, rt.working, rt.ctx, 'ground', rt.complexes.get(unit.id) ?? null);
+  const noStop = rt.passThroughMaps.get(unit.id);
+  let best: WallClimbAccess | null = null;
+  for (const target of rt.enemies) {
+    if (isUnitRouted(target)) continue;
+    if (surfaceAt(target.hex, rt.ctx) !== unitSurface(unit, rt.ctx) || (target.elevation ?? 0) !== unitSurface(unit, rt.ctx)) continue;
+    if (noClimbMeleeReachable(unit, target, noClimb, noStop, rt)) continue;
+    const access = wallClimbForTarget(unit, target, rt);
+    if (access && (!best || access.score < best.score)) best = access;
+  }
+  return best;
+}
+
+function canAffordWallClimb(unit: Unit, access: WallClimbAccess, rt: Runtime): boolean {
+  if (unit.mountId || unit.mountName || unit.isCharging) return false;
+  if ((unit.actionsAvailable ?? 0) < 1) return false;
+  if (rt.working.some(f => f.attachedToUnitId === unit.id && !f.isDeleted)) return false;
+  const capacity = computeMoveCapacity(unit, effectiveMax(unit, rt.ctx.formations));
+  const atTop = (unit.elevation ?? 0) >= access.height;
+  return atTop
+    ? capacity >= access.steps * access.perStep
+    : capacity >= access.perStep;
+}
+
+interface WallClimbState {
+  farHex: Hex;
+  height: number;
+  steps: number;
+  perStep: number;
+}
+
+function wallClimbState(unit: Unit, rt: Runtime): WallClimbState | null {
+  if (!unit.climbTo) return null;
+  const [q, r] = unit.climbTo.split(',').map(Number);
+  if (!Number.isFinite(q) || !Number.isFinite(r)) return null;
+  const farHex = { q, r, s: -q - r };
+  const surface = unitSurface(unit, rt.ctx);
+  if (surfaceAt(farHex, rt.ctx) !== surface) return null;
+  const height = edgeStructureHeightBetween(unit.hex, farHex, rt.ctx.structures, rt.ctx.structureTemplates);
+  if (height <= surface) return null;
+  const upTotal = structureClimbCostBetween(unit.hex, farHex, rt.ctx.structures, rt.ctx.structureTemplates, false, false);
+  if (upTotal < 0) return null;
+  return {
+    farHex,
+    height,
+    steps: Math.max(1, Math.round(height / 10)),
+    perStep: upTotal / Math.max(1, Math.round(height / 10)),
+  };
+}
+
+function canAffordWallClimbState(unit: Unit, wall: WallClimbState, rt: Runtime): boolean {
+  if (unit.mountId || unit.mountName) return false;
+  if ((unit.actionsAvailable ?? 0) < 1) return false;
+  const capacity = computeMoveCapacity(unit, effectiveMax(unit, rt.ctx.formations));
+  return (unit.elevation ?? 0) >= wall.height
+    ? capacity >= wall.steps * wall.perStep
+    : capacity >= wall.perStep;
+}
+
 interface TopAccess {
   topHex: Hex;
   baseHex: Hex;
@@ -754,6 +883,46 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     if (!canAffordClimb(u, target, rt)) return u;
     plan.steps.push({ kind: 'climbAttack', unitId: u.id, from: u.hex, targetId: target.id, target: target.hex });
     return u;
+  }
+
+  // An enemy walled away from the unit is unreachable by the ground map. Move to
+  // the wall base, then climb over on the next activation (or climb now when
+  // already there). Never drop; a partial/hanging climb is completed later.
+  const adjacentNow = adjacentFoes(u, rt);
+  const canActAdjacent = adjacentNow.some(t => {
+    const targetSurface = surfaceAt(t.hex, rt.ctx);
+    if (targetSurface <= unitSurface(u, rt.ctx)) {
+      return isMeleeReachable(u, t, rt.ctx.structures, rt.ctx.structureTemplates);
+    }
+    const complex = rt.complexes.get(u.id) ?? null;
+    return !complex || complex.hexes.has(hexKeyOf(t.hex));
+  });
+  if (!canActAdjacent) {
+    const wall = bestWallClimb(u, rt);
+    if (wall) {
+      if (hexKeyOf(u.hex) === hexKeyOf(wall.nearHex)) {
+        if (canAffordWallClimb(u, wall, rt)) {
+          plan.steps.push({ kind: 'climbOver', unitId: u.id, from: u.hex, to: wall.farHex, descent: 'climb' });
+        } else {
+          u = faceAdjacentHostiles(u, plan, rt);
+        }
+        return u;
+      }
+      const reverse = reverseHexMapFor(rt, u, wall.nearHex);
+      const m = bestManeuver(u, rt, 'ground', (candidate, threat) => {
+        if (candidate.path.length === 0) return -Infinity;
+        if (isFlankedAt(candidate.dest, candidate.facing, rt.enemies, wall.target.id)) return -Infinity;
+        if (threat.has(hexKeyOf(candidate.dest))) return -Infinity;
+        const remaining = reverse.get(hexKeyOf(candidate.dest)) ?? Infinity;
+        if (!Number.isFinite(remaining)) return -Infinity;
+        return -remaining * 100 - candidate.cost * 2 - candidate.turns.length * 2;
+      });
+      if (m) {
+        if (wall.target.id !== markedId) rt.setTarget(u.id, wall.target.id);
+        return pushMove(plan, u, m, rt.ctx);
+      }
+      return u;
+    }
   }
 
   for (let guard = 0; guard < 8; guard++) {
@@ -1859,12 +2028,19 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
           plan.steps.push({ kind: 'climb', unitId: live.id, from: live.hex, to: live.hex });
         }
       } else {
-        const exit = hangingExitFor(rt, live);
-        if (exit && canAffordClimbTo(live, exit.topHex, rt)) {
-          if (exit.enemy) {
-            plan.steps.push({ kind: 'climbAttack', unitId: live.id, from: live.hex, targetId: exit.enemy.id, target: exit.enemy.hex });
-          } else {
-            plan.steps.push({ kind: 'climb', unitId: live.id, from: live.hex, to: exit.topHex });
+        const wall = wallClimbState(live, rt);
+        if (wall) {
+          if (canAffordWallClimbState(live, wall, rt)) {
+            plan.steps.push({ kind: 'climbOver', unitId: live.id, from: live.hex, to: wall.farHex, descent: 'climb' });
+          }
+        } else {
+          const exit = hangingExitFor(rt, live);
+          if (exit && canAffordClimbTo(live, exit.topHex, rt)) {
+            if (exit.enemy) {
+              plan.steps.push({ kind: 'climbAttack', unitId: live.id, from: live.hex, targetId: exit.enemy.id, target: exit.enemy.hex });
+            } else {
+              plan.steps.push({ kind: 'climb', unitId: live.id, from: live.hex, to: exit.topHex });
+            }
           }
         }
       }

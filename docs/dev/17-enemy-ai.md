@@ -264,6 +264,33 @@ leave it. Flyers are exempt.
   attacking only once at the top.
 - Once landed, the unit enters the **on-top hold-and-fight** doctrine below.
 
+### Edge-wall climb-over (ground melee)
+
+A non-mounted, non-flying melee unit may deliberately climb a solid edge wall
+when its target is **ground-unreachable** (a courtyard/enclosure with no usable
+gate). This is a planned traversal, never self-harm: the AI always chooses
+**Climb over & climb down**, never Drop.
+
+- Detection uses a **no-climb ground map** (closed edge walls block). An open or
+  broken door/gate makes the target normally reachable, so the AI walks through
+  instead of climbing.
+- The near side must be standable and reachable **without** crossing a wall;
+  the far side must be empty and lead to a melee-adjacent hex for the target.
+  Elevated targets are excluded (those use structure-top access).
+- If the unit is already at the wall base it plans `climbOver`; otherwise it
+  moves to the base this activation and climbs next activation (never
+  move + climb when the climb needs all actions).
+- An adjacent enemy **across a wall** is not melee-reachable, so it does not
+  suppress the wall objective.
+- Mounted units, charging units and units hosting an attached hero never climb.
+  A target with a normal ground/melee route is never wall-climbed.
+- The wall height uses the real per-10-ft climb cost. A 20-ft wall can hang and
+  finish on a later activation; descent is always a climb down. Falling damage
+  only happens involuntarily (rout/drop) and reports troops lost.
+- Executor step: `climbOver` → `performClimbOver`. Resuming a top-hanging climb
+  charges only the **remaining** up steps, and the descent charges only
+  `newElevation → destination surface` (not the full wall again).
+
 ### Structure-top access (melee)
 
 A hostile standing on a structure top is a valid melee target, even when it is

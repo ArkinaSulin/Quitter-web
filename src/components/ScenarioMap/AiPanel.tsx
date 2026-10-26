@@ -67,6 +67,7 @@ interface AiPanelProps {
   performSwoopDrop: (attackerId: string, targetId: string) => Promise<unknown>;
   performClimbAttack: (attackerId: string, targetId: string) => Promise<boolean>;
   handleClimbMove: (unit: Unit, targetHex: Hex, originSurface: number) => Promise<unknown>;
+  performClimbOver: (unitId: string, farHex: Hex, descent: 'climb' | 'drop') => Promise<unknown>;
   performDescentDrop: (unit: Unit, targetHex: Hex, feet: number) => Promise<unknown>;
   selectWeapon: (unit: Unit, weaponIndex: number) => Promise<unknown>;
   undo: () => Promise<unknown>;
@@ -98,6 +99,7 @@ function buildRoutes(
       if (s.kind === 'formation') formation = s.formation;
       if (s.kind === 'climbAttack') attacks.push({ from: s.from, targetHex: s.target });
       if (s.kind === 'climb') waypoints.push(s.to);
+      if (s.kind === 'climbOver') waypoints.push(s.to);
       if (s.kind === 'drop') waypoints.push(s.to);
       if (s.kind === 'swoop') {
         waypoints.push(s.target);
@@ -142,6 +144,7 @@ export function AiPanel({
   performSwoopDrop,
   performClimbAttack,
   handleClimbMove,
+  performClimbOver,
   performDescentDrop,
   selectWeapon,
   undo,
@@ -151,7 +154,7 @@ export function AiPanel({
   addError,
 }: AiPanelProps) {
   const propsRef = useRef<AiPanelProps | null>(null);
-  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, onToggleAiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, structures, structureTemplates, groundZones, gridRadius, archerReactionEnabled, chargeEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, charge, performChargeEnd, performSwoopDrop, performClimbAttack, handleClimbMove, performDescentDrop, selectWeapon, undo, onOverlayChange, onBusyChange, addMessage, addError };
+  propsRef.current = { scenarioId, units, alliances, formationsMap, aiTeams, onSetAiTeams, aiExcluded, onToggleAiExcluded, currentTurnAlliance, fogOfWarEnabled, sightRadius, terrainCosts, walls, structures, structureTemplates, groundZones, gridRadius, archerReactionEnabled, chargeEnabled, unitMaxMP, performMove, performAttack, rotateUnit, changeFormation, charge, performChargeEnd, performSwoopDrop, performClimbAttack, handleClimbMove, performClimbOver, performDescentDrop, selectWeapon, undo, onOverlayChange, onBusyChange, addMessage, addError };
 
   const [plans, setPlans] = useState<AiUnitPlan[] | null>(null);
   const [remaining, setRemaining] = useState<ExecUnit[] | null>(null); // active during Execute
@@ -633,6 +636,9 @@ export function AiPanel({
           const originSurface = unitStandingSurface(live, props.structures, props.structureTemplates);
           await props.handleClimbMove(live, step.to, originSurface);
         }
+      } else if (step.kind === 'climbOver') {
+        setStatusText(`${live.unitName} → climbs over the wall`);
+        await props.performClimbOver(live.id, step.to, step.descent);
       } else if (step.kind === 'drop') {
         setStatusText(`${live.unitName} → drops from the wall`);
         const feet = Math.max(0, (live.elevation ?? 0) - structureSurfaceAt(step.to, props.structures, props.structureTemplates));

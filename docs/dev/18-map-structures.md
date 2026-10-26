@@ -146,7 +146,9 @@ branches on the **surface difference** (`handleUnitMove`):
 - **`dest == origin` + a freestanding edge wall** → the **climb-over** prompt (Climb over
   & climb down / Climb over & drop); crossing at `origin + edgeHeight`, fall distance
   `origin + edgeHeight − dest`. An unaffordable climb-down **holds at the top on the far
-  hex** (`climbTo` set) rather than force-dropping.
+  hex** (`climbTo` set) rather than force-dropping. Resuming from that hold charges only
+  the **remaining** up steps, and the descent charges only `newElevation − destSurface`
+  (never the full wall twice).
 - **`dest == origin`, no wall** → a plain move.
 
 `pass` (through a door at ground) requires a **real** door (`structureHasDoor`). Both the

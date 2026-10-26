@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { routeUnit, hostLostHeroSteps, detachOnDeath } from './routeUnit';
+import { routeUnit, hostLostHeroSteps, detachOnDeath, fallSteps } from './routeUnit';
 import { Unit } from '@/types/gameProtocol';
 import { ActionType, SubStep } from '@/packages/infra';
 
@@ -34,6 +34,19 @@ describe('routeUnit — fearless guard', () => {
     const rout = calls.find(c => c.type === 'ROUT')!;
     const formationChange = rout.steps.flatMap(s => s.changes).find(c => c.field === 'currentFormation');
     expect(formationChange).toEqual({ field: 'currentFormation', from: 'Open Order', to: 'Routed' });
+  });
+});
+
+describe('fallSteps — fall message troop loss', () => {
+  it('adds the number of troops lost to the fall note', () => {
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0); // each d6 = 1
+    const fallen = unit({
+      elevation: 20, currentUnitHp: 100, currentTroopCount: 10, troopHp: 10,
+    });
+    const { note, newTroops } = fallSteps(fallen, 0);
+    expect(note).toContain('(2 troops lost)');
+    expect(newTroops).toBe(8);
+    spy.mockRestore();
   });
 });
 

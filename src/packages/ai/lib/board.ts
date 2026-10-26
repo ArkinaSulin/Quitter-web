@@ -31,6 +31,8 @@ import {
   Walls,
   edgeRef,
   isHexStructureKey,
+  structureDoorState,
+  structureElevation,
 } from '@/packages/movement';
 import { computeOccupiedHexes, computeThreatHexes, makeBlockedEdge, makeCostOfHex, TerrainCosts } from '@/packages/world';
 import { StructureTemplate } from '@/types/structure';
@@ -191,6 +193,70 @@ export function structureComplexFor(
     }
   }
   return reachedRim ? null : { kind: 'enclosure', hexes };
+}
+
+/** A climbable edge wall between two level hexes (no open door/broken gate). */
+export interface EdgeWall {
+  a: Hex;
+  b: Hex;
+  height: number;
+  steps: number;
+}
+
+/**
+ * Every closed edge wall in the scenario. The planner filters these by side,
+ * reachability and affordability before planning a climb-over.
+ */
+export function edgeWalls(ctx: Pick<AiPlanContext, 'structures' | 'structureTemplates'>): EdgeWall[] {
+  const structures = ctx.structures;
+  if (!structures) return [];
+  const templates = ctx.structureTemplates;
+  const out: EdgeWall[] = [];
+  for (const [key, inst] of Object.entries(structures)) {
+    const parts = key.split(',').map(Number);
+    if (parts.length !== 3) continue;
+    const [q, r, dir] = parts;
+    if (![q, r, dir].every(Number.isInteger) || dir < 0 || dir > 5) continue;
+    const template = templates?.[inst.templateId];
+    if (!template || template.anchor !== 'edge') continue;
+    if (structureDoorState(inst, template).openOrBroken) continue;
+    const height = structureElevation(template, inst);
+    if (height <= 0) continue;
+    const ref = edgeRef(q, r, dir);
+    out.push({
+      a: { q: ref.aq, r: ref.ar, s: -ref.aq - ref.ar },
+      b: { q: ref.bq, r: ref.br, s: -ref.bq - ref.br },
+      height,
+      steps: Math.max(1, Math.round(height / 10)),
+    });
+  }
+  return out;
+}
+
+/**
+ * Ground distance map that treats every closed edge structure as impassable.
+ * Used only to decide whether a target truly needs a climb-over: the normal
+ * movement map prices a climb as MP and may therefore look "reachable".
+ */
+export function noClimbDistanceMap(
+  unit: Unit,
+  working: Unit[],
+  ctx: AiPlanContext,
+  mode: 'ground' | 'fly' = 'ground',
+  complex?: StructureComplex | null,
+): Map<string, number> {
+  const movement = movementContextFor(unit, working, ctx, mode, complex);
+  const base = movement.blockedEdge;
+  const blockedEdge: BlockedEdgeFn = (fq, fr, tq, tr) => {
+    const dir = HEX_DIRS.findIndex(d => d.q === tq - fq && d.r === tr - fr);
+    if (dir >= 0) {
+      const inst = ctx.structures?.[edgeRef(fq, fr, dir).key];
+      const template = inst ? ctx.structureTemplates?.[inst.templateId] : undefined;
+      if (inst && template && !structureDoorState(inst, template).openOrBroken) return true;
+    }
+    return base?.(fq, fr, tq, tr) ?? false;
+  };
+  return distanceMap(unit, { ...ctx, units: working }, mode, { ...movement, blockedEdge });
 }
 
 /** Living, visible, adversarial units (heroes excluded, matching legalTargets). */

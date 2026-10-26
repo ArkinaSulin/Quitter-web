@@ -145,7 +145,7 @@ clause (`formatStructureToHit`, e.g. `3 attacks (d20 +5 vs AC 12: 7,18,20 → 2 
 and the dice clause
 (`formatStructureAttackRolls`, e.g. `2 attacks {1d8 vs DT 5: 5,7 → 2 over DT, 12 damage}`)
 are verbose-only, and a destroyed structure's collapse-fall notes come last
-(`fell 10 ft — (1d6: 4) per troop × 20 = 80 HP`). `hp <= 0` removes the segment.
+(`fell 10 ft — (1d6: 4) per troop × 20 = 80 HP (N troops lost)`). `hp <= 0` removes the segment.
 
 Persistence rides the command log: the command is `ATTACK` with a **`STRUCTURE`**
 sub-step (`{ field: 'structures', key, from, to }`), applied by `apply_substeps`
