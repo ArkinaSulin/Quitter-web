@@ -53,8 +53,8 @@ Banner text:
 | State | Text |
 |---|---|
 | Wave active | `wave: 2 turn: 1/3` |
-| Break, not armed (DM can click to arm) | `wave: 2 turn: Will start` |
-| Break, armed (DM can click to cancel) | `wave: 2 turn: break` |
+| Break, not armed (DM can click to arm) | `wave: 2 turn: break` |
+| Break, armed (DM can click to cancel) | `wave: 2 turn: Will start` |
 | Complete | hidden |
 
 The banner is a button only for the effective DM. Clicking arms or cancels

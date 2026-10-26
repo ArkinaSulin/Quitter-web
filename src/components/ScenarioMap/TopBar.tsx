@@ -80,7 +80,7 @@ export function TopBar(props: TopBarProps) {
   // editorial GM actions (Free Move / Settings / enter Replay) drop in player mode.
   const editMode = isGM && !gmAsPlayer;
   const siegeLabel = halloweenSiegeStatus?.kind === 'break'
-    ? `wave: ${halloweenSiegeStatus.waveNumber} turn: ${nextWaveArmed ? 'break' : 'Will start'}`
+    ? `wave: ${halloweenSiegeStatus.waveNumber} turn: ${nextWaveArmed ? 'Will start' : 'break'}`
     : halloweenSiegeStatus?.kind === 'wave'
       ? `wave: ${halloweenSiegeStatus.waveNumber} turn: ${halloweenSiegeStatus.turnInWave}/${halloweenSiegeStatus.turnsPerWave}`
       : '';
