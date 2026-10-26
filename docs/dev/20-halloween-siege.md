@@ -21,8 +21,9 @@ continues to work normally.
 - If no team is assigned to the Enemy alliance while the siege is active, End
   Turn is blocked with a DM error until the DM assigns one in Alliances.
 - Each wave's percentages must total exactly 100% before the window can save.
-- When the wave's spawn turns are over and no living un-routed enemy remains,
-  the GM broadcasts `Congratulations! You completed wave N.` once per wave.
+- When the wave's spawn turns are over (on the following break/complete Enemy
+  turn) and no living un-routed enemy remains, the GM shows all players a
+  transient toast: `Congratulations! You completed wave N.`
 
 ## Wave timeline
 
@@ -73,17 +74,24 @@ Enemy turn begins. Once the wave starts it cannot be cancelled.
   waveStartTurns: (number | null)[]; // actual starts, one per wave
   nextWaveStartTurn: number | null;  // armed upcoming wave
   lastSpawnedTurn: number | null;
-  announcedWave: number | null;      // completion-message dedupe
+  announcedWave: number | null;      // completion-toast dedupe
+  announcedWaveTurn: number | null;  // Enemy turn the toast fired (legitimacy check)
 }
 ```
 
 - Save & arm sets `waveStartTurns[0] = nextEnemyTurnNumber(...)`, clears
-  `nextWaveStartTurn`, and resets `lastSpawnedTurn` / `announcedWave`.
+  `nextWaveStartTurn`, and resets `lastSpawnedTurn` / `announcedWave` /
+  `announcedWaveTurn`.
 - `nextWaveStartTurn` is set to `nextEnemyTurnNumber(...)` when the DM arms the
   next wave (or cleared on cancel). `beginNextWave` moves it into
   `waveStartTurns[next]` on the Enemy turn.
 - `lastSpawnedTurn` prevents duplicate spawns across re-renders/reloads.
-- `announcedWave` prevents duplicate completion messages.
+- A wave is only **completed** on the break/complete phase, never on a spawn
+  turn. This prevents announcing while the final batch is still spawning.
+- `announcedWave` + `announcedWaveTurn` prevent duplicate completion toasts.
+  A missing `announcedWaveTurn`, or one written before the break/complete
+  boundary (e.g. by the old premature-marker bug), is treated as premature: the
+  toast fires once more and gets a proper turn stamp.
 - Settings are written with `updateScenarioField` (outside the command log),
   matching the other scenario toggles. Legacy configs with `nextSpawnAtTurn`
   are parsed into `waveStartTurns[0]`.
@@ -97,8 +105,8 @@ On an Enemy turn the GM client:
    spawns that wave.
 2. Otherwise, if `kind === 'wave'` and `lastSpawnedTurn !== turnNumber`, spawns
    the current wave.
-3. If the wave's spawn turns are over and no living un-routed enemy remains,
-   broadcasts the completion message once.
+3. On the following break/complete Enemy turn, if no living un-routed enemy
+   remains, shows the completion toast once.
 
 Spawn steps:
 
@@ -119,15 +127,17 @@ log, so undo soft-deletes the placed unit; replay reconstructs it from the
 ## Files
 
 - `src/packages/world/lib/halloweenSiege.ts` — parse/validate, phase math,
-  arming/begin/toggle helpers, completion helper, weighted picks, team split,
-  rim selection, spawn plans.
-- `src/packages/world/tests/halloweenSiege.test.ts` — 18 unit tests.
+  arming/begin/toggle helpers, completion + announcement helpers, weighted
+  picks, team split, rim selection, spawn plans.
+- `src/packages/world/tests/halloweenSiege.test.ts` — 19 unit tests.
 - `src/components/ScenarioMap/HalloweenSiegeWindow.tsx` — DM configuration
   window (waves, percentages, drag/drop monster picker).
 - `src/components/ScenarioMap/ScenarioMap.tsx` — load/save, End Turn guard, GM
-  arming/spawn/completion effect, top-bar status.
+  arming/spawn/completion effect, top-bar status, toast render.
 - `src/components/ScenarioMap/TopBar.tsx` — public wave/turn badge and the
   DM-only arm/cancel button; Settings and Replay scenario live on the right.
+- `src/hooks/useScenarioToast.ts` — per-scenario toast broadcast.
+- `src/components/Toast.tsx` — shared transient toast.
 - `src/hooks/useUnitTemplates.ts` — shared template fetch (used by the modal,
   spawner and Unit Selector).
 - `supabase/migrations/133_halloween_siege.sql`.
@@ -138,8 +148,9 @@ log, so undo soft-deletes the placed unit; replay reconstructs it from the
   Undoing the `PLACE` commands and redoing the End Turn will not respawn the
   wave; a failed spawn is not retried automatically (re-save the configuration
   to re-arm).
-- Arming/cancelling and the completion marker are settings writes, not undoable
-  commands. Once a wave starts it cannot be cancelled.
+- Arming/cancelling, the completion markers and the toast are settings /
+  broadcast writes, not undoable commands. Once a wave starts it cannot be
+  cancelled.
 - Monsters are enemy-only by design.
 - Hero templates are excluded because the AI never controls heroes.
 - If the rim and all inner rings are full, only the available monsters spawn.

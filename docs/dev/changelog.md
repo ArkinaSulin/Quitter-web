@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## Halloween Siege completion toast + premature-marker fix (2026-10-25)
+**Files:** src/packages/world/lib/halloweenSiege.ts, src/packages/world/tests/halloweenSiege.test.ts, src/components/ScenarioMap/{ScenarioMap,HalloweenSiegeWindow}.tsx, src/hooks/useScenarioToast.ts, docs/dev/{20-halloween-siege,19-ui-panels-and-floating,changelog}.md
+
+- A wave is now only considered complete on the break/complete Enemy turn, not
+  on its last spawn turn. This fixes the race where the old effect stamped
+  `announcedWave` before the final batch finished spawning, suppressing the real
+  congratulations.
+- Added `announcedWaveTurn`; a marker with no turn or a turn before the
+  break/complete boundary is repaired by announcing once more and stamping the
+  real Enemy turn.
+- The congratulations is now a transient toast broadcast to every player
+  (`useScenarioToast` + existing `Toast`), not a Messages-log entry.
+- Verification: `npm run check` (tsc, tests, depcruise, build). No migration.
+
 ## Flying unit corpses render as stars (2026-10-25)
 **Files:** src/packages/battle/lib/corpseTracker.ts, src/packages/battle/tests/battleStats.test.ts, src/components/TokenRenderer/drawToken.ts, src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{15-token-rendering,changelog}.md
 

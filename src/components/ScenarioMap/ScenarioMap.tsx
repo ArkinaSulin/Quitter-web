@@ -21,6 +21,8 @@ import { getFormationChangeMpCost } from '@/packages/movement';
 import { useGameEngine } from '@/hooks/useGameEngine';
 import { useTeamAlliances } from '@/hooks/useTeamAlliances';
 import { useMessageSync } from '@/hooks/useMessageSync';
+import { useScenarioToast } from '@/hooks/useScenarioToast';
+import Toast from '@/components/Toast';
 import { useProfile } from '@/hooks/useProfile';
 import { useReplay } from '@/hooks/useReplay';
 import { useParticipants } from '@/hooks/useParticipants';
@@ -74,6 +76,7 @@ import {
   isHalloweenSiegeConfigValid,
   parseHalloweenSiegeConfig,
   planSiegeSpawn,
+  shouldAnnounceWaveCompletion,
   siegePhaseForTurn,
   toggleNextWaveArm,
   type HalloweenSiegeConfig,
@@ -252,6 +255,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const { units, loading, error, addUnitFromTemplate, deleteUnit, applyLocalUnit, refreshUnitsByIds, sizeCategories } = useSupabaseSync(scenarioId);
   const { getMyRole, updateScreenshot, fetchScenarios, currentUser, fetchScenarioMapData, updateScenarioField, updateScenarioMapData } = useScenarios();
   const { addMessage, addError } = useMessageSync(scenarioId);
+  const { toast: scenarioToast, showToast, dismissToast } = useScenarioToast(scenarioId);
   const [isGM, setIsGM] = useState(false);
   // DM can assume a player role (effective GM off, SuperPlayer caps) so they don't
   // accidentally make GM-only changes. Real isGM stays for End Turn / heartbeat /
@@ -1975,8 +1979,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     );
     const completedWave = completedWaveForPhase(config, phase, config.lastSpawnedTurn);
     const shouldAnnounce = !spawnDue
-      && completedWave != null
-      && config.announcedWave !== completedWave
+      && shouldAnnounceWaveCompletion(config, completedWave)
       && !hasUnroutedEnemy;
 
     if (!spawnDue && !shouldStart && !shouldAnnounce) return;
@@ -1985,7 +1988,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let spawnPhase: Extract<SiegePhase, { kind: 'wave' }> | null = null;
 
     if (shouldAnnounce && completedWave != null) {
-      nextConfig = { ...nextConfig, announcedWave: completedWave };
+      nextConfig = { ...nextConfig, announcedWave: completedWave, announcedWaveTurn: turnNumber };
     }
     if (shouldStart) {
       const started = beginNextWave(nextConfig, turnNumber);
@@ -2013,7 +2016,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         return;
       }
       if (shouldAnnounce && completedWave != null) {
-        addMessage(`Congratulations! You completed wave ${completedWave}.`);
+        showToast(`Congratulations! You completed wave ${completedWave}.`);
       }
       if (spawnPhase) {
         void spawnHalloweenWave(nextConfig, spawnPhase).finally(() => {
@@ -2021,7 +2024,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         });
       }
     });
-  }, [effectiveIsGM, replayMode, inReplay, halloweenSiege, currentTurnAlliance, turnNumber, units, alliances, saveHalloweenSiege, spawnHalloweenWave, addMessage]);
+  }, [effectiveIsGM, replayMode, inReplay, halloweenSiege, currentTurnAlliance, turnNumber, units, alliances, saveHalloweenSiege, spawnHalloweenWave, showToast]);
 
   const clearFreeMoveTimer = useCallback(() => {
     if (freeMoveTimeoutRef.current) { clearTimeout(freeMoveTimeoutRef.current); freeMoveTimeoutRef.current = null; }
@@ -3358,6 +3361,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         nextWaveArmed={nextWaveArmed}
         onToggleNextWave={handleToggleNextSiegeWave}
       />
+
+      {scenarioToast && (
+        <Toast
+          key={scenarioToast.id}
+          message={scenarioToast.text}
+          duration={6000}
+          onClose={() => dismissToast(scenarioToast.id)}
+        />
+      )}
 
       {/* Floating Left Panel — hidden in replay or when the DM is gone */}
       {!controlsLocked && (

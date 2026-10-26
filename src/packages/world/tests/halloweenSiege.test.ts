@@ -12,6 +12,7 @@ import {
   parseHalloweenSiegeConfig,
   pickSiegeMonster,
   planSiegeSpawn,
+  shouldAnnounceWaveCompletion,
   siegePhaseForTurn,
   toggleNextWaveArm,
   type HalloweenSiegeConfig,
@@ -31,6 +32,7 @@ function config(partial: Partial<HalloweenSiegeConfig> = {}): HalloweenSiegeConf
     nextWaveStartTurn: null,
     lastSpawnedTurn: 1,
     announcedWave: null,
+    announcedWaveTurn: null,
     ...partial,
   };
 }
@@ -103,9 +105,9 @@ describe('Halloween Siege arming', () => {
 });
 
 describe('Halloween Siege completion', () => {
-  it('reports the completed wave on the last spawn turn, break, and complete phases', () => {
+  it('reports the completed wave only on the break and complete phases', () => {
     const cfg = config();
-    expect(completedWaveForPhase(cfg, siegePhaseForTurn(cfg, 2), 2)).toBe(1);
+    expect(completedWaveForPhase(cfg, siegePhaseForTurn(cfg, 2), 2)).toBeNull();
     expect(completedWaveForPhase(cfg, siegePhaseForTurn(cfg, 3), 2)).toBe(1);
     const started = beginNextWave(cfg, 4)!.config;
     expect(completedWaveForPhase(started, siegePhaseForTurn(started, 6), 5)).toBe(2);
@@ -115,6 +117,17 @@ describe('Halloween Siege completion', () => {
     const cfg = config();
     expect(completedWaveForPhase(cfg, siegePhaseForTurn(cfg, 1), 1)).toBeNull();
     expect(completedWaveForPhase(cfg, siegePhaseForTurn(cfg, 2), null)).toBeNull();
+  });
+
+  it('repairs a missing or premature announcement marker once', () => {
+    const cfg = config();
+    expect(shouldAnnounceWaveCompletion(cfg, 1)).toBe(true);
+    expect(shouldAnnounceWaveCompletion({ ...cfg, announcedWave: 1, announcedWaveTurn: null }, 1)).toBe(true);
+    // Wave 1 starts on turn 1 with N=2: the break boundary is turn 3. A marker
+    // written on turn 2 (last spawn turn) is premature.
+    expect(shouldAnnounceWaveCompletion({ ...cfg, announcedWave: 1, announcedWaveTurn: 2 }, 1)).toBe(true);
+    expect(shouldAnnounceWaveCompletion({ ...cfg, announcedWave: 1, announcedWaveTurn: 3 }, 1)).toBe(false);
+    expect(shouldAnnounceWaveCompletion({ ...cfg, announcedWave: 1, announcedWaveTurn: 3 }, 2)).toBe(true);
   });
 });
 
@@ -140,6 +153,7 @@ describe('Halloween Siege validation and parsing', () => {
     expect(parsed?.waveStartTurns).toEqual([null]);
     expect(parsed?.nextWaveStartTurn).toBeNull();
     expect(parsed?.announcedWave).toBeNull();
+    expect(parsed?.announcedWaveTurn).toBeNull();
   });
 
   it('backfills legacy nextSpawnAtTurn into waveStartTurns[0]', () => {

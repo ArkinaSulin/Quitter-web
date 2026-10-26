@@ -34,6 +34,7 @@ export interface HalloweenSiegeConfig {
   nextWaveStartTurn: number | null;
   lastSpawnedTurn: number | null;
   announcedWave: number | null;
+  announcedWaveTurn: number | null;
 }
 
 export type SiegePhase =
@@ -65,6 +66,7 @@ export function defaultHalloweenSiegeConfig(): HalloweenSiegeConfig {
     nextWaveStartTurn: null,
     lastSpawnedTurn: null,
     announcedWave: null,
+    announcedWaveTurn: null,
   };
 }
 
@@ -112,6 +114,7 @@ export function parseHalloweenSiegeConfig(raw: unknown): HalloweenSiegeConfig | 
     nextWaveStartTurn: finiteNumberOrNull(source.nextWaveStartTurn),
     lastSpawnedTurn: finiteNumberOrNull(source.lastSpawnedTurn),
     announcedWave: finiteNumberOrNull(source.announcedWave),
+    announcedWaveTurn: finiteNumberOrNull(source.announcedWaveTurn),
   };
 }
 
@@ -204,9 +207,6 @@ export function completedWaveForPhase(
   lastSpawnedTurn: number | null,
 ): number | null {
   if (lastSpawnedTurn == null) return null;
-  if (phase.kind === 'wave') {
-    return phase.turnInWave === phase.turnsPerWave ? phase.waveNumber : null;
-  }
   if (phase.kind === 'break') {
     return phase.waveNumber > 1 ? phase.waveNumber - 1 : null;
   }
@@ -214,6 +214,25 @@ export function completedWaveForPhase(
     return config.waves.length > 0 ? config.waves.length : null;
   }
   return null;
+}
+
+/**
+ * True when the completion toast should fire. A marker with no turn (legacy) or
+ * one written before the wave's break/complete boundary is treated as premature
+ * (the old code could stamp it while the final batch was still spawning), so the
+ * real completion is announced once more and gets a proper turn stamp.
+ */
+export function shouldAnnounceWaveCompletion(
+  config: HalloweenSiegeConfig,
+  completedWave: number | null,
+): boolean {
+  if (completedWave == null) return false;
+  if (config.announcedWave !== completedWave) return true;
+  const start = config.waveStartTurns[completedWave - 1];
+  const turnsPerWave = Math.max(1, Math.floor(config.turnsPerWave) || 1);
+  const boundary = start == null ? null : start + turnsPerWave;
+  return config.announcedWaveTurn == null
+    || (boundary != null && config.announcedWaveTurn < boundary);
 }
 
 export function isHalloweenSiegeComplete(config: HalloweenSiegeConfig, enemyTurnNumber: number): boolean {

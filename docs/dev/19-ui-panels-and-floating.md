@@ -126,6 +126,15 @@ modal's measured size** on mount, on every drag move, and on window resize
 `max-h-[92vh]` with an inner `overflow-y-auto` for tall content. Do not center
 with a hard-coded height.
 
+## 5. Scenario toasts
+
+Transient, non-anchored notifications use the shared `Toast` component
+(`src/components/Toast.tsx`) via `src/hooks/useScenarioToast.ts` (per-scenario
+broadcast `toasts:{scenarioId}`, event `scenario-toast`). `Toast` is a centered
+`fixed` panel, so it is **not** a `Floating` anchored pop-up. Use this path for
+one-off celebration/alert messages that should reach every player; use
+`addMessage` only when the text also belongs in the Messages log.
+
 ## Invariants / gotchas
 
 - Panel/tab content is clipped by `PanelsContainer` (`overflow-hidden`) — any

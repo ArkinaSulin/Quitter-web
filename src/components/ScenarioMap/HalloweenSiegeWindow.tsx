@@ -142,6 +142,7 @@ export function HalloweenSiegeWindow({
       nextWaveStartTurn: null,
       lastSpawnedTurn: null,
       announcedWave: null,
+      announcedWaveTurn: null,
     });
   };
 
