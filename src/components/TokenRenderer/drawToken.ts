@@ -13,6 +13,26 @@ const imageCache = new Map<string, HTMLImageElement>();
 const dotPositionsCache = new Map<string, Array<{ x: number; y: number; isDead: boolean; direction?: number }>>();
 const DOT_POSITIONS_CACHE_MAX = 512;
 
+/** Trace a 10-vertex (5-point) star centred at (cx, cy). */
+export function traceStarPath(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  outerR: number,
+  innerR = outerR * 0.5,
+): void {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const radius = i % 2 === 0 ? outerR : innerR;
+    const angle = (Math.PI / 5) * i - Math.PI / 2;
+    const x = cx + radius * Math.cos(angle);
+    const y = cy + radius * Math.sin(angle);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
 export function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     if (imageCache.has(url)) {
@@ -353,16 +373,7 @@ export function drawToken(options: DrawTokenOptions): void {
       ctx.save();
       ctx.translate(px, py);
       if (direction !== undefined) ctx.rotate(direction);
-      ctx.beginPath();
-      for (let i = 0; i < 10; i++) {
-        const r = i % 2 === 0 ? outerR : innerR;
-        const angle = (Math.PI / 5) * i - Math.PI / 2;
-        const sx = r * Math.cos(angle);
-        const sy = r * Math.sin(angle);
-        if (i === 0) ctx.moveTo(sx, sy);
-        else ctx.lineTo(sx, sy);
-      }
-      ctx.closePath();
+      traceStarPath(ctx, 0, 0, outerR, innerR);
       if (isDead) {
         ctx.strokeStyle = dotColor;
         ctx.lineWidth = 1;
@@ -622,16 +633,7 @@ export function drawSpellCastToken(options: DrawSpellCastTokenOptions): void {
       ctx.save();
       ctx.translate(px, py);
       if (direction !== undefined) ctx.rotate(direction);
-      ctx.beginPath();
-      for (let i = 0; i < 10; i++) {
-        const r = i % 2 === 0 ? outerR : innerR;
-        const angle = (Math.PI / 5) * i - Math.PI / 2;
-        const sx = r * Math.cos(angle);
-        const sy = r * Math.sin(angle);
-        if (i === 0) ctx.moveTo(sx, sy);
-        else ctx.lineTo(sx, sy);
-      }
-      ctx.closePath();
+      traceStarPath(ctx, 0, 0, outerR, innerR);
       if (isDead) {
         ctx.strokeStyle = dotColor;
         ctx.lineWidth = 1;

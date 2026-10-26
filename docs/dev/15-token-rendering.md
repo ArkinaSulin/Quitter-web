@@ -112,11 +112,11 @@ Name runs flush along the bottom in white with a dark shadow.
   (HP ≤ 0, non-hero) = grayscaled; downed **hero** (HP ≤ 0) grayscales but
   stays interactable.
 - **Fallen piles** (decorative, drawn under tokens): per-hex dots derived from
-  the command log (`battle/corpseTracker.buildFallen`). Each dot matches the dead unit —
-  team colour, **mounted = triangle / foot = circle**, radius from
-  `sizeCategory`×`visualScale`. Scatter is deterministic and stable as the pile
-  grows (random direction, radial density linear in distance out to `0.704` of
-  `HEX_SIZE`, no cap).
+  the command log (`battle/corpseTracker.buildFallen`). Each dot matches the dead
+  unit - team colour, **flyable = star**, mounted = triangle / foot = circle
+  (flyable wins for flying mounts), radius from `sizeCategory`x`visualScale`.
+  Scatter is deterministic and stable as the pile grows (random direction,
+  radial density linear in distance out to `0.704` of `HEX_SIZE`, no cap).
 - Routed is drawn from `currentFormation === 'Routed'` (white flag).
 
 ## Async image handling

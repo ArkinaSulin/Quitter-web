@@ -1,5 +1,18 @@
 # QuiTTER Changelog
 
+## Flying unit corpses render as stars (2026-10-25)
+**Files:** src/packages/battle/lib/corpseTracker.ts, src/packages/battle/tests/battleStats.test.ts, src/components/TokenRenderer/drawToken.ts, src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{15-token-rendering,changelog}.md
+
+- Fallen-troop groups now record `flyable` from the PLACE payload
+  (`flySpeed > 0`), and the corpse-dot renderer draws a **star** for flyable
+  units, a triangle for grounded mounted units, and a circle for foot.
+- Flyable takes precedence over mounted, matching the live token's troop shapes
+  (a flying mount's corpse is a star).
+- Extracted the shared `traceStarPath` helper in `drawToken` so the token and
+  corpse stars use the same geometry.
+- Added tests for flyable corpse data and star/triangle/circle precedence.
+- Verification: `npm run check` (tsc, tests, depcruise, build). No migration.
+
 ## Routed flyers flee with the fly pool (2026-10-25)
 **Files:** src/packages/ai/lib/{planner,board}.ts, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md
 

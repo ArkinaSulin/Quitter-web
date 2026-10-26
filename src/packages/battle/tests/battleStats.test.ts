@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CommandLogRow } from '@/packages/infra';
-import { buildFallen, corpseScatterPositions, corpseDots, FallenGroup } from '@/packages/battle/lib/corpseTracker';
+import { buildFallen, corpseScatterPositions, corpseDots, corpseDotShape, FallenGroup } from '@/packages/battle/lib/corpseTracker';
 import { buildStats, formatStatsText } from '@/packages/battle/lib/battleStats';
 import { Unit, AllianceGroup } from '@/types/gameProtocol';
 
@@ -58,6 +58,35 @@ describe('corpseTracker', () => {
     expect(total(fallen['2,1'])).toBe(5); // later losses land on the moved-to hex
   });
 
+  it('records flyable corpses and prefers the star shape over mounted', () => {
+    const place = row({
+      action_type: 'PLACE',
+      seq: 1,
+      sub_steps: [{
+        type: 'PLACE', description: '', unitId: 'u1', changes: [],
+        payload: {
+          id: 'u1', hex: { q: 0, r: 0, s: 0 }, currentTroopCount: 20,
+          mountId: 'pegasus', flySpeed: 6,
+        },
+      }],
+    });
+    const attack = row({
+      action_type: 'ATTACK',
+      seq: 2,
+      sub_steps: [{
+        type: 'DAMAGE', description: '', unitId: 'u1',
+        changes: [{ field: 'currentTroopCount', from: 20, to: 15 }],
+      }],
+    });
+    const fallen = buildFallen([place, attack]);
+    const dot = corpseDots(0, 0, fallen['0,0'])[0];
+    expect(dot.flyable).toBe(true);
+    expect(dot.mounted).toBe(true);
+    expect(corpseDotShape(dot)).toBe('star');
+    expect(corpseDotShape({ flyable: false, mounted: true })).toBe('triangle');
+    expect(corpseDotShape({ flyable: false, mounted: false })).toBe('circle');
+  });
+
   it('scatter positions are stable as the pile grows, reachable to the centre, and bias outward', () => {
     const R = 0.704;
     const small = corpseScatterPositions(3, 7, 5);
@@ -79,7 +108,7 @@ describe('corpseTracker', () => {
   });
 
   it('corpseDots is cached and matches the raw scatter', () => {
-    const groups: FallenGroup[] = [{ count: 3, mounted: false, sizeCategory: 100, visualScale: 100, team: 'blue' }];
+    const groups: FallenGroup[] = [{ count: 3, flyable: false, mounted: false, sizeCategory: 100, visualScale: 100, team: 'blue' }];
     const a = corpseDots(1, 2, groups);
     const b = corpseDots(1, 2, groups);
     expect(a).toBe(b); // identical reference from the cache

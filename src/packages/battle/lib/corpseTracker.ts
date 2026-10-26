@@ -7,13 +7,15 @@
 // stood on at that moment -> fallen[q,r] gains k in that unit's group.
 //
 // Each death records enough of the dead unit to render the dot like its token:
-// team (colour), mounted (triangle vs circle), and sizeCategory/visualScale
-// (radius) — all taken from the PLACE sub-step payload (the full unit snapshot).
+// team (colour), flyable (star), mounted (triangle) / foot (circle), and
+// sizeCategory/visualScale (radius) — all taken from the PLACE sub-step payload
+// (the full unit snapshot).
 import { CommandLogRow, parseSubSteps } from '@/packages/infra';
 
-/** One kind of death on a hex (same team + mounted + size on that hex). */
+/** One kind of death on a hex (same team + flyable/mounted + size on that hex). */
 export interface FallenGroup {
   count: number;
+  flyable: boolean;
   mounted: boolean;
   sizeCategory: number;
   visualScale: number;
@@ -28,6 +30,7 @@ interface UnitState {
   q: number;
   r: number;
   troops: number;
+  flyable: boolean;
   mounted: boolean;
   sizeCategory: number;
   visualScale: number;
@@ -79,7 +82,7 @@ export function corpseScatterPositions(q: number, r: number, count: number): { d
 export function flattenFallen(groups: FallenGroup[]): Omit<FallenGroup, 'count'>[] {
   const out: Omit<FallenGroup, 'count'>[] = [];
   for (const g of groups) {
-    const spec = { mounted: g.mounted, sizeCategory: g.sizeCategory, visualScale: g.visualScale, team: g.team };
+    const spec = { flyable: g.flyable, mounted: g.mounted, sizeCategory: g.sizeCategory, visualScale: g.visualScale, team: g.team };
     for (let i = 0; i < g.count; i++) out.push(spec);
   }
   return out;
@@ -91,13 +94,22 @@ export interface CorpseDot extends Omit<FallenGroup, 'count'> {
   dy: number;
 }
 
+export type CorpseDotShape = 'star' | 'triangle' | 'circle';
+
+/** Flyable wins over mounted, matching the live token troop shapes. */
+export function corpseDotShape(dot: Pick<CorpseDot, 'flyable' | 'mounted'>): CorpseDotShape {
+  if (dot.flyable) return 'star';
+  if (dot.mounted) return 'triangle';
+  return 'circle';
+}
+
 // The per-hex dot list (specs + positions) is deterministic given the groups, so
 // cache it too — `useCanvasDraw` calls this every redraw.
 const dotCache = new Map<string, CorpseDot[]>();
 const DOT_CACHE_MAX = 5000;
 
 export function corpseDots(q: number, r: number, groups: FallenGroup[]): CorpseDot[] {
-  const cacheKey = `${q},${r}|${groups.map(g => `${g.mounted}${g.sizeCategory}${g.visualScale}${g.team}${g.count}`).join(';')}`;
+  const cacheKey = `${q},${r}|${groups.map(g => `${g.flyable}${g.mounted}${g.sizeCategory}${g.visualScale}${g.team}${g.count}`).join(';')}`;
   const cached = dotCache.get(cacheKey);
   if (cached) return cached;
 
@@ -109,8 +121,8 @@ export function corpseDots(q: number, r: number, groups: FallenGroup[]): CorpseD
   return dots;
 }
 
-function groupKey(g: Pick<FallenGroup, 'mounted' | 'sizeCategory' | 'visualScale' | 'team'>): string {
-  return `${g.mounted}|${g.sizeCategory}|${g.visualScale}|${g.team}`;
+function groupKey(g: Pick<FallenGroup, 'flyable' | 'mounted' | 'sizeCategory' | 'visualScale' | 'team'>): string {
+  return `${g.flyable}|${g.mounted}|${g.sizeCategory}|${g.visualScale}|${g.team}`;
 }
 
 /**
@@ -125,17 +137,18 @@ export function buildFallen(rows: CommandLogRow[]): FallenMap {
   for (const row of sorted) {
     const steps = parseSubSteps(row.sub_steps);
     for (const step of steps) {
-      // A PLACE seeds the full unit snapshot (team / mount / size included).
+      // A PLACE seeds the full unit snapshot (team / flying / mount / size included).
       if (step.type === 'PLACE' && step.payload && typeof step.payload === 'object') {
         const p = step.payload as {
           id?: string; hex?: { q: number; r: number }; currentTroopCount?: number;
-          mountId?: string | null; sizeCategory?: number; visualScale?: number; team?: string;
+          mountId?: string | null; flySpeed?: number; sizeCategory?: number; visualScale?: number; team?: string;
         };
         if (p.id && p.hex) {
           state.set(p.id, {
             q: p.hex.q,
             r: p.hex.r,
             troops: p.currentTroopCount ?? 0,
+            flyable: (p.flySpeed ?? 0) > 0,
             mounted: !!p.mountId,
             sizeCategory: p.sizeCategory ?? 100,
             visualScale: p.visualScale ?? 100,
@@ -166,7 +179,7 @@ export function buildFallen(rows: CommandLogRow[]): FallenMap {
           troops = to;
           if (!EDITOR_COMMANDS.has(row.action_type) && to < from) {
             const key = hexKey(unit.q, unit.r);
-            const spec = { mounted: unit.mounted, sizeCategory: unit.sizeCategory, visualScale: unit.visualScale, team: unit.team };
+            const spec = { flyable: unit.flyable, mounted: unit.mounted, sizeCategory: unit.sizeCategory, visualScale: unit.visualScale, team: unit.team };
             const groups = fallen[key] ?? (fallen[key] = []);
             const gk = groupKey(spec);
             const existing = groups.find(g => groupKey(g) === gk);

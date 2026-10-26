@@ -7,11 +7,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
 import { hexToPixel, unitMatchesFilter, type TargetFilter } from '@/hooks/useHexGrid';
 import { Unit, Hex, AllianceGroup, Formation, SizeCategory, GroundEffect } from '@/types/gameProtocol';
-import { drawToken, loadImage, getLoadedImage, drawArcherReactionButton, drawTargetMarker } from '@/components/TokenRenderer/drawToken';
+import { drawToken, loadImage, getLoadedImage, drawArcherReactionButton, drawTargetMarker, traceStarPath } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier } from '@/packages/morale';
 import { isDeadCorpse } from '@/packages/units';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
-import { corpseDots, FallenMap } from '@/packages/battle';
+import { corpseDots, corpseDotShape, FallenMap } from '@/packages/battle';
 import { TEAM_COLORS, Team } from '@/packages/units';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, canFly, isAirborne, MapBackgroundConfig, costShade, hexMpLabelAt, HEX_DIRS } from '@/packages/world';
 import { parseClimbTo, hexDirection, flyMax } from '@/packages/movement';
@@ -524,13 +524,17 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           const x = c.cx + dot.dx * HEX_SIZE * currentZoom;
           const y = c.cy + dot.dy * HEX_SIZE * currentZoom;
           const color = TEAM_COLORS[dot.team as Team] || '#9e9e9e';
-          ctx.beginPath();
-          if (dot.mounted) {
+          const shape = corpseDotShape(dot);
+          if (shape === 'star') {
+            traceStarPath(ctx, x, y, cr * ((5 / 3) * 1.3) / 2);
+          } else if (shape === 'triangle') {
+            ctx.beginPath();
             ctx.moveTo(x, y - cr * 1.15);
             ctx.lineTo(x - cr * 1.0, y + cr * 0.8);
             ctx.lineTo(x + cr * 1.0, y + cr * 0.8);
             ctx.closePath();
           } else {
+            ctx.beginPath();
             ctx.arc(x, y, cr, 0, 2 * Math.PI);
           }
           ctx.globalAlpha = 0.5;
