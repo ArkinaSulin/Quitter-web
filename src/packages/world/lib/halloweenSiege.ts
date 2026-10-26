@@ -15,8 +15,6 @@ function hexRingPure(center: Hex, radius: number): Hex[] {
   return results;
 }
 
-export const SIEGE_BREAK_TURNS = 1;
-
 export interface SiegeEntry {
   templateId: string;
   percent: number;
@@ -32,8 +30,10 @@ export interface HalloweenSiegeConfig {
   enabled: boolean;
   turnsPerWave: number;
   waves: SiegeWave[];
-  nextSpawnAtTurn: number | null;
+  waveStartTurns: (number | null)[];
+  nextWaveStartTurn: number | null;
   lastSpawnedTurn: number | null;
+  announcedWave: number | null;
 }
 
 export type SiegePhase =
@@ -61,8 +61,10 @@ export function defaultHalloweenSiegeConfig(): HalloweenSiegeConfig {
     enabled: false,
     turnsPerWave: 3,
     waves: [],
-    nextSpawnAtTurn: null,
+    waveStartTurns: [],
+    nextWaveStartTurn: null,
     lastSpawnedTurn: null,
+    announcedWave: null,
   };
 }
 
@@ -96,12 +98,20 @@ export function parseHalloweenSiegeConfig(raw: unknown): HalloweenSiegeConfig | 
       }))
     : [];
 
+  const waveStartTurns: (number | null)[] = waves.map((_, index) => {
+    if (Array.isArray(source.waveStartTurns)) return finiteNumberOrNull(source.waveStartTurns[index]);
+    if (index === 0) return finiteNumberOrNull(source.nextSpawnAtTurn);
+    return null;
+  });
+
   return {
     enabled: !!source.enabled,
     turnsPerWave: finiteInt(source.turnsPerWave, 3, 1, 999),
     waves,
-    nextSpawnAtTurn: finiteNumberOrNull(source.nextSpawnAtTurn),
+    waveStartTurns,
+    nextWaveStartTurn: finiteNumberOrNull(source.nextWaveStartTurn),
     lastSpawnedTurn: finiteNumberOrNull(source.lastSpawnedTurn),
+    announcedWave: finiteNumberOrNull(source.announcedWave),
   };
 }
 
@@ -124,29 +134,86 @@ export function nextEnemyTurnNumber(currentAlliance: string | null, turnNumber: 
   return turnNumber + 1;
 }
 
+export function activeSiegeWaveIndex(config: HalloweenSiegeConfig, enemyTurnNumber: number): number | null {
+  let active: number | null = null;
+  const starts = config.waveStartTurns ?? [];
+  for (let index = 0; index < config.waves.length; index++) {
+    const start = starts[index];
+    if (start !== null && start !== undefined && start <= enemyTurnNumber) active = index;
+  }
+  return active;
+}
+
 export function siegePhaseForTurn(config: HalloweenSiegeConfig, enemyTurnNumber: number): SiegePhase {
-  const start = config.nextSpawnAtTurn;
-  if (start === null) return { kind: 'before' };
   const waves = config.waves;
   if (waves.length === 0) return { kind: 'before' };
+  const activeIndex = activeSiegeWaveIndex(config, enemyTurnNumber);
+  if (activeIndex === null) return { kind: 'before' };
+  const start = config.waveStartTurns[activeIndex];
+  if (start === null || start === undefined) return { kind: 'before' };
   const turnsPerWave = Math.max(1, Math.floor(config.turnsPerWave) || 1);
   const elapsed = enemyTurnNumber - start;
   if (elapsed < 0) return { kind: 'before' };
-  const cycleLength = turnsPerWave + SIEGE_BREAK_TURNS;
-  const total = waves.length * cycleLength - SIEGE_BREAK_TURNS;
-  if (elapsed >= total) return { kind: 'complete' };
-  const waveIndex = Math.floor(elapsed / cycleLength);
-  const position = elapsed % cycleLength;
-  if (position < turnsPerWave) {
+  if (elapsed < turnsPerWave) {
     return {
       kind: 'wave',
-      waveIndex,
-      waveNumber: waveIndex + 1,
-      turnInWave: position + 1,
+      waveIndex: activeIndex,
+      waveNumber: activeIndex + 1,
+      turnInWave: elapsed + 1,
       turnsPerWave,
     };
   }
-  return { kind: 'break', waveNumber: waveIndex + 2 };
+  if (activeIndex + 1 < waves.length) {
+    return { kind: 'break', waveNumber: activeIndex + 2 };
+  }
+  return { kind: 'complete' };
+}
+
+export function toggleNextWaveArm(
+  config: HalloweenSiegeConfig,
+  currentAlliance: string | null,
+  turnNumber: number,
+): HalloweenSiegeConfig {
+  return {
+    ...config,
+    nextWaveStartTurn: config.nextWaveStartTurn == null
+      ? nextEnemyTurnNumber(currentAlliance, turnNumber)
+      : null,
+  };
+}
+
+export function beginNextWave(
+  config: HalloweenSiegeConfig,
+  enemyTurnNumber: number,
+): { config: HalloweenSiegeConfig; waveIndex: number } | null {
+  const activeIndex = activeSiegeWaveIndex(config, enemyTurnNumber);
+  const waveIndex = activeIndex === null ? 0 : activeIndex + 1;
+  if (waveIndex >= config.waves.length) return null;
+  const waveStartTurns = [...config.waveStartTurns];
+  while (waveStartTurns.length < config.waves.length) waveStartTurns.push(null);
+  waveStartTurns[waveIndex] = enemyTurnNumber;
+  return {
+    config: { ...config, waveStartTurns, nextWaveStartTurn: null },
+    waveIndex,
+  };
+}
+
+export function completedWaveForPhase(
+  config: HalloweenSiegeConfig,
+  phase: SiegePhase,
+  lastSpawnedTurn: number | null,
+): number | null {
+  if (lastSpawnedTurn == null) return null;
+  if (phase.kind === 'wave') {
+    return phase.turnInWave === phase.turnsPerWave ? phase.waveNumber : null;
+  }
+  if (phase.kind === 'break') {
+    return phase.waveNumber > 1 ? phase.waveNumber - 1 : null;
+  }
+  if (phase.kind === 'complete') {
+    return config.waves.length > 0 ? config.waves.length : null;
+  }
+  return null;
 }
 
 export function isHalloweenSiegeComplete(config: HalloweenSiegeConfig, enemyTurnNumber: number): boolean {
@@ -192,7 +259,8 @@ export function chooseSiegeSpawnHexes(
   const origin: Hex = { q: 0, r: 0, s: 0 };
   const maxRadius = Math.max(0, Math.floor(gridRadius));
   for (let radius = maxRadius; radius >= 0 && chosen.length < wanted; radius--) {
-    const ring = radius === 0 ? [origin] : hexRingPure(origin, radius);    for (const hex of shuffled(ring, rng)) {
+    const ring = radius === 0 ? [origin] : hexRingPure(origin, radius);
+    for (const hex of shuffled(ring, rng)) {
       if (chosen.length >= wanted) break;
       const key = `${hex.q},${hex.r}`;
       if (used.has(key)) continue;

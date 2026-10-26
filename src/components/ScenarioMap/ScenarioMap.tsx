@@ -68,11 +68,14 @@ import { canWeaponAttack } from '@/packages/combat';
 import { MapEntity } from '@/packages/world';
 import { getActiveGroups, advanceTurn } from '@/packages/world';
 import {
+  beginNextWave,
+  completedWaveForPhase,
   defaultHalloweenSiegeConfig,
   isHalloweenSiegeConfigValid,
   parseHalloweenSiegeConfig,
   planSiegeSpawn,
   siegePhaseForTurn,
+  toggleNextWaveArm,
   type HalloweenSiegeConfig,
   type SiegePhase,
 } from '@/packages/world';
@@ -1749,7 +1752,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       addError(`Cannot end turn — resolve floating unit(s) first: ${floaters.map(u => u.unitName).join(', ')}`);
       return;
     }
-    if (halloweenSiege?.enabled && halloweenSiege.nextSpawnAtTurn != null) {
+    if (halloweenSiege?.enabled && halloweenSiege.waveStartTurns.some(start => start != null)) {
       const phase = siegePhaseForTurn(halloweenSiege, currentTurnAlliance === null ? turnNumber + 1 : turnNumber);
       if (phase.kind !== 'complete') {
         if (siegeEnemyTeams.length === 0) {
@@ -1836,13 +1839,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const base = halloweenSiege ?? defaultHalloweenSiegeConfig();
     const next = { ...base, enabled };
     const ok = await saveHalloweenSiege(next);
-    if (ok && enabled && (!isHalloweenSiegeConfigValid(next) || next.nextSpawnAtTurn == null)) {
+    if (ok && enabled && (!isHalloweenSiegeConfigValid(next) || !next.waveStartTurns.some(start => start != null))) {
       setShowHalloweenSiege(true);
     }
   }, [halloweenSiege, saveHalloweenSiege]);
 
   const siegeStatus = useMemo<SiegePhase | null>(() => {
-    if (!halloweenSiege?.enabled || halloweenSiege.nextSpawnAtTurn == null) return null;
+    if (!halloweenSiege?.enabled) return null;
+    if (!halloweenSiege.waveStartTurns.some(start => start != null)) return null;
     if (currentTurnAlliance == null || replayMode || inReplay) return null;
     const phase = siegePhaseForTurn(halloweenSiege, turnNumber);
     return phase.kind === 'wave' || phase.kind === 'break' ? phase : null;
@@ -1850,14 +1854,45 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   const siegeSettingsLabel = useMemo(() => {
     if (!halloweenSiege?.enabled) return 'Off';
-    if (halloweenSiege.nextSpawnAtTurn == null) return 'Configure and save to arm';
+    if (!halloweenSiege.waveStartTurns.some(start => start != null)) return 'Configure and save to arm';
     if (currentTurnAlliance == null) return 'Armed — starts on the first Enemy turn';
     const phase = siegePhaseForTurn(halloweenSiege, turnNumber);
     if (phase.kind === 'before') return 'Armed — waiting for the first Enemy turn';
     if (phase.kind === 'complete') return 'Siege complete';
-    if (phase.kind === 'break') return `Break — Wave ${phase.waveNumber} next`;
+    if (phase.kind === 'break') {
+      return halloweenSiege.nextWaveStartTurn != null
+        ? `Break — Wave ${phase.waveNumber} armed for the next Enemy turn`
+        : `Break — Wave ${phase.waveNumber} ready`;
+    }
     return `Wave ${phase.waveNumber} — turn ${phase.turnInWave}/${phase.turnsPerWave}`;
   }, [halloweenSiege, currentTurnAlliance, turnNumber]);
+
+  const canToggleNextWave = !!(
+    effectiveIsGM &&
+    !replayMode &&
+    !inReplay &&
+    halloweenSiege?.enabled &&
+    siegeStatus?.kind === 'break'
+  );
+  const nextWaveArmed = halloweenSiege?.nextWaveStartTurn != null;
+
+  const handleToggleNextSiegeWave = useCallback(() => {
+    if (!effectiveIsGM || !halloweenSiege?.enabled || siegeStatus?.kind !== 'break') return;
+    const arming = halloweenSiege.nextWaveStartTurn == null;
+    if (arming && siegeEnemyTeams.length === 0) {
+      addError('Halloween Siege: assign at least one team to the Enemy alliance before starting the next wave.');
+      return;
+    }
+    const next = toggleNextWaveArm(halloweenSiege, currentTurnAlliance, turnNumber);
+    void saveHalloweenSiege(next).then(ok => {
+      if (!ok) return;
+      addMessage(
+        arming
+          ? `Halloween Siege — Wave ${siegeStatus.waveNumber} armed for the next Enemy turn.`
+          : `Halloween Siege — Wave ${siegeStatus.waveNumber} start cancelled.`,
+      );
+    });
+  }, [effectiveIsGM, halloweenSiege, siegeStatus, siegeEnemyTeams, currentTurnAlliance, turnNumber, saveHalloweenSiege, addError, addMessage]);
 
   const spawnHalloweenWave = useCallback(async (
     config: HalloweenSiegeConfig,
@@ -1870,9 +1905,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       addError('Halloween Siege: no team is assigned to the Enemy alliance — assign one in the Alliances tab.');
       return;
     }
-
-    const marked: HalloweenSiegeConfig = { ...config, lastSpawnedTurn: turnNumber };
-    await saveHalloweenSiege(marked);
 
     try {
       const templates = await fetchUnitTemplates();
@@ -1920,22 +1952,76 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       console.error('[HalloweenSiege] spawn failed', err);
       addError(`Halloween Siege — Wave ${phase.waveNumber}: spawn failed.`);
     }
-  }, [alliances, turnNumber, saveHalloweenSiege, backgroundConfig, units, addUnitFromTemplate, placeUnit, addMessage, addError]);
+  }, [alliances, backgroundConfig, units, addUnitFromTemplate, placeUnit, addMessage, addError]);
 
   useEffect(() => {
     if (!effectiveIsGM || replayMode || inReplay) return;
     const config = halloweenSiege;
-    if (!config?.enabled || config.nextSpawnAtTurn == null) return;
+    if (!config?.enabled) return;
     if (currentTurnAlliance !== 'enemy') return;
+
     const phase = siegePhaseForTurn(config, turnNumber);
-    if (phase.kind !== 'wave') return;
-    if (config.lastSpawnedTurn === turnNumber) return;
-    if (siegeSpawnTurnRef.current === turnNumber) return;
-    siegeSpawnTurnRef.current = turnNumber;
-    void spawnHalloweenWave(config, phase).finally(() => {
-      if (siegeSpawnTurnRef.current === turnNumber) siegeSpawnTurnRef.current = null;
+    const spawnDue = phase.kind === 'wave' && config.lastSpawnedTurn !== turnNumber;
+    const shouldStart = phase.kind === 'break'
+      && config.nextWaveStartTurn != null
+      && turnNumber >= config.nextWaveStartTurn;
+    if ((spawnDue || shouldStart) && siegeSpawnTurnRef.current === turnNumber) return;
+
+    const hasUnroutedEnemy = units.some(unit =>
+      !unit.isDeleted &&
+      (unit.currentUnitHp ?? 0) > 0 &&
+      !isUnitRouted(unit) &&
+      allianceOf(unit.team, alliances) === 'enemy',
+    );
+    const completedWave = completedWaveForPhase(config, phase, config.lastSpawnedTurn);
+    const shouldAnnounce = !spawnDue
+      && completedWave != null
+      && config.announcedWave !== completedWave
+      && !hasUnroutedEnemy;
+
+    if (!spawnDue && !shouldStart && !shouldAnnounce) return;
+
+    let nextConfig = config;
+    let spawnPhase: Extract<SiegePhase, { kind: 'wave' }> | null = null;
+
+    if (shouldAnnounce && completedWave != null) {
+      nextConfig = { ...nextConfig, announcedWave: completedWave };
+    }
+    if (shouldStart) {
+      const started = beginNextWave(nextConfig, turnNumber);
+      if (started) {
+        nextConfig = { ...started.config, lastSpawnedTurn: turnNumber };
+        spawnPhase = {
+          kind: 'wave',
+          waveIndex: started.waveIndex,
+          waveNumber: started.waveIndex + 1,
+          turnInWave: 1,
+          turnsPerWave: Math.max(1, Math.floor(nextConfig.turnsPerWave) || 1),
+        };
+      }
+    } else if (spawnDue && phase.kind === 'wave') {
+      nextConfig = { ...nextConfig, lastSpawnedTurn: turnNumber };
+      spawnPhase = phase;
+    }
+
+    if (!shouldAnnounce && !spawnPhase) return;
+    if (spawnPhase) siegeSpawnTurnRef.current = turnNumber;
+
+    void saveHalloweenSiege(nextConfig).then(ok => {
+      if (!ok) {
+        if (spawnPhase && siegeSpawnTurnRef.current === turnNumber) siegeSpawnTurnRef.current = null;
+        return;
+      }
+      if (shouldAnnounce && completedWave != null) {
+        addMessage(`Congratulations! You completed wave ${completedWave}.`);
+      }
+      if (spawnPhase) {
+        void spawnHalloweenWave(nextConfig, spawnPhase).finally(() => {
+          if (siegeSpawnTurnRef.current === turnNumber) siegeSpawnTurnRef.current = null;
+        });
+      }
     });
-  }, [effectiveIsGM, replayMode, inReplay, halloweenSiege, currentTurnAlliance, turnNumber, spawnHalloweenWave]);
+  }, [effectiveIsGM, replayMode, inReplay, halloweenSiege, currentTurnAlliance, turnNumber, units, alliances, saveHalloweenSiege, spawnHalloweenWave, addMessage]);
 
   const clearFreeMoveTimer = useCallback(() => {
     if (freeMoveTimeoutRef.current) { clearTimeout(freeMoveTimeoutRef.current); freeMoveTimeoutRef.current = null; }
@@ -3268,6 +3354,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         showStats={(isGM && !inReplay && !replayMode) || inReplay || replayMode}
         onOpenStats={() => setShowStats(true)}
         halloweenSiegeStatus={siegeStatus}
+        canToggleNextWave={canToggleNextWave}
+        nextWaveArmed={nextWaveArmed}
+        onToggleNextWave={handleToggleNextSiegeWave}
       />
 
       {/* Floating Left Panel — hidden in replay or when the DM is gone */}
@@ -3928,7 +4017,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               <span>
                 <span className="font-medium text-amber-300">Halloween Siege</span>
                 <span className="block text-gray-400 text-[11px]">
-                  Wave-based monster assault: spawns weighted monster waves at the grid rim on Enemy turns, with one break turn between waves.
+                  Wave-based monster assault: spawns weighted monster waves at the grid rim on Enemy turns. The DM starts each next wave from the top-bar banner.
                 </span>
               </span>
             </label>

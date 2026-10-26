@@ -94,7 +94,7 @@ export function HalloweenSiegeWindow({
   const valid = isHalloweenSiegeConfigValid(draft);
   const expectedTurns = draft.waves.length === 0
     ? 0
-    : draft.waves.length * draft.turnsPerWave + Math.max(0, draft.waves.length - 1);
+    : draft.waves.length * draft.turnsPerWave;
 
   const updateWave = (waveId: string, update: (wave: SiegeWave) => SiegeWave) => {
     setDraft(current => ({
@@ -134,11 +134,14 @@ export function HalloweenSiegeWindow({
 
   const handleSave = () => {
     if (!valid) return;
+    const firstStart = nextEnemyTurnNumber(currentTurnAlliance, turnNumber);
     onSave({
       ...draft,
       enabled: true,
-      nextSpawnAtTurn: nextEnemyTurnNumber(currentTurnAlliance, turnNumber),
+      waveStartTurns: draft.waves.map((_, index) => (index === 0 ? firstStart : null)),
+      nextWaveStartTurn: null,
       lastSpawnedTurn: null,
+      announcedWave: null,
     });
   };
 
@@ -155,7 +158,7 @@ export function HalloweenSiegeWindow({
         >
           <div>
             <div className="text-white font-semibold text-sm">Halloween Siege</div>
-            <div className="text-[11px] text-gray-400">A break turn follows each wave; the next wave is shown during the break.</div>
+            <div className="text-[11px] text-gray-400">After each wave the siege pauses; the DM starts the next wave from the top-bar banner.</div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-sm px-1">Close</button>
         </div>
@@ -180,7 +183,7 @@ export function HalloweenSiegeWindow({
               + Add wave
             </button>
             <span className="text-[11px] text-gray-400">
-              {expectedTurns > 0 ? `${expectedTurns} enemy turns total` : 'No waves configured'}
+              {expectedTurns > 0 ? `${expectedTurns}+ enemy turns (plus DM-started pauses)` : 'No waves configured'}
             </span>
           </div>
 

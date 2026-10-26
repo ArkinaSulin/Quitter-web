@@ -36,6 +36,9 @@ interface TopBarProps {
   showStats: boolean;
   onOpenStats: () => void;
   halloweenSiegeStatus?: SiegePhase | null;
+  canToggleNextWave?: boolean;
+  nextWaveArmed?: boolean;
+  onToggleNextWave?: () => void;
 }
 
 export function TopBar(props: TopBarProps) {
@@ -68,11 +71,22 @@ export function TopBar(props: TopBarProps) {
     showStats,
     onOpenStats,
     halloweenSiegeStatus,
+    canToggleNextWave,
+    nextWaveArmed,
+    onToggleNextWave,
   } = props;
 
   // The DM keeps End Turn (and replay exit) even while playing as a player; the
   // editorial GM actions (Free Move / Settings / enter Replay) drop in player mode.
   const editMode = isGM && !gmAsPlayer;
+  const siegeLabel = halloweenSiegeStatus?.kind === 'break'
+    ? `wave: ${halloweenSiegeStatus.waveNumber} turn: ${nextWaveArmed ? 'break' : 'Will start'}`
+    : halloweenSiegeStatus?.kind === 'wave'
+      ? `wave: ${halloweenSiegeStatus.waveNumber} turn: ${halloweenSiegeStatus.turnInWave}/${halloweenSiegeStatus.turnsPerWave}`
+      : '';
+  const siegeBreakClass = halloweenSiegeStatus?.kind === 'break'
+    ? 'bg-amber-900/80 text-amber-200'
+    : 'bg-[#D55E00]/80 text-white';
 
   return (
     <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-2 bg-black/40 backdrop-blur-sm">
@@ -121,17 +135,21 @@ export function TopBar(props: TopBarProps) {
         )}
         <span className="text-white text-sm font-mono">Turn {displayTurnNumber}</span>
         {halloweenSiegeStatus && (
-          <span className={`px-2 py-0.5 rounded text-xs font-mono ${
-            halloweenSiegeStatus.kind === 'break'
-              ? 'bg-amber-900/80 text-amber-200'
-              : 'bg-[#D55E00]/80 text-white'
-          }`}>
-            {halloweenSiegeStatus.kind === 'break'
-              ? `wave: ${halloweenSiegeStatus.waveNumber} turn: break`
-              : halloweenSiegeStatus.kind === 'wave'
-                ? `wave: ${halloweenSiegeStatus.waveNumber} turn: ${halloweenSiegeStatus.turnInWave}/${halloweenSiegeStatus.turnsPerWave}`
-                : ''}
-          </span>
+          canToggleNextWave ? (
+            <button
+              onClick={onToggleNextWave}
+              title={nextWaveArmed
+                ? `Cancel the armed Wave ${halloweenSiegeStatus.kind === 'break' ? halloweenSiegeStatus.waveNumber : ''} start`
+                : `Arm Wave ${halloweenSiegeStatus.kind === 'break' ? halloweenSiegeStatus.waveNumber : ''} for the next Enemy turn`}
+              className={`px-2 py-0.5 rounded text-xs font-mono cursor-pointer transition hover:brightness-110 ${siegeBreakClass}`}
+            >
+              {siegeLabel}
+            </button>
+          ) : (
+            <span className={`px-2 py-0.5 rounded text-xs font-mono ${siegeBreakClass}`}>
+              {siegeLabel}
+            </span>
+          )
         )}
         {!controlsLocked && (() => {
           // Alliance-wide End Turn: from turn 1 on, any player whose alliance holds
@@ -176,24 +194,6 @@ export function TopBar(props: TopBarProps) {
             {`Free Move: ${freeMove ? 'ON' : 'OFF'}${freeMove && freeMoveRemaining !== null ? ` (0:${String(freeMoveRemaining).padStart(2, '0')})` : ''}`}
           </button>
         )}
-        {(isGM || !!myTeam) && !controlsLocked && (
-          <button
-            onClick={onOpenSettings}
-            className="px-3 py-1 rounded shadow-lg text-sm bg-gray-800 hover:bg-gray-700 text-white"
-            title="Scenario settings"
-          >
-            ⚙ Settings
-          </button>
-        )}
-        {/* Mode 2 (join scenario): GM enters/leaves replay of the live session */}
-        {!replayMode && editMode && !controlsLocked && (
-          <button
-            onClick={onEnterReplay}
-            className="px-3 py-1 rounded shadow-lg text-sm bg-amber-700 hover:bg-amber-600 text-white"
-          >
-            Replay scenario
-          </button>
-        )}
       </div>
       <div className="flex items-center gap-3">
         {/* Mode 2 in-session replay: Back to Play returns to live play */}
@@ -212,6 +212,23 @@ export function TopBar(props: TopBarProps) {
             title="Scenario statistics (troop kills, levels, status)"
           >
             📊 Stats
+          </button>
+        )}
+        {(isGM || !!myTeam) && !controlsLocked && (
+          <button
+            onClick={onOpenSettings}
+            className="px-3 py-1 rounded shadow-lg text-sm bg-gray-800 hover:bg-gray-700 text-white"
+            title="Scenario settings"
+          >
+            ⚙ Settings
+          </button>
+        )}
+        {!replayMode && editMode && !controlsLocked && (
+          <button
+            onClick={onEnterReplay}
+            className="px-3 py-1 rounded shadow-lg text-sm bg-amber-700 hover:bg-amber-600 text-white"
+          >
+            Replay scenario
           </button>
         )}
         <button onClick={goToLobby} className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1 rounded shadow-lg text-sm">

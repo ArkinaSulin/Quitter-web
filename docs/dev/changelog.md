@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## Halloween Siege: DM-armed waves, completion message, right-aligned buttons (2026-10-25)
+**Files:** src/packages/world/lib/halloweenSiege.ts, src/packages/world/tests/halloweenSiege.test.ts, src/components/ScenarioMap/{ScenarioMap,TopBar,HalloweenSiegeWindow}.tsx, docs/dev/{20-halloween-siege,README,changelog}.md
+
+- Next waves no longer start automatically. After a wave, the top-bar banner is
+  a DM-only toggle: `wave: N turn: Will start` (click to arm) / `wave: N turn:
+  break` (click to cancel). The armed start is only committed on the next Enemy
+  turn; once the wave starts it cannot be cancelled.
+- Wave state now uses per-wave `waveStartTurns`, an armed `nextWaveStartTurn`,
+  and an `announcedWave` dedupe marker. Legacy `nextSpawnAtTurn` configs parse
+  into `waveStartTurns[0]`.
+- At the start of the Enemy turn after a wave's spawn turns, if no living
+  un-routed enemy remains, the GM broadcasts `Congratulations! You completed
+  wave N.` once per wave.
+- Moved **⚙ Settings** and **Replay scenario** from the left cluster to the
+  right side of the top bar (with Back to Play / Stats / Exit to Lobby).
+- Verification: `npm run check` (tsc, tests, depcruise, build). No SQL migration.
+
 ## Fearless-aware stat hints (2026-10-25)
 **Files:** src/components/shared/StatValueHint.tsx, src/components/UnitEditor.tsx, src/components/ScenarioMap/UnitEditorModal.tsx, docs/players/player-manual.md, docs/dev/{14-editors,changelog}.md
 
