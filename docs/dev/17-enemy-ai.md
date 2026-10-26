@@ -279,7 +279,9 @@ gate). This is a planned traversal, never self-harm: the AI always chooses
   Elevated targets are excluded (those use structure-top access).
 - If the unit is already at the wall base it plans `climbOver`; otherwise it
   moves to the base this activation and climbs next activation (never
-  move + climb when the climb needs all actions).
+  move + climb when the climb needs all actions). A crossing whose near side is
+  the unit's current hex is preferred, so a unit at a wall base does not pace
+  between two bases.
 - An adjacent enemy **across a wall** is not melee-reachable, so it does not
   suppress the wall objective.
 - Mounted units, charging units and units hosting an attached hero never climb.

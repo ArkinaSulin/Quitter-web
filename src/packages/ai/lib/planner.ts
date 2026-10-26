@@ -445,7 +445,8 @@ function wallClimbForTarget(unit: Unit, target: Unit, rt: Runtime): WallClimbAcc
       const farMap = distanceMap(farUnit, { ...rt.ctx, units: rt.working }, 'ground', movement);
       const farCost = targetPathCost(farMap, target.hex, movement.passThrough);
       if (!Number.isFinite(farCost)) continue;
-      const score = (marked ? -1_000_000 : 0) + nearCost + farCost;
+      const atBase = hexKeyOf(unit.hex) === hexKeyOf(nearHex) ? -10_000 : 0;
+      const score = (marked ? -1_000_000 : 0) + atBase + nearCost + farCost;
       if (!best || score < best.score) {
         best = {
           target,
@@ -902,6 +903,7 @@ function planMelee(unit: Unit, plan: AiUnitPlan, rt: Runtime): Unit {
     if (wall) {
       if (hexKeyOf(u.hex) === hexKeyOf(wall.nearHex)) {
         if (canAffordWallClimb(u, wall, rt)) {
+          if (wall.target.id !== markedId) rt.setTarget(u.id, wall.target.id);
           plan.steps.push({ kind: 'climbOver', unitId: u.id, from: u.hex, to: wall.farHex, descent: 'climb' });
         } else {
           u = faceAdjacentHostiles(u, plan, rt);

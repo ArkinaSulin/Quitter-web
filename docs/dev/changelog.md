@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## AI wall-base pacing fix (2026-10-26)
+**Files:** src/packages/ai/lib/planner.ts, docs/dev/{17-enemy-ai,changelog}.md
+
+- A unit already standing at a wall base now prefers the crossing on its current
+  hex instead of scoring a different base slightly better and pacing back and
+  forth. It also records the wall target when it starts a climb from the base.
+- Verification: `npm run check` (tsc, tests, depcruise, build). No migration.
+
 ## AI units climb over edge walls; climb-over resume costs fixed (2026-10-26)
 **Files:** src/packages/ai/lib/{types,board,planner}.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/{AiPanel,ScenarioMap}.tsx, src/components/ScenarioMap/useMoveActions.ts, docs/dev/{17-enemy-ai,18-map-structures,changelog}.md
 
