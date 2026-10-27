@@ -275,6 +275,7 @@ export function AiPanel({
       gridRadius: gridRadius ?? DEFAULT_GRID_RADIUS,
       reactiveArchery: !!archerReactionEnabled,
       chargeEnabled,
+      lockedObjectives: objectivesRef.current,
     };
     const applyResult = (result: { plans: AiUnitPlan[]; marks: AiMark[]; objectives?: AiClimbObjective[] }, elapsedMs?: number) => {
       marksRef.current = result.marks;

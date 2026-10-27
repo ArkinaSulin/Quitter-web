@@ -1,5 +1,21 @@
 # QuiTTER Changelog
 
+## AI wall lock persistence + redundant-wall pathing (2026-10-26)
+**Files:** src/packages/ai/lib/{board,planner,types}.ts, src/components/ScenarioMap/AiPanel.tsx, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md
+
+- AI ground pathfinding now bypasses the blocking component of an edge wall
+  that shares a hex-structure edge. Structure complexes, hex hard blocks, edge
+  hard blocks and mounted limits still apply; walk/climb costs and wall stats
+  are unchanged.
+- Vacant-top objectives are carried across plots for the session via
+  `AiPlanContext.lockedObjectives` (AI panel state). A locked unit/top is
+  reserved in takeover assignment instead of being re-scored to another top.
+- A locked top with no current route is retained and the unit holds; it no
+  longer deletes the lock and falls back to staging/pacing. The lock clears when
+  the top is removed.
+- Added regression tests for redundant-wall pathing and no-route lock hold.
+- Verification: `npm run check` (tsc, tests, depcruise, build). No migration.
+
 ## AI vacant-top wall crossing + edge-wall climb stats (2026-10-26)
 **Files:** src/packages/movement/lib/mapStructures.ts, src/packages/movement/tests/mapStructures.test.ts, src/packages/ai/lib/{board,planner,types}.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/{AiPanel.tsx,aiTypes.ts,useCanvasDraw.ts}, docs/dev/{17-enemy-ai,18-map-structures,changelog}.md
 

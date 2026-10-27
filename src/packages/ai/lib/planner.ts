@@ -858,8 +858,8 @@ function assignStructureTakeover(rt: Runtime, units: Unit[]): void {
     || hexKeyOf(a.topHex).localeCompare(hexKeyOf(b.topHex))
     || a.unit.id.localeCompare(b.unit.id));
 
-  const usedUnits = new Set<string>();
-  const usedTops = new Set<string>();
+  const usedUnits = new Set<string>(rt.climbObjectives.keys());
+  const usedTops = new Set<string>(Array.from(rt.climbObjectives.values(), hexKeyOf));
   for (const candidate of candidates) {
     if (usedUnits.has(candidate.unit.id) || usedTops.has(hexKeyOf(candidate.topHex))) continue;
     usedUnits.add(candidate.unit.id);
@@ -909,8 +909,12 @@ function planClimbObjective(
 
   const takeover = topTakeoverAccess(unit, objectiveHex, rt);
   if (!takeover) {
-    rt.climbObjectives.delete(unit.id);
-    return { unit, landed: true, stop: false };
+    if (surfaceAt(objectiveHex, rt.ctx) <= unitSurface(unit, rt.ctx)) {
+      rt.climbObjectives.delete(unit.id);
+      return { unit, landed: true, stop: false };
+    }
+    // Keep the lock and hold; never fall back to staging/pacing.
+    return { unit, landed: false, stop: true };
   }
 
   if (takeover.kind === 'crossing') {
@@ -2146,6 +2150,15 @@ export function planAiMoves(ctx: AiPlanContext): AiPlanResult {
         });
     },
   };
+
+  // Carry session-only vacant-top locks from the previous plot. They are
+  // reserved in takeover assignment so the same unit keeps its top.
+  const controllableMelee = new Set(controllable
+    .filter(u => archetypeOf(u) === 'melee' && !isUnitRouted(u) && !u.mountId && !u.mountName)
+    .map(u => u.id));
+  for (const lock of ctx.lockedObjectives ?? []) {
+    if (controllableMelee.has(lock.unitId)) rt.climbObjectives.set(lock.unitId, lock.hex);
+  }
 
   // Vacant structure tops are taken first; those units get a climb objective
   // instead of a defender mark.

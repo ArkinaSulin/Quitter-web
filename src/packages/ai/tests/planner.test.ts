@@ -13,6 +13,8 @@ import {
   isInFriendlyKillZone,
   structureComplexFor,
   edgeWalls,
+  movementContextFor,
+  distanceMap,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation, hexDistance } from '@/types/gameProtocol';
@@ -371,6 +373,43 @@ describe('Basic AI vacant structure tops', () => {
     });
     expect(result.objectives).toEqual([]);
     expect(stepsOf(result, 'm').some(s => s.kind === 'move')).toBe(false);
+  });
+
+  it('keeps a locked top with no route and holds instead of pacing', () => {
+    const target = mk({ id: 't', team: 'black', hex: hex(0, 0), elevation: 20 });
+    const result = planAiMoves({
+      ...ctxOf([climber({ hex: hex(0, 2) }), target]),
+      structures: { '0,0': { templateId: 'blocked' } } as unknown as AiPlanContext['structures'],
+      structureTemplates: { blocked: blockedTower },
+      lockedObjectives: [{ unitId: 'm', hex: hex(0, 0) }],
+    });
+    expect(result.objectives).toEqual([{ unitId: 'm', hex: hex(0, 0) }]);
+    expect(stepsOf(result, 'm').some(s => s.kind === 'move')).toBe(false);
+  });
+});
+
+describe('Basic AI redundant wall pathing', () => {
+  it('crosses a blocked wall that shares a hex-structure edge', () => {
+    const tower = { id: 'tower', name: 'Tower', anchor: 'hex', elevation: 20, mpClimbUp: 4, mpMountedUp: 4 };
+    const wall = { id: 'wall', name: 'Wall', anchor: 'edge', elevation: 20, mpClimbUp: 4, mpMountedUp: 4 };
+    const shared = edgeRef(0, 0, 0).key; // (0,0) <-> (1,0), structure on (0,0)
+    const structures = {
+      '0,0': { templateId: 'tower' },
+      [shared]: { templateId: 'wall' },
+    } as unknown as AiPlanContext['structures'];
+    const walls = {
+      [shared]: { a: { block: true }, b: { block: true }, source: 'map' },
+    } as unknown as AiPlanContext['walls'];
+    const unit = mk({ id: 'm', team: 'blue', hex: hex(1, 0) });
+    const ctx = {
+      ...ctxOf([unit]),
+      structures,
+      structureTemplates: { tower, wall } as unknown as NonNullable<AiPlanContext['structureTemplates']>,
+      walls,
+    };
+    const movement = movementContextFor(unit, [unit], ctx, 'ground');
+    const map = distanceMap(unit, ctx, 'ground', movement);
+    expect(map.has('0,0')).toBe(true);
   });
 });
 

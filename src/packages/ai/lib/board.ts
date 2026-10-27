@@ -33,6 +33,9 @@ import {
   isHexStructureKey,
   structureDoorState,
   structureElevation,
+  structureHexBlocked,
+  structureEdgeBlocked,
+  structureClimbCostBetween,
 } from '@/packages/movement';
 import { computeOccupiedHexes, computeThreatHexes, makeBlockedEdge, makeCostOfHex, TerrainCosts } from '@/packages/world';
 import { StructureTemplate } from '@/types/structure';
@@ -319,6 +322,22 @@ export function movementContextFor(
   const rawBlockedEdge = makeBlockedEdge(ctx.walls, {
     structures, templates, zones, isMounted: mounted, waiveClimb,
   });
+  // A wall sharing a hex-structure edge is redundant for AI pathing: the
+  // structure tile owns that crossing. Skip the wall's block but keep the real
+  // structure block/mounted rules and all walk/climb costs.
+  const pathBlockedEdge = (fq: number, fr: number, tq: number, tr: number): boolean => {
+    const dir = HEX_DIRS.findIndex(d => d.q === tq - fq && d.r === tr - fr);
+    if (dir >= 0) {
+      const ref = edgeRef(fq, fr, dir);
+      if (edgeWallRedundantWithStructure(ref, ctx)) {
+        if (structures && structureHexBlocked({ q: tq, r: tr }, structures, templates, mounted)) return true;
+        if (structures && structureEdgeBlocked({ q: fq, r: fr }, { q: tq, r: tr }, structures, templates, mounted)) return true;
+        if (mounted && structures && structureClimbCostBetween({ q: fq, r: fr }, { q: tq, r: tr }, structures, templates, false, true) > 0) return true;
+        return false;
+      }
+    }
+    return rawBlockedEdge?.(fq, fr, tq, tr) ?? false;
+  };
   // A complex perimeter is impassable in both directions, even through an open
   // door/gate. Interior edges keep the normal wall/structure rules.
   const blockedEdge = complex
@@ -326,9 +345,9 @@ export function movementContextFor(
         const fromIn = complex.hexes.has(`${fq},${fr}`);
         const toIn = complex.hexes.has(`${tq},${tr}`);
         if (fromIn !== toIn) return true;
-        return rawBlockedEdge?.(fq, fr, tq, tr) ?? false;
+        return pathBlockedEdge(fq, fr, tq, tr);
       }
-    : rawBlockedEdge;
+    : pathBlockedEdge;
   const org: OrgMoveOpts = {
     movementMultipliers,
     orgLevels: formationOrgLevels(ctx.formations),

@@ -329,11 +329,12 @@ inside a multi-hex complex. The takeover rule is **vacant tops first**:
   to another base.
 - The AI overlay marks each locked vacant top with `T` and a dashed line from the
   assigned unit, so a vacant-top lock is visible even though it is not a unit
-  target mark.
+  target mark. The lock is carried across plots for the session (AI panel state;
+  no DB field).
 - If no free top exists, defender-marked units climb-attack the defender on its
-  own top (no landing required) until it routs/defeats. A top with no direct
-  access and no wall crossing yields **no objective**; the unit holds instead of
-  staging back and forth.
+  own top (no landing required) until it routs/defeats. A locked top with no
+  direct access and no wall crossing is **retained**: the unit holds instead of
+  staging back and forth. The lock clears only when the top is removed.
 - **Melee only.** Mounted units never climb; flying units keep their direct
   swoop/10-ft attack.
 - Once landed, the unit enters the **on-top hold-and-fight** doctrine below.

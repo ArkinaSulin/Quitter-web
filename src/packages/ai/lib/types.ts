@@ -71,6 +71,8 @@ export interface AiPlanContext {
   reactiveArchery?: boolean;
   /** Scenario "Charge and Swoop" toggle (default true). */
   chargeEnabled?: boolean;
+  /** Session-only vacant-top locks carried from the previous plot. */
+  lockedObjectives?: AiClimbObjective[];
 }
 
 export interface AiPlanResult {
