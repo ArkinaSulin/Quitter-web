@@ -187,6 +187,7 @@ export function structureComplexFor(
       const next = { q: cur.q + d.q, r: cur.r + d.r, s: -cur.q - d.q - cur.r - d.r };
       const key = hexKeyOf(next);
       if (hexes.has(key)) continue;
+      if (isHexStructureKey(key) && structures[key]) continue; // hex-structure perimeter
       if (structures[edgeRef(cur.q, cur.r, dir).key]) continue; // perimeter
       hexes.add(key);
       queue.push(next);
@@ -201,6 +202,18 @@ export interface EdgeWall {
   b: Hex;
   height: number;
   steps: number;
+}
+
+/**
+ * A wall on an edge shared with a hex structure is redundant for AI pathing:
+ * the structure tile itself is the obstacle. Its stats still apply if a climb
+ * crosses that edge (the movement climb profile owns that).
+ */
+export function edgeWallRedundantWithStructure(
+  ref: { aq: number; ar: number; bq: number; br: number },
+  ctx: Pick<AiPlanContext, 'structures'>,
+): boolean {
+  return !!ctx.structures?.[`${ref.aq},${ref.ar}`] || !!ctx.structures?.[`${ref.bq},${ref.br}`];
 }
 
 /**
@@ -223,6 +236,7 @@ export function edgeWalls(ctx: Pick<AiPlanContext, 'structures' | 'structureTemp
     const height = structureElevation(template, inst);
     if (height <= 0) continue;
     const ref = edgeRef(q, r, dir);
+    if (edgeWallRedundantWithStructure(ref, ctx)) continue;
     out.push({
       a: { q: ref.aq, r: ref.ar, s: -ref.aq - ref.ar },
       b: { q: ref.bq, r: ref.br, s: -ref.bq - ref.br },
@@ -250,9 +264,10 @@ export function noClimbDistanceMap(
   const blockedEdge: BlockedEdgeFn = (fq, fr, tq, tr) => {
     const dir = HEX_DIRS.findIndex(d => d.q === tq - fq && d.r === tr - fr);
     if (dir >= 0) {
-      const inst = ctx.structures?.[edgeRef(fq, fr, dir).key];
+      const ref = edgeRef(fq, fr, dir);
+      const inst = ctx.structures?.[ref.key];
       const template = inst ? ctx.structureTemplates?.[inst.templateId] : undefined;
-      if (inst && template && !structureDoorState(inst, template).openOrBroken) return true;
+      if (inst && template && !edgeWallRedundantWithStructure(ref, ctx) && !structureDoorState(inst, template).openOrBroken) return true;
     }
     return base?.(fq, fr, tq, tr) ?? false;
   };

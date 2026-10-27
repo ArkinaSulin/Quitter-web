@@ -771,7 +771,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     // AI-selected units, grey opt-out badges on AI-excluded-but-eligible units,
     // and preview/execute routes (polyline + crossed swords for attacks + a
     // ghost at the final hex). Routes dim unless hovered.
-    if (aiOverlay && (aiOverlay.checkedUnitIds.length > 0 || aiOverlay.excludedUnitIds.length > 0 || aiOverlay.routes.length > 0 || (aiOverlay.marks?.length ?? 0) > 0)) {
+    if (aiOverlay && (aiOverlay.checkedUnitIds.length > 0 || aiOverlay.excludedUnitIds.length > 0 || aiOverlay.routes.length > 0 || (aiOverlay.marks?.length ?? 0) > 0 || (aiOverlay.objectives?.length ?? 0) > 0)) {
       const byId = new Map(displayUnits.map(u => [u.id, u]));
       // Match the token's drawn position: elevation offset (NE) or a climber's
       // toward-target offset; air mode centres tokens.
@@ -820,6 +820,42 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.fillText(text, cx, cy);
         ctx.restore();
       });
+      for (const obj of aiOverlay.objectives ?? []) {
+        const u = byId.get(obj.unitId);
+        if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
+        const pos = hexToPixel(obj.hex, HEX_SIZE);
+        const uPos = hexToPixel(u.hex, HEX_SIZE);
+        const elev = overlayOffset(u);
+        const cx = pos.x * currentZoom + offsetX;
+        const cy = pos.y * currentZoom + offsetY;
+        const ux = uPos.x * currentZoom + offsetX + elev.dx * currentZoom;
+        const uy = uPos.y * currentZoom + offsetY + elev.dy * currentZoom - tokenHeight * 0.5;
+        const radius = Math.max(10, tokenWidth * 0.4);
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        if (u.hex.q !== obj.hex.q || u.hex.r !== obj.hex.r) {
+          ctx.beginPath();
+          ctx.moveTo(ux, uy);
+          ctx.lineTo(cx, cy);
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font = `bold ${Math.max(9, Math.min(13, tokenWidth * 0.22))}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillStyle = '#fde68a';
+        ctx.strokeText('T', cx, cy);
+        ctx.fillText('T', cx, cy);
+        ctx.restore();
+      }
       for (const id of aiOverlay.checkedUnitIds) {
         const u = byId.get(id);
         if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;

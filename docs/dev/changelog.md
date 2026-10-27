@@ -1,5 +1,26 @@
 # QuiTTER Changelog
 
+## AI vacant-top wall crossing + edge-wall climb stats (2026-10-26)
+**Files:** src/packages/movement/lib/mapStructures.ts, src/packages/movement/tests/mapStructures.test.ts, src/packages/ai/lib/{board,planner,types}.ts, src/packages/ai/tests/planner.test.ts, src/components/ScenarioMap/{AiPanel.tsx,aiTypes.ts,useCanvasDraw.ts}, docs/dev/{17-enemy-ai,18-map-structures,changelog}.md
+
+- Added `structureClimbProfile`: the shared climb model used by movement and the
+  AI. A closed edge wall on the climbed edge supplies height, per-10-ft up/down,
+  outside direction and door state; otherwise the destination hex structure is
+  used. Hanging climbs pay only the remaining steps at the wall rate.
+- AI pathfinding ignores an edge wall that shares an edge with a hex structure
+  (the structure tile owns that crossing) but still uses the wall's stats when
+  climbing that edge.
+- Structure-complex enclosure detection now treats hex structures as perimeter
+  as well as edge walls, so mixed structure/wall compounds do not leak.
+- Non-mounted melee units can lock a vacant structure top across a non-redundant
+  wall: assign the top, cross first, keep the objective, then climb. Unreachable
+  tops are excluded and the unit holds instead of pacing.
+- AI overlay shows locked vacant tops with `T` and a dashed line to the unit.
+- Added tests for wall-stat override, hanging remaining steps, directionality,
+  mixed hex/wall enclosure, redundant-wall filtering, vacant-top assignment,
+  wall crossing, and hold-instead-of-pacing.
+- Verification: `npm run check` (tsc, tests, depcruise, build). No migration.
+
 ## AI wall/top-base pacing fix (2026-10-26)
 **Files:** src/packages/ai/lib/planner.ts, docs/dev/{17-enemy-ai,changelog}.md
 

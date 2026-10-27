@@ -9,7 +9,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Unit, Hex, AllianceGroup, Formation, GroundEffect, ALLIANCE_COLORS } from '@/types/gameProtocol';
 import { TEAMS } from '@/packages/units';
-import { planAiMoves, AiUnitPlan, AiMark, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf, nextLegalTarget } from '@/packages/ai';
+import { planAiMoves, AiUnitPlan, AiMark, AiClimbObjective, isAiControllable, allianceOf, enemyGroupsOf, hexKeyOf, nextLegalTarget } from '@/packages/ai';
 import { isUnitRouted } from '@/packages/morale';
 import { computeReachableMap, computeMovePool, movePoolMode, flyMax, moveBudgetUnit, isHorizontalClimbMove, structureSurfaceAt, structureClimbPerStep10 } from '@/packages/movement';
 import { isFormationChangeAffordable } from '@/packages/movement';
@@ -170,6 +170,7 @@ export function AiPanel({
   const cancelRef = useRef(false);
   const autoRef = useRef(false);
   const marksRef = useRef<AiMark[]>([]);
+  const objectivesRef = useRef<AiClimbObjective[]>([]);
   const workerRef = useRef<Worker | null>(null);
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewIdRef = useRef(0);
@@ -238,6 +239,7 @@ export function AiPanel({
       excludedUnitIds: excludedIds,
       routes,
       marks: plans || remaining ? marksRef.current : [],
+      objectives: plans || remaining ? objectivesRef.current : [],
     });
     return () => onOverlayChange(null);
   }, [units, eligible, aiExcluded, plans, remaining, phaseTick, onOverlayChange]);
@@ -274,8 +276,9 @@ export function AiPanel({
       reactiveArchery: !!archerReactionEnabled,
       chargeEnabled,
     };
-    const applyResult = (result: { plans: AiUnitPlan[]; marks: AiMark[] }, elapsedMs?: number) => {
+    const applyResult = (result: { plans: AiUnitPlan[]; marks: AiMark[]; objectives?: AiClimbObjective[] }, elapsedMs?: number) => {
       marksRef.current = result.marks;
+      objectivesRef.current = result.objectives ?? [];
       setPlans(result.plans);
       setRemaining(null);
       setStage('idle');
@@ -852,9 +855,12 @@ export function AiPanel({
 
       {plans && (
         <p className="text-[10px] text-gray-400 leading-tight">
-          Target marks: <span className="text-amber-300">M</span> melee (<span className="text-amber-300">2</span>/target) |
+          Target marks: <span className="text-amber-300">M</span> melee
+          (<span className="text-amber-300">2</span>/target) |
           <span className="text-amber-300"> A</span> archer | <span className="text-amber-300">F</span> flying (1/target) |
-          <span className="text-amber-300"> C</span> mounted (1/target). Counts are independent per type.
+          <span className="text-amber-300"> C</span> mounted (1/target).
+          <span className="text-amber-300"> T</span> vacant top.
+          Counts are independent per type.
         </p>
       )}
 

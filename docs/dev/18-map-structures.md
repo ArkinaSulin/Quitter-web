@@ -124,6 +124,15 @@ waives the rise. The value feeds the movement cost (`structureStepClimb` /
 soft-confirms like a move. The wall's authored **height** also drives its
 **line-of-sight blocking top** (`combat/lineOfSight.structuresBlockingLine`).
 
+`structureClimbProfile` is the shared shape behind `structureStepClimb` and the
+AI climb planner. It applies the same precedence: a closed edge wall on the
+crossed edge supplies the height, per-10-ft up/down cost and outside direction;
+otherwise the destination hex structure's rise is used. `currentElevation` lets a
+hanging unit pay only the remaining steps at the wall's per-step rate. The AI
+ignores an edge wall that shares an edge with a hex structure for **pathfinding**
+(the structure owns the crossing), but the profile still uses that wall's stats
+when the climb actually crosses the edge.
+
 > **Key note.** A structure spans elevation **0 (base) → X (top)**, so a "10-ft
 > ladder" is **relative** — its 10-ft segments are 0→10, 10→20, … and the height
 > decides how many there are. The **door is the exception**: it is always at

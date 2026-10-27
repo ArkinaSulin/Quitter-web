@@ -193,8 +193,14 @@ leave it. Flyers are exempt.
 - **Footprint (priority):** a unit on a hex structure is confined to the
   connected footprint of adjacent hex-structure tiles.
 - **Enclosure:** a unit not on a hex structure but inside an area fully bounded
-  by **edge structures** is confined to that region. Any edge structure counts
-  as the perimeter, including open/broken doors and gates.
+  by **edge structures or hex structures** is confined to that region. Any edge
+  structure counts as the perimeter, including open/broken doors and gates; a
+  hex structure tile is also perimeter because its body blocks the crossing.
+- An edge wall on an edge shared with a hex structure is **redundant for
+  pathfinding** (the structure tile owns that edge) and is skipped as a separate
+  wall-crossing candidate. It is **not** ignored for climbing: if a climb
+  crosses that edge, the wall's height and per-10-ft stats still override the
+  hex structure.
 - A flood fill that reaches the map’s outer grid ring is not treated as an
   enclosure.
 - Enforcement is a perimeter-aware `blockedEdge` wrapper used by every movement
@@ -251,11 +257,14 @@ leave it. Flyers are exempt.
   drop hex is occupied, climb down as a fallback.
 - No attack or retaliation happens until the unit reaches the same level as the
   structure top.
-- The planner uses the structure's real per-10-ft climb cost and **strict move
-  capacity** (MP + remaining actions × pool; no soft-enforcement fudge). It
-  requires at least one action and enough capacity for the next step; otherwise
-  it holds. The AI executor repeats this check, so a stale plan can never push
-  actions/MP below zero.
+- The planner uses the **crossed-edge climb profile**, not just the destination
+  hex structure: if the climbed edge has a closed edge wall, the wall's height,
+  `mp_climb_up/down`, outside direction and door state override the hex
+  structure. Hanging climbs pay only the remaining steps, still at the wall's
+  per-step rate. Capacity is **strict** (MP + remaining actions x pool; no
+  soft-enforcement fudge). It requires at least one action and enough capacity
+  for the next step; otherwise it holds. The AI executor repeats this check, so
+  a stale plan can never push actions/MP below zero.
 - **Never plan move + climb in the same activation** when the climb needs all
   actions. A unit that must move to the base does so this activation and climbs
   next activation.
@@ -275,8 +284,12 @@ gate). This is a planned traversal, never self-harm: the AI always chooses
   broken door/gate makes the target normally reachable, so the AI walks through
   instead of climbing.
 - The near side must be standable and reachable **without** crossing a wall;
-  the far side must be empty and lead to a melee-adjacent hex for the target.
-  Elevated targets are excluded (those use structure-top access).
+  the far side must be empty and lead to a melee-adjacent hex for a ground
+  target, or to a base for an elevated structure-top target. Elevated targets
+  use structure-top access after the crossing.
+- Edge walls on a hex-structure edge are skipped as separate crossings (the
+  structure edge is the obstacle). Their stats are still used by the climb
+  profile when that edge is climbed.
 - If the unit is already at the wall base it plans `climbOver`; otherwise it
   moves to the base this activation and climbs next activation (never
   move + climb when the climb needs all actions). A crossing whose near side is
@@ -303,6 +316,9 @@ inside a multi-hex complex. The takeover rule is **vacant tops first**:
 - While a complex has any free top hex, melee units are assigned there **one per
   hex**, choosing the **quickest access** (`path to base + climb cost + landing`).
   These units get a **climb objective**, not a defender mark.
+- A vacant top inside a walled compound is still assigned: if no base is reachable
+  directly, the planner finds a non-redundant wall crossing whose far side can
+  reach a base for that top. The objective persists across the crossing.
 - Defenders are marked normally only after **all vacant tops are taken or
   unavailable** (then the normal dynamic defender cap applies).
 - A vacant-objective unit plans **move to base → `climb` → land**. It ignores
@@ -311,8 +327,13 @@ inside a multi-hex complex. The takeover rule is **vacant tops first**:
   routs/defeats, then lands. A **friendly-occupied** top switches to the nearest
   other free top. A unit already at a base prefers that access instead of pacing
   to another base.
+- The AI overlay marks each locked vacant top with `T` and a dashed line from the
+  assigned unit, so a vacant-top lock is visible even though it is not a unit
+  target mark.
 - If no free top exists, defender-marked units climb-attack the defender on its
-  own top (no landing required) until it routs/defeats.
+  own top (no landing required) until it routs/defeats. A top with no direct
+  access and no wall crossing yields **no objective**; the unit holds instead of
+  staging back and forth.
 - **Melee only.** Mounted units never climb; flying units keep their direct
   swoop/10-ft attack.
 - Once landed, the unit enters the **on-top hold-and-fight** doctrine below.

@@ -24,6 +24,12 @@ export interface AiMark {
   kind: AiArchetype;
 }
 
+/** A vacant structure top assigned to a non-mounted melee unit. */
+export interface AiClimbObjective {
+  unitId: string;
+  hex: Hex;
+}
+
 export type AiStep =
   | { kind: 'move'; unitId: string; from: Hex; to: Hex; path: Hex[]; cost: number; elevation?: number }
   | { kind: 'attack'; unitId: string; from: Hex; targetId: string; target: Hex; charge?: boolean }
@@ -70,4 +76,6 @@ export interface AiPlanContext {
 export interface AiPlanResult {
   plans: AiUnitPlan[];
   marks: AiMark[];
+  /** Vacant structure tops locked by melee units (not unit target marks). */
+  objectives: AiClimbObjective[];
 }

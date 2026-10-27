@@ -1,7 +1,7 @@
 // Shared types between the AI-assist panel, the map overlay state and the
 // canvas renderer.
 import { Hex } from '@/types/gameProtocol';
-import type { AiMark } from '@/packages/ai';
+import type { AiClimbObjective, AiMark } from '@/packages/ai';
 
 /** One unit's plotted route for preview rendering (start -> waypoints -> end). */
 export interface AiRouteVisual {
@@ -26,4 +26,6 @@ export interface AiOverlayData {
   routes: AiRouteVisual[];
   /** Independent per-archetype target marks. */
   marks?: AiMark[];
+  /** Vacant structure tops locked by melee units. */
+  objectives?: AiClimbObjective[];
 }

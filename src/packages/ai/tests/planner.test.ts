@@ -11,11 +11,15 @@ import {
   reverseDistanceMap,
   nextLegalTarget,
   isInFriendlyKillZone,
+  structureComplexFor,
+  edgeWalls,
   AiPlanContext,
 } from '@/packages/ai';
 import { Unit, Hex, AllianceGroup, Formation, hexDistance } from '@/types/gameProtocol';
-import { edgeRef } from '@/packages/movement';
+import { edgeRef, structuresToWalls } from '@/packages/movement';
 import { HEX_DIRS } from '@/packages/primitives';
+
+type StructureTemplates = NonNullable<AiPlanContext['structureTemplates']>;
 
 const SPEAR = 'Spear,3,1d8,false,1,1,0,true,false,false,false,1,true,Dex,circle';
 const SHORTBOW = 'Shortbow,2,1d6,false,2,3,0,false,true,true,false,1,true,Dex,circle';
@@ -308,6 +312,65 @@ describe('Basic AI structure complex confinement', () => {
       (s.kind === 'swoop' && !outside.includes(`${s.target.q},${s.target.r}`)),
     );
     expect(left).toBe(true);
+  });
+
+  it('treats a ring of hex structures as an enclosure perimeter', () => {
+    const ring = HEX_DIRS.map(d => `${d.q},${d.r}`);
+    const ctx = { ...ctxOf([]), structures: structs(ring), structureTemplates: {} };
+    expect(structureComplexFor({ hex: hex(0, 0) }, ctx)).toMatchObject({ kind: 'enclosure' });
+    const ringKeys = new Set(structureComplexFor({ hex: hex(0, 0) }, ctx)?.hexes);
+    expect(ringKeys.has('0,0')).toBe(true);
+    expect(ringKeys.has('1,0')).toBe(false);
+    // The open outside is not an enclosure.
+    expect(structureComplexFor({ hex: hex(0, -4) }, ctx)).toBeNull();
+  });
+});
+
+describe('Basic AI vacant structure tops', () => {
+  const tower20 = {
+    id: 'tower20', name: 'Tower', anchor: 'hex', elevation: 20,
+    mpClimbUp: 4, mpClimbDown: 4, mpMountedUp: 4, mpMountedDown: 4,
+  } as unknown as StructureTemplates[string];
+  const tower10 = {
+    id: 'tower10', name: 'Tower', anchor: 'hex', elevation: 10,
+    mpClimbUp: 4, mpClimbDown: 4, mpMountedUp: 4, mpMountedDown: 4,
+  } as unknown as StructureTemplates[string];
+  const blockedTower = {
+    id: 'blocked', name: 'Blocked tower', anchor: 'hex', elevation: 20,
+    mpClimbUp: -1, mpClimbDown: 4, mpMountedUp: -1, mpMountedDown: 4,
+  } as unknown as StructureTemplates[string];
+
+  const climber = (over: Partial<Unit> = {}) => mk({
+    id: 'm', team: 'blue', hex: hex(0, 1), currentFormation: 'Close Order',
+    organizationLevel: 2, formationAvailability: ['Close Order'],
+    movementPoints: 4, movementPointsAvailable: 0, actionsAvailable: 2,
+    ...over,
+  });
+
+  it('assigns a vacant top before marking the defender', () => {
+    const target = mk({ id: 't', team: 'black', hex: hex(1, 0), elevation: 10 });
+    const structures = {
+      '0,0': { templateId: 'tower20' },
+      '1,0': { templateId: 'tower10' },
+    } as unknown as AiPlanContext['structures'];
+    const result = planAiMoves({
+      ...ctxOf([climber({ actionsAvailable: 1 }), target]),
+      structures,
+      structureTemplates: { tower20, tower10 },
+    });
+    expect(result.objectives).toEqual([{ unitId: 'm', hex: hex(0, 0) }]);
+    expect(stepsOf(result, 'm').some(s => s.kind === 'climb' && s.to.q === 0 && s.to.r === 0)).toBe(true);
+  });
+
+  it('holds instead of pacing when the only top cannot be climbed', () => {
+    const target = mk({ id: 't', team: 'black', hex: hex(0, 0), elevation: 20 });
+    const result = planAiMoves({
+      ...ctxOf([climber({ hex: hex(0, 2) }), target]),
+      structures: { '0,0': { templateId: 'blocked' } } as unknown as AiPlanContext['structures'],
+      structureTemplates: { blocked: blockedTower },
+    });
+    expect(result.objectives).toEqual([]);
+    expect(stepsOf(result, 'm').some(s => s.kind === 'move')).toBe(false);
   });
 });
 
@@ -1091,5 +1154,53 @@ describe('Basic AI edge-wall climb-over', () => {
       structureTemplates: wallTemplates,
     });
     expect(stepsOf(result, 'm').some(s => s.kind === 'climbOver')).toBe(false);
+  });
+
+  it('ignores a wall on a hex-structure edge only for wall-crossing candidates', () => {
+    const shared = edgeRef(0, 0, 0).key; // between (0,0) and (1,0)
+    const openEdge = edgeRef(2, 0, 0).key;
+    const structures = {
+      '0,0': { templateId: 'tower' },
+      [shared]: { templateId: 'wall' },
+      [openEdge]: { templateId: 'wall' },
+    } as unknown as AiPlanContext['structures'];
+    const walls = edgeWalls({
+      structures,
+      structureTemplates: {
+        ...wallTemplates,
+        tower: { id: 'tower', name: 'Tower', anchor: 'hex', elevation: 20 },
+      } as unknown as AiPlanContext['structureTemplates'],
+    });
+    expect(walls.map(w => `${w.a.q},${w.a.r}`)).toEqual(['2,0']);
+  });
+
+  it('crosses a non-redundant wall to reach a vacant top inside', () => {    const insideBig: Hex[] = [];
+    for (let q = -2; q <= 2; q++) {
+      for (let r = -2; r <= 2; r++) {
+        if (Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) <= 2) insideBig.push(hex(q, r));
+      }
+    }
+    const structures = walledBox(insideBig) as unknown as Record<string, { templateId: string }>;
+    structures['0,0'] = { templateId: 'tower20' };
+    structures['1,0'] = { templateId: 'tower10' };
+    const walls = structuresToWalls(structures as unknown as NonNullable<AiPlanContext['structures']>, highWallTemplates as StructureTemplates);
+    for (const wall of Object.values(walls)) {
+      wall.a.block = true;
+      wall.b.block = true;
+    }
+    const defender = mk({ id: 't', team: 'black', hex: hex(1, 0), elevation: 10 });
+    const result = planAiMoves({
+      ...ctxOf([climber({ hex: hex(0, 3) }), defender]),
+      structures: structures as unknown as AiPlanContext['structures'],
+      structureTemplates: {
+        ...highWallTemplates,
+        tower20: { id: 'tower20', name: 'Tower', anchor: 'hex', elevation: 20, mpClimbUp: 4, mpMountedUp: 4 },
+        tower10: { id: 'tower10', name: 'Tower', anchor: 'hex', elevation: 10, mpClimbUp: 4, mpMountedUp: 4 },
+      } as unknown as AiPlanContext['structureTemplates'],
+      walls,
+    });
+    expect(result.objectives).toEqual([{ unitId: 'm', hex: hex(0, 0) }]);
+    const steps = stepsOf(result, 'm');
+    expect(steps.some(s => s.kind === 'climbOver' && s.to.q === 0 && s.to.r === 2)).toBe(true);
   });
 });

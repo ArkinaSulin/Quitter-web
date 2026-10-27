@@ -202,8 +202,25 @@ export function floatingUnits(
 export const CLIMB_MP_PER_STEP = 4;
 
 /**
+ * Authored MP per 10-ft climb step, including negative hard blocks. Kept separate
+ * from `structureClimbPerStep10` so movement can distinguish "free" from "blocked".
+ */
+function structureClimbAuthored(
+  template: StructureTemplate | null | undefined,
+  instance: StructureInstance | null | undefined,
+  up: boolean,
+  isMounted: boolean,
+): number {
+  if (!template) return CLIMB_MP_PER_STEP;
+  const authored = isMounted
+    ? (up ? (instance?.mpMountedUp ?? template.mpMountedUp) : (instance?.mpMountedDown ?? template.mpMountedDown))
+    : (up ? (instance?.mpClimbUp ?? template.mpClimbUp) : (instance?.mpClimbDown ?? template.mpClimbDown));
+  return authored === null || authored === undefined ? CLIMB_MP_PER_STEP : authored;
+}
+
+/**
  * The MP per 10-ft climb step for a structure, from its DB `mp_climb_up/down`
- * (`NOT NULL DEFAULT 4`). The UNIFORM rule: climbing costs `step × per-10-ft`.
+ * (`NOT NULL DEFAULT 4`). The UNIFORM rule: climbing costs `step A- per-10-ft`.
  * `0` = free. An **edge** picks up/down by `fromIsOutside`; a **hex** by
  * `ascending`. A negative is a hard block (handled elsewhere; treated as 0 here).
  */
@@ -214,12 +231,7 @@ export function structureClimbPerStep10(
 ): number {
   if (!template) return CLIMB_MP_PER_STEP;
   const up = template.anchor === 'edge' ? (opts.fromIsOutside ?? true) : (opts.ascending ?? true);
-  // A placed instance may override the template's per-10-ft climb cost.
-  const authored = opts.isMounted
-    ? (up ? (instance?.mpMountedUp ?? template.mpMountedUp) : (instance?.mpMountedDown ?? template.mpMountedDown))
-    : (up ? (instance?.mpClimbUp ?? template.mpClimbUp) : (instance?.mpClimbDown ?? template.mpClimbDown));
-  if (authored === null || authored === undefined) return CLIMB_MP_PER_STEP;
-  return Math.max(0, authored);
+  return Math.max(0, structureClimbAuthored(template, instance, up, !!opts.isMounted));
 }
 
 export interface ClimbPlan {
@@ -256,6 +268,93 @@ export function climbPlan(diffFeet: number, budgetMp: number, doneSteps: number,
   };
 }
 
+export interface StructureClimbProfile {
+  /** MP to pay for the climb covered by this profile (remaining steps only). */
+  cost: number;
+  /** Remaining 10-ft steps from the mover's current elevation. */
+  steps: number;
+  /** Full height of the crossed wall/structure rise, in steps. */
+  totalSteps: number;
+  perStep: number;
+  height: number;
+  fromSurface: number;
+  landingSurface: number;
+  blocked: boolean;
+  source: 'edge' | 'hex';
+}
+
+/**
+ * The climb profile for a RISING step between two adjacent hexes. A crossed
+ * closed EDGE wall overrides the destination hex structure, including its
+ * height and per-10-ft cost. `currentElevation` lets a hanging unit pay only
+ * the remaining steps while still using the wall's stats.
+ */
+export function structureClimbProfile(
+  from: { q: number; r: number },
+  to: { q: number; r: number },
+  structures: MapStructures | undefined,
+  templates: Record<string, StructureTemplate> | undefined,
+  opts: { isMounted?: boolean; currentElevation?: number } = {},
+): StructureClimbProfile | null {
+  if (!structures) return null;
+  const isMounted = !!opts.isMounted;
+  const dir = directionBetween(from, to);
+  const edgeKey = dir >= 0 ? edgeRef(from.q, from.r, dir).key : null;
+  const edgeInst = edgeKey ? structures[edgeKey] : undefined;
+  const edgeT = edgeInst ? templates?.[edgeInst.templateId] : undefined;
+  const fromSurface = structureSurfaceAt(from, structures, templates);
+  const remainingFor = (totalSteps: number) => {
+    const elevation = opts.currentElevation;
+    if (elevation === undefined) return totalSteps;
+    const done = Math.max(0, Math.min(totalSteps, Math.round((elevation - fromSurface) / 10)));
+    return Math.max(0, totalSteps - done);
+  };
+
+  if (edgeInst && edgeT && dir >= 0 && !structureDoorState(edgeInst, edgeT).openOrBroken) {
+    const height = structureElevation(edgeT, edgeInst);
+    const totalSteps = climbStepsFromFeet(height);
+    const ref = edgeRef(from.q, from.r, dir);
+    const outsideIsA = (edgeInst.outside ?? 'a') === 'a';
+    const fromIsOutside = outsideIsA
+      ? (from.q === ref.aq && from.r === ref.ar)
+      : (from.q === ref.bq && from.r === ref.br);
+    const authored = structureClimbAuthored(edgeT, edgeInst, fromIsOutside, isMounted);
+    const steps = remainingFor(totalSteps);
+    return {
+      cost: steps * Math.max(0, authored),
+      steps,
+      totalSteps,
+      perStep: Math.max(0, authored),
+      height,
+      fromSurface,
+      landingSurface: structureSurfaceAt(to, structures, templates),
+      blocked: authored < 0,
+      source: 'edge',
+    };
+  }
+
+  const toSurface = structureSurfaceAt(to, structures, templates);
+  if (toSurface <= fromSurface) return null;
+  const toInst = structures[`${to.q},${to.r}`];
+  const toT = toInst ? templates?.[toInst.templateId] : undefined;
+  if (toInst && toT && structureDoorState(toInst, toT).openOrBroken) return null;
+  const height = toSurface - fromSurface;
+  const totalSteps = climbStepsFromFeet(height);
+  const authored = structureClimbAuthored(toT, toInst, true, isMounted);
+  const steps = remainingFor(totalSteps);
+  return {
+    cost: steps * Math.max(0, authored),
+    steps,
+    totalSteps,
+    perStep: Math.max(0, authored),
+    height,
+    fromSurface,
+    landingSurface: toSurface,
+    blocked: authored < 0,
+    source: 'hex',
+  };
+}
+
 /**
  * The climb MP for a RISING structure step between two adjacent hexes, or
  * `undefined` when the step is not a structure climb (no structure, a same-surface
@@ -263,8 +362,8 @@ export function climbPlan(diffFeet: number, budgetMp: number, doneSteps: number,
  * destination **hex** structure's surface rise. This value **replaces** the base
  * (terrain) cost of the step.
  *
- * NOTE: a "10-ft ladder" is relative — the structure spans elevation 0 (base) → X
- * (top), so its 10-ft segments are 0→10, 10→20, …; the door is the exception
+ * NOTE: a "10-ft ladder" is relative �?" the structure spans elevation 0 (base) �+' X
+ * (top), so its 10-ft segments are 0�+'10, 10�+'20, �?�; the door is the exception
  * (always at elevation 0).
  */
 export function structureStepClimb(
@@ -276,29 +375,8 @@ export function structureStepClimb(
 ): number | undefined {
   if (opts.waiveClimb) return 0;
   if (!structures) return undefined;
-  const isMounted = !!opts.isMounted;
-  const dir = directionBetween(from, to);
-  const edgeKey = dir >= 0 ? edgeRef(from.q, from.r, dir).key : null;
-  const edgeInst = edgeKey ? structures[edgeKey] : undefined;
-  const edgeT = edgeInst ? templates?.[edgeInst.templateId] : undefined;
-  if (edgeInst && edgeT && dir >= 0 && !structureDoorState(edgeInst, edgeT).openOrBroken) {
-    const steps = climbStepsFromFeet(structureElevation(edgeT, edgeInst));
-    const ref = edgeRef(from.q, from.r, dir);
-    const outsideIsA = (edgeInst.outside ?? 'a') === 'a';
-    const fromIsOutside = outsideIsA
-      ? (from.q === ref.aq && from.r === ref.ar)
-      : (from.q === ref.bq && from.r === ref.br);
-    return steps * structureClimbPerStep10(edgeT, edgeInst, { isMounted, fromIsOutside });
-  }
-  const fromSurf = structureSurfaceAt(from, structures, templates);
-  const toSurf = structureSurfaceAt(to, structures, templates);
-  if (toSurf > fromSurf) {
-    const toInst = structures[`${to.q},${to.r}`];
-    const toT = toInst ? templates?.[toInst.templateId] : undefined;
-    const groundPass = !!(toInst && toT && structureDoorState(toInst, toT).openOrBroken);
-    if (!groundPass) return climbStepsFromFeet(toSurf - fromSurf) * structureClimbPerStep10(toT, toInst, { isMounted, ascending: true });
-  }
-  return undefined;
+  const profile = structureClimbProfile(from, to, structures, templates, { isMounted: opts.isMounted });
+  return profile ? profile.cost : undefined;
 }
 
 /**

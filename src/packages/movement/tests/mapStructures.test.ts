@@ -3,6 +3,7 @@ import {
   parseStructures, structuresToWalls, isEdgeStructureKey, isHexStructureKey, structureCounts,
   structureBlocksOrg, zoneBlocksOrg, structureRangeBonus, structureIsOpen,
   structureStepClimb, structureHexBlocked, structureAuraFlags, structureZones,
+  structureClimbProfile,
   structureDoorState, structureDoorHex, canToggleStructureDoor, doorPassThroughHexes,
   orgGatesForEntry, describeOrgGateBlock, entryBreakFormation, standingMaxOrg, floatingUnits,
 } from '@/packages/movement/lib/mapStructures';
@@ -271,6 +272,61 @@ describe('hex structure helpers', () => {
     expect(structureStepClimb({ q: 0, r: 0 }, { q: 1, r: 0 }, open, t4)).toBeUndefined();
     // No structure → undefined.
     expect(structureStepClimb({ q: 0, r: 0 }, { q: 2, r: 0 }, structures, t4)).toBeUndefined();
+  });
+
+  it('structureClimbProfile: a wall on the climbed edge overrides the hex structure stats', () => {
+    const tower = template({ id: 'tower', anchor: 'hex', elevation: 20, mpClimbUp: 2, mpClimbDown: 2 });
+    const wall = template({ id: 'wall', anchor: 'edge', elevation: 10, mpClimbUp: 1, mpClimbDown: 3 });
+    const edgeKey = edgeRef(0, 0, 0).key; // (0,0) -> (1,0)
+    const structures = {
+      '1,0': { templateId: 'tower' },
+      [edgeKey]: { templateId: 'wall' },
+    };
+    const templates = { tower, wall };
+
+    const profile = structureClimbProfile({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates);
+    expect(profile).toMatchObject({
+      source: 'edge',
+      height: 10,
+      totalSteps: 1,
+      perStep: 1,
+      steps: 1,
+      cost: 1,
+      landingSurface: 20,
+      blocked: false,
+    });
+    expect(structureStepClimb({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, templates)).toBe(1);
+  });
+
+  it('structureClimbProfile: hanging on the wall pays only the remaining steps', () => {
+    const tower = template({ id: 'tower', anchor: 'hex', elevation: 20, mpClimbUp: 2 });
+    const wall = template({ id: 'wall', anchor: 'edge', elevation: 20, mpClimbUp: 2, mpClimbDown: 2 });
+    const edgeKey = edgeRef(0, 0, 0).key;
+    const structures = {
+      '1,0': { templateId: 'tower' },
+      [edgeKey]: { templateId: 'wall' },
+    };
+    const profile = structureClimbProfile(
+      { q: 0, r: 0 }, { q: 1, r: 0 }, structures, { tower, wall },
+      { currentElevation: 10 },
+    );
+    expect(profile).toMatchObject({
+      source: 'edge',
+      totalSteps: 2,
+      steps: 1,
+      perStep: 2,
+      cost: 2,
+    });
+  });
+
+  it('structureClimbProfile: edge direction picks up vs down stats', () => {
+    const wall = template({ id: 'wall', anchor: 'edge', elevation: 10, mpClimbUp: 1, mpClimbDown: 3 });
+    const edgeKey = edgeRef(0, 0, 0).key; // a=(0,0) is outside by default
+    const structures = { [edgeKey]: { templateId: 'wall' } };
+    expect(structureClimbProfile({ q: 0, r: 0 }, { q: 1, r: 0 }, structures, { wall }))
+      .toMatchObject({ perStep: 1, cost: 1, source: 'edge' });
+    expect(structureClimbProfile({ q: 1, r: 0 }, { q: 0, r: 0 }, structures, { wall }))
+      .toMatchObject({ perStep: 3, cost: 3, source: 'edge' });
   });
 
   it('structureHexBlocked only hard-blocks on a negative MP (doors never gate hex entry)', () => {
