@@ -57,6 +57,16 @@ export function newSiegeWave(id?: string): SiegeWave {
   };
 }
 
+/** Move a wave by `delta` positions. Returns the same array when the move is invalid. */
+export function moveSiegeWave(waves: SiegeWave[], waveId: string, delta: -1 | 1): SiegeWave[] {
+  const from = waves.findIndex(wave => wave.id === waveId);
+  const to = from + delta;
+  if (from < 0 || to < 0 || to >= waves.length) return waves;
+  const next = [...waves];
+  [next[from], next[to]] = [next[to], next[from]];
+  return next;
+}
+
 export function defaultHalloweenSiegeConfig(): HalloweenSiegeConfig {
   return {
     enabled: false,

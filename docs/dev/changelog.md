@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## Halloween Siege editor scroll + wave reordering (2026-10-26)
+**Files:** src/components/ScenarioMap/HalloweenSiegeWindow.tsx, src/packages/world/lib/halloweenSiege.ts, src/packages/world/tests/halloweenSiege.test.ts, docs/dev/{20-halloween-siege,changelog}.md, docs/players/player-manual.md
+
+- The wave list and monster picker now scroll independently in a bounded modal;
+  the whole body no longer scrolls as one piece, so later waves stay drag/drop
+  reachable while the picker remains visible.
+- Moved **+ Add wave** below the last wave card (and below the empty-state
+  placeholder when no waves exist); adding scrolls the new wave into view.
+- Added **Up** / **Down** wave controls using `moveSiegeWave`; reordering keeps
+  the wave payload, selection and start-turn alignment, with boundary moves
+  disabled.
+- Added pure wave-ordering tests and updated player/dev docs.
+- Verification: `npm run check` (tsc, tests, depcruise, build). No migration.
+
 ## Documentation closeout: AI current scope + Halloween Siege (2026-10-26)
 **Files:** AGENTS.md, docs/dev/{README,17-enemy-ai,20-halloween-siege,outstanding,changelog}.md, docs/players/player-manual.md
 

@@ -29,6 +29,20 @@ continues to work normally.
   turn) and no living un-routed enemy remains, the GM shows all players a
   transient toast: `Congratulations! You completed wave N.`
 
+## Editor
+
+`HalloweenSiegeWindow` uses two independently scrolling columns: the wave list
+and the monster picker. The modal body does not scroll as one piece, so a DM can
+keep the monster picker at the top while scrolling the wave column to a later
+wave (drag/drop targets remain reachable).
+
+- **Add wave** sits below the last wave card, not in the top control row. With
+  no waves it sits below the empty-state placeholder.
+- Each wave has **Up** / **Down** controls in its header; reordering preserves
+  the wave payload and selected wave. The first Up and last Down are disabled.
+- Reordering changes the spawn order. Saving re-arms the siege and resets the
+  runtime start markers from the new order.
+
 ## Wave timeline
 
 Let `N = turnsPerWave`, `M = waves.length`, and `waveStartTurns[i]` be the

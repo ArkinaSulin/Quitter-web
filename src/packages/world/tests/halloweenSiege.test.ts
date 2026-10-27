@@ -8,6 +8,7 @@ import {
   defaultHalloweenSiegeConfig,
   isHalloweenSiegeComplete,
   isHalloweenSiegeConfigValid,
+  moveSiegeWave,
   nextEnemyTurnNumber,
   parseHalloweenSiegeConfig,
   pickSiegeMonster,
@@ -200,5 +201,28 @@ describe('Halloween Siege spawn plan', () => {
     expect(plan).toHaveLength(3);
     expect(plan.map(row => row.templateId)).toEqual(['a', 'a', 'a']);
     expect(plan.map(row => row.team)).toEqual(['black', 'orange', 'black']);
+  });
+});
+
+describe('Halloween Siege wave ordering', () => {
+  const waves: SiegeWave[] = [
+    { id: 'a', count: 1, entries: [{ templateId: 'a', percent: 100 }] },
+    { id: 'b', count: 2, entries: [{ templateId: 'b', percent: 100 }] },
+    { id: 'c', count: 3, entries: [{ templateId: 'c', percent: 100 }] },
+  ];
+
+  it('moves a wave up and down while keeping its payload', () => {
+    const up = moveSiegeWave(waves, 'b', -1);
+    expect(up.map(w => w.id)).toEqual(['b', 'a', 'c']);
+    expect(up[0]).toBe(waves[1]);
+    const down = moveSiegeWave(waves, 'b', 1);
+    expect(down.map(w => w.id)).toEqual(['a', 'c', 'b']);
+    expect(down[2]).toBe(waves[1]);
+  });
+
+  it('ignores invalid moves and unknown ids', () => {
+    expect(moveSiegeWave(waves, 'a', -1)).toBe(waves);
+    expect(moveSiegeWave(waves, 'c', 1)).toBe(waves);
+    expect(moveSiegeWave(waves, 'missing', 1)).toBe(waves);
   });
 });

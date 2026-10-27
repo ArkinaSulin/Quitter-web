@@ -7,6 +7,7 @@ import {
   assignSiegeTeams,
   defaultHalloweenSiegeConfig,
   isHalloweenSiegeConfigValid,
+  moveSiegeWave,
   newSiegeWave,
   nextEnemyTurnNumber,
   type HalloweenSiegeConfig,
@@ -41,6 +42,8 @@ export function HalloweenSiegeWindow({
   }));
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const waveRefs = useRef(new Map<string, HTMLDivElement>());
+  const pendingScrollWaveRef = useRef<string | null>(null);
 
   const clampPos = useCallback((p: { x: number; y: number }) => {
     const el = modalRef.current;
@@ -57,6 +60,13 @@ export function HalloweenSiegeWindow({
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, [clampPos]);
+
+  useLayoutEffect(() => {
+    const waveId = pendingScrollWaveRef.current;
+    if (!waveId) return;
+    waveRefs.current.get(waveId)?.scrollIntoView({ block: 'nearest' });
+    pendingScrollWaveRef.current = null;
+  }, [draft.waves]);
 
   const startDrag = (e: React.MouseEvent) => {
     dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y };
@@ -105,8 +115,21 @@ export function HalloweenSiegeWindow({
 
   const addWave = () => {
     const wave = newSiegeWave();
+    pendingScrollWaveRef.current = wave.id;
     setDraft(current => ({ ...current, waves: [...current.waves, wave] }));
     setActiveWaveId(wave.id);
+  };
+
+  const moveWave = (waveId: string, delta: -1 | 1) => {
+    setDraft(current => {
+      const waves = moveSiegeWave(current.waves, waveId, delta);
+      if (waves === current.waves) return current;
+      const from = current.waves.findIndex(wave => wave.id === waveId);
+      const to = from + delta;
+      const waveStartTurns = [...current.waveStartTurns];
+      [waveStartTurns[from], waveStartTurns[to]] = [waveStartTurns[to], waveStartTurns[from]];
+      return { ...current, waves, waveStartTurns };
+    });
   };
 
   const removeWave = (waveId: string) => {
@@ -150,7 +173,7 @@ export function HalloweenSiegeWindow({
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 pointer-events-auto">
       <div
         ref={modalRef}
-        className="bg-gray-900 border border-gray-600 rounded-xl shadow-2xl w-[760px] max-h-[92vh] flex flex-col"
+        className="bg-gray-900 border border-gray-600 rounded-xl shadow-2xl w-[760px] h-[720px] max-h-[92vh] flex flex-col"
         style={{ left: pos.x, top: pos.y, position: 'absolute' }}
       >
         <div
@@ -164,8 +187,8 @@ export function HalloweenSiegeWindow({
           <button onClick={onClose} className="text-gray-400 hover:text-white text-sm px-1">Close</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-          <div className="flex items-end gap-4">
+        <div className="flex-1 min-h-0 overflow-hidden px-4 py-3 flex flex-col gap-4">
+          <div className="flex shrink-0 items-end gap-4">
             <label className="flex items-center gap-2 text-sm text-gray-200">
               <span className="font-medium text-amber-300">Turns per wave</span>
               <input
@@ -177,19 +200,13 @@ export function HalloweenSiegeWindow({
                 className="w-20 bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700"
               />
             </label>
-            <button
-              onClick={addWave}
-              className="bg-amber-700 hover:bg-amber-600 text-white px-3 py-1 rounded text-sm"
-            >
-              + Add wave
-            </button>
             <span className="text-[11px] text-gray-400">
               {expectedTurns > 0 ? `${expectedTurns}+ enemy turns (plus DM-started pauses)` : 'No waves configured'}
             </span>
           </div>
 
-          <div className="grid grid-cols-[1fr_240px] gap-4">
-            <div className="space-y-3">
+          <div className="grid flex-1 min-h-0 grid-cols-[1fr_240px] gap-4">
+            <div className="min-h-0 space-y-3 overflow-y-auto overscroll-contain pr-1">
               {draft.waves.length === 0 ? (
                 <div className="rounded border border-dashed border-gray-700 p-6 text-center text-sm text-gray-400">
                   Add a wave, then drag monster templates into it.
@@ -227,12 +244,30 @@ export function HalloweenSiegeWindow({
                       <span className={`text-[11px] font-mono ${sumOk ? 'text-emerald-400' : 'text-amber-300'}`}>
                         Sum: {sum}%
                       </span>
-                      <button
-                        onClick={e => { e.stopPropagation(); removeWave(wave.id); }}
-                        className="ml-auto text-[11px] text-red-300 hover:text-red-200"
-                      >
-                        Remove wave
-                      </button>
+                      <div className="ml-auto flex items-center gap-2">
+                        <button
+                          onClick={e => { e.stopPropagation(); moveWave(wave.id, -1); }}
+                          disabled={waveIndex === 0}
+                          className="text-[11px] text-gray-300 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed"
+                          title="Move wave up"
+                        >
+                          Up
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); moveWave(wave.id, 1); }}
+                          disabled={waveIndex === draft.waves.length - 1}
+                          className="text-[11px] text-gray-300 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed"
+                          title="Move wave down"
+                        >
+                          Down
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); removeWave(wave.id); }}
+                          className="text-[11px] text-red-300 hover:text-red-200"
+                        >
+                          Remove wave
+                        </button>
+                      </div>
                     </div>
 
                     <div className="space-y-1">
@@ -293,9 +328,15 @@ export function HalloweenSiegeWindow({
                   </div>
                 );
               })}
+              <button
+                onClick={addWave}
+                className="w-full bg-amber-700 hover:bg-amber-600 text-white px-3 py-2 rounded text-sm"
+              >
+                + Add wave
+              </button>
             </div>
 
-            <div className="rounded border border-gray-700 p-2 flex flex-col min-h-[320px]">
+            <div className="min-h-0 rounded border border-gray-700 p-2 flex flex-col">
               <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">Monsters</div>
               <input
                 type="text"
@@ -306,7 +347,7 @@ export function HalloweenSiegeWindow({
               />
               {loading && <div className="text-xs text-gray-400">Loading units…</div>}
               {error && <div className="text-xs text-red-400">{error}</div>}
-              <div className="flex-1 overflow-y-auto space-y-1">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-1">
                 {pickerTemplates.map(template => (
                   <div
                     key={template.id}

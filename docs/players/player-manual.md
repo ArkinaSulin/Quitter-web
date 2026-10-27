@@ -1376,6 +1376,11 @@ The **Halloween Siege** is an optional DM-authored wave mode. Open its window
 from the GM tools, add waves, choose monster percentages (each wave must total
 100%), set turns per wave, then **Save & arm**.
 
+The wave list and the monster picker scroll independently, so a later wave can
+be edited while the monster picker stays visible. **Add wave** is below the last
+wave card. Each wave has **Up** / **Down** controls to reorder the spawn sequence
+without deleting and re-adding it.
+
 - **Wave 1** starts on the next Enemy turn. During each of its turns, the wave
   spawns its configured monsters at the grid rim (inner rings if the rim is
   full), distributed across teams assigned to the Enemy alliance.
