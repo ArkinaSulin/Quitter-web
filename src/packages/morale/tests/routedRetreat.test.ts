@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { Unit, AllianceGroup, Formation, getOrganizationLevel } from '@/types/gameProtocol';
 import { routRetreatPath, enemyKillZone } from '@/packages/morale/lib/routedRetreat';
+import { edgeRef } from '@/packages/movement';
+import { StructureTemplate } from '@/types/structure';
 
 const h = (q: number, r: number) => ({ q, r, s: -q - r });
 
@@ -146,6 +148,48 @@ describe('routRetreatPath — pass through friendlies', () => {
     const res = routRetreatPath(ctxOf(routed, [routed, attacker, ...walls], attacker));
     expect(res.dest).toBeNull();
     expect(res.reason).toBeTruthy();
+  });
+
+  it('rejects a terrain step costing more than 2 MP', () => {
+    const routed = unit('r', 'blue', h(0, 0), { currentFormation: 'Routed' });
+    const attacker = unit('a', 'red', h(3, 0));
+    const res = routRetreatPath({
+      ...ctxOf(routed, [routed, attacker, ...blocks()], attacker),
+      terrainCosts: { '-1,0': 3 },
+    });
+    expect(res.dest).toBeNull();
+  });
+
+  it('allows a stair/ladder step at 1 MP but rejects a 4 MP wall', () => {
+    const routed = unit('r', 'blue', h(0, 0), { currentFormation: 'Routed' });
+    const attacker = unit('a', 'red', h(3, 0));
+    const edge = edgeRef(0, 0, 3).key;
+    const stair = { id: 'stair', name: 'Stair', anchor: 'edge', elevation: 10, mpClimbUp: 1, mpClimbDown: 1 } as unknown as StructureTemplate;
+    const wall = { id: 'wall', name: 'Wall', anchor: 'edge', elevation: 20, mpClimbUp: 4, mpClimbDown: 4 } as unknown as StructureTemplate;
+    const stairPath = routRetreatPath({
+      ...ctxOf(routed, [routed, attacker, ...blocks()], attacker),
+      structures: { [edge]: { templateId: 'stair' } },
+      templates: { stair },
+    });
+    expect(stairPath.dest).toEqual(h(-1, 0));
+    const wallPath = routRetreatPath({
+      ...ctxOf(routed, [routed, attacker, ...blocks()], attacker),
+      structures: { [edge]: { templateId: 'wall' } },
+      templates: { wall },
+    });
+    expect(wallPath.dest).toBeNull();
+  });
+
+  it('allows only one friendly push-through', () => {
+    const routed = unit('r', 'blue', h(0, 0), { currentFormation: 'Routed' });
+    const attacker = unit('a', 'red', h(3, 0));
+    const first = unit('f1', 'blue', h(-1, 0), { currentFormation: 'Open Order' });
+    const second = unit('f2', 'blue', h(-2, 0), { currentFormation: 'Open Order' });
+    const res = routRetreatPath({
+      ...ctxOf(routed, [routed, attacker, first, second, ...blocks()], attacker),
+      allowPassThrough: false,
+    });
+    expect(res.through).toEqual([]);
   });
 });
 

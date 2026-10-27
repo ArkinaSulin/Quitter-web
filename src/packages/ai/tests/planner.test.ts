@@ -360,8 +360,24 @@ describe('Basic AI vacant structure tops', () => {
       structures,
       structureTemplates: { tower20, tower10 },
     });
-    expect(result.objectives).toEqual([{ unitId: 'm', hex: hex(0, 0) }]);
+    expect(result.objectives).toMatchObject([{ unitId: 'm', hex: hex(0, 0) }]);
     expect(stepsOf(result, 'm').some(s => s.kind === 'climb' && s.to.q === 0 && s.to.r === 0)).toBe(true);
+  });
+
+  it('spends the whole activation moving to the base and climbing', () => {
+    const target = mk({ id: 't', team: 'black', hex: hex(1, 0), elevation: 10 });
+    const structures = {
+      '0,0': { templateId: 'tower20' },
+      '1,0': { templateId: 'tower10' },
+    } as unknown as AiPlanContext['structures'];
+    const result = planAiMoves({
+      ...ctxOf([climber({ hex: hex(0, 3), actionsAvailable: 2 }), target]),
+      structures,
+      structureTemplates: { tower20, tower10 },
+    });
+    const steps = stepsOf(result, 'm');
+    expect(steps.some(s => s.kind === 'move')).toBe(true);
+    expect(steps.some(s => s.kind === 'climb' && s.to.q === 0 && s.to.r === 0)).toBe(true);
   });
 
   it('holds instead of pacing when the only top cannot be climbed', () => {
@@ -910,7 +926,7 @@ describe('Basic AI hanging lock and structure hold', () => {
     expect(steps.some(s => s.kind === 'climbAttack' && s.targetId === 'weak')).toBe(true);
   });
 
-  it('routed hanging units drop instead of climbing', () => {
+  it('routed hanging units never drop on their own', () => {
     const climber = mk({
       id: 'c', team: 'blue', hex: hex(0, 1), elevation: 10, climbTo: '0,0',
       currentFormation: 'Routed', organizationLevel: 0,
@@ -919,8 +935,7 @@ describe('Basic AI hanging lock and structure hold', () => {
     const foe = mk({ id: 'f', team: 'black', hex: hex(3, 3) });
     const result = planAiMoves({ ...ctxOf([climber, foe]), structures: tower, structureTemplates: towerTemplates });
     const steps = stepsOf(result, 'c');
-    expect(steps.some(s => s.kind === 'drop')).toBe(true);
-    expect(steps.some(s => s.kind === 'climb' || s.kind === 'climbAttack')).toBe(false);
+    expect(steps.some(s => s.kind === 'drop')).toBe(false);
   });
 
   it('ranged unit on top fires and does not leave the structure', () => {
@@ -1084,6 +1099,16 @@ describe('Basic AI routed-unit escape', () => {
       expect(hexDistance(move.to, target.hex)).toBeGreaterThan(hexDistance(flyer.hex, target.hex) + 1);
     }
   });
+
+  it('does not flee through ground that costs more than 2 MP per step', () => {
+    const runner = mk({
+      id: 'r', team: 'blue', hex: hex(0, 0), currentFormation: 'Routed', organizationLevel: 0,
+      movementPoints: 4, movementPointsAvailable: 0, actionsAvailable: 2,
+    });
+    const terrainCosts = Object.fromEntries(HEX_DIRS.map(d => [`${d.q},${d.r}`, 3]));
+    const result = planAiMoves({ ...ctxOf([runner, foe()]), terrainCosts });
+    expect(stepsOf(result, 'r').some(s => s.kind === 'move')).toBe(false);
+  });
 });
 
 describe('Basic AI edge-wall climb-over', () => {
@@ -1238,7 +1263,7 @@ describe('Basic AI edge-wall climb-over', () => {
       } as unknown as AiPlanContext['structureTemplates'],
       walls,
     });
-    expect(result.objectives).toEqual([{ unitId: 'm', hex: hex(0, 0) }]);
+    expect(result.objectives).toMatchObject([{ unitId: 'm', hex: hex(0, 0) }]);
     const steps = stepsOf(result, 'm');
     expect(steps.some(s => s.kind === 'climbOver' && s.to.q === 0 && s.to.r === 2)).toBe(true);
   });

@@ -2251,6 +2251,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             formationsMap,
             structures,
             templates: structureTemplates,
+            terrainCosts: zoneMpCosts,
+            walls,
+            allowPassThrough: throughAll.length === 0,
             attacker,
             attackerFrom: null,
             gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
@@ -2333,7 +2336,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       routBusy.current = false;
       console.info('[RoutFlow] done');
     }
-  }, [unitsRef, alliances, formationsMap, execute, addMessage, performPursuits, verboseCombat]);
+  }, [unitsRef, alliances, formationsMap, zoneMpCosts, walls, execute, addMessage, performPursuits, verboseCombat]);
 
   const handleRoutRow = useCallback(async (row: CommandLogRow) => {
     if (row.deleted_at != null) return;
@@ -2372,6 +2375,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         formationsMap,
         structures,
         templates: structureTemplates,
+        terrainCosts: zoneMpCosts,
+        walls,
         attacker,
         attackerFrom,
         gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,

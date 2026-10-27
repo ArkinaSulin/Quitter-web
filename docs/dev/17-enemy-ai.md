@@ -253,8 +253,8 @@ leave it. Flyers are exempt.
   the exit becomes friendly-occupied, switch to the nearest free top exit.
 - An enemy at the exit is attacked with `climbAttack` before landing; after the
   obstacle is defeated/moves, the climb continues and the unit lands.
-- **Routed** hanging units drop down instead (fastest exit) and then flee; if the
-  drop hex is occupied, climb down as a fallback.
+- **Routed** hanging units never drop on their own. They climb down only when a
+  legal step exists; otherwise they hold. (A player may still drop manually.)
 - No attack or retaliation happens until the unit reaches the same level as the
   structure top.
 - The planner uses the **crossed-edge climb profile**, not just the destination
@@ -265,9 +265,14 @@ leave it. Flyers are exempt.
   soft-enforcement fudge). It requires at least one action and enough capacity
   for the next step; otherwise it holds. The AI executor repeats this check, so
   a stale plan can never push actions/MP below zero.
-- **Never plan move + climb in the same activation** when the climb needs all
-  actions. A unit that must move to the base does so this activation and climbs
-  next activation.
+- **Whole-turn objective execution:** once a climb objective is locked, the
+  planner spends the unit's available actions along the route (multiple moves
+  and/or move + climb). It stops only when the route is blocked, the unit hangs,
+  or resources are exhausted.
+- The locked route includes the chosen **base** (or wall **near/far** crossing),
+  not just the top. It is reused across plots; a different base is re-scored
+  only when the stored route becomes invalid (top removed, base/far occupied,
+  crossing gone, or no legal step). With no valid route, the unit holds.
 - The wall may consume both actions per 10 ft; there is **no action reservation
   for an attack**. A 20-ft wall therefore takes two activations (10 ft each),
   attacking only once at the top.
@@ -460,7 +465,7 @@ resources go to disengage/evasion.
 |---|---|---|
 | `climbAttack` | `performClimbAttack` |
 | `climb` | `handleClimbMove` (climb into a free top gap, no attack) |
-| `drop` | `performDescentDrop` (routed hanging units drop down) |
+| `drop` | `performDescentDrop` (manual/player descent only; AI never drops) |
 | `charge` | `useGameEngine.charge` |
 | `swoop` | `performSwoopDrop` (atomic charge-move + dive + free attack) |
 | `chargeEnd` | `performChargeEnd` |
@@ -484,7 +489,7 @@ marks/caps (including the dynamic melee cap up to 6), melee upgrade priority,
 multi-attack, ranged 6-hex posture and Close-Order short-bow shots, melee
 staging, ZoC engagement by fully upgraded melee, geometric adjacency (all six
 hexes), formation-up leftover-MP facing, climb commitment and 20-ft sequencing,
-the hard hanging lock (free top first, weakest top obstacle, routed drop),
+the hard hanging lock (free top first, weakest top obstacle; routed units climb or hold, never drop),
 structure-top gap access and free-gap climbs, on-top hold-and-fight, routed
 target fallback and mid-execution retargeting, adjacency-only flank safety,
 full facing search (180-degree turns), Open-Order pass-through, stop-aware

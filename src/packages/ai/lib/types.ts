@@ -28,6 +28,12 @@ export interface AiMark {
 export interface AiClimbObjective {
   unitId: string;
   hex: Hex;
+  /** Chosen direct climb base (session route lock). */
+  baseHex?: Hex;
+  /** Chosen wall crossing near/far sides (session route lock). */
+  nearHex?: Hex;
+  farHex?: Hex;
+  mode?: 'direct' | 'crossing';
 }
 
 export type AiStep =

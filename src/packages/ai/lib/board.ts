@@ -298,6 +298,7 @@ export function movementContextFor(
   ctx: AiPlanContext,
   mode: 'ground' | 'fly' = 'ground',
   complex?: StructureComplex | null,
+  opts: { maxStepCost?: number } = {},
 ): MovementContext {
   const structures = ctx.structures;
   const templates = ctx.structureTemplates;
@@ -316,9 +317,16 @@ export function movementContextFor(
   }
   const movementMultipliers: Record<string, number> = {};
   for (const [name, f] of Object.entries(ctx.formations)) movementMultipliers[name] = f.movement_multiplier;
-  const costOfHex = makeCostOfHex(ctx.terrainCosts ?? null, ctx.walls, {
+  const rawCostOfHex = makeCostOfHex(ctx.terrainCosts ?? null, ctx.walls, {
     structures, templates, isMounted: mounted, waiveClimb,
   });
+  const maxStepCost = opts.maxStepCost;
+  const costOfHex: CostOfHexFn = maxStepCost === undefined
+    ? rawCostOfHex
+    : (q, r, fq, fr) => {
+        const cost = rawCostOfHex(q, r, fq, fr);
+        return cost > maxStepCost ? Infinity : cost;
+      };
   const rawBlockedEdge = makeBlockedEdge(ctx.walls, {
     structures, templates, zones, isMounted: mounted, waiveClimb,
   });
@@ -667,8 +675,9 @@ export function maneuversFor(
   ctx: AiPlanContext,
   mode: 'ground' | 'fly' = 'ground',
   complex?: StructureComplex | null,
+  opts: { maxStepCost?: number } = {},
 ): Maneuver[] {
-  const movement = movementContextFor(unit, working, ctx, mode, complex);
+  const movement = movementContextFor(unit, working, ctx, mode, complex, opts);
   const out: Maneuver[] = [];
   const poolOf = (u: Unit): number => {
     if (mode === 'fly') {

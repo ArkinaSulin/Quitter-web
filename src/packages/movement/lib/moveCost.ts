@@ -396,6 +396,7 @@ export function computeReachableMap(
   const stepCost = (q: number, r: number, fromQ: number, fromR: number): number => {
     if (!costOfHex) return 1;
     const c = Math.round(costOfHex(q, r, fromQ, fromR) ?? 1);
+    if (c === Infinity) return Infinity; // explicitly impassable for this mover
     return Number.isFinite(c) && c >= 0 ? c : 1;
   };
 

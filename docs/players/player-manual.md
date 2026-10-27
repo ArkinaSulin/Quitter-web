@@ -1028,6 +1028,13 @@ zones**. Ordered ranks (**Close Order+**) and enemies block it; a unit with
 nowhere to go **stands** (still Routed — and the attacker gets a free
 "as-if-pursued" attack at it).
 
+A rout moves to **one destination**, and every hex it enters must cost **2 MP or
+less** using the normal movement cost (terrain, zones, structures, walls,
+stairs/ladders). Anything over 2 MP is not a legal rout step. It may push through
+at most **one** Open Order/Scattered friendly on the way; it cannot chain through
+several. Walls that cost more than 2 MP block the rout; stairs/ladders work while
+their actual step cost is <= 2 MP.
+
 ![S-22 Retreat card](screenshots/s-22-rout-modal.png)
 
 > **Routed friendlies yield** (they are org 0), so a rout may push through other

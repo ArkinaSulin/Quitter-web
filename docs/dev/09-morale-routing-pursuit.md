@@ -138,17 +138,22 @@ friendly org ≤ 1 units:
   away±2):
   1. **4** if empty + outside any enemy kill zone;
   2. **3 or 5** (away-side; prefer the one **not adjacent to a hostile**; random tie);
-  3. else **push through** a friendly org ≤ 1 (an **Open Order** unit is disrupted
-     to **Scattered**; Scattered/Routed/heroes pass freely) — then repeat from the
-     new hex, **unbounded** until a gap;
+  3. else **push through** at most **one** friendly org <= 1 (an **Open Order**
+     unit is disrupted to **Scattered**; Scattered/Routed/heroes pass freely);
+     no chaining through multiple friendlies;
   4. else **2 or 6** (attacker-side; fewest hostiles adjacent).
-- **Blocked** = a hostile unit, an enemy kill zone, or a friendly org ≥ 2
-  (Close Order+). Routed friendlies **do** yield (they are org 0). No legal route →
-  the unit stands (still Routed) and faces a free pursue.
+- **Blocked** = a hostile unit, an enemy kill zone, a friendly org >= 2
+  (Close Order+), or a step costing **more than 2 MP**. The cost uses the real
+  movement rule (terrain, mp_cost zones, structures/doors/walls); stairs/ladders
+  are allowed only while their actual step cost is <= 2. A step over 2 MP is
+  invalid for rout. Routed friendlies **do** yield (they are org 0). No legal
+  route -> the unit stands (still Routed) and faces a free pursue.
+- A routed hanging unit never drops on its own; it climbs down only via a legal
+  step, otherwise it holds. A player may still choose a manual drop.
 
 Part A of the same rule applies to **normal movement**: a pass-eligible unit
-(Open Order / Scattered / Routed / hero ≤ Large) may move THROUGH another
-pass-eligible friendly — never stacking. See `07` "Friendly pass-through".
+(Open Order / Scattered / Routed / hero <= Large) may move THROUGH another
+pass-eligible friendly - never stacking. See `07` "Friendly pass-through".
 
 ## Pursuit (zone of control)
 

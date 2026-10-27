@@ -1,5 +1,25 @@
 # QuiTTER Changelog
 
+## Whole-turn climb routes + strict rout steps (2026-10-26)
+**Files:** src/packages/ai/lib/{board,planner,types}.ts, src/packages/ai/tests/planner.test.ts, src/packages/movement/lib/{moveCost,mapStructures}.ts, src/packages/morale/lib/routedRetreat.ts, src/packages/morale/tests/routedRetreat.test.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{09-morale-routing-pursuit,17-enemy-ai,changelog}.md, docs/players/player-manual.md
+
+- Climb objectives now execute the affordable **whole activation** along a
+  locked route: multiple moves and/or move + climb, stopping only when blocked,
+  hanging, or out of actions/MP.
+- The session lock stores the chosen base or wall near/far crossing, not just
+  the top; the route is reused until invalid, preventing base/crossing flip-flop.
+  A completed wall crossing clears the crossing route so the next plot climbs
+  from the far side instead of walking back.
+- Rout retreats now require every entered hex/edge to cost **<= 2 MP** using the
+  real movement cost. Stairs/ladders are allowed only while their actual cost is
+  <= 2; wall climbs over 2 MP are invalid. At most one friendly push-through is
+  allowed. AI routed units never voluntarily drop; manual drop prompts remain.
+- `computeReachableMap` now treats `Infinity` step costs as impassable instead of
+  clamping them to 1, so the rout max-step cap is enforceable.
+- Added tests for whole-turn climb, max-step rout/terrain, stair vs wall, no AI
+  drop, and the existing suite.
+- Verification: `npm run check` (tsc, tests, depcruise, build). No migration.
+
 ## AI wall lock persistence + redundant-wall pathing (2026-10-26)
 **Files:** src/packages/ai/lib/{board,planner,types}.ts, src/components/ScenarioMap/AiPanel.tsx, src/packages/ai/tests/planner.test.ts, docs/dev/{17-enemy-ai,changelog}.md
 

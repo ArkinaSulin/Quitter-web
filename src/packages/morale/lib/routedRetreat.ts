@@ -6,10 +6,10 @@
 // integration (chained ROUT/MOVE/FORMATION commands) lives in the map layer.
 
 import { Unit, AllianceGroup, Formation, Hex, hexDistance, getOrganizationLevel } from '@/types/gameProtocol';
-import { MapStructures } from '@/packages/movement';
+import { MapStructures, Walls } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { HEX_DIRS, hexDirIndex, sameAlliance, isHostile } from '@/packages/primitives';
-import { computeThreatHexes } from '@/packages/world';
+import { TerrainCosts, computeThreatHexes, makeBlockedEdge, makeCostOfHex } from '@/packages/world';
 
 const key = (q: number, r: number) => `${q},${r}`;
 
@@ -20,6 +20,10 @@ export interface RoutContext {
   formationsMap: Record<string, Formation>;
   structures?: MapStructures;
   templates?: Record<string, StructureTemplate>;
+  terrainCosts?: TerrainCosts;
+  walls?: Walls;
+  /** At most one friendly push-through per rout event. Defaults true. */
+  allowPassThrough?: boolean;
   /** The attacker that caused the rout — the primary "away from" axis. */
   attacker?: Unit | null;
   /** The attacker's hex BEFORE a swoop landed it on the victim (the incoming
@@ -142,9 +146,17 @@ function hostilesAdjacent(hex: Hex, hostiles: Unit[]): number {
   return hostiles.reduce((n, h) => n + (hexDistance(hex, h.hex) === 1 ? 1 : 0), 0);
 }
 
-function classify(hex: Hex, kill: Set<string>, occ: Map<string, Unit>, ctx: RoutContext): NeighborInfo['kind'] {
+function classify(
+  from: Hex,
+  hex: Hex,
+  kill: Set<string>,
+  occ: Map<string, Unit>,
+  ctx: RoutContext,
+  stepOk: (from: Hex, to: Hex) => boolean,
+): NeighborInfo['kind'] {
   const k = key(hex.q, hex.r);
   if (kill.has(k)) return 'blocked'; // hostile ZoC — an impossible route
+  if (!stepOk(from, hex)) return 'blocked'; // >2 MP or hard-blocked
   const u = occ.get(k);
   if (!u) return 'empty';
   if (isHostile(u.team, ctx.routed.team, ctx.alliances)) return 'hostile';
@@ -174,11 +186,26 @@ export function routRetreatPath(ctx: RoutContext): RoutPath {
   }
   const hostiles = ctx.units.filter(u => !u.isDeleted && (u.currentUnitHp ?? 0) > 0 && isHostile(u.team, ctx.routed.team, ctx.alliances));
 
+  const isMounted = !!(ctx.routed.mountId || ctx.routed.mountName);
+  const blockedEdge = makeBlockedEdge(ctx.walls, {
+    structures: ctx.structures, templates: ctx.templates, isMounted,
+  });
+  const costOfHex = makeCostOfHex(ctx.terrainCosts, ctx.walls, {
+    structures: ctx.structures, templates: ctx.templates, isMounted,
+  });
+  const stepOk = (from: Hex, to: Hex): boolean => {
+    if (blockedEdge?.(from.q, from.r, to.q, to.r)) return false;
+    const cost = costOfHex(to.q, to.r, from.q, from.r);
+    return Number.isFinite(cost) && cost <= 2;
+  };
+  const allowPassThrough = ctx.allowPassThrough !== false;
+
   const scatters: string[] = [];
   const through: string[] = [];
   const path: Hex[] = [];
   const visited = new Set<string>([key(ctx.routed.hex.q, ctx.routed.hex.r)]);
   let pos: Hex = { ...ctx.routed.hex };
+  let pushed = false;
 
   for (let step = 0; step < 512; step++) {
     const away = awayDirection(pos, ctx, hostiles);
@@ -186,7 +213,7 @@ export function routRetreatPath(ctx: RoutContext): RoutPath {
     // attacker-side flanks (2/6 = away±2).
     const dirs = [away, (away + 1) % 6, (away + 5) % 6, (away + 2) % 6, (away + 4) % 6];
     const neigh = neighborsOf(pos);
-    const info: NeighborInfo[] = dirs.map((d, i) => ({ dir: d, hex: neigh[d], kind: classify(neigh[d], kill, occ, ctx), unit: occ.get(key(neigh[d].q, neigh[d].r)) }));
+    const info: NeighborInfo[] = dirs.map(d => ({ dir: d, hex: neigh[d], kind: classify(pos, neigh[d], kill, occ, ctx, stepOk), unit: occ.get(key(neigh[d].q, neigh[d].r)) }));
     const ok = (n: NeighborInfo) => !visited.has(key(n.hex.q, n.hex.r));
 
     // 1) away (4) empty-safe.
@@ -203,13 +230,14 @@ export function routRetreatPath(ctx: RoutContext): RoutPath {
     if (flanks.length === 1) return { dest: flanks[0].hex, scatters, through, path };
 
     // 3) push through a friendly org <= 1 (in away-first order).
-    const pass = info.find(n => n.kind === 'pass' && ok(n));
+    const pass = allowPassThrough && !pushed ? info.find(n => n.kind === 'pass' && ok(n)) : undefined;
     if (pass && pass.unit) {
       if (pass.unit.currentFormation === 'Open Order') scatters.push(pass.unit.id);
       through.push(pass.unit.id);
       path.push(pass.hex);
       visited.add(key(pass.hex.q, pass.hex.r));
       pos = pass.hex;
+      pushed = true;
       continue;
     }
 
