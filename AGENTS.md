@@ -11,10 +11,10 @@
 ## Work Summary (Anchored)
 
 Newest work first; the authoritative, per-session record is `docs/dev/changelog.md`.
-The most recent sessions built the **enemy-AI assist** — Pass 1 safety/coherence
-plus Pass 2a line/leftover-MP/stance and Pass 2b aggressive/defensive profiles
-(commits `009a6b1`, `f4e3695`; migration 130). Prior sessions added **map
-structures** (migrations 093–095: template library + Structure Editor, edge/hex
+The most recent work completed the **Basic AI current scope** (whole-activation
+climb routes, vacant-top/route locks, redundant-wall pathing, rout step limits,
+local-only preview markers) and the **Halloween Siege** minigame (migration 133).
+Prior sessions added **map structures** (migrations 093–095: template library + Structure Editor, edge/hex
 instances, door-first combat, tower auras, `range` bonuses, gate open/close,
 **Shift + drop** attacks and Shift-held inspect-mode hex/edge tooltips), the
 **Map Editor Effects tab** with *permanent* authored board effects, **archer
@@ -25,6 +25,16 @@ movement economy ("1 action = 1 full MP pool"), combat, effects, fog, and
 reusable maps. Here's the state:
 
 ### Completed
+
+- **AI assist current scope + Halloween Siege docs (2026-10-26)**: Basic AI only;
+  whole-activation climb objectives with a session-only top + base/crossing lock,
+  redundant structure-edge wall pathing, wall-stat climb profile, rout <=2 MP per
+  entered hex with one friendly pass-through and no voluntary AI drop. Preview
+  routes/marks/`T` objectives are **local to the AI client** (not broadcast or
+  persisted). Halloween Siege shipped for current scope (waves, break/arm/cancel,
+  public badge, completion toast, non-atomic spawn limitation). Known limitation:
+  parked Gnoll AO `(6,-4)`/`(7,-4)` approach oscillation. See `docs/dev/17`, `09`,
+  `20`, player manual, and changelog.
 
 - **Basic AI rewrite (2026-10-23)**: the battle-role/frontage/reserve planner was
   **replaced** by a small rule-based brain (`src/packages/ai/lib/{types,board,
@@ -216,11 +226,14 @@ Defensive reserves hold a **central station ~2
 
 ### Pending
 
-- **AI assist remaining**: archers + artillery, AI magic/reactions/hero attach,
-  ZoC scatter/pursue, some elevation nuances, and per-team doctrine toggles; the
-  AI never controls heroes. Mounted charges, air-to-air combat, charge action
-  conversion, vacant structure tops, and off-grid handling are shipped. See
-  `docs/dev/outstanding.md`.
+- **AI assist current scope complete (2026-10-26)**: whole-activation climb
+  routes, session-only vacant-top/base/crossing locks, redundant-wall pathing,
+  wall-stat climbs, rout ≤2 MP steps + one friendly + no AI drop, and local-only
+  preview markers are shipped. Known limitation: parked Gnoll AO approach
+  oscillation (see `docs/dev/outstanding.md`). Non-blocking follow-ups: archers/
+  artillery refinements, AI magic/reactions/hero attach, ZoC scatter/pursue,
+  some elevation nuances, per-team doctrine toggles; the AI never controls
+  heroes.
 - **Turn counter desync reported in playtest** (separate from AI roles): reproduce with End Turn / undo-redo before changing turn advancement.
 - **Spelljammer module implementation** (docs + access caps + shipyard builder done; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`) applied to the DB.
 - Migration `013_turn_tracking.sql` — applied to the DB (done).

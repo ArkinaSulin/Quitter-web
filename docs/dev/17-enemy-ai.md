@@ -1,9 +1,10 @@
 # 17 - AI Assist (Basic enemy brain)
 
-> **Status: Basic rewrite shipped (2026-10-23).** The old battle-role/frontage/
-> reserve planner was replaced with a small rule-based brain. Preview/Execute,
-> per-unit opt-out, undo and the GM-only gates are unchanged. The Advanced AI
-> project was cancelled; use the Basic brain only.
+> **Status: current scope complete (2026-10-26).** The Basic planner is the only
+> AI. Preview/Execute, per-unit opt-out, undo, whole-activation climb routes,
+> vacant-top route locks, edge-wall crossings, rout step limits and the GM-only
+> gates are shipped. The Advanced AI project was cancelled. Known limitations
+> are listed below.
 
 ## What it is
 
@@ -480,7 +481,19 @@ validation accounts for the air slot and real terrain/walls/structures.
 - DM/effective GM sees all marks; players see their own team; DM in player mode
   is a player.
 - No role overlay setting in Basic. Marks are part of the preview.
+- The preview overlay (routes, marks, `T` vacant-top objectives) is **local to
+  the client running the AI panel**. It is not broadcast, not persisted, and is
+  cleared by Reset/panel close/reload.
 - No migration was added by the Basic rewrite.
+
+## Known limitations
+
+- A parked real-map approach oscillation remains: the Gnoll AO can still move
+  between `(6,-4)` and `(7,-4)` while holding a valid `(4,-4)` objective. This is
+  documented as a known limitation, not a blocker for the current AI scope.
+- AI never controls heroes or hero-hosted units; those remain manual.
+- Remaining non-goals/backlog (archers/artillery refinements, AI reactions/magic,
+  per-team doctrine toggles) are tracked in `outstanding.md`.
 
 ## Tests
 
@@ -494,7 +507,9 @@ structure-top gap access and free-gap climbs, on-top hold-and-fight, routed
 target fallback and mid-execution retargeting, adjacency-only flank safety,
 full facing search (180-degree turns), Open-Order pass-through, stop-aware
 target costs, structure-complex confinement (footprint, enclosed courtyard,
-flyer exemption),
+flyer exemption), whole-turn climb objectives and locked base/crossing routes,
+redundant structure-edge wall pathing, rout <=2 MP steps / one friendly
+pass-through / no AI drop,
 and hardened mounted charge / flying swoop
 gates (scenario toggle, `canCharge`, 1+ action; no fly-point threshold), with
 turn-then-charge revalidation and one charge/swoop per activation.

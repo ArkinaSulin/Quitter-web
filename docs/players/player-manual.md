@@ -1335,69 +1335,63 @@ there is no per-value validation.)
 
 ### AI assist (GM tool, optionally shared with players)
 
-Enable **AI assist** in Scenario Settings and an **AI** tab appears in the
-left panel. Two more settings tune it: **Advanced AI** (weighs retaliation,
-finishing blows and overkill instead of the simple greedy plot, and upgrades
-frontage formations to the highest available organisation level before contact)
-and **Allow
-players to use AI assist** (non-GM participants may open the tab on their side's
-turn; the GM still owns the settings). Inside the AI tab, the
-**Aggressive / Defensive** stance switch applies to the next Preview (default
-Aggressive; Defensive sticks closer together and protects flanks first).
-Aggressive uses surplus units to flank or attack from the rear (rear attacks
-skip AGR and put extra rout pressure); pairing counts only the enemy forward
-band, so a second-rank reserve does not hide a real flanker. The fastest surplus
-units are used as flankers when the remaining front rank stays contiguous, so
-fast riders do not take frontage from slower warriors. Flankers do not wait in a
-queue: they retarget to a target locked by the frontage, circle at least three
-hexes out and never closer than the friendly front line, then dash to the flank
-or rear as soon as the frontage locks - including later in the same turn. They
-never charge the front. Each player can enable **Scenario Settings -> This
-device -> Show AI role overlay** (Advanced AI only). It draws a large white role
-letter with a dark outline centered on the token's troop circles: M melee, A high-damage assault, C flanker,
-S skirmisher/ranged, R reserve, G garrison. The option is available only when
-Advanced AI is on and the DM allowed players to use AI assist; the DM sees all,
-a player sees only their own team, and DM in player mode is treated as a player.
-Markers require an AI team in the AI control box and a Turn 1+ active alliance.
-Defensive melee units turn once to face an adjacent flank/rear threat before
-attacking, even if that costs the attack, so they do not oscillate. Defensive
-stance pairs the whole enemy front line first: the front rank shifts laterally
-to cover it, and rear reserves join only when the leading rank is short. Any
-unit not paired and not engaged is a reserve; an engaged reserve is treated as
-front line until freed, then returns to reserve duty. Reserves do not take normal
-front-line pairing slots: they face flankers and patch frontage holes, holding a
-central station about two hexes behind the line, and may wait Scattered for a
-fast reaction. Only the enemy forward band matters. A real flanker-behind the
-line or beyond its ends-is faced and
-intercepted from its flank/rear anywhere along the line. Paired front-arc
-enemies already in contact are left to the frontage. A frontage/structure or
-committed-reserve unit adjacent to an enemy takes a near-breakeven attack rather
-than idling. Rout paths are
-re-evaluated after each pushed-through friendly and prefer the first empty safe
-hex. Ranged-only
-units stand off, avoid contact, and use only leftover actions for reaction fire.
-Structure defenders hold their structure in either stance unless routed. Drag
-teams into the *AI control box*; eligible units (of the team
-on the currently-active alliance) wear a small ✓. **Preview** plots their
-moves (blue routes with crossed swords on attack targets), **Reset** clears
-it - nothing happens until **Execute**. Execute runs the plot one action at a
-time through the real rules (retaliation, routs and reactions all apply), and
-you can **Pause / Step / Resume / Cancel remainder** anytime - e.g. to let a
-player's reaction resolve, then re-Preview against the changed board.
-Everything is undoable unit-by-unit (Ctrl+Z), and **Undo Execute** rewinds the
-last batch. Units the AI can't sensibly move keep their actions for you. AI
-assist never moves hidden, dead or downed units, never attacks what its side
-can't see, and only acts on the marked team's own turn. Click a ✓ token to
-exclude that one unit (it switches to a grey badge) - click again to include
-it; exclusions reset at each End Turn. **Heroes are never driven by the AI**
-(neither the hero token, an attached hero, nor the unit carrying one) - their
-owners play them manually. The plots are tactical: melee units shift their
-frontage, send fast surplus units around an end into a flank/rear, and wait for
-the frontage to lock a target. Ranged-only units keep their distance while
-firing at the biggest threat in reach and use Scattered only to escape. When a
-unit stands and holds, any actions it does not spend can become reaction fire -
-the AI never reserves an action or skips an attack for that. All of this stays
-within the unit's real MP/actions.
+Enable **AI assist** in Scenario Settings to show the **AI** tab. **Allow players
+to use AI assist** lets non-GM participants run it on their own side's turn; the
+GM still owns the settings.
+
+Drag teams into the **AI control box**. Eligible units get a checkmark; click a
+checked token to exclude that unit (grey badge) and click again to include it.
+Exclusions reset at each End Turn. The AI never controls heroes, attached
+heroes, or the unit hosting an attached hero; those are played manually.
+
+**Preview** runs the full plot off-thread and draws:
+- blue unit routes and crossed swords on attack targets;
+- per-type target marks: **M** melee, **A** archer/ranged, **F** flying and **C**
+  mounted;
+- a **T** marker and dashed line for a vacant structure top locked by a melee
+  unit.
+
+These overlays are **local to the client running the AI panel** - they are not
+broadcast to other players and are not saved. **Reset** clears them; nothing
+happens on the board until **Execute**.
+
+**Execute** runs the plot through the real action path one command at a time
+(retaliation, routs, reactions and prompts all apply). **Pause / Step / Resume /
+Cancel remainder** are available; **Undo Execute** rewinds the last batch. Units
+the AI cannot sensibly move keep their actions for you.
+
+The Basic AI uses the same rules as manual play:
+- distance/terrain/walls/structures are priced with the real movement rules;
+- melee units form up, take vacant structure tops first where possible, and
+  climb/cross using the structure/wall stats;
+- a locked climb route spends the unit's whole activation where affordable;
+- routed units flee with legal steps (each entered hex <= 2 MP; at most one
+  friendly pass-through); AI routed units never voluntarily drop off a wall;
+- ranged, flying and mounted units use their own approach/attack rules;
+- hidden/dead/downed units and targets its side cannot see are ignored.
+
+### Halloween Siege (GM minigame)
+
+The **Halloween Siege** is an optional DM-authored wave mode. Open its window
+from the GM tools, add waves, choose monster percentages (each wave must total
+100%), set turns per wave, then **Save & arm**.
+
+- **Wave 1** starts on the next Enemy turn. During each of its turns, the wave
+  spawns its configured monsters at the grid rim (inner rings if the rim is
+  full), distributed across teams assigned to the Enemy alliance.
+- After a wave, the siege pauses in **break**. The next wave does **not** start
+  automatically: the DM arms it from the top-bar banner and may cancel before
+  the next Enemy turn begins.
+- The public top-bar badge shows the current wave and turn/break/start state.
+- The final wave has no break; when its turns are spent the siege is complete.
+- If no team is assigned to the Enemy alliance, End Turn is blocked until the
+  DM assigns one.
+- On the break/complete Enemy turn, if no living un-routed enemy remains, all
+  players get a transient `Congratulations! You completed wave N.` toast.
+
+Spawned monsters are normal units: run them with the AI assist or manually.
+Waves are settings/spawns rather than one atomic command, so undo/replay of a
+failed spawn may require re-arming; see the developer chapter for limitations.
 
 ### During play
 

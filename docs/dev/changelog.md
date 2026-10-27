@@ -1,5 +1,21 @@
 # QuiTTER Changelog
 
+## Documentation closeout: AI current scope + Halloween Siege (2026-10-26)
+**Files:** AGENTS.md, docs/dev/{README,17-enemy-ai,20-halloween-siege,outstanding,changelog}.md, docs/players/player-manual.md
+
+- Marked the Basic AI current scope complete and recorded the parked Gnoll AO
+  approach oscillation as a known limitation.
+- Documented whole-activation climb routes, session-only base/crossing locks,
+  local-only preview markers (`T`/routes are not broadcast or persisted), rout
+  ≤2 MP steps / one friendly / no AI drop, and the current follow-up list.
+- Replaced the outdated player-manual AI section (Advanced AI/stance/role
+  overlay removed) with the Basic AI workflow and local-overlay behavior.
+- Added a player-facing Halloween Siege section; marked the minigame shipped for
+  current scope and retained its non-atomic spawn limitation.
+- Updated the docs index, outstanding backlog, AGENTS Work Summary/Pending, and
+  chapter descriptions.
+- Verification: documentation-only; no code or migration changes.
+
 ## Whole-turn climb routes + strict rout steps (2026-10-26)
 **Files:** src/packages/ai/lib/{board,planner,types}.ts, src/packages/ai/tests/planner.test.ts, src/packages/movement/lib/{moveCost,mapStructures}.ts, src/packages/morale/lib/routedRetreat.ts, src/packages/morale/tests/routedRetreat.test.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{09-morale-routing-pursuit,17-enemy-ai,changelog}.md, docs/players/player-manual.md
 

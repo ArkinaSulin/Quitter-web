@@ -24,8 +24,10 @@ Statuses: next / later / blocked / done-here-listed-for-context.
 - AI roster: stacked ground/air units independently toggleable.
 
 ## Halloween Siege (migration 133)
-Shipped: DM wave config, weighted Enemy-turn spawns at the grid rim, between-wave
-break turns, public wave/turn badge, End Turn guard when no Enemy team exists.
+**Status (2026-10-26): shipped for current scope.** DM wave config, weighted
+Enemy-turn spawns at the grid rim, between-wave break turns, public wave/turn
+badge, arm/cancel, completion toast, and the End Turn guard when no Enemy team
+exists. Spawns are non-atomic/not fully undoable; see `20-halloween-siege.md`.
 - later: make wave spawns atomic (server-side INSERT in `apply_substeps`) so the
   whole wave is one undoable command and `lastSpawnedTurn` rides the log.
 - later: optional "Spawn current wave now" recovery after a failed/undone spawn.
@@ -142,85 +144,29 @@ Shipped (slices 7a–7c). See `docs/dev/changelog.md` and `18-map-structures.md`
   facing, never scatters/pursues; can't enter a ZoC; free under free-move).
 - ⏳ Rout-modal/eventual AI handling of the new pursue (AI planner ignores it for v1).
 
-## AI assist
-- 📌 **Current status (2026-10-23):** the role/battle-line planner was **replaced
-  by the Basic brain**. The AI tab is unchanged (Preview → Execute, opt-out,
-  undo); the decision layer is now four small doctrines driven by independent
-  per-archetype target marks. Legacy files `battleLine.ts`, `reserve.ts` and
-  `roleMarkers.ts` were removed. Source of truth:
-  `src/packages/ai/lib/{planner,board,marks,types}.ts`,
-  `src/packages/ai/tests/planner.test.ts`,
-  `src/packages/combat/lib/swoop.ts`, `src/components/ScenarioMap/AiPanel.tsx`;
-  design in `docs/dev/17-enemy-ai.md`.
-- ✅ **Basic rules shipped:** active-alliance/team/opt-out gates; hero and
-  hero-hosted exclusion; marks (melee up to 6/target, ranged unlimited, flying 1,
-  mounted 1 + a non-mounted friendly mark); melee formation priority (stage at
-  2–3 hexes, upgrade to max org, never attack before fully upgraded); safe
-  destinations (never advance into a flank/rear); ZoC facing (min flank/rear →
-  max front); multiple actions/attacks per activation; ranged Scattered within
-  6, Open otherwise, Close to shoot; 10-ft-per-hex free climb bound with free
-  descent.
-- ✅ **Flying (current):** airborne targets take priority; flying marks prefer
-  airborne; ranged weapon first (fire in range, else close/retreat to max range),
-  otherwise paid melee after an approach at the target elevation; no air
-  charge/swoop; ground targets still use swoop (doubled damage) and a 20-ft /
-  ≥2-hex retreat; air targets are pursued instead of switching to ground.
-- ✅ **Mounted (current):** rim-only marks; 5/3 friendly-kill-zone safety gate
-  (target excluded); closest valid charge-start point within `pool + 1` (start
-  need not be rear); multi-turn tangent routing; rear-only landing that is legal
-  from the final front arc; hold only at a valid start; no normal melee fallback.
-- ✅ **Charge/swoop (current):** 1+ action gate; a charge consumes one action and
-  converts it to a full movement pool; free attack needs no action; AGR failure
-  ends the charge and drops org; AI plots at most one charge/swoop per activation.
-- ✅ **Off-grid (current):** option 2 — moves/withdraw/rout may leave the grid;
-  non-DM players and AI cannot control off-grid tokens; DM/effective GM exempt.
-- ✅ **Basic structure confinement + charge hardening (2026-10-23):** non-flying
-  AI units starting in a hex-structure footprint or an edge-wall enclosure may
-  not cross the perimeter (flyers exempt; open doors still count as the
-  boundary). Flying/mounted charges use the canonical `chargeStanceFor` gate
-  (including the scenario **Charge and Swoop** toggle, `canCharge`, and the
-  1-action entry); no fly-point threshold remains.
-- ✅ **Basic engagement retargeting (2026-10-23):** fully upgraded melee may
-  enter hostile ZoC to attack a formed line; adjacency is geometric (all six
-  hexes) and overrides farther/locked targets; routed enemies are fallback-only
-  (ignored while any non-routed enemy exists); blocked marks retarget through
-  engage → stage → progress; pass-through hexes are traversal-only (not valid
-  stopping points); flank safety is adjacency-only; formed units consider all six
-  facings; a boxed-in unit can drop to Scattered and loose-move. Melee mark cap
-  is dynamic (up to 6 reachable surrounding hexes), approaches use remaining path
-  cost, and the target is locked per activation. Formation-up units use leftover
-  MP to face adjacent hostiles; climbing is committed and cost-sequenced (no
-  action reservation) and **vertical-only** (no horizontal moves along a wall;
-  a finished structure top is normal ground). Melee also finds **free top gaps**
-  and climbs into a complex to fight interior top targets; mounted/flying are
-  exempt. Mounted staging/charge also retargets.
-- ✅ **AI Preview worker (2026-10-24):** Preview runs the full planner in a
-  one-shot Web Worker with a hydrated settings snapshot, so the UI and Supabase
-  realtime stay responsive. Cancel/reset terminates immediately; a 30s watchdog
-  reports a genuine hang. Planner optimizations: shared maneuver list across
-  modes, forward-only reach, cached complexes/top-access/base maps.
-- ✅ **Hanging hard lock + structure hold (2026-10-24):** a climbing/hanging unit
-  only climbs to its top exit (free top first, then the weakest threat-rated
-  obstacle) and lands; routed hanging units drop down. Units on a structure/wall
-  top hold and fight, moving only within the same structure and never abandoning
-  the wall.
-- ✅ **No post-attack drift (2026-10-24):** melee units hold the hex they attacked
-  from (second attacks allowed) and adjacent-but-unattackable enemies cause a
-  hold/face instead of a retreat to a farther target.
-- ✅ **Climb budget (2026-10-24):** climbs use strict move capacity and require an
-  action; the AI executor re-checks live state so actions/MP never go negative.
-- ✅ **Vacant structure-top takeover (2026-10-24):** melee units take vacant
-  top hexes first (one per hex, quickest access), then mark defenders only when
-  no free top remains. A vacant exit that becomes occupied is fought until it
-  routs, then landed.
-- 🔜 **Next session:** playtest the shipped mounted/air/charge/off-grid rules on
-  real maps. Known separate bug: the **turn counter** appeared
-  broken/desynced; reproduce before changing turn advancement.
-- ⏳ **Basic follow-ups:** archers/artillery; AI
-  magic/reactions/hero attach; ZoC scatter/pursue; some elevation nuances; and
-  per-team doctrine toggles. Off-grid attackability is fixed (off-grid tokens
-  cannot be targeted or attack). AI still never controls heroes or
-  hero-hosted units.
+## AI assist � current scope complete
+
+**Status (2026-10-26):** Basic AI is the only planner; Advanced AI/stance is
+cancelled. Source of truth: `docs/dev/17-enemy-ai.md`,
+`src/packages/ai/lib/{planner,board,marks,types}.ts`.
+
+- Shipped: Preview/Execute, per-unit opt-out, undo macro, one-shot worker;
+  melee/ranged/flying/mounted doctrines; independent marks; formation priority;
+  safe destinations/ZoC facing; multiple actions per activation; ranged posture;
+  mounted charges and air swoops; air superiority; structure-top/takeover and
+  wall crossings; off-grid handling.
+- Shipped (recent): whole-activation climb objectives, session-only top +
+  base/crossing route lock, redundant structure-edge wall pathing, wall-stat
+  climb profile, rout <=2 MP per entered hex, one friendly pass-through, and no
+  voluntary AI drop.
+- The preview overlay (routes, marks, `T` vacant-top objectives) is local to the
+  AI client; it is not broadcast or persisted.
+- **Known limitation:** parked real-map oscillation - Gnoll AO can still pace
+  between `(6,-4)` and `(7,-4)` while holding a valid `(4,-4)` objective.
+- Remaining follow-ups (not blockers): archers/artillery refinements; AI
+  magic/reactions/hero attach; ZoC scatter/pursue; some elevation nuances;
+  per-team doctrine toggles. AI still never controls heroes or hero-hosted
+  units.
 
 ## Spelljammer module (largest remaining)
 Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.md`,
@@ -269,7 +215,7 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
   **097** (`structure_images` bucket), **112** (`units.climb_to` — Phase 2b-7).
 
 ## Uncommitted working tree (owner's, left untouched)
-- Last checked 2026-10-18 after the AI commits (`009a6b1`, `f4e3695`): the AI
+- Last checked 2026-10-26 after the AI/Halloween documentation closeout: the AI
   code/tests/docs are clean and pushed. Owner-dirty files remain:
   `.scratch/ship-builder/spec.md`,
   `.scratch/shipyard-formula/{FINDINGS.md,shipyard.csv}`,

@@ -5,6 +5,10 @@ Enemy turns. The DM then runs those monsters with the normal AI assist (or
 manually). Everything else — combat, morale, fog, structures, undo/replay —
 continues to work normally.
 
+> **Status: shipped for current scope (2026-10-26).** The rules, DM window,
+> public badge, break/arm flow, completion toast and spawn path are implemented.
+> Later hardening items are listed under *Limitations*.
+
 ## Rules (implemented)
 
 - Monsters spawn only into teams assigned to the **enemy** alliance. Neutral
