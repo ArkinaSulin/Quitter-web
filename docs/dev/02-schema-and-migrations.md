@@ -73,10 +73,10 @@ tables.
 | `map_effect_templates` | Effect library (unit buffs/debuffs/DoT + ground zones) | RLS: read = `view_effect_editor`, write = `effect_editor` |
 | `map_images` (bucket) / `maps` | Reusable authored maps (`image_url`, `offset_x/y`, `scale`, `grid_radius`, `terrain_costs jsonb`, `hex_effects`, `structures`) | see `13`, `18` |
 | `map_structure_templates` | Authored map-feature library (walls, spikes, gates, towers) | see `18` |
-| `ship_frames` … `ship_crews`, `ship_templates` (+ join tables) | Archfar's Shipyard template data | see `16` |
+| `ship_armors` … `ship_crews`, `ship_templates` (+ join tables) | Archfar's Shipyard template data (mass-first; `ship_frames` dropped in 134) | see `16` |
 | `ship_spelljammer` | Placed ship instances (engine pending) | reserved |
 | `units.effects` | jsonb `UnitEffect[]` on the units row (not a table) | migration 073 |
-| Storage buckets | `scenario_screenshots`, `unit_images`, `map_images`, `effect_images`, `structure_images` | public read |
+| Storage buckets | `scenario_screenshots`, `unit_images`, `map_images`, `effect_images`, `structure_images`, `ship_images` | public read |
 
 > The migration inventory below refers to tables by the names they had **at the
 > time of that migration**; see the rename table above for current names.
@@ -193,6 +193,9 @@ as applied in the notes — check the live DB before relying on it).
 | 131 | AI role markers (advanced AI, later removed) | ⏳ run in Supabase |
 | 132 | drop the AI role marker column | ⏳ run in Supabase |
 | 133 | Halloween Siege: `scenarios.halloween_siege` jsonb (wave config + arming/marker) | ⏳ run in Supabase |
+| 134 | Ship mass-first overhaul: drop `ship_frames`, reshape `ship_armors` (`mass_pct`/`hp_mult`), reseed `ship_components`, add `total_mass`/`helm`/`command_bridge`/`reinforcement` to `ship_templates` | ✅ applied |
+| 135 | Authored ship crew quarters + passengers (`ship_templates.crew_quarters`, `passengers`) | ⏳ run in Supabase |
+| 136 | Ship Editor v2: template image/weapon capacity/atmospheric speed/damage threshold; catalog `image_url` + `ac`; `hull` component; `ship_images` bucket | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

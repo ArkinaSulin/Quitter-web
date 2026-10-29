@@ -3,45 +3,28 @@
 // later consumer (ship spawner, ship engine) share these so the camelCase model stays
 // consistent with the snake_case ship_* tables.
 //
-// Catalog mappers (mapShipFrameRow / mapShipArmorRow / ...) convert snake_case columns
-// AND coerce numerics via Number(...): PostgREST returns `numeric` columns as JSON
-// strings (e.g. "0.2") and integer columns as numbers, so reading either raw would
-// break arithmetic (undefined -> NaN from camelCase access, or string concatenation).
+// PostgREST returns `numeric` columns as JSON strings (e.g. "0.2") and integer columns
+// as numbers, so every numeric field is coerced via Number(...).
 
 import {
   ShipAccessory,
   ShipArmor,
-  ShipCrew,
   ShipComponent,
-  ShipFrame,
+  ShipCrew,
   ShipMount,
-  ShipPoolType,
   ShipTemplate,
   ShipWeapon,
 } from '@/types/ship';
-
-/** Map a ship_frames row. */
-export function mapShipFrameRow(row: any): ShipFrame {
-  return {
-    id: row.id,
-    massCap: Number(row.mass_cap) || 0,
-    baseHp: Number(row.base_hp) || 0,
-    deckSpace: Number(row.deck_space) || 0,
-    topSpeed: Number(row.top_speed) || 0,
-    maxRudders: Number(row.max_rudders) || 0,
-    baseCost: Number(row.base_cost) || 0,
-    hullSpaces: Number(row.hull_spaces) || 0,
-  };
-}
+import { DEFAULT_TOTAL_MASS } from './shipStats';
 
 /** Map a ship_armors row. */
 export function mapShipArmorRow(row: any): ShipArmor {
   return {
     id: row.id,
-    massFactor: Number(row.mass_factor) || 0,
+    massPct: Number(row.mass_pct ?? row.mass_factor) || 0,
     ac: Number(row.ac) || 0,
-    boxHp: Number(row.box_hp) || 0,
-    costMult: Number(row.cost_mult) || 0,
+    hpMult: Number(row.hp_mult ?? (Number(row.box_hp) > 5 ? 2 : 1)) || 1,
+    imageUrl: row.image_url || '',
   };
 }
 
@@ -50,11 +33,11 @@ export function mapShipComponentRow(row: any): ShipComponent {
   return {
     id: row.id,
     mass: Number(row.mass) || 0,
-    deck: Number(row.deck) || 0,
     crew: Number(row.crew) || 0,
     cost: Number(row.cost) || 0,
-    reinforceOrder: row.reinforce_order != null ? Number(row.reinforce_order) : null,
     hittable: !!row.hittable,
+    ac: row.ac != null ? Number(row.ac) : 10,
+    imageUrl: row.image_url || '',
   };
 }
 
@@ -63,12 +46,12 @@ export function mapShipAccessoryRow(row: any): ShipAccessory {
   return {
     id: row.id,
     mass: Number(row.mass) || 0,
-    deck: Number(row.deck) || 0,
     crew: Number(row.crew) || 0,
     cost: Number(row.cost) || 0,
-    poolType: (row.pool_type as ShipPoolType) || 'mass_x_boxhp',
     hittable: !!row.hittable,
     effect: row.effect || null,
+    ac: row.ac != null ? Number(row.ac) : 10,
+    imageUrl: row.image_url || '',
   };
 }
 
@@ -85,6 +68,8 @@ export function mapShipWeaponRow(row: any): ShipWeapon {
     cost: Number(row.cost) || 0,
     ammoCost: row.ammo_cost != null ? Number(row.ammo_cost) : null,
     special: row.special || null,
+    ac: row.ac != null ? Number(row.ac) : 10,
+    imageUrl: row.image_url || '',
   };
 }
 
@@ -110,17 +95,20 @@ export function mapShipTemplateRow(row: any): ShipTemplate {
     id: row.id,
     name: row.name || '',
     role: row.role || null,
-    frameId: row.frame_id || '',
     armorId: row.armor_id || '',
-    atmosphereSpeed: Number(row.atmosphere_speed) || 0,
-    rudders: Number(row.rudders) || 0,
+    totalMass: Number(row.total_mass ?? row.frame?.mass_cap) || DEFAULT_TOTAL_MASS,
+    helm: Number(row.helm) || 1,
+    commandBridge: Number(row.command_bridge ?? row.bridge) || 0,
     sails: Number(row.sails) || 0,
-    lWeap: Number(row.l_weap) || 0,
-    sWeap: Number(row.s_weap) || 0,
-    hullR: Number(row.hull_r) || 0,
-    bridge: Number(row.bridge) || 0,
-    auxHelm: Number(row.aux_helm) || 0,
+    rudders: Number(row.rudders) || 0,
+    reinforcement: Number(row.reinforcement ?? row.hull_r) || 0,
     crewCount: Number(row.crew_count ?? row.extra_crew) || 0,
+    crewQuarters: Number(row.crew_quarters) || 0,
+    passengers: Number(row.passengers) || 0,
+    weaponCapacity: Number(row.weapon_capacity) || 0,
+    atmosphericSpeed: Number(row.atmospheric_speed) || 0,
+    damageThreshold: row.damage_threshold != null ? Number(row.damage_threshold) : 15,
+    imageUrl: row.image_url || '',
     cargoArea: Number(row.cargo_area) || 0,
     accessories: (row.ship_template_accessories || []).map((a: any) => ({
       accessoryId: a.accessory_id,
@@ -143,17 +131,20 @@ export function mapShipTemplateToRow(t: ShipTemplate) {
     id: t.id,
     name: t.name,
     role: t.role || null,
-    frame_id: t.frameId,
     armor_id: t.armorId,
-    atmosphere_speed: t.atmosphereSpeed,
-    rudders: t.rudders,
+    total_mass: t.totalMass,
+    helm: t.helm,
+    command_bridge: t.commandBridge,
     sails: t.sails,
-    l_weap: t.lWeap,
-    s_weap: t.sWeap,
-    hull_r: t.hullR,
-    bridge: t.bridge,
-    aux_helm: t.auxHelm,
+    rudders: t.rudders,
+    reinforcement: t.reinforcement,
     crew_count: t.crewCount,
+    crew_quarters: t.crewQuarters,
+    passengers: t.passengers,
+    weapon_capacity: t.weaponCapacity,
+    atmospheric_speed: t.atmosphericSpeed,
+    damage_threshold: t.damageThreshold,
+    image_url: t.imageUrl,
     cargo_area: t.cargoArea,
     updated_at: new Date().toISOString(),
   };

@@ -1,5 +1,84 @@
 # QuiTTER Changelog
 
+## Ship Editor v2: composition table, slot layout, weapon capacity (migration 136) (2026-10-27)
+**Files:** src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers}.ts, src/packages/ships/tests/{shipStats,shipMappers}.test.ts, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/{ShipComponentCard,ShipLayout}.tsx, supabase/migrations/136_ship_editor_v2.sql, docs/dev/{16-ship-builder,02-schema-and-migrations,README,outstanding,changelog}.md, AGENTS.md
+
+- Rebuilt the editor around the 3-panel model: name/tonnage, authored
+  atmospheric speed + damage threshold, summary, and a composition table
+  (Hull read-only, Helm, Command bridge, Sail, Rudder, Weapon capacity, Armor,
+  Reinforcement, Crew quarter, Cargo, accessory rows, Add component).
+- Added the right-panel **ship image upload** using the shared
+  `ImagePickerModal`, the public `ship_images` bucket and
+  `ship_templates.image_url`.
+- Replaced the old hit-grid/functional-area preview with a square
+  **component-slot layout** (`ShipLayout`/`ShipComponentCard`): catalog image or
+  placeholder, boxes = tons, AC, hollow crew circles, dashed empty slots.
+  Weapons are placed in the layout/right-panel list; the roster now sits under
+  the layout.
+- **Weapon capacity** is authored tons, counts toward ship mass, and limits
+  placed small (1t) / large (2t) weapons. The composition row shows
+  `placed / capacity`; crew is blank there and comes from the chosen weapons.
+- Catalog rows gained optional `image_url` + `ac`; armor uses its table AC and
+  other components default to AC 10. Pressure-tested the five reference
+  templates with the new capacity field.
+- Sticky footer mirrors UnitEditor: Create/Save, Clone, Delete.
+- Verification: `tsc`, full vitest suite (1205 tests), depcruise (pre-existing
+  warnings), and `next build`. **Apply 135 + 136 in Supabase** (134 is applied).
+
+## Ship template verification: quarters, tonnage rounding, MC clamp (migration 135) (2026-10-27)
+**Files:** src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers}.ts, src/packages/ships/tests/{shipStats,shipMappers}.test.ts, src/components/ShipEditor/ShipEditor.tsx, supabase/migrations/135_ship_quarters_passengers.sql, docs/dev/{16-ship-builder,02-schema-and-migrations,README,outstanding,changelog}.md, AGENTS.md
+
+- Verified the formulas against the five reference templates (Racer, Shuttle,
+  Wasp, Damselfly, Star Moth) and locked them in `shipStats.test.ts`.
+- **Crew quarters are now authored tons**, not auto `ceil(crew/5)`; capacity is
+  `tons × 5` (Shuttle 4t→20, Star Moth 5t→25). Added `crew_quarters` and
+  display-only `passengers` (default 0) to the template, mapper, editor, and
+  migration 135.
+- **Minimum crew now ceils each component group before summing**: Shuttle min 3,
+  Damselfly min 13 (the old sum-then-ceil produced 2 and 12).
+- **Tonnage now rounds each group to the nearest whole ton** before
+  used/remaining/hit-box calculations (hull 2.8→3, rudder 4.5→5), so the
+  template rows sum exactly (10/10, 20/20, 30/30, 60/60).
+- **MC clamps at 0, not 1**: the Racer has base MC 0; effective bands are
+  `0/0/1`. Ceramic/Stone still double HP on top of the base (Star Moth 220→440).
+- Deleted the old v8.1 design files: `.scratch/shipyard-formula/` (data.mjs,
+  FINDINGS.md, shipyard.csv, solve.mjs), `.scratch/ship-builder/spec.md`, and
+  `.scratch/spelljammer-mod/spec.md`; cleaned forward-looking references.
+- Verification: `tsc`, full vitest suite (1201 tests), depcruise (pre-existing
+  warnings), and `next build`. **Apply 135 in Supabase** (134 is already applied).
+
+## Spelljammer mass-first overhaul (migration 134) (2026-10-27)
+**Files:** src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers}.ts, src/packages/ships/tests/{shipStats,shipMappers}.test.ts, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/{ShipHitGrid,ShipPreview}.tsx, supabase/migrations/134_ship_mass_first.sql, docs/dev/{16-ship-builder,02-schema-and-migrations,README,outstanding,changelog}.md, AGENTS.md
+
+- **Ship frames are gone.** The player designates a total mass; hull and armor
+  are paid out of it, then the rest is furnished. New formulas:
+  `hullMass = totalMass × (10% + totalMass/500)`,
+  `armorMass = totalMass × armor.massPct`,
+  `HP = (totalMass × 3 + 40) × armor.hpMult`,
+  `accel = (sails + rudders) / totalMass × 15`, and
+  `MC = x = rudders × 10 / totalMass; x < 1 → 1/x + 2, else 4 − x`, with
+  effective MC `−1 / 0 / +1` at speeds `0–2 / 3–7 / 8–12`.
+- **Armor** is now Wood 0% AC15 ×1 · Ceramic 5% AC13 ×2 · Plate 10% AC17 ×1 ·
+  Metal 20% AC19 ×1 · Stone 30% AC17 ×2.
+- **Components** follow the overhaul table (helm 1t/1, command bridge 3t/5,
+  sail 1t/½, rudder 1.5t/½, reinforcement 1t, cargo 1t, crew quarters 1t/5);
+  weapons are selected directly (large 2t, small 1t). Crew quarters auto-take
+  `ceil(crew/5)` tons; minimum crew is derived from components + weapons +
+  accessories.
+- **Hit boxes remain 1 ton = 1 box but carry no HP**; each hit destroys one
+  box. Hull + armor are safe. Reinforcement is modelled as +10 temp HP per unit;
+  target assignment is deferred to a later editor pass.
+- **ShipEditor** rebuilt around total mass + component counts (no frame picker,
+  atmosphere speed, deck, mass cap, aux helm, weapon anchors, box pools, TE
+  chart, officer actions). MC now shows the three speed bands. Cargo is limited
+  by leftover mass.
+- **Migration 134** drops `ship_frames`, reshapes `ship_armors`
+  (`mass_pct`/`hp_mult`), reseeds `ship_components`, and adds
+  `total_mass`/`helm`/`command_bridge`/`reinforcement` to `ship_templates`.
+- Verification: `npx tsc --noEmit`, full vitest suite (1189 tests), depcruise
+  (pre-existing warnings only), and `next build` all pass. **Apply 134 in
+  Supabase.**
+
 ## Halloween Siege editor scroll + wave reordering (2026-10-26)
 **Files:** src/components/ScenarioMap/HalloweenSiegeWindow.tsx, src/packages/world/lib/halloweenSiege.ts, src/packages/world/tests/halloweenSiege.test.ts, docs/dev/{20-halloween-siege,changelog}.md, docs/players/player-manual.md
 

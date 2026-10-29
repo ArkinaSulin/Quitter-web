@@ -1,66 +1,88 @@
 // src/packages/ships/lib/shipStats.ts
-// Pure Shipyard v8.1 FINAL formulas. Source of truth: .scratch/shipyard-formula/shipyard.csv
-// + HANDBOOK §17.4/§17.5. Shared by the Ship Editor and (later) the ship engine — every
-// value here is a pure function of the build inputs.
+// Pure Spelljammer mass-first formulas (2026 overhaul). Shared by the Ship Editor
+// and (later) the ship engine — every value here is a pure function of the build.
 //
-// Key model facts encoded below:
-//  - Armor eats mass capacity: armorMass = MassCap × armorFactor.
-//  - Ship mass = armor + Σ components + loaded cargo; budget = MassCap.
-//  - Accel = 18 × sails ÷ mass; laden uses mass + cargo (cargo-load slider drives it live).
-//  - MC = hexes the ship must travel to turn 60° (integer; LOWER = tighter turn = better).
-//    TE (Turning Efficiency) = 60° turns per game turn = speed ÷ MC (1 dp; higher = better).
-//    The curve is a parabola peaking at the sweet-spot speed u* (height TE_max, width w):
-//    TE(s) = TE_max·max(0, 1−((s/T − u*)/w)²); MC(s) = max(1, round(s/max(0.5, TE(s)))).
-//    Rudder fill (R/frameMassCap) and mass place u*; TE_max shrinks with mass; w grows with
-//    rudders. Computed against the frame TopSpeed; the environment only picks the active cap
-//    (TopSpeed vs AtmosphereSpd).
-//  - Hit boxes: 1 t of MassCap = 1 box; only armor + Hull R are safe. BoxHP = ceil(5×(1+factor)).
-//    Weapon anchors S=10 / L=20, doubled when reinforced. Ship HP = frame base + hullR×25. DT = 15.
-//  - Crew: crew_count is the complement on board (>= min crew = ceil(Σ component+accessory crew)).
-//    Crew quarters = ceil(crew_count/5) whole tons.
+// Model facts encoded below:
+//  - The player designates a TOTAL ship mass. Hull and armor are paid out of it:
+//      hullMass  = totalMass × (10% + totalMass / 500)
+//      armorMass = totalMass × armor.massPct
+//    The rest is furnished with components, weapons, cargo and crew quarters.
+//  - HP = totalMass × 3 + 40, multiplied by the armor's HP multiplier (×2).
+//  - Acceleration = (sails + rudders) / totalMass × 15 (counts, not masses).
+//  - MC = x = rudders × 10 / totalMass; if x < 1 then 1/x + 2 else 4 − x.
+//    Effective MC adds a speed band: −1 at speed 0–2, 0 at 3–7, +1 at 8–12.
+//  - Hit boxes: 1 ton = 1 box. Boxes carry no HP; each hit destroys one box.
+//    Hull + armor are safe. Reinforcement is +10 temp HP per unit (assigned later).
+//  - Crew quarters = ceil(crew / 5) tons (1 ton = 5 crew + 28 days of supplies).
 
 import {
   ShipAccessory,
   ShipArmor,
   ShipComponent,
-  ShipEnvironment,
-  ShipFrame,
   ShipTemplateAccessory,
   ShipTemplateWeapon,
   ShipWeapon,
 } from '@/types/ship';
 
-export const SAIL_THRUST = 18;
-export const SHIP_DT = 15;
-export const SMALL_WEAPON_ANCHOR = 10;
-export const LARGE_WEAPON_ANCHOR = 20;
-export const REINFORCED_MULT = 2;
-export const SHIP_HP_PER_HULL_R = 25;
+export const MAX_SHIP_SPEED = 12;
+export const DEFAULT_TOTAL_MASS = 20;
+export const HULL_MASS_BASE_PCT = 0.1;
+export const HULL_MASS_DIVISOR = 500;
+export const HP_PER_TON = 3;
+export const HP_BASE = 40;
+export const ACCEL_SCALE = 15;
+export const MC_RUDDER_SCALE = 10;
 export const CREW_PER_QUARTER_TON = 5;
-export const SAFE_BOX_HP_CEIL = 5;
+export const REINFORCEMENT_TEMP_HP = 10;
+export const COMMAND_PER_BRIDGE = 5;
+export const LARGE_WEAPON_TONS = 2;
+export const SMALL_WEAPON_TONS = 1;
 
 export const COMPONENT_IDS = {
-  helmBridge: 'helm_bridge',
-  auxHelm: 'aux_helm',
+  hull: 'hull',
+  helm: 'helm',
+  commandBridge: 'command_bridge',
   sail: 'sail',
   rudder: 'rudder',
-  lWeap: 'l_weap',
-  sWeap: 's_weap',
-  hullR: 'hull_r',
+  reinforcement: 'reinforcement',
+  cargo: 'cargo',
   crewQuarters: 'crew_quarters',
-  commandBridge: 'command_bridge',
+  weaponLarge: 'weapon_large',
+  weaponSmall: 'weapon_small',
 } as const;
 
+const DEFAULT_COMPONENTS: Record<string, ShipComponent> = {
+  [COMPONENT_IDS.hull]: { id: COMPONENT_IDS.hull, mass: 0, crew: 0, cost: 0, hittable: false, ac: 10, imageUrl: '' },
+  [COMPONENT_IDS.helm]: { id: COMPONENT_IDS.helm, mass: 1, crew: 1, cost: 0, hittable: true },
+  [COMPONENT_IDS.commandBridge]: { id: COMPONENT_IDS.commandBridge, mass: 3, crew: 5, cost: 0, hittable: true },
+  [COMPONENT_IDS.sail]: { id: COMPONENT_IDS.sail, mass: 1, crew: 0.5, cost: 0, hittable: true },
+  [COMPONENT_IDS.rudder]: { id: COMPONENT_IDS.rudder, mass: 1.5, crew: 0.5, cost: 0, hittable: true },
+  [COMPONENT_IDS.reinforcement]: { id: COMPONENT_IDS.reinforcement, mass: 1, crew: 0, cost: 0, hittable: true },
+  [COMPONENT_IDS.cargo]: { id: COMPONENT_IDS.cargo, mass: 1, crew: 0, cost: 0, hittable: true },
+  [COMPONENT_IDS.crewQuarters]: { id: COMPONENT_IDS.crewQuarters, mass: 1, crew: 5, cost: 0, hittable: true },
+  [COMPONENT_IDS.weaponLarge]: { id: COMPONENT_IDS.weaponLarge, mass: LARGE_WEAPON_TONS, crew: 2, cost: 0, hittable: true },
+  [COMPONENT_IDS.weaponSmall]: { id: COMPONENT_IDS.weaponSmall, mass: SMALL_WEAPON_TONS, crew: 2, cost: 0, hittable: true },
+};
+
 const EMPTY_COMPONENT: ShipComponent = {
-  id: '', mass: 0, deck: 0, crew: 0, cost: 0, reinforceOrder: null, hittable: true,
+  id: '', mass: 0, crew: 0, cost: 0, hittable: true,
 };
 
 export function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
+export function round1(v: number): number {
+  return Math.round(v * 10) / 10;
+}
+
+/** Tonnage is allocated in whole tons (the templates round each group). */
+export function roundTons(v: number): number {
+  return Math.round(v);
+}
+
 export function componentById(components: ShipComponent[], id: string): ShipComponent {
-  return components.find(c => c.id === id) || EMPTY_COMPONENT;
+  return components.find(c => c.id === id) || DEFAULT_COMPONENTS[id] || EMPTY_COMPONENT;
 }
 
 export function accessoryById(accessories: ShipAccessory[], id: string): ShipAccessory | undefined {
@@ -71,77 +93,100 @@ export function weaponById(weapons: ShipWeapon[], id: string): ShipWeapon | unde
   return weapons.find(w => w.id === id);
 }
 
+/** Tons taken by one weapon installation (large = 2, small = 1, special = 0). */
+export function weaponTons(weapon: ShipWeapon): number {
+  if (weapon.mount === 'large') return LARGE_WEAPON_TONS;
+  if (weapon.mount === 'small') return SMALL_WEAPON_TONS;
+  return 0;
+}
+
 /** All inputs the formulas need for one build. */
 export interface ShipBuild {
-  frame: ShipFrame;
   armor: ShipArmor;
   components: ShipComponent[];
   accessoriesCatalog: ShipAccessory[];
   weaponsCatalog: ShipWeapon[];
-  atmosphereSpeed: number;
-  rudders: number;
+  totalMass: number;
+  helm: number;
+  commandBridge: number;
   sails: number;
-  lWeap: number;
-  sWeap: number;
-  hullR: number;
-  bridge: number;
-  auxHelm: number;
+  rudders: number;
+  reinforcement: number;
   crewCount: number;
+  crewQuarters: number;
+  passengers: number;
+  /** Authored weapon tonnage budget. Falls back to placed weapon tons. */
+  weaponCapacity?: number;
+  atmosphericSpeed?: number;
+  damageThreshold?: number;
   cargoArea: number;
   templateAccessories: ShipTemplateAccessory[];
   templateWeapons: ShipTemplateWeapon[];
 }
 
 // --- Crew -------------------------------------------------------------------
-//
-// `crew_count` (Components box "Crew") = the ship's crew complement — CURRENT crew on
-// board. Minimum crew = the Σ of component/accessory crew requirements needed to
-// operate the ship (whole number, rounded up). Quarters house the current crew.
 
-/** Current crew on board = the `crew_count` complement set in the Components box. */
+/** Current crew on board = the authored crew complement. */
 export function computeCrew(build: ShipBuild): number {
-  return build.crewCount;
+  return Math.max(0, build.crewCount);
 }
 
-/** Σ component + accessory crew requirements (excludes the crew_count complement). */
+/** Weapon crew, rounded up per weapon installation. */
+export function computeWeaponCrew(build: ShipBuild): number {
+  return build.templateWeapons.reduce((sum, w) => {
+    const weapon = weaponById(build.weaponsCatalog, w.weaponId);
+    return sum + (weapon ? Math.ceil(weapon.crew * w.count) : 0);
+  }, 0);
+}
+
+/** Accessory crew, rounded up per accessory installation. */
+export function computeAccessoryCrew(build: ShipBuild): number {
+  return build.templateAccessories.reduce((sum, a) => {
+    const accessory = accessoryById(build.accessoriesCatalog, a.accessoryId);
+    return sum + (accessory ? Math.ceil(accessory.crew * a.count) : 0);
+  }, 0);
+}
+
+/**
+ * Σ component + weapon + accessory crew requirements.
+ * Each component group is rounded up **separately** (the templates show
+ * Shuttle min 3 from 1 + ceil(0.5) + ceil(0.5), and Damselfly 13 from
+ * 1 + ceil(3.5) + ceil(1.5) + 6).
+ */
 export function computeComponentCrew(build: ShipBuild): number {
   const c = build.components;
-  const helm = componentById(c, COMPONENT_IDS.helmBridge);
-  const aux = componentById(c, COMPONENT_IDS.auxHelm);
-  const sail = componentById(c, COMPONENT_IDS.sail);
-  const rudder = componentById(c, COMPONENT_IDS.rudder);
-  const lw = componentById(c, COMPONENT_IDS.lWeap);
-  const sw = componentById(c, COMPONENT_IDS.sWeap);
-  const bridge = componentById(c, COMPONENT_IDS.commandBridge);
-  const accessoryCrew = build.templateAccessories.reduce(
-    (sum, a) => sum + (accessoryById(build.accessoriesCatalog, a.accessoryId)?.crew || 0) * a.count,
-    0,
-  );
   return (
-    helm.crew +
-    build.auxHelm * aux.crew +
-    build.rudders * rudder.crew +
-    build.sails * sail.crew +
-    build.lWeap * lw.crew +
-    build.sWeap * sw.crew +
-    build.bridge * bridge.crew +
-    accessoryCrew
+    Math.ceil(build.helm * componentById(c, COMPONENT_IDS.helm).crew) +
+    Math.ceil(build.commandBridge * componentById(c, COMPONENT_IDS.commandBridge).crew) +
+    Math.ceil(build.sails * componentById(c, COMPONENT_IDS.sail).crew) +
+    Math.ceil(build.rudders * componentById(c, COMPONENT_IDS.rudder).crew) +
+    computeWeaponCrew(build) +
+    computeAccessoryCrew(build)
   );
 }
 
-/** Minimum crew to operate the ship — a whole number (0.5 sums round up). */
+/** Minimum crew to operate the ship — already whole after per-group rounding. */
 export function computeMinCrew(build: ShipBuild): number {
-  return Math.ceil(computeComponentCrew(build));
+  return computeComponentCrew(build);
 }
 
-export function computeCrewQuartersTons(crew: number): number {
-  return Math.ceil(crew / CREW_PER_QUARTER_TON);
+/** Authored crew-quarters capacity (1 ton = 5 crew/passengers). */
+export function computeCrewCapacity(crewQuarters: number): number {
+  const tons = Number.isFinite(crewQuarters) ? crewQuarters : 0;
+  return Math.max(0, tons) * CREW_PER_QUARTER_TON;
 }
 
 // --- Mass -------------------------------------------------------------------
 
-export function computeArmorMass(frame: ShipFrame, armor: ShipArmor): number {
-  return frame.massCap * armor.massFactor;
+/** Hull mass paid out of the designated total mass. */
+export function computeHullMass(totalMass: number): number {
+  const m = Math.max(0, totalMass);
+  return m * (HULL_MASS_BASE_PCT + m / HULL_MASS_DIVISOR);
+}
+
+/** Armor mass = % of the designated total mass. */
+export function computeArmorMass(build: ShipBuild): number {
+  return Math.max(0, build.totalMass) * build.armor.massPct;
 }
 
 export function computeAccessoryMass(build: ShipBuild): number {
@@ -151,324 +196,206 @@ export function computeAccessoryMass(build: ShipBuild): number {
   );
 }
 
-/** Σ component masses + crew quarters + specials (excludes armor and cargo). */
-export function computeGearMass(build: ShipBuild): number {
+export function computeWeaponMass(build: ShipBuild): number {
+  return build.templateWeapons.reduce((sum, w) => {
+    const weapon = weaponById(build.weaponsCatalog, w.weaponId);
+    return sum + (weapon ? weaponTons(weapon) * w.count : 0);
+  }, 0);
+}
+
+/**
+ * Tons allocated to weapons. The authored capacity is paid for even when fewer
+ * weapons are placed; old data with no capacity falls back to the placed tons.
+ */
+export function computeWeaponCapacity(build: ShipBuild): number {
+  const authored = Math.max(0, build.weaponCapacity ?? 0);
+  return authored > 0 ? authored : computeWeaponMass(build);
+}
+
+/** True when one more weapon (in tons) fits inside the allocated capacity. */
+export function canPlaceWeapon(placedTons: number, capacityTons: number, newTons: number): boolean {
+  return placedTons + newTons <= capacityTons;
+}
+
+export interface ShipTonnage {
+  hull: number;
+  armor: number;
+  helm: number;
+  commandBridge: number;
+  sails: number;
+  rudders: number;
+  weapons: number;
+  reinforcement: number;
+  accessories: number;
+  cargo: number;
+  crewQuarters: number;
+  used: number;
+  remaining: number;
+}
+
+/**
+ * Whole-ton allocation. Every group is rounded to the nearest ton, which is
+ * what makes the design rows match their totals (hull 2.8→3, rudder 4.5→5, etc.).
+ */
+export function computeTonnage(build: ShipBuild): ShipTonnage {
   const c = build.components;
-  const helm = componentById(c, COMPONENT_IDS.helmBridge);
-  const aux = componentById(c, COMPONENT_IDS.auxHelm);
-  const sail = componentById(c, COMPONENT_IDS.sail);
-  const rudder = componentById(c, COMPONENT_IDS.rudder);
-  const lw = componentById(c, COMPONENT_IDS.lWeap);
-  const sw = componentById(c, COMPONENT_IDS.sWeap);
-  const hull = componentById(c, COMPONENT_IDS.hullR);
-  const bridge = componentById(c, COMPONENT_IDS.commandBridge);
-  const crewQ = componentById(c, COMPONENT_IDS.crewQuarters);
-  const crewQuartersTons = computeCrewQuartersTons(computeCrew(build));
-  return (
-    helm.mass +
-    build.auxHelm * aux.mass +
-    build.rudders * rudder.mass +
-    build.sails * sail.mass +
-    build.lWeap * lw.mass +
-    build.sWeap * sw.mass +
-    build.hullR * hull.mass +
-    build.bridge * bridge.mass +
-    crewQuartersTons * crewQ.mass +
-    computeAccessoryMass(build)
-  );
+  const hull = roundTons(computeHullMass(build.totalMass));
+  const armor = roundTons(computeArmorMass(build));
+  const helm = roundTons(build.helm * componentById(c, COMPONENT_IDS.helm).mass);
+  const commandBridge = roundTons(build.commandBridge * componentById(c, COMPONENT_IDS.commandBridge).mass);
+  const sails = roundTons(build.sails * componentById(c, COMPONENT_IDS.sail).mass);
+  const rudders = roundTons(build.rudders * componentById(c, COMPONENT_IDS.rudder).mass);
+  const weapons = roundTons(computeWeaponCapacity(build));
+  const reinforcement = roundTons(build.reinforcement * componentById(c, COMPONENT_IDS.reinforcement).mass);
+  const accessories = roundTons(computeAccessoryMass(build));
+  const cargo = Math.max(0, roundTons(build.cargoArea || 0));
+  const crewQuarters = Math.max(0, roundTons(build.crewQuarters || 0));
+  const used =
+    hull + armor + helm + commandBridge + sails + rudders + weapons +
+    reinforcement + accessories + cargo + crewQuarters;
+  return {
+    hull,
+    armor,
+    helm,
+    commandBridge,
+    sails,
+    rudders,
+    weapons,
+    reinforcement,
+    accessories,
+    cargo,
+    crewQuarters,
+    used,
+    remaining: Math.max(0, build.totalMass) - used,
+  };
 }
 
-/** Empty (unladen) ship mass = armor + gear. */
-export function computeEmptyMass(build: ShipBuild): number {
-  return computeArmorMass(build.frame, build.armor) + computeGearMass(build);
+/** Components + weapons + accessories + cargo + crew quarters (rounded tons). */
+export function computeFittingMass(build: ShipBuild): number {
+  const t = computeTonnage(build);
+  return t.used - t.hull - t.armor;
 }
 
-export function computeAvailableSpace(build: ShipBuild): number {
-  return build.frame.massCap - computeEmptyMass(build);
+/** Everything currently assigned to the hull (rounded tons). */
+export function computeUsedMass(build: ShipBuild): number {
+  return computeTonnage(build).used;
 }
 
-export function computeUnclaimedSpace(build: ShipBuild): number {
-  return computeAvailableSpace(build) - build.cargoArea;
-}
-
-/** Mass at a given load (tons of cargo). */
-export function computeLadenMass(build: ShipBuild, loadedCargo: number): number {
-  return computeEmptyMass(build) + loadedCargo;
+/** Tons left to furnish (negative = overloaded). */
+export function computeRemainingMass(build: ShipBuild): number {
+  return computeTonnage(build).remaining;
 }
 
 // --- Performance ------------------------------------------------------------
 
-export function computeAccel(build: ShipBuild, mass: number): number {
-  if (mass <= 0) return 0;
-  return Math.round((SAIL_THRUST * build.sails) / mass);
+export function computeArmorClass(build: ShipBuild): number {
+  return build.armor.ac;
 }
 
-/** The active speed cap depends on the scenario environment setting. */
-export function computeActiveTopSpeed(
-  frame: ShipFrame,
-  atmosphereSpeed: number,
-  environment: ShipEnvironment,
-): number {
-  if (environment === 'space') return frame.topSpeed;
-  return atmosphereSpeed > 0 ? atmosphereSpeed : frame.topSpeed;
-}
-
+/** HP = totalMass × 3 + 40, multiplied by the armor's HP multiplier. */
 export function computeShipHp(build: ShipBuild): number {
-  return build.frame.baseHp + build.hullR * SHIP_HP_PER_HULL_R;
+  const base = Math.round(Math.max(0, build.totalMass) * HP_PER_TON + HP_BASE);
+  return base * Math.max(1, build.armor.hpMult);
 }
 
-export function computeBoxHp(armor: ShipArmor): number {
-  return Math.ceil(SAFE_BOX_HP_CEIL * (1 + armor.massFactor));
+/** Acceleration = (sails + rudders) / totalMass × 15 (counts). */
+export function computeAccel(build: ShipBuild): number {
+  const mass = Math.max(1, build.totalMass);
+  return round1(((build.sails + build.rudders) / mass) * ACCEL_SCALE);
 }
 
-// --- MC / Turning Efficiency (maneuver class) --------------------------------
-//
-// Designer-authoritative model:
-//   **MC** = how many hexes the ship must travel before one 60° turn — an integer,
-//           LOWER = tighter turn = better.
-//   **TE** (Turning Efficiency) = 60° turns per game turn = `speed ÷ MC` — HIGHER = better.
-//
-// Curve: a parabola peaking at the sweet-spot speed `u*` (height `TE_max`, width `w`).
-//   - `u*` moves with RUDDER FILL (R / frame mass-capacity in tons, so tiny/small get
-//     an edge) and shifts by MASS (light ships peak forward, heavy backward).
-//   - `TE_max` (peak height) shrinks with MASS.
-//   - `w` (peak width) grows with RUDDERS.
-
-// u* knobs
-export const U_STAR_BASE = 0.33;
-export const U_STAR_FILL_COEFF = 5.4; // × fill (R / massCap); 5.4 ≈ 20× the original 0.27
-export const U_STAR_MASS_COEFF = 0.2; // × (25/M − 0.5)
-export const U_STAR_MASS_REF = 25;
-export const U_STAR_MASS_MID = 0.5;
-export const U_STAR_MIN = 0.33;
-export const U_STAR_MAX = 0.6;
-// width knobs
-export const WIDTH_BASE = 0.4;
-export const WIDTH_COEFF = 0.05;
-export const WIDTH_MIN = 0.45;
-export const WIDTH_MAX = 0.7;
-// TE_max knobs
-export const TE_MAX_SCALE = 3;
-export const TE_MAX_MASS_REF = 25;
-export const TE_MAX_POWER = 0.7;
-export const TE_MAX_MIN = 0.8;
-export const TE_MAX_MAX = 3;
-// MC floor: below this TE the ship "can't complete a turn" — keeps MC bounded
-export const TE_FLOOR = 0.5;
-
-/** Rudder fill: rudder count ÷ frame mass capacity (tons). Tiny 2/35, Small 3/55, Medium 3/80, Large 2/100. */
-export function computeFill(rudders: number, frameMassCap: number): number {
-  if (frameMassCap <= 0) return 0;
-  return rudders / frameMassCap;
+/** Raw MC: x = rudders × 10 / totalMass; x < 1 → 1/x + 2, else 4 − x. */
+export function computeMCRaw(build: ShipBuild): number {
+  const mass = Math.max(1, build.totalMass);
+  const x = (Math.max(0, build.rudders) * MC_RUDDER_SCALE) / mass;
+  if (x <= 0) return Number.POSITIVE_INFINITY;
+  const mc = x < 1 ? 1 / x + 2 : 4 - x;
+  return Math.max(0, round1(mc));
 }
 
-/** Sweet-spot speed fraction `u*` — where the ship turns best. */
-export function computeUStar(build: ShipBuild, mass?: number): number {
-  const m = mass ?? computeLadenMass(build, build.cargoArea);
-  const fill = computeFill(build.rudders, build.frame.massCap);
-  const massShift = U_STAR_MASS_COEFF * (U_STAR_MASS_REF / m - U_STAR_MASS_MID);
-  return clamp(U_STAR_BASE + U_STAR_FILL_COEFF * fill + massShift, U_STAR_MIN, U_STAR_MAX);
+/** Speed band modifier added to MC. */
+export function mcSpeedModifier(speed: number): number {
+  if (speed <= 2) return -1;
+  if (speed <= 7) return 0;
+  return 1;
 }
 
-/** Peak width `w` — more rudders = wider turning band. */
-export function computeWidth(rudders: number): number {
-  return clamp(WIDTH_BASE + WIDTH_COEFF * rudders, WIDTH_MIN, WIDTH_MAX);
+/** Effective MC at a speed (floored at 0; the Racer has base MC 0). */
+export function computeEffectiveMC(build: ShipBuild, speed: number): number {
+  const raw = computeMCRaw(build);
+  if (!Number.isFinite(raw)) return Number.POSITIVE_INFINITY;
+  return Math.max(0, round1(raw + mcSpeedModifier(speed)));
 }
 
-/** Peak TE — lighter ships turn better at their sweet spot. */
-export function computeTEMax(mass: number): number {
-  if (mass <= 0) return TE_MAX_MIN;
-  return clamp(TE_MAX_SCALE * Math.pow(TE_MAX_MASS_REF / mass, TE_MAX_POWER), TE_MAX_MIN, TE_MAX_MAX);
-}
-
-export interface MCParts {
-  mass: number;
-  fill: number;
-  uStar: number;
-  width: number;
-  teMax: number;
-}
-
-export function computeMCParts(build: ShipBuild, mass?: number): MCParts {
-  const m = mass ?? computeLadenMass(build, build.cargoArea);
-  return {
-    mass: m,
-    fill: computeFill(build.rudders, build.frame.massCap),
-    uStar: computeUStar(build, m),
-    width: computeWidth(build.rudders),
-    teMax: computeTEMax(m),
-  };
-}
-
-/** Ideal TE at a speed (the smooth parabola). */
-export function computeTE(build: ShipBuild, speed: number, mass?: number): number {
-  const m = mass ?? computeLadenMass(build, build.cargoArea);
-  const { uStar, width, teMax } = computeMCParts(build, m);
-  const u = speed / build.frame.topSpeed;
-  return teMax * Math.max(0, 1 - Math.pow((u - uStar) / width, 2));
-}
-
-/** MC (hexes per 60° turn) at a speed — integer, floored at 1. */
-export function computeMC(build: ShipBuild, speed: number, mass?: number): number {
-  const te = Math.max(TE_FLOOR, computeTE(build, speed, mass));
-  return Math.max(1, Math.round(speed / te));
-}
-
-export interface MCResult {
-  speed: number;
+export interface MCBand {
+  label: string;
+  speedMin: number;
+  speedMax: number;
   mc: number;
-  te: number;
 }
 
-/** Full MC/TE band for speeds 1..topSpeed at a given load. */
-export function computeMCBand(build: ShipBuild, mass?: number): MCResult[] {
-  const out: MCResult[] = [];
-  for (let s = 1; s <= build.frame.topSpeed; s++) {
-    const mc = computeMC(build, s, mass);
-    out.push({ speed: s, mc, te: computeTurningEfficiency(s, mc) });
+/** The three speed bands from the overhaul rules. */
+export function computeMCBands(build: ShipBuild): MCBand[] {
+  return [
+    { label: 'Speed 0–2', speedMin: 0, speedMax: 2, mc: computeEffectiveMC(build, 0) },
+    { label: 'Speed 3–7', speedMin: 3, speedMax: 7, mc: computeEffectiveMC(build, 3) },
+    { label: 'Speed 8–12', speedMin: 8, speedMax: 12, mc: computeEffectiveMC(build, 8) },
+  ];
+}
+
+/** Command bonus from command bridges (+5 each). */
+export function computeCommandBonus(build: ShipBuild): number {
+  return build.commandBridge * COMMAND_PER_BRIDGE;
+}
+
+// --- Hit boxes --------------------------------------------------------------
+
+export interface ShipBoxGroup {
+  id: string;
+  label: string;
+  boxes: number;
+  safe: boolean;
+}
+
+function boxGroupsFromTonnage(t: ShipTonnage): ShipBoxGroup[] {
+  const groups: ShipBoxGroup[] = [
+    { id: 'hull', label: 'Hull', boxes: t.hull, safe: true },
+    { id: 'armor', label: 'Armor', boxes: t.armor, safe: true },
+    { id: 'helm', label: 'Helm', boxes: t.helm, safe: false },
+    { id: 'command_bridge', label: 'Command bridge', boxes: t.commandBridge, safe: false },
+    { id: 'sails', label: 'Sails', boxes: t.sails, safe: false },
+    { id: 'rudders', label: 'Rudders', boxes: t.rudders, safe: false },
+    { id: 'weapons', label: 'Weapons', boxes: t.weapons, safe: false },
+    { id: 'reinforcement', label: 'Reinforcement', boxes: t.reinforcement, safe: false },
+    { id: 'accessories', label: 'Specials', boxes: t.accessories, safe: false },
+    { id: 'cargo', label: 'Cargo', boxes: t.cargo, safe: false },
+    { id: 'crew_quarters', label: 'Crew quarters', boxes: t.crewQuarters, safe: false },
+  ].filter(g => g.boxes > 0);
+
+  if (t.remaining > 0) {
+    groups.push({ id: 'reserve', label: 'Reserve', boxes: t.remaining, safe: false });
   }
-  return out;
+  return groups;
 }
 
-/** Turning Efficiency = 60° turns per game turn at a speed: `speed ÷ MC`, 1 decimal. */
-export function computeTurningEfficiency(speed: number, mc: number): number {
-  if (mc <= 0) return 0;
-  return Math.round((speed / mc) * 10) / 10;
-}
-
-/** Officer actions per game turn. Int modifiers come from crew dropped into the
- *  functional area (helm/captain stations) on the scenario map — not implemented yet,
- *  so callers pass 0 for now. */
-export function computeOfficerActions(bridge: number, helmsmanIntMod = 0, captainIntMod = 0): number {
-  if (bridge >= 1) return Math.max(4, 4 + captainIntMod);
-  return Math.max(1, helmsmanIntMod);
-}
-
-// --- Hit-box pools ----------------------------------------------------------
-
-/** Pool HP contributed by one accessory instance (specials = mass × boxHP; Claws/Eyestalk = small anchor). */
-export function accessoryPoolHp(accessory: ShipAccessory, boxHp: number): number {
-  if (accessory.poolType === 'safe' || accessory.poolType === 'none') return 0;
-  if (accessory.poolType === 'small_anchor') return SMALL_WEAPON_ANCHOR;
-  return accessory.mass * boxHp;
-}
-
-export interface ShipPools {
-  helm: number;
-  auxHelm: number;
-  sails: number;
-  rudders: number;
-  lWeap: number;
-  sWeap: number;
-  bridge: number;
-  accessories: number;
-  cargo: number;
-  unclaimed: number;
-  crewQuarters: number;
-  total: number;
-}
-
-/** Per-subsystem box pools. Each Hull R doubles the next-in-order subsystem (Helm→Bridge→extra→L→Rudder→S). */
-export function computePools(build: ShipBuild): ShipPools {
-  const boxHp = computeBoxHp(build.armor);
-  const c = build.components;
-  const helm = componentById(c, COMPONENT_IDS.helmBridge);
-  const aux = componentById(c, COMPONENT_IDS.auxHelm);
-  const sail = componentById(c, COMPONENT_IDS.sail);
-  const rudder = componentById(c, COMPONENT_IDS.rudder);
-  const bridge = componentById(c, COMPONENT_IDS.commandBridge);
-  const reinforced = (n: number) => (n >= 1 ? REINFORCED_MULT : 1);
-
-  const helmPool = helm.mass * boxHp * reinforced(build.hullR);
-  const auxPool = build.auxHelm * aux.mass * boxHp * reinforced(build.hullR >= 3 ? 1 : 0);
-  const sailsPool = build.sails * sail.mass * boxHp;
-  const ruddersPool = build.rudders * rudder.mass * boxHp * reinforced(build.hullR >= 5 ? 1 : 0);
-  const lWeapPool = build.lWeap * LARGE_WEAPON_ANCHOR * reinforced(build.hullR >= 4 ? 1 : 0);
-  const sWeapPool = build.sWeap * SMALL_WEAPON_ANCHOR * reinforced(build.hullR >= 6 ? 1 : 0);
-  const bridgePool = build.bridge * bridge.mass * boxHp * reinforced(build.hullR >= 2 ? 1 : 0);
-  const accessoriesPool = build.templateAccessories.reduce(
-    (sum, a) => sum + (accessoryById(build.accessoriesCatalog, a.accessoryId) ? accessoryPoolHp(accessoryById(build.accessoriesCatalog, a.accessoryId)!, boxHp) * a.count : 0),
-    0,
-  );
-  const cargoPool = Math.max(0, build.cargoArea) * boxHp;
-  const unclaimedPool = Math.max(0, computeUnclaimedSpace(build)) * boxHp;
-  const crewQuartersPool = computeCrewQuartersTons(computeCrew(build)) * boxHp;
-
-  const total =
-    helmPool + auxPool + sailsPool + ruddersPool + lWeapPool + sWeapPool +
-    bridgePool + accessoriesPool + cargoPool + unclaimedPool + crewQuartersPool;
-
-  return {
-    helm: helmPool,
-    auxHelm: auxPool,
-    sails: sailsPool,
-    rudders: ruddersPool,
-    lWeap: lWeapPool,
-    sWeap: sWeapPool,
-    bridge: bridgePool,
-    accessories: accessoriesPool,
-    cargo: cargoPool,
-    unclaimed: unclaimedPool,
-    crewQuarters: crewQuartersPool,
-    total,
-  };
-}
-
-// --- Deck -------------------------------------------------------------------
-
-export function computeDeckUsed(build: ShipBuild): number {
-  const c = build.components;
-  const helm = componentById(c, COMPONENT_IDS.helmBridge);
-  const aux = componentById(c, COMPONENT_IDS.auxHelm);
-  const sail = componentById(c, COMPONENT_IDS.sail);
-  const rudder = componentById(c, COMPONENT_IDS.rudder);
-  const lw = componentById(c, COMPONENT_IDS.lWeap);
-  const sw = componentById(c, COMPONENT_IDS.sWeap);
-  const hull = componentById(c, COMPONENT_IDS.hullR);
-  const bridge = componentById(c, COMPONENT_IDS.commandBridge);
-  const crewQ = componentById(c, COMPONENT_IDS.crewQuarters);
-  const accessoryDeck = build.templateAccessories.reduce(
-    (sum, a) => sum + (accessoryById(build.accessoriesCatalog, a.accessoryId)?.deck || 0) * a.count,
-    0,
-  );
-  return (
-    helm.deck +
-    build.auxHelm * aux.deck +
-    build.rudders * rudder.deck +
-    build.sails * sail.deck +
-    build.lWeap * lw.deck +
-    build.sWeap * sw.deck +
-    build.hullR * hull.deck +
-    build.bridge * bridge.deck +
-    computeCrewQuartersTons(computeCrew(build)) * crewQ.deck +
-    accessoryDeck
-  );
+/** 1 ton = 1 box. Hull and armor are safe; every other group is hittable. */
+export function computeBoxGroups(build: ShipBuild): ShipBoxGroup[] {
+  return boxGroupsFromTonnage(computeTonnage(build));
 }
 
 // --- Cost -------------------------------------------------------------------
 
 export function computeBuildCost(build: ShipBuild): number {
   const c = build.components;
-  const helm = componentById(c, COMPONENT_IDS.helmBridge);
-  const aux = componentById(c, COMPONENT_IDS.auxHelm);
-  const sail = componentById(c, COMPONENT_IDS.sail);
-  const rudder = componentById(c, COMPONENT_IDS.rudder);
-  const lw = componentById(c, COMPONENT_IDS.lWeap);
-  const sw = componentById(c, COMPONENT_IDS.sWeap);
-  const hull = componentById(c, COMPONENT_IDS.hullR);
-  const bridge = componentById(c, COMPONENT_IDS.commandBridge);
-  const crewQ = componentById(c, COMPONENT_IDS.crewQuarters);
+  const quarters = Math.max(0, build.crewQuarters || 0);
   const componentCost =
-    helm.cost +
-    build.auxHelm * aux.cost +
-    build.rudders * rudder.cost +
-    build.sails * sail.cost +
-    build.lWeap * lw.cost +
-    build.sWeap * sw.cost +
-    build.hullR * hull.cost +
-    build.bridge * bridge.cost +
-    computeCrewQuartersTons(computeCrew(build)) * crewQ.cost;
-  const baseCost = Math.round(build.frame.baseCost * build.armor.costMult);
+    build.helm * componentById(c, COMPONENT_IDS.helm).cost +
+    build.commandBridge * componentById(c, COMPONENT_IDS.commandBridge).cost +
+    build.sails * componentById(c, COMPONENT_IDS.sail).cost +
+    build.rudders * componentById(c, COMPONENT_IDS.rudder).cost +
+    build.reinforcement * componentById(c, COMPONENT_IDS.reinforcement).cost +
+    Math.max(0, build.cargoArea) * componentById(c, COMPONENT_IDS.cargo).cost +
+    quarters * componentById(c, COMPONENT_IDS.crewQuarters).cost;
   const accessoryCost = build.templateAccessories.reduce(
     (sum, a) => sum + (accessoryById(build.accessoriesCatalog, a.accessoryId)?.cost || 0) * a.count,
     0,
@@ -477,59 +404,77 @@ export function computeBuildCost(build: ShipBuild): number {
     (sum, w) => sum + (weaponById(build.weaponsCatalog, w.weaponId)?.cost || 0) * w.count,
     0,
   );
-  return baseCost + componentCost + accessoryCost + weaponCost;
+  return Math.round(componentCost + accessoryCost + weaponCost);
 }
 
 // --- Aggregate --------------------------------------------------------------
 
 export interface ShipDerivedStats {
+  totalMass: number;
+  /** Whole-ton hull allocation (the exact formula value is `hullMassExact`). */
+  hullMass: number;
+  hullMassExact: number;
+  armorMass: number;
+  armorMassExact: number;
+  fittingMass: number;
+  weaponMass: number;
+  weaponCapacity: number;
+  weaponPlacedTons: number;
+  weaponCrew: number;
+  atmosphericSpeed: number;
+  damageThreshold: number;
+  usedMass: number;
+  remainingMass: number;
+  overload: boolean;
   crew: number;
   minCrew: number;
+  /** Authored crew-quarters tonnage. */
   crewQuarters: number;
-  armorMass: number;
-  gearMass: number;
-  emptyMass: number;
-  availableSpace: number;
-  unclaimedSpace: number;
-  ladenMass: number;
-  accelEmpty: number;
-  accelLaden: number;
-  topSpeed: number;
-  atmosphereSpeed: number;
+  /** `crewQuarters × 5`. */
+  crewCapacity: number;
+  passengers: number;
+  ac: number;
   shipHp: number;
-  dt: number;
-  boxHp: number;
-  pools: ShipPools;
-  deckUsed: number;
-  deckSpace: number;
+  accel: number;
+  mcRaw: number;
+  mcBands: MCBand[];
+  commandBonus: number;
   buildCost: number;
-  officerActions: number;
+  tonnage: ShipTonnage;
+  boxGroups: ShipBoxGroup[];
 }
 
 export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
-  const emptyMass = computeEmptyMass(build);
-  const ladenMass = computeLadenMass(build, Math.max(0, build.cargoArea));
+  const t = computeTonnage(build);
   return {
+    totalMass: build.totalMass,
+    hullMass: t.hull,
+    hullMassExact: computeHullMass(build.totalMass),
+    armorMass: t.armor,
+    armorMassExact: computeArmorMass(build),
+    fittingMass: t.used - t.hull - t.armor,
+    weaponMass: computeWeaponMass(build),
+    weaponCapacity: t.weapons,
+    weaponPlacedTons: computeWeaponMass(build),
+    weaponCrew: computeWeaponCrew(build),
+    atmosphericSpeed: Math.max(0, build.atmosphericSpeed ?? 0),
+    damageThreshold: Math.max(0, build.damageThreshold ?? 15),
+    usedMass: t.used,
+    remainingMass: t.remaining,
+    overload: t.used > build.totalMass,
     crew: computeCrew(build),
     minCrew: computeMinCrew(build),
-    crewQuarters: computeCrewQuartersTons(computeCrew(build)),
-    armorMass: computeArmorMass(build.frame, build.armor),
-    gearMass: computeGearMass(build),
-    emptyMass,
-    availableSpace: computeAvailableSpace(build),
-    unclaimedSpace: computeUnclaimedSpace(build),
-    ladenMass,
-    accelEmpty: computeAccel(build, emptyMass),
-    accelLaden: computeAccel(build, ladenMass),
-    topSpeed: build.frame.topSpeed,
-    atmosphereSpeed: build.atmosphereSpeed,
+    crewQuarters: Math.max(0, build.crewQuarters || 0),
+    crewCapacity: computeCrewCapacity(build.crewQuarters),
+    passengers: Math.max(0, build.passengers || 0),
+    ac: computeArmorClass(build),
     shipHp: computeShipHp(build),
-    dt: SHIP_DT,
-    boxHp: computeBoxHp(build.armor),
-    pools: computePools(build),
-    deckUsed: computeDeckUsed(build),
-    deckSpace: build.frame.deckSpace,
+    accel: computeAccel(build),
+    mcRaw: computeMCRaw(build),
+    mcBands: computeMCBands(build),
+    commandBonus: computeCommandBonus(build),
     buildCost: computeBuildCost(build),
-    officerActions: computeOfficerActions(build.bridge),
+    tonnage: t,
+    boxGroups: boxGroupsFromTonnage(t),
   };
 }

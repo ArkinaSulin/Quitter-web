@@ -169,17 +169,27 @@ cancelled. Source of truth: `docs/dev/17-enemy-ai.md`,
   units.
 
 ## Spelljammer module (largest remaining)
-Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.md`,
-`.scratch/shipyard-formula/shipyard.csv`); **builder + stats + renderer shipped**,
-**engine not started**:
+**Mass-first overhaul shipped** (migration 134, applied): no ship frames, hull
+mass = `totalMass × (10% + totalMass/500)`, armor as % of total, acceleration
+and MC from the new rules, whole-ton rounding, binary per-ton hit boxes.
+**Ship Editor v2** is built: summary + composition table, ship image upload,
+square component-slot layout, weapon capacity budget, atmospheric speed,
+damage threshold, catalog AC/images. **Migrations 135 and 136 are pending
+apply.**
+
+The five reference templates (Racer, Shuttle, Wasp, Damselfly, Star Moth) are
+locked in `shipStats.test.ts`.
+
+**Engine not started:**
 - 🔜 `src/packages/ships/lib/shipMoveCost.ts`, `shipCombat.ts`, `src/hooks/useShipEngine.ts`.
 - 🔜 Scenario instance table `ship_spelljammer` (schema exists in migration 066)
   + ship tokens on the scenario map.
 - 🔜 `src/components/ScenarioMap/ShipPanel.tsx` (stations, crew reserve, info war).
-- 🔜 Sub-turn toggle (5 segments / 1 action per hero), `environment`
-  (Space/Atmosphere), `firing_arcs` scenario settings.
-- 🔜 Captain's Command (officer actions), repairs/loading counters, Overthrust,
-  hit-box damage resolution, Jettison/space mines.
+- 🔜 Sub-turn toggle (5 segments / 1 action per hero) + `firing_arcs` scenario settings.
+- 🔜 Reinforcement **target assignment** in the editor (+10 temp HP to one weapon
+  or component cluster) — the count is modelled, the target picker is not.
+- 🔜 Command Bridge bonus wiring, repairs/loading counters, hit-box destruction
+  resolution, Jettison/space mines.
 - Out of scope by decision: **boarding** (hand off to a D&D VTT).
 
 ## Rules / housekeeping
@@ -212,16 +222,15 @@ Design closed (`.scratch/spelljammer-mod/spec.md`, `.scratch/ship-builder/spec.m
 - ✅ Applied (owner-confirmed, AI assist): **130** (legacy
   `ai_assist_advanced` / `ai_assist_players`; Advanced AI is cancelled).
 - ?? **Awaiting apply**: **132** (drops the old `ai_role_markers` column), **096** (structure `spikes` + "Archer's Stake" rename),
-  **097** (`structure_images` bucket), **112** (`units.climb_to` — Phase 2b-7).
+  **097** (`structure_images` bucket), **112** (`units.climb_to` — Phase 2b-7), **135**
+  (ship `crew_quarters` + `passengers`), **136** (ship editor v2 fields + `ship_images`).
 
 ## Uncommitted working tree (owner's, left untouched)
-- Last checked 2026-10-26 after the AI/Halloween documentation closeout: the AI
-  code/tests/docs are clean and pushed. Owner-dirty files remain:
-  `.scratch/ship-builder/spec.md`,
-  `.scratch/shipyard-formula/{FINDINGS.md,shipyard.csv}`,
-  `.scratch/spelljammer-mod/spec.md`,
-  `.scratch/screen-capture/` (untracked), plus unrelated edits in
-  `src/components/shared/mapFeatureDraw.ts`,
+- Last checked 2026-10-27 after the mass-first ship overhaul. The old v8.1
+  design files were deleted intentionally (`.scratch/shipyard-formula/`,
+  `.scratch/ship-builder/spec.md`, `.scratch/spelljammer-mod/spec.md`).
+  Owner-dirty files remain: `.scratch/screen-capture/` (untracked), plus
+  unrelated edits in `src/components/shared/mapFeatureDraw.ts`,
   `src/packages/infra/lib/templateMappers.ts`,
   `src/packages/movement/tests/moveCost.test.ts`, and
   `src/packages/units/lib/tokenUtils.ts`. Do not stage these with AI work.

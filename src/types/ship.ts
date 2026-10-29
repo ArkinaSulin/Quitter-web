@@ -1,56 +1,42 @@
 // src/types/ship.ts
-// Spelljammer ship-domain types. Mirrors the Shipyard v8.1 FINAL model.
-// Source of truth: .scratch/shipyard-formula/shipyard.csv, .scratch/spelljammer-mod/spec.md,
-// and the ship_* tables from migration 066.
-
-export type ShipPoolType = 'mass_x_boxhp' | 'small_anchor' | 'safe' | 'none';
+// Spelljammer ship-domain types. Mass-first model (no ship frames): the player
+// designates a total mass, pays a hull-mass penalty, then furnishes the rest.
+// Source of truth: the 2026 Spelljammer overhaul rules + migration 134.
 
 export type ShipMount = 'small' | 'large' | 'special';
 
-export type ShipEnvironment = 'space' | 'atmosphere';
-
-/** Per-frame hull (migration 066 `ship_frames`). */
-export interface ShipFrame {
-  id: string;
-  massCap: number;
-  baseHp: number;
-  deckSpace: number;
-  topSpeed: number;
-  maxRudders: number;
-  baseCost: number;
-  hullSpaces: number;
-}
-
-/** Armor option (`ship_armors`): mass_factor eats MassCap, box_hp sets box HP. */
+/** Armor option (`ship_armors`): mass is a percentage of the ship total. */
 export interface ShipArmor {
   id: string;
-  massFactor: number;
+  /** Mass fraction of total ship mass (0.05 = 5%). */
+  massPct: number;
   ac: number;
-  boxHp: number;
-  costMult: number;
+  /** HP multiplier (ceramic/stone = 2, everything else = 1). */
+  hpMult: number;
+  imageUrl?: string;
 }
 
-/** Component (`ship_components`); `reinforce_order` = which Hull R reinforces it. */
+/** Component catalog row (`ship_components`). */
 export interface ShipComponent {
   id: string;
   mass: number;
-  deck: number;
   crew: number;
   cost: number;
-  reinforceOrder: number | null;
   hittable: boolean;
+  ac?: number;
+  imageUrl?: string;
 }
 
-/** Accessory / special (`ship_accessories`); pool_type drives its hit-box pool. */
+/** Accessory / special fitting (`ship_accessories`). */
 export interface ShipAccessory {
   id: string;
   mass: number;
-  deck: number;
   crew: number;
   cost: number;
-  poolType: ShipPoolType;
   hittable: boolean;
   effect: string | null;
+  ac?: number;
+  imageUrl?: string;
 }
 
 /** Weapon catalog row (`ship_weapons`). */
@@ -65,6 +51,8 @@ export interface ShipWeapon {
   cost: number;
   ammoCost: number | null;
   special: string | null;
+  ac?: number;
+  imageUrl?: string;
 }
 
 /** Selected accessory instance on a template (`ship_template_accessories`). */
@@ -99,20 +87,30 @@ export interface ShipTemplate {
   id: string;
   name: string;
   role: string | null;
-  frameId: string;
   armorId: string;
-  /** Authored Atmosphere speed (given, not calculated). */
-  atmosphereSpeed: number;
-  rudders: number;
+  /** Player-designated ship mass (tons). Hull + armor + fittings come out of this. */
+  totalMass: number;
+  helm: number;
+  commandBridge: number;
   sails: number;
-  lWeap: number;
-  sWeap: number;
-  hullR: number;
-  bridge: number;
-  auxHelm: number;
-  /** Crew complement (current crew on board) — set in the Components box. */
+  rudders: number;
+  /** Hull reinforcement units (+10 temp HP each, assigned to a component). */
+  reinforcement: number;
+  /** Crew complement (current crew on board). */
   crewCount: number;
-  /** Designated load (tons) — drives the laden readout. */
+  /** Authored crew-quarters tonnage (1 ton = 5 capacity). */
+  crewQuarters: number;
+  /** Authored passenger count (display-only for now). */
+  passengers: number;
+  /** Authored weapon tonnage budget; weapons must fit inside it. */
+  weaponCapacity: number;
+  /** Authored atmospheric speed (0–12). */
+  atmosphericSpeed: number;
+  /** Authored damage threshold (default 15). */
+  damageThreshold: number;
+  /** Ship preview image (`ship_images` bucket). */
+  imageUrl: string;
+  /** Designated cargo (tons). */
   cargoArea: number;
   accessories: ShipTemplateAccessory[];
   weapons: ShipTemplateWeapon[];
