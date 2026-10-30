@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## Ship composition table column alignment (2026-10-27)
+**Files:** src/components/ShipEditor/ShipEditor.tsx, docs/dev/{16-ship-builder,changelog}.md
+
+- Split the composition table into aligned **Component / Input / Mass (t) /
+  Crew req. / Notes / Cost** columns. All editable controls now live in the
+  fixed-width Input column (quantity, weapon capacity, cargo, armor select,
+  accessory stepper), so their alignment no longer depends on label width.
+- Added the reserved **Cost** column: per-component cells show `—`; the Total
+  row shows the aggregate build cost.
+- Fixed table layout with a `<colgroup>` and `table-fixed` so the columns stay
+  stable at different panel widths.
+- Verification: `tsc`, full vitest suite, depcruise (pre-existing warnings),
+  and `next build`.
+
 ## Ship Editor v2: composition table, slot layout, weapon capacity (migration 136) (2026-10-27)
 **Files:** src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers}.ts, src/packages/ships/tests/{shipStats,shipMappers}.test.ts, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/{ShipComponentCard,ShipLayout}.tsx, supabase/migrations/136_ship_editor_v2.sql, docs/dev/{16-ship-builder,02-schema-and-migrations,README,outstanding,changelog}.md, AGENTS.md
 

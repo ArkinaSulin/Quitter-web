@@ -24,7 +24,9 @@ Editor v2 fields + `ship_images`)** reshape the model.
 
 Editor layout is 3 panels: template picker (left), summary + composition table
 (middle), and ship image + slot layout + weapons/roster (right). The sticky
-footer is Create/Save, Clone, Delete.
+footer is Create/Save, Clone, Delete. The composition table columns are
+**Component / Input / Mass (t) / Crew req. / Notes / Cost**; the Cost column is
+reserved for per-component costs (the Total row shows the aggregate build cost).
 
 `ship_crews`: named/unnamed crew with level + 6 stats + optional nullable cost;
 capped at `crew_count`. Access caps (059): `can_view_ship_editor` /
