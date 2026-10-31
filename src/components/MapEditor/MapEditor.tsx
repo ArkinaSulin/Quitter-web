@@ -483,7 +483,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                 <p className="text-[10px] uppercase tracking-wide text-gray-500">Map structures</p>
                 <div className="flex-1 min-h-0 overflow-y-auto space-y-1">
                   {Object.values(templates).length === 0 && (
-                    <p className="text-xs text-gray-500">No structure templates yet — author them in the Structure Editor.</p>
+                    <p className="text-xs text-gray-500">No structure templates yet — author them in the Structure Workshop.</p>
                   )}
                   {Object.values(templates)
                     .sort((a, b) => a.name.localeCompare(b.name))
@@ -511,7 +511,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                 <p className="text-[10px] uppercase tracking-wide text-gray-500">Map effects (permanent)</p>
                 <div className="flex-1 min-h-0 overflow-y-auto space-y-1">
                   {Object.values(effectTemplates).length === 0 && (
-                    <p className="text-xs text-gray-500">No zone-capable effects yet — author them in the Effect Editor.</p>
+                    <p className="text-xs text-gray-500">No zone-capable effects yet — author them in the Effect Workshop.</p>
                   )}
                   {Object.values(effectTemplates).map(t => {
                     const active = effectTemplateId === t.id;

@@ -502,6 +502,19 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
               Archfar's Shipyard
             </button>
           )}
+          {canViewComponentEditor && (
+            <button
+              onClick={() => router.push('/component-editor')}
+              className="w-full py-2 border rounded hover:brightness-125 transition"
+              style={{
+                borderColor: '#8a7a12',
+                background: 'repeating-linear-gradient(45deg, #2c2608 0, #2c2608 10px, #0f0d08 10px, #0f0d08 20px)',
+                color: '#f5efd2',
+              }}
+            >
+              {canUseComponentEditor ? 'Component Workshop' : 'Component Library'}
+            </button>
+          )}
           {canViewUnitEditor && (
             <button
               onClick={() => router.push('/unit-editor')}
@@ -538,7 +551,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                   color: '#f5efd2',
                 }}
               >
-                {canUseEffectEditor ? 'Effect Editor' : 'Effect Library'}
+                {canUseEffectEditor ? 'Effect Workshop' : 'Effect Library'}
               </button>
             )}
             {canViewWeaponEditor && (
@@ -551,7 +564,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                   color: '#f5efd2',
                 }}
               >
-                {canUseWeaponEditor ? 'Weapon Editor' : 'Weapon Library'}
+                {canUseWeaponEditor ? 'Weapon Workshop' : 'Weapon Library'}
               </button>
             )}
             {canViewStructureEditor && (
@@ -564,20 +577,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                   color: '#f5efd2',
                 }}
               >
-                {canUseStructureEditor ? 'Structure Editor' : 'Structure Library'}
-              </button>
-            )}
-            {canViewComponentEditor && (
-              <button
-                onClick={() => router.push('/component-editor')}
-                className="w-full py-2 border rounded hover:brightness-125 transition"
-                style={{
-                  borderColor: '#8a7a12',
-                  background: 'repeating-linear-gradient(45deg, #2c2608 0, #2c2608 10px, #0f0d08 10px, #0f0d08 20px)',
-                  color: '#f5efd2',
-                }}
-              >
-                {canUseComponentEditor ? 'Component Workshop' : 'Component Library'}
+                {canUseStructureEditor ? 'Structure Workshop' : 'Structure Library'}
               </button>
             )}
           {/* Delete Scenario — always the very last action button */}

@@ -79,7 +79,7 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
   return (
     <div className="flex flex-col w-full h-screen bg-[#0d0d1a] text-white overflow-hidden select-none">
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-700 bg-gray-900">
-        <h1 className="text-xl font-bold text-yellow-300">Weapon Editor</h1>
+        <h1 className="text-xl font-bold text-yellow-300">Weapon Workshop</h1>
         {readOnly && <span className="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-gray-300">Read-only view</span>}
         <a href="/" className="text-sm bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded">Main Menu</a>
       </header>

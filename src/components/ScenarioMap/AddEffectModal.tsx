@@ -96,7 +96,7 @@ export function AddEffectModal({
         </div>
 
         {templates.length === 0 ? (
-          <p className="text-xs text-gray-400">No effects in the library yet. Author some in the Effect Editor.</p>
+          <p className="text-xs text-gray-400">No effects in the library yet. Author some in the Effect Workshop.</p>
         ) : (
           <>
             <div>

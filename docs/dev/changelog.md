@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## Lobby editor naming + Component Workshop order (2026-10-27)
+**Files:** src/components/Lobby.tsx, src/components/EffectEditor/EffectEditor.tsx, src/components/WeaponEditor/WeaponEditor.tsx, src/components/StructureEditor/StructureEditor.tsx, src/components/MapEditor/MapEditor.tsx, src/components/ScenarioMap/AddEffectModal.tsx, docs/dev/changelog.md
+
+- **Component Workshop** now appears directly under **Archfar's Shipyard** in the
+  Lobby.
+- Editor display names now use **Workshop**: Effect Workshop, Weapon Workshop,
+  Structure Workshop (buttons and page headings; read-only buttons remain
+  “Library”).
+- Updated the related Map Editor/Add Effect help text.
+
 ## Component Workshop cascade delete + usage warning (migration 140) (2026-10-27)
 **Files:** supabase/migrations/140_ship_component_cascade.sql, src/components/ComponentEditor/ComponentEditor.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
 
