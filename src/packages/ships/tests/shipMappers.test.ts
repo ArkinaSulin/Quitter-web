@@ -78,7 +78,7 @@ describe('mapShipTemplateRow', () => {
       total_mass: '20', helm: 1, command_bridge: 0, rudders: 2, sails: 6,
       reinforcement: 0, crew_count: '3', crew_quarters: 2, passengers: 1, cargo_area: 8,
       ship_template_components: [{ component_id: 'acc-ram', count: 1 }],
-      ship_template_weapons: [{ weapon_id: 'wpn-ballista', mount_slot: 'Fore', count: 2 }],
+      ship_template_weapons: [{ id: 'row-1', weapon_id: 'wpn-ballista', count: 2 }],
     });
     expect(t.totalMass).toBe(20);
     expect(t.helm).toBe(1);
@@ -93,7 +93,9 @@ describe('mapShipTemplateRow', () => {
     expect(t.damageThreshold).toBe(15);
     expect(t.imageUrl).toBe('');
     expect(t.optionalComponents).toEqual([{ componentId: 'acc-ram', count: 1 }]);
-    expect(t.weapons).toEqual([{ weaponId: 'wpn-ballista', mountSlot: 'Fore', count: 2 }]);
+    expect(t.weapons).toEqual([{ id: 'row-1', weaponId: 'wpn-ballista', count: 2 }]);
+    expect(t.deckLayout.bow).toHaveLength(6);
+    expect(t.deckLayout.bow[1].ram).toBe(true);
   });
 });
 
@@ -104,7 +106,8 @@ describe('mapShipTemplateToRow', () => {
       totalMass: 20, helm: 1, commandBridge: 0, sails: 6, rudders: 2,
       reinforcement: 0, crewCount: 3, crewQuarters: 2, passengers: 1,
       weaponCapacity: 2, atmosphericSpeed: 5, damageThreshold: 15, imageUrl: 'https://x/ship.png',
-      cargoArea: 8, cardPlacements: {}, reinforcements: [], optionalComponents: [], weapons: [], crews: [],
+      cargoArea: 8, deckLayout: { bow: [], stern: [], port: [], body: [], starboard: [] },
+      reinforcements: [], optionalComponents: [], weapons: [], crews: [],
       createdAt: '', updatedAt: '',
     });
     expect(row.total_mass).toBe(20);
@@ -118,5 +121,6 @@ describe('mapShipTemplateToRow', () => {
     expect(row.damage_threshold).toBe(15);
     expect(row.image_url).toBe('https://x/ship.png');
     expect(row.cargo_area).toBe(8);
+    expect(row.deck_layout).toEqual({ bow: [], stern: [], port: [], body: [], starboard: [] });
   });
 });

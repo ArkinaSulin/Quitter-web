@@ -3,3 +3,4 @@
 export * from './lib/shipStats';
 export * from './lib/shipMappers';
 export * from './lib/componentMappers';
+export * from './lib/deckLayout';

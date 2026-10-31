@@ -202,6 +202,7 @@ as applied in the notes — check the live DB before relying on it).
 | 140 | Component/weapon catalog deletes cascade to template selections; usage RPCs for the delete confirmation | ⏳ run in Supabase |
 | 141 | Normalize `ship_components.name` / `ship_weapons.name`: underscores → spaces, first word capitalized, unique names enforced | ⏳ run in Supabase |
 | 142 | Ship card stats: `ship_components.dt` / `ship_weapons.dt` (default 15); `ship_templates.card_placements` + `reinforcements` jsonb | ⏳ run in Supabase |
+| 143 | Region-container deck: `ship_templates.deck_layout` jsonb; drop `card_placements`; stable `ship_template_weapons.id` UUID PK; drop `mount_slot` | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

@@ -29,10 +29,21 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Region-container ship deck + stable weapon rows (2026-10-31, migration
+  143)**: replaced fixed deck cells with five region containers
+  (Bow/Port/Body/Starboard/Stern), starting 3×9. Cards can be dragged to
+  move/swap; right-click a slot/card to move the slot to another region; a full
+  deck adds a middle row above Stern. The **Ram slot** is fixed at Bow row 1
+  middle: `max_range = 1` only, cannot leave it, cannot move, arc Bow. Weapon
+  rows are one line (weapon/amount/derived direction/mass/crew/remove); direction
+  comes from the deck region, `mount_slot` is dropped, and
+  `ship_template_weapons.id` is the stable UUID card key. Migration 143 adds
+  `ship_templates.deck_layout`, drops `card_placements`, adds the weapon-row UUID
+  PK, and drops `mount_slot`. **Apply 142 + 143 in Supabase.**
 - **Ship cards v2 + weapon child list (2026-10-27, migration 142)**: added
   per-component/weapon `dt` (default 15); weapons are edited in a child list
   under Weapon capacity with hard capacity limits. Every purchased item becomes
-  a layout card; `card_placements` stores future 0–26 deck cells. Armor and
+  a layout card (superseded by the 143 region deck). Armor and
   reinforcement do not get cards. Reinforcement is assigned by right-clicking a
   card and shown as a thick silvery border; the first hit destroys the
   reinforcement, the next damages the component. Card = name, mass boxes,

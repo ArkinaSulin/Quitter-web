@@ -14,6 +14,7 @@ import {
   ShipWeapon,
 } from '@/types/ship';
 import { DEFAULT_TOTAL_MASS } from './shipStats';
+import { normalizeDeckLayout } from './deckLayout';
 
 /** Map a ship_armors row. */
 export function mapShipArmorRow(row: any): ShipArmor {
@@ -98,7 +99,7 @@ export function mapShipTemplateRow(row: any): ShipTemplate {
     crewQuarters: Number(row.crew_quarters) || 0,
     passengers: Number(row.passengers) || 0,
     weaponCapacity: Number(row.weapon_capacity) || 0,
-    cardPlacements: row.card_placements || {},
+    deckLayout: normalizeDeckLayout(row.deck_layout),
     reinforcements: row.reinforcements || [],
     atmosphericSpeed: Number(row.atmospheric_speed) || 0,
     damageThreshold: row.damage_threshold != null ? Number(row.damage_threshold) : 15,
@@ -109,8 +110,8 @@ export function mapShipTemplateRow(row: any): ShipTemplate {
       count: Number(a.count) || 1,
     })),
     weapons: (row.ship_template_weapons || []).map((w: any) => ({
+      id: w.id,
       weaponId: w.weapon_id,
-      mountSlot: w.mount_slot || '',
       count: Number(w.count) || 1,
     })),
     crews: (row.ship_crews || []).map(mapShipCrewRow),
@@ -136,7 +137,7 @@ export function mapShipTemplateToRow(t: ShipTemplate) {
     crew_quarters: t.crewQuarters,
     passengers: t.passengers,
     weapon_capacity: t.weaponCapacity,
-    card_placements: t.cardPlacements,
+    deck_layout: t.deckLayout,
     reinforcements: t.reinforcements,
     atmospheric_speed: t.atmosphericSpeed,
     damage_threshold: t.damageThreshold,
@@ -157,7 +158,7 @@ export function mapOptionalComponentRows(t: ShipTemplate) {
 export function mapWeaponRows(t: ShipTemplate) {
   return t.weapons
     .filter(w => w.count > 0)
-    .map(w => ({ template_id: t.id, weapon_id: w.weaponId, mount_slot: w.mountSlot || null, count: w.count }));
+    .map(w => ({ id: w.id, template_id: t.id, weapon_id: w.weaponId, count: w.count }));
 }
 
 /** ship_crews rows for a template (used to rewrite the roster). */

@@ -8,16 +8,25 @@ import {
   ShipArmor,
   ShipComponent,
   ShipCrew,
+  ShipDeckRegion,
   ShipTemplate,
   ShipWeapon,
 } from '@/types/ship';
 import {
   COMPONENT_NAMES,
   DEFAULT_TOTAL_MASS,
+  DECK_REGION_LABELS,
+  DECK_REGIONS,
+  DeckCard,
   canPlaceWeapon,
   componentByName,
   computeShipBuild,
-  weaponFitsSlot,
+  createDefaultDeckLayout,
+  deckDirection,
+  isRamWeapon,
+  moveSlotToRegion,
+  syncDeckLayout,
+  weaponById,
   weaponTons,
   ShipBuild,
 } from '@/packages/ships';
@@ -34,8 +43,6 @@ import {
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { ShipLayout } from '@/components/ShipRenderer/ShipLayout';
 import { ShipComponentCardData } from '@/components/ShipRenderer/ShipComponentCard';
-
-const MOUNT_SLOTS = ['Fore', 'Left', 'Right', 'Rear', '360', 'Ram'] as const;
 
 function humanize(id: string): string {
   return id
@@ -137,6 +144,27 @@ function buildFromTemplate(
 ): ShipBuild | null {
   const armor = armors.find(a => a.id === t.armorId) || armors[0];
   if (!armor) return null;
+
+  const componentKey = (name: string, fallback: string) => {
+    const comp = componentByName(components, name);
+    return `component:${comp.id || fallback}`;
+  };
+  const deckCards: DeckCard[] = [];
+  if (t.helm > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.helm, 'helm'), kind: 'component' });
+  if (t.commandBridge > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.commandBridge, 'command_bridge'), kind: 'component' });
+  deckCards.push({ key: componentKey(COMPONENT_NAMES.hull, 'hull'), kind: 'component' });
+  if (t.sails > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.sail, 'sail'), kind: 'component' });
+  if (t.rudders > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.rudder, 'rudder'), kind: 'component' });
+  if (Math.round(t.cargoArea) > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.cargo, 'cargo'), kind: 'component' });
+  if (Math.round(t.crewQuarters) > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.crewQuarters, 'crew_quarters'), kind: 'component' });
+  for (const row of t.optionalComponents) {
+    deckCards.push({ key: `optional:${row.componentId}`, kind: 'component' });
+  }
+  for (const row of t.weapons) {
+    const weapon = weaponById(weapons, row.weaponId);
+    deckCards.push({ key: `weapon:${row.id}`, kind: 'weapon', ram: weapon ? isRamWeapon(weapon) : false });
+  }
+
   return {
     armor,
     components,
@@ -155,7 +183,7 @@ function buildFromTemplate(
     damageThreshold: t.damageThreshold ?? 15,
     cargoArea: t.cargoArea,
     crews: t.crews,
-    cardPlacements: t.cardPlacements,
+    deckLayout: syncDeckLayout(t.deckLayout, deckCards),
     reinforcements: t.reinforcements,
     templateComponents: t.optionalComponents,
     templateWeapons: t.weapons,
@@ -190,8 +218,14 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const [showComponentsModal, setShowComponentsModal] = useState(false);
   // Ship image picker.
   const [showImagePicker, setShowImagePicker] = useState(false);
-  // Right-click menu on a component/weapon card.
-  const [cardMenu, setCardMenu] = useState<{ data: ShipComponentCardData; x: number; y: number } | null>(null);
+  // Right-click menu on a component/weapon card or an empty deck slot.
+  const [cardMenu, setCardMenu] = useState<{
+    data?: ShipComponentCardData;
+    region?: ShipDeckRegion;
+    index?: number;
+    x: number;
+    y: number;
+  } | null>(null);
   // Crew roster modal.
   const [showCrewModal, setShowCrewModal] = useState(false);
   const [editingCrewIndex, setEditingCrewIndex] = useState<number | null>(null);
@@ -241,9 +275,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const dropCardKey = (key: string) => {
     if (!formData) return;
     updateFormData('reinforcements', formData.reinforcements.filter(k => k !== key));
-    updateFormData('cardPlacements', Object.fromEntries(
-      Object.entries(formData.cardPlacements).filter(([k]) => k !== key),
-    ));
   };
 
   const optionalComponentCount = (id: string): number =>
@@ -261,9 +292,20 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     if (count <= 0) dropCardKey(`optional:${id}`);
   };
 
-  const setWeaponRow = (index: number, field: 'weaponId' | 'mountSlot' | 'count', value: any) => {
+  const setWeaponRow = (index: number, field: 'weaponId' | 'count', value: any) => {
     if (!formData) return;
-    const old = formData.weapons[index];
+    if (field === 'weaponId') {
+      const candidate = weaponById(weaponsCatalog, value);
+      const anotherRam = formData.weapons.some((w, i) => {
+        if (i === index) return false;
+        const weapon = weaponById(weaponsCatalog, w.weaponId);
+        return weapon ? isRamWeapon(weapon) : false;
+      });
+      if (candidate && isRamWeapon(candidate) && anotherRam) {
+        setError('Only one Ram weapon can occupy the fixed Ram slot.');
+        return;
+      }
+    }
     const weapons = formData.weapons.map((w, i) => (i === index ? { ...w, [field]: value } : w));
     const nextMass = weapons.reduce((sum, w) => {
       const weapon = weaponsCatalog.find(x => x.id === w.weaponId);
@@ -275,31 +317,27 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     }
     setError(null);
     updateFormData('weapons', weapons);
-    const next = weapons[index];
-    if (old && next) {
-      const oldKey = `weapon:${old.weaponId}:${old.mountSlot}`;
-      const newKey = `weapon:${next.weaponId}:${next.mountSlot}`;
-      if (oldKey !== newKey) dropCardKey(oldKey);
-    }
   };
 
-  const addWeapon = (slot: string = 'Fore') => {
+  const addWeapon = () => {
     if (!formData || weaponsCatalog.length === 0) return;
     const capacity = stats?.weaponCapacity ?? 0;
     const placed = stats?.weaponPlacedTons ?? 0;
-    const candidate = weaponsCatalog.find(
-      w => weaponFitsSlot(w, slot) && canPlaceWeapon(placed, capacity, weaponTons(w)),
-    );
+    const hasRam = formData.weapons.some(w => {
+      const weapon = weaponById(weaponsCatalog, w.weaponId);
+      return weapon ? isRamWeapon(weapon) : false;
+    });
+    const candidate =
+      weaponsCatalog.find(w => !isRamWeapon(w) && canPlaceWeapon(placed, capacity, weaponTons(w))) ||
+      (!hasRam ? weaponsCatalog.find(w => isRamWeapon(w) && canPlaceWeapon(placed, capacity, weaponTons(w))) : undefined);
     if (!candidate) {
-      setError(slot === 'Ram'
-        ? 'No melee-range weapon (max range 1) fits the remaining weapon capacity.'
-        : 'No weapon capacity left. Increase the Weapon capacity row first.');
+      setError('No weapon capacity left. Increase the Weapon capacity row first.');
       return;
     }
     setError(null);
     updateFormData('weapons', [...formData.weapons, {
+      id: crypto.randomUUID(),
       weaponId: candidate.id,
-      mountSlot: slot,
       count: 1,
     }]);
   };
@@ -308,13 +346,25 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     if (!formData) return;
     const removed = formData.weapons[index];
     updateFormData('weapons', formData.weapons.filter((_, i) => i !== index));
-    if (removed) dropCardKey(`weapon:${removed.weaponId}:${removed.mountSlot}`);
+    if (removed) dropCardKey(`weapon:${removed.id}`);
   };
 
-  const handleCardContextMenu = (event: React.MouseEvent, data: ShipComponentCardData) => {
-    if (readOnly || !data.cardKey) return;
+  const handleSlotContextMenu = (
+    event: React.MouseEvent,
+    region: ShipDeckRegion,
+    index: number,
+    data?: ShipComponentCardData,
+  ) => {
+    if (readOnly) return;
     event.preventDefault();
-    setCardMenu({ data, x: event.clientX, y: event.clientY });
+    setCardMenu({ data, region, index, x: event.clientX, y: event.clientY });
+  };
+
+  const moveSlot = (target: ShipDeckRegion) => {
+    if (!formData || !build || !cardMenu?.region || cardMenu.index == null) return;
+    setError(null);
+    updateFormData('deckLayout', moveSlotToRegion(build.deckLayout!, cardMenu.region, cardMenu.index, target));
+    setCardMenu(null);
   };
 
   const toggleReinforcement = (cardKey: string) => {
@@ -484,7 +534,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       crewQuarters: 0,
       passengers: 0,
       weaponCapacity: 0,
-      cardPlacements: {},
+      deckLayout: createDefaultDeckLayout(),
       reinforcements: [],
       atmosphericSpeed: 0,
       damageThreshold: 15,
@@ -535,6 +585,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         ...formData,
         id: crypto.randomUUID(),
         name: cloneName.trim(),
+        deckLayout: build?.deckLayout ?? formData.deckLayout,
         optionalComponents: formData.optionalComponents.map(c => ({ ...c })),
         weapons: formData.weapons.map(w => ({ ...w })),
         crews: formData.crews.map(c => ({ ...c, id: crypto.randomUUID() })),
@@ -598,18 +649,19 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     }
 
     try {
+      const withDeck = { ...formData, deckLayout: build?.deckLayout ?? formData.deckLayout };
       const existsInDB = templates.some(t => t.id === formData.id);
       let id = formData.id;
       if (existsInDB) {
         const { error } = await supabase
           .from('ship_templates')
-          .update(mapShipTemplateToRow(formData))
+          .update(mapShipTemplateToRow(withDeck))
           .eq('id', formData.id)
           .select('id')
           .single();
         if (error) throw error;
       } else {
-        const { id: _id, ...insertData } = mapShipTemplateToRow(formData);
+        const { id: _id, ...insertData } = mapShipTemplateToRow(withDeck);
         const { data, error } = await supabase
           .from('ship_templates')
           .insert(insertData)
@@ -619,7 +671,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         id = data.id;
       }
 
-      const withId = { ...formData, id };
+      const withId = { ...withDeck, id };
       await supabase.from('ship_template_components').delete().eq('template_id', id);
       const accRows = mapOptionalComponentRows(withId);
       if (accRows.length) {
@@ -1061,7 +1113,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                 <span className="text-[10px] text-gray-400">Weapons (placed / capacity)</span>
                                 <button
                                   type="button"
-                                  onClick={() => addWeapon('Fore')}
+                                  onClick={addWeapon}
                                   disabled={readOnly || !canAddWeapon}
                                   className="px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
@@ -1075,59 +1127,45 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                               ) : (
                                 <div className="space-y-1">
                                   {formData.weapons.map((w, idx) => {
-                                    const wpn = weaponsCatalog.find(x => x.id === w.weaponId);
+                                    const wpn = weaponById(weaponsCatalog, w.weaponId);
                                     const tons = wpn ? weaponTons(wpn) : 0;
+                                    const direction = build
+                                      ? deckDirection(build.deckLayout!, `weapon:${w.id}`)
+                                      : '—';
                                     return (
-                                      <div key={`${w.weaponId}-${idx}`} className="space-y-1">
-                                        <div className="flex items-center gap-1">
-                                          <select
-                                            value={w.weaponId}
-                                            onChange={(e) => setWeaponRow(idx, 'weaponId', e.target.value)}
-                                            className="flex-1 min-w-0 bg-gray-700 text-white text-[10px] rounded px-1.5 py-1 border border-gray-600"
-                                          >
-                                            {weaponsCatalog
-                                              .filter(weap => weaponFitsSlot(weap, w.mountSlot) || weap.id === w.weaponId)
-                                              .map(weap => (
-                                                <option key={weap.id} value={weap.id}>
-                                                  {weap.name} — {weap.damage} ({weap.mass}t, crew {weap.crew}, every {weap.fireCycleStep} step{weap.fireCycleStep === 1 ? '' : 's'})
-                                                </option>
-                                              ))}
-                                          </select>
-                                          <button
-                                            type="button"
-                                            onClick={() => removeWeaponRow(idx)}
-                                            className="text-[10px] bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded text-white flex-none"
-                                          >
-                                            ×
-                                          </button>
+                                      <div key={w.id} className="flex items-center gap-1">
+                                        <select
+                                          value={w.weaponId}
+                                          onChange={(e) => setWeaponRow(idx, 'weaponId', e.target.value)}
+                                          className="flex-1 min-w-0 bg-gray-700 text-white text-[10px] rounded px-1.5 py-1 border border-gray-600"
+                                        >
+                                          {weaponsCatalog.map(weap => (
+                                            <option key={weap.id} value={weap.id}>
+                                              {weap.name} — {weap.damage} ({weap.mass}t, crew {weap.crew}, every {weap.fireCycleStep} step{weap.fireCycleStep === 1 ? '' : 's'})
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <div className="w-14 flex-none">
+                                          <NumInput
+                                            value={w.count}
+                                            min={1}
+                                            max={99}
+                                            onChange={(v) => setWeaponRow(idx, 'count', Math.max(1, Math.floor(v)))}
+                                          />
                                         </div>
-                                        <div className="flex items-center gap-1">
-                                          <select
-                                            value={w.mountSlot}
-                                            onChange={(e) => setWeaponRow(idx, 'mountSlot', e.target.value)}
-                                            className="w-20 bg-gray-700 text-white text-[10px] rounded px-1.5 py-1 border border-gray-600"
-                                          >
-                                            {MOUNT_SLOTS.map(slot => (
-                                              <option key={slot} value={slot}>{slot}</option>
-                                            ))}
-                                          </select>
-                                          <div className="w-14 flex-none">
-                                            <NumInput
-                                              value={w.count}
-                                              min={1}
-                                              max={99}
-                                              onChange={(v) => setWeaponRow(idx, 'count', Math.max(1, Math.floor(v)))}
-                                            />
-                                          </div>
-                                          <span className="text-[9px] text-gray-400 ml-auto">
-                                            {tons * w.count}t · {Math.ceil((wpn?.crew || 0) * w.count)} crew
-                                          </span>
-                                        </div>
-                                        {wpn && !weaponFitsSlot(wpn, w.mountSlot) && (
-                                          <p className="text-[9px] text-amber-400">
-                                            Ram slots accept only max-range-1 weapons. Change the slot or pick another weapon.
-                                          </p>
-                                        )}
+                                        <span className="w-12 flex-none text-center text-[9px] text-gray-300 bg-gray-900/70 border border-gray-600 rounded px-1 py-0.5">
+                                          {direction}
+                                        </span>
+                                        <span className="w-24 flex-none text-right text-[9px] text-gray-400">
+                                          {tons * w.count}t · {Math.ceil((wpn?.crew || 0) * w.count)} crew
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => removeWeaponRow(idx)}
+                                          className="text-[10px] bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded text-white flex-none"
+                                        >
+                                          ×
+                                        </button>
                                       </div>
                                     );
                                   })}
@@ -1332,7 +1370,9 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
               <ShipLayout
                 build={build}
                 stats={stats}
-                onCardContextMenu={readOnly ? undefined : handleCardContextMenu}
+                readOnly={readOnly}
+                onDeckChange={(layout) => updateFormData('deckLayout', layout)}
+                onSlotContextMenu={readOnly ? undefined : handleSlotContextMenu}
               />
 
               <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
@@ -1533,11 +1573,16 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         </div>
       )}
 
-      {/* Card context menu (reinforcement) */}
-      {cardMenu && formData && cardMenu.data.cardKey && (() => {
-        const key = cardMenu.data.cardKey!;
-        const assigned = formData.reinforcements.includes(key);
+      {/* Card / slot context menu */}
+      {cardMenu && formData && (() => {
+        const key = cardMenu.data?.cardKey;
+        const assigned = key ? formData.reinforcements.includes(key) : false;
         const canAdd = assigned || formData.reinforcements.length < formData.reinforcement;
+        const isRam = !!(
+          cardMenu.region &&
+          cardMenu.index != null &&
+          build?.deckLayout?.[cardMenu.region]?.[cardMenu.index]?.ram
+        );
         return (
           <>
             <div
@@ -1546,28 +1591,53 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
               onContextMenu={(e) => { e.preventDefault(); setCardMenu(null); }}
             />
             <div
-              className="fixed z-50 w-52 rounded border border-gray-600 bg-gray-800 p-1 shadow-xl"
+              className="fixed z-50 w-56 rounded border border-gray-600 bg-gray-800 p-1 shadow-xl"
               style={{
-                left: Math.min(cardMenu.x, window.innerWidth - 220),
-                top: Math.min(cardMenu.y, window.innerHeight - 130),
+                left: Math.min(cardMenu.x, window.innerWidth - 240),
+                top: Math.min(cardMenu.y, window.innerHeight - 300),
               }}
             >
-              <div className="px-2 py-1 text-[10px] text-gray-400 truncate">{cardMenu.data.name}</div>
-              <button
-                type="button"
-                onClick={() => toggleReinforcement(key)}
-                disabled={!canAdd}
-                className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {assigned ? 'Remove reinforcement' : 'Add reinforcement'}
-              </button>
-              {!assigned && !canAdd && (
-                <div className="px-2 pb-1 text-[9px] text-amber-400">No reinforcement modules left.</div>
+              {cardMenu.data && (
+                <div className="px-2 py-1 text-[10px] text-gray-400 truncate">
+                  {cardMenu.data.name}
+                </div>
+              )}
+              {key && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => toggleReinforcement(key)}
+                    disabled={!canAdd}
+                    className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {assigned ? 'Remove reinforcement' : 'Add reinforcement'}
+                  </button>
+                  {!assigned && !canAdd && (
+                    <div className="px-2 pb-1 text-[9px] text-amber-400">No reinforcement modules left.</div>
+                  )}
+                </>
+              )}
+              {cardMenu.region && cardMenu.index != null && !isRam && (
+                <>
+                  <div className="mt-1 border-t border-gray-700 px-2 pt-1 text-[9px] uppercase tracking-wide text-gray-500">
+                    Move slot to
+                  </div>
+                  {DECK_REGIONS.filter(region => region !== cardMenu.region).map(region => (
+                    <button
+                      key={region}
+                      type="button"
+                      onClick={() => moveSlot(region)}
+                      className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-gray-700"
+                    >
+                      {DECK_REGION_LABELS[region]}
+                    </button>
+                  ))}
+                </>
               )}
               <button
                 type="button"
                 onClick={() => setCardMenu(null)}
-                className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-gray-700 text-gray-400"
+                className="mt-1 w-full text-left px-2 py-1.5 text-xs rounded hover:bg-gray-700 text-gray-400"
               >
                 Cancel
               </button>

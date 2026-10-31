@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## Region-container ship deck + stable weapon rows (migration 143) (2026-10-31)
+**Files:** supabase/migrations/143_ship_deck_layout.sql, src/types/ship.ts, src/packages/ships/lib/{deckLayout,shipMappers,shipStats}.ts, src/packages/ships/index.ts, src/packages/ships/tests/{deckLayout,shipMappers,shipStats}.test.ts, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/ShipLayout.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
+
+- Replaced the fixed card grid with five region containers (Bow/Port/Body/
+  Starboard/Stern). The deck starts 3×9 (Bow 6, middle 5 each, Stern 6). Drag a
+  card onto an empty slot to move it or onto an occupied slot to swap. Right-click
+  a slot/card to move the whole slot to another region. When every slot is full, a
+  new middle row is added above Stern.
+- The **Ram slot** is fixed at Bow row 1, middle column: `max_range = 1` weapons
+  only, those weapons cannot leave it, its arc is Bow, and it cannot be moved.
+- Weapon rows are one line in the child list (weapon, amount, derived direction,
+  mass/crew, remove). Direction comes from the deck region; `mount_slot` is
+  dropped. `ship_template_weapons.id` is now the stable row/card UUID.
+- Migration 143 adds `ship_templates.deck_layout`, drops `card_placements`, adds
+  the weapon-row UUID primary key, and drops `mount_slot`.
+- Verification: `tsc`, ship package tests (57), full vitest (1215), depcruise
+  (pre-existing warnings), and `next build`. **Apply 142 + 143 in Supabase.**
+
 ## Ship cards v2 + weapon child list (migration 142) (2026-10-27)
 **Files:** supabase/migrations/142_ship_card_stats.sql, src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers,componentMappers}.ts, src/packages/ships/tests/*, src/components/ComponentEditor/*, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/{ShipComponentCard,ShipLayout}.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
 

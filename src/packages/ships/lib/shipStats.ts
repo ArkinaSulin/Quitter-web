@@ -19,6 +19,7 @@ import {
   ShipArmor,
   ShipComponent,
   ShipCrew,
+  ShipDeckLayout,
   ShipTemplateComponent,
   ShipTemplateWeapon,
   ShipWeapon,
@@ -133,8 +134,8 @@ export interface ShipBuild {
   templateWeapons: ShipTemplateWeapon[];
   /** Template roster used for the non-functional card crew preview. */
   crews?: ShipCrew[];
-  /** Future deck positions: card key -> cell index. */
-  cardPlacements?: Record<string, number>;
+  /** Region-container deck layout. */
+  deckLayout?: ShipDeckLayout;
   /** Card keys carrying a reinforcement. */
   reinforcements?: string[];
 }

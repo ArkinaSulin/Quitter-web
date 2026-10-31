@@ -82,11 +82,29 @@ export interface ShipTemplateComponent {
   count: number;
 }
 
-/** Weapon assignment (weapon + mount slot) on a template (`ship_template_weapons`). */
+/** Weapon assignment on a template (`ship_template_weapons`). */
 export interface ShipTemplateWeapon {
+  /** Stable row id; the layout card key is `weapon:<id>`. */
+  id: string;
   weaponId: string;
-  mountSlot: string;
   count: number;
+}
+
+export type ShipDeckRegion = 'bow' | 'stern' | 'port' | 'body' | 'starboard';
+
+/** One deck slot. `ram` marks the fixed Ram slot (always in Bow). */
+export interface ShipDeckSlot {
+  cardKey: string | null;
+  ram?: boolean;
+}
+
+/** Deck region containers. Middle regions can grow when all slots are full. */
+export interface ShipDeckLayout {
+  bow: ShipDeckSlot[];
+  stern: ShipDeckSlot[];
+  port: ShipDeckSlot[];
+  body: ShipDeckSlot[];
+  starboard: ShipDeckSlot[];
 }
 
 /** A single crew member on a template (`ship_crews`). `name`/`cost` are optional (null). */
@@ -126,8 +144,8 @@ export interface ShipTemplate {
   passengers: number;
   /** Authored weapon capacity mass; placed weapons must fit inside it. */
   weaponCapacity: number;
-  /** Future 3x9 deck positions: card key -> cell index (0-26). */
-  cardPlacements: Record<string, number>;
+  /** Region-container deck layout. Empty until the editor syncs purchases. */
+  deckLayout: ShipDeckLayout;
   /** Card keys carrying a reinforcement. */
   reinforcements: string[];
   /** Authored atmospheric speed (0–12). */

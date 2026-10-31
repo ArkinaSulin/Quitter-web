@@ -77,7 +77,7 @@ const WEAPONS: ShipWeapon[] = [
 
 const ARMOR = (id: string) => ARMORS.find(a => a.id === id)!;
 const acc = (id: string, count = 1): ShipTemplateComponent => ({ componentId: id, count });
-const wpn = (weaponId: string, count = 1, mountSlot = 'Fore'): ShipTemplateWeapon => ({ weaponId, mountSlot, count });
+const wpn = (weaponId: string, count = 1, id = weaponId): ShipTemplateWeapon => ({ id, weaponId, count });
 
 function buildBase(opts: {
   armorId: string;
