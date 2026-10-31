@@ -115,16 +115,21 @@ export function ComponentFields({
 
       {isWeapon && (
         <>
-          <Cell label="Damage">
-            <input
-              type="text"
-              value={value.damage}
-              onChange={e => patch({ damage: e.target.value })}
-              className={INPUT}
-              placeholder="e.g. 2d10"
-            />
-          </Cell>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-[1fr_140px] gap-2">
+            <Cell label="Damage">
+              <input
+                type="text"
+                value={value.damage}
+                onChange={e => patch({ damage: e.target.value })}
+                className={INPUT}
+                placeholder="e.g. 2d10"
+              />
+            </Cell>
+            <Cell label="Fire cycle (steps)">
+              <NumInput value={value.fireCycleStep} min={1} integer onChange={v => patch({ fireCycleStep: v })} />
+            </Cell>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
             <Cell label="Min range">
               <NumInput value={value.minRange} min={0} integer onChange={v => patch({ minRange: v })} />
             </Cell>
@@ -133,9 +138,6 @@ export function ComponentFields({
             </Cell>
             <Cell label="Max range">
               <NumInput value={value.maxRange} min={0} integer onChange={v => patch({ maxRange: v })} />
-            </Cell>
-            <Cell label="Fire cycle (steps)">
-              <NumInput value={value.fireCycleStep} min={1} integer onChange={v => patch({ fireCycleStep: v })} />
             </Cell>
           </div>
           <p className="text-[10px] text-gray-500">
@@ -163,9 +165,12 @@ export function ComponentFields({
         </Cell>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <Cell label="AC">
           <NumInput value={value.ac} min={0} integer onChange={v => patch({ ac: v })} />
+        </Cell>
+        <Cell label="DT">
+          <NumInput value={value.dt} min={0} integer onChange={v => patch({ dt: v })} />
         </Cell>
         <Cell label="Image URL">
           <input

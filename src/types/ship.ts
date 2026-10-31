@@ -26,6 +26,7 @@ export interface ShipComponent {
   cost: number;
   hittable: boolean;
   effect: string | null;
+  dt: number;
   /** Built-in rule component (hull/helm/.../weapon_capacity); optional rows are false. */
   builtIn: boolean;
   ac?: number;
@@ -43,6 +44,7 @@ export interface ShipWeapon {
   maxRange: number;
   /** Steps between shots: 1 = every step, 2 = every other step. */
   fireCycleStep: number;
+  dt: number;
   crew: number;
   cost: number;
   ammoCost: number | null;
@@ -63,6 +65,7 @@ export interface ShipComponentTemplate {
   cost: number;
   effect: string;
   builtIn: boolean;
+  dt: number;
   damage: string;
   minRange: number;
   range: number;
@@ -123,6 +126,10 @@ export interface ShipTemplate {
   passengers: number;
   /** Authored weapon capacity mass; placed weapons must fit inside it. */
   weaponCapacity: number;
+  /** Future 3x9 deck positions: card key -> cell index (0-26). */
+  cardPlacements: Record<string, number>;
+  /** Card keys carrying a reinforcement. */
+  reinforcements: string[];
   /** Authored atmospheric speed (0–12). */
   atmosphericSpeed: number;
   /** Authored damage threshold (default 15). */

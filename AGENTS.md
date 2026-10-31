@@ -14,7 +14,7 @@ Newest work first; the authoritative, per-session record is `docs/dev/changelog.
 The most recent work completed the **Basic AI current scope** (whole-activation
 climb routes, vacant-top/route locks, redundant-wall pathing, rout step limits,
 local-only preview markers), the **Halloween Siege** minigame (migration 133),
-and the **Spelljammer mass-first overhaul** (migrations 134–138: no ship frames,
+and the **Spelljammer mass-first overhaul** (migrations 134–142: no ship frames,
   authored quarters/passengers, template-checked mass rounding, UUID/name ship
   catalogs, and the Component Workshop).
 Prior sessions added **map structures** (migrations 093–095: template library + Structure Editor, edge/hex
@@ -29,6 +29,15 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Ship cards v2 + weapon child list (2026-10-27, migration 142)**: added
+  per-component/weapon `dt` (default 15); weapons are edited in a child list
+  under Weapon capacity with hard capacity limits. Every purchased item becomes
+  a layout card; `card_placements` stores future 0–26 deck cells. Armor and
+  reinforcement do not get cards. Reinforcement is assigned by right-clicking a
+  card and shown as a thick silvery border; the first hit destroys the
+  reinforcement, the next damages the component. Card = name, mass boxes,
+  AC/DT, crew list; no images; rows stretch to the tallest card. **Apply 142 in
+  Supabase.**
 - **Ship catalog name normalization (2026-10-27, migration 141)**: every
   `ship_components.name` / `ship_weapons.name` is now a display name
   (`command_bridge` → `Command bridge`, `ballista_light` → `Ballista light`).
@@ -307,7 +316,7 @@ Defensive reserves hold a **central station ~2
   some elevation nuances, per-team doctrine toggles; the AI never controls
   heroes.
 - **Turn counter desync reported in playtest** (separate from AI roles): reproduce with End Turn / undo-redo before changing turn advancement.
-- **Spelljammer module implementation** (mass-first builder/stats/renderer + Ship Editor v2 + Component Workshop done in migrations 134–138; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering, reinforcement target assignment, command-bridge bonus wiring. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`) applied; **134 applied; apply 135–138 in Supabase**.
+- **Spelljammer module implementation** (mass-first builder/stats/renderer + Ship Editor v2 + Component Workshop + card v2 done in migrations 134–142; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering, reinforcement assignment/combat behavior, command-bridge bonus wiring. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`), 134–141 applied; **apply 142 in Supabase**.
 - Migration `013_turn_tracking.sql` — applied to the DB (done).
 - Migrations 010/011/012 — user applied to the DB.
 - `UnitEditor.tsx`: `isHero` toggle should force `'Hero'` formation — postponed until the consolidated interface update.

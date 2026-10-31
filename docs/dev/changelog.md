@@ -1,5 +1,26 @@
 # QuiTTER Changelog
 
+## Ship cards v2 + weapon child list (migration 142) (2026-10-27)
+**Files:** supabase/migrations/142_ship_card_stats.sql, src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers,componentMappers}.ts, src/packages/ships/tests/*, src/components/ComponentEditor/*, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/{ShipComponentCard,ShipLayout}.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
+
+- Added per-component/weapon **DT** (`ship_components.dt`, `ship_weapons.dt`,
+  default 15); the workshop form shows AC / DT / Image URL together.
+- Weapons now live in a **child list under Weapon capacity** in the middle
+  table. Adding/increasing a weapon beyond capacity is blocked, and capacity
+  cannot be lowered below placed weapon mass. The right-panel weapon list is
+  removed.
+- Every purchased component/weapon becomes a layout card automatically.
+  `ship_templates.card_placements` stores future 0–26 deck cells.
+- Armor and reinforcement no longer get cards. Reinforced cards are assigned via
+  right-click and get a thick silvery border; reinforcement is a protection layer
+  destroyed by the first hit. `ship_templates.reinforcements` stores card keys.
+- Card layout: name → mass boxes → `AC / DT` → crew list → note. No images, no
+  square aspect ratio; cards and rows stretch to the tallest card. Crew list is
+  a non-functional roster preview in layout order.
+- Component Workshop weapon form puts Damage + Fire Cycle on one row.
+- Verification: `tsc`, full vitest suite (1211 tests), depcruise (pre-existing
+  warnings), and `next build`. **Apply 142 in Supabase** (140/141 applied).
+
 ## Ship composition table fluid widths (2026-10-27)
 **Files:** src/components/ShipEditor/ShipEditor.tsx, docs/dev/changelog.md
 

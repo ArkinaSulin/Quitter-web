@@ -33,7 +33,7 @@ describe('mapShipComponentRow', () => {
     });
     expect(c).toEqual({
       id: 'comp-1', name: 'sail', mass: 1, crew: 0.5, cost: 0,
-      hittable: true, effect: 'wind', builtIn: true, ac: 10, imageUrl: '',
+      hittable: true, effect: 'wind', dt: 15, builtIn: true, ac: 10, imageUrl: '',
     });
   });
 
@@ -55,7 +55,7 @@ describe('mapShipWeaponRow', () => {
     });
     expect(w).toEqual({
       id: 'wpn-1', name: 'ballista_light', mass: 1, damage: '2d10', minRange: 0,
-      range: 3, maxRange: 10, fireCycleStep: 2, crew: 2, cost: 500,
+      range: 3, maxRange: 10, fireCycleStep: 2, dt: 15, crew: 2, cost: 500,
       ammoCost: 1, special: 'ammo 1gp', ac: 10, imageUrl: '',
     });
   });
@@ -104,7 +104,7 @@ describe('mapShipTemplateToRow', () => {
       totalMass: 20, helm: 1, commandBridge: 0, sails: 6, rudders: 2,
       reinforcement: 0, crewCount: 3, crewQuarters: 2, passengers: 1,
       weaponCapacity: 2, atmosphericSpeed: 5, damageThreshold: 15, imageUrl: 'https://x/ship.png',
-      cargoArea: 8, optionalComponents: [], weapons: [], crews: [],
+      cargoArea: 8, cardPlacements: {}, reinforcements: [], optionalComponents: [], weapons: [], crews: [],
       createdAt: '', updatedAt: '',
     });
     expect(row.total_mass).toBe(20);

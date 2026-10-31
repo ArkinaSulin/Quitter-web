@@ -19,6 +19,7 @@ export function mapComponentToTemplate(row: ShipComponent): ShipComponentTemplat
     cost: row.cost,
     effect: row.effect || '',
     builtIn: row.builtIn,
+    dt: row.dt,
     damage: '',
     minRange: 0,
     range: 0,
@@ -41,6 +42,7 @@ export function mapWeaponToTemplate(row: ShipWeapon): ShipComponentTemplate {
     cost: row.cost,
     effect: '',
     builtIn: false,
+    dt: row.dt,
     damage: row.damage,
     minRange: row.minRange,
     range: row.range,
@@ -58,6 +60,7 @@ export function validateShipComponentTemplate(t: ShipComponentTemplate): string 
   if (!Number.isFinite(t.mass) || t.mass < 0) return 'Mass must be 0 or more.';
   if (!Number.isFinite(t.crew) || t.crew < 0) return 'Crew must be 0 or more.';
   if (!Number.isFinite(t.cost) || t.cost < 0) return 'Cost must be 0 or more.';
+  if (!Number.isFinite(t.dt) || t.dt < 0) return 'Damage threshold must be 0 or more.';
   if (t.kind === 'weapon') {
     if (!t.damage.trim()) return 'Weapon damage is required.';
     if (!Number.isFinite(t.minRange) || t.minRange < 0) return 'Min range must be 0 or more.';
@@ -79,6 +82,7 @@ export function componentTemplateToComponentRow(t: ShipComponentTemplate) {
     hittable: t.hittable,
     effect: t.effect || null,
     built_in: t.builtIn,
+    dt: t.dt,
     ac: t.ac,
     image_url: t.imageUrl || '',
   };
@@ -93,6 +97,7 @@ export function componentTemplateToWeaponRow(t: ShipComponentTemplate) {
     range: t.range,
     max_range: t.maxRange,
     fire_cycle_step: t.fireCycleStep,
+    dt: t.dt,
     crew: t.crew,
     cost: t.cost,
     special: t.special || null,

@@ -18,6 +18,7 @@
 import {
   ShipArmor,
   ShipComponent,
+  ShipCrew,
   ShipTemplateComponent,
   ShipTemplateWeapon,
   ShipWeapon,
@@ -49,19 +50,19 @@ export const COMPONENT_NAMES = {
 } as const;
 
 const DEFAULT_COMPONENTS: Record<string, ShipComponent> = {
-  [COMPONENT_NAMES.hull]: { id: 'Hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, ac: 10, imageUrl: '' },
-  [COMPONENT_NAMES.helm]: { id: 'Helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.commandBridge]: { id: 'Command bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.sail]: { id: 'Sail', name: 'Sail', mass: 1, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.rudder]: { id: 'Rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.reinforcement]: { id: 'Reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.cargo]: { id: 'Cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.crewQuarters]: { id: 'Crew quarters', name: 'Crew quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.weaponCapacity]: { id: 'Weapon capacity', name: 'Weapon capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true },
+  [COMPONENT_NAMES.hull]: { id: 'Hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, dt: 15, ac: 10, imageUrl: '' },
+  [COMPONENT_NAMES.helm]: { id: 'Helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
+  [COMPONENT_NAMES.commandBridge]: { id: 'Command bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
+  [COMPONENT_NAMES.sail]: { id: 'Sail', name: 'Sail', mass: 1, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
+  [COMPONENT_NAMES.rudder]: { id: 'Rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
+  [COMPONENT_NAMES.reinforcement]: { id: 'Reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
+  [COMPONENT_NAMES.cargo]: { id: 'Cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
+  [COMPONENT_NAMES.crewQuarters]: { id: 'Crew quarters', name: 'Crew quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
+  [COMPONENT_NAMES.weaponCapacity]: { id: 'Weapon capacity', name: 'Weapon capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true, dt: 15 },
 };
 
 const EMPTY_COMPONENT: ShipComponent = {
-  id: '', name: '', mass: 0, crew: 0, cost: 0, hittable: true, effect: null, builtIn: false,
+  id: '', name: '', mass: 0, crew: 0, cost: 0, hittable: true, effect: null, builtIn: false, dt: 15,
 };
 
 export function clamp(v: number, lo: number, hi: number): number {
@@ -130,6 +131,12 @@ export interface ShipBuild {
   cargoArea: number;
   templateComponents: ShipTemplateComponent[];
   templateWeapons: ShipTemplateWeapon[];
+  /** Template roster used for the non-functional card crew preview. */
+  crews?: ShipCrew[];
+  /** Future deck positions: card key -> cell index. */
+  cardPlacements?: Record<string, number>;
+  /** Card keys carrying a reinforcement. */
+  reinforcements?: string[];
 }
 
 // --- Crew -------------------------------------------------------------------

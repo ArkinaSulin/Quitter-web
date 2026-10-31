@@ -33,6 +33,7 @@ import {
 } from '@/packages/ships';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { ShipLayout } from '@/components/ShipRenderer/ShipLayout';
+import { ShipComponentCardData } from '@/components/ShipRenderer/ShipComponentCard';
 
 const MOUNT_SLOTS = ['Fore', 'Left', 'Right', 'Rear', '360', 'Ram'] as const;
 
@@ -153,6 +154,9 @@ function buildFromTemplate(
     atmosphericSpeed: t.atmosphericSpeed ?? 0,
     damageThreshold: t.damageThreshold ?? 15,
     cargoArea: t.cargoArea,
+    crews: t.crews,
+    cardPlacements: t.cardPlacements,
+    reinforcements: t.reinforcements,
     templateComponents: t.optionalComponents,
     templateWeapons: t.weapons,
   };
@@ -186,6 +190,8 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const [showComponentsModal, setShowComponentsModal] = useState(false);
   // Ship image picker.
   const [showImagePicker, setShowImagePicker] = useState(false);
+  // Right-click menu on a component/weapon card.
+  const [cardMenu, setCardMenu] = useState<{ data: ShipComponentCardData; x: number; y: number } | null>(null);
   // Crew roster modal.
   const [showCrewModal, setShowCrewModal] = useState(false);
   const [editingCrewIndex, setEditingCrewIndex] = useState<number | null>(null);
@@ -232,6 +238,14 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     setFormData(prev => (prev ? { ...prev, [field]: value } : prev));
   }, [readOnly]);
 
+  const dropCardKey = (key: string) => {
+    if (!formData) return;
+    updateFormData('reinforcements', formData.reinforcements.filter(k => k !== key));
+    updateFormData('cardPlacements', Object.fromEntries(
+      Object.entries(formData.cardPlacements).filter(([k]) => k !== key),
+    ));
+  };
+
   const optionalComponentCount = (id: string): number =>
     formData?.optionalComponents.find(c => c.componentId === id)?.count || 0;
 
@@ -244,12 +258,29 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         ? formData.optionalComponents.map(c => (c.componentId === id ? { ...c, count } : c))
         : [...formData.optionalComponents, { componentId: id, count }];
     updateFormData('optionalComponents', next);
+    if (count <= 0) dropCardKey(`optional:${id}`);
   };
 
   const setWeaponRow = (index: number, field: 'weaponId' | 'mountSlot' | 'count', value: any) => {
     if (!formData) return;
+    const old = formData.weapons[index];
     const weapons = formData.weapons.map((w, i) => (i === index ? { ...w, [field]: value } : w));
+    const nextMass = weapons.reduce((sum, w) => {
+      const weapon = weaponsCatalog.find(x => x.id === w.weaponId);
+      return sum + (weapon ? weaponTons(weapon) * w.count : 0);
+    }, 0);
+    if (nextMass > formData.weaponCapacity) {
+      setError('That change would exceed the allocated weapon capacity.');
+      return;
+    }
+    setError(null);
     updateFormData('weapons', weapons);
+    const next = weapons[index];
+    if (old && next) {
+      const oldKey = `weapon:${old.weaponId}:${old.mountSlot}`;
+      const newKey = `weapon:${next.weaponId}:${next.mountSlot}`;
+      if (oldKey !== newKey) dropCardKey(oldKey);
+    }
   };
 
   const addWeapon = (slot: string = 'Fore') => {
@@ -275,7 +306,33 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
   const removeWeaponRow = (index: number) => {
     if (!formData) return;
+    const removed = formData.weapons[index];
     updateFormData('weapons', formData.weapons.filter((_, i) => i !== index));
+    if (removed) dropCardKey(`weapon:${removed.weaponId}:${removed.mountSlot}`);
+  };
+
+  const handleCardContextMenu = (event: React.MouseEvent, data: ShipComponentCardData) => {
+    if (readOnly || !data.cardKey) return;
+    event.preventDefault();
+    setCardMenu({ data, x: event.clientX, y: event.clientY });
+  };
+
+  const toggleReinforcement = (cardKey: string) => {
+    if (!formData) return;
+    const assigned = formData.reinforcements.includes(cardKey);
+    if (assigned) {
+      updateFormData('reinforcements', formData.reinforcements.filter(key => key !== cardKey));
+      setCardMenu(null);
+      return;
+    }
+    if (formData.reinforcements.length >= formData.reinforcement) {
+      setError('No reinforcement modules left. Increase the Reinforcement row first.');
+      setCardMenu(null);
+      return;
+    }
+    setError(null);
+    updateFormData('reinforcements', [...formData.reinforcements, cardKey]);
+    setCardMenu(null);
   };
 
   const openAddCrew = () => {
@@ -427,6 +484,8 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       crewQuarters: 0,
       passengers: 0,
       weaponCapacity: 0,
+      cardPlacements: {},
+      reinforcements: [],
       atmosphericSpeed: 0,
       damageThreshold: 15,
       imageUrl: '',
@@ -969,7 +1028,20 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="py-1 pr-2">Weapon capacity</td>
                           <td className="text-center px-2">
                             <div className="mx-auto w-full max-w-16">
-                              <NumInput value={formData.weaponCapacity} min={0} max={999} onChange={(v) => updateFormData('weaponCapacity', Math.max(0, Math.floor(v)))} />
+                              <NumInput
+                                value={formData.weaponCapacity}
+                                min={Math.ceil(weaponPlaced)}
+                                max={999}
+                                onChange={(v) => {
+                                  const next = Math.max(0, Math.floor(v));
+                                  if (next < Math.ceil(weaponPlaced)) {
+                                    setError('Weapon capacity cannot be below the mass of placed weapons.');
+                                    return;
+                                  }
+                                  setError(null);
+                                  updateFormData('weaponCapacity', next);
+                                }}
+                              />
                             </div>
                           </td>
                           <td className="text-right px-2">{stats?.weaponCapacity ?? 0}</td>
@@ -979,6 +1051,98 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                             Placed {stats?.weaponPlacedTons ?? 0}t / {stats?.weaponCapacity ?? 0}t · crew from chosen weapons
                           </td>
                           <td className="text-right pl-2 text-gray-500">—</td>
+                        </tr>
+
+                        {/* Weapon child list */}
+                        <tr className="border-b border-gray-700/50">
+                          <td colSpan={6} className="pb-2 pl-6 pr-2">
+                            <div className="rounded border border-gray-700 bg-gray-900/40 p-2">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[10px] text-gray-400">Weapons (placed / capacity)</span>
+                                <button
+                                  type="button"
+                                  onClick={() => addWeapon('Fore')}
+                                  disabled={readOnly || !canAddWeapon}
+                                  className="px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  + Add weapon
+                                </button>
+                              </div>
+                              {formData.weapons.length === 0 ? (
+                                <div className="text-[11px] text-gray-400 border border-gray-700 rounded p-2 text-center">
+                                  No weapons mounted.
+                                </div>
+                              ) : (
+                                <div className="space-y-1">
+                                  {formData.weapons.map((w, idx) => {
+                                    const wpn = weaponsCatalog.find(x => x.id === w.weaponId);
+                                    const tons = wpn ? weaponTons(wpn) : 0;
+                                    return (
+                                      <div key={`${w.weaponId}-${idx}`} className="space-y-1">
+                                        <div className="flex items-center gap-1">
+                                          <select
+                                            value={w.weaponId}
+                                            onChange={(e) => setWeaponRow(idx, 'weaponId', e.target.value)}
+                                            className="flex-1 min-w-0 bg-gray-700 text-white text-[10px] rounded px-1.5 py-1 border border-gray-600"
+                                          >
+                                            {weaponsCatalog
+                                              .filter(weap => weaponFitsSlot(weap, w.mountSlot) || weap.id === w.weaponId)
+                                              .map(weap => (
+                                                <option key={weap.id} value={weap.id}>
+                                                  {weap.name} — {weap.damage} ({weap.mass}t, crew {weap.crew}, every {weap.fireCycleStep} step{weap.fireCycleStep === 1 ? '' : 's'})
+                                                </option>
+                                              ))}
+                                          </select>
+                                          <button
+                                            type="button"
+                                            onClick={() => removeWeaponRow(idx)}
+                                            className="text-[10px] bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded text-white flex-none"
+                                          >
+                                            ×
+                                          </button>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                          <select
+                                            value={w.mountSlot}
+                                            onChange={(e) => setWeaponRow(idx, 'mountSlot', e.target.value)}
+                                            className="w-20 bg-gray-700 text-white text-[10px] rounded px-1.5 py-1 border border-gray-600"
+                                          >
+                                            {MOUNT_SLOTS.map(slot => (
+                                              <option key={slot} value={slot}>{slot}</option>
+                                            ))}
+                                          </select>
+                                          <div className="w-14 flex-none">
+                                            <NumInput
+                                              value={w.count}
+                                              min={1}
+                                              max={99}
+                                              onChange={(v) => setWeaponRow(idx, 'count', Math.max(1, Math.floor(v)))}
+                                            />
+                                          </div>
+                                          <span className="text-[9px] text-gray-400 ml-auto">
+                                            {tons * w.count}t · {Math.ceil((wpn?.crew || 0) * w.count)} crew
+                                          </span>
+                                        </div>
+                                        {wpn && !weaponFitsSlot(wpn, w.mountSlot) && (
+                                          <p className="text-[9px] text-amber-400">
+                                            Ram slots accept only max-range-1 weapons. Change the slot or pick another weapon.
+                                          </p>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              {weaponOverCapacity && (
+                                <p className="text-[10px] text-red-400 mt-1">
+                                  Placed weapons exceed the allocated capacity.
+                                </p>
+                              )}
+                              <p className="text-[9px] text-gray-500 mt-1">
+                                Weapon crew: {stats?.weaponCrew ?? 0}. Crew comes from the chosen weapons.
+                              </p>
+                            </div>
+                          </td>
                         </tr>
 
                         <tr className="border-b border-gray-700/50">
@@ -1010,7 +1174,16 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="py-1 pr-2">Reinforcement</td>
                           <td className="text-center px-2">
                             <div className="mx-auto w-full max-w-16">
-                              <NumInput value={formData.reinforcement} min={0} max={99} onChange={(v) => updateFormData('reinforcement', Math.max(0, Math.floor(v)))} />
+                              <NumInput
+                                value={formData.reinforcement}
+                                min={0}
+                                max={99}
+                                onChange={(v) => {
+                                  const next = Math.max(0, Math.floor(v));
+                                  updateFormData('reinforcement', next);
+                                  updateFormData('reinforcements', formData.reinforcements.slice(0, next));
+                                }}
+                              />
                             </div>
                           </td>
                           <td className="text-right px-2">{stats?.massBreakdown.reinforcement ?? 0}</td>
@@ -1159,100 +1332,8 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
               <ShipLayout
                 build={build}
                 stats={stats}
-                onAddWeapon={readOnly ? undefined : addWeapon}
-                onAddComponent={readOnly ? undefined : () => setShowComponentsModal(true)}
+                onCardContextMenu={readOnly ? undefined : handleCardContextMenu}
               />
-
-              <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-[10px] text-gray-400">
-                    Weapons — placed {stats.weaponPlacedTons} / {stats.weaponCapacity}t
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => addWeapon('Fore')}
-                    disabled={readOnly || !canAddWeapon}
-                    className="px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    + Add weapon
-                  </button>
-                </div>
-
-                {weaponOverCapacity && (
-                  <p className="text-[10px] text-red-400 mb-2">
-                    Placed weapons exceed the allocated capacity. Raise Weapon capacity or remove a weapon.
-                  </p>
-                )}
-
-                {formData.weapons.length === 0 ? (
-                  <div className="text-[11px] text-gray-400 bg-gray-800/50 border border-gray-700 rounded p-2 text-center">
-                    No weapons mounted.
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {formData.weapons.map((w, idx) => {
-                      const wpn = weaponsCatalog.find(x => x.id === w.weaponId);
-                      const tons = wpn ? weaponTons(wpn) : 0;
-                      return (
-                        <div key={`${w.weaponId}-${idx}`} className="bg-gray-900/40 rounded p-1.5 space-y-1">
-                          <div className="flex items-center gap-1">
-                            <select
-                              value={w.weaponId}
-                              onChange={(e) => setWeaponRow(idx, 'weaponId', e.target.value)}
-                              className="flex-1 min-w-0 bg-gray-700 text-white text-[10px] rounded px-1.5 py-1 border border-gray-600"
-                            >
-                              {weaponsCatalog
-                                .filter(weap => weaponFitsSlot(weap, w.mountSlot) || weap.id === w.weaponId)
-                                .map(weap => (
-                                  <option key={weap.id} value={weap.id}>
-                                    {weap.name} — {weap.damage} ({weap.mass}t, crew {weap.crew}, every {weap.fireCycleStep} step{weap.fireCycleStep === 1 ? '' : 's'})
-                                  </option>
-                                ))}
-                            </select>
-                            <button
-                              type="button"
-                              onClick={() => removeWeaponRow(idx)}
-                              className="text-[10px] bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded text-white flex-none"
-                            >
-                              ×
-                            </button>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <select
-                              value={w.mountSlot}
-                              onChange={(e) => setWeaponRow(idx, 'mountSlot', e.target.value)}
-                              className="w-20 bg-gray-700 text-white text-[10px] rounded px-1.5 py-1 border border-gray-600"
-                            >
-                              {MOUNT_SLOTS.map(slot => (
-                                <option key={slot} value={slot}>{slot}</option>
-                              ))}
-                            </select>
-                            <div className="w-14 flex-none">
-                              <NumInput
-                                value={w.count}
-                                min={1}
-                                max={99}
-                                onChange={(v) => setWeaponRow(idx, 'count', Math.max(1, Math.floor(v)))}
-                              />
-                            </div>
-                            <span className="text-[9px] text-gray-400 ml-auto">
-                              {tons * w.count}t · {Math.ceil((wpn?.crew || 0) * w.count)} crew
-                            </span>
-                          </div>
-                          {wpn && !weaponFitsSlot(wpn, w.mountSlot) && (
-                            <p className="text-[9px] text-amber-400">
-                              Ram slots accept only max-range-1 weapons. Change the slot or pick another weapon.
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                <p className="text-[9px] text-gray-500 mt-1">
-                  Weapon crew: {stats.weaponCrew}. Crew comes from the chosen weapons.
-                </p>
-              </div>
 
               <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
                 <div className="flex items-center justify-between mb-2">
@@ -1451,6 +1532,49 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
           </div>
         </div>
       )}
+
+      {/* Card context menu (reinforcement) */}
+      {cardMenu && formData && cardMenu.data.cardKey && (() => {
+        const key = cardMenu.data.cardKey!;
+        const assigned = formData.reinforcements.includes(key);
+        const canAdd = assigned || formData.reinforcements.length < formData.reinforcement;
+        return (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setCardMenu(null)}
+              onContextMenu={(e) => { e.preventDefault(); setCardMenu(null); }}
+            />
+            <div
+              className="fixed z-50 w-52 rounded border border-gray-600 bg-gray-800 p-1 shadow-xl"
+              style={{
+                left: Math.min(cardMenu.x, window.innerWidth - 220),
+                top: Math.min(cardMenu.y, window.innerHeight - 130),
+              }}
+            >
+              <div className="px-2 py-1 text-[10px] text-gray-400 truncate">{cardMenu.data.name}</div>
+              <button
+                type="button"
+                onClick={() => toggleReinforcement(key)}
+                disabled={!canAdd}
+                className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {assigned ? 'Remove reinforcement' : 'Add reinforcement'}
+              </button>
+              {!assigned && !canAdd && (
+                <div className="px-2 pb-1 text-[9px] text-amber-400">No reinforcement modules left.</div>
+              )}
+              <button
+                type="button"
+                onClick={() => setCardMenu(null)}
+                className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-gray-700 text-gray-400"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        );
+      })()}
 
       {/* Ship image picker */}
       {showImagePicker && formData && (

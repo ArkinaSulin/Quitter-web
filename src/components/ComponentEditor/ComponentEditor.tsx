@@ -49,6 +49,7 @@ function freshTemplate(kind: ShipCatalogKind): ShipComponentTemplate {
     cost: 0,
     effect: '',
     builtIn: false,
+    dt: 15,
     damage: kind === 'weapon' ? '1d6' : '',
     minRange: 0,
     range: 1,

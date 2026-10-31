@@ -1,7 +1,7 @@
 // src/components/ShipRenderer/ShipLayout.tsx
-// First-pass ship layout: fixed positions for hull/helm/bridge/sail/rudder/cargo,
-// generic component slots for armor/reinforcement/quarters/optional components, and
-// weapon slots. The Ram slot is a weapon slot restricted to max range 1.
+// Fixed ship layout (first pass). Armor and reinforcement are not cards; every
+// purchased component/weapon is rendered as a card. The card positions are
+// persisted as future 3x9 deck cells by the editor.
 
 import {
   COMPONENT_NAMES,
@@ -14,24 +14,22 @@ import {
 } from '@/packages/ships';
 import { ShipComponentCard, ShipComponentCardData } from './ShipComponentCard';
 
-function empty(name: string, onAdd?: () => void): ShipComponentCardData {
-  return { id: `empty-${name}`, name, tons: 0, ac: 0, crewRequired: 0, empty: true, onAdd };
+function empty(name: string): ShipComponentCardData {
+  return { id: `empty-${name}`, name, tons: 0, ac: 0, dt: 0, crewRequired: 0, empty: true };
 }
 
-function label(id: string): string {
-  return id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+function reinforced(build: ShipBuild, key: string): boolean {
+  return (build.reinforcements ?? []).includes(key);
 }
 
 export function ShipLayout({
   build,
   stats,
-  onAddWeapon,
-  onAddComponent,
+  onCardContextMenu,
 }: {
   build: ShipBuild;
   stats: ShipDerivedStats;
-  onAddWeapon?: (slot?: string) => void;
-  onAddComponent?: () => void;
+  onCardContextMenu?: (event: React.MouseEvent, data: ShipComponentCardData) => void;
 }) {
   const c = build.components;
   const m = stats.massBreakdown;
@@ -45,27 +43,20 @@ export function ShipLayout({
   ): ShipComponentCardData => {
     if (tons <= 0 && !opts.note) return empty(opts.emptyLabel || display);
     const component = componentByName(c, name);
+    const cardKey = `component:${component.id || name}`;
     return {
-      id: name,
+      id: cardKey,
+      cardKey,
       name: display,
-      imageUrl: component.imageUrl,
       tons,
       ac: component.ac ?? 10,
+      dt: component.dt ?? 15,
       crewRequired: crew,
       safe: opts.safe,
       note: component.effect || opts.note,
+      reinforced: reinforced(build, cardKey),
+      onContextMenu: onCardContextMenu,
     };
-  };
-
-  const armor: ShipComponentCardData = {
-    id: 'armor',
-    name: label(build.armor.name),
-    imageUrl: build.armor.imageUrl,
-    tons: m.armor,
-    ac: build.armor.ac,
-    crewRequired: 0,
-    safe: true,
-    note: build.armor.hpMult > 1 ? `HP ×${build.armor.hpMult}` : undefined,
   };
 
   const helmCount = Math.max(0, build.helm);
@@ -86,15 +77,19 @@ export function ShipLayout({
   );
 
   const hullComponent = componentByName(c, COMPONENT_NAMES.hull);
+  const hullKey = `component:${hullComponent.id || 'hull'}`;
   const hull: ShipComponentCardData = {
-    id: 'hull',
+    id: hullKey,
+    cardKey: hullKey,
     name: 'Hull',
-    imageUrl: hullComponent.imageUrl,
     tons: m.hull,
     ac: hullComponent.ac ?? 10,
+    dt: hullComponent.dt ?? 15,
     crewRequired: 0,
     safe: true,
     note: hullComponent.effect || 'structural',
+    reinforced: reinforced(build, hullKey),
+    onContextMenu: onCardContextMenu,
   };
 
   const sail = componentCard(
@@ -121,14 +116,6 @@ export function ShipLayout({
     { emptyLabel: 'Cargo' },
   );
 
-  const reinforcement = componentCard(
-    COMPONENT_NAMES.reinforcement,
-    build.reinforcement > 1 ? `Reinforcement ×${build.reinforcement}` : 'Reinforcement',
-    m.reinforcement,
-    0,
-    { note: build.reinforcement > 0 ? `+${build.reinforcement * 10} temp HP` : undefined, emptyLabel: 'Reinforcement' },
-  );
-
   const quarters = componentCard(
     COMPONENT_NAMES.crewQuarters,
     'Crew quarters',
@@ -137,17 +124,21 @@ export function ShipLayout({
     { note: m.crewQuarters > 0 ? `${stats.crewCapacity} capacity` : undefined, emptyLabel: 'Quarters' },
   );
 
-  const weaponCards: ShipComponentCardData[] = build.templateWeapons.map((row, idx) => {
+  const weaponCards: ShipComponentCardData[] = build.templateWeapons.map((row) => {
     const weapon = weaponById(build.weaponsCatalog, row.weaponId);
     const tons = weapon ? weaponTons(weapon) * row.count : 0;
+    const cardKey = `weapon:${row.weaponId}:${row.mountSlot}`;
     return {
-      id: `weapon-${idx}`,
+      id: cardKey,
+      cardKey,
       name: weapon ? `${weapon.name}${row.count > 1 ? ` ×${row.count}` : ''}` : 'Weapon',
-      imageUrl: weapon?.imageUrl,
       tons,
       ac: weapon?.ac ?? 10,
+      dt: weapon?.dt ?? 15,
       crewRequired: weapon ? Math.ceil(weapon.crew * row.count) : 0,
       note: row.mountSlot,
+      reinforced: reinforced(build, cardKey),
+      onContextMenu: onCardContextMenu,
     };
   });
   const weaponRows = build.templateWeapons.map((row, idx) => ({ row, card: weaponCards[idx] }));
@@ -156,25 +147,51 @@ export function ShipLayout({
 
   const optionalComponentCards: ShipComponentCardData[] = build.templateComponents.map((row) => {
     const component = componentById(build.components, row.componentId);
+    const cardKey = `optional:${row.componentId}`;
     return {
-      id: `optional-${row.componentId}`,
+      id: cardKey,
+      cardKey,
       name: component.name ? `${component.name}${row.count > 1 ? ` ×${row.count}` : ''}` : row.componentId,
-      imageUrl: component.imageUrl,
       tons: Math.round((component.mass || 0) * row.count),
       ac: component.ac ?? 10,
+      dt: component.dt ?? 15,
       crewRequired: Math.ceil(component.crew * row.count),
       note: component.effect || undefined,
+      reinforced: reinforced(build, cardKey),
+      onContextMenu: onCardContextMenu,
     };
   });
 
-  const addGenericWeapon = () => onAddWeapon?.('Fore');
-  const weaponSlot = (idx: number) => otherWeapons[idx] ?? empty('Weapon', addGenericWeapon);
-  const optionalComponentSlot = (idx: number) =>
-    optionalComponentCards[idx] ?? empty('Component', onAddComponent);
-  const ramSlot = ramWeapons[0] ?? empty('Ram', () => onAddWeapon?.('Ram'));
+  const weaponSlot = (idx: number) => otherWeapons[idx] ?? empty('Weapon');
+  const optionalComponentSlot = (idx: number) => optionalComponentCards[idx] ?? empty('Component');
+  const ramSlot = ramWeapons[0] ?? empty('Ram');
 
   const extraWeapons = otherWeapons.slice(6);
   const extraRamWeapons = ramWeapons.slice(1);
+  const extraOptionalComponents = optionalComponentCards.slice(4);
+
+  // Non-functional editor preview: consume the roster in layout order.
+  const previewCrew = build.crews ?? [];
+  let crewIdx = 0;
+  const orderedCards: ShipComponentCardData[] = [
+    optionalComponentSlot(0), ramSlot, optionalComponentSlot(1),
+    weaponSlot(0), weaponSlot(1), weaponSlot(2),
+    helm, bridge, hull, sail, rudder, cargo, quarters,
+    optionalComponentSlot(2), optionalComponentSlot(3),
+    weaponSlot(3), weaponSlot(4), weaponSlot(5),
+    ...extraWeapons, ...extraRamWeapons, ...extraOptionalComponents,
+  ];
+  for (const card of orderedCards) {
+    if (card.empty) continue;
+    const count = Math.max(0, Math.round(card.crewRequired));
+    card.crewSlots = Array.from({ length: count }, () => {
+      const crew = previewCrew[crewIdx];
+      if (crew) crewIdx += 1;
+      return crew
+        ? { name: crew.name ?? undefined, level: crew.level, assigned: true }
+        : { assigned: false };
+    });
+  }
 
   return (
     <div className="relative rounded-3xl border border-gray-700 bg-gray-900/40 p-3">
@@ -187,9 +204,9 @@ export function ShipLayout({
 
       <div className="mx-auto max-w-[420px] space-y-2 px-3">
         <div className="grid grid-cols-3 gap-2">
-          <ShipComponentCard data={armor} />
+          <ShipComponentCard data={optionalComponentSlot(0)} />
           <ShipComponentCard data={ramSlot} />
-          <ShipComponentCard data={reinforcement} />
+          <ShipComponentCard data={optionalComponentSlot(1)} />
         </div>
 
         <div className="grid grid-cols-3 gap-2">
@@ -207,9 +224,9 @@ export function ShipLayout({
         </div>
 
         <div className="grid grid-cols-3 gap-2">
-          <ShipComponentCard data={empty('Add weapon', addGenericWeapon)} />
+          <div />
           <ShipComponentCard data={bridge} />
-          <ShipComponentCard data={empty('Add weapon', addGenericWeapon)} />
+          <div />
         </div>
 
         <div className="grid grid-cols-3 gap-2">
@@ -232,8 +249,8 @@ export function ShipLayout({
 
         <div className="grid grid-cols-3 gap-2">
           <ShipComponentCard data={quarters} />
-          <ShipComponentCard data={optionalComponentSlot(0)} />
-          <ShipComponentCard data={optionalComponentSlot(1)} />
+          <ShipComponentCard data={optionalComponentSlot(2)} />
+          <ShipComponentCard data={optionalComponentSlot(3)} />
         </div>
 
         <div className="grid grid-cols-3 gap-2">
@@ -254,9 +271,9 @@ export function ShipLayout({
           </div>
         )}
 
-        {optionalComponentCards.length > 2 && (
+        {extraOptionalComponents.length > 0 && (
           <div className="grid grid-cols-3 gap-2">
-            {optionalComponentCards.slice(2).map((card) => <ShipComponentCard key={card.id} data={card} />)}
+            {extraOptionalComponents.map((card) => <ShipComponentCard key={card.id} data={card} />)}
           </div>
         )}
       </div>

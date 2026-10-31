@@ -14,7 +14,8 @@ read `view_ship_editor`, write `ship_editor`), 069 (`ship_crews` roster), 070
 crew quarters + passengers)**, **136 (Ship Editor v2 fields + `ship_images`)**,
 **137 (catalog UUID + name)**, **138 (Ship Component Workshop fields + access)**,
 **139 (merge accessories into components)**, **140 (cascade deletes + usage
-lookups)**, and **141 (catalog name titles)** reshape the model.
+lookups)**, **141 (catalog name titles)**, and **142 (card DT, placements,
+reinforcements)** reshape the model.
 
 - 134 drops `ship_frames`, reshapes `ship_armors`, reseeds `ship_components`,
   and adds `total_mass`/`helm`/`command_bridge`/`reinforcement`.
@@ -40,14 +41,30 @@ lookups)**, and **141 (catalog name titles)** reshape the model.
 - 141 normalizes `ship_components.name` and `ship_weapons.name`: underscores
   become spaces, words are lower-case, and only the first letter is capitalized
   (`command_bridge` → `Command bridge`). Unique names stay enforced.
-  **134 and 139 are applied; apply 135–138 and 140–141 in Supabase.**
+- 142 adds per-component/weapon `dt` (default 15) and stores
+  `ship_templates.card_placements` (card key → future 0–26 deck cell) plus
+  `ship_templates.reinforcements` (card keys carrying a reinforcement).
+  **134, 139, 140, and 141 are applied; apply 142 in Supabase.**
 
 Editor layout is 3 panels: template picker (left), summary + composition table
-(middle), and ship image + slot layout + weapons/roster (right). The sticky
-footer is Create/Save, Clone, Delete. The composition table columns are
+(middle), and ship image + card layout + roster (right). The sticky footer is
+Create/Save, Clone, Delete. The composition table columns are
 **Component / Input / Mass (ton) / Crew req. / Notes / Cost**; the Cost column
 is reserved for per-component costs (the Total row shows the aggregate build
 cost). All user-facing “tonnage” wording is **mass**; the unit remains **ton**.
+
+Weapons are edited in a child list under the **Weapon capacity** row. Weapon
+mass is blocked from exceeding capacity, and capacity cannot be lowered below
+the placed weapon mass. Every purchased component/weapon automatically becomes
+a layout card; optional components are not allocated separately. The right panel
+keeps the image, card layout, and crew roster (no second weapon list).
+
+Cards show name, mass boxes, `AC / DT`, and a crew list. Armor and reinforcement
+do not get cards. Cards grow to the tallest card in the same grid row. Right-click
+a component/weapon card to assign/remove a reinforcement (thick silvery border);
+the first hit destroys the reinforcement, the next damages the component. The
+editor card crew list is a non-functional preview using roster crew in layout
+order.
 
 `ship_crews`: named/unnamed crew with level + 6 stats + optional nullable cost;
 capped at `crew_count`. Access caps (059): `can_view_ship_editor` /
@@ -92,8 +109,8 @@ values are still shown in the editor's formula panel.
 | Command Bridge | 3t | 5 | +5 command per bridge |
 | Sail | 1t | 0.5 | propulsion |
 | Rudder vane | 1.5t | 0.5 | determines MC |
-| Weapon | 1t | 2 | **large takes 2t**, small 1t; crew is an estimate |
-| Reinforcement | 1t | 0 | +10 temp HP to one component/cluster (targeting later) |
+| Weapon | authored | per weapon | each weapon uses its catalog mass; crew comes from the chosen weapon |
+| Reinforcement | 1t | 0 | protects one card; first hit destroys the reinforcement, next hit damages the component |
 | Cargo | 1t | 0 | carries 1t cargo |
 | Crew quarters | 1t | 5 | **authored** tons; capacity = `tons × 5` |
 | Passengers | — | — | authored count, default 0, display-only for now |
@@ -152,15 +169,19 @@ quickest way to catch rounding regressions.
 - Groups: Hull, Armor, Helm, Command bridge, Sails, Rudders, Weapons,
   Reinforcement, Specials, Cargo, Crew quarters, plus **Reserve** for
   unfurnished mass.
-- **Reinforcement** is +10 temp HP per unit; the target (one weapon or a
-  component cluster such as sails) is assigned in a later editor pass.
-- The right-panel **slot layout** (`ShipRenderer/ShipLayout.tsx` +
-  `ShipComponentCard.tsx`) renders one square card per component: catalog image
-  or placeholder, name, one box per ton, AC, and one hollow crew circle per
-  required crew. Empty slots are dashed. Crew-name/HP assignment is future work.
-- Per-component AC is catalog-driven: armor uses its table AC; hull/other
-  components/weapons default AC 10. Catalog `image_url` is optional;
-  cards use a placeholder until one is set.
+- **Reinforcement** protects one card. First hit destroys the reinforcement,
+  then the next hit damages the protected component. Assign/remove it by
+  right-clicking a component/weapon card; reinforced cards get a thick silvery
+  border. The middle Reinforcement count is the number of available modules.
+- The right-panel **card layout** (`ShipRenderer/ShipLayout.tsx` +
+  `ShipComponentCard.tsx`) renders one growing card per component/weapon: name,
+  one box per ton, `AC / DT`, and a crew list (assigned name / `Lv N crew`, or a
+  hollow required circle). Armor and reinforcement are not cards. Cards in the
+  same grid row stretch to the tallest.
+- Per-component AC/DT are catalog-driven; hull/helm/etc. use the catalog rows.
+  Catalog `image_url` is retained but cards do not render images.
+- The editor crew list is a non-functional preview: roster crew are distributed
+  across cards in layout order, and remaining circles stay hollow.
 - The ship preview image is uploaded to the public `ship_images` bucket and
   stored on `ship_templates.image_url`. The shared `ImagePickerModal` handles
   upload/list/delete; the editor has no per-component image upload yet.
@@ -176,16 +197,17 @@ left panel:
 
 Fields:
 - Components: Name (read-only for built-ins), Mass, Crew, Hittable, Cost,
-  Effect, AC, Image URL.
-- Weapons: Name, Mass, Crew, Cost, Damage, Min Range, Range, Max Range,
-  Fire Cycle (steps), Note, AC, Image URL. Weapons are always hittable.
+  Effect, AC, DT, Image URL.
+- Weapons: Name, Mass, Crew, Cost, Damage **and Fire Cycle on the same row**,
+  Min Range / Range / Max Range, Note, AC, DT, Image URL. Weapons are always
+  hittable.
 
 Catalog names are stored as display names (`Command bridge`, `Ballista light`),
 not slugified identifiers; the workshop preserves spaces/capitalization on save.
 
 Fire cycle is in steps: **1 = every step (1/5 round)**, **2 = every other step**.
-The ship editor displays the fire-cycle step in the weapon picker and marks a
-weapon invalid when a Ram slot holds a `max_range > 1` weapon.
+The Ship Editor’s Weapon capacity child list shows the fire-cycle step and marks
+a weapon invalid when a Ram slot holds a `max_range > 1` weapon.
 
 Access: `component_editor` / `view_component_editor` (admin/dm edit, everyone
 view). The catalog RLS helpers allow either the Ship Component Workshop or the
