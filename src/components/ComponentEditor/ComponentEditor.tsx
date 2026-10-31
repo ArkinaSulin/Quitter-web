@@ -37,6 +37,11 @@ function humanize(id: string): string {
   return id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+interface ComponentUsage {
+  template_id: string;
+  template_name: string;
+}
+
 function freshTemplate(kind: ShipCatalogKind): ShipComponentTemplate {
   return {
     id: '',
@@ -66,6 +71,10 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
   const [draft, setDraft] = useState<ShipComponentTemplate | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<{
+    draft: ShipComponentTemplate;
+    usage: ComponentUsage[];
+  } | null>(null);
 
   const load = useCallback(async (): Promise<ShipComponentTemplate[]> => {
     const [componentsRes, weaponsRes] = await Promise.all([
@@ -152,14 +161,34 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
     }
   };
 
-  const remove = async () => {
+  const requestRemove = async () => {
     if (!draft?.id || readOnly || draft.builtIn) return;
-    if (!confirm(`Delete ${KIND_SINGULAR[draft.kind].toLowerCase()} "${humanize(draft.name)}"?`)) return;
+    setBusy(true);
+    setStatus('');
+    try {
+      const rpc = draft.kind === 'component' ? 'ship_component_usage' : 'ship_weapon_usage';
+      const { data, error } = await supabase.rpc(rpc, { p_id: draft.id });
+      if (error) throw error;
+      setDeleteTarget({
+        draft: { ...draft },
+        usage: (data || []) as ComponentUsage[],
+      });
+    } catch (e: any) {
+      setStatus('Could not check usage: ' + (e?.message || 'unknown'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmRemove = async () => {
+    if (!deleteTarget || readOnly) return;
+    const target = deleteTarget.draft;
     setBusy(true);
     try {
-      const table = draft.kind === 'component' ? 'ship_components' : 'ship_weapons';
-      const { error } = await supabase.from(table).delete().eq('id', draft.id);
+      const table = target.kind === 'component' ? 'ship_components' : 'ship_weapons';
+      const { error } = await supabase.from(table).delete().eq('id', target.id);
       if (error) throw error;
+      setDeleteTarget(null);
       setDraft(null);
       setStatus('Deleted.');
       await load();
@@ -293,7 +322,7 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
                   {!draft.builtIn && draft.id && (
                     <button
                       type="button"
-                      onClick={() => void remove()}
+                      onClick={() => void requestRemove()}
                       disabled={busy}
                       className="px-4 py-1.5 rounded bg-red-900 hover:bg-red-800 text-sm disabled:opacity-50"
                     >
@@ -307,6 +336,53 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
           )}
         </div>
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-5 rounded-lg w-[460px] border border-gray-700">
+            <h2 className="text-lg font-bold text-white mb-2">
+              Delete {KIND_SINGULAR[deleteTarget.draft.kind].toLowerCase()} “{humanize(deleteTarget.draft.name)}”?
+            </h2>
+            {deleteTarget.usage.length > 0 ? (
+              <>
+                <p className="text-sm text-gray-300 mb-2">
+                  Used by {deleteTarget.usage.length} ship{deleteTarget.usage.length === 1 ? '' : 's'}:
+                </p>
+                <ul className="max-h-40 overflow-y-auto rounded border border-gray-700 bg-gray-900/50 p-2 mb-3 text-xs text-gray-300 space-y-1">
+                  {deleteTarget.usage.map(row => (
+                    <li key={row.template_id}>{row.template_name}</li>
+                  ))}
+                </ul>
+                <p className="text-xs text-amber-300 mb-3">
+                  Deleting removes it from those ships. This cannot be undone.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-gray-300 mb-3">
+                This {KIND_SINGULAR[deleteTarget.draft.kind].toLowerCase()} is not used by any ship.
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={busy}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmRemove()}
+                disabled={busy}
+                className="px-4 py-2 bg-red-800 border border-red-400 text-white rounded hover:bg-red-700 disabled:opacity-50"
+              >
+                {busy ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

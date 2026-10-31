@@ -182,6 +182,12 @@ Access: `component_editor` / `view_component_editor` (admin/dm edit, everyone
 view). The catalog RLS helpers allow either the Component Workshop or the
 Shipyard capability, so the Ship Editor keeps reading the same catalogs.
 
+**Delete:** the workshop checks usage first (`ship_component_usage` /
+`ship_weapon_usage`), lists the affected template names, and confirms. Catalog
+deletes cascade to `ship_template_components` / `ship_template_weapons`, so a
+deleted component/weapon is removed from those ships rather than blocked by an
+FK error.
+
 ## Engine hand-off (pending work)
 
 `src/packages/ships/lib/shipMoveCost.ts`, `shipCombat.ts`, `useShipEngine.ts`,

@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## Component Workshop cascade delete + usage warning (migration 140) (2026-10-27)
+**Files:** supabase/migrations/140_ship_component_cascade.sql, src/components/ComponentEditor/ComponentEditor.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
+
+- Deleting an optional component/weapon that is selected on a ship template now
+  cascades: the template selection is removed with the catalog row instead of
+  failing on the FK.
+- Migration 140 changes the `ship_template_components.component_id` and
+  `ship_template_weapons.weapon_id` FKs to `ON DELETE CASCADE`.
+- Added `ship_component_usage` / `ship_weapon_usage` RPCs (component-editor
+  readable) so the workshop can show “Used by N ships” and the template names
+  before deleting.
+- Verification: `tsc`, full vitest suite, depcruise (pre-existing warnings), and
+  `next build`. **Apply 140 in Supabase** (134–139 already applied per owner).
+
 ## Merge ship accessories into components (migration 139) (2026-10-27)
 **Files:** supabase/migrations/139_ship_component_merge.sql, src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers,componentMappers}.ts, src/packages/ships/tests/*, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/ShipLayout.tsx, src/components/ComponentEditor/*, docs/dev/{02,16,README,outstanding,changelog}.md, AGENTS.md
 

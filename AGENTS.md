@@ -29,6 +29,11 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Component Workshop cascade delete + usage warning (2026-10-27, migration
+  140)**: deleting an optional component/weapon now cascades to
+  `ship_template_components`/`ship_template_weapons` instead of failing on the
+  FK. `ship_component_usage`/`ship_weapon_usage` RPCs let the workshop list the
+  affected ship templates before confirming. **Apply 140 in Supabase.**
 - **Merge ship accessories into components (2026-10-27, migration 139)**:
   accessories had the same columns as components, so every `ship_accessories`
   row moves into `ship_components` with its UUID; `ship_components.built_in`
@@ -38,8 +43,8 @@ reusable maps. Here's the state:
   `ship_accessories` is dropped. The Component Workshop is now
   Components/Weapons (no Accessories tab); New/Clone/Delete only for optional
   components. The Ship Editor’s **+ Add component** lists optional components
-  and stores selections in `ship_template_components`. **Apply 135–139 in
-  Supabase.**
+  and stores selections in `ship_template_components`. **139 applied; apply 140
+  in Supabase.**
 - **Component Workshop + ship catalog UUIDs (2026-10-27, migrations 137–138)**:
   ship catalogs (`ship_components`, `ship_weapons`, `ship_accessories`,
   `ship_armors`) now use UUID `id` + unique `name`, with template/join FKs
