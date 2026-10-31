@@ -880,7 +880,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                   )}
 
                   {/* Composition */}
-                  <div className="p-2.5 bg-gray-800 rounded border border-gray-700 overflow-x-auto">
+                  <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-[10px] text-gray-400">Ship composition</label>
                       <button
@@ -892,15 +892,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                       </button>
                     </div>
 
-                                        <table className="w-full min-w-[720px] table-fixed text-[11px]">
-                      <colgroup>
-                        <col className="w-[26%]" />
-                        <col className="w-[88px]" />
-                        <col className="w-[80px]" />
-                        <col className="w-[80px]" />
-                        <col />
-                        <col className="w-[80px]" />
-                      </colgroup>
+                                        <table className="w-full table-auto text-[11px]">
                       <thead>
                         <tr className="text-gray-500 border-b border-gray-700">
                           <th className="text-left py-1 pr-2 font-normal">Component</th>
@@ -924,7 +916,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         <tr className="border-b border-gray-700/50">
                           <td className="py-1 pr-2">Helm</td>
                           <td className="text-center px-2">
-                            <div className="mx-auto w-16">
+                            <div className="mx-auto w-full max-w-16">
                               <NumInput value={formData.helm} min={0} max={9} onChange={(v) => updateFormData('helm', Math.max(0, Math.floor(v)))} />
                             </div>
                           </td>
@@ -937,7 +929,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         <tr className="border-b border-gray-700/50">
                           <td className="py-1 pr-2">Command bridge</td>
                           <td className="text-center px-2">
-                            <div className="mx-auto w-16">
+                            <div className="mx-auto w-full max-w-16">
                               <NumInput value={formData.commandBridge} min={0} max={2} onChange={(v) => updateFormData('commandBridge', Math.max(0, Math.min(2, Math.floor(v))))} />
                             </div>
                           </td>
@@ -950,7 +942,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         <tr className="border-b border-gray-700/50">
                           <td className="py-1 pr-2">Sail</td>
                           <td className="text-center px-2">
-                            <div className="mx-auto w-16">
+                            <div className="mx-auto w-full max-w-16">
                               <NumInput value={formData.sails} min={0} max={99} onChange={(v) => updateFormData('sails', Math.max(0, Math.floor(v)))} />
                             </div>
                           </td>
@@ -963,7 +955,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         <tr className="border-b border-gray-700/50">
                           <td className="py-1 pr-2">Rudder vane</td>
                           <td className="text-center px-2">
-                            <div className="mx-auto w-16">
+                            <div className="mx-auto w-full max-w-16">
                               <NumInput value={formData.rudders} min={0} max={99} onChange={(v) => updateFormData('rudders', Math.max(0, Math.floor(v)))} />
                             </div>
                           </td>
@@ -976,7 +968,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         <tr className="border-b border-gray-700/50">
                           <td className="py-1 pr-2">Weapon capacity</td>
                           <td className="text-center px-2">
-                            <div className="mx-auto w-16">
+                            <div className="mx-auto w-full max-w-16">
                               <NumInput value={formData.weaponCapacity} min={0} max={999} onChange={(v) => updateFormData('weaponCapacity', Math.max(0, Math.floor(v)))} />
                             </div>
                           </td>
@@ -992,7 +984,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         <tr className="border-b border-gray-700/50">
                           <td className="py-1 pr-2">Armor</td>
                           <td className="text-center px-2">
-                            <div className="mx-auto w-[76px]">
+                            <div className="mx-auto w-full max-w-20">
                               <select
                                 value={formData.armorId || ''}
                                 onChange={(e) => updateFormData('armorId', e.target.value)}
@@ -1017,7 +1009,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         <tr className="border-b border-gray-700/50">
                           <td className="py-1 pr-2">Reinforcement</td>
                           <td className="text-center px-2">
-                            <div className="mx-auto w-16">
+                            <div className="mx-auto w-full max-w-16">
                               <NumInput value={formData.reinforcement} min={0} max={99} onChange={(v) => updateFormData('reinforcement', Math.max(0, Math.floor(v)))} />
                             </div>
                           </td>
@@ -1030,7 +1022,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         <tr className="border-b border-gray-700/50">
                           <td className="py-1 pr-2">Crew quarter</td>
                           <td className="text-center px-2">
-                            <div className="mx-auto w-16">
+                            <div className="mx-auto w-full max-w-16">
                               <NumInput value={formData.crewQuarters} min={0} max={99} onChange={(v) => updateFormData('crewQuarters', Math.max(0, Math.floor(v)))} />
                             </div>
                           </td>
@@ -1043,7 +1035,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         <tr className="border-b border-gray-700/50">
                           <td className="py-1 pr-2">Cargo</td>
                           <td className="text-center px-2">
-                            <div className="mx-auto w-16">
+                            <div className="mx-auto w-full max-w-16">
                               <NumInput
                                 value={formData.cargoArea}
                                 min={0}
@@ -1064,7 +1056,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           return (
                             <tr key={a.componentId} className="border-b border-gray-700/50">
                               <td className="py-1 pr-2">
-                                <span className="truncate">{component.name}</span>
+                                <span className="break-words">{component.name}</span>
                               </td>
                               <td className="text-center px-2">
                                 <div className="mx-auto w-fit">
@@ -1075,7 +1067,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                               <td className="text-right px-2">{Math.ceil((component.crew || 0) * a.count)}</td>
                               <td className="pl-2 text-gray-500">
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="truncate">{component.effect || `${component.mass}t each`}</span>
+                                  <span className="break-words">{component.effect || `${component.mass}t each`}</span>
                                   <button
                                     type="button"
                                     onClick={() => setOptionalComponentCount(component.id, 0)}

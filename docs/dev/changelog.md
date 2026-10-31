@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## Ship composition table fluid widths (2026-10-27)
+**Files:** src/components/ShipEditor/ShipEditor.tsx, docs/dev/changelog.md
+
+- Removed the composition table’s forced `min-w-[720px]`, `table-fixed`, and
+  fixed `<colgroup>` widths; it now uses `w-full table-auto` and the scroll
+  wrapper is gone.
+- Numeric input wrappers and the armor select can shrink
+  (`w-full max-w-16` / `max-w-20`), and optional-component name/effect cells
+  wrap instead of truncating. No horizontal scrollbar at normal desktop widths.
+
 ## Ship catalog name normalization (migration 141) (2026-10-27)
 **Files:** supabase/migrations/141_ship_catalog_name_titles.sql, src/packages/ships/lib/{shipStats,componentMappers}.ts, src/packages/ships/tests/{shipStats,componentMappers}.test.ts, src/components/{ComponentEditor,ShipEditor,ShipRenderer}/*, docs/dev/{02,16,changelog}.md, AGENTS.md
 
