@@ -142,7 +142,7 @@ export function ShipLayout({
     const tons = weapon ? weaponTons(weapon) * row.count : 0;
     return {
       id: `weapon-${idx}`,
-      name: weapon ? `${label(weapon.name)}${row.count > 1 ? ` ×${row.count}` : ''}` : 'Weapon',
+      name: weapon ? `${weapon.name}${row.count > 1 ? ` ×${row.count}` : ''}` : 'Weapon',
       imageUrl: weapon?.imageUrl,
       tons,
       ac: weapon?.ac ?? 10,
@@ -158,7 +158,7 @@ export function ShipLayout({
     const component = componentById(build.components, row.componentId);
     return {
       id: `optional-${row.componentId}`,
-      name: component.name ? `${label(component.name)}${row.count > 1 ? ` ×${row.count}` : ''}` : row.componentId,
+      name: component.name ? `${component.name}${row.count > 1 ? ` ×${row.count}` : ''}` : row.componentId,
       imageUrl: component.imageUrl,
       tons: Math.round((component.mass || 0) * row.count),
       ac: component.ac ?? 10,

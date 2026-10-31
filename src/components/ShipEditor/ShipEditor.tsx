@@ -1064,7 +1064,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           return (
                             <tr key={a.componentId} className="border-b border-gray-700/50">
                               <td className="py-1 pr-2">
-                                <span className="truncate">{humanize(component.name)}</span>
+                                <span className="truncate">{component.name}</span>
                               </td>
                               <td className="text-center px-2">
                                 <div className="mx-auto w-fit">
@@ -1213,7 +1213,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                 .filter(weap => weaponFitsSlot(weap, w.mountSlot) || weap.id === w.weaponId)
                                 .map(weap => (
                                   <option key={weap.id} value={weap.id}>
-                                    {humanize(weap.name)} — {weap.damage} ({weap.mass}t, crew {weap.crew}, every {weap.fireCycleStep} step{weap.fireCycleStep === 1 ? '' : 's'})
+                                    {weap.name} — {weap.damage} ({weap.mass}t, crew {weap.crew}, every {weap.fireCycleStep} step{weap.fireCycleStep === 1 ? '' : 's'})
                                   </option>
                                 ))}
                             </select>
@@ -1428,7 +1428,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                 <div key={component.id} className="flex items-center justify-between gap-2 bg-gray-700/50 rounded px-2 py-1.5">
                   <div className="min-w-0">
                     <div className="text-[12px] text-gray-200">
-                      {humanize(component.name)}{' '}
+                      {component.name}{' '}
                       <span className="text-gray-500">
                         ({component.mass}t · {component.crew} crew · {component.cost ? `${component.cost}gp` : '0gp'} · {component.hittable ? 'hittable' : 'safe'})
                       </span>

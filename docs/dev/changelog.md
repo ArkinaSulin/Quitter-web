@@ -1,5 +1,30 @@
 # QuiTTER Changelog
 
+## Ship catalog name normalization (migration 141) (2026-10-27)
+**Files:** supabase/migrations/141_ship_catalog_name_titles.sql, src/packages/ships/lib/{shipStats,componentMappers}.ts, src/packages/ships/tests/{shipStats,componentMappers}.test.ts, src/components/{ComponentEditor,ShipEditor,ShipRenderer}/*, docs/dev/{02,16,changelog}.md, AGENTS.md
+
+- Renamed every `ship_components.name` and `ship_weapons.name` to a display
+  name: underscores → spaces, lower-case words, first letter capitalized
+  (`command_bridge` → `Command bridge`, `ballista_light` → `Ballista light`).
+  The migration aborts on normalized-name collisions; unique names stay.
+- Updated `COMPONENT_NAMES` and built-in fallbacks to the new names so
+  `componentByName` still finds hull/helm/bridge/sail/rudder/reinforcement/
+  cargo/crew quarters/weapon capacity.
+- Stopped slugifying catalog names on save; the workshop now preserves spaces
+  and capitalization. Component/weapon pickers and cards display the stored
+  names directly.
+- Verification: `tsc`, full vitest suite (1211 tests), depcruise (pre-existing
+  warnings), and `next build`. **Apply 141 in Supabase** (134/139 applied; 140
+  may also be pending).
+
+## Lobby: Ship Component Workshop naming + ship tools moved (2026-10-27)
+**Files:** src/components/Lobby.tsx, src/components/ComponentEditor/ComponentEditor.tsx, app/component-editor/page.tsx, docs/dev/{16-ship-builder,README,changelog}.md
+
+- Renamed **Component Workshop** → **Ship Component Workshop** in the Lobby,
+  page heading, and docs; read-only button is **Ship Component Library**.
+- Moved **Archfar's Shipyard** and **Ship Component Workshop** below
+  **Structure Workshop** in the Lobby editor list.
+
 ## Lobby editor naming + Component Workshop order (2026-10-27)
 **Files:** src/components/Lobby.tsx, src/components/EffectEditor/EffectEditor.tsx, src/components/WeaponEditor/WeaponEditor.tsx, src/components/StructureEditor/StructureEditor.tsx, src/components/MapEditor/MapEditor.tsx, src/components/ScenarioMap/AddEffectModal.tsx, docs/dev/changelog.md
 

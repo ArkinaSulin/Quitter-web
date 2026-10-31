@@ -200,6 +200,7 @@ as applied in the notes — check the live DB before relying on it).
 | 138 | Component Workshop fields: `ship_components.effect`; `ship_weapons` mass/min_range/range/max_range/fire_cycle_step (mount dropped); component-editor access + catalog RLS | ⏳ run in Supabase |
 | 139 | Merge accessories into components: `ship_components.built_in`, move `ship_accessories` rows, rename join table → `ship_template_components`, drop `ship_accessories` | ⏳ run in Supabase |
 | 140 | Component/weapon catalog deletes cascade to template selections; usage RPCs for the delete confirmation | ⏳ run in Supabase |
+| 141 | Normalize `ship_components.name` / `ship_weapons.name`: underscores → spaces, first word capitalized, unique names enforced | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

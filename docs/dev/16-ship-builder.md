@@ -12,8 +12,9 @@ rows. Migration 066 (schema) creates the `ship_*` template tables; 068 (RLS:
 read `view_ship_editor`, write `ship_editor`), 069 (`ship_crews` roster), 070
 (`extra_crew` → `crew_count`), **134 (mass-first overhaul)**, **135 (authored
 crew quarters + passengers)**, **136 (Ship Editor v2 fields + `ship_images`)**,
-**137 (catalog UUID + name)**, **138 (Component Workshop fields + access)**, and
-**139 (merge accessories into components)** reshape the model.
+**137 (catalog UUID + name)**, **138 (Ship Component Workshop fields + access)**,
+**139 (merge accessories into components)**, **140 (cascade deletes + usage
+lookups)**, and **141 (catalog name titles)** reshape the model.
 
 - 134 drops `ship_frames`, reshapes `ship_armors`, reseeds `ship_components`,
   and adds `total_mass`/`helm`/`command_bridge`/`reinforcement`.
@@ -34,7 +35,12 @@ crew quarters + passengers)**, **136 (Ship Editor v2 fields + `ship_images`)**,
   `mass` + `min_range` add; `range_std` → `range`; `range_dis` → `max_range`;
   `fire_cycle_rd` → `fire_cycle_step`; `mount` drops. It also adds the
   component-editor access caps and catalog RLS.
-  **134 is applied; apply 135–138 in Supabase.**
+- 140 makes catalog deletes cascade to template selections and adds the
+  `ship_component_usage` / `ship_weapon_usage` RPCs.
+- 141 normalizes `ship_components.name` and `ship_weapons.name`: underscores
+  become spaces, words are lower-case, and only the first letter is capitalized
+  (`command_bridge` → `Command bridge`). Unique names stay enforced.
+  **134 and 139 are applied; apply 135–138 and 140–141 in Supabase.**
 
 Editor layout is 3 panels: template picker (left), summary + composition table
 (middle), and ship image + slot layout + weapons/roster (right). The sticky
@@ -159,7 +165,7 @@ quickest way to catch rounding regressions.
   stored on `ship_templates.image_url`. The shared `ImagePickerModal` handles
   upload/list/delete; the editor has no per-component image upload yet.
 
-## Component Workshop (`/component-editor`)
+## Ship Component Workshop (`/component-editor`)
 
 One editor over the two ship catalogs, with two filter tabs at the top of the
 left panel:
@@ -174,12 +180,15 @@ Fields:
 - Weapons: Name, Mass, Crew, Cost, Damage, Min Range, Range, Max Range,
   Fire Cycle (steps), Note, AC, Image URL. Weapons are always hittable.
 
+Catalog names are stored as display names (`Command bridge`, `Ballista light`),
+not slugified identifiers; the workshop preserves spaces/capitalization on save.
+
 Fire cycle is in steps: **1 = every step (1/5 round)**, **2 = every other step**.
 The ship editor displays the fire-cycle step in the weapon picker and marks a
 weapon invalid when a Ram slot holds a `max_range > 1` weapon.
 
 Access: `component_editor` / `view_component_editor` (admin/dm edit, everyone
-view). The catalog RLS helpers allow either the Component Workshop or the
+view). The catalog RLS helpers allow either the Ship Component Workshop or the
 Shipyard capability, so the Ship Editor keeps reading the same catalogs.
 
 **Delete:** the workshop checks usage first (`ship_component_usage` /

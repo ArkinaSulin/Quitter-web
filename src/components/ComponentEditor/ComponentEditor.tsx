@@ -33,10 +33,6 @@ const KIND_SINGULAR: Record<ShipCatalogKind, string> = {
   weapon: 'Weapon',
 };
 
-function humanize(id: string): string {
-  return id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
 interface ComponentUsage {
   template_id: string;
   template_name: string;
@@ -201,7 +197,7 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
 
   const clone = () => {
     if (!draft || readOnly || draft.builtIn) return;
-    setDraft({ ...draft, id: '', name: `${draft.name}_copy`, builtIn: false });
+    setDraft({ ...draft, id: '', name: `${draft.name} copy`, builtIn: false });
     setStatus('');
   };
 
@@ -214,7 +210,7 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
   return (
     <div className="flex flex-col w-full h-screen bg-[#0d0d1a] text-white overflow-hidden select-none">
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-700 bg-gray-900">
-        <h1 className="text-xl font-bold text-yellow-300">Component Workshop</h1>
+        <h1 className="text-xl font-bold text-yellow-300">Ship Component Workshop</h1>
         <div className="flex items-center gap-2">
           {readOnly && <span className="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-gray-300">Read-only view</span>}
           <a href="/" className="text-sm bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded">Main Menu</a>
@@ -272,7 +268,7 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
                     : 'bg-gray-800 border-transparent hover:bg-gray-700'
                 }`}
               >
-                {humanize(row.name) || '(unnamed)'}
+                {row.name || '(unnamed)'}
                 <span className="block text-[10px] text-gray-400">
                   {row.builtIn ? 'Built-in' : KIND_SINGULAR[row.kind]}
                   {' · '}{row.mass} ton{row.mass === 1 ? '' : 's'} · {row.cost}gp
@@ -341,7 +337,7 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
           <div className="bg-gray-800 p-5 rounded-lg w-[460px] border border-gray-700">
             <h2 className="text-lg font-bold text-white mb-2">
-              Delete {KIND_SINGULAR[deleteTarget.draft.kind].toLowerCase()} “{humanize(deleteTarget.draft.name)}”?
+              Delete {KIND_SINGULAR[deleteTarget.draft.kind].toLowerCase()} “{deleteTarget.draft.name}”?
             </h2>
             {deleteTarget.usage.length > 0 ? (
               <>

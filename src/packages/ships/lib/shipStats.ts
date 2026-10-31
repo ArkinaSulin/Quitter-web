@@ -37,27 +37,27 @@ export const COMMAND_PER_BRIDGE = 5;
 
 /** Built-in component names (ship_components.name). */
 export const COMPONENT_NAMES = {
-  hull: 'hull',
-  helm: 'helm',
-  commandBridge: 'command_bridge',
-  sail: 'sail',
-  rudder: 'rudder',
-  reinforcement: 'reinforcement',
-  cargo: 'cargo',
-  crewQuarters: 'crew_quarters',
-  weaponCapacity: 'weapon_capacity',
+  hull: 'Hull',
+  helm: 'Helm',
+  commandBridge: 'Command bridge',
+  sail: 'Sail',
+  rudder: 'Rudder',
+  reinforcement: 'Reinforcement',
+  cargo: 'Cargo',
+  crewQuarters: 'Crew quarters',
+  weaponCapacity: 'Weapon capacity',
 } as const;
 
 const DEFAULT_COMPONENTS: Record<string, ShipComponent> = {
-  [COMPONENT_NAMES.hull]: { id: 'hull', name: 'hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, ac: 10, imageUrl: '' },
-  [COMPONENT_NAMES.helm]: { id: 'helm', name: 'helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.commandBridge]: { id: 'command_bridge', name: 'command_bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.sail]: { id: 'sail', name: 'sail', mass: 1, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.rudder]: { id: 'rudder', name: 'rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.reinforcement]: { id: 'reinforcement', name: 'reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.cargo]: { id: 'cargo', name: 'cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.crewQuarters]: { id: 'crew_quarters', name: 'crew_quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
-  [COMPONENT_NAMES.weaponCapacity]: { id: 'weapon_capacity', name: 'weapon_capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true },
+  [COMPONENT_NAMES.hull]: { id: 'Hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, ac: 10, imageUrl: '' },
+  [COMPONENT_NAMES.helm]: { id: 'Helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.commandBridge]: { id: 'Command bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.sail]: { id: 'Sail', name: 'Sail', mass: 1, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.rudder]: { id: 'Rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.reinforcement]: { id: 'Reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.cargo]: { id: 'Cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.crewQuarters]: { id: 'Crew quarters', name: 'Crew quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.weaponCapacity]: { id: 'Weapon capacity', name: 'Weapon capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true },
 };
 
 const EMPTY_COMPONENT: ShipComponent = {

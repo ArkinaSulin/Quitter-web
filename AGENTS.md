@@ -29,6 +29,12 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Ship catalog name normalization (2026-10-27, migration 141)**: every
+  `ship_components.name` / `ship_weapons.name` is now a display name
+  (`command_bridge` → `Command bridge`, `ballista_light` → `Ballista light`).
+  `COMPONENT_NAMES` and built-in fallbacks use the new names; catalog saves no
+  longer slugify, and pickers/cards display stored names directly. The migration
+  aborts on normalized-name collisions. **Apply 141 in Supabase.**
 - **Component Workshop cascade delete + usage warning (2026-10-27, migration
   140)**: deleting an optional component/weapon now cascades to
   `ship_template_components`/`ship_template_weapons` instead of failing on the

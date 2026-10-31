@@ -55,17 +55,17 @@ const ARMORS: ShipArmor[] = [
 ];
 
 const COMPONENTS: ShipComponent[] = [
-  { id: 'comp-hull', name: 'hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true },
-  { id: 'comp-helm', name: 'helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true },
-  { id: 'comp-bridge', name: 'command_bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
-  { id: 'comp-sail', name: 'sail', mass: 1, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
-  { id: 'comp-rudder', name: 'rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
-  { id: 'comp-reinforcement', name: 'reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
-  { id: 'comp-cargo', name: 'cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
-  { id: 'comp-quarters', name: 'crew_quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
-  { id: 'comp-weapon-capacity', name: 'weapon_capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true },
-  { id: 'acc-ram', name: 'ram', mass: 5, crew: 0, cost: 5000, hittable: true, effect: '16d10 ram', builtIn: false },
-  { id: 'acc-low-visibility', name: 'low_visibility', mass: 0, crew: 0, cost: 2000, hittable: false, effect: 'surprise', builtIn: false },
+  { id: 'comp-hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true },
+  { id: 'comp-helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-sail', name: 'Sail', mass: 1, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-quarters', name: 'Crew quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-weapon-capacity', name: 'Weapon capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true },
+  { id: 'acc-ram', name: 'Ram', mass: 5, crew: 0, cost: 5000, hittable: true, effect: '16d10 ram', builtIn: false },
+  { id: 'acc-low-visibility', name: 'Low visibility', mass: 0, crew: 0, cost: 2000, hittable: false, effect: 'surprise', builtIn: false },
 ];
 
 const WEAPONS: ShipWeapon[] = [

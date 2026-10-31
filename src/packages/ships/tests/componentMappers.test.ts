@@ -4,7 +4,6 @@ import {
   componentTemplateToWeaponRow,
   mapComponentToTemplate,
   mapWeaponToTemplate,
-  slugifyComponentName,
   validateShipComponentTemplate,
 } from '@/packages/ships/lib/componentMappers';
 
@@ -64,7 +63,7 @@ describe('component workshop mappers', () => {
     expect(t.builtIn).toBe(false);
     expect(t.fireCycleStep).toBe(2);
     expect(componentTemplateToWeaponRow(t)).toMatchObject({
-      name: 'heavy_ram',
+      name: 'heavy ram',
       mass: 3,
       min_range: 0,
       range: 1,
@@ -73,9 +72,6 @@ describe('component workshop mappers', () => {
     });
   });
 
-  it('slugifies names', () => {
-    expect(slugifyComponentName('Heavy Ram!')).toBe('heavy_ram');
-  });
 });
 
 describe('component workshop validation', () => {

@@ -489,32 +489,6 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
           {(role === 'admin' || canViewShipEditor || canViewUnitEditor || canViewMapEditor || canViewEffectEditor || canViewWeaponEditor || canViewStructureEditor || canViewComponentEditor) && (
             <div className="border-t border-gray-700" />
           )}
-          {canViewShipEditor && (
-            <button
-              onClick={() => router.push('/ship-editor')}
-              className="w-full py-2 border rounded hover:brightness-125 transition"
-              style={{
-                borderColor: '#8a7a12',
-                background: 'repeating-linear-gradient(45deg, #2c2608 0, #2c2608 10px, #0f0d08 10px, #0f0d08 20px)',
-                color: '#f5efd2',
-              }}
-            >
-              Archfar's Shipyard
-            </button>
-          )}
-          {canViewComponentEditor && (
-            <button
-              onClick={() => router.push('/component-editor')}
-              className="w-full py-2 border rounded hover:brightness-125 transition"
-              style={{
-                borderColor: '#8a7a12',
-                background: 'repeating-linear-gradient(45deg, #2c2608 0, #2c2608 10px, #0f0d08 10px, #0f0d08 20px)',
-                color: '#f5efd2',
-              }}
-            >
-              {canUseComponentEditor ? 'Component Workshop' : 'Component Library'}
-            </button>
-          )}
           {canViewUnitEditor && (
             <button
               onClick={() => router.push('/unit-editor')}
@@ -578,6 +552,32 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                 }}
               >
                 {canUseStructureEditor ? 'Structure Workshop' : 'Structure Library'}
+              </button>
+            )}
+            {canViewShipEditor && (
+              <button
+                onClick={() => router.push('/ship-editor')}
+                className="w-full py-2 border rounded hover:brightness-125 transition"
+                style={{
+                  borderColor: '#8a7a12',
+                  background: 'repeating-linear-gradient(45deg, #2c2608 0, #2c2608 10px, #0f0d08 10px, #0f0d08 20px)',
+                  color: '#f5efd2',
+                }}
+              >
+                Archfar's Shipyard
+              </button>
+            )}
+            {canViewComponentEditor && (
+              <button
+                onClick={() => router.push('/component-editor')}
+                className="w-full py-2 border rounded hover:brightness-125 transition"
+                style={{
+                  borderColor: '#8a7a12',
+                  background: 'repeating-linear-gradient(45deg, #2c2608 0, #2c2608 10px, #0f0d08 10px, #0f0d08 20px)',
+                  color: '#f5efd2',
+                }}
+              >
+                {canUseComponentEditor ? 'Ship Component Workshop' : 'Ship Component Library'}
               </button>
             )}
           {/* Delete Scenario — always the very last action button */}

@@ -8,14 +8,6 @@ import {
   ShipWeapon,
 } from '@/types/ship';
 
-export function slugifyComponentName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
 export function mapComponentToTemplate(row: ShipComponent): ShipComponentTemplate {
   return {
     id: row.id,
@@ -80,7 +72,7 @@ export function validateShipComponentTemplate(t: ShipComponentTemplate): string 
 
 export function componentTemplateToComponentRow(t: ShipComponentTemplate) {
   return {
-    name: slugifyComponentName(t.name),
+    name: t.name.trim(),
     mass: t.mass,
     crew: t.crew,
     cost: t.cost,
@@ -94,7 +86,7 @@ export function componentTemplateToComponentRow(t: ShipComponentTemplate) {
 
 export function componentTemplateToWeaponRow(t: ShipComponentTemplate) {
   return {
-    name: slugifyComponentName(t.name),
+    name: t.name.trim(),
     mass: t.mass,
     damage: t.damage,
     min_range: t.minRange,
