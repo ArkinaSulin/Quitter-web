@@ -76,7 +76,7 @@ describe('mapShipTemplateRow', () => {
     const t = mapShipTemplateRow({
       id: 'wasp', name: 'Wasp Ship', role: 'Shuttle', armor_id: 'armor-wood',
       total_mass: '20', helm: 1, command_bridge: 0, rudders: 2, sails: 6,
-      reinforcement: 0, crew_count: '3', crew_quarters: 2, passengers: 1, cargo_area: 8,
+      reinforcement: 0, crew_quarters: 2, cargo_area: 8,
       ship_template_components: [{ component_id: 'acc-ram', count: 1 }],
       ship_template_weapons: [{ id: 'row-1', weapon_id: 'wpn-ballista', count: 2 }],
     });
@@ -85,9 +85,7 @@ describe('mapShipTemplateRow', () => {
     expect(t.commandBridge).toBe(0);
     expect(t.sails).toBe(6);
     expect(t.reinforcement).toBe(0);
-    expect(t.crewCount).toBe(3);
     expect(t.crewQuarters).toBe(2);
-    expect(t.passengers).toBe(1);
     expect(t.weaponCapacity).toBe(0);
     expect(t.atmosphericSpeed).toBe(0);
     expect(t.damageThreshold).toBe(15);
@@ -104,7 +102,7 @@ describe('mapShipTemplateToRow', () => {
     const row = mapShipTemplateToRow({
       id: 'wasp', name: 'Wasp Ship', role: null, armorId: 'armor-wood',
       totalMass: 20, helm: 1, commandBridge: 0, sails: 6, rudders: 2,
-      reinforcement: 0, crewCount: 3, crewQuarters: 2, passengers: 1,
+      reinforcement: 0, crewQuarters: 2,
       weaponCapacity: 2, atmosphericSpeed: 5, damageThreshold: 15, imageUrl: 'https://x/ship.png',
       cargoArea: 8, deckLayout: { bow: [], stern: [], port: [], body: [], starboard: [] },
       reinforcements: [], optionalComponents: [], weapons: [], crews: [],
@@ -115,7 +113,6 @@ describe('mapShipTemplateToRow', () => {
     expect(row.command_bridge).toBe(0);
     expect(row.reinforcement).toBe(0);
     expect(row.crew_quarters).toBe(2);
-    expect(row.passengers).toBe(1);
     expect(row.weapon_capacity).toBe(2);
     expect(row.atmospheric_speed).toBe(5);
     expect(row.damage_threshold).toBe(15);

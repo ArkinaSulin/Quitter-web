@@ -36,6 +36,7 @@ export const MC_RUDDER_SCALE = 10;
 export const CREW_PER_QUARTER_TON = 5;
 export const REINFORCEMENT_TEMP_HP = 10;
 export const COMMAND_PER_BRIDGE = 5;
+export const HULL_COST_PER_TON = 1000;
 
 /** Built-in component names (ship_components.name). */
 export const COMPONENT_NAMES = {
@@ -54,7 +55,7 @@ const DEFAULT_COMPONENTS: Record<string, ShipComponent> = {
   [COMPONENT_NAMES.hull]: { id: 'Hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, dt: 15, ac: 10, imageUrl: '' },
   [COMPONENT_NAMES.helm]: { id: 'Helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
   [COMPONENT_NAMES.commandBridge]: { id: 'Command bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  [COMPONENT_NAMES.sail]: { id: 'Sail', name: 'Sail', mass: 1, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
+  [COMPONENT_NAMES.sail]: { id: 'Sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
   [COMPONENT_NAMES.rudder]: { id: 'Rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
   [COMPONENT_NAMES.reinforcement]: { id: 'Reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
   [COMPONENT_NAMES.cargo]: { id: 'Cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
@@ -122,9 +123,7 @@ export interface ShipBuild {
   sails: number;
   rudders: number;
   reinforcement: number;
-  crewCount: number;
   crewQuarters: number;
-  passengers: number;
   /** Authored weapon capacity (tons). Falls back to placed weapon tons. */
   weaponCapacity?: number;
   atmosphericSpeed?: number;
@@ -142,9 +141,9 @@ export interface ShipBuild {
 
 // --- Crew -------------------------------------------------------------------
 
-/** Current crew on board = the authored crew complement. */
+/** Actual crew on board = roster length. */
 export function computeCrew(build: ShipBuild): number {
-  return Math.max(0, build.crewCount);
+  return Math.max(0, build.crews?.length ?? 0);
 }
 
 /** Weapon crew, rounded up per weapon installation. */
@@ -164,10 +163,9 @@ export function computeOptionalComponentCrew(build: ShipBuild): number {
 }
 
 /**
- * Σ built-in component + optional component + weapon crew requirements.
- * Each component group is rounded up **separately** (the templates show
- * Shuttle min 3 from 1 + ceil(0.5) + ceil(0.5), and Damselfly 13 from
- * 1 + ceil(3.5) + ceil(1.5) + 6).
+ * Σ built-in component + optional component crew requirements.
+ * Weapon handling crew is deliberately excluded: it is not needed for
+ * spelljamming. Each component group is rounded up separately.
  */
 export function computeComponentCrew(build: ShipBuild): number {
   const c = build.components;
@@ -176,7 +174,6 @@ export function computeComponentCrew(build: ShipBuild): number {
     Math.ceil(build.commandBridge * componentByName(c, COMPONENT_NAMES.commandBridge).crew) +
     Math.ceil(build.sails * componentByName(c, COMPONENT_NAMES.sail).crew) +
     Math.ceil(build.rudders * componentByName(c, COMPONENT_NAMES.rudder).crew) +
-    computeWeaponCrew(build) +
     computeOptionalComponentCrew(build)
   );
 }
@@ -186,7 +183,12 @@ export function computeMinCrew(build: ShipBuild): number {
   return computeComponentCrew(build);
 }
 
-/** Authored crew-quarters capacity (1 ton = 5 crew/passengers). */
+/** Full crew = two shifts of the minimum operating crew. */
+export function computeFullCrew(build: ShipBuild): number {
+  return computeMinCrew(build) * 2;
+}
+
+/** Authored crew-quarters capacity (1 ton = 5 crew). */
 export function computeCrewCapacity(crewQuarters: number): number {
   const tons = Number.isFinite(crewQuarters) ? crewQuarters : 0;
   return Math.max(0, tons) * CREW_PER_QUARTER_TON;
@@ -402,12 +404,26 @@ export function computeBoxGroups(build: ShipBuild): ShipBoxGroup[] {
 
 // --- Cost -------------------------------------------------------------------
 
+/** Hull cost is 1000 gp per ton of designated ship mass. */
+export function computeHullCost(totalMass: number): number {
+  return Math.max(0, totalMass) * HULL_COST_PER_TON;
+}
+
+/** Actual cost of every placed weapon installation. */
+export function computeWeaponCost(build: ShipBuild): number {
+  return build.templateWeapons.reduce(
+    (sum, w) => sum + (weaponById(build.weaponsCatalog, w.weaponId)?.cost || 0) * w.count,
+    0,
+  );
+}
+
 export function computeBuildCost(build: ShipBuild): number {
   const c = build.components;
   const quarters = Math.max(0, build.crewQuarters || 0);
   const capacity = computeWeaponCapacity(build);
   const capacityComponent = componentByName(c, COMPONENT_NAMES.weaponCapacity);
   const componentCost =
+    computeHullCost(build.totalMass) +
     build.helm * componentByName(c, COMPONENT_NAMES.helm).cost +
     build.commandBridge * componentByName(c, COMPONENT_NAMES.commandBridge).cost +
     build.sails * componentByName(c, COMPONENT_NAMES.sail).cost +
@@ -420,11 +436,7 @@ export function computeBuildCost(build: ShipBuild): number {
     const component = componentById(build.components, row.componentId);
     return sum + component.cost * row.count;
   }, 0);
-  const weaponCost = build.templateWeapons.reduce(
-    (sum, w) => sum + (weaponById(build.weaponsCatalog, w.weaponId)?.cost || 0) * w.count,
-    0,
-  );
-  return Math.round(componentCost + optionalComponentCost + weaponCost);
+  return Math.round(componentCost + optionalComponentCost + computeWeaponCost(build));
 }
 
 // --- Aggregate --------------------------------------------------------------
@@ -448,11 +460,11 @@ export interface ShipDerivedStats {
   overload: boolean;
   crew: number;
   minCrew: number;
+  fullCrew: number;
   /** Authored crew-quarters mass. */
   crewQuarters: number;
   /** `crewQuarters × 5`. */
   crewCapacity: number;
-  passengers: number;
   ac: number;
   shipHp: number;
   accel: number;
@@ -484,9 +496,9 @@ export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
     overload: m.used > build.totalMass,
     crew: computeCrew(build),
     minCrew: computeMinCrew(build),
+    fullCrew: computeFullCrew(build),
     crewQuarters: Math.max(0, build.crewQuarters || 0),
     crewCapacity: computeCrewCapacity(build.crewQuarters),
-    passengers: Math.max(0, build.passengers || 0),
     ac: computeArmorClass(build),
     shipHp: computeShipHp(build),
     accel: computeAccel(build),

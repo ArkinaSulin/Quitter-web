@@ -20,6 +20,7 @@ import {
   DeckCard,
   canPlaceWeapon,
   componentByName,
+  computeHullCost,
   computeShipBuild,
   createDefaultDeckLayout,
   deckDirection,
@@ -175,9 +176,7 @@ function buildFromTemplate(
     sails: t.sails,
     rudders: t.rudders,
     reinforcement: t.reinforcement,
-    crewCount: t.crewCount,
     crewQuarters: t.crewQuarters ?? 0,
-    passengers: t.passengers ?? 0,
     weaponCapacity: t.weaponCapacity ?? 0,
     atmosphericSpeed: t.atmosphericSpeed ?? 0,
     damageThreshold: t.damageThreshold ?? 15,
@@ -404,8 +403,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const confirmCrew = () => {
     if (!formData) return;
     const { count, name, level, str, dex, con, int, wis, cha, cost } = crewDraft;
-    const maxAdd = Math.max(0, formData.crewCount - formData.crews.length);
-    const n = Math.min(Math.max(1, Math.floor(count) || 1), editingCrewIndex !== null ? 1 : Math.max(1, maxAdd));
+    const n = editingCrewIndex !== null ? 1 : Math.max(1, Math.floor(count) || 1);
     const rows: ShipCrew[] = Array.from({ length: n }, () => ({
       id: crypto.randomUUID(),
       name: name.trim() ? name.trim() : null,
@@ -530,9 +528,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       sails: 0,
       rudders: 0,
       reinforcement: 0,
-      crewCount: 0,
       crewQuarters: 0,
-      passengers: 0,
       weaponCapacity: 0,
       deckLayout: createDefaultDeckLayout(),
       reinforcements: [],
@@ -645,6 +641,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     const duplicate = templates.find(t => t.name === formData.name.trim() && t.id !== formData.id);
     if (duplicate) {
       setError('A ship with this name already exists');
+      return false;
+    }
+    if (stats && formData.crews.length > stats.crewCapacity) {
+      setError(`Crew roster (${formData.crews.length}) exceeds quarters capacity (${stats.crewCapacity}). Add crew quarters or remove crew before saving.`);
       return false;
     }
 
@@ -762,8 +762,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const weaponCapacity = stats?.weaponCapacity ?? 0;
   const weaponOverCapacity = weaponPlaced > weaponCapacity;
   const canAddWeapon = !!formData && weaponsCatalog.some(w => canPlaceWeapon(weaponPlaced, weaponCapacity, weaponTons(w)));
-  // Roster is capped at the crew complement set in the Components box.
-  const crewSlotsRemaining = formData ? Math.max(0, formData.crewCount - formData.crews.length) : 0;
+  const crewOverCapacity = !!formData && !!stats && formData.crews.length > stats.crewCapacity;
   const isNew = !!formData && !templates.some(t => t.id === formData.id);
   const mcLabel = (v: number) => (Number.isFinite(v) ? `${v}` : '—');
   const armorName = (id: string) => {
@@ -773,6 +772,19 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const weaponCapacityComponent = formData
     ? componentByName(components, COMPONENT_NAMES.weaponCapacity)
     : null;
+  const rowCost = (name: string, count: number) =>
+    formData ? componentByName(components, name).cost * count : 0;
+  const hullCost = computeHullCost(formData?.totalMass ?? 0);
+  const helmCost = rowCost(COMPONENT_NAMES.helm, formData?.helm ?? 0);
+  const bridgeCost = rowCost(COMPONENT_NAMES.commandBridge, formData?.commandBridge ?? 0);
+  const sailCost = rowCost(COMPONENT_NAMES.sail, formData?.sails ?? 0);
+  const rudderCost = rowCost(COMPONENT_NAMES.rudder, formData?.rudders ?? 0);
+  const capacityCost = formData
+    ? formData.weaponCapacity * (weaponCapacityComponent?.cost ?? 0)
+    : 0;
+  const reinforcementCost = rowCost(COMPONENT_NAMES.reinforcement, formData?.reinforcement ?? 0);
+  const quartersCost = rowCost(COMPONENT_NAMES.crewQuarters, formData?.crewQuarters ?? 0);
+  const cargoCost = rowCost(COMPONENT_NAMES.cargo, formData?.cargoArea ?? 0);
 
 
   return (
@@ -933,7 +945,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         <StatCell label="Cost">{stats.buildCost.toLocaleString()}gp</StatCell>
                       </div>
                       <div className="grid grid-cols-4 gap-2 mt-2">
-                        <StatCell label="Min crew / capacity">{stats.minCrew} / {stats.crewCapacity}</StatCell>
+                        <StatCell label="Min crew / Full crew">{stats.minCrew} / {stats.fullCrew}</StatCell>
                         <StatCell label="Used / total" tone={massOverload ? 'red' : 'default'}>
                           {stats.usedMass} / {stats.totalMass}t
                         </StatCell>
@@ -982,9 +994,15 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           Over the designated mass by {Math.abs(stats.remainingMass)}t — remove fittings or raise total mass.
                         </p>
                       )}
-                      {formData.crewCount < stats.minCrew && (
+                      {formData.crews.length < stats.minCrew && (
                         <p className="text-[10px] text-amber-400 mt-1">
                           Below minimum crew ({stats.minCrew}) — the ship cannot operate all stations.
+                        </p>
+                      )}
+                      {crewOverCapacity && (
+                        <p className="text-[10px] text-red-400 mt-1">
+                          Crew roster ({formData.crews.length}) exceeds quarters capacity ({stats.crewCapacity}).
+                          Add crew quarters or remove crew before saving.
                         </p>
                       )}
                     </div>
@@ -1021,7 +1039,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="text-right px-2">{stats?.massBreakdown.hull ?? 0}</td>
                           <td className="text-right px-2">0</td>
                           <td className="pl-2 text-gray-500">Read-only mass · safe</td>
-                          <td className="text-right pl-2 text-gray-500">—</td>
+                          <td className="text-right pl-2 text-yellow-400">{hullCost.toLocaleString()}gp</td>
                         </tr>
 
                         <tr className="border-b border-gray-700/50">
@@ -1034,7 +1052,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="text-right px-2">{stats?.massBreakdown.helm ?? 0}</td>
                           <td className="text-right px-2">{Math.ceil(formData.helm * 1)}</td>
                           <td className="pl-2 text-gray-500">1t each · 1 crew</td>
-                          <td className="text-right pl-2 text-gray-500">—</td>
+                          <td className="text-right pl-2 text-yellow-400">{helmCost.toLocaleString()}gp</td>
                         </tr>
 
                         <tr className="border-b border-gray-700/50">
@@ -1047,7 +1065,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="text-right px-2">{stats?.massBreakdown.commandBridge ?? 0}</td>
                           <td className="text-right px-2">{Math.ceil(formData.commandBridge * 5)}</td>
                           <td className="pl-2 text-gray-500">3t each · 5 crew · +5 command</td>
-                          <td className="text-right pl-2 text-gray-500">—</td>
+                          <td className="text-right pl-2 text-yellow-400">{bridgeCost.toLocaleString()}gp</td>
                         </tr>
 
                         <tr className="border-b border-gray-700/50">
@@ -1058,9 +1076,9 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                             </div>
                           </td>
                           <td className="text-right px-2">{stats?.massBreakdown.sails ?? 0}</td>
-                          <td className="text-right px-2">{Math.ceil(formData.sails * 0.5)}</td>
-                          <td className="pl-2 text-gray-500">1t each · ½ crew</td>
-                          <td className="text-right pl-2 text-gray-500">—</td>
+                          <td className="text-right px-2">0</td>
+                          <td className="pl-2 text-gray-500">1t each · no crew</td>
+                          <td className="text-right pl-2 text-yellow-400">{sailCost.toLocaleString()}gp</td>
                         </tr>
 
                         <tr className="border-b border-gray-700/50">
@@ -1073,7 +1091,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="text-right px-2">{stats?.massBreakdown.rudders ?? 0}</td>
                           <td className="text-right px-2">{Math.ceil(formData.rudders * 0.5)}</td>
                           <td className="pl-2 text-gray-500">1.5t each (rounded) · ½ crew</td>
-                          <td className="text-right pl-2 text-gray-500">—</td>
+                          <td className="text-right pl-2 text-yellow-400">{rudderCost.toLocaleString()}gp</td>
                         </tr>
 
                         <tr className="border-b border-gray-700/50">
@@ -1100,9 +1118,9 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="text-right px-2 text-gray-500">—</td>
                           <td className={`pl-2 ${weaponOverCapacity ? 'text-red-400' : 'text-gray-500'}`}>
                             {weaponCapacityComponent?.effect ? `${weaponCapacityComponent.effect} · ` : ''}
-                            Placed {stats?.weaponPlacedTons ?? 0}t / {stats?.weaponCapacity ?? 0}t · crew from chosen weapons
+                            Placed {stats?.weaponPlacedTons ?? 0}t / {stats?.weaponCapacity ?? 0}t · handling crew excluded from min crew
                           </td>
-                          <td className="text-right pl-2 text-gray-500">—</td>
+                          <td className="text-right pl-2 text-yellow-400">{capacityCost.toLocaleString()}gp</td>
                         </tr>
 
                         {/* Weapon child list */}
@@ -1128,7 +1146,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                 <div className="space-y-1">
                                   {formData.weapons.map((w, idx) => {
                                     const wpn = weaponById(weaponsCatalog, w.weaponId);
-                                    const tons = wpn ? weaponTons(wpn) : 0;
                                     const direction = build
                                       ? deckDirection(build.deckLayout!, `weapon:${w.id}`)
                                       : '—';
@@ -1156,8 +1173,8 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                         <span className="w-12 flex-none text-center text-[9px] text-gray-300 bg-gray-900/70 border border-gray-600 rounded px-1 py-0.5">
                                           {direction}
                                         </span>
-                                        <span className="w-24 flex-none text-right text-[9px] text-gray-400">
-                                          {tons * w.count}t · {Math.ceil((wpn?.crew || 0) * w.count)} crew
+                                        <span className="w-20 flex-none text-right text-[9px] text-yellow-400">
+                                          {((wpn?.cost || 0) * w.count).toLocaleString()}gp
                                         </span>
                                         <button
                                           type="button"
@@ -1177,7 +1194,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                 </p>
                               )}
                               <p className="text-[9px] text-gray-500 mt-1">
-                                Weapon crew: {stats?.weaponCrew ?? 0}. Crew comes from the chosen weapons.
+                                Weapon crew: {stats?.weaponCrew ?? 0} (not counted toward min crew).
                               </p>
                             </div>
                           </td>
@@ -1205,7 +1222,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="pl-2 text-gray-500">
                             {Math.round((selectedArmor?.massPct ?? 0) * 100)}% mass · AC {selectedArmor?.ac ?? '—'} · HP ×{selectedArmor?.hpMult ?? 1}
                           </td>
-                          <td className="text-right pl-2 text-gray-500">—</td>
+                          <td className="text-right pl-2 text-yellow-400">0gp</td>
                         </tr>
 
                         <tr className="border-b border-gray-700/50">
@@ -1227,7 +1244,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="text-right px-2">{stats?.massBreakdown.reinforcement ?? 0}</td>
                           <td className="text-right px-2">0</td>
                           <td className="pl-2 text-gray-500">1t each · +10 temp HP (target later)</td>
-                          <td className="text-right pl-2 text-gray-500">—</td>
+                          <td className="text-right pl-2 text-yellow-400">{reinforcementCost.toLocaleString()}gp</td>
                         </tr>
 
                         <tr className="border-b border-gray-700/50">
@@ -1240,7 +1257,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="text-right px-2">{stats?.massBreakdown.crewQuarters ?? 0}</td>
                           <td className="text-right px-2">0</td>
                           <td className="pl-2 text-gray-500">1t each · {stats?.crewCapacity ?? 0} capacity</td>
-                          <td className="text-right pl-2 text-gray-500">—</td>
+                          <td className="text-right pl-2 text-yellow-400">{quartersCost.toLocaleString()}gp</td>
                         </tr>
 
                         <tr className="border-b border-gray-700/50">
@@ -1258,7 +1275,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="text-right px-2">{stats?.massBreakdown.cargo ?? 0}</td>
                           <td className="text-right px-2">0</td>
                           <td className="pl-2 text-gray-500">Max {cargoCapacity}t</td>
-                          <td className="text-right pl-2 text-gray-500">—</td>
+                          <td className="text-right pl-2 text-yellow-400">{cargoCost.toLocaleString()}gp</td>
                         </tr>
 
                         {formData.optionalComponents.map((a) => {
@@ -1288,7 +1305,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                   </button>
                                 </div>
                               </td>
-                              <td className="text-right pl-2 text-gray-500">—</td>
+                              <td className="text-right pl-2 text-yellow-400">{((component.cost || 0) * a.count).toLocaleString()}gp</td>
                             </tr>
                           );
                         })}
@@ -1312,10 +1329,16 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                 <div className="flex-none px-6 py-3 border-t border-gray-700 bg-[#0d0d1a] flex gap-3">
                   <button
                     onClick={handleSave}
-                    className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+                    disabled={crewOverCapacity}
+                    className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isNew ? 'Create' : 'Save'}
                   </button>
+                  {crewOverCapacity && (
+                    <span className="self-center text-[10px] text-red-400">
+                      Crew roster exceeds quarters capacity.
+                    </span>
+                  )}
                   <button
                     onClick={handleClone}
                     disabled={!formData}
@@ -1377,46 +1400,30 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
               <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-[10px] text-gray-400">
-                    Ship roster ({formData.crews.length} / {formData.crewCount})
+                  <label className={`block text-[10px] ${crewOverCapacity ? 'text-red-400' : 'text-gray-400'}`}>
+                    Ship roster ({formData.crews.length}) · Min {stats.minCrew} / Full {stats.fullCrew} · Quarters {stats.crewCapacity}
                   </label>
                   <button
                     type="button"
                     onClick={openAddCrew}
-                    disabled={readOnly || crewSlotsRemaining === 0}
+                    disabled={readOnly}
                     className="px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     + Add crew
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  <Cell label="Crew on board" widthClass="w-full">
-                    <NumInput
-                      value={formData.crewCount}
-                      min={0}
-                      max={999}
-                      onChange={(v) => updateFormData('crewCount', Math.max(0, Math.floor(v)))}
-                    />
-                  </Cell>
-                  <Cell label="Passengers" widthClass="w-full">
-                    <NumInput
-                      value={formData.passengers}
-                      min={0}
-                      max={999}
-                      onChange={(v) => updateFormData('passengers', Math.max(0, Math.floor(v)))}
-                    />
-                  </Cell>
-                </div>
-                <p className="text-[9px] text-gray-500 mb-1">
-                  Min crew {stats.minCrew} · quarters capacity {stats.crewCapacity}.
-                </p>
-                <div className="flex flex-wrap gap-1 mb-2" title="Crew on board">
-                  {Array.from({ length: Math.min(formData.crewCount, 80) }).map((_, i) => (
+                {crewOverCapacity && (
+                  <p className="text-[10px] text-red-400 mb-1">
+                    Roster exceeds crew capacity by {formData.crews.length - stats.crewCapacity}. Saving is blocked.
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-1 mb-2" title="Crew roster">
+                  {Array.from({ length: Math.min(formData.crews.length, 80) }).map((_, i) => (
                     <span key={i} className="w-2.5 h-2.5 rounded-full border border-gray-400" />
                   ))}
-                  {formData.crewCount > 80 && (
-                    <span className="text-[9px] text-gray-500">+{formData.crewCount - 80}</span>
+                  {formData.crews.length > 80 && (
+                    <span className="text-[9px] text-gray-500">+{formData.crews.length - 80}</span>
                   )}
                 </div>
 
@@ -1670,7 +1677,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
             <div className="space-y-2">
               <div className="flex items-end gap-2">
                 <Cell label="Number of crew" widthClass="w-24">
-                  <NumInput value={crewDraft.count} min={1} max={Math.max(1, crewSlotsRemaining)} onChange={(v) => setCrewDraft(d => ({ ...d, count: Math.max(1, Math.min(crewSlotsRemaining || 1, Math.floor(v) || 1)) }))} />
+                  <NumInput value={crewDraft.count} min={1} max={999} onChange={(v) => setCrewDraft(d => ({ ...d, count: Math.max(1, Math.floor(v) || 1) }))} />
                 </Cell>
                 <Cell label="Name (optional — blank = unnamed)" widthClass="flex-1">
                   <input

@@ -136,12 +136,8 @@ export interface ShipTemplate {
   rudders: number;
   /** Hull reinforcement units (+10 temp HP each, assigned to a component). */
   reinforcement: number;
-  /** Crew complement (current crew on board). */
-  crewCount: number;
   /** Authored crew-quarters mass (1 ton = 5 capacity). */
   crewQuarters: number;
-  /** Authored passenger count (display-only for now). */
-  passengers: number;
   /** Authored weapon capacity mass; placed weapons must fit inside it. */
   weaponCapacity: number;
   /** Region-container deck layout. Empty until the editor syncs purchases. */

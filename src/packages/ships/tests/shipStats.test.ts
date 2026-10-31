@@ -28,6 +28,8 @@ import {
   computeCommandBonus,
   computeComponentCrew,
   computeCrewCapacity,
+  computeFullCrew,
+  computeHullCost,
   computeEffectiveMC,
   computeFittingMass,
   computeHullMass,
@@ -58,7 +60,7 @@ const COMPONENTS: ShipComponent[] = [
   { id: 'comp-hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, dt: 15 },
   { id: 'comp-helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
   { id: 'comp-bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  { id: 'comp-sail', name: 'Sail', mass: 1, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
+  { id: 'comp-sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
   { id: 'comp-rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
   { id: 'comp-reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
   { id: 'comp-cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
@@ -87,9 +89,7 @@ function buildBase(opts: {
   sails?: number;
   rudders?: number;
   reinforcement?: number;
-  crewCount?: number;
   crewQuarters?: number;
-  passengers?: number;
   weaponCapacity?: number;
   atmosphericSpeed?: number;
   damageThreshold?: number;
@@ -107,9 +107,7 @@ function buildBase(opts: {
     sails: opts.sails ?? 0,
     rudders: opts.rudders ?? 0,
     reinforcement: opts.reinforcement ?? 0,
-    crewCount: opts.crewCount ?? 0,
     crewQuarters: opts.crewQuarters ?? 0,
-    passengers: opts.passengers ?? 0,
     weaponCapacity: opts.weaponCapacity,
     atmosphericSpeed: opts.atmosphericSpeed,
     damageThreshold: opts.damageThreshold,
@@ -122,30 +120,25 @@ function buildBase(opts: {
 // --- Reference templates ----------------------------------------------------
 
 const racer = () => buildBase({
-  armorId: 'wood', totalMass: 10, helm: 1, sails: 2, rudders: 4,
-  crewCount: 4, crewQuarters: 0, cargoArea: 0,
+  armorId: 'wood', totalMass: 10, helm: 1, sails: 2, rudders: 4, crewQuarters: 0, cargoArea: 0,
 });
 
 const shuttle = () => buildBase({
-  armorId: 'wood', totalMass: 10, helm: 1, sails: 1, rudders: 1,
-  crewCount: 3, crewQuarters: 4, cargoArea: 1,
+  armorId: 'wood', totalMass: 10, helm: 1, sails: 1, rudders: 1, crewQuarters: 4, cargoArea: 1,
 });
 
 const wasp = () => buildBase({
-  armorId: 'wood', totalMass: 20, helm: 1, sails: 1, rudders: 6,
-  crewCount: 7, crewQuarters: 2, weaponCapacity: 1, cargoArea: 3,
+  armorId: 'wood', totalMass: 20, helm: 1, sails: 1, rudders: 6, crewQuarters: 2, weaponCapacity: 1, cargoArea: 3,
   weapons: [wpn('wpn-ballista', 1)],
 });
 
 const damselfly = () => buildBase({
-  armorId: 'metal', totalMass: 30, helm: 1, sails: 7, rudders: 3,
-  crewCount: 13, crewQuarters: 2, weaponCapacity: 3, cargoArea: 1,
+  armorId: 'metal', totalMass: 30, helm: 1, sails: 7, rudders: 3, crewQuarters: 2, weaponCapacity: 3, cargoArea: 1,
   weapons: [wpn('wpn-catapult', 1, 'Fore'), wpn('wpn-ballista', 1, 'Left')],
 });
 
 const starMoth = () => buildBase({
-  armorId: 'ceramic', totalMass: 60, helm: 1, commandBridge: 1, sails: 2, rudders: 18,
-  crewCount: 24, crewQuarters: 5, weaponCapacity: 4, cargoArea: 2,
+  armorId: 'ceramic', totalMass: 60, helm: 1, commandBridge: 1, sails: 2, rudders: 18, crewQuarters: 5, weaponCapacity: 4, cargoArea: 2,
   weapons: [wpn('wpn-ballista', 4)],
 });
 
@@ -218,11 +211,11 @@ describe('reference template mass', () => {
 
 describe('reference template performance', () => {
   const cases = [
-    { name: 'Racer', build: racer, accel: 9, mc: 0, hp: 70, ac: 15, minCrew: 4, capacity: 0, bands: [0, 0, 1] },
-    { name: 'Shuttle', build: shuttle, accel: 3, mc: 3, hp: 70, ac: 15, minCrew: 3, capacity: 20, bands: [2, 3, 4] },
-    { name: 'Wasp', build: wasp, accel: 5.3, mc: 1, hp: 100, ac: 15, minCrew: 7, capacity: 10, bands: [0, 1, 2] },
-    { name: 'Damselfly', build: damselfly, accel: 5, mc: 3, hp: 130, ac: 19, minCrew: 13, capacity: 10, bands: [2, 3, 4] },
-    { name: 'Star Moth', build: starMoth, accel: 5, mc: 1, hp: 440, ac: 13, minCrew: 24, capacity: 25, bands: [0, 1, 2] },
+    { name: 'Racer', build: racer, accel: 9, mc: 0, hp: 70, ac: 15, minCrew: 3, capacity: 0, bands: [0, 0, 1] },
+    { name: 'Shuttle', build: shuttle, accel: 3, mc: 3, hp: 70, ac: 15, minCrew: 2, capacity: 20, bands: [2, 3, 4] },
+    { name: 'Wasp', build: wasp, accel: 5.3, mc: 1, hp: 100, ac: 15, minCrew: 4, capacity: 10, bands: [0, 1, 2] },
+    { name: 'Damselfly', build: damselfly, accel: 5, mc: 3, hp: 130, ac: 19, minCrew: 3, capacity: 10, bands: [2, 3, 4] },
+    { name: 'Star Moth', build: starMoth, accel: 5, mc: 1, hp: 440, ac: 13, minCrew: 15, capacity: 25, bands: [0, 1, 2] },
   ];
 
   for (const c of cases) {
@@ -246,17 +239,23 @@ describe('reference template performance', () => {
 
 describe('crew', () => {
   it('rounds each component crew separately before summing', () => {
-    // Shuttle: 1 helm + ceil(0.5) sail + ceil(0.5) rudder = 3
-    expect(computeComponentCrew(shuttle())).toBe(3);
-    expect(computeMinCrew(shuttle())).toBe(3);
+    // Shuttle: 1 helm + ceil(0.5) rudder = 2
+    expect(computeComponentCrew(shuttle())).toBe(2);
+    expect(computeMinCrew(shuttle())).toBe(2);
 
-    // Damselfly: 1 + ceil(3.5) + ceil(1.5) + 4 + 2 = 13
-    expect(computeComponentCrew(damselfly())).toBe(13);
-    expect(computeMinCrew(damselfly())).toBe(13);
+    // Damselfly: 1 helm + ceil(1.5) rudder = 3
+    expect(computeComponentCrew(damselfly())).toBe(3);
+    expect(computeMinCrew(damselfly())).toBe(3);
 
-    // Star Moth: 1 + 5 + ceil(1) + ceil(9) + 4×2 = 24
-    expect(computeComponentCrew(starMoth())).toBe(24);
-    expect(computeMinCrew(starMoth())).toBe(24);
+    // Star Moth: 1 helm + 5 bridge + ceil(9) rudder = 15
+    expect(computeComponentCrew(starMoth())).toBe(15);
+    expect(computeMinCrew(starMoth())).toBe(15);
+  });
+
+  it('full crew is two shifts of minimum crew', () => {
+    expect(computeFullCrew(shuttle())).toBe(4);
+    expect(computeFullCrew(wasp())).toBe(8);
+    expect(computeFullCrew(starMoth())).toBe(30);
   });
 
   it('crew quarters are authored tons with 5 capacity per ton', () => {
@@ -398,8 +397,7 @@ describe('hit boxes', () => {
 
   it('shows unfurnished mass as reserve', () => {
     const b = buildBase({
-      armorId: 'wood', totalMass: 20, sails: 4, rudders: 2,
-      crewCount: 3, crewQuarters: 1, cargoArea: 2,
+      armorId: 'wood', totalMass: 20, sails: 4, rudders: 2, crewQuarters: 1, cargoArea: 2,
     });
     const byId = Object.fromEntries(computeBoxGroups(b).map(g => [g.id, g]));
     expect(byId.reserve.boxes).toBe(6); // 20 − (3+1+4+3+1+2)
@@ -409,8 +407,7 @@ describe('hit boxes', () => {
 describe('mass helpers + overload', () => {
   it('reports used/remaining/fitting in whole tons', () => {
     const b = buildBase({
-      armorId: 'wood', totalMass: 20, sails: 4, rudders: 2,
-      crewCount: 3, crewQuarters: 1, cargoArea: 2,
+      armorId: 'wood', totalMass: 20, sails: 4, rudders: 2, crewQuarters: 1, cargoArea: 2,
     });
     expect(computeUsedMass(b)).toBe(14);       // 3 hull + 1 helm + 4 sails + 3 rudders + 1 quarters + 2 cargo
     expect(computeRemainingMass(b)).toBe(6);
@@ -432,21 +429,21 @@ describe('command bridge', () => {
 });
 
 describe('build cost', () => {
-  it('sums weapon + optional component costs (component gold is not yet defined)', () => {
+  it('sums hull + weapon + optional component costs', () => {
     const b = buildBase({
       armorId: 'wood', totalMass: 40,
       weapons: [wpn('wpn-ballista', 2), wpn('wpn-catapult', 1)],
       optionalComponents: [acc('acc-ram')],
     });
-    expect(computeBuildCost(b)).toBe(6800); // 2×500 + 800 + 5000
+    expect(computeHullCost(40)).toBe(40000);
+    expect(computeBuildCost(b)).toBe(46800); // hull 40×1000 + 2×500 + 800 + 5000
   });
 });
 
 describe('computeShipBuild aggregate', () => {
   it('returns the full mass-first stat block', () => {
     const b = buildBase({
-      armorId: 'wood', totalMass: 20, sails: 4, rudders: 2,
-      crewCount: 3, crewQuarters: 1, cargoArea: 2,
+      armorId: 'wood', totalMass: 20, sails: 4, rudders: 2, crewQuarters: 1, cargoArea: 2,
     });
     const s = computeShipBuild(b);
     expect(s.totalMass).toBe(20);
@@ -457,11 +454,11 @@ describe('computeShipBuild aggregate', () => {
     expect(s.usedMass).toBe(14);
     expect(s.remainingMass).toBe(6);
     expect(s.overload).toBe(false);
-    expect(s.crew).toBe(3);
-    expect(s.minCrew).toBe(4);
+    expect(s.crew).toBe(0);
+    expect(s.minCrew).toBe(2);
+    expect(s.fullCrew).toBe(4);
     expect(s.crewQuarters).toBe(1);
     expect(s.crewCapacity).toBe(5);
-    expect(s.passengers).toBe(0);
     expect(s.ac).toBe(15);
     expect(s.shipHp).toBe(100);
     expect(s.accel).toBe(4.5);

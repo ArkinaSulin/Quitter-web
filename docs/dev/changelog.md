@@ -1,5 +1,30 @@
 # QuiTTER Changelog
 
+## Ship master templates + derived crew/cost rules (migration 144) (2026-10-31)
+**Files:** supabase/migrations/144_ship_template_master.sql, src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers}.ts, src/packages/ships/tests/{shipStats,shipMappers}.test.ts, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/ShipLayout.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
+
+- Replaced every old ship template with the **24-ship master list**; migration
+  144 deletes old template/join/roster data and seeds structural values only.
+  Weapon tonnage is the authored capacity; no component/weapon rows are seeded,
+  so unallocated mass stays **Reserve**.
+- Dropped derived `crew_count` and `passengers`. Crew count is the actual
+  `ship_crews` roster length. The roster has no hard cap, but saving is blocked
+  with a red error while it exceeds quarters capacity.
+- Min crew now **excludes weapon handling crew** and Sail crew is 0. Helm crew
+  is one per helm; rudder crew remains 0.5 and rounds up per group. **Full crew
+  = min crew × 2** (double shift).
+- Ship DT is the template minimum; card DT is
+  `max(ship DT, component/weapon DT)`.
+- Costs are per row and summed: hull = `totalMass × 1000gp`; each component row
+  uses catalog cost × count; Weapon capacity uses capacity cost, and each weapon
+  child row adds its own cost.
+- Weapon child rows no longer repeat mass/crew (both are in the selector); they
+  show direction and cost.
+- Armor doc table now states **MassFactor (percent of ship total mass)** and
+  keeps Ceramic/Stone ×2 HP. Verification: `tsc`, ships tests (58), full vitest
+  (1216), depcruise (pre-existing warnings), `next build`. **Apply 144 in
+  Supabase.**
+
 ## Region-container ship deck + stable weapon rows (migration 143) (2026-10-31)
 **Files:** supabase/migrations/143_ship_deck_layout.sql, src/types/ship.ts, src/packages/ships/lib/{deckLayout,shipMappers,shipStats}.ts, src/packages/ships/index.ts, src/packages/ships/tests/{deckLayout,shipMappers,shipStats}.test.ts, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/ShipLayout.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
 

@@ -66,6 +66,8 @@ export function ShipLayout({
   }
 
   const cards: Record<string, ShipComponentCardData> = {};
+  const cardDt = (componentDt: number | undefined) =>
+    Math.max(build.damageThreshold ?? 15, componentDt ?? 15);
 
   const addComponentCard = (
     key: string,
@@ -81,7 +83,7 @@ export function ShipLayout({
       name,
       tons,
       ac: component.ac ?? 10,
-      dt: component.dt ?? 15,
+      dt: cardDt(component.dt),
       crewRequired: crew,
       safe: opts.safe,
       note: component.effect || opts.note,
@@ -120,7 +122,7 @@ export function ShipLayout({
     name: 'Hull',
     tons: m.hull,
     ac: hullComponent.ac ?? 10,
-    dt: hullComponent.dt ?? 15,
+    dt: cardDt(hullComponent.dt),
     crewRequired: 0,
     safe: true,
     note: hullComponent.effect || 'structural',
@@ -175,7 +177,7 @@ export function ShipLayout({
       name: weapon ? `${weapon.name}${row.count > 1 ? ` ×${row.count}` : ''}` : 'Weapon',
       tons: weapon ? weaponTons(weapon) * row.count : 0,
       ac: weapon?.ac ?? 10,
-      dt: weapon?.dt ?? 15,
+      dt: cardDt(weapon?.dt),
       crewRequired: weapon ? Math.ceil(weapon.crew * row.count) : 0,
       note: weapon?.special || undefined,
       reinforced: reinforced(build, key),
@@ -191,7 +193,7 @@ export function ShipLayout({
       name: component.name ? `${component.name}${row.count > 1 ? ` ×${row.count}` : ''}` : row.componentId,
       tons: Math.round((component.mass || 0) * row.count),
       ac: component.ac ?? 10,
-      dt: component.dt ?? 15,
+      dt: cardDt(component.dt),
       crewRequired: Math.ceil(component.crew * row.count),
       note: component.effect || undefined,
       reinforced: reinforced(build, key),
