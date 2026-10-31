@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  componentTemplateToAccessoryRow,
   componentTemplateToComponentRow,
   componentTemplateToWeaponRow,
-  mapAccessoryToTemplate,
   mapComponentToTemplate,
   mapWeaponToTemplate,
   slugifyComponentName,
@@ -19,6 +17,7 @@ const weaponTemplate = () => ({
   hittable: true,
   cost: 100,
   effect: '',
+  builtIn: false,
   damage: '6d10',
   minRange: 0,
   range: 1,
@@ -30,16 +29,29 @@ const weaponTemplate = () => ({
 });
 
 describe('component workshop mappers', () => {
-  it('maps a component row to the unified template', () => {
+  it('maps a built-in component row', () => {
     const t = mapComponentToTemplate({
       id: 'c1', name: 'helm', mass: 1, crew: 1, cost: 0,
-      hittable: true, effect: 'steering', ac: 10, imageUrl: 'x',
+      hittable: true, effect: 'steering', builtIn: true, ac: 10, imageUrl: 'x',
     });
     expect(t.kind).toBe('component');
+    expect(t.builtIn).toBe(true);
     expect(t.name).toBe('helm');
     expect(t.effect).toBe('steering');
-    expect(t.damage).toBe('');
     expect(t.imageUrl).toBe('x');
+  });
+
+  it('maps an optional component row', () => {
+    const t = mapComponentToTemplate({
+      id: 'c2', name: 'ram', mass: 5, crew: 0, cost: 5000,
+      hittable: true, effect: '16d10 ram', builtIn: false, ac: 10,
+    });
+    expect(t.builtIn).toBe(false);
+    expect(componentTemplateToComponentRow(t)).toMatchObject({
+      name: 'ram',
+      mass: 5,
+      built_in: false,
+    });
   });
 
   it('maps a weapon row and writes the new weapon columns', () => {
@@ -49,6 +61,7 @@ describe('component workshop mappers', () => {
       crew: 2, cost: 100, ammoCost: null, special: 'melee', ac: 10,
     });
     expect(t.kind).toBe('weapon');
+    expect(t.builtIn).toBe(false);
     expect(t.fireCycleStep).toBe(2);
     expect(componentTemplateToWeaponRow(t)).toMatchObject({
       name: 'heavy_ram',
@@ -60,30 +73,8 @@ describe('component workshop mappers', () => {
     });
   });
 
-  it('maps an accessory row and writes the existing accessory columns only', () => {
-    const t = mapAccessoryToTemplate({
-      id: 'a1', name: 'ram_mount', mass: 5, crew: 0, cost: 5000,
-      hittable: true, effect: 'mount', ac: 10,
-    });
-    expect(t.kind).toBe('accessory');
-    expect(componentTemplateToAccessoryRow(t)).toEqual({
-      name: 'ram_mount',
-      mass: 5,
-      crew: 0,
-      cost: 5000,
-      hittable: true,
-      effect: 'mount',
-      ac: 10,
-      image_url: '',
-    });
-  });
-
-  it('slugifies names and keeps component built-ins name-only', () => {
+  it('slugifies names', () => {
     expect(slugifyComponentName('Heavy Ram!')).toBe('heavy_ram');
-    const t = mapComponentToTemplate({
-      id: 'c1', name: 'helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null,
-    });
-    expect(componentTemplateToComponentRow(t).name).toBe('helm');
   });
 });
 

@@ -1,29 +1,21 @@
 'use client';
 
-// Component Workshop — one editor over the three ship catalogs:
-//   Components (ship_components, built-in rows, edit-only)
+// Component Workshop — one editor over the two ship catalogs:
+//   Components (ship_components: built-in + optional)
 //   Weapons    (ship_weapons)
-//   Accessories(ship_accessories, mounts)
 //
-// The catalogs use UUID ids + a unique `name`; the current id strings are the
-// display/name values after migration 137.
+// Built-in components are edit-only; optional components support New/Clone/Delete.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/packages/infra/supabase';
 import {
-  ShipAccessory,
   ShipCatalogKind,
-  ShipComponent,
   ShipComponentTemplate,
-  ShipWeapon,
 } from '@/types/ship';
 import {
-  componentTemplateToAccessoryRow,
   componentTemplateToComponentRow,
   componentTemplateToWeaponRow,
-  mapAccessoryToTemplate,
   mapComponentToTemplate,
-  mapShipAccessoryRow,
   mapShipComponentRow,
   mapShipWeaponRow,
   mapWeaponToTemplate,
@@ -34,13 +26,11 @@ import { ComponentFields } from './ComponentFields';
 const KIND_LABEL: Record<ShipCatalogKind, string> = {
   component: 'Components',
   weapon: 'Weapons',
-  accessory: 'Accessories',
 };
 
 const KIND_SINGULAR: Record<ShipCatalogKind, string> = {
   component: 'Component',
   weapon: 'Weapon',
-  accessory: 'Accessory',
 };
 
 function humanize(id: string): string {
@@ -57,6 +47,7 @@ function freshTemplate(kind: ShipCatalogKind): ShipComponentTemplate {
     hittable: true,
     cost: 0,
     effect: '',
+    builtIn: false,
     damage: kind === 'weapon' ? '1d6' : '',
     minRange: 0,
     range: 1,
@@ -77,19 +68,16 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
   const [status, setStatus] = useState('');
 
   const load = useCallback(async (): Promise<ShipComponentTemplate[]> => {
-    const [componentsRes, weaponsRes, accessoriesRes] = await Promise.all([
+    const [componentsRes, weaponsRes] = await Promise.all([
       supabase.from('ship_components').select('*').order('name'),
       supabase.from('ship_weapons').select('*').order('name'),
-      supabase.from('ship_accessories').select('*').order('name'),
     ]);
     if (componentsRes.error) throw componentsRes.error;
     if (weaponsRes.error) throw weaponsRes.error;
-    if (accessoriesRes.error) throw accessoriesRes.error;
 
     const mapped = [
       ...(componentsRes.data || []).map((r: any) => mapComponentToTemplate(mapShipComponentRow(r))),
       ...(weaponsRes.data || []).map((r: any) => mapWeaponToTemplate(mapShipWeaponRow(r))),
-      ...(accessoriesRes.data || []).map((r: any) => mapAccessoryToTemplate(mapShipAccessoryRow(r))),
     ].sort((a, b) => a.name.localeCompare(b.name));
     setRows(mapped);
     return mapped;
@@ -102,7 +90,6 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
   const counts = useMemo(() => ({
     component: rows.filter(r => r.kind === 'component').length,
     weapon: rows.filter(r => r.kind === 'weapon').length,
-    accessory: rows.filter(r => r.kind === 'accessory').length,
   }), [rows]);
 
   const filtered = useMemo(() => {
@@ -133,29 +120,22 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
     try {
       let savedId = draft.id;
       if (draft.kind === 'component') {
-        if (!draft.id) throw new Error('Built-in components cannot be created.');
-        const { error: saveError } = await supabase
-          .from('ship_components')
-          .update(componentTemplateToComponentRow(draft))
-          .eq('id', draft.id);
-        if (saveError) throw saveError;
-      } else if (draft.kind === 'weapon') {
+        const row = componentTemplateToComponentRow(draft);
+        if (draft.id) {
+          const { error: saveError } = await supabase.from('ship_components').update(row).eq('id', draft.id);
+          if (saveError) throw saveError;
+        } else {
+          const { data, error: saveError } = await supabase.from('ship_components').insert(row).select('id').single();
+          if (saveError) throw saveError;
+          savedId = data.id;
+        }
+      } else {
         const row = componentTemplateToWeaponRow(draft);
         if (draft.id) {
           const { error: saveError } = await supabase.from('ship_weapons').update(row).eq('id', draft.id);
           if (saveError) throw saveError;
         } else {
           const { data, error: saveError } = await supabase.from('ship_weapons').insert(row).select('id').single();
-          if (saveError) throw saveError;
-          savedId = data.id;
-        }
-      } else {
-        const row = componentTemplateToAccessoryRow(draft);
-        if (draft.id) {
-          const { error: saveError } = await supabase.from('ship_accessories').update(row).eq('id', draft.id);
-          if (saveError) throw saveError;
-        } else {
-          const { data, error: saveError } = await supabase.from('ship_accessories').insert(row).select('id').single();
           if (saveError) throw saveError;
           savedId = data.id;
         }
@@ -173,11 +153,11 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
   };
 
   const remove = async () => {
-    if (!draft?.id || readOnly || draft.kind === 'component') return;
+    if (!draft?.id || readOnly || draft.builtIn) return;
     if (!confirm(`Delete ${KIND_SINGULAR[draft.kind].toLowerCase()} "${humanize(draft.name)}"?`)) return;
     setBusy(true);
     try {
-      const table = draft.kind === 'weapon' ? 'ship_weapons' : 'ship_accessories';
+      const table = draft.kind === 'component' ? 'ship_components' : 'ship_weapons';
       const { error } = await supabase.from(table).delete().eq('id', draft.id);
       if (error) throw error;
       setDraft(null);
@@ -191,13 +171,13 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
   };
 
   const clone = () => {
-    if (!draft || readOnly || draft.kind === 'component') return;
-    setDraft({ ...draft, id: '', name: `${draft.name}_copy` });
+    if (!draft || readOnly || draft.builtIn) return;
+    setDraft({ ...draft, id: '', name: `${draft.name}_copy`, builtIn: false });
     setStatus('');
   };
 
   const newRow = () => {
-    if (readOnly || tab === 'component') return;
+    if (readOnly) return;
     setDraft(freshTemplate(tab));
     setStatus('');
   };
@@ -214,8 +194,8 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
 
       <div className="flex flex-1 min-h-0">
         <div className="w-64 lg:w-72 shrink-0 border-r border-gray-700 p-2 flex flex-col min-h-0">
-          <div className="grid grid-cols-3 gap-1 mb-2">
-            {(['component', 'weapon', 'accessory'] as ShipCatalogKind[]).map(kind => (
+          <div className="grid grid-cols-2 gap-1 mb-2">
+            {(['component', 'weapon'] as ShipCatalogKind[]).map(kind => (
               <button
                 key={kind}
                 type="button"
@@ -233,7 +213,7 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
             ))}
           </div>
 
-          {!readOnly && tab !== 'component' && (
+          {!readOnly && (
             <button
               type="button"
               onClick={newRow}
@@ -265,7 +245,8 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
               >
                 {humanize(row.name) || '(unnamed)'}
                 <span className="block text-[10px] text-gray-400">
-                  {row.mass} ton{row.mass === 1 ? '' : 's'} · {row.cost}gp
+                  {row.builtIn ? 'Built-in' : KIND_SINGULAR[row.kind]}
+                  {' · '}{row.mass} ton{row.mass === 1 ? '' : 's'} · {row.cost}gp
                   {row.kind === 'weapon' ? ` · ${row.damage}` : ''}
                 </span>
               </button>
@@ -281,8 +262,10 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
           ) : (
             <div className="w-full max-w-3xl">
               <div className="mb-3 flex items-center gap-2">
-                <span className="text-xs uppercase tracking-widest text-gray-500">{KIND_SINGULAR[draft.kind]}</span>
-                {draft.kind === 'component' && (
+                <span className="text-xs uppercase tracking-widest text-gray-500">
+                  {draft.builtIn ? 'Built-in component' : KIND_SINGULAR[draft.kind]}
+                </span>
+                {draft.builtIn && (
                   <span className="text-[10px] text-amber-300">Built-in rows are edit-only.</span>
                 )}
               </div>
@@ -297,7 +280,7 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
                   >
                     {draft.id ? 'Save' : 'Create'}
                   </button>
-                  {draft.kind !== 'component' && draft.id && (
+                  {!draft.builtIn && draft.id && (
                     <button
                       type="button"
                       onClick={clone}
@@ -307,7 +290,7 @@ export default function ComponentEditor({ readOnly }: { readOnly: boolean }) {
                       Clone
                     </button>
                   )}
-                  {draft.kind !== 'component' && draft.id && (
+                  {!draft.builtIn && draft.id && (
                     <button
                       type="button"
                       onClick={() => void remove()}

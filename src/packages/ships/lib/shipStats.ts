@@ -16,10 +16,9 @@
 //  - Crew quarters are authored in tons (1 ton = 5 crew + 28 days of supplies).
 
 import {
-  ShipAccessory,
   ShipArmor,
   ShipComponent,
-  ShipTemplateAccessory,
+  ShipTemplateComponent,
   ShipTemplateWeapon,
   ShipWeapon,
 } from '@/types/ship';
@@ -50,19 +49,19 @@ export const COMPONENT_NAMES = {
 } as const;
 
 const DEFAULT_COMPONENTS: Record<string, ShipComponent> = {
-  [COMPONENT_NAMES.hull]: { id: 'hull', name: 'hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, ac: 10, imageUrl: '' },
-  [COMPONENT_NAMES.helm]: { id: 'helm', name: 'helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null },
-  [COMPONENT_NAMES.commandBridge]: { id: 'command_bridge', name: 'command_bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null },
-  [COMPONENT_NAMES.sail]: { id: 'sail', name: 'sail', mass: 1, crew: 0.5, cost: 0, hittable: true, effect: null },
-  [COMPONENT_NAMES.rudder]: { id: 'rudder', name: 'rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null },
-  [COMPONENT_NAMES.reinforcement]: { id: 'reinforcement', name: 'reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null },
-  [COMPONENT_NAMES.cargo]: { id: 'cargo', name: 'cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null },
-  [COMPONENT_NAMES.crewQuarters]: { id: 'crew_quarters', name: 'crew_quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null },
-  [COMPONENT_NAMES.weaponCapacity]: { id: 'weapon_capacity', name: 'weapon_capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity' },
+  [COMPONENT_NAMES.hull]: { id: 'hull', name: 'hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, ac: 10, imageUrl: '' },
+  [COMPONENT_NAMES.helm]: { id: 'helm', name: 'helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.commandBridge]: { id: 'command_bridge', name: 'command_bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.sail]: { id: 'sail', name: 'sail', mass: 1, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.rudder]: { id: 'rudder', name: 'rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.reinforcement]: { id: 'reinforcement', name: 'reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.cargo]: { id: 'cargo', name: 'cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.crewQuarters]: { id: 'crew_quarters', name: 'crew_quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
+  [COMPONENT_NAMES.weaponCapacity]: { id: 'weapon_capacity', name: 'weapon_capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true },
 };
 
 const EMPTY_COMPONENT: ShipComponent = {
-  id: '', name: '', mass: 0, crew: 0, cost: 0, hittable: true, effect: null,
+  id: '', name: '', mass: 0, crew: 0, cost: 0, hittable: true, effect: null, builtIn: false,
 };
 
 export function clamp(v: number, lo: number, hi: number): number {
@@ -79,15 +78,16 @@ export function roundTons(v: number): number {
 }
 
 export function componentByName(components: ShipComponent[], name: string): ShipComponent {
-  return components.find(c => c.name === name) || DEFAULT_COMPONENTS[name] || EMPTY_COMPONENT;
+  return (
+    components.find(c => c.name === name && c.builtIn) ||
+    components.find(c => c.name === name) ||
+    DEFAULT_COMPONENTS[name] ||
+    EMPTY_COMPONENT
+  );
 }
 
 export function componentById(components: ShipComponent[], id: string): ShipComponent {
   return components.find(c => c.id === id) || EMPTY_COMPONENT;
-}
-
-export function accessoryById(accessories: ShipAccessory[], id: string): ShipAccessory | undefined {
-  return accessories.find(a => a.id === id);
 }
 
 export function weaponById(weapons: ShipWeapon[], id: string): ShipWeapon | undefined {
@@ -113,7 +113,6 @@ export function weaponFitsSlot(weapon: ShipWeapon, slot: string): boolean {
 export interface ShipBuild {
   armor: ShipArmor;
   components: ShipComponent[];
-  accessoriesCatalog: ShipAccessory[];
   weaponsCatalog: ShipWeapon[];
   totalMass: number;
   helm: number;
@@ -129,7 +128,7 @@ export interface ShipBuild {
   atmosphericSpeed?: number;
   damageThreshold?: number;
   cargoArea: number;
-  templateAccessories: ShipTemplateAccessory[];
+  templateComponents: ShipTemplateComponent[];
   templateWeapons: ShipTemplateWeapon[];
 }
 
@@ -148,16 +147,16 @@ export function computeWeaponCrew(build: ShipBuild): number {
   }, 0);
 }
 
-/** Accessory crew, rounded up per accessory installation. */
-export function computeAccessoryCrew(build: ShipBuild): number {
-  return build.templateAccessories.reduce((sum, a) => {
-    const accessory = accessoryById(build.accessoriesCatalog, a.accessoryId);
-    return sum + (accessory ? Math.ceil(accessory.crew * a.count) : 0);
+/** Optional-component crew, rounded up per installation. */
+export function computeOptionalComponentCrew(build: ShipBuild): number {
+  return build.templateComponents.reduce((sum, row) => {
+    const component = componentById(build.components, row.componentId);
+    return sum + Math.ceil(component.crew * row.count);
   }, 0);
 }
 
 /**
- * Σ component + weapon + accessory crew requirements.
+ * Σ built-in component + optional component + weapon crew requirements.
  * Each component group is rounded up **separately** (the templates show
  * Shuttle min 3 from 1 + ceil(0.5) + ceil(0.5), and Damselfly 13 from
  * 1 + ceil(3.5) + ceil(1.5) + 6).
@@ -170,7 +169,7 @@ export function computeComponentCrew(build: ShipBuild): number {
     Math.ceil(build.sails * componentByName(c, COMPONENT_NAMES.sail).crew) +
     Math.ceil(build.rudders * componentByName(c, COMPONENT_NAMES.rudder).crew) +
     computeWeaponCrew(build) +
-    computeAccessoryCrew(build)
+    computeOptionalComponentCrew(build)
   );
 }
 
@@ -198,11 +197,11 @@ export function computeArmorMass(build: ShipBuild): number {
   return Math.max(0, build.totalMass) * build.armor.massPct;
 }
 
-export function computeAccessoryMass(build: ShipBuild): number {
-  return build.templateAccessories.reduce(
-    (sum, a) => sum + (accessoryById(build.accessoriesCatalog, a.accessoryId)?.mass || 0) * a.count,
-    0,
-  );
+export function computeOptionalComponentMass(build: ShipBuild): number {
+  return build.templateComponents.reduce((sum, row) => {
+    const component = componentById(build.components, row.componentId);
+    return sum + component.mass * row.count;
+  }, 0);
 }
 
 /** Actual placed weapon mass (authored mass × count). */
@@ -236,7 +235,7 @@ export interface ShipMassBreakdown {
   rudders: number;
   weapons: number;
   reinforcement: number;
-  accessories: number;
+  optionalComponents: number;
   cargo: number;
   crewQuarters: number;
   used: number;
@@ -257,12 +256,12 @@ export function computeMassBreakdown(build: ShipBuild): ShipMassBreakdown {
   const rudders = roundTons(build.rudders * componentByName(c, COMPONENT_NAMES.rudder).mass);
   const weapons = roundTons(computeWeaponCapacity(build));
   const reinforcement = roundTons(build.reinforcement * componentByName(c, COMPONENT_NAMES.reinforcement).mass);
-  const accessories = roundTons(computeAccessoryMass(build));
+  const optionalComponents = roundTons(computeOptionalComponentMass(build));
   const cargo = Math.max(0, roundTons(build.cargoArea || 0));
   const crewQuarters = Math.max(0, roundTons(build.crewQuarters || 0));
   const used =
     hull + armor + helm + commandBridge + sails + rudders + weapons +
-    reinforcement + accessories + cargo + crewQuarters;
+    reinforcement + optionalComponents + cargo + crewQuarters;
   return {
     hull,
     armor,
@@ -272,7 +271,7 @@ export function computeMassBreakdown(build: ShipBuild): ShipMassBreakdown {
     rudders,
     weapons,
     reinforcement,
-    accessories,
+    optionalComponents,
     cargo,
     crewQuarters,
     used,
@@ -280,7 +279,7 @@ export function computeMassBreakdown(build: ShipBuild): ShipMassBreakdown {
   };
 }
 
-/** Components + weapons + accessories + cargo + crew quarters (rounded tons). */
+/** Built-in + optional components + weapons + cargo + crew quarters (rounded tons). */
 export function computeFittingMass(build: ShipBuild): number {
   const m = computeMassBreakdown(build);
   return m.used - m.hull - m.armor;
@@ -377,7 +376,7 @@ function boxGroupsFromMass(m: ShipMassBreakdown): ShipBoxGroup[] {
     { id: 'rudders', label: 'Rudders', boxes: m.rudders, safe: false },
     { id: 'weapons', label: 'Weapons', boxes: m.weapons, safe: false },
     { id: 'reinforcement', label: 'Reinforcement', boxes: m.reinforcement, safe: false },
-    { id: 'accessories', label: 'Specials', boxes: m.accessories, safe: false },
+    { id: 'optional_components', label: 'Components', boxes: m.optionalComponents, safe: false },
     { id: 'cargo', label: 'Cargo', boxes: m.cargo, safe: false },
     { id: 'crew_quarters', label: 'Crew quarters', boxes: m.crewQuarters, safe: false },
   ].filter(g => g.boxes > 0);
@@ -409,15 +408,15 @@ export function computeBuildCost(build: ShipBuild): number {
     Math.max(0, build.cargoArea) * componentByName(c, COMPONENT_NAMES.cargo).cost +
     quarters * componentByName(c, COMPONENT_NAMES.crewQuarters).cost +
     capacity * capacityComponent.cost;
-  const accessoryCost = build.templateAccessories.reduce(
-    (sum, a) => sum + (accessoryById(build.accessoriesCatalog, a.accessoryId)?.cost || 0) * a.count,
-    0,
-  );
+  const optionalComponentCost = build.templateComponents.reduce((sum, row) => {
+    const component = componentById(build.components, row.componentId);
+    return sum + component.cost * row.count;
+  }, 0);
   const weaponCost = build.templateWeapons.reduce(
     (sum, w) => sum + (weaponById(build.weaponsCatalog, w.weaponId)?.cost || 0) * w.count,
     0,
   );
-  return Math.round(componentCost + accessoryCost + weaponCost);
+  return Math.round(componentCost + optionalComponentCost + weaponCost);
 }
 
 // --- Aggregate --------------------------------------------------------------

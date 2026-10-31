@@ -3,7 +3,7 @@
 // designates a total mass, pays a hull-mass penalty, then furnishes the rest.
 // Ship catalogs use UUID ids + a unique `name` (migration 137).
 
-export type ShipCatalogKind = 'component' | 'weapon' | 'accessory';
+export type ShipCatalogKind = 'component' | 'weapon';
 
 /** Armor option (`ship_armors`): mass is a percentage of the ship total. */
 export interface ShipArmor {
@@ -26,19 +26,8 @@ export interface ShipComponent {
   cost: number;
   hittable: boolean;
   effect: string | null;
-  ac?: number;
-  imageUrl?: string;
-}
-
-/** Mount / accessory catalog row (`ship_accessories`). */
-export interface ShipAccessory {
-  id: string;
-  name: string;
-  mass: number;
-  crew: number;
-  cost: number;
-  hittable: boolean;
-  effect: string | null;
+  /** Built-in rule component (hull/helm/.../weapon_capacity); optional rows are false. */
+  builtIn: boolean;
   ac?: number;
   imageUrl?: string;
 }
@@ -73,6 +62,7 @@ export interface ShipComponentTemplate {
   hittable: boolean;
   cost: number;
   effect: string;
+  builtIn: boolean;
   damage: string;
   minRange: number;
   range: number;
@@ -83,9 +73,9 @@ export interface ShipComponentTemplate {
   imageUrl: string;
 }
 
-/** Selected accessory instance on a template (`ship_template_accessories`). */
-export interface ShipTemplateAccessory {
-  accessoryId: string;
+/** Selected optional component on a template (`ship_template_components`). */
+export interface ShipTemplateComponent {
+  componentId: string;
   count: number;
 }
 
@@ -141,7 +131,7 @@ export interface ShipTemplate {
   imageUrl: string;
   /** Designated cargo (tons). */
   cargoArea: number;
-  accessories: ShipTemplateAccessory[];
+  optionalComponents: ShipTemplateComponent[];
   weapons: ShipTemplateWeapon[];
   crews: ShipCrew[];
   createdAt: string;

@@ -1,9 +1,8 @@
 // src/packages/ships/lib/componentMappers.ts
-// Component Workshop mapping + validation. The three ship catalogs keep their
-// own tables; this module presents one unified draft shape to the editor.
+// Component Workshop mapping + validation. The ship component catalog holds
+// built-in rows and optional components; weapons live in their own catalog.
 
 import {
-  ShipAccessory,
   ShipComponent,
   ShipComponentTemplate,
   ShipWeapon,
@@ -27,6 +26,7 @@ export function mapComponentToTemplate(row: ShipComponent): ShipComponentTemplat
     hittable: row.hittable,
     cost: row.cost,
     effect: row.effect || '',
+    builtIn: row.builtIn,
     damage: '',
     minRange: 0,
     range: 0,
@@ -48,33 +48,13 @@ export function mapWeaponToTemplate(row: ShipWeapon): ShipComponentTemplate {
     hittable: true,
     cost: row.cost,
     effect: '',
+    builtIn: false,
     damage: row.damage,
     minRange: row.minRange,
     range: row.range,
     maxRange: row.maxRange,
     fireCycleStep: row.fireCycleStep,
     special: row.special || '',
-    ac: row.ac ?? 10,
-    imageUrl: row.imageUrl || '',
-  };
-}
-
-export function mapAccessoryToTemplate(row: ShipAccessory): ShipComponentTemplate {
-  return {
-    id: row.id,
-    kind: 'accessory',
-    name: row.name,
-    mass: row.mass,
-    crew: row.crew,
-    hittable: row.hittable,
-    cost: row.cost,
-    effect: row.effect || '',
-    damage: '',
-    minRange: 0,
-    range: 0,
-    maxRange: 0,
-    fireCycleStep: 1,
-    special: '',
     ac: row.ac ?? 10,
     imageUrl: row.imageUrl || '',
   };
@@ -106,6 +86,7 @@ export function componentTemplateToComponentRow(t: ShipComponentTemplate) {
     cost: t.cost,
     hittable: t.hittable,
     effect: t.effect || null,
+    built_in: t.builtIn,
     ac: t.ac,
     image_url: t.imageUrl || '',
   };
@@ -123,19 +104,6 @@ export function componentTemplateToWeaponRow(t: ShipComponentTemplate) {
     crew: t.crew,
     cost: t.cost,
     special: t.special || null,
-    ac: t.ac,
-    image_url: t.imageUrl || '',
-  };
-}
-
-export function componentTemplateToAccessoryRow(t: ShipComponentTemplate) {
-  return {
-    name: slugifyComponentName(t.name),
-    mass: t.mass,
-    crew: t.crew,
-    cost: t.cost,
-    hittable: t.hittable,
-    effect: t.effect || null,
     ac: t.ac,
     image_url: t.imageUrl || '',
   };

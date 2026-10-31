@@ -73,7 +73,7 @@ tables.
 | `map_effect_templates` | Effect library (unit buffs/debuffs/DoT + ground zones) | RLS: read = `view_effect_editor`, write = `effect_editor` |
 | `map_images` (bucket) / `maps` | Reusable authored maps (`image_url`, `offset_x/y`, `scale`, `grid_radius`, `terrain_costs jsonb`, `hex_effects`, `structures`) | see `13`, `18` |
 | `map_structure_templates` | Authored map-feature library (walls, spikes, gates, towers) | see `18` |
-| `ship_armors`, `ship_components`, `ship_accessories`, `ship_weapons`, `ship_crews`, `ship_templates` (+ join tables) | Archfar's Shipyard catalogs (UUID id + unique `name`) and template data | see `16` |
+| `ship_armors`, `ship_components`, `ship_weapons`, `ship_crews`, `ship_templates` (+ join tables) | Archfar's Shipyard catalogs (UUID id + unique `name`; optional components are `ship_components` rows) and template data | see `16` |
 | `ship_spelljammer` | Placed ship instances (engine pending) | reserved |
 | `units.effects` | jsonb `UnitEffect[]` on the units row (not a table) | migration 073 |
 | Storage buckets | `scenario_screenshots`, `unit_images`, `map_images`, `effect_images`, `structure_images`, `ship_images` | public read |
@@ -198,6 +198,7 @@ as applied in the notes — check the live DB before relying on it).
 | 136 | Ship Editor v2: template image/weapon capacity/atmospheric speed/damage threshold; catalog `image_url` + `ac`; `hull` component; `ship_images` bucket | ⏳ run in Supabase |
 | 137 | Ship catalog UUID id + unique `name` for armors/components/accessories/weapons; migrate template/join FKs | ⏳ run in Supabase |
 | 138 | Component Workshop fields: `ship_components.effect`; `ship_weapons` mass/min_range/range/max_range/fire_cycle_step (mount dropped); component-editor access + catalog RLS | ⏳ run in Supabase |
+| 139 | Merge accessories into components: `ship_components.built_in`, move `ship_accessories` rows, rename join table → `ship_template_components`, drop `ship_accessories` | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

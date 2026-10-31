@@ -7,7 +7,6 @@
 // as numbers, so every numeric field is coerced via Number(...).
 
 import {
-  ShipAccessory,
   ShipArmor,
   ShipComponent,
   ShipCrew,
@@ -38,21 +37,7 @@ export function mapShipComponentRow(row: any): ShipComponent {
     cost: Number(row.cost) || 0,
     hittable: !!row.hittable,
     effect: row.effect || null,
-    ac: row.ac != null ? Number(row.ac) : 10,
-    imageUrl: row.image_url || '',
-  };
-}
-
-/** Map a ship_accessories row. */
-export function mapShipAccessoryRow(row: any): ShipAccessory {
-  return {
-    id: row.id,
-    name: row.name || '',
-    mass: Number(row.mass) || 0,
-    crew: Number(row.crew) || 0,
-    cost: Number(row.cost) || 0,
-    hittable: !!row.hittable,
-    effect: row.effect || null,
+    builtIn: !!row.built_in,
     ac: row.ac != null ? Number(row.ac) : 10,
     imageUrl: row.image_url || '',
   };
@@ -115,8 +100,8 @@ export function mapShipTemplateRow(row: any): ShipTemplate {
     damageThreshold: row.damage_threshold != null ? Number(row.damage_threshold) : 15,
     imageUrl: row.image_url || '',
     cargoArea: Number(row.cargo_area) || 0,
-    accessories: (row.ship_template_accessories || []).map((a: any) => ({
-      accessoryId: a.accessory_id,
+    optionalComponents: (row.ship_template_components || row.ship_template_accessories || []).map((a: any) => ({
+      componentId: a.component_id || a.accessory_id,
       count: Number(a.count) || 1,
     })),
     weapons: (row.ship_template_weapons || []).map((w: any) => ({
@@ -155,11 +140,11 @@ export function mapShipTemplateToRow(t: ShipTemplate) {
   };
 }
 
-/** ship_template_accessories rows for a template (used to rewrite the join table). */
-export function mapAccessoryRows(t: ShipTemplate) {
-  return t.accessories
-    .filter(a => a.count > 0)
-    .map(a => ({ template_id: t.id, accessory_id: a.accessoryId, count: a.count }));
+/** ship_template_components rows for a template (used to rewrite the join table). */
+export function mapOptionalComponentRows(t: ShipTemplate) {
+  return t.optionalComponents
+    .filter(c => c.count > 0)
+    .map(c => ({ template_id: t.id, component_id: c.componentId, count: c.count }));
 }
 
 /** ship_template_weapons rows for a template (used to rewrite the join table). */

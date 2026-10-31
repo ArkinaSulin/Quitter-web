@@ -7,13 +7,13 @@
 
 ## Data model & migrations
 
-`src/types/ship.ts` defines armors/components/accessories/weapons and the
-`ShipTemplate` rows. Migration 066 (schema) creates the `ship_*` template
-tables; 068 (RLS: read `view_ship_editor`, write `ship_editor`), 069
-(`ship_crews` roster), 070 (`extra_crew` → `crew_count`), **134 (mass-first
-overhaul)**, **135 (authored crew quarters + passengers)**, **136 (Ship Editor
-v2 fields + `ship_images`)**, **137 (catalog UUID + name)**, and **138
-(Component Workshop fields + access)** reshape the model.
+`src/types/ship.ts` defines armors/components/weapons and the `ShipTemplate`
+rows. Migration 066 (schema) creates the `ship_*` template tables; 068 (RLS:
+read `view_ship_editor`, write `ship_editor`), 069 (`ship_crews` roster), 070
+(`extra_crew` → `crew_count`), **134 (mass-first overhaul)**, **135 (authored
+crew quarters + passengers)**, **136 (Ship Editor v2 fields + `ship_images`)**,
+**137 (catalog UUID + name)**, **138 (Component Workshop fields + access)**, and
+**139 (merge accessories into components)** reshape the model.
 
 - 134 drops `ship_frames`, reshapes `ship_armors`, reseeds `ship_components`,
   and adds `total_mass`/`helm`/`command_bridge`/`reinforcement`.
@@ -25,6 +25,10 @@ v2 fields + `ship_images`)**, **137 (catalog UUID + name)**, and **138
   `ship_weapons`, `ship_accessories`, and `ship_armors` get UUID `id` primary
   keys and unique `name` columns; template/join FKs migrate to the UUIDs.
   `ship_templates` keeps its text id until the engine pass.
+- 139 merges accessories into components: adds `ship_components.built_in`,
+  copies every `ship_accessories` row with its UUID, renames the join table to
+  `ship_template_components` + `component_id`, and drops `ship_accessories`.
+  Optional components are just `ship_components` rows with `built_in = false`.
 - 138 adds `ship_components.effect`, removes `weapon_large`, renames
   `weapon_small` → `weapon_capacity`, and changes `ship_weapons`:
   `mass` + `min_range` add; `range_std` → `range`; `range_dis` → `max_range`;
@@ -149,7 +153,7 @@ quickest way to catch rounding regressions.
   or placeholder, name, one box per ton, AC, and one hollow crew circle per
   required crew. Empty slots are dashed. Crew-name/HP assignment is future work.
 - Per-component AC is catalog-driven: armor uses its table AC; hull/other
-  components/weapons/accessories default AC 10. Catalog `image_url` is optional;
+  components/weapons default AC 10. Catalog `image_url` is optional;
   cards use a placeholder until one is set.
 - The ship preview image is uploaded to the public `ship_images` bucket and
   stored on `ship_templates.image_url`. The shared `ImagePickerModal` handles
@@ -157,20 +161,18 @@ quickest way to catch rounding regressions.
 
 ## Component Workshop (`/component-editor`)
 
-One editor over the three ship catalogs, with three filter tabs at the top of
-the left panel:
+One editor over the two ship catalogs, with two filter tabs at the top of the
+left panel:
 
-- **Components** → `ship_components` (built-in rows, edit-only; no New/Delete).
+- **Components** → `ship_components`: built-in rows (`built_in = true`) are
+  edit-only; optional components (`built_in = false`) support New/Clone/Delete.
 - **Weapons** → `ship_weapons` (New/Clone/Delete).
-- **Accessories** → `ship_accessories` (mounts; New/Clone/Delete).
 
 Fields:
-- Components: Name (unique name, read-only), Mass, Crew, Hittable, Cost,
+- Components: Name (read-only for built-ins), Mass, Crew, Hittable, Cost,
   Effect, AC, Image URL.
 - Weapons: Name, Mass, Crew, Cost, Damage, Min Range, Range, Max Range,
   Fire Cycle (steps), Note, AC, Image URL. Weapons are always hittable.
-- Accessories: Name, Mass, Crew, Hittable, Cost, Effect, AC, Image URL. No new
-  accessory fields (mounts only).
 
 Fire cycle is in steps: **1 = every step (1/5 round)**, **2 = every other step**.
 The ship editor displays the fire-cycle step in the weapon picker and marks a

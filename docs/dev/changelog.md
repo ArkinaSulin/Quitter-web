@@ -1,5 +1,23 @@
 # QuiTTER Changelog
 
+## Merge ship accessories into components (migration 139) (2026-10-27)
+**Files:** supabase/migrations/139_ship_component_merge.sql, src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers,componentMappers}.ts, src/packages/ships/tests/*, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/ShipLayout.tsx, src/components/ComponentEditor/*, docs/dev/{02,16,README,outstanding,changelog}.md, AGENTS.md
+
+- Accessories were just optional components, so migration 139 adds
+  `ship_components.built_in`, moves every `ship_accessories` row into
+  `ship_components` with the same UUID, renames the join table to
+  `ship_template_components` (`component_id`), and drops `ship_accessories`.
+- Built-in components keep `built_in = true` and remain edit-only in the
+  workshop; optional components are `built_in = false` and support
+  New/Clone/Delete.
+- Removed the Component Workshop **Accessories** tab; it is now
+  Components / Weapons. The Ship Editor’s **+ Add component** lists optional
+  components and stores selections in `ship_template_components`.
+- Stats/layout use `optionalComponents`; fixed-component lookup prefers
+  `built_in` rows. Access/RLS for the shared catalog is unchanged.
+- Verification: `tsc`, full vitest suite (1212 tests), depcruise (pre-existing
+  warnings), and `next build`. **Apply 135–139 in Supabase** (134 is applied).
+
 ## Component Workshop + ship catalog UUIDs (migrations 137–138) (2026-10-27)
 **Files:** src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers,componentMappers}.ts, src/packages/ships/tests/{shipStats,shipMappers,componentMappers}.test.ts, src/components/ComponentEditor/*, app/component-editor/page.tsx, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/ShipLayout.tsx, src/components/Lobby.tsx, src/hooks/useProfile.ts, supabase/migrations/{137_ship_catalog_uuids,138_ship_component_workshop}.sql, docs/dev/{02,03,16,README,outstanding,changelog}.md, AGENTS.md
 

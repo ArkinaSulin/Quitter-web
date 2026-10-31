@@ -5,7 +5,6 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  mapShipAccessoryRow,
   mapShipArmorRow,
   mapShipComponentRow,
   mapShipTemplateRow,
@@ -30,11 +29,11 @@ describe('mapShipArmorRow', () => {
 describe('mapShipComponentRow', () => {
   it('maps id/name/mass/crew/cost/hittable/effect', () => {
     const c = mapShipComponentRow({
-      id: 'comp-1', name: 'sail', mass: '1', crew: '0.5', cost: 0, hittable: true, effect: 'wind',
+      id: 'comp-1', name: 'sail', mass: '1', crew: '0.5', cost: 0, hittable: true, effect: 'wind', built_in: true,
     });
     expect(c).toEqual({
       id: 'comp-1', name: 'sail', mass: 1, crew: 0.5, cost: 0,
-      hittable: true, effect: 'wind', ac: 10, imageUrl: '',
+      hittable: true, effect: 'wind', builtIn: true, ac: 10, imageUrl: '',
     });
   });
 
@@ -44,18 +43,6 @@ describe('mapShipComponentRow', () => {
     });
     expect(c.mass).toBe(1.5);
     expect(c.crew).toBe(0.5);
-  });
-});
-
-describe('mapShipAccessoryRow', () => {
-  it('maps id/name/mass/crew/cost/hittable/effect', () => {
-    const a = mapShipAccessoryRow({
-      id: 'acc-1', name: 'ram_mount', mass: '5', crew: '0', cost: 5000, hittable: true, effect: 'mount',
-    });
-    expect(a).toEqual({
-      id: 'acc-1', name: 'ram_mount', mass: 5, crew: 0, cost: 5000,
-      hittable: true, effect: 'mount', ac: 10, imageUrl: '',
-    });
   });
 });
 
@@ -90,7 +77,7 @@ describe('mapShipTemplateRow', () => {
       id: 'wasp', name: 'Wasp Ship', role: 'Shuttle', armor_id: 'armor-wood',
       total_mass: '20', helm: 1, command_bridge: 0, rudders: 2, sails: 6,
       reinforcement: 0, crew_count: '3', crew_quarters: 2, passengers: 1, cargo_area: 8,
-      ship_template_accessories: [{ accessory_id: 'acc-ram', count: 1 }],
+      ship_template_components: [{ component_id: 'acc-ram', count: 1 }],
       ship_template_weapons: [{ weapon_id: 'wpn-ballista', mount_slot: 'Fore', count: 2 }],
     });
     expect(t.totalMass).toBe(20);
@@ -105,7 +92,7 @@ describe('mapShipTemplateRow', () => {
     expect(t.atmosphericSpeed).toBe(0);
     expect(t.damageThreshold).toBe(15);
     expect(t.imageUrl).toBe('');
-    expect(t.accessories).toEqual([{ accessoryId: 'acc-ram', count: 1 }]);
+    expect(t.optionalComponents).toEqual([{ componentId: 'acc-ram', count: 1 }]);
     expect(t.weapons).toEqual([{ weaponId: 'wpn-ballista', mountSlot: 'Fore', count: 2 }]);
   });
 });
@@ -117,7 +104,7 @@ describe('mapShipTemplateToRow', () => {
       totalMass: 20, helm: 1, commandBridge: 0, sails: 6, rudders: 2,
       reinforcement: 0, crewCount: 3, crewQuarters: 2, passengers: 1,
       weaponCapacity: 2, atmosphericSpeed: 5, damageThreshold: 15, imageUrl: 'https://x/ship.png',
-      cargoArea: 8, accessories: [], weapons: [], crews: [],
+      cargoArea: 8, optionalComponents: [], weapons: [], crews: [],
       createdAt: '', updatedAt: '',
     });
     expect(row.total_mass).toBe(20);

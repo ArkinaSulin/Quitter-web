@@ -59,7 +59,6 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 const KIND_LABEL: Record<ShipComponentTemplate['kind'], string> = {
   component: 'Component',
   weapon: 'Weapon',
-  accessory: 'Accessory',
 };
 
 export function ComponentFields({
@@ -73,7 +72,7 @@ export function ComponentFields({
 }) {
   const patch = (p: Partial<ShipComponentTemplate>) => onChange({ ...value, ...p });
   const isWeapon = value.kind === 'weapon';
-  const nameEditable = value.kind !== 'component';
+  const nameEditable = value.kind === 'weapon' || !value.builtIn;
 
   return (
     <fieldset disabled={readOnly} className="space-y-3">

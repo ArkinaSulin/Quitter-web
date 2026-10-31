@@ -14,10 +14,9 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  ShipAccessory,
   ShipArmor,
   ShipComponent,
-  ShipTemplateAccessory,
+  ShipTemplateComponent,
   ShipTemplateWeapon,
   ShipWeapon,
 } from '@/types/ship';
@@ -56,20 +55,17 @@ const ARMORS: ShipArmor[] = [
 ];
 
 const COMPONENTS: ShipComponent[] = [
-  { id: 'comp-hull', name: 'hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null },
-  { id: 'comp-helm', name: 'helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null },
-  { id: 'comp-bridge', name: 'command_bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null },
-  { id: 'comp-sail', name: 'sail', mass: 1, crew: 0.5, cost: 0, hittable: true, effect: null },
-  { id: 'comp-rudder', name: 'rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null },
-  { id: 'comp-reinforcement', name: 'reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null },
-  { id: 'comp-cargo', name: 'cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null },
-  { id: 'comp-quarters', name: 'crew_quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null },
-  { id: 'comp-weapon-capacity', name: 'weapon_capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity' },
-];
-
-const ACCESSORIES: ShipAccessory[] = [
-  { id: 'acc-ram', name: 'ram', mass: 5, crew: 0, cost: 5000, hittable: true, effect: '16d10 ram' },
-  { id: 'acc-low-visibility', name: 'low_visibility', mass: 0, crew: 0, cost: 2000, hittable: false, effect: 'surprise' },
+  { id: 'comp-hull', name: 'hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true },
+  { id: 'comp-helm', name: 'helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-bridge', name: 'command_bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-sail', name: 'sail', mass: 1, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-rudder', name: 'rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-reinforcement', name: 'reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-cargo', name: 'cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-quarters', name: 'crew_quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true },
+  { id: 'comp-weapon-capacity', name: 'weapon_capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true },
+  { id: 'acc-ram', name: 'ram', mass: 5, crew: 0, cost: 5000, hittable: true, effect: '16d10 ram', builtIn: false },
+  { id: 'acc-low-visibility', name: 'low_visibility', mass: 0, crew: 0, cost: 2000, hittable: false, effect: 'surprise', builtIn: false },
 ];
 
 const WEAPONS: ShipWeapon[] = [
@@ -80,7 +76,7 @@ const WEAPONS: ShipWeapon[] = [
 ];
 
 const ARMOR = (id: string) => ARMORS.find(a => a.id === id)!;
-const acc = (id: string, count = 1): ShipTemplateAccessory => ({ accessoryId: id, count });
+const acc = (id: string, count = 1): ShipTemplateComponent => ({ componentId: id, count });
 const wpn = (weaponId: string, count = 1, mountSlot = 'Fore'): ShipTemplateWeapon => ({ weaponId, mountSlot, count });
 
 function buildBase(opts: {
@@ -98,13 +94,12 @@ function buildBase(opts: {
   atmosphericSpeed?: number;
   damageThreshold?: number;
   cargoArea?: number;
-  accessories?: ShipTemplateAccessory[];
+  optionalComponents?: ShipTemplateComponent[];
   weapons?: ShipTemplateWeapon[];
 }): ShipBuild {
   return {
     armor: ARMOR(opts.armorId),
     components: COMPONENTS,
-    accessoriesCatalog: ACCESSORIES,
     weaponsCatalog: WEAPONS,
     totalMass: opts.totalMass,
     helm: opts.helm ?? 1,
@@ -119,7 +114,7 @@ function buildBase(opts: {
     atmosphericSpeed: opts.atmosphericSpeed,
     damageThreshold: opts.damageThreshold,
     cargoArea: opts.cargoArea ?? 0,
-    templateAccessories: opts.accessories ?? [],
+    templateComponents: opts.optionalComponents ?? [],
     templateWeapons: opts.weapons ?? [],
   };
 }
@@ -183,7 +178,7 @@ describe('reference template mass', () => {
     const t = computeMassBreakdown(racer());
     expect(t).toMatchObject({
       hull: 1, armor: 0, helm: 1, commandBridge: 0, sails: 2, rudders: 6,
-      weapons: 0, reinforcement: 0, accessories: 0, cargo: 0, crewQuarters: 0,
+      weapons: 0, reinforcement: 0, optionalComponents: 0, cargo: 0, crewQuarters: 0,
       used: 10, remaining: 0,
     });
   });
@@ -437,11 +432,11 @@ describe('command bridge', () => {
 });
 
 describe('build cost', () => {
-  it('sums weapon + accessory costs (component gold is not yet defined)', () => {
+  it('sums weapon + optional component costs (component gold is not yet defined)', () => {
     const b = buildBase({
       armorId: 'wood', totalMass: 40,
       weapons: [wpn('wpn-ballista', 2), wpn('wpn-catapult', 1)],
-      accessories: [acc('acc-ram')],
+      optionalComponents: [acc('acc-ram')],
     });
     expect(computeBuildCost(b)).toBe(6800); // 2×500 + 800 + 5000
   });

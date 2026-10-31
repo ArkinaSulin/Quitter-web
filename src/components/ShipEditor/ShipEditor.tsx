@@ -5,7 +5,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/packages/infra/supabase';
 import {
-  ShipAccessory,
   ShipArmor,
   ShipComponent,
   ShipCrew,
@@ -23,9 +22,8 @@ import {
   ShipBuild,
 } from '@/packages/ships';
 import {
-  mapAccessoryRows,
+  mapOptionalComponentRows,
   mapCrewRows,
-  mapShipAccessoryRow,
   mapShipArmorRow,
   mapShipComponentRow,
   mapShipTemplateRow,
@@ -134,7 +132,6 @@ function buildFromTemplate(
   t: ShipTemplate,
   armors: ShipArmor[],
   components: ShipComponent[],
-  accessories: ShipAccessory[],
   weapons: ShipWeapon[],
 ): ShipBuild | null {
   const armor = armors.find(a => a.id === t.armorId) || armors[0];
@@ -142,7 +139,6 @@ function buildFromTemplate(
   return {
     armor,
     components,
-    accessoriesCatalog: accessories,
     weaponsCatalog: weapons,
     totalMass: t.totalMass,
     helm: t.helm,
@@ -157,7 +153,7 @@ function buildFromTemplate(
     atmosphericSpeed: t.atmosphericSpeed ?? 0,
     damageThreshold: t.damageThreshold ?? 15,
     cargoArea: t.cargoArea,
-    templateAccessories: t.accessories,
+    templateComponents: t.optionalComponents,
     templateWeapons: t.weapons,
   };
 }
@@ -176,7 +172,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
   const [armors, setArmors] = useState<ShipArmor[]>([]);
   const [components, setComponents] = useState<ShipComponent[]>([]);
-  const [accessories, setAccessories] = useState<ShipAccessory[]>([]);
   const [weaponsCatalog, setWeaponsCatalog] = useState<ShipWeapon[]>([]);
 
   const [formData, setFormData] = useState<ShipTemplate | null>(null);
@@ -187,8 +182,8 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
   // Performance box: formula text is hidden behind the [formulas] button.
   const [showFormula, setShowFormula] = useState(false);
-  // Accessory catalog picker modal.
-  const [showAccessoriesModal, setShowAccessoriesModal] = useState(false);
+  // Optional component catalog picker modal.
+  const [showComponentsModal, setShowComponentsModal] = useState(false);
   // Ship image picker.
   const [showImagePicker, setShowImagePicker] = useState(false);
   // Crew roster modal.
@@ -199,7 +194,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   });
 
   const build = formData
-    ? buildFromTemplate(formData, armors, components, accessories, weaponsCatalog)
+    ? buildFromTemplate(formData, armors, components, weaponsCatalog)
     : null;
   const stats = build ? computeShipBuild(build) : null;
 
@@ -237,18 +232,18 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     setFormData(prev => (prev ? { ...prev, [field]: value } : prev));
   }, [readOnly]);
 
-  const accessoryCount = (id: string): number =>
-    formData?.accessories.find(a => a.accessoryId === id)?.count || 0;
+  const optionalComponentCount = (id: string): number =>
+    formData?.optionalComponents.find(c => c.componentId === id)?.count || 0;
 
-  const setAccessoryCount = (id: string, count: number) => {
+  const setOptionalComponentCount = (id: string, count: number) => {
     if (!formData) return;
-    const existing = formData.accessories.find(a => a.accessoryId === id);
+    const existing = formData.optionalComponents.find(c => c.componentId === id);
     const next = count <= 0
-      ? formData.accessories.filter(a => a.accessoryId !== id)
+      ? formData.optionalComponents.filter(c => c.componentId !== id)
       : existing
-        ? formData.accessories.map(a => (a.accessoryId === id ? { ...a, count } : a))
-        : [...formData.accessories, { accessoryId: id, count }];
-    updateFormData('accessories', next);
+        ? formData.optionalComponents.map(c => (c.componentId === id ? { ...c, count } : c))
+        : [...formData.optionalComponents, { componentId: id, count }];
+    updateFormData('optionalComponents', next);
   };
 
   const setWeaponRow = (index: number, field: 'weaponId' | 'mountSlot' | 'count', value: any) => {
@@ -331,30 +326,28 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         // Flat queries + client-side join merge: avoids depending on PostgREST resolving
         // the ship_template_* relationships (a schema-cache hiccup would otherwise blank
         // the whole list).
-        const [templatesRes, armorsRes, componentsRes, accessoriesRes, weaponsRes, templateAccessoriesRes, templateWeaponsRes, crewsRes] = await Promise.all([
+        const [templatesRes, armorsRes, componentsRes, weaponsRes, templateComponentsRes, templateWeaponsRes, crewsRes] = await Promise.all([
           supabase.from('ship_templates').select('*').order('name'),
           supabase.from('ship_armors').select('*').order('id'),
           supabase.from('ship_components').select('*').order('id'),
-          supabase.from('ship_accessories').select('*').order('id'),
           supabase.from('ship_weapons').select('*').order('id'),
-          supabase.from('ship_template_accessories').select('*'),
+          supabase.from('ship_template_components').select('*'),
           supabase.from('ship_template_weapons').select('*'),
           supabase.from('ship_crews').select('*'),
         ]);
         if (templatesRes.error) throw templatesRes.error;
         if (armorsRes.error) throw armorsRes.error;
         if (componentsRes.error) throw componentsRes.error;
-        if (accessoriesRes.error) throw accessoriesRes.error;
         if (weaponsRes.error) throw weaponsRes.error;
-        if (templateAccessoriesRes.error) throw templateAccessoriesRes.error;
+        if (templateComponentsRes.error) throw templateComponentsRes.error;
         if (templateWeaponsRes.error) throw templateWeaponsRes.error;
         if (crewsRes.error) throw crewsRes.error;
 
-        const accessoriesByTemplate = new Map<string, any[]>();
-        for (const row of templateAccessoriesRes.data || []) {
-          const list = accessoriesByTemplate.get(row.template_id) || [];
+        const componentsByTemplate = new Map<string, any[]>();
+        for (const row of templateComponentsRes.data || []) {
+          const list = componentsByTemplate.get(row.template_id) || [];
           list.push(row);
-          accessoriesByTemplate.set(row.template_id, list);
+          componentsByTemplate.set(row.template_id, list);
         }
         const weaponsByTemplate = new Map<string, any[]>();
         for (const row of templateWeaponsRes.data || []) {
@@ -371,13 +364,12 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
         setTemplates((templatesRes.data || []).map(row => mapShipTemplateRow({
           ...row,
-          ship_template_accessories: accessoriesByTemplate.get(row.id) || [],
+          ship_template_components: componentsByTemplate.get(row.id) || [],
           ship_template_weapons: weaponsByTemplate.get(row.id) || [],
           ship_crews: crewsByTemplate.get(row.id) || [],
         })));
         setArmors((armorsRes.data || []).map(mapShipArmorRow));
         setComponents((componentsRes.data || []).map(mapShipComponentRow));
-        setAccessories((accessoriesRes.data || []).map(mapShipAccessoryRow));
         setWeaponsCatalog((weaponsRes.data || []).map(mapShipWeaponRow));
         setLoading(false);
       } catch (err: any) {
@@ -439,7 +431,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       damageThreshold: 15,
       imageUrl: '',
       cargoArea: 0,
-      accessories: [],
+      optionalComponents: [],
       weapons: [],
       crews: [],
       createdAt: new Date().toISOString(),
@@ -484,7 +476,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         ...formData,
         id: crypto.randomUUID(),
         name: cloneName.trim(),
-        accessories: formData.accessories.map(a => ({ ...a })),
+        optionalComponents: formData.optionalComponents.map(c => ({ ...c })),
         weapons: formData.weapons.map(w => ({ ...w })),
         crews: formData.crews.map(c => ({ ...c, id: crypto.randomUUID() })),
         createdAt: new Date().toISOString(),
@@ -496,9 +488,9 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         .select('id')
         .single();
       if (error) throw error;
-      const accRows = mapAccessoryRows(newShip);
+      const accRows = mapOptionalComponentRows(newShip);
       if (accRows.length) {
-        const { error: accErr } = await supabase.from('ship_template_accessories').insert(accRows);
+        const { error: accErr } = await supabase.from('ship_template_components').insert(accRows);
         if (accErr) throw accErr;
       }
       const wpnRows = mapWeaponRows(newShip);
@@ -513,7 +505,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       }
       const { data: fresh } = await supabase
         .from('ship_templates')
-        .select('*, ship_template_accessories(*), ship_template_weapons(*), ship_crews(*)')
+        .select('*, ship_template_components(*), ship_template_weapons(*), ship_crews(*)')
         .eq('id', data.id)
         .single();
       const mapped = mapShipTemplateRow(fresh);
@@ -569,10 +561,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       }
 
       const withId = { ...formData, id };
-      await supabase.from('ship_template_accessories').delete().eq('template_id', id);
-      const accRows = mapAccessoryRows(withId);
+      await supabase.from('ship_template_components').delete().eq('template_id', id);
+      const accRows = mapOptionalComponentRows(withId);
       if (accRows.length) {
-        const { error } = await supabase.from('ship_template_accessories').insert(accRows);
+        const { error } = await supabase.from('ship_template_components').insert(accRows);
         if (error) throw error;
       }
       await supabase.from('ship_template_weapons').delete().eq('template_id', id);
@@ -590,7 +582,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
       const { data: fresh } = await supabase
         .from('ship_templates')
-        .select('*, ship_template_accessories(*), ship_template_weapons(*), ship_crews(*)')
+        .select('*, ship_template_components(*), ship_template_weapons(*), ship_crews(*)')
         .eq('id', id)
         .single();
       if (!fresh) throw new Error('No data returned from save operation');
@@ -893,7 +885,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                       <label className="block text-[10px] text-gray-400">Ship composition</label>
                       <button
                         type="button"
-                        onClick={() => setShowAccessoriesModal(true)}
+                        onClick={() => setShowComponentsModal(true)}
                         className="px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition"
                       >
                         + Add component
@@ -1066,27 +1058,27 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="text-right pl-2 text-gray-500">—</td>
                         </tr>
 
-                        {formData.accessories.map((a) => {
-                          const acc = accessories.find(x => x.id === a.accessoryId);
-                          if (!acc) return null;
+                        {formData.optionalComponents.map((a) => {
+                          const component = components.find(x => x.id === a.componentId);
+                          if (!component) return null;
                           return (
-                            <tr key={a.accessoryId} className="border-b border-gray-700/50">
+                            <tr key={a.componentId} className="border-b border-gray-700/50">
                               <td className="py-1 pr-2">
-                                <span className="truncate">{humanize(acc.id)}</span>
+                                <span className="truncate">{humanize(component.name)}</span>
                               </td>
                               <td className="text-center px-2">
                                 <div className="mx-auto w-fit">
-                                  <Stepper value={a.count} onChange={(v) => setAccessoryCount(acc.id, v)} max={3} />
+                                  <Stepper value={a.count} onChange={(v) => setOptionalComponentCount(component.id, v)} max={3} />
                                 </div>
                               </td>
-                              <td className="text-right px-2">{Math.round((acc.mass || 0) * a.count)}</td>
-                              <td className="text-right px-2">{Math.ceil((acc.crew || 0) * a.count)}</td>
+                              <td className="text-right px-2">{Math.round((component.mass || 0) * a.count)}</td>
+                              <td className="text-right px-2">{Math.ceil((component.crew || 0) * a.count)}</td>
                               <td className="pl-2 text-gray-500">
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="truncate">{acc.effect || `${acc.mass}t each`}</span>
+                                  <span className="truncate">{component.effect || `${component.mass}t each`}</span>
                                   <button
                                     type="button"
-                                    onClick={() => setAccessoryCount(acc.id, 0)}
+                                    onClick={() => setOptionalComponentCount(component.id, 0)}
                                     className="text-[10px] bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded text-white flex-none"
                                   >
                                     ×
@@ -1176,7 +1168,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                 build={build}
                 stats={stats}
                 onAddWeapon={readOnly ? undefined : addWeapon}
-                onAddComponent={readOnly ? undefined : () => setShowAccessoriesModal(true)}
+                onAddComponent={readOnly ? undefined : () => setShowComponentsModal(true)}
               />
 
               <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
@@ -1426,40 +1418,40 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         </div>
       )}
 
-      {/* Add Accessories modal */}
-      {showAccessoriesModal && (
+      {/* Add optional components modal */}
+      {showComponentsModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
           <div className="bg-gray-800 p-5 rounded-lg w-[560px] max-h-[80vh] border border-gray-700 flex flex-col">
-            <h2 className="text-lg font-bold mb-3 text-white">Add Accessories</h2>
+            <h2 className="text-lg font-bold mb-3 text-white">Add components</h2>
             <div className="flex-1 overflow-y-auto space-y-1">
-              {accessories.map(acc => (
-                <div key={acc.id} className="flex items-center justify-between gap-2 bg-gray-700/50 rounded px-2 py-1.5">
+              {components.filter(c => !c.builtIn).map(component => (
+                <div key={component.id} className="flex items-center justify-between gap-2 bg-gray-700/50 rounded px-2 py-1.5">
                   <div className="min-w-0">
                     <div className="text-[12px] text-gray-200">
-                      {humanize(acc.id)}{' '}
+                      {humanize(component.name)}{' '}
                       <span className="text-gray-500">
-                        ({acc.mass}t · {acc.crew} crew · {acc.cost ? `${acc.cost}gp` : '0gp'} · {acc.hittable ? 'hittable' : 'safe'})
+                        ({component.mass}t · {component.crew} crew · {component.cost ? `${component.cost}gp` : '0gp'} · {component.hittable ? 'hittable' : 'safe'})
                       </span>
                     </div>
-                    {acc.effect && <div className="text-[10px] text-gray-400">{acc.effect}</div>}
+                    {component.effect && <div className="text-[10px] text-gray-400">{component.effect}</div>}
                   </div>
                   <button
                     type="button"
-                    onClick={() => setAccessoryCount(acc.id, accessoryCount(acc.id) + 1)}
+                    onClick={() => setOptionalComponentCount(component.id, optionalComponentCount(component.id) + 1)}
                     className="flex-none px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition"
                   >
-                    Add{accessoryCount(acc.id) > 0 ? ` (${accessoryCount(acc.id)})` : ''}
+                    Add{optionalComponentCount(component.id) > 0 ? ` (${optionalComponentCount(component.id)})` : ''}
                   </button>
                 </div>
               ))}
-              {accessories.length === 0 && (
-                <div className="text-sm text-gray-500 text-center py-4">No accessories in the catalog.</div>
+              {components.filter(c => !c.builtIn).length === 0 && (
+                <div className="text-sm text-gray-500 text-center py-4">No optional components in the catalog.</div>
               )}
             </div>
             <div className="mt-3 flex justify-end">
               <button
                 className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
-                onClick={() => setShowAccessoriesModal(false)}
+                onClick={() => setShowComponentsModal(false)}
               >
                 Done
               </button>

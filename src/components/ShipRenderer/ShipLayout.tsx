@@ -1,13 +1,13 @@
 // src/components/ShipRenderer/ShipLayout.tsx
 // First-pass ship layout: fixed positions for hull/helm/bridge/sail/rudder/cargo,
-// generic component slots for armor/reinforcement/quarters/accessories, and
+// generic component slots for armor/reinforcement/quarters/optional components, and
 // weapon slots. The Ram slot is a weapon slot restricted to max range 1.
 
 import {
   COMPONENT_NAMES,
   ShipBuild,
   ShipDerivedStats,
-  accessoryById,
+  componentById,
   componentByName,
   weaponById,
   weaponTons,
@@ -154,23 +154,23 @@ export function ShipLayout({
   const ramWeapons = weaponRows.filter(w => w.row.mountSlot === 'Ram').map(w => w.card);
   const otherWeapons = weaponRows.filter(w => w.row.mountSlot !== 'Ram').map(w => w.card);
 
-  const accessoryCards: ShipComponentCardData[] = build.templateAccessories.map((row) => {
-    const accessory = accessoryById(build.accessoriesCatalog, row.accessoryId);
+  const optionalComponentCards: ShipComponentCardData[] = build.templateComponents.map((row) => {
+    const component = componentById(build.components, row.componentId);
     return {
-      id: `accessory-${row.accessoryId}`,
-      name: accessory ? `${label(accessory.name)}${row.count > 1 ? ` ×${row.count}` : ''}` : row.accessoryId,
-      imageUrl: accessory?.imageUrl,
-      tons: Math.round((accessory?.mass || 0) * row.count),
-      ac: accessory?.ac ?? 10,
-      crewRequired: accessory ? Math.ceil(accessory.crew * row.count) : 0,
-      note: accessory?.effect || undefined,
+      id: `optional-${row.componentId}`,
+      name: component.name ? `${label(component.name)}${row.count > 1 ? ` ×${row.count}` : ''}` : row.componentId,
+      imageUrl: component.imageUrl,
+      tons: Math.round((component.mass || 0) * row.count),
+      ac: component.ac ?? 10,
+      crewRequired: Math.ceil(component.crew * row.count),
+      note: component.effect || undefined,
     };
   });
 
   const addGenericWeapon = () => onAddWeapon?.('Fore');
   const weaponSlot = (idx: number) => otherWeapons[idx] ?? empty('Weapon', addGenericWeapon);
-  const accessorySlot = (idx: number) =>
-    accessoryCards[idx] ?? empty('Component', onAddComponent);
+  const optionalComponentSlot = (idx: number) =>
+    optionalComponentCards[idx] ?? empty('Component', onAddComponent);
   const ramSlot = ramWeapons[0] ?? empty('Ram', () => onAddWeapon?.('Ram'));
 
   const extraWeapons = otherWeapons.slice(6);
@@ -232,8 +232,8 @@ export function ShipLayout({
 
         <div className="grid grid-cols-3 gap-2">
           <ShipComponentCard data={quarters} />
-          <ShipComponentCard data={accessorySlot(0)} />
-          <ShipComponentCard data={accessorySlot(1)} />
+          <ShipComponentCard data={optionalComponentSlot(0)} />
+          <ShipComponentCard data={optionalComponentSlot(1)} />
         </div>
 
         <div className="grid grid-cols-3 gap-2">
@@ -254,9 +254,9 @@ export function ShipLayout({
           </div>
         )}
 
-        {accessoryCards.length > 2 && (
+        {optionalComponentCards.length > 2 && (
           <div className="grid grid-cols-3 gap-2">
-            {accessoryCards.slice(2).map((card) => <ShipComponentCard key={card.id} data={card} />)}
+            {optionalComponentCards.slice(2).map((card) => <ShipComponentCard key={card.id} data={card} />)}
           </div>
         )}
       </div>
