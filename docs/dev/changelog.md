@@ -1,5 +1,31 @@
 # QuiTTER Changelog
 
+## Component Workshop + ship catalog UUIDs (migrations 137–138) (2026-10-27)
+**Files:** src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers,componentMappers}.ts, src/packages/ships/tests/{shipStats,shipMappers,componentMappers}.test.ts, src/components/ComponentEditor/*, app/component-editor/page.tsx, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/ShipLayout.tsx, src/components/Lobby.tsx, src/hooks/useProfile.ts, supabase/migrations/{137_ship_catalog_uuids,138_ship_component_workshop}.sql, docs/dev/{02,03,16,README,outstanding,changelog}.md, AGENTS.md
+
+- **Ship catalogs now use UUID ids + unique `name`** (like `unit_*`):
+  `ship_components`, `ship_weapons`, `ship_accessories`, `ship_armors`.
+  Template/join FKs migrate to the UUIDs; `ship_templates` keeps its text id
+  until the engine pass. Built-in components are looked up by name.
+- **Component Workshop** (`/component-editor`) edits the three catalogs through
+  one UI with **Components / Weapons / Accessories** filter tabs. Components
+  are built-in edit-only rows; weapons and accessories support New/Clone/Delete.
+  Access is admin/dm edit, everyone view (`component_editor` /
+  `view_component_editor`), with shared catalog RLS for Shipyard + Workshop.
+- **Schema changes:** `ship_components.effect`; `weapon_large` removed;
+  `weapon_small` → `weapon_capacity` (linked to the Ship Editor’s Weapon
+  capacity row as per-ton metadata). `ship_weapons` gains `mass` + `min_range`,
+  renames `range_std` → `range`, `range_dis` → `max_range`,
+  `fire_cycle_rd` → `fire_cycle_step`, and drops `mount`. `ship_accessories`
+  keeps its existing fields (mounts only).
+- **Weapon rules:** authored weapon `mass` controls tonnage (small/large mount
+  rule removed); fire cycle is in steps (1 = every step, 2 = every other step);
+  all weapons are hittable. The **Ram** weapon slot filters to
+  `max_range = 1` weapons; generic slots accept any weapon.
+- **Mass wording:** UI/docs/code now use **mass**; the unit remains **ton**.
+- Verification: `tsc`, full vitest suite (1213 tests), depcruise (pre-existing
+  warnings), and `next build`. **Apply 135–138 in Supabase** (134 is applied).
+
 ## Ship composition table column alignment (2026-10-27)
 **Files:** src/components/ShipEditor/ShipEditor.tsx, docs/dev/{16-ship-builder,changelog}.md
 

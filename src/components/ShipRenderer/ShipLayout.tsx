@@ -1,14 +1,14 @@
 // src/components/ShipRenderer/ShipLayout.tsx
 // First-pass ship layout: fixed positions for hull/helm/bridge/sail/rudder/cargo,
 // generic component slots for armor/reinforcement/quarters/accessories, and
-// weapon slots. Each slot uses the square ShipComponentCard.
+// weapon slots. The Ram slot is a weapon slot restricted to max range 1.
 
 import {
-  COMPONENT_IDS,
+  COMPONENT_NAMES,
   ShipBuild,
   ShipDerivedStats,
   accessoryById,
-  componentById,
+  componentByName,
   weaponById,
   weaponTons,
 } from '@/packages/ships';
@@ -30,38 +30,38 @@ export function ShipLayout({
 }: {
   build: ShipBuild;
   stats: ShipDerivedStats;
-  onAddWeapon?: () => void;
+  onAddWeapon?: (slot?: string) => void;
   onAddComponent?: () => void;
 }) {
   const c = build.components;
-  const t = stats.tonnage;
+  const m = stats.massBreakdown;
 
   const componentCard = (
-    id: string,
-    label: string,
+    name: string,
+    display: string,
     tons: number,
     crew: number,
     opts: { safe?: boolean; note?: string; emptyLabel?: string } = {},
   ): ShipComponentCardData => {
-    if (tons <= 0 && !opts.note) return empty(opts.emptyLabel || label);
-    const component = componentById(c, id);
+    if (tons <= 0 && !opts.note) return empty(opts.emptyLabel || display);
+    const component = componentByName(c, name);
     return {
-      id,
-      name: label,
+      id: name,
+      name: display,
       imageUrl: component.imageUrl,
       tons,
       ac: component.ac ?? 10,
       crewRequired: crew,
       safe: opts.safe,
-      note: opts.note,
+      note: component.effect || opts.note,
     };
   };
 
   const armor: ShipComponentCardData = {
     id: 'armor',
-    name: label(build.armor.id),
+    name: label(build.armor.name),
     imageUrl: build.armor.imageUrl,
-    tons: t.armor,
+    tons: m.armor,
     ac: build.armor.ac,
     crewRequired: 0,
     safe: true,
@@ -69,71 +69,72 @@ export function ShipLayout({
   };
 
   const helmCount = Math.max(0, build.helm);
-  const helm: ShipComponentCardData = componentCard(
-    COMPONENT_IDS.helm,
+  const helm = componentCard(
+    COMPONENT_NAMES.helm,
     helmCount > 1 ? `Helm ×${helmCount}` : 'Helm',
-    t.helm,
-    Math.ceil(helmCount * componentById(c, COMPONENT_IDS.helm).crew),
+    m.helm,
+    Math.ceil(helmCount * componentByName(c, COMPONENT_NAMES.helm).crew),
     { emptyLabel: 'Helm' },
   );
 
   const bridge = componentCard(
-    COMPONENT_IDS.commandBridge,
+    COMPONENT_NAMES.commandBridge,
     build.commandBridge > 1 ? `Bridge ×${build.commandBridge}` : 'Bridge',
-    t.commandBridge,
-    Math.ceil(build.commandBridge * componentById(c, COMPONENT_IDS.commandBridge).crew),
+    m.commandBridge,
+    Math.ceil(build.commandBridge * componentByName(c, COMPONENT_NAMES.commandBridge).crew),
     { note: build.commandBridge > 0 ? `+${build.commandBridge * 5} command` : undefined, emptyLabel: 'Bridge' },
   );
 
+  const hullComponent = componentByName(c, COMPONENT_NAMES.hull);
   const hull: ShipComponentCardData = {
     id: 'hull',
     name: 'Hull',
-    imageUrl: componentById(c, COMPONENT_IDS.hull).imageUrl,
-    tons: t.hull,
-    ac: componentById(c, COMPONENT_IDS.hull).ac ?? 10,
+    imageUrl: hullComponent.imageUrl,
+    tons: m.hull,
+    ac: hullComponent.ac ?? 10,
     crewRequired: 0,
     safe: true,
-    note: 'structural',
+    note: hullComponent.effect || 'structural',
   };
 
   const sail = componentCard(
-    COMPONENT_IDS.sail,
+    COMPONENT_NAMES.sail,
     build.sails > 1 ? `Sails ×${build.sails}` : 'Sail',
-    t.sails,
-    Math.ceil(build.sails * componentById(c, COMPONENT_IDS.sail).crew),
+    m.sails,
+    Math.ceil(build.sails * componentByName(c, COMPONENT_NAMES.sail).crew),
     { emptyLabel: 'Sail' },
   );
 
   const rudder = componentCard(
-    COMPONENT_IDS.rudder,
+    COMPONENT_NAMES.rudder,
     build.rudders > 1 ? `Rudders ×${build.rudders}` : 'Rudder',
-    t.rudders,
-    Math.ceil(build.rudders * componentById(c, COMPONENT_IDS.rudder).crew),
+    m.rudders,
+    Math.ceil(build.rudders * componentByName(c, COMPONENT_NAMES.rudder).crew),
     { emptyLabel: 'Rudder' },
   );
 
   const cargo = componentCard(
-    COMPONENT_IDS.cargo,
+    COMPONENT_NAMES.cargo,
     'Cargo',
-    t.cargo,
+    m.cargo,
     0,
     { emptyLabel: 'Cargo' },
   );
 
   const reinforcement = componentCard(
-    COMPONENT_IDS.reinforcement,
+    COMPONENT_NAMES.reinforcement,
     build.reinforcement > 1 ? `Reinforcement ×${build.reinforcement}` : 'Reinforcement',
-    t.reinforcement,
+    m.reinforcement,
     0,
     { note: build.reinforcement > 0 ? `+${build.reinforcement * 10} temp HP` : undefined, emptyLabel: 'Reinforcement' },
   );
 
   const quarters = componentCard(
-    COMPONENT_IDS.crewQuarters,
+    COMPONENT_NAMES.crewQuarters,
     'Crew quarters',
-    t.crewQuarters,
+    m.crewQuarters,
     0,
-    { note: t.crewQuarters > 0 ? `${stats.crewCapacity} capacity` : undefined, emptyLabel: 'Quarters' },
+    { note: m.crewQuarters > 0 ? `${stats.crewCapacity} capacity` : undefined, emptyLabel: 'Quarters' },
   );
 
   const weaponCards: ShipComponentCardData[] = build.templateWeapons.map((row, idx) => {
@@ -141,7 +142,7 @@ export function ShipLayout({
     const tons = weapon ? weaponTons(weapon) * row.count : 0;
     return {
       id: `weapon-${idx}`,
-      name: weapon ? `${label(weapon.id)}${row.count > 1 ? ` ×${row.count}` : ''}` : 'Weapon',
+      name: weapon ? `${label(weapon.name)}${row.count > 1 ? ` ×${row.count}` : ''}` : 'Weapon',
       imageUrl: weapon?.imageUrl,
       tons,
       ac: weapon?.ac ?? 10,
@@ -149,12 +150,15 @@ export function ShipLayout({
       note: row.mountSlot,
     };
   });
+  const weaponRows = build.templateWeapons.map((row, idx) => ({ row, card: weaponCards[idx] }));
+  const ramWeapons = weaponRows.filter(w => w.row.mountSlot === 'Ram').map(w => w.card);
+  const otherWeapons = weaponRows.filter(w => w.row.mountSlot !== 'Ram').map(w => w.card);
 
   const accessoryCards: ShipComponentCardData[] = build.templateAccessories.map((row) => {
     const accessory = accessoryById(build.accessoriesCatalog, row.accessoryId);
     return {
       id: `accessory-${row.accessoryId}`,
-      name: accessory ? `${label(accessory.id)}${row.count > 1 ? ` ×${row.count}` : ''}` : row.accessoryId,
+      name: accessory ? `${label(accessory.name)}${row.count > 1 ? ` ×${row.count}` : ''}` : row.accessoryId,
       imageUrl: accessory?.imageUrl,
       tons: Math.round((accessory?.mass || 0) * row.count),
       ac: accessory?.ac ?? 10,
@@ -163,11 +167,14 @@ export function ShipLayout({
     };
   });
 
-  const weaponSlot = (idx: number) => weaponCards[idx] ?? empty('Weapon', onAddWeapon);
+  const addGenericWeapon = () => onAddWeapon?.('Fore');
+  const weaponSlot = (idx: number) => otherWeapons[idx] ?? empty('Weapon', addGenericWeapon);
   const accessorySlot = (idx: number) =>
     accessoryCards[idx] ?? empty('Component', onAddComponent);
+  const ramSlot = ramWeapons[0] ?? empty('Ram', () => onAddWeapon?.('Ram'));
 
-  const extraWeapons = weaponCards.slice(6);
+  const extraWeapons = otherWeapons.slice(6);
+  const extraRamWeapons = ramWeapons.slice(1);
 
   return (
     <div className="relative rounded-3xl border border-gray-700 bg-gray-900/40 p-3">
@@ -181,7 +188,7 @@ export function ShipLayout({
       <div className="mx-auto max-w-[420px] space-y-2 px-3">
         <div className="grid grid-cols-3 gap-2">
           <ShipComponentCard data={armor} />
-          <ShipComponentCard data={accessorySlot(0)} />
+          <ShipComponentCard data={ramSlot} />
           <ShipComponentCard data={reinforcement} />
         </div>
 
@@ -200,9 +207,9 @@ export function ShipLayout({
         </div>
 
         <div className="grid grid-cols-3 gap-2">
-          <ShipComponentCard data={empty('Add weapon', onAddWeapon)} />
+          <ShipComponentCard data={empty('Add weapon', addGenericWeapon)} />
           <ShipComponentCard data={bridge} />
-          <ShipComponentCard data={empty('Add weapon', onAddWeapon)} />
+          <ShipComponentCard data={empty('Add weapon', addGenericWeapon)} />
         </div>
 
         <div className="grid grid-cols-3 gap-2">
@@ -225,8 +232,8 @@ export function ShipLayout({
 
         <div className="grid grid-cols-3 gap-2">
           <ShipComponentCard data={quarters} />
+          <ShipComponentCard data={accessorySlot(0)} />
           <ShipComponentCard data={accessorySlot(1)} />
-          <ShipComponentCard data={accessorySlot(2)} />
         </div>
 
         <div className="grid grid-cols-3 gap-2">
@@ -241,9 +248,15 @@ export function ShipLayout({
           </div>
         )}
 
-        {accessoryCards.length > 3 && (
+        {extraRamWeapons.length > 0 && (
           <div className="grid grid-cols-3 gap-2">
-            {accessoryCards.slice(3).map((card) => <ShipComponentCard key={card.id} data={card} />)}
+            {extraRamWeapons.map((card) => <ShipComponentCard key={card.id} data={card} />)}
+          </div>
+        )}
+
+        {accessoryCards.length > 2 && (
+          <div className="grid grid-cols-3 gap-2">
+            {accessoryCards.slice(2).map((card) => <ShipComponentCard key={card.id} data={card} />)}
           </div>
         )}
       </div>

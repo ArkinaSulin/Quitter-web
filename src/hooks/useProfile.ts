@@ -33,6 +33,8 @@ interface AccessRow {
   can_use_weapon_editor: boolean;
   can_view_structure_editor: boolean;
   can_use_structure_editor: boolean;
+  can_view_component_editor: boolean;
+  can_use_component_editor: boolean;
 }
 
 export interface Access {
@@ -51,9 +53,11 @@ export interface Access {
   canUseWeaponEditor: boolean;
   canViewStructureEditor: boolean;
   canUseStructureEditor: boolean;
+  canViewComponentEditor: boolean;
+  canUseComponentEditor: boolean;
 }
 
-const EMPTY_ACCESS: Access = { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false, canViewShipEditor: false, canUseShipEditor: false, canViewMapEditor: false, canUseMapEditor: false, canViewEffectEditor: false, canUseEffectEditor: false, canViewWeaponEditor: false, canUseWeaponEditor: false, canViewStructureEditor: false, canUseStructureEditor: false };
+const EMPTY_ACCESS: Access = { canUseUnitEditor: false, canViewUnitEditor: false, canCreateScenario: false, canJoinGame: false, canViewReplay: false, canViewShipEditor: false, canUseShipEditor: false, canViewMapEditor: false, canUseMapEditor: false, canViewEffectEditor: false, canUseEffectEditor: false, canViewWeaponEditor: false, canUseWeaponEditor: false, canViewStructureEditor: false, canUseStructureEditor: false, canViewComponentEditor: false, canUseComponentEditor: false };
 
 let accessCache: Record<string, AccessRow> | null = null;
 
@@ -79,6 +83,8 @@ async function loadAccessMatrix(): Promise<Record<string, AccessRow>> {
       can_use_weapon_editor: !!row.can_use_weapon_editor,
       can_view_structure_editor: !!row.can_view_structure_editor,
       can_use_structure_editor: !!row.can_use_structure_editor,
+      can_view_component_editor: !!row.can_view_component_editor,
+      can_use_component_editor: !!row.can_use_component_editor,
     };
     return acc;
   }, {});
@@ -104,6 +110,8 @@ function accessForRole(role: ProfileRole): Access {
     canUseWeaponEditor: row.can_use_weapon_editor,
     canViewStructureEditor: row.can_view_structure_editor,
     canUseStructureEditor: row.can_use_structure_editor,
+    canViewComponentEditor: row.can_view_component_editor,
+    canUseComponentEditor: row.can_use_component_editor,
   };
 }
 

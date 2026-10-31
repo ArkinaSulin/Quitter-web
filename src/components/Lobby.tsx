@@ -378,6 +378,8 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
   const canUseWeaponEditor = !!currentUser && !!access?.canUseWeaponEditor;
   const canViewStructureEditor = !!currentUser && (!!access?.canViewStructureEditor || !!access?.canUseStructureEditor);
   const canUseStructureEditor = !!currentUser && !!access?.canUseStructureEditor;
+  const canViewComponentEditor = !!currentUser && (!!access?.canViewComponentEditor || !!access?.canUseComponentEditor);
+  const canUseComponentEditor = !!currentUser && !!access?.canUseComponentEditor;
 
   const renderHeader = () => (
     <div className="flex flex-col items-center px-6 py-3 border-b border-gray-700 bg-[#0d0d1a]">
@@ -484,7 +486,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
               Replay Scenario
             </button>
           )}
-          {(role === 'admin' || canViewShipEditor || canViewUnitEditor || canViewMapEditor || canViewEffectEditor || canViewWeaponEditor || canViewStructureEditor) && (
+          {(role === 'admin' || canViewShipEditor || canViewUnitEditor || canViewMapEditor || canViewEffectEditor || canViewWeaponEditor || canViewStructureEditor || canViewComponentEditor) && (
             <div className="border-t border-gray-700" />
           )}
           {canViewShipEditor && (
@@ -563,6 +565,19 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                 }}
               >
                 {canUseStructureEditor ? 'Structure Editor' : 'Structure Library'}
+              </button>
+            )}
+            {canViewComponentEditor && (
+              <button
+                onClick={() => router.push('/component-editor')}
+                className="w-full py-2 border rounded hover:brightness-125 transition"
+                style={{
+                  borderColor: '#8a7a12',
+                  background: 'repeating-linear-gradient(45deg, #2c2608 0, #2c2608 10px, #0f0d08 10px, #0f0d08 20px)',
+                  color: '#f5efd2',
+                }}
+              >
+                {canUseComponentEditor ? 'Component Workshop' : 'Component Library'}
               </button>
             )}
           {/* Delete Scenario — always the very last action button */}

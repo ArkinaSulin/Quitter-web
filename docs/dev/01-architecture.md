@@ -12,6 +12,7 @@ Router; there is **no multi-page game flow** — the Scenario Map is reached fro
 | `/unit-editor` | `app/unit-editor/page.tsx` | Unit Editor / Unit Library | `canViewUnitEditor` view, `canUseUnitEditor` edit (`useProfile`) |
 | `/map-editor` | `app/map-editor/page.tsx` | Map Library (reusable authored maps) | `canViewMapEditor` / `canUseMapEditor` |
 | `/ship-editor` | `app/ship-editor/page.tsx` | Archfar's Shipyard (ship builder) | `canViewShipEditor` / `canUseShipEditor` |
+| `/component-editor` | `app/component-editor/page.tsx` | Component Workshop (ship components/weapons/mounts) | `canViewComponentEditor` / `canUseComponentEditor` |
 | `/effect-editor` | `app/effect-editor/page.tsx` | Effect Editor (reusable effect templates) | `canViewEffectEditor` / `canUseEffectEditor` |
 | `/weapon-editor` | `app/weapon-editor/page.tsx` | Weapon Editor (reusable weapons library) | `canViewWeaponEditor` / `canUseWeaponEditor` |
 

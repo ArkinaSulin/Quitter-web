@@ -9,7 +9,7 @@
 //   MC        = x = rudders × 10 / totalMass; x < 1 → 1/x + 2, else 4 − x
 //   effectiveMC = MC + (−1 / 0 / +1) at speeds 0–2 / 3–7 / 8–12, floored at 0
 //
-// Tonnage groups round to the nearest whole ton; crew requirements round up
+// Mass groups round to the nearest whole ton; crew requirements round up
 // per component; crew quarters are authored (1 ton = 5 capacity).
 
 import { describe, expect, it } from 'vitest';
@@ -38,43 +38,45 @@ import {
   computeRemainingMass,
   computeShipBuild,
   computeShipHp,
-  computeTonnage,
+  computeMassBreakdown,
   computeUsedMass,
   computeWeaponCapacity,
   computeWeaponMass,
   canPlaceWeapon,
+  weaponFitsSlot,
   ShipBuild,
 } from '@/packages/ships/lib/shipStats';
 
 const ARMORS: ShipArmor[] = [
-  { id: 'wood', massPct: 0.0, ac: 15, hpMult: 1 },
-  { id: 'ceramic', massPct: 0.05, ac: 13, hpMult: 2 },
-  { id: 'plated', massPct: 0.10, ac: 17, hpMult: 1 },
-  { id: 'metal', massPct: 0.20, ac: 19, hpMult: 1 },
-  { id: 'stone', massPct: 0.30, ac: 17, hpMult: 2 },
+  { id: 'wood', name: 'wood', massPct: 0.0, ac: 15, hpMult: 1 },
+  { id: 'ceramic', name: 'ceramic', massPct: 0.05, ac: 13, hpMult: 2 },
+  { id: 'plated', name: 'plated', massPct: 0.10, ac: 17, hpMult: 1 },
+  { id: 'metal', name: 'metal', massPct: 0.20, ac: 19, hpMult: 1 },
+  { id: 'stone', name: 'stone', massPct: 0.30, ac: 17, hpMult: 2 },
 ];
 
 const COMPONENTS: ShipComponent[] = [
-  { id: 'helm', mass: 1, crew: 1, cost: 0, hittable: true },
-  { id: 'command_bridge', mass: 3, crew: 5, cost: 0, hittable: true },
-  { id: 'sail', mass: 1, crew: 0.5, cost: 0, hittable: true },
-  { id: 'rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true },
-  { id: 'reinforcement', mass: 1, crew: 0, cost: 0, hittable: true },
-  { id: 'cargo', mass: 1, crew: 0, cost: 0, hittable: true },
-  { id: 'crew_quarters', mass: 1, crew: 5, cost: 0, hittable: true },
-  { id: 'weapon_large', mass: 2, crew: 2, cost: 0, hittable: true },
-  { id: 'weapon_small', mass: 1, crew: 2, cost: 0, hittable: true },
+  { id: 'comp-hull', name: 'hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null },
+  { id: 'comp-helm', name: 'helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null },
+  { id: 'comp-bridge', name: 'command_bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null },
+  { id: 'comp-sail', name: 'sail', mass: 1, crew: 0.5, cost: 0, hittable: true, effect: null },
+  { id: 'comp-rudder', name: 'rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null },
+  { id: 'comp-reinforcement', name: 'reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null },
+  { id: 'comp-cargo', name: 'cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null },
+  { id: 'comp-quarters', name: 'crew_quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null },
+  { id: 'comp-weapon-capacity', name: 'weapon_capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity' },
 ];
 
 const ACCESSORIES: ShipAccessory[] = [
-  { id: 'ram', mass: 5, crew: 0, cost: 5000, hittable: true, effect: '16d10 ram' },
-  { id: 'low_visibility', mass: 0, crew: 0, cost: 2000, hittable: false, effect: 'surprise' },
+  { id: 'acc-ram', name: 'ram', mass: 5, crew: 0, cost: 5000, hittable: true, effect: '16d10 ram' },
+  { id: 'acc-low-visibility', name: 'low_visibility', mass: 0, crew: 0, cost: 2000, hittable: false, effect: 'surprise' },
 ];
 
 const WEAPONS: ShipWeapon[] = [
-  { id: 'ballista_light', mount: 'small', damage: '2d10', rangeStd: 3, rangeDis: 10, fireCycleRd: 2, crew: 2, cost: 500, ammoCost: 1, special: null },
-  { id: 'catapult_medium', mount: 'large', damage: '5d10', rangeStd: 4, rangeDis: 16, fireCycleRd: 5, crew: 4, cost: 800, ammoCost: null, special: null },
-  { id: 'scorpion_claws_wpn', mount: 'special', damage: '3d10', rangeStd: 1, rangeDis: 1, fireCycleRd: 1, crew: 1, cost: 0, ammoCost: null, special: 'special mount' },
+  { id: 'wpn-ballista', name: 'ballista_light', mass: 1, damage: '2d10', minRange: 0, range: 3, maxRange: 10, fireCycleStep: 2, crew: 2, cost: 500, ammoCost: 1, special: null },
+  { id: 'wpn-catapult', name: 'catapult_medium', mass: 2, damage: '5d10', minRange: 0, range: 4, maxRange: 16, fireCycleStep: 5, crew: 4, cost: 800, ammoCost: null, special: null },
+  { id: 'wpn-claws', name: 'scorpion_claws', mass: 0, damage: '3d10', minRange: 0, range: 1, maxRange: 1, fireCycleStep: 1, crew: 1, cost: 0, ammoCost: null, special: 'melee' },
+  { id: 'wpn-heavy-ram', name: 'heavy_ram', mass: 3, damage: '6d10', minRange: 0, range: 1, maxRange: 1, fireCycleStep: 1, crew: 3, cost: 0, ammoCost: null, special: 'melee' },
 ];
 
 const ARMOR = (id: string) => ARMORS.find(a => a.id === id)!;
@@ -137,19 +139,19 @@ const shuttle = () => buildBase({
 const wasp = () => buildBase({
   armorId: 'wood', totalMass: 20, helm: 1, sails: 1, rudders: 6,
   crewCount: 7, crewQuarters: 2, weaponCapacity: 1, cargoArea: 3,
-  weapons: [wpn('ballista_light', 1)],
+  weapons: [wpn('wpn-ballista', 1)],
 });
 
 const damselfly = () => buildBase({
   armorId: 'metal', totalMass: 30, helm: 1, sails: 7, rudders: 3,
   crewCount: 13, crewQuarters: 2, weaponCapacity: 3, cargoArea: 1,
-  weapons: [wpn('catapult_medium', 1, 'Fore'), wpn('ballista_light', 1, 'Left')],
+  weapons: [wpn('wpn-catapult', 1, 'Fore'), wpn('wpn-ballista', 1, 'Left')],
 });
 
 const starMoth = () => buildBase({
   armorId: 'ceramic', totalMass: 60, helm: 1, commandBridge: 1, sails: 2, rudders: 18,
   crewCount: 24, crewQuarters: 5, weaponCapacity: 4, cargoArea: 2,
-  weapons: [wpn('ballista_light', 4)],
+  weapons: [wpn('wpn-ballista', 4)],
 });
 
 describe('hull + armor mass', () => {
@@ -160,25 +162,25 @@ describe('hull + armor mass', () => {
     expect(computeHullMass(60)).toBeCloseTo(13.2, 6);
   });
 
-  it('rounds hull tonnage to the nearest whole ton', () => {
-    expect(computeTonnage(racer()).hull).toBe(1);
-    expect(computeTonnage(wasp()).hull).toBe(3);
-    expect(computeTonnage(damselfly()).hull).toBe(5);
-    expect(computeTonnage(starMoth()).hull).toBe(13);
+  it('rounds hull mass to the nearest whole ton', () => {
+    expect(computeMassBreakdown(racer()).hull).toBe(1);
+    expect(computeMassBreakdown(wasp()).hull).toBe(3);
+    expect(computeMassBreakdown(damselfly()).hull).toBe(5);
+    expect(computeMassBreakdown(starMoth()).hull).toBe(13);
   });
 
   it('armor mass is a percentage of total mass and rounds to tons', () => {
     expect(computeArmorMass(buildBase({ armorId: 'wood', totalMass: 100 }))).toBe(0);
     expect(computeArmorMass(buildBase({ armorId: 'ceramic', totalMass: 20 }))).toBe(1);
     expect(computeArmorMass(buildBase({ armorId: 'stone', totalMass: 100 }))).toBe(30);
-    expect(computeTonnage(damselfly()).armor).toBe(6);   // Metal 20% of 30
-    expect(computeTonnage(starMoth()).armor).toBe(3);    // Ceramic 5% of 60
+    expect(computeMassBreakdown(damselfly()).armor).toBe(6);   // Metal 20% of 30
+    expect(computeMassBreakdown(starMoth()).armor).toBe(3);    // Ceramic 5% of 60
   });
 });
 
-describe('reference template tonnage', () => {
+describe('reference template mass', () => {
   it('Racer: 1 hull + 1 helm + 2 sails + 6 rudders = 10', () => {
-    const t = computeTonnage(racer());
+    const t = computeMassBreakdown(racer());
     expect(t).toMatchObject({
       hull: 1, armor: 0, helm: 1, commandBridge: 0, sails: 2, rudders: 6,
       weapons: 0, reinforcement: 0, accessories: 0, cargo: 0, crewQuarters: 0,
@@ -187,7 +189,7 @@ describe('reference template tonnage', () => {
   });
 
   it('Shuttle: 1 hull + 1 helm + 1 sail + 2 rudders + 1 cargo + 4 quarters = 10', () => {
-    const t = computeTonnage(shuttle());
+    const t = computeMassBreakdown(shuttle());
     expect(t).toMatchObject({
       hull: 1, armor: 0, helm: 1, sails: 1, rudders: 2,
       cargo: 1, crewQuarters: 4, used: 10, remaining: 0,
@@ -195,7 +197,7 @@ describe('reference template tonnage', () => {
   });
 
   it('Wasp: 3 hull + 1 helm + 1 sail + 9 rudders + 1 weapon + 3 cargo + 2 quarters = 20', () => {
-    const t = computeTonnage(wasp());
+    const t = computeMassBreakdown(wasp());
     expect(t).toMatchObject({
       hull: 3, armor: 0, helm: 1, sails: 1, rudders: 9,
       weapons: 1, cargo: 3, crewQuarters: 2, used: 20, remaining: 0,
@@ -203,7 +205,7 @@ describe('reference template tonnage', () => {
   });
 
   it('Damselfly: 5 hull + 6 armor + 1 helm + 7 sails + 5 rudders + 3 weapons + 1 cargo + 2 quarters = 30', () => {
-    const t = computeTonnage(damselfly());
+    const t = computeMassBreakdown(damselfly());
     expect(t).toMatchObject({
       hull: 5, armor: 6, helm: 1, sails: 7, rudders: 5,
       weapons: 3, cargo: 1, crewQuarters: 2, used: 30, remaining: 0,
@@ -211,7 +213,7 @@ describe('reference template tonnage', () => {
   });
 
   it('Star Moth: 13 hull + 3 armor + 1 helm + 3 bridge + 2 sails + 27 rudders + 4 weapons + 2 cargo + 5 quarters = 60', () => {
-    const t = computeTonnage(starMoth());
+    const t = computeMassBreakdown(starMoth());
     expect(t).toMatchObject({
       hull: 13, armor: 3, helm: 1, commandBridge: 3, sails: 2, rudders: 27,
       weapons: 4, cargo: 2, crewQuarters: 5, used: 60, remaining: 0,
@@ -276,29 +278,46 @@ describe('weapons', () => {
   it('large weapons take 2 tons and small weapons 1 ton', () => {
     expect(computeWeaponMass(damselfly())).toBe(3);
     expect(computeWeaponMass(starMoth())).toBe(4);
-    expect(computeTonnage(damselfly()).weapons).toBe(3);
+    expect(computeMassBreakdown(damselfly()).weapons).toBe(3);
   });
 
   it('counts the allocated capacity even when fewer weapons are placed', () => {
     const b = buildBase({
       armorId: 'wood', totalMass: 20, weaponCapacity: 4,
-      weapons: [wpn('ballista_light', 1)],
+      weapons: [wpn('wpn-ballista', 1)],
     });
     expect(computeWeaponMass(b)).toBe(1);
     expect(computeWeaponCapacity(b)).toBe(4);
-    expect(computeTonnage(b).weapons).toBe(4);
+    expect(computeMassBreakdown(b).weapons).toBe(4);
     expect(computeShipBuild(b).weaponPlacedTons).toBe(1);
     expect(computeShipBuild(b).weaponCapacity).toBe(4);
   });
 
   it('falls back to placed tons when no capacity is authored', () => {
-    const b = buildBase({ armorId: 'wood', totalMass: 20, weapons: [wpn('ballista_light', 2)] });
+    const b = buildBase({ armorId: 'wood', totalMass: 20, weapons: [wpn('wpn-ballista', 2)] });
     expect(computeWeaponCapacity(b)).toBe(2);
   });
 
   it('detects when a weapon does not fit the capacity', () => {
     expect(canPlaceWeapon(3, 4, 1)).toBe(true);
     expect(canPlaceWeapon(3, 4, 2)).toBe(false);
+  });
+
+  it('uses the authored weapon mass for ship mass', () => {
+    const b = buildBase({
+      armorId: 'wood', totalMass: 20, weaponCapacity: 3,
+      weapons: [wpn('wpn-heavy-ram', 1, 'Ram')],
+    });
+    expect(computeWeaponMass(b)).toBe(3);
+    expect(computeMassBreakdown(b).weapons).toBe(3);
+  });
+
+  it('filters the Ram slot to max range 1 weapons', () => {
+    const ballista = WEAPONS.find(w => w.id === 'wpn-ballista')!;
+    const claws = WEAPONS.find(w => w.id === 'wpn-claws')!;
+    expect(weaponFitsSlot(ballista, 'Ram')).toBe(false);
+    expect(weaponFitsSlot(ballista, 'Fore')).toBe(true);
+    expect(weaponFitsSlot(claws, 'Ram')).toBe(true);
   });
 });
 
@@ -362,7 +381,7 @@ describe('MC', () => {
 });
 
 describe('hit boxes', () => {
-  it('matches the Wasp tonnage row', () => {
+  it('matches the Wasp mass row', () => {
     const byId = Object.fromEntries(computeBoxGroups(wasp()).map(g => [g.id, g]));
     expect(byId.hull.boxes).toBe(3);
     expect(byId.hull.safe).toBe(true);
@@ -392,7 +411,7 @@ describe('hit boxes', () => {
   });
 });
 
-describe('tonnage helpers + overload', () => {
+describe('mass helpers + overload', () => {
   it('reports used/remaining/fitting in whole tons', () => {
     const b = buildBase({
       armorId: 'wood', totalMass: 20, sails: 4, rudders: 2,
@@ -421,8 +440,8 @@ describe('build cost', () => {
   it('sums weapon + accessory costs (component gold is not yet defined)', () => {
     const b = buildBase({
       armorId: 'wood', totalMass: 40,
-      weapons: [wpn('ballista_light', 2), wpn('catapult_medium', 1)],
-      accessories: [acc('ram')],
+      weapons: [wpn('wpn-ballista', 2), wpn('wpn-catapult', 1)],
+      accessories: [acc('acc-ram')],
     });
     expect(computeBuildCost(b)).toBe(6800); // 2×500 + 800 + 5000
   });
@@ -456,7 +475,7 @@ describe('computeShipBuild aggregate', () => {
     expect(s.mcRaw).toBe(3);
     expect(s.mcBands.map(b => b.mc)).toEqual([2, 3, 4]);
     expect(s.commandBonus).toBe(0);
-    expect(s.tonnage.used).toBe(14);
+    expect(s.massBreakdown.used).toBe(14);
     expect(s.boxGroups.length).toBeGreaterThan(0);
   });
 

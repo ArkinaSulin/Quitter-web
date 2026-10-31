@@ -14,8 +14,9 @@ Newest work first; the authoritative, per-session record is `docs/dev/changelog.
 The most recent work completed the **Basic AI current scope** (whole-activation
 climb routes, vacant-top/route locks, redundant-wall pathing, rout step limits,
 local-only preview markers), the **Halloween Siege** minigame (migration 133),
-and the **Spelljammer mass-first overhaul** (migrations 134–135: no ship frames,
-  authored quarters/passengers, template-checked tonnage rounding).
+and the **Spelljammer mass-first overhaul** (migrations 134–138: no ship frames,
+  authored quarters/passengers, template-checked mass rounding, UUID/name ship
+  catalogs, and the Component Workshop).
 Prior sessions added **map structures** (migrations 093–095: template library + Structure Editor, edge/hex
 instances, door-first combat, tower auras, `range` bonuses, gate open/close,
 **Shift + drop** attacks and Shift-held inspect-mode hex/edge tooltips), the
@@ -28,8 +29,20 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Component Workshop + ship catalog UUIDs (2026-10-27, migrations 137–138)**:
+  ship catalogs (`ship_components`, `ship_weapons`, `ship_accessories`,
+  `ship_armors`) now use UUID `id` + unique `name`, with template/join FKs
+  migrated; built-in components are looked up by name. Added
+  `/component-editor` (Components/Weapons/Accessories tabs) with admin/dm edit
+  and everyone-view access. `ship_components.effect`; `weapon_large` removed;
+  `weapon_small` → `weapon_capacity`, linked to the Ship Editor capacity row as
+  per-ton metadata. `ship_weapons` gains `mass`/`min_range`, renames
+  `range_std`→`range`, `range_dis`→`max_range`, `fire_cycle_rd`→`fire_cycle_step`,
+  drops `mount`; authored mass controls ship mass, fire cycle is in steps, all
+  weapons hittable. The Ram slot filters to `max_range = 1`. UI/docs/code use
+  “mass” (unit “ton”). **Apply 135–138 in Supabase.**
 - **Ship Editor v2 (2026-10-27, migration 136)**: kept the 3-panel editor. Middle:
-  name/tonnage, authored atmospheric speed + damage threshold, summary (armor,
+  name/mass, authored atmospheric speed + damage threshold, summary (armor,
   HP, DT, atmo speed, wild-space acceleration, cargo, min crew/capacity, cost,
   weapon capacity), and a composition table (Hull read-only, Helm, Command
   bridge, Sail, Rudder, Weapon capacity, Armor, Reinforcement, Crew quarter,
@@ -48,7 +61,7 @@ reusable maps. Here's the state:
   `HP = (totalMass × 3 + 40) × hpMult`, `accel = (sails + rudders)/totalMass ×
   15`, and `MC = x = rudders×10/totalMass` (`x<1 → 1/x+2`, else `4−x`) with
   effective MC `−1/0/+1` at speeds `0–2/3–7/8–12`, **clamped at 0** (Racer has
-  MC 0). **Tonnage rounds each group to the nearest whole ton** (hull 2.8→3,
+  MC 0). **Mass rounds each group to the nearest whole ton** (hull 2.8→3,
   rudder 4.5→5), so the five reference templates sum exactly. **Minimum crew
   ceils each component group separately** (Shuttle 3, Damselfly 13). **Crew
   quarters are authored tons** (capacity = tons × 5), not auto; passengers are
@@ -272,7 +285,7 @@ Defensive reserves hold a **central station ~2
   some elevation nuances, per-team doctrine toggles; the AI never controls
   heroes.
 - **Turn counter desync reported in playtest** (separate from AI roles): reproduce with End Turn / undo-redo before changing turn advancement.
-- **Spelljammer module implementation** (mass-first builder/stats/renderer + Ship Editor v2 done in migrations 134–136; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering, reinforcement target assignment, command-bridge bonus wiring. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`) applied; **134 applied; apply 135 (`crew_quarters`/`passengers`) + 136 (editor v2 fields + `ship_images`) in Supabase**.
+- **Spelljammer module implementation** (mass-first builder/stats/renderer + Ship Editor v2 + Component Workshop done in migrations 134–138; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering, reinforcement target assignment, command-bridge bonus wiring. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`) applied; **134 applied; apply 135–138 in Supabase**.
 - Migration `013_turn_tracking.sql` — applied to the DB (done).
 - Migrations 010/011/012 — user applied to the DB.
 - `UnitEditor.tsx`: `isHero` toggle should force `'Hero'` formation — postponed until the consolidated interface update.

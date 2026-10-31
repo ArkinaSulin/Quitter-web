@@ -1,13 +1,14 @@
 // src/types/ship.ts
 // Spelljammer ship-domain types. Mass-first model (no ship frames): the player
 // designates a total mass, pays a hull-mass penalty, then furnishes the rest.
-// Source of truth: the 2026 Spelljammer overhaul rules + migration 134.
+// Ship catalogs use UUID ids + a unique `name` (migration 137).
 
-export type ShipMount = 'small' | 'large' | 'special';
+export type ShipCatalogKind = 'component' | 'weapon' | 'accessory';
 
 /** Armor option (`ship_armors`): mass is a percentage of the ship total. */
 export interface ShipArmor {
   id: string;
+  name: string;
   /** Mass fraction of total ship mass (0.05 = 5%). */
   massPct: number;
   ac: number;
@@ -19,17 +20,20 @@ export interface ShipArmor {
 /** Component catalog row (`ship_components`). */
 export interface ShipComponent {
   id: string;
+  name: string;
   mass: number;
   crew: number;
   cost: number;
   hittable: boolean;
+  effect: string | null;
   ac?: number;
   imageUrl?: string;
 }
 
-/** Accessory / special fitting (`ship_accessories`). */
+/** Mount / accessory catalog row (`ship_accessories`). */
 export interface ShipAccessory {
   id: string;
+  name: string;
   mass: number;
   crew: number;
   cost: number;
@@ -42,17 +46,41 @@ export interface ShipAccessory {
 /** Weapon catalog row (`ship_weapons`). */
 export interface ShipWeapon {
   id: string;
-  mount: ShipMount;
+  name: string;
+  mass: number;
   damage: string;
-  rangeStd: number;
-  rangeDis: number | null;
-  fireCycleRd: number;
+  minRange: number;
+  range: number;
+  maxRange: number;
+  /** Steps between shots: 1 = every step, 2 = every other step. */
+  fireCycleStep: number;
   crew: number;
   cost: number;
   ammoCost: number | null;
+  /** Free-form weapon note. */
   special: string | null;
   ac?: number;
   imageUrl?: string;
+}
+
+/** Unified row shape used by the Component Workshop list/form. */
+export interface ShipComponentTemplate {
+  id: string;
+  kind: ShipCatalogKind;
+  name: string;
+  mass: number;
+  crew: number;
+  hittable: boolean;
+  cost: number;
+  effect: string;
+  damage: string;
+  minRange: number;
+  range: number;
+  maxRange: number;
+  fireCycleStep: number;
+  special: string;
+  ac: number;
+  imageUrl: string;
 }
 
 /** Selected accessory instance on a template (`ship_template_accessories`). */
@@ -87,6 +115,7 @@ export interface ShipTemplate {
   id: string;
   name: string;
   role: string | null;
+  /** UUID from ship_armors. */
   armorId: string;
   /** Player-designated ship mass (tons). Hull + armor + fittings come out of this. */
   totalMass: number;
@@ -98,11 +127,11 @@ export interface ShipTemplate {
   reinforcement: number;
   /** Crew complement (current crew on board). */
   crewCount: number;
-  /** Authored crew-quarters tonnage (1 ton = 5 capacity). */
+  /** Authored crew-quarters mass (1 ton = 5 capacity). */
   crewQuarters: number;
   /** Authored passenger count (display-only for now). */
   passengers: number;
-  /** Authored weapon tonnage budget; weapons must fit inside it. */
+  /** Authored weapon capacity mass; placed weapons must fit inside it. */
   weaponCapacity: number;
   /** Authored atmospheric speed (0–12). */
   atmosphericSpeed: number;

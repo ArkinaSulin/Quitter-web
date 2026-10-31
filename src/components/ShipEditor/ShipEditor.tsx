@@ -13,9 +13,12 @@ import {
   ShipWeapon,
 } from '@/types/ship';
 import {
+  COMPONENT_NAMES,
   DEFAULT_TOTAL_MASS,
   canPlaceWeapon,
+  componentByName,
   computeShipBuild,
+  weaponFitsSlot,
   weaponTons,
   ShipBuild,
 } from '@/packages/ships';
@@ -33,11 +36,7 @@ import {
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { ShipLayout } from '@/components/ShipRenderer/ShipLayout';
 
-const MOUNT_SLOTS = ['Fore', 'Left', 'Right', 'Rear', '360'] as const;
-
-const ARMOR_LABELS: Record<string, string> = {
-  wood: 'Wood', plated: 'Plate', metal: 'Metal', ceramic: 'Ceramic', stone: 'Stone',
-};
+const MOUNT_SLOTS = ['Fore', 'Left', 'Right', 'Rear', '360', 'Ram'] as const;
 
 function humanize(id: string): string {
   return id
@@ -258,19 +257,23 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     updateFormData('weapons', weapons);
   };
 
-  const addWeapon = () => {
+  const addWeapon = (slot: string = 'Fore') => {
     if (!formData || weaponsCatalog.length === 0) return;
     const capacity = stats?.weaponCapacity ?? 0;
     const placed = stats?.weaponPlacedTons ?? 0;
-    const candidate = weaponsCatalog.find(w => canPlaceWeapon(placed, capacity, weaponTons(w)));
+    const candidate = weaponsCatalog.find(
+      w => weaponFitsSlot(w, slot) && canPlaceWeapon(placed, capacity, weaponTons(w)),
+    );
     if (!candidate) {
-      setError('No weapon capacity left. Increase the Weapon capacity row first.');
+      setError(slot === 'Ram'
+        ? 'No melee-range weapon (max range 1) fits the remaining weapon capacity.'
+        : 'No weapon capacity left. Increase the Weapon capacity row first.');
       return;
     }
     setError(null);
     updateFormData('weapons', [...formData.weapons, {
       weaponId: candidate.id,
-      mountSlot: candidate.mount === 'special' ? '360' : 'Fore',
+      mountSlot: slot,
       count: 1,
     }]);
   };
@@ -416,7 +419,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   }, [isDirty]);
 
   const createBlankTemplate = (): ShipTemplate => {
-    const firstArmor = armors.find(a => a.id === 'wood') || armors[0];
+    const firstArmor = armors.find(a => a.name === 'wood') || armors[0];
     return {
       id: crypto.randomUUID(),
       name: 'New Ship',
@@ -660,6 +663,13 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const crewSlotsRemaining = formData ? Math.max(0, formData.crewCount - formData.crews.length) : 0;
   const isNew = !!formData && !templates.some(t => t.id === formData.id);
   const mcLabel = (v: number) => (Number.isFinite(v) ? `${v}` : '—');
+  const armorName = (id: string) => {
+    const armor = armors.find(a => a.id === id);
+    return armor ? humanize(armor.name) : '—';
+  };
+  const weaponCapacityComponent = formData
+    ? componentByName(components, COMPONENT_NAMES.weaponCapacity)
+    : null;
 
 
   return (
@@ -734,7 +744,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                   >
                     <div className="font-medium truncate">{template.name}</div>
                     <div className="text-xs text-gray-400">
-                      {template.totalMass}t · {ARMOR_LABELS[template.armorId] || template.armorId || '?'}
+                      {template.totalMass}t · {armorName(template.armorId)}
                     </div>
                   </div>
                 );
@@ -753,7 +763,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
             <>
               <div className="flex-1 overflow-y-auto p-6">
                 <fieldset disabled={readOnly} className="max-w-4xl space-y-4">
-                  {/* Identity + tonnage */}
+                  {/* Identity + mass */}
                   <div className="flex items-end gap-2">
                     <Cell label="Ship Name" widthClass="flex-1">
                       <input
@@ -772,7 +782,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
                       />
                     </Cell>
-                    <Cell label="Total tonnage" widthClass="w-28">
+                    <Cell label="Total mass (ton)" widthClass="w-32">
                       <NumInput
                         value={formData.totalMass}
                         min={1}
@@ -807,7 +817,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                     <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
                       <div className="grid grid-cols-4 gap-2">
                         <StatCell label="Armor">
-                          {ARMOR_LABELS[formData.armorId] || formData.armorId} · AC {stats.ac}
+                          {armorName(formData.armorId)} · AC {stats.ac}
                         </StatCell>
                         <StatCell label="HP">{stats.shipHp}</StatCell>
                         <StatCell label="Damage threshold">{stats.damageThreshold}</StatCell>
@@ -903,7 +913,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         <tr className="text-gray-500 border-b border-gray-700">
                           <th className="text-left py-1 pr-2 font-normal">Component</th>
                           <th className="text-center py-1 px-2 font-normal">Input</th>
-                          <th className="text-right py-1 px-2 font-normal">Mass (t)</th>
+                          <th className="text-right py-1 px-2 font-normal">Mass (ton)</th>
                           <th className="text-right py-1 px-2 font-normal">Crew req.</th>
                           <th className="text-left py-1 pl-2 font-normal">Notes</th>
                           <th className="text-right py-1 pl-2 font-normal">Cost</th>
@@ -913,9 +923,9 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         <tr className="border-b border-gray-700/50">
                           <td className="py-1 pr-2">Hull</td>
                           <td className="text-center px-2 text-gray-500">—</td>
-                          <td className="text-right px-2">{stats?.tonnage.hull ?? 0}</td>
+                          <td className="text-right px-2">{stats?.massBreakdown.hull ?? 0}</td>
                           <td className="text-right px-2">0</td>
-                          <td className="pl-2 text-gray-500">Read-only tonnage · safe</td>
+                          <td className="pl-2 text-gray-500">Read-only mass · safe</td>
                           <td className="text-right pl-2 text-gray-500">—</td>
                         </tr>
 
@@ -926,7 +936,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                               <NumInput value={formData.helm} min={0} max={9} onChange={(v) => updateFormData('helm', Math.max(0, Math.floor(v)))} />
                             </div>
                           </td>
-                          <td className="text-right px-2">{stats?.tonnage.helm ?? 0}</td>
+                          <td className="text-right px-2">{stats?.massBreakdown.helm ?? 0}</td>
                           <td className="text-right px-2">{Math.ceil(formData.helm * 1)}</td>
                           <td className="pl-2 text-gray-500">1t each · 1 crew</td>
                           <td className="text-right pl-2 text-gray-500">—</td>
@@ -939,7 +949,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                               <NumInput value={formData.commandBridge} min={0} max={2} onChange={(v) => updateFormData('commandBridge', Math.max(0, Math.min(2, Math.floor(v))))} />
                             </div>
                           </td>
-                          <td className="text-right px-2">{stats?.tonnage.commandBridge ?? 0}</td>
+                          <td className="text-right px-2">{stats?.massBreakdown.commandBridge ?? 0}</td>
                           <td className="text-right px-2">{Math.ceil(formData.commandBridge * 5)}</td>
                           <td className="pl-2 text-gray-500">3t each · 5 crew · +5 command</td>
                           <td className="text-right pl-2 text-gray-500">—</td>
@@ -952,7 +962,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                               <NumInput value={formData.sails} min={0} max={99} onChange={(v) => updateFormData('sails', Math.max(0, Math.floor(v)))} />
                             </div>
                           </td>
-                          <td className="text-right px-2">{stats?.tonnage.sails ?? 0}</td>
+                          <td className="text-right px-2">{stats?.massBreakdown.sails ?? 0}</td>
                           <td className="text-right px-2">{Math.ceil(formData.sails * 0.5)}</td>
                           <td className="pl-2 text-gray-500">1t each · ½ crew</td>
                           <td className="text-right pl-2 text-gray-500">—</td>
@@ -965,7 +975,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                               <NumInput value={formData.rudders} min={0} max={99} onChange={(v) => updateFormData('rudders', Math.max(0, Math.floor(v)))} />
                             </div>
                           </td>
-                          <td className="text-right px-2">{stats?.tonnage.rudders ?? 0}</td>
+                          <td className="text-right px-2">{stats?.massBreakdown.rudders ?? 0}</td>
                           <td className="text-right px-2">{Math.ceil(formData.rudders * 0.5)}</td>
                           <td className="pl-2 text-gray-500">1.5t each (rounded) · ½ crew</td>
                           <td className="text-right pl-2 text-gray-500">—</td>
@@ -981,6 +991,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="text-right px-2">{stats?.weaponCapacity ?? 0}</td>
                           <td className="text-right px-2 text-gray-500">—</td>
                           <td className={`pl-2 ${weaponOverCapacity ? 'text-red-400' : 'text-gray-500'}`}>
+                            {weaponCapacityComponent?.effect ? `${weaponCapacityComponent.effect} · ` : ''}
                             Placed {stats?.weaponPlacedTons ?? 0}t / {stats?.weaponCapacity ?? 0}t · crew from chosen weapons
                           </td>
                           <td className="text-right pl-2 text-gray-500">—</td>
@@ -997,13 +1008,13 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                               >
                                 {armors.map(armor => (
                                   <option key={armor.id} value={armor.id}>
-                                    {ARMOR_LABELS[armor.id] || armor.id} (AC {armor.ac})
+                                    {humanize(armor.name)} (AC {armor.ac})
                                   </option>
                                 ))}
                               </select>
                             </div>
                           </td>
-                          <td className="text-right px-2">{stats?.tonnage.armor ?? 0}</td>
+                          <td className="text-right px-2">{stats?.massBreakdown.armor ?? 0}</td>
                           <td className="text-right px-2">0</td>
                           <td className="pl-2 text-gray-500">
                             {Math.round((selectedArmor?.massPct ?? 0) * 100)}% mass · AC {selectedArmor?.ac ?? '—'} · HP ×{selectedArmor?.hpMult ?? 1}
@@ -1018,7 +1029,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                               <NumInput value={formData.reinforcement} min={0} max={99} onChange={(v) => updateFormData('reinforcement', Math.max(0, Math.floor(v)))} />
                             </div>
                           </td>
-                          <td className="text-right px-2">{stats?.tonnage.reinforcement ?? 0}</td>
+                          <td className="text-right px-2">{stats?.massBreakdown.reinforcement ?? 0}</td>
                           <td className="text-right px-2">0</td>
                           <td className="pl-2 text-gray-500">1t each · +10 temp HP (target later)</td>
                           <td className="text-right pl-2 text-gray-500">—</td>
@@ -1031,7 +1042,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                               <NumInput value={formData.crewQuarters} min={0} max={99} onChange={(v) => updateFormData('crewQuarters', Math.max(0, Math.floor(v)))} />
                             </div>
                           </td>
-                          <td className="text-right px-2">{stats?.tonnage.crewQuarters ?? 0}</td>
+                          <td className="text-right px-2">{stats?.massBreakdown.crewQuarters ?? 0}</td>
                           <td className="text-right px-2">0</td>
                           <td className="pl-2 text-gray-500">1t each · {stats?.crewCapacity ?? 0} capacity</td>
                           <td className="text-right pl-2 text-gray-500">—</td>
@@ -1049,7 +1060,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                               />
                             </div>
                           </td>
-                          <td className="text-right px-2">{stats?.tonnage.cargo ?? 0}</td>
+                          <td className="text-right px-2">{stats?.massBreakdown.cargo ?? 0}</td>
                           <td className="text-right px-2">0</td>
                           <td className="pl-2 text-gray-500">Max {cargoCapacity}t</td>
                           <td className="text-right pl-2 text-gray-500">—</td>
@@ -1175,7 +1186,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                   </label>
                   <button
                     type="button"
-                    onClick={addWeapon}
+                    onClick={() => addWeapon('Fore')}
                     disabled={readOnly || !canAddWeapon}
                     className="px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -1206,11 +1217,13 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                               onChange={(e) => setWeaponRow(idx, 'weaponId', e.target.value)}
                               className="flex-1 min-w-0 bg-gray-700 text-white text-[10px] rounded px-1.5 py-1 border border-gray-600"
                             >
-                              {weaponsCatalog.map(weap => (
-                                <option key={weap.id} value={weap.id}>
-                                  {humanize(weap.id)} — {weap.damage} ({weap.mount}, crew {weap.crew})
-                                </option>
-                              ))}
+                              {weaponsCatalog
+                                .filter(weap => weaponFitsSlot(weap, w.mountSlot) || weap.id === w.weaponId)
+                                .map(weap => (
+                                  <option key={weap.id} value={weap.id}>
+                                    {humanize(weap.name)} — {weap.damage} ({weap.mass}t, crew {weap.crew}, every {weap.fireCycleStep} step{weap.fireCycleStep === 1 ? '' : 's'})
+                                  </option>
+                                ))}
                             </select>
                             <button
                               type="button"
@@ -1242,6 +1255,11 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                               {tons * w.count}t · {Math.ceil((wpn?.crew || 0) * w.count)} crew
                             </span>
                           </div>
+                          {wpn && !weaponFitsSlot(wpn, w.mountSlot) && (
+                            <p className="text-[9px] text-amber-400">
+                              Ram slots accept only max-range-1 weapons. Change the slot or pick another weapon.
+                            </p>
+                          )}
                         </div>
                       );
                     })}

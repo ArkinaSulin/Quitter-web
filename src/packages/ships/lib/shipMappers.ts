@@ -11,7 +11,6 @@ import {
   ShipArmor,
   ShipComponent,
   ShipCrew,
-  ShipMount,
   ShipTemplate,
   ShipWeapon,
 } from '@/types/ship';
@@ -21,6 +20,7 @@ import { DEFAULT_TOTAL_MASS } from './shipStats';
 export function mapShipArmorRow(row: any): ShipArmor {
   return {
     id: row.id,
+    name: row.name || '',
     massPct: Number(row.mass_pct ?? row.mass_factor) || 0,
     ac: Number(row.ac) || 0,
     hpMult: Number(row.hp_mult ?? (Number(row.box_hp) > 5 ? 2 : 1)) || 1,
@@ -32,10 +32,12 @@ export function mapShipArmorRow(row: any): ShipArmor {
 export function mapShipComponentRow(row: any): ShipComponent {
   return {
     id: row.id,
+    name: row.name || '',
     mass: Number(row.mass) || 0,
     crew: Number(row.crew) || 0,
     cost: Number(row.cost) || 0,
     hittable: !!row.hittable,
+    effect: row.effect || null,
     ac: row.ac != null ? Number(row.ac) : 10,
     imageUrl: row.image_url || '',
   };
@@ -45,6 +47,7 @@ export function mapShipComponentRow(row: any): ShipComponent {
 export function mapShipAccessoryRow(row: any): ShipAccessory {
   return {
     id: row.id,
+    name: row.name || '',
     mass: Number(row.mass) || 0,
     crew: Number(row.crew) || 0,
     cost: Number(row.cost) || 0,
@@ -59,11 +62,13 @@ export function mapShipAccessoryRow(row: any): ShipAccessory {
 export function mapShipWeaponRow(row: any): ShipWeapon {
   return {
     id: row.id,
-    mount: (row.mount as ShipMount) || 'small',
+    name: row.name || '',
+    mass: Number(row.mass) || 0,
     damage: row.damage || '',
-    rangeStd: Number(row.range_std) || 0,
-    rangeDis: row.range_dis != null ? Number(row.range_dis) : null,
-    fireCycleRd: Number(row.fire_cycle_rd) || 0,
+    minRange: Number(row.min_range) || 0,
+    range: Number(row.range) || 0,
+    maxRange: Number(row.max_range) || 0,
+    fireCycleStep: Number(row.fire_cycle_step) || 1,
     crew: Number(row.crew) || 0,
     cost: Number(row.cost) || 0,
     ammoCost: row.ammo_cost != null ? Number(row.ammo_cost) : null,

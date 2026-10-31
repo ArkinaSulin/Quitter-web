@@ -174,8 +174,10 @@ mass = `totalMass × (10% + totalMass/500)`, armor as % of total, acceleration
 and MC from the new rules, whole-ton rounding, binary per-ton hit boxes.
 **Ship Editor v2** is built: summary + composition table, ship image upload,
 square component-slot layout, weapon capacity budget, atmospheric speed,
-damage threshold, catalog AC/images. **Migrations 135 and 136 are pending
-apply.**
+damage threshold, catalog AC/images. **Component Workshop** is built:
+three-tab editor over Components/Weapons/Accessories, UUID/name catalogs,
+weapon mass, min/range/max range, fire-cycle steps, and the `max_range = 1`
+Ram slot filter. **Migrations 135–138 are pending apply.**
 
 The five reference templates (Racer, Shuttle, Wasp, Damselfly, Star Moth) are
 locked in `shipStats.test.ts`.
@@ -223,7 +225,8 @@ locked in `shipStats.test.ts`.
   `ai_assist_advanced` / `ai_assist_players`; Advanced AI is cancelled).
 - ?? **Awaiting apply**: **132** (drops the old `ai_role_markers` column), **096** (structure `spikes` + "Archer's Stake" rename),
   **097** (`structure_images` bucket), **112** (`units.climb_to` — Phase 2b-7), **135**
-  (ship `crew_quarters` + `passengers`), **136** (ship editor v2 fields + `ship_images`).
+  (ship `crew_quarters` + `passengers`), **136** (ship editor v2 fields + `ship_images`),
+  **137** (ship catalog UUID/name), **138** (Component Workshop fields/access).
 
 ## Uncommitted working tree (owner's, left untouched)
 - Last checked 2026-10-27 after the mass-first ship overhaul. The old v8.1

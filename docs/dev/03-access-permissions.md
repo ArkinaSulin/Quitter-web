@@ -21,7 +21,13 @@ There are two independent permission layers:
   role to boolean capabilities, read by the `user_has_access(permission)` helper
   for RLS. `useProfile` exposes `Access { canUseUnitEditor,
   canCreateScenario, canJoinGame, canViewReplay, canViewShipEditor,
-  canUseShipEditor, canViewMapEditor, canUseMapEditor, canUseAdminPanel }`.
+  canUseShipEditor, canViewComponentEditor, canUseComponentEditor,
+  canViewMapEditor, canUseMapEditor, canUseAdminPanel }`.
+- **Component Workshop (137/138):** `component_editor` / `view_component_editor`
+  are admin/dm edit and everyone-view. The three ship catalogs use
+  `ship_component_read()` / `ship_component_write()`, which also honor the
+  Shipyard view/use caps so the Ship Editor and Component Workshop share the
+  same catalog write capability.
 - **RLS pattern:** policies call `user_has_access('view_unit_editor')` etc.
   (SECURITY DEFINER). Editing a row in `admin_role_access_rights` changes what a
   role can do everywhere — code (button visibility) and DB (policies) — with no
