@@ -384,6 +384,15 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     if (removed) dropCardKey(`weapon:${removed.id}`);
   };
 
+  const moveWeaponRow = (index: number, delta: -1 | 1) => {
+    if (!formData) return;
+    const target = index + delta;
+    if (target < 0 || target >= formData.weapons.length) return;
+    const weapons = [...formData.weapons];
+    [weapons[index], weapons[target]] = [weapons[target], weapons[index]];
+    updateFormData('weapons', weapons);
+  };
+
   const handleSlotContextMenu = (
     event: React.MouseEvent,
     region: ShipDeckRegion,
@@ -811,6 +820,9 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const weaponCapacity = stats?.weaponCapacity ?? 0;
   const weaponOverCapacity = weaponPlaced > weaponCapacity;
   const canAddWeapon = !!formData && weaponsCatalog.some(w => canPlaceWeapon(weaponPlaced, weaponCapacity, weaponTons(w)));
+  const weaponOptions = [...weaponsCatalog].sort(
+    (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+  );
   const crewOverCapacity = !!formData && !!stats && formData.crews.length > stats.crewCapacity;
   const isNew = !!formData && !templates.some(t => t.id === formData.id);
   const mcLabel = (v: number) => (Number.isFinite(v) ? `${v}` : '—');
@@ -1206,12 +1218,8 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                 </div>
                               ) : (
                                 <div className="space-y-1 min-w-0">
-                                  {formData.weapons
-                                    .map((w, index) => ({ w, index, wpn: weaponById(weaponsCatalog, w.weaponId) }))
-                                    .sort((a, b) =>
-                                      (a.wpn?.name ?? '').localeCompare(b.wpn?.name ?? '') ||
-                                      a.w.id.localeCompare(b.w.id))
-                                    .map(({ w, index: idx, wpn }) => {
+                                  {formData.weapons.map((w, idx) => {
+                                    const wpn = weaponById(weaponsCatalog, w.weaponId);
                                     const directions = Array.from({ length: w.count }, (_, i) =>
                                       build ? deckDirection(build.deckLayout!, `weapon:${w.id}:${i}`) : '—',
                                     ).filter(d => d !== '—');
@@ -1219,14 +1227,14 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                     return (
                                       <div
                                         key={w.id}
-                                        className="grid min-w-0 grid-cols-[minmax(0,1fr)_3.5rem_5rem_5rem_2rem] items-center gap-1"
+                                        className="grid min-w-0 grid-cols-[minmax(0,1fr)_3.5rem_5rem_5rem_1.75rem_2rem] items-center gap-1"
                                       >
                                         <select
                                           value={w.weaponId}
                                           onChange={(e) => setWeaponRow(idx, 'weaponId', e.target.value)}
                                           className="w-full min-w-0 bg-gray-700 text-white text-[10px] rounded px-1.5 py-1 border border-gray-600"
                                         >
-                                          {weaponsCatalog.map(weap => (
+                                          {weaponOptions.map(weap => (
                                             <option key={weap.id} value={weap.id}>
                                               {weap.name} — {weap.damage} ({weap.mass}t, crew {weap.crew}, every {weap.fireCycleStep} step{weap.fireCycleStep === 1 ? '' : 's'})
                                             </option>
@@ -1249,6 +1257,26 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                         <span className="min-w-0 text-right text-[9px] text-yellow-400 whitespace-nowrap">
                                           {((wpn?.cost || 0) * w.count).toLocaleString()}gp
                                         </span>
+                                        <div className="flex flex-col items-center gap-0.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => moveWeaponRow(idx, -1)}
+                                            disabled={idx === 0}
+                                            title="Move weapon up"
+                                            className="px-1 text-[7px] leading-none bg-gray-700 hover:bg-gray-600 text-gray-200 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                                          >
+                                            ▲
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => moveWeaponRow(idx, 1)}
+                                            disabled={idx === formData.weapons.length - 1}
+                                            title="Move weapon down"
+                                            className="px-1 text-[7px] leading-none bg-gray-700 hover:bg-gray-600 text-gray-200 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                                          >
+                                            ▼
+                                          </button>
+                                        </div>
                                         <button
                                           type="button"
                                           onClick={() => removeWeaponRow(idx)}

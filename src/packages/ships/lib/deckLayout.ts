@@ -176,20 +176,14 @@ export function moveSlotToRegion(
   return next;
 }
 
-/** Direction implied by the slot's region. */
+/** Direction implied by the slot's region, using deck terminology. */
 export function deckDirection(
   layout: ShipDeckLayout,
   cardKey: string,
-): 'Fore' | 'Rear' | 'Left' | 'Right' | '360' | '—' {
+): 'Bow' | 'Body' | 'Port' | 'Starboard' | 'Stern' | '—' {
   const found = findCardSlot(layout, cardKey);
   if (!found) return '—';
-  return {
-    bow: 'Fore',
-    stern: 'Rear',
-    port: 'Left',
-    starboard: 'Right',
-    body: '360',
-  }[found.region] as 'Fore' | 'Rear' | 'Left' | 'Right' | '360';
+  return DECK_REGION_LABELS[found.region] as 'Bow' | 'Body' | 'Port' | 'Starboard' | 'Stern';
 }
 
 /** Render-order card keys for the crew preview. */

@@ -206,6 +206,7 @@ as applied in the notes — check the live DB before relying on it).
 | 144 | Ship master templates: remove old templates/joins; drop derived `crew_count`/`passengers`; Sail crew 0; seed 24 templates (no component/weapon rows) | ✅ applied |
 | 145 | Ship crew: `ship_crews.hp` (authored, default 10); weekly `cost` required; new stat defaults 12-14-14-10-14-10 | ✅ applied |
 | 146 | Ship component cards: `ship_components.can_combine` (default true; Helm/Command bridge false); weapons always per-unit | ⏳ run in Supabase |
+| 147 | Ship weapon row order: `ship_template_weapons.sort_order` | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

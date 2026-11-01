@@ -110,11 +110,15 @@ export function mapShipTemplateRow(row: any): ShipTemplate {
       componentId: a.component_id || a.accessory_id,
       count: Number(a.count) || 1,
     })),
-    weapons: (row.ship_template_weapons || []).map((w: any) => ({
-      id: w.id,
-      weaponId: w.weapon_id,
-      count: Number(w.count) || 1,
-    })),
+    weapons: [...(row.ship_template_weapons || [])]
+      .sort((a: any, b: any) =>
+        (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) ||
+        String(a.id).localeCompare(String(b.id)))
+      .map((w: any) => ({
+        id: w.id,
+        weaponId: w.weapon_id,
+        count: Number(w.count) || 1,
+      })),
     crews: (row.ship_crews || []).map(mapShipCrewRow),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -157,7 +161,13 @@ export function mapOptionalComponentRows(t: ShipTemplate) {
 export function mapWeaponRows(t: ShipTemplate) {
   return t.weapons
     .filter(w => w.count > 0)
-    .map(w => ({ id: w.id, template_id: t.id, weapon_id: w.weaponId, count: w.count }));
+    .map((w, sort_order) => ({
+      id: w.id,
+      template_id: t.id,
+      weapon_id: w.weaponId,
+      count: w.count,
+      sort_order,
+    }));
 }
 
 /** ship_crews rows for a template (used to rewrite the roster). */

@@ -21,6 +21,7 @@ export interface ShipComponentCardData {
   reinforced?: boolean;
   safe?: boolean;
   note?: string;
+  kind?: 'component' | 'weapon';
   empty?: boolean;
   onAdd?: () => void;
   onContextMenu?: (event: React.MouseEvent, data: ShipComponentCardData) => void;

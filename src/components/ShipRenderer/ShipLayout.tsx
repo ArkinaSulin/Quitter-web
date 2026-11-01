@@ -81,6 +81,7 @@ export function ShipLayout({
       crewRequired: crew,
       safe: opts.safe,
       note: component.effect || opts.note,
+      kind: 'component',
       reinforced: reinforced(build, key),
     };
   };
@@ -157,6 +158,7 @@ export function ShipLayout({
     crewRequired: 0,
     safe: true,
     note: hullComponent.effect || 'structural',
+    kind: 'component',
     reinforced: reinforced(build, hullKey),
   };
 
@@ -210,6 +212,7 @@ export function ShipLayout({
         dt: cardDt(weapon?.dt),
         crewRequired: weapon ? Math.ceil(weapon.crew) : 0,
         note: weapon?.special || undefined,
+        kind: 'weapon',
         reinforced: reinforced(build, key),
       };
     }
@@ -228,6 +231,7 @@ export function ShipLayout({
         dt: cardDt(component.dt),
         crewRequired: combined ? Math.ceil(component.crew * count) : Math.ceil(component.crew),
         note: component.effect || undefined,
+        kind: 'component',
         reinforced: reinforced(build, key),
       };
     };
@@ -289,7 +293,7 @@ export function ShipLayout({
   const renderSlot = (region: ShipDeckRegion, index: number) => {
     const s = layout[region][index];
     const card = slotCard(s);
-    const direction = s.cardKey ? deckDirection(layout, s.cardKey) : null;
+    const direction = card.kind === 'weapon' && s.cardKey ? deckDirection(layout, s.cardKey) : null;
     return (
       <div
         key={`${region}-${index}`}
@@ -320,8 +324,9 @@ export function ShipLayout({
     region: ShipDeckRegion,
     label: string,
     mode: 'row' | 'column' | 'body',
+    wrapperClass = '',
   ) => (
-    <div className="rounded-2xl border-2 border-gray-600/80 bg-gray-900/30 p-1.5">
+    <div className={`rounded-2xl border-2 border-gray-600/80 bg-gray-900/30 p-1.5 ${wrapperClass}`}>
       <div className="mb-1 text-center text-[8px] uppercase tracking-widest text-gray-500">
         {label}
       </div>
@@ -349,7 +354,7 @@ export function ShipLayout({
       </span>
 
       <div className="mx-auto max-w-[420px] space-y-2 px-3">
-        {renderRegion('bow', 'Bow', 'row')}
+        {renderRegion('bow', 'Bow', 'row', 'w-3/4 mx-auto')}
 
         <div className="text-center text-[8px] uppercase tracking-widest text-gray-600">360°</div>
 
@@ -359,7 +364,7 @@ export function ShipLayout({
           <div>{renderRegion('starboard', 'Starboard', 'column')}</div>
         </div>
 
-        {renderRegion('stern', 'Stern', 'row')}
+        {renderRegion('stern', 'Stern', 'row', 'w-3/4 mx-auto')}
       </div>
     </div>
   );

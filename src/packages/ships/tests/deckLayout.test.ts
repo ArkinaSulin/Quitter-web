@@ -27,7 +27,7 @@ describe('deck layout', () => {
     expect(layout.body).toHaveLength(10);
   });
 
-  it('places weapons Fore/Aft and components amidships', () => {
+  it('places weapons at the Bow/Stern and components amidships', () => {
     const layout = syncDeckLayout(null, [
       { key: 'component:helm', kind: 'component' },
       { key: 'component:hull', kind: 'component' },
@@ -36,7 +36,7 @@ describe('deck layout', () => {
     expect(findCardSlot(layout, 'weapon:ballista')?.region).toBe('bow');
     expect(findCardSlot(layout, 'component:helm')?.region).toBe('body');
     expect(findCardSlot(layout, 'component:hull')?.region).toBe('body');
-    expect(deckDirection(layout, 'weapon:ballista')).toBe('Fore');
+    expect(deckDirection(layout, 'weapon:ballista')).toBe('Bow');
   });
 
   it('grows a full middle row with two body slots', () => {
@@ -64,6 +64,6 @@ describe('deck layout', () => {
     const from = findCardSlot(layout, 'weapon:ballista')!;
     const next = moveSlotToRegion(layout, from.region, from.index, 'starboard');
     expect(findCardSlot(next, 'weapon:ballista')?.region).toBe('starboard');
-    expect(deckDirection(next, 'weapon:ballista')).toBe('Right');
+    expect(deckDirection(next, 'weapon:ballista')).toBe('Starboard');
   });
 });

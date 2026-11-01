@@ -1,5 +1,17 @@
 # QuiTTER Changelog
 
+## Manual ship weapon order + card layout polish (migration 147) (2026-10-31)
+**Files:** supabase/migrations/147_ship_weapon_sort_order.sql, src/packages/ships/lib/{shipMappers,deckLayout}.ts, src/packages/ships/tests/{shipMappers,deckLayout}.test.ts, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/{ShipLayout,ShipComponentCard}.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
+
+- Weapon selector options are alphabetical by name. The child rows are manually
+  ordered with ▲/▼ arrows; `ship_template_weapons.sort_order` persists the order.
+- Weapon direction labels use Bow / Body / Port / Starboard / Stern. Direction
+  badges appear only on weapon cards, never on components.
+- All deck cards share one width track: Bow/Stern use 3 centered card columns,
+  the middle uses Port 1 / Body 2 / Starboard 1, so the hull narrows naturally.
+- Verification: `tsc`, ship tests (63), full vitest (1221), depcruise
+  (pre-existing warnings), `next build`. **Apply 146 + 147 in Supabase.**
+
 ## Per-unit ship cards + wider Body + no Ram (migration 146) (2026-10-31)
 **Files:** supabase/migrations/146_ship_component_combine.sql, src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers,componentMappers,deckLayout}.ts, src/packages/ships/tests/{shipStats,shipMappers,componentMappers,deckLayout}.test.ts, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/ShipLayout.tsx, src/components/ComponentEditor/{ComponentEditor,ComponentFields}.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
 

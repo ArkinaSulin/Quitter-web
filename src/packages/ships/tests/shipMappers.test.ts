@@ -95,7 +95,10 @@ describe('mapShipTemplateRow', () => {
       total_mass: '20', helm: 1, command_bridge: 0, rudders: 2, sails: 6,
       reinforcement: 0, crew_quarters: 2, cargo_area: 8,
       ship_template_components: [{ component_id: 'acc-ram', count: 1 }],
-      ship_template_weapons: [{ id: 'row-1', weapon_id: 'wpn-ballista', count: 2 }],
+      ship_template_weapons: [
+        { id: 'row-1', weapon_id: 'wpn-ballista', count: 2, sort_order: 2 },
+        { id: 'row-2', weapon_id: 'wpn-catapult', count: 1, sort_order: 1 },
+      ],
     });
     expect(t.totalMass).toBe(20);
     expect(t.helm).toBe(1);
@@ -108,7 +111,10 @@ describe('mapShipTemplateRow', () => {
     expect(t.damageThreshold).toBe(15);
     expect(t.imageUrl).toBe('');
     expect(t.optionalComponents).toEqual([{ componentId: 'acc-ram', count: 1 }]);
-    expect(t.weapons).toEqual([{ id: 'row-1', weaponId: 'wpn-ballista', count: 2 }]);
+    expect(t.weapons).toEqual([
+      { id: 'row-2', weaponId: 'wpn-catapult', count: 1 },
+      { id: 'row-1', weaponId: 'wpn-ballista', count: 2 },
+    ]);
     expect(t.deckLayout.bow).toHaveLength(6);
     expect(t.deckLayout.body).toHaveLength(10);
   });
