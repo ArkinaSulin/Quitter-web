@@ -9,7 +9,15 @@
 -- is stored as the authored capacity; weapon/component rows are intentionally
 -- empty for now. Any unallocated mass stays as Reserve.
 
-UPDATE spelljammer_ships SET template_id = NULL WHERE template_id IS NOT NULL;
+DO $$
+BEGIN
+  IF to_regclass('public.ship_spelljammer') IS NOT NULL THEN
+    UPDATE ship_spelljammer SET template_id = NULL WHERE template_id IS NOT NULL;
+  ELSIF to_regclass('public.spelljammer_ships') IS NOT NULL THEN
+    UPDATE spelljammer_ships SET template_id = NULL WHERE template_id IS NOT NULL;
+  END IF;
+END $$;
+
 DELETE FROM ship_crews;
 DELETE FROM ship_template_components;
 DELETE FROM ship_template_weapons;
