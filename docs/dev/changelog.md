@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Fix: ship card safety follows hittable (2026-10-31)
+**Files:** src/components/ShipRenderer/ShipLayout.tsx, src/packages/ships/lib/shipStats.ts, src/packages/ships/tests/shipStats.test.ts, docs/dev/{16,changelog}.md
+
+- Card mass boxes now derive safety from the catalog component's `hittable`
+  flag. The Hull card no longer hardcodes `safe: true`, so a hittable Hull
+  renders yellow and its box group reports `safe: false`.
+- Armor remains safe.
+- Verification: `tsc`, ship tests (64), full vitest (1222), `next build`.
+
 ## Manual ship weapon order + card layout polish (migration 147) (2026-10-31)
 **Files:** supabase/migrations/147_ship_weapon_sort_order.sql, src/packages/ships/lib/{shipMappers,deckLayout}.ts, src/packages/ships/tests/{shipMappers,deckLayout}.test.ts, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/{ShipLayout,ShipComponentCard}.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
 

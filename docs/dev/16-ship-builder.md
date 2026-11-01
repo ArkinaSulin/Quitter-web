@@ -262,7 +262,9 @@ optional components.
 
 - **1 ton = 1 box**, so the box count follows the rounded tonnage allocation.
 - **Boxes carry no HP** — each hit destroys exactly one box.
-- **Hull + armor are safe** (never hit); every other group is hittable.
+- **Armor is safe** (never hit); **Hull safety follows `ship_components.hittable`**.
+  Every other group is hittable. Card mass boxes use the same flag: grey = safe,
+  yellow = hittable.
 - Groups: Hull, Armor, Helm, Command bridge, Sails, Rudders, Weapons,
   Reinforcement, Specials, Cargo, Crew quarters, plus **Reserve** for
   unfurnished mass.

@@ -410,6 +410,13 @@ describe('hit boxes', () => {
     expect(byId.reserve).toBeUndefined();
   });
 
+  it('treats hull boxes as hittable when the catalog hull is hittable', () => {
+    const b = wasp();
+    b.components = b.components.map(c => c.name === 'Hull' ? { ...c, hittable: true } : c);
+    const byId = Object.fromEntries(computeBoxGroups(b).map(g => [g.id, g]));
+    expect(byId.hull.safe).toBe(false);
+  });
+
   it('armor takes safe boxes for heavier armors', () => {
     const byId = Object.fromEntries(computeBoxGroups(damselfly()).map(g => [g.id, g]));
     expect(byId.armor.boxes).toBe(6);

@@ -414,9 +414,9 @@ export interface ShipBoxGroup {
   safe: boolean;
 }
 
-function boxGroupsFromMass(m: ShipMassBreakdown): ShipBoxGroup[] {
+function boxGroupsFromMass(m: ShipMassBreakdown, hullSafe = true): ShipBoxGroup[] {
   const groups: ShipBoxGroup[] = [
-    { id: 'hull', label: 'Hull', boxes: m.hull, safe: true },
+    { id: 'hull', label: 'Hull', boxes: m.hull, safe: hullSafe },
     { id: 'armor', label: 'Armor', boxes: m.armor, safe: true },
     { id: 'helm', label: 'Helm', boxes: m.helm, safe: false },
     { id: 'command_bridge', label: 'Command bridge', boxes: m.commandBridge, safe: false },
@@ -435,9 +435,10 @@ function boxGroupsFromMass(m: ShipMassBreakdown): ShipBoxGroup[] {
   return groups;
 }
 
-/** 1 ton = 1 box. Hull and armor are safe; every other group is hittable. */
+/** 1 ton = 1 box. Armor is safe; Hull safety follows its catalog hittable flag. */
 export function computeBoxGroups(build: ShipBuild): ShipBoxGroup[] {
-  return boxGroupsFromMass(computeMassBreakdown(build));
+  const hull = componentByName(build.components, COMPONENT_NAMES.hull);
+  return boxGroupsFromMass(computeMassBreakdown(build), !hull.hittable);
 }
 
 // --- Cost -------------------------------------------------------------------
@@ -524,6 +525,7 @@ export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
   const m = computeMassBreakdown(build);
   const buildCost = computeBuildCost(build);
   const crewWeeklyCost = computeCrewWeeklyCostTotal(build);
+  const hullDef = componentByName(build.components, COMPONENT_NAMES.hull);
   return {
     totalMass: build.totalMass,
     hullMass: m.hull,
@@ -556,6 +558,6 @@ export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
     commandBonus: computeCommandBonus(build),
     buildCost,
     massBreakdown: m,
-    boxGroups: boxGroupsFromMass(m),
+    boxGroups: boxGroupsFromMass(m, !hullDef.hittable),
   };
 }
