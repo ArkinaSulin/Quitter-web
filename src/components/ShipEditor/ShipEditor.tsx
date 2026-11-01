@@ -24,6 +24,7 @@ import {
   computeCrewHp,
   computeCrewWeeklyCost,
   computeHullCost,
+  computeRemainingMass,
   computeShipBuild,
   createDefaultDeckLayout,
   deckDirection,
@@ -258,11 +259,20 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const [editingCrewIndex, setEditingCrewIndex] = useState<number | null>(null);
   const [crewDraft, setCrewDraft] = useState<CrewDraft>(defaultCrewDraft);
   const [crewDraftTouched, setCrewDraftTouched] = useState({ hp: false, cost: false });
+  // Simulation-only cargo load; never changes the template's cargo allocation.
+  const [simulatedCargo, setSimulatedCargo] = useState(0);
 
   const build = formData
     ? buildFromTemplate(formData, armors, components, weaponsCatalog)
     : null;
-  const stats = build ? computeShipBuild(build) : null;
+  const cargoCapacity = formData && build
+    ? Math.max(0, Math.max(formData.cargoArea, Math.floor(computeRemainingMass(build) + formData.cargoArea)))
+    : 0;
+  const simulatedCargoClamped = Math.min(Math.max(0, simulatedCargo), cargoCapacity);
+  const performanceMass = build
+    ? Math.max(1, build.totalMass - cargoCapacity + simulatedCargoClamped)
+    : 0;
+  const stats = build ? computeShipBuild({ ...build, performanceMass }) : null;
 
   const isDirty = !!formData && JSON.stringify(formData) !== savedSnapshotRef.current;
 
@@ -535,6 +545,14 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     }
   }, [selectedId, templates]);
 
+  useEffect(() => {
+    setSimulatedCargo(formData?.cargoArea ?? 0);
+  }, [selectedId, formData?.id]);
+
+  useEffect(() => {
+    setSimulatedCargo(cargo => Math.min(cargo, cargoCapacity));
+  }, [cargoCapacity]);
+
   // Warn when leaving the page with unsaved edits.
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -784,11 +802,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   }
 
   const selectedArmor = formData ? armors.find(a => a.id === formData.armorId) : null;
-  const remainingMass = stats?.remainingMass ?? 0;
-  const cargoCapacity = formData
-    ? Math.max(formData.cargoArea, Math.floor(remainingMass + formData.cargoArea))
-    : 0;
-  const cargoClamped = formData ? Math.max(0, Math.min(formData.cargoArea, cargoCapacity)) : 0;
   const massOverload = stats?.overload ?? false;
   const weaponPlaced = stats?.weaponPlacedTons ?? 0;
   const weaponCapacity = stats?.weaponCapacity ?? 0;
@@ -963,30 +976,41 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                   {stats && build && (
                     <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
                       <div className="grid grid-cols-4 gap-2">
+                        <StatCell label="Ship Mass">{stats.totalMass}t</StatCell>
                         <StatCell label="Armor">
                           {armorName(formData.armorId)} · AC {stats.ac}
                         </StatCell>
                         <StatCell label="HP">{stats.shipHp}</StatCell>
                         <StatCell label="Damage threshold">{stats.damageThreshold}</StatCell>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 mt-2">
+                        <StatCell label="Cargo">{simulatedCargoClamped} / {cargoCapacity}t</StatCell>
+                        <StatCell label="Crew (min / full)">{stats.minCrew} / {stats.fullCrew}</StatCell>
+                        <StatCell label="Ship cost">{stats.buildCost.toLocaleString()}gp</StatCell>
+                        <StatCell label="Weekly operation">{stats.weeklyOperationCost.toLocaleString()}gp</StatCell>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 mt-2">
                         <StatCell label="Atmospheric speed">{stats.atmosphericSpeed}</StatCell>
+                        <StatCell label="Space Acceleration">{stats.accel}</StatCell>
+                        <StatCell label="Maneuver class (MC)">{mcLabel(stats.mcRaw)}</StatCell>
                       </div>
-                      <div className="grid grid-cols-4 gap-2 mt-2">
-                        <StatCell label="Wild-space acceleration">{stats.accel}</StatCell>
-                        <StatCell label="MC (base)">{mcLabel(stats.mcRaw)}</StatCell>
-                        <StatCell label="Cargo">{cargoClamped}t</StatCell>
-                        <StatCell label="Cost">{stats.buildCost.toLocaleString()}gp</StatCell>
-                      </div>
-                      <div className="grid grid-cols-4 gap-2 mt-2">
-                        <StatCell label="Min crew / Full crew">{stats.minCrew} / {stats.fullCrew}</StatCell>
-                        <StatCell label="Used / total" tone={massOverload ? 'red' : 'default'}>
-                          {stats.usedMass} / {stats.totalMass}t
-                        </StatCell>
-                        <StatCell label="Remaining mass" tone={massOverload ? 'red' : 'default'}>
-                          {stats.remainingMass}t
-                        </StatCell>
-                        <StatCell label="Weapon capacity" tone={weaponOverCapacity ? 'red' : 'default'}>
-                          {stats.weaponPlacedTons} / {stats.weaponCapacity}t
-                        </StatCell>
+
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between text-[9px] text-gray-500">
+                          <span>Cargo simulation</span>
+                          <span>{simulatedCargoClamped} / {cargoCapacity}t</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={Math.max(0, cargoCapacity)}
+                          step={1}
+                          value={simulatedCargoClamped}
+                          disabled={readOnly || cargoCapacity <= 0}
+                          onChange={(e) => setSimulatedCargo(Math.max(0, Math.min(cargoCapacity, Number(e.target.value) || 0)))}
+                          className="w-full accent-yellow-400 disabled:opacity-50"
+                          aria-label="Cargo simulation"
+                        />
                       </div>
 
                       <div className="mt-2 pt-2 border-t border-gray-700 flex items-center gap-2 flex-wrap">
@@ -1013,10 +1037,12 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <div>Hull mass = totalMass × (10% + totalMass / 500) = {stats.totalMass} × (0.10 + {stats.totalMass}/500) = {stats.hullMassExact.toFixed(2)}t → {stats.hullMass}t</div>
                           <div>Armor mass = totalMass × armor% = {stats.totalMass} × {(selectedArmor?.massPct ?? 0) * 100}% = {stats.armorMassExact.toFixed(2)}t → {stats.armorMass}t</div>
                           <div>Weapon capacity counts toward ship mass; placed weapons must fit inside it.</div>
-                          <div>Acceleration = (sails + rudders) / totalMass × 15 = ({formData.sails} + {formData.rudders}) / {stats.totalMass} × 15 = {stats.accel}</div>
-                          <div>MC: x = rudders × 10 / totalMass = {formData.rudders} × 10 / {stats.totalMass} = {((formData.rudders * 10) / Math.max(1, stats.totalMass)).toFixed(3)} → {mcLabel(stats.mcRaw)}</div>
+                          <div>Performance mass = totalMass − maxCargo + simulatedCargo = {stats.totalMass} − {cargoCapacity} + {simulatedCargoClamped} = {stats.performanceMass}t</div>
+                          <div>Acceleration = (sails + rudders) / performanceMass × 15 = ({formData.sails} + {formData.rudders}) / {stats.performanceMass} × 15 = {stats.accel}</div>
+                          <div>MC: x = rudders × 10 / performanceMass = {formData.rudders} × 10 / {stats.performanceMass} = {((formData.rudders * 10) / Math.max(1, stats.performanceMass)).toFixed(3)} → {mcLabel(stats.mcRaw)}</div>
                           <div>effectiveMC = MC − 1 (speed 0–2) · MC (3–7) · MC + 1 (8–12), floored at 0</div>
                           <div>HP = (totalMass × 3 + 40) × armor HP multiplier = ({stats.totalMass} × 3 + 40) × {selectedArmor?.hpMult ?? 1} = {stats.shipHp}</div>
+                          <div>Weekly operation = 0.4% × ship cost + roster weekly cost = {stats.buildCost.toLocaleString()} × 0.004 + {stats.crewWeeklyCost.toLocaleString()} = {stats.weeklyOperationCost.toLocaleString()}gp</div>
                           <div>Atmospheric speed and damage threshold are authored values.</div>
                         </div>
                       )}

@@ -61,6 +61,14 @@ Create/Save, Clone, Delete. The composition table columns are
 its cost and the Total row sums them. All user-facing “tonnage” wording is
 **mass**; the unit remains **ton**.
 
+The summary frame is arranged in three rows: Ship Mass / Armor / HP / Damage
+threshold; Cargo / Crew (min/full) / Ship cost / Weekly operation; Atmospheric
+speed / Space Acceleration / Maneuver class. A cargo simulation slider runs from
+0 to max cargo and only changes the cargo load used for acceleration/MC; it never
+changes cargo allocation, cost, or the saved cargo value. **Weekly operation
+cost = round(0.4% × ship cost + roster weekly cost)**. The existing MC-by-speed
+row and formula button stay at the bottom.
+
 Weapons are edited in a child list under the **Weapon capacity** row. Each row
 is one line: weapon select, amount, derived direction, weapon cost, remove. The
 list spans the composition panel at full width and reflows with the browser.
@@ -162,16 +170,19 @@ is no `mount_slot` column. Only one Ram weapon row is allowed.
 
 **Minimum crew ceils each component group separately, then sums.** Sails require
 0 crew; weapon handling crew is excluded (it is not needed for spelljamming).
-Full crew is **min crew × 2** to represent two shifts. Examples: Shuttle min
-`1 + ceil(0.5) = 2` (full 4); Wasp min `1 + ceil(3) = 4` (full 8); Star Moth min
-`1 + 5 + ceil(9) = 15` (full 30).
+Full crew is `max(minCrew × 2, minCrew + weaponCrew)` to cover two shifts and
+weapon handlers. Examples: Shuttle min `1 + ceil(0.5) = 2` (full 4); Wasp min
+`1 + ceil(3) = 4` (full 8); Damselfly min 3 with weapon crew 6 → full 9; Star
+Moth min `1 + 5 + ceil(9) = 15` (full 30).
 
 ### Performance
 
 - `HP = (totalMass × 3 + 40) × armor.hpMult` — Ceramic/Stone ×2 on top. Star
   Moth is 220 base → **440**.
-- `Acceleration = (sails + rudders) / totalMass × 15` (counts, not masses).
-- `MC`: `x = rudders × 10 / totalMass`; `x < 1 → 1/x + 2`, else `4 − x`.
+- `performanceMass = totalMass − maxCargo + simulatedCargo`; the cargo slider
+  defaults to the allocated cargo and never changes cargo allocation.
+- `Acceleration = (sails + rudders) / performanceMass × 15` (counts, not masses).
+- `MC`: `x = rudders × 10 / performanceMass`; `x < 1 → 1/x + 2`, else `4 - x`.
   Raw MC is clamped at 0 (the Racer has MC 0).
 - **effectiveMC** adds a speed band (speed 0–12), also clamped at 0:
   - speed 0–2: `MC − 1`
@@ -194,6 +205,7 @@ Full crew is **min crew × 2** to represent two shifts. Examples: Shuttle min
 - **Weapon capacity row:** capacity × the weapon-capacity component cost.
   Each weapon child row adds its own `weapon.cost × count`. The total includes
   both, without double-counting.
+- **Weekly operation cost:** `round(0.4% × ship cost + Σ crew weekly cost)`.
 
 ### Reference templates (regression oracle)
 
@@ -202,7 +214,7 @@ Full crew is **min crew × 2** to represent two shifts. Examples: Shuttle min
 | Racer | 10 | 9 | 0 | 70 | 15 | 3 | 6 | 0t | 0 |
 | Shuttle | 10 | 3 | 3 | 70 | 15 | 2 | 4 | 4t | 20 |
 | Wasp | 20 | 5.3 | 1 | 100 | 15 | 4 | 8 | 2t | 10 |
-| Damselfly | 30 | 5 | 3 | 130 | 19 | 3 | 6 | 2t | 10 |
+| Damselfly | 30 | 5 | 3 | 130 | 19 | 3 | 9 | 2t | 10 |
 | Star Moth | 60 | 5 | 1 | 440 | 13 | 15 | 30 | 5t | 25 |
 
 The template tonnage rows are asserted in `shipStats.test.ts`; they are the

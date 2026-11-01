@@ -1,5 +1,24 @@
 # QuiTTER Changelog
 
+## Ship summary rearranged + cargo simulation + weekly operation (2026-10-31)
+**Files:** src/packages/ships/lib/shipStats.ts, src/packages/ships/tests/shipStats.test.ts, src/components/ShipEditor/ShipEditor.tsx, docs/dev/16-ship-builder.md, docs/dev/changelog.md, AGENTS.md
+
+- Rebuilt the mid-panel summary as Ship Mass / Armor / HP / Damage threshold;
+  Cargo / Crew min/full / Ship cost / Weekly operation; Atmospheric speed /
+  Space Acceleration / Maneuver class. Removed the unlisted Used/Total,
+  Remaining, and Weapon capacity summary cells.
+- **Full crew** is now `max(minCrew × 2, minCrew + weaponCrew)`.
+- **Weekly operation cost** = `round(0.4% × ship cost + Σ crew weekly cost)`;
+  the formula panel shows it.
+- Added a cargo-simulation slider (0 → max cargo, synced to the composition
+  Cargo max). It defaults to the allocated cargo and only affects
+  `performanceMass = totalMass − maxCargo + simulatedCargo`; cargo allocation,
+  ship cost, and saved cargo are unchanged. Space Acceleration and MC use
+  `performanceMass`.
+- Cargo slider and performance-mass formulas are shown in the formula panel.
+- Verification: `tsc`, ship tests (63), full vitest (1221), depcruise
+  (pre-existing warnings), `next build`.
+
 ## Ship crew HP/weekly cost + responsive weapon rows + helm cost (migration 145) (2026-10-31)
 **Files:** supabase/migrations/145_ship_crew_hp.sql, src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers}.ts, src/packages/ships/tests/shipStats.test.ts, src/components/ShipEditor/ShipEditor.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
 

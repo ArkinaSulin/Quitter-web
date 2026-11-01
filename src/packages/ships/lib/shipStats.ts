@@ -41,6 +41,7 @@ export const CREW_BASE_HP = 10;
 export const CREW_HP_PER_LEVEL = 7;
 export const CREW_WEEKLY_COST_FACTOR = 2;
 export const CREW_WEEKLY_COST_FLAT = 2;
+export const SHIP_WEEKLY_OPERATION_FRACTION = 0.004;
 
 /** Default stat line for new crew. */
 export const DEFAULT_CREW_STATS = {
@@ -151,6 +152,8 @@ export interface ShipBuild {
   deckLayout?: ShipDeckLayout;
   /** Card keys carrying a reinforcement. */
   reinforcements?: string[];
+  /** Transient cargo-simulation mass; falls back to totalMass when absent. */
+  performanceMass?: number;
 }
 
 // --- Crew -------------------------------------------------------------------
@@ -209,9 +212,23 @@ export function computeMinCrew(build: ShipBuild): number {
   return computeComponentCrew(build);
 }
 
-/** Full crew = two shifts of the minimum operating crew. */
+/**
+ * Full crew is the larger of two shifts of the minimum crew and the minimum
+ * plus all weapon handling crew.
+ */
 export function computeFullCrew(build: ShipBuild): number {
-  return computeMinCrew(build) * 2;
+  const min = computeMinCrew(build);
+  return Math.max(min * 2, min + computeWeaponCrew(build));
+}
+
+/** Total weekly cost of the current crew roster. */
+export function computeCrewWeeklyCostTotal(build: ShipBuild): number {
+  return (build.crews ?? []).reduce((sum, crew) => sum + crew.cost, 0);
+}
+
+/** Weekly operation cost = 0.4% of ship cost + roster weekly cost. */
+export function computeWeeklyOperationCost(build: ShipBuild): number {
+  return Math.round(computeBuildCost(build) * SHIP_WEEKLY_OPERATION_FRACTION + computeCrewWeeklyCostTotal(build));
 }
 
 /** Authored crew-quarters capacity (1 ton = 5 crew). */
@@ -343,15 +360,20 @@ export function computeShipHp(build: ShipBuild): number {
   return base * Math.max(1, build.armor.hpMult);
 }
 
-/** Acceleration = (sails + rudders) / totalMass × 15 (counts). */
+/** Mass used for performance: cargo-simulation override or the designated total. */
+export function performanceMassOf(build: ShipBuild): number {
+  return Math.max(1, build.performanceMass ?? build.totalMass);
+}
+
+/** Acceleration = (sails + rudders) / performanceMass × 15 (counts). */
 export function computeAccel(build: ShipBuild): number {
-  const mass = Math.max(1, build.totalMass);
+  const mass = performanceMassOf(build);
   return round1(((build.sails + build.rudders) / mass) * ACCEL_SCALE);
 }
 
-/** Raw MC: x = rudders × 10 / totalMass; x < 1 → 1/x + 2, else 4 − x. */
+/** Raw MC: x = rudders × 10 / performanceMass; x < 1 → 1/x + 2, else 4 − x. */
 export function computeMCRaw(build: ShipBuild): number {
-  const mass = Math.max(1, build.totalMass);
+  const mass = performanceMassOf(build);
   const x = (Math.max(0, build.rudders) * MC_RUDDER_SCALE) / mass;
   if (x <= 0) return Number.POSITIVE_INFINITY;
   const mc = x < 1 ? 1 / x + 2 : 4 - x;
@@ -491,6 +513,12 @@ export interface ShipDerivedStats {
   crewQuarters: number;
   /** `crewQuarters × 5`. */
   crewCapacity: number;
+  /** Roster weekly cost total. */
+  crewWeeklyCost: number;
+  /** 0.4% of ship cost + roster weekly cost, rounded to whole gp. */
+  weeklyOperationCost: number;
+  /** Cargo-simulation mass used by acceleration/MC. */
+  performanceMass: number;
   ac: number;
   shipHp: number;
   accel: number;
@@ -504,6 +532,8 @@ export interface ShipDerivedStats {
 
 export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
   const m = computeMassBreakdown(build);
+  const buildCost = computeBuildCost(build);
+  const crewWeeklyCost = computeCrewWeeklyCostTotal(build);
   return {
     totalMass: build.totalMass,
     hullMass: m.hull,
@@ -525,13 +555,16 @@ export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
     fullCrew: computeFullCrew(build),
     crewQuarters: Math.max(0, build.crewQuarters || 0),
     crewCapacity: computeCrewCapacity(build.crewQuarters),
+    crewWeeklyCost,
+    weeklyOperationCost: Math.round(buildCost * SHIP_WEEKLY_OPERATION_FRACTION + crewWeeklyCost),
+    performanceMass: performanceMassOf(build),
     ac: computeArmorClass(build),
     shipHp: computeShipHp(build),
     accel: computeAccel(build),
     mcRaw: computeMCRaw(build),
     mcBands: computeMCBands(build),
     commandBonus: computeCommandBonus(build),
-    buildCost: computeBuildCost(build),
+    buildCost,
     massBreakdown: m,
     boxGroups: boxGroupsFromMass(m),
   };

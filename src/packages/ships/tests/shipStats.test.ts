@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ShipArmor,
   ShipComponent,
+  ShipCrew,
   ShipTemplateComponent,
   ShipTemplateWeapon,
   ShipWeapon,
@@ -46,6 +47,7 @@ import {
   computeUsedMass,
   computeWeaponCapacity,
   computeWeaponMass,
+  computeWeeklyOperationCost,
   canPlaceWeapon,
   weaponFitsSlot,
   ShipBuild,
@@ -255,9 +257,10 @@ describe('crew', () => {
     expect(computeMinCrew(starMoth())).toBe(15);
   });
 
-  it('full crew is two shifts of minimum crew', () => {
+  it('full crew is max(two shifts, min + weapon crew)', () => {
     expect(computeFullCrew(shuttle())).toBe(4);
     expect(computeFullCrew(wasp())).toBe(8);
+    expect(computeFullCrew(damselfly())).toBe(9); // min 3 + weapon crew 6
     expect(computeFullCrew(starMoth())).toBe(30);
   });
 
@@ -276,6 +279,16 @@ describe('crew', () => {
     expect(computeCrewHp(3)).toBe(24);
     expect(computeCrewWeeklyCost(1)).toBe(4);
     expect(computeCrewWeeklyCost(3)).toBe(20);
+  });
+
+  it('weekly operation cost is 0.4% of ship cost plus roster weekly pay', () => {
+    const b = buildBase({ armorId: 'wood', totalMass: 40 });
+    const crew: ShipCrew = {
+      id: 'crew-1', name: null, level: 3, hp: 24,
+      str: 12, dex: 14, con: 14, int: 10, wis: 14, cha: 10, cost: 20,
+    };
+    b.crews = [crew];
+    expect(computeWeeklyOperationCost(b)).toBe(180); // 40,000 × 0.4% + 20
   });
 });
 
@@ -345,6 +358,12 @@ describe('acceleration', () => {
     expect(computeAccel(racer())).toBe(9);
     expect(computeAccel(shuttle())).toBe(3);
     expect(computeAccel(buildBase({ armorId: 'wood', totalMass: 20 }))).toBe(0);
+  });
+
+  it('uses the cargo-simulation performance mass when provided', () => {
+    const b = buildBase({ armorId: 'wood', totalMass: 20, sails: 1, rudders: 6 });
+    expect(computeAccel({ ...b, performanceMass: 10 })).toBe(10.5);
+    expect(computeMCRaw({ ...b, performanceMass: 40 })).toBe(2.5);
   });
 });
 

@@ -16,7 +16,8 @@ climb routes, vacant-top/route locks, redundant-wall pathing, rout step limits,
 local-only preview markers), the **Halloween Siege** minigame (migration 133),
 and the **Spelljammer mass-first overhaul** (migrations 134–145: no ship frames,
 region deck layout, the 24-ship master templates, derived min/full crew, crew
-HP/weekly cost, hull cost, UUID/name ship catalogs, and the Component Workshop).
+HP/weekly operation cost, cargo simulation, hull cost, UUID/name ship catalogs,
+and the Component Workshop).
 Prior sessions added **map structures** (migrations 093–095: template library + Structure Editor, edge/hex
 instances, door-first combat, tower auras, `range` bonuses, gate open/close,
 **Shift + drop** attacks and Shift-held inspect-mode hex/edge tooltips), the
@@ -29,6 +30,16 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Ship summary + cargo simulation (2026-10-31)**: mid-panel summary is now
+  three rows: Ship Mass / Armor / HP / DT; Cargo / Crew min-full / Ship cost /
+  Weekly operation; Atmospheric speed / Space Acceleration / MC. Unlisted
+  summary cells were removed. Full crew is
+  `max(minCrew × 2, minCrew + weaponCrew)`. Weekly operation cost is
+  `round(0.4% × ship cost + Σ crew weekly cost)`. A 0→max-cargo simulation
+  slider defaults to allocated cargo and only changes
+  `performanceMass = totalMass − maxCargo + simulatedCargo`; cargo allocation,
+  cost, and saved cargo stay unchanged. Space Acceleration and MC use the
+  simulated performance mass. Formula panel updated.
 - **Ship crew HP/weekly cost + responsive weapon rows + helm cost (2026-10-31,
   migration 145)**: `ship_crews` gains authored `hp`; weekly `cost` is required
   (default `level² × 2 + 2`); new crew defaults are HP `10 + 7 × (level − 1)` and
