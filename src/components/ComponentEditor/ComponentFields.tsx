@@ -106,11 +106,18 @@ export function ComponentFields({
       </div>
 
       {!isWeapon && (
-        <Switch
-          checked={value.hittable}
-          onChange={v => patch({ hittable: v })}
-          label="Hittable"
-        />
+        <>
+          <Switch
+            checked={value.hittable}
+            onChange={v => patch({ hittable: v })}
+            label="Hittable"
+          />
+          <Switch
+            checked={value.canCombine}
+            onChange={v => patch({ canCombine: v })}
+            label="Can combine cards"
+          />
+        </>
       )}
 
       {isWeapon && (

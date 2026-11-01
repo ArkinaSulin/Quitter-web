@@ -31,10 +31,11 @@ describe('mapShipComponentRow', () => {
   it('maps id/name/mass/crew/cost/hittable/effect', () => {
     const c = mapShipComponentRow({
       id: 'comp-1', name: 'sail', mass: '1', crew: '0.5', cost: 0, hittable: true, effect: 'wind', built_in: true,
+      can_combine: true,
     });
     expect(c).toEqual({
       id: 'comp-1', name: 'sail', mass: 1, crew: 0.5, cost: 0,
-      hittable: true, effect: 'wind', dt: 15, builtIn: true, ac: 10, imageUrl: '',
+      hittable: true, effect: 'wind', dt: 15, builtIn: true, canCombine: true, ac: 10, imageUrl: '',
     });
   });
 
@@ -109,7 +110,7 @@ describe('mapShipTemplateRow', () => {
     expect(t.optionalComponents).toEqual([{ componentId: 'acc-ram', count: 1 }]);
     expect(t.weapons).toEqual([{ id: 'row-1', weaponId: 'wpn-ballista', count: 2 }]);
     expect(t.deckLayout.bow).toHaveLength(6);
-    expect(t.deckLayout.bow[1].ram).toBe(true);
+    expect(t.deckLayout.body).toHaveLength(10);
   });
 });
 

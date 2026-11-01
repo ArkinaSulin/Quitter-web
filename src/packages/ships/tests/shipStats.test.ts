@@ -49,7 +49,6 @@ import {
   computeWeaponMass,
   computeWeeklyOperationCost,
   canPlaceWeapon,
-  weaponFitsSlot,
   ShipBuild,
 } from '@/packages/ships/lib/shipStats';
 
@@ -62,17 +61,17 @@ const ARMORS: ShipArmor[] = [
 ];
 
 const COMPONENTS: ShipComponent[] = [
-  { id: 'comp-hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, dt: 15 },
-  { id: 'comp-helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  { id: 'comp-bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  { id: 'comp-sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  { id: 'comp-rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  { id: 'comp-reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  { id: 'comp-cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  { id: 'comp-quarters', name: 'Crew quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  { id: 'comp-weapon-capacity', name: 'Weapon capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true, dt: 15 },
-  { id: 'acc-ram', name: 'Ram', mass: 5, crew: 0, cost: 5000, hittable: true, effect: '16d10 ram', builtIn: false, dt: 15 },
-  { id: 'acc-low-visibility', name: 'Low visibility', mass: 0, crew: 0, cost: 2000, hittable: false, effect: 'surprise', builtIn: false, dt: 15 },
+  { id: 'comp-hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: false, dt: 15 },
+  { id: 'comp-bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: false, dt: 15 },
+  { id: 'comp-sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-quarters', name: 'Crew quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-weapon-capacity', name: 'Weapon capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true, canCombine: true, dt: 15 },
+  { id: 'acc-ram', name: 'Ram', mass: 5, crew: 0, cost: 5000, hittable: true, effect: '16d10 ram', builtIn: false, canCombine: true, dt: 15 },
+  { id: 'acc-low-visibility', name: 'Low visibility', mass: 0, crew: 0, cost: 2000, hittable: false, effect: 'surprise', builtIn: false, canCombine: true, dt: 15 },
 ];
 
 const WEAPONS: ShipWeapon[] = [
@@ -330,13 +329,6 @@ describe('weapons', () => {
     expect(computeMassBreakdown(b).weapons).toBe(3);
   });
 
-  it('filters the Ram slot to max range 1 weapons', () => {
-    const ballista = WEAPONS.find(w => w.id === 'wpn-ballista')!;
-    const claws = WEAPONS.find(w => w.id === 'wpn-claws')!;
-    expect(weaponFitsSlot(ballista, 'Ram')).toBe(false);
-    expect(weaponFitsSlot(ballista, 'Fore')).toBe(true);
-    expect(weaponFitsSlot(claws, 'Ram')).toBe(true);
-  });
 });
 
 describe('HP', () => {

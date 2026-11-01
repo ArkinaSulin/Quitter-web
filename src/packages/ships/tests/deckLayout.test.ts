@@ -6,50 +6,53 @@ import {
   deckDirection,
   findCardSlot,
   moveSlotToRegion,
+  normalizeDeckLayout,
   syncDeckLayout,
 } from '@/packages/ships';
 
 describe('deck layout', () => {
-  it('starts as a 3x9 deck with a fixed Ram slot', () => {
+  it('starts with six bow/stern, five port/starboard, and ten body slots', () => {
     const layout = createDefaultDeckLayout();
     expect(layout.bow).toHaveLength(6);
-    expect(layout.port).toHaveLength(5);
-    expect(layout.body).toHaveLength(5);
-    expect(layout.starboard).toHaveLength(5);
     expect(layout.stern).toHaveLength(6);
-    expect(layout.bow[1].ram).toBe(true);
+    expect(layout.port).toHaveLength(5);
+    expect(layout.body).toHaveLength(10);
+    expect(layout.starboard).toHaveLength(5);
   });
 
-  it('places weapons Fore/Aft, components amidships, and the ram in the Ram slot', () => {
+  it('pads older layouts to the two-column body size', () => {
+    const old = createDefaultDeckLayout();
+    old.body = old.body.slice(0, 5);
+    const layout = normalizeDeckLayout(old);
+    expect(layout.body).toHaveLength(10);
+  });
+
+  it('places weapons Fore/Aft and components amidships', () => {
     const layout = syncDeckLayout(null, [
       { key: 'component:helm', kind: 'component' },
       { key: 'component:hull', kind: 'component' },
       { key: 'weapon:ballista', kind: 'weapon' },
-      { key: 'weapon:ram', kind: 'weapon', ram: true },
     ]);
-    expect(findCardSlot(layout, 'weapon:ram')?.region).toBe('bow');
-    expect(findCardSlot(layout, 'weapon:ram')?.index).toBe(1);
     expect(findCardSlot(layout, 'weapon:ballista')?.region).toBe('bow');
     expect(findCardSlot(layout, 'component:helm')?.region).toBe('body');
     expect(findCardSlot(layout, 'component:hull')?.region).toBe('body');
     expect(deckDirection(layout, 'weapon:ballista')).toBe('Fore');
   });
 
-  it('grows a middle row only when every slot is occupied', () => {
+  it('grows a full middle row with two body slots', () => {
     const base = createDefaultDeckLayout();
-    const cards: DeckCard[] = [{ key: 'weapon:ram', kind: 'weapon', ram: true }];
+    const cards: DeckCard[] = [];
     let n = 0;
     for (const region of ['bow', 'stern', 'port', 'body', 'starboard'] as const) {
-      for (const s of base[region]) {
-        if (s.ram) continue;
+      for (const _ of base[region]) {
         n += 1;
         cards.push({ key: `component:${n}`, kind: 'component' });
       }
     }
     const full = syncDeckLayout(base, cards);
-    expect(full.body).toHaveLength(5);
+    expect(full.body).toHaveLength(10);
     addMiddleRow(full);
-    expect(full.body).toHaveLength(6);
+    expect(full.body).toHaveLength(12);
     expect(full.port).toHaveLength(6);
     expect(full.starboard).toHaveLength(6);
   });

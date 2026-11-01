@@ -28,7 +28,6 @@ import {
   computeShipBuild,
   createDefaultDeckLayout,
   deckDirection,
-  isRamWeapon,
   moveSlotToRegion,
   syncDeckLayout,
   weaponById,
@@ -179,22 +178,40 @@ function buildFromTemplate(
     const comp = componentByName(components, name);
     return `component:${comp.id || fallback}`;
   };
+  const pushComponentCards = (baseKey: string, count: number, canCombine: boolean) => {
+    if (count <= 0) return;
+    if (canCombine) {
+      deckCards.push({ key: baseKey, kind: 'component' });
+      return;
+    }
+    for (let i = 0; i < count; i += 1) {
+      deckCards.push({ key: `${baseKey}:${i}`, kind: 'component' });
+    }
+  };
   const deckCards: DeckCard[] = [];
-  if (t.helm > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.helm, 'helm'), kind: 'component' });
-  if (t.commandBridge > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.commandBridge, 'command_bridge'), kind: 'component' });
+  const helmComponent = componentByName(components, COMPONENT_NAMES.helm);
+  pushComponentCards(`component:${helmComponent.id || 'helm'}`, t.helm, helmComponent.canCombine);
+  const bridgeComponent = componentByName(components, COMPONENT_NAMES.commandBridge);
+  pushComponentCards(`component:${bridgeComponent.id || 'command_bridge'}`, t.commandBridge, bridgeComponent.canCombine);
   deckCards.push({ key: componentKey(COMPONENT_NAMES.hull, 'hull'), kind: 'component' });
-  if (t.sails > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.sail, 'sail'), kind: 'component' });
-  if (t.rudders > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.rudder, 'rudder'), kind: 'component' });
+  const sailComponent = componentByName(components, COMPONENT_NAMES.sail);
+  pushComponentCards(`component:${sailComponent.id || 'sail'}`, t.sails, sailComponent.canCombine);
+  const rudderComponent = componentByName(components, COMPONENT_NAMES.rudder);
+  pushComponentCards(`component:${rudderComponent.id || 'rudder'}`, t.rudders, rudderComponent.canCombine);
   if (Math.round(t.cargoArea) > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.cargo, 'cargo'), kind: 'component' });
   if (Math.round(t.crewQuarters) > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.crewQuarters, 'crew_quarters'), kind: 'component' });
   for (const row of t.optionalComponents) {
-    deckCards.push({ key: `optional:${row.componentId}`, kind: 'component' });
+    const component = components.find(c => c.id === row.componentId);
+    pushComponentCards(`optional:${row.componentId}`, row.count, component?.canCombine !== false);
   }
   for (const row of t.weapons) {
-    const weapon = weaponById(weapons, row.weaponId);
-    deckCards.push({ key: `weapon:${row.id}`, kind: 'weapon', ram: weapon ? isRamWeapon(weapon) : false });
+    for (let i = 0; i < row.count; i += 1) {
+      deckCards.push({ key: `weapon:${row.id}:${i}`, kind: 'weapon' });
+    }
   }
 
+  const deckLayout = syncDeckLayout(t.deckLayout, deckCards);
+  const cardKeys = new Set(deckCards.map(c => c.key));
   return {
     armor,
     components,
@@ -211,8 +228,8 @@ function buildFromTemplate(
     damageThreshold: t.damageThreshold ?? 15,
     cargoArea: t.cargoArea,
     crews: t.crews,
-    deckLayout: syncDeckLayout(t.deckLayout, deckCards),
-    reinforcements: t.reinforcements,
+    deckLayout,
+    reinforcements: t.reinforcements.filter(key => cardKeys.has(key)),
     templateComponents: t.optionalComponents,
     templateWeapons: t.weapons,
   };
@@ -310,7 +327,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
   const dropCardKey = (key: string) => {
     if (!formData) return;
-    updateFormData('reinforcements', formData.reinforcements.filter(k => k !== key));
+    updateFormData('reinforcements', formData.reinforcements.filter(k => k !== key && !k.startsWith(`${key}:`)));
   };
 
   const optionalComponentCount = (id: string): number =>
@@ -330,18 +347,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
   const setWeaponRow = (index: number, field: 'weaponId' | 'count', value: any) => {
     if (!formData) return;
-    if (field === 'weaponId') {
-      const candidate = weaponById(weaponsCatalog, value);
-      const anotherRam = formData.weapons.some((w, i) => {
-        if (i === index) return false;
-        const weapon = weaponById(weaponsCatalog, w.weaponId);
-        return weapon ? isRamWeapon(weapon) : false;
-      });
-      if (candidate && isRamWeapon(candidate) && anotherRam) {
-        setError('Only one Ram weapon can occupy the fixed Ram slot.');
-        return;
-      }
-    }
     const weapons = formData.weapons.map((w, i) => (i === index ? { ...w, [field]: value } : w));
     const nextMass = weapons.reduce((sum, w) => {
       const weapon = weaponsCatalog.find(x => x.id === w.weaponId);
@@ -359,13 +364,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     if (!formData || weaponsCatalog.length === 0) return;
     const capacity = stats?.weaponCapacity ?? 0;
     const placed = stats?.weaponPlacedTons ?? 0;
-    const hasRam = formData.weapons.some(w => {
-      const weapon = weaponById(weaponsCatalog, w.weaponId);
-      return weapon ? isRamWeapon(weapon) : false;
-    });
-    const candidate =
-      weaponsCatalog.find(w => !isRamWeapon(w) && canPlaceWeapon(placed, capacity, weaponTons(w))) ||
-      (!hasRam ? weaponsCatalog.find(w => isRamWeapon(w) && canPlaceWeapon(placed, capacity, weaponTons(w))) : undefined);
+    const candidate = weaponsCatalog.find(w => canPlaceWeapon(placed, capacity, weaponTons(w)));
     if (!candidate) {
       setError('No weapon capacity left. Increase the Weapon capacity row first.');
       return;
@@ -632,6 +631,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         id: crypto.randomUUID(),
         name: cloneName.trim(),
         deckLayout: build?.deckLayout ?? formData.deckLayout,
+        reinforcements: build?.reinforcements ?? formData.reinforcements,
         optionalComponents: formData.optionalComponents.map(c => ({ ...c })),
         weapons: formData.weapons.map(w => ({ ...w })),
         crews: formData.crews.map(c => ({ ...c, id: crypto.randomUUID() })),
@@ -699,7 +699,11 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     }
 
     try {
-      const withDeck = { ...formData, deckLayout: build?.deckLayout ?? formData.deckLayout };
+      const withDeck = {
+        ...formData,
+        deckLayout: build?.deckLayout ?? formData.deckLayout,
+        reinforcements: build?.reinforcements ?? formData.reinforcements,
+      };
       const existsInDB = templates.some(t => t.id === formData.id);
       let id = formData.id;
       if (existsInDB) {
@@ -1202,15 +1206,20 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                 </div>
                               ) : (
                                 <div className="space-y-1 min-w-0">
-                                  {formData.weapons.map((w, idx) => {
-                                    const wpn = weaponById(weaponsCatalog, w.weaponId);
-                                    const direction = build
-                                      ? deckDirection(build.deckLayout!, `weapon:${w.id}`)
-                                      : '—';
+                                  {formData.weapons
+                                    .map((w, index) => ({ w, index, wpn: weaponById(weaponsCatalog, w.weaponId) }))
+                                    .sort((a, b) =>
+                                      (a.wpn?.name ?? '').localeCompare(b.wpn?.name ?? '') ||
+                                      a.w.id.localeCompare(b.w.id))
+                                    .map(({ w, index: idx, wpn }) => {
+                                    const directions = Array.from({ length: w.count }, (_, i) =>
+                                      build ? deckDirection(build.deckLayout!, `weapon:${w.id}:${i}`) : '—',
+                                    ).filter(d => d !== '—');
+                                    const direction = Array.from(new Set(directions)).join(' / ') || '—';
                                     return (
                                       <div
                                         key={w.id}
-                                        className="grid min-w-0 grid-cols-[minmax(0,1fr)_3.5rem_3rem_5rem_2rem] items-center gap-1"
+                                        className="grid min-w-0 grid-cols-[minmax(0,1fr)_3.5rem_5rem_5rem_2rem] items-center gap-1"
                                       >
                                         <select
                                           value={w.weaponId}
@@ -1231,7 +1240,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                             onChange={(v) => setWeaponRow(idx, 'count', Math.max(1, Math.floor(v)))}
                                           />
                                         </div>
-                                        <span className="min-w-0 text-center text-[9px] text-gray-300 bg-gray-900/70 border border-gray-600 rounded px-1 py-0.5">
+                                        <span
+                                          className="min-w-0 truncate text-center text-[9px] text-gray-300 bg-gray-900/70 border border-gray-600 rounded px-1 py-0.5"
+                                          title={direction}
+                                        >
                                           {direction}
                                         </span>
                                         <span className="min-w-0 text-right text-[9px] text-yellow-400 whitespace-nowrap">
@@ -1648,11 +1660,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         const key = cardMenu.data?.cardKey;
         const assigned = key ? formData.reinforcements.includes(key) : false;
         const canAdd = assigned || formData.reinforcements.length < formData.reinforcement;
-        const isRam = !!(
-          cardMenu.region &&
-          cardMenu.index != null &&
-          build?.deckLayout?.[cardMenu.region]?.[cardMenu.index]?.ram
-        );
         return (
           <>
             <div
@@ -1687,7 +1694,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                   )}
                 </>
               )}
-              {cardMenu.region && cardMenu.index != null && !isRam && (
+              {cardMenu.region && cardMenu.index != null && (
                 <>
                   <div className="mt-1 border-t border-gray-700 px-2 pt-1 text-[9px] uppercase tracking-wide text-gray-500">
                     Move slot to

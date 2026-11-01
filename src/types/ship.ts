@@ -29,6 +29,8 @@ export interface ShipComponent {
   dt: number;
   /** Built-in rule component (hull/helm/.../weapon_capacity); optional rows are false. */
   builtIn: boolean;
+  /** True = one aggregate card; false = one card per unit. */
+  canCombine: boolean;
   ac?: number;
   imageUrl?: string;
 }
@@ -65,6 +67,7 @@ export interface ShipComponentTemplate {
   cost: number;
   effect: string;
   builtIn: boolean;
+  canCombine: boolean;
   dt: number;
   damage: string;
   minRange: number;
@@ -92,10 +95,9 @@ export interface ShipTemplateWeapon {
 
 export type ShipDeckRegion = 'bow' | 'stern' | 'port' | 'body' | 'starboard';
 
-/** One deck slot. `ram` marks the fixed Ram slot (always in Bow). */
+/** One deck slot. */
 export interface ShipDeckSlot {
   cardKey: string | null;
-  ram?: boolean;
 }
 
 /** Deck region containers. Middle regions can grow when all slots are full. */

@@ -1,5 +1,21 @@
 # QuiTTER Changelog
 
+## Per-unit ship cards + wider Body + no Ram (migration 146) (2026-10-31)
+**Files:** supabase/migrations/146_ship_component_combine.sql, src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers,componentMappers,deckLayout}.ts, src/packages/ships/tests/{shipStats,shipMappers,componentMappers,deckLayout}.test.ts, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/ShipLayout.tsx, src/components/ComponentEditor/{ComponentEditor,ComponentFields}.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
+
+- Weapons always render one card per unit; Helm and Command bridge also render
+  one card per unit. Other components use the new
+  `ship_components.can_combine` flag (true = one aggregate card). The Component
+  Workshop exposes the flag. Weapons do not use it.
+- The weapon child list is sorted alphabetically by weapon name.
+- The deck is now Bow 6 / Port 5 / Body 10 / Starboard 5 / Stern 6. Body is two
+  columns of five; existing layouts pad Body to 10. A full middle row adds +1
+  Port, +2 Body, +1 Starboard.
+- Removed the Ram slot and every Ram restriction: all slots are generic, cards
+  can be dragged/moved anywhere, and any weapon fits any slot.
+- Verification: `tsc`, ship tests (63), full vitest (1221), depcruise
+  (pre-existing warnings), `next build`. **Apply 146 in Supabase.**
+
 ## Ship summary rearranged + cargo simulation + weekly operation (2026-10-31)
 **Files:** src/packages/ships/lib/shipStats.ts, src/packages/ships/tests/shipStats.test.ts, src/components/ShipEditor/ShipEditor.tsx, docs/dev/16-ship-builder.md, docs/dev/changelog.md, AGENTS.md
 

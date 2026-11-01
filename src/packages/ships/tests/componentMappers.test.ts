@@ -16,7 +16,7 @@ const weaponTemplate = () => ({
   hittable: true,
   cost: 100,
   effect: '',
-  builtIn: false, dt: 15,
+  builtIn: false, canCombine: true, dt: 15,
   damage: '6d10',
   minRange: 0,
   range: 1,
@@ -31,10 +31,11 @@ describe('component workshop mappers', () => {
   it('maps a built-in component row', () => {
     const t = mapComponentToTemplate({
       id: 'c1', name: 'helm', mass: 1, crew: 1, cost: 0,
-      hittable: true, effect: 'steering', builtIn: true, dt: 15, ac: 10, imageUrl: 'x',
+      hittable: true, effect: 'steering', builtIn: true, canCombine: false, dt: 15, ac: 10, imageUrl: 'x',
     });
     expect(t.kind).toBe('component');
     expect(t.builtIn).toBe(true);
+    expect(t.canCombine).toBe(false);
     expect(t.name).toBe('helm');
     expect(t.effect).toBe('steering');
     expect(t.imageUrl).toBe('x');
@@ -43,13 +44,14 @@ describe('component workshop mappers', () => {
   it('maps an optional component row', () => {
     const t = mapComponentToTemplate({
       id: 'c2', name: 'ram', mass: 5, crew: 0, cost: 5000,
-      hittable: true, effect: '16d10 ram', builtIn: false, dt: 15, ac: 10,
+      hittable: true, effect: '16d10 ram', builtIn: false, canCombine: true, dt: 15, ac: 10,
     });
     expect(t.builtIn).toBe(false);
     expect(componentTemplateToComponentRow(t)).toMatchObject({
       name: 'ram',
       mass: 5,
       built_in: false,
+      can_combine: true,
     });
   });
 

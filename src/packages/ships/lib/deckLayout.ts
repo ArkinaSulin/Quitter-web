@@ -1,14 +1,13 @@
 // src/packages/ships/lib/deckLayout.ts
-// Pure region-container deck layout. Slots are generic; the only special slot is
-// the fixed Ram slot in Bow slot 1. Purchases are synced into free slots without
-// disturbing manual placements; a full middle row grows Port/Body/Starboard.
+// Pure region-container deck layout. Slots are generic. Purchases are synced
+// into free slots without disturbing manual placements; a full middle row grows
+// Port/Body/Starboard, with Body keeping its two columns.
 
 import { ShipDeckLayout, ShipDeckRegion, ShipDeckSlot } from '@/types/ship';
 
 export interface DeckCard {
   key: string;
   kind: 'component' | 'weapon';
-  ram?: boolean;
 }
 
 export const DECK_REGION_LABELS: Record<ShipDeckRegion, string> = {
@@ -21,16 +20,16 @@ export const DECK_REGION_LABELS: Record<ShipDeckRegion, string> = {
 
 export const DECK_REGIONS: ShipDeckRegion[] = ['bow', 'stern', 'port', 'body', 'starboard'];
 
-function slot(ram = false): ShipDeckSlot {
-  return ram ? { cardKey: null, ram: true } : { cardKey: null };
+function slot(): ShipDeckSlot {
+  return { cardKey: null };
 }
 
 export function createDefaultDeckLayout(): ShipDeckLayout {
   return {
-    bow: [slot(), slot(true), slot(), slot(), slot(), slot()],
+    bow: [slot(), slot(), slot(), slot(), slot(), slot()],
     stern: [slot(), slot(), slot(), slot(), slot(), slot()],
     port: [slot(), slot(), slot(), slot(), slot()],
-    body: [slot(), slot(), slot(), slot(), slot()],
+    body: [slot(), slot(), slot(), slot(), slot(), slot(), slot(), slot(), slot(), slot()],
     starboard: [slot(), slot(), slot(), slot(), slot()],
   };
 }
@@ -45,21 +44,25 @@ export function cloneDeckLayout(layout: ShipDeckLayout): ShipDeckLayout {
   };
 }
 
-/** Restore the fixed Ram slot to Bow index 1 and normalize every region. */
+/** Normalize every region and pad the two-column Body to at least 10 slots. */
 export function normalizeDeckLayout(raw?: Partial<ShipDeckLayout> | null): ShipDeckLayout {
   if (!raw || !Array.isArray(raw.bow) || raw.bow.length === 0) {
     return createDefaultDeckLayout();
   }
-  const layout: ShipDeckLayout = {
-    bow: (raw.bow || []).map(s => ({ ...s, cardKey: s?.cardKey ?? null, ram: false })),
-    stern: (raw.stern || []).map(s => ({ ...s, cardKey: s?.cardKey ?? null, ram: false })),
-    port: (raw.port || []).map(s => ({ ...s, cardKey: s?.cardKey ?? null, ram: false })),
-    body: (raw.body || []).map(s => ({ ...s, cardKey: s?.cardKey ?? null, ram: false })),
-    starboard: (raw.starboard || []).map(s => ({ ...s, cardKey: s?.cardKey ?? null, ram: false })),
+  const fallback = createDefaultDeckLayout();
+  const normalize = (arr: ShipDeckSlot[] | undefined, fallbackSlots: ShipDeckSlot[], minimum: number) => {
+    const source = Array.isArray(arr) && arr.length > 0 ? arr : fallbackSlots;
+    const slots = source.map(s => ({ cardKey: s?.cardKey ?? null }));
+    while (slots.length < minimum) slots.push(slot());
+    return slots;
   };
-  if (layout.bow.length < 2) layout.bow.push(slot());
-  layout.bow[1].ram = true;
-  return layout;
+  return {
+    bow: normalize(raw.bow, fallback.bow, 6),
+    stern: normalize(raw.stern, fallback.stern, 6),
+    port: normalize(raw.port, fallback.port, 5),
+    body: normalize(raw.body, fallback.body, 10),
+    starboard: normalize(raw.starboard, fallback.starboard, 5),
+  };
 }
 
 export function findCardSlot(
@@ -73,46 +76,29 @@ export function findCardSlot(
   return null;
 }
 
-function regionHasCard(layout: ShipDeckLayout, region: ShipDeckRegion, cardKey: string): boolean {
-  return layout[region].some(s => s.cardKey === cardKey);
-}
-
 function firstFree(
   layout: ShipDeckLayout,
   regions: ShipDeckRegion[],
-  allowRam = false,
 ): { region: ShipDeckRegion; index: number } | null {
   for (const region of regions) {
     for (let index = 0; index < layout[region].length; index += 1) {
-      const s = layout[region][index];
-      if (!s.cardKey && (allowRam || !s.ram)) return { region, index };
+      if (!layout[region][index].cardKey) return { region, index };
     }
   }
   return null;
 }
 
+/** Append one row across the middle; Body keeps two columns (2 slots). */
 export function addMiddleRow(layout: ShipDeckLayout): void {
   layout.port.push(slot());
-  layout.body.push(slot());
+  layout.body.push(slot(), slot());
   layout.starboard.push(slot());
 }
 
-function placeCard(
-  layout: ShipDeckLayout,
-  card: DeckCard,
-  preferred: ShipDeckRegion[],
-): boolean {
-  if (card.ram) {
-    if (!layout.bow[1].cardKey) {
-      layout.bow[1].cardKey = card.key;
-      return true;
-    }
-    return false;
-  }
+function placeCard(layout: ShipDeckLayout, card: DeckCard, preferred: ShipDeckRegion[]): boolean {
   let empty = firstFree(layout, preferred);
   if (!empty) {
-    const all: ShipDeckRegion[] = ['body', 'port', 'starboard', 'bow', 'stern'];
-    empty = firstFree(layout, all);
+    empty = firstFree(layout, ['body', 'port', 'starboard', 'bow', 'stern']);
   }
   if (!empty) {
     addMiddleRow(layout);
@@ -123,10 +109,7 @@ function placeCard(
   return true;
 }
 
-/**
- * Preserve manual placements, drop removed cards, enforce the Ram rule, and place
- * every new card. Weapons prefer Bow/Stern; components prefer Body/Port/Starboard.
- */
+/** Preserve manual placements, drop removed cards, and place every new card. */
 export function syncDeckLayout(
   raw: Partial<ShipDeckLayout> | null | undefined,
   cards: DeckCard[],
@@ -146,19 +129,6 @@ export function syncDeckLayout(
     }
   }
 
-  // Ram rule: only ram weapons in Bow[1]; every other card must leave it.
-  const ramSlot = layout.bow[1];
-  if (ramSlot.cardKey && !byKey.get(ramSlot.cardKey)?.ram) {
-    ramSlot.cardKey = null;
-  }
-  for (const region of DECK_REGIONS) {
-    for (const s of layout[region]) {
-      if (s.ram) continue;
-      const card = byKey.get(s.cardKey || '');
-      if (card?.ram) s.cardKey = null;
-    }
-  }
-
   const placed = new Set<string>();
   for (const region of DECK_REGIONS) {
     for (const s of layout[region]) if (s.cardKey) placed.add(s.cardKey);
@@ -175,7 +145,7 @@ export function syncDeckLayout(
   return layout;
 }
 
-/** Swap two slots' cards. The caller enforces the Ram-slot rules. */
+/** Swap two slots' cards. */
 export function swapCards(
   layout: ShipDeckLayout,
   from: { region: ShipDeckRegion; index: number },
@@ -191,10 +161,7 @@ export function swapCards(
   return next;
 }
 
-/**
- * Move a whole slot (and its card) to another region. The fixed Ram slot cannot
- * move. When a Bow slot leaves, the Ram slot is restored to Bow index 1.
- */
+/** Move a whole slot (and its card) to another region. */
 export function moveSlotToRegion(
   layout: ShipDeckLayout,
   region: ShipDeckRegion,
@@ -203,27 +170,19 @@ export function moveSlotToRegion(
 ): ShipDeckLayout {
   const next = cloneDeckLayout(layout);
   const source = next[region][index];
-  if (!source || source.ram) return next;
+  if (!source) return next;
   next[region].splice(index, 1);
   next[target].push(source);
-  if (region === 'bow' || target === 'bow') {
-    const ramIndex = next.bow.findIndex(s => s.ram);
-    if (ramIndex >= 0 && ramIndex !== 1) {
-      const [ram] = next.bow.splice(ramIndex, 1);
-      next.bow.splice(1, 0, ram);
-    }
-  }
   return next;
 }
 
-/** Direction implied by the slot's region; Ram overrides to the Bow arc. */
+/** Direction implied by the slot's region. */
 export function deckDirection(
   layout: ShipDeckLayout,
   cardKey: string,
-): 'Fore' | 'Rear' | 'Left' | 'Right' | '360' | 'Ram' | '—' {
+): 'Fore' | 'Rear' | 'Left' | 'Right' | '360' | '—' {
   const found = findCardSlot(layout, cardKey);
   if (!found) return '—';
-  if (found.slot.ram) return 'Ram';
   return {
     bow: 'Fore',
     stern: 'Rear',
@@ -248,10 +207,6 @@ export function deckOrderedCardKeys(layout: ShipDeckLayout): string[] {
   return keys;
 }
 
-export function isRamSlot(layout: ShipDeckLayout, region: ShipDeckRegion, index: number): boolean {
-  return !!layout[region][index]?.ram;
-}
-
 export function hasCard(layout: ShipDeckLayout, cardKey: string): boolean {
-  return DECK_REGIONS.some(region => regionHasCard(layout, region, cardKey));
+  return DECK_REGIONS.some(region => layout[region].some(s => s.cardKey === cardKey));
 }

@@ -14,10 +14,10 @@ Newest work first; the authoritative, per-session record is `docs/dev/changelog.
 The most recent work completed the **Basic AI current scope** (whole-activation
 climb routes, vacant-top/route locks, redundant-wall pathing, rout step limits,
 local-only preview markers), the **Halloween Siege** minigame (migration 133),
-and the **Spelljammer mass-first overhaul** (migrations 134–145: no ship frames,
-region deck layout, the 24-ship master templates, derived min/full crew, crew
-HP/weekly operation cost, cargo simulation, hull cost, UUID/name ship catalogs,
-and the Component Workshop).
+and the **Spelljammer mass-first overhaul** (migrations 134–146: no ship frames,
+regional deck layout, the 24-ship master templates, per-unit weapon/component
+cards, derived min/full crew, crew HP/weekly operation cost, cargo simulation,
+hull cost, UUID/name ship catalogs, and the Component Workshop).
 Prior sessions added **map structures** (migrations 093–095: template library + Structure Editor, edge/hex
 instances, door-first combat, tower auras, `range` bonuses, gate open/close,
 **Shift + drop** attacks and Shift-held inspect-mode hex/edge tooltips), the
@@ -30,6 +30,14 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Ship cards per unit + wider Body + no Ram slot (2026-10-31, migration 146)**:
+  weapons always get one card per unit; Helm/Command bridge get one card per
+  unit; other components use `ship_components.can_combine` (true = aggregate,
+  false = per-unit). The Component Workshop exposes the flag. The weapon child
+  list is sorted alphabetically by name. The deck is Bow 6 / Port 5 / Body 10
+  (two columns) / Starboard 5 / Stern 6; existing Body regions pad to 10 and an
+  overflow middle row adds +1 Port, +2 Body, +1 Starboard. The Ram slot and all
+  Ram restrictions are removed; every slot is generic. **Apply 146 in Supabase.**
 - **Ship summary + cargo simulation (2026-10-31)**: mid-panel summary is now
   three rows: Ship Mass / Armor / HP / DT; Cargo / Crew min-full / Ship cost /
   Weekly operation; Atmospheric speed / Space Acceleration / MC. Unlisted
@@ -358,7 +366,7 @@ Defensive reserves hold a **central station ~2
   some elevation nuances, per-team doctrine toggles; the AI never controls
   heroes.
 - **Turn counter desync reported in playtest** (separate from AI roles): reproduce with End Turn / undo-redo before changing turn advancement.
-- **Spelljammer module implementation** (mass-first builder/stats/renderer + Ship Editor v2 + Component Workshop + card v2 done in migrations 134–145; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering, reinforcement assignment/combat behavior, command-bridge bonus wiring. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`), and 134–143 are applied; **apply 144 + 145 in Supabase**.
+- **Spelljammer module implementation** (mass-first builder/stats/renderer + Ship Editor v2 + Component Workshop + card v2 done in migrations 134–146; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering, reinforcement assignment/combat behavior, command-bridge bonus wiring. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`), and 134–145 are applied; **apply 146 in Supabase**.
 - Migration `013_turn_tracking.sql` — applied to the DB (done).
 - Migrations 010/011/012 — user applied to the DB.
 - `UnitEditor.tsx`: `isHero` toggle should force `'Hero'` formation — postponed until the consolidated interface update.

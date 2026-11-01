@@ -67,19 +67,19 @@ export const COMPONENT_NAMES = {
 } as const;
 
 const DEFAULT_COMPONENTS: Record<string, ShipComponent> = {
-  [COMPONENT_NAMES.hull]: { id: 'Hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, dt: 15, ac: 10, imageUrl: '' },
-  [COMPONENT_NAMES.helm]: { id: 'Helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  [COMPONENT_NAMES.commandBridge]: { id: 'Command bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  [COMPONENT_NAMES.sail]: { id: 'Sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  [COMPONENT_NAMES.rudder]: { id: 'Rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  [COMPONENT_NAMES.reinforcement]: { id: 'Reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  [COMPONENT_NAMES.cargo]: { id: 'Cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  [COMPONENT_NAMES.crewQuarters]: { id: 'Crew quarters', name: 'Crew quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, dt: 15 },
-  [COMPONENT_NAMES.weaponCapacity]: { id: 'Weapon capacity', name: 'Weapon capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true, dt: 15 },
+  [COMPONENT_NAMES.hull]: { id: 'Hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, canCombine: true, dt: 15, ac: 10, imageUrl: '' },
+  [COMPONENT_NAMES.helm]: { id: 'Helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: false, dt: 15 },
+  [COMPONENT_NAMES.commandBridge]: { id: 'Command bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: false, dt: 15 },
+  [COMPONENT_NAMES.sail]: { id: 'Sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  [COMPONENT_NAMES.rudder]: { id: 'Rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  [COMPONENT_NAMES.reinforcement]: { id: 'Reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  [COMPONENT_NAMES.cargo]: { id: 'Cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  [COMPONENT_NAMES.crewQuarters]: { id: 'Crew quarters', name: 'Crew quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  [COMPONENT_NAMES.weaponCapacity]: { id: 'Weapon capacity', name: 'Weapon capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true, canCombine: true, dt: 15 },
 };
 
 const EMPTY_COMPONENT: ShipComponent = {
-  id: '', name: '', mass: 0, crew: 0, cost: 0, hittable: true, effect: null, builtIn: false, dt: 15,
+  id: '', name: '', mass: 0, crew: 0, cost: 0, hittable: true, effect: null, builtIn: false, canCombine: true, dt: 15,
 };
 
 export function clamp(v: number, lo: number, hi: number): number {
@@ -115,16 +115,6 @@ export function weaponById(weapons: ShipWeapon[], id: string): ShipWeapon | unde
 /** Tons taken by one weapon installation (authored mass). */
 export function weaponTons(weapon: ShipWeapon): number {
   return Math.max(0, weapon.mass);
-}
-
-/** The Ram slot only accepts melee-range weapons (max range 1). */
-export function isRamWeapon(weapon: ShipWeapon): boolean {
-  return weapon.maxRange === 1;
-}
-
-/** Slot filter: Ram is restricted to max_range 1; other slots accept anything. */
-export function weaponFitsSlot(weapon: ShipWeapon, slot: string): boolean {
-  return slot === 'Ram' ? isRamWeapon(weapon) : true;
 }
 
 /** All inputs the formulas need for one build. */

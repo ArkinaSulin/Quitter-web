@@ -16,8 +16,9 @@ crew quarters)**, **136 (Ship Editor v2 fields + `ship_images`)**,
 **139 (merge accessories into components)**, **140 (cascade deletes + usage
 lookups)**, **141 (catalog name titles)**, **142 (card DT, placements,
 reinforcements)**, **143 (region-container deck layout + stable weapon rows)**,
-and **144 (24-ship master template set + derived crew cleanup)**, and **145
-(crew HP + authored weekly cost)** reshape the model.
+**144 (24-ship master template set + derived crew cleanup)**, **145 (crew HP +
+authored weekly cost)**, and **146 (component card-combine flag)** reshape the
+model.
 
 - 134 drops `ship_frames`, reshapes `ship_armors`, reseeds `ship_components`,
   and adds `total_mass`/`helm`/`command_bridge`/`reinforcement`.
@@ -52,7 +53,9 @@ and **144 (24-ship master template set + derived crew cleanup)**, and **145
   `passengers` columns, sets Sail crew to 0, and seeds the 24-ship master list.
 - 145 adds authored `ship_crews.hp`, makes weekly `cost` required, and updates
   the crew stat defaults to `12-14-14-10-14-10`.
-  **143 is applied; apply 144 + 145 in Supabase.**
+- 146 adds `ship_components.can_combine` (default true; Helm and Command bridge
+  false) for per-unit vs aggregate cards. Weapons always use per-unit cards.
+  **143–145 are applied; apply 146 in Supabase.**
 
 Editor layout is 3 panels: template picker (left), summary + composition table
 (middle), and ship image + card layout + roster (right). The sticky footer is
@@ -78,16 +81,13 @@ a layout card; optional components are not allocated separately. The right panel
 keeps the image, card layout, and crew roster (no second weapon list).
 
 The deck uses five **region containers**: Bow, Port, Body, Starboard, and Stern.
-The initial deck is 3×9: Bow 6 (top 2 rows), Port/Body/Starboard 5 each (middle 5
-rows), Stern 6 (bottom 2 rows). Slots are generic; drag a card onto an empty slot
-to move it, or onto an occupied slot to swap. Right-click a slot (or its card) to
-move the whole slot to another region. When every slot is full, a new middle row
-is added above Stern (Port/Body/Starboard each gain one slot), so the ship grows
-longer. The **Ram slot** is fixed at Bow row 1, middle column: it only accepts
-weapons with `max_range = 1`, those weapons can only go there, its arc is Bow, and
-it cannot be moved to another region. Default placement puts weapons in
-Bow/Stern and other components in Body/Port/Starboard; the Ram slot is reserved
-for a melee-range weapon.
+The initial deck is Bow 6 (2×3), Port 5 (1 column), Body 10 (2 columns of 5),
+Starboard 5 (1 column), and Stern 6 (2×3). Slots are generic; drag a card onto an
+empty slot to move it, or onto an occupied slot to swap. Right-click a slot (or
+its card) to move the whole slot to another region. When every slot is full, a
+new middle row is added above Stern: Port +1, Body +2 (preserving its two
+columns), Starboard +1. Default placement puts weapons in Bow/Stern and other
+components in Body/Port/Starboard.
 
 Cards show name, mass boxes, `AC / DT`, and a crew list. The displayed DT is
 `max(ship template DT, component/weapon DT)`; the template DT is the ship's
@@ -161,12 +161,10 @@ comes from the chosen weapons. The built-in `weapon_capacity` component row
 supplies the per-ton metadata (effect, cost, AC, image); its mass is 1 ton per
 capacity ton, and the capacity value itself remains the mass budget.
 
-**Ram slot:** the fixed Bow row 1 middle slot filters to weapons with
-`max_range = 1` (rams, grappling claws, etc.). Those weapons only fit the Ram
-slot and cannot be moved out of it; every other slot is generic and accepts any
-weapon. The weapon child list derives its direction from the slot region
-(Bow→Fore, Stern→Rear, Port→Left, Starboard→Right, Body→360, Ram→Ram/Bow); there
-is no `mount_slot` column. Only one Ram weapon row is allowed.
+**Weapon slots:** all deck slots are generic and accept any weapon; there is no
+Ram restriction. The weapon child list derives direction from the slot region
+(Bow→Fore, Stern→Rear, Port→Left, Starboard→Right, Body→360); there is no
+`mount_slot` column.
 
 **Minimum crew ceils each component group separately, then sums.** Sails require
 0 crew; weapon handling crew is excluded (it is not needed for spelljamming).
@@ -267,14 +265,14 @@ optional components.
   right-clicking a component/weapon card; reinforced cards get a thick silvery
   border. The middle Reinforcement count is the number of available modules.
 - The right-panel **card layout** (`ShipRenderer/ShipLayout.tsx` +
-  `ShipComponentCard.tsx`) renders one growing card per component/weapon in
-  region containers: name, one box per ton, `AC / DT`, and a crew list (assigned
-  name / `Lv N crew`, or a hollow required circle). Armor and reinforcement are
-  not cards. Cards in the same row stretch to the tallest. Empty slots are
-  labelled; the Bow middle slot is labelled Ram.
+  `ShipComponentCard.tsx`) renders one growing card per card unit in region
+  containers: name, one box per ton, `AC / DT`, and a crew list (assigned name /
+  `Lv N crew`, or a hollow required circle). Weapons always get one card per
+  unit; Helm and Command bridge get one card per unit; other components use
+  `can_combine` (true = one aggregate card). Armor and reinforcement are not
+  cards. Cards in the same row stretch to the tallest.
 - Slots are draggable (drop or swap) and right-clicking one offers a region move.
-  The Ram slot is fixed; cards in it are not draggable. A full deck grows a new
-  middle row above Stern.
+  A full deck grows a new middle row above Stern.
 - Per-component AC/DT are catalog-driven; hull/helm/etc. use the catalog rows.
   Catalog `image_url` is retained but cards do not render images.
 - The editor crew list is a non-functional preview: roster crew are distributed
@@ -294,7 +292,7 @@ left panel:
 
 Fields:
 - Components: Name (read-only for built-ins), Mass, Crew, Hittable, Cost,
-  Effect, AC, DT, Image URL.
+  Effect, AC, DT, Image URL, **Can combine cards**.
 - Weapons: Name, Mass, Crew, Cost, Damage **and Fire Cycle on the same row**,
   Min Range / Range / Max Range, Note, AC, DT, Image URL. Weapons are always
   hittable.
@@ -306,8 +304,9 @@ Catalog names are stored as display names (`Command bridge`, `Ballista light`),
 not slugified identifiers; the workshop preserves spaces/capitalization on save.
 
 Fire cycle is in steps: **1 = every step (1/5 round)**, **2 = every other step**.
-The Ship Editor’s Weapon capacity child list shows the fire-cycle step and the
-direction derived from the weapon's deck region.
+The Ship Editor’s Weapon capacity child list is sorted alphabetically by weapon
+name and shows the fire-cycle step and the direction(s) derived from the weapon
+cards' deck regions.
 
 Access: `component_editor` / `view_component_editor` (admin/dm edit, everyone
 view). The catalog RLS helpers allow either the Ship Component Workshop or the

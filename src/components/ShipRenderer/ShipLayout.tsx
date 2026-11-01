@@ -1,8 +1,8 @@
 // src/components/ShipRenderer/ShipLayout.tsx
 // Region-container deck layout. Every purchased component/weapon is a card in a
-// Bow / Port / Body / Starboard / Stern container. Slot 1 of Bow is the fixed Ram
-// slot. Cards can be dragged between slots (swap) and slots can be moved between
-// regions from the context menu. A full middle row grows Port/Body/Starboard.
+// Bow / Port / Body / Starboard / Stern container. Weapons and non-combinable
+// components get one card per unit. Cards can be dragged between slots (swap)
+// and slots can be moved between regions from the context menu.
 
 import { useRef } from 'react';
 import {
@@ -27,12 +27,6 @@ function empty(name: string): ShipComponentCardData {
 function reinforced(build: ShipBuild, key: string): boolean {
   return (build.reinforcements ?? []).includes(key);
 }
-
-const MIDDLE_REGIONS: [ShipDeckRegion, string][] = [
-  ['port', 'Port'],
-  ['body', 'Body'],
-  ['starboard', 'Starboard'],
-];
 
 export function ShipLayout({
   build,
@@ -91,27 +85,64 @@ export function ShipLayout({
     };
   };
 
+  const addCountedComponentCards = (
+    baseKey: string,
+    name: string,
+    count: number,
+    component: ReturnType<typeof componentByName>,
+    opts: {
+      aggregateTons: number;
+      aggregateCrew: number;
+      unitTons: number;
+      unitCrew: number;
+      aggregateNote?: string;
+      unitNote?: string;
+    },
+  ) => {
+    if (count <= 0) return;
+    if (component.canCombine) {
+      addComponentCard(
+        baseKey,
+        count > 1 ? `${name} ×${count}` : name,
+        opts.aggregateTons,
+        opts.aggregateCrew,
+        component,
+        { note: opts.aggregateNote },
+      );
+      return;
+    }
+    for (let i = 0; i < count; i += 1) {
+      addComponentCard(
+        `${baseKey}:${i}`,
+        name,
+        opts.unitTons,
+        opts.unitCrew,
+        component,
+        { note: opts.unitNote },
+      );
+    }
+  };
+
   if (build.helm > 0) {
     const comp = componentByName(c, COMPONENT_NAMES.helm);
-    addComponentCard(
-      `component:${comp.id || 'helm'}`,
-      build.helm > 1 ? `Helm ×${build.helm}` : 'Helm',
-      m.helm,
-      Math.ceil(build.helm * comp.crew),
-      comp,
-    );
+    addCountedComponentCards(`component:${comp.id || 'helm'}`, 'Helm', build.helm, comp, {
+      aggregateTons: m.helm,
+      aggregateCrew: Math.ceil(build.helm * comp.crew),
+      unitTons: Math.round(comp.mass),
+      unitCrew: Math.ceil(comp.crew),
+    });
   }
 
   if (build.commandBridge > 0) {
     const comp = componentByName(c, COMPONENT_NAMES.commandBridge);
-    addComponentCard(
-      `component:${comp.id || 'command_bridge'}`,
-      build.commandBridge > 1 ? `Bridge ×${build.commandBridge}` : 'Bridge',
-      m.commandBridge,
-      Math.ceil(build.commandBridge * comp.crew),
-      comp,
-      { note: `+${build.commandBridge * 5} command` },
-    );
+    addCountedComponentCards(`component:${comp.id || 'command_bridge'}`, 'Bridge', build.commandBridge, comp, {
+      aggregateTons: m.commandBridge,
+      aggregateCrew: Math.ceil(build.commandBridge * comp.crew),
+      unitTons: Math.round(comp.mass),
+      unitCrew: Math.ceil(comp.crew),
+      aggregateNote: `+${build.commandBridge * 5} command`,
+      unitNote: '+5 command',
+    });
   }
 
   const hullComponent = componentByName(c, COMPONENT_NAMES.hull);
@@ -131,24 +162,22 @@ export function ShipLayout({
 
   if (build.sails > 0) {
     const comp = componentByName(c, COMPONENT_NAMES.sail);
-    addComponentCard(
-      `component:${comp.id || 'sail'}`,
-      build.sails > 1 ? `Sails ×${build.sails}` : 'Sail',
-      m.sails,
-      Math.ceil(build.sails * comp.crew),
-      comp,
-    );
+    addCountedComponentCards(`component:${comp.id || 'sail'}`, 'Sail', build.sails, comp, {
+      aggregateTons: m.sails,
+      aggregateCrew: Math.ceil(build.sails * comp.crew),
+      unitTons: Math.round(comp.mass),
+      unitCrew: Math.ceil(comp.crew),
+    });
   }
 
   if (build.rudders > 0) {
     const comp = componentByName(c, COMPONENT_NAMES.rudder);
-    addComponentCard(
-      `component:${comp.id || 'rudder'}`,
-      build.rudders > 1 ? `Rudders ×${build.rudders}` : 'Rudder',
-      m.rudders,
-      Math.ceil(build.rudders * comp.crew),
-      comp,
-    );
+    addCountedComponentCards(`component:${comp.id || 'rudder'}`, 'Rudder', build.rudders, comp, {
+      aggregateTons: m.rudders,
+      aggregateCrew: Math.ceil(build.rudders * comp.crew),
+      unitTons: Math.round(comp.mass),
+      unitCrew: Math.ceil(comp.crew),
+    });
   }
 
   if (m.cargo > 0) {
@@ -170,34 +199,43 @@ export function ShipLayout({
 
   for (const row of build.templateWeapons) {
     const weapon = weaponById(build.weaponsCatalog, row.weaponId);
-    const key = `weapon:${row.id}`;
-    cards[key] = {
-      id: key,
-      cardKey: key,
-      name: weapon ? `${weapon.name}${row.count > 1 ? ` ×${row.count}` : ''}` : 'Weapon',
-      tons: weapon ? weaponTons(weapon) * row.count : 0,
-      ac: weapon?.ac ?? 10,
-      dt: cardDt(weapon?.dt),
-      crewRequired: weapon ? Math.ceil(weapon.crew * row.count) : 0,
-      note: weapon?.special || undefined,
-      reinforced: reinforced(build, key),
-    };
+    for (let i = 0; i < row.count; i += 1) {
+      const key = `weapon:${row.id}:${i}`;
+      cards[key] = {
+        id: key,
+        cardKey: key,
+        name: weapon?.name || 'Weapon',
+        tons: weapon ? weaponTons(weapon) : 0,
+        ac: weapon?.ac ?? 10,
+        dt: cardDt(weapon?.dt),
+        crewRequired: weapon ? Math.ceil(weapon.crew) : 0,
+        note: weapon?.special || undefined,
+        reinforced: reinforced(build, key),
+      };
+    }
   }
 
   for (const row of build.templateComponents) {
     const component = componentById(build.components, row.componentId);
-    const key = `optional:${row.componentId}`;
-    cards[key] = {
-      id: key,
-      cardKey: key,
-      name: component.name ? `${component.name}${row.count > 1 ? ` ×${row.count}` : ''}` : row.componentId,
-      tons: Math.round((component.mass || 0) * row.count),
-      ac: component.ac ?? 10,
-      dt: cardDt(component.dt),
-      crewRequired: Math.ceil(component.crew * row.count),
-      note: component.effect || undefined,
-      reinforced: reinforced(build, key),
+    const baseKey = `optional:${row.componentId}`;
+    const addOptional = (key: string, count: number, combined: boolean) => {
+      cards[key] = {
+        id: key,
+        cardKey: key,
+        name: component.name ? `${component.name}${combined && count > 1 ? ` ×${count}` : ''}` : row.componentId,
+        tons: combined ? Math.round((component.mass || 0) * count) : Math.round(component.mass || 0),
+        ac: component.ac ?? 10,
+        dt: cardDt(component.dt),
+        crewRequired: combined ? Math.ceil(component.crew * count) : Math.ceil(component.crew),
+        note: component.effect || undefined,
+        reinforced: reinforced(build, key),
+      };
     };
+    if (component.canCombine) {
+      addOptional(baseKey, row.count, true);
+    } else {
+      for (let i = 0; i < row.count; i += 1) addOptional(`${baseKey}:${i}`, 1, false);
+    }
   }
 
   // Non-functional preview: consume the roster in deck order.
@@ -218,7 +256,7 @@ export function ShipLayout({
 
   const slotCard = (s: ShipDeckSlot): ShipComponentCardData => {
     if (s.cardKey && cards[s.cardKey]) return cards[s.cardKey];
-    return empty(s.ram ? 'Ram' : 'Empty');
+    return empty('Empty');
   };
 
   const handleDrop = (
@@ -234,8 +272,6 @@ export function ShipLayout({
     const source = layout[from.region][from.index];
     const target = layout[region][index];
     if (!source || !target) return;
-    // Ram slot is fixed: nothing leaves it, and only its own card may sit there.
-    if (source.ram || target.ram) return;
     onDeckChange(swapCards(layout, from, { region, index }));
   };
 
@@ -253,11 +289,11 @@ export function ShipLayout({
   const renderSlot = (region: ShipDeckRegion, index: number) => {
     const s = layout[region][index];
     const card = slotCard(s);
-    const direction = s.cardKey ? deckDirection(layout, s.cardKey) : s.ram ? 'Ram' : null;
+    const direction = s.cardKey ? deckDirection(layout, s.cardKey) : null;
     return (
       <div
         key={`${region}-${index}`}
-        draggable={!readOnly && !!s.cardKey && !s.ram}
+        draggable={!readOnly && !!s.cardKey}
         onDragStart={(e) => {
           dragRef.current = { region, index };
           e.dataTransfer.effectAllowed = 'move';
@@ -270,7 +306,7 @@ export function ShipLayout({
         className="relative h-full min-w-0"
         title={direction ? `${direction}` : undefined}
       >
-        {direction && !s.ram && (
+        {direction && (
           <span className="pointer-events-none absolute right-1 top-1 z-10 rounded bg-black/60 px-1 text-[7px] uppercase tracking-wide text-gray-300">
             {direction}
           </span>
@@ -283,13 +319,21 @@ export function ShipLayout({
   const renderRegion = (
     region: ShipDeckRegion,
     label: string,
-    mode: 'row' | 'column',
+    mode: 'row' | 'column' | 'body',
   ) => (
     <div className="rounded-2xl border-2 border-gray-600/80 bg-gray-900/30 p-1.5">
       <div className="mb-1 text-center text-[8px] uppercase tracking-widest text-gray-500">
         {label}
       </div>
-      <div className={mode === 'row' ? 'grid grid-cols-3 gap-1.5' : 'flex flex-col gap-1.5'}>
+      <div
+        className={
+          mode === 'row'
+            ? 'grid grid-cols-3 gap-1.5'
+            : mode === 'body'
+              ? 'grid grid-cols-2 gap-1.5'
+              : 'flex flex-col gap-1.5'
+        }
+      >
         {layout[region].map((_, i) => renderSlot(region, i))}
       </div>
     </div>
@@ -309,10 +353,10 @@ export function ShipLayout({
 
         <div className="text-center text-[8px] uppercase tracking-widest text-gray-600">360°</div>
 
-        <div className="grid grid-cols-3 gap-2">
-          {MIDDLE_REGIONS.map(([region, label]) => (
-            <div key={region}>{renderRegion(region, label, 'column')}</div>
-          ))}
+        <div className="grid grid-cols-4 gap-2">
+          <div>{renderRegion('port', 'Port', 'column')}</div>
+          <div className="col-span-2">{renderRegion('body', 'Body', 'body')}</div>
+          <div>{renderRegion('starboard', 'Starboard', 'column')}</div>
         </div>
 
         {renderRegion('stern', 'Stern', 'row')}

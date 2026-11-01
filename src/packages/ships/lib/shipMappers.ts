@@ -40,6 +40,7 @@ export function mapShipComponentRow(row: any): ShipComponent {
     effect: row.effect || null,
     dt: Number(row.dt) || 15,
     builtIn: !!row.built_in,
+    canCombine: row.can_combine !== false,
     ac: row.ac != null ? Number(row.ac) : 10,
     imageUrl: row.image_url || '',
   };
