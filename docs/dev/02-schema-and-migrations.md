@@ -204,6 +204,7 @@ as applied in the notes — check the live DB before relying on it).
 | 142 | Ship card stats: `ship_components.dt` / `ship_weapons.dt` (default 15); `ship_templates.card_placements` + `reinforcements` jsonb | ✅ applied |
 | 143 | Region-container deck: `ship_templates.deck_layout` jsonb; drop `card_placements`; stable `ship_template_weapons.id` UUID PK; drop `mount_slot` | ✅ applied |
 | 144 | Ship master templates: remove old templates/joins; drop derived `crew_count`/`passengers`; Sail crew 0; seed 24 templates (no component/weapon rows) | ⏳ run in Supabase |
+| 145 | Ship crew: `ship_crews.hp` (authored, default 10); weekly `cost` required; new stat defaults 12-14-14-10-14-10 | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

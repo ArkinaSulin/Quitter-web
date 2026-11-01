@@ -1,5 +1,20 @@
 # QuiTTER Changelog
 
+## Ship crew HP/weekly cost + responsive weapon rows + helm cost (migration 145) (2026-10-31)
+**Files:** supabase/migrations/145_ship_crew_hp.sql, src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers}.ts, src/packages/ships/tests/shipStats.test.ts, src/components/ShipEditor/ShipEditor.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
+
+- Crew rows now carry authored **HP** and required **weekly cost**. Defaults:
+  HP `10 + 7 × (level − 1)`, weekly cost `level² × 2 + 2`, stats
+  `12-14-14-10-14-10`. The Add/Edit modal exposes HP and weekly cost; defaults
+  follow level until edited. Roster line shows
+  `Name — Level N, HP N, S-D-C-I-W-C, N Gp`.
+- Weapon child list is full-width and responsive: no table inset, `minmax(0,1fr)`
+  select column, compact count/direction/cost/remove columns.
+- Helm cost is now `max(0, helm − 1) × helm component cost`; the first helm is
+  included in the hull price (row note updated).
+- Verification: `tsc`, ship tests (61), full vitest (1219), depcruise
+  (pre-existing warnings), `next build`. **Apply 144 + 145 in Supabase.**
+
 ## Ship master templates + derived crew/cost rules (migration 144) (2026-10-31)
 **Files:** supabase/migrations/144_ship_template_master.sql, src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers}.ts, src/packages/ships/tests/{shipStats,shipMappers}.test.ts, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/ShipLayout.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
 

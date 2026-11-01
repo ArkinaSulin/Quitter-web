@@ -28,8 +28,11 @@ import {
   computeCommandBonus,
   computeComponentCrew,
   computeCrewCapacity,
+  computeCrewHp,
+  computeCrewWeeklyCost,
   computeFullCrew,
   computeHullCost,
+  DEFAULT_CREW_STATS,
   computeEffectiveMC,
   computeFittingMass,
   computeHullMass,
@@ -266,6 +269,14 @@ describe('crew', () => {
     expect(computeShipBuild(shuttle()).crewQuarters).toBe(4);
     expect(computeShipBuild(shuttle()).crewCapacity).toBe(20);
   });
+
+  it('defaults generic crew HP, weekly cost, and stat line', () => {
+    expect(DEFAULT_CREW_STATS).toEqual({ str: 12, dex: 14, con: 14, int: 10, wis: 14, cha: 10 });
+    expect(computeCrewHp(1)).toBe(10);
+    expect(computeCrewHp(3)).toBe(24);
+    expect(computeCrewWeeklyCost(1)).toBe(4);
+    expect(computeCrewWeeklyCost(3)).toBe(20);
+  });
 });
 
 describe('weapons', () => {
@@ -436,7 +447,13 @@ describe('build cost', () => {
       optionalComponents: [acc('acc-ram')],
     });
     expect(computeHullCost(40)).toBe(40000);
-    expect(computeBuildCost(b)).toBe(46800); // hull 40×1000 + 2×500 + 800 + 5000
+    expect(computeBuildCost(b)).toBe(46800); // hull 40A-1000 + 2A-500 + 800 + 5000
+  });
+
+  it('includes the first helm in hull price and charges only extra helms', () => {
+    const b = buildBase({ armorId: 'wood', totalMass: 20, helm: 2 });
+    b.components = b.components.map(c => c.name === 'Helm' ? { ...c, cost: 500 } : c);
+    expect(computeBuildCost(b)).toBe(20500); // hull 20,000 + one extra helm 500
   });
 });
 

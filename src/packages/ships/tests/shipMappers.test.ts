@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   mapShipArmorRow,
   mapShipComponentRow,
+  mapShipCrewRow,
   mapShipTemplateRow,
   mapShipTemplateToRow,
   mapShipWeaponRow,
@@ -68,6 +69,21 @@ describe('mapShipWeaponRow', () => {
     });
     expect(w.ammoCost).toBeNull();
     expect(w.maxRange).toBe(12);
+  });
+});
+
+describe('mapShipCrewRow', () => {
+  it('maps HP and required weekly cost, falling back to level defaults', () => {
+    const crew = mapShipCrewRow({
+      id: 'crew-1', name: 'Pilot', level: 3, hp: 24,
+      str: 12, dex: 14, con: 14, int: 10, wis: 14, cha: 10, cost: 20,
+    });
+    expect(crew.hp).toBe(24);
+    expect(crew.cost).toBe(20);
+
+    const legacy = mapShipCrewRow({ id: 'crew-2', level: 2, str: 12, dex: 14, con: 14, int: 10, wis: 14, cha: 10 });
+    expect(legacy.hp).toBe(17);
+    expect(legacy.cost).toBe(10);
   });
 });
 

@@ -14,12 +14,15 @@ import {
 } from '@/types/ship';
 import {
   COMPONENT_NAMES,
+  DEFAULT_CREW_STATS,
   DEFAULT_TOTAL_MASS,
   DECK_REGION_LABELS,
   DECK_REGIONS,
   DeckCard,
   canPlaceWeapon,
   componentByName,
+  computeCrewHp,
+  computeCrewWeeklyCost,
   computeHullCost,
   computeShipBuild,
   createDefaultDeckLayout,
@@ -44,6 +47,31 @@ import {
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { ShipLayout } from '@/components/ShipRenderer/ShipLayout';
 import { ShipComponentCardData } from '@/components/ShipRenderer/ShipComponentCard';
+
+type CrewDraft = {
+  count: number;
+  name: string;
+  level: number;
+  hp: number;
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+  cost: number;
+};
+
+function defaultCrewDraft(): CrewDraft {
+  return {
+    count: 1,
+    name: '',
+    level: 1,
+    hp: computeCrewHp(1),
+    ...DEFAULT_CREW_STATS,
+    cost: computeCrewWeeklyCost(1),
+  };
+}
 
 function humanize(id: string): string {
   return id
@@ -228,9 +256,8 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   // Crew roster modal.
   const [showCrewModal, setShowCrewModal] = useState(false);
   const [editingCrewIndex, setEditingCrewIndex] = useState<number | null>(null);
-  const [crewDraft, setCrewDraft] = useState<{ count: number; name: string; level: number; str: number; dex: number; con: number; int: number; wis: number; cha: number; cost: number | null }>({
-    count: 1, name: '', level: 1, str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, cost: null,
-  });
+  const [crewDraft, setCrewDraft] = useState<CrewDraft>(defaultCrewDraft);
+  const [crewDraftTouched, setCrewDraftTouched] = useState({ hp: false, cost: false });
 
   const build = formData
     ? buildFromTemplate(formData, armors, components, weaponsCatalog)
@@ -387,7 +414,8 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const openAddCrew = () => {
     if (readOnly) return;
     setEditingCrewIndex(null);
-    setCrewDraft({ count: 1, name: '', level: 1, str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, cost: null });
+    setCrewDraft(defaultCrewDraft());
+    setCrewDraftTouched({ hp: false, cost: false });
     setShowCrewModal(true);
   };
 
@@ -396,18 +424,22 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     const c = formData?.crews[index];
     if (!c) return;
     setEditingCrewIndex(index);
-    setCrewDraft({ count: 1, name: c.name || '', level: c.level, str: c.str, dex: c.dex, con: c.con, int: c.int, wis: c.wis, cha: c.cha, cost: c.cost });
+    setCrewDraft({
+      count: 1, name: c.name || '', level: c.level, hp: c.hp,
+      str: c.str, dex: c.dex, con: c.con, int: c.int, wis: c.wis, cha: c.cha, cost: c.cost,
+    });
+    setCrewDraftTouched({ hp: true, cost: true });
     setShowCrewModal(true);
   };
 
   const confirmCrew = () => {
     if (!formData) return;
-    const { count, name, level, str, dex, con, int, wis, cha, cost } = crewDraft;
+    const { count, name, level, hp, str, dex, con, int, wis, cha, cost } = crewDraft;
     const n = editingCrewIndex !== null ? 1 : Math.max(1, Math.floor(count) || 1);
     const rows: ShipCrew[] = Array.from({ length: n }, () => ({
       id: crypto.randomUUID(),
       name: name.trim() ? name.trim() : null,
-      level, str, dex, con, int, wis, cha, cost,
+      level, hp, str, dex, con, int, wis, cha, cost,
     }));
     if (editingCrewIndex !== null) {
       const crews = [...formData.crews];
@@ -775,7 +807,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const rowCost = (name: string, count: number) =>
     formData ? componentByName(components, name).cost * count : 0;
   const hullCost = computeHullCost(formData?.totalMass ?? 0);
-  const helmCost = rowCost(COMPONENT_NAMES.helm, formData?.helm ?? 0);
+  const helmCost = rowCost(COMPONENT_NAMES.helm, Math.max(0, (formData?.helm ?? 0) - 1));
   const bridgeCost = rowCost(COMPONENT_NAMES.commandBridge, formData?.commandBridge ?? 0);
   const sailCost = rowCost(COMPONENT_NAMES.sail, formData?.sails ?? 0);
   const rudderCost = rowCost(COMPONENT_NAMES.rudder, formData?.rudders ?? 0);
@@ -1051,7 +1083,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           </td>
                           <td className="text-right px-2">{stats?.massBreakdown.helm ?? 0}</td>
                           <td className="text-right px-2">{Math.ceil(formData.helm * 1)}</td>
-                          <td className="pl-2 text-gray-500">1t each · 1 crew</td>
+                          <td className="pl-2 text-gray-500">1t each · 1 crew · first helm included in hull price</td>
                           <td className="text-right pl-2 text-yellow-400">{helmCost.toLocaleString()}gp</td>
                         </tr>
 
@@ -1125,9 +1157,9 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
                         {/* Weapon child list */}
                         <tr className="border-b border-gray-700/50">
-                          <td colSpan={6} className="pb-2 pl-6 pr-2">
-                            <div className="rounded border border-gray-700 bg-gray-900/40 p-2">
-                              <div className="flex items-center justify-between mb-1">
+                          <td colSpan={6} className="pb-2">
+                            <div className="w-full min-w-0 rounded border border-gray-700 bg-gray-900/40 p-2">
+                              <div className="flex items-center justify-between gap-2 mb-1">
                                 <span className="text-[10px] text-gray-400">Weapons (placed / capacity)</span>
                                 <button
                                   type="button"
@@ -1143,18 +1175,21 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                   No weapons mounted.
                                 </div>
                               ) : (
-                                <div className="space-y-1">
+                                <div className="space-y-1 min-w-0">
                                   {formData.weapons.map((w, idx) => {
                                     const wpn = weaponById(weaponsCatalog, w.weaponId);
                                     const direction = build
                                       ? deckDirection(build.deckLayout!, `weapon:${w.id}`)
                                       : '—';
                                     return (
-                                      <div key={w.id} className="flex items-center gap-1">
+                                      <div
+                                        key={w.id}
+                                        className="grid min-w-0 grid-cols-[minmax(0,1fr)_3.5rem_3rem_5rem_2rem] items-center gap-1"
+                                      >
                                         <select
                                           value={w.weaponId}
                                           onChange={(e) => setWeaponRow(idx, 'weaponId', e.target.value)}
-                                          className="flex-1 min-w-0 bg-gray-700 text-white text-[10px] rounded px-1.5 py-1 border border-gray-600"
+                                          className="w-full min-w-0 bg-gray-700 text-white text-[10px] rounded px-1.5 py-1 border border-gray-600"
                                         >
                                           {weaponsCatalog.map(weap => (
                                             <option key={weap.id} value={weap.id}>
@@ -1162,7 +1197,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                             </option>
                                           ))}
                                         </select>
-                                        <div className="w-14 flex-none">
+                                        <div className="min-w-0">
                                           <NumInput
                                             value={w.count}
                                             min={1}
@@ -1170,10 +1205,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                             onChange={(v) => setWeaponRow(idx, 'count', Math.max(1, Math.floor(v)))}
                                           />
                                         </div>
-                                        <span className="w-12 flex-none text-center text-[9px] text-gray-300 bg-gray-900/70 border border-gray-600 rounded px-1 py-0.5">
+                                        <span className="min-w-0 text-center text-[9px] text-gray-300 bg-gray-900/70 border border-gray-600 rounded px-1 py-0.5">
                                           {direction}
                                         </span>
-                                        <span className="w-20 flex-none text-right text-[9px] text-yellow-400">
+                                        <span className="min-w-0 text-right text-[9px] text-yellow-400 whitespace-nowrap">
                                           {((wpn?.cost || 0) * w.count).toLocaleString()}gp
                                         </span>
                                         <button
@@ -1437,8 +1472,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                       <div key={c.id} className="flex items-center justify-between gap-2 bg-gray-800 rounded px-2 py-1">
                         <div className="min-w-0 text-[11px] text-gray-200">
                           {c.name || <span className="text-gray-500">Unnamed crew</span>}
-                          <span className="text-gray-500"> · Lv {c.level} · S{c.str} D{c.dex} C{c.con} I{c.int} W{c.wis} C{c.cha}</span>
-                          <span className="text-green-400"> · {c.cost != null ? `${c.cost}gp` : 'cost —'}</span>
+                          <span className="text-gray-500">
+                            {' '}— Level {c.level}, HP {c.hp}, {c.str}-{c.dex}-{c.con}-{c.int}-{c.wis}-{c.cha},{' '}
+                          </span>
+                          <span className="text-green-400">{c.cost} Gp</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <button
@@ -1689,43 +1726,51 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                 </Cell>
               </div>
               <div className="flex items-end gap-2">
-                <Cell label="Level" widthClass="w-16"><NumInput value={crewDraft.level} min={1} max={99} onChange={(v) => setCrewDraft(d => ({ ...d, level: Math.max(1, Math.floor(v) || 1) }))} /></Cell>
-                <Cell label="Str"><NumInput value={crewDraft.str} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, str: Math.max(1, Math.min(30, Math.floor(v) || 10)) }))} /></Cell>
-                <Cell label="Dex"><NumInput value={crewDraft.dex} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, dex: Math.max(1, Math.min(30, Math.floor(v) || 10)) }))} /></Cell>
-                <Cell label="Con"><NumInput value={crewDraft.con} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, con: Math.max(1, Math.min(30, Math.floor(v) || 10)) }))} /></Cell>
-                <Cell label="Int"><NumInput value={crewDraft.int} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, int: Math.max(1, Math.min(30, Math.floor(v) || 10)) }))} /></Cell>
-                <Cell label="Wis"><NumInput value={crewDraft.wis} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, wis: Math.max(1, Math.min(30, Math.floor(v) || 10)) }))} /></Cell>
-                <Cell label="Cha"><NumInput value={crewDraft.cha} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, cha: Math.max(1, Math.min(30, Math.floor(v) || 10)) }))} /></Cell>
+                <Cell label="Level" widthClass="w-16">
+                  <NumInput
+                    value={crewDraft.level}
+                    min={1}
+                    max={99}
+                    onChange={(v) => {
+                      const level = Math.max(1, Math.floor(v) || 1);
+                      setCrewDraft(d => ({
+                        ...d,
+                        level,
+                        hp: crewDraftTouched.hp ? d.hp : computeCrewHp(level),
+                        cost: crewDraftTouched.cost ? d.cost : computeCrewWeeklyCost(level),
+                      }));
+                    }}
+                  />
+                </Cell>
+                <Cell label="HP" widthClass="w-16">
+                  <NumInput
+                    value={crewDraft.hp}
+                    min={1}
+                    max={999}
+                    onChange={(v) => {
+                      setCrewDraftTouched(t => ({ ...t, hp: true }));
+                      setCrewDraft(d => ({ ...d, hp: Math.max(1, Math.floor(v) || 1) }));
+                    }}
+                  />
+                </Cell>
+                <Cell label="Str"><NumInput value={crewDraft.str} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, str: Math.max(1, Math.min(30, Math.floor(v) || DEFAULT_CREW_STATS.str)) }))} /></Cell>
+                <Cell label="Dex"><NumInput value={crewDraft.dex} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, dex: Math.max(1, Math.min(30, Math.floor(v) || DEFAULT_CREW_STATS.dex)) }))} /></Cell>
+                <Cell label="Con"><NumInput value={crewDraft.con} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, con: Math.max(1, Math.min(30, Math.floor(v) || DEFAULT_CREW_STATS.con)) }))} /></Cell>
+                <Cell label="Int"><NumInput value={crewDraft.int} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, int: Math.max(1, Math.min(30, Math.floor(v) || DEFAULT_CREW_STATS.int)) }))} /></Cell>
+                <Cell label="Wis"><NumInput value={crewDraft.wis} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, wis: Math.max(1, Math.min(30, Math.floor(v) || DEFAULT_CREW_STATS.wis)) }))} /></Cell>
+                <Cell label="Cha"><NumInput value={crewDraft.cha} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, cha: Math.max(1, Math.min(30, Math.floor(v) || DEFAULT_CREW_STATS.cha)) }))} /></Cell>
               </div>
               <div className="flex items-end gap-2">
-                <Cell label="Cost (gp, can be null)" widthClass="flex-1">
-                  {crewDraft.cost === null ? (
-                    <button
-                      type="button"
-                      onClick={() => setCrewDraft(d => ({ ...d, cost: 0 }))}
-                      className="w-full bg-gray-700 text-gray-400 text-xs rounded px-2 py-1 border border-gray-600 hover:bg-gray-600"
-                    >
-                      — (null) — set cost
-                    </button>
-                  ) : (
-                    <div className="flex gap-1">
-                      <input
-                        type="number"
-                        value={crewDraft.cost}
-                        min={0}
-                        onChange={(e) => setCrewDraft(d => ({ ...d, cost: parseInt(e.target.value) || 0 }))}
-                        className="flex-1 bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setCrewDraft(d => ({ ...d, cost: null }))}
-                        title="Set cost = null (unknown / no listed cost)"
-                        className="flex-none px-2 py-1 text-[10px] bg-gray-700 hover:bg-gray-600 text-gray-300 rounded border border-gray-600"
-                      >
-                        null
-                      </button>
-                    </div>
-                  )}
+                <Cell label="Weekly cost (gp)" widthClass="flex-1">
+                  <NumInput
+                    value={crewDraft.cost}
+                    min={0}
+                    step={1}
+                    onChange={(v) => {
+                      setCrewDraftTouched(t => ({ ...t, cost: true }));
+                      setCrewDraft(d => ({ ...d, cost: Math.max(0, Math.floor(v)) }));
+                    }}
+                  />
                 </Cell>
               </div>
             </div>

@@ -13,7 +13,7 @@ import {
   ShipTemplate,
   ShipWeapon,
 } from '@/types/ship';
-import { DEFAULT_TOTAL_MASS } from './shipStats';
+import { DEFAULT_TOTAL_MASS, computeCrewHp, computeCrewWeeklyCost } from './shipStats';
 import { normalizeDeckLayout } from './deckLayout';
 
 /** Map a ship_armors row. */
@@ -68,17 +68,19 @@ export function mapShipWeaponRow(row: any): ShipWeapon {
 
 /** Map a ship_crews row. */
 export function mapShipCrewRow(row: any): ShipCrew {
+  const level = Number(row.level) || 1;
   return {
     id: row.id,
     name: row.name || null,
-    level: Number(row.level) || 1,
-    str: Number(row.str) || 10,
-    dex: Number(row.dex) || 10,
-    con: Number(row.con) || 10,
+    level,
+    hp: row.hp != null ? Number(row.hp) : computeCrewHp(level),
+    str: Number(row.str) || 12,
+    dex: Number(row.dex) || 14,
+    con: Number(row.con) || 14,
     int: Number(row.int) || 10,
-    wis: Number(row.wis) || 10,
+    wis: Number(row.wis) || 14,
     cha: Number(row.cha) || 10,
-    cost: row.cost != null ? Number(row.cost) : null,
+    cost: row.cost != null ? Number(row.cost) : computeCrewWeeklyCost(level),
   };
 }
 
@@ -164,12 +166,13 @@ export function mapCrewRows(t: ShipTemplate) {
     template_id: t.id,
     name: c.name || null,
     level: c.level,
+    hp: c.hp,
     str: c.str,
     dex: c.dex,
     con: c.con,
     int: c.int,
     wis: c.wis,
     cha: c.cha,
-    cost: c.cost != null ? c.cost : null,
+    cost: c.cost,
   }));
 }

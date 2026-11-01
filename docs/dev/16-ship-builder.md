@@ -16,8 +16,8 @@ crew quarters)**, **136 (Ship Editor v2 fields + `ship_images`)**,
 **139 (merge accessories into components)**, **140 (cascade deletes + usage
 lookups)**, **141 (catalog name titles)**, **142 (card DT, placements,
 reinforcements)**, **143 (region-container deck layout + stable weapon rows)**,
-and **144 (24-ship master template set + derived crew cleanup)** reshape the
-model.
+and **144 (24-ship master template set + derived crew cleanup)**, and **145
+(crew HP + authored weekly cost)** reshape the model.
 
 - 134 drops `ship_frames`, reshapes `ship_armors`, reseeds `ship_components`,
   and adds `total_mass`/`helm`/`command_bridge`/`reinforcement`.
@@ -50,7 +50,9 @@ model.
   every `ship_template_weapons` row a stable UUID, and drops `mount_slot`.
 - 144 removes the old template data, drops the derived `crew_count` and
   `passengers` columns, sets Sail crew to 0, and seeds the 24-ship master list.
-  **143 is applied; apply 144 in Supabase.**
+- 145 adds authored `ship_crews.hp`, makes weekly `cost` required, and updates
+  the crew stat defaults to `12-14-14-10-14-10`.
+  **143 is applied; apply 144 + 145 in Supabase.**
 
 Editor layout is 3 panels: template picker (left), summary + composition table
 (middle), and ship image + card layout + roster (right). The sticky footer is
@@ -60,9 +62,10 @@ its cost and the Total row sums them. All user-facing “tonnage” wording is
 **mass**; the unit remains **ton**.
 
 Weapons are edited in a child list under the **Weapon capacity** row. Each row
-is one line: weapon select, amount, derived direction, weapon cost, remove. Weapon
-mass is blocked from exceeding capacity, and capacity cannot be lowered below
-the placed weapon mass. Every purchased component/weapon automatically becomes
+is one line: weapon select, amount, derived direction, weapon cost, remove. The
+list spans the composition panel at full width and reflows with the browser.
+Weapon mass is blocked from exceeding capacity, and capacity cannot be lowered
+below the placed weapon mass. Every purchased component/weapon automatically becomes
 a layout card; optional components are not allocated separately. The right panel
 keeps the image, card layout, and crew roster (no second weapon list).
 
@@ -86,10 +89,15 @@ reinforcement (thick silvery border); the first hit destroys the reinforcement,
 the next damages the component. The editor card crew list is a non-functional
 preview using roster crew in layout order.
 
-`ship_crews`: named/unnamed crew with level + 6 stats + optional nullable cost.
-The roster is the actual crew count; it has no hard cap, but saving is blocked
-while it exceeds `crew_quarters × 5` capacity (red error). There is no
-`crew_count` or `passengers` column: min/full crew are derived. Access caps (059):
+`ship_crews`: named/unnamed crew with level, authored HP, 6 stats, and required
+weekly cost. New crew defaults are **HP = 10 + 7 × (level − 1)**, **weekly cost =
+level² × 2 + 2**, and **Str-Dex-Con-Int-Wis-Cha = 12-14-14-10-14-10**. HP and cost
+auto-follow their level defaults until the user edits them, then the authored
+values are kept. Roster rows display
+`Name — Level N, HP N, S-D-C-I-W-C, N Gp`. The roster is the actual crew count;
+it has no hard cap, but saving is blocked while it exceeds
+`crew_quarters × 5` capacity (red error). There is no `crew_count` or
+`passengers` column: min/full crew are derived. Access caps (059):
 `can_view_ship_editor` / `can_use_ship_editor` — both admin-only; Lobby's
 Archfar's Shipyard button routes to `/ship-editor`.
 
@@ -127,7 +135,7 @@ values are still shown in the editor's formula panel.
 
 | Component | Mass | Crew | Notes |
 |---|---|---|---|
-| Helm | 1t | 1 | each helm needs its own crew; backup helms are staffed |
+| Helm | 1t | 1 | each helm needs its own crew; first helm is included in hull price, extra helms use catalog cost |
 | Command Bridge | 3t | 5 | +5 command per bridge |
 | Sail | 1t | 0 | spelljamming sails need no handling crew |
 | Rudder vane | 1.5t | 0.5 | determines MC; crew counts round up per group |
@@ -178,10 +186,11 @@ Full crew is **min crew × 2** to represent two shifts. Examples: Shuttle min
 
 ### Build cost
 
-- **Hull:** `totalMass × 1000gp`.
+- **Hull:** `totalMass × 1000gp`; the first helm is included in this price.
 - Every composition row shows its own cost; the Total row sums them.
 - Components use their catalog cost × count; cargo/quarters use cost × tons;
   optional components use cost × count; armor has no cost field.
+- Helm cost is `max(0, helm − 1) × helm component cost` (extra/backup helms only).
 - **Weapon capacity row:** capacity × the weapon-capacity component cost.
   Each weapon child row adds its own `weapon.cost × count`. The total includes
   both, without double-counting.

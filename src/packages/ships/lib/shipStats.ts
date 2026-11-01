@@ -37,6 +37,20 @@ export const CREW_PER_QUARTER_TON = 5;
 export const REINFORCEMENT_TEMP_HP = 10;
 export const COMMAND_PER_BRIDGE = 5;
 export const HULL_COST_PER_TON = 1000;
+export const CREW_BASE_HP = 10;
+export const CREW_HP_PER_LEVEL = 7;
+export const CREW_WEEKLY_COST_FACTOR = 2;
+export const CREW_WEEKLY_COST_FLAT = 2;
+
+/** Default stat line for new crew. */
+export const DEFAULT_CREW_STATS = {
+  str: 12,
+  dex: 14,
+  con: 14,
+  int: 10,
+  wis: 14,
+  cha: 10,
+} as const;
 
 /** Built-in component names (ship_components.name). */
 export const COMPONENT_NAMES = {
@@ -140,6 +154,18 @@ export interface ShipBuild {
 }
 
 // --- Crew -------------------------------------------------------------------
+
+/** Generic crew HP default: 10 + 7 per level above 1. */
+export function computeCrewHp(level: number): number {
+  const lvl = Math.max(1, Math.floor(Number.isFinite(level) ? level : 1));
+  return CREW_BASE_HP + CREW_HP_PER_LEVEL * (lvl - 1);
+}
+
+/** Default weekly crew cost in gp: level² × 2 + 2. */
+export function computeCrewWeeklyCost(level: number): number {
+  const lvl = Math.max(1, Math.floor(Number.isFinite(level) ? level : 1));
+  return lvl * lvl * CREW_WEEKLY_COST_FACTOR + CREW_WEEKLY_COST_FLAT;
+}
 
 /** Actual crew on board = roster length. */
 export function computeCrew(build: ShipBuild): number {
@@ -424,7 +450,7 @@ export function computeBuildCost(build: ShipBuild): number {
   const capacityComponent = componentByName(c, COMPONENT_NAMES.weaponCapacity);
   const componentCost =
     computeHullCost(build.totalMass) +
-    build.helm * componentByName(c, COMPONENT_NAMES.helm).cost +
+    Math.max(0, build.helm - 1) * componentByName(c, COMPONENT_NAMES.helm).cost +
     build.commandBridge * componentByName(c, COMPONENT_NAMES.commandBridge).cost +
     build.sails * componentByName(c, COMPONENT_NAMES.sail).cost +
     build.rudders * componentByName(c, COMPONENT_NAMES.rudder).cost +
