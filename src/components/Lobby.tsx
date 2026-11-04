@@ -383,8 +383,14 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
 
   const renderHeader = () => (
     <div className="flex flex-col items-center px-6 py-3 border-b border-gray-700 bg-[#0d0d1a]">
-      <h1 className="text-3xl font-bold text-white tracking-wide text-center w-full">
-        Welcome to Quick Terrestrial Tactical Encounter Rules (QuiTTER)
+      <p
+        className="w-full text-center whitespace-nowrap text-gray-300 leading-tight"
+        style={{ fontSize: 'clamp(0.4rem, 1.5vw, 0.8rem)' }}
+      >
+        Welcome to Quick Terrestrial Tactical Encounter Rules and Quick Vehicle Encounter Rule
+      </p>
+      <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-wide text-center w-full">
+        Quitter&apos;s Quiver
       </h1>
       <div className="flex items-center justify-center gap-3 mt-1">
         {currentUser ? (
@@ -553,6 +559,9 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
               >
                 {canUseStructureEditor ? 'Structure Workshop' : 'Structure Library'}
               </button>
+            )}
+            {canViewStructureEditor && (
+              <div aria-hidden="true" className="border-t border-transparent" />
             )}
             {canViewShipEditor && (
               <button

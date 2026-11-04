@@ -2,6 +2,9 @@
 // One component/weapon card in the ship layout. Cards grow to the tallest card
 // in their horizontal grid row. Reinforcement is shown as a thick silvery border.
 
+import { WeaponArc } from '@/types/ship';
+import { WeaponArcDial } from './WeaponArcIcon';
+
 export interface ShipComponentCrewSlot {
   name?: string;
   level?: number;
@@ -22,6 +25,7 @@ export interface ShipComponentCardData {
   safe?: boolean;
   note?: string;
   kind?: 'component' | 'weapon';
+  arcs?: WeaponArc[];
   empty?: boolean;
   onAdd?: () => void;
   onContextMenu?: (event: React.MouseEvent, data: ShipComponentCardData) => void;
@@ -63,8 +67,11 @@ export function ShipComponentCard({ data }: { data: ShipComponentCardData }) {
       }`}
       title={data.note || undefined}
     >
-      <div className="text-[9px] font-semibold text-gray-200 break-words" title={data.name}>
-        {data.name}
+      <div className="flex items-start justify-between gap-1">
+        <div className="min-w-0 text-[9px] font-semibold text-gray-200 break-words" title={data.name}>
+          {data.name}
+        </div>
+        {data.kind === 'weapon' && data.arcs && <WeaponArcDial arcs={data.arcs} />}
       </div>
 
       <div className="flex flex-wrap gap-[2px] mt-0.5" title={`${boxes} boxes`}>

@@ -78,7 +78,8 @@ corners `dir` and `dir+1`.
 
 - **Standalone Map Editor** (`/map-editor`, `MapEditor/`): header (New/Delete/
   Main Menu), left panel with a maps list, an **Image** tab (map_images
-  upload/list, name, offsets ~1%, scale, grid radius, description), a
+  upload/list, name, offsets at 0.5% slider steps plus ± nudge buttons, scale,
+  grid radius, description), a
   **Movement cost** tab (0–9 pen + legend), a **Structures** tab (see `18`):
   pick a structure template from the library, then click/drag to place it on an
   edge or hex; click a placed edge again to flip its battlement; the selected

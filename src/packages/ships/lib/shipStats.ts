@@ -22,6 +22,7 @@ import {
   ShipDeckLayout,
   ShipTemplateComponent,
   ShipTemplateWeapon,
+  ShipWeaponArcMap,
   ShipWeapon,
 } from '@/types/ship';
 
@@ -142,6 +143,8 @@ export interface ShipBuild {
   deckLayout?: ShipDeckLayout;
   /** Card keys carrying a reinforcement. */
   reinforcements?: string[];
+  /** Per weapon-card firing-arc overrides. */
+  weaponArcs?: ShipWeaponArcMap;
   /** Transient cargo-simulation mass; falls back to totalMass when absent. */
   performanceMass?: number;
 }

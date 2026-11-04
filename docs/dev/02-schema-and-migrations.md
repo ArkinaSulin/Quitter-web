@@ -207,6 +207,9 @@ as applied in the notes — check the live DB before relying on it).
 | 145 | Ship crew: `ship_crews.hp` (authored, default 10); weekly `cost` required; new stat defaults 12-14-14-10-14-10 | ✅ applied |
 | 146 | Ship component cards: `ship_components.can_combine` (default true; Helm/Command bridge false); weapons always per-unit | ⏳ run in Supabase |
 | 147 | Ship weapon row order: `ship_template_weapons.sort_order` | ⏳ run in Supabase |
+| 148 | Ship image frame: `ship_templates.keel_length` (default 100 ft) + `image_offset_y` (default 0 ft) | ⏳ run in Supabase |
+| 149 | Mass-scaled ship weapon damage: `ship_weapons.damage_formula` (e.g. `{mass/10}d10`) | ⏳ run in Supabase |
+| 150 | Ship weapon firing arcs: `ship_templates.weapon_arcs` jsonb (per-card added/removed arcs) | ⏳ run in Supabase |
 
 ### Verify what's actually applied
 

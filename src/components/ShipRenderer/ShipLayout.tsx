@@ -11,8 +11,9 @@ import {
   ShipDerivedStats,
   componentById,
   componentByName,
-  deckDirection,
   deckOrderedCardKeys,
+  effectiveWeaponArcs,
+  findCardSlot,
   swapCards,
   weaponById,
   weaponTons,
@@ -60,6 +61,8 @@ export function ShipLayout({
   }
 
   const cards: Record<string, ShipComponentCardData> = {};
+  const cardAc = (componentAc: number | undefined) =>
+    Math.max(stats.ac ?? 10, componentAc ?? 10);
   const cardDt = (componentDt: number | undefined) =>
     Math.max(build.damageThreshold ?? 15, componentDt ?? 15);
 
@@ -76,7 +79,7 @@ export function ShipLayout({
       cardKey: key,
       name,
       tons,
-      ac: component.ac ?? 10,
+      ac: cardAc(component.ac),
       dt: cardDt(component.dt),
       crewRequired: crew,
       safe: opts.safe ?? !component.hittable,
@@ -153,7 +156,7 @@ export function ShipLayout({
     cardKey: hullKey,
     name: 'Hull',
     tons: m.hull,
-    ac: hullComponent.ac ?? 10,
+    ac: cardAc(hullComponent.ac),
     dt: cardDt(hullComponent.dt),
     crewRequired: 0,
     safe: !hullComponent.hittable,
@@ -203,16 +206,18 @@ export function ShipLayout({
     const weapon = weaponById(build.weaponsCatalog, row.weaponId);
     for (let i = 0; i < row.count; i += 1) {
       const key = `weapon:${row.id}:${i}`;
+      const placed = findCardSlot(layout, key);
       cards[key] = {
         id: key,
         cardKey: key,
         name: weapon?.name || 'Weapon',
         tons: weapon ? weaponTons(weapon) : 0,
-        ac: weapon?.ac ?? 10,
+        ac: cardAc(weapon?.ac),
         dt: cardDt(weapon?.dt),
         crewRequired: weapon ? Math.ceil(weapon.crew) : 0,
         note: weapon?.special || undefined,
         kind: 'weapon',
+        arcs: placed ? effectiveWeaponArcs(placed.region, build.weaponArcs?.[key]) : [],
         reinforced: reinforced(build, key),
       };
     }
@@ -227,7 +232,7 @@ export function ShipLayout({
         cardKey: key,
         name: component.name ? `${component.name}${combined && count > 1 ? ` ×${count}` : ''}` : row.componentId,
         tons: combined ? Math.round((component.mass || 0) * count) : Math.round(component.mass || 0),
-        ac: component.ac ?? 10,
+        ac: cardAc(component.ac),
         dt: cardDt(component.dt),
         crewRequired: combined ? Math.ceil(component.crew * count) : Math.ceil(component.crew),
         safe: !component.hittable,
@@ -294,7 +299,6 @@ export function ShipLayout({
   const renderSlot = (region: ShipDeckRegion, index: number) => {
     const s = layout[region][index];
     const card = slotCard(s);
-    const direction = card.kind === 'weapon' && s.cardKey ? deckDirection(layout, s.cardKey) : null;
     return (
       <div
         key={`${region}-${index}`}
@@ -309,38 +313,61 @@ export function ShipLayout({
         onDrop={(e) => handleDrop(e, region, index)}
         onContextMenu={(e) => handleSlotMenu(e, region, index)}
         className="relative h-full min-w-0"
-        title={direction ? `${direction}` : undefined}
       >
-        {direction && (
-          <span className="pointer-events-none absolute right-1 top-1 z-10 rounded bg-black/60 px-1 text-[7px] uppercase tracking-wide text-gray-300">
-            {direction}
-          </span>
-        )}
         <ShipComponentCard data={card} />
       </div>
     );
   };
 
+  const renderSlotRows = (region: ShipDeckRegion, indices: number[], rowSize = 3) => {
+    const rows: number[][] = [];
+    for (let i = 0; i < indices.length; i += rowSize) rows.push(indices.slice(i, i + rowSize));
+    const cardWidth = rowSize === 2
+      ? 'calc((100% - 0.5rem) / 2)'
+      : 'calc((100% - 1rem) / 3)';
+    return rows.map((row, rowIndex) => (
+      <div
+        key={`${region}-row-${rowIndex}`}
+        className="flex justify-center gap-2"
+      >
+        {row.map(index => (
+          <div key={`${region}-${index}`} style={{ width: cardWidth }}>
+            {renderSlot(region, index)}
+          </div>
+        ))}
+      </div>
+    ));
+  };
+
   const renderRegion = (
     region: ShipDeckRegion,
     label: string,
-    mode: 'row' | 'column' | 'body',
+    mode: 'row' | 'column' | 'body' | 'bow',
     wrapperClass = '',
   ) => (
-    <div className={`rounded-2xl border-2 border-gray-600/80 bg-gray-900/30 p-1.5 ${wrapperClass}`}>
+    <div className={`rounded-2xl bg-gray-900/30 py-1.5 ring-2 ring-inset ring-gray-600/80 ${wrapperClass}`}>
       <div className="mb-1 text-center text-[8px] uppercase tracking-widest text-gray-500">
         {label}
       </div>
       <div
         className={
-          mode === 'row'
-            ? 'grid grid-cols-3 gap-1.5'
-            : mode === 'body'
-              ? 'grid grid-cols-2 gap-1.5'
-              : 'flex flex-col gap-1.5'
+          mode === 'bow' || mode === 'row' || mode === 'body'
+            ? 'space-y-1.5'
+            : 'flex flex-col gap-2'
         }
       >
-        {layout[region].map((_, i) => renderSlot(region, i))}
+        {mode === 'bow' ? (
+          <>
+            {renderSlotRows('bow', [0], 3)}
+            {renderSlotRows('bow', layout.bow.slice(1).map((_, i) => i + 1), 3)}
+          </>
+        ) : mode === 'row' ? (
+          renderSlotRows(region, layout[region].map((_, i) => i), 3)
+        ) : mode === 'body' ? (
+          renderSlotRows(region, layout[region].map((_, i) => i), 2)
+        ) : (
+          layout[region].map((_, i) => renderSlot(region, i))
+        )}
       </div>
     </div>
   );
@@ -355,7 +382,7 @@ export function ShipLayout({
       </span>
 
       <div className="mx-auto max-w-[420px] space-y-2 px-3">
-        {renderRegion('bow', 'Bow', 'row', 'w-3/4 mx-auto')}
+        {renderRegion('bow', 'Bow', 'bow', 'w-3/4 mx-auto')}
 
         <div className="text-center text-[8px] uppercase tracking-widest text-gray-600">360°</div>
 

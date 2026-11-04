@@ -14,7 +14,7 @@ Newest work first; the authoritative, per-session record is `docs/dev/changelog.
 The most recent work completed the **Basic AI current scope** (whole-activation
 climb routes, vacant-top/route locks, redundant-wall pathing, rout step limits,
 local-only preview markers), the **Halloween Siege** minigame (migration 133),
-and the **Spelljammer mass-first overhaul** (migrations 134–147: no ship frames,
+and the **Spelljammer mass-first overhaul** (migrations 134–150: no ship frames,
 regional deck layout, the 24-ship master templates, per-unit weapon/component
 cards, derived min/full crew, crew HP/weekly operation cost, cargo simulation,
 hull cost, UUID/name ship catalogs, and the Component Workshop).
@@ -30,6 +30,33 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Weapon firing arcs + header messages (2026-10-31, migration 150)**: weapon
+  cards carry a four-sector firing-arc dial (Bow/Port/Starboard/Stern). Non-Body
+  frames protect their default arc; Body starts at 360° and any arc can be
+  removed. The card context menu adds/removes arcs and includes fan direction
+  icons. The deck menu now has Add slot/Remove slot on the current frame.
+  Errors, success, and derived warnings appear in a centered title-bar stack.
+  Migration 150 adds `ship_templates.weapon_arcs`.
+- **Ship deck remove-slot command (2026-10-31)**: the deck context menu has
+  **Remove slot** below the region-move commands, separated by a divider. It
+  removes the bottom-most empty slot in that region down to the one-row minimum
+  (Bow 1 center, Port 1, Starboard 1, Body 2, Stern 1). Occupied slots are never
+  removed.
+- **Ship deck reshaped (2026-10-31)**: Bow 4 (reverse T), Port/Starboard 4,
+  Body 8 (two columns), Stern 3. Legacy layouts reshape on load and removed-slot
+  cards are re-placed. Overflow still adds +1 Port/+2 Body/+1 Starboard.
+- **Mass-scaled ship weapon damage (2026-10-31, migration 149)**: ship weapons
+  may store `damage_formula`; the supported form is `{mass/10}d10`, resolved
+  against the carrying ship's total mass with the die count rounded up. Literal
+  `damage` is the fallback. The Component Workshop edits the formula, and the
+  Ship Editor weapon selector shows the resolved damage. Migration 149 adds
+  `ship_weapons.damage_formula`.
+- **Ship image hex preview + finer map offsets (2026-10-31, migration 148)**:
+  the Ship Editor image section is a dark 7-hex board (50 ft radius) with stars.
+  The image keeps aspect ratio, scales to authored Keel length (default 100 ft),
+  and uses `image_offset_y` in feet (positive = up); overhang is allowed.
+  Migration 148 adds `keel_length` / `image_offset_y`. Map Editor offset sliders
+  now step 0.5% of the scaled image and gain −/+ nudge buttons.
 - **Manual ship weapon order + card layout polish (2026-10-31, migration 147)**:
   weapon selector options are alphabetical; child rows are manually ordered with
   ▲/▼ arrows and `ship_template_weapons.sort_order`. Weapon direction labels use
@@ -41,8 +68,8 @@ reusable maps. Here's the state:
   weapons always get one card per unit; Helm/Command bridge get one card per
   unit; other components use `ship_components.can_combine` (true = aggregate,
   false = per-unit). The Component Workshop exposes the flag. The weapon child
-  list is manually ordered with ▲/▼. The deck is Bow 6 / Port 5 / Body 10
-  (two columns) / Starboard 5 / Stern 6; existing Body regions pad to 10 and an
+  list is manually ordered with ▲/▼. The deck is now Bow 4 / Port 4 / Body 8
+  (two columns) / Starboard 4 / Stern 3; legacy layouts reshape on load and an
   overflow middle row adds +1 Port, +2 Body, +1 Starboard. The Ram slot and all
   Ram restrictions are removed; every slot is generic. **Apply 146 in Supabase.**
 - **Ship summary + cargo simulation (2026-10-31)**: mid-panel summary is now
@@ -373,7 +400,7 @@ Defensive reserves hold a **central station ~2
   some elevation nuances, per-team doctrine toggles; the AI never controls
   heroes.
 - **Turn counter desync reported in playtest** (separate from AI roles): reproduce with End Turn / undo-redo before changing turn advancement.
-- **Spelljammer module implementation** (mass-first builder/stats/renderer + Ship Editor v2 + Component Workshop + card v2 done in migrations 134–147; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering, reinforcement assignment/combat behavior, command-bridge bonus wiring. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`), and 134–145 are applied; **apply 146 + 147 in Supabase**.
+- **Spelljammer module implementation** (mass-first builder/stats/renderer + Ship Editor v2 + Component Workshop + card v2 done in migrations 134–150; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering, reinforcement assignment/combat behavior, command-bridge bonus wiring. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`), and 134–145 are applied; **apply 146–150 in Supabase**.
 - Migration `013_turn_tracking.sql` — applied to the DB (done).
 - Migrations 010/011/012 — user applied to the DB.
 - `UnitEditor.tsx`: `isHero` toggle should force `'Hero'` formation — postponed until the consolidated interface update.

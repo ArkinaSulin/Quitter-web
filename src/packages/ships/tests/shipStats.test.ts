@@ -75,10 +75,10 @@ const COMPONENTS: ShipComponent[] = [
 ];
 
 const WEAPONS: ShipWeapon[] = [
-  { id: 'wpn-ballista', name: 'ballista_light', mass: 1, damage: '2d10', minRange: 0, range: 3, maxRange: 10, fireCycleStep: 2, dt: 15, crew: 2, cost: 500, ammoCost: 1, special: null },
-  { id: 'wpn-catapult', name: 'catapult_medium', mass: 2, damage: '5d10', minRange: 0, range: 4, maxRange: 16, fireCycleStep: 5, dt: 15, crew: 4, cost: 800, ammoCost: null, special: null },
-  { id: 'wpn-claws', name: 'scorpion_claws', mass: 0, damage: '3d10', minRange: 0, range: 1, maxRange: 1, fireCycleStep: 1, dt: 15, crew: 1, cost: 0, ammoCost: null, special: 'melee' },
-  { id: 'wpn-heavy-ram', name: 'heavy_ram', mass: 3, damage: '6d10', minRange: 0, range: 1, maxRange: 1, fireCycleStep: 1, dt: 15, crew: 3, cost: 0, ammoCost: null, special: 'melee' },
+  { id: 'wpn-ballista', name: 'ballista_light', mass: 1, damage: '2d10', damageFormula: null, minRange: 0, range: 3, maxRange: 10, fireCycleStep: 2, dt: 15, crew: 2, cost: 500, ammoCost: 1, special: null },
+  { id: 'wpn-catapult', name: 'catapult_medium', mass: 2, damage: '5d10', damageFormula: null, minRange: 0, range: 4, maxRange: 16, fireCycleStep: 5, dt: 15, crew: 4, cost: 800, ammoCost: null, special: null },
+  { id: 'wpn-claws', name: 'scorpion_claws', mass: 0, damage: '3d10', damageFormula: null, minRange: 0, range: 1, maxRange: 1, fireCycleStep: 1, dt: 15, crew: 1, cost: 0, ammoCost: null, special: 'melee' },
+  { id: 'wpn-heavy-ram', name: 'heavy_ram', mass: 3, damage: '6d10', damageFormula: null, minRange: 0, range: 1, maxRange: 1, fireCycleStep: 1, dt: 15, crew: 3, cost: 0, ammoCost: null, special: 'melee' },
 ];
 
 const ARMOR = (id: string) => ARMORS.find(a => a.id === id)!;

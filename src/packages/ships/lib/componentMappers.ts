@@ -7,6 +7,7 @@ import {
   ShipComponentTemplate,
   ShipWeapon,
 } from '@/types/ship';
+import { isValidShipDamageFormula } from './shipDamage';
 
 export function mapComponentToTemplate(row: ShipComponent): ShipComponentTemplate {
   return {
@@ -22,6 +23,7 @@ export function mapComponentToTemplate(row: ShipComponent): ShipComponentTemplat
     canCombine: row.canCombine,
     dt: row.dt,
     damage: '',
+    damageFormula: '',
     minRange: 0,
     range: 0,
     maxRange: 0,
@@ -46,6 +48,7 @@ export function mapWeaponToTemplate(row: ShipWeapon): ShipComponentTemplate {
     canCombine: true,
     dt: row.dt,
     damage: row.damage,
+    damageFormula: row.damageFormula || '',
     minRange: row.minRange,
     range: row.range,
     maxRange: row.maxRange,
@@ -64,7 +67,13 @@ export function validateShipComponentTemplate(t: ShipComponentTemplate): string 
   if (!Number.isFinite(t.cost) || t.cost < 0) return 'Cost must be 0 or more.';
   if (!Number.isFinite(t.dt) || t.dt < 0) return 'Damage threshold must be 0 or more.';
   if (t.kind === 'weapon') {
-    if (!t.damage.trim()) return 'Weapon damage is required.';
+    const formula = (t.damageFormula || '').trim();
+    if (!formula && !t.damage.trim()) {
+      return 'Enter weapon damage or a damage formula.';
+    }
+    if (formula && !isValidShipDamageFormula(formula)) {
+      return 'Damage formula must look like {mass/10}d10.';
+    }
     if (!Number.isFinite(t.minRange) || t.minRange < 0) return 'Min range must be 0 or more.';
     if (!Number.isFinite(t.range) || t.range < 0) return 'Range must be 0 or more.';
     if (!Number.isFinite(t.maxRange) || t.maxRange < 0) return 'Max range must be 0 or more.';
@@ -96,6 +105,7 @@ export function componentTemplateToWeaponRow(t: ShipComponentTemplate) {
     name: t.name.trim(),
     mass: t.mass,
     damage: t.damage,
+    damage_formula: t.damageFormula.trim() || null,
     min_range: t.minRange,
     range: t.range,
     max_range: t.maxRange,

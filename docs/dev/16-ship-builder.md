@@ -17,8 +17,10 @@ crew quarters)**, **136 (Ship Editor v2 fields + `ship_images`)**,
 lookups)**, **141 (catalog name titles)**, **142 (card DT, placements,
 reinforcements)**, **143 (region-container deck layout + stable weapon rows)**,
 **144 (24-ship master template set + derived crew cleanup)**, **145 (crew HP +
-authored weekly cost)**, **146 (component card-combine flag)**, and **147
-(persisted weapon row order)** reshape the model.
+authored weekly cost)**, **146 (component card-combine flag)**, **147
+(persisted weapon row order)**, **148 (ship image frame)**, **149
+(mass-scaled weapon damage)**, and **150 (weapon firing arcs)** reshape the
+model.
 
 - 134 drops `ship_frames`, reshapes `ship_armors`, reseeds `ship_components`,
   and adds `total_mass`/`helm`/`command_bridge`/`reinforcement`.
@@ -56,11 +58,16 @@ authored weekly cost)**, **146 (component card-combine flag)**, and **147
 - 146 adds `ship_components.can_combine` (default true; Helm and Command bridge
   false) for per-unit vs aggregate cards. Weapons always use per-unit cards.
 - 147 adds `ship_template_weapons.sort_order` for the manually ordered weapon
-  child list. **143–145 are applied; apply 146 + 147 in Supabase.**
+  child list.
+- 148 adds `ship_templates.keel_length` (default 100 ft) and `image_offset_y`
+  (default 0 ft) for the 7-hex ship-image preview.
+- 149 adds `ship_weapons.damage_formula` for mass-scaled weapon damage.
+- 150 adds `ship_templates.weapon_arcs` for per-card firing-arc overrides.
+  **143–145 are applied; apply 146–150 in Supabase.**
 
-Editor layout is 3 panels: template picker (left), summary + composition table
-(middle), and ship image + card layout + roster (right). The sticky footer is
-Create/Save, Clone, Delete. The composition table columns are
+Editor layout is 3 panels: template picker (left), summary + configuration table
+(middle), and ship image + **Ship layout** card diagram + roster (right). The
+sticky footer is Create/Save, Clone, Delete. The configuration table columns are
 **Component / Input / Mass (ton) / Crew req. / Notes / Cost**; every row shows
 its cost and the Total row sums them. All user-facing “tonnage” wording is
 **mass**; the unit remains **ton**.
@@ -71,13 +78,15 @@ speed / Space Acceleration / Maneuver class. A cargo simulation slider runs from
 0 to max cargo and only changes the cargo load used for acceleration/MC; it never
 changes cargo allocation, cost, or the saved cargo value. **Weekly operation
 cost = round(0.4% × ship cost + roster weekly cost)**. The existing MC-by-speed
-row and formula button stay at the bottom.
+row and formula button stay at the bottom. Errors, success, over-mass, low-crew,
+and over-capacity messages appear as a persistent centered stack in the title
+bar; derived warnings disappear as soon as they no longer apply.
 
 Weapons are edited in a child list under the **Weapon capacity** row. Each row
 is one line: weapon select, amount, derived direction, weapon cost, up/down
 arrows, remove. The select options are sorted alphabetically by weapon name;
 the rows themselves are manually ordered with the arrows and persisted through
-`ship_template_weapons.sort_order`. The list spans the composition panel at full
+`ship_template_weapons.sort_order`. The list spans the configuration panel at full
 width and reflows with the browser. Weapon mass is blocked from exceeding
 capacity, and capacity cannot be lowered below the placed weapon mass. Every
 purchased component/weapon automatically becomes a layout card; optional
@@ -85,23 +94,40 @@ components are not allocated separately. The right panel keeps the image, card
 layout, and crew roster (no second weapon list).
 
 The deck uses five **region containers**: Bow, Port, Body, Starboard, and Stern.
-The initial deck is Bow 6 (2×3), Port 5 (1 column), Body 10 (2 columns of 5),
-Starboard 5 (1 column), and Stern 6 (2×3). Slots are generic; drag a card onto an
-empty slot to move it, or onto an occupied slot to swap. Right-click a slot (or
-its card) to move the whole slot to another region. When every slot is full, a
-new middle row is added above Stern: Port +1, Body +2 (preserving its two
-columns), Starboard +1. Default placement puts weapons in Bow/Stern and other
-components in Body/Port/Starboard. All regions share one card width track:
+The initial deck is Bow 4 (reverse T: top center + 3 below), Port 4 (1 column),
+Body 8 (2 columns × 4 rows), Starboard 4 (1 column), and Stern 3 (one row).
+Slots are generic; drag a card onto an
+empty slot to move it, or onto an occupied slot to swap. When every slot is full,
+a new middle row is added above Stern: Port +1, Body +2 (preserving its two
+columns), Starboard +1. Right-click a slot/card to open the deck context menu:
+**Add slot** appends one empty slot to the current region; **Remove slot**
+deletes its bottom-most empty slot down to the one-row minimum: Bow 1 (center),
+Port 1, Starboard 1, Body 2, Stern 1. Occupied slots are never removed. Default
+placement puts weapons in Bow/Stern and other components in
+Body/Port/Starboard. All regions share one card width track:
 Port/Body/Starboard occupy 4 card columns in the middle, while Bow/Stern use 3
-centered card columns, so the hull narrows naturally at the ends.
+centered card columns, so the hull narrows naturally at the ends. Region borders
+are inset rings (they do not reduce the card track), and when a Bow/Stern row
+drops to 2 or 1 cards the row is centered and keeps the same card width. Legacy
+6/5/10/5/6 layouts are reshaped on load; cards in removed slots are
+re-placed.
 
-Cards show name, mass boxes, `AC / DT`, and a crew list. The displayed DT is
-`max(ship template DT, component/weapon DT)`; the template DT is the ship's
-minimum. Armor and reinforcement do not get cards. Cards grow to the tallest
+Cards show name, mass boxes, `AC / DT`, and a crew list. The displayed AC and DT
+are `max(ship value, component/weapon value)`; the ship AC is its armor AC and
+the ship DT is the template's minimum. Armor and reinforcement do not get cards.
+Cards grow to the tallest
 card in the same row. Right-click a component/weapon card to assign/remove a
 reinforcement (thick silvery border); the first hit destroys the reinforcement,
 the next damages the component. The editor card crew list is a non-functional
 preview using roster crew in layout order.
+
+Weapon cards carry a small display-only firing-arc dial in the top-right: four
+90° fan sectors, filled white for the arcs the weapon can target. Non-Body frames
+protect their default arc (Bow→Bow, Port→Port, Starboard→Starboard, Stern→Stern);
+Body starts at 360° (all four) and any arc can be removed. Right-click a weapon
+card to open a large circular four-sector compass (↑ Bow, ← Port, Starboard →,
+↓ Stern). Clicking a sector toggles its arc on or off; active arcs are highlighted
+and a frame's protected default arc is locked (dimmed, not removable).
 
 `ship_crews`: named/unnamed crew with level, authored HP, 6 stats, and required
 weekly cost. New crew defaults are **HP = 10 + 7 × (level − 1)**, **weekly cost =
@@ -282,13 +308,18 @@ optional components.
   only on weapon cards.
 - Slots are draggable (drop or swap) and right-clicking one offers a region move.
   A full deck grows a new middle row above Stern.
-- Per-component AC/DT are catalog-driven; hull/helm/etc. use the catalog rows.
-  Catalog `image_url` is retained but cards do not render images.
+- Card AC/DT are the higher of the ship value (armor AC / template DT) and the
+  catalog component/weapon value. Catalog `image_url` is retained but cards do
+  not render images.
 - The editor crew list is a non-functional preview: roster crew are distributed
   across cards in layout order, and remaining circles stay hollow.
-- The ship preview image is uploaded to the public `ship_images` bucket and
-  stored on `ship_templates.image_url`. The shared `ImagePickerModal` handles
-  upload/list/delete; the editor has no per-component image upload yet.
+- The ship image is uploaded to the public `ship_images` bucket and stored on
+  `ship_templates.image_url`; `ImagePickerModal` handles upload/list/delete.
+  The right-panel preview is a dark 7-hex board (50 ft hex radius) with stars.
+  The image keeps its natural aspect ratio and is scaled by the authored
+  **Keel length (ft)** (default 100); `image_offset_y` moves it in feet
+  (positive = up, negative = down). Overhang beyond the 7 hexes is allowed.
+  The editor has no per-component image upload yet.
 
 ## Ship Component Workshop (`/component-editor`)
 
@@ -303,8 +334,10 @@ Fields:
 - Components: Name (read-only for built-ins), Mass, Crew, Hittable, Cost,
   Effect, AC, DT, Image URL, **Can combine cards**.
 - Weapons: Name, Mass, Crew, Cost, Damage **and Fire Cycle on the same row**,
-  Min Range / Range / Max Range, Note, AC, DT, Image URL. Weapons are always
-  hittable.
+  Damage formula, Min Range / Range / Max Range, Note, AC, DT, Image URL.
+  Weapons are always hittable. The only supported formula is `{mass/10}d10`:
+  it resolves against the carrying ship's total mass with the die count rounded
+  up (75t → 8d10). Formula-only weapons leave the literal damage blank.
 
 Crew requirements may be fractional (Rudder 0.5); every actual crew count is
 rounded up per component group. Sail crew is 0.
@@ -315,7 +348,9 @@ not slugified identifiers; the workshop preserves spaces/capitalization on save.
 Fire cycle is in steps: **1 = every step (1/5 round)**, **2 = every other step**.
 The Ship Editor’s Weapon capacity selector is alphabetical, while the child rows
 are manually ordered with ▲/▼ and show the fire-cycle step and the direction(s)
-derived from the weapon cards' deck regions.
+derived from the weapon cards' deck regions. Formula weapons display their
+resolved damage in the selector using the current ship total mass; literal
+damage remains the fallback.
 
 Access: `component_editor` / `view_component_editor` (admin/dm edit, everyone
 view). The catalog RLS helpers allow either the Ship Component Workshop or the

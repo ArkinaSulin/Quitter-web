@@ -18,6 +18,7 @@ const weaponTemplate = () => ({
   effect: '',
   builtIn: false, canCombine: true, dt: 15,
   damage: '6d10',
+  damageFormula: '',
   minRange: 0,
   range: 1,
   maxRange: 1,
@@ -57,7 +58,7 @@ describe('component workshop mappers', () => {
 
   it('maps a weapon row and writes the new weapon columns', () => {
     const t = mapWeaponToTemplate({
-      id: 'w1', name: 'heavy ram', mass: 3, damage: '6d10',
+      id: 'w1', name: 'heavy ram', mass: 3, damage: '6d10', damageFormula: '{mass/10}d10',
       minRange: 0, range: 1, maxRange: 1, fireCycleStep: 2,
       dt: 15, crew: 2, cost: 100, ammoCost: null, special: 'melee', ac: 10,
     });
@@ -67,6 +68,7 @@ describe('component workshop mappers', () => {
     expect(componentTemplateToWeaponRow(t)).toMatchObject({
       name: 'heavy ram',
       mass: 3,
+      damage_formula: '{mass/10}d10',
       min_range: 0,
       range: 1,
       max_range: 1,

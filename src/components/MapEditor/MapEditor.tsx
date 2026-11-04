@@ -449,20 +449,56 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
                 {(() => {
                   const scaledW = (imgSize?.w || 0) * entity.scale;
                   const scaledH = (imgSize?.h || 0) * entity.scale;
-                  const stepX = Math.max(0.01, Math.round(scaledW * 0.01 * 100) / 100);
-                  const stepY = Math.max(0.01, Math.round(scaledH * 0.01 * 100) / 100);
+                  const stepX = Math.max(0.01, Math.round(scaledW * 0.005 * 100) / 100);
+                  const stepY = Math.max(0.01, Math.round(scaledH * 0.005 * 100) / 100);
                   const offset = (axis: 'x' | 'y', v: number) => {
+                    const limit = axis === 'x' ? scaledW : scaledH;
                     const rounded = Math.round((Number(v) || 0) * 10) / 10;
-                    return axis === 'x' ? update({ offsetX: rounded }) : update({ offsetY: rounded });
+                    const clamped = Math.max(-limit, Math.min(limit, rounded));
+                    return axis === 'x' ? update({ offsetX: clamped }) : update({ offsetY: clamped });
                   };
+                  const nudge = (axis: 'x' | 'y', delta: number) => {
+                    const current = axis === 'x' ? entity.offsetX : entity.offsetY;
+                    offset(axis, current + delta);
+                  };
+                  const nudgeButtons = (axis: 'x' | 'y', step: number) => (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={readOnly || (axis === 'x' ? scaledW : scaledH) <= 0}
+                        onClick={() => nudge(axis, -step)}
+                        title={`Decrease offset ${axis.toUpperCase()} by 0.5%`}
+                        className="w-5 h-5 rounded bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs leading-none disabled:opacity-40"
+                      >
+                        −
+                      </button>
+                      <button
+                        type="button"
+                        disabled={readOnly || (axis === 'x' ? scaledW : scaledH) <= 0}
+                        onClick={() => nudge(axis, step)}
+                        title={`Increase offset ${axis.toUpperCase()} by 0.5%`}
+                        className="w-5 h-5 rounded bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs leading-none disabled:opacity-40"
+                      >
+                        +
+                      </button>
+                    </div>
+                  );
                   return (
                     <>
-                      <label className="block text-xs text-gray-400">Offset X ({entity.offsetX.toFixed(1)}) — 1% of width
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between gap-2 text-xs text-gray-400">
+                          <span>Offset X ({entity.offsetX.toFixed(1)}) — 0.5% of width</span>
+                          {nudgeButtons('x', stepX)}
+                        </div>
                         <input type="range" min={-scaledW} max={scaledW} step={stepX} value={entity.offsetX} disabled={readOnly || scaledW <= 0} onChange={(e) => offset('x', Number(e.target.value))} className="w-full disabled:opacity-40" />
-                      </label>
-                      <label className="block text-xs text-gray-400">Offset Y ({entity.offsetY.toFixed(1)}) — 1% of height
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between gap-2 text-xs text-gray-400">
+                          <span>Offset Y ({entity.offsetY.toFixed(1)}) — 0.5% of height</span>
+                          {nudgeButtons('y', stepY)}
+                        </div>
                         <input type="range" min={-scaledH} max={scaledH} step={stepY} value={entity.offsetY} disabled={readOnly || scaledH <= 0} onChange={(e) => offset('y', Number(e.target.value))} className="w-full disabled:opacity-40" />
-                      </label>
+                      </div>
                     </>
                   );
                 })()}

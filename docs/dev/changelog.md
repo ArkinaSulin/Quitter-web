@@ -1,5 +1,126 @@
 # QuiTTER Changelog
 
+## Ship layout card track + configuration label (2026-11-02)
+**Files:** src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/ShipLayout.tsx, src/packages/ships/lib/deckLayout.ts, src/packages/ships/tests/deckLayout.test.ts, docs/dev/16-ship-builder.md, docs/dev/changelog.md, AGENTS.md
+
+- Added a **Ship layout** label above the deck diagram and renamed the
+  **Ship composition** table label to **Ship configuration**.
+- Every component/weapon card now uses one shared width track: Bow/Stern rows use
+  three centered columns, Body uses two, and Port/Starboard use one. Partial rows
+  stay centered at the same card width, including the single top Bow card.
+- Region borders are now inset rings (no width contribution), and horizontal
+  region padding was removed so all regions resolve to the same card width.
+- Stern's removable-slot minimum is now 1 (default deck remains Stern 3); the
+  loader pads Stern to 1 instead of 3.
+- Verification: `npx tsc --noEmit`, `npx vitest run src/packages/ships`.
+
+## Centered body deck rows (2026-11-02)
+**Files:** src/components/ShipRenderer/ShipLayout.tsx, docs/dev/changelog.md
+
+- Body deck slots now render in rows of two. When a slot removal leaves a single
+  body card in the last row, it is centered at half width instead of sitting on
+  the left.
+- Verification: `npx tsc --noEmit`.
+
+## Ship firing-arc compass (2026-11-02)
+**Files:** src/components/ShipRenderer/{WeaponArcIcon,ShipComponentCard}.tsx, src/components/ShipEditor/ShipEditor.tsx, docs/dev/16-ship-builder.md, docs/dev/changelog.md
+
+- Weapon cards show a small display-only firing-arc dial (top-right) marking the
+  valid arcs.
+- The weapon card context menu now has one circular four-sector compass (↑ Bow,
+  ← Port, Starboard →, ↓ Stern). Clicking a sector toggles its arc on/off; a
+  frame's protected default arc is locked. Active arcs are highlighted.
+- Fixed the compass separator path drawing a zig-zag across the circle (black
+  wedges over three sectors); each divider now starts at the centre.
+- The card/slot context menu is scroll-capped at 80vh for short viewports.
+- Verification: `npx tsc --noEmit`.
+
+## Lobby header title + editor spacing (2026-11-02)
+**Files:** src/components/Lobby.tsx, docs/dev/changelog.md
+
+- Lobby header now shows the long form ("Welcome to Quick Terrestrial Tactical
+  Encounter Rules and Quick Vehicle Encounter Rule") on a small, viewport-scaled
+  first line, with **Quitter's Quiver** as the large real title on the second.
+- Added an invisible separator between the Structure Workshop and Archfar's
+  Shipyard buttons (transparent divider, rendered only when the Structure
+  Workshop is visible).
+- Verification: `tsc --noEmit`. `next build` did not finish (timed out; `.next`
+  is likely locked by a running dev server).
+
+## Ship roster groups unnamed crew (2026-11-02)
+**Files:** src/components/ShipEditor/ShipEditor.tsx, docs/dev/changelog.md
+
+- The Ship Editor roster now lists named crew as editable rows, then renders all
+  unnamed crew as one read-only summary row (`Unnamed crew × N`) showing the
+  shared stats and per-crew cost when identical, or a mixed-stats total.
+- Verification: `tsc`, full vitest (1232), depcruise (pre-existing warnings).
+  `next build` could not run (EPERM writing `.next/trace`, likely a running dev
+  server).
+
+## Weapon firing arcs + header messages (migration 150) (2026-10-31)
+**Files:** supabase/migrations/150_ship_weapon_arcs.sql, src/types/ship.ts, src/packages/ships/lib/{shipStats,shipMappers,weaponArcs}.ts, src/packages/ships/index.ts, src/packages/ships/tests/{weaponArcs,shipMappers}.test.ts, src/components/ShipRenderer/{ShipComponentCard,ShipLayout,WeaponArcIcon}.tsx, src/components/ShipEditor/ShipEditor.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
+
+- Weapon cards now show a four-sector firing-arc dial. Non-Body frames protect
+  their default arc; Body starts at 360° and any arc can be removed.
+- Weapon card context menu adds/removes arcs with fan direction icons.
+- Deck context menu now offers Add slot / Remove slot on the current frame;
+  the old region-move list is removed.
+- Errors, success, over-mass, low-crew, and over-capacity messages moved to a
+  centered title-bar stack; derived warnings clear automatically.
+- Migration 150 adds `ship_templates.weapon_arcs`.
+- Verification: `tsc`, ship tests (74), full vitest, `next build`. **Built; not
+  committed or pushed.**
+
+## Ship deck remove-slot command (2026-10-31)
+**Files:** src/packages/ships/lib/deckLayout.ts, src/packages/ships/tests/deckLayout.test.ts, src/components/ShipRenderer/ShipLayout.tsx, src/components/ShipEditor/ShipEditor.tsx, docs/dev/16-ship-builder.md, docs/dev/changelog.md, AGENTS.md
+
+- Added **Remove slot** to the deck context menu below the region-move commands,
+  separated by a divider. It removes the bottom-most empty slot in that region,
+  respecting the one-row minimum: Bow 1 (center), Port 1, Starboard 1, Body 2,
+  Stern 3. Occupied slots are never removed. Removed the per-region header
+  remove button.
+- Fixed the removed slot being re-added: version-2 layouts now pad only to the
+  one-row minimum, not the default deck size.
+- Bow/Stern rows of 2 or 1 cards are centered while keeping the same card width.
+- Verification: `tsc`, ship tests (71), full vitest (1229), `next build`.
+  **Built; not committed or pushed.**
+
+## Ship deck reshaped: Bow reverse-T + compact body (2026-10-31)
+**Files:** src/types/ship.ts, src/packages/ships/lib/deckLayout.ts, src/packages/ships/tests/{deckLayout,shipMappers}.test.ts, src/components/ShipRenderer/ShipLayout.tsx, docs/dev/16-ship-builder.md, docs/dev/changelog.md, AGENTS.md
+
+- Bow is now 4 slots in a reverse T (top center + 3 below); Stern is 3; Port
+  and Starboard are 4; Body is 8 (2 columns × 4 rows).
+- Legacy 6/5/10/5/6 layouts are reshaped on load; cards in removed slots are
+  re-placed. Overflow still adds +1 Port, +2 Body, +1 Starboard.
+- Verification: `tsc`, ship tests (68), full vitest (1226). **Built; not
+  committed or pushed.**
+
+## Mass-scaled ship weapon damage (migration 149) (2026-10-31)
+**Files:** supabase/migrations/149_ship_weapon_damage_formula.sql, src/types/ship.ts, src/packages/ships/lib/{shipMappers,componentMappers,shipDamage}.ts, src/packages/ships/index.ts, src/packages/ships/tests/{shipMappers,componentMappers,shipDamage}.test.ts, src/components/ComponentEditor/{ComponentEditor,ComponentFields}.tsx, src/components/ShipEditor/ShipEditor.tsx, docs/dev/{02,16,changelog}.md, AGENTS.md
+
+- Added optional `ship_weapons.damage_formula`. Supported syntax is
+  `{mass/10}d10`, resolved against the carrying ship's total mass with the die
+  count rounded up (75t → 8d10). The literal damage remains the fallback; a
+  formula-only weapon may leave it blank.
+- The Component Workshop exposes the formula and its example/help text. The Ship
+  Editor weapon selector shows the resolved damage for the current ship.
+- Migration 149 adds `damage_formula`.
+- Verification: `tsc`, ship tests (67), full vitest (1225). **Not committed or
+  pushed.**
+
+## Ship image hex preview + finer map offsets (migration 148) (2026-10-31)
+**Files:** supabase/migrations/148_ship_image_frame.sql, src/types/ship.ts, src/packages/ships/lib/shipMappers.ts, src/packages/ships/tests/shipMappers.test.ts, src/components/ShipRenderer/ShipImagePreview.tsx, src/components/ShipEditor/ShipEditor.tsx, src/components/MapEditor/MapEditor.tsx, docs/dev/{02,13,16,changelog}.md, AGENTS.md
+
+- Ship image preview is now a dark 7-hex board (50 ft radius) with a fixed star
+  field. The image keeps its natural aspect ratio, scales to the authored
+  **Keel length (ft)** (default 100), and uses `image_offset_y` in feet
+  (positive = up). Overhang is allowed.
+- Migration 148 adds `ship_templates.keel_length` and `image_offset_y`.
+- Map Editor offset sliders now step by 0.5% of the scaled image (was 1%) and
+  gained −/+ nudge buttons for fine adjustment.
+- Verification: `tsc`, ship tests (64), full vitest (1222), depcruise
+  (pre-existing warnings), `next build`. **Build only; not committed or pushed.**
+
 ## Fix: ship card safety follows hittable (2026-10-31)
 **Files:** src/components/ShipRenderer/ShipLayout.tsx, src/packages/ships/lib/shipStats.ts, src/packages/ships/tests/shipStats.test.ts, docs/dev/{16,changelog}.md
 

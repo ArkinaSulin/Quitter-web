@@ -41,6 +41,8 @@ export interface ShipWeapon {
   name: string;
   mass: number;
   damage: string;
+  /** Optional mass-scaled damage formula, e.g. `{mass/10}d10`. */
+  damageFormula: string | null;
   minRange: number;
   range: number;
   maxRange: number;
@@ -70,6 +72,7 @@ export interface ShipComponentTemplate {
   canCombine: boolean;
   dt: number;
   damage: string;
+  damageFormula: string;
   minRange: number;
   range: number;
   maxRange: number;
@@ -95,6 +98,15 @@ export interface ShipTemplateWeapon {
 
 export type ShipDeckRegion = 'bow' | 'stern' | 'port' | 'body' | 'starboard';
 
+export type WeaponArc = 'bow' | 'port' | 'starboard' | 'stern';
+
+export interface WeaponArcOverrides {
+  added?: WeaponArc[];
+  removed?: WeaponArc[];
+}
+
+export type ShipWeaponArcMap = Record<string, WeaponArcOverrides>;
+
 /** One deck slot. */
 export interface ShipDeckSlot {
   cardKey: string | null;
@@ -102,6 +114,8 @@ export interface ShipDeckSlot {
 
 /** Deck region containers. Middle regions can grow when all slots are full. */
 export interface ShipDeckLayout {
+  /** 2 = current Bow4/Body8 shape; absent = legacy layout to reshape. */
+  version?: number;
   bow: ShipDeckSlot[];
   stern: ShipDeckSlot[];
   port: ShipDeckSlot[];
@@ -148,12 +162,18 @@ export interface ShipTemplate {
   deckLayout: ShipDeckLayout;
   /** Card keys carrying a reinforcement. */
   reinforcements: string[];
+  /** Per weapon-card firing-arc overrides. */
+  weaponArcs: ShipWeaponArcMap;
   /** Authored atmospheric speed (0–12). */
   atmosphericSpeed: number;
   /** Authored damage threshold (default 15). */
   damageThreshold: number;
   /** Ship preview image (`ship_images` bucket). */
   imageUrl: string;
+  /** Authored keel length in feet (image scales to this height). */
+  keelLength: number;
+  /** Image vertical offset in feet; positive = up, negative = down. */
+  imageOffsetY: number;
   /** Designated cargo (tons). */
   cargoArea: number;
   optionalComponents: ShipTemplateComponent[];

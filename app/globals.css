@@ -38,6 +38,16 @@ body {
   background: #3a3a5a;
 }
 
+/* Larger native number-input spinners in the Ship Editor. */
+.ship-num-input::-webkit-inner-spin-button,
+.ship-num-input::-webkit-outer-spin-button {
+  height: 1.5rem;
+  width: 1.15rem;
+  margin-left: 2px;
+  opacity: 1;
+  cursor: pointer;
+}
+
 /* Map ping — expanding concentric radar rings (feature #4). */
 @keyframes ping-ring {
   0% {

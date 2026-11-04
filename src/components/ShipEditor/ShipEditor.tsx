@@ -11,15 +11,18 @@ import {
   ShipDeckRegion,
   ShipTemplate,
   ShipWeapon,
+  WeaponArc,
 } from '@/types/ship';
 import {
   COMPONENT_NAMES,
   DEFAULT_CREW_STATS,
   DEFAULT_TOTAL_MASS,
-  DECK_REGION_LABELS,
-  DECK_REGIONS,
   DeckCard,
+  WEAPON_ARCS,
+  addSlotToRegion,
+  addWeaponArc,
   canPlaceWeapon,
+  canRemoveLastEmptySlot,
   componentByName,
   computeCrewHp,
   computeCrewWeeklyCost,
@@ -28,7 +31,11 @@ import {
   computeShipBuild,
   createDefaultDeckLayout,
   deckDirection,
-  moveSlotToRegion,
+  effectiveWeaponArcs,
+  isProtectedDefaultArc,
+  removeLastEmptySlot,
+  removeWeaponArc,
+  resolveShipWeaponDamage,
   syncDeckLayout,
   weaponById,
   weaponTons,
@@ -46,7 +53,9 @@ import {
 } from '@/packages/ships';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { ShipLayout } from '@/components/ShipRenderer/ShipLayout';
+import { ShipImagePreview } from '@/components/ShipRenderer/ShipImagePreview';
 import { ShipComponentCardData } from '@/components/ShipRenderer/ShipComponentCard';
+import { WeaponArcCompass } from '@/components/ShipRenderer/WeaponArcIcon';
 
 type CrewDraft = {
   count: number;
@@ -100,7 +109,7 @@ function NumInput({ value, onChange, min, max, step, disabled }: {
       step={step}
       disabled={disabled}
       onChange={e => onChange(parseFloat(e.target.value) || 0)}
-      className={`w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      className={`ship-num-input w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     />
   );
 }
@@ -230,6 +239,7 @@ function buildFromTemplate(
     crews: t.crews,
     deckLayout,
     reinforcements: t.reinforcements.filter(key => cardKeys.has(key)),
+    weaponArcs: t.weaponArcs,
     templateComponents: t.optionalComponents,
     templateWeapons: t.weapons,
   };
@@ -404,11 +414,28 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     setCardMenu({ data, region, index, x: event.clientX, y: event.clientY });
   };
 
-  const moveSlot = (target: ShipDeckRegion) => {
-    if (!formData || !build || !cardMenu?.region || cardMenu.index == null) return;
+  const addSlot = () => {
+    if (!formData || !build || !cardMenu?.region) return;
     setError(null);
-    updateFormData('deckLayout', moveSlotToRegion(build.deckLayout!, cardMenu.region, cardMenu.index, target));
+    updateFormData('deckLayout', addSlotToRegion(build.deckLayout!, cardMenu.region));
     setCardMenu(null);
+  };
+
+  const removeSlot = () => {
+    if (!formData || !build || !cardMenu?.region) return;
+    if (!canRemoveLastEmptySlot(build.deckLayout!, cardMenu.region)) return;
+    setError(null);
+    updateFormData('deckLayout', removeLastEmptySlot(build.deckLayout!, cardMenu.region));
+    setCardMenu(null);
+  };
+
+  const setFiringArc = (arc: WeaponArc, mode: 'add' | 'remove') => {
+    if (!formData || !cardMenu?.region || !cardMenu.data?.cardKey) return;
+    const key = cardMenu.data.cardKey;
+    const next = mode === 'add'
+      ? addWeaponArc(formData.weaponArcs[key], cardMenu.region, arc)
+      : removeWeaponArc(formData.weaponArcs[key], cardMenu.region, arc);
+    updateFormData('weaponArcs', { ...formData.weaponArcs, [key]: next });
   };
 
   const toggleReinforcement = (cardKey: string) => {
@@ -590,9 +617,12 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       weaponCapacity: 0,
       deckLayout: createDefaultDeckLayout(),
       reinforcements: [],
+      weaponArcs: {},
       atmosphericSpeed: 0,
       damageThreshold: 15,
       imageUrl: '',
+      keelLength: 100,
+      imageOffsetY: 0,
       cargoArea: 0,
       optionalComponents: [],
       weapons: [],
@@ -641,6 +671,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         name: cloneName.trim(),
         deckLayout: build?.deckLayout ?? formData.deckLayout,
         reinforcements: build?.reinforcements ?? formData.reinforcements,
+        weaponArcs: build?.weaponArcs ?? formData.weaponArcs,
         optionalComponents: formData.optionalComponents.map(c => ({ ...c })),
         weapons: formData.weapons.map(w => ({ ...w })),
         crews: formData.crews.map(c => ({ ...c, id: crypto.randomUUID() })),
@@ -712,6 +743,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         ...formData,
         deckLayout: build?.deckLayout ?? formData.deckLayout,
         reinforcements: build?.reinforcements ?? formData.reinforcements,
+        weaponArcs: build?.weaponArcs ?? formData.weaponArcs,
       };
       const existsInDB = templates.some(t => t.id === formData.id);
       let id = formData.id;
@@ -850,9 +882,57 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
   return (
     <div className="flex flex-col h-screen bg-[#0d0d1a] text-white">
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-700 bg-[#0d0d1a]">
-        <h1 className="text-2xl font-bold text-white">Archfar's Shipyard</h1>
-        <div className="flex items-center gap-3">
+      <div className="relative flex items-center justify-between px-6 py-3 border-b border-gray-700 bg-[#0d0d1a]">
+        <h1 className="shrink-0 text-2xl font-bold text-white">Archfar's Shipyard</h1>
+        <div
+          className="pointer-events-none absolute left-1/2 top-1/2 z-20 w-[min(44rem,46vw)] -translate-x-1/2 -translate-y-1/2"
+          aria-live="polite"
+        >
+          <div className="pointer-events-auto max-h-16 space-y-1 overflow-y-auto">
+            {error && (
+              <div
+                role="alert"
+                className="rounded border border-red-500 bg-red-900/95 px-3 py-1.5 text-[11px] text-white shadow-xl backdrop-blur"
+              >
+                <div className="flex items-start gap-2">
+                  <span className="flex-1">{error}</span>
+                  <button
+                    type="button"
+                    className="shrink-0 text-red-200 hover:text-white"
+                    onClick={() => setError(null)}
+                    aria-label="Dismiss error"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
+            {success && (
+              <div
+                role="status"
+                className="rounded border border-green-500 bg-green-900/95 px-3 py-1.5 text-[11px] text-white shadow-xl backdrop-blur"
+              >
+                {success}
+              </div>
+            )}
+            {massOverload && (
+              <div className="rounded border border-red-500 bg-red-900/90 px-3 py-1.5 text-[11px] text-red-100">
+                Over the designated mass by {Math.abs(stats?.remainingMass ?? 0)}t — remove fittings or raise total mass.
+              </div>
+            )}
+            {formData && stats && formData.crews.length < stats.minCrew && (
+              <div className="rounded border border-amber-500 bg-amber-900/90 px-3 py-1.5 text-[11px] text-amber-100">
+                Below minimum crew ({stats.minCrew}) — the ship cannot operate all stations.
+              </div>
+            )}
+            {crewOverCapacity && (
+              <div className="rounded border border-red-500 bg-red-900/90 px-3 py-1.5 text-[11px] text-red-100">
+                Crew roster ({formData?.crews.length ?? 0}) exceeds quarters capacity ({stats?.crewCapacity ?? 0}).
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
           {readOnly && (
             <span className="px-3 py-1 rounded bg-gray-700 border border-gray-600 text-xs text-gray-300">
               Read-only view — building requires an admin
@@ -866,18 +946,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
           </button>
         </div>
       </div>
-
-      {error && (
-        <div className="bg-red-900/50 border border-red-500 text-white px-4 py-2 mx-4 mt-2 rounded">
-          {error}
-          <button className="ml-4 text-red-300 hover:text-red-100" onClick={() => setError(null)}>✕</button>
-        </div>
-      )}
-      {success && (
-        <div className="bg-green-900/50 border border-green-500 text-white px-4 py-2 mx-4 mt-2 rounded">
-          {success}
-        </div>
-      )}
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left — template picker */}
@@ -919,7 +987,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                     }`}
                   >
                     <div className="font-medium truncate">{template.name}</div>
-                    <div className="text-xs text-gray-400">
+                    {template.role?.trim() && (
+                      <div className="text-sm text-gray-300 truncate">{template.role}</div>
+                    )}
+                    <div className="text-xs text-gray-500">
                       {template.totalMass}t · {armorName(template.armorId)}
                     </div>
                   </div>
@@ -1063,29 +1134,13 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         </div>
                       )}
 
-                      {massOverload && (
-                        <p className="text-[10px] text-red-400 mt-2">
-                          Over the designated mass by {Math.abs(stats.remainingMass)}t — remove fittings or raise total mass.
-                        </p>
-                      )}
-                      {formData.crews.length < stats.minCrew && (
-                        <p className="text-[10px] text-amber-400 mt-1">
-                          Below minimum crew ({stats.minCrew}) — the ship cannot operate all stations.
-                        </p>
-                      )}
-                      {crewOverCapacity && (
-                        <p className="text-[10px] text-red-400 mt-1">
-                          Crew roster ({formData.crews.length}) exceeds quarters capacity ({stats.crewCapacity}).
-                          Add crew quarters or remove crew before saving.
-                        </p>
-                      )}
                     </div>
                   )}
 
                   {/* Composition */}
                   <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
                     <div className="flex items-center justify-between mb-2">
-                      <label className="block text-[10px] text-gray-400">Ship composition</label>
+                      <label className="block text-[10px] text-gray-400">Ship configuration</label>
                       <button
                         type="button"
                         onClick={() => setShowComponentsModal(true)}
@@ -1112,7 +1167,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                           <td className="text-center px-2 text-gray-500">—</td>
                           <td className="text-right px-2">{stats?.massBreakdown.hull ?? 0}</td>
                           <td className="text-right px-2">0</td>
-                          <td className="pl-2 text-gray-500">Read-only mass · safe</td>
+                          <td className="pl-2 text-gray-500">Ship frame and structure</td>
                           <td className="text-right pl-2 text-yellow-400">{hullCost.toLocaleString()}gp</td>
                         </tr>
 
@@ -1236,7 +1291,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                         >
                                           {weaponOptions.map(weap => (
                                             <option key={weap.id} value={weap.id}>
-                                              {weap.name} — {weap.damage} ({weap.mass}t, crew {weap.crew}, every {weap.fireCycleStep} step{weap.fireCycleStep === 1 ? '' : 's'})
+                                              {weap.name} — {resolveShipWeaponDamage(weap, formData.totalMass)} ({weap.mass}t, crew {weap.crew}, every {weap.fireCycleStep} step{weap.fireCycleStep === 1 ? '' : 's'})
                                             </option>
                                           ))}
                                         </select>
@@ -1469,35 +1524,57 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         <div className="flex-[0_0_34%] min-w-[320px] max-w-[44%] p-4 border-l border-gray-700 bg-[#0d0d1a] overflow-y-auto">
           {formData && build && stats ? (
             <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-[10px] text-gray-400">Ship image</label>
-                  {!readOnly && (
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1 space-y-2">
+                  {!readOnly ? (
                     <button
                       type="button"
                       onClick={() => setShowImagePicker(true)}
-                      className="px-2 py-0.5 text-[10px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700"
+                      className="w-full px-2 py-1 text-[10px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700"
                     >
                       {formData.imageUrl ? 'Change image' : 'Upload image'}
                     </button>
-                  )}
-                </div>
-                <div className="aspect-video rounded-xl border border-gray-700 bg-gray-900 flex items-center justify-center overflow-hidden">
-                  {formData.imageUrl ? (
-                    <img src={formData.imageUrl} alt="" className="w-full h-full object-contain" />
                   ) : (
-                    <span className="text-[11px] text-gray-600">No ship image</span>
+                    <div className="text-[10px] text-gray-400">Ship image</div>
                   )}
+                  <Cell label="Keel length (ft)" widthClass="w-full">
+                    <NumInput
+                      value={formData.keelLength}
+                      min={1}
+                      max={2000}
+                      disabled={readOnly}
+                      onChange={(v) => updateFormData('keelLength', Math.max(1, Math.floor(v)))}
+                    />
+                  </Cell>
+                  <Cell label="Vertical offset (ft)" widthClass="w-full">
+                    <NumInput
+                      value={formData.imageOffsetY}
+                      min={-2000}
+                      max={2000}
+                      disabled={readOnly}
+                      onChange={(v) => updateFormData('imageOffsetY', Math.round(v))}
+                    />
+                  </Cell>
+                </div>
+                <div className="shrink-0">
+                  <ShipImagePreview
+                    imageUrl={formData.imageUrl}
+                    keelLength={formData.keelLength}
+                    imageOffsetY={formData.imageOffsetY}
+                  />
                 </div>
               </div>
 
-              <ShipLayout
-                build={build}
-                stats={stats}
-                readOnly={readOnly}
-                onDeckChange={(layout) => updateFormData('deckLayout', layout)}
-                onSlotContextMenu={readOnly ? undefined : handleSlotContextMenu}
-              />
+              <div>
+                <label className="block text-[10px] text-gray-400 mb-1">Ship layout</label>
+                <ShipLayout
+                  build={build}
+                  stats={stats}
+                  readOnly={readOnly}
+                  onDeckChange={(layout) => updateFormData('deckLayout', layout)}
+                  onSlotContextMenu={readOnly ? undefined : handleSlotContextMenu}
+                />
+              </div>
 
               <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
                 <div className="flex items-center justify-between mb-2">
@@ -1534,33 +1611,66 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                   </div>
                 ) : (
                   <div className="space-y-1">
-                    {formData.crews.map((c, index) => (
-                      <div key={c.id} className="flex items-center justify-between gap-2 bg-gray-800 rounded px-2 py-1">
-                        <div className="min-w-0 text-[11px] text-gray-200">
-                          {c.name || <span className="text-gray-500">Unnamed crew</span>}
-                          <span className="text-gray-500">
-                            {' '}— Level {c.level}, HP {c.hp}, {c.str}-{c.dex}-{c.con}-{c.int}-{c.wis}-{c.cha},{' '}
-                          </span>
-                          <span className="text-green-400">{c.cost} Gp</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => openEditCrew(index)}
-                            className="text-[10px] bg-blue-700 hover:bg-blue-600 px-1.5 py-0.5 rounded text-white"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeCrew(index)}
-                            className="text-[10px] bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded text-white"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                    {(() => {
+                      const named = formData.crews.map((c, index) => ({ c, index })).filter(({ c }) => !!c.name);
+                      const unnamed = formData.crews.map((c, index) => ({ c, index })).filter(({ c }) => !c.name);
+                      const unnamedCost = unnamed.reduce((sum, { c }) => sum + c.cost, 0);
+                      const first = unnamed[0]?.c;
+                      const uniform = !!first && unnamed.every(({ c }) =>
+                        c.level === first.level && c.hp === first.hp && c.cost === first.cost &&
+                        c.str === first.str && c.dex === first.dex && c.con === first.con &&
+                        c.int === first.int && c.wis === first.wis && c.cha === first.cha
+                      );
+                      return (
+                        <>
+                          {named.map(({ c, index }) => (
+                            <div key={c.id} className="flex items-center justify-between gap-2 bg-gray-800 rounded px-2 py-1">
+                              <div className="min-w-0 text-[11px] text-gray-200">
+                                {c.name}
+                                <span className="text-gray-500">
+                                  {' '}— Level {c.level}, HP {c.hp}, {c.str}-{c.dex}-{c.con}-{c.int}-{c.wis}-{c.cha},{' '}
+                                </span>
+                                <span className="text-green-400">{c.cost} Gp</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditCrew(index)}
+                                  className="text-[10px] bg-blue-700 hover:bg-blue-600 px-1.5 py-0.5 rounded text-white"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeCrew(index)}
+                                  className="text-[10px] bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded text-white"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                          {unnamed.length > 0 && first && (
+                            <div className="flex items-center justify-between gap-2 bg-gray-800/60 border border-dashed border-gray-600 rounded px-2 py-1">
+                              <div className="min-w-0 text-[11px] text-gray-300">
+                                Unnamed crew × {unnamed.length}
+                                {uniform ? (
+                                  <span className="text-gray-500">
+                                    {' '}— Level {first.level}, HP {first.hp}, {first.str}-{first.dex}-{first.con}-{first.int}-{first.wis}-{first.cha},{' '}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-500"> — mixed stats, </span>
+                                )}
+                                <span className="text-green-400">{uniform ? `${first.cost} Gp each` : `${unnamedCost} Gp total`}</span>
+                              </div>
+                              {uniform && (
+                                <span className="text-[10px] text-gray-400 whitespace-nowrap">{unnamedCost} Gp</span>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -1688,6 +1798,13 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         const key = cardMenu.data?.cardKey;
         const assigned = key ? formData.reinforcements.includes(key) : false;
         const canAdd = assigned || formData.reinforcements.length < formData.reinforcement;
+        const canRemove = !!build?.deckLayout && !!cardMenu.region
+          ? canRemoveLastEmptySlot(build.deckLayout, cardMenu.region)
+          : false;
+        const arcKey = cardMenu.data?.kind === 'weapon' ? cardMenu.data.cardKey : undefined;
+        const arcs = arcKey && cardMenu.region
+          ? effectiveWeaponArcs(cardMenu.region, formData.weaponArcs[arcKey])
+          : [];
         return (
           <>
             <div
@@ -1696,10 +1813,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
               onContextMenu={(e) => { e.preventDefault(); setCardMenu(null); }}
             />
             <div
-              className="fixed z-50 w-56 rounded border border-gray-600 bg-gray-800 p-1 shadow-xl"
+              className="fixed z-50 w-56 max-h-[80vh] overflow-y-auto rounded border border-gray-600 bg-gray-800 p-1 shadow-xl"
               style={{
                 left: Math.min(cardMenu.x, window.innerWidth - 240),
-                top: Math.min(cardMenu.y, window.innerHeight - 300),
+                top: Math.min(cardMenu.y, window.innerHeight - 480),
               }}
             >
               {cardMenu.data && (
@@ -1717,26 +1834,40 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                   >
                     {assigned ? 'Remove reinforcement' : 'Add reinforcement'}
                   </button>
-                  {!assigned && !canAdd && (
-                    <div className="px-2 pb-1 text-[9px] text-amber-400">No reinforcement modules left.</div>
-                  )}
                 </>
               )}
-              {cardMenu.region && cardMenu.index != null && (
+              {cardMenu.region && (
                 <>
-                  <div className="mt-1 border-t border-gray-700 px-2 pt-1 text-[9px] uppercase tracking-wide text-gray-500">
-                    Move slot to
+                  <div className="my-1 border-t border-gray-700" />
+                  <button
+                    type="button"
+                    onClick={addSlot}
+                    className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-gray-700"
+                  >
+                    Add slot
+                  </button>
+                  <button
+                    type="button"
+                    onClick={removeSlot}
+                    disabled={!canRemove}
+                    title={canRemove ? 'Remove the bottom-most empty slot in this region' : 'No removable empty slot'}
+                    className="w-full text-left px-2 py-1.5 text-xs rounded text-red-300 hover:bg-red-900/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Remove slot
+                  </button>
+                </>
+              )}
+              {arcKey && cardMenu.region && (
+                <>
+                  <div className="my-1 border-t border-gray-700" />
+                  <div className="px-2 py-1 text-[10px] text-gray-400">
+                    Firing arcs — click to toggle
                   </div>
-                  {DECK_REGIONS.filter(region => region !== cardMenu.region).map(region => (
-                    <button
-                      key={region}
-                      type="button"
-                      onClick={() => moveSlot(region)}
-                      className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-gray-700"
-                    >
-                      {DECK_REGION_LABELS[region]}
-                    </button>
-                  ))}
+                  <WeaponArcCompass
+                    active={arcs}
+                    locked={WEAPON_ARCS.filter(arc => isProtectedDefaultArc(cardMenu.region!, arc))}
+                    onToggle={arc => setFiringArc(arc, arcs.includes(arc) ? 'remove' : 'add')}
+                  />
                 </>
               )}
               <button

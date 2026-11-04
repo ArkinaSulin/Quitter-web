@@ -123,7 +123,7 @@ export function ComponentFields({
       {isWeapon && (
         <>
           <div className="grid grid-cols-[1fr_140px] gap-2">
-            <Cell label="Damage">
+            <Cell label="Damage (literal/fallback)">
               <input
                 type="text"
                 value={value.damage}
@@ -136,6 +136,15 @@ export function ComponentFields({
               <NumInput value={value.fireCycleStep} min={1} integer onChange={v => patch({ fireCycleStep: v })} />
             </Cell>
           </div>
+          <Cell label="Damage formula (optional)">
+            <input
+              type="text"
+              value={value.damageFormula}
+              onChange={e => patch({ damageFormula: e.target.value })}
+              className={INPUT}
+              placeholder="{mass/10}d10"
+            />
+          </Cell>
           <div className="grid grid-cols-3 gap-2">
             <Cell label="Min range">
               <NumInput value={value.minRange} min={0} integer onChange={v => patch({ minRange: v })} />
@@ -148,7 +157,9 @@ export function ComponentFields({
             </Cell>
           </div>
           <p className="text-[10px] text-gray-500">
-            Fire cycle: 1 = every step (1/5 round), 2 = every other step. Ram slots accept only max range 1.
+            Damage formula overrides literal damage and resolves from the carrying ship's total mass,
+            rounded up. Example: {'{mass/10}d10'} → 70t = 7d10. Fire cycle: 1 = every step (1/5 round),
+            2 = every other step.
           </p>
           <Cell label="Weapon note">
             <textarea
