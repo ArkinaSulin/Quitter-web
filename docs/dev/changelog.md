@@ -1,5 +1,17 @@
 # QuiTTER Changelog
 
+## Ship editor cleanup (2026-11-02)
+**Files:** src/components/ShipEditor/ShipEditor.tsx, docs/dev/changelog.md
+
+- Removed the unused `ReadBox` component and merged duplicate `@/packages/ships`
+  imports.
+- Extracted shared save/clone helpers: `fetchTemplateById`, `replaceChildRows`,
+  `adoptTemplate`, `flashSuccess`, `withSyncedDeck`, `isNameTaken`, and
+  `weaponPlacedMass`. Save, clone, and delete now share one persistence path.
+- Extracted `groupCrew`/`crewStatLine` and drove the six crew stat inputs from
+  one typed list. Optional-component lookups now use `componentById`.
+- No behavior or rules changed. Verification: `tsc --noEmit`, 74 ship tests.
+
 ## Ship layout card track + configuration label (2026-11-02)
 **Files:** src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/ShipLayout.tsx, src/packages/ships/lib/deckLayout.ts, src/packages/ships/tests/deckLayout.test.ts, docs/dev/16-ship-builder.md, docs/dev/changelog.md, AGENTS.md
 

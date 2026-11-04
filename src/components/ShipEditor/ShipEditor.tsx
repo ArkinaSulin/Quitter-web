@@ -23,6 +23,7 @@ import {
   addWeaponArc,
   canPlaceWeapon,
   canRemoveLastEmptySlot,
+  componentById,
   componentByName,
   computeCrewHp,
   computeCrewWeeklyCost,
@@ -40,10 +41,8 @@ import {
   weaponById,
   weaponTons,
   ShipBuild,
-} from '@/packages/ships';
-import {
-  mapOptionalComponentRows,
   mapCrewRows,
+  mapOptionalComponentRows,
   mapShipArmorRow,
   mapShipComponentRow,
   mapShipTemplateRow,
@@ -114,18 +113,6 @@ function NumInput({ value, onChange, min, max, step, disabled }: {
   );
 }
 
-function ReadBox({ children, tone = 'default' }: { children: React.ReactNode; tone?: 'default' | 'warn' | 'red' }) {
-  const color =
-    tone === 'red' ? 'text-red-400' :
-    tone === 'warn' ? 'text-amber-400' :
-    'text-yellow-400';
-  return (
-    <div className={`w-full bg-gray-700 ${color} text-xs rounded px-2 py-1 border border-gray-600`}>
-      {children}
-    </div>
-  );
-}
-
 /** A Stat-grid cell: small label over a bold value. */
 function StatCell({ label, children, tone = 'default' }: { label: string; children: React.ReactNode; tone?: 'default' | 'warn' | 'red' }) {
   const color =
@@ -174,6 +161,24 @@ function mcColor(mc: number) {
   return 'bg-red-700 text-white';
 }
 
+function crewStatLine(crew: ShipCrew): string {
+  return `Level ${crew.level}, HP ${crew.hp}, ${crew.str}-${crew.dex}-${crew.con}-${crew.int}-${crew.wis}-${crew.cha}`;
+}
+
+function groupCrew(crews: ShipCrew[]) {
+  const indexed = crews.map((crew, index) => ({ crew, index }));
+  const named = indexed.filter(({ crew }) => !!crew.name);
+  const unnamed = indexed.filter(({ crew }) => !crew.name);
+  const unnamedCost = unnamed.reduce((sum, { crew }) => sum + crew.cost, 0);
+  const first = unnamed[0]?.crew;
+  const uniform = !!first && unnamed.every(({ crew }) =>
+    crew.level === first.level && crew.hp === first.hp && crew.cost === first.cost &&
+    crew.str === first.str && crew.dex === first.dex && crew.con === first.con &&
+    crew.int === first.int && crew.wis === first.wis && crew.cha === first.cha
+  );
+  return { named, unnamed, unnamedCost, first, uniform };
+}
+
 function buildFromTemplate(
   t: ShipTemplate,
   armors: ShipArmor[],
@@ -187,6 +192,7 @@ function buildFromTemplate(
     const comp = componentByName(components, name);
     return `component:${comp.id || fallback}`;
   };
+  const deckCards: DeckCard[] = [];
   const pushComponentCards = (baseKey: string, count: number, canCombine: boolean) => {
     if (count <= 0) return;
     if (canCombine) {
@@ -197,7 +203,6 @@ function buildFromTemplate(
       deckCards.push({ key: `${baseKey}:${i}`, kind: 'component' });
     }
   };
-  const deckCards: DeckCard[] = [];
   const helmComponent = componentByName(components, COMPONENT_NAMES.helm);
   pushComponentCards(`component:${helmComponent.id || 'helm'}`, t.helm, helmComponent.canCombine);
   const bridgeComponent = componentByName(components, COMPONENT_NAMES.commandBridge);
@@ -210,8 +215,8 @@ function buildFromTemplate(
   if (Math.round(t.cargoArea) > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.cargo, 'cargo'), kind: 'component' });
   if (Math.round(t.crewQuarters) > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.crewQuarters, 'crew_quarters'), kind: 'component' });
   for (const row of t.optionalComponents) {
-    const component = components.find(c => c.id === row.componentId);
-    pushComponentCards(`optional:${row.componentId}`, row.count, component?.canCombine !== false);
+    const component = componentById(components, row.componentId);
+    pushComponentCards(`optional:${row.componentId}`, row.count, component.canCombine !== false);
   }
   for (const row of t.weapons) {
     for (let i = 0; i < row.count; i += 1) {
@@ -358,11 +363,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const setWeaponRow = (index: number, field: 'weaponId' | 'count', value: any) => {
     if (!formData) return;
     const weapons = formData.weapons.map((w, i) => (i === index ? { ...w, [field]: value } : w));
-    const nextMass = weapons.reduce((sum, w) => {
-      const weapon = weaponsCatalog.find(x => x.id === w.weaponId);
-      return sum + (weapon ? weaponTons(weapon) * w.count : 0);
-    }, 0);
-    if (nextMass > formData.weaponCapacity) {
+    if (weaponPlacedMass(weapons) > formData.weaponCapacity) {
       setError('That change would exceed the allocated weapon capacity.');
       return;
     }
@@ -373,7 +374,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const addWeapon = () => {
     if (!formData || weaponsCatalog.length === 0) return;
     const capacity = stats?.weaponCapacity ?? 0;
-    const placed = stats?.weaponPlacedTons ?? 0;
+    const placed = weaponPlacedMass(formData.weapons);
     const candidate = weaponsCatalog.find(w => canPlaceWeapon(placed, capacity, weaponTons(w)));
     if (!candidate) {
       setError('No weapon capacity left. Increase the Weapon capacity row first.');
@@ -654,65 +655,104 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     });
   };
 
+  const withSyncedDeck = (template: ShipTemplate): ShipTemplate => ({
+    ...template,
+    deckLayout: build?.deckLayout ?? template.deckLayout,
+    reinforcements: build?.reinforcements ?? template.reinforcements,
+    weaponArcs: build?.weaponArcs ?? template.weaponArcs,
+  });
+
+  const fetchTemplateById = async (id: string): Promise<ShipTemplate> => {
+    const { data } = await supabase
+      .from('ship_templates')
+      .select('*, ship_template_components(*), ship_template_weapons(*), ship_crews(*)')
+      .eq('id', id)
+      .single();
+    if (!data) throw new Error('No data returned from save operation');
+    return mapShipTemplateRow(data);
+  };
+
+  const replaceChildRows = async (ship: ShipTemplate) => {
+    await supabase.from('ship_template_components').delete().eq('template_id', ship.id);
+    const accRows = mapOptionalComponentRows(ship);
+    if (accRows.length) {
+      const { error } = await supabase.from('ship_template_components').insert(accRows);
+      if (error) throw error;
+    }
+    await supabase.from('ship_template_weapons').delete().eq('template_id', ship.id);
+    const wpnRows = mapWeaponRows(ship);
+    if (wpnRows.length) {
+      const { error } = await supabase.from('ship_template_weapons').insert(wpnRows);
+      if (error) throw error;
+    }
+    await supabase.from('ship_crews').delete().eq('template_id', ship.id);
+    const crewRows = mapCrewRows(ship);
+    if (crewRows.length) {
+      const { error } = await supabase.from('ship_crews').insert(crewRows);
+      if (error) throw error;
+    }
+  };
+
+  const adoptTemplate = (mapped: ShipTemplate) => {
+    setTemplates(prev => {
+      const idx = prev.findIndex(t => t.id === mapped.id);
+      if (idx < 0) return [...prev, mapped];
+      const copy = [...prev];
+      copy[idx] = mapped;
+      return copy;
+    });
+    setSelectedId(mapped.id);
+    setFormData(mapped);
+    savedSnapshotRef.current = JSON.stringify(mapped);
+  };
+
+  const flashSuccess = (message: string) => {
+    setSuccess(message);
+    setTimeout(() => setSuccess(null), 3000);
+  };
+
+  const isNameTaken = (name: string, exceptId?: string) =>
+    templates.some(t => t.name === name && t.id !== exceptId);
+
+  const weaponPlacedMass = (rows: ShipTemplate['weapons']) =>
+    rows.reduce((sum, row) => {
+      const weapon = weaponById(weaponsCatalog, row.weaponId);
+      return sum + (weapon ? weaponTons(weapon) * row.count : 0);
+    }, 0);
+
   const confirmClone = async () => {
     if (!formData) return;
     if (!cloneName.trim()) {
       setCloneError('Name is required');
       return;
     }
-    if (templates.some(t => t.name === cloneName.trim())) {
+    if (isNameTaken(cloneName.trim())) {
       setCloneError('A ship with this name already exists');
       return;
     }
     try {
-      const newShip: ShipTemplate = {
+      const newShip: ShipTemplate = withSyncedDeck({
         ...formData,
         id: crypto.randomUUID(),
         name: cloneName.trim(),
-        deckLayout: build?.deckLayout ?? formData.deckLayout,
-        reinforcements: build?.reinforcements ?? formData.reinforcements,
-        weaponArcs: build?.weaponArcs ?? formData.weaponArcs,
         optionalComponents: formData.optionalComponents.map(c => ({ ...c })),
         weapons: formData.weapons.map(w => ({ ...w })),
         crews: formData.crews.map(c => ({ ...c, id: crypto.randomUUID() })),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      };
+      });
       const { data, error } = await supabase
         .from('ship_templates')
         .insert(mapShipTemplateToRow(newShip))
         .select('id')
         .single();
       if (error) throw error;
-      const accRows = mapOptionalComponentRows(newShip);
-      if (accRows.length) {
-        const { error: accErr } = await supabase.from('ship_template_components').insert(accRows);
-        if (accErr) throw accErr;
-      }
-      const wpnRows = mapWeaponRows(newShip);
-      if (wpnRows.length) {
-        const { error: wpnErr } = await supabase.from('ship_template_weapons').insert(wpnRows);
-        if (wpnErr) throw wpnErr;
-      }
-      const crewRows = mapCrewRows(newShip);
-      if (crewRows.length) {
-        const { error: crewErr } = await supabase.from('ship_crews').insert(crewRows);
-        if (crewErr) throw crewErr;
-      }
-      const { data: fresh } = await supabase
-        .from('ship_templates')
-        .select('*, ship_template_components(*), ship_template_weapons(*), ship_crews(*)')
-        .eq('id', data.id)
-        .single();
-      const mapped = mapShipTemplateRow(fresh);
-      setTemplates(prev => [...prev, mapped]);
-      setSelectedId(mapped.id);
-      setFormData(mapped);
-      savedSnapshotRef.current = JSON.stringify(mapped);
+      await replaceChildRows(newShip);
+      const mapped = await fetchTemplateById(data.id);
+      adoptTemplate(mapped);
       setShowCloneModal(false);
       setCloneName('');
-      setSuccess(`Ship "${mapped.name}" cloned successfully!`);
-      setTimeout(() => setSuccess(null), 3000);
+      flashSuccess(`Ship "${mapped.name}" cloned successfully!`);
     } catch (err: any) {
       setCloneError(err.message || 'Failed to clone ship');
     }
@@ -728,8 +768,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       setError('Ship name is required');
       return false;
     }
-    const duplicate = templates.find(t => t.name === formData.name.trim() && t.id !== formData.id);
-    if (duplicate) {
+    if (isNameTaken(formData.name.trim(), formData.id)) {
       setError('A ship with this name already exists');
       return false;
     }
@@ -739,12 +778,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     }
 
     try {
-      const withDeck = {
-        ...formData,
-        deckLayout: build?.deckLayout ?? formData.deckLayout,
-        reinforcements: build?.reinforcements ?? formData.reinforcements,
-        weaponArcs: build?.weaponArcs ?? formData.weaponArcs,
-      };
+      const withDeck = withSyncedDeck(formData);
       const existsInDB = templates.some(t => t.id === formData.id);
       let id = formData.id;
       if (existsInDB) {
@@ -767,48 +801,11 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       }
 
       const withId = { ...withDeck, id };
-      await supabase.from('ship_template_components').delete().eq('template_id', id);
-      const accRows = mapOptionalComponentRows(withId);
-      if (accRows.length) {
-        const { error } = await supabase.from('ship_template_components').insert(accRows);
-        if (error) throw error;
-      }
-      await supabase.from('ship_template_weapons').delete().eq('template_id', id);
-      const wpnRows = mapWeaponRows(withId);
-      if (wpnRows.length) {
-        const { error } = await supabase.from('ship_template_weapons').insert(wpnRows);
-        if (error) throw error;
-      }
-      await supabase.from('ship_crews').delete().eq('template_id', id);
-      const crewRows = mapCrewRows(withId);
-      if (crewRows.length) {
-        const { error } = await supabase.from('ship_crews').insert(crewRows);
-        if (error) throw error;
-      }
-
-      const { data: fresh } = await supabase
-        .from('ship_templates')
-        .select('*, ship_template_components(*), ship_template_weapons(*), ship_crews(*)')
-        .eq('id', id)
-        .single();
-      if (!fresh) throw new Error('No data returned from save operation');
-      const mapped = mapShipTemplateRow(fresh);
-
-      setTemplates(prev => {
-        const idx = prev.findIndex(t => t.id === id);
-        if (idx >= 0) {
-          const copy = [...prev];
-          copy[idx] = mapped;
-          return copy;
-        }
-        return [...prev, mapped];
-      });
-      setSelectedId(id);
-      setFormData(mapped);
-      savedSnapshotRef.current = JSON.stringify(mapped);
+      await replaceChildRows(withId);
+      const mapped = await fetchTemplateById(id);
+      adoptTemplate(mapped);
       setError(null);
-      setSuccess(`Ship "${mapped.name}" saved successfully!`);
-      setTimeout(() => setSuccess(null), 3000);
+      flashSuccess(`Ship "${mapped.name}" saved successfully!`);
       return true;
     } catch (err: any) {
       console.error('Ship save error:', err);
@@ -831,8 +828,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       setSelectedId(null);
       setFormData(null);
       savedSnapshotRef.current = '';
-      setSuccess('Ship deleted successfully!');
-      setTimeout(() => setSuccess(null), 3000);
+      flashSuccess('Ship deleted successfully!');
     } catch (err: any) {
       setError(err.message || 'Failed to delete ship');
     }
@@ -1435,8 +1431,8 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         </tr>
 
                         {formData.optionalComponents.map((a) => {
-                          const component = components.find(x => x.id === a.componentId);
-                          if (!component) return null;
+                          const component = componentById(components, a.componentId);
+                          if (!component.id) return null;
                           return (
                             <tr key={a.componentId} className="border-b border-gray-700/50">
                               <td className="py-1 pr-2">
@@ -1612,25 +1608,17 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                 ) : (
                   <div className="space-y-1">
                     {(() => {
-                      const named = formData.crews.map((c, index) => ({ c, index })).filter(({ c }) => !!c.name);
-                      const unnamed = formData.crews.map((c, index) => ({ c, index })).filter(({ c }) => !c.name);
-                      const unnamedCost = unnamed.reduce((sum, { c }) => sum + c.cost, 0);
-                      const first = unnamed[0]?.c;
-                      const uniform = !!first && unnamed.every(({ c }) =>
-                        c.level === first.level && c.hp === first.hp && c.cost === first.cost &&
-                        c.str === first.str && c.dex === first.dex && c.con === first.con &&
-                        c.int === first.int && c.wis === first.wis && c.cha === first.cha
-                      );
+                      const { named, unnamed, unnamedCost, first, uniform } = groupCrew(formData.crews);
                       return (
                         <>
-                          {named.map(({ c, index }) => (
-                            <div key={c.id} className="flex items-center justify-between gap-2 bg-gray-800 rounded px-2 py-1">
+                          {named.map(({ crew, index }) => (
+                            <div key={crew.id} className="flex items-center justify-between gap-2 bg-gray-800 rounded px-2 py-1">
                               <div className="min-w-0 text-[11px] text-gray-200">
-                                {c.name}
+                                {crew.name}
                                 <span className="text-gray-500">
-                                  {' '}— Level {c.level}, HP {c.hp}, {c.str}-{c.dex}-{c.con}-{c.int}-{c.wis}-{c.cha},{' '}
+                                  {' '}— {crewStatLine(crew)},{' '}
                                 </span>
-                                <span className="text-green-400">{c.cost} Gp</span>
+                                <span className="text-green-400">{crew.cost} Gp</span>
                               </div>
                               <div className="flex items-center gap-1">
                                 <button
@@ -1655,9 +1643,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                               <div className="min-w-0 text-[11px] text-gray-300">
                                 Unnamed crew × {unnamed.length}
                                 {uniform ? (
-                                  <span className="text-gray-500">
-                                    {' '}— Level {first.level}, HP {first.hp}, {first.str}-{first.dex}-{first.con}-{first.int}-{first.wis}-{first.cha},{' '}
-                                  </span>
+                                  <span className="text-gray-500"> — {crewStatLine(first)}, </span>
                                 ) : (
                                   <span className="text-gray-500"> — mixed stats, </span>
                                 )}
@@ -1945,12 +1931,26 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                     }}
                   />
                 </Cell>
-                <Cell label="Str"><NumInput value={crewDraft.str} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, str: Math.max(1, Math.min(30, Math.floor(v) || DEFAULT_CREW_STATS.str)) }))} /></Cell>
-                <Cell label="Dex"><NumInput value={crewDraft.dex} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, dex: Math.max(1, Math.min(30, Math.floor(v) || DEFAULT_CREW_STATS.dex)) }))} /></Cell>
-                <Cell label="Con"><NumInput value={crewDraft.con} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, con: Math.max(1, Math.min(30, Math.floor(v) || DEFAULT_CREW_STATS.con)) }))} /></Cell>
-                <Cell label="Int"><NumInput value={crewDraft.int} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, int: Math.max(1, Math.min(30, Math.floor(v) || DEFAULT_CREW_STATS.int)) }))} /></Cell>
-                <Cell label="Wis"><NumInput value={crewDraft.wis} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, wis: Math.max(1, Math.min(30, Math.floor(v) || DEFAULT_CREW_STATS.wis)) }))} /></Cell>
-                <Cell label="Cha"><NumInput value={crewDraft.cha} min={1} max={30} onChange={(v) => setCrewDraft(d => ({ ...d, cha: Math.max(1, Math.min(30, Math.floor(v) || DEFAULT_CREW_STATS.cha)) }))} /></Cell>
+                {([
+                  ['Str', 'str'],
+                  ['Dex', 'dex'],
+                  ['Con', 'con'],
+                  ['Int', 'int'],
+                  ['Wis', 'wis'],
+                  ['Cha', 'cha'],
+                ] as const).map(([label, key]) => (
+                  <Cell key={key} label={label}>
+                    <NumInput
+                      value={crewDraft[key]}
+                      min={1}
+                      max={30}
+                      onChange={(v) => setCrewDraft(d => ({
+                        ...d,
+                        [key]: Math.max(1, Math.min(30, Math.floor(v) || DEFAULT_CREW_STATS[key])),
+                      }))}
+                    />
+                  </Cell>
+                ))}
               </div>
               <div className="flex items-end gap-2">
                 <Cell label="Weekly cost (gp)" widthClass="flex-1">
