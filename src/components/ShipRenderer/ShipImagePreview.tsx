@@ -5,9 +5,9 @@
 // Positive vertical offset moves the image up from the centre hex.
 
 import { HEX_DIRS } from '@/packages/primitives';
+import { shipImageHeightPx, shipImageOffsetPx } from './shipImageScale';
 
 const HEX_RADIUS_PX = 28;
-const HEX_RADIUS_FT = 50;
 
 const hexToPixel = (q: number, r: number, size: number) => ({
   x: size * (Math.sqrt(3) * q + (Math.sqrt(3) / 2) * r),
@@ -42,9 +42,8 @@ export function ShipImagePreview({
   const toX = (x: number) => x - minX + pad;
   const toY = (y: number) => y - minY + pad;
   const centre = { x: toX(0), y: toY(0) };
-  const pixelsPerFoot = HEX_RADIUS_PX / HEX_RADIUS_FT;
-  const imageHeight = Math.max(1, keelLength) * pixelsPerFoot;
-  const offsetPx = imageOffsetY * pixelsPerFoot;
+  const imageHeight = shipImageHeightPx(keelLength, HEX_RADIUS_PX);
+  const offsetPx = shipImageOffsetPx(imageOffsetY, HEX_RADIUS_PX);
 
   // Fixed deterministic stars so the field never flickers between renders.
   const stars = Array.from({ length: 26 }, (_, i) => ({

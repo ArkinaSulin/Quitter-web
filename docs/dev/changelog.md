@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## Scenario Ship Selector + placement (2026-11-02)
+**Files:** src/packages/ships/lib/templateBuild.ts, src/packages/ships/index.ts, src/packages/ships/tests/templateBuild.test.ts, src/packages/world/lib/placedShips.ts, src/packages/world/index.ts, src/packages/world/tests/placedShips.test.ts, src/hooks/useShipTemplates.ts, src/components/ShipRenderer/shipImageScale.ts, src/components/ShipRenderer/ShipImagePreview.tsx, src/components/ScenarioMap/{ShipSelector,ShipTemplateTooltip,LeftPanel,ScenarioMap,useCanvasDraw}.tsx, src/components/ShipEditor/ShipEditor.tsx, docs/dev/16-ship-builder.md, docs/dev/changelog.md
+
+- Added a GM-only **Ship Selector** left-panel tab between Unit Selector and
+  Messages, with search, ship thumbnails, name/role/mass/cost, and a hover
+  tooltip showing the ship configuration.
+- Ship rows drag onto the map and persist as a `PlacedShip` list in
+  `scenarios.map_data.ships`. Ships render beneath unit tokens using the shared
+  Ship Editor image scale (50 ft per hex radius; keel length + vertical offset).
+- Extracted `buildShipFromTemplate` into the ships package so the editor and
+  selector share template → build/stats resolution.
+- Scope: placement only (no move/remove/combat/ship engine yet).
+- Verification: `tsc --noEmit`; ships + world tests (188); `next build`.
+
 ## Ship editor cleanup (2026-11-02)
 **Files:** src/components/ShipEditor/ShipEditor.tsx, docs/dev/changelog.md
 

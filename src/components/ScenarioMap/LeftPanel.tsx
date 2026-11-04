@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PanelsContainer } from './PanelsContainer';
 import { PanelSection } from './PanelSection';
 import { UnitSelector } from './UnitSelector';
+import { SailingShipIcon, ShipSelector } from './ShipSelector';
 import { MessagesPanel } from './MessagesPanel';
 import { AlliancePanel } from './AlliancePanel';
 import { MapEditorPanel } from './MapEditorPanel';
@@ -16,6 +17,7 @@ import { PlayerPanel } from './PlayerPanel';
 import { UndoDebugPanel } from './UndoDebugPanel';
 import { UnitTemplate, AllianceGroup, Participant, ScenarioRole } from '@/types/gameProtocol';
 import { MapEntity } from '@/packages/world';
+import { ShipLibraryEntry } from '@/hooks/useShipTemplates';
 
 const FootIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
@@ -36,6 +38,8 @@ interface LeftPanelProps {
   scenarioId: string;
   playerId: string;
   onUnitDragStart: (template: UnitTemplate) => void;
+  onShipDragStart: (entry: ShipLibraryEntry) => void;
+  canViewShipLibrary: boolean;
   isGM: boolean;
   alliances: Record<string, AllianceGroup>;
   onMoveTeam: (team: string, targetGroup: AllianceGroup) => void;
@@ -71,7 +75,7 @@ interface LeftPanelProps {
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, structureTemplates, structurePaletteId, onSetStructurePaletteId, structures, selectedStructureKey, onPatchStructure, onRemoveStructure, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, onShipDragStart, canViewShipLibrary, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, structureTemplates, structurePaletteId, onSetStructurePaletteId, structures, selectedStructureKey, onPatchStructure, onRemoveStructure, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
   // Persist which tabs are open per scenario + user, so a rejoined session
   // restores the same panel layout.
   // Persist which tabs are open per scenario + user. The saved layout is restored
@@ -196,6 +200,18 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, isGM, allianc
       ),
       requiresGM: true,
       content: <UnitSelector scenarioId={scenarioId} onUnitDragStart={onUnitDragStart} />,
+    },
+    {
+      id: 'ship-selector',
+      label: 'Ship Selector',
+      icon: <SailingShipIcon />,
+      requiresGM: true,
+      content: (
+        <ShipSelector
+          canViewLibrary={canViewShipLibrary}
+          onShipDragStart={onShipDragStart}
+        />
+      ),
     },
     {
       id: 'messages',

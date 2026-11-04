@@ -17,10 +17,10 @@ import {
   COMPONENT_NAMES,
   DEFAULT_CREW_STATS,
   DEFAULT_TOTAL_MASS,
-  DeckCard,
   WEAPON_ARCS,
   addSlotToRegion,
   addWeaponArc,
+  buildShipFromTemplate,
   canPlaceWeapon,
   canRemoveLastEmptySlot,
   componentById,
@@ -37,10 +37,8 @@ import {
   removeLastEmptySlot,
   removeWeaponArc,
   resolveShipWeaponDamage,
-  syncDeckLayout,
   weaponById,
   weaponTons,
-  ShipBuild,
   mapCrewRows,
   mapOptionalComponentRows,
   mapShipArmorRow,
@@ -179,77 +177,6 @@ function groupCrew(crews: ShipCrew[]) {
   return { named, unnamed, unnamedCost, first, uniform };
 }
 
-function buildFromTemplate(
-  t: ShipTemplate,
-  armors: ShipArmor[],
-  components: ShipComponent[],
-  weapons: ShipWeapon[],
-): ShipBuild | null {
-  const armor = armors.find(a => a.id === t.armorId) || armors[0];
-  if (!armor) return null;
-
-  const componentKey = (name: string, fallback: string) => {
-    const comp = componentByName(components, name);
-    return `component:${comp.id || fallback}`;
-  };
-  const deckCards: DeckCard[] = [];
-  const pushComponentCards = (baseKey: string, count: number, canCombine: boolean) => {
-    if (count <= 0) return;
-    if (canCombine) {
-      deckCards.push({ key: baseKey, kind: 'component' });
-      return;
-    }
-    for (let i = 0; i < count; i += 1) {
-      deckCards.push({ key: `${baseKey}:${i}`, kind: 'component' });
-    }
-  };
-  const helmComponent = componentByName(components, COMPONENT_NAMES.helm);
-  pushComponentCards(`component:${helmComponent.id || 'helm'}`, t.helm, helmComponent.canCombine);
-  const bridgeComponent = componentByName(components, COMPONENT_NAMES.commandBridge);
-  pushComponentCards(`component:${bridgeComponent.id || 'command_bridge'}`, t.commandBridge, bridgeComponent.canCombine);
-  deckCards.push({ key: componentKey(COMPONENT_NAMES.hull, 'hull'), kind: 'component' });
-  const sailComponent = componentByName(components, COMPONENT_NAMES.sail);
-  pushComponentCards(`component:${sailComponent.id || 'sail'}`, t.sails, sailComponent.canCombine);
-  const rudderComponent = componentByName(components, COMPONENT_NAMES.rudder);
-  pushComponentCards(`component:${rudderComponent.id || 'rudder'}`, t.rudders, rudderComponent.canCombine);
-  if (Math.round(t.cargoArea) > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.cargo, 'cargo'), kind: 'component' });
-  if (Math.round(t.crewQuarters) > 0) deckCards.push({ key: componentKey(COMPONENT_NAMES.crewQuarters, 'crew_quarters'), kind: 'component' });
-  for (const row of t.optionalComponents) {
-    const component = componentById(components, row.componentId);
-    pushComponentCards(`optional:${row.componentId}`, row.count, component.canCombine !== false);
-  }
-  for (const row of t.weapons) {
-    for (let i = 0; i < row.count; i += 1) {
-      deckCards.push({ key: `weapon:${row.id}:${i}`, kind: 'weapon' });
-    }
-  }
-
-  const deckLayout = syncDeckLayout(t.deckLayout, deckCards);
-  const cardKeys = new Set(deckCards.map(c => c.key));
-  return {
-    armor,
-    components,
-    weaponsCatalog: weapons,
-    totalMass: t.totalMass,
-    helm: t.helm,
-    commandBridge: t.commandBridge,
-    sails: t.sails,
-    rudders: t.rudders,
-    reinforcement: t.reinforcement,
-    crewQuarters: t.crewQuarters ?? 0,
-    weaponCapacity: t.weaponCapacity ?? 0,
-    atmosphericSpeed: t.atmosphericSpeed ?? 0,
-    damageThreshold: t.damageThreshold ?? 15,
-    cargoArea: t.cargoArea,
-    crews: t.crews,
-    deckLayout,
-    reinforcements: t.reinforcements.filter(key => cardKeys.has(key)),
-    weaponArcs: t.weaponArcs,
-    templateComponents: t.optionalComponents,
-    templateWeapons: t.weapons,
-  };
-}
-
 export default function ShipEditor({ readOnly = false }: { readOnly?: boolean }) {
   const router = useRouter();
   const [templates, setTemplates] = useState<ShipTemplate[]>([]);
@@ -295,7 +222,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const [simulatedCargo, setSimulatedCargo] = useState(0);
 
   const build = formData
-    ? buildFromTemplate(formData, armors, components, weaponsCatalog)
+    ? buildShipFromTemplate(formData, armors, components, weaponsCatalog)
     : null;
   const cargoCapacity = formData && build
     ? Math.max(0, Math.max(formData.cargoArea, Math.floor(computeRemainingMass(build) + formData.cargoArea)))

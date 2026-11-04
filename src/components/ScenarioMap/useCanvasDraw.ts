@@ -13,7 +13,8 @@ import { isDeadCorpse } from '@/packages/units';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
 import { corpseDots, corpseDotShape, FallenMap } from '@/packages/battle';
 import { TEAM_COLORS, Team } from '@/packages/units';
-import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, canFly, isAirborne, MapBackgroundConfig, costShade, hexMpLabelAt, HEX_DIRS } from '@/packages/world';
+import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, canFly, isAirborne, MapBackgroundConfig, PlacedShip, costShade, hexMpLabelAt, HEX_DIRS } from '@/packages/world';
+import { shipImageHeightPx, shipImageOffsetPx } from '@/components/ShipRenderer/shipImageScale';
 import { parseClimbTo, hexDirection, flyMax } from '@/packages/movement';
 import { FOG_RGB } from '@/packages/world';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/packages/movement';
@@ -45,6 +46,8 @@ interface CanvasDrawDeps {
   /** Placed structures + templates (hex structure rendering; battlement aura). */
   structures?: MapStructures;
   templates?: Record<string, StructureTemplate>;
+  /** Scenario-placed ship images (map_data.ships). */
+  ships?: PlacedShip[];
   /** Wall edge highlighted while dragging a unit over it (drag-to-attack). */
   hoveredWallEdge?: EdgeRef | null;
   /** Hex structure highlighted while Shift-dragging a unit over it (drag-to-attack). */
@@ -95,6 +98,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     walls,
     structures,
     templates,
+    ships,
     hoveredWallEdge,
     hoveredStructureHex,
     targetFilter = null,
@@ -123,8 +127,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const t = templates?.[inst.templateId];
       if (t?.imageUrl) urls.add(t.imageUrl);
     }
+    for (const ship of ships ?? []) if (ship.imageUrl) urls.add(ship.imageUrl);
     return Array.from(urls).sort().join('|');
-  }, [groundZones, displayUnits, structures, templates]);
+  }, [groundZones, displayUnits, structures, templates, ships]);
 
   useEffect(() => {
     const urls = effectImageUrls ? effectImageUrls.split('|') : [];
@@ -222,6 +227,16 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       }
     }
     for (const im of belowImages) drawEffectImage(im.hex, im.url, im.scale, im.elevation, im.structTop);
+    for (const ship of ships ?? []) {
+      if (!ship.imageUrl || isFogHidden(`${ship.hex.q},${ship.hex.r}`)) continue;
+      const img = getLoadedImage(ship.imageUrl);
+      if (!img) continue;
+      const { cx, cy } = hexCenter(ship.hex);
+      const height = shipImageHeightPx(ship.keelLength, HEX_SIZE) * currentZoom;
+      const width = height * (img.naturalWidth / Math.max(1, img.naturalHeight));
+      const offset = shipImageOffsetPx(ship.imageOffsetY, HEX_SIZE) * currentZoom;
+      ctx.drawImage(img, cx - width / 2, cy - height / 2 - offset, width, height);
+    }
     const hoveredHexKey = (() => {
       const hu = displayUnits.find(u => u.id === aiHoveredUnitId);
       return hu ? `${hu.hex.q},${hu.hex.r}` : null;
@@ -1024,7 +1039,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.restore();
       }
     }
-  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, hoveredWallEdge, hoveredStructureHex, targetFilter, keepVisibleUnitIdRef, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, overlayLabels, imageTick, moraleMods]);
+  }, [displayUnits, displayTurnNumber, displayAlliances, isGM, fogReveal, fogDim, fogUnseenAlpha, formationsMap, sizeCategories, activeHeroId, reactionOffers, reactionMode, bowBlinkOn, canReactToUnit, walls, structures, templates, ships, hoveredWallEdge, hoveredStructureHex, targetFilter, keepVisibleUnitIdRef, groundZones, mpZones, corpseCounts, aiOverlay, aiHoveredUnitId, overlayLabels, imageTick, moraleMods]);
 
   const captureAndUploadScreenshot = useCallback(async () => {
     const canvas = canvasRef.current;
@@ -1161,7 +1176,22 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         if (unit.unitTypeIconUrl) imageUrls.add(unit.unitTypeIconUrl);
         if (unit.customImageUrl) imageUrls.add(unit.customImageUrl);
       }
+      for (const ship of ships ?? []) if (ship.imageUrl) imageUrls.add(ship.imageUrl);
       await Promise.all(Array.from(imageUrls).map(url => loadImage(url).catch(() => {})));
+
+      // Placed ship images sit beneath the unit tokens.
+      for (const ship of ships ?? []) {
+        if (!ship.imageUrl) continue;
+        const img = getLoadedImage(ship.imageUrl);
+        if (!img) continue;
+        const pos = hexToPixel(ship.hex, HEX_SIZE);
+        const cx = pos.x * fitZoom + fitOffsetX;
+        const cy = pos.y * fitZoom + fitOffsetY;
+        const height = shipImageHeightPx(ship.keelLength, HEX_SIZE) * fitZoom;
+        const width = height * (img.naturalWidth / Math.max(1, img.naturalHeight));
+        const offset = shipImageOffsetPx(ship.imageOffsetY, HEX_SIZE) * fitZoom;
+        ctx.drawImage(img, cx - width / 2, cy - height / 2 - offset, width, height);
+      }
 
       // Draw units using drawToken
       const tokenWidth = TOKEN_WIDTH * fitZoom;
@@ -1239,7 +1269,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     } catch (err) {
       console.error('[Screenshot] Error:', err);
     }
-  }, [canvasRef, units, scenarioId, updateScreenshot, backgroundConfig]);
+  }, [canvasRef, units, scenarioId, updateScreenshot, backgroundConfig, ships]);
 
   return { customDraw, captureAndUploadScreenshot };
 }

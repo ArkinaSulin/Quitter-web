@@ -121,6 +121,23 @@ reinforcement (thick silvery border); the first hit destroys the reinforcement,
 the next damages the component. The editor card crew list is a non-functional
 preview using roster crew in layout order.
 
+### Scenario Ship Selector
+
+The ScenarioMap left panel has a GM-only **Ship Selector** tab between **Unit
+Selector** and **Messages**. It lists every ship template (searchable by name or
+role) with image, name, role, total mass, and build cost; hovering a row shows
+the ship configuration (stats, armor, helm/bridge/sails/rudders/reinforcement,
+weapons, optional components). The tab is visible to the GM even without shipyard
+read access, in which case it shows the access message instead of the list.
+
+Drag a ship row onto the map to place it. Placement is a presentation layer
+stored in `scenarios.map_data.ships` (`PlacedShip`: template snapshot + hex), so
+it persists and syncs through the existing `map_data` realtime path. Ship images
+use the same scale as the Ship Editor preview: 50 ft per hex radius from
+`keelLength`, with `imageOffsetY` moving the image up (positive) or down. Placed
+ships draw beneath unit tokens and in screenshots. This pass is placement only:
+moving/removing ships, selection, combat, and the ship engine are not included.
+
 Weapon cards carry a small display-only firing-arc dial in the top-right: four
 90° fan sectors, filled white for the arcs the weapon can target. Non-Body frames
 protect their default arc (Bow→Bow, Port→Port, Starboard→Starboard, Stern→Stern);

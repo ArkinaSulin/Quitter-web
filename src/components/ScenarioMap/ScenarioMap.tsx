@@ -31,6 +31,9 @@ import { usePing } from '@/hooks/usePing';
 import { canActOnUnit, canAdjustUnit, allTrueCapabilities } from '@/packages/world';
 import { isUnitInteractable } from '@/packages/units';
 import { LeftPanel } from './LeftPanel';
+import { ShipLibraryEntry } from '@/hooks/useShipTemplates';
+import { shipImageHeightPx, shipImageOffsetPx } from '@/components/ShipRenderer/shipImageScale';
+import { SailingShipIcon } from './ShipSelector';
 import { AiPanel } from './AiPanel';
 import { AiOverlayData } from './aiTypes';
 import { isAiControllable } from '@/packages/ai';
@@ -53,7 +56,7 @@ import { getFormationMultiplier, getFormationModifier, computeEffectiveMovement,
 import { computeAttackCount } from '@/packages/combat';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
-import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, computeOccupiedHexes, computeThreatHexes, mpCostOverrides, isHexOnGrid } from '@/packages/world';
+import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, PlacedShip, computeOccupiedHexes, computeThreatHexes, mpCostOverrides, isHexOnGrid, parsePlacedShips } from '@/packages/world';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST, isRotationAffordable } from '@/packages/movement';
 import { canReachStructure, canFly, parseClimbTo, isAirborne, flyMax, elevationOffset, hexDirection } from '@/packages/movement';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/packages/movement';
@@ -121,6 +124,61 @@ function DragGhost({ x, y, zoom, offsetX, offsetY }: { x: number; y: number; zoo
         background: 'rgba(250,204,21,0.2)',
       }}
     />
+  );
+}
+
+function ShipDragGhost({
+  x,
+  y,
+  zoom,
+  offsetX,
+  offsetY,
+  imageUrl,
+  keelLength,
+  imageOffsetY,
+  name,
+}: {
+  x: number;
+  y: number;
+  zoom: number;
+  offsetX: number;
+  offsetY: number;
+  imageUrl: string;
+  keelLength: number;
+  imageOffsetY: number;
+  name: string;
+}) {
+  const height = shipImageHeightPx(keelLength, HEX_SIZE) * zoom;
+  const imageOffset = shipImageOffsetPx(imageOffsetY, HEX_SIZE) * zoom;
+  return (
+    <div
+      className="absolute pointer-events-none"
+      style={{
+        left: `${x * zoom + offsetX}px`,
+        top: `${y * zoom + offsetY}px`,
+        transform: 'translate(-50%, -50%)',
+      }}
+    >
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageUrl}
+          alt=""
+          className="max-w-none opacity-75"
+          style={{
+            height: `${height}px`,
+            width: 'auto',
+            transform: `translateY(${-imageOffset}px)`,
+            filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.9))',
+          }}
+        />
+      ) : (
+        <div className="flex flex-col items-center text-yellow-300/80">
+          <SailingShipIcon size={Math.max(16, Math.min(48, height * 0.4))} />
+          <span className="text-[10px] whitespace-nowrap">{name}</span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -458,6 +516,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Drag from panel
   const [isDraggingFromPanel, setIsDraggingFromPanel] = useState(false);
   const [draggingTemplate, setDraggingTemplate] = useState<UnitTemplate | null>(null);
+  const [draggingShip, setDraggingShip] = useState<ShipLibraryEntry | null>(null);
+  const [ships, setShips] = useState<PlacedShip[]>([]);
   const [ghostHex, setGhostHex] = useState<Hex | null>(null);
 
   // Tooltip
@@ -485,7 +545,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   } | null>(null);
 
   const playerId = currentUser?.id || '';
-  const { displayName } = useProfile(playerId || null);
+  const { displayName, access } = useProfile(playerId || null);
   const playerName =
     displayName ||
     currentUser?.user_metadata?.full_name ||
@@ -638,6 +698,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     backgroundConfig?: MapBackgroundConfig | null;
     structures?: MapStructures;
     groundEffects?: GroundEffect[];
+    ships?: PlacedShip[];
     mapId?: string | null;
   }) => {
     const bg = next.backgroundConfig !== undefined ? next.backgroundConfig : backgroundConfig;
@@ -649,9 +710,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       gridRadius: bg?.gridRadius ?? DEFAULT_GRID_RADIUS,
       structures: next.structures !== undefined ? next.structures : structures,
       groundEffects: next.groundEffects !== undefined ? next.groundEffects : groundZones,
+      ships: next.ships !== undefined ? next.ships : ships,
       mapId: next.mapId !== undefined ? next.mapId : mapId,
     });
-  }, [scenarioId, updateScenarioMapData, backgroundConfig, structures, groundZones, mapId]);
+  }, [scenarioId, updateScenarioMapData, backgroundConfig, structures, groundZones, ships, mapId]);
 
   // Most-recently-applied `map_data` version (scenario.updated_at); the realtime
   // handler ignores an older snapshot so a reordered event can't re-add a deleted
@@ -1089,6 +1151,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     walls,
     structures,
     templates: structureTemplates,
+    ships,
     // Highlight the edge under the cursor in structure mode (the Shift + double-click
     // edit target), alongside the drag-to-attack cap.
     hoveredWallEdge: hoveredWallEdge ?? (targetFilter === 'structure' && infoHover?.kind === 'edge' ? infoHover.edge ?? null : null),
@@ -2799,6 +2862,62 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setIsDraggingFromPanel(true);
   }, []);
 
+  const handleShipDragStart = useCallback((entry: ShipLibraryEntry) => {
+    setDraggingShip(entry);
+    setGhostHex(null);
+  }, []);
+
+  useEffect(() => {
+    if (!draggingShip) return;
+    const onMouseMove = (e: MouseEvent) => {
+      if (canvasRef.current) {
+        setGhostHex(getHexFromScreen(e.clientX, e.clientY));
+      }
+    };
+    const onMouseUp = (e: MouseEvent) => {
+      if (window.getSelection) window.getSelection()?.removeAllRanges();
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const inCanvas =
+          e.clientX >= rect.left && e.clientX <= rect.right &&
+          e.clientY >= rect.top && e.clientY <= rect.bottom;
+        if (inCanvas) {
+          const hex = getHexFromScreen(e.clientX, e.clientY);
+          if (hex) {
+            if (ships.some(ship => ship.hex.q === hex.q && ship.hex.r === hex.r)) {
+              addMessage(`Can't place ${draggingShip.template.name}: a ship is already on that hex`);
+            } else {
+              const placed: PlacedShip = {
+                id: crypto.randomUUID(),
+                templateId: draggingShip.template.id,
+                name: draggingShip.template.name,
+                role: draggingShip.template.role,
+                imageUrl: draggingShip.template.imageUrl,
+                keelLength: draggingShip.template.keelLength,
+                imageOffsetY: draggingShip.template.imageOffsetY,
+                hex,
+              };
+              const next = [...ships, placed];
+              setShips(next);
+              void persistMapData({ ships: next });
+              addMessage(`Placed ship "${placed.name}"`);
+            }
+          }
+        }
+      }
+      setDraggingShip(null);
+      setGhostHex(null);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [draggingShip, ships, persistMapData, addMessage, getHexFromScreen]);
+
   useEffect(() => {
     if (!isDraggingFromPanel || !draggingTemplate) return;
     const onMouseMove = (e: MouseEvent) => {
@@ -3005,6 +3124,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       });
       setStructures(parseStructures(data?.structures));
       setGroundZones(normalizeGroundEffectKinds(Array.isArray(data?.groundEffects) ? data.groundEffects : []));
+      setShips(parsePlacedShips(data?.ships));
       setMapId(data?.mapId ?? null);
     });
   }, [scenarioId, fetchScenarioMapData]);
@@ -3103,6 +3223,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               const md = row.map_data || {};
               if (md.structures !== undefined) setStructures(parseStructures(md.structures));
               if (md.groundEffects !== undefined) setGroundZones(normalizeGroundEffectKinds(Array.isArray(md.groundEffects) ? md.groundEffects : []));
+              if (md.ships !== undefined) setShips(parsePlacedShips(md.ships));
               if (md.mapId !== undefined) setMapId(md.mapId ?? null);
               if (md.backgroundImageUrl !== undefined) {
                 setBackgroundConfig({
@@ -3385,6 +3506,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             scenarioId={scenarioId}
             playerId={playerId}
             onUnitDragStart={handleUnitDragStart}
+            onShipDragStart={handleShipDragStart}
+            canViewShipLibrary={access.canViewShipEditor}
             isGM={effectiveIsGM}
             alliances={alliances}
             onMoveTeam={handleMoveTeam}
@@ -3441,6 +3564,19 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       {/* Ghost previews */}
       {isDraggingFromPanel && ghostHex && (
         <DragGhost x={hexToPixel(ghostHex, HEX_SIZE).x} y={hexToPixel(ghostHex, HEX_SIZE).y} zoom={zoom} offsetX={offsetX} offsetY={offsetY} />
+      )}
+      {draggingShip && ghostHex && (
+        <ShipDragGhost
+          x={hexToPixel(ghostHex, HEX_SIZE).x}
+          y={hexToPixel(ghostHex, HEX_SIZE).y}
+          zoom={zoom}
+          offsetX={offsetX}
+          offsetY={offsetY}
+          imageUrl={draggingShip.template.imageUrl}
+          keelLength={draggingShip.template.keelLength}
+          imageOffsetY={draggingShip.template.imageOffsetY}
+          name={draggingShip.template.name}
+        />
       )}
       {dragGhostPos && (
         <DragGhost x={dragGhostPos.x} y={dragGhostPos.y} zoom={zoom} offsetX={offsetX} offsetY={offsetY} />
