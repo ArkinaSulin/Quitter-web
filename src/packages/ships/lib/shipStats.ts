@@ -30,6 +30,8 @@ export const MAX_SHIP_SPEED = 12;
 export const DEFAULT_TOTAL_MASS = 20;
 export const HULL_MASS_BASE_PCT = 0.1;
 export const HULL_MASS_DIVISOR = 500;
+/** Fraction of the allocated hull mass that is the (hittable) deck. */
+export const DECK_HULL_PCT = 0.2;
 export const HP_PER_TON = 3;
 export const HP_BASE = 40;
 export const ACCEL_SCALE = 15;
@@ -57,6 +59,7 @@ export const DEFAULT_CREW_STATS = {
 /** Built-in component names (ship_components.name). */
 export const COMPONENT_NAMES = {
   hull: 'Hull',
+  deck: 'Deck',
   helm: 'Helm',
   commandBridge: 'Command bridge',
   sail: 'Sail',
@@ -69,6 +72,7 @@ export const COMPONENT_NAMES = {
 
 const DEFAULT_COMPONENTS: Record<string, ShipComponent> = {
   [COMPONENT_NAMES.hull]: { id: 'Hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, canCombine: true, dt: 15, ac: 10, imageUrl: '' },
+  [COMPONENT_NAMES.deck]: { id: 'Deck', name: 'Deck', mass: 0, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15, ac: 10, imageUrl: '' },
   [COMPONENT_NAMES.helm]: { id: 'Helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: false, dt: 15 },
   [COMPONENT_NAMES.commandBridge]: { id: 'Command bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: false, dt: 15 },
   [COMPONENT_NAMES.sail]: { id: 'Sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
@@ -191,11 +195,15 @@ export function computeOptionalComponentCrew(build: ShipBuild): number {
  */
 export function computeComponentCrew(build: ShipBuild): number {
   const c = build.components;
+  // Sails: 1 crew per 4 sails (min 1); rudders: 1 per 2 (min 1). Any leftover
+  // sail crew rolls into the rudder requirement.
+  const sailCrew = build.sails > 0 ? Math.max(1, Math.floor(build.sails / 4)) : 0;
+  const rudderCrew = build.rudders > 0 ? Math.max(1, Math.ceil(build.rudders / 2)) : 0;
   return (
     Math.ceil(build.helm * componentByName(c, COMPONENT_NAMES.helm).crew) +
     Math.ceil(build.commandBridge * componentByName(c, COMPONENT_NAMES.commandBridge).crew) +
-    Math.ceil(build.sails * componentByName(c, COMPONENT_NAMES.sail).crew) +
-    Math.ceil(build.rudders * componentByName(c, COMPONENT_NAMES.rudder).crew) +
+    sailCrew +
+    rudderCrew +
     computeOptionalComponentCrew(build)
   );
 }
@@ -274,6 +282,8 @@ export function canPlaceWeapon(placedTons: number, capacityTons: number, newTons
 
 export interface ShipMassBreakdown {
   hull: number;
+  /** Deck mass carved out of the hull (hittable). */
+  deck: number;
   armor: number;
   helm: number;
   commandBridge: number;
@@ -294,7 +304,9 @@ export interface ShipMassBreakdown {
  */
 export function computeMassBreakdown(build: ShipBuild): ShipMassBreakdown {
   const c = build.components;
-  const hull = roundTons(computeHullMass(build.totalMass));
+  const hullAllocated = roundTons(computeHullMass(build.totalMass));
+  const deck = hullAllocated > 0 ? Math.max(1, Math.round(hullAllocated * DECK_HULL_PCT)) : 0;
+  const hull = Math.max(0, hullAllocated - deck);
   const armor = roundTons(computeArmorMass(build));
   const helm = roundTons(build.helm * componentByName(c, COMPONENT_NAMES.helm).mass);
   const commandBridge = roundTons(build.commandBridge * componentByName(c, COMPONENT_NAMES.commandBridge).mass);
@@ -306,10 +318,11 @@ export function computeMassBreakdown(build: ShipBuild): ShipMassBreakdown {
   const cargo = Math.max(0, roundTons(build.cargoArea || 0));
   const crewQuarters = Math.max(0, roundTons(build.crewQuarters || 0));
   const used =
-    hull + armor + helm + commandBridge + sails + rudders + weapons +
+    hull + deck + armor + helm + commandBridge + sails + rudders + weapons +
     reinforcement + optionalComponents + cargo + crewQuarters;
   return {
     hull,
+    deck,
     armor,
     helm,
     commandBridge,
@@ -328,7 +341,7 @@ export function computeMassBreakdown(build: ShipBuild): ShipMassBreakdown {
 /** Built-in + optional components + weapons + cargo + crew quarters (rounded tons). */
 export function computeFittingMass(build: ShipBuild): number {
   const m = computeMassBreakdown(build);
-  return m.used - m.hull - m.armor;
+  return m.used - m.hull - m.deck - m.armor;
 }
 
 /** Everything currently assigned to the hull (rounded tons). */
@@ -420,6 +433,7 @@ export interface ShipBoxGroup {
 function boxGroupsFromMass(m: ShipMassBreakdown, hullSafe = true): ShipBoxGroup[] {
   const groups: ShipBoxGroup[] = [
     { id: 'hull', label: 'Hull', boxes: m.hull, safe: hullSafe },
+    { id: 'deck', label: 'Deck', boxes: m.deck, safe: false },
     { id: 'armor', label: 'Armor', boxes: m.armor, safe: true },
     { id: 'helm', label: 'Helm', boxes: m.helm, safe: false },
     { id: 'command_bridge', label: 'Command bridge', boxes: m.commandBridge, safe: false },
@@ -485,9 +499,12 @@ export function computeBuildCost(build: ShipBuild): number {
 
 export interface ShipDerivedStats {
   totalMass: number;
-  /** Whole-ton hull allocation (the exact formula value is `hullMassExact`). */
+  /** Whole-ton hull allocation remaining after the deck split. */
   hullMass: number;
   hullMassExact: number;
+  /** Whole-ton deck allocation (20% of hull, minimum 1). */
+  deckMass: number;
+  deckMassExact: number;
   armorMass: number;
   armorMassExact: number;
   fittingMass: number;
@@ -533,9 +550,11 @@ export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
     totalMass: build.totalMass,
     hullMass: m.hull,
     hullMassExact: computeHullMass(build.totalMass),
+    deckMass: m.deck,
+    deckMassExact: computeHullMass(build.totalMass) * DECK_HULL_PCT,
     armorMass: m.armor,
     armorMassExact: computeArmorMass(build),
-    fittingMass: m.used - m.hull - m.armor,
+    fittingMass: m.used - m.hull - m.deck - m.armor,
     weaponMass: computeWeaponMass(build),
     weaponCapacity: m.weapons,
     weaponPlacedTons: computeWeaponMass(build),

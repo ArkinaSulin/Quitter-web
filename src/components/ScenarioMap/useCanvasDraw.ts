@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
 import { hexToPixel, unitMatchesFilter, type TargetFilter } from '@/hooks/useHexGrid';
-import { Unit, Hex, AllianceGroup, Formation, SizeCategory, GroundEffect } from '@/types/gameProtocol';
+import { Unit, Hex, AllianceGroup, Formation, SizeCategory, GroundEffect, ALLIANCE_COLORS } from '@/types/gameProtocol';
 import { drawToken, loadImage, getLoadedImage, drawArcherReactionButton, drawTargetMarker, traceStarPath } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier } from '@/packages/morale';
 import { isDeadCorpse } from '@/packages/units';
@@ -221,7 +221,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       if (z.imageUrl) pushEffectImage({ q: z.q, r: z.r, s: -z.q - z.r }, z.imageUrl, z.layer ?? 'below', z.zIndex ?? 0, z.imageScale ?? 100, z.elevation ?? 0);
     }
     for (const u of displayUnits) {
-      if (u.isDeleted || u.attachedToUnitId) continue;
+      if (u.isDeleted || u.attachedToUnitId || u.attachedToShipId) continue;
       for (const e of u.effects ?? []) {
         if (e.imageUrl && !e.zoneHex) pushEffectImage(u.hex, e.imageUrl, e.layer ?? 'below', 0, e.imageScale ?? 100);
       }
@@ -235,7 +235,14 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const height = shipImageHeightPx(ship.keelLength, HEX_SIZE) * currentZoom;
       const width = height * (img.naturalWidth / Math.max(1, img.naturalHeight));
       const offset = shipImageOffsetPx(ship.imageOffsetY, HEX_SIZE) * currentZoom;
+      const allianceColor = ship.alliance ? ALLIANCE_COLORS[ship.alliance] : null;
+      ctx.save();
+      if (allianceColor) {
+        ctx.shadowColor = allianceColor;
+        ctx.shadowBlur = 10 * currentZoom;
+      }
       ctx.drawImage(img, cx - width / 2, cy - height / 2 - offset, width, height);
+      ctx.restore();
     }
     const hoveredHexKey = (() => {
       const hu = displayUnits.find(u => u.id === aiHoveredUnitId);
@@ -578,7 +585,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     };
 
     for (const unit of drawOrder) {
-      if (unit.isDeleted || unit.attachedToUnitId || isDeadCorpse(unit)) continue;
+      if (unit.isDeleted || unit.attachedToUnitId || unit.attachedToShipId || isDeadCorpse(unit)) continue;
       // Target-filter modes hide the non-targetable unit tokens; the dragged unit
       // (or the host whose attached hero is being dragged) always stays visible.
       const keepVisible = unit.id === keepVisibleUnitId || attachedByHost.get(unit.id)?.id === keepVisibleUnitId;
@@ -731,7 +738,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       ctx.save();
       for (const unit of displayUnits) {
         const effects = unit.effects ?? [];
-        if (unit.isDeleted || unit.attachedToUnitId || effects.length === 0) continue;
+        if (unit.isDeleted || unit.attachedToUnitId || unit.attachedToShipId || effects.length === 0) continue;
         const { cx, cy } = hexCenter(unit.hex);
         const baseY = cy + tokenHeight * 0.62;
         const visible = effects.slice(0, 5);
@@ -812,7 +819,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       }
       byTarget.forEach((counts, id) => {
         const u = byId.get(id);
-        if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) return;
+        if (!u || u.isDeleted || u.attachedToUnitId || u.attachedToShipId || u.hidden) return;
         const pos = hexToPixel(u.hex, HEX_SIZE);
         const elev = overlayOffset(u);
         const cx = pos.x * currentZoom + offsetX + elev.dx * currentZoom;
@@ -837,7 +844,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       });
       for (const obj of aiOverlay.objectives ?? []) {
         const u = byId.get(obj.unitId);
-        if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
+        if (!u || u.isDeleted || u.attachedToUnitId || u.attachedToShipId || u.hidden) continue;
         const pos = hexToPixel(obj.hex, HEX_SIZE);
         const uPos = hexToPixel(u.hex, HEX_SIZE);
         const elev = overlayOffset(u);
@@ -873,7 +880,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       }
       for (const id of aiOverlay.checkedUnitIds) {
         const u = byId.get(id);
-        if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
+        if (!u || u.isDeleted || u.attachedToUnitId || u.attachedToShipId || u.hidden) continue;
         // Do not paint a badge for a token the active filter hides.
         if (!unitMatchesFilter(u, targetFilter)) continue;
         const pos = hexToPixel(u.hex, HEX_SIZE);
@@ -903,7 +910,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       // Opt-out badge (AI-eligible unit the DM excluded): grey circle + minus.
       for (const id of aiOverlay.excludedUnitIds ?? []) {
         const u = byId.get(id);
-        if (!u || u.isDeleted || u.attachedToUnitId || u.hidden) continue;
+        if (!u || u.isDeleted || u.attachedToUnitId || u.attachedToShipId || u.hidden) continue;
         if (!unitMatchesFilter(u, targetFilter)) continue;
         const pos = hexToPixel(u.hex, HEX_SIZE);
         const elev = overlayOffset(u);
@@ -1200,7 +1207,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const screenshotDrawOrder = [...units].sort(tokenDrawOrder);
 
       for (const unit of screenshotDrawOrder) {
-        if (unit.isDeleted || unit.attachedToUnitId) continue;
+        if (unit.isDeleted || unit.attachedToUnitId || unit.attachedToShipId) continue;
         if (unit.hidden) {
           ctx.save();
           ctx.globalAlpha = 0.3;

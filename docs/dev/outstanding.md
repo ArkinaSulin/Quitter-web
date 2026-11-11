@@ -4,6 +4,53 @@ Living roadmap of what is **not built yet**, for the next session. Shipped work
 goes in `docs/dev/changelog.md`; this file is the forward-looking list.
 Statuses: next / later / blocked / done-here-listed-for-context.
 
+## Spelljammer runtime (in progress, migrations 151�?"157)
+**Shipped:** ability-score/save split, scenario ship mode + firing-arc toggle +
+step counter, `ship_spelljammer` instance columns + RLS + `SHIP` command log,
+snapshot-at-placement, `useShips` load/realtime, wildspace 5-step turn engine +
+per-step action refresh, speed declaration/split/MC-gate pure math, ship placement
+through the command log. See `21-ship-runtime.md`.
+
+**Shipped since:**
+- Scenario-map ship drag + movement overlay (step budget / atmospheric FP,
+  occupied pass-through, structure blocking, MC facing gate).
+- Non-modal draggable ship window (summary, compact deck with vacant cards
+  hidden, roster, crew station assignment, read-only for other alliances).
+- Step-1 speed declaration panel (Helm hero → Bridge hero → DM), signed integer
+  inputs, `declared_round`; Turn 0 has no steps and uses free placement.
+- `ship_spelljammer` realtime publication; new games default to Atmosphere.
+- `End Step` resets each ship's per-step movement spend.
+- Hero boarding (drag onto the ship image; `attached_to_ship_id`), station
+  assignment (1 hero/card, unlimited Crew Quarters), disembark, and Helm →
+  Bridge → DM speed-declaration routing.
+- `shipCombat.ts` pure core (range bands, arcs, ram/collision damage, weighted
+  component pick, reload, AoE descriptor) with tests.
+- Weapon reload at each alliance step (full crew required), weapon list + Fire
+  button in the ship window, and fire targeting: arcs/range, best
+  Dex+prof attacker, damage to ship HP + tonnage-weighted box groups (or unit
+  DAMAGE), firing empties the weapon.
+
+**Next:**
+- Structure-like boarding (any hero, normal move cost), crew team colour, Fill
+  Helm, derived helm owner/alliance, silhouette glow, and Helm→Bridge→DM
+  declaration routing are shipped (migration 161).
+- Ship realtime snapshot loss fixed (merge + REST refresh + migration 162), and
+  the deck layout now has a 4px side gap with unchanged card widths.
+- Mandatory Deck card + hull split (migration 163), hero capacity = card crew,
+  Deck/Crew Quarters unlimited, sail/rudder crew rule, resizable remembered ship
+  window (500×420 min), and deck destruction displacement.
+- **Later:** downed (HP 0) heroes should move to Crew Quarters once ship damage
+  to heroes is wired; currently only Deck/Crew Quarters destruction displaces.
+- Ship combat detail: occupant/crew damage, derelict state, ram/collision
+  actions, AoE vs units via spell shape, reinforcement stripping, per-card hit
+  selection (currently box groups).
+- Station action menus (captain bonus, repair, sail/rudder, cargo) and the
+  helm/weapon defaults; Fill-all and full-card colour/leader marking.
+- Atmosphere per-step movement reset uses the same `speedSpent`; verify the
+  ground-MP pool once ship land speed is authored.
+- **Later:** persistent "player ship" table (ownership + long-lived damage/crew)
+  referencing `ship_templates`; `ship_spelljammer` stays the battle instance.
+
 ## Recently shipped (2026-10-24)
 - Charge/swoop: 1+ action gate, later-action declaration, action -> full pool
   conversion, free attack, AGR-failure end/drop, no air swoop. Swoop doubles

@@ -188,6 +188,11 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       setReactionMode(null);
       return;
     }
+    if (weapon.warMachine && archer.currentFormation === 'Scattered') {
+      addMessage(`${archer.unitName} (Scattered) cannot fire ${weapon.name} — the war machine has lost its facing`);
+      setReactionMode(null);
+      return;
+    }
     const dist = hexDistance(archer.hex, mover.hex);
     const rangeBonus = rangeBonusAt(archer, groundZones);
     if (dist > weapon.range + rangeBonus) {
@@ -482,12 +487,12 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       weapon,
       snapshot,
       targetStats: {
-        str: mover.str ?? 0,
-        dex: mover.dex ?? 0,
-        con: mover.con ?? 0,
-        int: mover.int ?? 0,
-        wis: mover.wis ?? 0,
-        cha: mover.cha ?? 0,
+        str: mover.strSav ?? 0,
+        dex: mover.dexSav ?? 0,
+        con: mover.conSav ?? 0,
+        int: mover.intSav ?? 0,
+        wis: mover.wisSav ?? 0,
+        cha: mover.chaSav ?? 0,
       },
       reaction: true,
       maxMarkers: 1,

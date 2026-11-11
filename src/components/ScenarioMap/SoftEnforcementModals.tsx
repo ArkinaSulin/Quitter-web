@@ -75,10 +75,12 @@ export interface PendingRotate {
   direction: 'left' | 'right';
   /** 1 = a 60° rotate; 3 = a 180° about-turn. */
   steps: number;
-  /** The MP/FP the rotate costs. */
+  /** The MP/FP/actions the rotate costs. */
   cost: number;
-  /** Which pool label to show in the prompt. */
-  poolLabel: 'MP' | 'FP';
+  /** Which resource label to show in the prompt. */
+  poolLabel: 'MP' | 'FP' | 'actions';
+  /** War-machine turns spend actions only; normal turns spend MP/FP. */
+  kind?: 'pool' | 'actions';
 }
 
 export interface PendingChargeAttack {
@@ -261,11 +263,17 @@ export function SoftEnforcementModals({ pending, actions, cancels, unitMaxMP }: 
       {p.rotate && (
         <ConfirmModal
           tone="red"
-          title={p.rotate.steps === 3 ? 'About-turn with no MP?' : 'Rotate with no MP?'}
+          title={
+            p.rotate.kind === 'actions'
+              ? p.rotate.steps === 3 ? 'About-turn needs actions' : 'Rotate needs actions'
+              : p.rotate.steps === 3 ? 'About-turn with no MP?' : 'Rotate with no MP?'
+          }
           buttons={[{ label: 'Yes, rotate anyway', variant: 'red', onClick: actions.confirmRotate }]}
           onCancel={cancels.rotate}
         >
-          {p.rotate.unit.unitName} has no {p.rotate.poolLabel} or actions left — {p.rotate.steps === 3 ? 'about-turning 180°' : 'rotating 60°'} costs {p.rotate.cost} {p.rotate.poolLabel}. Rotate anyway ({p.rotate.poolLabel}/actions may go negative)?
+          {p.rotate.kind === 'actions'
+            ? `${p.rotate.unit.unitName} needs ${p.rotate.cost} actions to turn but has ${p.rotate.unit.actionsAvailable} left. Rotate anyway (actions may go negative)?`
+            : `${p.rotate.unit.unitName} has no ${p.rotate.poolLabel} or actions left — ${p.rotate.steps === 3 ? 'about-turning 180°' : 'rotating 60°'} costs ${p.rotate.cost} ${p.rotate.poolLabel}. Rotate anyway (${p.rotate.poolLabel}/actions may go negative)?`}
         </ConfirmModal>
       )}
 

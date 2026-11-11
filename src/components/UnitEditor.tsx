@@ -595,12 +595,18 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
       canCharge: firstRace?.can_charge || false,
       ignoreMoraleChecks: false,
       darkvision: firstRace?.darkvision || 0,
-      str: 0,
-      dex: 0,
-      con: 0,
-      int: 0,
-      wis: 0,
-      cha: 0,
+      strSav: 0,
+      dexSav: 0,
+      conSav: 0,
+      intSav: 0,
+      wisSav: 0,
+      chaSav: 0,
+      str: 10,
+      dex: 10,
+      con: 10,
+      int: 10,
+      wis: 10,
+      cha: 10,
       customImageUrl: null,
       effects: [],
       createdAt: new Date().toISOString(),
@@ -1187,12 +1193,22 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                     <StatValueHint kind="morale" value={formData.baseMorale || 3} fearless={!!formData.ignoreMoraleChecks} hero={!!formData.isHero} />
                   </div>
 
-                  {/* Saving throws */}
+                  {/* Ability scores (used by skill checks) */}
                   <div className="rounded border border-gray-700 p-2 space-y-1">
-                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Saving throws</p>
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Ability scores</p>
                     <div className="flex gap-1.5">
                       {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(s => (
-                        <Cell key={s} label={s.toUpperCase()} widthClass="w-14"><NumInput value={formData[s] ?? 0} min={-10} max={20} onChange={(v) => updateFormData(s, v)} /></Cell>
+                        <Cell key={s} label={s.toUpperCase()} widthClass="w-14"><NumInput value={formData[s] ?? 10} min={1} max={30} onChange={(v) => updateFormData(s, Math.max(1, Math.min(30, v || 10)))} /></Cell>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Saving-throw bonuses */}
+                  <div className="rounded border border-gray-700 p-2 space-y-1">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Saving throws (bonus)</p>
+                    <div className="flex gap-1.5">
+                      {([['str','strSav'],['dex','dexSav'],['con','conSav'],['int','intSav'],['wis','wisSav'],['cha','chaSav']] as const).map(([label, field]) => (
+                        <Cell key={field} label={label.toUpperCase()} widthClass="w-14"><NumInput value={formData[field] ?? 0} min={-10} max={20} onChange={(v) => updateFormData(field, v)} /></Cell>
                       ))}
                     </div>
                   </div>

@@ -254,3 +254,16 @@ export function deckOrderedCardKeys(layout: ShipDeckLayout): string[] {
 export function hasCard(layout: ShipDeckLayout, cardKey: string): boolean {
   return DECK_REGIONS.some(region => layout[region].some(s => s.cardKey === cardKey));
 }
+
+/** Ensure the mandatory Deck card is present (Body, first free slot). */
+export function ensureDeckSlot(layout: ShipDeckLayout, deckKey: string): ShipDeckLayout {
+  if (hasCard(layout, deckKey)) return layout;
+  const next = cloneDeckLayout(layout);
+  let index = next.body.findIndex(s => !s.cardKey);
+  if (index < 0) {
+    next.body.push(slot(), slot());
+    index = next.body.length - 2;
+  }
+  next.body[index].cardKey = deckKey;
+  return next;
+}

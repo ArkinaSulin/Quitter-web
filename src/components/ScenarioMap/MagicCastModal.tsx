@@ -242,7 +242,7 @@ export function MagicCastModal({
     for (const mk of cast.markers) {
       drawAreaShape(ctx, areaShape, cast.rotation, mk.circle.cx * MAGIC_CANVAS_WIDTH, mk.circle.cy * MAGIC_CANVAS_HEIGHT, mk.circle.r * MAGIC_CANVAS_WIDTH);
     }
-    const preview = canPlace && cast.markers.length < cast.maxMarkers ? hover : null;
+    const preview = canPlace ? hover : null;
     if (preview) {
       drawAreaShape(ctx, areaShape, cast.rotation, preview.cx * MAGIC_CANVAS_WIDTH, preview.cy * MAGIC_CANVAS_HEIGHT, preview.r * MAGIC_CANVAS_WIDTH);
     }
@@ -382,7 +382,9 @@ export function MagicCastModal({
             )}
           </div>
           {cast.maxMarkers > 1 && !cast.resolved && (
-            <div className="text-[11px] text-gray-500">Click the map to place up to {cast.maxMarkers} markers (one per hit)</div>
+            <div className="text-[11px] text-gray-500">
+              Click the map to place up to {cast.maxMarkers} markers (one per hit); placing more replaces the oldest
+            </div>
           )}
         </div>
 

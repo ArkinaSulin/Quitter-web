@@ -27,10 +27,16 @@ export function mapComponentToTemplate(row: ShipComponent): ShipComponentTemplat
     minRange: 0,
     range: 0,
     maxRange: 0,
-    fireCycleStep: 1,
+    reloadSteps: 0,
+    magicDimension: 0,
+    shape: 'circle',
+    savingThrow: 'Dex',
+    saveDC: 10,
+    onSaveHalfOrNeg: true,
     special: '',
     ac: row.ac ?? 10,
     imageUrl: row.imageUrl || '',
+    isRam: !!row.isRam,
   };
 }
 
@@ -52,10 +58,16 @@ export function mapWeaponToTemplate(row: ShipWeapon): ShipComponentTemplate {
     minRange: row.minRange,
     range: row.range,
     maxRange: row.maxRange,
-    fireCycleStep: row.fireCycleStep,
+    reloadSteps: row.reloadSteps,
+    magicDimension: row.magicDimension,
+    shape: row.shape,
+    savingThrow: row.savingThrow,
+    saveDC: row.saveDC,
+    onSaveHalfOrNeg: row.onSaveHalfOrNeg,
     special: row.special || '',
     ac: row.ac ?? 10,
     imageUrl: row.imageUrl || '',
+    isRam: false,
   };
 }
 
@@ -79,7 +91,9 @@ export function validateShipComponentTemplate(t: ShipComponentTemplate): string 
     if (!Number.isFinite(t.maxRange) || t.maxRange < 0) return 'Max range must be 0 or more.';
     if (t.minRange > t.range) return 'Min range cannot exceed range.';
     if (t.range > t.maxRange) return 'Range cannot exceed max range.';
-    if (!Number.isFinite(t.fireCycleStep) || t.fireCycleStep < 1) return 'Fire cycle must be at least 1 step.';
+    if (!Number.isFinite(t.reloadSteps) || t.reloadSteps < 0) return 'Reload steps must be 0 or more.';
+    if (!Number.isFinite(t.magicDimension) || t.magicDimension < 0) return 'Area dimension must be 0 or more.';
+    if (!Number.isFinite(t.saveDC) || t.saveDC < 0) return 'Save DC must be 0 or more.';
   }
   return null;
 }
@@ -109,10 +123,15 @@ export function componentTemplateToWeaponRow(t: ShipComponentTemplate) {
     min_range: t.minRange,
     range: t.range,
     max_range: t.maxRange,
-    fire_cycle_step: t.fireCycleStep,
+    reload_steps: t.reloadSteps,
     dt: t.dt,
     crew: t.crew,
     cost: t.cost,
+    magic_dimension: t.magicDimension,
+    shape: t.shape,
+    saving_throw: t.savingThrow,
+    save_dc: t.saveDC,
+    on_save_half_or_neg: t.onSaveHalfOrNeg,
     special: t.special || null,
     ac: t.ac,
     image_url: t.imageUrl || '',

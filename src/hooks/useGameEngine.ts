@@ -9,11 +9,12 @@ import { nextLowerFormation } from '@/packages/movement';
 import { flyingFormationCap, movePoolMode, flyMax, moveBudgetUnit, passengerDrain, usesFlyPool } from '@/packages/movement';
 import { applyMoveCost, applyMpSpend, applyHeroMoveCost, heroMovePerAction } from '@/packages/movement';
 import { getSetting } from '@/packages/infra';
-import { parseWeapons } from '@/packages/units';
+import { parseWeapons, warMachineTurnActionCost } from '@/packages/units';
 import { isUnitRouted } from '@/packages/morale';
 import { useMessageSync } from '@/hooks/useMessageSync';
 import { ActionType, SubStep, CommandLogRow, UndoState, parseSubSteps } from '@/packages/infra';
-import { getActiveGroups, advanceTurn } from '@/packages/world';
+import { getActiveGroups, advanceTurn, advanceShipStep } from '@/packages/world';
+import { advanceShipReload, shipWeaponCards, type ShipRuntime } from '@/packages/ships';
 import { UnitEffect, GroundEffect } from '@/types/gameProtocol';
 import { Walls } from '@/packages/movement';
 import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, computeZoneReconcile, newEffectKey, EffectSpec, resolveEffectDamage, describeEffectDamage, EffectDamageEvent } from '@/packages/effects';
@@ -43,9 +44,15 @@ interface UseGameEngineProps {
   /** Optimistic local apply for STRUCTURE commands (one keyed structure at a time;
    *  null deletes the key). */
   setStructureLocal?: (key: string, value: unknown | null) => void;
+  /** Optimistic local apply for SHIP commands (ship runtime patch; `__delete`
+   *  removes the row, a `row` change replaces the whole snapshot). */
+  setShipLocal?: (shipId: string, patch: Record<string, unknown>) => void;
   /** Authoritative re-read of `map_data` (structures/zones) after a structure edit
    *  — mirrors `refreshUnitsByIds` so the client can't stay stale. */
   refreshMapData?: () => Promise<void>;
+  /** Authoritative re-read of `ship_spelljammer` after a SHIP command (keeps the
+   *  frozen snapshot intact when a realtime payload omits it). */
+  refreshShips?: () => Promise<void>;
   /** Ask the table how many troops are caught by an 'entry' zone (default: all). */
   requestEntryTroops?: (actor: Unit, zone: GroundEffect) => Promise<number>;
 }
@@ -62,7 +69,9 @@ export function useGameEngine({
   setZonesLocal,
   setWallsLocal,
   setStructureLocal,
+  setShipLocal,
   refreshMapData,
+  refreshShips,
   requestEntryTroops,
 }: UseGameEngineProps) {
   const { addMessage, addError } = useMessageSync(scenarioId);
@@ -136,6 +145,18 @@ export function useGameEngine({
               setStructureLocal(change.key, change[field] ?? null);
             }
           }
+        } else if (step.type === 'SHIP' && setShipLocal) {
+          const patch: Record<string, unknown> = {};
+          for (const change of step.changes) {
+            if (change.field === 'row') {
+              const v = change[field];
+              if (v == null) patch.__delete = true;
+              else Object.assign(patch, v as Record<string, unknown>);
+            } else {
+              patch[change.field] = change[field];
+            }
+          }
+          if (Object.keys(patch).length > 0) setShipLocal(step.unitId, patch);
         } else if (step.type === 'SCENARIO' && setScenarioLocal) {
           const update: any = {};
           for (const change of step.changes) {
@@ -156,7 +177,7 @@ export function useGameEngine({
         }
       }
     },
-    [applyLocalUnit, setAllianceLocal, setScenarioLocal, setZonesLocal, setWallsLocal, setStructureLocal],
+    [applyLocalUnit, setAllianceLocal, setScenarioLocal, setZonesLocal, setWallsLocal, setStructureLocal, setShipLocal],
   );
 
   // All unit ids touched by a batch of sub-steps (units written by the command).
@@ -165,7 +186,7 @@ export function useGameEngine({
       const ids: string[] = [];
       for (const row of rows) {
         for (const step of parseSubSteps(row.sub_steps)) {
-          if (step.unitId && step.type !== 'ALLIANCE' && step.type !== 'SCENARIO' && step.type !== 'ZONE' && step.type !== 'WALL' && step.type !== 'STRUCTURE') {
+          if (step.unitId && step.type !== 'ALLIANCE' && step.type !== 'SCENARIO' && step.type !== 'ZONE' && step.type !== 'WALL' && step.type !== 'STRUCTURE' && step.type !== 'SHIP') {
             ids.push(step.unitId);
           }
         }
@@ -240,6 +261,12 @@ export function useGameEngine({
         await refreshMapData();
       }
 
+      // Ship rows: re-read after SHIP commands so the frozen snapshot is the
+      // authoritative one even if a realtime UPDATE omitted the TOASTed column.
+      if (refreshShips && subSteps.some(s => s.type === 'SHIP')) {
+        await refreshShips();
+      }
+
       // Unit edits (incl. by players editing their own unit) are flagged to everyone.
       // The verbose variant is always recorded alongside the plain text; the
       // "verbose combat" setting only decides which one is DISPLAYED.
@@ -248,7 +275,7 @@ export function useGameEngine({
       refreshUndoState();
       return row;
     },
-    [scenarioId, playerId, playerName, applyDeltas, refreshUnitsByIds, refreshMapData, touchedUnitIds, addMessage, addError, refreshUndoState],
+    [scenarioId, playerId, playerName, applyDeltas, refreshUnitsByIds, refreshMapData, refreshShips, touchedUnitIds, addMessage, addError, refreshUndoState],
   );
 
   const subscribeToCommandLog = useCallback((): (() => void) => {
@@ -628,6 +655,9 @@ export function useGameEngine({
       // 1 MP per 60° rotate, free for Heroes, Scattered, Routed, and free-move.
       const freeRotate = unit.isHero || freeMove || unit.currentFormation === 'Scattered' || isUnitRouted(unit);
       const isAboutTurn = steps === 3;
+      // A war machine in Open Order turns the MACHINE itself: 2 actions per 60°
+      // step, no MP. This replaces the normal MP rotation accounting.
+      const wmActionCost = warMachineTurnActionCost(unit, steps);
 
       // Mounted units in Close Order are unable to turn around (180° about-turn).
       if (isAboutTurn && (unit.mountId || unit.mountName) && unit.currentFormation === 'Close Order') {
@@ -635,7 +665,13 @@ export function useGameEngine({
         return;
       }
 
-      if (!freeRotate) {
+      if (wmActionCost != null) {
+        changes.push({
+          field: 'actionsAvailable',
+          from: unit.actionsAvailable,
+          to: unit.actionsAvailable - wmActionCost,
+        });
+      } else if (!freeRotate) {
         // A 180° about-turn is a single maneuver with its own setting cost
         // (mounted units pay more); ordinary rotations cost 1 MP per 60°.
         const cost = isAboutTurn
@@ -660,7 +696,10 @@ export function useGameEngine({
       }
       let desc = `${unit.unitName} rotated ${direction}${steps > 1 ? ` ${steps * 60}°` : ''}`;
       // A 180° about-face also costs organization levels (special maneuver).
-      if (isAboutTurn && !freeRotate) {
+      if (wmActionCost != null) {
+        desc = `${unit.unitName} turned its war machine ${direction}${steps > 1 ? ` ${steps * 60} deg` : ''} (${wmActionCost} actions)`;
+      }
+      if (isAboutTurn && !freeRotate && wmActionCost == null) {
         const penalty = Math.max(0, getSetting('about_turn_org_penalty', 1));
         let current = unit.currentFormation;
         for (let i = 0; i < penalty; i++) {
@@ -1015,22 +1054,46 @@ export function useGameEngine({
       formationsMap: Record<string, Formation>;
       turnNumber: number;
       freeMove: boolean;
+      /** Spelljammer mode: wildspace splits a round into 5 steps. */
+      shipMode?: 'atmosphere' | 'wildspace';
+      /** Current wildspace step (1..5). */
+      shipStep?: number;
+      /** Ship instances to reset/advance for the new step/turn. */
+      ships?: ShipRuntime[];
       zones?: GroundEffect[];
       /** Placed structures + templates — to resolve units left floating by removal. */
       structures?: MapStructures;
       structureTemplates?: Record<string, StructureTemplate>;
-    }): Promise<{ next: AllianceGroup; wrapped: boolean; turnNumber: number; freeMoveEnded: boolean; ok: boolean; zonesAfter: GroundEffect[] }> => {
+    }): Promise<{ next: AllianceGroup; wrapped: boolean; turnNumber: number; shipStep: number; freeMoveEnded: boolean; ok: boolean; zonesAfter: GroundEffect[] }> => {
       const activeGroups = getActiveGroups(args.alliances);
-      const { next, wrapped } = advanceTurn(args.currentAlliance, activeGroups);
-      // Turn 0 = free play (null alliance). The first End Turn leaves free play and
-      // begins Turn 1, which also counts as a turn boundary (turn_number + 1).
+      const turnRes = advanceTurn(args.currentAlliance, activeGroups);
       const leavingFreePlay = args.currentAlliance === null;
-      const newTurnNumber = (leavingFreePlay || wrapped) ? args.turnNumber + 1 : args.turnNumber;
+      const wildspace = args.shipMode === 'wildspace';
+      const currentStep = wildspace ? Math.min(5, Math.max(1, args.shipStep ?? 1)) : 1;
+      let next = turnRes.next;
+      let wrapped = turnRes.wrapped;
+      let newTurnNumber: number;
+      let newStep = currentStep;
+      if (wildspace) {
+        // Each alliance takes one step; a full alliance cycle advances the step,
+        // and wrapping step 5 -> 1 advances the round (turn_number).
+        const stepRes = advanceShipStep(currentStep, turnRes.wrapped, leavingFreePlay);
+        newStep = stepRes.step;
+        wrapped = stepRes.wrapped;
+        newTurnNumber = (leavingFreePlay || wrapped) ? args.turnNumber + 1 : args.turnNumber;
+      } else {
+        // Turn 0 = free play (null alliance). The first End Turn leaves free play and
+        // begins Turn 1, which also counts as a turn boundary (turn_number + 1).
+        newTurnNumber = (leavingFreePlay || wrapped) ? args.turnNumber + 1 : args.turnNumber;
+      }
 
       const changes: { field: string; from: any; to: any }[] = [
         { field: 'current_turn_alliance', from: args.currentAlliance ?? null, to: next },
         { field: 'turn_number', from: args.turnNumber, to: newTurnNumber },
       ];
+      if (wildspace && newStep !== currentStep) {
+        changes.push({ field: 'ship_step', from: currentStep, to: newStep });
+      }
       // Free move is a turn-0 convenience: it ends automatically once the first
       // real turn begins. The DM can still toggle it back on manually.
       if (leavingFreePlay) {
@@ -1077,6 +1140,48 @@ export function useGameEngine({
         describeEffectDamage(ev.unitName, ev.source, ev.detail, true),
       );
 
+      // Ships reset their per-step movement spend on every step/turn boundary.
+      for (const ship of args.ships ?? []) {
+        if (ship.isDeleted || !ship.speedSpent) continue;
+        subSteps.push({
+          type: 'SHIP',
+          description: `${ship.name} movement resets`,
+          unitId: ship.id,
+          changes: [{ field: 'speedSpent', from: ship.speedSpent, to: 0 }],
+        });
+      }
+
+      // Ship weapons load one step at the start of their alliance's step when
+      // the card is fully crewed (PC + crew). An armed weapon stays armed.
+      for (const ship of args.ships ?? []) {
+        if (ship.isDeleted || !ship.snapshot?.build) continue;
+        const group = ship.team ? args.alliances[ship.team] : null;
+        if (group !== next) continue;
+        const cards = shipWeaponCards(ship.snapshot.build);
+        if (cards.length === 0) continue;
+        const nextReload = { ...(ship.reload ?? {}) };
+        let changed = false;
+        for (const card of cards) {
+          const station = ship.stations?.[card.key];
+          const crewCount = (station?.crewIds?.length ?? 0) + (station?.heroId ? 1 : 0);
+          if (crewCount < Math.ceil(card.crew)) continue;
+          const prev = nextReload[card.key] ?? { progress: 0, armed: false };
+          const advanced = advanceShipReload(prev, card.weapon.reloadSteps);
+          if (advanced.progress !== prev.progress || advanced.armed !== prev.armed) {
+            nextReload[card.key] = advanced;
+            changed = true;
+          }
+        }
+        if (changed) {
+          subSteps.push({
+            type: 'SHIP',
+            description: `${ship.name} reloads`,
+            unitId: ship.id,
+            changes: [{ field: 'reload', from: ship.reload ?? {}, to: nextReload }],
+          });
+        }
+      }
+
       // Charge forfeit: units in the ending group that charged but never used their
       // free attack drop one organization level and clear their charge state.
       const endingTeams = new Set<string>();
@@ -1110,11 +1215,44 @@ export function useGameEngine({
       const turnStartMp = getSetting('turn_start_mp', 0);
       const actionsPerTurn = getSetting('actions_per_turn', 2);
       const heroActionsPerTurn = getSetting('hero_actions_per_turn', 5);
+      // Wildspace: each alliance gets one step per round. Units may act in any 2
+      // steps (1 action per step), heroes in every step (1 action per step).
+      const roundStart = !wildspace || newStep === 1;
+      const secondStep = wildspace && newStep === 2;
       for (const unit of args.units) {
         if (unit.isDeleted || !activeTeams.has(unit.team)) continue;
+        const hero = unit.isHero;
+        if (wildspace) {
+          // Heroes: exactly one action this step (movement is that action's worth).
+          // Units: +1 action on the first two steps, capped at 2 per round.
+          const mpTo = 0;
+          const flyTo = 0;
+          let actionsTo: number;
+          if (hero) actionsTo = 1;
+          else if (roundStart) actionsTo = 1;
+          else if (secondStep) actionsTo = Math.min(actionsPerTurn, (unit.actionsAvailable ?? 0) + 1);
+          else actionsTo = unit.actionsAvailable ?? 0;
+          const changes: { field: string; from: any; to: any }[] = [
+            { field: 'movementPointsAvailable', from: unit.movementPointsAvailable, to: mpTo },
+            { field: 'flySpeedAvailable', from: unit.flySpeedAvailable ?? 0, to: flyTo },
+            { field: 'actionsAvailable', from: unit.actionsAvailable, to: actionsTo },
+          ];
+          if (roundStart) {
+            changes.push({ field: 'attacksUsed', from: unit.attacksUsed ?? 0, to: 0 });
+            changes.push({ field: 'archerReactionUsed', from: unit.archerReactionUsed ?? false, to: false });
+            changes.push({ field: 'pursuitUsed', from: unit.pursuitUsed ?? false, to: false });
+            changes.push({ field: 'heroicInspirationActive', from: unit.heroicInspirationActive ?? false, to: false });
+          }
+          subSteps.push({
+            type: 'END_TURN',
+            description: `${unit.unitName} step ${newStep} refresh (${actionsTo} action${actionsTo === 1 ? '' : 's'})`,
+            unitId: unit.id,
+            changes,
+          });
+          continue;
+        }
         // Heroes refresh to FULL MP + 5 actions; units refresh to 0 MP + 2 actions
         // (units materialize MP from actions when they move).
-        const hero = unit.isHero;
         const mpTo = hero
           ? computeEffectiveMovement(unit, getFormationMultiplier(args.formationsMap, unit.currentFormation, 'movement_multiplier'))
           : turnStartMp;
@@ -1142,7 +1280,7 @@ export function useGameEngine({
       const endMessage = [turnLine, ...effectMessages].join('  ·  ');
       const endVerbose = [turnLine, ...effectVerbose].join('  ·  ');
       const row = await execute('END_TURN', subSteps, turnLine, { message: endMessage, verboseMessage: endVerbose });
-      return { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded: leavingFreePlay, ok: !!row, zonesAfter };
+      return { next, wrapped, turnNumber: newTurnNumber, shipStep: newStep, freeMoveEnded: leavingFreePlay, ok: !!row, zonesAfter };
     },
     [execute, scenarioId],
   );

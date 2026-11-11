@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/packages/infra/supabase';
 
 const TOAST_EVENT = 'scenario-toast';
+const storageKey = (scenarioId: string) => `scenario-toast:${scenarioId}`;
 
 export interface ScenarioToastState {
   id: number;
@@ -20,7 +21,23 @@ export function useScenarioToast(scenarioId: string) {
   const push = useCallback((text: string) => {
     if (!text) return;
     setToast({ id: ++nextId.current, text });
-  }, []);
+    try {
+      sessionStorage.setItem(storageKey(scenarioId), text);
+    } catch {
+      // sessionStorage unavailable (private mode / SSR) — display only.
+    }
+  }, [scenarioId]);
+
+  // Restore the last toast for this scenario after a reload/navigation within
+  // the browser session. It stays until the next toast replaces it.
+  useEffect(() => {
+    try {
+      const text = sessionStorage.getItem(storageKey(scenarioId));
+      if (text) setToast({ id: ++nextId.current, text });
+    } catch {
+      // ignore unavailable storage
+    }
+  }, [scenarioId]);
 
   useEffect(() => {
     subscribedRef.current = false;
@@ -58,7 +75,12 @@ export function useScenarioToast(scenarioId: string) {
 
   const dismissToast = useCallback((id: number) => {
     setToast(current => (current?.id === id ? null : current));
-  }, []);
+    try {
+      sessionStorage.removeItem(storageKey(scenarioId));
+    } catch {
+      // ignore unavailable storage
+    }
+  }, [scenarioId]);
 
   return { toast, showToast, dismissToast };
 }

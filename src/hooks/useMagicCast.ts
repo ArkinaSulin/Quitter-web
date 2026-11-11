@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/packages/infra/supabase';
 import { Weapon, SaveStat } from '@/packages/units';
+import { appendReplacingOldest } from '@/packages/primitives';
 import { SpellCastTokenSnapshot } from '@/components/TokenRenderer/drawToken';
 
 const MAGIC_EVENT = 'magic-cast';
@@ -284,14 +285,13 @@ export function useMagicCast(scenarioId: string) {
     send({ type: 'markers', id: current.id, markers });
   }, [send]);
 
-  /** Place a marker: append while under `maxMarkers`, else replace the last one. */
+  /** Place a marker: append while under `maxMarkers`, else replace the OLDEST
+   *  (first) one (FIFO). Placing more markers than hits therefore cycles the
+   *  first marker out instead of overwriting the last. */
   const placeMarker = useCallback((circle: MagicCircle, affectedCount: number) => {
     const current = castRef.current;
     if (!current) return;
-    const markers = current.markers.length < current.maxMarkers
-      ? [...current.markers, { circle, affectedCount }]
-      : (current.markers.length > 0 ? [...current.markers.slice(0, -1), { circle, affectedCount }] : [{ circle, affectedCount }]);
-    setMarkers(markers);
+    setMarkers(appendReplacingOldest(current.markers, { circle, affectedCount }, current.maxMarkers));
   }, [setMarkers]);
 
   const clearMarkers = useCallback(() => setMarkers([]), [setMarkers]);

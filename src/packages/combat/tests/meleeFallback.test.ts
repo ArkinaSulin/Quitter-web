@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { FISTS_WEAPON, isMeleeWeapon, findFirstMeleeWeaponIndex, isAdjacentDistance, isMeleeReachable, isInAnyHostileKillZone, computeWeaponSwitchAc, attackKind, canWeaponAttack } from '@/packages/combat/lib/meleeFallback';
 import { Unit, Hex } from '@/types/gameProtocol';
 import { directionBetween, edgeRef } from '@/packages/movement';
@@ -58,6 +58,12 @@ const makeUnit = (overrides: Partial<Unit> = {}): Unit => ({
     pursuitUsed: false,
     heroicInspirationActive: false,
   activeWeaponIndex: 0,
+  strSav: 0,
+  dexSav: 0,
+  conSav: 0,
+  intSav: 0,
+  wisSav: 0,
+  chaSav: 0,
   str: 0,
   dex: 0,
   con: 0,

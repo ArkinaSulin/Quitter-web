@@ -19,7 +19,7 @@ import { parseWeapons, damageDiceCount } from '@/packages/units';
 import { SubStep, UnitChange } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
-import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, formationOrgLevels } from '@/packages/movement';
+import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, friendlyAirPassThroughHexes, formationOrgLevels } from '@/packages/movement';
 import { Walls, directionBetween, edgeRef } from '@/packages/movement';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, structureHasDoor, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween, structureClimbPerStep10, isClimbingUnit, isHorizontalClimbMove } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
@@ -91,6 +91,9 @@ interface MoveActionsDeps {
   /** Late-bound opportunity-attack resolver (owned by useCombatActions, assigned
    *  via a ref to break the useMoveActions → useCombatActions hook-order cycle). */
   pursuitsRef: { current: ((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null };
+  /** Boarding: the drop target contains a ship. Return true when handled (the
+   *  normal move must not also happen). `cost`/`maxMP` are the validated path. */
+  onBoardShip?: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, isFree: boolean) => Promise<boolean>;
 }
 
 export function useMoveActions(deps: MoveActionsDeps) {
@@ -123,6 +126,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     structureTemplates,
     groundZones,
     pursuitsRef,
+    onBoardShip,
   } = deps;
 
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
@@ -542,6 +546,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // friendly hexes (Open Order/Scattered/Routed, or a hero <= Large) — never
     // stop on them (the search excludes pass hexes from its results → no stacking).
     const loosePass = loosePassThroughHexes(units, unit, formationsMap, alliances, flying ? 'fly' : 'ground', originSurface);
+    // Airborne friendly units may always be crossed (never landed on), regardless
+    // of their formation: the air slot only blocks a STOP.
+    if (flying) for (const k of Array.from(friendlyAirPassThroughHexes(units, unit, alliances))) loosePass.add(k);
 
     // Climb / hang movement (mounted units cannot climb). A climbing unit moves
     // linearly: up toward `climbTo`, or down (its own hex). A grounded non-mounted
@@ -673,6 +680,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
         return;
       }
       const breakToFormation = flying ? undefined : (entryBreakFormation(unit.hex, targetHex, unit.currentFormation, structures, structureTemplates, groundZones) ?? undefined);
+      if (await onBoardShip?.(unit, targetHex, 0, unitMaxMP(unit), true)) return;
       await moveUnitFree(unit, targetHex, attachedHero, breakToFormation, descendElev);
       await maybeAutoReturnToRanged(unit);
       offerReactionsFor({ ...unit, hex: targetHex });
@@ -766,8 +774,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
       setPendingElevation({ unit, targetHex, cost: reachEntry.cost, maxMP: finalMax, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation, range, originAir: flying, originSurface, endSurface, occupant: null, canSwoop: false, isHostile: false, weaponIndex: unit.activeWeaponIndex ?? 0, damageDiceCount: damageDiceCount(parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0]?.damageDice ?? ''), mainTarget: 'rider' });
       return;
     }
+    if (await onBoardShip?.(unit, targetHex, reachEntry.cost, finalMax, false)) return;
     await completeMove(unit, targetHex, reachEntry.cost, false, finalMax, attachedHero, heroMax, breakToFormation, descendElev, originSurface);
-  }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, structures, structureTemplates, handleClimbMove, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove, attachHero]);
+  }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, structures, structureTemplates, handleClimbMove, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove, attachHero, onBoardShip]);
 
   /**
    * Atomic climb OVER a freestanding edge wall: climb up to the top (near side),

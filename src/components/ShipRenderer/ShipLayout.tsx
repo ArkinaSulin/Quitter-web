@@ -13,6 +13,7 @@ import {
   componentByName,
   deckOrderedCardKeys,
   effectiveWeaponArcs,
+  ensureDeckSlot,
   findCardSlot,
   swapCards,
   weaponById,
@@ -33,12 +34,18 @@ export function ShipLayout({
   build,
   stats,
   readOnly = false,
+  hideEmpty = false,
+  heroesByCard,
   onDeckChange,
   onSlotContextMenu,
 }: {
   build: ShipBuild;
   stats: ShipDerivedStats;
   readOnly?: boolean;
+  /** Skip vacant slots (the region boxes stay) — used by the compact runtime window. */
+  hideEmpty?: boolean;
+  /** Boarded heroes keyed by deck card key (rendered as small chips). */
+  heroesByCard?: Record<string, { id: string; name: string }[]>;
   onDeckChange?: (layout: ShipDeckLayout) => void;
   onSlotContextMenu?: (
     event: React.MouseEvent,
@@ -49,7 +56,9 @@ export function ShipLayout({
 }) {
   const c = build.components;
   const m = stats.massBreakdown;
-  const layout = build.deckLayout;
+  const deckComponent = componentByName(c, COMPONENT_NAMES.deck);
+  const deckKey = `component:${deckComponent.id || 'deck'}`;
+  const layout = build.deckLayout ? ensureDeckSlot(build.deckLayout, deckKey) : build.deckLayout;
   const dragRef = useRef<{ region: ShipDeckRegion; index: number } | null>(null);
 
   if (!layout) {
@@ -149,29 +158,45 @@ export function ShipLayout({
     });
   }
 
-  const hullComponent = componentByName(c, COMPONENT_NAMES.hull);
-  const hullKey = `component:${hullComponent.id || 'hull'}`;
-  cards[hullKey] = {
-    id: hullKey,
-    cardKey: hullKey,
-    name: 'Hull',
-    tons: m.hull,
-    ac: cardAc(hullComponent.ac),
-    dt: cardDt(hullComponent.dt),
+  cards[deckKey] = {
+    id: deckKey,
+    cardKey: deckKey,
+    name: 'Deck',
+    tons: m.deck,
+    ac: cardAc(deckComponent.ac),
+    dt: cardDt(deckComponent.dt),
     crewRequired: 0,
-    safe: !hullComponent.hittable,
-    note: hullComponent.effect || 'structural',
+    safe: !deckComponent.hittable,
+    note: 'open deck',
     kind: 'component',
-    reinforced: reinforced(build, hullKey),
+    reinforced: reinforced(build, deckKey),
   };
+
+  if (m.hull > 0) {
+    const hullComponent = componentByName(c, COMPONENT_NAMES.hull);
+    const hullKey = `component:${hullComponent.id || 'hull'}`;
+    cards[hullKey] = {
+      id: hullKey,
+      cardKey: hullKey,
+      name: 'Hull',
+      tons: m.hull,
+      ac: cardAc(hullComponent.ac),
+      dt: cardDt(hullComponent.dt),
+      crewRequired: 0,
+      safe: !hullComponent.hittable,
+      note: hullComponent.effect || 'structural',
+      kind: 'component',
+      reinforced: reinforced(build, hullKey),
+    };
+  }
 
   if (build.sails > 0) {
     const comp = componentByName(c, COMPONENT_NAMES.sail);
     addCountedComponentCards(`component:${comp.id || 'sail'}`, 'Sail', build.sails, comp, {
       aggregateTons: m.sails,
-      aggregateCrew: Math.ceil(build.sails * comp.crew),
+      aggregateCrew: Math.max(1, Math.floor(build.sails / 4)),
       unitTons: Math.round(comp.mass),
-      unitCrew: Math.ceil(comp.crew),
+      unitCrew: Math.max(1, Math.floor(build.sails / 4)),
     });
   }
 
@@ -179,7 +204,7 @@ export function ShipLayout({
     const comp = componentByName(c, COMPONENT_NAMES.rudder);
     addCountedComponentCards(`component:${comp.id || 'rudder'}`, 'Rudder', build.rudders, comp, {
       aggregateTons: m.rudders,
-      aggregateCrew: Math.ceil(build.rudders * comp.crew),
+      aggregateCrew: Math.max(1, Math.ceil(build.rudders / 2)),
       unitTons: Math.round(comp.mass),
       unitCrew: Math.ceil(comp.crew),
     });
@@ -315,6 +340,15 @@ export function ShipLayout({
         className="relative h-full min-w-0"
       >
         <ShipComponentCard data={card} />
+        {card.cardKey && heroesByCard?.[card.cardKey]?.length ? (
+          <div className="pointer-events-none absolute -bottom-1 left-0 right-0 flex flex-wrap justify-center gap-0.5">
+            {heroesByCard[card.cardKey].map(h => (
+              <span key={h.id} className="rounded bg-amber-500/90 px-1 text-[8px] font-semibold text-black">
+                {h.name}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     );
   };
@@ -339,41 +373,49 @@ export function ShipLayout({
     ));
   };
 
+  const visibleIndices = (region: ShipDeckRegion): number[] => {
+    const all = layout[region].map((_, i) => i);
+    return hideEmpty ? all.filter(i => !!layout[region][i]?.cardKey) : all;
+  };
+
   const renderRegion = (
     region: ShipDeckRegion,
     label: string,
     mode: 'row' | 'column' | 'body' | 'bow',
     wrapperClass = '',
-  ) => (
-    <div className={`rounded-2xl bg-gray-900/30 py-1.5 ring-2 ring-inset ring-gray-600/80 ${wrapperClass}`}>
-      <div className="mb-1 text-center text-[8px] uppercase tracking-widest text-gray-500">
-        {label}
+  ) => {
+    const indices = visibleIndices(region);
+    return (
+      <div className={`rounded-2xl bg-gray-900/30 px-0.5 py-1.5 ring-2 ring-inset ring-gray-600/80 ${wrapperClass}`}>
+        <div className="mb-1 text-center text-[8px] uppercase tracking-widest text-gray-500">
+          {label}
+        </div>
+        <div
+          className={
+            mode === 'bow' || mode === 'row' || mode === 'body'
+              ? 'space-y-1.5'
+              : 'flex flex-col gap-2'
+          }
+        >
+          {mode === 'bow' ? (
+            <>
+              {renderSlotRows('bow', indices.filter(i => i === 0), 3)}
+              {renderSlotRows('bow', indices.filter(i => i !== 0), 3)}
+            </>
+          ) : mode === 'row' ? (
+            renderSlotRows(region, indices, 3)
+          ) : mode === 'body' ? (
+            renderSlotRows(region, indices, 2)
+          ) : (
+            indices.map(i => renderSlot(region, i))
+          )}
+        </div>
       </div>
-      <div
-        className={
-          mode === 'bow' || mode === 'row' || mode === 'body'
-            ? 'space-y-1.5'
-            : 'flex flex-col gap-2'
-        }
-      >
-        {mode === 'bow' ? (
-          <>
-            {renderSlotRows('bow', [0], 3)}
-            {renderSlotRows('bow', layout.bow.slice(1).map((_, i) => i + 1), 3)}
-          </>
-        ) : mode === 'row' ? (
-          renderSlotRows(region, layout[region].map((_, i) => i), 3)
-        ) : mode === 'body' ? (
-          renderSlotRows(region, layout[region].map((_, i) => i), 2)
-        ) : (
-          layout[region].map((_, i) => renderSlot(region, i))
-        )}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
-    <div className="relative rounded-3xl border border-gray-700 bg-gray-900/40 p-3">
+    <div className="relative rounded-3xl border border-gray-700 bg-gray-900/40 px-1 py-3">
       <span className="absolute left-1 top-1/2 -translate-y-1/2 -rotate-90 text-[8px] uppercase tracking-widest text-gray-600">
         Port
       </span>
@@ -381,7 +423,7 @@ export function ShipLayout({
         Starboard
       </span>
 
-      <div className="mx-auto max-w-[420px] space-y-2 px-3">
+      <div className="mx-auto space-y-2">
         {renderRegion('bow', 'Bow', 'bow', 'w-3/4 mx-auto')}
 
         <div className="text-center text-[8px] uppercase tracking-widest text-gray-600">360°</div>

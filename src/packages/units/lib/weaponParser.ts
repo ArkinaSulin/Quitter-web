@@ -47,6 +47,27 @@ export function isAreaWeapon(weapon: Pick<Weapon, 'magicDimension'>): boolean {
   return weapon.magicDimension > 0;
 }
 
+/** A unit is a war machine (siege engine) when ANY equipped weapon carries the
+ *  war-machine trait. The whole unit operates the machine. */
+export function isWarMachineUnit(unit: { weaponString?: string | null }): boolean {
+  return parseWeapons(unit.weaponString || '').some(w => w.warMachine);
+}
+
+/**
+ * Action cost to rotate a war machine, or null when the normal MP rotation rules
+ * apply. A war machine in Open Order turns the MACHINE itself: each 60° step
+ * costs 2 actions (and no MP), like a 2-action withdraw. An about-turn is three
+ * 60° steps (6 actions).
+ */
+export function warMachineTurnActionCost(
+  unit: { weaponString?: string | null; currentFormation?: string },
+  steps = 1,
+): number | null {
+  if (unit.currentFormation !== 'Open Order') return null;
+  if (!isWarMachineUnit(unit)) return null;
+  return Math.max(1, Math.floor(steps)) * 2;
+}
+
 /** Damage dice grammar: `NdM±X` segments joined by `+` (e.g. "1d6", "2d6+2", "1d4+2d6"). */
 export function isValidDamageDice(dice: string): boolean {
   const pattern = /^(\d+d\d+)([+-]\d+)?(\+\d+d\d+)*([+-]\d+)?$/;

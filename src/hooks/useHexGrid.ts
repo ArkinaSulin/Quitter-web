@@ -24,6 +24,14 @@ export { hexToPixel, pixelToHex } from '@/packages/primitives';
  */
 export type TargetFilter = 'structure' | 'ground' | 'air' | null;
 
+/** A ship image on the board that can be grabbed/dragged. */
+export interface GrabbableShip {
+  id: string;
+  hex: Hex;
+  keelLength: number;
+  imageOffsetY?: number;
+}
+
 /** Does `unit` pass the active target filter? (`structure` never passes a unit.) */
 export function unitMatchesFilter(unit: Pick<Unit, 'elevation'>, filter: TargetFilter): boolean {
   if (!filter) return true;
@@ -87,6 +95,16 @@ export interface UseHexGridProps {
   autoCenter?: boolean;
   backgroundImage?: { url: string; offsetX: number; offsetY: number; scale: number } | null;
   overlayMap?: Record<string, string> | null;
+  /** Placed ships (image entities under tokens) that can be grabbed/moved. */
+  ships?: GrabbableShip[];
+  /** Dropped a ship onto a hex. */
+  onShipMove?: (shipId: string, targetHex: Hex) => void;
+  /** Click (no drag) on a ship image. */
+  onShipClick?: (ship: GrabbableShip, clientX: number, clientY: number) => void;
+  /** Permission gate for grabbing a ship. */
+  canGrabShip?: (ship: GrabbableShip) => boolean;
+  /** Fired when a ship starts being grabbed (for the movement overlay). */
+  onShipGrab?: (ship: GrabbableShip) => void;
   /** Read-only mode: pan/zoom/hover enabled, but unit drag-move, attack, and
    *  context menu are disabled (used by replay). */
   readOnly?: boolean;
@@ -126,16 +144,22 @@ export function useHexGrid({
   backgroundImage,
   overlayMap = null,
   readOnly = false,
+  ships = [],
+  onShipMove,
+  onShipClick,
+  canGrabShip,
+  onShipGrab,
 }: UseHexGridProps) {
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [hoveredHex, setHoveredHex] = useState<Hex | null>(null);
   const [draggingUnitId, setDraggingUnitId] = useState<string | null>(null);
+  const [draggingShipId, setDraggingShipId] = useState<string | null>(null);
   const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
-  const [mouseDownTarget, setMouseDownTarget] = useState<'unit' | 'hex' | 'none'>('none');
+  const [mouseDownTarget, setMouseDownTarget] = useState<'unit' | 'ship' | 'hex' | 'none'>('none');
   const [lastHoveredUnit, setLastHoveredUnit] = useState<Unit | null>(null);
 
   const rafIdRef = useRef<number | null>(null);
@@ -465,6 +489,27 @@ export function useHexGrid({
     return undefined;
   }, [units, activeHeroId, size, targetFilter, getWorldFromScreen, getHexFromScreen]);
 
+  /** Ship image hit test (bounding box from keel length; units win on top). */
+  const getShipAtScreen = useCallback((screenX: number, screenY: number): GrabbableShip | undefined => {
+    if (targetFilter === 'structure') return undefined;
+    const world = getWorldFromScreen(screenX, screenY);
+    let best: GrabbableShip | undefined;
+    let bestD = Infinity;
+    for (const ship of ships) {
+      const pos = hexToPixel(ship.hex, size);
+      const h = (Math.max(1, ship.keelLength) * size) / 50;
+      const half = Math.max(size * 0.7, h / 2);
+      const offset = ((ship.imageOffsetY ?? 0) * size) / 50;
+      const dx = world.x - pos.x;
+      const dy = world.y - (pos.y - offset);
+      if (Math.abs(dx) <= half && Math.abs(dy) <= half) {
+        const d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = ship; }
+      }
+    }
+    return best;
+  }, [ships, size, targetFilter, getWorldFromScreen]);
+
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const hex = getHexFromScreen(e.clientX, e.clientY);
     if (hex) setHoveredHex(hex);
@@ -594,8 +639,17 @@ export function useHexGrid({
       setMouseDownTarget('unit');
       return;
     }
+    // No unit on top: try the ship image underneath.
+    const ship = !unit ? getShipAtScreen(e.clientX, e.clientY) : undefined;
+    if (ship && (canGrabShip ? canGrabShip(ship) : true)) {
+      if (onShipGrab) onShipGrab(ship);
+      setDraggingShipId(ship.id);
+      setDragStartPos({ x: e.clientX, y: e.clientY });
+      setMouseDownTarget('ship');
+      return;
+    }
     setMouseDownTarget('hex');
-  }, [getHexFromScreen, getUnitAtScreen, targetFilter, readOnly, canGrabUnit, onGrabUnit, onPing]);
+  }, [getHexFromScreen, getUnitAtScreen, getShipAtScreen, targetFilter, readOnly, canGrabUnit, onGrabUnit, canGrabShip, onShipGrab, onPing]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const targetHex = getHexFromScreen(e.clientX, e.clientY);
@@ -611,6 +665,22 @@ export function useHexGrid({
       onUnitClick(upUnit, e.clientX, e.clientY);
     }
     pointerDownRef.current = null;
+
+    if (draggingShipId && targetHex) {
+      const moved = !!dragStartPos && (Math.abs(e.clientX - dragStartPos.x) > 4 || Math.abs(e.clientY - dragStartPos.y) > 4);
+      const ship = ships.find(s => s.id === draggingShipId);
+      if (moved) {
+        onShipMove?.(draggingShipId, targetHex);
+      } else if (ship && onShipClick) {
+        onShipClick(ship, e.clientX, e.clientY);
+      }
+      setDraggingShipId(null);
+      setDragStartPos(null);
+      setMouseDownTarget('none');
+      setIsPanning(false);
+      setPanStart(null);
+      return;
+    }
 
     if (draggingUnitId && dragStartPos && targetHex) {
       const unit = units.find(u => u.id === draggingUnitId);
@@ -661,7 +731,7 @@ export function useHexGrid({
     setIsPanning(false);
     setPanStart(null);
     setMouseDownTarget('none');
-  }, [draggingUnitId, dragStartPos, getHexFromScreen, units, getUnitAtScreen, targetFilter, onAttack, onAttackWall, canAttemptWallEdge, onAttackStructure, canAttemptStructure, getWallEdgeAt, onHoverWallEdge, onHoverStructureHex, onUnitMove, onUnitClick, mouseDownTarget, onHexClick]);
+  }, [draggingUnitId, draggingShipId, dragStartPos, getHexFromScreen, units, ships, getUnitAtScreen, targetFilter, onAttack, onAttackWall, canAttemptWallEdge, onAttackStructure, canAttemptStructure, getWallEdgeAt, onHoverWallEdge, onHoverStructureHex, onUnitMove, onUnitClick, onShipMove, onShipClick, mouseDownTarget, onHexClick]);
 
   const handleRightClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
@@ -693,6 +763,8 @@ export function useHexGrid({
     // No handleWheel – it's internal now
     hoveredHex,
     draggingUnitId,
+    draggingShipId,
+    getShipAtScreen,
     offsetX,
     offsetY,
     zoom,

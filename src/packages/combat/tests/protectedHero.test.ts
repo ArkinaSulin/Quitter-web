@@ -58,7 +58,7 @@ const unit = (overrides: Partial<Unit> = {}): Unit => ({
   pursuitUsed: false,
   heroicInspirationActive: false,
   activeWeaponIndex: 0,
-  str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
+  strSav: 0, dexSav: 0, conSav: 0, intSav: 0, wisSav: 0, chaSav: 0, str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
   ...overrides,
 });
 

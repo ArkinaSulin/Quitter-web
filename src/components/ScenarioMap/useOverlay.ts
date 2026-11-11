@@ -13,7 +13,7 @@ import { isHostile } from '@/packages/primitives';
 import { frontArcIndices } from '@/packages/primitives';
 import { parseWeapons } from '@/packages/units';
 import { isRangedCapableWeapon, reactionMovePool, isMeleeReachable } from '@/packages/combat';
-import { canRangedTarget, loosePassThroughHexes, formationOrgLevels, isLooseUnit } from '@/packages/movement';
+import { canRangedTarget, loosePassThroughHexes, friendlyAirPassThroughHexes, formationOrgLevels, isLooseUnit } from '@/packages/movement';
 import { arcOfTarget } from '@/packages/primitives';
 import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
 import { Walls } from '@/packages/movement';
@@ -311,6 +311,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     const budget = movePreviewMode === 'all' ? allBudget : oneBudget;
     const hopCap = budget;
     const passThrough = new Set<string>(Array.from(loosePassThroughHexes(units, draggedUnit, formationsMap, alliances, flying ? 'fly' : 'ground', surface)));
+    if (flying) for (const k of Array.from(friendlyAirPassThroughHexes(units, draggedUnit, alliances))) passThrough.add(k);
     if (!flying) for (const k of Array.from(doorPassThroughHexes(structures, templates, occupied))) passThrough.add(k);
     const reachableMap = computeReachableMap(draggedUnit, budget, occupied, threatHexes, flying ? undefined : costOfHexFor(draggedUnit), false, flying ? undefined : blockedEdgeFor(draggedUnit), hopCap, passThrough, flying ? undefined : org, reactiveArchery);
 

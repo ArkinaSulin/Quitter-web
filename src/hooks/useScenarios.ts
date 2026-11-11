@@ -33,6 +33,9 @@ function mapScenario(row: any): Scenario {
     dmHeartbeatAt: row.dm_heartbeat_at || null,
     zocPursuitEnabled: row.zoc_pursuit_enabled ?? true,
     aiAssistPlayers: !!row.ai_assist_players,
+    shipMode: row.ship_mode === 'wildspace' ? 'wildspace' : 'atmosphere',
+    shipFiringArcs: row.ship_firing_arcs ?? true,
+    shipStep: Math.min(5, Math.max(1, Number(row.ship_step) || 1)),
   };
 }
 

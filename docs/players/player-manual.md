@@ -13,6 +13,10 @@ manual says so and tells you what confirming means.
 > Where the game reads a value from a table the GM can edit (formations,
 > scenario settings, admin settings), this manual gives the shipped default and
 > points you to the on-screen tooltip — the tooltip is always live and final.
+>
+> **Last verified:** 2026-11-05. Spelljammer/ship-builder rules are intentionally
+> omitted until that module is complete; the Ship Selector tab is listed as UI
+> navigation only.
 
 ---
 
@@ -51,13 +55,14 @@ a fixed, readable zoom; stage one concept per frame (GM sandbox map is fine).
 | S-24 | 11 · Replay | In-session replay: amber REPLAY frame, timeline, ▲ Turn-1 marker, speed control | GM replay mode |
 | S-25 | 12 · GM | **Alliances** tab: team pills in Friendly / Enemy / Neutral boxes | GM panel |
 | S-26 | 12 · GM | **Players** tab: roster with role select + team chips | GM panel |
-| S-27 | 12 · GM | **Scenario Settings** modal (fog + sight radius, reactions, charge, verbose) | modal open |
+| S-27 | 12 · GM | **Scenario Settings** modal: This-device display + GM groups (reactions, ZoC, heroes, fog, AI, verbose, minigames) | modal open |
 | S-28 | 12 · GM | Double-click **DM stat editor** with derived readouts and pinned Save footer | on a unit |
-| S-29 | 12 · GM | **Movement** tab: 0–9 terrain pen armed, painted hexes shaded | GM panel |
+| S-29 | 12 · GM | **Structure** tab: structure palette + placed walls/gates/doors with HP readouts | GM panel |
 | S-30 | 3 · Library | Unit Editor three panels + sticky Save bar (name, stats, weapons, token preview) | editing a template |
 | S-31 | 3 · Library | **Weapon editor** modal (left form, right weapon-library search) | modal open |
 | S-32 | 3 · Library | **Token Preview** test sliders: casualty %, morale modifier, formation radios | right panel |
 | S-33 | 12 · AI assist | **AI tab**: teams in the AI control box, a ✓-checked unit, a plotted route + crossed swords | Scenario Settings → AI assist on |
+| S-34 | 12 · GM | **Scenario Statistics**: alliance/team rows with starting/lost/killed troops and levels | Stats open after some combat |
 
 ---
 
@@ -100,9 +105,10 @@ extra tools to run the game.
 
 ![S-01 Signed-out Lobby](screenshots/s-01-sign-in.png)
 
-Open the site; the header shows **Sign in with Google**. After you sign in you
-see the Lobby with your name chip (top-right). Click the chip to change your
-**display name** — that name is shown to everyone as your player label.
+Open the site; the Lobby header shows **Quitter's Quiver** (with the long-form
+QuiTTER welcome line above it) and **Sign in with Google**. After you sign in you
+see your name chip (top-right). Click the chip to change your **display name** —
+that name is shown to everyone as your player label.
 
 ![S-05 display-name chip](screenshots/s-05-display-name.png)
 
@@ -117,13 +123,15 @@ join or create yet — the Lobby banner explains how to send an access request.
 - **Scenario cards** show a thumbnail, name, creator, and badges:
   **DM Online / Offline** (live presence), **Room Open / Closed** (whether the
   GM still accepts joins), and **Password** (locked room).
-- The **filters** switch between **My Scenarios** (rooms you participate in)
-  and **Available scenarios** (open rooms you may join); use the search box to
-  filter by name or creator.
-- Left column buttons: **Unit Library** (browse/edit templates),
-  **Archfar's Shipyard** (ship builder — admin only for now),
-  **Map Library**, **New Scenario**, **Join Scenario**, **Replay Scenario**;
-  admins also see **Admin Panel** and **Settings**.
+- **My Scenarios** (rooms you participate in) and **Available scenarios** (open
+  rooms you may join) are independent toggles; both off shows every scenario.
+  Use the search box to filter by scenario name or creator.
+- Left column buttons: **Unit Editor / Library**, **Map Editor / Library**,
+  **Effect Workshop / Library**, **Weapon Workshop / Library**, and
+  **Structure Workshop / Library** (writers see the editor/workshop name;
+  read-only access shows the library), **Archfar's Shipyard** (ship builder —
+  admin only), **New Scenario**, **Join Scenario**, and **Replay Scenario**.
+  Admins also see **Admin Panel** and **Settings**.
 
 ![S-03 Create Scenario modal](screenshots/s-03-create-scenario.png)
 
@@ -147,16 +155,19 @@ Inside a scenario each participant has a role the GM assigns:
 | **Player** | Command your own team's units during your alliance's turn. |
 | **Super Player** | Player, plus edit your own team's unit stats. |
 | **Assist GM** | Move/attack/edit any unit; full battlefield access. |
-| **GM** | Everything above plus placing units, maps, terrain, teams, roles, fog, routs, and settings. |
+| **GM** | Everything above plus placing units, maps, structures, effects, teams, roles, fog, routs, and settings. |
 
 The top bar shows `Scenario Map - Role · Team`. Unassigned players watch
-(read-only) until the GM assigns a team.
+(read-only) until the GM assigns a team. The GM can click that title to toggle
+between **DM mode** and playing as a player (the editorial GM buttons hide while
+playing as a player).
 
 ### Quick start
 
-1. The GM creates a room and (optionally) a Map Library board (or paints
-   terrain in the scenario), assigns teams to **alliances** (§12), and drags
-   units from the **Unit Selector** onto the board during **free play**.
+1. The GM creates a room and (optionally) assigns a Map Library board (or aligns
+   a background in the scenario), places **structures** and **ground effects**
+   where needed, assigns teams to **alliances** (§12), and drags units from the
+   **Unit Selector** onto the board during **free play**.
 2. Everyone joins. In free play, placement and repositioning cost nothing —
    the GM presses **End Turn** when the board is set: Turn 1 begins.
 3. Play proceeds **friendly → enemy → neutral**. When it is your alliance's
@@ -179,10 +190,16 @@ bottom-right HUD when you hover.
 |---|---|
 | **Left-click** | Select / interact with a hex |
 | **Left-click + drag** a unit | Move it (empty hex) or attack (enemy hex) |
-| **Middle-click + drag** | Pan |
+| **Shift + drop** | Attack an edge wall or hex structure (§6) |
+| **Middle-click + drag** / **WASD** | Pan (WASD step is configurable in Game Settings) |
 | **Scroll wheel** | Zoom, centered on the cursor |
 | **Right-click** a unit | Context menu (rotate, formation, charge, weapons…) |
+| **Q / E** | Rotate the selected unit left / right |
 | **Double-click** a unit | Open the stat editor (GM / Super Player per role) |
+| **Shift** / **1** | Structure targeting/inspect mode |
+| **Space** / **2** | Ground targeting mode |
+| **3** | Air targeting mode |
+| **Esc** | Clear selection / end reaction mode / close a picker |
 | **Ctrl+Z / Ctrl+Y** | Undo / Redo |
 
 ![S-06 Player view](screenshots/s-06-player-view.png)
@@ -190,20 +207,27 @@ bottom-right HUD when you hover.
 ### The top bar
 
 `Scenario Map - role · team` | **Undo (N)** / **Redo** | **Turn {n}** |
-**End Turn (group)** | **Free Move** *(GM)* | **⚙ Settings** *(GM)* |
-**Replay scenario** *(GM)* | **Exit to Lobby**.
+**End Turn (group)** | **Free Move** *(GM; auto-off countdown)* |
+**Stats** *(GM in play; anyone in replay)* | **⚙ Settings** *(GM or assigned
+player)* | **Replay scenario** *(GM)* | **Exit to Lobby**.
 
 The **End Turn** button is colored by the active group (blue = friendly,
 red = enemy, grey = neutral). It is enabled for the GM always and for a player
-when their own alliance holds the turn.
+when their own alliance holds the turn. **Free Move** starts a 60-second
+countdown when switched on mid-session and turns itself off when it expires.
+**Stats** opens the Scenario Statistics window (starting/lost/killed troops and
+levels per team); its **Share** button posts the summary to Messages. Click the
+title text to toggle DM/player mode (GM only).
 
 ### The side panel
 
-The panel is **tabbed and dockable**. Tabs (GM sees more): **Map · Movement ·
-Effects · Players · Alliances · Unit Selector · Messages · Undo debug**; every
-player sees **Messages** and **Undo debug**. Click a tab to open/close that
-panel; open several to stack them. Drag the panel edges to resize; click the
-**hollow triangle** in the tab bar to dock the panel to the other screen edge.
+The panel is **tabbed and dockable**. GM tabs: **Map · Structure · Players ·
+Alliances · Unit Selector · Ship Selector · Messages · Effects · Undo debug**
+(plus **AI** when AI assist is enabled). Non-GM players see **Messages** and
+**Undo debug**, plus **Effects** when they are assigned to a team. Click a tab to
+open/close that panel; open several to stack them. Drag the panel edges to
+resize; click the **hollow triangle** in the tab bar to dock the panel to the
+other screen edge.
 
 ![S-07 GM Map tab](screenshots/s-07-map-tab.png)
 
@@ -242,12 +266,13 @@ Right-click a row to copy it.
 Units on the map are **instances** created from **templates** in the Unit
 Library. The GM builds templates once; players read the resulting tokens.
 
-### The Unit Library (GM authoring)
+### The Unit Editor / Unit Library (GM authoring)
 
-> **GM only (players browse read-only).** Open **Unit Library**. Create,
-> clone, or edit templates; the panel is: left = template list, center = the
-> form, right = a live token preview with test sliders (casualties, morale,
-> formation, charge) so you can see exactly how the token will read.
+> **GM only (players browse read-only, shown as Unit Library).** Open the
+> **Unit Editor**. Create, clone, or edit templates; the panel is: left =
+> template list, center = the form, right = a live token preview with test
+> sliders (casualties, morale, formation, charge) so you can see exactly how the
+> token will read.
 
 ![S-30 Unit Editor](screenshots/s-30-unit-editor.png)
 
@@ -316,6 +341,10 @@ Firing at an enemy **unit** is a **bombardment**: each shot rolls to hit, and
 targeting window (so landing 3 hits lets you drop 3 blasts). A blast with **No
 save** gives the covered troops no saving throw — they take full damage. Against a
 **hero** or a lone surviving troop, the same shot is a single direct hit instead.
+
+The Lobby's **Weapon Workshop / Weapon Library** authors the reusable weapon
+list. **Add / Edit Weapon** in a unit opens the same form with the weapon-library
+search beside it.
 
 ![S-31 Weapon editor](screenshots/s-31-weapon-editor.png)
 
@@ -567,13 +596,13 @@ The MP cost to enter a hex comes from **structures** and **ground effects**, not
 a painted number:
 
 > *The MP cost to enter a hex is the **higher** of every source that applies,
-> computed **per locomotion**: a hex structure's entry MP (`mp_climb_up` /
-> `mp_mounted_up`) and the summed `mp_cost` of any ground zones there. A
-> **negative** value is a hard block — that locomotion may not cross (`X`). An
-> open/broken door **waives** the structure's MP. Edge-structure faces are
-> directional and apply per-edge (they replace the hex cost when crossed, they do
-> not max with it). The board prints `foot/mounted` when either differs from base
-> (1): a number, `X` for blocked, `-` for no change.*
+> computed **per locomotion**: the hex structure's entry MP (foot or mounted)
+> and the summed MP cost of any ground zones there. A **negative** value is a
+> hard block — that locomotion may not cross (`X`). An open or broken door
+> **waives** the structure's MP and lets units pass through. Edge-structure faces
+> are directional and apply per-edge (they replace the hex cost when crossed,
+> they do not max with it). The board prints `foot/mounted` when either differs
+> from base (1): a number, `X` for blocked, `-` for no change.*
 
 - **1** = clear (default)
 - **2+** = difficult: entering costs that many MP
@@ -589,7 +618,7 @@ wall's MP (or is impossible if the wall blocks there), and the wall can grant
 **melee / ranged AC** to whoever stands on that side — so a wall protects the
 defender behind it and is cheaper or dearer to climb from either direction.
 Charges cannot cross any wall. The GM places walls via the Map Editor's
-**Structures** tab (or the scenario's **Map Feature** tab); they show as thick
+**Structures** tab (or the scenario's **Structure** tab); they show as thick
 edge segments. Each edge prints its **total** climb MP (foot/mounted) as a faint
 label; edges between equal-height structures and free climbs show nothing.
 
@@ -622,8 +651,11 @@ whole pool). An **airborne flyer** swoops instead of charging, and because a
 **hero** (like any loose unit) has no facing, its charge — a ground Charge! (if
 it **Can Charge**) or an airborne swoop — is a fan that **points where you aim**
 (the direction you drag onto the target), so a hero can charge or swoop any enemy
-within range. Starting a charge needs **more than one action** — entering the
-charge spends **one action** (a swoop likewise needs **more than 2 fly points**).
+within range. Declaring a charge spends **one action**, converted into a full
+movement pool (ground MP, or the fly pool for a swoop) added to your current
+pool; the free attack costs no extra action. It may be your first or a later
+action as long as at least **one action** remains — there is no fly-point
+threshold for a swoop.
 
 ![S-15 Charge wedge](screenshots/s-15-charge-wedge.png)
 
@@ -776,16 +808,18 @@ fire at heroes is uncapped.
 
 ### Barriers (destructible walls)
 
-The GM can give a wall segment **Max HP** and a **Damage Threshold (DT)** in the
-wall editor. Structures are neutral scenery — to attack one, hold **Shift** and
-**drop** your unit on it (a plain drop just moves onto the hex).
+The GM can give a wall segment **Max HP**, **AC**, and a **Damage Threshold
+(DT)** in the Structure Workshop / placed-structure editor. Structures are
+neutral scenery — to attack one, hold **Shift** and **drop** your unit on it
+(a plain drop just moves onto the hex).
 
-- You can reach it if you stand on one of the two hexes sharing the edge
-  (**melee**), or if your weapon's **max range** covers the nearer of those two
-  hexes (**ranged**).
-- There is **no to-hit roll** — reaching the edge is the hit. Roll weapon
-  damage: a hit below the DT does nothing; a hit **at or above the DT deals its
-  full damage** to the wall.
+- You can reach it if you stand on one of the two hexes sharing the edge and
+  face the wall inside your formation's **melee arc**, or if your weapon's
+  **max range** covers the nearer of those two hexes inside its **ranged arc**
+  (**ranged**). The universal attack-arc rule applies.
+- Each attack rolls to hit against the wall's **AC** (default 10; natural 1
+  misses, natural 20 hits). A hit then rolls weapon damage: below the DT it is
+  shrugged off; **at or above the DT it deals its full damage** to the wall.
 - Costs **1 action**, counts toward your **5-attack limit**; no AGR, no
   retaliation. At **0 HP** the segment is destroyed and the way opens.
 - Walls without HP are scenery and cannot be attacked.
@@ -796,12 +830,15 @@ wall editor. Structures are neutral scenery — to attack one, hold **Shift** an
 - **Watch towers** (hex) grant their occupant cover: the unit standing there
   attacks with **advantage** and attackers against it suffer **disadvantage**.
   A tower can also carry a **range** modifier, extending (or shrinking) the
-  occupant's weapon range while they stand there.
+  occupant's **ranged weapon** range while they stand there.
 - **Gates / gate towers** (hex) have a **door**: **Shift-drop** a unit on the hex
-  to attack it. The door absorbs damage first; once it is destroyed the
-  structure's own HP is exposed. Costs 1 action and counts toward the attack
-  limit. An **open** gate (GM toggle) costs no extra movement and exposes the
-  structure directly — the door is bypassed.
+  (facing it inside your attack arc) to attack it. Hex structures also roll to
+  hit against their **AC** (default 10), then DT gates the damage. The **door and structure HP are damaged
+  simultaneously**: the door gates passage, while the structure's HP gates its
+  modifiers and destruction. Costs 1 action and counts toward the attack limit.
+  An **open** gate costs no extra movement, bypasses the door, and lets units
+  pass through. A door can be opened/closed by the GM, or by the owner of a unit
+  standing on the door hex while the door is intact.
 - A structure at **0 HP is destroyed and removed from the map**. Destroying a **hex**
   structure (gate/tower) also clears the **edge structures on its 6 edges**. If it
   collapses under troops, every unit (and rider) on top **falls**: each takes
@@ -1173,8 +1210,21 @@ temporary, undoable, and synced to everyone.
 | **Grant Advantage** | Attack roll | · 3 | anyone **attacking** the carrier gains advantage |
 | **Grant Disadvantage** | Attack roll | · 3 | anyone **attacking** the carrier suffers disadvantage |
 
-You pick the magnitude and duration; the GM can also paint a **ground zone**
-(an effect tied to a hex) instead of a unit.
+The Lobby's **Effect Workshop / Effect Library** authors effect templates (name,
+scope, default duration, and one or more modifiers); the in-game **Effects**
+modal applies them.
+
+You pick the magnitude and duration. The GM (or any player assigned to a team)
+can also use the **Effects** tab to paint a **ground zone** (an effect tied to a
+hex) instead of a unit; the Map Editor's **Effects** tab authors permanent
+hex effects for reusable maps.
+
+The table above is the common preset list; the Effect Library is data-driven.
+Other shipped modifier kinds include **attack / damage / save bonuses**,
+**save advantage/disadvantage**, **block attacks** (melee/ranged, in/out/both —
+a hard block with healing exempt), **ignore climb**, **feather fall**,
+**HP borrow**, **range**, **max org level allowed**, and zone **entry** damage
+or **MP cost**. The Effect Editor's labelled summary is the live reference.
 
 > **Advantage / Disadvantage (attack rolls).** Advantage rolls 2 D20 and keeps the
 > higher; disadvantage keeps the lower. **Any advantage cancels any
@@ -1235,7 +1285,10 @@ units can see; the rest of the board is veiled.
   unseen hex is blocked with an error (your own side can't shoot what it can't
   see — applies to the DM's units too).
 - The GM sees the board **translucently** through the veil (they adjudicate,
-  and can paint reveals with the brush/click tools).
+  and the boundary follows the current/acting alliance). There is no separate
+  fog-reveal brush.
+- The configured **Sight radius** stays armed even while fog is off, so turning
+  fog back on uses the saved value.
 
 ![S-10 Fog GM view](screenshots/s-10-fog-gm.png)
 
@@ -1288,8 +1341,9 @@ also flip the live session into replay mode mid-game ("Replay scenario" →
 
 ## 12. Running the Game (GM)
 
-Everything in this chapter is **GM only** (or needs the appropriate role).
-Players can skim it to know what the GM can do.
+Most of this chapter is **GM only** (or needs the appropriate role); where a
+non-GM player can use a tool, the text says so. Players can skim it to know what
+the GM can do.
 
 ### Before the battle
 
@@ -1307,9 +1361,11 @@ Players can skim it to know what the GM can do.
 ![S-26 Players tab](screenshots/s-26-players.png)
 
 4. **Choose the board.** Map tab: assign a reusable Map Library board or align
-   a background image (offset/scale/grid radius) directly; then use the
-   **Movement** tab to paint entry costs (0–9; right-click clears to 1).
-   Optionally paint **ground effects** in the Effects tab.
+   a background image (offset/scale/grid radius) directly. Use the
+   **Structure** tab to place walls, gates, towers, and other structures; use
+   the **Effects** tab to paint ground-effect zones. Entry MP comes from those
+   structures/effects, not a separate terrain pen. The Map Editor authors
+   reusable maps through its **Image / Structures / Effects** tabs.
 
 ![S-07 Map tab](screenshots/s-07-map-tab.png)
 
@@ -1324,14 +1380,46 @@ Players can skim it to know what the GM can do.
 
 ![S-27 Scenario Settings](screenshots/s-27-settings.png)
 
-- **Reactive archery** — opportunity fire on/off.
-- **Charge and Swoop** — Charge! for grounded charge-capable units (and heroes that Can Charge) and Swoop! for airborne flyers, on/off.
-- **Verbose combat** — show every dice roll in the log (great for teaching). Every message records its full detail regardless; this toggle only changes what is **displayed**, so turning it on mid-game reveals the rolls for the whole history.
-- **Fog of war** + **Sight radius** (1–9).
+The window is split into **This device** (opened by the GM or any assigned
+player) and GM-only groups.
 
-(Admin-only **Settings** in the Lobby edits game-wide JSON values — balance
-knobs like the 5-attack cap, hero actions, threat bands. Change with care;
-there is no per-value validation.)
+**This device (per browser):**
+- **Show MP on every move hex** — label every reachable preview hex, not just
+  the boundary.
+- **Move preview** — **One action per drag** (default) or **All actions per
+  drag**.
+
+**Combat & reactions (GM):**
+- **Reactive archery** — opportunity fire on/off.
+- **Charge and Swoop** — Charge! for grounded charge-capable units (and heroes
+  that Can Charge) and Swoop! for airborne flyers, on/off.
+- **Zone-of-control pursuit** — leaving a hostile kill zone scatters/provokes a
+  pursue; OFF disables scatter, pursue, and the opportunity attack while
+  entering a kill zone still spends MP.
+
+**Heroes (GM):**
+- **Hero morale and combat boost** — Commanding Presence / Heroic Inspiration
+  and the associated aura/attack capacity.
+
+**Visibility (GM):**
+- **Fog of war** + **Sight radius** (1–9). The sight radius stays armed even
+  while fog is off.
+
+**Assist & logs (GM):**
+- **AI assist** — show the AI tab.
+- **Allow players to use AI assist** — let an assigned player run it on their
+  side's turn.
+- **Verbose combat** — show every dice roll in the log (great for teaching).
+  Every message records its full detail regardless; this toggle only changes
+  what is **displayed**, so turning it on mid-game reveals the rolls for the
+  whole history.
+
+**Minigames (GM):**
+- Enable **Halloween Siege** and open its editor.
+
+(Admin-only **Settings** in the Lobby edits game-wide values — balance knobs
+such as the 5-attack cap, hero actions, and threat bands. Values are edited in
+JSON format with labelled groups and hints; saving reloads the live cache.)
 
 ### AI assist (GM tool, optionally shared with players)
 
@@ -1402,8 +1490,16 @@ failed spawn may require re-arming; see the developer chapter for limitations.
 
 - **Turn {n}** / **End Turn (group)** in the top bar; the GM can end any
   alliance's turn.
-- **Free Move** toggle re-opens free placement any time (it resets **off** when
-  the scenario is reopened, unless it is still Turn 0 free play).
+- **Free Move** toggle re-opens free placement any time; switching it on
+  mid-session starts a 60-second countdown, then it turns off automatically. It
+  also resets **off** when the scenario is reopened unless it is still Turn 0
+  free play.
+- **Stats** opens Scenario Statistics (GM in live play, anyone in replay):
+  starting/lost/killed troops and levels per team, grouped by alliance.
+  **Share** posts a plain-text summary to Messages (hidden units are revealed
+  fully in that summary).
+- Click the `Scenario Map - role · team` title to toggle **DM/player mode**
+  (GM only); editorial GM buttons hide while playing as a player.
 - **Double-click a unit** to edit its stats live (HP, morale, formation,
   weapons, image…). Edits are undoable commands and broadcast a **red**
   message to everyone.
@@ -1416,15 +1512,16 @@ failed spawn may require re-arming; see the developer chapter for limitations.
 | Tool | Where | Purpose |
 |---|---|---|
 | Background/map | Map tab | Assign reusable maps or align an image |
-| Terrain pen | Movement tab | 0–9 entry-cost per hex |
-| Ground effects | Effects tab | Paint stat/DoT zones on hexes |
+| Structures / doors | Structure tab | Place walls, gates, towers; edit HP/door/modifiers |
+| Ground effects | Effects tab | Paint stat/DoT/block zones on hexes (GM or assigned player) |
 | Effects… | unit context menu | Buff/debuff/DoT a unit or place a zone |
 | Players | Players tab | Roles, teams, room open/close, kick |
 | Alliances | Alliances tab | friendly/enemy/neutral assignment |
 | Unit Selector | Unit Selector tab | Place units from templates |
+| Scenario Stats | Stats in top bar | Starting/lost/killed troops + levels; share to Messages |
 | DM stat editor | double-click a unit | Edit any unit stat (undoable) |
-| Scenario Settings | ⚙ in top bar | Reactions, charges, verbose, fog |
-| Free Move / End Turn | top bar | Start Turn 1 or reset the cycle |
+| Scenario Settings | ⚙ in top bar | This-device display, reactions, ZoC, heroes, fog, AI, verbose, minigames |
+| Free Move / End Turn | top bar | Start Turn 1, reset the cycle, or 60s free placement |
 | Replay | top bar / Lobby | Watch or co-watch the log |
 
 ---
@@ -1531,8 +1628,11 @@ when down; half-size when attached to a host.
 **Team colors/shapes:** Blue circle · Yellow triangle · Violet star · Black
 square · Orange diamond · Green cross.
 
-**Controls:** left-drag move/attack · middle-drag pan · wheel zoom · right-click
-menu · double-click edit (per role) · Ctrl+Z/Y undo/redo.
+**Controls:** left-drag move/attack · **Shift-drop** attack a structure ·
+middle-drag or **WASD** pan · wheel zoom · right-click menu · **Q/E** rotate the
+selected unit · double-click edit (per role) · **Shift/1** structure mode ·
+**Space/2** ground mode · **3** air mode · **Esc** clear/end reaction ·
+Ctrl+Z/Y undo/redo.
 
 **Legend notes:** a red-ringed hex during a drag = enemy zone of control
 (reachable, not passable); white = droppable now; grey = rotate first; amber

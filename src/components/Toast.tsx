@@ -5,20 +5,23 @@ import { useEffect, useState } from 'react';
 
 interface ToastProps {
   message: string;
-  duration?: number; // ms
+  duration?: number; // ms (ignored when persistent)
+  /** Stay on screen until replaced by the next toast (no auto-dismiss). */
+  persistent?: boolean;
   onClose?: () => void;
 }
 
-export default function Toast({ message, duration = 3000, onClose }: ToastProps) {
+export default function Toast({ message, duration = 3000, persistent = false, onClose }: ToastProps) {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
+    if (persistent) return;
     const timer = setTimeout(() => {
       setVisible(false);
       if (onClose) onClose();
     }, duration);
     return () => clearTimeout(timer);
-  }, [duration, onClose]);
+  }, [duration, persistent, onClose]);
 
   if (!visible) return null;
 

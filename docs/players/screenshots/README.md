@@ -32,13 +32,14 @@ is the table at the top of `../player-manual.md`.
 | `s-24-replay.png` | In-session replay overlay |
 | `s-25-alliances.png` | Alliances tab |
 | `s-26-players.png` | Players tab (roles + teams) |
-| `s-27-settings.png` | Scenario Settings modal |
+| `s-27-settings.png` | Scenario Settings (This device + GM groups) |
 | `s-28-dm-stat-editor.png` | Double-click stat editor |
-| `s-29-movement-tab.png` | Terrain pen (Movement tab) |
+| `s-29-structure-tab.png` | Structure tab (palette + placed walls/gates/doors) |
 | `s-30-unit-editor.png` | Unit Editor 3 panels |
 | `s-31-weapon-editor.png` | Weapon editor modal |
 | `s-32-token-preview.png` | Token Preview test sliders |
 | `s-33-ai-tab.png` | AI tab: teams in the control box, ✓ units, plotted route |
+| `s-34-stats.png` | Scenario Statistics (starting/lost/killed troops + levels) |
 
 Capturing tips: dark app theme; zoom so the concept is legible; compose one
 idea per frame (a GM sandbox map is fine); for side-by-side "player vs GM"

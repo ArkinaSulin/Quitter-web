@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Unit, AllianceGroup, Formation } from '@/types/gameProtocol';
 import { canRally } from '@/packages/morale/lib/rally';
 
@@ -17,7 +17,7 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
     hidden: false, isDeleted: false, isCharging: false, chargeDistance: 0, commandSeq: 0, organizationLevel: 0,
     actionsAvailable: 0, attacksUsed: 0, archerReactionUsed: false,     pursuitUsed: false,
     heroicInspirationActive: false, activeWeaponIndex: 0,
-    str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0, effects: [],
+    strSav: 0, dexSav: 0, conSav: 0, intSav: 0, wisSav: 0, chaSav: 0, str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0, effects: [],
     ...overrides,
   };
 }

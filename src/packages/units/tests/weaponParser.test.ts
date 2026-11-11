@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseWeapons, stringifyWeapons, formatWeaponDisplay, isAreaWeapon, isOffensiveWeapon, validateTargetAlliance, weaponIndicesReaching, damageDiceCount, withDamageDiceCount, Weapon } from '@/packages/units/lib/weaponParser';
+import { parseWeapons, stringifyWeapons, formatWeaponDisplay, isAreaWeapon, isOffensiveWeapon, validateTargetAlliance, weaponIndicesReaching, damageDiceCount, withDamageDiceCount, isWarMachineUnit, warMachineTurnActionCost, Weapon } from '@/packages/units/lib/weaponParser';
 
 describe('damageDiceCount / withDamageDiceCount', () => {
   it('reads the leading die count (default 1)', () => {
@@ -251,6 +251,25 @@ describe('stringifyWeapons', () => {
   it('roundtrips: stringify(parse(input)) === input for canonical input', () => {
     const input = 'Spear,3,1d6+1,false,1,1,0,false,false,false,false,1,true,Dex,circle,10,false,0,0;Longbow,3,1d8,false,4,8,0,false,true,false,false,1,false,Con,circle,15,false,0,0';
     expect(stringifyWeapons(parseWeapons(input))).toBe(input);
+  });
+});
+
+describe('war machine helpers', () => {
+  const wm = 'Ballista,3,2d6,false,2,8,0,false,false,false,true,1,true,Dex,circle,10,true,2,3';
+  const bow = 'Longbow,3,1d8,false,4,8,0,false,true,false,false,1,false,Con,circle,15,false,0,0';
+
+  it('isWarMachineUnit: true when any equipped weapon is a war machine', () => {
+    expect(isWarMachineUnit({ weaponString: wm })).toBe(true);
+    expect(isWarMachineUnit({ weaponString: `${bow};${wm}` })).toBe(true);
+    expect(isWarMachineUnit({ weaponString: bow })).toBe(false);
+    expect(isWarMachineUnit({ weaponString: '' })).toBe(false);
+  });
+
+  it('warMachineTurnActionCost: 2 actions per 60° in Open Order only', () => {
+    expect(warMachineTurnActionCost({ weaponString: wm, currentFormation: 'Open Order' }, 1)).toBe(2);
+    expect(warMachineTurnActionCost({ weaponString: wm, currentFormation: 'Open Order' }, 3)).toBe(6);
+    expect(warMachineTurnActionCost({ weaponString: wm, currentFormation: 'Scattered' }, 1)).toBeNull();
+    expect(warMachineTurnActionCost({ weaponString: bow, currentFormation: 'Open Order' }, 1)).toBeNull();
   });
 });
 

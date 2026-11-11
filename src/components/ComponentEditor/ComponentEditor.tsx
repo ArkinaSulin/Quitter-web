@@ -56,10 +56,16 @@ function freshTemplate(kind: ShipCatalogKind): ShipComponentTemplate {
     minRange: 0,
     range: 1,
     maxRange: 1,
-    fireCycleStep: 1,
+    reloadSteps: 0,
+    magicDimension: 0,
+    shape: 'circle',
+    savingThrow: 'Dex',
+    saveDC: 10,
+    onSaveHalfOrNeg: true,
     special: '',
     ac: 10,
     imageUrl: '',
+    isRam: false,
   };
 }
 

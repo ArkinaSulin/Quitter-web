@@ -32,8 +32,13 @@ export interface ShipComponent {
   /** True = one aggregate card; false = one card per unit. */
   canCombine: boolean;
   ac?: number;
+  /** True for the two ram components (piercing/bludgeoning). */
+  isRam?: boolean;
   imageUrl?: string;
 }
+
+export type ShipAreaShape = 'circle' | 'cube' | 'cone' | 'line';
+export type ShipSaveChoice = 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha' | 'none';
 
 /** Weapon catalog row (`ship_weapons`). */
 export interface ShipWeapon {
@@ -46,12 +51,18 @@ export interface ShipWeapon {
   minRange: number;
   range: number;
   maxRange: number;
-  /** Steps between shots: 1 = every step, 2 = every other step. */
-  fireCycleStep: number;
+  /** Steps needed to reload: 0 = fire every step, 4 = fire on step 5. */
+  reloadSteps: number;
   dt: number;
   crew: number;
   cost: number;
   ammoCost: number | null;
+  /** Area-effect footprint (0 = single target); mirrors spell AoE. */
+  magicDimension: number;
+  shape: ShipAreaShape;
+  savingThrow: ShipSaveChoice;
+  saveDC: number;
+  onSaveHalfOrNeg: boolean;
   /** Free-form weapon note. */
   special: string | null;
   ac?: number;
@@ -76,10 +87,16 @@ export interface ShipComponentTemplate {
   minRange: number;
   range: number;
   maxRange: number;
-  fireCycleStep: number;
+  reloadSteps: number;
+  magicDimension: number;
+  shape: ShipAreaShape;
+  savingThrow: ShipSaveChoice;
+  saveDC: number;
+  onSaveHalfOrNeg: boolean;
   special: string;
   ac: number;
   imageUrl: string;
+  isRam: boolean;
 }
 
 /** Selected optional component on a template (`ship_template_components`). */

@@ -75,10 +75,10 @@ const COMPONENTS: ShipComponent[] = [
 ];
 
 const WEAPONS: ShipWeapon[] = [
-  { id: 'wpn-ballista', name: 'ballista_light', mass: 1, damage: '2d10', damageFormula: null, minRange: 0, range: 3, maxRange: 10, fireCycleStep: 2, dt: 15, crew: 2, cost: 500, ammoCost: 1, special: null },
-  { id: 'wpn-catapult', name: 'catapult_medium', mass: 2, damage: '5d10', damageFormula: null, minRange: 0, range: 4, maxRange: 16, fireCycleStep: 5, dt: 15, crew: 4, cost: 800, ammoCost: null, special: null },
-  { id: 'wpn-claws', name: 'scorpion_claws', mass: 0, damage: '3d10', damageFormula: null, minRange: 0, range: 1, maxRange: 1, fireCycleStep: 1, dt: 15, crew: 1, cost: 0, ammoCost: null, special: 'melee' },
-  { id: 'wpn-heavy-ram', name: 'heavy_ram', mass: 3, damage: '6d10', damageFormula: null, minRange: 0, range: 1, maxRange: 1, fireCycleStep: 1, dt: 15, crew: 3, cost: 0, ammoCost: null, special: 'melee' },
+  { id: 'wpn-ballista', name: 'ballista_light', mass: 1, damage: '2d10', damageFormula: null, minRange: 0, range: 3, maxRange: 10, reloadSteps: 2, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 2, cost: 500, ammoCost: 1, special: null },
+  { id: 'wpn-catapult', name: 'catapult_medium', mass: 2, damage: '5d10', damageFormula: null, minRange: 0, range: 4, maxRange: 16, reloadSteps: 5, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 4, cost: 800, ammoCost: null, special: null },
+  { id: 'wpn-claws', name: 'scorpion_claws', mass: 0, damage: '3d10', damageFormula: null, minRange: 0, range: 1, maxRange: 1, reloadSteps: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 1, cost: 0, ammoCost: null, special: 'melee' },
+  { id: 'wpn-heavy-ram', name: 'heavy_ram', mass: 3, damage: '6d10', damageFormula: null, minRange: 0, range: 1, maxRange: 1, reloadSteps: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 3, cost: 0, ammoCost: null, special: 'melee' },
 ];
 
 const ARMOR = (id: string) => ARMORS.find(a => a.id === id)!;
@@ -154,11 +154,11 @@ describe('hull + armor mass', () => {
     expect(computeHullMass(60)).toBeCloseTo(13.2, 6);
   });
 
-  it('rounds hull mass to the nearest whole ton', () => {
-    expect(computeMassBreakdown(racer()).hull).toBe(1);
-    expect(computeMassBreakdown(wasp()).hull).toBe(3);
-    expect(computeMassBreakdown(damselfly()).hull).toBe(5);
-    expect(computeMassBreakdown(starMoth()).hull).toBe(13);
+  it('rounds hull mass to the nearest whole ton (after the deck split)', () => {
+    expect(computeMassBreakdown(racer()).hull).toBe(0);
+    expect(computeMassBreakdown(wasp()).hull).toBe(2);
+    expect(computeMassBreakdown(damselfly()).hull).toBe(4);
+    expect(computeMassBreakdown(starMoth()).hull).toBe(10);
   });
 
   it('armor mass is a percentage of total mass and rounds to tons', () => {
@@ -171,43 +171,43 @@ describe('hull + armor mass', () => {
 });
 
 describe('reference template mass', () => {
-  it('Racer: 1 hull + 1 helm + 2 sails + 6 rudders = 10', () => {
+  it('Racer: 1 deck + 1 helm + 2 sails + 6 rudders = 10', () => {
     const t = computeMassBreakdown(racer());
     expect(t).toMatchObject({
-      hull: 1, armor: 0, helm: 1, commandBridge: 0, sails: 2, rudders: 6,
+      hull: 0, deck: 1, armor: 0, helm: 1, commandBridge: 0, sails: 2, rudders: 6,
       weapons: 0, reinforcement: 0, optionalComponents: 0, cargo: 0, crewQuarters: 0,
       used: 10, remaining: 0,
     });
   });
 
-  it('Shuttle: 1 hull + 1 helm + 1 sail + 2 rudders + 1 cargo + 4 quarters = 10', () => {
+  it('Shuttle: 1 deck + 1 helm + 1 sail + 2 rudders + 1 cargo + 4 quarters = 10', () => {
     const t = computeMassBreakdown(shuttle());
     expect(t).toMatchObject({
-      hull: 1, armor: 0, helm: 1, sails: 1, rudders: 2,
+      hull: 0, deck: 1, armor: 0, helm: 1, sails: 1, rudders: 2,
       cargo: 1, crewQuarters: 4, used: 10, remaining: 0,
     });
   });
 
-  it('Wasp: 3 hull + 1 helm + 1 sail + 9 rudders + 1 weapon + 3 cargo + 2 quarters = 20', () => {
+  it('Wasp: 2 hull + 1 deck + 1 helm + 1 sail + 9 rudders + 1 weapon + 3 cargo + 2 quarters = 20', () => {
     const t = computeMassBreakdown(wasp());
     expect(t).toMatchObject({
-      hull: 3, armor: 0, helm: 1, sails: 1, rudders: 9,
+      hull: 2, deck: 1, armor: 0, helm: 1, sails: 1, rudders: 9,
       weapons: 1, cargo: 3, crewQuarters: 2, used: 20, remaining: 0,
     });
   });
 
-  it('Damselfly: 5 hull + 6 armor + 1 helm + 7 sails + 5 rudders + 3 weapons + 1 cargo + 2 quarters = 30', () => {
+  it('Damselfly: 4 hull + 1 deck + 6 armor + 1 helm + 7 sails + 5 rudders + 3 weapons + 1 cargo + 2 quarters = 30', () => {
     const t = computeMassBreakdown(damselfly());
     expect(t).toMatchObject({
-      hull: 5, armor: 6, helm: 1, sails: 7, rudders: 5,
+      hull: 4, deck: 1, armor: 6, helm: 1, sails: 7, rudders: 5,
       weapons: 3, cargo: 1, crewQuarters: 2, used: 30, remaining: 0,
     });
   });
 
-  it('Star Moth: 13 hull + 3 armor + 1 helm + 3 bridge + 2 sails + 27 rudders + 4 weapons + 2 cargo + 5 quarters = 60', () => {
+  it('Star Moth: 10 hull + 3 deck + 3 armor + 1 helm + 3 bridge + 2 sails + 27 rudders + 4 weapons + 2 cargo + 5 quarters = 60', () => {
     const t = computeMassBreakdown(starMoth());
     expect(t).toMatchObject({
-      hull: 13, armor: 3, helm: 1, commandBridge: 3, sails: 2, rudders: 27,
+      hull: 10, deck: 3, armor: 3, helm: 1, commandBridge: 3, sails: 2, rudders: 27,
       weapons: 4, cargo: 2, crewQuarters: 5, used: 60, remaining: 0,
     });
   });
@@ -215,11 +215,11 @@ describe('reference template mass', () => {
 
 describe('reference template performance', () => {
   const cases = [
-    { name: 'Racer', build: racer, accel: 9, mc: 0, hp: 70, ac: 15, minCrew: 3, capacity: 0, bands: [0, 0, 1] },
-    { name: 'Shuttle', build: shuttle, accel: 3, mc: 3, hp: 70, ac: 15, minCrew: 2, capacity: 20, bands: [2, 3, 4] },
-    { name: 'Wasp', build: wasp, accel: 5.3, mc: 1, hp: 100, ac: 15, minCrew: 4, capacity: 10, bands: [0, 1, 2] },
-    { name: 'Damselfly', build: damselfly, accel: 5, mc: 3, hp: 130, ac: 19, minCrew: 3, capacity: 10, bands: [2, 3, 4] },
-    { name: 'Star Moth', build: starMoth, accel: 5, mc: 1, hp: 440, ac: 13, minCrew: 15, capacity: 25, bands: [0, 1, 2] },
+    { name: 'Racer', build: racer, accel: 9, mc: 0, hp: 70, ac: 15, minCrew: 4, capacity: 0, bands: [0, 0, 1] },
+    { name: 'Shuttle', build: shuttle, accel: 3, mc: 3, hp: 70, ac: 15, minCrew: 3, capacity: 20, bands: [2, 3, 4] },
+    { name: 'Wasp', build: wasp, accel: 5.3, mc: 1, hp: 100, ac: 15, minCrew: 5, capacity: 10, bands: [0, 1, 2] },
+    { name: 'Damselfly', build: damselfly, accel: 5, mc: 3, hp: 130, ac: 19, minCrew: 4, capacity: 10, bands: [2, 3, 4] },
+    { name: 'Star Moth', build: starMoth, accel: 5, mc: 1, hp: 440, ac: 13, minCrew: 16, capacity: 25, bands: [0, 1, 2] },
   ];
 
   for (const c of cases) {
@@ -243,24 +243,24 @@ describe('reference template performance', () => {
 
 describe('crew', () => {
   it('rounds each component crew separately before summing', () => {
-    // Shuttle: 1 helm + ceil(0.5) rudder = 2
-    expect(computeComponentCrew(shuttle())).toBe(2);
-    expect(computeMinCrew(shuttle())).toBe(2);
+    // Shuttle: 1 helm + 1 sail + 1 rudder = 3
+    expect(computeComponentCrew(shuttle())).toBe(3);
+    expect(computeMinCrew(shuttle())).toBe(3);
 
-    // Damselfly: 1 helm + ceil(1.5) rudder = 3
-    expect(computeComponentCrew(damselfly())).toBe(3);
-    expect(computeMinCrew(damselfly())).toBe(3);
+    // Damselfly: 1 helm + 1 sail + 2 rudder = 4
+    expect(computeComponentCrew(damselfly())).toBe(4);
+    expect(computeMinCrew(damselfly())).toBe(4);
 
-    // Star Moth: 1 helm + 5 bridge + ceil(9) rudder = 15
-    expect(computeComponentCrew(starMoth())).toBe(15);
-    expect(computeMinCrew(starMoth())).toBe(15);
+    // Star Moth: 1 helm + 5 bridge + 1 sail + 9 rudder = 16
+    expect(computeComponentCrew(starMoth())).toBe(16);
+    expect(computeMinCrew(starMoth())).toBe(16);
   });
 
   it('full crew is max(two shifts, min + weapon crew)', () => {
-    expect(computeFullCrew(shuttle())).toBe(4);
-    expect(computeFullCrew(wasp())).toBe(8);
-    expect(computeFullCrew(damselfly())).toBe(9); // min 3 + weapon crew 6
-    expect(computeFullCrew(starMoth())).toBe(30);
+    expect(computeFullCrew(shuttle())).toBe(6);
+    expect(computeFullCrew(wasp())).toBe(10);
+    expect(computeFullCrew(damselfly())).toBe(10); // min 4 + weapon crew 6
+    expect(computeFullCrew(starMoth())).toBe(32);
   });
 
   it('crew quarters are authored tons with 5 capacity per ton', () => {
@@ -399,7 +399,8 @@ describe('MC', () => {
 describe('hit boxes', () => {
   it('matches the Wasp mass row', () => {
     const byId = Object.fromEntries(computeBoxGroups(wasp()).map(g => [g.id, g]));
-    expect(byId.hull.boxes).toBe(3);
+    expect(byId.hull.boxes).toBe(2);
+    expect(byId.deck.boxes).toBe(1);
     expect(byId.hull.safe).toBe(true);
     expect(byId.helm.boxes).toBe(1);
     expect(byId.sails.boxes).toBe(1);
@@ -421,7 +422,8 @@ describe('hit boxes', () => {
     const byId = Object.fromEntries(computeBoxGroups(damselfly()).map(g => [g.id, g]));
     expect(byId.armor.boxes).toBe(6);
     expect(byId.armor.safe).toBe(true);
-    expect(byId.hull.boxes).toBe(5);
+    expect(byId.hull.boxes).toBe(4);
+    expect(byId.deck.boxes).toBe(1);
   });
 
   it('shows unfurnished mass as reserve', () => {
@@ -482,16 +484,17 @@ describe('computeShipBuild aggregate', () => {
     });
     const s = computeShipBuild(b);
     expect(s.totalMass).toBe(20);
-    expect(s.hullMass).toBe(3);
+    expect(s.hullMass).toBe(2);
     expect(s.hullMassExact).toBeCloseTo(2.8, 6);
+    expect(s.deckMass).toBe(1);
     expect(s.armorMass).toBe(0);
     expect(s.fittingMass).toBe(11);
     expect(s.usedMass).toBe(14);
     expect(s.remainingMass).toBe(6);
     expect(s.overload).toBe(false);
     expect(s.crew).toBe(0);
-    expect(s.minCrew).toBe(2);
-    expect(s.fullCrew).toBe(4);
+    expect(s.minCrew).toBe(3);
+    expect(s.fullCrew).toBe(6);
     expect(s.crewQuarters).toBe(1);
     expect(s.crewCapacity).toBe(5);
     expect(s.ac).toBe(15);

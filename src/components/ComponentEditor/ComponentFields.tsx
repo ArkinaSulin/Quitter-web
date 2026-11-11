@@ -132,8 +132,8 @@ export function ComponentFields({
                 placeholder="e.g. 2d10"
               />
             </Cell>
-            <Cell label="Fire cycle (steps)">
-              <NumInput value={value.fireCycleStep} min={1} integer onChange={v => patch({ fireCycleStep: v })} />
+            <Cell label="Reload steps (0 = every step)">
+              <NumInput value={value.reloadSteps} min={0} integer onChange={v => patch({ reloadSteps: v })} />
             </Cell>
           </div>
           <Cell label="Damage formula (optional)">
@@ -156,10 +156,47 @@ export function ComponentFields({
               <NumInput value={value.maxRange} min={0} integer onChange={v => patch({ maxRange: v })} />
             </Cell>
           </div>
+          <div className="grid grid-cols-3 gap-2">
+            <Cell label="Area dimension (ft, 0 = single)">
+              <NumInput value={value.magicDimension} min={0} integer onChange={v => patch({ magicDimension: v })} />
+            </Cell>
+            <Cell label="Area shape">
+              <select
+                value={value.shape}
+                onChange={e => patch({ shape: e.target.value as ShipComponentTemplate['shape'] })}
+                className={INPUT}
+              >
+                {['circle', 'cube', 'cone', 'line'].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </Cell>
+            <Cell label="Save stat">
+              <select
+                value={value.savingThrow}
+                onChange={e => patch({ savingThrow: e.target.value as ShipComponentTemplate['savingThrow'] })}
+                className={INPUT}
+              >
+                {['Str', 'Dex', 'Con', 'Int', 'Wis', 'Cha', 'none'].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </Cell>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Cell label="Save DC">
+              <NumInput value={value.saveDC} min={0} integer onChange={v => patch({ saveDC: v })} />
+            </Cell>
+            <label className="flex items-center gap-2 text-xs text-gray-400">
+              <input
+                type="checkbox"
+                checked={value.onSaveHalfOrNeg}
+                onChange={e => patch({ onSaveHalfOrNeg: e.target.checked })}
+                className="h-3.5 w-3.5 accent-yellow-400"
+              />
+              Half damage on a successful save
+            </label>
+          </div>
           <p className="text-[10px] text-gray-500">
             Damage formula overrides literal damage and resolves from the carrying ship's total mass,
-            rounded up. Example: {'{mass/10}d10'} → 70t = 7d10. Fire cycle: 1 = every step (1/5 round),
-            2 = every other step.
+            rounded up. Example: {'{mass/10}d10'} → 70t = 7d10. Reload steps: 0 = fire every step,
+            4 = load four steps then fire on the fifth. Area dimension 0 = single target.
           </p>
           <Cell label="Weapon note">
             <textarea

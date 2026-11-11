@@ -7,9 +7,9 @@ import { parseSubSteps, CommandLogRow, SubStep } from '@/packages/infra';
 import { Hex, Unit, UnitTemplate, AllianceGroup, Formation, ScenarioRole, getOrganizationLevel, GroundEffect, EffectKind, hexDistance } from '@/types/gameProtocol';
 import { routRetreatPath, type RoutPath } from '@/packages/morale';
 import { findAttachedHero, heroRideMoveStep, heroDetachStep } from '@/packages/units';
-import { applyMoveCost, isLooseUnit, canAdoptFormation } from '@/packages/movement';
+import { applyMoveCost, applyHeroMoveCost, moveBudgetUnit, isLooseUnit, canAdoptFormation } from '@/packages/movement';
 import { nextLowerFormation } from '@/packages/movement';
-import { parseWeapons, damageDiceCount, withDamageDiceCount } from '@/packages/units';
+import { parseWeapons, damageDiceCount, withDamageDiceCount, warMachineTurnActionCost } from '@/packages/units';
 import { canReactWithWeapon } from '@/packages/combat';
 import { getFormations } from '@/packages/infra';
 import { loadSettings, getSetting } from '@/packages/infra';
@@ -22,6 +22,7 @@ import { useGameEngine } from '@/hooks/useGameEngine';
 import { useTeamAlliances } from '@/hooks/useTeamAlliances';
 import { useMessageSync } from '@/hooks/useMessageSync';
 import { useScenarioToast } from '@/hooks/useScenarioToast';
+import { useSharedStats } from '@/hooks/useSharedStats';
 import Toast from '@/components/Toast';
 import { useProfile } from '@/hooks/useProfile';
 import { useReplay } from '@/hooks/useReplay';
@@ -32,6 +33,22 @@ import { canActOnUnit, canAdjustUnit, allTrueCapabilities } from '@/packages/wor
 import { isUnitInteractable } from '@/packages/units';
 import { LeftPanel } from './LeftPanel';
 import { ShipLibraryEntry } from '@/hooks/useShipTemplates';
+import { useShips } from '@/hooks/useShips';
+import {
+  shipRowFromParts,
+  computeShipReachable,
+  facingChangeDistance,
+  shipStepRemaining,
+  splitSpeedAcrossSteps,
+  resolveShipWeaponDamage,
+  shipWeaponCards,
+  shipAttackMode,
+  pickShipComponent,
+  fireShipWeapon,
+  type ShipRuntime,
+} from '@/packages/ships';
+import { ShipWindow } from './ShipWindow';
+import { SpeedDeclarationPanel } from './SpeedDeclarationPanel';
 import { shipImageHeightPx, shipImageOffsetPx } from '@/components/ShipRenderer/shipImageScale';
 import { SailingShipIcon } from './ShipSelector';
 import { AiPanel } from './AiPanel';
@@ -48,7 +65,7 @@ import { PingLayer } from './PingLayer';
 import { TEAM_COLORS, TEAMS, Team } from '@/packages/units';
 import { TeamChip } from '@/components/TokenRenderer/TeamChip';
 import { isUnitRouted, areHexesAdjacent, setHeroMoraleBoostEnabled as setHeroMoraleBoostAmbient, setZocPursuitEnabled as setZocPursuitAmbient } from '@/packages/morale';
-import { isHostile, allianceOf, facingToward } from '@/packages/primitives';
+import { isHostile, allianceOf, facingToward, HEX_DIRS, rollDamage } from '@/packages/primitives';
 import { canRally } from '@/packages/morale';
 import { computeVisibleHexes, computeFog, hexKey, DEFAULT_SIGHT_RADIUS, FOG_UNSEEN_GM_ALPHA, FOG_UNSEEN_PLAYER_ALPHA } from '@/packages/world';
 import { supabase } from '@/packages/infra/supabase';
@@ -56,7 +73,7 @@ import { getFormationMultiplier, getFormationModifier, computeEffectiveMovement,
 import { computeAttackCount } from '@/packages/combat';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
-import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, PlacedShip, computeOccupiedHexes, computeThreatHexes, mpCostOverrides, isHexOnGrid, parsePlacedShips } from '@/packages/world';
+import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, PlacedShip, computeOccupiedHexes, computeThreatHexes, mpCostOverrides, isHexOnGrid } from '@/packages/world';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST, isRotationAffordable } from '@/packages/movement';
 import { canReachStructure, canFly, parseClimbTo, isAirborne, flyMax, elevationOffset, hexDirection } from '@/packages/movement';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/packages/movement';
@@ -71,7 +88,7 @@ import { unitAttackCap } from '@/packages/combat';
 import { newEffectKey, rangeBonusAt } from '@/packages/effects';
 import { canWeaponAttack } from '@/packages/combat';
 import { MapEntity } from '@/packages/world';
-import { getActiveGroups, advanceTurn } from '@/packages/world';
+import { getActiveGroups, advanceTurn, advanceShipStep } from '@/packages/world';
 import {
   beginNextWave,
   completedWaveForPhase,
@@ -307,6 +324,151 @@ function formFromUnitEffect(e: import('@/types/gameProtocol').UnitEffect): Effec
 /** Free Move auto-disables after this long once explicitly turned ON mid-session. */
 const FREE_MOVE_AUTO_OFF_MS = 60_000;
 
+function shipHelmOccupant(ship: ShipRuntime, units: Unit[], alliances: Record<string, AllianceGroup>): {
+  hero: Unit | null;
+  crewCount: number;
+  team: string | null;
+  alliance: AllianceGroup | null;
+} {
+  const key = shipComponentCardKey(ship, 'Helm');
+  const station = key ? ship.stations?.[key] : undefined;
+  const heroId = station?.heroIds?.[0] ?? station?.heroId;
+  const hero = heroId ? units.find(u => u.id === heroId && !u.isDeleted) ?? null : null;
+  const crewCount = station?.crewIds?.length ?? 0;
+  const team = hero?.team ?? (crewCount > 0 ? ship.crewTeam : null);
+  const alliance = team ? allianceOf(team, alliances) : null;
+  return { hero, crewCount, team, alliance };
+}
+
+function shipBridgeHero(ship: ShipRuntime, units: Unit[]): Unit | null {
+  const key = shipComponentCardKey(ship, 'Command bridge');
+  const station = key ? ship.stations?.[key] : undefined;
+  const heroId = station?.heroIds?.[0] ?? station?.heroId;
+  return heroId ? units.find(u => u.id === heroId && !u.isDeleted) ?? null : null;
+}
+
+/** Ship colour/owner alliance: helm hero -> helm crew team -> none. */
+function shipOwnerAlliance(ship: ShipRuntime, units: Unit[], alliances: Record<string, AllianceGroup>): AllianceGroup | null {
+  return shipHelmOccupant(ship, units, alliances).alliance;
+}
+
+/** Who may declare speed: helm hero -> same-alliance bridge hero -> null (DM). */
+function shipControlTeam(ship: ShipRuntime, units: Unit[], alliances: Record<string, AllianceGroup>): string | null {
+  const helm = shipHelmOccupant(ship, units, alliances);
+  if (helm.hero?.team) return helm.hero.team;
+  const bridge = shipBridgeHero(ship, units);
+  if (bridge?.team && helm.alliance && allianceOf(bridge.team, alliances) === helm.alliance) {
+    return bridge.team;
+  }
+  return null;
+}
+
+/** Crew management (team colour / Fill Helm): controller, else the bridge hero. */
+function shipManageTeam(ship: ShipRuntime, units: Unit[], alliances: Record<string, AllianceGroup>): string | null {
+  return shipControlTeam(ship, units, alliances)
+    ?? shipBridgeHero(ship, units)?.team
+    ?? null;
+}
+
+function shipGroupIdForCard(ship: ShipRuntime, cardKey: string): string | null {
+  const build = ship.snapshot?.build;
+  if (!build) return null;
+  if (cardKey.startsWith('weapon:')) return 'weapons';
+  if (cardKey.startsWith('optional:')) return 'optional_components';
+  if (!cardKey.startsWith('component:')) return null;
+  const id = cardKey.slice('component:'.length).replace(/:\d+$/, '');
+  const component = build.components.find(c => c.id === id);
+  switch (component?.name) {
+    case 'Deck': return 'deck';
+    case 'Hull': return 'hull';
+    case 'Helm': return 'helm';
+    case 'Command bridge': return 'command_bridge';
+    case 'Sail': return 'sails';
+    case 'Rudder': return 'rudders';
+    case 'Cargo': return 'cargo';
+    case 'Crew quarters': return 'crew_quarters';
+    default: return 'optional_components';
+  }
+}
+
+function shipCardDestroyed(ship: ShipRuntime, cardKey: string): boolean {
+  const groupId = shipGroupIdForCard(ship, cardKey);
+  const group = ship.snapshot?.stats?.boxGroups?.find(g => g.id === groupId);
+  if (!group) return false;
+  return Number(ship.boxState?.[group.id] ?? 0) >= group.boxes;
+}
+
+/** Hero capacity of a card: its crew requirement; Deck + Crew Quarters are unlimited. */
+function shipCardHeroCapacity(ship: ShipRuntime, cardKey: string): number {
+  const build = ship.snapshot?.build;
+  if (!build) return 1;
+  if (shipCardDestroyed(ship, cardKey)) return 0;
+  const deckKey = shipComponentCardKey(ship, 'Deck');
+  const quartersKey = shipComponentCardKey(ship, 'Crew quarters');
+  if (cardKey === deckKey || cardKey === quartersKey) return Number.POSITIVE_INFINITY;
+
+  const weapon = shipWeaponCards(build).find(c => c.key === cardKey);
+  if (weapon) return Math.max(0, Math.ceil(weapon.crew));
+
+  if (cardKey.startsWith('component:')) {
+    const rawId = cardKey.slice('component:'.length);
+    const perUnit = /:\d+$/.test(rawId);
+    const id = rawId.replace(/:\d+$/, '');
+    const component = build.components.find(c => c.id === id);
+    if (!component) return 0;
+    if (component.name === 'Sail') return perUnit ? 1 : Math.max(1, Math.floor(build.sails / 4));
+    if (component.name === 'Rudder') return perUnit ? 1 : Math.max(1, Math.ceil(build.rudders / 2));
+    const count = component.name === 'Helm'
+      ? build.helm
+      : component.name === 'Command bridge'
+        ? build.commandBridge
+        : perUnit ? 1 : 1;
+    return Math.max(0, Math.ceil(component.crew * count));
+  }
+
+  if (cardKey.startsWith('optional:')) {
+    const parts = cardKey.slice('optional:'.length).split(':');
+    const id = parts[0];
+    const component = build.components.find(c => c.id === id);
+    if (!component) return 0;
+    const count = parts.length > 1 ? 1 : (build.templateComponents.find(r => r.componentId === id)?.count ?? 1);
+    return Math.max(0, Math.ceil(component.crew * count));
+  }
+
+  return 1;
+}
+
+/** Card key for a built-in component name (Helm, Command bridge, Crew quarters...). */
+function shipComponentCardKey(ship: ShipRuntime, name: string): string | null {
+  const component = ship.snapshot?.build?.components.find(c => c.name === name);
+  return component ? `component:${component.id}` : null;
+}
+
+function abilityMod(score: number): number {
+  return Math.floor((Math.max(1, score) - 10) / 2);
+}
+
+function proficiencyBonus(level: number): number {
+  return Math.floor((Math.max(1, level) - 1) / 4) + 2;
+}
+
+/** Best Dex-based attack bonus among the PC/crew assigned to a weapon card. */
+function shipWeaponBestAttacker(ship: ShipRuntime, cardKey: string, units: Unit[]): number | null {
+  const station = ship.stations?.[cardKey];
+  if (!station) return null;
+  const bonuses: number[] = [];
+  for (const crewId of station.crewIds ?? []) {
+    if (ship.crewState?.[crewId]?.dead) continue;
+    const crew = ship.snapshot?.template?.crews?.find(c => c.id === crewId);
+    if (crew) bonuses.push(abilityMod(crew.dex) + proficiencyBonus(crew.level));
+  }
+  if (station.heroId) {
+    const hero = units.find(u => u.id === station.heroId && !u.isDeleted);
+    if (hero) bonuses.push(abilityMod(hero.dex) + proficiencyBonus(hero.level));
+  }
+  return bonuses.length > 0 ? Math.max(...bonuses) : null;
+}
+
 export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedHex, setSelectedHex] = useState<Hex | null>(null);
@@ -314,6 +476,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const { getMyRole, updateScreenshot, fetchScenarios, currentUser, fetchScenarioMapData, updateScenarioField, updateScenarioMapData } = useScenarios();
   const { addMessage, addError } = useMessageSync(scenarioId);
   const { toast: scenarioToast, showToast, dismissToast } = useScenarioToast(scenarioId);
+  const { sharedStats, shareStats, clearSharedStats } = useSharedStats(scenarioId);
   const [isGM, setIsGM] = useState(false);
   // DM can assume a player role (effective GM off, SuperPlayer caps) so they don't
   // accidentally make GM-only changes. Real isGM stays for End Turn / heartbeat /
@@ -354,6 +517,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Hero morale boost (Commanding Presence / Heroic Inspiration) + heroic capacity.
   const [heroMoraleBoostEnabled, setHeroMoraleBoostEnabled] = useState(true);
   const [zocPursuitEnabled, setZocPursuitEnabled] = useState(true);
+  // Spelljammer (DM-only): atmosphere vs wildspace, firing arcs, current step.
+  const [shipMode, setShipMode] = useState<'atmosphere' | 'wildspace'>('atmosphere');
+  const [shipFiringArcs, setShipFiringArcs] = useState(true);
+  const [shipStep, setShipStep] = useState(1);
   // AI selection state lives here so canvas clicks can toggle per-unit opt-out.
   const [aiTeams, setAiTeams] = useState<string[]>([]);
   const [aiExcluded, setAiExcluded] = useState<Record<string, boolean>>({});
@@ -384,11 +551,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // AI opt-outs reset at each turn change — every alliance activation starts fresh.
   const aiLastTurnKeyRef = useRef('');
   useEffect(() => {
-    const key = `${currentTurnAlliance ?? 'fp'}:${turnNumber}`;
+    const key = `${currentTurnAlliance ?? 'fp'}:${turnNumber}:${shipMode === 'wildspace' ? shipStep : 0}`;
     if (aiLastTurnKeyRef.current && aiLastTurnKeyRef.current !== key) setAiExcluded({});
     aiLastTurnKeyRef.current = key;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTurnAlliance, turnNumber]);
+  }, [currentTurnAlliance, turnNumber, shipMode, shipStep]);
 
   // One per-unit AI opt-out toggle, shared by canvas token clicks and the AI
   // panel roster. Keyed by unit id, so stacked ground/air units stay independent.
@@ -517,7 +684,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const [isDraggingFromPanel, setIsDraggingFromPanel] = useState(false);
   const [draggingTemplate, setDraggingTemplate] = useState<UnitTemplate | null>(null);
   const [draggingShip, setDraggingShip] = useState<ShipLibraryEntry | null>(null);
-  const [ships, setShips] = useState<PlacedShip[]>([]);
+  // Scenario ship instances live in `ship_spelljammer` (one row per placed ship).
+  const { ships: shipRuntime, setShipLocal, refresh: refreshShips } = useShips(scenarioId);
+  const [selectedShipId, setSelectedShipId] = useState<string | null>(null);
+  const [shipWindowId, setShipWindowId] = useState<string | null>(null);
   const [ghostHex, setGhostHex] = useState<Hex | null>(null);
 
   // Tooltip
@@ -561,6 +731,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const replayCurrentTurnAlliance = replay.replayCurrentTurnAlliance;
 
   const { alliances, setAlliance, setAllianceLocal } = useTeamAlliances(scenarioId, effectiveIsGM);
+
+  // Rendering bridge: the canvas still consumes the lightweight PlacedShip shape.
+  const ships: PlacedShip[] = shipRuntime
+    .filter(s => !!s.hex)
+    .map(s => ({
+      id: s.id,
+      templateId: s.templateId || '',
+      name: s.name,
+      role: s.snapshot?.template?.role ?? null,
+      imageUrl: s.imageUrl || s.snapshot?.template?.imageUrl || '',
+      keelLength: s.keelLength,
+      imageOffsetY: s.imageOffsetY,
+      hex: s.hex!,
+      alliance: shipOwnerAlliance(s, units, alliances),
+    }));
 
   // Player management + role capabilities (feature: teams, roles, room, kick).
   const participantsSync = useParticipants(scenarioId, currentUser?.id);
@@ -698,7 +883,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     backgroundConfig?: MapBackgroundConfig | null;
     structures?: MapStructures;
     groundEffects?: GroundEffect[];
-    ships?: PlacedShip[];
     mapId?: string | null;
   }) => {
     const bg = next.backgroundConfig !== undefined ? next.backgroundConfig : backgroundConfig;
@@ -710,10 +894,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       gridRadius: bg?.gridRadius ?? DEFAULT_GRID_RADIUS,
       structures: next.structures !== undefined ? next.structures : structures,
       groundEffects: next.groundEffects !== undefined ? next.groundEffects : groundZones,
-      ships: next.ships !== undefined ? next.ships : ships,
       mapId: next.mapId !== undefined ? next.mapId : mapId,
     });
-  }, [scenarioId, updateScenarioMapData, backgroundConfig, structures, groundZones, ships, mapId]);
+  }, [scenarioId, updateScenarioMapData, backgroundConfig, structures, groundZones, mapId]);
 
   // Most-recently-applied `map_data` version (scenario.updated_at); the realtime
   // handler ignores an older snapshot so a reordered event can't re-add a deleted
@@ -851,7 +1034,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     setZonesLocal: setGroundZones,
     setWallsLocal: setWalls,
     setStructureLocal,
+    setShipLocal,
     refreshMapData,
+    refreshShips,
     requestEntryTroops,
   });
 
@@ -861,6 +1046,591 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const airborne = isAirborne(unit.elevation, structureSurfaceAt(unit.hex, structures, structureTemplates));
     return charge(unit, { airborne, maxMP: unitMaxMP(unit), flyMax: flyMax(unit) });
   }, [charge, structures, structureTemplates, formationsMap]);
+
+  // Ship drag: spend the current pool (step budget / atmospheric FP) and write a
+  // SHIP command (undo/replay/realtime all ride it).
+  const handleShipMove = useCallback(async (shipId: string, targetHex: Hex) => {
+    const ship = shipRuntime.find(s => s.id === shipId);
+    if (!ship || !ship.hex) return;
+    const stats = ship.snapshot?.stats;
+    if (!stats) { addError('This ship has no frozen template snapshot.'); return; }
+
+    // Turn 0 / free play: placement only. No step budget, no declaration.
+    if (currentTurnAlliance === null) {
+      if (!isHexOnGrid(targetHex, backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS)) {
+        addError('That hex is off the grid.');
+        return;
+      }
+      if (shipRuntime.some(s => s.id !== shipId && s.hex && !s.isDeleted && s.hex.q === targetHex.q && s.hex.r === targetHex.r)) {
+        addError('Another ship is already on that hex.');
+        return;
+      }
+      const same = ship.hex.q === targetHex.q && ship.hex.r === targetHex.r;
+      const changes: { field: string; from: unknown; to: unknown }[] = [
+        { field: 'hex', from: ship.hex, to: targetHex },
+      ];
+      if (!same) changes.push({ field: 'facing', from: ship.facing, to: facingToward(ship.hex, targetHex) });
+      await execute('MOVE', [{
+        type: 'SHIP',
+        unitId: shipId,
+        description: `${ship.name} placed`,
+        changes,
+      }], `${ship.name} placed`);
+      return;
+    }
+
+    const speedSpent = ship.speedSpent ?? 0;
+    const pool = shipMode === 'wildspace'
+      ? shipStepRemaining({ stepBudget: ship.stepBudget, step: shipStep, speedSpent }, shipStep)
+      : Math.max(0, Math.floor(stats.atmosphericSpeed) - speedSpent);
+    if (pool <= 0) { addError('No ship movement left this step.'); return; }
+    const speedForMC = shipMode === 'wildspace'
+      ? (ship.declaredSpeed || ship.lastSpeed || 5)
+      : (stats.atmosphericSpeed || 5);
+    const turnDistance = facingChangeDistance(stats, speedForMC);
+    const occupied = new Set<string>();
+    for (const u of units) {
+      if (!u.isDeleted && !u.attachedToUnitId) occupied.add(`${u.hex.q},${u.hex.r}`);
+    }
+    for (const s of shipRuntime) {
+      if (s.id !== shipId && s.hex && !s.isDeleted) occupied.add(`${s.hex.q},${s.hex.r}`);
+    }
+    const reach = computeShipReachable(
+      { hex: ship.hex, facing: ship.facing, turnsSinceFacing: ship.turnsSinceFacing },
+      pool,
+      turnDistance,
+      { occupied, blocked: (q, r) => !!structures?.[`${q},${r}`] },
+    );
+    const entry = reach.get(`${targetHex.q},${targetHex.r}`);
+    if (!entry || !entry.endable) { addError('That hex is not a legal ship destination.'); return; }
+    await execute('MOVE', [{
+      type: 'SHIP',
+      unitId: shipId,
+      description: `${ship.name} moved`,
+      changes: [
+        { field: 'hex', from: ship.hex, to: targetHex },
+        { field: 'facing', from: ship.facing, to: entry.finalFacing },
+        { field: 'speedSpent', from: speedSpent, to: speedSpent + entry.cost },
+        { field: 'turnsSinceFacing', from: ship.turnsSinceFacing ?? 0, to: entry.distanceSinceFacing },
+      ],
+    }], `${ship.name} moved`);
+  }, [shipRuntime, units, structures, shipMode, shipStep, execute, addError, currentTurnAlliance, backgroundConfig]);
+
+  const handleDeclareShipSpeed = useCallback(async (shipId: string, args: {
+    declaredSpeed: number;
+    accelDelta: number;
+    extraHexes: number;
+  }) => {
+    const ship = shipRuntime.find(s => s.id === shipId);
+    if (!ship) return;
+    const budget = splitSpeedAcrossSteps(args.declaredSpeed);
+    await execute('OTHER_ACTION', [{
+      type: 'SHIP',
+      unitId: shipId,
+      description: `${ship.name} declares speed ${args.declaredSpeed}`,
+      changes: [
+        { field: 'declaredSpeed', from: ship.declaredSpeed, to: args.declaredSpeed },
+        { field: 'lastSpeed', from: ship.lastSpeed, to: args.declaredSpeed },
+        { field: 'declaredRound', from: ship.declaredRound ?? 0, to: turnNumber },
+        { field: 'stepBudget', from: ship.stepBudget, to: budget },
+        { field: 'speedSpent', from: ship.speedSpent ?? 0, to: 0 },
+      ],
+    }], `${ship.name} declares speed ${args.declaredSpeed}`);
+  }, [shipRuntime, execute, turnNumber]);
+
+  const handleBoardHero = useCallback(async (
+    hero: Unit,
+    shipId: string,
+    cost = 0,
+    maxMP = unitMaxMP(hero),
+    isFree = freeMove,
+  ) => {
+    const ship = shipRuntime.find(s => s.id === shipId);
+    if (!ship) return;
+    if (!hero.isHero) { addError('Only heroes can board a ship.'); return; }
+    if (hero.attachedToUnitId || hero.attachedToShipId) { addError('That hero is already attached.'); return; }
+    const maxSize = getSetting('hero_attach_max_size', 200);
+    if ((hero.sizeCategory ?? 100) > maxSize) { addError('That hero is too large to board.'); return; }
+    if ((hero.elevation ?? 0) !== (ship.elevation ?? 0)) {
+      addError('Hero and ship must be at the same elevation.');
+      return;
+    }
+    const spent = isFree ? null : applyHeroMoveCost(moveBudgetUnit(hero, 'ground'), cost, maxMP);
+    // Boarded heroes default to the Deck; if it is destroyed, Crew Quarters.
+    const deckKey = shipComponentCardKey(ship, 'Deck');
+    const quartersKey = shipComponentCardKey(ship, 'Crew quarters');
+    const station = deckKey && !shipCardDestroyed(ship, deckKey)
+      ? deckKey
+      : quartersKey && !shipCardDestroyed(ship, quartersKey)
+        ? quartersKey
+        : null;
+    if (!station) { addError('No accessible deck or crew quarters on this ship.'); return; }
+    const nextStations: Record<string, { heroId?: string | null; heroIds?: string[]; crewIds?: string[] }> = { ...ship.stations };
+    if (station) {
+      const entry = nextStations[station] ?? {};
+      nextStations[station] = { ...entry, heroIds: [...(entry.heroIds ?? []), hero.id] };
+    }
+    const changes: { field: string; from: unknown; to: unknown }[] = [
+      { field: 'attachedToShipId', from: hero.attachedToShipId ?? null, to: shipId },
+      { field: 'shipStationKey', from: hero.shipStationKey ?? null, to: station },
+    ];
+    if (spent) {
+      changes.push({ field: 'movementPointsAvailable', from: hero.movementPointsAvailable, to: spent.movementPointsAvailable });
+      changes.push({ field: 'actionsAvailable', from: hero.actionsAvailable, to: spent.actionsAvailable });
+    }
+    const subSteps = [
+      {
+        type: 'ATTACH_HERO' as const,
+        unitId: hero.id,
+        description: `${hero.unitName} boarded ${ship.name}`,
+        changes,
+      },
+      ...(station ? [{
+        type: 'SHIP' as const,
+        unitId: ship.id,
+        description: `${ship.name} station changed`,
+        changes: [{ field: 'stations', from: ship.stations, to: nextStations }],
+      }] : []),
+    ];
+    await execute('ATTACH_HERO', subSteps, `${hero.unitName} boarded ${ship.name}`);
+    setSelectedShipId(shipId);
+    setShipWindowId(shipId);
+  }, [shipRuntime, freeMove, unitMaxMP, execute, addError]);
+
+  const onBoardShip = useCallback(async (
+    unit: Unit,
+    targetHex: Hex,
+    cost: number,
+    maxMP: number,
+    isFree: boolean,
+  ): Promise<boolean> => {
+    if (!unit.isHero || unit.attachedToUnitId || unit.attachedToShipId) return false;
+    const ship = shipRuntime.find(s =>
+      !s.isDeleted && s.hex && s.hex.q === targetHex.q && s.hex.r === targetHex.r,
+    );
+    if (!ship) return false;
+    const maxSize = getSetting('hero_attach_max_size', 200);
+    if ((unit.sizeCategory ?? 100) > maxSize) {
+      addError('That hero is too large to board.');
+      return true;
+    }
+    if ((unit.elevation ?? 0) !== (ship.elevation ?? 0)) {
+      addError('Hero and ship must be at the same elevation.');
+      return true;
+    }
+    await handleBoardHero(unit, ship.id, cost, maxMP, isFree);
+    return true;
+  }, [shipRuntime, handleBoardHero, addError]);
+
+  const handleAssignHero = useCallback(async (heroId: string, station: string | null) => {
+    const hero = units.find(u => u.id === heroId && !u.isDeleted);
+    const shipId = hero?.attachedToShipId;
+    const ship = shipId ? shipRuntime.find(s => s.id === shipId) : undefined;
+    if (!hero || !ship) return;
+    if (!effectiveIsGM && hero.team !== myTeam) {
+      addError('You can only move your own heroes.');
+      return;
+    }
+    if (station) {
+      const capacity = shipCardHeroCapacity(ship, station);
+      const occupied = units.filter(u =>
+        u.id !== heroId &&
+        !u.isDeleted &&
+        u.attachedToShipId === shipId &&
+        u.shipStationKey === station,
+      ).length;
+      if (occupied >= capacity) {
+        addError(capacity === 0
+          ? 'That card has no crew capacity for a hero.'
+          : 'That card already has its maximum number of heroes.');
+        return;
+      }
+    }
+    const nextStations: Record<string, { heroId?: string | null; heroIds?: string[]; crewIds?: string[] }> = { ...ship.stations };
+    for (const key of Object.keys(nextStations)) {
+      const entry = nextStations[key] ?? {};
+      const heroIds = (entry.heroIds ?? []).filter(id => id !== heroId);
+      const heroIdField = entry.heroId === heroId ? null : entry.heroId;
+      nextStations[key] = { ...entry, heroIds, heroId: heroIdField };
+    }
+    if (station) {
+      const entry = nextStations[station] ?? {};
+      nextStations[station] = {
+        ...entry,
+        heroId,
+        heroIds: Array.from(new Set([...(entry.heroIds ?? []), heroId])),
+      };
+    }
+    await execute('ATTACH_HERO', [
+      {
+        type: 'ATTACH_HERO',
+        unitId: hero.id,
+        description: `${hero.unitName} moved station`,
+        changes: [{ field: 'shipStationKey', from: hero.shipStationKey ?? null, to: station }],
+      },
+      {
+        type: 'SHIP',
+        unitId: ship.id,
+        description: `${ship.name} station changed`,
+        changes: [{ field: 'stations', from: ship.stations, to: nextStations }],
+      },
+    ], `${hero.unitName} moved station`);
+  }, [units, shipRuntime, execute, addError, effectiveIsGM, myTeam]);
+
+  const handleDisembarkHero = useCallback(async (heroId: string) => {
+    const hero = units.find(u => u.id === heroId && !u.isDeleted);
+    const shipId = hero?.attachedToShipId;
+    const ship = shipId ? shipRuntime.find(s => s.id === shipId) : undefined;
+    if (!hero || !ship?.hex) return;
+    if (!effectiveIsGM && hero.team !== myTeam) {
+      addError('You can only disembark your own heroes.');
+      return;
+    }
+    const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
+    const occupied = computeOccupiedHexes(units, hero.id, ship.elevation ?? 0);
+    const dest = HEX_DIRS
+      .map(d => ({ q: ship.hex!.q + d.q, r: ship.hex!.r + d.r, s: -ship.hex!.q - d.q - ship.hex!.r - d.r }))
+      .find(h =>
+        isHexOnGrid(h, radius) &&
+        !occupied.has(`${h.q},${h.r}`) &&
+        !shipRuntime.some(s => s.id !== ship.id && s.hex && !s.isDeleted && s.hex.q === h.q && s.hex.r === h.r),
+      );
+    if (!dest) { addError('No free adjacent hex to disembark.'); return; }
+    const nextStations: Record<string, { heroId?: string | null; heroIds?: string[]; crewIds?: string[] }> = { ...ship.stations };
+    for (const key of Object.keys(nextStations)) {
+      const entry = nextStations[key] ?? {};
+      nextStations[key] = {
+        ...entry,
+        heroId: entry.heroId === heroId ? null : entry.heroId,
+        heroIds: (entry.heroIds ?? []).filter(id => id !== heroId),
+      };
+    }
+    await execute('DETACH_HERO', [
+      {
+        type: 'DETACH_HERO',
+        unitId: hero.id,
+        description: `${hero.unitName} disembarked`,
+        changes: [
+          { field: 'attachedToShipId', from: hero.attachedToShipId ?? null, to: null },
+          { field: 'shipStationKey', from: hero.shipStationKey ?? null, to: null },
+          { field: 'hex', from: hero.hex, to: dest },
+        ],
+      },
+      {
+        type: 'SHIP',
+        unitId: ship.id,
+        description: `${ship.name} station changed`,
+        changes: [{ field: 'stations', from: ship.stations, to: nextStations }],
+      },
+    ], `${hero.unitName} disembarked`);
+  }, [units, shipRuntime, backgroundConfig, execute, addError, effectiveIsGM, myTeam]);
+
+  const handleAssignCrew = useCallback(async (shipId: string, crewId: string, station: string | null) => {
+    const ship = shipRuntime.find(s => s.id === shipId);
+    if (!ship) return;
+    const control = shipManageTeam(ship, units, alliances);
+    if (!effectiveIsGM && (!control || control !== myTeam)) {
+      addError('Only the ship controller or DM can manage crew.');
+      return;
+    }
+    const templateCrew = ship.snapshot?.template?.crews?.find(c => c.id === crewId);
+    const nextCrewState = { ...ship.crewState };
+    nextCrewState[crewId] = {
+      ...(nextCrewState[crewId] ?? { hp: templateCrew?.hp ?? 1 }),
+      station,
+    };
+    const nextStations = { ...ship.stations };
+    for (const key of Object.keys(nextStations)) {
+      const entry = nextStations[key] ?? {};
+      nextStations[key] = { ...entry, crewIds: (entry.crewIds ?? []).filter(id => id !== crewId) };
+    }
+    if (station) {
+      const entry = nextStations[station] ?? {};
+      nextStations[station] = { ...entry, crewIds: [...(entry.crewIds ?? []), crewId] };
+    }
+    await execute('OTHER_ACTION', [{
+      type: 'SHIP',
+      unitId: shipId,
+      description: `${ship.name}: crew reassigned`,
+      changes: [
+        { field: 'crewState', from: ship.crewState, to: nextCrewState },
+        { field: 'stations', from: ship.stations, to: nextStations },
+      ],
+    }], `${ship.name}: crew reassigned`);
+  }, [shipRuntime, execute, units, alliances, effectiveIsGM, myTeam, addError]);
+
+  const handleSetCrewTeam = useCallback(async (shipId: string, team: string | null) => {
+    const ship = shipRuntime.find(s => s.id === shipId);
+    if (!ship) return;
+    const control = shipManageTeam(ship, units, alliances);
+    if (!effectiveIsGM && (!control || control !== myTeam)) {
+      addError('Only the ship controller or DM can set the crew team.');
+      return;
+    }
+    await execute('SHIP', [{
+      type: 'SHIP',
+      unitId: ship.id,
+      description: `${ship.name} crew assigned to ${team ?? 'no team'}`,
+      changes: [{ field: 'crewTeam', from: ship.crewTeam ?? null, to: team }],
+    }], `${ship.name} crew assigned to ${team ?? 'no team'}`);
+  }, [shipRuntime, units, alliances, effectiveIsGM, myTeam, execute, addError]);
+
+  const handleFillHelm = useCallback(async (shipId: string) => {
+    const ship = shipRuntime.find(s => s.id === shipId);
+    const build = ship?.snapshot?.build;
+    if (!ship || !build) return;
+    const helmKey = shipComponentCardKey(ship, 'Helm');
+    const helm = build.components.find(c => c.name === 'Helm');
+    if (!helmKey || !helm) return;
+    const bridge = shipBridgeHero(ship, units);
+    if (!effectiveIsGM && (!bridge || bridge.team !== myTeam)) {
+      addError('Only the bridge hero or DM can fill the helm.');
+      return;
+    }
+    const capacity = Math.max(1, Math.ceil(helm.crew));
+    const station = ship.stations?.[helmKey] ?? {};
+    const current = station.crewIds ?? [];
+    if (current.length >= capacity) return;
+    const assignedElsewhere = new Set<string>();
+    for (const entry of Object.values(ship.stations ?? {})) {
+      for (const id of entry.crewIds ?? []) assignedElsewhere.add(id);
+    }
+    const reserve = (ship.snapshot?.template?.crews ?? [])
+      .filter(c => !ship.crewState?.[c.id]?.dead && !assignedElsewhere.has(c.id) && !current.includes(c.id))
+      .slice(0, capacity - current.length)
+      .map(c => c.id);
+    if (reserve.length === 0) {
+      addError('No reserve crew available for the helm.');
+      return;
+    }
+    const nextCrewState = { ...ship.crewState };
+    for (const id of reserve) nextCrewState[id] = { ...(nextCrewState[id] ?? { hp: 1 }), station: helmKey };
+    const nextStations = {
+      ...ship.stations,
+      [helmKey]: { ...station, crewIds: [...current, ...reserve] },
+    };
+    await execute('SHIP', [{
+      type: 'SHIP',
+      unitId: ship.id,
+      description: `${ship.name} helm crewed`,
+      changes: [
+        { field: 'crewState', from: ship.crewState ?? {}, to: nextCrewState },
+        { field: 'stations', from: ship.stations ?? {}, to: nextStations },
+      ],
+    }], `${ship.name} helm crewed`);
+  }, [shipRuntime, units, alliances, effectiveIsGM, myTeam, execute, addError]);
+
+  const shipWindow = shipWindowId ? shipRuntime.find(s => s.id === shipWindowId && !s.isDeleted) ?? null : null;
+  const shipWindowReadOnly = inReplay || controlsLocked;
+  const shipWindowManageTeam = shipWindow ? shipManageTeam(shipWindow, units, alliances) : null;
+  const shipWindowCanManageCrew = !!shipWindow && (effectiveIsGM || (!!shipWindowManageTeam && shipWindowManageTeam === myTeam));
+  const shipWindowCanFillHelm = !!shipWindow && (effectiveIsGM || (!!shipWindowManageTeam && shipWindowManageTeam === myTeam)) && !!shipBridgeHero(shipWindow, units);
+
+  // Step-1 speed declaration. Helm hero -> same-alliance Bridge hero -> DM.
+  // Ships have no intrinsic alliance; the helm occupant defines the owner.
+  const [speedPanelShipId, setSpeedPanelShipId] = useState<string | null>(null);
+  const [speedDismissedKey, setSpeedDismissedKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (shipMode !== 'wildspace' || currentTurnAlliance === null || shipStep !== 1 || turnNumber < 1) {
+      setSpeedPanelShipId(null);
+      return;
+    }
+    const candidate = shipRuntime.find(s => {
+      if (s.isDeleted || !s.hex) return false;
+      if (s.declaredRound === turnNumber || speedDismissedKey === `${s.id}:${turnNumber}`) return false;
+      const ownerAlliance = shipOwnerAlliance(s, units, alliances);
+      if (ownerAlliance !== null && ownerAlliance !== currentTurnAlliance) return false;
+      if (ownerAlliance === null && !effectiveIsGM) return false;
+      const controlTeam = shipControlTeam(s, units, alliances);
+      if (!controlTeam) return effectiveIsGM;
+      return !!myTeam && myTeam === controlTeam;
+    });
+    setSpeedPanelShipId(candidate?.id ?? null);
+  }, [shipMode, currentTurnAlliance, shipStep, turnNumber, shipRuntime, alliances, effectiveIsGM, speedDismissedKey, units, myTeam]);
+
+  const speedPanelShip = speedPanelShipId ? shipRuntime.find(s => s.id === speedPanelShipId) ?? null : null;
+
+  const [shipFireMode, setShipFireMode] = useState<{ shipId: string; cardKey: string } | null>(null);
+
+  const handleFireWeapon = useCallback((shipId: string, cardKey: string) => {
+    const ship = shipRuntime.find(s => s.id === shipId);
+    const card = ship?.snapshot?.build ? shipWeaponCards(ship.snapshot.build).find(c => c.key === cardKey) : undefined;
+    setShipFireMode({ shipId, cardKey });
+    addMessage(`Select a target for ${ship?.name ?? 'ship'}'s ${card?.weapon.name ?? 'weapon'}.`);
+  }, [shipRuntime, addMessage]);
+
+  const resolveShipShot = useCallback(async (shipId: string, cardKey: string, targetHex: Hex) => {
+    const attacker = shipRuntime.find(s => s.id === shipId && !s.isDeleted);
+    const stats = attacker?.snapshot?.stats;
+    const build = attacker?.snapshot?.build;
+    if (!attacker?.hex || !stats || !build) return;
+    const card = shipWeaponCards(build).find(c => c.key === cardKey);
+    if (!card) return;
+    const reload = attacker.reload?.[cardKey] ?? { progress: 0, armed: false };
+    if (!reload.armed && card.weapon.reloadSteps !== 0) {
+      addError('That weapon is not loaded yet.');
+      setShipFireMode(null);
+      return;
+    }
+    const targetShip = shipRuntime.find(s =>
+      s.id !== shipId && !s.isDeleted && s.hex && s.hex.q === targetHex.q && s.hex.r === targetHex.r,
+    );
+    const targetUnit = units.find(u =>
+      !u.isDeleted &&
+      !u.attachedToUnitId &&
+      !u.attachedToShipId &&
+      u.hex.q === targetHex.q &&
+      u.hex.r === targetHex.r,
+    );
+    if (!targetShip && !targetUnit) {
+      addError('No target on that hex.');
+      setShipFireMode(null);
+      return;
+    }
+    if (targetShip && !isHostile(attacker.team ?? '', targetShip.team ?? '', alliances)) {
+      addError('Cannot fire on an allied ship.');
+      setShipFireMode(null);
+      return;
+    }
+    if (targetUnit && !isHostile(attacker.team ?? '', targetUnit.team, alliances)) {
+      addError('Cannot fire on an allied unit.');
+      setShipFireMode(null);
+      return;
+    }
+    const mode = shipAttackMode(
+      hexDistance(attacker.hex, targetHex),
+      card.weapon,
+      card.arcs,
+      attacker.hex,
+      attacker.facing,
+      targetHex,
+      shipFiringArcs,
+    );
+    if (mode.mode === 'none') {
+      addError(mode.reason);
+      setShipFireMode(null);
+      return;
+    }
+    const bonus = shipWeaponBestAttacker(attacker, cardKey, units);
+    if (bonus == null) {
+      addError('No PC or crew is manning that weapon.');
+      setShipFireMode(null);
+      return;
+    }
+    let roll = 1 + Math.floor(Math.random() * 20);
+    if (mode.mode === 'disadvantage') roll = Math.min(roll, 1 + Math.floor(Math.random() * 20));
+    const targetAc = targetShip ? (targetShip.snapshot?.stats?.ac ?? 10) : (targetUnit?.currentAc ?? 10);
+    const hit = roll !== 1 && (roll === 20 || roll + bonus >= targetAc);
+    const dice = resolveShipWeaponDamage(card.weapon, stats.totalMass);
+    const damage = hit ? rollDamage(dice, Math.random) : 0;
+    const reloadAfter = fireShipWeapon();
+
+    const subSteps: SubStep[] = [{
+      type: 'SHIP',
+      unitId: attacker.id,
+      description: `${attacker.name} fired ${card.weapon.name}`,
+      changes: [{
+        field: 'reload',
+        from: attacker.reload ?? {},
+        to: { ...(attacker.reload ?? {}), [cardKey]: reloadAfter },
+      }],
+    }];
+
+    if (hit && targetShip) {
+      const tStats = targetShip.snapshot?.stats;
+      const dt = Math.max(tStats?.damageThreshold ?? 15, card.weapon.dt ?? 15);
+      const newHp = Math.max(0, targetShip.shipHp - damage);
+      const nextBox = { ...(targetShip.boxState ?? {}) };
+      if (damage >= dt && tStats) {
+        const hitCard = pickShipComponent(
+          tStats.boxGroups.map(g => ({ key: g.id, name: g.label, tons: g.boxes, safe: g.safe })),
+        );
+        if (hitCard) {
+          const destroyed = Number(nextBox[hitCard.key] ?? 0);
+          nextBox[hitCard.key] = Math.min(hitCard.tons, destroyed + 1);
+        }
+      }
+      const nextStations: Record<string, { heroId?: string | null; heroIds?: string[]; crewIds?: string[] }> = {
+        ...(targetShip.stations ?? {}),
+      };
+      let stationsChanged = false;
+      const groupBoxes = (id: string) => tStats?.boxGroups.find(g => g.id === id)?.boxes ?? 0;
+      const destroyed = (id: string) => groupBoxes(id) > 0 && Number(nextBox[id] ?? 0) >= groupBoxes(id);
+      const deckKey = shipComponentCardKey(targetShip, 'Deck');
+      const quartersKey = shipComponentCardKey(targetShip, 'Crew quarters');
+      const moveHeroes = (fromKey: string | null, toKey: string | null) => {
+        if (!fromKey || !toKey) return;
+        const entry = nextStations[fromKey];
+        const heroIds = [
+          ...(entry?.heroIds ?? []),
+          ...(entry?.heroId ? [entry.heroId] : []),
+        ];
+        if (heroIds.length === 0) return;
+        nextStations[fromKey] = { ...entry, heroId: null, heroIds: [] };
+        const targetEntry = nextStations[toKey] ?? {};
+        nextStations[toKey] = {
+          ...targetEntry,
+          heroIds: Array.from(new Set([...(targetEntry.heroIds ?? []), ...heroIds])),
+        };
+        stationsChanged = true;
+        for (const hid of heroIds) {
+          const hero = units.find(u => u.id === hid && !u.isDeleted);
+          if (!hero) continue;
+          subSteps.push({
+            type: 'ATTACH_HERO',
+            unitId: hero.id,
+            description: `${hero.unitName} displaced to ${toKey === deckKey ? 'Deck' : 'Crew Quarters'}`,
+            changes: [{ field: 'shipStationKey', from: hero.shipStationKey ?? null, to: toKey }],
+          });
+        }
+      };
+      if (deckKey && quartersKey && destroyed('deck') && !destroyed('crew_quarters')) {
+        moveHeroes(deckKey, quartersKey);
+      }
+      if (deckKey && quartersKey && destroyed('crew_quarters') && !destroyed('deck')) {
+        moveHeroes(quartersKey, deckKey);
+      }
+      const changes: { field: string; from: unknown; to: unknown }[] = [
+        { field: 'shipHp', from: targetShip.shipHp, to: newHp },
+        { field: 'boxState', from: targetShip.boxState ?? {}, to: nextBox },
+      ];
+      if (stationsChanged) {
+        changes.push({ field: 'stations', from: targetShip.stations ?? {}, to: nextStations });
+      }
+      subSteps.push({
+        type: 'SHIP',
+        unitId: targetShip.id,
+        description: `${targetShip.name} took ${damage}`,
+        changes,
+      });
+    } else if (hit && targetUnit) {
+      const newHp = Math.max(0, targetUnit.currentUnitHp - damage);
+      const troops = Math.ceil(newHp / Math.max(1, targetUnit.troopHp));
+      subSteps.push({
+        type: 'DAMAGE',
+        unitId: targetUnit.id,
+        description: `${targetUnit.unitName} took ${damage}`,
+        changes: [
+          { field: 'currentUnitHp', from: targetUnit.currentUnitHp, to: newHp },
+          { field: 'currentTroopCount', from: targetUnit.currentTroopCount, to: troops },
+        ],
+        payload: { killerUnitId: attacker.id, victimLevel: targetUnit.level },
+      });
+    }
+
+    const targetName = targetShip?.name ?? targetUnit?.unitName ?? 'target';
+    const text = hit
+      ? `${attacker.name} hit ${targetName} with ${card.weapon.name} for ${damage}`
+      : `${attacker.name} missed ${targetName} with ${card.weapon.name}`;
+    await execute('ATTACK', subSteps, text, { message: text });
+    setShipFireMode(null);
+  }, [shipRuntime, units, shipFiringArcs, alliances, execute, addError]);
+
+  const tryShipFire = useCallback((hex: Hex): boolean => {
+    if (!shipFireMode) return false;
+    void resolveShipShot(shipFireMode.shipId, shipFireMode.cardKey, hex);
+    return true;
+  }, [shipFireMode, resolveShipShot]);
 
   // Player door toggle: command-logged (undo/realtime ride the STRUCTURE sub-step).
   const toggleStructureDoor = useCallback(async (key: string, open: boolean) => {
@@ -1240,6 +2010,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     structureTemplates,
     groundZones: effectiveZones,
     pursuitsRef,
+    onBoardShip,
   });
 
   // ---- Withdraw (drag one hex into a rear hex; always warns the action cost) ----
@@ -1282,6 +2053,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const kind = wallAttackKind(attacker, ref, weapon, formationsMap[attacker.currentFormation]);
     if (!weapon || !kind) {
       addMessage(`${attacker.unitName} cannot reach or face that barrier`);
+      return;
+    }
+    if (weapon.warMachine && attacker.currentFormation === 'Scattered') {
+      addMessage(`${attacker.unitName} (Scattered) cannot fire ${weapon.name} — the war machine has lost its facing`);
       return;
     }
     const cap = unitAttackCap();
@@ -1374,6 +2149,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const kind = hexStructureAttackKind(attacker, hex, weapon, formationsMap[attacker.currentFormation]);
     if (!weapon || !kind) {
       addMessage(`${attacker.unitName} cannot reach or face that structure`);
+      return;
+    }
+    if (weapon.warMachine && attacker.currentFormation === 'Scattered') {
+      addMessage(`${attacker.unitName} (Scattered) cannot fire ${weapon.name} — the war machine has lost its facing`);
       return;
     }
     const cap = unitAttackCap();
@@ -1827,7 +2606,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           addError('Halloween Siege: assign at least one team to the Enemy alliance before ending the turn.');
           return;
         }
-        const { next: nextAlliance, wrapped: willWrap } = advanceTurn(currentTurnAlliance, getActiveGroups(alliances));
+        const { next: nextAlliance, wrapped: allianceWrapped } = advanceTurn(currentTurnAlliance, getActiveGroups(alliances));
+        const willWrap = shipMode === 'wildspace'
+          ? advanceShipStep(shipStep, allianceWrapped, currentTurnAlliance === null).wrapped
+          : allianceWrapped;
         const upcomingTurnNumber = (currentTurnAlliance === null || willWrap) ? turnNumber + 1 : turnNumber;
         if (nextAlliance === 'enemy') {
           const upcomingPhase = siegePhaseForTurn(halloweenSiege, upcomingTurnNumber);
@@ -1840,13 +2622,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
     setIsEndingTurn(true);
     try {
-      const { next, wrapped, turnNumber: newTurnNumber, freeMoveEnded, ok, zonesAfter } = await endTurn({
+      const { next, wrapped, turnNumber: newTurnNumber, shipStep: newShipStep, freeMoveEnded, ok, zonesAfter } = await endTurn({
         currentAlliance: currentTurnAlliance,
         alliances,
         units,
         formationsMap,
         turnNumber,
         freeMove,
+        shipMode,
+        shipStep,
+        ships: shipRuntime,
         zones: effectiveZones,
         structures,
         structureTemplates,
@@ -1859,6 +2644,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       }
       setCurrentTurnAlliance(next);
       if (wrapped || freeMoveEnded) setTurnNumber(newTurnNumber);
+      setShipStep(newShipStep);
       // Turn 0 free play ends when the first real turn begins.
       if (freeMoveEnded) setFreeMove(false);
       // Ground zones ticked/expired inside the END_TURN command (ZONE sub-step),
@@ -1868,12 +2654,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       // realtime event can't leave the header on the previous alliance.
       const { data: turnRow } = await supabase
         .from('scenarios')
-        .select('current_turn_alliance, turn_number, free_move')
+        .select('current_turn_alliance, turn_number, free_move, ship_step')
         .eq('id', scenarioId)
         .single();
       if (turnRow) {
         setCurrentTurnAlliance(turnRow.current_turn_alliance || null);
         setTurnNumber(turnRow.turn_number || 0);
+        if (turnRow.ship_step !== undefined) setShipStep(Math.min(5, Math.max(1, Number(turnRow.ship_step) || 1)));
         if (turnRow.free_move !== undefined) setFreeMove(!!turnRow.free_move);
       }
       // Reactions are once-per-turn — clear all markers at the turn boundary.
@@ -2519,6 +3306,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     handleRightClick,
     hoveredHex,
     draggingUnitId,
+    draggingShipId,
+    getShipAtScreen,
     offsetX,
     offsetY,
     zoom,
@@ -2534,6 +3323,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     size: HEX_SIZE,
     gridRadius: backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS,
     units: displayUnits,
+    ships,
+    onShipMove: controlsLocked ? () => {} : handleShipMove,
+    onShipClick: (ship, clientX, clientY) => {
+      if (controlsLocked) return;
+      if (tryShipFire(ship.hex)) return;
+      setSelectedShipId(ship.id);
+      setShipWindowId(ship.id);
+      setSelectedHex(null);
+      setSelectedUnit(null);
+      void clientX; void clientY;
+    },
+    canGrabShip: () => !controlsLocked,
     onUnitMove: controlsLocked
       ? () => {}
       : reactionMode
@@ -2567,6 +3368,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             handleUnitMove(unitId, targetHex);
           },
     onHexClick: (hex, _unit, clientX, clientY) => {
+      // A ship weapon is armed for targeting: this click is the target.
+      if (tryShipFire(hex)) return;
       // Locked reaction mode: only Esc ends it; clicks are inert.
       if (reactionMode) return;
       // A clone is armed: this click places it (consumes the click).
@@ -2589,6 +3392,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     },
     onUnitClick: (unit, _clientX, _clientY) => {
       if (controlsLocked || reactionMode) return;
+      if (tryShipFire(unit.hex)) return;
       if (handleCloneClick(unit.hex)) return;
       setSelectedUnit(unit);
       // Clicking an archer's reaction button arms that archer's reaction mode.
@@ -2765,6 +3569,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       void rotateUnit(unit, direction, unitMaxMP(unit), steps, surface);
       return;
     }
+    // War machine in Open Order: each 60° step costs 2 actions (no MP).
+    const wmActionCost = warMachineTurnActionCost(unit, steps);
+    if (wmActionCost != null) {
+      if ((unit.actionsAvailable ?? 0) >= wmActionCost) {
+        void rotateUnit(unit, direction, unitMaxMP(unit), steps, surface);
+      } else {
+        setPendingRotate({ unit, direction, steps, cost: wmActionCost, poolLabel: 'actions', kind: 'actions' });
+      }
+      return;
+    }
     const fly = isAirborne(unit.elevation, surface) && canFly(unit);
     const pool = fly ? (unit.flySpeedAvailable ?? 0) : unit.movementPointsAvailable;
     const cost = steps === 3
@@ -2783,7 +3597,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     pendingMountTarget || pendingAttackChoice || pendingReactionChoice || pendingElevation || pendingHeroFall ||
     pendingStructureAction || pendingClimbAttack ||
     pendingLeaveHero || showGmTeamPick || magicCast.cast || editUnit || effectDrop ||
-    effectEdit || entryPrompt || zoneMenu || hexEffectsModal || showStats ||
+    effectEdit || entryPrompt || zoneMenu || hexEffectsModal || showStats || sharedStats ||
     otherActionHero || structureEditKey ||
     pendingDescent ||
     pendingMove || pendingAttack || pendingAttackCap || pendingHeroAttachConversion ||
@@ -2830,11 +3644,62 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Drag-overlay highlight (reachable hexes, threat zones, range/reaction rings,
   // and the routed-retreat option being hovered in the picker).
   useEffect(() => {
+    if (draggingShipId) {
+      const ship = shipRuntime.find(s => s.id === draggingShipId);
+      if (currentTurnAlliance === null) {
+        // Turn 0: free placement — show the whole grid as droppable.
+        const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
+        const freeFills: Record<string, string> = {};
+        for (let q = -radius; q <= radius; q += 1) {
+          for (let r = -radius; r <= radius; r += 1) {
+            const s = -q - r;
+            const hex = { q, r, s };
+            if (isHexOnGrid(hex, radius)) freeFills[`${q},${r}`] = 'rgba(255,255,255,0.16)';
+          }
+        }
+        setOverlayMap(freeFills);
+        setOverlayLabels({});
+        return;
+      }
+      if (ship?.hex && ship.snapshot?.stats) {
+        const stats = ship.snapshot.stats;
+        const speedSpent = ship.speedSpent ?? 0;
+        const pool = shipMode === 'wildspace'
+          ? shipStepRemaining({ stepBudget: ship.stepBudget, step: shipStep, speedSpent }, shipStep)
+          : Math.max(0, Math.floor(stats.atmosphericSpeed) - speedSpent);
+        const speedForMC = shipMode === 'wildspace'
+          ? (ship.declaredSpeed || ship.lastSpeed || 5)
+          : (stats.atmosphericSpeed || 5);
+        const occupied = new Set<string>();
+        for (const u of units) {
+          if (!u.isDeleted && !u.attachedToUnitId) occupied.add(`${u.hex.q},${u.hex.r}`);
+        }
+        for (const s of shipRuntime) {
+          if (s.id !== ship.id && s.hex && !s.isDeleted) occupied.add(`${s.hex.q},${s.hex.r}`);
+        }
+        const reach = computeShipReachable(
+          { hex: ship.hex, facing: ship.facing, turnsSinceFacing: ship.turnsSinceFacing },
+          pool,
+          facingChangeDistance(stats, speedForMC),
+          { occupied, blocked: (q, r) => !!structures?.[`${q},${r}`] },
+        );
+        const shipFills: Record<string, string> = {};
+        const shipLabels: Record<string, string> = {};
+        for (const [key, entry] of Array.from(reach.entries())) {
+          if (entry.cost === 0) continue;
+          shipFills[key] = entry.endable ? 'rgba(255,255,255,0.32)' : 'rgba(255,170,60,0.4)';
+          shipLabels[key] = String(entry.cost);
+        }
+        setOverlayMap(shipFills);
+        setOverlayLabels(shipLabels);
+        return;
+      }
+    }
     const { fills, labels } = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, chargeFacing: chargeAimFacing, reactiveArchery: archerReactionEnabled, showAllMoveMp, movePreviewMode });
     if (retreatHoverHex) fills[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(fills);
     setOverlayLabels(labels);
-  }, [reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex, chargeAimFacing, archerReactionEnabled, showAllMoveMp, movePreviewMode]);
+  }, [reactionMode, draggingUnitId, draggingShipId, shipRuntime, shipMode, shipStep, currentTurnAlliance, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex, chargeAimFacing, archerReactionEnabled, showAllMoveMp, movePreviewMode]);
 
   // Center map on initial load
   useEffect(() => {
@@ -2886,21 +3751,28 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           if (hex) {
             if (ships.some(ship => ship.hex.q === hex.q && ship.hex.r === hex.r)) {
               addMessage(`Can't place ${draggingShip.template.name}: a ship is already on that hex`);
+            } else if (!draggingShip.build || !draggingShip.stats) {
+              addMessage(`Can't place ${draggingShip.template.name}: the ship build could not be resolved`);
             } else {
-              const placed: PlacedShip = {
-                id: crypto.randomUUID(),
-                templateId: draggingShip.template.id,
-                name: draggingShip.template.name,
-                role: draggingShip.template.role,
-                imageUrl: draggingShip.template.imageUrl,
-                keelLength: draggingShip.template.keelLength,
-                imageOffsetY: draggingShip.template.imageOffsetY,
+              const id = crypto.randomUUID();
+              const row = shipRowFromParts({
+                id,
+                scenarioId,
+                template: draggingShip.template,
+                build: draggingShip.build,
+                stats: draggingShip.stats,
                 hex,
-              };
-              const next = [...ships, placed];
-              setShips(next);
-              void persistMapData({ ships: next });
-              addMessage(`Placed ship "${placed.name}"`);
+              });
+              void execute(
+                'PLACE',
+                [{
+                  type: 'SHIP',
+                  unitId: id,
+                  description: `Placed ship "${draggingShip.template.name}"`,
+                  changes: [{ field: 'row', from: null, to: row }],
+                }],
+                `Placed ship "${draggingShip.template.name}"`,
+              );
             }
           }
         }
@@ -2916,7 +3788,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [draggingShip, ships, persistMapData, addMessage, getHexFromScreen]);
+  }, [draggingShip, ships, scenarioId, execute, addMessage, getHexFromScreen]);
 
   useEffect(() => {
     if (!isDraggingFromPanel || !draggingTemplate) return;
@@ -3015,10 +3887,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     // offset aware), so a double-click opens the unit under the cursor even when
     // its token is drawn off its logical hex centre.
     const unit = getUnitAtScreen(e.clientX, e.clientY);
-    if (!unit) return;
+    if (!unit) {
+      const ship = getShipAtScreen(e.clientX, e.clientY);
+      if (ship) {
+        setSelectedShipId(ship.id);
+        setShipWindowId(ship.id);
+        return;
+      }
+      return;
+    }
     if (unit.hidden && !effectiveIsGM) return;
     if (effectiveIsGM || canEditUnit(unit)) setEditUnit(unit);
-  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAtScreen, getWallEdgeAt, effectiveIsGM, canEditUnit, structures, structureTemplates, units, isGM, canControlUnit, groundZones]);
+  }, [controlsLocked, reactionMode, getHexFromScreen, getUnitAtScreen, getShipAtScreen, getWallEdgeAt, effectiveIsGM, canEditUnit, structures, structureTemplates, units, isGM, canControlUnit, groundZones]);
 
   // Editor Save → one chained command entry, one sub-step per changed field.
   const handleEditorSave = useCallback(async (changes: { field: string; from: any; to: any }[], description: string) => {
@@ -3124,7 +4004,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       });
       setStructures(parseStructures(data?.structures));
       setGroundZones(normalizeGroundEffectKinds(Array.isArray(data?.groundEffects) ? data.groundEffects : []));
-      setShips(parsePlacedShips(data?.ships));
+  
       setMapId(data?.mapId ?? null);
     });
   }, [scenarioId, fetchScenarioMapData]);
@@ -3134,7 +4014,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let cancelled = false;
     supabase
       .from('scenarios')
-      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled, ai_assist_players, hero_morale_boost_enabled, zoc_pursuit_enabled, halloween_siege')
+      .select('current_turn_alliance, turn_number, free_move, archer_reaction_enabled, mounted_charge_enabled, verbose_combat, fog_of_war, sight_radius, ai_assist_enabled, ai_assist_players, hero_morale_boost_enabled, zoc_pursuit_enabled, halloween_siege, ship_mode, ship_firing_arcs, ship_step')
       .eq('id', scenarioId)
       .single()
       .then(({ data, error }) => {
@@ -3161,6 +4041,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         setAiAssistPlayers(data.ai_assist_players ?? false);
         setHeroMoraleBoostEnabled(data.hero_morale_boost_enabled ?? true);
         setZocPursuitEnabled(data.zoc_pursuit_enabled ?? true);
+        setShipMode(data.ship_mode === 'wildspace' ? 'wildspace' : 'atmosphere');
+        setShipFiringArcs(data.ship_firing_arcs ?? true);
+        setShipStep(Math.min(5, Math.max(1, Number(data.ship_step) || 1)));
         setHalloweenSiege(parseHalloweenSiegeConfig(data.halloween_siege));
       });
     return () => { cancelled = true; };
@@ -3210,6 +4093,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           if (row.zoc_pursuit_enabled !== undefined) {
             setZocPursuitEnabled(row.zoc_pursuit_enabled ?? true);
           }
+          if (row.ship_mode !== undefined) {
+            setShipMode(row.ship_mode === 'wildspace' ? 'wildspace' : 'atmosphere');
+          }
+          if (row.ship_firing_arcs !== undefined) {
+            setShipFiringArcs(row.ship_firing_arcs ?? true);
+          }
+          if (row.ship_step !== undefined) {
+            setShipStep(Math.min(5, Math.max(1, Number(row.ship_step) || 1)));
+          }
           if (row.halloween_siege !== undefined) {
             setHalloweenSiege(parseHalloweenSiegeConfig(row.halloween_siege));
           }
@@ -3223,7 +4115,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               const md = row.map_data || {};
               if (md.structures !== undefined) setStructures(parseStructures(md.structures));
               if (md.groundEffects !== undefined) setGroundZones(normalizeGroundEffectKinds(Array.isArray(md.groundEffects) ? md.groundEffects : []));
-              if (md.ships !== undefined) setShips(parsePlacedShips(md.ships));
               if (md.mapId !== undefined) setMapId(md.mapId ?? null);
               if (md.backgroundImageUrl !== undefined) {
                 setBackgroundConfig({
@@ -3344,7 +4235,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const pr = pendingRotate!;
       setPendingRotate(null);
       if (controlsLocked) return;
-      addError(`${pr.unit.unitName} rotated with no ${pr.poolLabel}/actions left — going negative`);
+      addError(pr.kind === 'actions'
+        ? `${pr.unit.unitName} turned its war machine over budget — going negative on actions`
+        : `${pr.unit.unitName} rotated with no ${pr.poolLabel}/actions left — going negative`);
       void rotateUnit(pr.unit, pr.direction, unitMaxMP(pr.unit), pr.steps, structureSurfaceAt(pr.unit.hex, structures, structureTemplates));
     },
     confirmChargeAttack: async () => {
@@ -3466,6 +4359,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         canRedo={canRedo}
         peekUndoChainLength={peekUndoChainLength}
         displayTurnNumber={displayTurnNumber}
+        shipMode={shipMode}
+        shipStep={shipStep}
         isGM={isGM}
         gmAsPlayer={gmAsPlayer}
         onTogglePlayerMode={isGM ? togglePlayerMode : undefined}
@@ -3494,7 +4389,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         <Toast
           key={scenarioToast.id}
           message={scenarioToast.text}
-          duration={6000}
+          persistent
           onClose={() => dismissToast(scenarioToast.id)}
         />
       )}
@@ -4158,6 +5053,52 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             </label>
             </div>
 
+            <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mt-5 mb-2 border-b-2 border-gray-600 pb-1">Spelljammer</div>
+            <div className="pl-6">
+            <div className="mb-2">
+              <span className="text-sm font-medium text-amber-300">Ship mode</span>
+              <div className="flex flex-col gap-1 mt-1 text-sm text-gray-200">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="shipMode"
+                    checked={shipMode === 'wildspace'}
+                    onChange={async () => { setShipMode('wildspace'); await updateScenarioField(scenarioId, { ship_mode: 'wildspace' }); }}
+                    className="h-3.5 w-3.5 accent-amber-400"
+                  />
+                  <span>Wildspace <span className="text-gray-400 text-[11px]">(speed declaration, 5 steps, no elevation)</span></span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="shipMode"
+                    checked={shipMode === 'atmosphere'}
+                    onChange={async () => { setShipMode('atmosphere'); await updateScenarioField(scenarioId, { ship_mode: 'atmosphere' }); }}
+                    className="h-3.5 w-3.5 accent-amber-400"
+                  />
+                  <span>Atmosphere <span className="text-gray-400 text-[11px]">(atmospheric speed as flying points, normal turns)</span></span>
+                </label>
+              </div>
+            </div>
+            <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={shipFiringArcs}
+                onChange={async (e) => {
+                  setShipFiringArcs(e.target.checked);
+                  await updateScenarioField(scenarioId, { ship_firing_arcs: e.target.checked });
+                }}
+                className="h-4 w-4 accent-amber-400 mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-amber-300">Use firing arcs</span>
+                <span className="block text-gray-400 text-[11px]">
+                  When off, every ship weapon except the ram fires 360°.
+                </span>
+              </span>
+            </label>
+            </div>
+
             <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mt-5 mb-2 border-b-2 border-gray-600 pb-1">Minigames</div>
             <div className="pl-6">
             <label className="flex items-start gap-2 text-sm text-gray-200 mb-2 cursor-pointer">
@@ -4673,6 +5614,35 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         />
       )}
 
+      {shipWindow && (
+        <ShipWindow
+          ship={shipWindow}
+          readOnly={shipWindowReadOnly}
+          shipMode={shipMode}
+          shipStep={shipStep}
+          onClose={() => setShipWindowId(null)}
+          onAssignCrew={(crewId, station) => void handleAssignCrew(shipWindow.id, crewId, station)}
+          boardedHeroes={units
+            .filter(u => !u.isDeleted && u.attachedToShipId === shipWindow.id)
+            .map(u => ({ id: u.id, name: u.unitName, shipStationKey: u.shipStationKey ?? null, team: u.team }))}
+          onAssignHero={(heroId, station) => void handleAssignHero(heroId, station)}
+          onDisembarkHero={heroId => void handleDisembarkHero(heroId)}
+          onFireWeapon={cardKey => handleFireWeapon(shipWindow.id, cardKey)}
+          canManageCrew={shipWindowCanManageCrew}
+          canFillHelm={shipWindowCanFillHelm}
+          onSetCrewTeam={team => void handleSetCrewTeam(shipWindow.id, team)}
+          onFillHelm={() => void handleFillHelm(shipWindow.id)}
+        />
+      )}
+
+      {speedPanelShip && (
+        <SpeedDeclarationPanel
+          ship={speedPanelShip}
+          onClose={() => setSpeedDismissedKey(`${speedPanelShip.id}:${turnNumber}`)}
+          onDeclare={args => void handleDeclareShipSpeed(speedPanelShip.id, args)}
+        />
+      )}
+
       {/* Effects drop: editable pre-apply form (single hex, no radius) */}
       {effectDrop && (
         <EffectFormModal
@@ -4845,14 +5815,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       })()}
 
       {/* Scenario Statistics (DM in live play; anyone in replay) */}
-      {showStats && (
+      {(showStats || sharedStats) && (
         <ScenarioStatsModal
           rows={commandRows}
           units={units}
           alliances={alliances}
-          onClose={() => setShowStats(false)}
-          onShare={text => {
-            addMessage(text);
+          stats={sharedStats ?? undefined}
+          onClose={() => {
+            setShowStats(false);
+            clearSharedStats();
+          }}
+          onShare={stats => {
+            shareStats(stats);
             setShowStats(false);
           }}
         />

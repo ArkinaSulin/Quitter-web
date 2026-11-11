@@ -5,3 +5,4 @@ export * from './lib/attackDirection';
 export * from './lib/hexLine';
 export * from './lib/alliances';
 export * from './lib/damage';
+export * from './lib/boundedList';

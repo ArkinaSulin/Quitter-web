@@ -1,9 +1,9 @@
 'use client';
 // src/components/ScenarioMap/ScenarioStatsModal.tsx
 // Scenario battle statistics (derived from the command log + live units).
-// GM sees it in live play; any player sees it in replay. "Share" posts a
-// plain-text summary to the room's Messages channel (hidden units revealed
-// fully).
+// GM sees it in live play; any player sees it in replay. "Share" broadcasts
+// the exact table to every player, who sees the same modal (hidden units
+// revealed fully).
 //
 // Rows are grouped by alliance (Friendly → Enemy → Neutral) with an alliance
 // summary line, then by team (color chip) — empty teams and an empty Neutral
@@ -11,15 +11,17 @@
 import { Fragment, useMemo } from 'react';
 import { Unit, AllianceGroup, ALLIANCE_COLORS } from '@/types/gameProtocol';
 import { CommandLogRow } from '@/packages/infra';
-import { buildStats, formatStatsText } from '@/packages/battle';
+import { buildStats, type BattleStats } from '@/packages/battle';
 import { TEAM_COLORS } from '@/packages/units';
 
 interface Props {
   rows: CommandLogRow[];
   units: Unit[];
   alliances: Record<string, AllianceGroup>;
+  /** A shared snapshot from another client. When present the table is read-only. */
+  stats?: BattleStats;
   onClose: () => void;
-  onShare: (text: string) => void;
+  onShare: (stats: BattleStats) => void;
 }
 
 const btn = 'px-3 py-1.5 rounded text-sm font-semibold transition-colors';
@@ -30,8 +32,11 @@ const ALLIANCE_LABEL: Record<AllianceGroup, string> = {
   neutral: 'Neutral Alliance',
 };
 
-export function ScenarioStatsModal({ rows, units, alliances, onClose, onShare }: Props) {
-  const stats = useMemo(() => buildStats(rows, units, alliances), [rows, units, alliances]);
+export function ScenarioStatsModal({ rows, units, alliances, stats, onClose, onShare }: Props) {
+  const resolvedStats = useMemo(
+    () => stats ?? buildStats(rows, units, alliances),
+    [stats, rows, units, alliances],
+  );
 
   const num = 'py-1 pr-2 text-right tabular-nums';
 
@@ -68,7 +73,7 @@ export function ScenarioStatsModal({ rows, units, alliances, onClose, onShare }:
               </tr>
             </thead>
             <tbody>
-              {stats.alliances.map(a => (
+              {resolvedStats.alliances.map(a => (
                 <Fragment key={a.alliance}>
                   <tr className="border-b border-gray-700" style={{ backgroundColor: ALLIANCE_COLORS[a.alliance] + '22' }}>
                     <td className="py-1 pr-2 font-semibold" style={{ color: ALLIANCE_COLORS[a.alliance] }}>
@@ -126,13 +131,15 @@ export function ScenarioStatsModal({ rows, units, alliances, onClose, onShare }:
           </table>
         </div>
         <div className="flex justify-end gap-2 mt-3">
-          <button
-            className={`${btn} bg-sky-700 hover:bg-sky-600 text-white`}
-            onClick={() => onShare(formatStatsText(stats))}
-            title="Post the summary to everyone's Messages log"
-          >
-            Share to all players
-          </button>
+          {!stats && (
+            <button
+              className={`${btn} bg-sky-700 hover:bg-sky-600 text-white`}
+              onClick={() => onShare(resolvedStats)}
+              title="Open this exact table on every player's screen"
+            >
+              Share to all players
+            </button>
+          )}
           <button className={`${btn} bg-gray-700 hover:bg-gray-600 text-white`} onClick={onClose}>
             Done
           </button>

@@ -56,7 +56,7 @@ const unit = (id: string, team: string, hex = h(0, 0), overrides: Partial<Unit> 
     pursuitUsed: false,
     heroicInspirationActive: false,
   activeWeaponIndex: 0,
-  str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
+  strSav: 0, dexSav: 0, conSav: 0, intSav: 0, wisSav: 0, chaSav: 0, str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
   effects: [],
   ...overrides,
 });
@@ -400,7 +400,7 @@ describe('effect damage detail + messages', () => {
 
   it('verbose effect line shows per-troop save total → applied damage', () => {
     // Four troops, one damage roll each; every troop saves (huge bonus) → half.
-    const u = mk({ dex: 100 });
+    const u = mk({ dexSav: 100 });
     const { detail } = resolveEffectDamage(u, { dice: '1d6', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true }, () => 0.5);
     const line = describeEffectDamage('Goblins', 'Burning', detail, true);
     // floor(0.5*6)+1 = 4 damage roll; save 111 >= 10 → half floor(4/2)=2 applied.

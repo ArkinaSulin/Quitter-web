@@ -1095,6 +1095,15 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         </tr>
 
                         <tr className="border-b border-gray-700/50">
+                          <td className="py-1 pr-2">Deck</td>
+                          <td className="text-center px-2 text-gray-500">—</td>
+                          <td className="text-right px-2">{stats?.massBreakdown.deck ?? 0}</td>
+                          <td className="text-right px-2">0</td>
+                          <td className="pl-2 text-gray-500">20% of hull (min 1) · hittable</td>
+                          <td className="text-right pl-2 text-gray-500">—</td>
+                        </tr>
+
+                        <tr className="border-b border-gray-700/50">
                           <td className="py-1 pr-2">Helm</td>
                           <td className="text-center px-2">
                             <div className="mx-auto w-full max-w-16">
@@ -1214,7 +1223,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                                         >
                                           {weaponOptions.map(weap => (
                                             <option key={weap.id} value={weap.id}>
-                                              {weap.name} — {resolveShipWeaponDamage(weap, formData.totalMass)} ({weap.mass}t, crew {weap.crew}, every {weap.fireCycleStep} step{weap.fireCycleStep === 1 ? '' : 's'})
+                                              {weap.name} — {resolveShipWeaponDamage(weap, formData.totalMass)} ({weap.mass}t, crew {weap.crew}, reload {weap.reloadSteps} step{weap.reloadSteps === 1 ? '' : 's'})
                                             </option>
                                           ))}
                                         </select>

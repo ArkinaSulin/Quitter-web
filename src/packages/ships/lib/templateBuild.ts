@@ -3,7 +3,7 @@
 // catalogs, deck layout, and derived stats.
 
 import { ShipArmor, ShipComponent, ShipTemplate, ShipWeapon } from '@/types/ship';
-import { COMPONENT_NAMES, ShipBuild, componentById, componentByName } from './shipStats';
+import { COMPONENT_NAMES, DECK_HULL_PCT, ShipBuild, componentById, componentByName, computeHullMass, roundTons } from './shipStats';
 import { DeckCard, syncDeckLayout } from './deckLayout';
 
 export function buildShipFromTemplate(
@@ -34,16 +34,22 @@ export function buildShipFromTemplate(
   pushComponentCards(`component:${helmComponent.id || 'helm'}`, template.helm, helmComponent.canCombine);
   const bridgeComponent = componentByName(components, COMPONENT_NAMES.commandBridge);
   pushComponentCards(`component:${bridgeComponent.id || 'command_bridge'}`, template.commandBridge, bridgeComponent.canCombine);
-  deckCards.push({ key: componentKey(COMPONENT_NAMES.hull, 'hull'), kind: 'component' });
+  // Deck is mandatory and always present (hittable, 20% of hull mass min 1).
+  deckCards.push({ key: componentKey(COMPONENT_NAMES.deck, 'deck'), kind: 'component' });
+  if (Math.round(template.crewQuarters) > 0) {
+    deckCards.push({ key: componentKey(COMPONENT_NAMES.crewQuarters, 'crew_quarters'), kind: 'component' });
+  }
+  const hullAllocated = roundTons(computeHullMass(template.totalMass));
+  const deckTons = hullAllocated > 0 ? Math.max(1, Math.round(hullAllocated * DECK_HULL_PCT)) : 0;
+  if (hullAllocated - deckTons > 0) {
+    deckCards.push({ key: componentKey(COMPONENT_NAMES.hull, 'hull'), kind: 'component' });
+  }
   const sailComponent = componentByName(components, COMPONENT_NAMES.sail);
   pushComponentCards(`component:${sailComponent.id || 'sail'}`, template.sails, sailComponent.canCombine);
   const rudderComponent = componentByName(components, COMPONENT_NAMES.rudder);
   pushComponentCards(`component:${rudderComponent.id || 'rudder'}`, template.rudders, rudderComponent.canCombine);
   if (Math.round(template.cargoArea) > 0) {
     deckCards.push({ key: componentKey(COMPONENT_NAMES.cargo, 'cargo'), kind: 'component' });
-  }
-  if (Math.round(template.crewQuarters) > 0) {
-    deckCards.push({ key: componentKey(COMPONENT_NAMES.crewQuarters, 'crew_quarters'), kind: 'component' });
   }
   for (const row of template.optionalComponents) {
     const component = componentById(components, row.componentId);

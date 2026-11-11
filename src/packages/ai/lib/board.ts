@@ -18,6 +18,7 @@ import {
   entryBreakFormation,
   formationOrgLevels,
   loosePassThroughHexes,
+  friendlyAirPassThroughHexes,
   MapStructures,
   OrgMoveOpts,
   structureSurfaceAt,
@@ -315,6 +316,7 @@ export function movementContextFor(
   for (const k of Array.from(loosePassThroughHexes(visible, unit, ctx.formations, ctx.alliances, airborne ? 'fly' : 'ground', surface))) {
     passThrough.add(k);
   }
+  if (airborne) for (const k of Array.from(friendlyAirPassThroughHexes(visible, unit, ctx.alliances))) passThrough.add(k);
   const movementMultipliers: Record<string, number> = {};
   for (const [name, f] of Object.entries(ctx.formations)) movementMultipliers[name] = f.movement_multiplier;
   const rawCostOfHex = makeCostOfHex(ctx.terrainCosts ?? null, ctx.walls, {

@@ -2,10 +2,10 @@
 // Pure flying / elevation domain logic (Phase 2). Reused by movement, combat,
 // rendering and the AI. `canFly` is DERIVED: a unit flies when its aerial pool
 // (`flySpeed`) is > 0; `elevation > 0` means it is currently airborne.
-import { Unit, getOrganizationLevel } from '@/types/gameProtocol';
+import { Unit, AllianceGroup, getOrganizationLevel } from '@/types/gameProtocol';
 import { isUnitInteractable } from '@/packages/units';
 import { formationAtOrBelow } from '@/packages/movement/lib/formationCost';
-import { hexToPixel } from '@/packages/primitives';
+import { hexToPixel, sameAlliance } from '@/packages/primitives';
 
 /** Can this unit fly at all (has an aerial movement pool)? */
 export function canFly(unit: Pick<Unit, 'flySpeed'>): boolean {
@@ -102,6 +102,26 @@ export function airOccupiedHexes(allUnits: Unit[], excludeUnitId?: string): Set<
       .filter(u => isUnitInteractable(u) && u.id !== excludeUnitId && (u.elevation ?? 0) > 0)
       .map(u => `${u.hex.q},${u.hex.r}`),
   );
+}
+
+/**
+ * Friendly airborne hexes a flyer may TRAVERSE (but never stop on). Airborne
+ * units always occupy the single air slot, so they block a LANDING; crossing
+ * that slot is allowed exactly as loose (org ≤ 1) friendly units pass through
+ * each other on the ground. Alliance-gated: hostile flyers still block.
+ */
+export function friendlyAirPassThroughHexes(
+  allUnits: Unit[],
+  mover: Pick<Unit, 'id' | 'team'>,
+  alliances: Record<string, AllianceGroup>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const u of allUnits) {
+    if (!isUnitInteractable(u) || u.id === mover.id) continue;
+    if (!sameAlliance(u.team, mover.team, alliances)) continue;
+    if ((u.elevation ?? 0) > 0) out.add(`${u.hex.q},${u.hex.r}`);
+  }
+  return out;
 }
 
 /**

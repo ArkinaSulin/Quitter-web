@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   canFly, elevationGapFeet, elevationGapHexes, elevationOffset, airOccupiedHexes,
+  friendlyAirPassThroughHexes,
   maxElevationAfter, elevationSliderRange, carryRule, FLYING_MAX_FORMATION, flyingFormationCap,
   meleeElevationFor, canReachStructure, STRUCTURE_HEIGHT_FT,
   movePoolMode, flyMax, moveBudgetUnit, passengerDrain, rollFallDamage, perTroopFallDamage,
@@ -20,7 +21,7 @@ const u = (over: Partial<Unit> = {}): Unit => ({
   facing: 0, team: 'blue', hidden: false, isDeleted: false, isCharging: false,
   chargeDistance: 0, commandSeq: 0, organizationLevel: 0, actionsAvailable: 1,
   attacksUsed: 0, archerReactionUsed: false, pursuitUsed: false,
-  heroicInspirationActive: false, activeWeaponIndex: 0, str: 0, dex: 0, con: 0,
+  heroicInspirationActive: false, activeWeaponIndex: 0, strSav: 0, dexSav: 0, conSav: 0, intSav: 0, wisSav: 0, chaSav: 0, str: 0, dex: 0, con: 0,
   int: 0, wis: 0, cha: 0, ...over,
 });
 
@@ -81,6 +82,15 @@ describe('flying', () => {
     const set = airOccupiedHexes([flyer, ground]);
     expect(set.has('1,0')).toBe(true);
     expect(set.has('2,0')).toBe(false);
+  });
+
+  it('friendlyAirPassThroughHexes includes only friendly elevated units', () => {
+    const mover = u({ id: 'm', team: 'blue', elevation: 20, hex: { q: 0, r: 0, s: 0 } });
+    const friend = u({ id: 'f', team: 'blue', elevation: 20, hex: { q: 1, r: 0, s: -1 } });
+    const enemy = u({ id: 'e', team: 'red', elevation: 20, hex: { q: 2, r: 0, s: -2 } });
+    const groundFriend = u({ id: 'g', team: 'blue', elevation: 0, hex: { q: 3, r: 0, s: -3 } });
+    const alliances = { blue: 'friendly' as const, red: 'enemy' as const };
+    expect(Array.from(friendlyAirPassThroughHexes([mover, friend, enemy, groundFriend], mover, alliances))).toEqual(['1,0']);
   });
 
   it('maxElevationAfter bounds free climb to 10 ft/hex', () => {

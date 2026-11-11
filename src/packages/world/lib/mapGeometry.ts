@@ -267,7 +267,7 @@ export const tokenDrawOrder = (a: Unit, b: Unit) => {
   if (corpse) return corpse;
   const elev = (a.elevation ?? 0) - (b.elevation ?? 0);
   if (elev) return elev;
-  const tier = (u: Unit) => (u.attachedToUnitId ? 2 : canFly(u) ? 1 : 0);
+  const tier = (u: Unit) => (u.attachedToUnitId || u.attachedToShipId ? 2 : canFly(u) ? 1 : 0);
   return tier(a) - tier(b);
 };
 
@@ -341,7 +341,7 @@ export function computeThreatHexes(
     if (!draggedUnit || !isHostile(unit.team, draggedUnit.team, alliances)) continue;
     const ownSurface = surfaceOf(unit.hex);
     // Heroes / attached units impose no movement ZoC (morale uses heroThreatAgainst).
-    const exclude = (u: Unit) => u.isHero || !!u.attachedToUnitId;
+    const exclude = (u: Unit) => u.isHero || !!u.attachedToUnitId || !!u.attachedToShipId;
 
     // Horizontal ZoC: the two front hexes, at the destination's elevation.
     for (const dirIdx of frontArcIndices(unit.facing)) {

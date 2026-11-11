@@ -15,6 +15,8 @@ interface TopBarProps {
   canRedo: () => boolean;
   peekUndoChainLength: () => number;
   displayTurnNumber: number;
+  shipMode: 'atmosphere' | 'wildspace';
+  shipStep: number;
   isGM: boolean;
   gmAsPlayer: boolean;
   onTogglePlayerMode?: () => void;
@@ -51,8 +53,10 @@ export function TopBar(props: TopBarProps) {
     redo,
     canRedo,
     peekUndoChainLength,
-    displayTurnNumber,
-    isGM,
+  displayTurnNumber,
+  shipMode,
+  shipStep,
+  isGM,
     gmAsPlayer,
     onTogglePlayerMode,
     currentTurnAlliance,
@@ -134,6 +138,11 @@ export function TopBar(props: TopBarProps) {
           </button>
         )}
         <span className="text-white text-sm font-mono">Turn {displayTurnNumber}</span>
+        {shipMode === 'wildspace' && currentTurnAlliance !== null && (
+          <span className="text-amber-300 text-xs font-mono border border-amber-700/60 rounded px-1.5 py-0.5">
+            Step {shipStep}/5
+          </span>
+        )}
         {halloweenSiegeStatus && (
           canToggleNextWave ? (
             <button
@@ -172,7 +181,7 @@ export function TopBar(props: TopBarProps) {
                       : 'bg-[#0072B2] hover:bg-[#00619c] text-white'
               } ${!canEndTurn || isEndingTurn ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              {`End Turn${isEndingTurn ? '…' : ''}${currentTurnAlliance === null ? ' (Free Play)' : ` (${currentTurnAlliance})`}`}
+              {`${shipMode === 'wildspace' && currentTurnAlliance !== null ? 'End Step' : 'End Turn'}${isEndingTurn ? '…' : ''}${currentTurnAlliance === null ? ' (Free Play)' : ` (${currentTurnAlliance})`}`}
             </button>
           );
         })()}

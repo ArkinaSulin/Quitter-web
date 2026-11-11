@@ -46,8 +46,31 @@ export interface Weapon {
   is_reach: boolean;    // weapon has reach (e.g., pike, lance)
 }
 
+/**
+ * Ability scores (the actual 3–18-ish stat values). Distinct from saving-throw
+ * bonuses below. Ship skill checks and (future) stat checks read these.
+ */
+export interface AbilityScores {
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+}
+
+/** Saving-throw BONUSES (stored directly; 0 = no bonus). */
+export interface SavingThrows {
+  strSav: number;
+  dexSav: number;
+  conSav: number;
+  intSav: number;
+  wisSav: number;
+  chaSav: number;
+}
+
 // --- Unit Template (Master List / Blueprint) ---
-export interface UnitTemplate {
+export interface UnitTemplate extends AbilityScores, SavingThrows {
   id: string;
   unitName: string;                   // was: name
   raceId: string;
@@ -95,14 +118,6 @@ export interface UnitTemplate {
   /** Racial darkvision (hex) — authored here (inherited from race at creation),
    *  copied to each spawned unit. */
   darkvision?: number;
-  // Ability save bonuses (used by area-effect spells). Store the bonus directly.
-  str: number;
-  dex: number;
-  con: number;
-  int: number;
-  wis: number;
-  cha: number;
-//  acSpecialModifier?: string;
   /** Design-time effect modifiers, expanded into permanent effects on every
    *  spawned unit (innate abilities). */
   effects?: EffectModifier[];
@@ -111,7 +126,7 @@ export interface UnitTemplate {
 }
 
 // --- Unit (Instance on the battlefield) ---
-export interface Unit {
+export interface Unit extends AbilityScores, SavingThrows {
   id: string;
   scenarioId: string;
   templateId: string | null;
@@ -124,6 +139,10 @@ export interface Unit {
   isHero: boolean;
   attachedToUnitId: string | null;    // new: hero attached to a unit
   attachedPosition: 'front' | 'back' | 'rider' | null; // new: hero's position on the host unit ('rider' = mounted on a larger hero)
+  /** Boarded on a scenario ship (`ship_spelljammer.id`); token is hidden. */
+  attachedToShipId?: string | null;
+  /** Deck card key the boarded hero occupies (null = deck/reserve). */
+  shipStationKey?: string | null;
   mountSplit?: number | null; // new: per-pair fraction of attacks to the chosen MAIN target (null = global mount_main_attack_split)
   currentTroopCount: number;          // was: bodyCount
   maxTroopCount: number;              // was: maxBodyCount
@@ -185,13 +204,6 @@ export interface Unit {
   activeWeaponIndex: number;           // index into weaponString of the active weapon (0 = first)
   /** Active temporary effects on this unit (buff/debuff/DoT). Empty = none. */
   effects?: UnitEffect[];
-  // Ability save bonuses (used by area-effect spells). Store the bonus directly.
-  str: number;
-  dex: number;
-  con: number;
-  int: number;
-  wis: number;
-  cha: number;
   /** Current elevation in feet (10-ft steps; 0 = ground). Only set on flyers. */
   elevation?: number;
   /** Max aerial movement pool (hexes); > 0 = can fly (derived). */
@@ -348,6 +360,13 @@ export interface Scenario {
   zocPursuitEnabled: boolean;
   /** AI assist: non-GM participants may open/use the AI tab in this scenario. */
   aiAssistPlayers: boolean;
+  /** DM-only Spelljammer mode: `atmosphere` = normal turns + atmospheric speed;
+   *  `wildspace` = speed declaration split over 5 steps. */
+  shipMode: 'atmosphere' | 'wildspace';
+  /** DM-only: enforce per-weapon firing arcs (false = 360° except ram). */
+  shipFiringArcs: boolean;
+  /** Wildspace step counter 1..5 (atmosphere/legacy = 1). */
+  shipStep: number;
 }
 
 // --- Participant ---

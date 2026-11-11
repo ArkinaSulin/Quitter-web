@@ -30,3 +30,19 @@ export function advanceTurn(
   const nextIdx = (idx + 1) % list.length;
   return { next: list[nextIdx], wrapped: nextIdx === 0 };
 }
+
+/**
+ * Wildspace step advance. Every full alliance cycle advances the step; wrapping
+ * step 5 -> 1 completes a round (`wrapped` = increment turn_number).
+ * Leaving free play always starts at step 1.
+ */
+export function advanceShipStep(
+  currentStep: number,
+  allianceWrapped: boolean,
+  leavingFreePlay: boolean,
+): { step: number; wrapped: boolean } {
+  if (leavingFreePlay) return { step: 1, wrapped: false };
+  const step = Math.min(5, Math.max(1, Math.floor(currentStep) || 1));
+  if (!allianceWrapped) return { step, wrapped: false };
+  return step >= 5 ? { step: 1, wrapped: true } : { step: step + 1, wrapped: false };
+}

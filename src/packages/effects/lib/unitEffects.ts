@@ -439,7 +439,7 @@ function saveRoll(rng: () => number, flags: SaveRollFlags): number {
 
 /** One troop's saving throw total: d20 + bonus (compare to the DC). */
 function troopSaveTotal(target: Unit, stat: SaveStatName, rng: () => number): number {
-  const bonus = ((target as any)[stat.toLowerCase()] as number) || 0;
+  const bonus = ((target as any)[`${stat.toLowerCase()}Sav`] as number) || 0;
   return saveRoll(rng, saveRollFlags(target)) + bonus + effectSaveBonus(target);
 }
 

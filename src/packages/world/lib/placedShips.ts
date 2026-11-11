@@ -12,6 +12,8 @@ export interface PlacedShip {
   keelLength: number;
   imageOffsetY: number;
   hex: Hex;
+  /** Derived from the helm occupant (render-only); null = unmanned/no alliance. */
+  alliance?: 'friendly' | 'enemy' | 'neutral' | null;
 }
 
 function numberOr(value: unknown, fallback: number): number {

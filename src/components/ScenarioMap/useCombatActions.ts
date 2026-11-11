@@ -1405,6 +1405,14 @@ export function useCombatActions(deps: CombatActionsDeps) {
       return;
     }
 
+    // A war machine cannot fire in Scattered: it has lost its facing, and the
+    // machine can never shoot 360°. (Melee is unaffected; this gates ONLY war
+    // machines, not ordinary Scattered units.)
+    if (weapon.warMachine && isRangedThisAttack && attacker.currentFormation === 'Scattered') {
+      addMessage(`${attacker.unitName} (Scattered) cannot fire ${weapon.name} — the war machine has lost its facing`);
+      return;
+    }
+
     // War machines are crew-served whole-turn weapons: gate on the attack cap, then
     // the action pool (a unit needs 2 actions, a hero 5), and a Hero operating one
     // is illegal — all soft-confirmed BEFORE rolling to-hit / opening the window.
@@ -1480,12 +1488,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
           flySpeed: target.flySpeed ?? 0,
         },
         targetStats: {
-          str: target.str ?? 0,
-          dex: target.dex ?? 0,
-          con: target.con ?? 0,
-          int: target.int ?? 0,
-          wis: target.wis ?? 0,
-          cha: target.cha ?? 0,
+          str: target.strSav ?? 0,
+          dex: target.dexSav ?? 0,
+          con: target.conSav ?? 0,
+          int: target.intSav ?? 0,
+          wis: target.wisSav ?? 0,
+          cha: target.chaSav ?? 0,
         },
         maxMarkers: hits,
         warMachine: { toHit: toHitRolls, attackBonus, ac: targetAc },
@@ -1519,12 +1527,12 @@ export function useCombatActions(deps: CombatActionsDeps) {
         weapon,
         snapshot,
         targetStats: {
-          str: target.str ?? 0,
-          dex: target.dex ?? 0,
-          con: target.con ?? 0,
-          int: target.int ?? 0,
-          wis: target.wis ?? 0,
-          cha: target.cha ?? 0,
+          str: target.strSav ?? 0,
+          dex: target.dexSav ?? 0,
+          con: target.conSav ?? 0,
+          int: target.intSav ?? 0,
+          wis: target.wisSav ?? 0,
+          cha: target.chaSav ?? 0,
         },
       });
       return;

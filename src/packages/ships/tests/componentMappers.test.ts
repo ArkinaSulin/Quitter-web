@@ -22,10 +22,16 @@ const weaponTemplate = () => ({
   minRange: 0,
   range: 1,
   maxRange: 1,
-  fireCycleStep: 2,
+  reloadSteps: 1,
+  magicDimension: 0,
+  shape: 'circle' as const,
+  savingThrow: 'Dex' as const,
+  saveDC: 10,
+  onSaveHalfOrNeg: true,
   special: 'melee',
   ac: 10,
   imageUrl: '',
+  isRam: false,
 });
 
 describe('component workshop mappers', () => {
@@ -59,12 +65,13 @@ describe('component workshop mappers', () => {
   it('maps a weapon row and writes the new weapon columns', () => {
     const t = mapWeaponToTemplate({
       id: 'w1', name: 'heavy ram', mass: 3, damage: '6d10', damageFormula: '{mass/10}d10',
-      minRange: 0, range: 1, maxRange: 1, fireCycleStep: 2,
+      minRange: 0, range: 1, maxRange: 1, reloadSteps: 1,
+      magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true,
       dt: 15, crew: 2, cost: 100, ammoCost: null, special: 'melee', ac: 10,
     });
     expect(t.kind).toBe('weapon');
     expect(t.builtIn).toBe(false);
-    expect(t.fireCycleStep).toBe(2);
+    expect(t.reloadSteps).toBe(1);
     expect(componentTemplateToWeaponRow(t)).toMatchObject({
       name: 'heavy ram',
       mass: 3,
@@ -72,7 +79,7 @@ describe('component workshop mappers', () => {
       min_range: 0,
       range: 1,
       max_range: 1,
-      fire_cycle_step: 2,
+      reload_steps: 1,
     });
   });
 
@@ -92,7 +99,7 @@ describe('component workshop validation', () => {
   it('validates weapon range order and fire cycle', () => {
     expect(validateShipComponentTemplate({ ...weaponTemplate(), minRange: 2, range: 1 })).toContain('Min range');
     expect(validateShipComponentTemplate({ ...weaponTemplate(), range: 2, maxRange: 1 })).toContain('Range');
-    expect(validateShipComponentTemplate({ ...weaponTemplate(), fireCycleStep: 0 })).toContain('Fire cycle');
+    expect(validateShipComponentTemplate({ ...weaponTemplate(), reloadSteps: -1 })).toContain('Reload');
     expect(validateShipComponentTemplate(weaponTemplate())).toBeNull();
   });
 });

@@ -1,5 +1,225 @@
 # QuiTTER Changelog
 
+## War-machine, flyer, stats-share, and toast fixes (2026-11-10, no migration)
+**Files:** src/hooks/{useMagicCast,useSharedStats}.ts, src/components/{Toast.tsx,ScenarioMap/ScenarioStatsModal.tsx,ScenarioMap/ScenarioMap.tsx,ScenarioMap/MagicCastModal.tsx,ScenarioMap/SoftEnforcementModals.tsx,ScenarioMap/useCombatActions.ts,ScenarioMap/useReactionActions.ts,ScenarioMap/useMoveActions.ts,ScenarioMap/useOverlay.ts}, src/packages/{primitives/lib/boundedList.ts,primitives/index.ts,primitives/tests/boundedList.test.ts,movement/lib/flying.ts,movement/tests/flying.test.ts,units/lib/weaponParser.ts,units/tests/weaponParser.test.ts,ai/lib/board.ts}, docs/dev/changelog.md
+
+- **War-machine markers are FIFO:** placing more blast markers than hits now
+  replaces the OLDEST (first) marker; the placement preview stays visible at the
+  cap. Shared `appendReplacingOldest` helper + test.
+- **Share to all players opens the stats modal:** the DM broadcasts the computed
+  `BattleStats` snapshot over a `stats:<scenario>` realtime channel; every player
+  sees the same read-only table (hidden units included) instead of plain text.
+- **Friendly flyers pass through each other:** airborne friendly units are added
+  to the air-layer pass-through set for movement, overlay preview, and AI pathing,
+  so they can be traversed (never stopped on) regardless of formation; hostile
+  flyers still block.
+- **War-machine turns:** in Open Order each 60° step costs **2 actions and no MP**
+  (`warMachineTurnActionCost`), including about-turns (6 actions); no about-turn
+  org penalty. A Scattered war machine cannot fire a ranged weapon (normal unit
+  combat, reaction shots, and wall/structure shots); melee is unaffected.
+- **Halloween toast persists:** `Toast` gained `persistent`; the scenario toast
+  stays until the next toast replaces it instead of auto-dismissing after 6s.
+- Verification: `tsc --noEmit`; 1270 tests; `depcruise` (0 errors, pre-existing
+  circular warnings); production build (run against an alternate dist dir while
+  the dev server held `.next`).
+
+## Spelljammer Deck card, hull split, resizable window (2026-11-09, migration 163)
+**Files:** supabase/migrations/163_deck_card.sql, src/packages/ships/lib/{shipStats,templateBuild,deckLayout,shipRuntime}.ts, src/components/ShipRenderer/ShipLayout.tsx, src/components/ScenarioMap/{ScenarioMap,ShipWindow}.tsx, src/components/shared/DraggablePanel.tsx, docs/dev/{changelog,outstanding,21-ship-runtime}.md
+
+- **Deck is mandatory** on every ship: a hittable card carved out of the hull
+  (`deck = max(1, round(hull × 0.2))`, `hull = allocated − deck`; the Hull card is
+  omitted at 0). Deck is movable in the Ship Editor but non-removable.
+- **Body default order** for new/purchased cards: helm, bridge, deck, crew
+  quarters, hull, sail, rudder, cargo, optional components; manual Ship Editor
+  placement is preserved.
+- **Hero capacity = the card's crew requirement** (sail `max(1, floor(n/4))`,
+  rudder `max(1, ceil(n/2))`); Deck and Crew Quarters are unlimited. Boarded
+  heroes now default to the Deck; downed heroes are intended for Crew Quarters.
+- **Deck destruction:** heroes on a destroyed Deck move to Crew Quarters (and
+  vice versa) when the other card survives; no further effect.
+- **Sail/rudder crew** now follows the 4-sail / 2-rudder rule and the min-crew
+  total was updated.
+- **Ship window** is resizable from its bottom-right, starts at **500×420**, and
+  remembers its size in `localStorage`; the deck is fluid (percentage cards).
+- **Layout spacing:** outer `px-1`, region `px-0.5`, no max-width; card widths
+  remain percentage-based.
+- Legacy snapshots are normalised at load (Deck + hull split) and migration 163
+  also rewrites template/snapshot JSON.
+- Verification: `tsc --noEmit`; 1263 tests; full `npm run check` (build included).
+
+## Fix: ship layout disappearing after updates (2026-11-09, migration 162)
+**Files:** src/hooks/{useShips,useGameEngine}.ts, src/components/ScenarioMap/ScenarioMap.tsx, src/components/ShipRenderer/ShipLayout.tsx, supabase/migrations/162_ship_realtime_identity.sql, docs/dev/{changelog,outstanding}.md
+
+- Symptom: after a hero boarded (or any SHIP command), `ShipWindow` showed
+  “Layout unavailable.” Root cause: `ship_spelljammer.snapshot` is a large
+  TOASTed `jsonb`; Realtime UPDATE payloads can omit unchanged TOASTed columns,
+  and `useShips` replaced the good local ship with `snapshot: null`.
+- `useShips` now merges realtime UPDATE rows with the cached instance and keeps
+  the existing snapshot when the payload omits it.
+- `useGameEngine` gains `refreshShips`; every SHIP command re-reads the full rows
+  over REST afterwards (same pattern as `refreshMapData`).
+- Migration 162 sets `REPLICA IDENTITY FULL` on `ship_spelljammer`.
+- `ShipLayout`: Port/Starboard are now 4px total from the outer boundary
+  (2px outer + 2px inner padding, `max-w-[400px]`) with **card widths unchanged**;
+  applies to both the runtime window and Ship Editor.
+- Verification: `tsc --noEmit`; 1251 tests; depcruise 0 errors. `next build`
+  blocked by a file lock on `.next/trace` from a running process.
+
+## Spelljammer: structure-like boarding, crew team, alliance glow (2026-11-09, migration 161)
+**Files:** supabase/migrations/161_crew_team.sql, src/packages/ships/lib/shipRuntime.ts, src/packages/world/lib/placedShips.ts, src/components/ScenarioMap/{ScenarioMap,ShipWindow,useCanvasDraw}.tsx, src/components/ScenarioMap/useMoveActions.ts, docs/dev/{changelog,outstanding,21-ship-runtime}.md
+
+- **Boarding is structure-like:** the alliance gate is removed. Any hero of any
+  alliance can board any ship if the ship hex is in its normal reachable set
+  (same terrain/threat/occupancy pipeline). Boarding spends the normal move cost
+  (ship hex = 1 MP). No automatic removal.
+- **Crew team:** `ship_spelljammer.crew_team`; the ship window crew roster has a
+  team-colour picker (whole roster) and a **Fill Helm** action for the bridge
+  hero/DM.
+- **Owner/alliance is derived:** helm hero → helm crew team → none. The ship
+  image gets a coloured glow tracing its silhouette in that alliance colour.
+- **Speed declaration:** helm hero player → bridge hero player only when the helm
+  is manned by the same alliance → DM. Crew management is available to the
+  controller/bridge hero/DM; heroes can be assigned/removed by their owner.
+- Multiple heroes are allowed on Crew Quarters (`heroIds`); other cards remain
+  1 hero.
+- Verification: `tsc --noEmit`; 1251 tests; full `npm run check`.
+
+## Spelljammer combat wiring: reload + firing (2026-11-09)
+**Files:** src/hooks/useGameEngine.ts, src/packages/ships/lib/shipCombat.ts, src/components/ScenarioMap/{ScenarioMap,ShipWindow}.tsx, docs/dev/{changelog,outstanding,21-ship-runtime}.md
+
+- Weapons now **load at the start of their alliance's step** when the card is
+  fully crewed (PC + crew); `reload_steps = 4` arms on step 5. Armed weapons
+  stay armed until fired (END_TURN `SHIP` sub-steps).
+- Ship window lists each weapon with damage, load/armed state, crew count, and a
+  **Fire** button. Boarded heroes default to the Crew Quarters card (chips shown
+  on that card).
+- Fire flow: pick a weapon → click a target ship/unit → range band + firing arc →
+  best Deck(Dex)+prof attacker among the card's PC/crew → d20 vs target AC
+  (disadvantage beyond normal range) → mass-scaled weapon damage. Ship hits
+  reduce HP and, on `>= DT`, destroy one tonnage-weighted box group; unit hits
+  use the normal DAMAGE sub-step. Firing empties the weapon.
+- Verification: `tsc --noEmit`; ships tests (98) pass.
+
+## Spelljammer boarding + combat core (2026-11-09, migration 160)
+**Files:** supabase/migrations/160_unit_ship_boarding.sql, src/types/gameProtocol.ts, src/hooks/useSupabaseSync.ts, src/packages/units/lib/unitInteractions.ts, src/packages/world/lib/mapGeometry.ts, src/components/ScenarioMap/{ScenarioMap,useCanvasDraw,ShipWindow}.tsx, src/packages/ships/lib/shipCombat.ts, src/packages/ships/tests/shipCombat.test.ts, docs/dev/{changelog,outstanding,21-ship-runtime}.md
+
+- Heroes can board a ship by dragging onto its image (same elevation, size ≤
+  `hero_attach_max_size`, same alliance, 1 MP); the token is hidden
+  (`units.attached_to_ship_id`). Boarded heroes default to the **Crew Quarters**
+  card and render as chips on that card in the ship window.
+- Ship window lists boarded heroes; assign them to a card (1 hero per card,
+  unlimited on Crew Quarters) or disembark to an adjacent free hex.
+- Speed declaration now routes to the Helm hero → Bridge hero → DM.
+- Added `shipCombat.ts` pure core: range bands, bow/port/starboard/stern arcs,
+  attack mode, mass-scaled ram/collision damage, tonnage-weighted component
+  selection, reload progression, weapon AoE descriptor. 12 tests.
+- Verification: `tsc --noEmit`; ships tests (98) pass.
+
+## Spelljammer UX/plumbing pass (2026-11-09, migration 159)
+**Files:** supabase/migrations/159_ship_realtime_defaults.sql, src/components/{shared/DraggablePanel,ScenarioMap/ShipWindow,ScenarioMap/SpeedDeclarationPanel,ShipRenderer/ShipLayout,ScenarioMap/TopBar,ScenarioMap/ScenarioMap}.tsx, src/hooks/useScenarios.ts, src/packages/ships/lib/shipRuntime.ts, docs/dev/{changelog,outstanding,21-ship-runtime}.md
+
+- Published `ship_spelljammer` to Supabase Realtime, so a DM-placed ship
+  appears live on other participants without a reload.
+- New games default to **Atmosphere** mode (`ship_mode` column default changed);
+  existing rows keep their mode.
+- **Turn 0 has no steps**: the step chip/End Step appear only from Turn 1; ships
+  use free placement (any on-grid hex, facing toward the drop) with no speed
+  declaration.
+- **Acceleration/declaration inputs** are signed integers (draft text + −/+
+  buttons); free acceleration is `floor(derived accel)`; declared speed stays an
+  integer. Fixed the spinner/negative-sign bug.
+- New shared non-modal `DraggablePanel`; `ShipWindow` is now compact/floating
+  (no backdrop) and hides vacant deck cards while keeping regional boxes.
+- Speed declaration moved to a step-1 `SpeedDeclarationPanel`; priority is Helm
+  hero → Bridge hero → DM (PC boarding lands in Phase 4). `declared_round`
+  prevents repeat popups; undecided ships keep their last speed/facing.
+- Removed the duplicate “Placed ship …” chat message (`execute` already posts it).
+- Verification: `tsc --noEmit` clean.
+
+## Fix: ship placement NOT NULL name (2026-11-08, migration 158)
+**Files:** supabase/migrations/158_ship_place_insert_fix.sql, src/packages/ships/lib/shipRuntime.ts, docs/dev/changelog.md
+
+- Placing a ship failed with `null value in column "name" of relation
+  "ship_spelljammer"`: the `SHIP` row branch inserted only `(id, scenario_id)`
+  before its update loop, but `name` is NOT NULL with no default (066).
+- Migration 158 adds defensive defaults for `name`/`ship_hp`/`ship_hp_max` and
+  recreates `apply_substeps` so the placement INSERT seeds those columns from
+  the payload; the field loop then overwrites them with the snapshot values.
+- Client fallback: `shipRowFromParts` now uses `template.name || 'Ship'`.
+- Verification: `tsc --noEmit`; ships tests (86) pass.
+
+## Spelljammer movement + ship window (2026-11-07)
+**Files:** src/hooks/useHexGrid.ts, src/components/ScenarioMap/{ScenarioMap,ShipWindow}.tsx, src/packages/ships/lib/shipMoveCost.ts, docs/dev/{21-ship-runtime,outstanding,changelog}.md
+
+- Ship images are now grabbable on the scenario map; dragging spends the current
+  pool (wildspace step budget or atmospheric FP) and writes a `SHIP` MOVE
+  command. The overlay paints reachable/occupied hexes with movement costs.
+- Double-clicking a ship opens `ShipWindow`: tactical summary, read-only deck
+  layout, roster (crew HP dots/station), crew-to-card assignment selects
+  (Add/Return station), and the wildspace **speed declaration** form
+  (acceleration ± derived cap, signed spell-bought hexes, slot cost, declared
+  speed).
+- Speed declaration and movement use the cumulative step split and MC facing
+  gate; `End Step` resets each ship's per-step spend.
+- Read-only window for other alliances.
+- Verification: `tsc --noEmit`; 1251 tests pass.
+
+## Spelljammer runtime foundation (2026-11-07, migrations 152–157)
+**Files:** supabase/migrations/152–157*.sql, src/types/{ship,gameProtocol}.ts, src/packages/ships/lib/{shipRuntime,shipMoveCost,shipMappers,componentMappers}.ts, src/packages/ships/tests/{shipMoveCost,shipMappers,componentMappers,shipStats,templateBuild}.test.ts, src/packages/world/lib/turnState.ts (+ test), src/hooks/{useShips,useGameEngine,useScenarios}.ts, src/components/ScenarioMap/{ScenarioMap,TopBar}.tsx, src/components/{ComponentEditor,ShipEditor}/*, docs/dev/{21-ship-runtime,README,outstanding}.md
+
+- Scenario mode (`ship_mode`: atmosphere/wildspace), firing-arc toggle, and a
+  wildspace `ship_step` counter (migration 152).
+- Ship weapons now use `reload_steps` (0 = every step; old `fire_cycle_step`
+  backfilled as `max(0, old−1)`) plus spell-AoE fields (`magic_dimension`,
+  `shape`, `saving_throw`, `save_dc`, `on_save_half_or_neg`) (153).
+- `ship_components.is_ram` flags the existing ram rows; Hull is the 3-slot repair
+  station (154).
+- `ship_spelljammer` is the scenario instance: snapshot-at-placement + speed /
+  facing / step / station / crew / reload state, RLS, and a new `SHIP` command
+  sub-step so undo/replay/realtime ride the log (155–157).
+- Placement now writes a `SHIP` row (legacy `map_data.ships` removed) and
+  `useShips` keeps instances in sync with optimistic local apply.
+- Wildspace rounds split into 5 alliance steps (`advanceShipStep`); heroes get 1
+  action/step, units 1 action on any 2 steps. Top bar shows `Step N/5` and
+  End Step.
+- Pure speed declaration (`previousSpeed ± freeAccel ± spellHexes`, spell cost
+  `|hexes| × max(1, round(mass/10))`), cumulative step split, MC facing gate, and
+  ship reachability.
+- Verification: `tsc --noEmit`; 1251 tests pass.
+- Remaining runtime slices (window/stations, map drag/overlay, combat/ram,
+  declaration modal) are listed in `outstanding.md` and `21-ship-runtime.md`.
+
+## Ability scores split from saving throws (2026-11-07, migration 151)
+**Files:** supabase/migrations/151_unit_stats_saves.sql, src/types/gameProtocol.ts, src/packages/infra/lib/templateMappers.ts, src/hooks/useSupabaseSync.ts, src/components/ScenarioMap/{useCombatActions,useReactionActions}.ts, src/packages/effects/lib/unitEffects.ts, src/components/UnitEditor.tsx, tests touching `Unit`/`UnitTemplate` fixtures, docs/dev/changelog.md
+
+- `unit_templates` / `units` previously stored `str..cha` as **saving-throw
+  bonuses**. Migration 151 renames them to `str_sav..cha_sav` and adds real
+  ability-score columns `str..cha` (default 10).
+- Types now separate `AbilityScores` and `SavingThrows`; `Unit` and
+  `UnitTemplate` extend both. Command-log mapping accepts both field families.
+- Mappers/spawn copy both families; area-effect saving throws read the `*_sav`
+  bonus; the Unit Editor shows **Ability scores** and **Saving throws (bonus)**
+  as separate rows.
+- Verification: `tsc --noEmit`; 1236 tests pass.
+
+## Player manual full audit, Spelljammer deferred (2026-11-05)
+**Files:** docs/players/player-manual.md, docs/players/screenshots/README.md, docs/dev/changelog.md
+
+- Audited the player manual against current UI/code and corrected stale UI
+  references: Lobby editor/library buttons and independent filters, side-panel
+  tab order (Structure/Ship Selector/Effects), top bar (Stats, settings access,
+  DM/player toggle), and screenshot manifest/README placeholders (S-29 →
+  Structure tab; added S-34 Scenario Statistics).
+- Updated rules text: Charge/Swoop action economy, wall/hex-structure to-hit +
+  DT and simultaneous door/HP damage, door pass-through/control, tower range
+  (ranged only), fog GM view (no reveal brush; sight stays armed), Effects tab
+  access + data-driven modifier kinds, and Scenario Settings groups (This
+  device, ZoC pursuit, hero boost, AI/logs, minigames, admin settings).
+- The Ship Selector tab is listed as UI navigation only; all Spelljammer/ship
+  builder rules remain deferred until that module is complete.
+- Verification: stale-term grep, cross-check against UI/code thresholds,
+  `git diff --check`.
+
 ## Scenario Ship Selector + placement (2026-11-02)
 **Files:** src/packages/ships/lib/templateBuild.ts, src/packages/ships/index.ts, src/packages/ships/tests/templateBuild.test.ts, src/packages/world/lib/placedShips.ts, src/packages/world/index.ts, src/packages/world/tests/placedShips.test.ts, src/hooks/useShipTemplates.ts, src/components/ShipRenderer/shipImageScale.ts, src/components/ShipRenderer/ShipImagePreview.tsx, src/components/ScenarioMap/{ShipSelector,ShipTemplateTooltip,LeftPanel,ScenarioMap,useCanvasDraw}.tsx, src/components/ShipEditor/ShipEditor.tsx, docs/dev/16-ship-builder.md, docs/dev/changelog.md
 

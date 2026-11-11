@@ -16,7 +16,7 @@ const COMPONENTS: ShipComponent[] = [
 ];
 
 const WEAPONS: ShipWeapon[] = [
-  { id: 'ballista', name: 'Ballista', mass: 1, damage: '1d10', damageFormula: null, minRange: 0, range: 5, maxRange: 10, fireCycleStep: 1, dt: 15, crew: 1, cost: 100, ammoCost: null, special: null, ac: 10 },
+  { id: 'ballista', name: 'Ballista', mass: 1, damage: '1d10', damageFormula: null, minRange: 0, range: 5, maxRange: 10, reloadSteps: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 1, cost: 100, ammoCost: null, special: null, ac: 10 },
 ];
 
 const TEMPLATE: ShipTemplate = {
