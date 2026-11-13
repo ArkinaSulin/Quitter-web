@@ -1,5 +1,13 @@
 # QuiTTER Changelog
 
+## Fix: siege preset false stale-template warning (2026-11-12)
+**Files:** src/components/ScenarioMap/{HalloweenSiegePresetBar,HalloweenSiegeWindow}.tsx, docs/dev/changelog.md
+
+- Loading a saved Halloween Siege sequence while the unit-template list was still
+  fetching could falsely warn that every monster template no longer existed. The
+  stale-template scan is now skipped until `useUnitTemplates` has finished.
+- Verification: `tsc --noEmit`; tests; build.
+
 ## Halloween Siege saved sequences (2026-11-12, migration 165)
 **Files:** supabase/migrations/165_halloween_siege_presets.sql, src/packages/world/{index.ts,lib/halloweenSiege.ts,lib/halloweenSiegePresets.ts,tests/halloweenSiegePresets.test.ts}, src/components/ScenarioMap/{HalloweenSiegeWindow.tsx,HalloweenSiegePresetBar.tsx}, docs/dev/{02-schema-and-migrations,20-halloween-siege,changelog}.md, docs/players/player-manual.md
 

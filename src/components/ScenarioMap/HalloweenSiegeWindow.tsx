@@ -217,6 +217,7 @@ export function HalloweenSiegeWindow({
           <HalloweenSiegePresetBar
             config={draft}
             knownTemplateIds={knownTemplateIds}
+            templatesReady={!loading}
             onLoad={loadPlan}
           />
 

@@ -22,12 +22,15 @@ interface HalloweenSiegePresetBarProps {
   config: HalloweenSiegeConfig;
   /** Known unit-template ids, for the stale-template warning on load. */
   knownTemplateIds: Set<string>;
+  /** False while unit templates are still loading: suppress a false stale-template warning. */
+  templatesReady: boolean;
   onLoad: (plan: HalloweenSiegePlan) => void;
 }
 
 export function HalloweenSiegePresetBar({
   config,
   knownTemplateIds,
+  templatesReady,
   onLoad,
 }: HalloweenSiegePresetBarProps) {
   const [presets, setPresets] = useState<HalloweenSiegePreset[]>([]);
@@ -135,8 +138,9 @@ export function HalloweenSiegePresetBar({
     if (!selected) return;
     onLoad(selected);
     setNotice(`Loaded "${selected.name}" into the draft. Save & arm to start it.`);
-    const missing = halloweenSiegePlanTemplateIds(selected)
-      .filter(id => !knownTemplateIds.has(id));
+    const missing = templatesReady
+      ? halloweenSiegePlanTemplateIds(selected).filter(id => !knownTemplateIds.has(id))
+      : [];
     setWarning(missing.length > 0
       ? `${missing.length} monster template${missing.length === 1 ? '' : 's'} in this sequence no longer exist (${missing.join(', ')}). Those entries will be skipped when spawning.`
       : null);
