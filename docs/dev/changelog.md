@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## Fog of war: black veil instead of warm brown (2026-11-12)
+**Files:** src/packages/world/lib/fogOfWar.ts, docs/dev/changelog.md
+
+- The fog veil base color changed from the warm brown `rgb(30,16,4)` to pure
+  black, so players see solid black unseen hexes and a black dim-edge fade
+  (previously brownish/reddish). The DM/replay 80% translucent peek also uses
+  black. Alphas (`FOG_RING_ALPHAS`, unseen player/GM) are unchanged.
+- Draw-time only: `useCanvasDraw` already reads `FOG_RGB`; no other code touched.
+- Verification: `npm run check` (tsc, 1271 tests, depcruise, build).
+
 ## Fog of war: outside-grid area darkened (2026-11-12)
 **Files:** src/components/shared/mapFeatureDraw.ts, src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{changelog,11-fog-of-war}.md, docs/players/player-manual.md
 
