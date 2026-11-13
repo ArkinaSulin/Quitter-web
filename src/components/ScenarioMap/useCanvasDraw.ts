@@ -20,7 +20,7 @@ import { FOG_RGB } from '@/packages/world';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/packages/movement';
 import { MapStructures, isHexStructureKey, structureSurfaceAt, climbStepsFromFeet, structureElevation } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
-import { strokeFillText, fillHexPath, strokeHexPath, MP_COST_GREY, edgeStructureVisuals, mapTextStyles, MONO, drawHexStructure, drawEffectMark, climbLabelText, drawClimbLabel, hexClimbLabels, CLIMB_LABEL_OFFSET } from '@/components/shared/mapFeatureDraw';
+import { strokeFillText, fillHexPath, strokeHexPath, traceHexPath, MP_COST_GREY, edgeStructureVisuals, mapTextStyles, MONO, drawHexStructure, drawEffectMark, climbLabelText, drawClimbLabel, hexClimbLabels, CLIMB_LABEL_OFFSET } from '@/components/shared/mapFeatureDraw';
 import { AiOverlayData } from './aiTypes';
 
 interface CanvasDrawDeps {
@@ -758,24 +758,29 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     // At the EDGE of a unit's sight the veil is dim instead: the outermost revealed
     // ring gets fogDim (0.6), the next ring in 0.3, and hexes closer than that are
     // crisp (no fill). Where units overlap, computeFog already kept the clearest.
+    // Everything OUTSIDE the playable grid disc is always unseen: fill the canvas
+    // and cut out the on-grid hexes with an even-odd path, then let the per-hex
+    // loop below paint the grid interiors.
     if (fogReveal && fogDim && fogUnseenAlpha !== null) {
       const gridRadius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
-      const fogHex = (hex: Hex, alpha: number) => {
+      const fogRadius = HEX_SIZE * currentZoom;
+      const fogUnseen = `rgba(${FOG_RGB.r},${FOG_RGB.g},${FOG_RGB.b},${fogUnseenAlpha})`;
+      const fogHex = (hex: Hex) => {
         const pos = hexToPixel(hex, HEX_SIZE);
-        const cx = pos.x * currentZoom + offsetX;
-        const cy = pos.y * currentZoom + offsetY;
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const angle = (Math.PI / 180) * (60 * i - 30);
-          const px = cx + HEX_SIZE * currentZoom * Math.cos(angle);
-          const py = cy + HEX_SIZE * currentZoom * Math.sin(angle);
-          if (i === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
-        }
-        ctx.closePath();
-        ctx.fillStyle = `rgba(${FOG_RGB.r},${FOG_RGB.g},${FOG_RGB.b},${alpha})`;
-        ctx.fill();
+        return { cx: pos.x * currentZoom + offsetX, cy: pos.y * currentZoom + offsetY };
       };
+      ctx.beginPath();
+      ctx.rect(0, 0, width, height);
+      for (let q = -gridRadius; q <= gridRadius; q++) {
+        for (let r = -gridRadius; r <= gridRadius; r++) {
+          const s = -q - r;
+          if (Math.abs(s) > gridRadius) continue;
+          const { cx, cy } = fogHex({ q, r, s });
+          traceHexPath(ctx, cx, cy, fogRadius);
+        }
+      }
+      ctx.fillStyle = fogUnseen;
+      ctx.fill('evenodd');
       for (let q = -gridRadius; q <= gridRadius; q++) {
         for (let r = -gridRadius; r <= gridRadius; r++) {
           const s = -q - r;
@@ -784,7 +789,13 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
           const alpha = fogReveal.has(key)
             ? (fogDim.get(key) ?? 0)
             : fogUnseenAlpha;
-          if (alpha > 0) fogHex({ q, r, s }, alpha);
+          if (alpha > 0) {
+            const { cx, cy } = fogHex({ q, r, s });
+            ctx.beginPath();
+            traceHexPath(ctx, cx, cy, fogRadius);
+            ctx.fillStyle = `rgba(${FOG_RGB.r},${FOG_RGB.g},${FOG_RGB.b},${alpha})`;
+            ctx.fill();
+          }
         }
       }
     }

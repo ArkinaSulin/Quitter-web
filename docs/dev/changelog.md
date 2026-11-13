@@ -1,5 +1,29 @@
 # QuiTTER Changelog
 
+## Fog of war: outside-grid area darkened (2026-11-12)
+**Files:** src/components/shared/mapFeatureDraw.ts, src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{changelog,11-fog-of-war}.md, docs/players/player-manual.md
+
+- In fog mode the entire area outside the playable grid disc is now veiled as
+  unseen (opaque players / translucent DM-replay), out to the canvas edges.
+  Previously only on-grid hexes were covered, leaving the surrounding
+  background bright.
+- Implementation is draw-time only: the fog pass fills the canvas rectangle and
+  cuts out the on-grid hexes with an even-odd compound path, then keeps the
+  existing per-hex reveal/dim logic. `computeFog` is unchanged.
+- Added shared `traceHexPath` to `mapFeatureDraw`; `fillHexPath` /
+  `strokeHexPath` now reuse it, and `useCanvasDraw` uses it for fog hexes.
+- Verification: `tsc --noEmit`; tests.
+
+## War-machine context-menu rotate label + no about-turn (2026-11-12)
+**Files:** src/components/ScenarioMap/ContextMenu.tsx, docs/dev/changelog.md
+
+- The context menu now shows **Rotate Left/Right (2 actions)** for a war
+  machine in Open Order, matching the engine's per-60° action cost (via
+  `warMachineTurnActionCost`); other formations/units keep `free` / `1 MP`.
+- **Rotate 180°** is removed from the menu for war-machine units (the only
+  about-turn entry point), so they can no longer about-turn.
+- Verification: `tsc --noEmit`; tests.
+
 ## War-machine, flyer, stats-share, and toast fixes (2026-11-10, no migration)
 **Files:** src/hooks/{useMagicCast,useSharedStats}.ts, src/components/{Toast.tsx,ScenarioMap/ScenarioStatsModal.tsx,ScenarioMap/ScenarioMap.tsx,ScenarioMap/MagicCastModal.tsx,ScenarioMap/SoftEnforcementModals.tsx,ScenarioMap/useCombatActions.ts,ScenarioMap/useReactionActions.ts,ScenarioMap/useMoveActions.ts,ScenarioMap/useOverlay.ts}, src/packages/{primitives/lib/boundedList.ts,primitives/index.ts,primitives/tests/boundedList.test.ts,movement/lib/flying.ts,movement/tests/flying.test.ts,units/lib/weaponParser.ts,units/tests/weaponParser.test.ts,ai/lib/board.ts}, docs/dev/changelog.md
 

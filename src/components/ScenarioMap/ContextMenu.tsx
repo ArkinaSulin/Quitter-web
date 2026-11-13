@@ -4,7 +4,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Unit, getOrganizationLevel, Formation } from '@/types/gameProtocol';
 import { areHexesAdjacent, isUnitRouted } from '@/packages/morale';
-import { parseWeapons, formatWeaponDisplay } from '@/packages/units';
+import { parseWeapons, formatWeaponDisplay, isWarMachineUnit, warMachineTurnActionCost } from '@/packages/units';
 import { chargeStanceFor } from '@/packages/combat';
 import { canFly, canAdoptFormation } from '@/packages/movement';
 import { getSetting } from '@/packages/infra';
@@ -153,7 +153,14 @@ export function ContextMenu({
   // shown as a share of the max.
   const poolLabel = isAirborne && canFly(unit) ? 'FP' : 'MP';
   const rotateFree = freeMove || unit.currentFormation === 'Scattered' || isUnitRouted(unit);
-  const rotateCostLabel = rotateFree ? 'free' : `1 ${poolLabel}`;
+  const isWarMachine = isWarMachineUnit(unit);
+  // A war machine in Open Order turns the machine itself: 2 actions per 60° step.
+  const warMachineRotateCost = warMachineTurnActionCost(unit, 1);
+  const rotateCostLabel = warMachineRotateCost != null
+    ? `${warMachineRotateCost} actions`
+    : rotateFree
+      ? 'free'
+      : `1 ${poolLabel}`;
   const formationCostLabel = freeMove ? 'free' : `50% Max ${poolLabel}`;
 
   const attachableTargets = units.filter(u =>
@@ -268,7 +275,7 @@ export function ContextMenu({
           >
             Rotate Right ({rotateCostLabel})
           </div>
-          {onRotate180 && (() => {
+          {onRotate180 && !isWarMachine && (() => {
             const isMounted = !!unit.mountId || !!unit.mountName;
             const aboutTurnBlocked = isMounted && unit.currentFormation === 'Close Order';
             const aboutTurnFree = freeMove || unit.currentFormation === 'Scattered';

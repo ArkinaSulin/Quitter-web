@@ -155,6 +155,25 @@ export function strokeFillText(
   ctx.fillText(text, x, y);
 }
 
+/** Append a pointy-top hex outline centred at (cx, cy) with `radius` to the
+ *  CURRENT path (no beginPath/fill/stroke). Lets callers combine hexes into one
+ *  compound path (e.g. the fog-of-war outside-grid even-odd fill). */
+export function traceHexPath(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  radius: number,
+): void {
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 180) * (60 * i - 30);
+    const px = cx + radius * Math.cos(angle);
+    const py = cy + radius * Math.sin(angle);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
 /** Fill a pointy-top hex centred at (cx, cy) with `radius`. */
 export function fillHexPath(
   ctx: CanvasRenderingContext2D,
@@ -164,14 +183,7 @@ export function fillHexPath(
   color: string,
 ): void {
   ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 180) * (60 * i - 30);
-    const px = cx + radius * Math.cos(angle);
-    const py = cy + radius * Math.sin(angle);
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
+  traceHexPath(ctx, cx, cy, radius);
   ctx.fillStyle = color;
   ctx.fill();
 }
@@ -186,14 +198,7 @@ export function strokeHexPath(
   lineWidth: number,
 ): void {
   ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 180) * (60 * i - 30);
-    const hx = cx + radius * Math.cos(angle);
-    const hy = cy + radius * Math.sin(angle);
-    if (i === 0) ctx.moveTo(hx, hy);
-    else ctx.lineTo(hx, hy);
-  }
-  ctx.closePath();
+  traceHexPath(ctx, cx, cy, radius);
   ctx.strokeStyle = color;
   ctx.lineWidth = lineWidth;
   ctx.stroke();

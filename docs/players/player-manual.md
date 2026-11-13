@@ -1284,6 +1284,8 @@ units can see; the rest of the board is veiled.
 - You can **hover and target only what you can see**. Attacking into an
   unseen hex is blocked with an error (your own side can't shoot what it can't
   see — applies to the DM's units too).
+- The area **outside the playable hex grid** is always veiled as unseen — unit
+  sight never clears off-grid space.
 - The GM sees the board **translucently** through the veil (they adjudicate,
   and the boundary follows the current/acting alliance). There is no separate
   fog-reveal brush.

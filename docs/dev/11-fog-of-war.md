@@ -31,6 +31,10 @@ map draw layer. Migrations: 071 (fog columns/settings), 072 (rename
 - Unseen hexes get the opaque veil for players (`1.0`) or translucent for the
   DM / replay (`0.8`) so the GM can see through the boundary. Veil RGB is a
   warm `{30,16,4}` — distinct from the grey terrain-cost shading.
+- The whole area **outside the playable grid** (`max(|q|,|r|,|s|) > gridRadius`)
+  is always veiled with the same unseen alpha, out to the canvas edges. Sight
+  never clears off-grid space; this is a draw-time rule in `useCanvasDraw`, not
+  part of `computeFog`.
 
 ## Viewer & alliance
 
