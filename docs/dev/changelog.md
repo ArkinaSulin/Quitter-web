@@ -1,5 +1,14 @@
 # QuiTTER Changelog
 
+## Fog of war: DM/replay veil alpha 0.8 -> 0.7 (2026-11-12)
+**Files:** src/packages/world/lib/fogOfWar.ts, docs/dev/{changelog,11-fog-of-war}.md
+
+- `FOG_UNSEEN_GM_ALPHA` lowered from `0.8` to `0.7`, so the DM/replay translucent
+  peek is a bit clearer. Player unseen (`1.0`) and dim rings are unchanged.
+- Docs corrected: veil RGB is now the neutral black `{0,0,0}` (the earlier warm
+  `{30,16,4}` note was stale after the black-veil change).
+- Verification: `npm run check` (tsc, 1271 tests, depcruise, build).
+
 ## Fog of war: black veil instead of warm brown (2026-11-12)
 **Files:** src/packages/world/lib/fogOfWar.ts, docs/dev/changelog.md
 

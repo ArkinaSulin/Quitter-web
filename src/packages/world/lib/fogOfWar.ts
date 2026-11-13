@@ -12,7 +12,7 @@
 // unit's own hex) is crisp. Where more than one unit reveals a hex, the CLEAREST
 // coverage wins (lowest alpha). Hexes no unit of the group can see are "unseen" —
 // the drawer fills those with an opaque veil for players (1.0) and a translucent
-// one for the DM/replay (0.8) so they can see through the boundary.
+// one for the DM/replay (0.7) so they can see through the boundary.
 
 import { Unit, AllianceGroup, hexDistance } from '@/types/gameProtocol';
 import { allianceOf } from '@/packages/primitives';
@@ -26,7 +26,7 @@ export const FOG_RING_ALPHAS = [0.6, 0.4, 0.2];
 export const FOG_RGB = { r: 0, g: 0, b: 0 } as const;
 // Unseen hexes: opaque for players, translucent for the DM / replay viewer.
 export const FOG_UNSEEN_PLAYER_ALPHA = 1.0;
-export const FOG_UNSEEN_GM_ALPHA = 0.8;
+export const FOG_UNSEEN_GM_ALPHA = 0.7;
 
 export function hexKey(hex: { q: number; r: number; s: number }): string {
   return `${hex.q},${hex.r}`;
